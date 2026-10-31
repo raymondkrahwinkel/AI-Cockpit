@@ -19,6 +19,9 @@ public class AgentBrowserIsolationTests
         var provider = new AgentBrowserSessionResources(browsers, () => true);
         var servers = new[] { new SessionResourceMcpServer("playwright", "npx", ["-y", "@playwright/mcp@latest"]) };
 
+        var unavailable = await EndpointAsync(new AgentBrowserSessionResources(null, () => true), "pane-headless", servers);
+        Assert.Equal(AgentBrowserSessionResources.HeadlessUnavailableEndpoint, unavailable);
+
         var endpointA = await EndpointAsync(provider, "pane-a", servers);
         var endpointB = await EndpointAsync(provider, "pane-b", servers);
         var (processA, processB) = (browsers.ProcessIdFor("pane-a"), browsers.ProcessIdFor("pane-b"));

@@ -9,4 +9,11 @@ namespace Cockpit.Plugins.Abstractions.Notifications;
 /// <param name="Message">The text, as on a toast.</param>
 /// <param name="Severity">The toast's colour and glyph.</param>
 /// <param name="Actions">Its buttons, the first one primary. None: it announces and is not kept.</param>
-public sealed record PluginNotification(string Key, string Message, PluginToastSeverity Severity, IReadOnlyList<PluginToastAction> Actions);
+public sealed record PluginNotification(string Key, string Message, PluginToastSeverity Severity, IReadOnlyList<PluginToastAction> Actions)
+{
+    /// <summary>
+    /// An optional bold line above <see cref="Message"/> (AC-1853); null shows the message alone. A host older than
+    /// 0.132.0 ignores it and shows only the message.
+    /// </summary>
+    public string? Title { get; init; }
+}

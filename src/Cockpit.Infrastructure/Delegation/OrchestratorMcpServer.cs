@@ -12,6 +12,7 @@ using Cockpit.Core.Delegation;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Infrastructure.ModelIntelligence;
 
 namespace Cockpit.Infrastructure.Delegation;
 
@@ -25,6 +26,7 @@ internal sealed class OrchestratorMcpServer
     public const string ServerName = DelegationMcp.ServerName;
 
     private readonly IDelegationService _delegation;
+    private readonly ModelPictureReader _modelPicture;
     private readonly McpAuthKey _authKey;
     private readonly SessionMcpKeyring _keyring;
     private readonly IDelegationSettingsStore _settingsStore;
@@ -36,6 +38,7 @@ internal sealed class OrchestratorMcpServer
 
     public OrchestratorMcpServer(
         IDelegationService delegation,
+        ModelPictureReader modelPicture,
         McpAuthKey authKey,
         SessionMcpKeyring keyring,
         IDelegationSettingsStore settingsStore,
@@ -43,6 +46,7 @@ internal sealed class OrchestratorMcpServer
         ILoggerFactory loggerFactory)
     {
         _delegation = delegation;
+        _modelPicture = modelPicture;
         _authKey = authKey;
         _keyring = keyring;
         _settingsStore = settingsStore;
@@ -80,6 +84,7 @@ internal sealed class OrchestratorMcpServer
         var builder = WebApplication.CreateSlimBuilder();
         builder.Services.AddSingleton(_loggerFactory);
         builder.Services.AddSingleton(_delegation);
+        builder.Services.AddSingleton(_modelPicture);
         builder.Services.AddSingleton<OrchestratorTools>();
         builder.Services
             .AddMcpServer()

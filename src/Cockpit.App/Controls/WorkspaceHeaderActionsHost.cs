@@ -58,6 +58,16 @@ internal sealed class WorkspaceHeaderActionsHost : StackPanel
         {
             Children.Add(_Button(action));
         }
+
+        if (_workspaces is { CanPopOutActive: true, Active: { } active } workspaces)
+        {
+            var popOut = new Button { Content = "⧉ Pop out", Padding = new Thickness(8, 4) };
+            popOut.Classes.Add("Subtle");
+            ToolTip.SetTip(popOut, "Open this workspace in its own window");
+            AutomationProperties.SetName(popOut, "Pop out");
+            popOut.Click += (_, _) => _ = workspaces.PopOutAsync(active.Id);
+            Children.Add(popOut);
+        }
     }
 
     private Button _Button(ToolbarAction action)

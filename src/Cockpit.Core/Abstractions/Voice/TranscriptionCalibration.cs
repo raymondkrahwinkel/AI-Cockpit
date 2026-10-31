@@ -21,7 +21,8 @@ public sealed record TranscriptionCalibration(
     VoiceBackendPreference ChosenBackend,
     IReadOnlyList<ModelMeasurement> ModelLadder,
     string RecommendedModel,
-    string Model);
+    string Model,
+    string? GpuName = null);
 
 // A step in a running calibration (AC-68): the line to show and, when a download can report one, a 0..1
 // fraction for a bar. Null fraction means the step has no honest percentage (loading, warming up, measuring).

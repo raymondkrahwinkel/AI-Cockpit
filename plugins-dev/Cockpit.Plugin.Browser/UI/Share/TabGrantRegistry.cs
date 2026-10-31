@@ -14,7 +14,7 @@ internal sealed class TabGrant(string paneId, string sessionName, string tabId, 
 
     public bool Controls => Mode == TabShareService.Control;
 
-    // Raymond clicked or typed in the tab himself: control waits until he gives it back (AC-1728).
+    // You clicked or typed in the tab yourself: control waits until you give it back (AC-1728).
     public bool OperatorHolds { get; internal set; }
 
     // What the agent last did in the tab, and when, for the bar that says it is controlled.
@@ -35,8 +35,8 @@ internal sealed class TabGrant(string paneId, string sessionName, string tabId, 
     public DateTimeOffset? LastRead { get; internal set; }
 }
 
-// Every grant of Raymond's tabs, keyed on (session, tab): another session, or the same one on another tab, has none.
-// A grant ends when Raymond stops it, the tab closes or the session ends; nothing here expires by time.
+// Every grant of the user's tabs, keyed on (session, tab): another session, or the same one on another tab, has none.
+// A grant ends when you stop it, the tab closes or the session ends; nothing here expires by time.
 internal sealed class TabGrantRegistry
 {
     private readonly object _gate = new();
@@ -65,7 +65,7 @@ internal sealed class TabGrantRegistry
 
     public void SessionEnded(string paneId) => _Remove(key => key.PaneId == paneId);
 
-    // Another origin pauses the grant until Raymond keeps sharing; back on the shared origin it stands again.
+    // Another origin pauses the grant until you keep sharing; back on the shared origin it stands again.
     public void Navigated(string tabId, string origin) => _Change(() =>
     {
         foreach (var grant in _grants.Values.Where(grant => grant.TabId == tabId))
@@ -84,7 +84,7 @@ internal sealed class TabGrantRegistry
     });
 
     // The standing grant of exactly this session on exactly this tab, or null: the one check every read and every
-    // control action goes through. Control also needs a control grant that Raymond is not holding.
+    // control action goes through. Control also needs a control grant that you are not holding.
     public TabGrant? Authorize(string paneId, string tabId, bool control = false)
     {
         lock (_gate)

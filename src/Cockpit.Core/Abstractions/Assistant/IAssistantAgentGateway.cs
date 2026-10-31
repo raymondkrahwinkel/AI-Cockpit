@@ -190,6 +190,19 @@ public interface IAssistantAgentGateway
         AskStructuredQuestionAsync(question, options, multiSelect, allowOther, header, cancellationToken);
 
     /// <summary>
+    /// The assistant's question cards still waiting on the operator, oldest first (list_open_questions, AC-1937).
+    /// </summary>
+    Task<IReadOnlyList<AssistantOpenQuestion>> ListOpenQuestionsAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<AssistantOpenQuestion>>([]);
+
+    /// <summary>
+    /// Closes an open question card without an answer from it (resolve_structured_question, AC-1937): it leaves
+    /// Questions for you and keeps its place in the conversation with <paramref name="status"/> and <paramref name="note"/>.
+    /// </summary>
+    Task<AssistantThreadResult> ResolveQuestionAsync(string questionId, string status, string? note, CancellationToken cancellationToken = default) =>
+        Task.FromResult(AssistantThreadResult.Unavailable);
+
+    /// <summary>
     /// Files the rest of the current turn under <paramref name="projectIds"/> (set_thread, § 9.4); empty is General.
     /// </summary>
     Task<AssistantThreadResult> SetThreadAsync(IReadOnlyList<string> projectIds, CancellationToken cancellationToken = default) =>
@@ -350,9 +363,36 @@ public sealed record AssistantThreadResult(bool Ok, string? Note)
 // refusal is a sentence the assistant says, not an exception it fails on.
 public sealed record AskStructuredQuestionResult(bool Ok, string? Error)
 {
-    public static AskStructuredQuestionResult Shown() => new(true, null);
+    // AC-1937: the card's id, for resolve_structured_question; null from a gateway that cannot name it.
+    public string? QuestionId { get; init; }
+
+    public static AskStructuredQuestionResult Shown(string? questionId = null) => new(true, null) { QuestionId = questionId };
 
     public static AskStructuredQuestionResult Refused(string error) => new(false, error);
+}
+
+// AC-1937: one question card still waiting on the operator, as list_open_questions reports it. Threads are the names
+// the rail shows ("General" for a card about no project), ProjectIds the ids behind them.
+public sealed record AssistantOpenQuestion(
+    string QuestionId,
+    string Question,
+    IReadOnlyList<string> ProjectIds,
+    IReadOnlyList<string> Threads,
+    DateTimeOffset AskedAt);
+
+// AC-1937: how a question card was closed without its Send. The first three are the assistant's
+// (resolve_structured_question); Dismissed is the operator's ✕.
+public sealed record AssistantQuestionResolution(string Status, string? Note)
+{
+    public const string AnsweredInChat = "answered_in_chat";
+
+    public const string Obsolete = "obsolete";
+
+    public const string Withdrawn = "withdrawn";
+
+    public const string Dismissed = "dismissed";
+
+    public static IReadOnlyList<string> ByTheAssistant { get; } = [AnsweredInChat, Obsolete, Withdrawn];
 }
 
 // What came of a handover. Same shape and same reason as `AgentStopResult` — a refusal is a sentence the
@@ -432,7 +472,8 @@ public sealed record AgentSpawnRequest(
     string? SessionName = null,
     string? Kind = null,
     IReadOnlyDictionary<string, string>? OptionOverrides = null,
-    bool? IsolateInWorktree = null);
+    bool? IsolateInWorktree = null,
+    IReadOnlyList<string>? McpServers = null);
 
 // AC-1013: What came of a spawn — a refusal carries Error and no pane, so a failed spawn is a sentence the
 // operator hears, not a session that's silently missing. PromptDelivered (AC-760) and ResolvedProfileLabel
@@ -480,6 +521,7 @@ public sealed record AssistantWorkspaceRow(
 // the label's wording; a null Model means the provider's own default, distinct from blank.
 public sealed record AssistantProfileRow(string Label, string Provider, string? Model)
 {
+    public IReadOnlyList<string>? EnabledMcpServers { get; init; }
     // What this profile is actually configured to run at, in its provider's own vocabulary (AC-647) — read from
     // the provider's declared option schema, so a raw settings dump never has to be guessed at. Empty for a
     // provider that declares nothing; that is an answer, not a gap to fill with another provider's fields.

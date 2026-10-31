@@ -1,5 +1,6 @@
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Notifications;
+using Cockpit.Core.Abstractions.Plugins;
 
 namespace Cockpit.Core.Notifications;
 
@@ -10,8 +11,28 @@ internal sealed class AttentionNotifier(
     INotificationSettingsStore settingsStore,
     IPresenceDetector presenceDetector,
     IToastNotifier toastNotifier,
-    IWebhookNotifier webhookNotifier) : IAttentionNotifier, ISingletonService
+    IWebhookNotifier webhookNotifier,
+    IPluginRegistrationStore? registrations = null) : IAttentionNotifier, ISingletonService
 {
+    // AC-1588: local only, since a plugin's text (an invitation, a title) has no business leaving the machine by webhook.
+    public async Task<bool> NotifyForPluginAsync(string pluginId, AttentionNotification notification, CancellationToken cancellationToken = default)
+    {
+        var settings = await settingsStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+        if (!settings.LocalEnabled)
+        {
+            return false;
+        }
+
+        if (registrations is not null
+            && (await registrations.LoadAllAsync(cancellationToken).ConfigureAwait(false)).TryGetValue(pluginId, out var registration)
+            && registration.NotificationsMuted)
+        {
+            return false;
+        }
+
+        return await toastNotifier.NotifySilentlyAsync(notification, cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task NotifyAttentionAsync(AttentionNotification notification, CancellationToken cancellationToken = default)
     {
         var settings = await settingsStore.LoadAsync(cancellationToken).ConfigureAwait(false);

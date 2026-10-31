@@ -6,6 +6,7 @@
         xmlns:conv="using:Cockpit.App.Converters"
         xmlns:projects="using:Cockpit.Core.Projects"
         xmlns:core="using:Cockpit.Core.ModelIntelligence"
+        xmlns:mcp="using:Cockpit.Core.Mcp"
         xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -188,6 +189,20 @@
                             </Grid>
                         </ListBoxItem>
 
+                        <ListBoxItem Tag="swarm">
+                            <Grid ColumnDefinitions="Auto,*,Auto">
+                                <materialIcons:MaterialIcon Kind="Lan" Width="15" Height="15" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <TextBlock Grid.Column="1" Text="Swarm" VerticalAlignment="Center"/>
+                                <Border Grid.Column="2" Classes="searchMatchBadge"><TextBlock/></Border>
+                            </Grid>
+                        </ListBoxItem>
+                        <ListBoxItem Tag="servers">
+                            <Grid ColumnDefinitions="Auto,*,Auto">
+                                <materialIcons:MaterialIcon Kind="Server" Width="15" Height="15" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <TextBlock Grid.Column="1" Text="Servers" VerticalAlignment="Center"/>
+                                <Border Grid.Column="2" Classes="searchMatchBadge"><TextBlock/></Border>
+                            </Grid>
+                        </ListBoxItem>
                         <ListBoxItem Tag="nodes">
                             <Grid ColumnDefinitions="Auto,*,Auto">
                                 <materialIcons:MaterialIcon Grid.Column="0" Kind="Lan" Width="15" Height="15" VerticalAlignment="Center" Margin="0,0,8,0"/>
@@ -272,6 +287,160 @@
                 </StackPanel>
             </Border>
             <Panel x:Name="CategoryContent">
+
+                <ScrollViewer Tag="swarm"
+                              IsVisible="{Binding #CategoryNav.SelectedItem, Converter={x:Static conv:CategoryTagEqualsConverter.Instance}, ConverterParameter=swarm}">
+                    <StackPanel Margin="24,20" MaxWidth="900" Spacing="8">
+                        <TextBlock Text="Swarm" FontSize="20" FontWeight="Bold"/>
+                        <TextBlock Text="Your own Cockpits, controlling each other directly. One machine leads the assistant; sessions keep running where they started." Classes="optionsHint"/>
+                        <TextBlock Text="Only your own machines, paired by you on both screens. No cloud or external relay." Classes="optionsHint"/>
+                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}" Margin="0,4"/>
+
+                        <TextBlock Text="Machines" FontWeight="SemiBold"/>
+                        <Border Classes="errorCard informational" Padding="12,10" IsVisible="{Binding Swarm.RemovalStatus.Length}">
+                            <TextBlock Text="{Binding Swarm.RemovalStatus}" TextWrapping="Wrap"/>
+                        </Border>
+                        <TextBlock Text="{Binding Swarm.LeaderLine}" TextWrapping="Wrap" FontWeight="SemiBold"/>
+                        <Border Classes="errorCard informational" Padding="12,10" IsVisible="{Binding Swarm.NoOtherMachineOnline}">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="No other machine online" FontWeight="SemiBold"/>
+                                <TextBlock Text="This machine works on its own. Add another Cockpit below, or wake a paired machine." Classes="optionsHint"/>
+                            </StackPanel>
+                        </Border>
+                        <ItemsControl ItemsSource="{Binding Swarm.Machines}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:SwarmMachineRow">
+                                    <Border Padding="10" Margin="0,0,0,6" CornerRadius="{StaticResource CockpitControlRadius}"
+                                            Background="{DynamicResource CockpitSecondaryBgBrush}"
+                                            BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1">
+                                        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
+                                                <TextBlock Text="{Binding Origin}" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                            <Border Grid.Column="1" Padding="8,3" CornerRadius="{StaticResource CockpitPillRadius}"
+                                                    Background="{DynamicResource CockpitInsetBgBrush}"
+                                                    Classes.swarmLeader="{Binding IsLeader}">
+                                                <Border.Styles>
+                                                    <Style Selector="Border.swarmLeader">
+                                                        <Setter Property="Background" Value="{DynamicResource CockpitAccentSelectionBrush}"/>
+                                                    </Style>
+                                                </Border.Styles>
+                                                <TextBlock Text="{Binding Status}" FontSize="11"/>
+                                            </Border>
+                                            <TextBlock Grid.Row="1" Text="{Binding Address}" FontFamily="{StaticResource CockpitMonoFont}" FontSize="11.5" TextWrapping="Wrap"/>
+                                            <TextBlock Grid.Row="2" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}">
+                                                <Run Text="Rank "/><Run Text="{Binding Rank}"/><Run Text=" · Last seen "/><Run Text="{Binding LastSeen}"/>
+                                            </TextBlock>
+                                            <Button Grid.Row="4" Grid.ColumnSpan="2" Content="{Binding RemoveLabel}" Click="OnSwarmKick"
+                                                    IsVisible="{Binding IsPaired}" IsEnabled="{Binding !$parent[Window].((vm:CockpitViewModel)DataContext).Swarm.IsBusy}"
+                                                    HorizontalAlignment="Left" Margin="0,8,0,0"/>
+                                            <Border Grid.Row="3" Grid.ColumnSpan="2" Classes="errorCard blocking" Padding="12,10" Margin="0,8,0,0" IsVisible="{Binding ErrorCode.Length}">
+                                                <StackPanel Spacing="6">
+                                                    <TextBlock Text="{Binding ErrorCode}" FontFamily="{StaticResource CockpitMonoFont}"/>
+                                                    <TextBlock Text="{Binding ErrorMessage}" TextWrapping="Wrap"/>
+                                                    <Button Content="Try again" HorizontalAlignment="Left"
+                                                            Command="{Binding $parent[Window].((vm:CockpitViewModel)DataContext).Swarm.TryAgainCommand}" CommandParameter="{Binding}"/>
+                                                </StackPanel>
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Text="Rank order" FontWeight="SemiBold" FontSize="12"/>
+                        <TextBlock Text="{Binding Swarm.RankOrder}" Classes="optionsHint"/>
+
+                        <TextBlock Text="Add a machine" FontWeight="SemiBold" Margin="0,12,0,0"/>
+                        <TextBlock Text="Enable accepting connections on both machines first. Finding or adding an address starts pairing; compare the six digits on both screens." Classes="optionsHint"/>
+                        <Button Content="Find on this network" HorizontalAlignment="Left" Command="{Binding Swarm.FindCommand}" IsEnabled="{Binding !Swarm.IsBusy}"/>
+                        <ItemsControl ItemsSource="{Binding Swarm.Found}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="mcp:NodeDiscoveryFound">
+                                    <Grid ColumnDefinitions="*,Auto" Margin="0,4">
+                                        <TextBlock Text="{Binding Address}" VerticalAlignment="Center"/>
+                                        <Button Grid.Column="1" Content="Pair" Classes="Compact"
+                                                Command="{Binding $parent[Window].((vm:CockpitViewModel)DataContext).Swarm.PairFoundCommand}"
+                                                CommandParameter="{Binding}"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Text="Add by address" FontSize="12"/>
+                        <Grid ColumnDefinitions="*,8,Auto">
+                            <TextBox Text="{Binding Swarm.Address}" PlaceholderText="host or host:port" FontFamily="{StaticResource CockpitMonoFont}"/>
+                            <Button Grid.Column="2" Content="Pair" Command="{Binding Swarm.AddByAddressCommand}" IsEnabled="{Binding !Swarm.IsBusy}"/>
+                        </Grid>
+                        <Border Padding="10" CornerRadius="{StaticResource CockpitControlRadius}"
+                                Background="{DynamicResource CockpitInsetBgBrush}" IsVisible="{Binding Swarm.PairingCode.Length}">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="Confirm the pairing" FontWeight="SemiBold"/>
+                                <TextBlock Text="{Binding Swarm.PairingCaption}" Classes="optionsHint"/>
+                                <TextBlock Text="{Binding Swarm.PairingCode}" FontFamily="{StaticResource CockpitMonoFont}" FontSize="24" FontWeight="Bold"/>
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button Content="The codes match — pair" Classes="Accent" Command="{Binding Swarm.ConfirmPairingCommand}" IsEnabled="{Binding !Swarm.IsBusy}"/>
+                                    <Button Content="Cancel" Classes="Ghost" Command="{Binding Swarm.CancelPairingCommand}" IsEnabled="{Binding !Swarm.IsBusy}"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                        <TextBlock Text="{Binding Swarm.Status}" IsVisible="{Binding Swarm.Status.Length}" Classes="optionsHint"/>
+
+                        <TextBlock Text="This machine" FontWeight="SemiBold" Margin="0,12,0,0"/>
+                        <CheckBox Content="Accept connections from my other Cockpits" IsChecked="{Binding Security.NodeEndpointEnabled}"/>
+                        <TextBlock Text="Apply this setting and restart Cockpit to change the network listener." Classes="optionsHint"/>
+                        <TextBlock Text="{Binding Security.NodePairingAddress}" Classes="optionsHint" IsVisible="{Binding Security.NodeEndpointEnabled}"/>
+                        <Border Padding="10" CornerRadius="{StaticResource CockpitControlRadius}"
+                                Background="{DynamicResource CockpitInsetBgBrush}" IsVisible="{Binding Swarm.Incoming, Converter={x:Static ObjectConverters.IsNotNull}}">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="Confirm the pairing" FontWeight="SemiBold"/>
+                                <TextBlock Text="{Binding Swarm.Incoming.Name, StringFormat='Compare with {0} on the other screen.'}" Classes="optionsHint"/>
+                                <TextBlock Text="{Binding Swarm.Incoming.Code}" FontFamily="{StaticResource CockpitMonoFont}" FontSize="24" FontWeight="Bold"/>
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button Content="The codes match — join" Classes="Accent" Command="{Binding Swarm.ConfirmIncomingCommand}"/>
+                                    <Button Content="Refuse" Classes="Ghost" Command="{Binding Swarm.RefuseIncomingCommand}"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                        <TextBlock Text="Internal network only" FontWeight="SemiBold" Margin="0,8,0,0"/>
+                        <CheckBox Content="Always on" IsChecked="True" IsEnabled="False"/>
+                        <TextBlock Text="Private, link-local and IPv6 local addresses are allowed. Add your VPN's internal CIDR range if needed. Public addresses are refused." Classes="optionsHint"/>
+                        <TextBlock Text="Extra internal CIDRs" FontSize="12"/>
+                        <TextBox Text="{Binding Swarm.ExtraInternalCidrsText}" PlaceholderText="e.g. 100.64.0.0/10" FontFamily="{StaticResource CockpitMonoFont}"/>
+                        <Border Classes="errorCard blocking" Padding="12,10" IsVisible="{Binding Swarm.CidrError.Length}">
+                            <TextBlock Text="{Binding Swarm.CidrError}" TextWrapping="Wrap"/>
+                        </Border>
+                        <Border Classes="errorCard blocking" Padding="12,10" IsVisible="{Binding Swarm.PersistError.Length}">
+                            <TextBlock Text="{Binding Swarm.PersistError}" TextWrapping="Wrap"/>
+                        </Border>
+                        <TextBlock Text="When a lower rank comes back" FontWeight="SemiBold" Margin="0,12,0,0"/>
+                        <ComboBox ItemsSource="{Binding Swarm.ReturnChoices}" SelectedIndex="{Binding Swarm.ReturnChoice}" HorizontalAlignment="Stretch"/>
+                        <TextBlock Text="Take over after a wait: announce a 30-second countdown before switching. Join at the back: the returning machine gets a higher rank and the current leader stays." Classes="optionsHint"/>
+                        <TextBlock Text="Pairing adds the machine immediately. Cancel does not undo a pairing; Apply saves the settings below This machine." Classes="optionsHint"/>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <ScrollViewer Tag="servers"
+                              IsVisible="{Binding #CategoryNav.SelectedItem, Converter={x:Static conv:CategoryTagEqualsConverter.Instance}, ConverterParameter=servers}">
+                    <StackPanel Margin="24,20" MaxWidth="900" Spacing="8">
+                        <TextBlock Text="Servers" FontSize="20" FontWeight="Bold"/>
+                        <TextBlock Text="Manage headless Cockpit servers: connect keys, plugins, profiles, projects and audit log. Use an admin key to manage a server." Classes="optionsHint"/>
+                        <TextBlock Text="Connect your desktops in Swarm. For a headless server, use Connect to a server on the Nodes page." Classes="optionsHint"/>
+                        <TextBlock Text="No server connected. Connect to a server on the Nodes page first." Classes="optionsHint" IsVisible="{Binding !ServerGroups.Count}"/>
+                        <ItemsControl ItemsSource="{Binding ServerGroups}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ServerGroupViewModel">
+                                    <Border Padding="10" Margin="0,0,0,6" CornerRadius="{StaticResource CockpitControlRadius}" Background="{DynamicResource CockpitSecondaryBgBrush}">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                            <Button Grid.Column="1" Content="Manage server" IsEnabled="{Binding IsAdminKey}"
+                                                    Command="{Binding $parent[Window].((vm:CockpitViewModel)DataContext).OpenServerAdminCommand}" CommandParameter="{Binding}"/>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </ScrollViewer>
 
                 <!-- ================= SESSIONS ================= -->
                 <ScrollViewer Tag="sessions"
@@ -1118,6 +1287,13 @@
                                       DisplayMemberBinding="{Binding Label}" MinWidth="150"
                                       HorizontalAlignment="Left"/>
 
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Text="Compact context at" FontWeight="SemiBold"/>
+                                <NumericUpDown Value="{Binding AssistantOptions.ContextCompactionPercent}" Minimum="10" Maximum="95"
+                                               Increment="1" FormatString="0" Width="80"/>
+                                <TextBlock Text="%" VerticalAlignment="Center"/>
+                            </StackPanel>
+
                             <!-- Moved here from the old Voice → Read-aloud page (AC-546 follow-up, then AC-1000
                                  relocated Read-aloud's remainder here too): these settings exist because the
                                  assistant speaks, and sessions no longer do — so they belong with the rest of the
@@ -1236,6 +1412,24 @@
                                   IsChecked="{Binding Security.LockWithOperatingSystem}"
                                   IsVisible="{Binding Security.IsEncrypted}" Margin="0,8,0,0"
                                   ToolTip.Tip="When your screen locks, the cockpit locks too: it clears the password from memory and asks for it again, exactly as it does at startup. On by default; the sessions you left running keep running behind the lock screen."/>
+
+                        <!-- AC-1879: beside the screen-lock row, since with Hello on the screen-lock unlock offers it too.
+                             Runs straight away like the encryption buttons; absent off Windows and without Hello. -->
+                        <StackPanel IsVisible="{Binding Security.HelloOffered}" Spacing="2">
+                            <CheckBox Content="Unlock with Windows Hello (face, fingerprint or PIN)" IsEnabled="{Binding !Security.IsHelloBusy}"
+                                      IsChecked="{Binding Security.HelloEnabled, Mode=OneWay}" Command="{Binding Security.ToggleHelloCommand}"/>
+                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="28,2,0,2" IsVisible="{Binding Security.IsHelloBusy}">
+                                <ProgressBar IsIndeterminate="True" Width="160" MinWidth="0" Height="6" MinHeight="0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Setting up Windows Hello…" FontSize="11" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                            </StackPanel>
+                            <TextBlock Text="{Binding Security.HelloStatus}" FontSize="11" TextWrapping="Wrap" Margin="28,0,0,0"
+                                       IsVisible="{Binding !Security.IsHelloBusy}"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                            <TextBlock Text="{Binding Security.HelloError}" FontSize="11" TextWrapping="Wrap" Margin="28,0,0,0"
+                                       IsVisible="{Binding Security.HelloError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                       Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
+                        </StackPanel>
 
                         <TextBlock Classes="optionsSectionHeader" Text="2. TERMINAL ACCESS"/>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
@@ -1382,7 +1576,7 @@
                                                Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
                                 </StackPanel>
 
-                                <ListBox ItemsSource="{Binding McpServers.Servers}" SelectedItem="{Binding McpServers.SelectedServer}"
+                                <ListBox Classes="subnav" ItemsSource="{Binding McpServers.Servers}" SelectedItem="{Binding McpServers.SelectedServer}"
                                          Background="Transparent" Padding="0" Margin="0,0,12,0">
                                     <ListBox.ItemTemplate>
                                         <DataTemplate x:DataType="vm:EditableMcpServerViewModel">
@@ -1553,7 +1747,7 @@
                         <StackPanel x:Name="NodesHelp" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Nodes" FontSize="20" FontWeight="Bold"/>
                         </StackPanel>
-                        <TextBlock Text="Pair with another Cockpit to share MCP access, and run sessions on its machine." Classes="optionsHint"/>
+                        <TextBlock Text="Manage shared MCP access and headless server connections. Connect your desktops in Swarm." Classes="optionsHint"/>
                         <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}" Margin="0,4"/>
 
                         <TextBlock Classes="optionsHint" TextWrapping="Wrap"
@@ -1573,8 +1767,6 @@
                                        IsVisible="{Binding Security.NodeEndpointHasNoListener}"
                                        Text="{Binding Security.NodeEndpointNoListenerText}"/>
                             <StackPanel Spacing="4" IsVisible="{Binding !Security.NodeEndpointHasNoListener}">
-                                <TextBlock Text="Pairing address — type this into the other Cockpit" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                                <TextBox Text="{Binding Security.NodePairingAddress}" IsReadOnly="True" FontFamily="Consolas,monospace" FontSize="11.5"/>
                                 <TextBlock Text="Address" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
                                 <TextBox Text="{Binding Security.NodeEndpointAddressText}" IsReadOnly="True" FontFamily="Consolas,monospace" FontSize="11.5"/>
                             </StackPanel>
@@ -1589,122 +1781,13 @@
                             <TextBox Text="{Binding Security.AllowedDiscoveryRangesText, UpdateSourceTrigger=LostFocus}" PlaceholderText="e.g. 203.0.113.0/24"
                                      FontFamily="Consolas,monospace" FontSize="11.5"/>
 
-                            <Border IsVisible="{Binding Security.IsPaired}" Margin="0,8,0,0" Padding="10"
-                                    CornerRadius="9" Background="{DynamicResource CockpitInsetBgBrush}">
-                                <StackPanel Spacing="6">
-                                    <TextBlock Text="{Binding Security.PairedControllerText}" TextWrapping="Wrap" FontSize="11.5"/>
-                                    <Button Content="Unpair" HorizontalAlignment="Left" Command="{Binding Security.UnpairNodeCommand}"/>
-
-                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,8,0,0">
-                                        <TextBlock Text="What this controller may see and control here" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                                        <materialIcons:MaterialIcon Classes="hint"
-                                            ToolTip.Tip="A fresh pairing starts able to reach every profile and every project, including ones you make later. Switch either kind to &quot;only these&quot; and it reaches nothing but what you tick below. Reach means see and control: a session under a profile you have not ticked is invisible to the controller and cannot be stopped or steered from there, and a project you have not ticked is refused when it tries to start work on it. Both take effect immediately, without unpairing."/>
-                                    </StackPanel>
-                                    <TextBlock Text="Profiles" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
-                                    <CheckBox Content="All profiles, including ones made later" IsChecked="{Binding Security.AllowAllProfiles}"/>
-                                    <!-- Disabled, not hidden: with "all" on, the ticks mean nothing but the list still says what is there. -->
-                                    <ItemsControl ItemsSource="{Binding Security.ScopedProfiles}" IsEnabled="{Binding !Security.AllowAllProfiles}">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                                    <CheckBox Content="{Binding Label}" IsChecked="{Binding IsAllowed}"/>
-                                                    <!-- AC-1292: what this profile explicitly sets, not what its provider does by default. -->
-                                                    <TextBlock Text="skips approvals" FontSize="11" FontStyle="Italic" VerticalAlignment="Center"
-                                                               Foreground="{DynamicResource CockpitStatusWaitingBrush}"
-                                                               IsVisible="{Binding SkipsApprovals}"/>
-                                                </StackPanel>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                    <TextBlock Text="No profiles saved yet." FontSize="11" FontStyle="Italic"
-                                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"
-                                               IsVisible="{Binding !Security.ScopedProfiles.Count}"/>
-
-                                    <TextBlock Text="Projects" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
-                                    <CheckBox Content="All projects, including ones made later" IsChecked="{Binding Security.AllowAllProjects}"/>
-                                    <ItemsControl ItemsSource="{Binding Security.ScopedProjects}" IsEnabled="{Binding !Security.AllowAllProjects}">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                                <CheckBox Content="{Binding Label}" IsChecked="{Binding IsAllowed}"/>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                    <TextBlock Text="No projects saved yet." FontSize="11" FontStyle="Italic"
-                                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"
-                                               IsVisible="{Binding !Security.ScopedProjects.Count}"/>
-                                </StackPanel>
-                            </Border>
-
-                            <Border IsVisible="{Binding Security.HasIncomingPairing}" Margin="0,8,0,0" Padding="10"
-                                    CornerRadius="9" Background="{DynamicResource CockpitInsetBgBrush}">
-                                <StackPanel Spacing="6">
-                                    <TextBlock Text="{Binding Security.IncomingPairingCaption}" TextWrapping="Wrap" FontSize="11.5"/>
-                                    <TextBlock Text="{Binding Security.IncomingPairingCode}" FontFamily="Consolas,monospace" FontSize="24" FontWeight="Bold"/>
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <Button Content="The codes match — pair" Command="{Binding Security.ConfirmIncomingPairingCommand}"/>
-                                        <Button Content="Refuse" Command="{Binding Security.RefuseIncomingPairingCommand}"/>
-                                    </StackPanel>
-                                </StackPanel>
-                            </Border>
                         </StackPanel>
 
-                        <TextBlock Classes="optionsSectionHeader" Text="2. PAIR WITH ANOTHER COCKPIT"/>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <TextBlock Text="Pair with another Cockpit" FontWeight="SemiBold"/>
-                            <materialIcons:MaterialIcon Classes="hint"
-                                ToolTip.Tip="Type the pairing address the other Cockpit shows on its own Security tab. Both screens then show the same six digits: check they match before continuing, because a different number means something other than that machine is answering. The pairing goes live only after both of you have confirmed, and this cockpit remembers that machine's certificate so nothing else can take its place later."/>
-                        </StackPanel>
-                        <StackPanel Spacing="6" Margin="24,4,0,0">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <Button Content="Discover nodes on this network" Command="{Binding Security.DiscoverNodesCommand}"
-                                        IsEnabled="{Binding !Security.IsDiscoveringNodes}"/>
-                            </StackPanel>
-                            <TextBlock Text="{Binding Security.DiscoveryStatus}" TextWrapping="Wrap" FontSize="11.5"
-                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"
-                                       IsVisible="{Binding Security.DiscoveryStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                            <ItemsControl ItemsSource="{Binding Security.FoundNodes}" IsVisible="{Binding Security.FoundNodes.Count}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,2,0,2">
-                                            <TextBlock Text="{Binding Address}" FontFamily="Consolas,monospace" FontSize="11.5" VerticalAlignment="Center"/>
-                                            <Button Content="Use" Command="{Binding $parent[ItemsControl].DataContext.Security.UseFoundNodeCommand}"
-                                                    CommandParameter="{Binding}"/>
-                                        </StackPanel>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <TextBox Text="{Binding Security.PairWithNodeAddress}" PlaceholderText="192.168.1.20:7331" Width="240"
-                                         FontFamily="Consolas,monospace" FontSize="11.5"
-                                         IsEnabled="{Binding !Security.IsComparingPairingCode}"/>
-                                <Button Content="Start pairing" Command="{Binding Security.StartPairingCommand}"
-                                        IsEnabled="{Binding !Security.IsPairingBusy}"/>
-                            </StackPanel>
-
-                            <Border IsVisible="{Binding Security.IsComparingPairingCode}" Padding="10"
-                                    CornerRadius="9" Background="{DynamicResource CockpitInsetBgBrush}">
-                                <StackPanel Spacing="6">
-                                    <TextBlock Text="{Binding Security.OutgoingPairingCaption}" TextWrapping="Wrap" FontSize="11.5"/>
-                                    <TextBlock Text="{Binding Security.OutgoingPairingCode}" FontFamily="Consolas,monospace" FontSize="24" FontWeight="Bold"/>
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <Button Content="The codes match — continue" Command="{Binding Security.ConfirmPairingCodeCommand}"
-                                                IsEnabled="{Binding !Security.IsPairingBusy}"/>
-                                        <Button Content="Cancel" Command="{Binding Security.CancelPairingCommand}"/>
-                                    </StackPanel>
-                                </StackPanel>
-                            </Border>
-
-                            <TextBlock Text="{Binding Security.PairingStatus}" TextWrapping="Wrap" FontSize="11.5"
-                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"
-                                       IsVisible="{Binding Security.PairingStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                        </StackPanel>
-
-                        <TextBlock Classes="optionsSectionHeader" Text="3. CONNECT TO A SERVER"/>
+                        <TextBlock Classes="optionsSectionHeader" Text="2. CONNECT TO A SERVER"/>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Connect to a server" FontWeight="SemiBold"/>
                             <materialIcons:MaterialIcon Classes="hint"
-                                ToolTip.Tip="For a headless Cockpit with nobody there to approve a pairing. The fingerprint is not trusted on first use: you confirm it here against the one in the server's own startup log, and the key is only sent once they match. This writes the same kind of row a pairing would, and only once the three actually work together."/>
+                                ToolTip.Tip="For a headless Cockpit server. The fingerprint is not trusted on first use: you confirm it here against the one in the server's own startup log, and the key is only sent once they match. The connection is saved only once the address, key and fingerprint work together."/>
                         </StackPanel>
                         <StackPanel Spacing="4" Margin="24,4,0,0" MaxWidth="560" HorizontalAlignment="Left">
                             <StackPanel.Styles>
@@ -1759,13 +1842,11 @@
                             </StackPanel>
                         </StackPanel>
 
-                        <TextBlock Classes="optionsSectionHeader" Text="4. SESSIONS ON YOUR NODES"
-                                    IsVisible="{Binding Security.PairedNodes.Count}"/>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
                                     IsVisible="{Binding Security.PairedNodes.Count}">
-                            <TextBlock Text="Sessions on your nodes" FontWeight="SemiBold"/>
+                            <TextBlock Text="Connected servers" FontWeight="SemiBold"/>
                             <materialIcons:MaterialIcon Classes="hint"
-                                ToolTip.Tip="These run on the other machine, under its account and on its bill — nothing here is a session on this computer. You can start one only under a profile or project that machine's operator has ticked for you, and what you start keeps running there after you close this window, lose the network or unpair. Stopping is the only thing that ends it."/>
+                                ToolTip.Tip="Server sessions appear in the session list under their server name and keep running when you disconnect."/>
                         </StackPanel>
                         <ItemsControl ItemsSource="{Binding Security.PairedNodes}" Margin="24,4,0,0">
                             <ItemsControl.ItemTemplate>
@@ -1776,53 +1857,10 @@
                                                 <TextBlock Text="{Binding NodeName}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                                                 <TextBlock Text="another machine" FontSize="11" FontStyle="Italic" VerticalAlignment="Center"
                                                            Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                                                <Button Content="Refresh" Command="{Binding RefreshCommand}" IsEnabled="{Binding !IsBusy}"
-                                                        IsVisible="{Binding !IsServerGroup}"/>
                                                 <Button Content="Disconnect" Command="{Binding DisconnectCommand}" IsVisible="{Binding CanDisconnect}"/>
                                             </StackPanel>
 
                                             <views:NodeConnectionStatusView/>
-
-                                            <ItemsControl ItemsSource="{Binding Sessions}" IsVisible="{Binding !IsServerGroup}">
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,2,0,2" VerticalAlignment="Center">
-                                                            <TextBlock Text="{Binding Name}" FontSize="11.5" VerticalAlignment="Center"/>
-                                                            <TextBlock Text="{Binding Profile}" FontSize="11" VerticalAlignment="Center"
-                                                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                                                            <TextBlock Text="{Binding Statusline}" FontSize="11" VerticalAlignment="Center"
-                                                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                                                            <Button Content="Stop" Command="{Binding $parent[ItemsControl].DataContext.StopCommand}"
-                                                                    CommandParameter="{Binding}"/>
-                                                        </StackPanel>
-                                                    </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
-                                            </ItemsControl>
-
-                                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0" IsVisible="{Binding !IsServerGroup}">
-                                                <ComboBox ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}"
-                                                          MinWidth="180" PlaceholderText="Profile">
-                                                    <ComboBox.ItemTemplate>
-                                                        <DataTemplate>
-                                                            <TextBlock Text="{Binding Display}"/>
-                                                        </DataTemplate>
-                                                    </ComboBox.ItemTemplate>
-                                                </ComboBox>
-                                                <ComboBox ItemsSource="{Binding Projects}" SelectedItem="{Binding SelectedProject}"
-                                                          MinWidth="160" PlaceholderText="Project">
-                                                    <ComboBox.ItemTemplate>
-                                                        <DataTemplate>
-                                                            <TextBlock Text="{Binding Name}"/>
-                                                        </DataTemplate>
-                                                    </ComboBox.ItemTemplate>
-                                                </ComboBox>
-                                                <TextBox Text="{Binding NewSessionName}" PlaceholderText="Name it" Width="150" FontSize="11.5"/>
-                                            </StackPanel>
-                                            <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding !IsServerGroup}">
-                                                <TextBox Text="{Binding NewSessionPrompt}" PlaceholderText="What it should do (optional)"
-                                                         Width="320" FontSize="11.5"/>
-                                                <Button Content="Start there" Command="{Binding StartCommand}" IsEnabled="{Binding !IsBusy}"/>
-                                            </StackPanel>
 
                                             <TextBlock Text="{Binding Status}" TextWrapping="Wrap" FontSize="11.5"
                                                        Foreground="{DynamicResource CockpitTextSecondaryBrush}"
@@ -1833,7 +1871,7 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
 
-                        <TextBlock Classes="optionsSectionHeader" Text="5. IF SOMETHING GOES WRONG"/>
+                        <TextBlock Classes="optionsSectionHeader" Text="3. IF SOMETHING GOES WRONG"/>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,0,0,0">
                             <TextBlock Text="If you forget the password" FontWeight="SemiBold"/>
                             <materialIcons:MaterialIcon Classes="hint"

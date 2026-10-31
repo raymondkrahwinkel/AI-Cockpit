@@ -17,6 +17,8 @@ using Cockpit.App.ViewTests;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Plugins.Abstractions.Files;
+using Cockpit.Plugins.Abstractions.UI.Files;
 using Cockpit.Core.Abstractions.Remote;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Mcp;
@@ -113,7 +115,13 @@ public sealed class RemoteAdminJourney
             await cockpit.StartDesktopAsync();
 
             var opened = new TaskCompletionSource<OptionsDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
-            using var watch = Window.WindowOpenedEvent.AddClassHandler<OptionsDialog>((dialog, _) => opened.TrySetResult(dialog));
+            using var watch = Window.WindowOpenedEvent.AddClassHandler<OptionsDialog>((dialog, _) =>
+            {
+                if (dialog.Server is not null)
+                {
+                    opened.TrySetResult(dialog);
+                }
+            });
             var view = cockpit.Cockpit;
             var adminClosed = Task.CompletedTask;
             await HeadlessAvalonia.RunAsync(async () =>
@@ -121,10 +129,19 @@ public sealed class RemoteAdminJourney
                 await Until.CollectionHolds(view.ServerGroups, () => view.ServerGroups.Count == 1);
                 var group = view.ServerGroups[0];
                 await Until.Holds(group, () => group.IsAdminKey);
-                adminClosed = view.OpenServerAdminCommand.ExecuteAsync(group);
+                var options = new OptionsDialog { DataContext = view };
+                options.Show();
+                options.SelectCategory("servers");
+                await Until.LayoutHolds(options, () => options.GetVisualDescendants().OfType<Button>().Any(button => Equals(button.Content, "Manage server")));
+                var manage = options.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "Manage server"));
+                Assert.NotNull(manage.Command);
+                manage.Command.Execute(manage.CommandParameter);
+                adminClosed = view.OpenServerAdminCommand.ExecutionTask
+                    ?? throw new InvalidOperationException("Manage server did not start opening its Options.");
+                options.Close();
             });
             var dialog = await opened.Task.WaitAsync(Until.Ceiling);
-            var admin = dialog.Server ?? throw new InvalidOperationException("Admin opened Options without its server.");
+            var admin = dialog.Server ?? throw new InvalidOperationException("Servers opened Options without its server.");
 
             await HeadlessAvalonia.RunAsync(async () =>
             {
@@ -396,6 +413,7 @@ public sealed class RemoteAdminJourney
 
             // AC-1651: a resource 404 stays specific unless the known server semver is older than this desktop's.
             var remoteServer = view.ServerGroups.Single().Server;
+            Assert.NotNull(remoteServer);
             var currentAdmin = new ServerAdminViewModel(
                 Server, admin.KeyLabel, remoteServer.Administration, [], [], remoteServer.Plugins,
                 serverVersion: "1.2.3", desktopVersion: "1.2.3");
@@ -511,6 +529,14 @@ public sealed class RemoteAdminJourney
             Assert.Equal("# from the journey", depotDocuments["notes/journey.md"]);
             Assert.Contains(depotTree["data"]?["nodes"]?.AsArray() ?? [], node => node?["path"]?.GetValue<string>() == "notes/journey.md");
             Assert.Equal("# from the journey", openedDocument["data"]?.GetValue<string>());
+
+            var fileHost = cockpit.Cockpit.LocalPluginUiPart("depot")?.Host as CockpitUiHost
+                ?? throw new InvalidOperationException("The local Depot UI host is missing.");
+            await FileWorkspaceSteps.CreateSaveAndFloatAsync(cockpit, () => fileHost.OpenRemoteFileWorkspaceAsync("depot.markdown", Server,
+                new FileWorkspaceOpenOptions(new FileRef(depotId, System.Text.Json.JsonSerializer.Serialize(new[] { "acme/cockpit", "notes/editor.md" }), "notes/editor.md"),
+                    $"depot:{depotId}:acme/cockpit:notes/editor.md", "editor.md", "Depot / Work / acme/cockpit",
+                    Edit: true, CreateNew: true, InitialText: "# Journey\n\n")));
+            Assert.Equal("# Journey\n\nWritten in Cockpit.", depotDocuments["notes/editor.md"]);
 
             // AC-1574: publishing a folder of this machine to the Depot project, through the same relay. A first run puts both
             // files there, a changed document goes with exactly one write guarded by the checksum it replaces, and a file
@@ -731,27 +757,11 @@ public sealed class RemoteAdminJourney
                 .FirstAsync(evt => evt.Kind == "row" && evt.Data.GetRawText().Contains(echoPane, StringComparison.Ordinal) && evt.Data.GetRawText().Contains("echo: hello", StringComparison.Ordinal), timeout.Token);
             var profilesStatus = HeadlessAvalonia.Run(() => profiles.Status);
 
-            // AC-1712: a session that mounts Playwright MCP gets the agent Chromium's endpoint at launch, on the server too.
-            // A page opened through it is in its own targets, the browser goes away with the session, and with the plugin's
-            // setting off the next session gets no endpoint at all.
-            using var cdp = new HttpClient();
+            // AC-1938: a headless server never runs Chromium for an agent session.
             var (browserPane, browserEndpoint) = await _AskForCdpEndpointAsync(setup);
-            Assert.StartsWith("http://127.0.0.1:", browserEndpoint);
-            using (var page = await cdp.SendAsync(new HttpRequestMessage(HttpMethod.Put, $"{browserEndpoint}/json/new?data:text/html,agent-tab")))
-            {
-                page.EnsureSuccessStatusCode();
-            }
-
-            Assert.Contains("agent-tab", await cdp.GetStringAsync($"{browserEndpoint}/json/list"));
+            Assert.Equal("unavailable:agent-browser-is-not-available-on-a-headless-server", browserEndpoint);
+            Assert.False(Directory.Exists(Path.Combine(stateRoot, "browser-runtimes")));
             await setup.SendAsync<JsonObject>(HttpMethod.Delete, $"api/v1/sessions/{browserPane}", null);
-            await Assert.ThrowsAnyAsync<HttpRequestException>(async () =>
-            {
-                for (var attempt = 0; attempt < 50; attempt++)
-                {
-                    await cdp.GetStringAsync($"{browserEndpoint}/json/version");
-                    await Task.Delay(100);
-                }
-            });
             await setup.SendAsync<JsonObject>(HttpMethod.Put, "api/v1/plugins/browser/storage", new { values = new { agentsUseCockpitBrowser = false }, removed = Array.Empty<string>(), secrets = Array.Empty<string>() });
             Assert.Equal("none", (await _AskForCdpEndpointAsync(setup)).Endpoint);
 
@@ -1096,9 +1106,10 @@ public sealed class RemoteAdminJourney
                     ? guard.GetString()
                     : null;
                 calls.Enqueue(("write", path, baseChecksum, null, null));
-                if (baseChecksum is not null && documents.TryGetValue(path, out var current) && _Checksum(current) != baseChecksum)
+                var currentChecksum = documents.TryGetValue(path, out var current) ? _Checksum(current) : "";
+                if (baseChecksum is not null && currentChecksum != baseChecksum)
                 {
-                    results.Add(new { path, status = "conflict", checksum = _Checksum(current), message = "Changed in Depot." });
+                    results.Add(new { path, status = "conflict", checksum = currentChecksum, message = "Changed in Depot." });
                     continue;
                 }
 
@@ -1248,8 +1259,16 @@ public sealed class RemoteAdminJourney
         }
 
         Directory.CreateDirectory(stateRoot);
-        Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, stateRoot);
-        Assert.Equal([id], await new BundledPluginInstaller().InstallAsync(bundled, PluginBootstrap.PluginsRoot));
+        var previous = Environment.GetEnvironmentVariable(CockpitBuild.StateRootVariable);
+        try
+        {
+            Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, stateRoot);
+            Assert.Equal([id], await new BundledPluginInstaller().InstallAsync(bundled, PluginBootstrap.PluginsRoot));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, previous);
+        }
     }
 
     // The server writes its state while the journey reads it; a shared read waits for no one.

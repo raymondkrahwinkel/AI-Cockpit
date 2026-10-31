@@ -1,8 +1,12 @@
 using System.Text.Json;
 using Cockpit.Core.Abstractions.Delegation;
+using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.ModelIntelligence;
 using Cockpit.Core.Delegation;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Delegation;
+using Cockpit.Infrastructure.ModelIntelligence;
+using Cockpit.Infrastructure.Sessions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Delegation;
@@ -13,6 +17,9 @@ namespace Cockpit.Core.Tests.Delegation;
 /// </summary>
 public class OrchestratorToolsTests
 {
+    internal static ModelPictureReader PictureReader() =>
+        new(Substitute.For<IModelIntelligence>(), Substitute.For<IProviderModelIntelligence>(), Substitute.For<ISessionProfileStore>());
+
     [Fact]
     public async Task DelegateTask_WhenTheEngineRefuses_TellsTheAgentWhy()
     {
@@ -21,7 +28,7 @@ public class OrchestratorToolsTests
         var delegation = Substitute.For<IDelegationService>();
         delegation.DelegateAsync(Arg.Any<DelegationRequest>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns<Task<DelegatedTaskView>>(_ => throw new DelegationRejectedException("Profile 'private' is not available as a delegation target."));
-        var tools = new OrchestratorTools(delegation);
+        var tools = new OrchestratorTools(delegation, PictureReader());
 
         var json = await tools.DelegateTaskAsync("private", "do work", null, null, null, null, null, CancellationToken.None);
 
@@ -38,7 +45,7 @@ public class OrchestratorToolsTests
         var delegation = Substitute.For<IDelegationService>();
         delegation.DelegateAsync(Arg.Any<DelegationRequest>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(_View("task-1", DelegatedTaskStatus.Running));
-        var tools = new OrchestratorTools(delegation);
+        var tools = new OrchestratorTools(delegation, PictureReader());
 
         var json = await tools.DelegateTaskAsync("local", "summarise", null, null, null, null, null, CancellationToken.None);
 
@@ -55,7 +62,7 @@ public class OrchestratorToolsTests
         var delegation = Substitute.For<IDelegationService>();
         delegation.DelegateAsync(Arg.Any<DelegationRequest>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(_View("task-2", DelegatedTaskStatus.Queued));
-        var tools = new OrchestratorTools(delegation);
+        var tools = new OrchestratorTools(delegation, PictureReader());
 
         var json = await tools.DelegateTaskAsync("local", "bulk work", null, null, null, null, null, CancellationToken.None);
 
@@ -72,7 +79,7 @@ public class OrchestratorToolsTests
     {
         var delegation = Substitute.For<IDelegationService>();
         delegation.GetTask("nope").Returns((DelegatedTaskView?)null);
-        var tools = new OrchestratorTools(delegation);
+        var tools = new OrchestratorTools(delegation, PictureReader());
 
         var json = tools.GetTaskResult("nope");
 
@@ -86,7 +93,7 @@ public class OrchestratorToolsTests
         // place; the events are available separately for a caller that actually wants to watch.
         var delegation = Substitute.For<IDelegationService>();
         delegation.GetTask("task-1").Returns(_View("task-1", DelegatedTaskStatus.Completed, result: "the summary"));
-        var tools = new OrchestratorTools(delegation);
+        var tools = new OrchestratorTools(delegation, PictureReader());
 
         var json = tools.GetTaskResult("task-1");
 
@@ -103,7 +110,7 @@ public class OrchestratorToolsTests
             new List<SessionEvent> { new AssistantTextCompleted { SessionId = "s", Text = "working on it" } },
             1,
             false));
-        var tools = new OrchestratorTools(delegation);
+        var tools = new OrchestratorTools(delegation, PictureReader());
 
         var json = tools.GetTaskOutput("task-1");
 
@@ -127,7 +134,7 @@ public class OrchestratorToolsTests
             },
             2,
             true));
-        var tools = new OrchestratorTools(delegation);
+        var tools = new OrchestratorTools(delegation, PictureReader());
 
         var json = tools.GetTaskOutput("task-1");
 

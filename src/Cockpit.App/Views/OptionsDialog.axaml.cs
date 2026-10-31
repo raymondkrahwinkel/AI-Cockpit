@@ -79,8 +79,12 @@ public partial class OptionsDialog : Window
             {
                 cockpit.RefreshBackupPlugins();
                 cockpit.Diagnostics.Refresh();
+                cockpit.Swarm.StartListening();
                 cockpit.ModelIntelligence.LoadCommand.Execute(null);
                 cockpit.Sync.LoadCommand.Execute(null);
+                cockpit.Security.HelloSigner = new Services.WindowsHelloSigner(this);
+                cockpit.Security.AskHelloPassword = _AskHelloPasswordAsync;
+                cockpit.Security.RefreshHelloCommand.Execute(null);
                 _BuildPluginCategories(cockpit);
                 _ApplySearch(cockpit.OptionsSearchText);
                 RequestAnimationFrame(_ => RequestAnimationFrame(_ => cockpit.OptionsOpenPresented()));
@@ -94,6 +98,8 @@ public partial class OptionsDialog : Window
             _UnwireSearch();
             _ClearSearchVisibilityOverrides();
             (DataContext as CockpitViewModel)?.StopMicTest();
+            (DataContext as CockpitViewModel)?.Swarm.StopListening();
+            (DataContext as CockpitViewModel)?.OptionsClosed();
         };
         Closing += OnClosingDialog;
     }
@@ -138,6 +144,10 @@ public partial class OptionsDialog : Window
         dialog._AddServerPage("server-keys", "Connect keys", MaterialIconKind.KeyChainVariant, new ServerConnectKeysPage { DataContext = admin });
         dialog._AddServerPage("server-audit", "Audit log", MaterialIconKind.History, new ServerAuditLogPage { DataContext = admin });
         dialog.CategoryNav.SelectedIndex = 0;
+        if (admin.InitialCategory is { } initial)
+        {
+            dialog.SelectCategory(initial);
+        }
         dialog.Opened += (_, _) => admin.LoadCommand.Execute(null);
         return dialog;
     }
@@ -221,6 +231,7 @@ public partial class OptionsDialog : Window
         }
 
         _closeSettled = true;
+        cockpit.OptionsCloseStarted();
         Close();
     }
 
@@ -493,7 +504,9 @@ public partial class OptionsDialog : Window
         var pages = CategoryContent.Children.OfType<Control>()
             .Where(page => page.Tag is string)
             .ToDictionary(page => (string)page.Tag!);
-        var matches = pages.ToDictionary(pair => pair.Key, pair => _FilterRows(pair.Value, searchText));
+        var matches = pages.ToDictionary(pair => pair.Key, pair => pair.Key == "servers"
+            ? OptionsSearchMatcher.MatchesAny(searchText, "servers admin headless connect keys plugins profiles projects audit") ? 1 : 0
+            : _FilterRows(pair.Value, searchText));
 
         foreach (var (tag, plugin) in _pluginRows)
         {
@@ -526,8 +539,21 @@ public partial class OptionsDialog : Window
         }
     }
 
+    private async void OnSwarmKick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (sender is not Control { DataContext: SwarmMachineRow machine } || DataContext is not CockpitViewModel cockpit)
+        {
+            return;
+        }
+        await cockpit.Swarm.KickAsync(machine);
+    }
+
     private int _FilterRows(Control root, string? searchText)
     {
+        if (Equals(root.Tag, "swarm") && OptionsSearchMatcher.MatchesAny(searchText, "swarm machines pairing ranks leader"))
+        {
+            searchText = null;
+        }
         var searching = !string.IsNullOrWhiteSpace(searchText);
         var matchCount = 0;
         foreach (var row in _Descendants(root).Where(_IsSearchableInput).Select(control => _RowFor(root, control)).DistinctBy(row => row[^1]))
@@ -707,7 +733,9 @@ public partial class OptionsDialog : Window
             }
         }
 
+        cockpit.OptionsCloseStarted();
         await cockpit.CancelOptionsCommand.ExecuteAsync(null);
+        cockpit.OptionsCloseDiscarded();
         _closeSettled = true;
         Close();
     }
@@ -787,6 +815,22 @@ public partial class OptionsDialog : Window
         {
             await cockpit.Security.DisableAsync();
         }
+    }
+
+    // AC-1879: turning Windows Hello on needs the password first, since it wraps the key.
+    private async Task<string?> _AskHelloPasswordAsync()
+    {
+        var dialog = new PasswordDialog
+        {
+            DataContext = new PasswordDialogViewModel(
+                "Turn on Windows Hello",
+                "Confirm with your encryption password. Windows then asks for your face, fingerprint or PIN once, "
+                + "to bind the key to this computer.",
+                requiresCurrent: false,
+                confirmOnlyNote: "Your password keeps working. Change it later and Windows Hello is turned off until you turn it on again."),
+        };
+
+        return (await dialog.ShowDialog<PasswordDialogViewModel?>(this))?.NewPassword;
     }
 
     private async void OnChangePassword(object? sender, RoutedEventArgs e)

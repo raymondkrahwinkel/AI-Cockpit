@@ -39,27 +39,24 @@ public class DiagramObjectEditTests
         Assert.Contains(expected, edit.Refusal);
     }
 
-    [Fact]
-    public void RenameNode_ChangesOnlyTheLabel_KeepingTheShapeAndTheId()
+    public static TheoryData<string, string, string> RenameNodeCases => new()
     {
-        var edit = DiagramObjectEdit.RenameNode(Source, "B", "Pick one");
-
-        Assert.Equal("""
+        { Source, "Pick one", """
             flowchart LR
                 A["Start"]
                 B{"Pick one"}
                 A --> B
-            """.ReplaceLineEndings("\n"), edit.Text);
-    }
+            """.ReplaceLineEndings("\n") },
+        { "flowchart LR\n    A[\"B is next\"]\n    B[\"Stop\"]", "Halt", "flowchart LR\n    A[\"B is next\"]\n    B[\"Halt\"]" },
+    };
 
-    [Fact]
-    public void RenameNode_LeavesAnotherNodesLabelAlone_EvenWhenItSpellsThisNodesId()
+    [Theory]
+    [MemberData(nameof(RenameNodeCases))]
+    public void RenameNode_ChangesOnlyTheNamedNodesLabel(string source, string label, string expected)
     {
-        const string source = "flowchart LR\n    A[\"B is next\"]\n    B[\"Stop\"]";
+        var edit = DiagramObjectEdit.RenameNode(source, "B", label);
 
-        var edit = DiagramObjectEdit.RenameNode(source, "B", "Halt");
-
-        Assert.Equal("flowchart LR\n    A[\"B is next\"]\n    B[\"Halt\"]", edit.Text);
+        Assert.Equal(expected, edit.Text);
     }
 
     [Fact]
@@ -74,7 +71,7 @@ public class DiagramObjectEditTests
     }
 
     [Fact]
-    public void Connect_AppendsTheConnection_AndRefusesTheSameOneTwice()
+    public void Connect_AppendsOnceAndDisconnectRestoresTheSource()
     {
         var first = DiagramObjectEdit.Connect(Source, "B", "A", label: null);
         Assert.EndsWith("\n    B --> A", first.Text);
@@ -82,18 +79,12 @@ public class DiagramObjectEditTests
         var again = DiagramObjectEdit.Connect(first.Text!, "B", "A", label: null);
         Assert.Null(again.Text);
         Assert.Contains("already connected", again.Refusal);
-    }
-
-    [Fact]
-    public void Disconnect_RemovesOnlyThatConnection()
-    {
-        var edit = DiagramObjectEdit.Disconnect(Source, "A", "B");
-
+        Assert.Equal(Source.ReplaceLineEndings("\n"), DiagramObjectEdit.Disconnect(first.Text ?? throw new InvalidOperationException("Connect produced no text."), "B", "A").Text);
         Assert.Equal("""
             flowchart LR
                 A["Start"]
                 B{Choose}
-            """.ReplaceLineEndings("\n"), edit.Text);
+            """.ReplaceLineEndings("\n"), DiagramObjectEdit.Disconnect(Source, "A", "B").Text);
     }
 
     [Fact]

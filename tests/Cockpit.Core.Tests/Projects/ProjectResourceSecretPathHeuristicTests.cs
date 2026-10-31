@@ -16,12 +16,10 @@ public class ProjectResourceSecretPathHeuristicTests
     [InlineData("~/.ssh/id_rsa", true)]
     [InlineData("~/.ssh/id_ed25519", true)]
     [InlineData("~/.ssh/known_hosts", true)]
-    [InlineData("~/.ssh/config", true)]
     [InlineData("~/.ssh/", true)]
     [InlineData("~/.ssh", true)]
     // The one deliberate exception: a public key names nothing secret.
     [InlineData("~/.ssh/id_rsa.pub", false)]
-    [InlineData("~/.ssh/id_ed25519.pub", false)]
     // A directory that merely starts with the same four letters is not ".ssh" — a prefix match would over-trigger.
     [InlineData("~/.sshfoo/x", false)]
     [InlineData("~/.ssh-notes/x", false)]

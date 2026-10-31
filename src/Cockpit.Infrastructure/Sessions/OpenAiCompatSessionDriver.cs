@@ -1,7 +1,8 @@
 using System.ClientModel;
 using System.Globalization;
-using System.Text.Json;
 using System.Threading.Channels;
+using ChatCompletionOptions = OpenAI.Chat.ChatCompletionOptions;
+using ChatReasoningEffortLevel = OpenAI.Chat.ChatReasoningEffortLevel;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
@@ -25,6 +26,7 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
     private readonly IMcpToolProvider _mcpToolProvider;
     private readonly ILogger<OpenAiCompatSessionDriver> _logger;
     private readonly SessionMcpMounts? _mcpMounts;
+    private readonly ILocalModelContextManager _localModelContext;
 
     private readonly Channel<SessionEvent> _events = Channel.CreateUnbounded<SessionEvent>();
     private readonly List<ChatMessage> _history = [];
@@ -42,6 +44,7 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
     private string? _model;
     private string? _sessionId;
     private CancellationTokenSource? _turnCancellation;
+    private Task? _turnTask;
 
     // AC-132: set once a turn makes a tool call, so a turn with no text and no tool activity surfaces as "no
     // response" instead of a silent success. Reset at each turn start; volatile because the tool loop can run
@@ -53,12 +56,18 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
     // visible even if it ends with no assistant text, so the no-response vangnet must not fire for it (AC-132).
     private readonly SessionToolApprovalGate _gate;
 
-    public OpenAiCompatSessionDriver(IChatClientFactory chatClientFactory, IMcpToolProvider mcpToolProvider, ILogger<OpenAiCompatSessionDriver> logger, SessionMcpMounts? mcpMounts = null)
+    public OpenAiCompatSessionDriver(
+        IChatClientFactory chatClientFactory,
+        IMcpToolProvider mcpToolProvider,
+        ILogger<OpenAiCompatSessionDriver> logger,
+        ILocalModelContextManager localModelContext,
+        SessionMcpMounts? mcpMounts = null)
     {
         _chatClientFactory = chatClientFactory;
         _mcpToolProvider = mcpToolProvider;
         _logger = logger;
         _mcpMounts = mcpMounts;
+        _localModelContext = localModelContext;
         _gate = new SessionToolApprovalGate(
             (toolUseId, toolName, inputJson) =>
             {
@@ -97,105 +106,133 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
 
         Profile = profile;
         _model = string.IsNullOrWhiteSpace(model) ? _ModelFrom(config) : model;
+        if (config is LmStudioConfig lmStudio && _model is { } selectedModel)
+        {
+            config = lmStudio with { Model = selectedModel };
+        }
+
         _sessionId = Guid.NewGuid().ToString();
-
-        // AC-192: .Use* registration order = outer→inner: UseFunctionInvocation (outer) → HermesToolCallChatClient →
-        // the context guard (AC-1489) → model client (inner). The Hermes shim turns local-model text tool-calls into
-        // structured FunctionCallContent before UseFunctionInvocation sees them; already-structured calls pass through.
-        _agent = new ChatClientBuilder(_chatClientFactory.Create(config))
-            .UseFunctionInvocation(configure: ChatTurnLoop.ConfigureToolLoop)
-            .Use(inner => new HermesToolCallChatClient(inner))
-            .Use(inner => new ContextGuardChatClient(inner, ChatTurnLimits.From(_TurnLimitsFrom(config), _logger), _logger))
-            .Build();
-        // AC-89: pass this session's pane id (the App sets it as the cockpit.pane-id launch option) so the tool loop
-        // connects to the cockpit endpoints on a per-session token — the consent broker then scopes on this pane, not
-        // the id the local model declares.
-        var paneId = launchOptions is not null && launchOptions.TryGetValue(WellKnownPluginSessionOptions.PaneId, out var value) ? value : null;
-
-        // AC-174 (Raymond 2026-07-22): confine file tools to the working directory when the host isolates this
-        // session in a worktree — re-root the filesystem server and drop every escape channel. Only a session
-        // actually confined here may vouch the capability below; the flag alone is never enough.
-        var confineRoot = launchOptions is not null
-            && launchOptions.TryGetValue(WellKnownPluginSessionOptions.ConfineFileToolsToWorkingDirectory, out var confineFlag)
-            && string.Equals(confineFlag, "true", StringComparison.OrdinalIgnoreCase)
-            && !string.IsNullOrWhiteSpace(workingDirectory)
-                ? workingDirectory
-                : null;
-
-        // #44/AC-130: a programmatic launch (a plugin/workflow shortcut, a restored session) carries no dialog-built
-        // selection, so fall back to the profile's saved one rather than reaching every enabled server — the same
-        // fix the plugin-driver adapter applies, so the local-model tool loop honours the checklist too.
-        var selection = McpServerRegistryFilter.EffectiveSessionSelection(enabledMcpServerNames, profile?.EnabledMcpServerNames);
-        _toolSession = await _mcpToolProvider.ConnectAsync(selection, paneId, confineRoot, projectId, workingDirectory, cancellationToken).ConfigureAwait(false);
-
-        // Symmetric with the plugin-driver adapter (#44): say which servers the tool loop connected and against
-        // which selection, so a local-model session missing its MCP servers is a log line rather than a silent
-        // gap; a non-empty selection that connected nothing is surfaced at Warning.
-        var selectionText = selection is null ? "(no restriction)" : $"[{string.Join(", ", selection)}]";
-        if (_toolSession.ConnectedServerNames.Count == 0 && selection is { Count: > 0 })
+        try
         {
-            _logger.LogWarning(
-                "Local-model MCP fan-out connected no servers from selection {Selection}; the session starts with none.",
-                selectionText);
+            var contextWarning = await _localModelContext.PrepareAsync(config, cancellationToken, _sessionId).ConfigureAwait(false);
+            if (config is LmStudioConfig { EnableThinking: { } thinking })
+            {
+                _logger.LogInformation("LM Studio thinking per request: {EnableThinking}.", thinking);
+            }
+
+            // AC-89: pass this session's pane id (the App sets it as the cockpit.pane-id launch option) so the tool loop
+            // connects to the cockpit endpoints on a per-session token — the consent broker then scopes on this pane, not
+            // the id the local model declares.
+            var paneId = launchOptions is not null && launchOptions.TryGetValue(WellKnownPluginSessionOptions.PaneId, out var value) ? value : null;
+
+            // AC-174 (Raymond 2026-07-22): confine file tools to the working directory when the host isolates this
+            // session in a worktree — re-root the filesystem server and drop every escape channel. Only a session
+            // actually confined here may vouch the capability below; the flag alone is never enough.
+            var confineRoot = launchOptions is not null
+                && launchOptions.TryGetValue(WellKnownPluginSessionOptions.ConfineFileToolsToWorkingDirectory, out var confineFlag)
+                && string.Equals(confineFlag, "true", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(workingDirectory)
+                    ? workingDirectory
+                    : null;
+
+            // #44/AC-130: a programmatic launch (a plugin/workflow shortcut, a restored session) carries no dialog-built
+            // selection, so fall back to the profile's saved one rather than reaching every enabled server — the same
+            // fix the plugin-driver adapter applies, so the local-model tool loop honours the checklist too.
+            var selection = _WithCoding(McpServerRegistryFilter.EffectiveSessionSelection(enabledMcpServerNames, profile?.EnabledMcpServerNames));
+            _toolSession = await _mcpToolProvider.ConnectAsync(selection, paneId, confineRoot, projectId, workingDirectory, cancellationToken, profile?.Label).ConfigureAwait(false);
+
+            // Symmetric with the plugin-driver adapter (#44): say which servers the tool loop connected and against
+            // which selection, so a local-model session missing its MCP servers is a log line rather than a silent
+            // gap; a non-empty selection that connected nothing is surfaced at Warning.
+            var selectionText = selection is null ? "(no restriction)" : $"[{string.Join(", ", selection)}]";
+            if (_toolSession.ConnectedServerNames.Count == 0 && selection is { Count: > 0 })
+            {
+                _logger.LogWarning(
+                    "Local-model MCP fan-out connected no servers from selection {Selection}; the session starts with none.",
+                    selectionText);
+            }
+            else
+            {
+                _logger.LogInformation(
+                    "Local-model MCP fan-out: {Count} server(s) [{Names}] from selection {Selection}.",
+                    _toolSession.ConnectedServerNames.Count,
+                    string.Join(", ", _toolSession.ConnectedServerNames),
+                    selectionText);
+            }
+
+            // AC-927: the servers that really answered, so the header names those rather than the checklist this
+            // session was launched from — the one route where a missing server is otherwise invisible to the operator.
+            if (paneId is { Length: > 0 })
+            {
+                _mcpMounts?.Report(paneId, _toolSession.ConnectedServerNames, _toolSession.ConnectionIssues);
+            }
+
+            // AC-500: a server the plugin/registry declared OAuth is a named outcome distinct from an ordinary
+            // connect failure — reported once here, at the one place this driver already reports its MCP fan-out,
+            // rather than left as session state nothing ever reads.
+            if (_toolSession.ServersNeedingSignIn.Count > 0)
+            {
+                _logger.LogWarning(
+                    "Local-model MCP fan-out: [{Names}] need an OAuth sign-in and were skipped — no tools from them.",
+                    string.Join(", ", _toolSession.ServersNeedingSignIn));
+            }
+
+            _gate.ToolClasses = _toolSession.ToolClasses;
+            _gatedTools = [.. _toolSession.Tools.Select(tool => tool with { Function = new GatedTool(tool.Function, _gate) })];
+            _turnTools = _BuildTurnTools();
+            var turnLimits = TurnLimitsFrom(config, _logger);
+            _logger.LogInformation("Local-model turn guard: context {ContextWindowTokens}, reserve {ReserveTokens}, soft limit {SoftLimitRatio}.",
+                turnLimits.ContextWindowTokens, turnLimits.ReserveTokens, turnLimits.SoftLimitRatio);
+            _agent = new ChatClientBuilder(_chatClientFactory.Create(config))
+                .UseFunctionInvocation(configure: client =>
+                {
+                    ChatTurnLoop.ConfigureToolLoop(client);
+                    client.AdditionalTools = [.. _gatedTools.Select(tool => tool.Function)];
+                })
+                .Use(inner => new HermesToolCallChatClient(inner))
+                .Use(inner => new ContextGuardChatClient(inner, turnLimits, _logger, preservePrefix: config is LmStudioConfig or OllamaConfig))
+                .Build();
+            // AC-1962: confinement vouches for Cockpit's file tools; independently selected servers keep their own access.
+            Capabilities = Capabilities with
+            {
+                SupportsTools = _turnTools.Count > 0,
+                ConfinesFileAccessToWorkingDirectory = confineRoot is not null,
+            };
+
+            // Seed the conversation with the profile's base system prompt plus any hidden per-session prompt the host
+            // folded into the options map (AC-180 — an embedded run's brief, e.g. Autopilot's CEO), so every turn carries
+            // them (HTTP is stateless — the client owns the history, so a system message once at the front is enough).
+            var systemPrompt = ChatTurnLoop.WithCompletionConvention(
+                ChatTurnLoop.WithWorkingDirectoryContext(_CombineSystemPrompt(_SystemPromptFrom(config), launchOptions), workingDirectory),
+                toolsOffered: _turnTools.Count > 0);
+            if (!string.IsNullOrWhiteSpace(systemPrompt))
+            {
+                _history.Add(new ChatMessage(ChatRole.System, systemPrompt));
+            }
+
+            // Report the actual tool names (not server names) so the session's "N tools" count is real and verifiable —
+            // e.g. confirming read_file is actually available. In search mode the catalogue rides through `call_tool`
+            // rather than preloaded, so this still names every reachable tool plus the two proxies it gets there with.
+            _events.Writer.TryWrite(new SessionInitialized
+            {
+                SessionId = _sessionId,
+                Cwd = string.Empty,
+                Tools = [.. _gatedTools.Select(tool => tool.Function.Name), .. _turnTools.Select(tool => tool.Name).Where(name => name is CockpitToolSearch.SearchToolName or CockpitToolSearch.CallToolName)],
+            });
+            if (!string.IsNullOrWhiteSpace(contextWarning))
+            {
+                _events.Writer.TryWrite(new AssistantTextCompleted
+                {
+                    SessionId = _sessionId,
+                    Text = config is LmStudioConfig { LoadOptions: not null } ? $"Cockpit: {contextWarning}" : $"⚠️ Cockpit: {contextWarning}",
+                });
+            }
         }
-        else
+        catch
         {
-            _logger.LogInformation(
-                "Local-model MCP fan-out: {Count} server(s) [{Names}] from selection {Selection}.",
-                _toolSession.ConnectedServerNames.Count,
-                string.Join(", ", _toolSession.ConnectedServerNames),
-                selectionText);
+            await _localModelContext.ReleaseAsync(_sessionId).ConfigureAwait(false);
+            throw;
         }
-
-        // AC-927: the servers that really answered, so the header names those rather than the checklist this
-        // session was launched from — the one route where a missing server is otherwise invisible to the operator.
-        if (paneId is { Length: > 0 })
-        {
-            _mcpMounts?.Report(paneId, _toolSession.ConnectedServerNames, _toolSession.ConnectionIssues);
-        }
-
-        // AC-500: a server the plugin/registry declared OAuth is a named outcome distinct from an ordinary
-        // connect failure — reported once here, at the one place this driver already reports its MCP fan-out,
-        // rather than left as session state nothing ever reads.
-        if (_toolSession.ServersNeedingSignIn.Count > 0)
-        {
-            _logger.LogWarning(
-                "Local-model MCP fan-out: [{Names}] need an OAuth sign-in and were skipped — no tools from them.",
-                string.Join(", ", _toolSession.ServersNeedingSignIn));
-        }
-
-        _gate.ToolClasses = _toolSession.ToolClasses;
-        _gatedTools = [.. _toolSession.Tools.Select(tool => tool with { Function = new GatedTool(tool.Function, _gate) })];
-        _turnTools = _BuildTurnTools();
-        // SupportsTools flips true once servers connected. ConfinesFileAccessToWorkingDirectory is vouched only when
-        // confineRoot re-rooted file access and dropped every escape channel — the host's fail-closed isolation gate
-        // reads this, so it must never read true for a session that was not actually confined.
-        Capabilities = Capabilities with
-        {
-            SupportsTools = _turnTools.Count > 0,
-            ConfinesFileAccessToWorkingDirectory = confineRoot is not null,
-        };
-
-        // Seed the conversation with the profile's base system prompt plus any hidden per-session prompt the host
-        // folded into the options map (AC-180 — an embedded run's brief, e.g. Autopilot's CEO), so every turn carries
-        // them (HTTP is stateless — the client owns the history, so a system message once at the front is enough).
-        var systemPrompt = ChatTurnLoop.WithCompletionConvention(
-            ChatTurnLoop.WithWorkingDirectoryContext(_CombineSystemPrompt(_SystemPromptFrom(config), launchOptions), workingDirectory),
-            toolsOffered: _turnTools.Count > 0);
-        if (!string.IsNullOrWhiteSpace(systemPrompt))
-        {
-            _history.Add(new ChatMessage(ChatRole.System, systemPrompt));
-        }
-
-        // Report the actual tool names (not server names) so the session's "N tools" count is real and verifiable —
-        // e.g. confirming read_file is actually available. In search mode the catalogue rides through `call_tool`
-        // rather than preloaded, so this still names every reachable tool plus the two proxies it gets there with.
-        _events.Writer.TryWrite(new SessionInitialized
-        {
-            SessionId = _sessionId,
-            Cwd = string.Empty,
-            Tools = [.. _gatedTools.Select(tool => tool.Function.Name), .. _turnTools.Select(tool => tool.Name).Where(name => name is CockpitToolSearch.SearchToolName or CockpitToolSearch.CallToolName)],
-        });
     }
 
     // What rides along in `ChatOptions.Tools` every turn (AC-963). Above the threshold the schemas are the problem,
@@ -208,7 +245,9 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
             return [.. _gatedTools.Select(tool => (AITool)tool.Function)];
         }
 
-        var preloaded = _gatedTools.Where(tool => tool.AlwaysMounted).ToList();
+        var preloaded = _gatedTools
+            .Where(tool => tool.AlwaysMounted || CodingTools.StaysNative(tool.ServerName))
+            .ToList();
         var searchable = _gatedTools.Except(preloaded).ToList();
         _logger.LogInformation(
             "Tool search mode: {Preloaded} always-mounted tool(s) preloaded, {Searchable} behind {SearchTool} — about {Tokens} tokens of schema kept out of every request.",
@@ -220,6 +259,13 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
         return [.. preloaded.Select(tool => (AITool)tool.Function), .. CockpitToolSearch.Build(_gatedTools)];
     }
 
+    // Local HTTP providers have no native file tools. An explicit profile/project selection must therefore never
+    // subtract the bounded cockpit-coding endpoint; null already means unrestricted and includes it naturally.
+    private static IReadOnlySet<string>? _WithCoding(IReadOnlySet<string>? selection) =>
+        selection is null or ExactMcpServerSelection
+            ? selection
+            : selection.Append(CodingTools.EndpointName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
     public Task SendUserMessageAsync(string text, IReadOnlyList<ImageAttachment>? images = null, CancellationToken cancellationToken = default)
     {
         if (_agent is null)
@@ -230,7 +276,7 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
         // Run the turn in the background so the caller returns immediately and consumes the reply through
         // Events, mirroring how the Claude-CLI driver's send returns before the response streams back.
         _turnCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        _ = _RunTurnAsync(text, _turnCancellation.Token);
+        _turnTask = _RunTurnAsync(text, _turnCancellation.Token);
         return Task.CompletedTask;
     }
 
@@ -313,6 +359,22 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
     {
         var agent = _agent ?? throw new InvalidOperationException($"{nameof(_StreamTurnAsync)} called before {nameof(StartAsync)}.");
         var options = new ChatOptions { ModelId = _model, Tools = tools is { Count: > 0 } ? [.. tools] : null };
+        var effort = Profile?.ProviderConfig switch
+        {
+            LmStudioConfig { EnableThinking: false } => "none",
+            LmStudioConfig lmStudio => lmStudio.ReasoningEffort,
+            OllamaConfig ollama => ollama.ReasoningEffort,
+            _ => null,
+        };
+        if (!string.IsNullOrWhiteSpace(effort))
+        {
+            options.RawRepresentationFactory = _ => new ChatCompletionOptions
+            {
+#pragma warning disable OPENAI001 // Empty effort keeps the server's model default.
+                ReasoningEffortLevel = new ChatReasoningEffortLevel(effort.Trim()),
+#pragma warning restore OPENAI001
+            };
+        }
         var outcome = await ChatTurnLoop.RunAsync(
             agent,
             _history,
@@ -506,15 +568,39 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
     {
         _events.Writer.TryComplete();
         _turnCancellation?.Cancel();
-        _turnCancellation?.Dispose();
         _gate.CancelPending();
-
-        if (_toolSession is not null)
+        try
         {
-            await _toolSession.DisposeAsync().ConfigureAwait(false);
+            if (_turnTask is not null)
+            {
+                await _turnTask.ConfigureAwait(false);
+            }
         }
-
-        (_agent as IDisposable)?.Dispose();
+        finally
+        {
+            _turnCancellation?.Dispose();
+            try
+            {
+                if (_toolSession is not null)
+                {
+                    await _toolSession.DisposeAsync().ConfigureAwait(false);
+                }
+            }
+            finally
+            {
+                try
+                {
+                    (_agent as IDisposable)?.Dispose();
+                }
+                finally
+                {
+                    if (_sessionId is not null)
+                    {
+                        await _localModelContext.ReleaseAsync(_sessionId).ConfigureAwait(false);
+                    }
+                }
+            }
+        }
     }
 
     private static string? _ModelFrom(ProviderConfig config) => config switch
@@ -524,12 +610,22 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
         _ => null,
     };
 
-    private static JsonElement? _TurnLimitsFrom(ProviderConfig config) => config switch
+    internal static ChatTurnLimits TurnLimitsFrom(ProviderConfig config, ILogger? logger = null)
     {
-        OllamaConfig ollama => ollama.TurnLimits,
-        LmStudioConfig lmStudio => lmStudio.TurnLimits,
-        _ => null,
-    };
+        var json = config switch
+        {
+            OllamaConfig ollama => ollama.TurnLimits,
+            LmStudioConfig lmStudio => lmStudio.TurnLimits,
+            _ => null,
+        };
+        var contextTokens = config switch
+        {
+            OllamaConfig ollama => ollama.ContextTokens,
+            LmStudioConfig lmStudio => lmStudio.ContextTokens,
+            _ => LocalModelContext.DefaultTokens,
+        };
+        return ChatTurnLimits.From(json, logger) with { ContextWindowTokens = LocalModelContext.Normalize(contextTokens) };
+    }
 
     private static string? _SystemPromptFrom(ProviderConfig config) => config switch
     {

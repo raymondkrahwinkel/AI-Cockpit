@@ -30,4 +30,11 @@ public sealed record PluginModelObservation(string ProviderId, PluginModelObserv
     /// <see langword="null"/> otherwise.
     /// </summary>
     public TimeSpan? Latency { get; init; }
+
+    /// <summary>
+    /// Which of the provider's accounts the observation is about (AC-1982): an opaque key the provider derives from the
+    /// profile's config, so two subscriptions under one provider never read as one. <see langword="null"/> when the
+    /// provider cannot tell.
+    /// </summary>
+    public string? Profile { get; init; }
 }

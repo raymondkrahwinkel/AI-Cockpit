@@ -1,5 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App.Controls;
 using Cockpit.App.Logging;
@@ -33,6 +35,10 @@ public partial class MainWindow : Window
     // Close() calls below (bounds save, then real close) don't ask a second time.
     private bool _closeConfirmed;
     private Task? _confirmThenCloseTask;
+    private Task<bool>? _fileCloseConfirmation;
+    private bool _fileCloseApproved;
+    private bool _fileClosePending;
+    private readonly List<Window> _closingWindows = [];
 
     public MainWindow()
         : this(Program.Services?.GetService<IWindowBoundsStore>())
@@ -123,6 +129,18 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (!_fileCloseApproved && DataContext is CockpitViewModel fileCockpit && fileCockpit.Workspaces.HasCloseGuards)
+        {
+            e.Cancel = true;
+            if (!_fileClosePending)
+            {
+                _fileClosePending = true;
+                // Leave OnClosing before replaying Close; the posted task catches and logs failures below.
+                Dispatcher.UIThread.Post(() => _ = _ConfirmFilesThenCloseAsync());
+            }
+            return;
+        }
+
         // AC-779: the bounds save used to block this thread with GetAwaiter().GetResult(); a slow write (AV scan,
         // network profile) froze the close. Deferred one round trip instead — cancel this close, await the save,
         // then replay Close() so the real shutdown below runs once it's done.
@@ -156,6 +174,71 @@ public partial class MainWindow : Window
         {
             // Cancelled: let a later close attempt ask again instead of silently no-op'ing forever.
             _confirmThenCloseTask = null;
+        }
+    }
+
+    internal async Task<bool> ConfirmWorkspaceCloseAsync()
+    {
+        if (DataContext is not CockpitViewModel cockpit)
+        {
+            return true;
+        }
+        var confirmation = _fileCloseConfirmation ??= cockpit.Workspaces.ConfirmCloseAllAsync();
+        try
+        {
+            _fileCloseApproved = await confirmation.ConfigureAwait(true);
+        }
+        catch (Exception exception)
+        {
+            LifecycleLog.Write($"Confirming unsaved files failed; keeping Cockpit open: {exception.Message}");
+            _fileCloseApproved = false;
+        }
+        if (!_fileCloseApproved)
+        {
+            _fileCloseConfirmation = null;
+        }
+        else if (_closingWindows.Count == 0)
+        {
+            // A slow teardown must not allow fresh edits after the last discard decision.
+            var windows = Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop
+                ? desktop.Windows.ToArray() : [this];
+            foreach (var window in windows.Where(window => window.IsEnabled))
+            {
+                _closingWindows.Add(window);
+                window.IsEnabled = false;
+            }
+        }
+        return _fileCloseApproved;
+    }
+
+    internal void CancelWorkspaceClose()
+    {
+        _fileCloseApproved = false;
+        _fileCloseConfirmation = null;
+        foreach (var window in _closingWindows)
+        {
+            window.IsEnabled = true;
+        }
+        _closingWindows.Clear();
+    }
+
+    private async Task _ConfirmFilesThenCloseAsync()
+    {
+        try
+        {
+            if (await ConfirmWorkspaceCloseAsync().ConfigureAwait(true))
+            {
+                Close();
+            }
+        }
+        catch (Exception error)
+        {
+            CancelWorkspaceClose();
+            LifecycleLog.Write($"Closing after file confirmation failed; keeping Cockpit open: {error}");
+        }
+        finally
+        {
+            _fileClosePending = false;
         }
     }
 

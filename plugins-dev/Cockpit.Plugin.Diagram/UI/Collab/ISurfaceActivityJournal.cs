@@ -7,7 +7,7 @@ internal interface ISurfaceActivityJournal
 {
     event Action<string>? HistoryChanged;
 
-    IReadOnlyList<SurfaceActivityEntry> History(string surfaceId);
+    Task<IReadOnlyList<SurfaceActivityEntry>> HistoryAsync(string surfaceId);
 
-    string? Revert(string surfaceId, string entryId);
+    Task<string?> RevertAsync(string surfaceId, string entryId);
 }

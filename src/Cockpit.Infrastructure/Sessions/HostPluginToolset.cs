@@ -14,11 +14,13 @@ internal sealed class HostPluginToolset : IPluginToolset, IAsyncDisposable
 {
     private readonly IMcpToolSession _toolSession;
     private readonly IReadOnlyList<AIFunction> _turnTools;
+    private readonly IReadOnlyList<McpSessionTool> _gatedTools;
 
     private HostPluginToolset(IMcpToolSession toolSession, IReadOnlyList<McpSessionTool> gatedTools, IReadOnlyList<AIFunction> turnTools, SessionToolApprovalGate gate, PluginSessionEventPublisher events)
     {
         _toolSession = toolSession;
         _turnTools = turnTools;
+        _gatedTools = gatedTools;
         Gate = gate;
         Events = events;
         Tools = [.. turnTools.Select(tool => new PluginToolDescriptor(_ServerOf(gatedTools, tool.Name), tool.Name, tool.Description, tool.JsonSchema.GetRawText()))];
@@ -62,9 +64,10 @@ internal sealed class HostPluginToolset : IPluginToolset, IAsyncDisposable
         string? workingDirectory,
         Func<string?> sessionId,
         ILogger? logger,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? agentName = null)
     {
-        var toolSession = await toolProvider.ConnectAsync(selection, paneId, confineRoot, projectId, workingDirectory, cancellationToken).ConfigureAwait(false);
+        var toolSession = await toolProvider.ConnectAsync(selection, paneId, confineRoot, projectId, workingDirectory, cancellationToken, agentName).ConfigureAwait(false);
 
         var selectionText = selection is null ? "(no restriction)" : $"[{string.Join(", ", selection)}]";
         if (toolSession.ConnectedServerNames.Count == 0 && selection is { Count: > 0 })
@@ -115,7 +118,7 @@ internal sealed class HostPluginToolset : IPluginToolset, IAsyncDisposable
             return [.. gatedTools.Select(tool => tool.Function)];
         }
 
-        var preloaded = gatedTools.Where(tool => tool.AlwaysMounted).ToList();
+        var preloaded = gatedTools.Where(tool => tool.AlwaysMounted || CodingTools.StaysNative(tool.ServerName)).ToList();
         var searchable = gatedTools.Except(preloaded).ToList();
         logger?.LogInformation(
             "Tool search mode: {Preloaded} always-mounted tool(s) preloaded, {Searchable} behind {SearchTool} — about {Tokens} tokens of schema kept out of every request.",
@@ -133,7 +136,8 @@ internal sealed class HostPluginToolset : IPluginToolset, IAsyncDisposable
 
     public async Task<string> InvokeAsync(string name, string argumentsJson, CancellationToken cancellationToken = default)
     {
-        var tool = _turnTools.FirstOrDefault(candidate => string.Equals(candidate.Name, name, StringComparison.Ordinal));
+        var tool = _turnTools.FirstOrDefault(candidate => string.Equals(candidate.Name, name, StringComparison.Ordinal))
+            ?? _gatedTools.FirstOrDefault(candidate => string.Equals(candidate.Function.Name, name, StringComparison.Ordinal))?.Function;
         if (tool is null)
         {
             return $"No tool called \"{name}\" is available to this session.";

@@ -1,4 +1,5 @@
 using Cockpit.Core.Debugging;
+using Cockpit.Core.Diagnostics;
 using Cockpit.Infrastructure.Debugging;
 
 namespace Cockpit.Core.Tests.Debugging;
@@ -24,11 +25,28 @@ public class DebugSettingsStoreTests : IDisposable
     {
         var store = new DebugSettingsStore(_configFilePath);
 
-        await store.SaveAsync(new DebugSettings { ShowDebugControls = true, LogDiagnosticSnapshots = true });
+        await File.WriteAllTextAsync(_configFilePath, "{\"debug\":{}}");
+        var defaults = await store.LoadAsync();
+        Assert.Equal(5, defaults.UiFreezeThresholdSeconds);
+        Assert.Equal(15, defaults.RenderStallThresholdSeconds);
+
+        await store.SaveAsync(new DebugSettings
+        {
+            ShowDebugControls = true,
+            LogDiagnosticSnapshots = true,
+            UiFreezeThresholdSeconds = 9,
+            RenderStallThresholdSeconds = 25,
+        });
         var loaded = await store.LoadAsync();
 
         Assert.True(loaded.ShowDebugControls);
         Assert.True(loaded.LogDiagnosticSnapshots);
+        Assert.Equal(9, loaded.UiFreezeThresholdSeconds);
+        Assert.Equal(25, loaded.RenderStallThresholdSeconds);
+        Assert.False(UiThreadHeartbeat.Decide(TimeSpan.FromSeconds(6), false, TimeSpan.FromSeconds(loaded.UiFreezeThresholdSeconds)).Warn);
+        Assert.True(UiThreadHeartbeat.Decide(TimeSpan.FromSeconds(10), false, TimeSpan.FromSeconds(loaded.UiFreezeThresholdSeconds)).Warn);
+        Assert.False(RenderClockHeartbeat.Decide(TimeSpan.FromSeconds(20), false, TimeSpan.FromSeconds(loaded.RenderStallThresholdSeconds)).Stalled);
+        Assert.True(RenderClockHeartbeat.Decide(TimeSpan.FromSeconds(26), false, TimeSpan.FromSeconds(loaded.RenderStallThresholdSeconds)).Stalled);
     }
 
     public void Dispose()

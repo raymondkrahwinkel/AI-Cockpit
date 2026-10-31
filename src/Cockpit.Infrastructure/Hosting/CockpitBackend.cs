@@ -47,8 +47,14 @@ public sealed class CockpitBackend
     private Task? _reconcile;
     private bool _pluginSettingsSeeded;
     private bool _pluginsInitialized;
+    private int _plannersRequested;
+    private readonly bool _enableStorageMaintenance;
 
-    private CockpitBackend(ServiceProvider services) => Services = services;
+    private CockpitBackend(ServiceProvider services, bool enableStorageMaintenance)
+    {
+        Services = services;
+        _enableStorageMaintenance = enableStorageMaintenance;
+    }
 
     public ServiceProvider Services { get; }
 
@@ -125,7 +131,8 @@ public sealed class CockpitBackend
         Action<IServiceCollection>? frontend = null,
         PluginStartup plugins = PluginStartup.None,
         System.Net.IPAddress? nodeListenAddress = null,
-        bool applyIncomingSettings = true)
+        bool applyIncomingSettings = true,
+        bool enableStorageMaintenance = false)
     {
         var services = new ServiceCollection();
         ManagedConfigKeys.Log = loggerFactory.CreateLogger(typeof(ManagedConfigKeys));
@@ -138,6 +145,7 @@ public sealed class CockpitBackend
         services.AddSingleton<ILoggerFactory>(loggerFactory);
         services.AddLogging();
         services.AddCore();
+        services.AddSingleton(new Core.Swarm.SwarmHost(frontend is null ? Core.Swarm.SwarmHostKind.Server : Core.Swarm.SwarmHostKind.Desktop));
         _AddNoFrontendDefaults(services);
         services.AddInfrastructure().AddServices(
             typeof(Cockpit.Core.DependencyInjection).Assembly,
@@ -164,7 +172,7 @@ public sealed class CockpitBackend
 
         CockpitBackend? built = null;
         services.AddSingleton(_ => built ?? throw new InvalidOperationException("The backend is resolved from its own container only once built."));
-        built = new CockpitBackend(services.BuildServiceProvider());
+        built = new CockpitBackend(services.BuildServiceProvider(), enableStorageMaintenance);
         return built;
     }
 
@@ -237,6 +245,36 @@ public sealed class CockpitBackend
         _pluginsInitialized = true;
     }
 
+    // Test seam: runs first inside the background start, standing in for a planner that is slow to start.
+    internal Action? BeforePlanners { get; set; }
+
+    // AC-1889: the planners off the caller's thread, so a frontend can show its window first. Never throws: a planner
+    // that fails is logged, and the task still completes. Whatever must be up before the first frame stays out of here.
+    public Task StartPlannersInBackgroundAsync()
+    {
+        var logger = Services.GetRequiredService<ILoggerFactory>().CreateLogger<CockpitBackend>();
+        if (Interlocked.Exchange(ref _plannersRequested, 1) == 1)
+        {
+            logger.LogInformation("Planners already started.");
+            return Task.CompletedTask;
+        }
+
+        return Task.Run(() =>
+        {
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            try
+            {
+                BeforePlanners?.Invoke();
+                StartPlanners();
+                logger.LogInformation("Planners started in {ElapsedMs} ms.", clock.ElapsedMilliseconds);
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(exception, "The planners did not start; a background watcher may be missing until the next start.");
+            }
+        });
+    }
+
     // AC-1380's planners. Never before `Start`: the worktree planner's crash net assumes the startup sweep has run, and
     // the rest read a registry the reconcile's roster decides. The Depot watcher polls only what its `BoundProjects`
     // names, which a frontend that owns a project list sets before this.
@@ -294,8 +332,10 @@ public sealed class CockpitBackend
         // AC-1706: and nudge a session the assistant started once when a turn ends without a closing; that wake above
         // turns the nudge into its turn.
         Services.GetService<StallNudger>()?.Start(sessionRegistry);
+        Services.GetService<HomeFolderWatcher>()?.Start(sessionRegistry, Services.GetService<IDelegationService>());
 
         // AC-1719: first fold what is older than 90 days into day aggregates, before the recorder reads or appends.
+        // Blocks this thread; fine, as the cockpit calls StartPlanners off the UI thread (AC-1889).
         Services.GetService<SessionDayRetention>()?.Run();
 
         // AC-1717: and keep every session's busy/idle, operator actions and statuslines in `session-timeline.jsonl`.
@@ -319,6 +359,10 @@ public sealed class CockpitBackend
 
         // AC-1535: the machine's load, sampled from the start, so the heavy-run queue's first decision is no guess.
         Services.GetService<MachineResources>()?.Start();
+        if (_enableStorageMaintenance)
+        {
+            Services.GetService<Cockpit.Core.Diagnostics.IDockerStorageMaintenance>()?.Start();
+        }
 
         // AC-894: poll every Depot-bound project's checksum for a change made elsewhere. AC-1570: the first pass runs at
         // once, and the catalog (which hands the watcher its projects, loading its settings on demand) must exist by then.
@@ -360,6 +404,7 @@ public sealed class CockpitBackend
 
         IDisposable?[] planners =
         [
+            Services.GetService<HomeFolderWatcher>(),
             Services.GetService<CiWatcher>(), Services.GetService<SessionWatcher>(), Services.GetService<InboxWakeScheduler>(), Services.GetService<StallNudger>(), Services.GetService<SessionTimelineRecorder>(),
             Services.GetService<WorktreeReconciler>(), Services.GetService<DepotSyncWatcher>(), Services.GetService<StaleClaimReaper>(),
             Services.GetService<ScheduledBackup>(), Services.GetService<SettingsCarrierSync>(),
@@ -591,7 +636,7 @@ public sealed class CockpitBackend
         var registrationStore = Services.GetRequiredService<IPluginRegistrationStore>();
         var secretFieldStore = Services.GetRequiredService<IPluginSecretFieldStore>();
         var cache = PluginCacheStore.ForStateRoot(Services.GetService<ILogger<PluginCacheStore>>());
-        var sessions = new PluginBackendSessionObserver(Services.GetRequiredService<ISessionRegistry>());
+        var sessions = new PluginBackendSessionObserver(Services.GetRequiredService<ISessionRegistry>(), Services);
         var actions = new PluginBackendActions(
             Services.GetRequiredService<ISessionProfileStore>(),
             Services.GetRequiredService<IDelegationService>(),

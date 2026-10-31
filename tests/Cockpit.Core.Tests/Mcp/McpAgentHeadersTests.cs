@@ -28,12 +28,7 @@ public class McpAgentHeadersTests
         // Both would otherwise reach the provider, and which one won would depend on how that provider happens to
         // assemble its headers — a property of the agent rather than of what the operator configured.
         Assert.False(headers.ContainsKey("Authorization"));
-    }
-
-    [Fact]
-    public void For_DropsAHandTypedAuthorization_RegardlessOfItsCasing()
-    {
-        var server = _ServerWith(new McpHeader("authorization", "Bearer stale-hand-typed"));
+        server = _ServerWith(new McpHeader("authorization", "Bearer stale-hand-typed"));
 
         // HTTP field names are case-insensitive, so "authorization" and "Authorization" are the same header; treating
         // them as two would let the dropped one back in under a different spelling.
@@ -41,31 +36,21 @@ public class McpAgentHeadersTests
     }
 
     [Fact]
-    public void For_ForACockpitHostedEndpoint_DropsAHandTypedAuthorization()
+    public void For_ForManagedAuthentication_DropsAHandTypedAuthorization()
     {
         var server = _ServerWith(new McpHeader("Authorization", "Bearer mine")) with { CockpitHosted = true };
 
         // A cockpit-hosted endpoint carries no literal token here — its auth rides an env var the provider
         // references — but it is still an Authorization the operator must not be able to displace.
         Assert.False(McpAgentHeaders.For(server, bearerToken: null).ContainsKey("Authorization"));
-    }
-
-    [Fact]
-    public void For_ForAnOAuthServer_DropsAHandTypedAuthorization_EvenWithNoTokenInHand()
-    {
-        var server = _ServerWith(new McpHeader("Authorization", "Token abc123")) with { Auth = McpServerAuth.OAuth };
+        server = _ServerWith(new McpHeader("Authorization", "Token abc123")) with { Auth = McpServerAuth.OAuth };
 
         // The case a "is a bearer going out?" test would have missed. In-process an OAuth server produces no bearer at
         // all — the MCP SDK negotiates the authorization itself — so a hand-typed Authorization would have survived on
         // exactly the route that cannot take a second one, while the spawn route dropped it. Two routes, one server,
         // two answers is the drift this rule exists to prevent.
         Assert.Empty(McpAgentHeaders.For(server, bearerToken: null));
-    }
-
-    [Fact]
-    public void For_ForAnApiKeyServerWithNoKeyFilledIn_StillDropsAHandTypedAuthorization()
-    {
-        var server = _ServerWith(new McpHeader("Authorization", "Token abc123")) with { Auth = McpServerAuth.ApiKey };
+        server = _ServerWith(new McpHeader("Authorization", "Token abc123")) with { Auth = McpServerAuth.ApiKey };
 
         // Half-configured is still the cockpit's to answer for: the operator said this server authenticates by API
         // key, so the fix is to fill the key in, not to have a hand-typed header quietly stand in for it.

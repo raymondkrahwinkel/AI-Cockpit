@@ -10,7 +10,7 @@ public class DepotEventSubscriberTests
     private static readonly DepotConnectionRegistration Connection = new("work", "Work", "https://work.example.com");
 
     [Fact]
-    public async Task AnEvent_IsRoutedOnlyToConsumersOfItsTopic()
+    public async Task Events_RouteTopics_AndResyncOnVersionGapOrReconnect()
     {
         var hubs = new List<_Hub>();
         await using var subscriber = new DepotEventSubscriber(
@@ -33,23 +33,19 @@ public class DepotEventSubscriberTests
         Assert.Single(projects);
         Assert.Empty(definitions);
         Assert.Empty(late);
-    }
 
-    [Fact]
-    public async Task AVersionGapOrReconnect_ResyncsTheTopicConsumers()
-    {
-        var hubs = new List<_Hub>();
-        await using var subscriber = new DepotEventSubscriber(
+        var resyncHubs = new List<_Hub>();
+        await using var resyncSubscriber = new DepotEventSubscriber(
             Connection,
             () => new _Depot(),
-            (_, _, onEvent, onReconnected, onClosed) => _AddHub(hubs, onEvent, onReconnected, onClosed));
+            (_, _, onEvent, onReconnected, onClosed) => _AddHub(resyncHubs, onEvent, onReconnected, onClosed));
         var resyncs = 0;
 
-        using var registration = await subscriber.SubscribeAsync("projects", _Ignore, () => resyncs++, CancellationToken.None);
-        var hub = Assert.Single(hubs);
-        hub.Push(new DepotEvent("projects", "changed", "acme/roadmap", 1));
-        hub.Push(new DepotEvent("projects", "changed", "acme/roadmap", 3));
-        await hub.ReconnectAsync();
+        using var registration = await resyncSubscriber.SubscribeAsync("projects", _Ignore, () => resyncs++, CancellationToken.None);
+        var resyncHub = Assert.Single(resyncHubs);
+        resyncHub.Push(new DepotEvent("projects", "changed", "acme/roadmap", 1));
+        resyncHub.Push(new DepotEvent("projects", "changed", "acme/roadmap", 3));
+        await resyncHub.ReconnectAsync();
 
         Assert.Equal(2, resyncs);
     }

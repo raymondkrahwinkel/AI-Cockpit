@@ -10,6 +10,7 @@ using Avalonia.Threading;
 using Cockpit.App.Services;
 using Cockpit.App.Theming;
 using Cockpit.Core.Markdown;
+using Cockpit.Plugins.Abstractions.UI;
 
 namespace Cockpit.App.Views;
 
@@ -18,6 +19,23 @@ namespace Cockpit.App.Views;
 // walks the parsed blocks and builds the visual tree.
 public sealed class MarkdownView : ContentControl
 {
+    private static readonly object LinkHandlersLock = new();
+    private static LinkHandlerRegistration[] RegisteredLinkHandlers = [];
+
+    public static IDisposable RegisterLinkHandler(LinkHandlerRegistration registration)
+    {
+        lock (LinkHandlersLock)
+        {
+            RegisteredLinkHandlers = [.. RegisteredLinkHandlers, registration];
+        }
+        return new DisposableAction(() =>
+        {
+            lock (LinkHandlersLock)
+            {
+                RegisteredLinkHandlers = RegisteredLinkHandlers.Where(candidate => candidate != registration).ToArray();
+            }
+        });
+    }
     private static readonly FontFamily MonoFont =
         new("Cascadia Mono, Noto Sans Mono, DejaVu Sans Mono, monospace");
 
@@ -907,7 +925,7 @@ public sealed class MarkdownView : ContentControl
         {
             if (block.Links.Count > 0)
             {
-                _OnLinkClick(block, block.Links, e, LinkHandler);
+                _OnLinkClick(block, block.Links, e, RegisteredLinkHandlers, LinkHandler);
             }
         };
 
@@ -931,6 +949,19 @@ public sealed class MarkdownView : ContentControl
             if (inline.Kind == MarkdownInlineKind.LineBreak)
             {
                 block.Inlines?.Add(new LineBreak());
+                continue;
+            }
+
+            if (inline.Kind == MarkdownInlineKind.Text && _TryMatch(inline.Text, out _, out var start, out var length))
+            {
+                _AddRun(block, inline.Text[..start]);
+                var linkText = inline.Text.Substring(start, length);
+                var linkRun = _AddRun(block, linkText);
+                linkRun.Foreground = Accent;
+                linkRun.TextDecorations = TextDecorations.Underline;
+                _AddRun(block, inline.Text[(start + length)..]);
+                links.Add((offset + start, length, linkText, null));
+                offset += inline.Text.Length;
                 continue;
             }
 
@@ -997,6 +1028,7 @@ public sealed class MarkdownView : ContentControl
         SelectableTextBlock block,
         List<(int Start, int Length, string Url, int? Line)> links,
         PointerReleasedEventArgs e,
+        IReadOnlyList<LinkHandlerRegistration> registeredHandlers,
         Func<string, bool>? handler)
     {
         // Selecting text also raises PointerReleased; only treat it as a link click when nothing is selected.
@@ -1014,7 +1046,11 @@ public sealed class MarkdownView : ContentControl
                 continue;
             }
 
-            if (handler is not null && handler(link.Url))
+            if (registeredHandlers.FirstOrDefault(candidate => _Guarded(() => candidate.TryMatch(link.Url, out _, out _))) is { } registered
+                && _Guarded(() => registered.Handle(link.Url, _Modifiers(e))))
+            {
+            }
+            else if (handler is not null && handler(link.Url))
             {
                 // Claimed by the surface this view sits in — the knowledge base takes its own `help:`
                 // cross-references so following one stays inside the window instead of reaching the shell.
@@ -1030,6 +1066,56 @@ public sealed class MarkdownView : ContentControl
 
             return;
         }
+    }
+
+    private static bool _TryMatch(string text, out LinkHandlerRegistration? match, out int start, out int length)
+    {
+        foreach (var handler in RegisteredLinkHandlers)
+        {
+            int matchStart = 0, matchLength = 0;
+            if (_Guarded(() => handler.TryMatch(text, out matchStart, out matchLength)))
+            {
+                match = handler;
+                start = matchStart;
+                length = matchLength;
+                return true;
+            }
+        }
+        match = null;
+        start = length = 0;
+        return false;
+    }
+
+    // A plugin's link handler runs inside transcript rendering on the UI thread; one that throws counts as no match
+    // rather than breaking the conversation it is drawn in.
+    private static bool _Guarded(Func<bool> pluginCall)
+    {
+        try
+        {
+            return pluginCall();
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    private static Run _AddRun(InlineTextBlock block, string text)
+    {
+        var run = new Run(text);
+        block.Inlines?.Add(run);
+        return run;
+    }
+
+    private static LinkClickModifiers _Modifiers(PointerReleasedEventArgs e) =>
+        (e.KeyModifiers.HasFlag(KeyModifiers.Control) ? LinkClickModifiers.Control : LinkClickModifiers.None)
+        | (e.KeyModifiers.HasFlag(KeyModifiers.Shift) ? LinkClickModifiers.Shift : LinkClickModifiers.None)
+        | (e.KeyModifiers.HasFlag(KeyModifiers.Alt) ? LinkClickModifiers.Alt : LinkClickModifiers.None)
+        | (e.KeyModifiers.HasFlag(KeyModifiers.Meta) ? LinkClickModifiers.Meta : LinkClickModifiers.None);
+
+    private sealed class DisposableAction(Action dispose) : IDisposable
+    {
+        public void Dispose() => dispose();
     }
 
 }

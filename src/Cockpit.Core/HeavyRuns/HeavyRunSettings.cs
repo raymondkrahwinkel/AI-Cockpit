@@ -19,6 +19,14 @@ public sealed record HeavyRunSettings
     // An exploring run that has waited this long is queued as if it were a pre-merge gate.
     public int AgingMinutes { get; init; } = 15;
 
+    public double DiskElevatedTimeToFullHours { get; init; } = 6;
+
+    public double DiskCriticalTimeToFullHours { get; init; } = 1;
+
+    public double DiskMinimumFreePercent { get; init; } = 5;
+
+    public double DiskHourlyGrowthMultiplier { get; init; } = 2;
+
     public HeavyRunSettings Lowered() => this with
     {
         CpuCeilingPercent = Math.Max(CeilingFloorPercent, CpuCeilingPercent - CeilingStepPercent),

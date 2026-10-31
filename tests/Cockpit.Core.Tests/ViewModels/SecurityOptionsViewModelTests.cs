@@ -2,12 +2,8 @@ using System.Net;
 using System.Net.Sockets;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Mcp;
-using Cockpit.Core.Abstractions.Profiles;
-using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Mcp;
-using Cockpit.Core.Profiles;
-using Cockpit.Core.Projects;
 using Cockpit.Core.Secrets;
 using NSubstitute;
 
@@ -150,70 +146,18 @@ public class SecurityOptionsViewModelTests
         Assert.Contains(expectedText, vm.NodeEndpointNoListenerText, StringComparison.Ordinal);
     }
 
-    /// <summary>
-    /// AC-1325: no chains, controller side. This cockpit is itself already a node — starting "Pair with another
-    /// Cockpit" must refuse before touching the network, naming the controller it is already answering to.
-    /// </summary>
+    // AC-1352: connect writes pinned local rows and replaces the previous connection.
     [Fact]
-    public async Task StartPairing_WhileThisCockpitIsAlreadyANode_RefusesBeforeAnyNetworkCall()
-    {
-        var pairing = Substitute.For<INodePairingBroker>();
-        pairing.Pairing.Returns(new NodePairing
-        {
-            ControllerName = "Raymond's desktop",
-            ControllerAddress = "192.168.1.5",
-            PairedAtUtc = DateTimeOffset.UnixEpoch,
-        });
-        var client = new FakePairingClient();
-
-        var vm = new SecurityOptionsViewModel(new FakeProtection(), nodePairing: pairing, nodePairingClient: client)
-        {
-            PairWithNodeAddress = "192.168.1.20:7331",
-        };
-
-        await vm.StartPairingCommand.ExecuteAsync(null);
-
-        Assert.Equal(0, client.BeginCalls);
-        Assert.Contains("Raymond's desktop", vm.PairingStatus, StringComparison.Ordinal);
-        Assert.False(vm.IsComparingPairingCode);
-    }
-
-    /// <summary>
-    /// AC-1352 criterion 2: a pairing and a manual connect write the identical row shape through the same
-    /// <c>_BuildNodeRow</c> — a separate write path for connect that set, say, <c>Scope</c> or the pin
-    /// differently would make the "connect" row of this Theory red.
-    /// </summary>
-    [Theory]
-    [InlineData("pairing")]
-    [InlineData("connect")]
-    public async Task CompletingAPairingOrConnect_WritesPinnedLocalOnlyRowsAndReplacesAnEarlierRow(string kind)
+    public async Task Connect_WritesPinnedLocalOnlyRowsAndReplacesAnEarlierRow()
     {
         const string ConnectUrl = "https://192.168.1.20:7331/mcp";
-        var staleUrl = kind == "pairing" ? "https://old/mcp" : ConnectUrl;
+        var staleUrl = ConnectUrl;
         var servers = new FakeMcpServerStore(
         [
             new McpServerConfig { Name = "something else", Transport = McpTransport.Stdio, Command = "npx" },
             new McpServerConfig { Name = "laptop · stale-endpoint", Transport = McpTransport.Http, Url = staleUrl },
         ]);
 
-        if (kind == "pairing")
-        {
-            var client = new FakePairingClient();
-            var vm = new SecurityOptionsViewModel(new FakeProtection(), nodePairingClient: client, mcpServers: servers)
-            {
-                PairWithNodeAddress = "192.168.1.20:7331",
-            };
-
-            await vm.StartPairingCommand.ExecuteAsync(null);
-            Assert.True(vm.IsComparingPairingCode);
-            Assert.Equal("314159", vm.OutgoingPairingCode);
-
-            await vm.ConfirmPairingCodeCommand.ExecuteAsync(null);
-
-            // The comparison panel is gone once it is done, so the code cannot be confirmed a second time.
-            Assert.False(vm.IsComparingPairingCode);
-        }
-        else
         {
             var vm = new SecurityOptionsViewModel(new FakeProtection(), nodeSessions: new FakeNodeProbe(), mcpServers: servers)
             {
@@ -229,14 +173,12 @@ public class SecurityOptionsViewModelTests
             Assert.Equal("", vm.ConnectKey);
         }
 
-        // Pairing keeps the endpoint's own server name (here "cockpit-agents", the FakePairingClient's own
-        // stand-in); connect always names its one row "cockpit-node" — there is no handshake to read a name from.
-        var expectedName = kind == "pairing" ? "laptop · cockpit-agents" : "laptop · cockpit-node";
+        var expectedName = "laptop · cockpit-node";
         var saved = await servers.LoadAsync();
         var added = saved.Single(server => server.Name == expectedName);
 
         Assert.Equal("AABBCCDD", added.PinnedCertificateFingerprint);
-        Assert.Equal(kind == "pairing" ? "granted-by-pairing" : "ck_test-key", added.ApiKey);
+        Assert.Equal("ck_test-key", added.ApiKey);
         // Only the in-process tool loop can be told which certificate to trust; a spawned CLI session brings its
         // own HTTP client and would fail the handshake against a self-signed certificate.
         Assert.Equal(McpServerScope.LocalOnly, added.Scope);
@@ -250,14 +192,13 @@ public class SecurityOptionsViewModelTests
 
     /// <summary>
     /// AC-1352 criteria 1 and 4: a connect that does not answer as typed — a pin mismatch, a rejected key, an
-    /// unreachable address, this cockpit already being a node, or a name that already belongs to a different
+    /// unreachable address, or a name that already belongs to a different
     /// address — leaves the registry exactly as it was, and a pin mismatch names both fingerprints.
     /// </summary>
     [Theory]
     [InlineData("pin-mismatch")]
     [InlineData("key-rejected")]
     [InlineData("unreachable")]
-    [InlineData("already-a-node")]
     [InlineData("name-clash")]
     public async Task Connect_StoresNothing_UnlessTheServerAnswersAsTyped(string scenario)
     {
@@ -268,7 +209,6 @@ public class SecurityOptionsViewModelTests
         var before = await servers.LoadAsync();
 
         var probe = new FakeNodeProbe();
-        INodePairingBroker? pairing = null;
         var nodeName = "phone";
 
         switch (scenario)
@@ -282,23 +222,13 @@ public class SecurityOptionsViewModelTests
             case "unreachable":
                 probe.ThrowOnProbe = new SocketException((int)SocketError.ConnectionRefused);
                 break;
-            case "already-a-node":
-                var broker = Substitute.For<INodePairingBroker>();
-                broker.Pairing.Returns(new NodePairing
-                {
-                    ControllerName = "desk",
-                    ControllerAddress = "192.168.1.5",
-                    PairedAtUtc = DateTimeOffset.UnixEpoch,
-                });
-                pairing = broker;
-                break;
             case "name-clash":
                 // "laptop" already belongs to a row pointing elsewhere — a typo here must not overwrite it.
                 nodeName = "laptop";
                 break;
         }
 
-        var vm = new SecurityOptionsViewModel(new FakeProtection(), nodePairing: pairing, nodeSessions: probe, mcpServers: servers)
+        var vm = new SecurityOptionsViewModel(new FakeProtection(), nodeSessions: probe, mcpServers: servers)
         {
             ConnectNodeName = nodeName,
             ConnectHost = "192.168.1.30:20383",
@@ -351,47 +281,6 @@ public class SecurityOptionsViewModelTests
 
         var saved = await store.LoadAsync();
         Assert.Equal(["203.0.113.0/24", "198.51.100.0/24"], saved.AllowedDiscoveryRanges);
-    }
-
-    [Fact]
-    public async Task DiscoverNodes_PopulatesFoundNodes_FromTheClient()
-    {
-        var client = new FakeDiscoveryClient([new NodeDiscoveryFound("192.168.1.9:7331", "abc123")]);
-        var vm = new SecurityOptionsViewModel(new FakeProtection(), nodeDiscoveryClient: client);
-
-        await vm.DiscoverNodesCommand.ExecuteAsync(null);
-
-        var found = Assert.Single(vm.FoundNodes);
-        Assert.Equal("192.168.1.9:7331", found.Address);
-        Assert.Equal("", vm.DiscoveryStatus);
-    }
-
-    [Fact]
-    public async Task DiscoverNodes_WhenNothingAnswers_ReportsItRatherThanLeavingTheListSilentlyEmpty()
-    {
-        var client = new FakeDiscoveryClient([]);
-        var vm = new SecurityOptionsViewModel(new FakeProtection(), nodeDiscoveryClient: client);
-
-        await vm.DiscoverNodesCommand.ExecuteAsync(null);
-
-        Assert.Empty(vm.FoundNodes);
-        Assert.NotEqual("", vm.DiscoveryStatus);
-
-        // AC-1284: the node switch changes nothing until that cockpit is restarted, and this line used to point at
-        // the switch and the network without saying so — an operator who had just ticked it read it as "check the
-        // network" and lost an afternoon. Naming the restart is the whole point of the sentence.
-        Assert.Contains("restart", vm.DiscoveryStatus, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public void UseFoundNode_OnlyFillsTheAddressField_TheHandshakeIsUnaffected()
-    {
-        var vm = new SecurityOptionsViewModel(new FakeProtection());
-
-        vm.UseFoundNodeCommand.Execute(new NodeDiscoveryFound("192.168.1.9:7331", "abc123"));
-
-        Assert.Equal("192.168.1.9:7331", vm.PairWithNodeAddress);
-        Assert.False(vm.IsComparingPairingCode);
     }
 
     /// <summary>
@@ -538,52 +427,6 @@ public class SecurityOptionsViewModelTests
         Assert.True(condition(), "Condition did not become true.");
     }
 
-    /// <summary>
-    /// AC-1292 criterion 5. Providers share no shape: reading only Claude's <c>permission-mode</c> would leave the
-    /// Codex profile — the one this label exists for — silently unlabelled beside a pairing that reaches it.
-    /// </summary>
-    [Fact]
-    public async Task ScopeRows_LabelEveryProfileThatSkipsItsApprovals_WhateverProviderShapeItUses()
-    {
-        var pairing = Substitute.For<INodePairingBroker>();
-        pairing.Pairing.Returns(new NodePairing
-        {
-            ControllerName = "desk",
-            ControllerAddress = "192.168.1.5",
-            PairedAtUtc = DateTimeOffset.UnixEpoch,
-            AllowAllProfiles = true,
-        });
-
-        var profiles = Substitute.For<ISessionProfileStore>();
-        profiles.LoadAsync().Returns<IReadOnlyList<SessionProfile>>(
-        [
-            _Profile("claude-bypass", new Dictionary<string, string> { ["permission-mode"] = "bypassPermissions" }),
-            _Profile("codex-danger", new Dictionary<string, string> { ["sandbox"] = "danger-full-access" }),
-            _Profile("codex-guarded", new Dictionary<string, string> { ["sandbox"] = "read-only" }),
-            _Profile("local-model", optionDefaults: null),
-        ]);
-
-        var projects = Substitute.For<IProjectStore>();
-        projects.LoadAsync().Returns(ProjectSettings.Empty);
-
-        var vm = new SecurityOptionsViewModel(
-            new FakeProtection(), nodePairing: pairing, sessionProfileStore: profiles, projectStore: projects);
-        await vm.RefreshAsync();
-
-        Assert.True(vm.ScopedProfiles.Single(row => row.Key == "claude-bypass").SkipsApprovals);
-        Assert.True(vm.ScopedProfiles.Single(row => row.Key == "codex-danger").SkipsApprovals);
-        Assert.False(vm.ScopedProfiles.Single(row => row.Key == "codex-guarded").SkipsApprovals);
-
-        // No OptionDefaults at all means the profile sets nothing — what its provider does by default is not
-        // visible from here, so the row stays unlabelled rather than guessing.
-        Assert.False(vm.ScopedProfiles.Single(row => row.Key == "local-model").SkipsApprovals);
-    }
-
-    private static SessionProfile _Profile(string label, IReadOnlyDictionary<string, string>? optionDefaults) =>
-        new(label, new PluginProviderConfig("a-provider", "{}"))
-        {
-            Defaults = new ProfileDefaults(string.Empty, string.Empty, string.Empty) { OptionDefaults = optionDefaults },
-        };
 
     private sealed class SequencedNodeSessions : INodeSessionsClient
     {
@@ -625,12 +468,6 @@ public class SecurityOptionsViewModelTests
         public Task<NodeTranscriptRead> ReadTranscriptAsync(string nodeName, string paneId, int count, CancellationToken cancellationToken = default) =>
             Task.FromResult(new NodeTranscriptRead(null));
 
-        public Task<NodeInboxBatch> ReadInboxAsync(string nodeName, string? afterMessageId, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new NodeInboxBatch(nodeName, []));
-
-        public Task<NodePermissionAnswer> AnswerPermissionAsync(string nodeName, string paneId, string toolUseId, bool allow, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new NodePermissionAnswer(false));
-
         public Task<NodeMemoryRead> ReadMemoryAsync(string nodeName, string scope, CancellationToken cancellationToken = default) =>
             Task.FromResult(new NodeMemoryRead(""));
 
@@ -640,30 +477,6 @@ public class SecurityOptionsViewModelTests
         public Task<NodeConnectProbe> ProbeAsync(McpServerConfig row, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
         public Task<NodeWhoAmI?> ReadWhoAmIAsync(string nodeName, CancellationToken cancellationToken = default) => Task.FromResult<NodeWhoAmI?>(null);
-    }
-
-    private sealed class FakeDiscoveryClient(IReadOnlyList<NodeDiscoveryFound> results) : INodeDiscoveryClient
-    {
-        public Task<IReadOnlyList<NodeDiscoveryFound>> FindAsync(TimeSpan timeout, CancellationToken cancellationToken = default) =>
-            Task.FromResult(results);
-    }
-
-    private sealed class FakePairingClient : INodePairingClient
-    {
-        public int BeginCalls { get; private set; }
-
-        public Task<NodePairingHandshake> BeginAsync(string address, string controllerName, CancellationToken cancellationToken = default)
-        {
-            BeginCalls++;
-            return Task.FromResult(new NodePairingHandshake(
-                $"https://{address}/", "pairing-id", "claim-token", "laptop", "314159", "AABBCCDD", DateTimeOffset.MaxValue));
-        }
-
-        public Task<NodePairingGrant> CompleteAsync(NodePairingHandshake handshake, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new NodePairingGrant("granted-by-pairing", [new NodeEndpointAddress("cockpit-agents", "https://192.168.1.20:7401/mcp")]));
-
-        public Task UnpairAsync(string address, string sharedSecret, string certificateFingerprint, CancellationToken cancellationToken = default) =>
-            Task.CompletedTask;
     }
 
     // AC-1352: a stand-in for the connect dialog's own network call — no real registry lookup, no re-resolve,
@@ -700,10 +513,6 @@ public class SecurityOptionsViewModelTests
         public Task<string?> RenameAsync(string nodeName, string paneId, string name, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
         public Task<NodeTranscriptRead> ReadTranscriptAsync(string nodeName, string paneId, int count, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-
-        public Task<NodeInboxBatch> ReadInboxAsync(string nodeName, string? afterMessageId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-
-        public Task<NodePermissionAnswer> AnswerPermissionAsync(string nodeName, string paneId, string toolUseId, bool allow, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
         public Task<NodeMemoryRead> ReadMemoryAsync(string nodeName, string scope, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 

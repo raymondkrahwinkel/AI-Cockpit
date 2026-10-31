@@ -181,34 +181,45 @@
                 <StackPanel Spacing="4">
                     <Grid ColumnDefinitions="*,Auto">
                         <StackPanel Grid.Column="0" Spacing="2">
-                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                <Ellipse Width="8" Height="8"
+                            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto" VerticalAlignment="Center">
+                                <Ellipse Width="8" Height="8" Margin="0,0,6,0"
                                          Fill="{Binding SessionStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
-                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
+                                <TextBlock Grid.Column="1" Text="{Binding Title}" FontWeight="SemiBold"
+                                           TextTrimming="CharacterEllipsis"
                                            IsVisible="{Binding !IsRenaming}"/>
-                                <TextBox Text="{Binding EditTitle}" IsVisible="{Binding IsRenaming}"
+                                <TextBox Grid.Column="1" Text="{Binding EditTitle}" IsVisible="{Binding IsRenaming}"
                                          Classes="Compact" MinWidth="110" FontWeight="SemiBold"
                                          KeyDown="OnRenameBoxKeyDown" LostFocus="OnRenameBoxLostFocus"
                                          AttachedToVisualTree="OnRenameBoxAttached"/>
-                                <materialIcons:MaterialIcon Kind="AlertOutline" Width="13" Height="13"
+                                <materialIcons:MaterialIcon Grid.Column="2" Margin="6,0,0,0" Kind="AlertOutline" Width="13" Height="13"
                                            Foreground="{DynamicResource CockpitStatusWaitingBrush}"
                                            IsVisible="{Binding SessionStatus, Converter={x:Static conv:IsNeedsAttentionConverter.Instance}}"
                                            ToolTip.Tip="Needs attention"/>
                                 <!-- A consent request is waiting on this session (#AC-47): the same
                                      "Ask me first" hand the cockpit.approve step uses, in the accent
                                      colour, so the sidebar shows it even when the pane is off screen. -->
-                                <materialIcons:MaterialIcon Kind="HandBackLeftOutline" Width="13" Height="13"
+                                <materialIcons:MaterialIcon Grid.Column="3" Margin="6,0,0,0" Kind="HandBackLeftOutline" Width="13" Height="13"
                                            Foreground="{DynamicResource CockpitAccentBrush}"
                                            IsVisible="{Binding PendingConsent, Converter={x:Static ObjectConverters.IsNotNull}}"
                                            ToolTip.Tip="Waiting for your consent"/>
                                 <!-- AC-1311: a marker, not a fourth status class — sits next to
                                      whichever class the dot above already shows, for a session
                                      with a backgrounded shell still running under it. -->
-                                <materialIcons:MaterialIcon Kind="ProgressClock" Width="12" Height="12"
+                                <materialIcons:MaterialIcon Grid.Column="4" Margin="6,0,0,0" Kind="ProgressClock" Width="12" Height="12"
                                            Foreground="{DynamicResource CockpitTextFaintBrush}"
                                            IsVisible="{Binding HasOutstandingBackgroundShells}"
                                            ToolTip.Tip="Something of this session is still running in the background"/>
-                            </StackPanel>
+                                <Border Grid.Column="5" Classes="tag" Margin="6,0,0,0" VerticalAlignment="Center"
+                                        CornerRadius="{StaticResource CockpitPillRadius}"
+                                        IsVisible="{Binding MachineBadge, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <materialIcons:MaterialIcon Kind="Monitor" Width="10" Height="10" VerticalAlignment="Center"
+                                                                    Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                        <TextBlock Text="{Binding MachineBadge}" FontSize="10" MaxWidth="90" TextTrimming="CharacterEllipsis"
+                                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <!-- Mirrors the session-header provider pill (SessionView.axaml) so a local
                                      (Ollama/LM Studio) session is identifiable from the sidebar too, not just once
@@ -263,6 +274,49 @@
                     </StackPanel>
                 </StackPanel>
             </Border>
+        </DataTemplate>
+        <DataTemplate x:Key="ServerSessionRow" x:DataType="vm:ServerSessionRowViewModel">
+            <Button Classes="Subtle" Margin="0,0,0,4" Padding="0"
+                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                    Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).OpenServerSessionCommand}"
+                    CommandParameter="{Binding}"
+                    ToolTip.Tip="Open this session; it runs on the server">
+                <!-- The waiting wash is the local row's own: the sessionItem style classes, off the same predicate. -->
+                <Border Classes="sessionItem" Padding="8,6" CornerRadius="{StaticResource CockpitControlRadius}"
+                        Classes.attention="{Binding ShowAttention}">
+                    <StackPanel Spacing="2">
+                        <Grid ColumnDefinitions="Auto,*,Auto,Auto" VerticalAlignment="Center">
+                            <Ellipse Width="8" Height="8" Margin="0,0,6,0" VerticalAlignment="Center"
+                                     Fill="{Binding StatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                            <TextBlock Grid.Column="1" Text="{Binding Title}" FontWeight="SemiBold"
+                                       TextTrimming="CharacterEllipsis"/>
+                            <materialIcons:MaterialIcon Grid.Column="2" Margin="6,0,0,0" Kind="AlertOutline" Width="13" Height="13"
+                                       Foreground="{DynamicResource CockpitStatusWaitingBrush}"
+                                       IsVisible="{Binding ShowAttention}"
+                                       ToolTip.Tip="Needs attention"/>
+                            <Border Grid.Column="3" Classes="tag" Margin="6,0,0,0" VerticalAlignment="Center"
+                                    CornerRadius="{StaticResource CockpitPillRadius}"
+                                    IsVisible="{Binding MachineBadge, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <materialIcons:MaterialIcon Kind="Server" Width="10" Height="10" VerticalAlignment="Center"
+                                                            Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                    <TextBlock Text="{Binding MachineBadge}" FontSize="10" MaxWidth="90" TextTrimming="CharacterEllipsis"
+                                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+                        <TextBlock Text="{Binding Detail}" FontSize="11" TextTrimming="CharacterEllipsis"
+                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        <TextBlock Text="{Binding Statusline}" FontSize="11" TextTrimming="CharacterEllipsis"
+                                   IsVisible="{Binding ShowStatusline}"
+                                   Foreground="{DynamicResource CockpitAccentBrush}"/>
+                        <Border Classes="tag" HorizontalAlignment="Left"
+                                IsVisible="{Binding ActivityBadge, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                            <TextBlock Text="{Binding ActivityBadge}" FontSize="9" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        </Border>
+                    </StackPanel>
+                </Border>
+            </Button>
         </DataTemplate>
     </UserControl.Resources>
 
@@ -321,6 +375,11 @@
         </Style>
         <Style Selector="Border.workspaceTab Button.closeWorkspace">
             <Setter Property="Opacity" Value="0"/>
+        </Style>
+        <!-- AC-1750: the preview tab (v003), an italic title the next preview replaces until it is pinned. -->
+        <Style Selector="Border.workspaceTab.preview TextBlock.workspaceTabName">
+            <Setter Property="FontStyle" Value="Italic"/>
+            <Setter Property="Padding" Value="0,0,2,0"/>
         </Style>
         <Style Selector="Border.workspaceTab:pointerover Button.closeWorkspace">
             <Setter Property="Opacity" Value="1"/>
@@ -741,7 +800,39 @@
                             ToolTip.Tip="Open the projects overview"/>
                 </StackPanel>
 
-                    <StackPanel Spacing="2">
+                    <!-- AC-1925: the filter over the grouped list below. On, the waiting sessions of every machine stand in one
+                         flat list, each with the machine it runs on; off, the groups. The count is there either way. -->
+                    <Button Classes="chip waitingFilter" Classes.on="{Binding ShowOnlyWaiting}" Margin="0,0,0,6"
+                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                            IsVisible="{Binding ShowsWaitingFilter}"
+                            Command="{Binding ToggleWaitingFilterCommand}"
+                            ToolTip.Tip="Show only the sessions waiting for you, across all machines">
+                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
+                            <materialIcons:MaterialIcon Kind="AlertOutline" Width="13" Height="13" VerticalAlignment="Center"
+                                                        Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
+                            <TextBlock Grid.Column="1" Text="Waiting for you" VerticalAlignment="Center"/>
+                            <Border Grid.Column="2" Classes="waitingCount">
+                                <TextBlock Text="{Binding WaitingCount}" Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
+                            </Border>
+                        </Grid>
+                    </Button>
+                    <ItemsControl ItemsSource="{Binding WaitingSessions}" IsVisible="{Binding ShowOnlyWaiting}"
+                                  PointerReleased="OnSessionItemPointerReleased">
+                        <ItemsControl.DataTemplates>
+                            <DataTemplate x:DataType="vm:SessionPanelViewModel">
+                                <ContentControl Content="{Binding}" ContentTemplate="{StaticResource SidebarSessionRow}"/>
+                            </DataTemplate>
+                            <DataTemplate x:DataType="vm:ServerSessionRowViewModel">
+                                <ContentControl Content="{Binding}" ContentTemplate="{StaticResource ServerSessionRow}"/>
+                            </DataTemplate>
+                        </ItemsControl.DataTemplates>
+                    </ItemsControl>
+                    <TextBlock Margin="2,2,0,0" FontSize="11" TextWrapping="Wrap"
+                               IsVisible="{Binding ShowsNothingWaiting}"
+                               Foreground="{DynamicResource CockpitTextFaintBrush}"
+                               Text="Nothing is waiting for you."/>
+
+                    <StackPanel Spacing="2" IsVisible="{Binding ShowGroupedSessions}">
                         <!-- AC-1306: the session list as a workspace tree.
                              WHAT THIS TREE GROUPS: *where a session stands* — a workspace tab, and the sessions
                              placed on it. That is all it claims. AC-1302's rail in the Simple stand groups *who
@@ -756,10 +847,13 @@
                         <!-- AC-1487: this laptop's desks, which a remote window does not have. -->
                         <StackPanel Spacing="2" IsVisible="{Binding !IsRemoteWindow}">
                             <!-- AC-1456: once a server group stands below, this laptop's desks get their own heading. -->
-                            <Grid ColumnDefinitions="*,Auto" Margin="2,0,4,2" IsVisible="{Binding HasServerGroups}">
+                            <Grid ColumnDefinitions="*,Auto,Auto" Margin="2,0,4,2" IsVisible="{Binding ShowLocalMachineHeading}">
                                 <TextBlock Text="This laptop" FontSize="11" FontWeight="SemiBold"
                                            Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                                <TextBlock Grid.Column="1" Text="{Binding Sessions.Count}" FontSize="11"
+                                <Border Grid.Column="1" Classes="tag" Margin="4,0" IsVisible="{Binding LocalLeads}">
+                                    <TextBlock Text="leads" FontSize="10" Foreground="{DynamicResource CockpitStatusDoneBrush}"/>
+                                </Border>
+                                <TextBlock Grid.Column="2" Text="{Binding Sessions.Count}" FontSize="11"
                                            Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                             </Grid>
                             <ItemsControl x:Name="SessionListStrip" ItemsSource="{Binding SessionWorkspaceGroups}">
@@ -838,7 +932,7 @@
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="vm:ServerGroupViewModel">
                                     <StackPanel Spacing="2" Margin="0,0,0,6">
-                                        <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="4" Margin="2,3">
+                                        <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto" ColumnSpacing="4" Margin="2,3">
                                             <ToggleButton Grid.Column="0" Classes="Subtle" Padding="2,0"
                                                           IsChecked="{Binding IsExpanded}"
                                                           Foreground="{DynamicResource CockpitTextFaintBrush}"
@@ -856,36 +950,21 @@
                                             <TextBlock Grid.Column="2" Text="{Binding Name}" FontSize="11" FontWeight="SemiBold"
                                                        VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                                                        Foreground="{DynamicResource CockpitAccentBrush}"/>
-                                            <TextBlock Grid.Column="3" Text="{Binding SidebarStatus}" FontSize="11"
+                                            <Border Grid.Column="3" Classes="tag" IsVisible="{Binding Leads}">
+                                                <TextBlock Text="leads" FontSize="10" Foreground="{DynamicResource CockpitStatusDoneBrush}"/>
+                                            </Border>
+                                            <TextBlock Grid.Column="4" Text="{Binding SidebarStatus}" FontSize="11"
                                                        VerticalAlignment="Center" Margin="0,0,4,0"
                                                        Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                         </Grid>
-                                        <ItemsControl ItemsSource="{Binding Sessions}" Margin="13,0,0,0" IsVisible="{Binding IsExpanded}">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate x:DataType="vm:ServerSessionRowViewModel">
-                                                    <Button Classes="Subtle" Margin="0,0,0,4" Padding="8,6"
-                                                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                                                            Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).OpenServerSessionCommand}"
-                                                            CommandParameter="{Binding}"
-                                                            ToolTip.Tip="Open this session; it runs on the server">
-                                                        <StackPanel Spacing="2">
-                                                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                                                <Ellipse Width="8" Height="8" VerticalAlignment="Center"
-                                                                         Fill="{Binding StatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
-                                                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
-                                                                           TextTrimming="CharacterEllipsis"/>
-                                                            </StackPanel>
-                                                            <TextBlock Text="{Binding Detail}" FontSize="11" TextTrimming="CharacterEllipsis"
-                                                                       Foreground="{DynamicResource CockpitTextFaintBrush}"/>
-                                                        </StackPanel>
-                                                    </Button>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
+                                        <ItemsControl ItemsSource="{Binding Sessions}" Margin="13,0,0,0" IsVisible="{Binding IsExpanded}"
+                                                      Opacity="{Binding RowsOpacity}"
+                                                      ItemTemplate="{StaticResource ServerSessionRow}"/>
                                         <Button Classes="Subtle" Padding="8,2" FontSize="11" Margin="13,0,0,0"
-                                                HorizontalAlignment="Left" IsVisible="{Binding IsExpanded}"
+                                                HorizontalAlignment="Left" IsVisible="{Binding ShowStart}"
                                                 Foreground="{DynamicResource CockpitTextFaintBrush}"
                                                 Content="{Binding Start.SidebarLabel}"
+                                                IsEnabled="{Binding IsConnected}"
                                                 Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).OpenServerStartCommand}"
                                                 CommandParameter="{Binding}"/>
                                     </StackPanel>
@@ -1154,10 +1233,18 @@
 
                     <!-- The drag lives on the strip, not on the tabs: a move rebuilds the tabs, so a handler on
                          the dragged Border would stop firing the moment it did its job once. -->
-                    <ItemsControl x:Name="WorkspaceTabStrip" ItemsSource="{Binding Workspaces.Tabs}"
-                                  IsVisible="{Binding Workspaces.ShowTabStrip}"
-                                  PointerMoved="OnWorkspaceTabPointerMoved"
-                                  PointerReleased="OnWorkspaceTabPointerReleased">
+                    <Grid x:Name="WorkspaceTabsHost" ColumnDefinitions="Auto,*,Auto"
+                          IsVisible="{Binding Workspaces.ShowTabStrip}"
+                          PointerWheelChanged="OnWorkspaceTabsWheel"
+                          PointerMoved="OnWorkspaceTabPointerMoved"
+                          PointerCaptureLost="OnWorkspaceTabCaptureLost"
+                          PointerReleased="OnWorkspaceTabPointerReleased">
+                    <Button x:Name="WorkspaceTabsLeft" Grid.Column="0" Classes="Subtle" Content="‹"
+                            Padding="6,3" IsVisible="False" Click="OnWorkspaceTabsLeft"
+                            ToolTip.Tip="Scroll tabs left"/>
+                    <ScrollViewer x:Name="WorkspaceTabsScroll" Grid.Column="1"
+                                  HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled">
+                    <ItemsControl x:Name="WorkspaceTabStrip" ItemsSource="{Binding Workspaces.Tabs}">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
                                 <StackPanel Orientation="Horizontal" Spacing="4"/>
@@ -1166,8 +1253,8 @@
                         <ItemsControl.ItemTemplate>
                             <DataTemplate DataType="vm:WorkspaceTabViewModel">
                                 <!-- Double-click renames in place — the same inline edit a session row uses,
-                                     rather than a dialog for one short string. -->
-                                <Border Classes="workspaceTab" Classes.active="{Binding IsActive}"
+                                     rather than a dialog for one short string. On a preview tab it pins it (AC-1750). -->
+                                <Border Classes="workspaceTab" Classes.active="{Binding IsActive}" Classes.preview="{Binding IsPreview}"
                                         CornerRadius="6" Padding="10,4" Background="Transparent"
                                         PointerPressed="OnWorkspaceTabPressed"
                                         DoubleTapped="OnWorkspaceTabDoubleTapped">
@@ -1176,7 +1263,7 @@
                                          own (Raymond). Same menu shape as the session rows' own. -->
                                     <Border.ContextMenu>
                                         <ContextMenu>
-                                            <MenuItem Header="Rename…" Click="OnRenameWorkspaceRequested"/>
+                                            <MenuItem Header="Rename…" Click="OnRenameWorkspaceRequested" IsVisible="{Binding CanRename}"/>
                                             <MenuItem Header="Close" Click="OnCloseWorkspaceRequested"/>
                                         </ContextMenu>
                                     </Border.ContextMenu>
@@ -1191,8 +1278,20 @@
                                                 ToolTip.Tip="Close workspace">
                                             <materialIcons:MaterialIcon Kind="Close" Width="10" Height="10"/>
                                         </Button>
+                                        <Ellipse DockPanel.Dock="Right" Width="7" Height="7" Margin="7,0,0,0" VerticalAlignment="Center"
+                                                 Fill="{DynamicResource CockpitStatusWaitingBrush}"
+                                                 IsVisible="{Binding HasMarker}" ToolTip.Tip="Unsaved changes"/>
+                                        <Ellipse DockPanel.Dock="Right" Width="7" Height="7" Margin="7,0,0,0" VerticalAlignment="Center"
+                                                 Fill="{DynamicResource CockpitStatusDoneBrush}"
+                                                 IsVisible="{Binding IsLive}" ToolTip.Tip="Live: changes are shared as you type"/>
+                                        <Border DockPanel.Dock="Right" Margin="7,0,0,0" Padding="6,0" CornerRadius="8" VerticalAlignment="Center"
+                                                BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
+                                                IsVisible="{Binding IsPreview}"
+                                                ToolTip.Tip="Preview: the next preview replaces it. Double-click to keep it open.">
+                                            <TextBlock Text="preview" FontSize="10.5" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                        </Border>
                                         <materialIcons:MaterialIcon Kind="{Binding Icon}" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                        <TextBlock Text="{Binding Name}" VerticalAlignment="Center"
+                                        <TextBlock Classes="workspaceTabName" Text="{Binding Name}" VerticalAlignment="Center"
                                                    IsVisible="{Binding !IsRenaming}"/>
                                         <!-- Sized and aligned to sit in the tab rather than on top of it: a
                                              default TextBox brings its own padding and min-height, which made
@@ -1210,6 +1309,11 @@
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
+                    </ScrollViewer>
+                    <Button x:Name="WorkspaceTabsRight" Grid.Column="2" Classes="Subtle" Content="›"
+                            Padding="6,3" IsVisible="False" Click="OnWorkspaceTabsRight"
+                            ToolTip.Tip="Scroll tabs right"/>
+                    </Grid>
                 </DockPanel>
             </Border>
 
@@ -1529,7 +1633,7 @@
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:ServerGroupViewModel">
                             <StackPanel Spacing="8" Margin="0,0,0,8">
-                                <Border Padding="14,10" Background="{DynamicResource CockpitPanelBgBrush}"
+                                <Border Padding="14,10" Background="{DynamicResource CockpitPanelBgBrush}" IsVisible="{Binding IsConnectServer}"
                                         BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
                                         CornerRadius="{StaticResource CockpitControlRadius}">
                                     <DockPanel>
@@ -1548,14 +1652,14 @@
                                                 </StackPanel>
                                             </Button>
                                             <Border Classes="tag" IsVisible="{Binding IsOperateKey}" VerticalAlignment="Center"
-                                                    ToolTip.Tip="Admin needs an admin key; this key may operate only">
+                                                    ToolTip.Tip="Managing servers needs an admin key; this key may operate only">
                                                 <StackPanel Orientation="Horizontal" Spacing="4">
-                                                    <TextBlock Text="Admin" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                                    <TextBlock Text="Servers" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                                     <materialIcons:MaterialIcon Kind="Lock" Width="11" Height="11"
                                                                                 Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
                                                 </StackPanel>
                                             </Border>
-                                            <Button Classes="Subtle Compact" Content="Admin" IsVisible="{Binding IsAdminKey}"
+                                            <Button Classes="Subtle Compact" Content="Servers" IsVisible="{Binding IsAdminKey}"
                                                     Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).OpenServerAdminCommand}"
                                                     CommandParameter="{Binding}"
                                                     ToolTip.Tip="Options on this server: its connect keys and audit log"/>
@@ -1583,7 +1687,7 @@
                                     </DockPanel>
                                 </Border>
 
-                                <StackPanel IsVisible="{Binding Health.IsOpen}">
+                                <StackPanel IsVisible="{Binding Health.IsOpen, FallbackValue=False, TargetNullValue=False}">
                                     <controls:ServerHealthView DataContext="{Binding Health}"/>
                                 </StackPanel>
 
@@ -1610,7 +1714,7 @@
                                         HorizontalAlignment="Left" CornerRadius="{StaticResource CockpitControlRadius}">
                                     <StackPanel Spacing="10">
                                         <TextBlock Text="{Binding Start.Heading}" FontSize="14" FontWeight="SemiBold"/>
-                                        <TextBlock Text="Runs on the server. Only SDK sessions; profiles and projects are the server's own. No project uses the server's scratch directory."
+                                        <TextBlock Text="{Binding Start.HelpText}"
                                                    FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                         <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
                                             <StackPanel Spacing="4">
@@ -1895,7 +1999,6 @@
                         <Binding Path="IsSafeMode"/>
                         <Binding Path="HasPluginFailures"/>
                         <Binding Path="HasPendingApprovals"/>
-                        <Binding Path="HasIncomingPairing"/>
                     </MultiBinding>
                 </StackPanel.IsVisible>
                 <!-- Safe-mode banner (AC-478): not dismissible, unlike the two below — it describes how this whole
@@ -1948,18 +2051,6 @@
                     </DockPanel>
                 </Border>
 
-                <!-- Incoming-pairing banner (AC-1291): the offer lives two minutes and showed up nowhere unless the
-                     Nodes page happened to be open. No dismiss button — see the view model. -->
-                <Border IsVisible="{Binding HasIncomingPairing}"
-                        Background="{DynamicResource CockpitSecondaryBgBrush}" BorderBrush="{DynamicResource CockpitStatusWaitingBrush}"
-                        BorderThickness="1" CornerRadius="{StaticResource CockpitControlRadius}" Padding="12,8">
-                    <DockPanel>
-                        <Button DockPanel.Dock="Right" Content="Review it" Margin="8,0,0,0"
-                                Command="{Binding ShowIncomingPairingCommand}"/>
-                        <TextBlock Text="{Binding IncomingPairingBanner}" TextWrapping="Wrap" VerticalAlignment="Center"
-                                   Foreground="{DynamicResource CockpitStatusWaitingBrush}" FontSize="12"/>
-                    </DockPanel>
-                </Border>
             </StackPanel>
 
             <!-- AC-1301: the assistant's conversation, filled in code-behind from
@@ -2167,8 +2258,11 @@
                                             HorizontalAlignment="Right" VerticalAlignment="Top"
                                             IsVisible="{Binding Badge.HasCount, FallbackValue=False}"
                                             Click="OnDockTabBadgeClick" ToolTip.Tip="Open what waits for you">
-                                        <Border Classes="waitingCount" Padding="3,0" MinWidth="13">
-                                            <TextBlock Text="{Binding Badge.Count, FallbackValue=0}" FontSize="9"/>
+                                        <Border Classes="waitingCount" Padding="3,0" MinWidth="13"
+                                                Background="{Binding Badge.Tone, Converter={x:Static conv:BadgeToneBrushConverter.Instance}, ConverterParameter=ChipTint}"
+                                                BorderBrush="{Binding Badge.Tone, Converter={x:Static conv:BadgeToneBrushConverter.Instance}, ConverterParameter=RingTint}">
+                                            <TextBlock Text="{Binding Badge.Count, FallbackValue=0}" FontSize="9"
+                                                       Foreground="{Binding Badge.Tone, Converter={x:Static conv:BadgeToneBrushConverter.Instance}}"/>
                                         </Border>
                                     </Button>
                                 </Grid>
@@ -2188,6 +2282,7 @@
                                 ToolTip.Tip="Undock into its own window">
                             <materialIcons:MaterialIcon Kind="DockWindow" Width="15" Height="15"/>
                         </Button>
+                        <controls:DockPanelHeaderActionsHost x:Name="DockPanelHeaderActions" DockPanel.Dock="Right"/>
                         <!-- AC-1862: the Simple stand's way back to the assistant this panel replaced in the rail. -->
                         <Button x:Name="DockPanelBack" DockPanel.Dock="Left" Classes="Ghost Compact" IsVisible="False"
                                 Margin="0,0,8,0" Command="{Binding BackToAssistantCommand}"
@@ -2512,7 +2607,7 @@
                         <ItemsControl.ItemTemplate>
                             <DataTemplate DataType="plugins:PluginStatusText">
                                 <TextBlock Text="{Binding Text}" FontSize="11" Margin="0,0,12,0"
-                                           Foreground="{DynamicResource CockpitTextFaintBrush}"
+                                           Foreground="{Binding Tone, Converter={x:Static conv:BadgeToneBrushConverter.Instance}}"
                                            VerticalAlignment="Center"/>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>

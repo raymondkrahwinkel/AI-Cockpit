@@ -32,9 +32,9 @@ public class CockpitToolSearchTests
         var echo = AIFunctionFactory.Create((string text) => { ran = true; return $"echoed:{text}"; }, "echo");
         var catalog = _CatalogOf(CockpitToolSearch.PreloadThreshold + 1, alwaysMounted: "set_status", extra: echo);
 
-        var (driver, _) = await _StartAsync(
+        var (driver, options) = await _StartAsync(
             catalog,
-            _ProxyCall("echo", "{\"text\":\"hi\"}"),
+            _ToolCall("echo", ("text", "hi")),
             _Stream("done"),
             toolClasses: new Dictionary<string, ToolPermissionClass> { ["echo"] = ToolPermissionClass.Unknown });
         await driver.SetDelegatedToolGateAsync("acceptEdits", []);
@@ -42,6 +42,7 @@ public class CockpitToolSearchTests
         var events = await _CollectUntilTurnCompletedAsync(driver);
 
         Assert.False(ran);
+        Assert.All(options, option => Assert.DoesNotContain(option!.Tools!, tool => tool.Name == "echo"));
         Assert.Empty(events.OfType<PermissionRequested>());
         var result = Assert.Single(events.OfType<ToolResult>());
         Assert.True(result.IsError);
@@ -61,7 +62,7 @@ public class CockpitToolSearchTests
 
         var (driver, _) = await _StartAsync(
             catalog,
-            _ProxyCall("echo", "{\"text\":\"hi\"}"),
+            _ToolCall("echo", ("text", "hi")),
             _Stream("done"),
             toolClasses: new Dictionary<string, ToolPermissionClass> { ["echo"] = ToolPermissionClass.Unknown });
         await driver.SetDelegatedToolGateAsync("plan", ["echo"]);
@@ -80,8 +81,8 @@ public class CockpitToolSearchTests
     {
         var echo = AIFunctionFactory.Create((string text) => $"echoed:{text}", "echo");
         var (driver, _) = await _StartAsync(
-            [new McpSessionTool(echo, "test-server", AlwaysMounted: false)],
-            _ToolCall("echo", ("text", "hi")),
+            _CatalogOf(CockpitToolSearch.PreloadThreshold + 1, "set_status", echo),
+            _ProxyCall("echo", "{\"text\":\"hi\"}"),
             _Stream("done"),
             toolClasses: new Dictionary<string, ToolPermissionClass> { ["echo"] = ToolPermissionClass.Unknown });
         await driver.SetDelegatedToolGateAsync("acceptEdits", []);
@@ -128,12 +129,12 @@ public class CockpitToolSearchTests
         toolSession.ConnectedServerNames.Returns(["test-server"]);
         toolSession.ToolClasses.Returns(toolClasses ?? new Dictionary<string, ToolPermissionClass>());
         var toolProvider = Substitute.For<IMcpToolProvider>();
-        toolProvider.ConnectAsync(Arg.Any<IReadOnlySet<string>?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+        toolProvider.ConnectAsync(Arg.Any<IReadOnlySet<string>?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>(), Arg.Any<string?>())
             .Returns(toolSession);
         var factory = Substitute.For<IChatClientFactory>();
         factory.Create(Arg.Any<ProviderConfig>()).Returns(chatClient);
 
-        var driver = new OpenAiCompatSessionDriver(factory, toolProvider, NullLogger<OpenAiCompatSessionDriver>.Instance);
+        var driver = new OpenAiCompatSessionDriver(factory, toolProvider, NullLogger<OpenAiCompatSessionDriver>.Instance, Substitute.For<ILocalModelContextManager>());
         await driver.StartAsync(LocalProfile);
         return (driver, options);
     }

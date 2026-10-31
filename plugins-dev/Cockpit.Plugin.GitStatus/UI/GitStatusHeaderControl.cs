@@ -218,25 +218,42 @@ internal sealed class GitStatusHeaderControl : UserControl
         }
 
         _DisposeHeadWatcher();
+        FileSystemWatcher watcher;
         try
         {
-            var watcher = new FileSystemWatcher(directory, "HEAD")
-            {
-                NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName,
-            };
-            watcher.Changed += _OnHeadChanged;
-            watcher.Created += _OnHeadChanged;
-            watcher.Renamed += _OnHeadChanged;
-            watcher.EnableRaisingEvents = true;
-            _headWatcher = watcher;
-            _watchedHeadDirectory = directory;
+            // AC-1891: armed off the UI thread, since a watch on a network or empty drive can block for seconds.
+            watcher = await Task.Run(() => _CreateHeadWatcher(directory));
         }
         catch (Exception exception) when (exception is IOException or ArgumentException or UnauthorizedAccessException)
         {
             // The OS can refuse the watch (an inotify limit, a directory that just vanished): the badge keeps its
             // other refresh triggers, only following an external checkout is lost.
             _watchedHeadDirectory = null;
+            return;
         }
+
+        // Detached, or a concurrent call armed one, while this one was being created: keep at most one.
+        if (!_isAttached || _headWatcher is not null)
+        {
+            watcher.Dispose();
+            return;
+        }
+
+        _headWatcher = watcher;
+        _watchedHeadDirectory = directory;
+    }
+
+    private FileSystemWatcher _CreateHeadWatcher(string directory)
+    {
+        var watcher = new FileSystemWatcher(directory, "HEAD")
+        {
+            NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName,
+        };
+        watcher.Changed += _OnHeadChanged;
+        watcher.Created += _OnHeadChanged;
+        watcher.Renamed += _OnHeadChanged;
+        watcher.EnableRaisingEvents = true;
+        return watcher;
     }
 
     // Watching is best-effort, so a HEAD that cannot be resolved (no backend part answering, git failing) means

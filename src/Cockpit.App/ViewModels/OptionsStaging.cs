@@ -77,6 +77,8 @@ internal static class OptionsStaging
         "Security.NodeEndpointEnabled",
         "Security.ShellAccessEnabled",
         "Security.TerminalAccessEnabled",
+        "Swarm.ExtraInternalCidrsText",
+        "Swarm.ReturnChoice",
         "AssistantOptions.AlwaysOnTop",
         "AssistantOptions.ConsentBypassAll",
         "AssistantOptions.IsEnabled",
@@ -94,18 +96,13 @@ internal static class OptionsStaging
         "BackupIncludesCredentials",
         "BackupIncludesProfiles",
         "ScheduledBackupSettings",
-        "Security.PairWithNodeAddress",
-        // AC-1352: the same shape as PairWithNodeAddress above — inputs to a one-shot connect action, not a
-        // setting Apply persists or Cancel should put back.
+        "Swarm.Address",
+        // AC-1352: inputs to a connect action, not settings persisted by Apply.
         "Security.ConnectNodeName",
         "Security.ConnectHost",
         "Security.ConnectPort",
         "Security.ConnectKey",
         "Security.ConnectFingerprint",
-        // AC-1292: written straight through to the pairing, like the scope ticks beside them — the controller's
-        // reach must narrow on the spot, not at the next Apply, and Cancel does not put it back.
-        "Security.AllowAllProfiles",
-        "Security.AllowAllProjects",
     ];
 
     // The handlers in `OptionsDialog.axaml.cs` that act on the spot and are not undone by Cancel (AC-999 §6).

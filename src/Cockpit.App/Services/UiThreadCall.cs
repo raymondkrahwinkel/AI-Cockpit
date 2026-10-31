@@ -29,6 +29,9 @@ internal static class UiThreadCall
     internal static Task Uncapped(Func<Task> work) =>
         Dispatcher.UIThread.CheckAccess() ? work() : Dispatcher.UIThread.InvokeAsync(work);
 
+    internal static Task<T> Uncapped<T>(Func<Task<T>> work) =>
+        Dispatcher.UIThread.CheckAccess() ? work() : Dispatcher.UIThread.InvokeAsync(work);
+
     internal static T Run<T>(Func<T> work, TimeSpan? grace = null) =>
         Dispatcher.UIThread.CheckAccess() ? work() : DispatchAsync(work, grace).GetAwaiter().GetResult();
 

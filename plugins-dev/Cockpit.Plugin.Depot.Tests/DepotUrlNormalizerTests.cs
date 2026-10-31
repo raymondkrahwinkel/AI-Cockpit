@@ -23,32 +23,24 @@ public class DepotUrlNormalizerTests
     // Decision (documented on the class): a literal trailing-substring transform, not a URI parse — a query string
     // or fragment after /mcp stops the literal suffix match, so it is left untouched rather than guessed at. Depot's
     // own documented URL never carries either.
-    [Theory]
-    [InlineData("https://depot.example.com", "https://depot.example.com")]
-    [InlineData("  not a url at all  ", "not a url at all")]
-    [InlineData("https://depot.example.com/mcp?token=abc", "https://depot.example.com/mcp?token=abc")]
-    [InlineData("https://depot.example.com/mcp#section", "https://depot.example.com/mcp#section")]
-    public void Normalize_WithNoTrailingMcpSegment_IsOnlyTrimmed(string url, string expected)
+    [Fact]
+    public void Normalize_WithNoTrailingMcpSegment_IsOnlyTrimmed_AndNullOrBlankIsEmpty()
     {
-        Assert.Equal(expected, DepotUrlNormalizer.Normalize(url));
+        Assert.Equal("https://depot.example.com", DepotUrlNormalizer.Normalize("https://depot.example.com"));
+        Assert.Equal("not a url at all", DepotUrlNormalizer.Normalize("  not a url at all  "));
+        Assert.Equal("https://depot.example.com/mcp?token=abc", DepotUrlNormalizer.Normalize("https://depot.example.com/mcp?token=abc"));
+        Assert.Equal("https://depot.example.com/mcp#section", DepotUrlNormalizer.Normalize("https://depot.example.com/mcp#section"));
+        Assert.Equal(string.Empty, DepotUrlNormalizer.Normalize(null));
+        Assert.Equal(string.Empty, DepotUrlNormalizer.Normalize("   "));
     }
 
-    [Theory]
-    [InlineData(null)]
-    [InlineData("   ")]
-    public void Normalize_NullOrBlank_ReturnsEmpty(string? url)
+    [Fact]
+    public void Origin_KeepsSchemeHostAndPort_AndIsNullWithoutAUrl()
     {
-        Assert.Equal(string.Empty, DepotUrlNormalizer.Normalize(url));
-    }
-
-    [Theory]
-    [InlineData("https://depot.example.com", "https://depot.example.com")]
-    [InlineData("https://host/depot", "https://host")]
-    [InlineData("https://depot.example.com:8443", "https://depot.example.com:8443")]
-    [InlineData("depot.example.com", null)] // no scheme is not a URL to take an origin from
-    [InlineData("not a url at all", null)]
-    public void Origin_KeepsSchemeHostAndPort_AndIsNullWithoutAUrl(string url, string? expected)
-    {
-        Assert.Equal(expected, DepotUrlNormalizer.Origin(url));
+        Assert.Equal("https://depot.example.com", DepotUrlNormalizer.Origin("https://depot.example.com"));
+        Assert.Equal("https://host", DepotUrlNormalizer.Origin("https://host/depot"));
+        Assert.Equal("https://depot.example.com:8443", DepotUrlNormalizer.Origin("https://depot.example.com:8443"));
+        Assert.Null(DepotUrlNormalizer.Origin("depot.example.com")); // no scheme is not a URL to take an origin from
+        Assert.Null(DepotUrlNormalizer.Origin("not a url at all"));
     }
 }

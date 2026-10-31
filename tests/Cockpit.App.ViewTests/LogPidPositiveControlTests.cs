@@ -57,7 +57,7 @@ public class LogPidPositiveControlTests
         return int.Parse(match.Groups[1].Value);
     }
 
-    private static Process _StartProbe(string probeDll, string logPath, string label)
+    internal static Process _StartProbe(string probeDll, string logPath, string label)
     {
         var startInfo = new ProcessStartInfo("dotnet") { UseShellExecute = false };
         startInfo.ArgumentList.Add("exec");
@@ -69,7 +69,7 @@ public class LogPidPositiveControlTests
 
     // Walks up from the test output to the repo root and finds the probe's build output, the same technique
     // DiagramPluginLoadTests uses for its build-only ProjectReference.
-    private static string? _LocateProbeOutput()
+    internal static string? _LocateProbeOutput()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null)

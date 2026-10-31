@@ -112,7 +112,7 @@ public sealed class CiWatcher : ISingletonService, IDisposable
 
         try
         {
-            var settings = await _settingsStore.LoadAsync(cancellationToken);
+            var settings = await _settingsStore.LoadAsync(cancellationToken).ConfigureAwait(false);
             if (!settings.NotifyOnCiFailure)
             {
                 // Checked before anything is run, not before anything is delivered: the cost of this feature is the
@@ -131,7 +131,7 @@ public sealed class CiWatcher : ISingletonService, IDisposable
             foreach (var group in checkoutGroups)
             {
                 var recipients = group.ToList();
-                await _LookAsync(recipients[0], recipients, cancellationToken);
+                await _LookAsync(recipients[0], recipients, cancellationToken).ConfigureAwait(false);
             }
         }
         finally
@@ -145,7 +145,7 @@ public sealed class CiWatcher : ISingletonService, IDisposable
         string output;
         try
         {
-            output = await Probe(checkout.Directory, cancellationToken);
+            output = await Probe(checkout.Directory, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception exception)
         {
@@ -158,7 +158,7 @@ public sealed class CiWatcher : ISingletonService, IDisposable
         string head;
         try
         {
-            head = await HeadProbe(checkout.Directory, cancellationToken);
+            head = await HeadProbe(checkout.Directory, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception exception)
         {
@@ -184,11 +184,11 @@ public sealed class CiWatcher : ISingletonService, IDisposable
 
         if (newlyRed.Count > 0)
         {
-            await _ReportAsync(checkout, recipients, newlyRed, cancellationToken);
+            await _ReportAsync(checkout, recipients, newlyRed, cancellationToken).ConfigureAwait(false);
             return;
         }
 
-        await _LookAtReadinessAsync(checkout, recipients, checks, cancellationToken);
+        await _LookAtReadinessAsync(checkout, recipients, checks, cancellationToken).ConfigureAwait(false);
     }
 
     // AC-645: the mirror of a red check — nothing failing, nothing pending, nothing blocking the merge, and nobody
@@ -210,7 +210,7 @@ public sealed class CiWatcher : ISingletonService, IDisposable
         string output;
         try
         {
-            output = await MergeProbe(checkout.Directory, cancellationToken);
+            output = await MergeProbe(checkout.Directory, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception exception)
         {
@@ -224,7 +224,7 @@ public sealed class CiWatcher : ISingletonService, IDisposable
         }
 
         _reportedReady.Add(checkout.Directory);
-        await _ReportReadyAsync(checkout, recipients, cancellationToken);
+        await _ReportReadyAsync(checkout, recipients, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task _ReportReadyAsync(WatchedCheckout checkout, IReadOnlyList<WatchedCheckout> recipients, CancellationToken cancellationToken)
@@ -233,7 +233,7 @@ public sealed class CiWatcher : ISingletonService, IDisposable
 
         await _notifier.NotifyAttentionAsync(
             new AttentionNotification(checkout.Title, "CI is green and the pull request is ready to merge"),
-            cancellationToken);
+            cancellationToken).ConfigureAwait(false);
 
         _Deliver(recipients, $"CI is green on '{checkout.Title}' ({checkout.Directory}) and the pull request is mergeable with nothing "
             + "blocking review. It is still unmerged. Nothing has been started about it.");
@@ -247,7 +247,7 @@ public sealed class CiWatcher : ISingletonService, IDisposable
         // The operator first, over the line they already tuned: an OS toast at the desk, Discord when away.
         await _notifier.NotifyAttentionAsync(
             new AttentionNotification(checkout.Title, $"CI failed: {named}"),
-            cancellationToken);
+            cancellationToken).ConfigureAwait(false);
 
         _Deliver(recipients, $"CI failed on '{checkout.Title}' ({checkout.Directory}): {named}. "
             + $"{string.Join(" ", red.Select(check => check.Link).Where(link => link.Length > 0))} "
@@ -284,7 +284,7 @@ public sealed class CiWatcher : ISingletonService, IDisposable
     {
         try
         {
-            await RunOnceAsync();
+            await RunOnceAsync().ConfigureAwait(false);
         }
         catch (Exception exception)
         {
@@ -305,7 +305,7 @@ public sealed class CiWatcher : ISingletonService, IDisposable
         _RunProcessAsync("gh", workingDirectory, ["pr", "view", "--json", "reviewDecision,mergeable"], cancellationToken);
 
     private static async Task<string> _AskHeadAsync(string workingDirectory, CancellationToken cancellationToken) =>
-        (await _RunProcessAsync("git", workingDirectory, ["rev-parse", "HEAD"], cancellationToken)).Trim();
+        (await _RunProcessAsync("git", workingDirectory, ["rev-parse", "HEAD"], cancellationToken).ConfigureAwait(false)).Trim();
 
     private static async Task<string> _RunProcessAsync(string executable, string workingDirectory, string[] arguments, CancellationToken cancellationToken)
     {

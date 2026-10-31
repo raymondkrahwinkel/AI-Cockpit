@@ -185,6 +185,12 @@ public partial class EditableProfileViewModel : ViewModelBase
     [ObservableProperty]
     private string _systemPrompt;
 
+    [ObservableProperty]
+    private int _contextTokens = LocalModelContext.DefaultTokens;
+
+    [ObservableProperty]
+    private bool _loadModelWithContext;
+
     // AC-1489: a local provider's context-guard bounds have no field of their own; kept so a save does not drop them.
     private readonly JsonElement? _turnLimits;
 
@@ -433,7 +439,14 @@ public partial class EditableProfileViewModel : ViewModelBase
             return;
         }
 
-        var loginFlow = new LoginFlowRowViewModel(flow);
+        var loginFlow = new LoginFlowRowViewModel(flow)
+        {
+            RestartSignIn = () =>
+            {
+                Login();
+                return Task.CompletedTask;
+            },
+        };
         loginFlow.Completed = succeeded =>
         {
             if (succeeded)
@@ -449,11 +462,12 @@ public partial class EditableProfileViewModel : ViewModelBase
     public bool IsValid =>
         !string.IsNullOrWhiteSpace(Label)
         && _AreEnvironmentVariablesValid()
+        && (!IsLmStudioProvider || LmStudioLoadOptionsError is null)
         && SelectedProvider.Value switch
         {
             SessionProvider.ClaudeCli => !string.IsNullOrWhiteSpace(ConfigDir),
             SessionProvider.Plugin => PluginConfigView is not null && PluginConfigView.TryGetConfigJson(out _),
-            _ => !string.IsNullOrWhiteSpace(BaseUrl) && !string.IsNullOrWhiteSpace(Model),
+            _ => !string.IsNullOrWhiteSpace(BaseUrl) && !string.IsNullOrWhiteSpace(Model) && ContextTokens > 0,
         };
 
     // Every row a settable POSIX name, no key twice — a duplicate would silently overwrite its sibling at spawn.
@@ -652,11 +666,24 @@ public partial class EditableProfileViewModel : ViewModelBase
             LmStudioConfig lmStudio => (lmStudio.BaseUrl, lmStudio.Model, lmStudio.ApiKey ?? string.Empty, lmStudio.SystemPrompt ?? string.Empty),
             _ => (string.Empty, string.Empty, string.Empty, string.Empty),
         };
+        (_contextTokens, _loadModelWithContext) = profile.ProviderConfig switch
+        {
+            OllamaConfig ollama => (LocalModelContext.Normalize(ollama.ContextTokens), false),
+            LmStudioConfig lmStudio => (LocalModelContext.Normalize(lmStudio.ContextTokens), lmStudio.LoadModelWithContext),
+            _ => (LocalModelContext.DefaultTokens, false),
+        };
         _turnLimits = profile.ProviderConfig switch
         {
             OllamaConfig ollama => ollama.TurnLimits,
             LmStudioConfig lmStudio => lmStudio.TurnLimits,
             _ => null,
+        };
+        _InitializeLmStudioOptions(profile.ProviderConfig as LmStudioConfig);
+        _localReasoningEffort = profile.ProviderConfig switch
+        {
+            LmStudioConfig lmStudio => lmStudio.ReasoningEffort ?? string.Empty,
+            OllamaConfig ollama => ollama.ReasoningEffort ?? string.Empty,
+            _ => string.Empty,
         };
 
         if (profile.ProviderConfig is PluginProviderConfig pluginConfig)
@@ -798,8 +825,8 @@ public partial class EditableProfileViewModel : ViewModelBase
 
         return SelectedProvider.Value switch
         {
-            SessionProvider.Ollama => new OllamaConfig(BaseUrl.Trim(), Model.Trim(), systemPrompt, _turnLimits),
-            SessionProvider.LmStudio => new LmStudioConfig(BaseUrl.Trim(), Model.Trim(), string.IsNullOrWhiteSpace(ApiKey) ? null : ApiKey.Trim(), systemPrompt, _turnLimits),
+            SessionProvider.Ollama => new OllamaConfig(BaseUrl.Trim(), Model.Trim(), systemPrompt, _turnLimits, LocalModelContext.Normalize(ContextTokens), _LocalReasoningEffort()),
+            SessionProvider.LmStudio => new LmStudioConfig(BaseUrl.Trim(), Model.Trim(), string.IsNullOrWhiteSpace(ApiKey) ? null : ApiKey.Trim(), systemPrompt, _turnLimits, LocalModelContext.Normalize(ContextTokens), LoadModelWithContext, _LmStudioLoadOptions(), _ToggleValue(LmStudioThinking), _LocalReasoningEffort()),
             _ => new ClaudeConfig(ConfigDir.Trim(), string.IsNullOrWhiteSpace(ExecutablePath) ? null : ExecutablePath.Trim()),
         };
     }

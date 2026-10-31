@@ -63,4 +63,51 @@ public interface IWorkspaceContext
         add { }
         remove { }
     }
+
+    /// <summary>
+    /// The key this workspace was opened with (<c>WorkspaceOpenOptions.InstanceKey</c>), kept across a restart; null for a
+    /// workspace opened without one. A body that shows one thing per tab (a file) reads what to show from it.
+    /// </summary>
+    string? InstanceKey => null;
+
+    /// <summary>
+    /// Whether this workspace is the preview tab, which the next preview replaces. False once it is pinned (<see cref="Pinned"/>).
+    /// </summary>
+    bool IsPreview => false;
+
+    /// <summary>
+    /// Sets this workspace's tab title. A tab with an <see cref="InstanceKey"/> takes its title from its body and cannot be
+    /// renamed in place.
+    /// </summary>
+    void SetTitle(string title)
+    {
+    }
+
+    /// <summary>
+    /// Puts a mark on this workspace's tab, or clears it with null. Not kept across a restart.
+    /// </summary>
+    void SetMarker(WorkspaceMarker? marker)
+    {
+    }
+
+    /// <summary>
+    /// Pins this preview workspace, so the next preview opens a tab of its own. A no-op when it is not a preview.
+    /// </summary>
+    void Pin()
+    {
+    }
+
+    /// <summary>
+    /// Raised once when this preview workspace is pinned: by <see cref="Pin"/>, or by the operator double-clicking its tab.
+    /// </summary>
+    event EventHandler Pinned
+    {
+        add { }
+        remove { }
+    }
+
+    /// <summary>Asks this body before its tab, floating window or the app closes. Null clears the guard.</summary>
+    void SetCloseGuard(Func<Task<bool>>? guard)
+    {
+    }
 }

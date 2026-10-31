@@ -1,0 +1,271 @@
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Text.Json;
+using Microsoft.Extensions.Logging;
+using Cockpit.Core.Abstractions;
+using Cockpit.Core.Profiles;
+
+namespace Cockpit.Infrastructure.Sessions;
+
+internal interface ILocalModelContextManager
+{
+    Task<string?> PrepareAsync(ProviderConfig config, CancellationToken cancellationToken = default, string? sessionId = null);
+    Task ReleaseAsync(string sessionId);
+}
+
+internal sealed class LocalModelContextManager(HttpClient httpClient, ILogger<LocalModelContextManager> logger)
+    : ILocalModelContextManager, ISingletonService
+{
+    private static readonly SemaphoreSlim _lmStudioLoadGate = new(1, 1);
+    private readonly Dictionary<string, string> _sessions = [];
+
+    public async Task<string?> PrepareAsync(ProviderConfig config, CancellationToken cancellationToken = default, string? sessionId = null)
+    {
+        if (config is OllamaConfig ollama)
+        {
+            var ollamaRequested = LocalModelContext.Normalize(ollama.ContextTokens);
+            logger.LogWarning(
+                "Ollama profile {Model} requests {RequestedContext} context tokens, but the OpenAI-compatible endpoint cannot set num_ctx per request.",
+                ollama.Model,
+                ollamaRequested);
+            return $"Het Ollama-profiel vraagt {ollamaRequested} contexttokens, maar de OpenAI-compatibele /v1-route kan dit niet per aanvraag instellen. Stel OLLAMA_CONTEXT_LENGTH in op de Ollama-server of gebruik een model met PARAMETER num_ctx.";
+        }
+
+        if (config is not LmStudioConfig lmStudio)
+        {
+            return null;
+        }
+
+        var requested = LocalModelContext.Normalize(lmStudio.ContextTokens);
+        logger.LogInformation("Preparing LM Studio model {Model} for session {SessionId}: context {ContextTokens}, managed load {ManagedLoad}.",
+            lmStudio.Model, sessionId, requested, lmStudio.LoadModelWithContext || lmStudio.LoadOptions is not null);
+        await _lmStudioLoadGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var endpoint = new UriBuilder(lmStudio.BaseUrl);
+            if (endpoint.Uri.IsLoopback)
+            {
+                endpoint.Host = "loopback";
+            }
+
+            var key = endpoint.Uri.AbsoluteUri.TrimEnd('/');
+            var inUse = _sessions.Any(session => session.Key != sessionId && session.Value == key);
+            var result = await _PrepareLmStudioAsync(lmStudio, requested, inUse, cancellationToken).ConfigureAwait(false);
+            if (sessionId is not null)
+            {
+                _sessions[sessionId] = key;
+            }
+
+            return result;
+        }
+        finally
+        {
+            _lmStudioLoadGate.Release();
+        }
+    }
+
+    public async Task ReleaseAsync(string sessionId)
+    {
+        await _lmStudioLoadGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            _sessions.Remove(sessionId);
+        }
+        finally
+        {
+            _lmStudioLoadGate.Release();
+        }
+    }
+
+    private async Task<string?> _PrepareLmStudioAsync(LmStudioConfig lmStudio, int requested, bool inUse, CancellationToken cancellationToken)
+    {
+        var managed = lmStudio.LoadModelWithContext || lmStudio.LoadOptions is not null;
+        try
+        {
+            using var response = await _SendAsync(lmStudio, HttpMethod.Get, "/api/v1/models", null, cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                if (managed)
+                {
+                    throw new InvalidOperationException($"LM Studio model inspection failed (HTTP {(int)response.StatusCode}); requested context/options were not applied.");
+                }
+
+                return _UnavailableWarning(lmStudio, requested, $"HTTP {(int)response.StatusCode}");
+            }
+
+            await using var content = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+            using var document = await JsonDocument.ParseAsync(content, cancellationToken: cancellationToken).ConfigureAwait(false);
+            var instance = _LoadedInstance(document.RootElement, lmStudio.Model);
+            if (lmStudio.LoadOptions is not null)
+            {
+                var summary = await LmStudioModelOptions.PrepareAsync(lmStudio, instance?.Id, instance?.ModelKey ?? lmStudio.Model, cancellationToken, allowReload: !inUse).ConfigureAwait(false);
+                logger.LogInformation("{LoadOptions}", summary);
+                return summary;
+            }
+
+            if (instance is null)
+            {
+                _RequireIdleEndpoint(inUse);
+                return await _LoadAsync(lmStudio, requested, cancellationToken).ConfigureAwait(false);
+            }
+
+            if (instance.Value.ContextLength == requested || (!managed && instance.Value.ContextLength > requested))
+            {
+                return null;
+            }
+
+            if (!lmStudio.LoadModelWithContext)
+            {
+                var warning = $"LM Studio is geladen met {instance.Value.ContextLength} tokens; het profiel vraagt {requested} tokens.";
+                logger.LogWarning(
+                    "LM Studio model {Model} is loaded with {LoadedContext} tokens while the profile requests {RequestedContext} tokens.",
+                    lmStudio.Model,
+                    instance.Value.ContextLength,
+                    requested);
+                return warning;
+            }
+
+            _RequireIdleEndpoint(inUse);
+            logger.LogInformation(
+                "Reloading LM Studio model {Model}: instance {InstanceId} has {LoadedContext} context tokens; the profile requests {RequestedContext}.",
+                lmStudio.Model,
+                instance.Value.Id,
+                instance.Value.ContextLength,
+                requested);
+            if (!await _PostAsync(lmStudio, "/api/v1/models/unload", new { instance_id = instance.Value.Id }, cancellationToken).ConfigureAwait(false))
+            {
+                throw new InvalidOperationException($"LM Studio-model {lmStudio.Model} kon niet worden herladen naar {requested} tokens: unload is geweigerd.");
+            }
+
+            return await _LoadAsync(lmStudio, requested, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception) when (!managed && (exception is HttpRequestException or JsonException or UriFormatException))
+        {
+            return _UnavailableWarning(lmStudio, requested, exception.Message, exception);
+        }
+    }
+
+    private static void _RequireIdleEndpoint(bool inUse)
+    {
+        if (inUse)
+        {
+            throw new InvalidOperationException("LM Studio load/reload refused: another Cockpit session uses this endpoint. Stop that session before changing model context or load options.");
+        }
+    }
+
+    private async Task<string?> _LoadAsync(LmStudioConfig config, int contextTokens, CancellationToken cancellationToken)
+    {
+        logger.LogInformation("Loading LM Studio model {Model} with {ContextTokens} context tokens.", config.Model, contextTokens);
+        if (!await _PostAsync(config, "/api/v1/models/load", new { model = config.Model, context_length = contextTokens }, cancellationToken).ConfigureAwait(false))
+        {
+            throw new InvalidOperationException($"LM Studio-model {config.Model} kon niet met {contextTokens} tokens worden geladen; sessiestart gestopt.");
+        }
+
+        using var response = await _SendAsync(config, HttpMethod.Get, "/api/v1/models", null, cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
+        if (_LoadedInstance(document.RootElement, config.Model)?.ContextLength != contextTokens)
+        {
+            throw new InvalidOperationException($"LM Studio did not load the requested context of {contextTokens} tokens; session startup stopped.");
+        }
+
+        return null;
+    }
+
+    private async Task<bool> _PostAsync(LmStudioConfig config, string path, object body, CancellationToken cancellationToken)
+    {
+        using var response = await _SendAsync(config, HttpMethod.Post, path, JsonContent.Create(body), cancellationToken).ConfigureAwait(false);
+        if (response.IsSuccessStatusCode)
+        {
+            return true;
+        }
+
+        logger.LogWarning(
+            "LM Studio model-context request {Path} for {Model} failed with HTTP {StatusCode}.",
+            path,
+            config.Model,
+            (int)response.StatusCode);
+        return false;
+    }
+
+    private async Task<HttpResponseMessage> _SendAsync(
+        LmStudioConfig config,
+        HttpMethod method,
+        string path,
+        HttpContent? content,
+        CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(method, $"{config.BaseUrl.TrimEnd('/')}{path}") { Content = content };
+        if (!string.IsNullOrWhiteSpace(config.ApiKey))
+        {
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", config.ApiKey);
+        }
+
+        return await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+    }
+
+    private string _UnavailableWarning(LmStudioConfig config, int requested, string reason, Exception? exception = null)
+    {
+        logger.LogWarning(
+            exception,
+            "LM Studio v1 model API is unavailable for {Model}; context {RequestedContext} could not be verified ({Reason}).",
+            config.Model,
+            requested,
+            reason);
+        return $"De LM Studio v1 model-API is niet beschikbaar; de geladen context kon niet worden gecontroleerd (profiel vraagt {requested} tokens).";
+    }
+
+    private static LoadedInstance? _LoadedInstance(JsonElement root, string model)
+    {
+        if (!root.TryGetProperty("models", out var models) || models.ValueKind != JsonValueKind.Array)
+        {
+            throw new JsonException("LM Studio /api/v1/models returned no models array.");
+        }
+
+        foreach (var entry in models.EnumerateArray())
+        {
+            var keyMatches = entry.TryGetProperty("key", out var key)
+                && string.Equals(key.GetString(), model, StringComparison.OrdinalIgnoreCase);
+            if (!entry.TryGetProperty("loaded_instances", out var instances) || instances.ValueKind != JsonValueKind.Array)
+            {
+                continue;
+            }
+
+            LoadedInstance? keyCandidate = null;
+            foreach (var loaded in instances.EnumerateArray())
+            {
+                if (!loaded.TryGetProperty("id", out var id)
+                    || !loaded.TryGetProperty("config", out var loadedConfig)
+                    || !loadedConfig.TryGetProperty("context_length", out var contextLength)
+                    || !contextLength.TryGetInt32(out var tokens))
+                {
+                    continue;
+                }
+
+                var candidate = new LoadedInstance(id.GetString() ?? model, tokens, key.ValueKind == JsonValueKind.String ? key.GetString()! : model);
+                if (string.Equals(candidate.Id, model, StringComparison.OrdinalIgnoreCase))
+                {
+                    return candidate;
+                }
+
+                if (keyMatches && (keyCandidate is null || candidate.ContextLength > keyCandidate.Value.ContextLength))
+                {
+                    keyCandidate = candidate;
+                }
+            }
+
+            if (keyMatches)
+            {
+                return keyCandidate;
+            }
+        }
+
+        return null;
+    }
+
+    private readonly record struct LoadedInstance(string Id, int ContextLength, string ModelKey);
+}

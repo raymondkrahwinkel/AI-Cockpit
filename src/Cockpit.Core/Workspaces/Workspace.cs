@@ -27,6 +27,15 @@ public sealed record Workspace(string Id, string Name, WorkspaceType Type)
     // global default. See `SingleSessionLayout`.
     public double? FocusRailWeight { get; init; }
 
+    // AC-1750: what a plugin workspace shows (a file), set when opened with a key; null for a workspace opened without one.
+    public string? InstanceKey { get; init; }
+
+    // AC-1750: the preview tab, which the next preview replaces in place until it is pinned.
+    public bool IsPreview { get; init; }
+
+    // AC-1751: standing in its own window rather than in the tab strip; never the active workspace.
+    public bool IsFloating { get; init; }
+
     // A new, empty workspace of `type` with a generated id.
     public static Workspace Create(string name, WorkspaceType type) =>
         new(Guid.NewGuid().ToString("n"), name, type);

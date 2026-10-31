@@ -25,12 +25,15 @@ internal sealed class TranscriptionCalibrator(
     {
         var settings = await settingsStore.LoadAsync(cancellationToken).ConfigureAwait(false);
         var model = string.IsNullOrWhiteSpace(settings.ModelName) ? "large-v3-turbo" : settings.ModelName.Trim();
+        var gpus = advisor.DetectGpus();
+        var gpu = GpuHardware.Resolve(gpus, settings.GpuDeviceId);
+        var device = new ChildDevice(gpus, settings.GpuDeviceId);
 
         // Phase one: the configured model on every usable backend, to choose the backend.
         var measurements = new List<BackendMeasurement>();
-        foreach (var (backend, label) in _BackendsToMeasure())
+        foreach (var (backend, label) in _BackendsToMeasure(gpu))
         {
-            var measurement = await _MeasureBackendAsync(backend, label, model, progress, cancellationToken).ConfigureAwait(false);
+            var measurement = await _MeasureBackendAsync(backend, label, model, device, progress, cancellationToken).ConfigureAwait(false);
             if (measurement is not null)
             {
                 measurements.Add(measurement);
@@ -48,25 +51,26 @@ internal sealed class TranscriptionCalibrator(
         // Phase two: a ladder of models on the winning backend, to advise which model to run. The configured model's
         // time on that backend is already known from phase one, so it is reused rather than measured again.
         var chosenLatencyMs = measurements.First(measurement => measurement.Backend == chosen).LatencyMs;
-        var ladder = await _MeasureModelLadderAsync(chosen, model, chosenLatencyMs, progress, cancellationToken).ConfigureAwait(false);
+        var ladder = await _MeasureModelLadderAsync(chosen, model, chosenLatencyMs, device, progress, cancellationToken).ConfigureAwait(false);
         var recommendedModel = ladder.Count > 0 ? TranscriptionCalibrationReport.RecommendModel(ladder).Model : model;
         logger.LogInformation("Calibration model advice on {Backend}: {Model}", chosen, recommendedModel);
 
-        var calibration = new TranscriptionCalibration(measurements, chosen, ladder, recommendedModel, model);
+        var gpuName = measurements.Any(measurement => TranscriptionCalibrationReport.IsGpu(measurement.Backend)) ? gpu.Description : null;
+        var calibration = new TranscriptionCalibration(measurements, chosen, ladder, recommendedModel, model, gpuName);
         await store.SaveAsync(calibration, cancellationToken).ConfigureAwait(false);
 
         return calibration;
     }
 
-    // The CPU always, plus the fastest-family GPU the probe says will actually load here.
-    private IReadOnlyList<(VoiceBackendPreference Backend, string Label)> _BackendsToMeasure()
+    // The CPU always, plus the chosen (or Auto) GPU on the backend that reaches it, when a GPU runtime loads here.
+    private IReadOnlyList<(VoiceBackendPreference Backend, string Label)> _BackendsToMeasure(GpuHardware gpu)
     {
         var backends = new List<(VoiceBackendPreference, string)> { (VoiceBackendPreference.Cpu, "CPU") };
 
         var capabilities = advisor.DetectCapabilities();
         if (capabilities.GpuUsable)
         {
-            backends.Add((capabilities.CudaUsable ? VoiceBackendPreference.Cuda : VoiceBackendPreference.Vulkan, "GPU"));
+            backends.Add((GpuHardware.BackendFor(capabilities, gpu), gpu.Description is { } name ? $"GPU ({name})" : "GPU"));
         }
 
         return backends;
@@ -76,6 +80,7 @@ internal sealed class TranscriptionCalibrator(
         VoiceBackendPreference backend,
         string label,
         string model,
+        ChildDevice device,
         IProgress<CalibrationProgress>? progress,
         CancellationToken cancellationToken)
     {
@@ -89,6 +94,7 @@ internal sealed class TranscriptionCalibrator(
             backend,
             [model],
             label,
+            device,
             progress,
             message =>
             {
@@ -129,6 +135,7 @@ internal sealed class TranscriptionCalibrator(
         VoiceBackendPreference backend,
         string configuredModel,
         double configuredModelLatencyMs,
+        ChildDevice device,
         IProgress<CalibrationProgress>? progress,
         CancellationToken cancellationToken)
     {
@@ -143,7 +150,7 @@ internal sealed class TranscriptionCalibrator(
         var ladder = new List<ModelMeasurement>();
         if (modelsToMeasure.Count > 0)
         {
-            var results = await _RunChildAsync(backend, modelsToMeasure, "Model ladder", progress, onMessage: null, cancellationToken).ConfigureAwait(false);
+            var results = await _RunChildAsync(backend, modelsToMeasure, "Model ladder", device, progress, onMessage: null, cancellationToken).ConfigureAwait(false);
             ladder.AddRange(results
                 .Where(result => result.Model is not null && result.LatencyMs is not null)
                 .Select(result => new ModelMeasurement(result.Model!, result.LatencyMs!.Value)));
@@ -178,6 +185,7 @@ internal sealed class TranscriptionCalibrator(
         VoiceBackendPreference backend,
         IReadOnlyList<string> models,
         string label,
+        ChildDevice device,
         IProgress<CalibrationProgress>? progress,
         Action<CalibrationChildMessage>? onMessage,
         CancellationToken cancellationToken)
@@ -196,6 +204,7 @@ internal sealed class TranscriptionCalibrator(
         startInfo.ArgumentList.Add(backend.ToString());
         startInfo.ArgumentList.Add(CalibrationChildProtocol.ModelsArgument);
         startInfo.ArgumentList.Add(string.Join(',', models));
+        GpuDeviceEnvironment.Apply(startInfo, backend, device.Gpus, device.DeviceId);
 
         var results = new List<CalibrationChildMessage>();
         var outputClosed = new TaskCompletionSource();
@@ -280,4 +289,7 @@ internal sealed class TranscriptionCalibrator(
 
         logger.LogWarning("Calibration child ({Label}) exited with code {ExitCode}. Stderr tail:{NewLine}{Tail}", label, exitCode, Environment.NewLine, tail);
     }
+
+    // The GPU list and saved choice every child of one calibration is pointed with (AC-1881).
+    private sealed record ChildDevice(IReadOnlyList<GpuHardware> Gpus, string DeviceId);
 }

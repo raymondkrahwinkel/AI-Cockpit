@@ -133,6 +133,33 @@ Servers behind OAuth show their sign-in state here, and say so when a token need
 started while a server is unauthenticated gets a server that answers nothing, so this is worth a glance when
 tools stop working for no visible reason.
 
+## Swarm {#swarm}
+
+Pair your own desktops in **Options › Swarm**. Open that page on both machines, enable accepting
+connections, then Apply and restart if the listener was off. Choose **Find on this network** and Pair,
+or enter a host or host:port under **Add by address**. Compare the six digits on both screens, confirm
+on the machine being added, then continue on the adding machine. Pairing takes effect immediately.
+
+The new machine appears under **Machines** on every member. The list shows its address, how it was
+added, rank, reachability and last contact. The leader line changes as machines wake or stop answering.
+With no reachable peer, **No other machine online** explains that this Cockpit works on its own.
+
+The swarm uses internal networks only. Add a VPN's internal CIDR under **This machine**; an invalid
+range shows an error and cannot be saved. **When a lower rank comes back** chooses between an announced
+30-second takeover and assigning the returning machine a higher rank so the current leader stays.
+These settings save with Apply; Cancel does not undo a completed pairing.
+
+## Servers {#servers}
+
+**Options › Servers** is the headless-server management page, previously called Admin. Choose
+**Manage server** beside a connected server to open its connect keys, plugins, profiles, projects and
+audit log. Management requires an admin key; an operate key cannot change these settings. Searching
+for either “servers” or “admin” finds the page. The Servers action on a sidebar server group opens
+the same management window.
+
+Headless servers keep their existing connect-key connection; they are separate from desktop pairing.
+Use **Nodes › Connect to a server** to establish that connection first.
+
 ## Nodes {#nodes}
 
 Pairing this cockpit with another one, so the two can share MCP access and so sessions can run on the other

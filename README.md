@@ -18,6 +18,17 @@ or a provider added by a plugin: they all run as panes in the same cockpit.
 
 ## Why
 
+The `cockpit-browser` endpoint supports session-owned tabs with `browser_open_tab(url, purpose)`
+and `browser_list_tabs`. Use `browser_read_tab` (text/tree) and `browser_screenshot_tab` with the
+returned opaque id. An authenticated session is required; each browser run has separate ownership.
+`purpose=self` stays hidden; `purpose=operator` currently reports presentation `unavailable`.
+Downloads are denied before navigation. AC-1839 ticket C must add redirect, popup, file-chooser
+and protocol enforcement before ticket B's controls go live.
+
+AC-1870's local gate is the Release solution, Browser plugin and Browser test-project builds with
+`-warnaserror`, filtered `AgentOwnedTabTests` and existing `Agent*` isolation tests, the test-count
+check, and local mutation/revert counterchecks. No full suite is required for this ticket.
+
 Running more than one AI coding agent at once means a terminal per agent. Nothing tells you which one is waiting
 for you, which one is still working, and which one finished ten minutes ago — you go and look. Each terminal is
 its own island: its own login, its own MCP setup, its own scrollback.
@@ -46,6 +57,17 @@ capabilities (tools, permissions, live model switch, vision, ...). Adding anothe
 see the [plugin docs](#documentation).
 
 ## How it works
+
+File-source plugins can register `IFileSourceProvider` through `ICockpitHost.AddFileSource`
+(host 0.136.0, Abstractions 3.45.0). The host handles snapshot reads and conditional writes on the
+plugin's existing channel, including server-admin relays. The initial channel limits file content to
+1 MiB. See the [file source contract](docs/plugins/FILE-SOURCES.md) for ownership and conflict semantics.
+
+Host 0.137.0 (Abstractions 3.45.0 / UI 3.17.0) adds host-owned Markdown file workspaces.
+In Depot files, Open views a Markdown document, Edit enables changes, and New Markdown file opens a
+draft in the chosen folder. Save or Ctrl+S writes with the original checksum. Pop out and Dock back
+keep the same text and undo history. Closing warns about unsaved changes; unsaved text is not restored
+after restart. A source conflict preserves local text for the later conflict-resolution flow.
 
 The cockpit does not talk to any model API of its own accord. A session is a driver: it spawns the provider's own
 client, or speaks to the provider's own endpoint, under your own login and your own credentials — which the
@@ -244,10 +266,24 @@ dotnet run --project src/Cockpit.App
 Or build and launch the produced executable directly — the app is designed to run **detached**, with no attached
 console: all logging goes to a file logger rather than stdout.
 
+On Windows a build or publish of `Cockpit.App` also builds `src/Cockpit.Notify` and puts `Cockpit.Notify.exe`
+beside the app. That small helper shows a plugin's silent notification and reports its click, which the
+cross-platform app itself cannot hear. `src/Cockpit.Hello` is built the same way and puts `Cockpit.Hello.exe`
+beside it: the Windows Hello unlock (KeyCredentialManager), which needs Windows 11 24H2 or later. Both helpers use
+the same Windows SDK projection (`WindowsSdkPackageVersion` 10.0.26100.87), so a publish carries one
+`Microsoft.Windows.SDK.NET.dll`; keep the two in step. Neither is in `Cockpit.slnx`, and Linux and macOS never build them.
+
 Create a session via **+ New session**: pick a profile, permission mode, model and effort. Settings live in
 **`cockpit.json`** — `%APPDATA%\Cockpit\cockpit.json` on Windows, `~/.config/Cockpit/cockpit.json` on Linux and
 macOS. Profiles, layout, voice, shortcuts, always-allow rules, the MCP registry and plugin state all live in that
 one file, alongside `plugins/`, `logs/` and the previous version of the config (`cockpit.json.bak`).
+
+The `debug` section accepts `uiFreezeThresholdSeconds` (default 5, minimum 2) and
+`renderStallThresholdSeconds` (default 15, minimum 1). Invalid values use the defaults.
+These warning thresholds take effect after restarting Cockpit; recovery thresholds stay unchanged.
+On Windows, the first UI freeze warning in an episode also logs up to 40 managed stack frames
+(type and method names only), at most once every five minutes. ClrMD uses an in-memory PSS snapshot;
+no dump is written. Linux and macOS keep the counters and thread states without stack capture.
 
 Each **Claude** profile can point at its own **`CLAUDE_CONFIG_DIR`** (e.g. a work vs. a personal account), so two
 sessions can run under two different logins at the same time.
@@ -464,3 +500,14 @@ Voice models are downloaded on first use and are **not** covered by AI-Cockpit's
 - **Whisper** (dictation) ggml models and the **Whisper.net** runtime carry their own upstream licences.
 
 See [`NOTICE`](NOTICE) for the full third-party attribution list (models, runtimes and libraries).
+
+## Scratch-folder and condition notifications
+
+The `notifications` section in `cockpit.json` accepts `IgnoredHomeFolderPatterns`
+(directory names, case-insensitive `*` and `?` wildcards). Defaults are
+`["Config.Msi", "MSI*.tmp", "$Recycle.Bin", "System Volume Information"]`.
+Set an empty array to disable exclusions. Restart Cockpit after editing the list.
+Folder notifications say "Creator unknown"; filesystem events do not identify the creating session.
+`ToastTimeoutSeconds` defaults to 5; positive values set the timeout for ordinary informational
+and condition toasts. Nonpositive values fall back to 5. Timed-out messages remain in the bell.
+Condition messages also close when resolved, and their actions become unavailable.

@@ -40,6 +40,9 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         var response = JsonDocument.Parse(fake.WrittenLines[^1]).RootElement.GetProperty("response");
         Assert.Equal("req-42", response.GetProperty("request_id").GetString());
         Assert.Equal("deny", response.GetProperty("response").GetProperty("behavior").GetString());
+        var count = fake.WrittenLines.Count;
+        await driver.RespondToPermissionAsync("never-seen", allow: true, CancellationToken.None);
+        Assert.Equal(count, fake.WrittenLines.Count);
     }
 
     [Fact]
@@ -64,6 +67,52 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         Assert.Equal("ls -la", decision.GetProperty("updatedInput").GetProperty("command").GetString());
     }
 
+    // AC-1989, layer 2: startup, prompt-write and stdout-EOF failures retain the CLI diagnostic.
+    public static TheoryData<Func<IPluginSessionDriver, string, Task>, Func<IPluginSessionDriver, string, Task>> ExitWrites => new()
+    {
+        {
+            (_, _) => Task.CompletedTask,
+            (driver, directory) => driver.StartAsync(model: null, workingDirectory: directory, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None)
+        },
+        {
+            (driver, directory) => driver.StartAsync(model: null, workingDirectory: directory, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None),
+            (driver, _) => driver.SendUserMessageAsync("hello")
+        }
+    };
+
+    [Theory]
+    [MemberData(nameof(ExitWrites))]
+    public async Task ProcessExit_ReportsStderrInsteadOfBrokenPipe(
+        Func<IPluginSessionDriver, string, Task> prepare, Func<IPluginSessionDriver, string, Task> write)
+    {
+        var fake = new FakeClaudeSdkSubprocess();
+        await using var driver = _CreateDriver(fake);
+        await prepare(driver, _tempDir);
+        await _ExitWithDiagnosticsAsync(fake);
+
+        var error = await Assert.ThrowsAsync<IOException>(() => write(driver, _tempDir));
+
+        _AssertExitDiagnostic(error.Message);
+        var evt = (PluginSessionError)await _ReadEventAsync(driver, value => value is PluginSessionError);
+        _AssertExitDiagnostic(evt.Message);
+    }
+
+    // AC-1989, layer 2: writing a prompt to an exited process preserves stderr.
+
+    // AC-1989, layer 2: stdout ending without a result reports the CLI error even without a write.
+    [Fact]
+    public async Task StdoutEndsWithoutResult_ReportsStderr()
+    {
+        var fake = new FakeClaudeSdkSubprocess();
+        await using var driver = _CreateDriver(fake);
+        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
+
+        await _ExitWithDiagnosticsAsync(fake);
+
+        var evt = (PluginSessionError)await _ReadEventAsync(driver, value => value is PluginSessionError);
+        _AssertExitDiagnostic(evt.Message);
+    }
+
     [Fact]
     public async Task RespondToPermission_ForUnknownTool_WritesNothing()
     {
@@ -72,11 +121,29 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
         var writtenAfterStart = fake.WrittenLines.Count;
 
-        // No pending approval under this id (the CLI auto-allowed, or it already resolved) — nothing to feed back.
         await driver.RespondToPermissionAsync("never-seen", allow: true, CancellationToken.None);
 
         Assert.Equal(writtenAfterStart, fake.WrittenLines.Count);
     }
+
+    private static async Task _ExitWithDiagnosticsAsync(FakeClaudeSdkSubprocess fake)
+    {
+        await fake.PushStderrAsync("discarded old diagnostic");
+        foreach (var index in Enumerable.Range(0, 20))
+        {
+            await fake.PushStderrAsync($"EACCES permission denied {index}");
+        }
+        fake.CompleteStdout();
+        fake.FailWrites = true;
+    }
+
+    private static void _AssertExitDiagnostic(string message)
+    {
+        Assert.Contains("claude exited (code 1):", message);
+        Assert.Contains("EACCES permission denied 19", message);
+        Assert.DoesNotContain("discarded old diagnostic", message);
+    }
+
 
     [Fact]
     public async Task StreamJsonLine_IsMappedToTranscriptEvents()
@@ -116,7 +183,7 @@ public class ClaudeSdkSessionDriverTests : IDisposable
     }
 
     [Fact]
-    public async Task SendUserMessage_WritesTheStreamJsonUserPayload()
+    public async Task SendUserMessageAndCompactContext_WriteStreamJsonUserPayloads()
     {
         var fake = new FakeClaudeSdkSubprocess();
         await using var driver = _CreateDriver(fake);
@@ -129,24 +196,13 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         var message = payload.GetProperty("message");
         Assert.Equal("user", message.GetProperty("role").GetString());
         Assert.Equal("hello", message.GetProperty("content").GetString());
-    }
-
-    [Fact]
-    public async Task CompactContext_WritesTheSlashCommandAsAUserMessage_NotAControlRequest()
-    {
-        // AC-664: the CLI has no compaction subtype on the control protocol — it parses `/compact` out of the
-        // stream-json user input itself, which is why this rides the ordinary user-message line rather than the
-        // control channel every other live switch uses. Measured against a live 2.1.226 spawn in this same mode.
-        var fake = new FakeClaudeSdkSubprocess();
-        await using var driver = _CreateDriver(fake);
-        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
-
         await driver.CompactContextAsync(CancellationToken.None);
 
-        var payload = JsonDocument.Parse(fake.WrittenLines[^1]).RootElement;
-        Assert.Equal("user", payload.GetProperty("type").GetString());
-        Assert.Equal("/compact", payload.GetProperty("message").GetProperty("content").GetString());
+        var compactPayload = JsonDocument.Parse(fake.WrittenLines[^1]).RootElement;
+        Assert.Equal("user", compactPayload.GetProperty("type").GetString());
+        Assert.Equal("/compact", compactPayload.GetProperty("message").GetProperty("content").GetString());
     }
+
 
     [Fact]
     public async Task Interrupt_WhenTheCliAdvertisesCancelQueued_SendsCancelQueuedTrue()
@@ -197,7 +253,7 @@ public class ClaudeSdkSessionDriverTests : IDisposable
     }
 
     [Fact]
-    public async Task SetLiveOption_Model_SendsSetModelControlRequest()
+    public async Task SetLiveOption_ModelAndEffort_SendTheirControlRequests()
     {
         var fake = new FakeClaudeSdkSubprocess();
         await using var driver = _CreateDriver(fake);
@@ -208,25 +264,13 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         var request = JsonDocument.Parse(fake.WrittenLines[^1]).RootElement.GetProperty("request");
         Assert.Equal("set_model", request.GetProperty("subtype").GetString());
         Assert.Equal("sonnet", request.GetProperty("model").GetString());
-    }
-
-    [Fact]
-    public async Task SetLiveOption_Effort_SwitchesTheThinkingTokenBudget_ForTheLevel()
-    {
-        var fake = new FakeClaudeSdkSubprocess();
-        await using var driver = _CreateDriver(fake);
-        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
-
         await driver.SetLiveOptionAsync(ClaudeSdkSessionDriver.EffortOptionKey, "high", CancellationToken.None);
 
-        // Effort is the CLI's thinking-token budget (set_max_thinking_tokens); "high" maps to the plugin's own
-        // per-level tuning (24k) — the same budget the host's SessionOptionCatalog carried before Claude became a plugin.
-        // The field is snake_case (max_thinking_tokens) exactly as the Agent SDK's Query.set_max_thinking_tokens
-        // writes it; camelCase is silently dropped by the CLI, so the budget would never change — the effort-not-live bug.
-        var request = JsonDocument.Parse(fake.WrittenLines[^1]).RootElement.GetProperty("request");
-        Assert.Equal("set_max_thinking_tokens", request.GetProperty("subtype").GetString());
-        Assert.Equal(24_000, request.GetProperty("max_thinking_tokens").GetInt32());
+        var effortRequest = JsonDocument.Parse(fake.WrittenLines[^1]).RootElement.GetProperty("request");
+        Assert.Equal("set_max_thinking_tokens", effortRequest.GetProperty("subtype").GetString());
+        Assert.Equal(24_000, effortRequest.GetProperty("max_thinking_tokens").GetInt32());
     }
+
 
     [Fact]
     public async Task LiveOptions_PermissionMode_ExcludesBypass_WhichIsLaunchOnly()
@@ -263,24 +307,28 @@ public class ClaudeSdkSessionDriverTests : IDisposable
     // AC-146: sub-agent activity is worth seeing by default (Raymond, 2026-07-29) — an env var rather than a CLI
     // flag, since an older CLI that does not know it just ignores it, where an unknown flag would refuse to start.
 
-    [Fact]
-    public async Task Start_AProfileSuppliedAnthropicCredential_IsRemovedFromTheSpawnNotHandedToTheCli()
+
+    public static TheoryData<Dictionary<string, string>, string> TempEnvironments => new()
     {
-        var fake = new FakeClaudeSdkSubprocess();
-        await using var driver = _CreateDriver(fake);
+        {
+            new Dictionary<string, string> { ["CLAUDE_CONFIG_DIR"] = "/somebody/elses/profile", ["ANTHROPIC_API_KEY"] = "smuggled" },
+            Path.Combine(Path.GetTempPath(), "cockpit", "sdk-temp-under-test")
+        },
+        {
+            new Dictionary<string, string>
+            {
+                ["CLAUDE_CONFIG_DIR"] = "/somebody/elses/profile", ["ANTHROPIC_API_KEY"] = "smuggled",
+                ["TMPDIR"] = "/host/scratch", ["TEMP"] = "/host/scratch", ["TMP"] = "/host/scratch"
+            },
+            "/host/scratch"
+        }
+    };
 
-        await driver.StartAsync(
-            model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null,
-            environment: new Dictionary<string, string> { ["ANTHROPIC_API_KEY"] = "smuggled" },
-            CancellationToken.None);
-
-        // Null = remove at the subprocess seam: the key must be an explicit removal, never the smuggled value.
-        Assert.NotNull(fake.EnvironmentVariables);
-        Assert.Contains(new KeyValuePair<string, string?>("ANTHROPIC_API_KEY", null), fake.EnvironmentVariables);
-    }
-
-    [Fact]
-    public async Task Start_AProfileVariableCannotRedirectTheConfigDir_TheProfilesOwnDirWins()
+    // AC-1989, layer 2: both launch environments retain credential/config isolation and the correct temp path.
+    [Theory]
+    [MemberData(nameof(TempEnvironments))]
+    public async Task Start_AProfileVariableCannotRedirectTheConfigDir_TheProfilesOwnDirWins(
+        Dictionary<string, string> environment, string expectedTemp)
     {
         var fake = new FakeClaudeSdkSubprocess();
         await using var driver = _CreateDriver(fake);
@@ -288,13 +336,14 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         await driver.StartAsync(
             model: null, workingDirectory: _tempDir, resumeSessionId: null,
             options: new Dictionary<string, string> { [WellKnownPluginSessionOptions.PaneId] = "sdk-temp-under-test" }, mcpServers: null,
-            environment: new Dictionary<string, string> { ["CLAUDE_CONFIG_DIR"] = "/somebody/elses/profile" },
-            CancellationToken.None);
+            environment: environment, CancellationToken.None);
 
         Assert.NotNull(fake.EnvironmentVariables);
         Assert.Contains(new KeyValuePair<string, string?>("CLAUDE_CONFIG_DIR", _tempDir), fake.EnvironmentVariables);
-        var temp = Path.Combine(Path.GetTempPath(), "cockpit", "sdk-temp-under-test");
-        Assert.All(new[] { "TEMP", "TMP", "TMPDIR" }, key => Assert.Contains(new KeyValuePair<string, string?>(key, temp), fake.EnvironmentVariables));
+        Assert.Contains(new KeyValuePair<string, string?>("ANTHROPIC_API_KEY", null), fake.EnvironmentVariables);
+        Assert.Contains(new KeyValuePair<string, string?>("TEMP", expectedTemp), fake.EnvironmentVariables);
+        Assert.Contains(new KeyValuePair<string, string?>("TMP", expectedTemp), fake.EnvironmentVariables);
+        Assert.Contains(new KeyValuePair<string, string?>("TMPDIR", expectedTemp), fake.EnvironmentVariables);
     }
 
     // The host's marker for "nobody is watching this one" — what a delegated task and a self-driving Autopilot step

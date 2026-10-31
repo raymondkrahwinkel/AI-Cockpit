@@ -1,0 +1,282 @@
+using System.Collections.Concurrent;
+using System.Text.Json;
+
+namespace Cockpit.Plugin.Browser;
+
+// Public ids never disclose a target or an endpoint. A restarted pane cannot inherit its old run's tabs.
+internal sealed partial class AgentOwnedTabs
+{
+    private readonly AgentBrowserHost browsers;
+    public AgentOwnedTabs(AgentBrowserHost browsers)
+    {
+        this.browsers = browsers;
+        browsers.RetainTargets = generation => _tabs.Values.Where(e => e.Generation == generation && e.Purpose == "operator" && !_closed.ContainsKey((generation, e.Target))).Select(e => e.Target).ToHashSet(StringComparer.Ordinal);
+    }
+    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(10) };
+    private readonly ConcurrentDictionary<string, Entry> _tabs = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<Guid, AgentTabBoundary> _boundaries = new();
+    private readonly ConcurrentDictionary<(Guid Generation, string Target), byte> _closed = new();
+    private readonly SemaphoreSlim _boundaryGate = new(1, 1);
+    internal sealed record Entry(string TabId, string Owner, Guid Generation, string Target, string Purpose);
+    internal sealed record Info(string TabId, string Title, string Url, string Purpose);
+    internal sealed record OpenResult(bool Ok, string? TabId = null, string? Url = null, string? Title = null,
+        string? Purpose = null, string Presentation = "hidden", string? Code = null, string? Error = null);
+
+    public static bool IsOwnedId(string id) => id.StartsWith("owned:", StringComparison.Ordinal);
+
+    public async Task<OpenResult> OpenAsync(string? caller, string url, string purpose)
+    {
+        if (string.IsNullOrEmpty(caller))
+        {
+            return new(false, Code: "not_owner", Error: "A session caller is required.");
+        }
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https") || purpose is not ("self" or "operator"))
+        {
+            return new(false, Code: "invalid_argument", Error: "Use an absolute http(s) URL and purpose self or operator.");
+        }
+
+        string? tabId = null, target = null, wsUrl = null;
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        try
+        {
+            var endpoint = await browsers.GetOrCreateAsync(caller, timeout.Token).ConfigureAwait(false);
+            if (endpoint is null)
+            {
+                return new(false, Code: "browser_unavailable", Error: "The session browser is unavailable.");
+            }
+            var session = RequireSession(caller);
+            if (session.Endpoint != endpoint)
+                throw new OwnedTabException("session_ended", "The browser run has ended.");
+            using var ended = session.Ended.Register(timeout.Cancel);
+            var boundary = await BoundaryAsync(caller, session, timeout.Token).ConfigureAwait(false);
+            await boundary.DenyDownloadsAsync(timeout.Token).ConfigureAwait(false);
+            Check(caller, session.Generation, mutate: true);
+            using var response = await Http.SendAsync(new HttpRequestMessage(HttpMethod.Put, session.Upstream + "/json/new?about:blank"), timeout.Token).ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+            using var created = JsonDocument.Parse(await response.Content.ReadAsStringAsync(timeout.Token).ConfigureAwait(false));
+            target = RequiredString(created.RootElement, "id");
+            wsUrl = RequiredString(created.RootElement, "webSocketDebuggerUrl");
+            await boundary.ReadyAsync(target, timeout.Token).ConfigureAwait(false);
+            tabId = Register(caller, session.Generation, target, "self").TabId;
+            var loaded = new ConcurrentDictionary<string, TaskCompletionSource>();
+            var loadFailure = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            using var page = await CdpPage.ConnectAsync(wsUrl, (name, data) =>
+            {
+                if (name == "Page.lifecycleEvent" && data.GetProperty("name").GetString() == "DOMContentLoaded")
+                {
+                    try
+                    {
+                        loaded.GetOrAdd(RequiredString(data, "loaderId"), _ => new(TaskCreationOptions.RunContinuationsAsynchronously)).TrySetResult();
+                    }
+                    catch (OwnedTabException ex)
+                    {
+                        loadFailure.TrySetException(ex);
+                    }
+                }
+                else if (name == "Page.loadEventFailed")
+                {
+                    // A net error never reaches DOMContentLoaded; fail the open instead of waiting it out.
+                    loadFailure.TrySetException(new OwnedTabException("browser_unavailable", "Navigation failed."));
+                }
+            }, timeout.Token).ConfigureAwait(false);
+            await page.CallAsync("Page.enable", null, timeout.Token).ConfigureAwait(false);
+            await page.CallAsync("Page.setLifecycleEventsEnabled", new { enabled = true }, timeout.Token).ConfigureAwait(false);
+            Check(caller, session.Generation, mutate: true);
+            var navigation = await page.CallAsync("Page.navigate", new { url = uri.AbsoluteUri }, timeout.Token).ConfigureAwait(false);
+            if (navigation.TryGetProperty("isDownload", out var download) && download.GetBoolean())
+            {
+                throw new OwnedTabException("confirmation_required", "File transfer requires an operator action.");
+            }
+            if (navigation.TryGetProperty("errorText", out _))
+            {
+                throw new OwnedTabException(boundary.TakeBlocked(target) ?? "browser_unavailable", "Navigation failed.");
+            }
+            // Match the navigation's loader, so about:blank's readiness cannot complete this open.
+            var loader = RequiredString(navigation, "loaderId");
+            var completed = await Task.WhenAny(loaded.GetOrAdd(loader, _ => new(TaskCreationOptions.RunContinuationsAsynchronously)).Task, loadFailure.Task).WaitAsync(timeout.Token).ConfigureAwait(false);
+            await completed.ConfigureAwait(false);
+            var info = await MetadataAsync(page, timeout.Token).ConfigureAwait(false);
+            Check(caller, session.Generation);
+            Register(caller, session.Generation, target, purpose);
+            Check(caller, session.Generation);
+            return new(true, tabId, info.Url, info.Title, purpose, purpose == "operator" ? "unavailable" : "hidden");
+        }
+        catch (Exception ex) when (IsBrowserFailure(ex))
+        {
+            if (target is not null)
+            {
+                if (tabId is not null) _tabs.TryRemove(tabId, out _);
+                // The 30 s open timeout may have cancelled `timeout`; the close needs its own live token.
+                using var closeTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                await CloseTargetAsync(wsUrl, target, closeTimeout.Token).ConfigureAwait(false);
+            }
+            return new(false, Purpose: purpose, Code: Code(ex), Error: Message(ex));
+        }
+    }
+
+    // AC-1884: a failed open must not leave its about:blank target behind in the session's browser.
+    private static async Task CloseTargetAsync(string? wsUrl, string? target, CancellationToken token)
+    {
+        if (wsUrl is null || target is null)
+        {
+            return;
+        }
+        try
+        {
+            using var page = await CdpPage.ConnectAsync(wsUrl, (_, _) => { }, token).ConfigureAwait(false);
+            await page.CallAsync("Target.closeTarget", new { targetId = target }, token).ConfigureAwait(false);
+        }
+        catch
+        {
+            // The target may already be gone; the open reports its original failure either way.
+        }
+    }
+
+    public async Task<IReadOnlyList<Info>> ListAsync(string caller)
+    {
+        var session = browsers.SessionFor(caller);
+        if (session is null)
+        {
+            return [];
+        }
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var ended = session.Ended.Register(timeout.Cancel);
+        using var pages = JsonDocument.Parse(await Http.GetStringAsync(session.Upstream + "/json/list", timeout.Token).ConfigureAwait(false));
+        var result = new List<Info>();
+        foreach (var entry in _tabs.Values.Where(e => e.Owner == caller && e.Generation == session.Generation))
+        {
+            var target = pages.RootElement.EnumerateArray().FirstOrDefault(p => p.GetProperty("id").GetString() == entry.Target);
+            if (target.ValueKind != JsonValueKind.Undefined)
+            {
+                result.Add(new(entry.TabId, target.GetProperty("title").GetString() ?? "", target.GetProperty("url").GetString() ?? "", entry.Purpose));
+            }
+        }
+        Check(caller, session.Generation);
+        return result;
+    }
+
+    public async Task<TabShareAnswer> ReadAsync(string caller, string tabId, string mode, bool screenshot = false)
+    {
+        try
+        {
+            if (mode is not ("text" or "tree"))
+            {
+                throw new OwnedTabException("invalid_argument", "Use mode text or tree.");
+            }
+            if (!_tabs.TryGetValue(tabId, out var entry) || entry.Owner != caller)
+            {
+                throw new OwnedTabException("not_owner", "This tab does not belong to this session.");
+            }
+            var session = Check(caller, entry.Generation);
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            using var ended = session.Ended.Register(timeout.Cancel);
+            using var targets = JsonDocument.Parse(await Http.GetStringAsync(session.Upstream + "/json/list", timeout.Token).ConfigureAwait(false));
+            var target = targets.RootElement.EnumerateArray().FirstOrDefault(p => p.GetProperty("id").GetString() == entry.Target);
+            if (target.ValueKind == JsonValueKind.Undefined)
+            {
+                throw new OwnedTabException("tab_gone", "The tab has closed.");
+            }
+            using var page = await CdpPage.ConnectAsync(RequiredString(target, "webSocketDebuggerUrl"), (_, _) => { }, timeout.Token).ConfigureAwait(false);
+            Check(caller, entry.Generation);
+            var info = await MetadataAsync(page, timeout.Token).ConfigureAwait(false);
+            string? text = null;
+            string? png = null;
+            if (screenshot)
+            {
+                // Chromium needs a rendered surface even when a later target made this tab backgrounded.
+                await page.CallAsync("Page.bringToFront", null, timeout.Token).ConfigureAwait(false);
+                png = (await page.CallAsync("Page.captureScreenshot", new { format = "png" }, timeout.Token).ConfigureAwait(false)).GetProperty("data").GetString();
+            }
+            else if (mode == "text")
+            {
+                text = (await page.CallAsync("Runtime.evaluate", new { expression = "document.body ? document.body.innerText.slice(0,200000) : ''", returnByValue = true }, timeout.Token).ConfigureAwait(false)).GetProperty("result").GetProperty("value").GetString();
+            }
+            else
+            {
+                var tree = await page.CallAsync("Accessibility.getFullAXTree", null, timeout.Token).ConfigureAwait(false);
+                text = string.Join('\n', tree.GetProperty("nodes").EnumerateArray()
+                    .Where(n => !n.GetProperty("ignored").GetBoolean() && n.TryGetProperty("name", out _))
+                    .Select(n => n.GetProperty("role").GetProperty("value").GetString() + ": " + n.GetProperty("name").GetProperty("value").GetString()));
+                text = text[..Math.Min(text.Length, 200_000)];
+            }
+            Check(caller, entry.Generation);
+            return new("", true, Url: info.Url, Title: info.Title, Text: text, ImagePng: png, TabId: tabId);
+        }
+        catch (Exception ex) when (IsBrowserFailure(ex)) { return new("", false, Error: Code(ex) + ": " + Message(ex)); }
+    }
+
+    private AgentBrowserHost.Session RequireSession(string caller) => browsers.SessionFor(caller)
+        ?? throw new OwnedTabException("session_ended", "The browser run has ended.");
+
+    private Entry Register(string caller, Guid generation, string target, string purpose)
+    {
+        lock (_tabs)
+        {
+            var entry = _tabs.Values.FirstOrDefault(e => e.Generation == generation && e.Target == target);
+            entry = entry is null ? new("owned:" + Guid.NewGuid().ToString("N"), caller, generation, target, purpose) : entry with { Purpose = purpose };
+            _tabs[entry.TabId] = entry;
+            return entry;
+        }
+    }
+
+    private async Task<AgentTabBoundary> BoundaryAsync(string caller, AgentBrowserHost.Session session, CancellationToken token)
+    {
+        await _boundaryGate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            if (_boundaries.TryGetValue(session.Generation, out var existing)) return existing;
+            var boundary = new AgentTabBoundary(target =>
+            {
+                if (browsers.SessionFor(caller)?.Generation != session.Generation) return false;
+                Register(caller, session.Generation, target, "self");
+                return true;
+            }, target =>
+            {
+                _closed[(session.Generation, target)] = 0;
+                browsers.TargetClosed(session.Generation, target);
+            });
+            try
+            {
+                await boundary.StartAsync(session.Upstream, token).ConfigureAwait(false);
+                if (!browsers.OwnBoundary(caller, session.Generation, boundary))
+                    throw new OwnedTabException("session_ended", "The browser run has ended.");
+                _boundaries[session.Generation] = boundary;
+                return boundary;
+            }
+            catch { boundary.Dispose(); throw; }
+        }
+        finally { _boundaryGate.Release(); }
+    }
+
+    private AgentBrowserHost.Session Check(string caller, Guid generation, bool mutate = false)
+    {
+        var session = RequireSession(caller);
+        if (session.Generation != generation)
+        {
+            throw new OwnedTabException("session_ended", "The browser run has ended.");
+        }
+        if (mutate && session.OperatorDrives)
+        {
+            throw new OwnedTabException("operator_drives", "The operator is driving this browser.");
+        }
+        return session;
+    }
+
+    private static async Task<(string Url, string Title)> MetadataAsync(CdpPage page, CancellationToken token)
+    {
+        var result = await page.CallAsync("Runtime.evaluate", new { expression = "({url:location.href,title:document.title})", returnByValue = true }, token).ConfigureAwait(false);
+        var value = result.GetProperty("result").GetProperty("value");
+        if (!AgentTabBoundary.IsWeb(value.GetProperty("url").GetString()))
+            throw new OwnedTabException("invalid_argument", "Only http(s) pages are allowed.");
+        return (value.GetProperty("url").GetString() ?? "", value.GetProperty("title").GetString() ?? "");
+    }
+
+    private static string RequiredString(JsonElement value, string property) =>
+        value.TryGetProperty(property, out var field) && field.ValueKind == JsonValueKind.String && field.GetString() is { Length: > 0 } text
+            ? text : throw new OwnedTabException("browser_unavailable", $"The browser response is missing {property}.");
+
+    internal static bool IsBrowserFailure(Exception ex) => ex is OwnedTabException or IOException or HttpRequestException or OperationCanceledException or System.Net.WebSockets.WebSocketException or ObjectDisposedException;
+    internal static string Code(Exception ex) => ex is OwnedTabException owned ? owned.Code : ex is OperationCanceledException ? "timeout" : "browser_unavailable";
+    internal static string Message(Exception ex) => ex is OwnedTabException ? ex.Message : "The browser operation could not complete.";
+    private sealed class OwnedTabException(string code, string message) : Exception(message) { public string Code { get; } = code; }
+}

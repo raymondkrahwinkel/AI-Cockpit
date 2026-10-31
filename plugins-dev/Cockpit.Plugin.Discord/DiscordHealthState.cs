@@ -7,6 +7,7 @@ internal sealed class DiscordHealthState(TimeProvider time) : IPluginHealthSecti
     private readonly Lock _gate = new();
     private bool _connected;
     private string? _botName;
+    private string _offlineReason = "Offline";
     private DiscordDeliveryState _delivery;
     private DateTimeOffset? _lastMessageAt;
 
@@ -21,12 +22,13 @@ internal sealed class DiscordHealthState(TimeProvider time) : IPluginHealthSecti
         }
     }
 
-    public void Disconnected()
+    public void Disconnected(string reason = "Offline")
     {
         lock (_gate)
         {
             _connected = false;
             _botName = null;
+            _offlineReason = reason;
         }
     }
 
@@ -62,7 +64,7 @@ internal sealed class DiscordHealthState(TimeProvider time) : IPluginHealthSecti
         {
             var connection = _connected
                 ? _botName is { } name ? $"Online as {name}" : "Online"
-                : "Offline";
+                : _offlineReason;
             var delivery = _delivery switch
             {
                 DiscordDeliveryState.Ok => "DM delivery ok",

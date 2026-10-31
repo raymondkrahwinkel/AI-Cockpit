@@ -4,7 +4,7 @@ namespace Cockpit.Plugin.Browser.UI.Share;
 
 internal sealed record LookAlongTab(string Id, string Title, string Address);
 
-// AC-1715: an agent asks to look along. Nothing is read until Raymond picks a tab on the card; No, Escape and the
+// AC-1715: an agent asks to look along. Nothing is read until you pick a tab on the card; No, Escape and the
 // timeout all end in a refusal that touched no tab.
 internal static class TabLookAlong
 {

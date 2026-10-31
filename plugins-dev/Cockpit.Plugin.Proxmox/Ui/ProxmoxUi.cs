@@ -28,10 +28,9 @@ public sealed class ProxmoxUi : ICockpitPluginUi
         });
 
         // A settings save may have changed the target or its trusted certificate; tell the backend part to drop
-        // its cached client so the next call rebuilds it. ponytail: OnSettingsSaved only offers a synchronous
-        // callback, so it cannot await; blocking is safe today (the channel answers in-process with no thread hop).
+        // its cached client so the next call rebuilds it. The host awaits it (AC-1891).
         host.OnSettingsSaved(() => host.Channel.InvokeAsync(
             ProxmoxChannel.InvalidateTarget,
-            JsonSerializer.SerializeToElement(new ProxmoxEmptyRequest(), ProxmoxChannel.Json)).GetAwaiter().GetResult());
+            JsonSerializer.SerializeToElement(new ProxmoxEmptyRequest(), ProxmoxChannel.Json)));
     }
 }

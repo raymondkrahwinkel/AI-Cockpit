@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- AC-1879: Windows Hello for the unlock, beside Cockpit.App.exe like Cockpit.Notify (AC-1588): the app stays plain
+       net10.0, so the WinRT KeyCredentialManager lives here. 26100.87 is the first projection with the ...ForWindowAsync
+       APIs; Notify uses the same projection so the two share one Microsoft.Windows.SDK.NET.dll in the publish folder. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <WindowsSdkPackageVersion>10.0.26100.87</WindowsSdkPackageVersion>
+    <!-- Not enforced at start: an older build fails the ApiInformation check in "supported" and is never asked to sign. -->
+    <SupportedOSPlatformVersion>10.0.26100.0</SupportedOSPlatformVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

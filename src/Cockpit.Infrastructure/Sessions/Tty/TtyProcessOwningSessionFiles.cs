@@ -14,7 +14,8 @@ internal sealed class TtyProcessOwningSessionFiles(
     string? paneId = null,
     string? token = null,
     IDisposable? memoryCap = null,
-    IDisposable? processAnchor = null)
+    IDisposable? processAnchor = null,
+    Action<System.Diagnostics.Process?>? cleanupScratch = null)
     : IConPtyProcess, ITtyStatusFile
 {
     public Stream InputStream => inner.InputStream;
@@ -29,6 +30,7 @@ internal sealed class TtyProcessOwningSessionFiles(
 
     public void Dispose()
     {
+        var process = cleanupScratch is null ? null : SessionScratchCleanup.CaptureProcess(inner.ProcessId);
         inner.Dispose();
 
         foreach (var path in sessionScopedFiles)
@@ -54,6 +56,7 @@ internal sealed class TtyProcessOwningSessionFiles(
 
         // AC-1519: last, as the Linux group's kill is: whatever the CLI left running after its EOF ends with the pane.
         processAnchor?.Dispose();
+        cleanupScratch?.Invoke(process);
     }
 
     // Best-effort: a session that has already exited must not fail on its own cleanup. Whatever

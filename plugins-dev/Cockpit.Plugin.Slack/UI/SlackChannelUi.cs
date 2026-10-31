@@ -14,9 +14,8 @@ public sealed class SlackChannelUi : ICockpitPluginUi
         var settings = new SlackChannelSettings(host.Storage);
         host.AddSettings(() => new SlackChannelSettingsControl(host, settings), "Assistant Plugins");
 
-        // ponytail: OnSettingsSaved's callback is a synchronous Action, so it cannot await; blocking is safe today
-        // (the channel answers in-process with no thread hop).
+        // The host awaits it (AC-1891).
         host.OnSettingsSaved(() =>
-            host.Channel.InvokeAsync(SlackChannel.SettingsSaved, JsonSerializer.SerializeToElement(true, SlackChannel.Json)).GetAwaiter().GetResult());
+            host.Channel.InvokeAsync(SlackChannel.SettingsSaved, JsonSerializer.SerializeToElement(true, SlackChannel.Json)));
     }
 }

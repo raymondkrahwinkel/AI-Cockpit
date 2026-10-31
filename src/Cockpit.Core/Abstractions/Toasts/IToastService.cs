@@ -35,4 +35,14 @@ public interface IToastService
     /// </remarks>
     void Show(string message, ToastSeverity severity, IReadOnlyList<ToastAction> actions, bool sticky, string? source, string? key) =>
         Show(message, severity, actions, sticky);
+
+    /// <summary>
+    /// The same with an optional <paramref name="title"/> (AC-1853): a bold line above <paramref name="message"/>, on the
+    /// toast and in the notification center. Null shows the message alone.
+    /// </summary>
+    /// <remarks>
+    /// Default drops the title, the toast a service without titles can give.
+    /// </remarks>
+    void Show(string message, ToastSeverity severity, IReadOnlyList<ToastAction> actions, bool sticky, string? source, string? key, string? title) =>
+        Show(message, severity, actions, sticky, source, key);
 }

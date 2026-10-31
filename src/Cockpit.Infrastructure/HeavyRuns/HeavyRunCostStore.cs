@@ -9,8 +9,9 @@ namespace Cockpit.Infrastructure.HeavyRuns;
 // AC-1535: the peak each kind of heavy run added to the machine, per repository, kept across restarts so the queue
 // admits on a measured number instead of a guess. The highest measurement stays: a run killed halfway cannot lower it.
 // ponytail: a cost never comes down; forget the file's row when a repository's runs got lighter for good.
-public sealed class HeavyRunCostStore : ISingletonService
+public sealed class HeavyRunCostStore(string? filePath = null) : ISingletonService
 {
+    private readonly string _filePath = filePath ?? CockpitConfigPath.HeavyRunCosts;
     private readonly object _gate = new();
     private readonly SemaphoreSlim _writing = new(1, 1);
     private Dictionary<string, HeavyRunCost>? _costs;
@@ -40,7 +41,7 @@ public sealed class HeavyRunCostStore : ISingletonService
         await _writing.WaitAsync().ConfigureAwait(false);
         try
         {
-            await File.WriteAllTextAsync(CockpitConfigPath.HeavyRunCosts, json).ConfigureAwait(false);
+            await File.WriteAllTextAsync(_filePath, json).ConfigureAwait(false);
         }
         finally
         {
@@ -100,8 +101,8 @@ public sealed class HeavyRunCostStore : ISingletonService
 
         try
         {
-            _costs = File.Exists(CockpitConfigPath.HeavyRunCosts)
-                ? JsonSerializer.Deserialize<Dictionary<string, HeavyRunCost>>(File.ReadAllText(CockpitConfigPath.HeavyRunCosts))
+            _costs = File.Exists(_filePath)
+                ? JsonSerializer.Deserialize<Dictionary<string, HeavyRunCost>>(File.ReadAllText(_filePath))
                 : null;
         }
         catch (JsonException)

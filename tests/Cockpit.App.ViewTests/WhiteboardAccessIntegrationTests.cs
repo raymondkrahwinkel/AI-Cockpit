@@ -1,6 +1,5 @@
 using System.Text.Json.Nodes;
 using Avalonia.Controls;
-using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -58,19 +57,19 @@ public class WhiteboardAccessIntegrationTests
 
         var placed = JsonNode.Parse(await _CallAsync(tools, "PlaceOnWhiteboard", "agent-pane", surfaceId, "stickynote", "Van de agent", 100d, 100d, 0d, 0d));
         Assert.True(placed!["ok"]!.GetValue<bool>());
-        Dispatcher.UIThread.RunJobs();
+        await HeadlessAvalonia.SettleAsync();
 
         var withNote = registry.PeekSnapshot(surfaceId)!;
         Assert.NotEqual(empty, withNote);
 
         var strange = JsonNode.Parse(await _CallAsync(tools, "EraseWhiteboardObject", "agent-pane", surfaceId, Guid.NewGuid().ToString()));
         Assert.False(strange!["ok"]!.GetValue<bool>());
-        Dispatcher.UIThread.RunJobs();
+        await HeadlessAvalonia.SettleAsync();
         Assert.Equal(withNote, registry.PeekSnapshot(surfaceId));
 
         var erased = JsonNode.Parse(await _CallAsync(tools, "EraseWhiteboardObject", "agent-pane", surfaceId, placed["objectId"]!.GetValue<string>()));
         Assert.True(erased!["ok"]!.GetValue<bool>());
-        Dispatcher.UIThread.RunJobs();
+        await HeadlessAvalonia.SettleAsync();
         Assert.Equal(empty, registry.PeekSnapshot(surfaceId));
 
         plugin.Dispose();
@@ -122,10 +121,11 @@ public class WhiteboardAccessIntegrationTests
         // which showing it in a window forces.
         var listWindow = new Window { Content = listContent };
         listWindow.Show();
-        Dispatcher.UIThread.RunJobs();
+        await HeadlessAvalonia.SettleAsync();
         listContent.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "New whiteboard"))
             .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
         listWindow.Close();
+        await HeadlessAvalonia.SettleAsync();
         var dialogKey = Assert.Single(host.DialogKeys, key => key.StartsWith("whiteboard.document.", StringComparison.Ordinal));
         Assert.IsAssignableFrom<Control>(host.LastDialogContent);
 

@@ -8,6 +8,7 @@ using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Cockpit.App.Composition;
+using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
@@ -27,6 +28,9 @@ using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Core.Voice;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Cockpit.App;
 
@@ -35,6 +39,21 @@ internal static partial class Screenshotter
 {
     private const int DefaultWindowWidth = 1100;
     private const int DefaultWindowHeight = 760;
+
+    private static Window _BackgroundWorkScene()
+    {
+        var session = new SessionViewModel();
+        session.Apply(new BackgroundTasksChanged
+        {
+            SessionId = "s1",
+            Tasks =
+            [
+                new BackgroundTask("agent-1", BackgroundTaskKind.SubAgent, "Review the session driver changes"),
+                new BackgroundTask("agent-2", BackgroundTaskKind.SubAgent, "Check the Background pop-out and tests"),
+            ],
+        });
+        return new Window { Width = 450, Height = 300, Content = new Controls.BackgroundWorkList { DataContext = session } };
+    }
 
     public const string Argument = "--screenshot";
 
@@ -169,10 +188,31 @@ internal static partial class Screenshotter
     // working from a hand-written list, and a hand-written list is blind to exactly the scene nobody remembered.
     private static readonly Dictionary<string, Func<int, int, Window>> Scenes = _WithProjectScenes(new(StringComparer.Ordinal)
     {
+        ["session-background-work"] = (_, _) => _BackgroundWorkScene(),
         // AC-1827: the splash before its step UI appears, loading, slower than usual, carried on without, and failed.
         // AC-1829: the real window while projects and sessions are still loading.
         ["main-loading"] = (_, _) => _MainWhileLoading(),
         ["splash-fast"] = (_, _) => SplashScene.Fast(),
+        ["splash-unlock"] = (_, _) => SplashScene.Unlock(),
+        ["splash-unlock-busy"] = (_, _) => SplashScene.Unlock(busy: true),
+        ["splash-unlock-wrong"] = (_, _) => SplashScene.Unlock(wrong: true),
+        // AC-1879: Windows Hello in the unlock step — offered, cancelled (amber), and its key gone on this computer.
+        ["splash-unlock-hello"] = (_, _) => SplashScene.Unlock(hello: "offered"),
+        ["splash-unlock-hello-cancelled"] = (_, _) => SplashScene.Unlock(hello: "cancelled"),
+        ["splash-unlock-hello-gone"] = (_, _) => SplashScene.Unlock(hello: "gone"),
+        ["options-security-hello"] = (_, _) => _OptionsSecurityHello(),
+        ["options-security-hello-busy"] = (_, _) => _OptionsSecurityHello(busy: true),
+        ["options-hello-turn-on"] = (_, _) => new PasswordDialog
+        {
+            DataContext = new ViewModels.PasswordDialogViewModel(
+                "Turn on Windows Hello",
+                "Confirm with your encryption password. Windows then asks for your face, fingerprint or PIN once, to bind the key to this computer.",
+                requiresCurrent: false,
+                confirmOnlyNote: "Your password keeps working. Change it later and Windows Hello is turned off until you turn it on again."),
+        },
+        ["splash-unlocked"] = (_, _) => SplashScene.Unlock(unlocked: true),
+        ["splash-unlocked-plugins"] = (_, _) => SplashScene.Unlock(unlocked: true, plugins: true),
+        ["splash-unlock-reset"] = (_, _) => UnlockWindow.CreateResetConfirmation(),
         ["splash-loading"] = (_, _) => SplashScene.Loading(),
         ["splash-slow"] = (_, _) => SplashScene.Slow(),
         ["splash-skipped"] = (_, _) => SplashScene.Skipped(),
@@ -188,6 +228,49 @@ internal static partial class Screenshotter
         // buttons and its Tijd section in one card, the single-button plugins together in "Plugins" — open, or folded.
         ["sidebar-plugins"] = (width, height) => _PluginSidebarScene(width, height, folded: false),
         ["sidebar-plugins-folded"] = (width, height) => _PluginSidebarScene(width, height, folded: true),
+        // AC-1750 (mockup AC-1749 v003): a kept tab with an unsaved marker beside the preview tab, italic and labelled.
+        ["workspace-preview-tab"] = (_, _) => _WorkspacePreviewTabScene(),
+        ["workspace-tab-overflow"] = (_, _) => _WorkspacePreviewTabScene(overflow: true),
+        ["workspace-tab-overflow-middle"] = (_, _) => _WorkspacePreviewTabScene(overflow: true),
+        ["workspace-tab-interactions"] = (_, _) => _WorkspacePreviewTabScene(overflow: true),
+        // AC-1751 (mockup AC-1749 v003, flow 8): a keyed workspace popped out into its own window, with "⇤ Dock back".
+        ["workspace-floating"] = (_, _) => _WorkspaceFloatingScene(),
+        // AC-1753 (mockup AC-1749 v003, flows 6 and 10): the Markdown editor live, with the caret in a table, as source, and read-only.
+        ["markdown-editor"] = (width, height) => _MarkdownEditorScene(width, height, editor => editor.EditLine(12, atEnd: true)),
+        ["markdown-file-new"] = (width, height) => _MarkdownFileScene(width, height, "new"),
+        ["markdown-file-create"] = (_, _) => _NewMarkdownFileDialogScene(),
+        ["markdown-file-editing"] = (width, height) => _MarkdownFileScene(width, height, "editing"),
+        ["markdown-file-conflict"] = (width, height) => _MarkdownFileScene(width, height, "conflict"),
+        ["markdown-file-conflict-compare"] = (width, height) => _MarkdownFileScene(width, height, "conflict-compare"),
+        ["markdown-file-readonly"] = (width, height) => _MarkdownFileScene(width, height, "readonly"),
+        ["markdown-file-live"] = (width, height) => _MarkdownFileScene(width, height, "live"),
+        ["markdown-file-live-light"] = (width, height) => _MarkdownFileScene(width, height, "live-light"),
+        ["markdown-file-live-light-saved"] = (width, height) => _MarkdownFileScene(width, height, "live-light-saved"),
+        ["markdown-file-sign-in-expired"] = (width, height) => _MarkdownFileScene(width, height, "sign-in-expired"),
+        ["markdown-file-schema-mismatch"] = (width, height) => _MarkdownFileScene(width, height, "schema-mismatch"),
+        ["markdown-file-viewer"] = (width, height) => _MarkdownFileScene(width, height, "viewer"),
+        // AC-1900 (mockup AC-1895 v2, screens 4 and 4p): others' carets and selections, the avatars in the header, and the list they open.
+        ["markdown-file-presence"] = (width, height) => _MarkdownFileScene(width, height, "presence"),
+        ["markdown-file-agent"] = (width, height) => _MarkdownFileScene(width, height, "presence-agent"),
+        ["markdown-file-presence-popover"] = (width, height) => _MarkdownFileScene(width, height, "presence"),
+        ["markdown-file-presence-away"] = (width, height) => _MarkdownFileScene(width, height, "presence-away"),
+        ["markdown-file-saver-saved"] = (width, height) => _MarkdownFileScene(width, height, "presence-saved"),
+        ["markdown-file-saver-not-yet"] = (width, height) => _MarkdownFileScene(width, height, "presence-not-yet"),
+        ["markdown-file-saver-agent"] = (width, height) => _MarkdownFileScene(width, height, "presence-agent"),
+        ["preview-tab"] = (width, height) => _MarkdownFileScene(width, height, "preview"),
+        ["markdown-file-floating"] = (width, height) => _MarkdownFileScene(width, height, "floating"),
+        ["markdown-file-discard"] = (_, _) => new ConfirmationDialog
+        {
+            DataContext = new ConfirmationDialogViewModel("Discard unsaved changes?",
+                "Close md-editor-in-cockpit.md without saving? Your changes will be lost.", "Discard changes"),
+        },
+        ["markdown-editor-table"] = (width, height) => _MarkdownEditorScene(width, height, editor => editor.EditLine(27, atEnd: true)),
+        ["markdown-editor-source"] = (width, height) => _MarkdownEditorScene(width, height, editor => editor.ShowSource = true),
+        ["markdown-editor-readonly"] = (width, height) => _MarkdownEditorScene(width, height, editor =>
+        {
+            editor.IsReadOnly = true;
+            editor.MarkLine(7);
+        }),
         // AC-1549: a reminder going off with the plugin's screen closed — the cockpit's own toast, its three buttons.
         ["toast-reminder"] = (width, _) => _ReminderToastScene(width),
         // AC-1033: the knowledge base in the five states that decide whether it works. A plugin's own branch
@@ -225,10 +308,13 @@ internal static partial class Screenshotter
         ["session-tree"] = (width, height) => _MainWindowWithSessionTree(width, height),
         // AC-1503: what the first start after a restore says about the sign-ins that came back empty.
         ["restore-signins"] = (width, height) => _MainWindowAfterARestore(width, height),
+        ["depot-invitation"] = (width, height) => _MainWindowWithDepotInvitation(width, height),
         // AC-1000: Voice and Assistant are now separate top-level categories rather than Carousel sub-pages of one
         // Voice tab — own scenes rather than reusing "options", since neither category renders on the category that
         // scene opens on (Notifications) and a layout change to a page nothing captures is a layout change nobody
         ["voice-transcribe"] = (_, _) => _OptionsOnTab("Voice"),
+        // AC-1881: an Optimus laptop — the backend combo offers each GPU and Auto names the dedicated one.
+        ["voice-transcribe-gpus"] = (_, _) => _OptionsVoiceWithTwoGpus(),
         ["voice-assistant"] = (_, _) => _OptionsAssistantPage(),
         // AC-1567: the organisation's rule set as the read-only block on the same page.
         ["options-assistant-org-rules"] = (_, _) => _OptionsAssistantPage(orgRules: true),
@@ -251,9 +337,17 @@ internal static partial class Screenshotter
         // sharing one page-wide ScrollViewer.
         ["options-profiles"] = (_, _) => _OptionsProfilesPage(),
         ["options-profiles-focus"] = (_, _) => _OptionsProfilesPage(focusProfile: true),
-        // AC-1323: the Nodes page with a controller paired and a second one asking — both texts that say what a
-        // controller's assistant may do here render nowhere else.
-        ["options-nodes-paired"] = (_, _) => _OptionsNodesPaired(),
+        ["options-swarm"] = (_, _) => _OptionsSwarm(),
+        ["options-swarm-kicked"] = (_, _) => _OptionsSwarm(removal: "Laptop removed this machine from the swarm. Your sessions here keep running. Join again with confirmation on both screens and a new rank. removed_from_swarm"),
+        ["options-swarm-removal-pending"] = (_, _) => _OptionsSwarm(removal: "Kicked · removal_pending: sleeping members learn the signed removal at their next contact."),
+        ["options-swarm-no-answer"] = (_, _) => _OptionsSwarm(failure: "no_answer"),
+        ["options-swarm-refused"] = (_, _) => _OptionsSwarm(failure: "connection_refused"),
+        ["options-swarm-certificate"] = (_, _) => _OptionsSwarm(failure: "certificate_changed"),
+        ["options-swarm-public"] = (_, _) => _OptionsSwarm(failure: "address_not_internal"),
+        ["options-swarm-empty"] = (_, _) => _OptionsSwarm(empty: true),
+        ["options-swarm-invalid-cidr"] = (_, _) => _OptionsSwarm(invalidCidr: true),
+        ["options-swarm-settings"] = (_, _) => _OptionsSwarm(),
+        ["options-swarm-incoming"] = (_, _) => _OptionsSwarm(incoming: true),
         // AC-1458: the connect form after a connect that went through — they match, and Connected; and the four
         // connection statuses beside the four outcomes, each drawn by the same view the Nodes page uses.
         ["options-nodes-connect"] = (_, _) => _OptionsNodesConnect(),
@@ -262,6 +356,11 @@ internal static partial class Screenshotter
         // AC-1762: the sidebar's foldable sections, open and with This laptop and the server folded, beside mockup v8.
         ["sidebar"] = (width, height) => ServerGroupScene.Sidebar(width, height, collapsed: false),
         ["sidebar-collapsed"] = (width, height) => ServerGroupScene.Sidebar(width, height, collapsed: true),
+        ["sidebar-waiting"] = ServerGroupScene.SidebarWaiting,
+        ["swarm-sidebar"] = (width, height) => _SwarmSidebar(width, height),
+        ["swarm-sidebar-asleep"] = (width, height) => _SwarmSidebar(width, height, asleep: true),
+        ["swarm-sidebar-start"] = (width, height) => _SwarmSidebar(width, height, start: true),
+        ["swarm-sidebar-empty"] = (width, height) => _SwarmSidebar(width, height, empty: true),
         ["server-group"] = ServerGroupScene.Admin,
         ["server-group-operate"] = ServerGroupScene.Operate,
         ["server-start-refused"] = ServerGroupScene.StartRefused,
@@ -383,6 +482,7 @@ internal static partial class Screenshotter
         // "Uncategorized" always last (and shown even though nothing is left in it here) and every card's origin
         // badge — "● This machine" and "◆ Depot — Work" — now that the old "On this machine" heading is gone.
         ["plugin-store"] = (_, _) => _PluginStore(),
+        ["plugin-store-installed"] = (_, _) => _PluginStoreInstalled(),
         // AC-553: the eleven bundled plugins' real logo tiles — its own scene, not added to `_SampleStorePlugins`,
         // whose row count PluginStoreBusyGateTests asserts on. Height raised past the dialog's own 820: twelve
         // rows do not fit at rest.
@@ -415,8 +515,6 @@ internal static partial class Screenshotter
         // the notification only exists in that state, and because two at once is the case the prototype never drew.
         ["simple-view-consent"] = (_, _) => new MainWindow { DataContext = _SimpleStandAwaitingConsent() },
 
-        // AC-1324: a node session's Allow/Deny drawn in the controller's own conversation, with the machine on it.
-        ["simple-view-node-permission"] = (_, _) => new MainWindow { DataContext = _SimpleStandNodePermission() },
         // AC-1528: Home (mockup simple-view-home-en.png) — the greeting, its own box, what waits and the projects.
         ["simple-view-home"] = (_, _) => new MainWindow { DataContext = _SimpleStandHome() },
         // AC-1824: the plugin dock panels on the Simple stand's rail — collapsed, a browser-like panel open, a file tree open.
@@ -625,10 +723,18 @@ internal static partial class Screenshotter
         ["assistant-chat-empty"] = (_, _) => _AssistantChat(withConversation: false),
         ["assistant-chat-speak-off"] = (_, _) => _AssistantChat(withConversation: true, speakReplies: false),
         ["assistant-chat-always-on"] = (_, _) => _AssistantChat(withConversation: true, alwaysOn: true),
+        ["assistant-swarm-follower"] = (_, _) => _AssistantSwarm(),
+        ["assistant-swarm-leader"] = (_, _) => _AssistantSwarm(selfLeads: true),
+        ["assistant-swarm-server"] = (_, _) => _AssistantSwarm(serverLeads: true),
+        ["assistant-swarm-takeover"] = (_, _) => _AssistantSwarm(selfLeads: true, takeover: true),
+        ["assistant-swarm-merge"] = (_, _) => _AssistantSwarm(merging: true),
+        ["assistant-swarm-merge-question"] = (_, _) => _AssistantSwarm(selfLeads: true, merging: true, question: true),
         // AC-953: the same chat surface in its other host — docked into the right-hand rail, inside MainWindow,
         // with Undock where the floating window has Close. The scene that shows what "docked is ordinary cockpit
         // UI" actually looks like: in the column structure beside the session content, no chrome of its own.
         ["assistant-docked"] = (_, _) => _AssistantDockedInTheRail(),
+        ["agents-docked"] = (_, _) => _AgentsOverview(floating: false),
+        ["agents-undocked"] = (_, _) => _AgentsOverview(floating: true),
         // AC-960 criterion 15: a plugin-registered panel (a stand-in for GitHubPullRequestsWidget — Cockpit.App
         // does not reference that store-distributed plugin's assembly) at the rail's minimum and maximum content
         // widths, plus the collapsed rail carrying both the Assistant's tab and this one.
@@ -643,6 +749,9 @@ internal static partial class Screenshotter
         // bell opens it in from the Simple stand.
         ["notifications-panel"] = (_, _) => _NotificationsPanel(),
         ["notifications-startup-bundle"] = (_, _) => _NotificationsStartupBundle(),
+        // AC-1853 (screens 04 and 09): All with titles, day groups and Clear read; what a restart brought back.
+        ["notifications-all"] = (_, _) => _NotificationsPanel(_SeedAllNotifications, ViewModels.NotificationFilter.All),
+        ["notifications-restart"] = (_, _) => _NotificationsPanel(_SeedRestartedNotifications, ViewModels.NotificationFilter.NeedsYou),
         ["notifications-window"] = (_, _) =>
         {
             var notifications = _SampleNotifications();
@@ -1194,6 +1303,10 @@ internal static partial class Screenshotter
     {
         var window = BuildScene(scene, width, height);
         window.Show();
+        if (window is SplashWindow { DataContext: ViewModels.SplashViewModel { IsUnlocking: true } } splash)
+        {
+            splash.TakeFocus();
+        }
 
         // The selection surface's modes are states an operator drives it into, not windows that open in them, so
         // the scene reaches them here — after the window is up and has a size to measure positions against.
@@ -1216,10 +1329,27 @@ internal static partial class Screenshotter
     // they are opened here rather than built into the scene.
     private static readonly Dictionary<string, Action<Window>> Hovers = new(StringComparer.Ordinal)
     {
+        ["workspace-tab-interactions"] = _ExerciseWorkspaceTabScrolling,
+        ["workspace-tab-overflow"] = _HoverActiveWorkspaceTab,
+        ["workspace-tab-overflow-middle"] = window =>
+        {
+            if (window.DataContext is CockpitViewModel cockpit)
+            {
+                cockpit.Workspaces.SelectWorkspaceCommand.Execute(cockpit.Workspaces.Tabs[6].Id);
+                window.UpdateLayout();
+            }
+            _HoverActiveWorkspaceTab(window);
+        },
+        ["markdown-file-presence-popover"] = window =>
+        {
+            window.GetVisualDescendants().OfType<Files.LivePresenceBar>().First().IsOpen = true;
+            Dispatcher.UIThread.RunJobs();
+        },
         ["session-settings-flyout"] = window => _OpenFlyout(window, "SessionSettingsButton"),
         ["session-settings-flyout-no-live-controls"] = window => _OpenFlyout(window, "SessionSettingsButton"),
         ["workspace-layout-flyout"] = window => _OpenFlyout(window, "WorkspaceLayoutButton"),
         ["help-menu"] = window => _OpenFlyout(window, "HelpButton"),
+        ["plugin:depot-browser-settings"] = window => _OpenFlyout(window, "OpenFilesInButton"),
         ["projects-workspace-split-open"] = window =>
         {
             var start = window.GetVisualDescendants().OfType<SplitButton>().First(button => button.IsEffectivelyVisible);
@@ -1255,10 +1385,11 @@ internal static partial class Screenshotter
         ["assistant-threads-docked-280-closed"] = window => _OpenFlyout(window, "ThreadPickerClosed"),
         ["assistant-threads-docked-280-picker"] = window => _Named<ComboBox>(window, "ThreadPicker").IsDropDownOpen = true,
         ["simple-view-conversation-details"] = window => _OpenFlyout(window.GetVisualDescendants().OfType<Controls.SimpleConversationHeader>().First(header => header.IsEffectivelyVisible), "DetailsButton"),
-        // AC-1352: the headless renderer clamps a window's captured height well short of what the Nodes page
-        // actually needs, so this scrolls the new "Connect to a server" section into view instead of relying
-        // on Height alone to make it fit.
-        ["options-nodes-paired"] = window => _ScrollIntoView(window, "nodes", "3. CONNECT TO A SERVER"),
+        // AC-1984: show Accept and Connect together after removing the desktop-pairing block.
+        ["options-nodes-connect"] = window => _ScrollIntoView(window, "nodes", "1. ACCEPT CONNECTIONS FROM A SECOND COCKPIT"),
+        ["options-swarm-settings"] = window => _ScrollIntoView(window, "swarm", "Internal network only"),
+        ["options-swarm-invalid-cidr"] = window => _ScrollIntoView(window, "swarm", "Internal network only"),
+        ["options-swarm-incoming"] = window => _ScrollIntoView(window, "swarm", "Internal network only"),
         ["options-sync-changes"] = SyncScene.StageChanges,
         ["options-sync-profiles"] = SyncScene.ExpandProfiles,
         ["options-sync-servers"] = window =>
@@ -1271,7 +1402,6 @@ internal static partial class Screenshotter
             SyncScene.StageChanges(window);
             _OpenRowFlyout(window, "Appearance");
         },
-        ["options-nodes-connect"] = window => _ScrollIntoView(window, "nodes", "3. CONNECT TO A SERVER"),
         ["options-plugin-declared"] = window => ((OptionsDialog)window).SelectCategory("plugin:claude-provider"),
         ["options-backup-depot"] = _ChooseSceneDepot,
         ["options-backup-status"] = window => _ScrollIntoView(window, "backup", "2. SCHEDULED BACKUP"),
@@ -1879,21 +2009,61 @@ internal static partial class Screenshotter
         return dialog;
     }
 
-    private static OptionsDialog _OptionsNodesPaired()
-    {
-        var security = new SecurityOptionsViewModel(
-            new UnprotectedSecrets(),
-            nodePairing: new _FakePairingBroker(),
-            sessionProfileStore: new _FakeSessionProfileStore(),
-            projectStore: new _FakeProjectStore());
-        var cockpit = new ViewModels.CockpitViewModel { Security = security };
-        security.RefreshAsync().GetAwaiter().GetResult();
-        security.NodeEndpointEnabled = true;
 
-        // AC-1352: taller than before (1000) — the connect block sits between the pairing panel and the
-        // paired-node cards, and a render that crops it proves nothing about the part this change touched.
-        var dialog = new OptionsDialog { DataContext = cockpit, Height = 1500 };
-        dialog.SelectCategory("nodes");
+    private static OptionsDialog _OptionsSwarm(bool empty = false, bool invalidCidr = false, bool incoming = false, string? failure = null, string? removal = null)
+    {
+        var swarm = new SwarmOptionsViewModel
+        {
+            ExtraInternalCidrsText = invalidCidr ? "100.64.0.0/99" : "100.64.0.0/10",
+            Address = "nuc-garage:20382",
+            RemovalStatus = removal ?? "",
+            Incoming = incoming ? new("scene-pairing", "Desktop", "482 193", DateTimeOffset.UtcNow.AddMinutes(2)) : null,
+        };
+        if (!empty)
+        {
+            swarm.Machines.Add(new("Desktop", "192.168.1.10:20382", "Discovered", "1042", "Leader", "Now", false, true) { IsPaired = true });
+            swarm.Machines.Add(new("Laptop", "192.168.1.23:20382", "This machine", "5789", "Online", "Now", true, true) { IsPaired = true });
+            swarm.Machines.Add(new("Studio", "studio:20382", "Manual address", "8931", "Online", "Now", false, true) { IsPaired = true });
+            swarm.Machines.Add(new("NUC", "192.168.1.44:20382", "Discovered", "15237", "Asleep", "Today, 14:32", false, false) { IsPaired = true });
+            swarm.Machines.Add(new("Workshop", "workshop:20382", "Manual address", "18004", "Not reachable", "Yesterday, 18:04", false, false) { IsPaired = true });
+            swarm.LeaderLine = "Leader: Desktop · Lowest rank of the 3 reachable";
+            swarm.RankOrder = "Desktop (1042) → Laptop (5789) → Studio (8931) → NUC (15237) → Workshop (18004)";
+            swarm.PairingCode = "482 193";
+            swarm.PairingCaption = "Compare with NUC-garage on the other screen. Confirm there too, then continue here.";
+        }
+        if (removal?.Contains("removed_from_swarm", StringComparison.Ordinal) == true)
+        {
+            swarm.Machines.Clear();
+            swarm.PairingCode = "";
+            swarm.LeaderLine = "This machine works on its own";
+        }
+        if (failure is not null)
+        {
+            swarm.Machines.Clear();
+            var exception = failure switch
+            {
+                "connection_refused" => (Exception)new System.Net.Sockets.SocketException((int)System.Net.Sockets.SocketError.ConnectionRefused),
+                "certificate_changed" => new NodeCertificatePinMismatchException("AABB", "CCDD"),
+                "address_not_internal" => NodePairingException.For("address_not_internal", "nuc.local is not on the internal network, so this cockpit will not connect to it. A VPN's range can be added as an internal range."),
+                _ => new TaskCanceledException(),
+            };
+            swarm.Machines.Add(new("NUC", "nuc.local:20382", "Manual address", "8931", failure switch
+            {
+                "connection_refused" => "Connection refused", "certificate_changed" => "Certificate changed",
+                "no_answer" => "No answer", _ => "Not reachable",
+            }, "Not yet seen", false, false)
+            {
+                ErrorCode = failure,
+                ErrorMessage = exception is NodePairingException ? exception.Message : NodeConnectionFailure.Describe("nuc.local:20382", exception, NodeConnectionFailure.DefaultBudget),
+            });
+            swarm.PairingCode = "";
+            swarm.LeaderLine = "Leader: this machine · No other machine online";
+            swarm.RankOrder = "NUC (8931)";
+        }
+        var cockpit = new CockpitViewModel { Swarm = swarm };
+        cockpit.Security.NodeEndpointEnabled = true;
+        var dialog = new OptionsDialog { DataContext = cockpit, Width = 1100, Height = 1700 };
+        dialog.SelectCategory("swarm");
         return dialog;
     }
 
@@ -1929,7 +2099,12 @@ internal static partial class Screenshotter
 
     private static OptionsDialog _OptionsNodesConnect()
     {
-        var security = _ConnectedSecurity();
+        var security = _ConnectAttempt(null, ServerGroupScene.StandIn());
+        security.CancelConnectCommand.Execute(null);
+        security.NodeEndpointEnabled = true;
+        security.NodeEndpointAddressText = "cockpit-agents: https://huis-cockpit.tailnet.ts.net:20383/mcp";
+        security.NodeEndpointSharedSecret = "scene-shared-key";
+        security.NodeEndpointHasNoListener = false;
         var dialog = new OptionsDialog { DataContext = new ViewModels.CockpitViewModel { Security = security }, Height = 1500 };
         dialog.SelectCategory("nodes");
         return dialog;
@@ -1939,9 +2114,11 @@ internal static partial class Screenshotter
 
     // One connect against a scene client, run to its outcome: `failure` null connects, anything else is thrown
     // by the probe exactly as the real client would.
-    private static SecurityOptionsViewModel _ConnectAttempt(Exception? failure)
+    private static SecurityOptionsViewModel _ConnectAttempt(Exception? failure, Cockpit.Core.Abstractions.Remote.IRemoteServers? servers = null)
     {
-        var security = new SecurityOptionsViewModel(new UnprotectedSecrets(), nodeSessions: new _SceneNodeSessions { ProbeFailure = failure })
+        var security = new SecurityOptionsViewModel(new UnprotectedSecrets(),
+            nodeSessions: new _SceneNodeSessions { ProbeFailure = failure, Nodes = servers?.Servers.Select(server => server.Name).ToArray() ?? [] },
+            remoteServers: servers)
         {
             ConnectNodeName = "huis-cockpit",
             ConnectHost = "huis-cockpit.tailnet.ts.net",
@@ -1955,27 +2132,11 @@ internal static partial class Screenshotter
     private static Window _NodesConnectionStatus(int width, int height)
     {
         const string url = "https://huis-cockpit.tailnet.ts.net:20383/mcp";
-        var connected = new NodeSessionsViewModel(new _SceneNodeSessions(), "huis-cockpit") { Url = url };
-        connected.RefreshAsync().GetAwaiter().GetResult();
-
-        var reconnecting = new NodeSessionsViewModel(new _SceneNodeSessions { ReadError = "No answer." }, "huis-cockpit") { Url = url };
-        for (var attempt = 0; attempt < 3; attempt++)
-        {
-            reconnecting.RefreshAsync().GetAwaiter().GetResult();
-        }
-
-        var expired = new NodeSessionsViewModel(new _SceneNodeSessions(), "huis-cockpit") { Url = url, KeyExpiresAt = DateTimeOffset.Now.AddDays(-4) };
-        expired.RefreshAsync().GetAwaiter().GetResult();
-
-        var disconnected = new NodeSessionsViewModel(new _SceneNodeSessions(), "huis-cockpit") { Url = url };
-        disconnected.RefreshAsync().GetAwaiter().GetResult();
-        disconnected.DisconnectCommand.Execute(null);
-
         // AC-1456: a connect server's card follows its session-list group, connected and with the stream lost.
         var key = new Core.Abstractions.Remote.RemoteServerKey("laptop-raymond", "admin", true, "laptop-raymond", "0.66.0", null);
-        var streamed = new NodeSessionsViewModel(new _SceneNodeSessions(), "huis-cockpit") { Url = url };
+        var streamed = new NodeSessionsViewModel("huis-cockpit") { Url = url };
         streamed.FollowServer(ServerGroupScene.StandIn("huis-cockpit", new Core.Abstractions.Remote.RemoteServerState(true, 38, key)));
-        var streamLost = new NodeSessionsViewModel(new _SceneNodeSessions(), "huis-cockpit") { Url = url };
+        var streamLost = new NodeSessionsViewModel("huis-cockpit") { Url = url };
         streamLost.FollowServer(ServerGroupScene.StandIn("huis-cockpit", new Core.Abstractions.Remote.RemoteServerState(false, 38, key)));
 
         var mismatch = new NodeCertificatePinMismatchException(SceneFingerprint, "B1076E3D000000000000000000000000000000000000000000000000" + "9C11A40F");
@@ -1989,11 +2150,6 @@ internal static partial class Screenshotter
 
         var panel = new StackPanel { Spacing = 8, Margin = new Thickness(20) };
         panel.Children.Add(new TextBlock { Text = "Connection status", FontWeight = Avalonia.Media.FontWeight.SemiBold });
-        foreach (var card in new[] { connected, reconnecting, expired, disconnected })
-        {
-            panel.Children.Add(new NodeConnectionStatusView { DataContext = card });
-        }
-
         panel.Children.Add(new TextBlock { Text = "A connect server, as its session-list group reports it", FontWeight = Avalonia.Media.FontWeight.SemiBold });
         foreach (var card in new[] { streamed, streamLost })
         {
@@ -2011,7 +2167,14 @@ internal static partial class Screenshotter
     // The node a scene connects to: answers a probe and a read as told, and whoami with the mockup's key.
     private sealed class _SceneNodeSessions : INodeSessionsClient
     {
+        public Func<string, string, Cockpit.Core.Abstractions.Sessions.ISessionHandle?>? OpenHandle { get; init; }
+        public Task<Cockpit.Core.Abstractions.Sessions.ISessionHandle?> OpenSessionAsync(string nodeName, string paneId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(OpenHandle?.Invoke(nodeName, paneId));
+        public Func<string, NodeSessionsSnapshot>? ReadSnapshot { get; init; }
+        public Func<string, string, string?, NodeStartResult>? StartSession { get; init; }
         public Exception? ProbeFailure { get; init; }
+
+        public IReadOnlyList<string> Nodes { get; init; } = [];
 
         public string? ReadError { get; init; }
 
@@ -2026,15 +2189,15 @@ internal static partial class Screenshotter
             Task.FromResult<NodeWhoAmI?>(WhoAmI);
 
         public Task<IReadOnlyList<string>> ListNodesAsync(CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<string>>([]);
+            Task.FromResult(Nodes);
 
         public Task<NodeSessionsSnapshot> ReadAsync(string nodeName, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new NodeSessionsSnapshot(nodeName, [], [], [], ReadError));
+            Task.FromResult(ReadSnapshot?.Invoke(nodeName) ?? new NodeSessionsSnapshot(nodeName, [], [], [], ReadError));
 
         public (NodeSessionsSnapshot Snapshot, DateTimeOffset AtUtc)? TryGetLastSnapshot(string nodeName) => null;
 
         public Task<NodeStartResult> StartAsync(string nodeName, string profileLabel, string? projectId = null, string? prompt = null, string? sessionName = null, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
+            Task.FromResult(StartSession?.Invoke(nodeName, profileLabel, projectId) ?? throw new NotSupportedException());
 
         public Task<string?> StopAsync(string nodeName, string paneId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
@@ -2045,10 +2208,6 @@ internal static partial class Screenshotter
         public Task<string?> RenameAsync(string nodeName, string paneId, string name, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
         public Task<NodeTranscriptRead> ReadTranscriptAsync(string nodeName, string paneId, int count, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-
-        public Task<NodeInboxBatch> ReadInboxAsync(string nodeName, string? afterMessageId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-
-        public Task<NodePermissionAnswer> AnswerPermissionAsync(string nodeName, string paneId, string toolUseId, bool allow, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
         public Task<NodeMemoryRead> ReadMemoryAsync(string nodeName, string scope, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
@@ -2062,62 +2221,20 @@ internal static partial class Screenshotter
         public Task SaveAsync(ProjectSettings settings, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
-    // A node paired to "DESK" with a second cockpit asking — the two states the Nodes page describes control in.
-    private sealed class _FakePairingBroker : INodePairingBroker
-    {
-        public NodePairing? Pairing { get; } = new()
-        {
-            ControllerName = "DESK",
-            ControllerAddress = "192.168.1.5",
-            PairedAtUtc = new DateTimeOffset(2026, 9, 15, 12, 0, 0, TimeSpan.Zero),
-            AllowAllProfiles = true,
-            AllowAllProjects = true,
-        };
-
-        public NodePairingPending? Pending { get; } = new()
-        {
-            PairingId = "pairing-1",
-            ControllerName = "LAPTOP",
-            ControllerAddress = "192.168.1.7",
-            Code = "482 913",
-            ExpiresAtUtc = DateTimeOffset.MaxValue,
-        };
-
-        public event EventHandler? Changed { add { } remove { } }
-
-        public Task EnsureLoadedAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
-
-        public Task<NodePairingOffer> RequestAsync(string controllerName, string controllerAddress, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public Task ConfirmAsync(string pairingId, CancellationToken cancellationToken = default) => Task.CompletedTask;
-
-        public void Refuse(string pairingId)
-        {
-        }
-
-        public Task<NodePairingGrant> ClaimAsync(string pairingId, string claimToken, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public Task UnpairAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
-
-        public bool IsProfileAllowed(string profileLabel) => true;
-
-        public bool IsProjectAllowed(string projectId) => true;
-
-        public Task SetScopeAsync(
-            IReadOnlyList<string> allowedProfileLabels,
-            IReadOnlyList<string> allowedProjectIds,
-            bool allowAllProfiles,
-            bool allowAllProjects,
-            CancellationToken cancellationToken = default) => Task.CompletedTask;
-    }
 
     // A main window with one session running, so `ShowSessionGrid` shows the toolbar the workspace ⚙ lives in.
     private static MainWindow _MainWindowWithOneSession(int width, int height)
     {
         var cockpit = new ViewModels.CockpitViewModel();
         cockpit.Sessions.Add(new ViewModels.SessionViewModel { Title = "Session", WorkspaceId = cockpit.Workspaces.Active!.Id });
+        return new MainWindow { DataContext = cockpit, Width = width, Height = height };
+    }
+
+    private static MainWindow _MainWindowWithDepotInvitation(int width, int height)
+    {
+        var cockpit = new ViewModels.CockpitViewModel();
+        cockpit.ToastHost.Add("Sanne invited you to Sprint review\nWork · cockpit · Sanne, Alex", ToastSeverity.Information,
+            [new ToastAction("Join", () => { })], sticky: false, source: "Depot");
         return new MainWindow { DataContext = cockpit, Width = width, Height = height };
     }
 
@@ -2162,6 +2279,47 @@ internal static partial class Screenshotter
             .FirstOrDefault(item => string.Equals(item.Tag as string, header, StringComparison.OrdinalIgnoreCase))
             ?? throw new InvalidOperationException($"The Options sidebar has no '{header}' category.");
 
+        return dialog;
+    }
+
+    private static OptionsDialog _OptionsSecurityHello(bool busy = false)
+    {
+        var dialog = _OptionsOnTab("security");
+        var cockpit = dialog.DataContext as ViewModels.CockpitViewModel ?? throw new InvalidOperationException("The Options dialog has no cockpit.");
+
+        // After the dialog's own Opened handler, which reads the real (here: unencrypted) state back in.
+        dialog.Opened += (_, _) =>
+        {
+            cockpit.Security.IsEncrypted = true;
+            cockpit.Security.HelloOffered = true;
+            cockpit.Security.HelloEnabled = !busy;
+            cockpit.Security.IsHelloBusy = busy;
+            cockpit.Security.HelloStatus = "On — bound to this computer’s security chip (TPM). Your password keeps working.";
+        };
+        return dialog;
+    }
+
+    private static OptionsDialog _OptionsVoiceWithTwoGpus()
+    {
+        var dialog = _OptionsOnTab("Voice");
+        var cockpit = dialog.DataContext as ViewModels.CockpitViewModel ?? throw new InvalidOperationException("The Options dialog has no cockpit.");
+        GpuHardware[] gpus =
+        [
+            new(GpuVendor.Intel, "Intel(R) UHD Graphics", DrivesDisplay: true, 128L << 20) { Kind = GpuKind.Integrated, DeviceId = "intel", VulkanIndex = 0 },
+            new(GpuVendor.Nvidia, "NVIDIA GeForce RTX 4070 Laptop GPU", DrivesDisplay: false, 8L << 30) { Kind = GpuKind.Discrete, DeviceId = "nvidia", VulkanIndex = 1 },
+        ];
+        var capabilities = new TranscriptionCapabilities(CudaUsable: false, VulkanUsable: true);
+        cockpit.VoiceEnabled = true;
+        cockpit.VoiceBackendPreferences.Clear();
+        foreach (var choice in ViewModels.TranscriptionOptions.BackendChoices(capabilities, gpus))
+        {
+            cockpit.VoiceBackendPreferences.Add(choice);
+        }
+
+        cockpit.SelectedVoiceBackendPreference = cockpit.VoiceBackendPreferences[0];
+        var recommendation = TranscriptionRecommender.Recommend(capabilities, GpuHardware.PickAuto(gpus), WhisperHostPlatform.Windows);
+        cockpit.TranscriptionHardware = string.Join(" · ", recommendation.Badges);
+        cockpit.TranscriptionAdvice = recommendation.Reason;
         return dialog;
     }
 
@@ -2888,6 +3046,24 @@ internal static partial class Screenshotter
     // Seed the plugin store directly so its full layout can be rendered headlessly without network access (#62).
     private static PluginStoreDialog _PluginStore() => new() { DataContext = _PluginStoreViewModel() };
 
+    // AC-1588: the Installed list with one plugin allowed and one muted, so a row shows both labels of the toggle.
+    private static PluginStoreDialog _PluginStoreInstalled()
+    {
+        static PluginRowViewModel Row(string id, string name, bool muted) => new(new InstalledPlugin(
+            new DiscoveredPlugin(Path.Combine("plugins", id), id, new PluginManifest(id, name, "0.12.1", null, 3, null, null, $"The {name} plugin.", "Cockpit"), $"{id}-hash", PluginLoadDecision.Load),
+            new PluginRegistration(true, $"{id}-hash", NotificationsMuted: muted),
+            null,
+            null,
+            null));
+
+        var viewModel = _PluginStoreViewModel();
+        viewModel.Manager.Plugins.Add(Row("depot", "Depot", muted: false));
+        viewModel.Manager.Plugins.Add(Row("github-pull-requests", "GitHub Pull Requests", muted: true));
+        viewModel.Manager.HasPlugins = true;
+        viewModel.SelectedSidebarItem = viewModel.SecondarySidebarItems.First(item => item.Filter == PluginStoreFilter.Installed);
+        return new PluginStoreDialog { DataContext = viewModel };
+    }
+
     // NeedsRestart is on in both because that is the state that was reported — "Update all" raises it after the first
     // plugin of the batch, so the footer offers a restart while the rest are still downloading (AC-420).
     private static PluginStoreDialog _PluginStoreBusy(double? percent, string status)
@@ -3315,20 +3491,6 @@ internal static partial class Screenshotter
         return cockpit;
     }
 
-    // AC-1324: the row a controller draws for a question on a paired node — built by the same factory the poll
-    // uses, so the scene cannot show a row the poll would not. Answered in the scene by nobody; a render never clicks.
-    private static ViewModels.CockpitViewModel _SimpleStandNodePermission()
-    {
-        var cockpit = _SimpleStand(withAssistant: true);
-        cockpit.AssistantChat!.Session!.Transcript.Add(Services.NodePermissionRelay.Row(
-            "LAPTOP",
-            new NodeSessionRow("0123456789abcdef0123456789abcdef", "AC-1302 de boomrail", "personal", "", "NeedsAttention", NeedsYou: true),
-            new NodePendingPermission("toolu_node_1", "Bash", "{\"command\":\"dotnet test tests/Cockpit.App.ViewTests\"}", new DateTimeOffset(2026, 9, 15, 12, 52, 0, TimeSpan.Zero)),
-            _ => Task.FromResult(new NodePermissionAnswer(true))));
-        cockpit.SimpleSelectedSession = cockpit.AssistantRootSession;
-        return cockpit;
-    }
-
     // AC-1528: Home on a fixed morning for a fixed name, one conversation waiting and one working, as in the mockup.
     private static ViewModels.CockpitViewModel _SimpleStandHome(bool withProjects = true)
     {
@@ -3550,6 +3712,47 @@ internal static partial class Screenshotter
         }
     }
 
+    private static Window _AgentsOverview(bool floating)
+    {
+        var panels = new Docking.DockPanelRegistry();
+        var cockpit = new CockpitViewModel(dockPanelRegistry: panels)
+        {
+            OpenDockPanelId = floating ? null : AgentsOverviewViewModel.DockPanelId,
+            DockRailWidth = 372,
+        };
+        cockpit.Projects.Projects.Add(new Project("cockpit", "cockpit"));
+        cockpit.Projects.Projects.Add(new Project("depot", "depot"));
+        cockpit.Sessions[0].Title = "AC-1805 notification center";
+        cockpit.Sessions[0].ActiveProfileLabel = "Coder";
+        cockpit.Sessions[0].Statusline = "Review the PR comments";
+        cockpit.Sessions[0].ProjectId = "cockpit";
+        cockpit.Sessions[1].Title = "Depot docs";
+        cockpit.Sessions[1].ActiveProfileLabel = "Writer";
+        cockpit.Sessions[1].Statusline = "Drafting the sync section";
+        cockpit.Sessions[1].ProjectId = "depot";
+        cockpit.Sessions[2].Title = "Codex · plugin store";
+        cockpit.Sessions[2].ActiveProfileLabel = "Codex";
+        cockpit.Sessions[2].SessionStatus = SessionStatus.NeedsAttention;
+        cockpit.Sessions[2].ProjectId = "cockpit";
+        cockpit.Sessions.Add(new SessionViewModel
+        {
+            Title = "AC-1893 log writers", ActiveProfileLabel = "Fixer", ProjectId = "cockpit",
+            SessionStatus = SessionStatus.Done, Statusline = "PR merged",
+        });
+        cockpit.Sessions.Add(new SessionViewModel
+        {
+            Title = "Docs review", ActiveProfileLabel = "Reviewer", ProjectId = "depot", SessionStatus = SessionStatus.Idle,
+        });
+        cockpit.IsZoomed = true;
+        if (floating)
+        {
+            var panel = panels.Panels.Single(panel => panel.Id == AgentsOverviewViewModel.DockPanelId);
+            return new Docking.DockPanelWindow(panel, panels.ViewFor(panel), boundsStore: null);
+        }
+
+        return new MainWindow { DataContext = cockpit };
+    }
+
     // AC-953: the assistant docked into the rail, built the way production builds it — the real `DockPanelRegistry`
     // with the real registration shape, and `AssistantDocked`/`OpenDockPanelId` set the way they come back off
     // `LayoutSettings` after a restart.
@@ -3616,22 +3819,64 @@ internal static partial class Screenshotter
         return new MainWindow { DataContext = cockpit };
     }
 
-    private static Window _NotificationsPanel()
+    private static Window _NotificationsPanel() => _NotificationsPanel(_SeedNotifications, ViewModels.NotificationFilter.NeedsYou);
+
+    private static Window _NotificationsPanel(Action<ViewModels.ToastHostViewModel> seed, ViewModels.NotificationFilter filter)
     {
         var panels = new Docking.DockPanelRegistry();
         var cockpit = new ViewModels.CockpitViewModel(dockPanelRegistry: panels)
         {
             AssistantDocked = true,
             OpenDockPanelId = ViewModels.NotificationCenterViewModel.DockPanelId,
-            DockRailWidth = 380,
+            DockRailWidth = 420,
         };
         cockpit.RegisterNotificationsPanel();
         panels.Register(new Cockpit.Plugins.Abstractions.Docking.DockPanelRegistration(
             Services.AssistantIndicatorCoordinator.DockPanelId, "Assistant", Material.Icons.MaterialIconKind.Creation, () => new TextBlock()));
         panels.Register(_PullRequestsDockPanel());
-        _SeedNotifications(cockpit.ToastHost);
+        cockpit.PluginSideButtons.Add(new Plugins.PluginSideButton("github.pull-requests", "Pull Requests", static () => { }, IconKind: Material.Icons.MaterialIconKind.SourcePull));
+        cockpit.PluginSideButtons.Add(new Plugins.PluginSideButton("slack", "Slack", static () => { }, IconKind: Material.Icons.MaterialIconKind.Slack));
+        seed(cockpit.ToastHost);
+        cockpit.Notifications.Filter = filter;
 
         return new MainWindow { DataContext = cockpit };
+    }
+
+    // Mockup screen 04: the day so far, unread and read, with a receipt for the conflict already answered.
+    private static void _SeedAllNotifications(ViewModels.ToastHostViewModel host)
+    {
+        host.Add("You're on 0.131.2. Install now or on next start.", ToastSeverity.Information,
+            [new ToastAction("Update now", () => { }), new ToastAction("What's new", () => { })], sticky: false, key: "cockpit.update", title: "Cockpit 0.132.0 is available");
+        host.Add("GitHub Pull Requests 1.4.0 · Schedules 0.6.2 · Slack 0.9.1", ToastSeverity.Information,
+            [new ToastAction("Review updates", () => { })], sticky: false, title: "3 plugin updates").Actions[0].Invoke();
+        host.Add("Resolved at 09:05.", ToastSeverity.Warning, [new ToastAction("this machine (14)", () => { })], sticky: false,
+            source: "Settings sync", key: "settings-sync.conflicts", title: "14 settings changed both here and on your other machine").Actions[0].Invoke();
+        host.Add("Its OAuth token expired. Sessions that use YouTrack tools will fail until you sign in.", ToastSeverity.Warning,
+            [new ToastAction("Sign in", () => { })], sticky: true, title: "YouTrack MCP needs you to sign in again");
+        host.Add("qwen-local · \"Summarise the CHANGELOG since 0.46\" — 2 m 14 s.", ToastSeverity.Success,
+            [new ToastAction("Show result", () => { })], sticky: false, title: "Delegated task finished");
+        host.Add("AC-1790 sidebar visual finish · all checks green", ToastSeverity.Information, [new ToastAction("Open PR", () => { })], sticky: false,
+            source: "GitHub Pull Requests", sourceId: "github.pull-requests", title: "PR #1514 is mergeable");
+        host.Toasts.Clear();
+    }
+
+    // Mockup screen 09: what still needed you at exit, re-checked at start; one of them was answered elsewhere.
+    private static void _SeedRestartedNotifications(ViewModels.ToastHostViewModel host)
+    {
+        var earlier = DateTimeOffset.Now.Date.AddDays(-2);
+        host.Add("You're on 0.131.2. Install now or on next start.", ToastSeverity.Information,
+            [new ToastAction("Update now", () => { }), new ToastAction("What's new", () => { })], sticky: false, key: "cockpit.update", title: "Cockpit 0.132.0 is available");
+        host.Notifications.Post(new ViewModels.ToastViewModel("Nothing left to choose.", ToastSeverity.Warning, []) { Title = "14 settings changed both here and on your other machine" },
+            "Settings sync", "settings-sync.conflicts").KeptFrom(earlier.AddHours(8).AddMinutes(41));
+        host.Notifications.Items[0].MarkResolved();
+        host.Add("The Slack app token lacks channels:history. Reinstall the Slack app with that scope, then reconnect.", ToastSeverity.Error,
+            [new ToastAction("Open Slack settings", () => { }), new ToastAction("Copy error", () => { })], sticky: true,
+            source: "Slack", key: "slack.scope", sourceId: "slack", title: "Slack can't read channels: missing_scope");
+        host.Notifications.Items[0].KeptFrom(earlier.AddHours(8).AddMinutes(41));
+        host.Add("Its OAuth token expired. Sessions that use YouTrack tools will fail until you sign in.", ToastSeverity.Warning,
+            [new ToastAction("Sign in", () => { })], sticky: true, key: "mcp.youtrack", title: "YouTrack MCP needs you to sign in again");
+        host.Notifications.Items[0].KeptFrom(earlier.AddHours(17).AddMinutes(40));
+        host.Toasts.Clear();
     }
 
     // AC-1803 (mockup 2026-10-27 screen 02): one startup summary stays visible while the bell owns the three rows.
@@ -3647,9 +3892,10 @@ internal static partial class Screenshotter
         panels.Register(new Cockpit.Plugins.Abstractions.Docking.DockPanelRegistration(
             Services.AssistantIndicatorCoordinator.DockPanelId, "Assistant", Material.Icons.MaterialIconKind.Creation, () => new TextBlock()));
         cockpit.ToastHost.BeginStartupNotificationBundle(TimeSpan.FromMinutes(1), () => _ = cockpit.ShowNotificationsAsync());
-        cockpit.ToastHost.Add("Settings conflict", ToastSeverity.Warning, [new ToastAction("Choose", static () => { })], sticky: true, source: "Settings sync");
-        cockpit.ToastHost.Add("Slack missing_scope", ToastSeverity.Error, [new ToastAction("Open Slack settings", static () => { })], sticky: true, source: "Slack");
-        cockpit.ToastHost.Add("Depot needs attention", ToastSeverity.Error, [new ToastAction("Open in Depot", static () => { })], sticky: true, source: "Depot");
+        cockpit.ToastHost.Add("Nothing was overwritten.", ToastSeverity.Warning, [new ToastAction("Choose", static () => { })], sticky: true,
+            source: "Settings sync", title: "14 settings changed on both machines");
+        cockpit.ToastHost.Add("missing_scope: channels:history", ToastSeverity.Error, [new ToastAction("Open Slack settings", static () => { })], sticky: true, source: "Slack");
+        cockpit.ToastHost.Add("couldn't move \"eve-workbench\"", ToastSeverity.Error, [new ToastAction("Open in Depot", static () => { })], sticky: true, source: "Depot");
 
         return new MainWindow { DataContext = cockpit };
     }
@@ -4256,4 +4502,177 @@ internal static partial class Screenshotter
         return window;
     }
 
+    private static void _HoverActiveWorkspaceTab(Window window)
+    {
+        window.UpdateLayout();
+        var tab = window.GetVisualDescendants().OfType<Border>()
+            .First(border => border.Classes.Contains("workspaceTab") && border.DataContext is WorkspaceTabViewModel { IsActive: true });
+        if (tab.TranslatePoint(new Point(tab.Bounds.Width / 2, tab.Bounds.Height / 2), window) is { } point)
+        {
+            window.MouseMove(point);
+        }
+    }
+
+    private static void _ExerciseWorkspaceTabScrolling(Window window)
+    {
+        window.UpdateLayout();
+        if (window.DataContext is not CockpitViewModel cockpit)
+        {
+            throw new InvalidOperationException("The tab scene has no cockpit view model.");
+        }
+        var scroll = window.GetVisualDescendants().OfType<ScrollViewer>().Single(control => control.Name == "WorkspaceTabsScroll");
+        var right = window.GetVisualDescendants().OfType<Button>().Single(control => control.Name == "WorkspaceTabsRight");
+        var strip = window.GetVisualDescendants().OfType<ItemsControl>().Single(control => control.Name == "WorkspaceTabStrip");
+        var point = scroll.TranslatePoint(new Point(scroll.Bounds.Width / 2, 12), window)
+            ?? throw new InvalidOperationException("The tab viewport has no window position.");
+        var end = scroll.Offset.X;
+        window.MouseWheel(point, new Vector(0, 2));
+        window.UpdateLayout();
+        if (scroll.Offset.X >= end)
+        {
+            throw new InvalidOperationException("The vertical wheel did not scroll the tabs left.");
+        }
+        var beforeArrow = scroll.Offset.X;
+        right.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        window.UpdateLayout();
+        if (scroll.Offset.X <= beforeArrow)
+        {
+            throw new InvalidOperationException("The right arrow did not advance the tabs.");
+        }
+        cockpit.Workspaces.SelectWorkspaceCommand.Execute(cockpit.Workspaces.Tabs[0].Id);
+        window.UpdateLayout();
+        if (scroll.Offset.X != 0)
+        {
+            throw new InvalidOperationException("Activating the first tab did not reveal it.");
+        }
+        cockpit.Workspaces.OpenWorkspaceAsync("scene.markdown", new("Replacement.md", "Replacement preview.md", Preview: true)).GetAwaiter().GetResult();
+        window.UpdateLayout();
+        Dispatcher.UIThread.RunJobs();
+        window.UpdateLayout();
+        var lastIndex = cockpit.Workspaces.Tabs.Count - 1;
+        var last = strip.ContainerFromIndex(lastIndex)
+            ?? throw new InvalidOperationException("The replacement preview has no container.");
+        if (last.Bounds.Right > scroll.Offset.X + scroll.Viewport.Width + 0.5)
+        {
+            throw new InvalidOperationException("The replacement preview is clipped.");
+        }
+        var previous = strip.ContainerFromIndex(lastIndex - 1)
+            ?? throw new InvalidOperationException("The previous tab has no container.");
+        var from = last.TranslatePoint(new Point(12, 12), window) ?? default;
+        var to = previous.TranslatePoint(new Point(12, 12), window) ?? default;
+        var draggedId = cockpit.Workspaces.Tabs[lastIndex].Id;
+        window.MouseDown(from, Avalonia.Input.MouseButton.Left);
+        window.MouseMove(to, Avalonia.Input.RawInputModifiers.LeftMouseButton);
+        window.MouseUp(to, Avalonia.Input.MouseButton.Left);
+        window.UpdateLayout();
+        if (cockpit.Workspaces.Tabs[lastIndex - 1].Id != draggedId)
+        {
+            throw new InvalidOperationException($"Dragging a scrolled tab did not reorder it: {from} -> {to}; offset {scroll.Offset.X}; tabs {string.Join(", ", cockpit.Workspaces.Tabs.Select(tab => tab.Name))}.");
+        }
+        _HoverActiveWorkspaceTab(window);
+    }
+
+    private static Window _WorkspacePreviewTabScene(bool overflow = false)
+    {
+        var registry = new WorkspaceTypeRegistry(new ServiceCollection().BuildServiceProvider());
+        registry.Register(
+            new Cockpit.Plugins.Abstractions.Workspaces.WorkspaceTypeRegistration("scene.markdown", "Markdown", context =>
+            {
+                if (context.InstanceKey == "Notes.md")
+                {
+                    context.SetMarker(Cockpit.Plugins.Abstractions.Workspaces.WorkspaceMarker.Unsaved);
+                }
+
+                return new TextBlock { Text = context.InstanceKey, Margin = new Thickness(24) };
+            }) { IconKind = Material.Icons.MaterialIconKind.LanguageMarkdownOutline },
+            new PluginScenes.SceneStorage(),
+            NullCockpitSessionObserver.Instance);
+        var cockpit = new CockpitViewModel(workspaceTypeRegistry: registry);
+        cockpit.Workspaces.OpenWorkspaceAsync("scene.markdown", new("Notes.md", "Notes.md")).GetAwaiter().GetResult();
+        if (overflow)
+        {
+            foreach (var name in new[] { "Architecture.md", "Release checklist.md", "Meeting notes.md", "Roadmap.md", "Design decisions.md", "Getting started.md", "Troubleshooting.md", "Plugin guide.md" })
+            {
+                cockpit.Workspaces.OpenWorkspaceAsync("scene.markdown", new(name, name)).GetAwaiter().GetResult();
+            }
+        }
+        cockpit.Workspaces.OpenWorkspaceAsync("scene.markdown", new("Ideas/depot-sync.md", "depot-sync.md", Preview: true)).GetAwaiter().GetResult();
+        return new MainWindow { DataContext = cockpit };
+    }
+
+    private static Window _WorkspaceFloatingScene()
+    {
+        var registry = new WorkspaceTypeRegistry(new ServiceCollection().BuildServiceProvider());
+        registry.Register(
+            new Cockpit.Plugins.Abstractions.Workspaces.WorkspaceTypeRegistration("scene.markdown", "Markdown", _ => new Views.Editor.MarkdownEditor
+            {
+                Text = "# md-editor-in-cockpit\n\nCapture an idea straight from the **Depot file browser**.\n\n## Wishes\n- A tab or a separate window\n- Saving writes back to Depot\n",
+            }) { CanFloat = true },
+            new PluginScenes.SceneStorage(),
+            NullCockpitSessionObserver.Instance);
+        var workspaces = new CockpitViewModel(workspaceTypeRegistry: registry).Workspaces;
+        workspaces.OpenWorkspaceAsync("scene.markdown", new("Ideas/md-editor.md", "md-editor.md")).GetAwaiter().GetResult();
+        if (workspaces.Active is not { } workspace || workspaces.BodyFor(workspace) is not { } body)
+        {
+            throw new InvalidOperationException("The floating-workspace scene opened no workspace body.");
+        }
+        workspaces.PopOutAsync(workspace.Id).GetAwaiter().GetResult();
+        return new Docking.DockPanelWindow(workspace.Id, workspace.Name, body, boundsStore: null, "Put this workspace back in the tab strip")
+        {
+            Width = 900,
+            Height = 560,
+        };
+    }
+
+    private static Window _MarkdownEditorScene(int width, int height, Action<Views.Editor.MarkdownEditor> arrange)
+    {
+        var editor = new Views.Editor.MarkdownEditor
+        {
+            Text = """
+                ---
+                title: Edge cases
+                tags: [md, test]
+                ---
+                # md-editor-in-cockpit
+
+                Capture an idea straight from the **Depot file browser**, and see *right away* how it looks.
+
+                ## Wishes
+                - A new file in a chosen place
+                - A tab or a separate window
+                - Saving writes back to Depot with `baseChecksum`
+
+                ## Tasks
+                - [x] Mockup v001
+                - [ ] Pick a route: native or webview
+
+                Plain text with a footnote[^1] and a [reference link][depot].
+
+                <details>
+                <summary>HTML block</summary>
+                This is raw HTML.
+                </details>
+
+                | Column | Meaning |
+                |---|---|
+                | A | Tables are drawn |
+                | B | Click in one to see its source |
+
+                ```csharp
+                var x = 42;
+                ```
+
+                > A quote stays a quote.
+
+                ---
+
+                See [AC-1749](https://raymondkrahwinkel.myjetbrains.com/youtrack/issue/AC-1749).
+
+                [^1]: This is the footnote.
+                [depot]: https://depot.krahwinkel-it.nl
+                """,
+        };
+        arrange(editor);
+        return new Window { Width = width, Height = height, Content = editor };
+    }
 }

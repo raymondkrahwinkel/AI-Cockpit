@@ -6,7 +6,6 @@ using Avalonia.Media;
 using Cockpit.App.Controls;
 using Cockpit.App.Services;
 using Cockpit.Core.Abstractions;
-using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App.Plugins;
 
@@ -91,7 +90,7 @@ internal sealed class PluginDialogHost(SurfaceWindows surfaces) : IPluginDialogH
         buttons.Children.Add(close);
 
         // The Save button appears only when the view opts in; it persists via the view and closes on success.
-        if (view is IPluginSettingsView settingsView)
+        if (PluginSettingsStaging.IsSettingsView(view))
         {
             var save = new Button { Content = "Save", Classes = { "Accent" } };
             save.Click += async (_, _) =>
@@ -101,7 +100,8 @@ internal sealed class PluginDialogHost(SurfaceWindows surfaces) : IPluginDialogH
                 // the write for both hosts at once, instead of each host remembering to fire it in the right order.
                 var staging = new PluginSettingsStaging();
                 // The tag is unread here — this window hosts one view, so only the reason below is ever shown.
-                if (!staging.TryStage(settingsView, view.GetType().Name, onSaved, out var error))
+                var saved = onSaved is null ? null : new Func<Task>(() => { onSaved(); return Task.CompletedTask; });
+                if (!staging.TryStage(view, view.GetType().Name, saved, out var error))
                 {
                     status.Text = error;
                     status.IsVisible = true;
@@ -110,7 +110,7 @@ internal sealed class PluginDialogHost(SurfaceWindows surfaces) : IPluginDialogH
 
                 // AC-479: a write that threw keeps the window open with its reason, like a refusal — closing on it
                 // would report a save that did not happen.
-                if (staging.Commit() is [var failure, ..])
+                if (await staging.CommitAsync() is [var failure, ..])
                 {
                     status.Text = failure.Reason;
                     status.IsVisible = true;

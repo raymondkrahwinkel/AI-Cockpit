@@ -4,10 +4,12 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform;
+using Avalonia.Rendering.Composition;
 using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Cockpit.App.Logging;
+using Cockpit.App.Diagnostics;
 using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
@@ -123,6 +125,7 @@ public partial class App : Application
 
     private void _BeginCockpit(IClassicDesktopStyleApplicationLifetime desktop)
     {
+        using var milestone = new StartupMilestone(Program.Services.GetRequiredService<ILogger<App>>(), "_BeginCockpit");
         // Encrypted credentials: the key comes from a password, so the cockpit cannot be built yet — the view
         // model, the plugins and the MCP servers all read settings, and reading them without the key would
         // hand them ciphertext. The unlock window goes first and the app starts behind it.
@@ -197,6 +200,7 @@ public partial class App : Application
         try
         {
             await startup.RunPendingAsync();
+            await Dispatcher.UIThread.InvokeAsync(() => _UnlockInSplashAsync(startup));
             await Dispatcher.UIThread.InvokeAsync(() => _BeginCockpit(desktop));
         }
         catch (Exception exception)
@@ -220,11 +224,25 @@ public partial class App : Application
         _splash = null;
     }
 
-    // The unlock window and the wizard are the operator's to answer, so the splash gives way at once.
-    private void _DismissSplash()
+    private async Task _UnlockInSplashAsync(StartupSequence startup)
     {
-        _splash?.Close();
-        _splash = null;
+        var protection = Program.Services.GetRequiredService<ISecretProtectionService>();
+        if (_splash is not { } splash || _splashViewModel is not { } model || !_IsLockedAtStartup(protection))
+        {
+            return;
+        }
+
+        var unlock = new UnlockViewModel(protection);
+        using var milestone = new StartupMilestone(Program.Services.GetRequiredService<ILogger<App>>(), "unlock");
+        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        unlock.Unlocked += (_, _) => completed.TrySetResult();
+        startup.AddOperatorStep("Unlocking…", _ => completed.Task);
+        model.BeginUnlock(unlock);
+        splash.TakeFocus();
+        // The Hello prompt runs beside the step: an unlock either way completes it, a cancel leaves the password.
+        await Task.WhenAll(startup.RunPendingAsync(), splash.OfferHelloAsync(unlock));
+        model.EndUnlock();
+        await _YieldToPaintAsync();
     }
 
     // The main window shows beneath the splash only once the steps are done and the minimum hold has passed.
@@ -245,7 +263,10 @@ public partial class App : Application
         }
         finally
         {
-            _mainWindow?.Show();
+            _ShowMainWindow();
+            Program.Services.GetRequiredService<ILogger<App>>().LogInformation(
+                "config parses during startup: {Parses}", Cockpit.Infrastructure.Configuration.CockpitConfigReads.Parses);
+            _StartPlanners();
             _splash = null;
             if (splash is not null)
             {
@@ -380,6 +401,8 @@ public partial class App : Application
 
         // Avalonia auto-shows only the first MainWindow; after startup unlock, this replacement needs Show().
         window.Show();
+        _splash?.Close();
+        _splash = null;
     }
 
     // Use the settings-store retry for concurrent saves (review #9). An unreadable file falls through to normal
@@ -403,9 +426,11 @@ public partial class App : Application
     {
         var viewModel = new UnlockViewModel(protection);
         var window = new UnlockWindow { DataContext = viewModel };
+        var milestone = new StartupMilestone(Program.Services.GetRequiredService<ILogger<App>>(), "unlock");
 
         viewModel.Unlocked += (_, _) =>
         {
+            milestone.Dispose();
             // AC-509 criterion 4: unlock first, onboarding after — this is the "locked at startup" half of that
             // ordering, the other half is the direct call in OnFrameworkInitializationCompleted below.
             _StartCockpitAndOnboard(desktop);
@@ -413,12 +438,6 @@ public partial class App : Application
         };
 
         desktop.MainWindow = window;
-
-        if (_splash is not null)
-        {
-            window.Show();
-            _DismissSplash();
-        }
     }
 
     // Locks only the running cockpit UI; the in-memory key and agents remain active (AC-5). The coordinator provides
@@ -438,6 +457,7 @@ public partial class App : Application
         var protection = Program.Services.GetRequiredService<ISecretProtectionService>();
         var viewModel = new UnlockViewModel(protection);
         var window = new UnlockWindow { DataContext = viewModel, Topmost = true };
+        window.OfferHello();
 
         // Same contract as startup: the password is the key, and Unlocked fires once it is right (or once the operator
         // took the forgotten-password way out, which turns encryption off — after which nothing re-locks). Closing the
@@ -493,10 +513,10 @@ public partial class App : Application
             return;
         }
 
-        _ = _LogIfFaultedAsync(started);
+        _ = _LogIfFaultedAsync(started, desktop);
     }
 
-    private static async Task _LogIfFaultedAsync(Task started)
+    private async Task _LogIfFaultedAsync(Task started, IClassicDesktopStyleApplicationLifetime desktop)
     {
         try
         {
@@ -505,6 +525,15 @@ public partial class App : Application
         catch (Exception exception)
         {
             Program.Services.GetRequiredService<ILogger<App>>().LogError(exception, "Starting the cockpit failed after the splash was up.");
+
+            if (_splash is not null)
+            {
+                _ReportStartFailed(desktop, exception);
+                return;
+            }
+
+            // The start failed before it reached its own planner start (AC-1889); the window is up, so start them here.
+            _StartPlanners();
 
             // A skeleton that never clears would read as a hang; show what there is instead.
             if (Current is App { _mainWindow.DataContext: CockpitViewModel cockpit })
@@ -559,7 +588,7 @@ public partial class App : Application
         // auto-show a MainWindow that replaces the startup unlock window. AC-1827: behind a splash it is shown at the end.
         if (_splash is null)
         {
-            _mainWindow.Show();
+            _ShowMainWindow();
         }
 
         await _YieldToPaintAsync();
@@ -615,6 +644,8 @@ public partial class App : Application
         // AC-718: started here, not as an IHostedService — Dispatcher.UIThread is only safe to touch once
         // Avalonia's own Setup() has bound it to this thread, which by this point in the lifecycle it has.
         var diagnosticsBackgroundService = Program.Services.GetRequiredService<DiagnosticsBackgroundService>();
+        var debugSettings = await Program.Services.GetRequiredService<Cockpit.Core.Abstractions.Debugging.IDebugSettingsStore>().LoadAsync();
+        diagnosticsBackgroundService.ConfigureThresholds(debugSettings);
 
         // AC-1125 D: read on demand from the diag line, not pushed on every session/layout change — cheapest
         // way to give the background service the three fields only the view model knows.
@@ -685,10 +716,6 @@ public partial class App : Application
         // AC-234: and now start it watching the clock, once the sessions it resolves against can exist.
         _ = _StartScheduledResumesAsync(cockpitViewModel);
 
-        // AC-1381: the planners the backend owns (AC-1380), started at the moment they always were: after the startup
-        // reconcile Program ran, and ahead of the session restore below.
-        Program.Services.GetRequiredService<CockpitBackend>().StartPlanners();
-
         // AC-233: the operator's own thresholds, loaded once and handed to every session started after this, plus
         // the settings screen that edits them.
         var thresholdsLoaded = Program.Services.GetService<IUsageThresholdStore>() is { } thresholdStore
@@ -737,6 +764,57 @@ public partial class App : Application
         if (_splash is not null && Program.Startup is { } sequence)
         {
             _ = _FinishSplashAsync(sequence);
+        }
+        else
+        {
+            _StartPlanners();
+        }
+    }
+
+    // AC-1889: the backend's planners (AC-1380, AC-1381) start once the main window is shown, off the UI thread. Nothing
+    // before Show or the session restore needs them: the worktree reconcile gate comes from Start, and the crash-net
+    // sweep first ticks a quarter of an hour on. The recorder and the wake schedule begin a moment later than before.
+    private static void _StartPlanners() => _ = _StartPlannersAsync();
+
+    private static async Task _StartPlannersAsync()
+    {
+        using var milestone = new StartupMilestone(Program.Services.GetRequiredService<ILogger<App>>(), "StartPlanners");
+        await Program.Services.GetRequiredService<CockpitBackend>().StartPlannersInBackgroundAsync();
+    }
+
+    private void _ShowMainWindow()
+    {
+        if (_mainWindow is not { } window)
+        {
+            return;
+        }
+
+        using (var milestone = new StartupMilestone(Program.Services.GetRequiredService<ILogger<App>>(), "MainWindow.Show()"))
+        {
+            window.Show();
+        }
+
+        _ = _LogFirstCommittedFrameAsync();
+    }
+
+    private static async Task _LogFirstCommittedFrameAsync()
+    {
+        var logger = Program.Services.GetRequiredService<ILogger<App>>();
+        if (Compositor.TryGetDefaultCompositor() is not { } compositor)
+        {
+            return;
+        }
+
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        logger.LogInformation("startup first committed frame begin");
+        try
+        {
+            await compositor.RequestCommitAsync();
+            logger.LogInformation("startup first committed frame end duration={ElapsedMs}ms", clock.ElapsedMilliseconds);
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning("Startup frame probe failed ({ErrorType}).", exception.GetType().Name);
         }
     }
 
@@ -805,6 +883,7 @@ public partial class App : Application
     // then the UI parts. AC-1422: internal so the journeys run this phase itself, the plugins' UI parts included.
     internal void InitializePlugins()
     {
+        using var milestone = new StartupMilestone(Program.Services.GetRequiredService<ILogger<App>>(), "plugins activated");
         if (Program.Services.GetService<PluginManager>() is null)
         {
             return;
@@ -909,6 +988,7 @@ public partial class App : Application
                 // handing them to the widget registry lets a dashboard export drop them too, which is the third place
                 // a declared secret has to be honoured.
                 discovered.Manifest.SecretKeys ?? []));
+        cockpit.FollowRemoteFileWorkspaces(uiParts.RegisterRemoteFileWorkspaces);
 
         // The templates installed from a store (#69) join the ones the plugins ship, in the same registry: to the
         // operator "a flow somebody already drew" is one kind of thing, whether it came with a plugin or from a store.
@@ -1228,6 +1308,12 @@ public partial class App : Application
     {
         // Before the first await, so MainWindow's close sees a real quit rather than a close-to-tray.
         IsQuitting = true;
+
+        if (_mainWindow is Views.MainWindow main && !await main.ConfirmWorkspaceCloseAsync().ConfigureAwait(true))
+        {
+            IsQuitting = false;
+            return;
+        }
 
         await (_teardown ??= Program.TearDownCockpitAsync());
 

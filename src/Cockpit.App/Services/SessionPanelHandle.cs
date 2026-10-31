@@ -76,6 +76,7 @@ internal sealed partial class SessionPanelHandle : IHostedSession
 
     public async Task StartAsync(SessionLaunchRequest request, string? workingDirectory)
     {
+        McpServersOverride = request.McpServersOverride;
         if (Start is not { } start || _pane is not { } pane)
         {
             throw new InvalidOperationException($"Pane '{PaneId}' has not landed, so it cannot start.");
@@ -86,6 +87,15 @@ internal sealed partial class SessionPanelHandle : IHostedSession
         try
         {
             await UiThreadCall.Uncapped(() => start(pane, request, workingDirectory)).ConfigureAwait(false);
+            if (McpServersOverride is { } names && pane is SessionViewModel sdk)
+            {
+                await UiThreadCall.Uncapped(() =>
+                {
+                    sdk.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Divider,
+                        $"MCP override: [{string.Join(", ", names)}] + always-mounted core"));
+                    return Task.CompletedTask;
+                }).ConfigureAwait(false);
+            }
         }
         catch
         {
@@ -95,6 +105,7 @@ internal sealed partial class SessionPanelHandle : IHostedSession
     }
 
     public bool StartedByTheAssistant => _launch.StartedByTheAssistant;
+    public IReadOnlyList<string>? McpServersOverride { get; private set; }
 
     public string PaneId => _pane?.PaneId ?? _launch.PaneId;
 

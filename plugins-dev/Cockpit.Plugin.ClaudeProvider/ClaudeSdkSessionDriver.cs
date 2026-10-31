@@ -38,6 +38,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
     private readonly ClaudeProviderConfig _config;
     private readonly string _executablePath;
     private readonly PluginSessionEventPublisher _events = new();
+    private readonly ClaudeStreamJson _mapper = new();
     private readonly CancellationTokenSource _lifetime = new();
 
     // tool_use_id -> the pending can_use_tool request the CLI is blocking on. Keyed on tool_use_id because that is what
@@ -92,7 +93,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         _subprocessFactory = subprocessFactory;
         _config = config;
         _executablePath = executablePath;
-        _usage = new ClaudeSdkUsage(intelligence, recordObservation);
+        _usage = new ClaudeSdkUsage(intelligence, recordObservation, ClaudeConfigPaths.ProfileKey(config.ConfigDir, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)));
     }
 
     public PluginSessionCapabilities Capabilities { get; } = new(
@@ -214,24 +215,32 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
                 throw new ArgumentException("A pane id must be a single directory name.", nameof(options));
             }
 
-            var temp = Path.Combine(Path.GetTempPath(), "cockpit", paneId);
-            Directory.CreateDirectory(temp);
-            environment["TEMP"] = temp;
-            environment["TMP"] = temp;
-            environment["TMPDIR"] = temp;
+            if (!environment.TryGetValue("TMPDIR", out var hostTemp) || string.IsNullOrWhiteSpace(hostTemp))
+            {
+                var basis = Path.Combine(Path.GetTempPath(), "cockpit");
+                var temp = Path.Combine(basis, paneId);
+                Directory.CreateDirectory(temp);
+                var mode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
+                    | UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.GroupExecute;
+                ClaudeAgentGroup.Share(basis, mode);
+                ClaudeAgentGroup.Share(temp, mode);
+                environment["TEMP"] = temp;
+                environment["TMP"] = temp;
+                environment["TMPDIR"] = temp;
+            }
         }
 
         var subprocess = _subprocessFactory();
         _subprocess = subprocess;
         subprocess.Start(_executablePath, arguments, resolvedWorkingDirectory, environment);
 
-        _stdoutPump = Task.Run(() => _PumpStdoutAsync(subprocess, _lifetime.Token), CancellationToken.None);
         // stderr must be drained or a full pipe deadlocks the child; its lines are diagnostic only.
         _stderrDrain = Task.Run(() => _DrainStderrAsync(subprocess, _lifetime.Token), CancellationToken.None);
+        _stdoutPump = Task.Run(() => _PumpStdoutAsync(subprocess, _lifetime.Token), CancellationToken.None);
 
         // Put an SDK client on the control channel so the CLI routes approvals here as can_use_tool requests. Sent
         // fire-and-forget (the reply is drained by the pump, not correlated), matching the host's control_request style.
-        await subprocess.WriteLineAsync(ClaudeControlProtocol.BuildInitializeRequest(Guid.NewGuid().ToString()), cancellationToken).ConfigureAwait(false);
+        await _WriteLineAsync(ClaudeControlProtocol.BuildInitializeRequest(Guid.NewGuid().ToString()), cancellationToken).ConfigureAwait(false);
 
         // Apply the launch effort as the session's initial thinking-token budget; a live effort switch re-sends the
         // same control request. Left to the CLI's own default when the level is unknown.
@@ -275,7 +284,8 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
             message = new { role = "user", content },
         };
 
-        await _RequireSubprocess().WriteLineAsync(JsonSerializer.Serialize(payload), cancellationToken).ConfigureAwait(false);
+        _awaitingResult = true;
+        await _WriteLineAsync(JsonSerializer.Serialize(payload), cancellationToken).ConfigureAwait(false);
     }
 
     private static object[] _BuildContentBlocks(string text, IReadOnlyList<PluginImageAttachment> images)
@@ -361,7 +371,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
             pending.InputJson,
             denyMessage: denyReason is { Length: > 0 } reason ? reason : "Denied by the cockpit operator.",
             answersJson);
-        await _RequireSubprocess().WriteLineAsync(line, cancellationToken).ConfigureAwait(false);
+        await _WriteLineAsync(line, cancellationToken).ConfigureAwait(false);
     }
 
     public Task SetLiveOptionAsync(string key, string value, CancellationToken cancellationToken = default)
@@ -402,7 +412,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
     private async Task _SendControlRequestAsync(object request, CancellationToken cancellationToken)
     {
         var line = ClaudeControlProtocol.BuildRequest(Guid.NewGuid().ToString(), request);
-        await _RequireSubprocess().WriteLineAsync(line, cancellationToken).ConfigureAwait(false);
+        await _WriteLineAsync(line, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task _PumpStdoutAsync(IClaudeSdkSubprocess subprocess, CancellationToken cancellationToken)
@@ -428,6 +438,10 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
             // printing one (an unresolvable --resume) ends stdout while that task still waits — completing first
             // drops the turn. Never throws: _PollUsageThenPublishAsync swallows its own poll failure.
             await _pendingResultPublish.ConfigureAwait(false);
+            if (!cancellationToken.IsCancellationRequested && _awaitingResult)
+            {
+                _events.Publish(new PluginSessionError { SessionId = _sessionId, Message = await _ExitReasonAsync().ConfigureAwait(false) });
+            }
             _events.TryComplete();
         }
     }
@@ -465,6 +479,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
             // up this very pump. Hence a separate task that polls first and publishes after.
             if (string.Equals(type, "result", StringComparison.Ordinal))
             {
+                _awaitingResult = false;
                 _pendingResultPublish = _PollUsageThenPublishAsync(line);
                 return;
             }
@@ -511,13 +526,17 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
                 return;
             }
 
-            foreach (var evt in ClaudeStreamJson.ParseLine(line))
+            foreach (var evt in _mapper.Parse(line))
             {
                 // AC-739: read once off the CLI's own init line, before the event is published, so a caller like
                 // InterruptAsync can feature-detect a control-protocol field the CLI just advertised.
-                if (evt is PluginSessionInitialized { Capabilities.Count: > 0 } initialized)
+                if (evt is PluginSessionInitialized initialized)
                 {
-                    _cliCapabilities = new HashSet<string>(initialized.Capabilities, StringComparer.Ordinal);
+                    _usage.ObserveModel(initialized.Model);
+                    if (initialized.Capabilities.Count > 0)
+                    {
+                        _cliCapabilities = new HashSet<string>(initialized.Capabilities, StringComparer.Ordinal);
+                    }
                 }
 
                 _events.Publish(evt);
@@ -533,9 +552,16 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
     {
         try
         {
-            await foreach (var _ in subprocess.ReadStderrLinesAsync(cancellationToken).ConfigureAwait(false))
+            await foreach (var line in subprocess.ReadStderrLinesAsync(cancellationToken).ConfigureAwait(false))
             {
-                // Discard — draining is what keeps a verbose stderr from filling the pipe and deadlocking the child.
+                lock (_stderrTail)
+                {
+                    _stderrTail.Enqueue(line);
+                    if (_stderrTail.Count > 20)
+                    {
+                        _stderrTail.Dequeue();
+                    }
+                }
             }
         }
         catch (OperationCanceledException)
@@ -545,6 +571,40 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         catch (Exception)
         {
             // stderr is diagnostic; a read failure here must not surface as a session error.
+        }
+    }
+
+    private readonly Queue<string> _stderrTail = new();
+    private volatile bool _awaitingResult = true;
+
+    private async Task<string> _ExitReasonAsync()
+    {
+        if (_stderrDrain is { } drain)
+        {
+            try
+            {
+                await drain.WaitAsync(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
+            }
+            catch (TimeoutException)
+            {
+                // AC-1989: diagnostics must not hang if a descendant keeps stderr open.
+            }
+        }
+        lock (_stderrTail)
+        {
+            return $"claude exited (code {_subprocess?.ExitCode?.ToString() ?? "unknown"}): {string.Join(Environment.NewLine, _stderrTail)}";
+        }
+    }
+
+    private async Task _WriteLineAsync(string line, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _RequireSubprocess().WriteLineAsync(line, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is IOException or InvalidOperationException)
+        {
+            throw new IOException(await _ExitReasonAsync().ConfigureAwait(false), exception);
         }
     }
 
@@ -635,7 +695,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
 
         try
         {
-            await _RequireSubprocess().WriteLineAsync(ClaudeControlProtocol.BuildRequest(requestId, request), _lifetime.Token).ConfigureAwait(false);
+            await _WriteLineAsync(ClaudeControlProtocol.BuildRequest(requestId, request), _lifetime.Token).ConfigureAwait(false);
             return await awaiter.Task.WaitAsync(_UsageRequestTimeout, _lifetime.Token).ConfigureAwait(false);
         }
         catch (Exception)

@@ -263,18 +263,17 @@ public class AssistantSessionHostTests
     // AC-869: the assistant always has cockpit-github-pull-requests, regardless of its working directory — the
     // git-repo rule other sessions get it through does not apply to the assistant at all.
     [Fact]
-    public void McpSelection_AlwaysNamesTheGitHubPullRequestsServer()
+    public void McpSelection_DoesNotDefaultToTheGitHubPullRequestsServer()
     {
         var selection = AssistantSessionHost.McpSelection(_Profile(), []);
 
-        Assert.Contains(GitHubPullRequestsMcp.ServerName, selection);
+        Assert.DoesNotContain(GitHubPullRequestsMcp.ServerName, selection);
+        Assert.DoesNotContain("cockpit-elevated", selection);
     }
 
     [Fact]
-    public void McpSelection_WithNoSavedSelection_StillCarriesTheOperatorsOrdinaryServers()
+    public void McpSelection_WithNoSavedSelection_IncludesOrdinaryServers()
     {
-        // Naming a selection overrides the profile's own, so the servers the assistant would otherwise have had —
-        // Depot, YouTrack — must be spelled back in, or the mount rule quietly costs the assistant everything else.
         var selection = AssistantSessionHost.McpSelection(_Profile(), [
             new McpServerConfig { Name = "depot", Enabled = true },
             new McpServerConfig { Name = "off-server", Enabled = false },
@@ -289,13 +288,13 @@ public class AssistantSessionHostTests
     // (Depot, say) is not marked ProjectLinked there (no single project points at it in that call), and the
     // no-selection fan-out must carry it through anyway; ProjectLinked is not one of the things it checks.
     [Fact]
-    public void McpSelection_WithNoSavedSelection_IncludesAPluginServerNotTiedToAnyProject()
+    public void McpSelection_WithAnEmptySavedSelection_LeavesOutOrdinaryServers()
     {
-        var selection = AssistantSessionHost.McpSelection(_Profile(), [
+        var selection = AssistantSessionHost.McpSelection(_Profile() with { EnabledMcpServerNames = [] }, [
             new McpServerConfig { Name = "Depot: wispslate", Enabled = true, ProjectLinked = false },
         ]);
 
-        Assert.Contains("Depot: wispslate", selection);
+        Assert.DoesNotContain("Depot: wispslate", selection);
     }
 
     [Fact]
@@ -323,7 +322,6 @@ public class AssistantSessionHostTests
                 "depot",
                 AssistantIdentity.McpServerName,
                 AssistantIdentity.ActMcpServerName,
-                GitHubPullRequestsMcp.ServerName,
             },
             selection);
     }
@@ -352,18 +350,21 @@ public class AssistantSessionHostTests
     [Fact]
     public void McpSelection_WithNoSavedSelection_LeavesOutTheServersTheAssistantIsNotGivenByDefault()
     {
-        var catalog = AssistantSessionHost.NotFannedOutToTheAssistant
-            .Select(name => new McpServerConfig { Name = name, Enabled = true })
-            .Append(new McpServerConfig { Name = "depot", Enabled = true })
-            .ToList();
+        McpServerConfig[] catalog =
+        [
+            new() { Name = "cockpit-orchestrator", Enabled = true },
+            new() { Name = "cockpit-elevated", Enabled = true, Internal = true },
+            new() { Name = "depot", Enabled = true },
+            new() { Name = "youtrack", Enabled = true, ProjectLinked = false },
+        ];
 
         var selection = AssistantSessionHost.McpSelection(_Profile(), catalog);
 
-        Assert.All(AssistantSessionHost.NotFannedOutToTheAssistant, name => Assert.DoesNotContain(name, selection));
+        Assert.DoesNotContain("cockpit-orchestrator", selection);
+        Assert.DoesNotContain("cockpit-elevated", selection);
 
-        // The other half: an ordinary information server still arrives, or this would be a test about a fan-out
-        // that gives the assistant nothing at all.
         Assert.Contains("depot", selection);
+        Assert.Contains("youtrack", selection);
     }
 
     /// <summary>
@@ -373,7 +374,7 @@ public class AssistantSessionHostTests
     [Fact]
     public void McpSelection_WithASavedSelection_KeepsEvenAServerTheDefaultWouldLeaveOut()
     {
-        var excluded = AssistantSessionHost.NotFannedOutToTheAssistant.First();
+        var excluded = "cockpit-orchestrator";
         var profile = _Profile() with { EnabledMcpServerNames = [excluded] };
 
         var selection = AssistantSessionHost.McpSelection(profile, []);
@@ -518,6 +519,15 @@ public class AssistantSessionHostTests
         var options = AssistantSessionHost._LaunchOptions(_Profile(), replacesStandingInstruction: false, memory: null);
 
         Assert.Contains(phrase, options[WellKnownPluginSessionOptions.AppendSystemPrompt], StringComparison.Ordinal);
+        foreach (var guidance in new[]
+        {
+            "`mcpServers`", "For Claude/Codex omit cockpit-coding and cockpit-coding-shell",
+            "cockpit-orchestrator for delegation", "exact set overrides both", "project-bound names require",
+        })
+        {
+            Assert.Contains(guidance, options[WellKnownPluginSessionOptions.AppendSystemPrompt], StringComparison.Ordinal);
+        }
+        Assert.DoesNotContain("cannot reach what lives behind another project's servers", options[WellKnownPluginSessionOptions.AppendSystemPrompt]);
     }
 
     [Fact]
@@ -691,9 +701,9 @@ public class AssistantSessionHostTests
     [Fact]
     public void AFullContext_OnAProviderThatCanCompactItself_IsCompacted_RatherThanRestartedOnAFreshConversation()
     {
-        var (host, first, driver) = _StartedAssistantOn(_CompactingProvider());
+        var (host, first, driver) = _StartedAssistantOn(_CompactingProvider(), contextCompactionPercent: 30);
 
-        _ReportAFullContext(first, driver, fill: 90);
+        _ReportAFullContext(first, driver, fill: 30);
 
         // The same conversation, and the ask that keeps it: a hand-over would have swapped the instance for one whose
         // transcript is empty.
@@ -1022,7 +1032,8 @@ public class AssistantSessionHostTests
     }
 
     private static (AssistantSessionHost Host, SessionViewModel Session, ISessionDriver Driver) _StartedAssistantOn(
-        SessionCapabilities capabilities, ISessionStateStore? sessionState = null, ISessionTranscriptStore? transcript = null)
+        SessionCapabilities capabilities, ISessionStateStore? sessionState = null, ISessionTranscriptStore? transcript = null,
+        double contextCompactionPercent = 80)
     {
         // AC-1090: the transcript layer hangs off the pane now, not off the host — the host only asks the pane it
         // just made to replay it or roll it aside. Passed in here the way the container passes it in production.
@@ -1036,7 +1047,8 @@ public class AssistantSessionHostTests
         var cockpit = Dispatcher.UIThread.Invoke(() => _CockpitWithSessionFactory(
             () => TestSessions.Pane(new SessionManager(factory), transcriptStore: transcript)));
         var host = Dispatcher.UIThread.Invoke(() => _Host(
-            enabled: true, slot: _ConfiguredSlot(), cockpit: cockpit, sessionState: sessionState));
+            enabled: true, slot: _ConfiguredSlot(), cockpit: cockpit, sessionState: sessionState,
+            contextCompactionPercent: contextCompactionPercent));
 
         var session = Dispatcher.UIThread.Invoke(() => _Pane(host.EnsureStartedAsync().GetAwaiter().GetResult()));
         Assert.NotNull(session);
@@ -1442,11 +1454,18 @@ public class AssistantSessionHostTests
         bool speakReplies = true,
         CockpitViewModel? cockpit = null,
         IAssistantMemory? memory = null,
-        NodeControllerPresence? presence = null)
+        NodeControllerPresence? presence = null,
+        double contextCompactionPercent = 80)
     {
         var settings = Substitute.For<IAssistantSettingsStore>();
         settings.LoadAsync(Arg.Any<CancellationToken>())
-            .Returns(new AssistantSettings { IsEnabled = enabled, ReadingLevel = readingLevel, SpeakReplies = speakReplies });
+            .Returns(new AssistantSettings
+            {
+                IsEnabled = enabled,
+                ReadingLevel = readingLevel,
+                SpeakReplies = speakReplies,
+                ContextCompactionPercent = contextCompactionPercent,
+            });
 
         if (profiles is null)
         {

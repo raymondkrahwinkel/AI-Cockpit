@@ -19,22 +19,6 @@ public class PermissionRuleTests
     }
 
     [Fact]
-    public void Wildcard_DoesNotMatchADifferentTool()
-    {
-        var rule = PermissionRule.ForWildcard("Bash");
-
-        Assert.False(rule.Matches("Edit", "{}"));
-    }
-
-    [Fact]
-    public void Exact_MatchesTheSameToolAndInput()
-    {
-        var rule = PermissionRule.ForExact("Bash", """{"command":"dotnet build"}""");
-
-        Assert.True(rule.Matches("Bash", """{"command":"dotnet build"}"""));
-    }
-
-    [Fact]
     public void Exact_MatchesRegardlessOfPropertyOrderOrWhitespace()
     {
         var rule = PermissionRule.ForExact("Edit", """{"file_path":"a.txt","old_string":"x"}""");

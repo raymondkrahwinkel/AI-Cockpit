@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using Material.Icons;
 using Cockpit.Core.Workspaces;
+using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.App.ViewModels;
 
@@ -12,6 +13,23 @@ public sealed partial class WorkspaceTabViewModel(Workspace workspace, bool isAc
     public string Id => workspace.Id;
 
     public bool IsActive => isActive;
+
+    // AC-1750: the preview tab, drawn with an italic title and a "preview" label; a double-click pins it.
+    public bool IsPreview => workspace.IsPreview;
+
+    // AC-1750: a keyed tab takes its title from its body, so it is not renamed in place.
+    public bool CanRename => workspace.InstanceKey is null;
+
+    // AC-1750: the mark the body put on its tab, drawn as a dot.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasMarker))]
+    [NotifyPropertyChangedFor(nameof(IsLive))]
+    private WorkspaceMarker? _marker;
+
+    // Unsaved draws amber; Live draws green.
+    public bool HasMarker => Marker is WorkspaceMarker.Unsaved;
+
+    public bool IsLive => Marker is WorkspaceMarker.Live;
 
     // The icon that tells the workspace kinds apart at a glance in the strip: a plugin type's own registered icon
     // when it has one, else the host icon for a built-in workspace, and a neutral plugin mark for a plugin type

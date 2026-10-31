@@ -5,6 +5,7 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
 using Cockpit.Core.Workspaces;
+using Cockpit.Infrastructure.Events;
 
 namespace Cockpit.Infrastructure.BackendApi;
 
@@ -39,11 +40,15 @@ public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackend
     // AC-1472: told each `project` event, a clone's outcome; null when nobody asked.
     private readonly Action<BackendEvent>? _projectEvent;
 
-    internal RemoteBackend(BackendApiClient client, Action<bool>? connectionChanged = null, Action<BackendEvent>? projectEvent = null)
+    // AC-1547: told each `plugin` event, a plugin's channel event on the server; null when nobody asked.
+    private readonly Action<BackendEvent>? _pluginEvent;
+
+    internal RemoteBackend(BackendApiClient client, Action<bool>? connectionChanged = null, Action<BackendEvent>? projectEvent = null, Action<BackendEvent>? pluginEvent = null)
     {
         _client = client;
         _connectionChanged = connectionChanged;
         _projectEvent = projectEvent;
+        _pluginEvent = pluginEvent;
     }
 
     public event EventHandler? Changed;
@@ -108,10 +113,12 @@ public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackend
     // AC-1456: true once the backend turned the key away; the stream then stays down until someone connects anew.
     public bool KeyRefused { get; private set; }
 
+    internal Task Completion => _reader;
+
     // The list and every session's rows as they stand, then the stream from the list's seq on. The caller keeps the client.
-    public static async Task<RemoteBackend> ConnectAsync(BackendApiClient client, Action<bool>? connectionChanged = null, Action<BackendEvent>? projectEvent = null)
+    public static async Task<RemoteBackend> ConnectAsync(BackendApiClient client, Action<bool>? connectionChanged = null, Action<BackendEvent>? projectEvent = null, Action<BackendEvent>? pluginEvent = null)
     {
-        var backend = new RemoteBackend(client, connectionChanged, projectEvent);
+        var backend = new RemoteBackend(client, connectionChanged, projectEvent, pluginEvent);
         var seq = await backend._RefreshAsync(reload: false).ConfigureAwait(false);
         backend._reader = backend._FollowAsync(seq);
         return backend;
@@ -271,6 +278,10 @@ public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackend
             else if (evt.Kind == ProjectsEndpoints.EventKind)
             {
                 _projectEvent?.Invoke(evt);
+            }
+            else if (evt.Kind == PluginEventsBridge.EventKind)
+            {
+                _pluginEvent?.Invoke(evt);
             }
             else if (evt.PaneId is { } paneId && (_Find(paneId) ?? _AssistantAt(paneId)) is { } handle)
             {

@@ -7,6 +7,12 @@
              x:DataType="vm:CockpitViewModel"
              Background="{x:Null}">
 
+    <UserControl.Styles>
+        <Style Selector="TextBlock.bundle">
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+    </UserControl.Styles>
+
     <!-- The toasts (#61), stacked bottom-right. Pulled out of CockpitView so a plugin's own window can show the
          same ones: a toast raised from a dialog used to appear on the window behind it, which is to say nowhere.
 
@@ -29,14 +35,42 @@
                         <materialIcons:MaterialIcon Grid.Row="0" Grid.Column="0" Kind="{Binding Glyph}" Width="14" Height="14"
                                    Foreground="{Binding BrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"
                                    Margin="0,0,8,0" VerticalAlignment="Top"/>
-                        <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Message}" TextWrapping="Wrap" FontSize="12.5"/>
-                        <Button Grid.Row="0" Grid.Column="2" Classes="Subtle" Padding="4,0"
+                        <!-- AC-1853: a title in bold over the message in grey; the startup bundle lists its items (screen 02). -->
+                        <StackPanel Grid.Row="0" Grid.Column="1" Spacing="4">
+                            <TextBlock Text="{Binding Title}" IsVisible="{Binding HasTitle}" TextWrapping="Wrap" FontSize="12.5" FontWeight="SemiBold"/>
+                            <TextBlock IsVisible="{Binding !HasTitle}" Classes.bundle="{Binding HasLines}" TextWrapping="Wrap" FontSize="12.5">
+                                <Run Text="{Binding Message}"/><Run Text="{Binding Note}" FontWeight="Normal"/>
+                            </TextBlock>
+                            <TextBlock Text="{Binding Message}" IsVisible="{Binding HasTitle}" TextWrapping="Wrap" FontSize="12.5"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                            <ItemsControl ItemsSource="{Binding Lines}" IsVisible="{Binding HasLines}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Spacing="3"/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:ToastLineViewModel">
+                                        <Grid ColumnDefinitions="Auto,*">
+                                            <materialIcons:MaterialIcon Kind="{Binding Glyph}" Width="12" Height="12" Margin="0,1,6,0" VerticalAlignment="Top"
+                                                       Foreground="{Binding BrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                                            <TextBlock Grid.Column="1" TextWrapping="Wrap" FontSize="12" MaxLines="2" TextTrimming="CharacterEllipsis">
+                                                <Run Text="{Binding Source}" FontWeight="SemiBold"/><Run Text=" — " Foreground="{DynamicResource CockpitTextSecondaryBrush}"/><Run Text="{Binding Text}" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                            </TextBlock>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Text="{Binding MoreLabel}" IsVisible="{Binding MoreLabel, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                       FontSize="12" Margin="18,0,0,0" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        </StackPanel>
+                        <Button Grid.Row="0" Grid.Column="2" Classes="Subtle" Padding="4,0" VerticalAlignment="Top"
                                 Foreground="{DynamicResource CockpitTextFaintBrush}"
                                 Command="{Binding CloseCommand}" ToolTip.Tip="Dismiss">
                             <materialIcons:MaterialIcon Kind="Close" Width="11" Height="11"/>
                         </Button>
                         <!-- AC-1549: every action as its own button, the first one primary (a reminder's Done). -->
-                        <ItemsControl Grid.Row="1" Grid.Column="1" ItemsSource="{Binding Actions}" Margin="0,6,0,0"
+                        <ItemsControl Grid.Row="1" Grid.Column="1" ItemsSource="{Binding Actions}" Margin="0,8,0,0"
                                       IsVisible="{Binding HasAction}">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>

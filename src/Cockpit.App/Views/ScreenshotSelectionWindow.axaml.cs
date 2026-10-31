@@ -23,6 +23,7 @@ public partial class ScreenshotSelectionWindow : Window
 {
     private ScreenshotSelectionViewModel? _selection;
     private Bitmap? _bitmap;
+    private Screens? _screens;
 
     // How far the control panels sit from the edge of the display they are on.
     private const double ControlsMargin = 24;
@@ -226,7 +227,11 @@ public partial class ScreenshotSelectionWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         base.OnClosed(e);
-        Screens.Changed -= _OnScreensChanged;
+        if (_screens is { } screens)
+        {
+            screens.Changed -= _OnScreensChanged;
+            _screens = null;
+        }
         _bitmap?.Dispose();
         _bitmap = null;
     }
@@ -234,7 +239,8 @@ public partial class ScreenshotSelectionWindow : Window
     protected override void OnOpened(EventArgs e)
     {
         base.OnOpened(e);
-        Screens.Changed += _OnScreensChanged;
+        _screens = Screens;
+        _screens.Changed += _OnScreensChanged;
         _Measure();
 
         // Focused explicitly, else the window swallows the first Escape. Must be Focusable: text

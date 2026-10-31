@@ -30,6 +30,7 @@ internal static class ChatTurnLoop
     // instead of the driver guessing from the wording whether an answer was a result or an announcement.
     internal const string CompletionConvention =
         "When a task needs tools, keep calling them until the task is done: if you announce a next step, make that tool call in the same reply. "
+        + "Before ending a task after using tools, verify the requested result with relevant tools (for Git, check status, log -1, and the current branch). "
         + "End your final reply of the turn — the task done, or a question you need answered — with the line " + CompletionMarker + ".";
 
     // A user message rather than a system one: several chat templates (Qwen among them) reject a system message
@@ -97,8 +98,11 @@ internal static class ChatTurnLoop
     internal static async Task<ChatTurnOutcome> RunAsync(IChatClient agent, List<ChatMessage> history, ChatOptions options, Action<string> onText, ILogger? logger, CancellationToken cancellationToken, TimeSpan? streamIdleTimeout = null)
     {
         logger ??= NullLogger.Instance;
-        _TrimOldToolResults(history);
         var guard = agent.GetService<ContextGuardChatClient>();
+        if (guard?.PreservePrefix != true)
+        {
+            _TrimOldToolResults(history);
+        }
         var limits = guard?.Limits ?? ChatTurnLimits.Default;
         guard?.BeginTurn();
         var turnText = new StringBuilder();
@@ -374,9 +378,17 @@ internal static class ChatTurnLoop
             var hold = final ? 0 : _HeldTail(text);
             _held.Clear().Append(text, text.Length - hold, hold);
             var release = text[..^hold];
-            if (release.Length == 0)
+            if (release.Length == 0 || (!_emitted && string.IsNullOrWhiteSpace(release)))
             {
                 return;
+            }
+
+            if (!_emitted)
+            {
+                // Leading blank lines become standalone transcript rows; keep indentation on the first text line.
+                var leading = release.Length - release.AsSpan().TrimStart().Length;
+                var lineEnd = release.AsSpan(0, leading).LastIndexOfAny('\r', '\n');
+                release = release[(lineEnd + 1)..];
             }
 
             // A continuation round's text starts a new paragraph instead of running on from the previous round.
@@ -416,9 +428,7 @@ internal sealed class ChatStreamIdleTimeoutException(TimeSpan timeout)
 
 internal sealed record ChatTurnOutcome(string Text, ChatFinishReason? FinishReason, int ToolRounds, int Continuations);
 
-// The bounds the context guard and the continuation net work within (AC-1489), read from an optional `turnLimits`
-// object in the provider config. The defaults follow opencode (50 KiB / 2000 lines per result, 20K reserve, 40K
-// protected); the context window defaults low on purpose, since a model that has more says so in its config.
+// Profile turnLimits override the defaults; the reserve scales with the context window up to 20K.
 internal sealed record ChatTurnLimits
 {
     internal static readonly ChatTurnLimits Default = new();
@@ -435,7 +445,9 @@ internal sealed record ChatTurnLimits
 
     public double SoftLimitRatio { get; init; } = 0.75;
 
-    public int ReserveTokens { get; init; } = 20_000;
+    private readonly int? _reserveTokens;
+
+    public int ReserveTokens { get => _reserveTokens ?? Math.Min(20_000, ContextWindowTokens / 4); init => _reserveTokens = value; }
 
     public int ProtectRecentTokens { get; init; } = 40_000;
 
@@ -464,7 +476,7 @@ internal sealed record ChatTurnLimits
 // Sits between the function-invocation loop and the model (AC-1489), so it sees every HTTP call of a turn before it
 // leaves: caps each tool result, keeps a per-turn budget, prunes old results near the context limit, and as a last
 // resort drops the tools so the model must wrap up. Only a result's text ever gets shorter: every call keeps its result.
-internal sealed class ContextGuardChatClient(IChatClient inner, ChatTurnLimits limits, ILogger? logger = null) : DelegatingChatClient(inner)
+internal sealed class ContextGuardChatClient(IChatClient inner, ChatTurnLimits limits, ILogger? logger = null, bool preservePrefix = false) : DelegatingChatClient(inner)
 {
     private const int CharsPerToken = 4;
 
@@ -484,6 +496,8 @@ internal sealed class ContextGuardChatClient(IChatClient inner, ChatTurnLimits l
     private readonly ILogger _logger = logger ?? NullLogger.Instance;
 
     public ChatTurnLimits Limits { get; } = limits;
+
+    public bool PreservePrefix { get; } = preservePrefix;
 
     public TurnGuardState Turn { get; private set; } = new();
 
@@ -533,16 +547,17 @@ internal sealed class ContextGuardChatClient(IChatClient inner, ChatTurnLimits l
         if (tokens > Limits.ContextWindowTokens - Limits.ReserveTokens)
         {
             turn.ContextFull = true;
-            _logger.LogWarning("Chat turn guard: ~{Tokens} input tokens is past the context window of {Window} minus the reserve; asking the model to wrap up.", tokens, Limits.ContextWindowTokens);
+            _logger.LogWarning("Chat turn guard: ~{Tokens} input tokens is past the context window of {Window} minus reserve {Reserve}; asking the model to wrap up.", tokens, Limits.ContextWindowTokens, Limits.ReserveTokens);
         }
 
         turn.PeakTokens = Math.Max(turn.PeakTokens, tokens);
         var note = turn.ContextFull ? ContextFullNote : turn.BudgetHit ? BudgetNote : null;
         _logger.LogDebug(
-            "Chat turn guard: ~{Tokens} input tokens, {ResultChars} result chars this turn, {Pruned} chars pruned, reason {Reason}.",
+            "Chat turn guard: ~{Tokens} input tokens, {ResultChars} result chars this turn, {Pruned} chars pruned, reserve {Reserve}, reason {Reason}.",
             tokens,
             turn.ResultChars,
             pruned,
+            Limits.ReserveTokens,
             note is null ? "(none)" : turn.ContextFull ? "context full" : "budget used up");
         if (note is null || options?.Tools is not { Count: > 0 })
         {
@@ -606,7 +621,9 @@ internal sealed class ContextGuardChatClient(IChatClient inner, ChatTurnLimits l
     // the prompt in the measured failure (DEP-234). Add a summary call once a measured session shows pruning falls short.
     private long _Prune(IList<ChatMessage> messages, TurnGuardState turn)
     {
-        var protectedChars = (long)Limits.ProtectRecentTokens * CharsPerToken;
+        // Local models repay cache rebuilds less often when pruning leaves room for several more requests.
+        var protectedTokens = PreservePrefix ? Math.Min(Limits.ProtectRecentTokens, Limits.ContextWindowTokens / 4) : Limits.ProtectRecentTokens;
+        var protectedChars = (long)protectedTokens * CharsPerToken;
         var seen = 0L;
         var pruned = 0L;
         foreach (var result in messages.Reverse().SelectMany(message => message.Contents.Reverse()).OfType<FunctionResultContent>())
@@ -633,14 +650,21 @@ internal sealed class ContextGuardChatClient(IChatClient inner, ChatTurnLimits l
     }
 
     // The same rough four-characters-a-token the host's McpToolTokenMath uses, over every message and tool schema.
-    private static long _EstimateTokens(IList<ChatMessage> messages, ChatOptions? options)
+    private long _EstimateTokens(IList<ChatMessage> messages, ChatOptions? options)
     {
         var chars = 0L;
+        if (PreservePrefix)
+        {
+            chars += (long)"<think></think>".Length * messages.Count(message => message.Role == ChatRole.Assistant
+                && message.Contents.OfType<TextReasoningContent>().Any(content => !string.IsNullOrEmpty(content.Text)));
+        }
+
         foreach (var content in messages.SelectMany(message => message.Contents))
         {
             chars += content switch
             {
                 TextContent text => text.Text.Length,
+                TextReasoningContent reasoning when PreservePrefix => reasoning.Text?.Length ?? 0,
                 FunctionCallContent call => call.Name.Length + (call.Arguments is null ? 0 : JsonSerializer.Serialize(call.Arguments, AIJsonUtilities.DefaultOptions).Length),
                 FunctionResultContent result => ChatTurnLoop.ResultText(result.Result)?.Length ?? 0,
                 _ => 0,

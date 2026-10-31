@@ -1,0 +1,144 @@
+namespace Cockpit.Plugins.Abstractions.Files;
+
+/// <summary>
+/// One text change: replace <see cref="Length"/> characters at <see cref="Offset"/> with <see cref="Text"/>. Offsets
+/// count UTF-16 characters. In a list, each op applies to the text the previous op left behind.
+/// </summary>
+public sealed record TextOp(int Offset, int Length, string Text);
+
+/// <summary>Where a live file stands, as the workspace shows it.</summary>
+public enum LiveFileState
+{
+    /// <summary>The source is still joining; edits are accepted and sent once it is live.</summary>
+    Connecting,
+    /// <summary>Others' changes arrive as patches and the source keeps the file; there is nothing to save.</summary>
+    Live,
+    /// <summary>The source lost its own connection; edits stay with the source until it is back.</summary>
+    Offline,
+    /// <summary>The source needs the operator to sign in again before it is live.</summary>
+    SignInNeeded,
+    /// <summary>The file may be watched live but not edited; <see cref="LiveFileStatus.Reason"/> says why.</summary>
+    ReadOnly,
+    /// <summary>Live, but nobody is saving the shared text to the file yet.</summary>
+    NoSaver,
+    /// <summary>The source cannot express its changes as patches any more; the host reads the whole text again.</summary>
+    Stale,
+}
+
+/// <summary>A <see cref="LiveFileState"/> with the operator-facing reason, when there is one.</summary>
+public sealed record LiveFileStatus(LiveFileState State, string? Reason = null)
+{
+    /// <summary>The old room cannot receive edits; save local text to the file before closing and opening a fresh session.</summary>
+    public bool RequiresRejoin { get; init; }
+    /// <summary>The read-only cause, for the workspace's badge and recovery action.</summary>
+    public LiveReadOnlyReason ReadOnlyReason { get; init; }
+    /// <summary>The shared text when the source holds local edits it can no longer send; null when none are held.</summary>
+    public string? UnsentSourceText { get; init; }
+    /// <summary>
+    /// Who last saved the shared text to the file, for a source that knows; null when it does not track saves, and
+    /// <see cref="LiveFileSave.NotYet"/> when nobody has saved since the host joined.
+    /// </summary>
+    public LiveFileSave? Saved { get; init; }
+    /// <summary>
+    /// The account the operator joined as, for <see cref="LiveFileState.SignInNeeded"/>: whom to sign in again as. Null when
+    /// the source does not say. Requires host 0.150.0.
+    /// </summary>
+    public string? Account { get; init; }
+}
+
+/// <summary>Why editing a live file is unavailable.</summary>
+public enum LiveReadOnlyReason
+{
+    /// <summary>No specific read-only cause was supplied.</summary>
+    None,
+    /// <summary>The source uses an editor schema this client cannot write.</summary>
+    SchemaMismatch,
+    /// <summary>The operator joined as a viewer.</summary>
+    Viewer,
+    /// <summary>The operator lost permission after joining as an editor.</summary>
+    RoleLost,
+}
+
+/// <summary>A save of the shared text: by <see cref="Name"/>, drawn in <see cref="Color"/> (#rrggbb, when known), at <see cref="At"/>.</summary>
+public sealed record LiveFileSave(string? Name, string? Color = null, DateTimeOffset? At = null)
+{
+    /// <summary>Nobody has saved since the host joined.</summary>
+    public static LiveFileSave NotYet { get; } = new(Name: null);
+}
+
+/// <summary>The whole text at revision <see cref="Rev"/>.</summary>
+public sealed record LiveFileSnapshot(string Text, long Rev, LiveFileStatus Status);
+
+/// <summary>
+/// A change the host did not type: another editor's, or the result of <see cref="ILiveFileSession.UndoAsync"/>.
+/// <see cref="Rev"/> is the revision after it; the ops apply to the text at <c>Rev - 1</c>.
+/// </summary>
+public sealed record LiveFilePatch(long Rev, IReadOnlyList<TextOp> Ops, string? Who = null)
+{
+    /// <summary>Ranges written outside this live connection, measured after the ops.</summary>
+    public ExternalTextEdit? ExternalEdit { get; init; }
+}
+
+/// <summary>Text written by a named outside writer, at the given time.</summary>
+public sealed record ExternalTextEdit(string Who, DateTimeOffset At, IReadOnlyList<LiveRange> Ranges);
+
+/// <summary>Whether <see cref="ILiveFileSession.EditAsync"/> applied the ops.</summary>
+public enum LiveEditStatus
+{
+    /// <summary>Applied; <see cref="LiveEditResult.Rev"/> is the new revision.</summary>
+    Applied,
+    /// <summary>Nothing applied: the base revision is behind <see cref="LiveEditResult.Rev"/>. The host sends again once it has those patches.</summary>
+    Stale,
+}
+
+/// <summary>The answer to an edit.</summary>
+public sealed record LiveEditResult(LiveEditStatus Status, long Rev);
+
+/// <summary>
+/// An optional extra on an <see cref="IFileSource"/>: the file is shared live, and the host's Markdown workspace
+/// edits it as patches instead of saving snapshots. A source without it keeps the snapshot-and-save behaviour.
+/// </summary>
+public interface ILiveFileSource
+{
+    /// <summary>Opens a live session on the file. The host disposes it when the workspace closes.</summary>
+    Task<ILiveFileSession> OpenLiveAsync(FileRef file, CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// A live session on one file. Every change, the host's or anyone else's, raises the revision by exactly one.
+/// The host's own edits are never sent back to it as patches; undo and redo are the source's, so they only touch
+/// the host's own edits and arrive as patches. Edits are accepted in every state but <see cref="LiveFileState.ReadOnly"/>,
+/// where the source throws a <see cref="FileSourceException"/> with <see cref="FileSourceErrorKind.Forbidden"/>.
+/// </summary>
+public interface ILiveFileSession : IAsyncDisposable
+{
+    /// <summary>Raised for every change the host did not send through <see cref="EditAsync"/>, in revision order.</summary>
+    event EventHandler<LiveFilePatch>? Patched;
+
+    /// <summary>Raised when <see cref="LiveFileStatus"/> changes.</summary>
+    event EventHandler<LiveFileStatus>? StatusChanged;
+
+    /// <summary>The whole text and its revision, from one moment.</summary>
+    Task<LiveFileSnapshot> ReadAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Applies the host's ops when <paramref name="baseRev"/> is the current revision; otherwise applies nothing
+    /// and answers <see cref="LiveEditStatus.Stale"/> with the current revision. The host sends one edit at a time
+    /// and repeats an edit whose answer it lost under the same <paramref name="editId"/>: when that id is the last
+    /// one applied, answer <see cref="LiveEditStatus.Applied"/> with the revision it got and apply nothing.
+    /// </summary>
+    Task<LiveEditResult> EditAsync(string editId, long baseRev, IReadOnlyList<TextOp> ops, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Undoes (or with <paramref name="redo"/>, redoes) the host's own edits, grouped as the source sees fit; the
+    /// result arrives as a patch. With nothing to undo it does nothing.
+    /// </summary>
+    Task UndoAsync(bool redo, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Tries the connection again now instead of at the next retry. With <paramref name="signIn"/>, after
+    /// <see cref="LiveFileState.SignInNeeded"/>, it first lets the operator sign in again; the source joins again only as the
+    /// account it was opened with. Default: nothing. Requires host 0.150.0.
+    /// </summary>
+    Task ReconnectAsync(bool signIn, CancellationToken cancellationToken) => Task.CompletedTask;
+}

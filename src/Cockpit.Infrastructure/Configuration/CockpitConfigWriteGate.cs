@@ -13,6 +13,11 @@ internal static class CockpitConfigWriteGate
 
     private static readonly TimeSpan GatePollInterval = TimeSpan.FromMilliseconds(20);
 
+    private static long _generation;
+
+    // AC-1892: raised as every holder releases the gate, so a config snapshot taken before that write is never served after it.
+    public static long Generation => Interlocked.Read(ref _generation);
+
     // AC-1251: once a writer holds the gate, new readers wait instead of extending the handles blocking its swap.
     public static async Task WaitForWriterAsync(string configFilePath, CancellationToken cancellationToken)
     {
@@ -62,7 +67,7 @@ internal static class CockpitConfigWriteGate
         {
             try
             {
-                return new FileStream(lockFilePath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+                return new GateStream(lockFilePath);
             }
             catch (IOException) when (DateTimeOffset.UtcNow < deadline)
             {
@@ -79,6 +84,23 @@ internal static class CockpitConfigWriteGate
                     $"Could not take the write lock on '{lockFilePath}' within {GateTimeout.TotalSeconds:F0}s; the cockpit's settings were not saved.",
                     exception);
             }
+        }
+    }
+
+    // The held lock file; bumps the generation before letting go, so a reader that gets in next already sees the new one.
+    private sealed class GateStream(string lockFilePath)
+        : FileStream(lockFilePath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None)
+    {
+        protected override void Dispose(bool disposing)
+        {
+            Interlocked.Increment(ref _generation);
+            base.Dispose(disposing);
+        }
+
+        public override ValueTask DisposeAsync()
+        {
+            Interlocked.Increment(ref _generation);
+            return base.DisposeAsync();
         }
     }
 }

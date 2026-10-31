@@ -14,6 +14,13 @@ namespace Cockpit.Infrastructure.Sessions;
 // calling pane's working directory, and every answer is bounded, so a read cannot flood the context.
 internal sealed class CodingTools(ISessionRegistry sessions, IShellCommandRunner runner)
 {
+    internal const string EndpointName = "cockpit-coding";
+    internal const string ShellEndpointName = "cockpit-coding-shell";
+
+    internal static bool StaysNative(string serverName) =>
+        string.Equals(serverName, EndpointName, StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(serverName, ShellEndpointName, StringComparison.OrdinalIgnoreCase);
+
     internal const int MaxLines = 2_000;
     internal const int MaxLineChars = 2_000;
     internal const int MaxChars = 51_200;

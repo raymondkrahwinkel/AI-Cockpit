@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Assistant;
@@ -58,6 +59,27 @@ public sealed record RowProjects(
 // one place that can see a row's turn and say which threads it is in; the views only pick which thread they show.
 public partial class SessionViewModel
 {
+    private Cockpit.Core.Swarm.SwarmMergeQuestion? _mergeQuestion;
+
+    // AC-1929: the open question of a merge after a split; the divider row it belongs to draws it.
+    public Cockpit.Core.Swarm.SwarmMergeQuestion? MergeQuestion
+    {
+        get => _mergeQuestion;
+        set
+        {
+            if (ReferenceEquals(_mergeQuestion, value))
+            {
+                return;
+            }
+
+            _mergeQuestion = value;
+            foreach (var row in Transcript.Where(row => row.IsMergeDivider))
+            {
+                row.OnMergeQuestionChanged();
+            }
+        }
+    }
+
     // The thread a row with no project at all is in. Distinct from null, which is All.
     public const string GeneralThread = "";
 
@@ -218,6 +240,42 @@ public partial class SessionViewModel
 
         Transcript.Add(row);
         return row;
+    }
+
+    // list_open_questions (AC-1937): the assistant's own cards still waiting, not the Allow/Deny rows beside them.
+    public IReadOnlyList<AssistantOpenQuestion> ListOpenBrokerQuestions() =>
+    [
+        .. OpenQuestions.Where(row => row.IsPendingBrokerAnswer).Select(row => new AssistantOpenQuestion(
+            row.Id, row.Text, row.ThreadProjectIds, [.. row.ThreadTags.Select(tag => tag.Name)], row.Timestamp)),
+    ];
+
+    // resolve_structured_question (AC-1937): the card closes with how and why, and keeps its place in the conversation.
+    public AssistantThreadResult ResolveBrokerQuestion(string questionId, string status, string? note)
+    {
+        if (Transcript.FirstOrDefault(row => row.Id == questionId && row.Kind == TranscriptEntryKind.Question) is not { } card)
+        {
+            return new AssistantThreadResult(false, "There is no question card with that id; take it from list_open_questions.");
+        }
+
+        if (!card.IsPendingBrokerAnswer)
+        {
+            return new AssistantThreadResult(false, card.Resolution is not null
+                ?$"That card is closed already: {card.ResolutionText}."
+                : "That card is closed already: the operator answered it on the card.");
+        }
+
+        card.Resolve(new AssistantQuestionResolution(status, note));
+        return new AssistantThreadResult(true, "The card is closed and keeps its place in the conversation with your note.");
+    }
+
+    // The operator's ✕ on a card (AC-1937): no answer is sent, the card just stops waiting.
+    [RelayCommand]
+    private void DismissQuestion(TranscriptEntryViewModel entry)
+    {
+        if (entry.IsPendingBrokerAnswer)
+        {
+            entry.Resolve(new AssistantQuestionResolution(AssistantQuestionResolution.Dismissed, null));
+        }
     }
 
     // set_thread: the rest of the turn follows these projects. Filing follows what the turn is about, not where it was
@@ -672,6 +730,7 @@ public partial class SessionViewModel
                 StatusKinds.Contains(message.Kind.Trim()) ? TranscriptEntryKind.Status : TranscriptEntryKind.Inbox,
                 message.Body)
             {
+                Id = message.Id,
                 SenderPaneId = message.FromPaneId,
                 SenderTitle = senderTitle,
                 MessageKind = message.Kind,

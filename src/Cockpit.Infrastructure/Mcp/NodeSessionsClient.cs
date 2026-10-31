@@ -3,6 +3,7 @@ using System.Text.Json;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Mcp;
@@ -18,7 +19,8 @@ namespace Cockpit.Infrastructure.Mcp;
 internal sealed class NodeSessionsClient(
     IMcpServerStore servers,
     INodeDiscoveryClient discovery,
-    ILogger<NodeSessionsClient> logger) : INodeSessionsClient, ISingletonService
+    ILogger<NodeSessionsClient> logger,
+    IServiceProvider? services = null) : INodeSessionsClient, ISingletonService, IAsyncDisposable
 {
     // Shared with NodeConnectionFailure.Describe, so the "did not answer within Xs" wording it produces always
     // matches the timeout this client actually used.
@@ -35,9 +37,114 @@ internal sealed class NodeSessionsClient(
     // read. A failed read never overwrites this — a stale-but-real snapshot is what start_agent's ambiguity check
     // and list_profiles's node rows read instead of a round trip, and that only works if a timeout can't erase it.
     private readonly ConcurrentDictionary<string, (NodeSessionsSnapshot Snapshot, DateTimeOffset AtUtc)> _lastSnapshots = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, Task<LiveChannel>> _liveChannels = new(StringComparer.Ordinal);
 
     public (NodeSessionsSnapshot Snapshot, DateTimeOffset AtUtc)? TryGetLastSnapshot(string nodeName) =>
         _lastSnapshots.TryGetValue(nodeName, out var memory) ? memory : null;
+
+    public async Task<Cockpit.Core.Abstractions.Sessions.ISessionHandle?> OpenSessionAsync(
+        string nodeName,
+        string paneId,
+        CancellationToken cancellationToken = default)
+    {
+        var pending = _liveChannels.GetOrAdd(nodeName, _ => _OpenLiveChannelAsync(nodeName, cancellationToken));
+        try
+        {
+            var channel = await pending.ConfigureAwait(false);
+            if (channel.TryObserve())
+            {
+                LastEviction = _EvictWhenFinishedAsync(nodeName, pending, channel);
+            }
+            return paneId == Cockpit.Core.Assistant.AssistantIdentity.PaneId ? channel.Backend.Assistant : channel.Backend.Find(paneId);
+        }
+        catch
+        {
+            _liveChannels.TryRemove(new KeyValuePair<string, Task<LiveChannel>>(nodeName, pending));
+            throw;
+        }
+    }
+
+    // The latest watcher that evicts a finished live channel, kept so a fault or a test can observe it.
+    internal Task LastEviction { get; private set; } = Task.CompletedTask;
+
+    private async Task _EvictWhenFinishedAsync(string nodeName, Task<LiveChannel> pending, LiveChannel channel)
+    {
+        try
+        {
+            await channel.Backend.Completion.ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            logger.LogDebug(exception, "Live session channel for {NodeName} ended unexpectedly.", nodeName);
+        }
+
+        if (!_liveChannels.TryRemove(new KeyValuePair<string, Task<LiveChannel>>(nodeName, pending)))
+        {
+            return;
+        }
+
+        try
+        {
+            await channel.Backend.DisposeAsync().ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            logger.LogDebug(exception, "Live session channel for {NodeName} failed during cleanup.", nodeName);
+        }
+        finally
+        {
+            channel.Client.Dispose();
+        }
+    }
+
+    private async Task<LiveChannel> _OpenLiveChannelAsync(string nodeName, CancellationToken cancellationToken)
+    {
+        var wanted = NodeServerName.For(nodeName, NodeServerName.SessionsServerName);
+        var server = (await servers.LoadAsync(cancellationToken).ConfigureAwait(false))
+            .FirstOrDefault(candidate => string.Equals(candidate.Name, wanted, StringComparison.Ordinal))
+            ?? throw new InvalidOperationException($"This cockpit has no session transport for '{nodeName}'.");
+        if (server.Url is null || server.ApiKey is null || server.PinnedCertificateFingerprint is null)
+        {
+            throw new InvalidOperationException($"The session transport for '{nodeName}' is incomplete.");
+        }
+
+        var network = services?.GetRequiredService<Swarm.SwarmNetworkPolicy>()
+            ?? throw new InvalidOperationException("The swarm network policy is unavailable.");
+        var time = services.GetService<TimeProvider>() ?? TimeProvider.System;
+        var endpoint = new Uri(new Uri(server.Url).GetLeftPart(UriPartial.Authority));
+        var client = new BackendApiClient(endpoint, server.ApiKey, server.PinnedCertificateFingerprint, time, network.ConnectAsync, "swarm/session-events");
+        try
+        {
+            return new LiveChannel(client, await RemoteBackend.ConnectAsync(client).ConfigureAwait(false));
+        }
+        catch
+        {
+            client.Dispose();
+            throw;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        foreach (var entry in _liveChannels.ToArray())
+        {
+            if (!_liveChannels.TryRemove(entry) || !entry.Value.IsCompletedSuccessfully)
+            {
+                continue;
+            }
+
+            await entry.Value.Result.Backend.DisposeAsync().ConfigureAwait(false);
+            entry.Value.Result.Client.Dispose();
+        }
+    }
+
+    private sealed class LiveChannel(BackendApiClient client, RemoteBackend backend)
+    {
+        private int _observed;
+        public BackendApiClient Client { get; } = client;
+        public RemoteBackend Backend { get; } = backend;
+        public bool TryObserve() => Interlocked.Exchange(ref _observed, 1) == 0;
+    }
 
     public async Task<IReadOnlyList<string>> ListNodesAsync(CancellationToken cancellationToken = default)
     {
@@ -285,44 +392,6 @@ internal sealed class NodeSessionsClient(
         }
     }
 
-    public async Task<NodeInboxBatch> ReadInboxAsync(string nodeName, string? afterMessageId, CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            await using var client = await _ConnectAsync(nodeName, cancellationToken).ConfigureAwait(false);
-            var result = await _CallAsync(
-                client,
-                "read_node_inbox",
-                afterMessageId is null ? null : new Dictionary<string, object?> { ["afterMessageId"] = afterMessageId },
-                cancellationToken).ConfigureAwait(false);
-
-            if (_ErrorIn(result) is { } refusal)
-            {
-                return new NodeInboxBatch(nodeName, [], Error: refusal);
-            }
-
-            return new NodeInboxBatch(
-                nodeName,
-                [.. _Array(result, "messages").Select(row => new NodeInboxMessage(
-                    _Text(row, "id"),
-                    _Text(row, "fromPaneId"),
-                    _Text(row, "kind"),
-                    _Text(row, "body"),
-                    row.TryGetProperty("sentAtUtc", out var sent) && sent.TryGetDateTimeOffset(out var at) ? at : DateTimeOffset.UtcNow))],
-                result.TryGetProperty("remaining", out var remaining) && remaining.TryGetInt32(out var count) ? count : 0,
-                DiscoveryId: _Text(result, "discoveryId"));
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception exception)
-        {
-            logger.LogInformation(exception, "Could not read the assistant's mail on node {Node}.", nodeName);
-            return new NodeInboxBatch(nodeName, [], Error: Classify(nodeName, exception));
-        }
-    }
-
     public async Task<NodeMemoryRead> ReadMemoryAsync(string nodeName, string scope, CancellationToken cancellationToken = default)
     {
         try
@@ -347,32 +416,6 @@ internal sealed class NodeSessionsClient(
 
     public Task<string?> RememberOnNodeAsync(string nodeName, string text, string scope, CancellationToken cancellationToken = default) =>
         _ActAsync(nodeName, "remember_on_node", new Dictionary<string, object?> { ["text"] = text, ["scope"] = scope }, cancellationToken);
-
-    public async Task<NodePermissionAnswer> AnswerPermissionAsync(string nodeName, string paneId, string toolUseId, bool allow, CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            await using var client = await _ConnectAsync(nodeName, cancellationToken).ConfigureAwait(false);
-            var result = await _CallAsync(
-                client,
-                "answer_node_permission",
-                new Dictionary<string, object?> { ["paneId"] = paneId, ["toolUseId"] = toolUseId, ["allow"] = allow },
-                cancellationToken).ConfigureAwait(false);
-
-            return _ErrorIn(result) is { } refusal
-                ? new NodePermissionAnswer(false, refusal)
-                : new NodePermissionAnswer(_Bool(result, "answered"));
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception exception)
-        {
-            logger.LogInformation(exception, "Could not reach node {Node} to answer a permission.", nodeName);
-            return new NodePermissionAnswer(false, Classify(nodeName, exception));
-        }
-    }
 
     // Null when the node did it, its own words when it refused, a sentence of ours when it could not be reached.
     // The three are deliberately one return value: to the operator pressing the button they are the same question —
@@ -406,11 +449,23 @@ internal sealed class NodeSessionsClient(
         var wanted = NodeServerName.For(nodeName, NodeServerName.SessionsServerName);
         var server = known.FirstOrDefault(candidate => string.Equals(candidate.Name, wanted, StringComparison.Ordinal))
             ?? throw new InvalidOperationException(
-                $"This cockpit is not paired with a node called '{nodeName}', or that pairing predates session management. Pair with it again from Options → Security.");
+                $"No session connection is saved for '{nodeName}'. Connect to the server from Options → Nodes.");
 
         try
         {
-            return await _OpenAsync(server, cancellationToken).ConfigureAwait(false);
+            var connection = await _OpenAsync(server, cancellationToken).ConfigureAwait(false);
+            try
+            {
+                if (services?.GetService<Swarm.SwarmMigration>() is { } migration)
+                {
+                    await migration.OnConnectedAsync(server, cancellationToken).ConfigureAwait(false);
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(ex, "Swarm migration did not finish; keeping the existing node connection.");
+            }
+            return connection;
         }
         catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {

@@ -166,11 +166,10 @@ public class OrgPolicyCeilingTests
         if (which is "start-run" or "run-elevated")
         {
             var runner = Substitute.For<ITrackedCommandRunner>();
-            var tools = new SessionStatusTools(Substitute.For<ISessionLabelSink>(), runner, new RunTracker(), Substitute.For<IWorkspaceAgentGateway>(),
-                Substitute.For<IWorkspaceAgentCoordinator>(), Substitute.For<IAgentMessageInbox>(), orgPolicy: org);
             var reply = which == "start-run"
-                ? await tools.StartRunAsync(".", "dotnet", session: "pane")
-                : await tools.RunElevatedAsync("Get-Date", ".", "test", session: "pane");
+                ? await new SessionStatusTools(Substitute.For<ISessionLabelSink>(), runner, new RunTracker(), Substitute.For<IWorkspaceAgentGateway>(),
+                    Substitute.For<IWorkspaceAgentCoordinator>(), Substitute.For<IAgentMessageInbox>(), orgPolicy: org).StartRunAsync(".", "dotnet", session: "pane")
+                : await new ElevatedSessionTools(orgPolicy: org).RunElevatedAsync("Get-Date", ".", "test", session: "pane");
 
             Assert.Contains("Acme does not allow agents to run commands", reply);
             return;
@@ -259,22 +258,32 @@ public class OrgPolicyCeilingTests
 
     // Never-send is a promise in the instructions (AC-494), so it has to reach every start: the sdk one and the tty one,
     // after what the session already appends of its own.
-    [Theory]
-    [InlineData("sdk")]
-    [InlineData("tty")]
-    public async Task NeverSend_RidesEveryStartsInstructions(string route)
+    [Fact]
+    public async Task NeverSend_RidesTheSdkStartsInstructions()
     {
         var rig = new ProviderRig(new ProvisionPolicy("Acme", Permissions: new ProvisionPermissionPolicy(NeverSend: true)));
         var own = new Dictionary<string, string> { [WellKnownPluginSessionOptions.AppendSystemPrompt] = "Set your status." };
-        var acts = new Dictionary<string, Func<Task>>
-        {
-            ["sdk"] = () => rig.Runtime.StartAsync(ProviderRig.Claude, launchOptions: own),
-            ["tty"] = () => Task.FromResult(rig.Launch(rig.Provider("claude"), ProviderRig.Claude, own)),
-        };
+        await using var runtime = rig.Runtime;
 
-        await acts[route]();
+        await runtime.StartAsync(ProviderRig.Claude, launchOptions: own);
 
+        // This rig captures the runtime's driver boundary; production plugin adaptation appends scratch afterwards.
         Assert.Equal("Set your status.\n\n" + Cockpit.Core.Projects.ProjectStartingPoint.NeverSendBehavior,
+            rig.LaunchedOptions?.GetValueOrDefault(WellKnownPluginSessionOptions.AppendSystemPrompt));
+    }
+
+    [Fact]
+    public void NeverSend_RidesTheTtyStartsInstructionsAlongsideScratch()
+    {
+        var rig = new ProviderRig(new ProvisionPolicy("Acme", Permissions: new ProvisionPermissionPolicy(NeverSend: true)));
+        var own = new Dictionary<string, string> { [WellKnownPluginSessionOptions.AppendSystemPrompt] = "Set your status." };
+
+        using var process = rig.Launch(rig.Provider("claude"), ProviderRig.Claude, own);
+
+        var environment = Assert.IsAssignableFrom<IReadOnlyDictionary<string, string>>(
+            Assert.Single(rig.Pty.ReceivedCalls()).GetArguments()[3]);
+        Assert.Equal("Set your status.\n\n" + Cockpit.Core.Projects.ProjectStartingPoint.NeverSendBehavior
+            + "\n\n" + SessionScratch.Instruction(environment["COCKPIT_SCRATCH"]),
             rig.LaunchedOptions?.GetValueOrDefault(WellKnownPluginSessionOptions.AppendSystemPrompt));
     }
 

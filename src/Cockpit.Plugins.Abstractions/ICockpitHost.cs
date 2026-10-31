@@ -28,6 +28,11 @@ public interface ICockpitHost
     IPluginStorage Storage { get; }
 
     /// <summary>
+    /// Whether the host has no desktop UI for capabilities that require one.
+    /// </summary>
+    bool IsHeadless => false;
+
+    /// <summary>
     /// The operator's own time entries. Needs <c>"capabilities": ["time.entries"]</c> in
     /// <c>plugin.json</c>; without it the host throws <see cref="UnauthorizedAccessException"/> naming the capability.
     /// </summary>
@@ -389,7 +394,9 @@ public interface ICockpitHost
     /// that never reached the server; offer <see cref="SignInMcpServerAsync"/>. A 401 from the server renews the
     /// credential the way the server's MCP connection does, and a request without a body is sent once more. It
     /// serves as an <see cref="HttpClient"/>'s handler and from SignalR's
-    /// <c>HttpConnectionOptions.HttpMessageHandlerFactory</c>, WebSockets included. The default, for a host that
+    /// <c>HttpConnectionOptions.HttpMessageHandlerFactory</c> for HTTP transports. For WebSockets, set
+    /// <c>WebSocketFactory</c> to connect with <c>ClientWebSocket.ConnectAsync(uri, invoker, cancellationToken)</c>,
+    /// using an <c>HttpMessageInvoker</c> over this handler; SignalR's HTTP/1.1 default bypasses it. The default, for a host that
     /// predates this member, is a handler that throws <see cref="HttpRequestException"/> on every request.
     /// </remarks>
     HttpMessageHandler CreateAuthorizedHandler(string name) => new Mcp.UnavailableAuthorizedHandler();
@@ -1078,5 +1085,12 @@ public interface ICockpitHost
     void AddStartupStep(string label, Func<CancellationToken, Task> run)
     {
     }
+
+    /// <summary>
+    /// Registers one file provider on this plugin's own channel. Dispose the registration when unloading.
+    /// Requires host 0.136.0; older hosts reject the operation without registering partial handlers.
+    /// </summary>
+    IDisposable AddFileSource(Files.IFileSourceProvider provider) =>
+        throw new NotSupportedException("This host does not support file sources.");
 
 }

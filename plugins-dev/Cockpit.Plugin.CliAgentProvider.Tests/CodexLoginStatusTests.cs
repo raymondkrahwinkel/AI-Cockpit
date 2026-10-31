@@ -7,7 +7,7 @@ namespace Cockpit.Plugin.CliAgentProvider.Tests;
 public class CodexLoginStatusTests
 {
     [Theory]
-    [InlineData("Logged in using ChatGPT", PluginCredentialKind.RenewingLogin)]
+    [InlineData("\u001b[90mLogged in using ChatGPT\u001b[0m", PluginCredentialKind.RenewingLogin)]
     [InlineData("Logged in using an API key - ***", PluginCredentialKind.ApiKey)]
     [InlineData("Not logged in", PluginCredentialKind.Unknown)]
     [InlineData("Logged in using something else", PluginCredentialKind.Unknown)]

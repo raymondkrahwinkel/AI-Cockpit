@@ -18,9 +18,7 @@ public sealed record SessionCapabilities(
     // env-var section. Defaults to `false` so existing construction stays non-injecting.
     public bool SupportsEnvVars { get; init; }
 
-    // AC-174: whether this driver's own file-affecting tools stay within the session's working directory — the
-    // guarantee worktree isolation rests on. Claude/Codex confine via cwd-bound native tools; an in-process
-    // driver reaching files through a fixed-folder MCP server does not. Defaults to `false` (fail closed).
+    // AC-1962: confines the driver's own file tools; independently selected MCP servers have their own access rules.
     public bool ConfinesFileAccessToWorkingDirectory { get; init; }
 
     // AC-664: whether a full context is answered by asking this driver to summarise and carry on, or by starting a

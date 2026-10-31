@@ -8,8 +8,20 @@
              x:DataType="vm:LoginFlowRowViewModel">
 
     <!-- AC-713: shared view for a running `ILoginFlow`, however it was started. Hosts set `DataContext="{Binding LoginFlow}"` and gate their own visibility on `HasLoginFlow`. -->
-    <StackPanel Spacing="6">
+    <StackPanel Spacing="6" IsVisible="{Binding !Succeeded}">
         <TextBlock Text="{Binding Message}" TextWrapping="Wrap" FontSize="12"/>
+        <StackPanel Spacing="6" IsVisible="{Binding HasDeviceCode}">
+            <TextBlock Text="Enter this code on the sign-in page:" FontSize="12"/>
+            <WrapPanel>
+                <SelectableTextBlock Text="{Binding DeviceCode}" FontSize="24" FontFamily="{DynamicResource CockpitMonoFont}"
+                                     FontWeight="SemiBold" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                <Button Content="Copy code" Classes="Compact" Click="_OnCopyCodeClick" VerticalAlignment="Center"/>
+            </WrapPanel>
+            <TextBlock Text="Code not working? In ChatGPT → Settings → Security, enable device code login for Codex, then restart sign-in."
+                       FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+            <Button Content="Restart sign-in" Classes="Compact" Command="{Binding RestartCommand}"
+                    IsVisible="{Binding CanRestart}" HorizontalAlignment="Left"/>
+        </StackPanel>
         <TextBlock Text="{Binding CodeValidFor}" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"
                    IsVisible="{Binding HasCodeTimer}"/>
         <Button Content="{Binding LinkToOpen}" Classes="Compact" HorizontalAlignment="Left"

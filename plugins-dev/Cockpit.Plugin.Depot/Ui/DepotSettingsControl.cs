@@ -12,13 +12,13 @@ using DepotSaveResult = (bool Success, string? FailureReason);
 namespace Cockpit.Plugin.Depot.UI;
 
 // The plugin's settings view (opened from the gear in the plugin manager): a manageable list of Depot connection
-// rows (AC-243). Implements `IPluginSettingsView`, so the host renders the Save/Close footer and
+// rows (AC-243). Implements `IAsyncPluginSettingsView`, so the host renders the Save/Close footer and
 // `Save` persists on Save — the connection metadata to storage. AC-1394: the memory-source/shared-project-source
 // registry sync and the orphaned-MCP-registry reclaim that used to run right here, against `ICockpitHost`
 // directly, now run on the backend part (`DepotPlugin`), asked over the plugin's channel — this view only writes
 // the connection list itself (through the storage it shares with the backend part) and tells the backend part a
 // save happened.
-internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
+internal sealed class DepotSettingsControl : UserControl, IAsyncPluginSettingsView
 {
     private readonly ICockpitUiHost _host;
     private readonly DepotSettings _settings;
@@ -46,6 +46,9 @@ internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
 
         var addConnection = new Button { Content = "+ Add connection" };
         addConnection.Click += (_, _) => _AddRow(existing: null);
+        var browse = new Button { Content = "Browse files" };
+        browse.Click += async (_, _) => await host.ShowDialogAsync("Depot files",
+            () => new DepotBrowserPanel(host, settings.Connections), "depot-browser", 1000, 680).ConfigureAwait(true);
 
         var connectionsHeading = new StackPanel
         {
@@ -64,6 +67,7 @@ internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
                 _Hint("Each connection is offered to a session on the project whose memory it holds, as \"Depot: <name>\", using Depot's own OAuth sign-in — the plugin never holds a token."),
                 _connectionsPanel,
                 addConnection,
+                browse,
             },
         };
 
@@ -72,12 +76,12 @@ internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
 
     private void _AddRow(DepotConnectionRegistration? existing)
     {
-        // _SaveDetailed, not Save, is threaded through: a row's own Sign-in click (AC-499) persists the whole list
+        // _SaveDetailedAsync, not Save, is threaded through: a row's own Sign-in click (AC-499) persists the whole list
         // through the exact same route this dialog's Save button uses — the backend-part sync that lives there
         // runs every time something signs in, not only on an explicit Save — but the row also needs the
         // duplicate-name detail Save()'s plain bool cannot carry, to tell the operator which name collided instead
         // of just that the save failed.
-        var row = new DepotConnectionRowControl(_host, existing, _settings, _SaveDetailed);
+        var row = new DepotConnectionRowControl(_host, existing, _settings, _SaveDetailedAsync);
         row.SynchroniseSettingsSelected += selected =>
         {
             foreach (var other in _rows.Where(candidate => candidate != selected))
@@ -104,8 +108,8 @@ internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
 
     // AC-1004, criterion 3 — where the old `Save()` ended up. Validation: the duplicate name and URL refusals
     // (AC-499/AC-248), which read the rows and nothing else, are `_TryValidate`. Commit: writing the connection
-    // list and telling the backend part is `_Write`. The one exception is `_SaveDetailed` below, and it says why.
-    public bool TryStage(out Action? commit, out string? error)
+    // list and telling the backend part is `_WriteAsync`. The one exception is `_SaveDetailedAsync` below, and it says why.
+    public bool TryStage(out Func<Task>? commit, out string? error)
     {
         if (!_TryValidate(out var candidates, out error))
         {
@@ -113,7 +117,7 @@ internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
             return false;
         }
 
-        commit = () => _Write(candidates);
+        commit = () => _WriteAsync(candidates);
         return true;
     }
 
@@ -130,14 +134,14 @@ internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
     // list while the rest of that screen is still staged, so Cancel takes back everything except this;
     // upgrade = AC-1005 decides between disabling Sign-in until Apply and telling the operator, in the row, that
     // signing in saves the connections first — both need the embedding contract that ticket introduces.
-    private DepotSaveResult _SaveDetailed()
+    private async Task<DepotSaveResult> _SaveDetailedAsync()
     {
         if (!_TryValidate(out var candidates, out var reason))
         {
             return (false, reason);
         }
 
-        _Write(candidates);
+        await _WriteAsync(candidates).ConfigureAwait(true);
         return (true, null);
     }
 
@@ -180,8 +184,8 @@ internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
     }
 
     // Everything that persists, run by the host once the operator confirms (AC-1003) — or straight away by
-    // `_SaveDetailed` for a Sign-in click.
-    private void _Write(List<DepotConnectionRegistration> candidates)
+    // `_SaveDetailedAsync` for a Sign-in click.
+    private async Task _WriteAsync(List<DepotConnectionRegistration> candidates)
     {
         // The connection list itself is written by the backend part's SaveConnections handler, not here — it
         // needs to read the pre-save state itself before anything overwrites it (DepotPlugin's own comment on
@@ -190,14 +194,8 @@ internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
             new DepotSaveConnectionsRequest([.. candidates.Select(candidate => new DepotConnectionPayload(candidate.Id, candidate.Name, candidate.Url, candidate.SynchroniseSettings))]),
             DepotChannel.Json);
 
-        // ponytail: TryStage's commit is a synchronous Action (IPluginSettingsView predates the plugin split), so
-        // it cannot await the channel call that asks the backend part to sync the memory-source and
-        // shared-project-source registries and reclaim an orphaned MCP-registry entry. Blocking is safe today (the
-        // channel answers in-process with no thread hop); a fire-and-forget InvokeAsync would silently swallow a
-        // failed RemoveMcpServer. Upgrade path: a Task-returning ICockpitUiHost.OnSettingsSaved/commit, tracked for
-        // every plugin, not just this one — the same ceiling DiscordUi.InitializeUi's own OnSettingsSaved callback
-        // documents.
-        _host.Channel.InvokeAsync(DepotChannel.SaveConnections, payload).GetAwaiter().GetResult();
+        // Awaited (AC-1891), so a failed RemoveMcpServer on the backend part reaches the operator's Save.
+        await _host.Channel.InvokeAsync(DepotChannel.SaveConnections, payload).ConfigureAwait(true);
     }
 
     private static TextBlock _Label(string text) => new() { Text = text, FontSize = 11, Margin = new Avalonia.Thickness(0, 6, 0, 0) };

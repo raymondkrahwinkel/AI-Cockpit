@@ -56,6 +56,13 @@ public interface ICockpitUiHost
     void OnSettingsSaved(Action callback);
 
     /// <summary>
+    /// Awaits <paramref name="callback"/> after the operator saved this plugin's settings, before the host counts the
+    /// save as done (AC-1891). For a callback that calls the plugin's own channel. The default body, for an
+    /// implementation that predates it, runs the callback without waiting for it.
+    /// </summary>
+    void OnSettingsSaved(Func<Task> callback) => OnSettingsSaved(() => { _ = callback(); });
+
+    /// <summary>
     /// Registers the view an admin opens from Admin → Plugins → Settings for a server this plugin is installed on
     /// (AC-1511). <paramref name="createView"/> gets a channel to this plugin's backend part on that server, not the
     /// one in this window's own process; it carries invokes only. Default no-op, so existing hosts keep compiling.
@@ -161,6 +168,9 @@ public interface ICockpitUiHost
     {
     }
 
+    /// <summary>Sets status text with a semantic badge tone. UI SDK 3.21.0, host 0.142.0; older hosts keep their default colour.</summary>
+    void SetStatusText(string? text, SideMenuButtonBadgeTone tone) => SetStatusText(text);
+
     /// <summary>
     /// Contributes a tool to the companion window.
     /// </summary>
@@ -175,6 +185,30 @@ public interface ICockpitUiHost
     /// Opens (or focuses) a workspace of the type this plugin registered under <paramref name="workspaceTypeId"/>.
     /// </summary>
     Task OpenWorkspaceAsync(string workspaceTypeId);
+
+    /// <summary>
+    /// Opens (or focuses) one instance of this plugin's workspace type <paramref name="workspaceTypeId"/>, by its key or as
+    /// the preview tab (see <see cref="WorkspaceOpenOptions"/>). An older host opens the type as <see cref="OpenWorkspaceAsync(string)"/> does.
+    /// </summary>
+    Task OpenWorkspaceAsync(string workspaceTypeId, WorkspaceOpenOptions options) => OpenWorkspaceAsync(workspaceTypeId);
+
+    /// <summary>The open instances of this plugin's workspace type that carry an instance key, in the main window and in their own windows; host 0.138.0+.</summary>
+    IReadOnlyList<OpenWorkspaceInstance> GetOpenWorkspaces(string workspaceTypeId) => [];
+
+    /// <summary>Raised when a workspace is opened, closed, pinned, floated or docked; host 0.138.0+.</summary>
+    event EventHandler OpenWorkspacesChanged
+    {
+        add { }
+        remove { }
+    }
+
+    /// <summary>Registers a host-owned Markdown file workspace bound to this plugin's channel; host 0.137.0+.</summary>
+    void AddFileWorkspaceType(string workspaceTypeId, string title)
+    {
+    }
+
+    /// <summary>Opens or focuses a file without replacing its document, undo history or unsaved changes.</summary>
+    Task OpenFileWorkspaceAsync(string workspaceTypeId, Files.FileWorkspaceOpenOptions options) => Task.CompletedTask;
 
     /// <summary>
     /// The live view of the embedded session <paramref name="paneId"/> (see <see cref="IEmbeddedSession"/>), the
@@ -202,6 +236,16 @@ public interface ICockpitUiHost
     /// Renders <paramref name="markdown"/> the way the cockpit renders its own.
     /// </summary>
     Control CreateMarkdownView(string markdown);
+
+    /// <summary>A live-preview Markdown editor over <paramref name="markdown"/>; null on a host without one.</summary>
+    IMarkdownEditor? CreateMarkdownEditor(string markdown) => null;
+
+    /// <summary>
+    /// Registers first-refusal handling for transcript links recognized by this plugin.
+    /// </summary>
+    void AddLinkHandler(LinkHandlerRegistration registration)
+    {
+    }
 
     /// <summary>
     /// A small "?" that opens <paramref name="article"/> in the help window; invisible when there is no such article.
@@ -268,6 +312,21 @@ public interface ICockpitUiHost
     void ShowToast(string message, PluginToastSeverity severity = PluginToastSeverity.Information, string? actionLabel = null, Action? onAction = null);
 
     /// <summary>
+    /// Shows a silent operating-system notification for when the operator is not looking at the cockpit (AC-1588). A
+    /// click brings the cockpit to the front and then runs <paramref name="onClick"/> on the UI thread, for opening
+    /// the place the notification is about.
+    /// </summary>
+    /// <remarks>
+    /// Nothing is shown while the cockpit window is active (use <see cref="ShowToast"/> then), nor when the operator
+    /// turned local notifications off or muted this plugin's notifications. The UI part always runs on the
+    /// operator's own desktop, so a backend part on a server raises one by telling its UI part over
+    /// <see cref="Channel"/>. Fire-and-forget. Default: a no-op, for a host that predates this member.
+    /// </remarks>
+    void ShowSystemNotification(string title, string body, Action? onClick = null)
+    {
+    }
+
+    /// <summary>
     /// Asks the host's consent gate — see <see cref="ICockpitHost.RequestConsentAsync(ConsentRequest)"/>.
     /// </summary>
     Task<ConsentDecision> RequestConsentAsync(ConsentRequest request);
@@ -287,6 +346,13 @@ public interface ICockpitUiHost
     /// server's projects. Default empty, so existing hosts keep compiling.
     /// </summary>
     Task<IReadOnlyList<PluginProjectInfo>> GetProjectsAsync() => Task.FromResult<IReadOnlyList<PluginProjectInfo>>([]);
+
+    /// <summary>
+    /// The servers this desktop manages (AC-1547), each with a host for this plugin there: its channel, storage, profiles
+    /// and projects are the server's, so the plugin's own screen manages the server. Host is null with the reason when the
+    /// plugin is missing there or runs another version. Empty in a view already opened for a server. Default empty.
+    /// </summary>
+    Task<IReadOnlyList<PluginServerTarget>> GetServerTargetsAsync() => Task.FromResult<IReadOnlyList<PluginServerTarget>>([]);
 
     /// <summary>
     /// Sends <paramref name="text"/> to the session <paramref name="paneId"/>, as if typed and submitted.

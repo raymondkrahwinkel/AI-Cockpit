@@ -9,6 +9,7 @@ using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
+using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
 
@@ -32,7 +33,9 @@ internal static class AssistantAgentGatewayGraph
         ISharedProjectSourceRegistry? sharedProjectSources = null,
         IMcpServerCatalog? mcpServerCatalog = null,
         IProjectFieldRegistry? projectFields = null,
-        ProjectCatalog? projects = null) =>
+        ProjectCatalog? projects = null,
+        IProviderModelIntelligence? providerIntelligence = null,
+        TimeSpan? modelIntelligenceBudget = null) =>
         new(
             sessions,
             DesktopLauncher.Over(cockpit, sessions, worktreeManager, mcpServerCatalog),
@@ -47,6 +50,9 @@ internal static class AssistantAgentGatewayGraph
             inbox,
             notifyAudit,
             pluginProviders,
+            providerIntelligence ?? Substitute.For<IProviderModelIntelligence>(),
+            modelIntelligenceBudget,
             worktreeManager,
-            projectFields);
+            projectFields,
+            mcpServers: mcpServerCatalog);
 }

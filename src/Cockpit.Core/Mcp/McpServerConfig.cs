@@ -12,6 +12,9 @@ public sealed record McpServerConfig
     // `IdentityKey` to key on either way.
     public string Id { get; init; } = string.Empty;
 
+    // Connection wiring managed by the Servers page, never by the MCP server editor.
+    public bool IsNodeConnection { get; init; }
+
     // The key to file this server's credentials under: `Id` when there is one, otherwise `LegacyIdFor(Name)` —
     // preserving the old name-keyed behaviour so a config without an id doesn't collide on the empty string.
     public string IdentityKey => string.IsNullOrEmpty(Id) ? McpServerIdentity.LegacyIdFor(Name) : Id;
@@ -69,6 +72,9 @@ public sealed record McpServerConfig
     // AC-40: whether the cockpit itself hosts this server on a loopback port. Tells spawn paths to hand the child
     // the app-lifetime auth key; never set for a user-added server, since that key must never reach a third party.
     public bool CockpitHosted { get; init; }
+
+    // AC-1583: opted in by the contributing plugin, applied on both session launch routes.
+    public bool IncludeAgentName { get; init; }
 
     // AC-204: whether this server is internal-only — kept out of every user-facing MCP selection and the
     // no-selection fan-out, but reachable when a launch names it explicitly (e.g. Autopilot CEO/step endpoints

@@ -1,7 +1,9 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Cockpit.Core.Abstractions.Events;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Plugins;
+using Cockpit.Infrastructure.Events;
 using Cockpit.Infrastructure.Mcp;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -11,6 +13,8 @@ namespace Cockpit.Infrastructure.BackendApi;
 // AC-1474: the remote side treats PluginStoreConfig.Location only as the opaque server store id.
 internal sealed class RemotePluginAdministration(BackendApiClient client, ILogger? logger = null) : IPluginAdministration, IPluginStoreCatalog, IPluginChannelRelay, IServerRestart
 {
+    private readonly Dictionary<(string Folder, string Name), List<Action<long, JsonElement>>> _subscribers = [];
+
     public async Task<IReadOnlyList<InstalledPlugin>> GetInstalledAsync(CancellationToken cancellationToken = default)
     {
         var entries = await client.SendAsync<IReadOnlyList<RemotePluginEntry>>(HttpMethod.Get, "api/v1/plugins", null, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false);
@@ -51,6 +55,66 @@ internal sealed class RemotePluginAdministration(BackendApiClient client, ILogge
     public Task<JsonElement> InvokeChannelAsync(string folderId, string action, JsonElement payload, CancellationToken cancellationToken = default) =>
         client.SendAsync<JsonElement>(HttpMethod.Post, $"api/v1/plugins/{Uri.EscapeDataString(folderId)}/channel/{Uri.EscapeDataString(action)}", payload, ConnectKeyEndpoints.Json, cancellationToken);
 
+    public IDisposable SubscribeChannel(string folderId, string name, Action<long, JsonElement> handler)
+    {
+        var key = (folderId, name);
+        lock (_subscribers)
+        {
+            if (!_subscribers.TryGetValue(key, out var list))
+            {
+                list = [];
+                _subscribers[key] = list;
+            }
+
+            list.Add(handler);
+        }
+
+        return new Subscription(() =>
+        {
+            lock (_subscribers)
+            {
+                _subscribers[key].Remove(handler);
+            }
+        });
+    }
+
+    // AC-1547: each `plugin` event of the stream, to whoever subscribed that plugin's folder and event name.
+    internal void OnEvent(BackendEvent evt)
+    {
+        PluginEventFrame? frame;
+        try
+        {
+            frame = evt.Data.Deserialize<PluginEventFrame>(ConnectKeyEndpoints.Json);
+        }
+        catch (JsonException)
+        {
+            return;
+        }
+
+        if (frame is null)
+        {
+            return;
+        }
+
+        Action<long, JsonElement>[] handlers;
+        lock (_subscribers)
+        {
+            handlers = _subscribers.TryGetValue((frame.Folder, frame.Name), out var list) ? [.. list] : [];
+        }
+
+        foreach (var handler in handlers)
+        {
+            try
+            {
+                handler(evt.Seq, frame.Payload);
+            }
+            catch (Exception exception)
+            {
+                (logger ?? NullLogger.Instance).LogWarning(exception, "A subscriber of plugin {Folder} threw on server event {EventName}.", frame.Folder, frame.Name);
+            }
+        }
+    }
+
     public async Task<IReadOnlyDictionary<string, string>> GetStorageAsync(string folderId, CancellationToken cancellationToken = default)
     {
         var slice = await client.SendAsync<JsonObject>(HttpMethod.Get, _StoragePath(folderId), null, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false);
@@ -85,6 +149,11 @@ internal sealed class RemotePluginAdministration(BackendApiClient client, ILogge
     }
 
     private sealed record RemoteAuthState(string State);
+
+    private sealed class Subscription(Action remove) : IDisposable
+    {
+        public void Dispose() => remove();
+    }
 
     public async Task SignOutMcpServerAsync(string folderId, string name, CancellationToken cancellationToken = default) =>
         await client.SendAsync<JsonObject>(

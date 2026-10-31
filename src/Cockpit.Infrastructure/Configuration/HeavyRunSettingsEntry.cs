@@ -14,6 +14,10 @@ internal sealed class HeavyRunSettingsEntry
     public double CeilingFloorPercent { get; set; } = Defaults.CeilingFloorPercent;
     public double OverloadedAbovePercent { get; set; } = Defaults.OverloadedAbovePercent;
     public int AgingMinutes { get; set; } = Defaults.AgingMinutes;
+    public double DiskElevatedTimeToFullHours { get; set; } = Defaults.DiskElevatedTimeToFullHours;
+    public double DiskCriticalTimeToFullHours { get; set; } = Defaults.DiskCriticalTimeToFullHours;
+    public double DiskMinimumFreePercent { get; set; } = Defaults.DiskMinimumFreePercent;
+    public double DiskHourlyGrowthMultiplier { get; set; } = Defaults.DiskHourlyGrowthMultiplier;
 
     public static HeavyRunSettingsEntry FromDomain(HeavyRunSettings settings) => new()
     {
@@ -23,6 +27,10 @@ internal sealed class HeavyRunSettingsEntry
         CeilingFloorPercent = settings.CeilingFloorPercent,
         OverloadedAbovePercent = settings.OverloadedAbovePercent,
         AgingMinutes = settings.AgingMinutes,
+        DiskElevatedTimeToFullHours = settings.DiskElevatedTimeToFullHours,
+        DiskCriticalTimeToFullHours = settings.DiskCriticalTimeToFullHours,
+        DiskMinimumFreePercent = settings.DiskMinimumFreePercent,
+        DiskHourlyGrowthMultiplier = settings.DiskHourlyGrowthMultiplier,
     };
 
     public HeavyRunSettings ToDomain() => new()
@@ -33,5 +41,9 @@ internal sealed class HeavyRunSettingsEntry
         CeilingFloorPercent = CeilingFloorPercent,
         OverloadedAbovePercent = OverloadedAbovePercent,
         AgingMinutes = AgingMinutes,
+        DiskElevatedTimeToFullHours = DiskElevatedTimeToFullHours,
+        DiskCriticalTimeToFullHours = DiskCriticalTimeToFullHours,
+        DiskMinimumFreePercent = DiskMinimumFreePercent,
+        DiskHourlyGrowthMultiplier = DiskHourlyGrowthMultiplier,
     };
 }

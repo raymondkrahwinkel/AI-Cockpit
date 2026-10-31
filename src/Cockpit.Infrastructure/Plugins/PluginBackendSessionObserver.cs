@@ -2,6 +2,8 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Shared;
+using Cockpit.Infrastructure.Mcp;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Cockpit.Infrastructure.Plugins;
 
@@ -12,13 +14,15 @@ public sealed class PluginBackendSessionObserver : ICockpitSessionObserver
 {
     private readonly ISessionRegistry _registry;
     private readonly Lock _gate = new();
-    private HashSet<string> _live = [];
+    private Dictionary<string, ISessionHandle> _live = [];
     private readonly Dictionary<ISessionHandle, (Action<string> OnText, Action<SessionToolCall> OnToolCall)> _followed = new(ReferenceEqualityComparer.Instance);
 
     // Subscribed before the first read, so no change after that read goes unseen.
-    public PluginBackendSessionObserver(ISessionRegistry registry)
+    public PluginBackendSessionObserver(ISessionRegistry registry, IServiceProvider? services = null)
     {
         _registry = registry;
+        if (services?.GetService<SessionMcpKeyring>() is { } keyring)
+            keyring.RunEnded += paneId => SessionClosed?.Invoke(this, paneId);
         _registry.Changed += _OnRegistryChanged;
         lock (_gate)
         {
@@ -64,7 +68,7 @@ public sealed class PluginBackendSessionObserver : ICockpitSessionObserver
         lock (_gate)
         {
             var now = _LivePaneIds();
-            closed = [.. _live.Where(paneId => !now.Contains(paneId))];
+            closed = [.. _live.Where(pair => !now.TryGetValue(pair.Key, out var handle) || !ReferenceEquals(pair.Value, handle)).Select(pair => pair.Key)];
             _live = now;
             _Follow();
         }
@@ -99,6 +103,6 @@ public sealed class PluginBackendSessionObserver : ICockpitSessionObserver
     }
 
     // The assistant too, which `All` leaves out, so the pane OpenSessions lists is also the one reported closed.
-    private HashSet<string> _LivePaneIds() =>
-        new([.. _registry.All.Select(session => session.PaneId), .. _registry.Assistant is { } assistant ? [assistant.PaneId] : Array.Empty<string>()], StringComparer.Ordinal);
+    private Dictionary<string, ISessionHandle> _LivePaneIds() =>
+        _registry.All.Append(_registry.Assistant).OfType<ISessionHandle>().ToDictionary(handle => handle.PaneId, StringComparer.Ordinal);
 }

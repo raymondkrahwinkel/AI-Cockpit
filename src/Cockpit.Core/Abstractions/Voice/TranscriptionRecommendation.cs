@@ -20,6 +20,40 @@ public sealed record GpuHardware(GpuVendor Vendor, string? Description, bool Dri
 {
     // No GPU could be identified — the recommender then treats the machine as CPU-only.
     public static GpuHardware None { get; } = new(GpuVendor.Unknown, Description: null, DrivesDisplay: false, VideoMemoryBytes: 0);
+
+    public GpuKind Kind { get; init; }
+
+    // AC-1881: The Vulkan device UUID — the stable key a GPU choice is saved under (indices shift between boots).
+    // Null when the GPU was not seen through Vulkan, which makes it unselectable.
+    public string? DeviceId { get; init; }
+
+    // Position in vkEnumeratePhysicalDevices, the index GGML_VK_VISIBLE_DEVICES expects.
+    public int? VulkanIndex { get; init; }
+
+    // AC-1881: What "Auto" transcribes on: a discrete GPU before an integrated one, then one without a monitor
+    // before the one drawing the desktop (on an Optimus laptop that is the iGPU), then the most VRAM.
+    public static GpuHardware PickAuto(IReadOnlyList<GpuHardware> gpus) => gpus
+        .OrderByDescending(gpu => gpu.Kind is GpuKind.Discrete)
+        .ThenBy(gpu => gpu.DrivesDisplay)
+        .ThenByDescending(gpu => gpu.VideoMemoryBytes)
+        .FirstOrDefault() ?? None;
+
+    // The saved choice when that GPU is still present, otherwise Auto — like a vanished microphone falls back to the default.
+    public static GpuHardware Resolve(IReadOnlyList<GpuHardware> gpus, string? deviceId) =>
+        gpus.FirstOrDefault(gpu => !string.IsNullOrEmpty(deviceId) && gpu.DeviceId == deviceId) ?? PickAuto(gpus);
+
+    // The GPU backend to run on this GPU: CUDA only reaches NVIDIA cards, so a known other brand goes through Vulkan.
+    public static VoiceBackendPreference BackendFor(TranscriptionCapabilities capabilities, GpuHardware gpu) =>
+        capabilities.CudaUsable && (gpu.Vendor is GpuVendor.Nvidia or GpuVendor.Unknown || !capabilities.VulkanUsable)
+            ? VoiceBackendPreference.Cuda
+            : VoiceBackendPreference.Vulkan;
+}
+
+public enum GpuKind
+{
+    Unknown,
+    Integrated,
+    Discrete,
 }
 
 // The advisor's pick for this machine (AC-68 slice 2): a concrete model and backend plus the human reason and
@@ -95,7 +129,7 @@ public static class TranscriptionRecommender
 
         if (!string.IsNullOrWhiteSpace(gpu.Description))
         {
-            badges.Add(gpu.Description!);
+            badges.Add(gpu.Description);
         }
         else if (gpu.Vendor is not GpuVendor.Unknown)
         {
@@ -107,9 +141,14 @@ public static class TranscriptionRecommender
             badges.Add("drives display");
         }
 
-        if (gpu.VideoMemoryBytes > 0)
+        // An iGPU's carve-out is a few hundred MB; whole-GB division would print it as "0 GB".
+        if (gpu.VideoMemoryBytes >= 1024L * 1024 * 1024)
         {
             badges.Add($"{gpu.VideoMemoryBytes / (1024 * 1024 * 1024)} GB VRAM");
+        }
+        else if (gpu.VideoMemoryBytes > 0)
+        {
+            badges.Add($"{gpu.VideoMemoryBytes / (1024 * 1024)} MB VRAM");
         }
 
         if (platform is WhisperHostPlatform.MacOs)

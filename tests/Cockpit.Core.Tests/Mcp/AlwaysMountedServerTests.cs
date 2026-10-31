@@ -24,5 +24,12 @@ public class AlwaysMountedServerTests
         var effective = McpServerRegistryFilter.ApplySessionSelection([Session, AutopilotCeo], enabledServerNames: null);
 
         Assert.Equal(new[] { "cockpit-session" }, effective.Select(server => server.Name));
+        foreach (var names in new string[][] { [], ["youtrack"] })
+        {
+            var exact = McpServerRegistryFilter.ApplySessionSelection([Session, YouTrack, AutopilotCeo], new ExactMcpServerSelection(names));
+            Assert.Contains(Session, exact);
+            Assert.DoesNotContain(AutopilotCeo, exact);
+            Assert.Equal(names.Length + 1, exact.Count);
+        }
     }
 }

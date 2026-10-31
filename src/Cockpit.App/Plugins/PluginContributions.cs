@@ -23,7 +23,7 @@ public sealed record PluginSideButton(
 public sealed record PluginToolbarAction(string PluginId, ToolbarAction Action);
 
 // AC-1711: the one line of text a plugin shows in the status bar (`ICockpitUiHost.SetStatusText`), keyed by plugin.
-public sealed record PluginStatusText(string PluginId, string Text);
+public sealed record PluginStatusText(string PluginId, string Text, SideMenuButtonBadgeTone? Tone = null);
 
 // A control a plugin contributes to every session's header bar, built once per session from that session's own context (#: session header items).
 public sealed record PluginSessionHeaderItem(Func<IPluginSessionContext, Control> CreateView);
@@ -94,6 +94,9 @@ public sealed record PluginSettingsRegistration(string PluginId, string PluginNa
 /// </summary>
 public interface IPluginContributionSink
 {
+    // AC-1547: opens that server's Plugins page, where a missing or older plugin is installed or updated.
+    Task OpenServerPluginsAsync(string server) => Task.CompletedTask;
+
     void AddPluginSideSection(string pluginId, string title, Func<Control> createView);
 
     void AddPluginSideButton(string pluginId, string title, Action onInvoke);
@@ -181,12 +184,12 @@ public interface IPluginContributionSink
     /// <summary>
     /// Registers <paramref name="callback"/> to run when <paramref name="pluginId"/>'s settings are next saved (#52) — see <see cref="ICockpitHost.OnSettingsSaved"/>.
     /// </summary>
-    void AddSettingsSavedHandler(string pluginId, Action callback);
+    void AddSettingsSavedHandler(string pluginId, Func<Task> callback);
 
     /// <summary>
     /// Runs every callback registered via <see cref="AddSettingsSavedHandler"/> for <paramref name="pluginId"/> (#52) — called once the host has run the write <see cref="IPluginSettingsView.TryStage"/> handed it, never at staging time (AC-1004).
     /// </summary>
-    void NotifySettingsSaved(string pluginId);
+    Task NotifySettingsSavedAsync(string pluginId);
 
     /// <summary>
     /// Applies the left-menu order/visibility the plugin manager just persisted for <paramref name="pluginId"/> (#72), so the sidebar re-renders without a restart.

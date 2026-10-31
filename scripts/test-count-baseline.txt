@@ -5,9 +5,9 @@
 unit	cases
 plugins-dev/Cockpit.Plugin.Autopilot.Tests	95
 plugins-dev/Cockpit.Plugin.Browser.Tests	10
-plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests	173
+plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests	172
 plugins-dev/Cockpit.Plugin.CliAgentProvider.Tests	100
-plugins-dev/Cockpit.Plugin.Depot.Tests	225
+plugins-dev/Cockpit.Plugin.Depot.Tests	220
 plugins-dev/Cockpit.Plugin.Diagram.Tests	115
 plugins-dev/Cockpit.Plugin.Discord.Tests	42
 plugins-dev/Cockpit.Plugin.Docker.Tests	22
@@ -23,7 +23,7 @@ plugins-dev/Cockpit.Plugin.KimiProvider.Tests	60
 plugins-dev/Cockpit.Plugin.Kind.Tests	18
 plugins-dev/Cockpit.Plugin.Kubernetes.Tests	111
 plugins-dev/Cockpit.Plugin.LocalCi.Tests	84
-plugins-dev/Cockpit.Plugin.OpenRouterProvider.Tests	14
+plugins-dev/Cockpit.Plugin.OpenRouterProvider.Tests	15
 plugins-dev/Cockpit.Plugin.OpencodeProvider.Tests	31
 plugins-dev/Cockpit.Plugin.Productivity.Tests	10
 plugins-dev/Cockpit.Plugin.Proxmox.Tests	13
@@ -34,9 +34,9 @@ plugins-dev/Cockpit.Plugin.TranscriptSearch.Tests	8
 plugins-dev/Cockpit.Plugin.UsageTrend.Tests	15
 plugins-dev/Cockpit.Plugin.Workflows.Tests	50
 plugins-dev/Cockpit.Plugin.YouTrack.Tests	54
-tests/Cockpit.App.ViewTests	1514
+tests/Cockpit.App.ViewTests	1509
 tests/Cockpit.Backend.Tests	78
-tests/Cockpit.Core.Tests	1320
-tests/Cockpit.Infrastructure.Tests	795
+tests/Cockpit.Core.Tests	1309
+tests/Cockpit.Infrastructure.Tests	788
 tests/Cockpit.Journeys	29
 tests/Cockpit.PluginEndpointAnnotations.Tests	2

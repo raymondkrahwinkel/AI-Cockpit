@@ -150,7 +150,19 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         _permissionModeConfines = _PermissionModeConfines(options);
 
         var environment = _SpawnEnvironment(profile, launchOptions, contributed);
-        await inner.StartAsync(model, workingDirectory, resumeSessionId, options, mcpServers, environment, _hostToolset, cancellationToken).ConfigureAwait(false);
+        _scratchPane = string.IsNullOrEmpty(paneId) ? Guid.NewGuid().ToString("N") : paneId;
+        _scratch = SessionScratch.Create(_scratchPane, message => logger?.LogWarning("{Message}", message));
+        environment = new Dictionary<string, string>(environment, StringComparer.OrdinalIgnoreCase)
+        {
+            ["COCKPIT_SCRATCH"] = _scratch,
+            ["TEMP"] = _scratch,
+            ["TMP"] = _scratch,
+            ["TMPDIR"] = _scratch,
+        };
+        var scratchOptions = options is null ? new Dictionary<string, string>() : new Dictionary<string, string>(options);
+        scratchOptions[WellKnownPluginSessionOptions.AppendSystemPrompt] = string.Join("\n\n",
+            options?.GetValueOrDefault(WellKnownPluginSessionOptions.AppendSystemPrompt), SessionScratch.Instruction(_scratch)).TrimStart('\n');
+        await inner.StartAsync(model, workingDirectory, resumeSessionId, scratchOptions, mcpServers, environment, _hostToolset, cancellationToken).ConfigureAwait(false);
     }
 
     // AC-964: the host-run tool loop for a provider that asked for one, null otherwise (the default today).
@@ -187,7 +199,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
             workingDirectory,
             () => inner.SessionId,
             logger,
-            cancellationToken).ConfigureAwait(false);
+              cancellationToken, Profile?.Label).ConfigureAwait(false);
     }
 
     // Non-null once StartAsync mounted one for this session.
@@ -351,8 +363,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
                 .Where(McpConfigFile.IsAgentEligible)
                 .ToList();
 
-            var servers = new List<PluginMcpServer>();
-            foreach (var server in eligible)
+            var resolved = await Task.WhenAll(eligible.Select(async server =>
             {
                 // The endpoint first, because it changes what has to be asked for. Behind it the session never holds
                 // a token at all, so it only has to be established that a sign-in exists; without it the token goes
@@ -364,12 +375,12 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
                     // Left out rather than handed over bare: the CLI's initialize would meet the same refusal
                     // and report the server as failing instead of absent — worse, since that asks the operator
                     // to distinguish broken from unauthorized. The coordinator's own line names the cause.
-                    continue;
+                    return null;
                 }
 
-                if (PluginMcpServerMapper.ToPluginMcpServer(server, access.AccessToken, proxyUrl) is { } mapped)
+                if (PluginMcpServerMapper.ToPluginMcpServer(server, access.AccessToken, proxyUrl, Profile?.Label) is { } mapped)
                 {
-                    servers.Add(mapped);
+                    return mapped;
                 }
                 else
                 {
@@ -379,7 +390,10 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
                         "MCP server {Name} is agent-eligible but not mountable (no url for Http / no command for Stdio); it was skipped.",
                         server.Name);
                 }
-            }
+
+                return null;
+            })).ConfigureAwait(false);
+            var servers = resolved.OfType<PluginMcpServer>().ToList();
 
             // #44: say what the session got and against which selection, so "why are my MCP servers missing?"
             // is a log line, not a bisect. A non-empty selection resolving to nothing is usually a wiring slip — Warning; ordinary fan-out stays Information.
@@ -585,6 +599,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
 
     public async ValueTask DisposeAsync()
     {
+        using var process = SessionScratchCleanup.CaptureProcess(inner.ProcessId);
         // Before the driver goes: the host's tool loop holds live MCP clients (and, for stdio servers, their
         // processes), and any prompt still waiting has to be refused rather than left hanging.
         if (_hostToolset is not null)
@@ -593,7 +608,14 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         }
 
         await _DisposeInnerAsync().ConfigureAwait(false);
+        if (_scratch is { } scratch && _scratchPane is { } scratchPane)
+        {
+            await SessionScratchCleanup.DeleteAsync(scratch, scratchPane, worktreeManager, logger, process).ConfigureAwait(false);
+        }
     }
+
+    private string? _scratch;
+    private string? _scratchPane;
 
     private ValueTask _DisposeInnerAsync()
     {
@@ -629,6 +651,11 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         await foreach (var pluginEvent in _PluginEventsAsync(cancellationToken).ConfigureAwait(false))
         {
             _ReportConversationIfChanged();
+
+            if (pluginEvent is PluginSessionError error)
+            {
+                logger?.LogWarning("Session {PaneId} failed: {Reason}", _paneId, error.Message);
+            }
 
             // AC-971: a delegated session's permission requests are decided here, never published as a prompt with
             // nobody to answer it. The tool row and its (error) result still flow, so a denial stays visible.
@@ -793,11 +820,18 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
                     PluginBackgroundTaskKind.Shell => BackgroundTaskKind.Shell,
                     _ => BackgroundTaskKind.Unknown,
                 },
-                task.Description))],
+                task.Description)
+            {
+                AgentId = task.AgentId, RunId = task.RunId,
+                ParentTaskId = task.ParentTaskId, ParentToolUseId = task.ParentToolUseId,
+                LastTool = task.LastTool, Tokens = task.Tokens,
+            })],
         },
         PluginBackgroundTaskNotification notification => new BackgroundTaskNotification
         {
             SessionId = notification.SessionId,
+            AgentId = notification.AgentId,
+            RunId = notification.RunId,
             TaskId = notification.TaskId,
             ToolUseId = notification.ToolUseId,
             Status = notification.Status switch

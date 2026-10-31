@@ -96,6 +96,9 @@ public sealed partial class ServerAdminViewModel : ObservableObject
 
     public ObservableCollection<ScopeChoiceViewModel> EditorProjects { get; } = [];
 
+    // AC-1547: the page the dialog opens on, such as "server-plugins"; null for the first.
+    public string? InitialCategory { get; init; }
+
     [ObservableProperty]
     private string _status = "";
 

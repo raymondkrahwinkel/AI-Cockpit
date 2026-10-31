@@ -259,6 +259,7 @@ public interface ICockpitHost
     void AddSideMenuSection(string title, Func<Control> createView); // inline sidebar accordion
     Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560);
     void OnSettingsSaved(Action callback);                      // re-run after your settings are saved
+    void OnSettingsSaved(Func<Task> callback);                  // the same, awaited by the host (host 0.151.0)
     void AddSessionHeaderItem(Func<IPluginSessionContext, Control> createView); // a control in every session's header
     void AddSupervisedActivityProvider(ISupervisedActivitySource source);      // a status-bar counter + operator-only Kill panel
     void AddConversationPicker(ConversationPickerRegistration picker);          // browse history for the New-session dialog
@@ -305,6 +306,13 @@ public interface IPluginSettingsView
 {
     // Validate and hand over the write; the host performs it. False keeps the screen open and shows `error`.
     bool TryStage(out Action? commit, out string? error);
+}
+
+// The same contract with a write the host awaits — for a view that saves over its channel (host 0.151.0).
+// Implement this one instead of IPluginSettingsView; never block on the channel from a UI control.
+public interface IAsyncPluginSettingsView
+{
+    bool TryStage(out Func<Task>? commit, out string? error);
 }
 
 // Version is filled in by the host from your plugin.json — leave it unset.
@@ -640,6 +648,13 @@ public void Initialize(ICockpitHost host)
 | `CreateBody` | Builds the whole workspace body on the UI thread, handed that workspace's own `IWorkspaceContext`. Called once per workspace; the body owns its layout from there. |
 | `Icon` / `IconKind` | The "+" menu and tab icon; `IconKind` (a bundled vector icon) wins over the `Icon` emoji when set. Defaults: `🧩` / none. |
 | `Description` | One line for the "+" menu. |
+
+### Editing a file live {#editing-a-file-live}
+
+A file source that also implements `ILiveFileSource` (SDK 3.46.0, host 0.143.0) gets the host's Markdown
+workspace in live mode: edits go out as text ops, other people's changes arrive as patches, undo is the
+source's, and there is no Save. The contract, the revision rules and the channel are in
+[File sources](FILE-SOURCES.md#live-file-sources-ac-1898).
 
 ### Embedding a live session {#embedding-a-live-session}
 

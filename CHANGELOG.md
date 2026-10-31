@@ -30,10 +30,127 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ## [Unreleased]
 
+### Fixed
+
+- On a laptop with two GPUs, dictation now transcribes on the dedicated GPU instead of the integrated one that drives the screen; Options › Voice offers each GPU by name, Auto names the one it picks, and the calibration says which GPU it measured.
+
+- Model Intelligence no longer mixes up the quota of two Claude subscriptions used side by side, and unchanged quota readings are no longer stored over and over.
+
+- The automatic plugin publish after a Nightly no longer fails for a plugin merged while that Nightly ran; it waits for the next Nightly with a notice, while a hand-fired publish still fails.
+
+- The Depot dock's Notes tab loads live notes again after signing in, instead of asking to sign in forever; a refusal or an older Depot now says so instead of "Sign in".
+
+- Assistant question-card resolution now reaches its gateway in the acting assistant's pane.
+
+- Coding shell sessions fall back to Windows PowerShell when PowerShell 7 is unavailable.
+
+- Browser-using agent sessions on a headless server now say that the agent browser is unavailable instead of silently providing no endpoint.
+
+- Local-provider coding sessions keep their shell tool directly available when large tool sets use tool search.
+- OpenRouter profiles now show their configured model and identify custom endpoints as self-hosted.
+
+- Depot 0.45.5 includes checksums when opening files in the Depot browser.
+
+- A plugin no longer freezes the cockpit while its backend works. Saving the settings of Depot, Kubernetes, Docker, Slack, Discord, Proxmox or Local CI waits for the save without holding the window. The Kubernetes settings load their clusters after the page is shown. The Git status badge starts watching a repository in the background, and the diagram, whiteboard and wireframe lists say "Loading…" while they read your memory folders. Plugins that use the new settings save need host 0.151.0. Browser now needs host 0.152.0 to identify a headless server.
+
+- Depot 0.45.2 sends the note's opening account with saves and shows its email in the sign-in banner, falling back to its name on older servers (DEP-539).
+
+### Changed
+
+- Headless server management is now named Servers, beside Swarm in Options. Searching for Admin still finds it.
+
+- changed: OpenAI-compatible provider plugins now ask models to verify tool-backed task results before ending a turn.
+
 ### Added
 
 - added: **a sync choice per profile.** On Options › Sync the Profiles row opens to one row per profile, and the profile page has a "Synchronise this profile" field: tick the servers a profile goes to, or leave it on "Same as Profiles". Nothing ticked keeps that profile on this machine; unticking never removes anything from a server (AC-1847).
 - added: **Options › Sync.** One page decides which server each category of settings (profiles, plugins, notifications, shortcuts, session behaviour, usage, appearance, updates) is kept in step with: tick one or more per category, nothing ticked stays on this machine. A card per server shows what it receives and when it last synced; unticking never removes anything from the server. A settings conflict between two servers now shows one card per server (AC-1846).
+- When two swarm leaders meet again after a network split, the higher rank steps down and both assistant conversations are merged without losing a message; a note state changed on both sides keeps the other version and asks once whether to compare or keep the newest.
+
+- Options has a Swarm page for pairing your own Cockpits, checking machines and their leader, and setting internal network ranges and returning-machine behaviour.
+
+- The sidebar has a "Waiting for you" filter above the sessions: it counts every session that needs you, on this machine and on connected servers, and when switched on lists them flat with a machine badge per row. Its state is kept across restarts.
+- Schedules can manage a connected server: the switch right of its tabs picks This computer or a server, a banner says which server you are managing and its time, runs started there show live as Running…, and the editor offers that server's profiles and project folders. A server without Schedules, or with another version, says "Schedules not available" with the reason. Plugins can offer the same through the new host call for their server hosts.
+
+- On Windows 11 24H2 or later, the encrypted keys and tokens can be unlocked with Windows Hello (face, fingerprint or PIN): turn it on under Options › Security, and the startup and screen-lock unlock offer it next to the password, which keeps working.
+
+- Live notes mark an outside agent's changed lines with their name for up to ten minutes, show their saved version and temporary presence, and send the launching profile name to MCP servers that opt in.
+
+- added: **a live Depot note opens in the editor as a tab.** Join in the Notes tab and Open in Cockpit in the new meeting note dialog now open the note
+  in Cockpit's own Markdown editor instead of the browser, joined live: others' text and carets arrive as you type, and Pop out keeps
+  the note live. A second Join on the same note brings its tab to the front. Your own avatar uses the name and colour Depot gives you
+  when it sends them. Depot plugin 0.40.0.
+
+- added: **Join in the Depot inbox, the Notes tab, the invitation toast and a `/n/…` link in a transcript all take the same route into a note.**
+  Depot says what your account may do: an editor gets the note to edit, a viewer gets it read-only, and an account without a
+  right gets a "Shared note" tab that shows neither the title nor the path, with a button to open the link in Depot. Not signed
+  in yet: you are asked to sign in first, and nothing opens by itself. A note you joined from the inbox is marked read, and its
+  card says "Joined" with a Show tab button, which brings the note's tab forward (Depot plugin 0.43.0).
+
+- added: **a live note says when Depot is out of reach or your sign-in expired.** An amber banner says when the live
+  connection dropped and when the next try is, with Retry; a green bar says how many offline lines were merged once it is back.
+  An expired Depot sign-in offers Sign in again, and the note rejoins only as the same account: signed in as someone else,
+  nothing is saved and your text stays in the editor. Closing a tab with text that is only in this Cockpit asks first
+  (plugin SDK 3.53.0, Cockpit 0.150.0, Depot plugin 0.45.0).
+
+- added: **live notes keep saving when their live connection drops.** Local edits are saved after three seconds of quiet,
+  separate line changes are merged, and overlapping changes wait for your choice. Amber gutter marks and a footer count
+  show lines that exist only in this Cockpit. A rebuilt room is joined afresh after your text is safely stored in the file.
+
+- added: **a live Markdown file says who saved it last.** The status chip reads "Saved by {name} · hh:mm" with a dot in their
+  colour, or "Not saved to Depot yet" until someone has saved since you joined (plugin SDK 3.49.0, Cockpit 0.146.0). The
+  Depot plugin 0.39.0 can now be the one that saves a live note: it fills an empty note from the file, saves your typing after
+  three seconds of quiet, and merges a change written outside the note (by the assistant, a sync or an upload) into it before
+  it saves again, so nothing written from outside is lost. Depot notes go live in Cockpit in a later step.
+
+- added: **other people in a live Markdown file, when the file source reports them.** Their carets and selections are drawn in the colour Depot gave them, with
+  their first name on a small flag. Avatars in the header show who is in the file (an agent is a rounded square, someone who
+  dropped offline fades); a click opens the list with role, what they are doing and where they are editing from (plugin SDK
+  3.47.0, Cockpit 0.144.0). The Depot plugin 0.37.0 joins this up for a live Depot note: it
+  reads and sends Depot's presence, with each caret mapped to the same character as in Depot's web editor. The editor shows
+  it once the note is opened live from the plugin.
+
+- added: **the Depot plugin can join a live note.** Its backend connects to a Depot note room with your Depot sign-in (the
+  token stays in Cockpit), keeps the room's document in step, and joins again with no lost text when Depot closes the
+  connection after a few minutes. The plugin reports whether the note is live, reconnecting, out of date, or needs you to sign
+  in again, and it asks for a sign-in only once instead of retrying. Plugin Depot 0.34.0. The editor that shows it follows.
+
+- added: **live Markdown files.** When a file source shares a file live, the Markdown workspace edits it as you
+  type: others' changes appear without moving your cursor or selection, Ctrl+Z only takes back your own typing,
+  and there is no Save. A green dot on the tab says the file is live; an amber dot says your changes are not
+  shared yet (offline or signed out). Sources without live sharing work as before (plugin SDK 3.46.0).
+
+- added: **a live note's text and the room stay in step both ways.** The Depot plugin now reads and writes a live note with
+  Depot's own Markdown converter, so what Cockpit saves is byte for byte what the web saves. Typing changes only the block you
+  type in, and what others type comes back as small text changes that leave the rest of your text alone. Plugin Depot 0.36.1.
+  The editor that uses it follows.
+
+- added: Depot note invitations show a toast with **Join**, and a silent desktop notification while Cockpit is in
+  the background. Closing means Later and keeps the invitation unread. Repeated invitations for the same note and
+  account show once per connection. Join opens the note in your browser until the native note editor is available.
+
+- added: **the New meeting note dialog.** The same choices as in Depot: project (only those where you are Editor, defaulting to the Depot project of the active Cockpit project), topic with the file name as it will be made, folder, template and attendees. Cockpit sends only those choices; Depot writes the note from its template and sends the invitations. "Open in Cockpit" opens the new note in your browser for now. The button that opens it comes with the Notes tab (Depot plugin 0.33.0).
+- added: **Notes in the Depot dock.** See live notes and their participants, join or watch, open a new meeting note,
+  and browse recent Markdown notes. Invitations label only the matching connection's live note; the Inbox link,
+  rail count and status text follow Depot's current list (Depot plugin 0.35.0, AC-1577).
+- added: **dock badges can use the same semantic tones as side-menu badges.** `DockPanelBadge.Tone` keeps amber
+  by default and supports green live counts and quiet counts; `SetStatusText(text, tone)` colours a plugin's status
+  text the same way, while the original overload stays faint (UI SDK 3.21.0, Cockpit 0.142.0, AC-1577).
+
+- added: **clearer self-hosted model pricing.** A provider can state that a configured model runs on its own hardware, so model choice shows "self-hosted / own hardware" instead of inventing a token price (plugin SDK 3.42.0).
+
+- added: **a clearer notification center.** A notification can have a bold title with its text in grey underneath. Without
+  a title it shows one line, as before. The startup toast now names up to three of what came in, each with its source,
+  and says "+N more" for the rest. The panel groups its rows under "Still open from your last session", "Today" and
+  "Earlier", and each group has its own **Clear read**, which removes only what you have read. The source tag shows the
+  plugin's own icon. Plugins set the title with `PluginNotification.Title` (plugin SDK 3.41.0, Cockpit 0.132.0).
+
+- added: **a save conflict in the Markdown editor no longer loses your text.** When the file changed in Depot since you opened it, nothing is written and a banner offers Compare (one column, red for lines only in Depot, green for lines only in yours, with who changed them), Reload, Merge (their new lines and yours, yours first where both changed the same lines) and Overwrite with mine. Depot files now also report who last changed them when Depot says so (plugin SDK 3.45.0, Depot plugin 0.30.0).
+- added: **preview tabs and one tab per item for plugin workspaces.** A plugin can open a workspace for one item (a file,
+  say): opening the same item again brings its tab forward instead of adding another. A preview tab has an italic title and a
+  "preview" label, and the next preview replaces it in the same place; double-click it to keep it open. A plugin can also set
+  its tab's title and mark it with a dot for unsaved changes. Plugins use `OpenWorkspaceAsync(typeId, WorkspaceOpenOptions)`
+  (plugin SDK 3.45.0, plugin SDK UI 3.19.0, Cockpit 0.140.0).
 - added: **a start-up screen.** Cockpit now opens a splash window straight away, before anything heavy loads, and shows the
   real steps of the start (settings, plugins, projects, sessions) instead of an empty desktop. A step that takes longer than
   4 seconds is marked slower than usual with a countdown, and after 12 seconds Cockpit opens without it and offers Retry;
@@ -298,6 +415,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   backup can write there too. A backup that did not arrive whole is removed and reported, never listed; one larger than
   Depot accepts is refused with Depot's reason; a connection that is not signed in says so.
 
+- added: a plugin can show a silent desktop notification, and clicking it brings the cockpit to the front at the
+  place it is about. It never appears while the cockpit is the active window, and **Mute notifications** in a
+  plugin's row under Options → Plugins switches it off for that plugin (UI SDK 3.20.0, Cockpit 0.141.0).
 - added: a plugin can reach its own MCP server's other routes, such as a REST API or a live connection, with the
   sign-in the cockpit already holds for it. The token stays in the cockpit and only ever goes to that server's own address.
 - added: an organisation can give the assistant a **rule set** through its provisioning manifest. It reaches the
@@ -365,6 +485,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: **the assistant's conversation no longer goes blank or jumps while you scroll (AC-1880).** Scrolling through
+  a long conversation, also while a reply streamed in and most of all since threads put short status lines beside
+  long replies, could show an empty pane for a moment and pull the view back. A row the window has not shown yet
+  now keeps the height it was first estimated at until it is drawn, so the rows above where you read no longer
+  move under you. The same holds in a session's transcript.
 - fixed: **the Projects page shows every connected Depot again.** A Depot whose team projects were all added or
   hidden already, or whose list could not be refreshed, used to vanish from "From your team". Each connection now keeps
   its own section: one with everything added says so in a single line, an unreachable one shows its "last known list"
@@ -527,6 +652,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   Cockpit 0.79.0.
 
 ### Changed
+
+- changed: **the cockpit reads its settings file once instead of on every lookup.** It was read, parsed and
+  decrypted again by every setting it served, 193 times before the main window showed; now once, and again only
+  after a save or an edit to the file from outside.
 
 - changed: **the Projects page is a list with a detail pane.** A toolbar across the top holds the search field,
   Refresh, the category chips, the Comfortable/Compact switch and + New project. Projects sit in one section per

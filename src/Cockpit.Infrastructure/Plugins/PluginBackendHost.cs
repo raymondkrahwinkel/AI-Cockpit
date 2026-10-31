@@ -80,6 +80,8 @@ public class PluginBackendHost(
 
     public IPluginStorage Storage => storage;
 
+    public virtual bool IsHeadless => true;
+
     // AC-1730: the operator's own time is handed only to a plugin whose consented manifest asks for it; any other
     // plugin gets a refusal that names the missing capability, never an empty log.
     public ICockpitTimeEntries TimeEntries => (capabilities ?? []).Contains(CapabilityCatalog.TimeEntries)
@@ -97,6 +99,9 @@ public class PluginBackendHost(
 
     // AC-1389: this plugin's slice of the backend's channel hub, which the UI part's CockpitUiHost reaches by the same id.
     public IPluginBackendChannel Channel => services.GetRequiredService<PluginChannelHub>().For(pluginId);
+
+    public IDisposable AddFileSource(Cockpit.Plugins.Abstractions.Files.IFileSourceProvider provider) =>
+        Files.FileSourceChannel.Register(Channel, provider, _Logger());
 
     public ICockpitSessionObserver Sessions => sessions;
 
@@ -373,7 +378,7 @@ public class PluginBackendHost(
     public async Task<IReadOnlyList<PluginProjectInfo>> GetProjectsAsync()
     {
         var projects = await services.GetRequiredService<IProjectStore>().LoadAsync().ConfigureAwait(false);
-        return [.. projects.Projects.Select(project => new PluginProjectInfo(project.Id, project.Name))];
+        return [.. projects.Projects.Select(project => new PluginProjectInfo(project.Id, project.Name) { SourceDirectory = project.SourceDirectory })];
     }
 
     public Task<string?> GetSessionProjectIdAsync(string paneId, CancellationToken cancellationToken) =>
@@ -492,7 +497,7 @@ public class PluginBackendHost(
         };
         if (value is { } measured)
         {
-            services.GetService<IModelObservationStore>()?.Record(new ModelObservation(observation.ProviderId, observation.Model, Enum.Parse<ModelObservationKind>(observation.Kind.ToString()), observation.At, measured, observation.Quota?.Label));
+            services.GetService<IModelObservationStore>()?.Record(new ModelObservation(observation.ProviderId, observation.Model, Enum.Parse<ModelObservationKind>(observation.Kind.ToString()), observation.At, measured, observation.Quota?.Label, observation.Profile));
         }
     }
 
@@ -565,6 +570,7 @@ public class PluginBackendHost(
                 servers[existingIndex] = servers[existingIndex] with
                 {
                     Transport = refreshed.Transport,
+                    IncludeAgentName = refreshed.IncludeAgentName,
                     Url = refreshed.Url,
                     Auth = refreshed.Auth,
                     ApiKey = refreshed.ApiKey,

@@ -80,11 +80,6 @@ public sealed class AgentWakeConsentDefaultTests
 
         Assert.True(entry.WakeAgentsByDefault);
         Assert.True(entry.ToDomain().WakeAgentsByDefault);
-    }
-
-    [Fact]
-    public void TheSettingSurvivesARoundTripThroughItsOnDiskShape()
-    {
         var settings = new SessionBehaviorSettings { WakeAgentsByDefault = false };
 
         var round = SessionBehaviorSettingsEntry.FromDomain(settings).ToDomain();

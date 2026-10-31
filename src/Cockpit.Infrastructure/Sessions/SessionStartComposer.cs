@@ -97,6 +97,23 @@ public sealed class SessionStartComposer(
         return merged;
     }
 
+    // A Cockpit-managed worktree is an isolation boundary, not only a different cwd. The provider receives the
+    // admitted worktree as its root and this host-owned option makes both built-in and plugin drivers enforce it.
+    public static IReadOnlyDictionary<string, string> WithWorktreeConfinement(
+        IReadOnlyDictionary<string, string> options, bool inWorktree)
+    {
+        if (!inWorktree)
+        {
+            return options;
+        }
+
+        var merged = new Dictionary<string, string>(options, StringComparer.Ordinal)
+        {
+            [WellKnownPluginSessionOptions.ConfineFileToolsToWorkingDirectory] = "true",
+        };
+        return merged;
+    }
+
     public async Task<Project?> FindProjectAsync(string projectId) =>
         (await projects.LoadAsync().ConfigureAwait(false)).Projects.FirstOrDefault(project => project.Id == projectId);
 

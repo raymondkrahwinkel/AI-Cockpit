@@ -21,6 +21,8 @@ internal sealed class DepotSharedProjectSource(
         ? DepotProjectListingSource.For(host, connection)
         : new DepotProjectListingSource(host, connection, httpClient);
     private readonly Lock _projectListRefreshLock = new();
+    private readonly Func<CancellationToken, Task> _waitForProjectListQuietPeriod =
+        cancellationToken => Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
     private CancellationTokenSource? _projectListRefreshCancellation;
 
     internal DepotSharedProjectSource(
@@ -28,9 +30,11 @@ internal sealed class DepotSharedProjectSource(
         string scheme,
         ICockpitHost host,
         Events.DepotEvents events,
-        HttpClient? httpClient = null)
+        HttpClient? httpClient = null,
+        Func<CancellationToken, Task>? waitForProjectListQuietPeriod = null)
         : this(connection, scheme, host, httpClient)
     {
+        _waitForProjectListQuietPeriod = waitForProjectListQuietPeriod ?? _waitForProjectListQuietPeriod;
         // Construction cannot await the subscription; the task logs startup failures itself.
         _ = _SubscribeAsync(events);
     }
@@ -97,7 +101,7 @@ internal sealed class DepotSharedProjectSource(
     {
         try
         {
-            await Task.Delay(TimeSpan.FromSeconds(1), cancellation.Token).ConfigureAwait(false);
+            await _waitForProjectListQuietPeriod(cancellation.Token).ConfigureAwait(false);
             Changed?.Invoke(null);
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)

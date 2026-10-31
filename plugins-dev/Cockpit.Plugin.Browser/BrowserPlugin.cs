@@ -7,7 +7,7 @@ namespace Cockpit.Plugin.Browser;
 
 // The backend half of the browser plugin. It deliberately does nothing with CEF: the engine is fetched by the
 // UI half (AC-1727), so a server, which loads only this assembly, never downloads one. What it does own is the
-// Chromium agents browse with (AC-1712), which runs on the desktop and on the headless server alike.
+// Chromium agents browse with (AC-1712), which only runs where the host has a desktop UI.
 public sealed class BrowserPlugin : ICockpitPlugin
 {
     private AgentBrowserHost? _browsers;
@@ -26,6 +26,13 @@ public sealed class BrowserPlugin : ICockpitPlugin
 
     public void Initialize(ICockpitHost host)
     {
+        var settings = new BrowserSettings(host.Storage);
+        if (host.IsHeadless)
+        {
+            host.AddSessionResourceProvider(new AgentBrowserSessionResources(null, () => settings.AgentsUseCockpitBrowser));
+            return;
+        }
+
         // Under the host's state root when it was moved (COCKPIT_STATE_ROOT), so a second cockpit keeps its own runtimes.
         var stateRoot = Environment.GetEnvironmentVariable("COCKPIT_STATE_ROOT") is { Length: > 0 } root
             ? root
@@ -36,7 +43,6 @@ public sealed class BrowserPlugin : ICockpitPlugin
         browsers.SweepStale();
         _browsers = browsers;
 
-        var settings = new BrowserSettings(host.Storage);
         host.AddSessionResourceProvider(new AgentBrowserSessionResources(browsers, () => settings.AgentsUseCockpitBrowser));
         host.Sessions.SessionClosed += (_, paneId) => browsers.Stop(paneId);
         browsers.Changed += () => host.Channel.Publish("agents.changed", JsonSerializer.SerializeToElement(new { }));
@@ -51,7 +57,7 @@ public sealed class BrowserPlugin : ICockpitPlugin
 
         // AC-1714: reading a tab the operator shared, answered by the UI half that holds the tabs and their grants.
         _share = new TabShareBridge(host);
-        _ = host.AddMcpEndpoint("cockpit-browser", new TabShareMcpTools(host, _share));
+        _ = host.AddMcpEndpoint("cockpit-browser", new TabShareMcpTools(host, _share, new AgentOwnedTabs(browsers)));
     }
 
     public void Dispose()

@@ -12,6 +12,9 @@ internal sealed class McpServerEntry
 
     public string Name { get; set; } = string.Empty;
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool IsNodeConnection { get; set; }
+
     public McpTransport Transport { get; set; }
 
     public McpServerScope Scope { get; set; } = McpServerScope.All;
@@ -58,6 +61,7 @@ internal sealed class McpServerEntry
         // being a function of a name that is about to change.
         Id = server.IdentityKey,
         Name = server.Name,
+        IsNodeConnection = server.IsNodeConnection,
         Transport = server.Transport,
         Scope = server.Scope,
         Command = server.Command,
@@ -82,6 +86,8 @@ internal sealed class McpServerEntry
         // anything being rewritten. Derived, not minted: a random id here would differ on every read.
         Id = string.IsNullOrEmpty(Id) ? McpServerIdentity.LegacyIdFor(Name) : Id,
         Name = Name,
+        // Older node connections only carried the name produced by NodeServerName.For.
+        IsNodeConnection = IsNodeConnection || NodeServerName.Split(Name) is not null,
         Transport = Transport,
         Scope = Scope,
         Command = Command,

@@ -26,6 +26,46 @@ public sealed partial class SplashViewModel : ObservableObject
 
     private readonly StartupSequence _sequence;
     private readonly DateTimeOffset _shownAt;
+    private bool _unlocked;
+
+    [ObservableProperty]
+    private UnlockViewModel? _unlock;
+
+    public bool IsUnlocking => Unlock is not null;
+
+    public bool HasUnlockStep => IsUnlocking || _unlocked;
+
+    public bool HasUnlockError => !string.IsNullOrEmpty(Unlock?.Error);
+
+    public void BeginUnlock(UnlockViewModel unlock)
+    {
+        Unlock = unlock;
+        unlock.PropertyChanged += _UnlockChanged;
+        OnPropertyChanged(nameof(IsUnlocking));
+        OnPropertyChanged(nameof(HasUnlockStep));
+        Refresh();
+    }
+
+    public void EndUnlock()
+    {
+        if (Unlock is { } unlock)
+        {
+            unlock.PropertyChanged -= _UnlockChanged;
+            unlock.Password = string.Empty;
+        }
+
+        Unlock = null;
+        _unlocked = true;
+        OnPropertyChanged(nameof(IsUnlocking));
+        OnPropertyChanged(nameof(HasUnlockStep));
+        Refresh();
+    }
+
+    private void _UnlockChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        OnPropertyChanged(nameof(HasUnlockError));
+        Refresh();
+    }
 
     public SplashViewModel(StartupSequence sequence)
     {
@@ -65,7 +105,7 @@ public sealed partial class SplashViewModel : ObservableObject
     {
         var steps = _sequence.Steps;
         var now = _sequence.Now;
-        StepsVisible = Shown >= StepsAppearAfter;
+        StepsVisible = IsUnlocking || _unlocked || Shown >= StepsAppearAfter;
 
         Segments.Clear();
         foreach (var step in steps)
@@ -83,6 +123,19 @@ public sealed partial class SplashViewModel : ObservableObject
         var done = steps.Count(step => step.State is StartupStepState.Done or StartupStepState.Skipped or StartupStepState.Failed);
         Position = steps.Count == 0 ? "" : $"Step {Math.Min(done + 1, steps.Count)} of {steps.Count}";
 
+        if (Unlock is { } unlock)
+        {
+            Headline = unlock.IsBusy ? "Unlocking…" : "Unlock to continue";
+            Detail = unlock switch
+            {
+                { IsWaitingForHello: true } => "Waiting for Windows Hello",
+                { IsBusy: true } => "Checking the password",
+                { OffersHello: true } => "Your API keys and tokens are encrypted. Unlock them with Windows Hello or your password.",
+                _ => "Your API keys and tokens are encrypted. Type the password to unlock them.",
+            };
+            return;
+        }
+
         if (active is not null)
         {
             var waited = active.StartedAt is { } started ? now - started : TimeSpan.Zero;
@@ -92,7 +145,7 @@ public sealed partial class SplashViewModel : ObservableObject
             return;
         }
 
-        Headline = failed?.Message ?? steps.LastOrDefault(step => step.State == StartupStepState.Skipped)?.Message ?? "Almost there…";
+        Headline = failed?.Message ?? steps.LastOrDefault(step => step.State == StartupStepState.Skipped)?.Message ?? (_unlocked ? "Opening your cockpit…" : "Almost there…");
         Detail = "";
     }
 

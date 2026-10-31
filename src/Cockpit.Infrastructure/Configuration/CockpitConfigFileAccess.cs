@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -23,6 +24,12 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
     private static readonly TimeSpan ReadContentionWindow = TimeSpan.FromSeconds(2);
 
     private static readonly TimeSpan ReadContentionInterval = TimeSpan.FromMilliseconds(20);
+
+    private static readonly byte[] Utf8Bom = [0xEF, 0xBB, 0xBF];
+
+    // AC-1892: one decrypted snapshot per config file for the whole process, whichever store's instance read it.
+    private static readonly ConcurrentDictionary<string, ConfigSnapshot> Snapshots =
+        new(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
 
     private readonly ISecretKeyHolder _keyHolder = keyHolder ?? SecretKeyHolder.Shared;
 
@@ -66,6 +73,9 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
             File.Copy(configFilePath + BackupSuffix, configFilePath, overwrite: true);
             CockpitConfigPath.RestrictExistingFile(configFilePath);
 
+            // Written outside the gate and with the backup's own timestamp, so the damaged snapshot goes by hand.
+            Snapshots.TryRemove(Path.GetFullPath(configFilePath), out _);
+
             return recovered;
         }
 
@@ -81,44 +91,88 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
         return null;
     }
 
+    // AC-1892: every read hands out its own fresh DTO (callers mutate what they get), but from a snapshot that is
+    // read and decrypted once per write generation. Generation and stat are taken before reading, so a write that
+    // lands mid-read, here or from another process, leaves a snapshot that no longer matches rather than a stale hit.
     private async Task<CockpitConfigFile?> TryReadAsync(string path, CancellationToken cancellationToken)
     {
-        if (!File.Exists(path))
+        var file = new FileInfo(path);
+        if (!file.Exists)
         {
             return null;
         }
 
+        var generation = CockpitConfigWriteGate.Generation;
+        var protector = _keyHolder.Protector;
+        var fields = _keyHolder.Fields;
+        var key = Path.GetFullPath(path);
         try
         {
-            // AC-1152: with nothing to decrypt there is nothing to walk, so the file goes straight into the DTO
-            // without a JsonNode tree of the whole document in between — the tree exists only to be walked.
-            if (_keyHolder.Protector is not { } protector)
+            if (!Snapshots.TryGetValue(key, out var snapshot) || !snapshot.Matches(generation, file, protector, fields))
             {
-                return await ReadFileWhenNotBeingReplacedAsync(
-                    path,
-                    stream => JsonSerializer.DeserializeAsync<CockpitConfigFile>(stream, SerializerOptions, cancellationToken),
-                    cancellationToken).ConfigureAwait(false);
+                var json = await ReadPlaintextAsync(path, protector, fields, cancellationToken).ConfigureAwait(false);
+                snapshot = new ConfigSnapshot(generation, file.LastWriteTimeUtc, file.Length, protector, fields, json);
+                Snapshots[key] = snapshot;
             }
 
-            var document = await ReadFileWhenNotBeingReplacedAsync(
-                path,
-                stream => ValueTask.FromResult(JsonNode.Parse(stream)),
-                cancellationToken).ConfigureAwait(false);
-
-            if (document is null)
-            {
-                return null;
-            }
-
-            SecretJsonWalker.Transform(document, _keyHolder.Fields, (path, value) =>
-                SecretProtector.IsProtected(value) ? protector.Unprotect(path, value) : null);
-
-            return document.Deserialize<CockpitConfigFile>(SerializerOptions);
+            return JsonSerializer.Deserialize<CockpitConfigFile>(snapshot.Json, SerializerOptions);
         }
         catch (JsonException)
         {
             return null;
         }
+    }
+
+    // The file as plaintext JSON: its own bytes while there is nothing to decrypt (AC-1152: no JsonNode tree just
+    // to walk), else with every credential decrypted. Held only in Snapshots; never logged or handed out as is.
+    private static Task<byte[]> ReadPlaintextAsync(
+        string path,
+        ISecretProtector? protector,
+        SecretFields fields,
+        CancellationToken cancellationToken)
+    {
+        CockpitConfigReads.NoteParse();
+        return ReadFileWhenNotBeingReplacedAsync(path, ReadPlaintext, cancellationToken);
+
+        async ValueTask<byte[]> ReadPlaintext(Stream stream)
+        {
+            if (protector is null)
+            {
+                using var copy = new MemoryStream();
+                await stream.CopyToAsync(copy, cancellationToken).ConfigureAwait(false);
+                var bytes = copy.ToArray();
+                return bytes.AsSpan().StartsWith(Utf8Bom) ? bytes[Utf8Bom.Length..] : bytes;
+            }
+
+            var document = JsonNode.Parse(stream);
+            if (document is not null)
+            {
+                SecretJsonWalker.Transform(document, fields, (path, value) =>
+                    SecretProtector.IsProtected(value) ? protector.Unprotect(path, value) : null);
+            }
+
+            return JsonSerializer.SerializeToUtf8Bytes(document);
+        }
+    }
+
+    // Keyed by full path; the protector and fields are part of the match, so unlocking, a password change or a
+    // newly declared secret field never sees a snapshot decrypted (or not) under another key.
+    private sealed class ConfigSnapshot(
+        long generation,
+        DateTime lastWriteUtc,
+        long length,
+        ISecretProtector? protector,
+        SecretFields fields,
+        byte[] json)
+    {
+        public byte[] Json => json;
+
+        public bool Matches(long currentGeneration, FileInfo file, ISecretProtector? currentProtector, SecretFields currentFields) =>
+            generation == currentGeneration
+            && lastWriteUtc == file.LastWriteTimeUtc
+            && length == file.Length
+            && ReferenceEquals(protector, currentProtector)
+            && ReferenceEquals(fields, currentFields);
     }
 
     // Reads the file, waiting out a writer mid-swap (`File.Replace` holds the destination and a reader

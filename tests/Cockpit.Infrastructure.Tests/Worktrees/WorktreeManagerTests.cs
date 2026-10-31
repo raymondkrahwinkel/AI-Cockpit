@@ -18,7 +18,7 @@ public sealed class WorktreeManagerTests : IDisposable
 {
     public const string Alone = "worktree-manager-state-root";
 
-    private readonly string _tempRoot = Path.Combine(Path.GetTempPath(), $"cockpit-worktree-{Guid.NewGuid():n}");
+    private readonly string _tempRoot = Path.Combine(OperatingSystem.IsWindows() ? @"C:\t\AC-1818" : Path.GetTempPath(), $"cockpit-worktree-{Guid.NewGuid():n}");
     private readonly string _repo;
     private readonly string _worktreesRoot;
     private readonly string _configPath;
@@ -244,6 +244,7 @@ public sealed class WorktreeManagerTests : IDisposable
         var live = await _manager.CreateAsync(Guid.NewGuid().ToString("n"), "cockpit/live", _repo);
         _manager.Dispose();
         var previousStateRoot = Environment.GetEnvironmentVariable(CockpitBuild.StateRootVariable);
+        var previousScratch = Environment.GetEnvironmentVariable(SessionScratch.BaseVariable);
         var previousTemp = Environment.GetEnvironmentVariable("TEMP");
         var previousTmp = Environment.GetEnvironmentVariable("TMP");
         var previousTmpDir = Environment.GetEnvironmentVariable("TMPDIR");
@@ -255,30 +256,42 @@ public sealed class WorktreeManagerTests : IDisposable
             Environment.SetEnvironmentVariable("TEMP", tempBase);
             Environment.SetEnvironmentVariable("TMP", tempBase);
             Environment.SetEnvironmentVariable("TMPDIR", tempBase);
+            Environment.SetEnvironmentVariable(SessionScratch.BaseVariable, Path.Combine(tempBase, "ck"));
             Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, Path.Combine(_tempRoot, "state-a"));
-            var marker = Path.Combine(SessionTempDirectory.Create("session-a"), "still-running");
+            var marker = Path.Combine(SessionScratch.Create("session-a"), "still-running");
             File.WriteAllText(marker, "owned by A");
 
             Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, Path.Combine(_tempRoot, "state-b"));
-            var secondTempRoot = SessionTempDirectory.Root;
-            var secondSession = SessionTempDirectory.Create("session-b");
+            var secondTempRoot = SessionScratch.BasePath;
+            var secondSession = SessionScratch.Create("session-b");
+            Directory.CreateDirectory(Path.Combine(secondSession, ".git"));
+            var liveScratch = SessionScratch.Create(live.SessionId);
+            var unmarked = Directory.CreateDirectory(Path.Combine(secondTempRoot, "unmarked")).FullName;
+            File.WriteAllText(Path.Combine(unmarked, "keep"), "no owner");
+            var registeredScratch = SessionScratch.Create("registered");
+            var protectedWorktree = Directory.CreateDirectory(Path.Combine(registeredScratch, "worktree")).FullName;
+            await _registry.AddAsync(new WorktreeRecord("registered", _repo, protectedWorktree, "protected", "", DateTimeOffset.UtcNow) { IsRetained = true });
             Assert.True(_IsInside(secondTempRoot, tempBase));
             using var restartedCockpit = new WorktreeManager(
                 new WorktreeRegistryStore(_configPath),
                 _worktreesRoot,
-                sessionTempRoot: secondTempRoot);
+                sessionTempRoot: SessionScratch.LegacyRoot);
 
             await restartedCockpit.ReconcileAsync([live.SessionId]);
 
             Assert.False(Directory.Exists(orphan.Path));
             Assert.True(Directory.Exists(live.Path));
-            Assert.Equal(live.SessionId, Assert.Single((await restartedCockpit.ListAsync())).SessionId);
+            Assert.Contains(await restartedCockpit.ListAsync(), record => record.SessionId == live.SessionId);
             Assert.True(File.Exists(marker));
             Assert.False(Directory.Exists(secondSession));
+            Assert.True(Directory.Exists(liveScratch));
+            Assert.True(File.Exists(Path.Combine(unmarked, "keep")));
+            Assert.True(Directory.Exists(registeredScratch));
         }
         finally
         {
             Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, previousStateRoot);
+            Environment.SetEnvironmentVariable(SessionScratch.BaseVariable, previousScratch);
             Environment.SetEnvironmentVariable("TEMP", previousTemp);
             Environment.SetEnvironmentVariable("TMP", previousTmp);
             Environment.SetEnvironmentVariable("TMPDIR", previousTmpDir);

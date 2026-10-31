@@ -71,6 +71,8 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
     // cross-thread 64-bit access. -1 means "no pong yet", which _Run uses to avoid arming the heartbeat before
     // the dispatcher loop is even pumping.
     private long _lastPongTicks = -1;
+    private int _uiManagedThreadId;
+    private TimeSpan? _lastStackCaptureAt;
 
     // Set on the background thread before the probe is posted, cleared by the commit's continuation on whichever
     // thread completes it. While true no second probe is posted, so an outstanding probe is the stall itself.
@@ -117,7 +119,8 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
 
     // AC-1196: the budget both alarms below are judged against. Injectable for the same reason heapBytesProbe is —
     // a test would otherwise have to hold a thread hostage for a real quarter-minute per case, three times over.
-    private readonly TimeSpan _alarmAfter;
+    private TimeSpan _alarmAfter;
+    private TimeSpan _uiFreezeAfter = UiThreadHeartbeat.WarnAfter;
 
     // AC-1263: how long the guard takes to react is N times this, not N alone. Injectable for the same reason
     // alarmAfter is -- a test of the cut would otherwise have to hold a thread for half a minute.
@@ -164,6 +167,14 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
     // Flips the periodic-snapshot half on or off live — called by CockpitViewModel from the Options checkbox and
     // at startup load. The heartbeat half is not gated by this; it always runs.
     public void SetSnapshotsEnabled(bool enabled) => _snapshotsEnabled = enabled;
+
+    public void ConfigureThresholds(Cockpit.Core.Debugging.DebugSettings settings)
+    {
+        _uiFreezeAfter = settings.UiFreezeThresholdSeconds > 1
+            ? TimeSpan.FromSeconds(settings.UiFreezeThresholdSeconds) : UiThreadHeartbeat.WarnAfter;
+        _alarmAfter = settings.RenderStallThresholdSeconds > 0
+            ? TimeSpan.FromSeconds(settings.RenderStallThresholdSeconds) : RenderClockHeartbeat.StallAfter;
+    }
 
     // Internal so a view test can drive the edge without a compositor that really stalls. Posts rather than raising
     // inline: the caller is this background thread and every subscriber touches visuals.
@@ -214,7 +225,7 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
         // every run, past or present, without needing a reproduction.
         _logger.LogInformation(
             "diagnostics thread running snapshots={Snapshots} warnAfter={WarnAfter:0}s stallAfter={StallAfter:0}s",
-            _snapshotsEnabled, UiThreadHeartbeat.WarnAfter.TotalSeconds, _alarmAfter.TotalSeconds);
+            _snapshotsEnabled, _uiFreezeAfter.TotalSeconds, _alarmAfter.TotalSeconds);
 
         // AC-1125 F: one sampler per caller, not one shared between them — PercentSinceLastCall() resets its own
         // baseline on every call, so two callers sharing one instance stole each other's measurement window.
@@ -245,7 +256,11 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
                 // Background priority: work already queued ahead of it counts against the pong too, so a
                 // dispatcher merely drowning in queued work reads as a hang the same as one truly stuck — which
                 // is the complaint this exists to catch.
-                Dispatcher.UIThread.Post(() => Interlocked.Exchange(ref _lastPongTicks, _clock.Elapsed.Ticks), DispatcherPriority.Background);
+                Dispatcher.UIThread.Post(() =>
+                {
+                    Volatile.Write(ref _uiManagedThreadId, Environment.CurrentManagedThreadId);
+                    Interlocked.Exchange(ref _lastPongTicks, _clock.Elapsed.Ticks);
+                }, DispatcherPriority.Background);
 
                 // AC-1196: a measurement, not work — one Interlocked.Exchange per tick. AC-1138/AC-1204's "do not
                 // lift work to Render or Send" still holds; this is posted there precisely because Send outranks
@@ -257,7 +272,7 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
                 if (lastPongTicks >= 0)
                 {
                     var sinceLastPong = TimeSpan.FromTicks(_clock.Elapsed.Ticks - lastPongTicks);
-                    var decision = UiThreadHeartbeat.Decide(sinceLastPong, warned);
+                    var decision = UiThreadHeartbeat.Decide(sinceLastPong, warned, _uiFreezeAfter);
 
                     if (decision.Warn)
                     {
@@ -612,11 +627,10 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
     // shows handle count, and this is the only caller.
     private void _LogHang(TimeSpan sinceLastPong, CpuSampler cpu, TimeSpan? sinceHighPriorityPong)
     {
+        _LogUiThreadStack();
         using var process = Process.GetCurrentProcess();
 
-        // The distinction this buys without a callstack (which no supported .NET API can give us for another
-        // thread, macOS included): tolling versus blocked. A high CPU delta plus queued threadpool work says the
-        // process is busy somewhere; near-zero CPU says something is genuinely stuck waiting.
+        // These counters remain available on platforms without in-memory stack snapshots.
         var threadStates = process.Threads
             .Cast<ProcessThread>()
             .GroupBy(thread => thread.ThreadState)
@@ -636,6 +650,30 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
             ThreadPool.ThreadCount,
             GC.GetGCMemoryInfo().PauseTimePercentage,
             string.Join(' ', threadStates));
+    }
+
+    private void _LogUiThreadStack()
+    {
+        if (!OperatingSystem.IsWindows() || Volatile.Read(ref _uiManagedThreadId) == 0)
+        {
+            return;
+        }
+
+        var now = _clock.Elapsed;
+        if (_lastStackCaptureAt is { } last && now - last < TimeSpan.FromMinutes(5))
+        {
+            return;
+        }
+
+        _lastStackCaptureAt = now;
+        try
+        {
+            _logger.LogWarning("uifreeze managed UI stack: {Stack}", WindowsUiThreadStack.Capture(Volatile.Read(ref _uiManagedThreadId)));
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning("uifreeze managed UI stack unavailable ({ErrorType}).", exception.GetType().Name);
+        }
     }
 
     // AC-1125 C: a heap ceiling above which forceFullCollection:true is skipped — extrapolated with margin from

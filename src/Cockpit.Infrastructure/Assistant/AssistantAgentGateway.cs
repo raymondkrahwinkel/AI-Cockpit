@@ -3,6 +3,8 @@ using System.Text.Json.Nodes;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Assistant;
+using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Worktrees;
@@ -13,6 +15,7 @@ using Cockpit.Core.Worktrees;
 using Cockpit.Core.Workspaces;
 using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
+using Cockpit.Plugins.Abstractions.Sessions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -35,9 +38,13 @@ internal sealed class AssistantAgentGateway(
     IAgentMessageInbox inbox,
     IAgentNotifyAuditLog notifyAudit,
     IPluginProviderRegistry pluginProviders,
+    IProviderModelIntelligence providerIntelligence,
+    TimeSpan? modelIntelligenceBudget = null,
     IWorktreeManager? worktreeManager = null,
     IProjectFieldRegistry? projectFields = null,
-    ILogger<AssistantAgentGateway>? logger = null) : IAssistantAgentGateway, ISingletonService
+    ILogger<AssistantAgentGateway>? logger = null,
+    IMcpServerCatalog? mcpServers = null,
+    IMcpOAuthTokenStore? oauthTokens = null) : IAssistantAgentGateway, ISingletonService
 {
     private static readonly StringComparison _PathComparison =
         OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
@@ -160,12 +167,47 @@ internal sealed class AssistantAgentGateway(
                 cancellationToken).ConfigureAwait(false);
         }
 
+        if (request.McpServers is { } requestedServers)
+        {
+            if (mcpServers is null)
+            {
+                return await _RefuseSpawnAsync(request, workspace.Name, "The MCP catalog is unavailable.", cancellationToken).ConfigureAwait(false);
+            }
+
+            var catalog = await mcpServers.GetServersForProjectAsync(project?.Id, cancellationToken).ConfigureAwait(false);
+            var offered = McpServerRegistryFilter.OfferedToOperator(catalog);
+            foreach (var name in requestedServers)
+            {
+                var server = offered.FirstOrDefault(server => string.Equals(server.Name, name, StringComparison.OrdinalIgnoreCase))
+                    ?? catalog.FirstOrDefault(server => string.Equals(server.Name, name, StringComparison.OrdinalIgnoreCase));
+                var reason = server is null ? "unknown or belongs to another project; use its projectId (its connections and credentials are project-bound)"
+                    : server.Internal ? "internal servers cannot be requested"
+                    : !server.Enabled ? "globally disabled"
+                    : null;
+                if (reason is not null)
+                {
+                    return await _RefuseSpawnAsync(request, workspace.Name, $"MCP server '{name}' refused: {reason}.", cancellationToken).ConfigureAwait(false);
+                }
+                if (server!.Auth == McpServerAuth.OAuth &&
+                    (oauthTokens is null || await oauthTokens.GetAsync(server.IdentityKey, cancellationToken).ConfigureAwait(false) is null))
+                {
+                    return await _RefuseSpawnAsync(request, workspace.Name,
+                        $"MCP server '{name}' needs OAuth authorization. Sign in before starting the session.", cancellationToken).ConfigureAwait(false);
+                }
+            }
+            logger?.LogInformation("Session MCP override for project {ProjectId}: [{McpServers}] plus always-mounted core", project?.Id, string.Join(", ", requestedServers));
+        }
+
         var started = await launcher.StartSessionAsync(new SessionLaunchRequest(
             workspace.Id, profile, request.Prompt, request.WorkingDirectory, request.SessionName, requestedKind,
             launchOptions, request.IsolateInWorktree, project?.Id,
             // AC-1300: the relation is stamped on here, at the one moment the caller is known, rather than read
             // back out of the spawn trail later — a trail records what happened, not what is still true.
-            StartedByTheAssistant: request.Target.Caller == SpawnCaller.Assistant)).ConfigureAwait(false);
+            StartedByTheAssistant: request.Target.Caller == SpawnCaller.Assistant)
+        {
+            EnabledMcpServerNames = request.McpServers is null ? null : new ExactMcpServerSelection(request.McpServers),
+            McpServersOverride = request.McpServers,
+        }).ConfigureAwait(false);
 
         // AC-719: a spawn has no one to ask, so isolation that needs a person's choice is a refusal with the reason.
         if (started is { WorktreeDecision: { } decision })
@@ -194,7 +236,8 @@ internal sealed class AssistantAgentGateway(
             pane.PaneId,
             pane.Name,
             Refusal: null,
-            ProjectId: project?.Id), cancellationToken).ConfigureAwait(false);
+            ProjectId: project?.Id,
+            McpServers: request.McpServers), cancellationToken).ConfigureAwait(false);
 
         return AgentSpawnResult.Started(pane.PaneId, pane.Name, request.WorkingDirectory, pane.PromptDelivered, resolvedProfileLabel: profile.Label);
     }
@@ -467,9 +510,14 @@ internal sealed class AssistantAgentGateway(
     public async Task<IReadOnlyList<AssistantProfileRow>> ListProfilesAsync(CancellationToken cancellationToken = default)
     {
         var known = await profiles.LoadAsync(cancellationToken).ConfigureAwait(false);
+        var models = known.Select(_ModelConfiguredOnProfile).ToArray();
+        var readings = await Task.WhenAll(known.Select((profile, index) =>
+            models[index] is null && profile.ProviderConfig is PluginProviderConfig
+                ? _ReadConfiguredModelAsync(profile.Label, cancellationToken)
+                : Task.FromResult<PluginModelIntelligence?>(null))).ConfigureAwait(false);
         return
         [
-            .. known.Select(profile =>
+            .. known.Select((profile, index) =>
             {
                 var registration = profile.ProviderConfig is PluginProviderConfig plugin
                     ? pluginProviders.Resolve(plugin.ProviderId)
@@ -481,12 +529,36 @@ internal sealed class AssistantAgentGateway(
                     // profile reads as the same provider otherwise, and this is the field the tool tells the assistant
                     // to resolve "a Claude one" by.
                     registration?.DisplayName ?? profile.Provider.ToString(),
-                    ProfileModel.Of(profile))
+                    models[index] ?? _ConfiguredModel(readings[index]))
                 {
                     Options = ProfileOptionReport.For(registration?.Capabilities, profile.Defaults?.OptionDefaults),
+                    EnabledMcpServers = profile.EnabledMcpServerNames,
                 };
             }),
         ];
+    }
+
+    private static string? _ConfiguredModel(PluginModelIntelligence? reading)
+    {
+        var models = reading?.Models.Select(model => model.Model).Distinct(StringComparer.Ordinal).ToArray() ?? [];
+        return models.Length == 1 ? models[0] : null;
+    }
+
+    private static string? _ModelConfiguredOnProfile(SessionProfile profile) =>
+        ProfileModel.Of(profile) ?? profile.Defaults?.OptionDefaults?.GetValueOrDefault(WellKnownPluginSessionOptions.Model);
+
+    private async Task<PluginModelIntelligence?> _ReadConfiguredModelAsync(string profileLabel, CancellationToken cancellationToken)
+    {
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        budget.CancelAfter(modelIntelligenceBudget ?? TimeSpan.FromSeconds(2));
+        try
+        {
+            return await providerIntelligence.ReadAsync(profileLabel, budget.Token).WaitAsync(budget.Token).ConfigureAwait(false);
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
     }
 
     public async Task<AssistantWorkspaceRow?> CreateWorkspaceAsync(string name, CancellationToken cancellationToken = default)
@@ -614,7 +686,8 @@ internal sealed class AssistantAgentGateway(
             PaneId: null,
             SessionName: null,
             reason,
-            ProjectId: request.ProjectId), cancellationToken).ConfigureAwait(false);
+            ProjectId: request.ProjectId,
+            McpServers: request.McpServers), cancellationToken).ConfigureAwait(false);
 
         return AgentSpawnResult.Refused(reason);
     }
@@ -1195,9 +1268,7 @@ internal sealed class AssistantAgentGateway(
         CancellationToken cancellationToken = default)
     {
         var inputJson = _BuildAskStructuredQuestionInputJson(question, options, multiSelect, allowOther, header);
-        return await conversation.ShowQuestionAsync(question, inputJson).ConfigureAwait(false)
-            ? AskStructuredQuestionResult.Shown()
-            : AskStructuredQuestionResult.Refused("My own session is not running, so there is nowhere to show this card.");
+        return _Shown(await conversation.ShowQuestionAsync(question, inputJson).ConfigureAwait(false));
     }
 
     public async Task<AskStructuredQuestionResult> AskStructuredQuestionAsync(
@@ -1210,10 +1281,18 @@ internal sealed class AssistantAgentGateway(
         CancellationToken cancellationToken = default)
     {
         var inputJson = _BuildAskStructuredQuestionInputJson(question, options, multiSelect, allowOther, header);
-        return await conversation.ShowQuestionAsync(question, inputJson, projectIds).ConfigureAwait(false)
-            ? AskStructuredQuestionResult.Shown()
-            : AskStructuredQuestionResult.Refused("My own session is not running, so there is nowhere to show this card.");
+        return _Shown(await conversation.ShowQuestionAsync(question, inputJson, projectIds).ConfigureAwait(false));
     }
+
+    private static AskStructuredQuestionResult _Shown(string? questionId) => questionId is not null
+        ? AskStructuredQuestionResult.Shown(questionId)
+        : AskStructuredQuestionResult.Refused("My own session is not running, so there is nowhere to show this card.");
+
+    public Task<IReadOnlyList<AssistantOpenQuestion>> ListOpenQuestionsAsync(CancellationToken cancellationToken = default) =>
+        conversation.ListOpenQuestionsAsync();
+
+    public Task<AssistantThreadResult> ResolveQuestionAsync(string questionId, string status, string? note, CancellationToken cancellationToken = default) =>
+        conversation.ResolveQuestionAsync(questionId, status, note);
 
     public Task<AssistantThreadResult> SetThreadAsync(IReadOnlyList<string> projectIds, CancellationToken cancellationToken = default) =>
         conversation.SetThreadAsync(projectIds);

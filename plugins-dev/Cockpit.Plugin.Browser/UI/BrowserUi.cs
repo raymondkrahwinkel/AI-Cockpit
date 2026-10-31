@@ -12,7 +12,7 @@ using Material.Icons;
 
 namespace Cockpit.Plugin.Browser.UI;
 
-// The UI half of the browser plugin: the engine's version in the settings (AC-1727) and Raymond's browser as a tab
+// The UI half of the browser plugin: the engine's version in the settings (AC-1727) and the user's browser as a tab
 // and in the rail, one browser in either place (AC-1711). Nothing touches CEF until the browser is first opened;
 // disposing shuts the engine down on the UI thread.
 public sealed class BrowserUi : ICockpitPluginUi, IDisposable
@@ -60,11 +60,17 @@ public sealed class BrowserUi : ICockpitPluginUi, IDisposable
             CanFloat = true,
         });
 
-        // First thing when Cockpit closes, ahead of the session teardown and its exit watchdog; Dispose stays the
-        // fallback for the tray's Quit, which does not raise this event (review AC-1711, finding 3).
+        // A cancelled shutdown can still be waiting for a file discard decision. Keep the engine usable then;
+        // the host disposes the plugin during its approved teardown, before actually exiting.
         if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            desktop.ShutdownRequested += (_, _) => BrowserEngine.Shared.Shutdown();
+            desktop.ShutdownRequested += (_, request) =>
+            {
+                if (!request.Cancel)
+                {
+                    BrowserEngine.Shared.Shutdown();
+                }
+            };
         }
     }
 
@@ -77,7 +83,7 @@ public sealed class BrowserUi : ICockpitPluginUi, IDisposable
     }
 
     // The agent side is the only thing the status bar still says about the browser; where it sits and how many
-    // tabs it has are noise Raymond reads off the window itself.
+    // tabs it has are noise you read off the window itself.
     internal static string? StatusText(BrowserPlace place, BrowserEngineState state, int tabs, bool agentSide = false, int agentTabs = 0) =>
         agentSide ? $"Agent profile · {agentTabs} {(agentTabs == 1 ? "tab" : "tabs")} by agents" : null;
 

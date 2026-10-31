@@ -36,7 +36,7 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService, IDi
         _registry = registry;
         _logger = logger;
         _leaseRoot = Path.Combine(CockpitConfigPath.Root, "worktree-leases");
-        _sessionTempRoot = SessionTempDirectory.Root;
+        _sessionTempRoot = SessionScratch.LegacyRoot;
         // Nullable like `_liveSessions`/`_consent` on WorktreeTools: production DI resolves the real IDockerCli
         // (Scrutor registers it unconditionally — docker plugin installed or not, see DockerCli's own comment),
         // tests construct this directly and simply omit it to skip the cleanup being exercised.
@@ -1215,6 +1215,30 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService, IDi
             }
         }
 
+        foreach (var basis in new[] { SessionScratch.BasePath, SessionScratch.FallbackBase }.Distinct())
+        {
+            if (!Directory.Exists(basis) || (File.GetAttributes(basis) & FileAttributes.ReparsePoint) != 0)
+            {
+                continue;
+            }
+            foreach (var directory in Directory.EnumerateDirectories(basis))
+            {
+                try
+                {
+                    if (SessionScratch.OwnerOf(directory) is { } owner && !liveSessionIds.Contains(owner))
+                    {
+                        SessionScratch.Delete(directory, owner, records.Select(record => record.Path),
+                            message => _logger?.LogInformation("Scratch cleanup in orphan sweep: {Message}", message));
+                    }
+                }
+                catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+                {
+                    _logger?.LogWarning(exception, "Could not remove session scratch directory '{Path}'.", directory);
+                }
+            }
+        }
+
+        // AC-1818: preserve the fingerprint-scoped legacy TEMP sweep for one release, then remove it.
         if (Directory.Exists(_sessionTempRoot) == false || (File.GetAttributes(_sessionTempRoot) & FileAttributes.ReparsePoint) != 0)
         {
             return;
@@ -1246,6 +1270,8 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService, IDi
     private bool _IsLiveDirectory(string directory, IReadOnlyList<WorktreeRecord> records, IReadOnlyCollection<string> liveSessionIds) =>
         directory.Length > 0
         && (records.Any(record => liveSessionIds.Contains(record.SessionId) && _IsInside(directory, record.Path))
+            || liveSessionIds.Any(pane => _IsInside(directory, SessionScratch.PathFor(pane))
+                || _IsInside(directory, Path.Combine(SessionScratch.FallbackBase, Path.GetFileName(SessionScratch.PathFor(pane)))))
             || liveSessionIds.Any(pane => _IsInside(directory, Path.Combine(_sessionTempRoot, pane))));
 
     private HashSet<string> _LiveProjects(IReadOnlyList<SessionContainer> containers, IReadOnlyList<WorktreeRecord> records, IReadOnlyCollection<string> liveSessionIds) =>

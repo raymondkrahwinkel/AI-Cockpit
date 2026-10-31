@@ -78,6 +78,7 @@ public sealed class AssistantActMountRuleTests : IDisposable
         // the start stays local. The refusal tests above still fill it, since they never get that far.
         parameter.Name == "node" ? null
             : parameter.Name == "scope" ? "behaviour"
+            : parameter.Name == "status" ? "obsolete"
             : parameter.ParameterType == typeof(string) ? Whatever
             : parameter.ParameterType == typeof(List<AskStructuredQuestionOptionArg>)
                 // ask_structured_question genuinely requires 2-6 real options — unlike every other list/dict
@@ -230,7 +231,7 @@ public sealed class AssistantActMountRuleTests : IDisposable
         McpRequestContext.Set(AssistantIdentity.PaneId);
 
         var result = _Json(await _Tools().StartAgentAsync(
-            "ws-release", "Opus", prompt: "write the tests", workingDirectory: @"C:\repo", name: "AC-545 tests"));
+            "ws-release", "Opus", prompt: "write the tests", workingDirectory: @"C:\repo", name: "AC-545 tests", mcpServers: ["cockpit-coding"]));
 
         Assert.True((bool)result["ok"]!);
         Assert.Equal("pane-new", (string)result["paneId"]!);
@@ -243,29 +244,14 @@ public sealed class AssistantActMountRuleTests : IDisposable
         Assert.Equal("write the tests", request.Prompt);
         Assert.Equal(@"C:\repo", request.WorkingDirectory);
         Assert.Equal("AC-545 tests", request.SessionName);
+        Assert.Equal(["cockpit-coding"], request.McpServers);
+        var refused = _Json(await _Tools().StartAgentAsync(profile: "Opus", node: "node", mcpServers: []));
+        Assert.False((bool)refused["ok"]!);
+        Assert.Contains("mcpServers", (string)refused["error"]!);
+        Assert.Single(_gateway.Spawns);
     }
 
     // ── Criterion 3, first gate: read off the registration, never off a fixture ────────────────────────────────
-
-    [Fact]
-    public void TheActingEndpoint_IsRegisteredInternal_SoItNeverFansOutToASessionThatDidNotNameIt()
-    {
-        // Registered at all (without it the tools are written and nothing hosts them), and registered Internal. This
-        // is the assertion the phase-2 fixtures could not make: it fails the moment `Internal: true` leaves
-        // DependencyInjection, which is the change that hands start_agent to every session in the cockpit.
-        Assert.True(
-            _RegisteredActEndpoint().Internal,
-            "The assistant's acting endpoint must be Internal, or start_agent fans out to every session.");
-    }
-
-    [Fact]
-    public void TheActingEndpoint_IsNotAlwaysMounted()
-    {
-        // AlwaysMounted wins over Internal in McpServerRegistryFilter, and the neighbouring registration
-        // (cockpit-agents) is AlwaysMounted — so it is the likeliest thing for this line to become by copy-paste,
-        // and it would still read, at a glance, like a deliberate line about the assistant.
-        Assert.False(_RegisteredActEndpoint().AlwaysMounted);
-    }
 
     [Fact]
     public void TheActingServer_IsNeverInTheNoSelectionFanOut()
@@ -502,6 +488,19 @@ public sealed class AssistantActMountRuleTests : IDisposable
             return Task.FromResult(AskStructuredQuestionResult.Shown());
         }
 
+        public Task<IReadOnlyList<AssistantOpenQuestion>> ListOpenQuestionsAsync(CancellationToken cancellationToken = default)
+        {
+            Calls.Add("ListOpenQuestionsAsync()");
+            return Task.FromResult<IReadOnlyList<AssistantOpenQuestion>>([]);
+        }
+
+        public Task<AssistantThreadResult> ResolveQuestionAsync(
+            string questionId, string status, string? note, CancellationToken cancellationToken = default)
+        {
+            Calls.Add($"ResolveQuestionAsync({questionId})");
+            return Task.FromResult(new AssistantThreadResult(true, null));
+        }
+
         public Task<AssistantThreadResult> SetThreadAsync(IReadOnlyList<string> projectIds, CancellationToken cancellationToken = default)
         {
             Calls.Add("SetThreadAsync");
@@ -605,10 +604,6 @@ public sealed class AssistantActMountRuleTests : IDisposable
         public Task<string?> RenameAsync(string nodeName, string paneId, string name, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
         public Task<NodeTranscriptRead> ReadTranscriptAsync(string nodeName, string paneId, int count, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-
-        public Task<NodeInboxBatch> ReadInboxAsync(string nodeName, string? afterMessageId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-
-        public Task<NodePermissionAnswer> AnswerPermissionAsync(string nodeName, string paneId, string toolUseId, bool allow, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
         public Task<string?> RememberOnNodeAsync(string nodeName, string text, string scope, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 

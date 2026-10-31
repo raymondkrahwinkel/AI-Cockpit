@@ -15,6 +15,9 @@ public sealed class PluginChannelHub(ILogger<PluginChannelHub> logger) : ISingle
     private readonly Dictionary<(string PluginId, string Action), Func<JsonElement, CancellationToken, Task<JsonElement>>> _handlers = [];
     private readonly Dictionary<(string PluginId, string Name), List<Action<PluginChannelEvent>>> _subscribers = [];
 
+    // AC-1547: every event of every plugin, after its own subscribers, so the event log can carry it to a remote desktop.
+    public event Action<string, PluginChannelEvent>? Published;
+
     public IPluginBackendChannel For(string pluginId) => new BackendChannel(this, pluginId);
 
     public IDisposable Handle(string pluginId, string action, Func<JsonElement, CancellationToken, Task<JsonElement>> handler)
@@ -39,9 +42,15 @@ public sealed class PluginChannelHub(ILogger<PluginChannelHub> logger) : ISingle
             _handlers.TryGetValue((pluginId, action), out handler);
         }
 
-        return handler is null
-            ? Task.FromException<JsonElement>(new PluginChannelUnknownActionException(pluginId, action))
-            : handler(_Own(payload), cancellationToken);
+        // AC-1891: never inline. A UI control calling in would otherwise run the backend's I/O on the UI thread
+        // up to the handler's first real await, and that await would capture the UI context.
+        if (handler is null)
+        {
+            return Task.FromException<JsonElement>(new PluginChannelUnknownActionException(pluginId, action));
+        }
+
+        var owned = _Own(payload);
+        return Task.Run(() => handler(owned, cancellationToken), cancellationToken);
     }
 
     public void Publish(string pluginId, string name, JsonElement payload)
@@ -67,6 +76,15 @@ public sealed class PluginChannelHub(ILogger<PluginChannelHub> logger) : ISingle
             {
                 logger.LogWarning(exception, "A subscriber of plugin {PluginId} threw on channel event {EventName}; the other subscribers still get it.", pluginId, name);
             }
+        }
+
+        try
+        {
+            Published?.Invoke(pluginId, channelEvent);
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Plugin {PluginId}'s channel event {EventName} could not be put on the event stream.", pluginId, name);
         }
     }
 

@@ -16,6 +16,13 @@ namespace Cockpit.Plugin.Depot.UI;
 // ever reads "connections", the migration has already run once.
 internal sealed class DepotSettings(IPluginStorage storage)
 {
+    // "Open files in" (AC-1781): the preview tab, as VS Code does, or only a selection with the detail strip below the tree.
+    public bool OpenFilesInPreviewTab
+    {
+        get => storage.Get<string>("openFilesIn") != "below";
+        set => storage.Set("openFilesIn", value ? "preview" : "below");
+    }
+
     public IReadOnlyList<DepotConnectionRegistration> Connections
     {
         get => storage.Get<List<DepotConnectionRegistration>>("connections") ?? [];

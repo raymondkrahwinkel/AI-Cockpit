@@ -48,7 +48,8 @@ internal sealed record SchedulesSnapshot(
     List<SchedulesTaskView> Tasks,
     List<RunRecord> Runs,
     List<OperatorMessageChannelInfo> Channels,
-    SchedulesSettingsView Settings);
+    SchedulesSettingsView Settings,
+    DateTimeOffset? Now = null);
 
 // A task as the list shows it: the task, its schedule in words, and when it runs next (null when off or unreadable).
 internal sealed record SchedulesTaskView(ScheduledTask Task, string? ReadsAs, DateTimeOffset? NextRun);

@@ -1,6 +1,8 @@
 using Avalonia.Threading;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Projects;
+using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Workspaces;
 using Cockpit.Core.Projects;
@@ -24,7 +26,7 @@ namespace Cockpit.App.ViewTests;
 public class AssistantReadNeedsYouTests
 {
     [Fact]
-    public void ListSessions_ForATtyPaneAwaitingAnAnswer_ReportsNeedsYou()
+    public async Task ListSessions_ForATtyPaneAwaitingAnAnswer_ReportsNeedsYou()
     {
         var (gateway, tty) = Dispatcher.UIThread.Invoke(() =>
         {
@@ -39,6 +41,12 @@ public class AssistantReadNeedsYouTests
 
         var row = Assert.Single(rows, row => row.PaneId == tty.PaneId);
         Assert.True(row.NeedsYou);
+        var project = Assert.Single(await gateway.ListProjectsAsync());
+        Assert.Equal(["depot"], project.McpSelection.EnabledServerNames);
+        Assert.Equal(["old"], project.McpSelection.DisabledServerNames);
+        Assert.Equal(["depot"], project.AvailableMcpServers);
+        Assert.Equal(["own"], project.AdditionalMcpServers);
+        Assert.Empty(project.McpSelection.AdditionalServers);
     }
 
     [Fact]
@@ -87,10 +95,26 @@ public class AssistantReadNeedsYouTests
     private static AssistantReadGateway _Gateway(SessionRegistry sessions)
     {
         var store = Substitute.For<IProjectStore>();
-        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(ProjectSettings.Empty);
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new ProjectSettings
+        {
+            Projects = [Project.Create("project") with
+            {
+                McpOverlay = new ProjectMcpOverlay
+                {
+                    EnabledServerNames = ["depot"], DisabledServerNames = ["old"],
+                    AdditionalServers = [new() { Name = "own", ApiKey = "secret" }],
+                },
+            }],
+        });
         var workspaceStore = Substitute.For<IWorkspaceSettingsStore>();
         workspaceStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(WorkspaceSettings.Default);
 
-        return new AssistantReadGateway(sessions, new SharedProjectSourceRegistry(), store, workspaceStore);
+        var catalog = Substitute.For<IMcpServerCatalog>();
+        catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(new McpServerConfig[]
+        {
+            new() { Name = "depot" }, new() { Name = "internal", Internal = true },
+            new() { Name = "core", AlwaysMounted = true }, new() { Name = "off", Enabled = false },
+        });
+        return new AssistantReadGateway(sessions, new SharedProjectSourceRegistry(), store, workspaceStore, catalog);
     }
 }

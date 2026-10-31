@@ -114,7 +114,7 @@ discovery list: if a contribution point is not in this table, it does not exist.
 | `ui.panels` | Panels on the dashboard and the dock rail | Ambient | 0.3.0 | — | `ICockpitUiHost.AddWidget`, `ICockpitUiHost.AddDockPanel`, `ICockpitUiHost.OpenDockPanelAsync`, `ICockpitUiHost.SetStatusText`, `ICockpitUiHost.AddCompanionTool` |
 | `ui.session-chrome` | Controls around a session | Ambient | 0.3.0 | — | `ICockpitUiHost.AddSessionHeaderItem`, `ICockpitUiHost.AddSessionBanner`, `ICockpitUiHost.AddSessionHeaderAction`, `ICockpitUiHost.AddConversationPicker` |
 | `ui.status-bar` | A line in the status bar | Ambient | 0.3.0 | — | `ICockpitHost.AddSupervisedActivityProvider` |
-| `ui.dialogs` | Windows, toasts and confirmations | Ambient | 0.3.0 | — | `ICockpitUiHost.ShowDialogAsync`, `ICockpitHost.ShowToast`, `ICockpitUiHost.ConfirmAsync` |
+| `ui.dialogs` | Windows, toasts and confirmations | Ambient | 0.3.0 | — | `ICockpitUiHost.ShowDialogAsync`, `ICockpitHost.ShowToast`, `ICockpitUiHost.ShowSystemNotification`, `ICockpitUiHost.ConfirmAsync` |
 | `ui.host-views` | Host-rendered read-only views | Ambient | 0.7.0 | — | `ICockpitUiHost.CreateMarkdownView`, `ICockpitUiHost.CreateHelpHint`, `ICockpitUiHost.OpenHelp`, `ICockpitUiHost.HasHelp` |
 | `consent.request` | Asking the operator to approve an action | Ambient | 0.3.0 | — | `ICockpitHost.RequestConsentAsync` |
 | `storage.settings` | Its own settings storage | Ambient | 0.3.0 | — | `IPluginStorage.Get`, `IPluginStorage.Set`, `IPluginStorage.Remove` |
@@ -442,7 +442,15 @@ the host. The Depot plugin uses it for
 The UI host's `AddServerSettings(Func<IPluginUiChannel, Control> createView)` (AC-1511, host 0.92.0, SDK UI 3.3.0)
 registers the view an admin opens from **Admin → Plugins → Settings** for a server the plugin is also installed on. The
 channel it gets reaches the plugin's backend part **on that server**, through `POST /api/v1/plugins/{folderId}/channel/{action}`
-(admin keys only); it carries invokes, not events, and its audit line names the plugin and the action, never the payload.
+(admin keys only); its audit line names the plugin and the action, never the payload. Since host 0.153.0 (AC-1547) the
+channel carries the backend part's events too, over the server's event stream, to admin keys only.
+
+The UI host's `GetServerTargetsAsync()` (AC-1547, host 0.153.0, SDK UI 3.23.0) lets a plugin's **own screen** manage a
+server: one `PluginServerTarget(Name, Host, Unavailable)` per server this desktop manages. `Host` is an `ICockpitUiHost`
+whose channel, storage, profiles and projects are that server's (a storage write goes to the server at once); it is null,
+with the reason in `Unavailable`, when the server is not connected, the key is not an admin key, or the plugin is missing
+there or runs another version; for the last two, `Resolve` (labelled `ResolveLabel`) opens that server's Plugins page. Bind the same views to that host, as Schedules' server switch does. A host already opened
+for a server returns an empty list.
 
 The UI host's `AddFirstStartRoute(FirstStartRoute route)` (AC-1504, host 0.94.0, SDK UI 3.4.0, namespace
 `Cockpit.Plugins.Abstractions.UI.Onboarding`) offers a way to begin on the first-run wizard's "How do you want to start?" step,
@@ -690,6 +698,9 @@ public sealed record DockPanelRegistration(string Id, string Title, MaterialIcon
     public bool CanFloat { get; init; }    // SDK 3.22.0, host 0.111.0
 }
 ```
+- `DockPanelBadge.Tone` — optional `SideMenuButtonBadgeTone`, default `Accent` (the current amber),
+  `Success` for a green live count, `Neutral` for a quiet count. Changing it raises `PropertyChanged`.
+  Available in UI SDK 3.21.0, host 0.142.0; set `minHostVersion` when relying on it.
 - `Id` — stable and namespaced. It is persisted as the open panel, and for a floating panel as its stand and
   the key of its window's bounds, so treat it as an API surface. The first registration of an id wins.
 - `CreateView` — builds the panel's view on the UI thread: each time the panel opens, or **once** with
@@ -716,6 +727,10 @@ await host.OpenDockPanelAsync("my-plugin.browser");
 ```
 
 ### `void SetStatusText(string? text)` {#void-setstatustextstring-text}
+
+UI SDK 3.21.0, host 0.142.0 also supports `SetStatusText(string? text, SideMenuButtonBadgeTone tone)`.
+`Success` is green, `Accent` amber and `Neutral` secondary text. The original overload keeps faint text;
+the additive overload falls back to that on an older host. Set `minHostVersion` when relying on the tone.
 Shows one line of **this plugin's** text in the status bar, at the right next to the supervised-activity counters,
 in the faint status colour. A new call replaces the plugin's line, keeping its spot; null or blank removes it. Text
 longer than 120 characters is cut. A server and an older host show nothing. SDK 3.27.0, host 0.116.0.
@@ -858,6 +873,12 @@ public interface IWorkspaceContext
   `CreateEmbeddedSessionView(paneId)`. Null when the host cannot embed. From host 0.86.0 it may be called from any
   thread, and so may the returned session's `SetInputEnabled` and `CloseAsync`: the host marshals to its UI thread.
 - `RefreshRequested` — raised when the host asks this workspace to refresh.
+- `SetMarker(WorkspaceMarker?)` — a dot on the tab: `Unsaved` draws amber, `Live` draws green (the body is
+  shared live, there is nothing to save). *(`Live` added in SDK 3.46.0, host 0.143.0; an older host draws no dot.)*
+  The host's Markdown workspace uses it for a live file source, see [File sources](FILE-SOURCES.md#live-file-sources-ac-1898).
+  A live session can also implement `ILivePresence` (SDK 3.47.0, host 0.144.0) to show who else is in the file: the host draws
+  their carets, selections and avatars in the colour the source sends, see [Presence](FILE-SOURCES.md#presence-in-live-files-ac-1900).
+  Its `LiveFileStatus.Saved` (SDK 3.49.0, host 0.146.0) names who last saved the file, which the status chip shows.
 - **Deliberately narrow, like `IWidgetContext`.** Cross-plugin intents (`host.SendIntent`), dialogs and the
   theme are already yours to reach: the body factory is a closure created in `Initialize`, where you captured
   the `ICockpitHost`, and the theme is app resources any control binds with `DynamicResource` — so they are not
@@ -1111,6 +1132,8 @@ in the operator's order and including the projects with no folder — the same l
 - Store the `Id`; it is stable. The `Name` is the operator's and can change, so look it up again when you show it.
 - Read **fresh on every call**. A backend part on a server gets that server's projects; so does
   `ICockpitUiHost.GetProjectsAsync()` in a view opened for a server.
+- `SourceDirectory` (Abstractions 3.58.0, host 0.153.0) is the project's folder on the machine whose project it is, so
+  a server's project names a folder on that server. Null for a project without a folder, or from an older host.
 - Default returns an empty list. Capability `projects.read`.
 
 ### `Task<string?> GetSessionProjectIdAsync(string paneId, CancellationToken cancellationToken)` {#taskstring-getsessionprojectidasyncstring-paneid-cancellationtoken-cancellationtoken}
@@ -1140,6 +1163,23 @@ host.ShowToast(
     PluginToastSeverity.Information,
     "Open in browser",
     () => OpenInBrowser(pullRequest.Url));
+```
+
+### `void ShowSystemNotification(string title, string body, Action? onClick)`
+A silent **operating-system notification**, for news the operator should see while they are not looking at the
+  cockpit, such as a new invitation. *(Added in UI SDK 3.20.0, host 0.141.0; default no-op.)*
+- Nothing is shown while the cockpit window is active, so pair it with `ShowToast` for that case. Nothing is shown
+  either when the operator turned local notifications off, or muted your plugin with **Mute notifications** in its
+  row under Options → Plugins.
+- A click brings the cockpit to the front and then runs `onClick` on the UI thread: open the place it is about.
+- It is a member of the UI host because the UI part always runs on the operator's desktop. A backend part, which
+  may run on a server, tells its UI part over the channel and lets the UI part raise it; that works the same
+  whether the backend is local or remote.
+- Local only: it never goes to the Discord webhook, since a plugin's text has no business leaving the machine.
+
+```csharp
+ui.Channel.Subscribe("inbox-changed", payload =>
+    ui.ShowSystemNotification("Depot", "New invitation: Weekly sync", () => OpenInboxTab()));
 ```
 
 ### `Task<ConsentDecision> RequestConsentAsync(ConsentRequest request)` {#taskconsentdecision-requestconsentasyncconsentrequest-request}
@@ -1927,7 +1967,8 @@ without a session, what your provider knows about its models right now. It gets 
 `PluginModelIntelligence`: prices (`PluginModelCostEstimate` with `PublicModelRef`, `Source` and `PriceModifiers`),
 peak windows (`PluginTimeWindow`, wall-clock times in an IANA zone), limits (`PluginLimit`) and quota state
 (`PluginQuotaState`, a `PluginRateLimitWindow` plus its source). Every fact carries a `PluginFactSource` (name, `AsOf`,
-`ValidFor`). Report only what you read live or from a public source: leave the property `null` or a list empty and the
+`ValidFor`). Set `IsSelfHosted` only when the provider configuration explicitly establishes that the model runs on own
+hardware; the host then shows "self-hosted / own hardware" instead of a token price. Report only what you read live or from a public source: leave the property `null` or a list empty and the
 host reads "unknown", never 0. What you see during a session (a quota reading, a rate-limit refusal, a latency) goes to
 `host.RecordModelObservation(...)`, which a host before 0.128.0 ignores. A plugin that sets the read sets
 `minHostVersion` 0.128.0.
@@ -2084,7 +2125,10 @@ public sealed record McpServerContribution(
     string Name,
     string Url,
     string? BearerToken = null,
-    McpContributionScope Scope = McpContributionScope.All);
+      McpContributionScope Scope = McpContributionScope.All)
+  {
+      public bool IncludeAgentName { get; init; }
+  }
 ```
 
 | Field | Meaning |
@@ -2096,6 +2140,7 @@ public sealed record McpServerContribution(
 | `OAuthAuthority`, `OAuthClientId` (init) | Set `OAuthAuthority` for an OAuth server; `OAuthClientId` names a client the server already knows, else the cockpit registers itself (RFC 7591). |
 | `OAuthScopes` (init, AC-1586, host 0.103.0) | The scopes the sign-in asks for, space-separated, instead of what the server advertises. |
 | `OAuthHostOnlyScopes` (init, AC-1586, host 0.103.0) | Scopes among `OAuthScopes` that only the cockpit may spend, through `CreateAuthorizedHandler(name, scope)`. No token a session is handed carries one. |
+  | `IncludeAgentName` (init, AC-1583, host 0.148.0) | Opts in to `X-Cockpit-Agent` with the launching profile's label, on SDK and TTY sessions. Defaults to false. |
 
 ### `McpContributionScope` {#mcpcontributionscope}
 

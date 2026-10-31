@@ -64,6 +64,7 @@ public partial class CockpitView : UserControl
     public CockpitView()
     {
         InitializeComponent();
+        WorkspaceTabsHost.LayoutUpdated += OnWorkspaceTabsLayoutUpdated;
 
         // AC-1040: the workspace strip's own `?`, next to the + that makes one. Hides itself when the page is
         // not there, so a build without the documentation shows the strip exactly as it was.
@@ -104,6 +105,7 @@ public partial class CockpitView : UserControl
         {
             // AC-1710: a panel left floating at the last close stands in its own window again.
             cockpit.DockHost.RestoreFloatingWindows();
+            cockpit.WorkspaceWindows.Start();
             cockpit.PropertyChanged += OnCockpitPropertyChanged;
             cockpit.SpatialNavigationRequested += OnSpatialNavigationRequested;
 
@@ -187,6 +189,9 @@ public partial class CockpitView : UserControl
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
+        _tabScrollTimer?.Stop();
+        _tabDragPointer = null;
+        _draggingTab = null;
         _resourceTimer?.Stop();
         _resourceTimer = null;
 
@@ -441,9 +446,12 @@ public partial class CockpitView : UserControl
 
         var open = cockpit.DockPanels.FirstOrDefault(panel => panel.Id == cockpit.EffectiveOpenDockPanelId);
         var offersUndock = open is not null && cockpit.DockHost.OffersUndock(open);
+        var headerActions = open?.HeaderActions ?? [];
         DockPanelUndock.IsVisible = offersUndock;
         DockPanelBack.IsVisible = cockpit.ShowBackToAssistant;
-        DockPanelHeader.IsVisible = offersUndock || cockpit.ShowBackToAssistant;
+        DockPanelHeaderActions.SetActions(headerActions, (action, exception) =>
+            cockpit.ReportToolbarActionFailure(open?.Id.Split('.')[0] ?? string.Empty, action.Title, exception.Message));
+        DockPanelHeader.IsVisible = offersUndock || cockpit.ShowBackToAssistant || headerActions.Count > 0;
         DockPanelHeaderTitle.Text = open?.Title;
     }
 
@@ -797,7 +805,8 @@ public partial class CockpitView : UserControl
             // Arm a possible reorder. Selecting first means a drag that never passes the threshold still did
             // what a click does, rather than the tab needing two gestures to both switch and move.
             _draggingTab = tab;
-            _tabDragOrigin = border.Parent is Control strip ? e.GetPosition(strip) : default;
+            _tabDragStarted = false;
+            _tabDragOrigin = e.GetPosition(WorkspaceTabsHost);
         }
     }
 
@@ -822,15 +831,21 @@ public partial class CockpitView : UserControl
         // leaving a tab glued to the pointer, the same rule the widget drag and the session rows apply.
         if (!e.GetCurrentPoint(strip).Properties.IsLeftButtonPressed)
         {
-            _draggingTab = null;
+            EndWorkspaceTabDrag(e.Pointer);
             return;
         }
 
         var position = e.GetPosition(strip);
-        if (Math.Abs(position.X - _tabDragOrigin.X) < TabDragThreshold)
+        if (!_tabDragStarted && Math.Abs(e.GetPosition(WorkspaceTabsHost).X - _tabDragOrigin.X) < TabDragThreshold)
         {
             return;
         }
+        if (!_tabDragStarted)
+        {
+            _tabDragStarted = true;
+            e.Pointer.Capture(WorkspaceTabsHost);
+        }
+        UpdateWorkspaceTabDragScroll(e);
 
         // Which container the pointer is over decides the drop index — measured against the tabs themselves
         // rather than arithmetic on widths, since they are as wide as their names.
@@ -853,17 +868,17 @@ public partial class CockpitView : UserControl
         var draggingId = _draggingTab.Id;
         _ = cockpit.Workspaces.MoveWorkspaceAsync(draggingId, targetIndex);
         _draggingTab = cockpit.Workspaces.Tabs.FirstOrDefault(tab => tab.Id == draggingId);
-        _tabDragOrigin = position;
+        _tabDragOrigin = e.GetPosition(WorkspaceTabsHost);
     }
 
-    private void OnWorkspaceTabPointerReleased(object? sender, PointerReleasedEventArgs e) => _draggingTab = null;
+    private void OnWorkspaceTabPointerReleased(object? sender, PointerReleasedEventArgs e) => EndWorkspaceTabDrag(e.Pointer);
 
-    // Double-click a tab to rename it in place — the same inline edit a session row uses.
+    // Double-click a tab to rename it in place — the same inline edit a session row uses; on a preview tab it pins it.
     private void OnWorkspaceTabDoubleTapped(object? sender, TappedEventArgs e)
     {
-        if (sender is Border { DataContext: WorkspaceTabViewModel tab })
+        if (sender is Border { DataContext: WorkspaceTabViewModel tab } && DataContext is CockpitViewModel cockpit)
         {
-            tab.BeginRename();
+            _ = cockpit.Workspaces.DoubleClickTabAsync(tab);
         }
     }
 
@@ -871,7 +886,7 @@ public partial class CockpitView : UserControl
     // read it straight off the sender — the same shape as the session rows' context menu.
     private void OnRenameWorkspaceRequested(object? sender, RoutedEventArgs e)
     {
-        if (sender is Control { DataContext: WorkspaceTabViewModel tab })
+        if (sender is Control { DataContext: WorkspaceTabViewModel { CanRename: true } tab })
         {
             tab.BeginRename();
         }

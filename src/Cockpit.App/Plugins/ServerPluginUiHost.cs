@@ -27,16 +27,17 @@ internal sealed class ServerPluginUiHost(
     Func<string, CancellationToken, Task> mcpSignOut,
     Func<Task<IReadOnlyList<PluginProfileInfo>>> profiles,
     Func<Task<IReadOnlyList<PluginProjectInfo>>> projects,
-    ServerManagedClis managedClis) : ICockpitUiHost
+    ServerManagedClis managedClis,
+    string sourceKey = "server") : ICockpitUiHost
 {
-    private readonly List<Action> _saved = [];
+    private readonly List<Func<Task>> _saved = [];
     private readonly Dictionary<string, Func<string?, IPluginProviderConfigView>> _providerViews = new(StringComparer.Ordinal);
 
     public IReadOnlyDictionary<string, Func<string?, IPluginProviderConfigView>> ProviderConfigViews => _providerViews;
 
     public Func<Control>? CreateSettingsView { get; private set; }
 
-    public IReadOnlyList<Action> SettingsSaved => _saved;
+    public IReadOnlyList<Func<Task>> SettingsSaved => _saved;
 
     public IPluginUiChannel Channel => channel;
 
@@ -50,7 +51,9 @@ internal sealed class ServerPluginUiHost(
 
     public Task ShowSettingsAsync() => Task.CompletedTask;
 
-    public void OnSettingsSaved(Action callback) => _saved.Add(callback);
+    public void OnSettingsSaved(Action callback) => _saved.Add(() => { callback(); return Task.CompletedTask; });
+
+    public void OnSettingsSaved(Func<Task> callback) => _saved.Add(callback);
 
     public void AddServerSettings(Func<IPluginUiChannel, Control> createView)
     {
@@ -112,6 +115,19 @@ internal sealed class ServerPluginUiHost(
 
     public Task OpenWorkspaceAsync(string workspaceTypeId) => Task.CompletedTask;
 
+    public Task OpenWorkspaceAsync(string workspaceTypeId, WorkspaceOpenOptions options) => Task.CompletedTask;
+
+    public void AddFileWorkspaceType(string workspaceTypeId, string title)
+    {
+        if (local is CockpitUiHost native)
+        {
+            native.AddRemoteFileWorkspaceType(workspaceTypeId, title, sourceKey, channel);
+        }
+    }
+
+    public Task OpenFileWorkspaceAsync(string workspaceTypeId, Cockpit.Plugins.Abstractions.UI.Files.FileWorkspaceOpenOptions options) =>
+        local is CockpitUiHost native ? native.OpenRemoteFileWorkspaceAsync(workspaceTypeId, sourceKey, options) : Task.CompletedTask;
+
     public Task OpenDockPanelAsync(string panelId) => Task.CompletedTask;
 
     public void SetStatusText(string? text)
@@ -124,11 +140,13 @@ internal sealed class ServerPluginUiHost(
         local.ShowDialogAsync(title, createContent, width, height);
 
     public Task ShowDialogAsync(string title, Func<Control> createContent, string singleInstanceKey, double width = 720, double height = 560) =>
-        local.ShowDialogAsync(title, createContent, singleInstanceKey, width, height);
+        local.ShowDialogAsync(title, createContent, $"server:{sourceKey}:{singleInstanceKey}", width, height);
 
     public Task ShowNewSessionDialogAsync(NewSessionPrefill? prefill = null, Action<string>? onStarted = null, Action? onCancelled = null) => Task.CompletedTask;
 
     public Control CreateMarkdownView(string markdown) => local.CreateMarkdownView(markdown);
+
+    public IMarkdownEditor? CreateMarkdownEditor(string markdown) => local.CreateMarkdownEditor(markdown);
 
     public Control CreateHelpHint(string article, string? section = null, string? label = null) => local.CreateHelpHint(article, section, label);
 
@@ -166,6 +184,10 @@ internal sealed class ServerPluginUiHost(
 
     public Task SetClipboardTextAsync(string text) => local.SetClipboardTextAsync(text);
 
+    public void AddLinkHandler(LinkHandlerRegistration registration)
+    {
+    }
+
     public Task<bool> ConfirmAsync(string title, string message, string confirmLabel = "Confirm") => local.ConfirmAsync(title, message, confirmLabel);
 
     public void ShowToast(string message, PluginToastSeverity severity = PluginToastSeverity.Information, string? actionLabel = null, Action? onAction = null) =>
@@ -180,6 +202,9 @@ internal sealed class ServerPluginUiHost(
     public Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync() => profiles();
 
     public Task<IReadOnlyList<PluginProjectInfo>> GetProjectsAsync() => projects();
+
+    // Already the server's: a screen opened here manages only this server.
+    public Task<IReadOnlyList<PluginServerTarget>> GetServerTargetsAsync() => Task.FromResult<IReadOnlyList<PluginServerTarget>>([]);
 
     public Task SendToSessionAsync(string paneId, string text) => Task.CompletedTask;
 

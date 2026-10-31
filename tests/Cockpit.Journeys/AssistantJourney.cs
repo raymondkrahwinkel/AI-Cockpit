@@ -148,6 +148,46 @@ public sealed class AssistantJourney
         });
         Assert.False(HeadlessAvalonia.Run(() => card.IsAwaitingAnswer));
 
+        // AC-1937: a card the operator settled in words is closed by the assistant, by the id it was given; one the
+        // operator no longer cares about goes with their ✕. Both leave Questions for you and stay in the conversation.
+        var asked = await JourneyHost.CallAsync(assistant, "ask_structured_question", new()
+        {
+            ["question"] = "Which Depot branch?",
+            ["options"] = new[] { new { label = "main" }, new { label = "release" } },
+            ["projectIds"] = new[] { depot.Id },
+        });
+        await JourneyHost.CallAsync(assistant, "ask_structured_question", new()
+        {
+            ["question"] = "Tag the release?",
+            ["options"] = new[] { new { label = "Yes" }, new { label = "No" } },
+        });
+        var open = await JourneyHost.CallAsync(assistant, "list_open_questions", new());
+        var questionId = asked["questionId"]?.GetValue<string>();
+        Assert.Equal(
+            [(questionId, "Which Depot branch?"), (open["questions"]?[1]?["questionId"]?.GetValue<string>(), "Tag the release?")],
+            open["questions"]?.AsArray().Select(row => (row?["questionId"]?.GetValue<string>(), row?["question"]?.GetValue<string>())).ToList());
+        var resolved = await JourneyHost.CallAsync(assistant, "resolve_structured_question", new()
+        {
+            ["questionId"] = questionId,
+            ["status"] = "answered_in_chat",
+            ["note"] = "the hotfix branch",
+        });
+        var again = await JourneyHost.CallAsync(assistant, "resolve_structured_question", new() { ["questionId"] = questionId, ["status"] = "obsolete" });
+        Assert.True(resolved["ok"]?.GetValue<bool>());
+        Assert.False(again["ok"]?.GetValue<bool>());
+
+        var (afterResolve, depotWaiting, history) = HeadlessAvalonia.Run(() =>
+        {
+            chatSession.DismissQuestionCommand.Execute(chatSession.OpenQuestions.Single(row => row.Text == "Tag the release?"));
+            return (
+                chatSession.OpenQuestionCount,
+                chatSession.OpenQuestionCountIn(depot.Id),
+                transcript.Where(row => row.IsResolved).Select(row => row.ResolutionText).ToList());
+        });
+        Assert.Equal((0, 0), (afterResolve, depotWaiting));
+        Assert.Equal(["Answered in chat · the hotfix branch", "Dismissed"], history);
+        Assert.Empty((await JourneyHost.CallAsync(assistant, "list_open_questions", new()))["questions"]?.AsArray() ?? []);
+
         // WayMark's thread closed by the operator, and back by itself once WayMark has something new.
         var closed = HeadlessAvalonia.Run(() =>
         {
@@ -165,6 +205,31 @@ public sealed class AssistantJourney
 
         Assert.Equal([waymark.Id], closed);
         Assert.Empty(HeadlessAvalonia.Run(() => chat.ClosedThreadItems.ToList()));
+
+        // AC-1880: a long conversation runs on, short and long turns mixed, while the operator reads Questions for you;
+        // back in the window, scrolled through in All and in Depot's thread, it never paints an empty pane.
+        var empty = 0;
+        await HeadlessAvalonia.RunAsync(async () =>
+        {
+            chat.SelectedThreadItem = chat.ThreadItems.Single(item => item.Kind == AssistantThreadItemKind.Questions);
+            for (var turn = 0; turn < 24; turn++)
+            {
+                chat.InputText = string.Join("\n\n", Enumerable.Repeat($"turn {turn} for Depot, long enough to wrap in the window", turn % 2 == 0 ? 1 : 14));
+                await chat.SendCommand.ExecuteAsync(null);
+                var echo = $"echo: turn {turn} ";
+                await Until.CollectionHolds(transcript, () => transcript.Any(row => row.Kind == TranscriptEntryKind.AssistantText && row.Text.StartsWith(echo, StringComparison.Ordinal)));
+            }
+
+            var view = opened.Task.Result.ChatView;
+            chat.SelectedThreadItem = chat.ThreadItems.Single(item => item.Kind == AssistantThreadItemKind.All);
+            await AssistantChatScrolling.PumpAsync(20);
+            empty += await AssistantChatScrolling.UpAndDownAsync(view, 60);
+            chat.SelectedThreadItem = chat.ThreadItems.Single(item => item.ProjectId == depot.Id);
+            await AssistantChatScrolling.PumpAsync(20);
+            empty += await AssistantChatScrolling.UpAndDownAsync(view, 60);
+        });
+
+        Assert.Equal(0, empty);
     }
 
     // Switched on, with an SDK profile of its own; a second profile for it to put a session on; and two projects.

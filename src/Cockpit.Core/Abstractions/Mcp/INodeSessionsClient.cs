@@ -1,4 +1,5 @@
 using Cockpit.Core.Abstractions.Assistant;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Mcp;
 
 namespace Cockpit.Core.Abstractions.Mcp;
@@ -21,6 +22,9 @@ public interface INodeSessionsClient
     /// it comes back as <see cref="NodeSessionsSnapshot.Error"/> rather than an exception.
     /// </summary>
     Task<NodeSessionsSnapshot> ReadAsync(string nodeName, CancellationToken cancellationToken = default);
+
+    Task<ISessionHandle?> OpenSessionAsync(string nodeName, string paneId, CancellationToken cancellationToken = default) =>
+        Task.FromResult<ISessionHandle?>(null);
 
     /// <summary>
     /// Starts a session on <paramref name="nodeName"/> under <paramref name="profileLabel"/>, optionally for one of
@@ -65,20 +69,6 @@ public interface INodeSessionsClient
     /// unreachable node — see <see cref="NodeTranscriptRead.Error"/>.
     /// </summary>
     Task<NodeTranscriptRead> ReadTranscriptAsync(string nodeName, string paneId, int count, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// AC-1322: the messages agents on <paramref name="nodeName"/> addressed to their assistant while this cockpit
-    /// was its controller, oldest first. <paramref name="afterMessageId"/> is the last id this cockpit already
-    /// holds: the node drops everything up to and including it and returns what follows, so a poll that fails
-    /// leaves the node holding the same messages for the next one. Never throws for an unreachable node — see <see cref="NodeInboxBatch.Error"/>.
-    /// </summary>
-    Task<NodeInboxBatch> ReadInboxAsync(string nodeName, string? afterMessageId, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// AC-1324: answers one open Allow/Deny question on <paramref name="nodeName"/> — the operator's click on the
-    /// row this cockpit drew for it. Never throws for an unreachable node — see <see cref="NodePermissionAnswer.Error"/>.
-    /// </summary>
-    Task<NodePermissionAnswer> AnswerPermissionAsync(string nodeName, string paneId, string toolUseId, bool allow, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// AC-1326: the last snapshot <see cref="ReadAsync"/> succeeded with for <paramref name="nodeName"/> and when

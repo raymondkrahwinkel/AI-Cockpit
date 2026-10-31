@@ -17,8 +17,10 @@ internal sealed class ClaudeSdkUsage
     private readonly Dictionary<string, PluginRateLimitWindow> _windows = new(StringComparer.Ordinal);
     private readonly ClaudeModelIntelligence? _intelligence;
     private readonly Action<PluginModelObservation>? _recordObservation;
+    private readonly string? _profile;
 
     private double? _contextUsedPercent;
+    private string? _model;
 
     private volatile PluginSessionStatus? _status;
 
@@ -26,10 +28,14 @@ internal sealed class ClaudeSdkUsage
     // what a session reports before its first turn settles.
     public PluginSessionStatus? Status => _status;
 
+    public void ObserveModel(string? model) => _model = string.IsNullOrWhiteSpace(model) ? null : model;
+
     public ClaudeSdkUsage(
         ClaudeModelIntelligence? intelligence = null,
-        Action<PluginModelObservation>? recordObservation = null)
+        Action<PluginModelObservation>? recordObservation = null,
+        string? profile = null)
     {
+        _profile = profile;
         _intelligence = intelligence;
         _recordObservation = recordObservation;
     }
@@ -59,7 +65,7 @@ internal sealed class ClaudeSdkUsage
             }
         }
 
-        _intelligence?.ObserveWindows(windows.Values, "Claude get_usage", DateTimeOffset.UtcNow, _recordObservation);
+        _intelligence?.ObserveWindows(windows.Values, "Claude get_usage", DateTimeOffset.UtcNow, _recordObservation, _model, _profile);
     }
 
     // Folds in a `get_context_usage` reply — the CLI's own `percentage`, the figure `/context` prints. A reply
@@ -104,12 +110,12 @@ internal sealed class ClaudeSdkUsage
 
         if (window is not null)
         {
-            _intelligence?.ObserveWindows([window], "Claude rate_limit_event", asOf, _recordObservation);
+            _intelligence?.ObserveWindows([window], "Claude rate_limit_event", asOf, _recordObservation, _model, _profile);
         }
 
         if (_IsRateLimitRefusal(root))
         {
-            _recordObservation?.Invoke(new PluginModelObservation(ClaudeProviderIds.Claude, PluginModelObservationKind.RateLimitRefusal, asOf));
+            _recordObservation?.Invoke(new PluginModelObservation(ClaudeProviderIds.Claude, PluginModelObservationKind.RateLimitRefusal, asOf) { Model = _model, Profile = _profile });
         }
     }
 

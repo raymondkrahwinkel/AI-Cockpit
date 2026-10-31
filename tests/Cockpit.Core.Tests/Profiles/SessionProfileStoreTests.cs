@@ -66,7 +66,9 @@ public class SessionProfileStoreTests : IDisposable
         {
             new("claude", ClaudePluginProfile.Create(@"C:\Users\raymo\.claude", null)),
             new("local-ollama", new OllamaConfig("http://localhost:11434", "llama3.1", "You are helpful.")),
-            new("local-lmstudio", new LmStudioConfig("http://localhost:1234", "qwen2.5-7b-instruct", "secret-key", "Be concise.")),
+            new("local-lmstudio", new LmStudioConfig("http://localhost:1234", "qwen2.5-7b-instruct", "secret-key", "Be concise.",
+                ContextTokens: 32_768, LoadOptions: new LmStudioLoadOptions(1, 1, true, "q8_0", "q8_0", true, true,
+                    DraftMaxTokens: 3, DraftMinTokens: 0, DraftMinContinueProbability: 0), EnableThinking: true)),
         };
 
         await store.SaveAsync(profiles);

@@ -13,6 +13,11 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 public sealed record PluginModelIntelligence
 {
     /// <summary>
+    /// Whether this profile runs the configured model on the operator's own hardware, so public token prices do not apply.
+    /// </summary>
+    public bool IsSelfHosted { get; init; }
+
+    /// <summary>
     /// The provider's models with their price, <see cref="PluginModelCostEstimate.PublicModelRef"/> and modifiers.
     /// </summary>
     public IReadOnlyList<PluginModelCostEstimate> Models { get; init; } = [];
@@ -31,4 +36,10 @@ public sealed record PluginModelIntelligence
     /// How far each usage window stood at its last reading.
     /// </summary>
     public IReadOnlyList<PluginQuotaState> Quota { get; init; } = [];
+
+    /// <summary>
+    /// The key this read is about, the same one the provider puts on <see cref="PluginModelObservation.Profile"/> (AC-1982),
+    /// so the host can match what it learned over time to this profile. <see langword="null"/> when the provider cannot tell.
+    /// </summary>
+    public string? Profile { get; init; }
 }

@@ -109,11 +109,11 @@ internal sealed class DepotInboxService : IAsyncDisposable
             _signedInBefore = true;
             if (!await _EnsureHubAsync(unread.UserId, cancellationToken).ConfigureAwait(false))
             {
-                return new DepotInboxPage(count with { State = DepotInboxState.Unreachable }, messages, DateTimeOffset.UtcNow);
+                return new DepotInboxPage(count with { State = DepotInboxState.Unreachable }, messages, DateTimeOffset.UtcNow, unread.UserId);
             }
 
             _attempt = 0;
-            return new DepotInboxPage(count, messages, DateTimeOffset.UtcNow);
+            return new DepotInboxPage(count, messages, DateTimeOffset.UtcNow, unread.UserId);
         }
         catch (Exception exception) when (exception is HttpRequestException or JsonException or NotSupportedException
             || (exception is TaskCanceledException && !cancellationToken.IsCancellationRequested))
@@ -233,7 +233,7 @@ internal sealed class DepotInboxService : IAsyncDisposable
     private DepotInboxMessage? _Message(_Listed listed) =>
         _Absolute(listed.OpenUrl) is not { } openUrl ? null : new DepotInboxMessage(
             listed.Id, listed.Kind, listed.IsRead, listed.Handled, listed.CreatedAt, listed.Organization, listed.Summary ?? string.Empty, openUrl,
-            listed.Note is null ? null : listed.Note with { OpenUrl = _Absolute(listed.Note.OpenUrl) });
+            listed.Note is null ? null : listed.Note with { OpenUrl = _Absolute(listed.Note.OpenUrl) }, listed.Inviter);
 
     // Depot's links are root-relative; anything else (another host, a scheme) is not opened from here.
     private string? _Absolute(string? relative) =>
@@ -245,5 +245,5 @@ internal sealed class DepotInboxService : IAsyncDisposable
 
     private sealed record _Listed(
         string Id, string Kind, bool IsRead, bool Handled, DateTimeOffset CreatedAt, DepotInboxOrganization? Organization,
-        string? Summary, string? OpenUrl, DepotInboxNote? Note);
+        string? Summary, string? OpenUrl, DepotInboxNote? Note, string? Inviter = null);
 }

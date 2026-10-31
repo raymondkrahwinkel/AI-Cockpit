@@ -16,6 +16,8 @@ internal sealed class VoiceSettingsEntry
 
     public VoiceBackendPreference BackendPreference { get; set; } = VoiceBackendPreference.Auto;
 
+    public string GpuDeviceId { get; set; } = "";
+
     public string PushToTalkKeyName { get; set; } = "F9";
 
     public bool GlobalPushToTalk { get; set; }
@@ -53,6 +55,7 @@ internal sealed class VoiceSettingsEntry
         ModelName = settings.ModelName,
         ModelAutoSelected = settings.ModelAutoSelected,
         BackendPreference = settings.BackendPreference,
+        GpuDeviceId = settings.GpuDeviceId,
         PushToTalkKeyName = settings.PushToTalkKeyName,
         GlobalPushToTalk = settings.GlobalPushToTalk,
         AutoSubmitAfterVoice = settings.AutoSubmitAfterVoice,
@@ -76,6 +79,7 @@ internal sealed class VoiceSettingsEntry
         // it to the recommendation behind the operator's back.
         ModelAutoSelected = ModelAutoSelected ?? false,
         BackendPreference = BackendPreference,
+        GpuDeviceId = GpuDeviceId ?? "",
         PushToTalkKeyName = PushToTalkKeyName,
         GlobalPushToTalk = GlobalPushToTalk,
         AutoSubmitAfterVoice = AutoSubmitAfterVoice,

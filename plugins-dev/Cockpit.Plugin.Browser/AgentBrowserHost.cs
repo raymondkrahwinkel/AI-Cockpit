@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Plugin.Browser;
@@ -15,7 +16,68 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
 
     private readonly object _gate = new();
     private readonly Dictionary<string, Running> _running = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Running> _retained = new(StringComparer.Ordinal);
+    internal Func<Guid, IReadOnlySet<string>>? RetainTargets { get; set; }
     private bool _disposed;
+    private readonly SemaphoreSlim _startGate = new(1, 1);
+    private readonly Dictionary<string, long> _epochs = new(StringComparer.Ordinal);
+
+    public async Task<string?> GetOrCreateAsync(string paneId, CancellationToken cancellationToken = default)
+    {
+        long epoch;
+        lock (_gate) { epoch = _epochs.GetValueOrDefault(paneId); }
+        await _startGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            lock (_gate)
+            {
+                if (_disposed || _epochs.GetValueOrDefault(paneId) != epoch)
+                {
+                    return null;
+                }
+            }
+            if (SessionFor(paneId) is { } current)
+            {
+                return current.Endpoint;
+            }
+
+            lock (_gate)
+            {
+                if (_disposed || _running.ContainsKey(paneId))
+                {
+                    return null;
+                }
+            }
+            if (resolveExecutable() is not { } executable)
+            {
+                return null;
+            }
+            return await StartAsync(paneId, executable, Environment.IsPrivilegedProcess, cancellationToken, epoch).ConfigureAwait(false);
+        }
+        finally { _startGate.Release(); }
+    }
+
+    public sealed record Session(Guid Generation, string Endpoint, string Upstream, bool OperatorDrives, CancellationToken Ended);
+
+    internal bool OwnBoundary(string paneId, Guid generation, IDisposable boundary)
+    {
+        lock (_gate)
+        {
+            if (!_running.TryGetValue(paneId, out var running) || running.Generation != generation || running.Stopped) return false;
+            running.Boundary = boundary;
+            return true;
+        }
+    }
+
+    public Session? SessionFor(string paneId)
+    {
+        lock (_gate)
+        {
+            return _running.TryGetValue(paneId, out var running) && running is { Stopped: false, Proxy: not null, Upstream: not null }
+                && !running.Exited
+                ? new Session(running.Generation, running.Proxy.Endpoint, running.Upstream, running.Proxy.OperatorDrives, running.Lifetime.Token) : null;
+        }
+    }
 
     // The set of live agent browsers or who drives one changed (AC-1713).
     public event Action? Changed;
@@ -23,6 +85,13 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
     // Starts (or restarts, with a fresh empty profile) the browser of one session and returns its CDP endpoint,
     // or null when there is no browser to start or it did not come up.
     public async Task<string?> StartAsync(string paneId, CancellationToken cancellationToken = default)
+    {
+        await _startGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try { return await StartCoreAsync(paneId, cancellationToken).ConfigureAwait(false); }
+        finally { _startGate.Release(); }
+    }
+
+    private async Task<string?> StartCoreAsync(string paneId, CancellationToken cancellationToken)
     {
         Stop(paneId);
         if (resolveExecutable() is not { } executable)
@@ -34,8 +103,21 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
         return await StartAsync(paneId, executable, Environment.IsPrivilegedProcess, cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task<string?> StartAsync(string paneId, string executable, bool noSandbox, CancellationToken cancellationToken)
+    private async Task<string?> StartAsync(string paneId, string executable, bool noSandbox, CancellationToken cancellationToken, long? expectedEpoch = null)
     {
+        long epoch;
+        lock (_gate)
+        {
+            if (_disposed)
+            {
+                return null;
+            }
+            epoch = _epochs.GetValueOrDefault(paneId);
+            if (expectedEpoch is { } expected && epoch != expected)
+            {
+                return null;
+            }
+        }
         var profile = Path.Combine(profilesRoot, Guid.NewGuid().ToString("N"));
         if (OperatingSystem.IsWindows())
         {
@@ -59,7 +141,7 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
         var running = new Running(process, profile);
         lock (_gate)
         {
-            if (_disposed)
+            if (_disposed || _epochs.GetValueOrDefault(paneId) != epoch)
             {
                 running.Stop();
                 return null;
@@ -68,17 +150,27 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
             _running[paneId] = running;
         }
 
-        var port = await ReadPortAsync(running, cancellationToken).ConfigureAwait(false);
+        int? port;
+        try { port = await ReadPortAsync(running, cancellationToken).ConfigureAwait(false); }
+        catch (OperationCanceledException) { Stop(paneId); throw; }
         if (port is null)
         {
             // Said out loud: a browser that dies before it listens ("No usable sandbox!" on Ubuntu 23.10+) is otherwise
             // only a session without an endpoint.
-            var exited = running.Process.HasExited;
+            lock (_gate)
+            {
+                if (!_running.TryGetValue(paneId, out var current) || current != running)
+                {
+                    return null;
+                }
+            }
+            var exited = running.Exited;
             if (exited)
             {
                 // The async overload also waits for the redirected stderr to drain, so the reason is in `errors`.
                 using var drain = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-                await running.Process.WaitForExitAsync(drain.Token).ContinueWith(_ => { }, TaskScheduler.Default).ConfigureAwait(false);
+                try { await running.Process.WaitForExitAsync(drain.Token).ContinueWith(_ => { }, TaskScheduler.Default).ConfigureAwait(false); }
+                catch (InvalidOperationException) { }
             }
 
             Stop(paneId);
@@ -88,16 +180,25 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
             if (exited && !noSandbox && OperatingSystem.IsLinux() && IsSandboxFailure(reason))
             {
                 Report(LogLevel.Warning, $"the agent browser '{executable}' has no usable sandbox here, so it runs without one: {reason}");
-                return await StartAsync(paneId, executable, noSandbox: true, cancellationToken).ConfigureAwait(false);
+                return await StartAsync(paneId, executable, noSandbox: true, cancellationToken, epoch + 1).ConfigureAwait(false);
             }
 
-            Report(LogLevel.Error, $"the agent browser '{executable}' did not come up ({(exited ? $"exit {running.Process.ExitCode}" : $"no port within {StartTimeout.TotalSeconds:0}s")}): {reason}");
+            Report(LogLevel.Error, $"the agent browser '{executable}' did not come up ({(exited ? "process exited" : $"no port within {StartTimeout.TotalSeconds:0}s")}): {reason}");
             return null;
         }
 
         // Playwright is given the proxy's endpoint (AC-1713); the browser's own stays with the host.
-        running.Upstream = $"http://127.0.0.1:{port}";
-        running.Proxy = AgentCdpProxy.Start(port.Value);
+        lock (_gate)
+        {
+            if (_disposed || !_running.TryGetValue(paneId, out var current) || current != running)
+            {
+                return null;
+            }
+            running.Upstream = $"http://127.0.0.1:{port}";
+            running.Proxy = AgentCdpProxy.Start(port.Value);
+            process.Exited += (_, _) => _ = Task.Run(() => BrowserExited(running));
+            process.EnableRaisingEvents = true;
+        }
         Changed?.Invoke();
         return running.Proxy.Endpoint;
     }
@@ -115,15 +216,17 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
     {
         lock (_gate)
         {
-            return [.. _running.Where(pair => pair.Value is { Stopped: false, Upstream: not null, Proxy: not null }).Select(pair => (pair.Key, pair.Value.Upstream!, pair.Value.Proxy!.OperatorDrives))];
+            return [.. _running.Where(pair => pair.Value is { Stopped: false, Upstream: not null, Proxy: not null }).Select(pair => (pair.Key, pair.Value.Upstream!, pair.Value.Proxy!.OperatorDrives)),
+                .. _retained.Select(pair => (pair.Key, pair.Value.Upstream!, true))];
         }
     }
 
-    // Raymond takes the surface of one session, or hands it back. False when the session has no live browser.
+    // You take the surface of one session, or hand it back. False when the session has no live browser.
     public bool SetOperatorDrives(string paneId, bool drives)
     {
         lock (_gate)
         {
+            if (_retained.ContainsKey(paneId)) return drives;
             if (_running.TryGetValue(paneId, out var running) is false || running is not { Stopped: false, Proxy: { } proxy })
             {
                 return false;
@@ -149,17 +252,18 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
         Running? running;
         lock (_gate)
         {
-            if (_running.TryGetValue(paneId, out running) is false || running.Stopped)
+            if (!_running.TryGetValue(paneId, out running) || running.Stopped) return false;
+            if ((RetainTargets?.Invoke(running.Generation).Count ?? 0) == 0)
             {
-                return false;
+                running.Stopped = true;
+                running.Lifetime.Cancel();
+                running.Proxy?.MarkStopped();
+                running.KillBrowser();
+                Changed?.Invoke();
+                return true;
             }
-
-            running.Stopped = true;
         }
-
-        running.Proxy?.MarkStopped();
-        running.KillBrowser();
-        Changed?.Invoke();
+        Stop(paneId);
         return true;
     }
 
@@ -177,13 +281,89 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
         lock (_gate)
         {
             _running.Remove(paneId, out running);
+            _epochs[paneId] = _epochs.GetValueOrDefault(paneId) + 1;
         }
 
         if (running is not null)
         {
+            running.Stopped = true;
+            running.Lifetime.Cancel();
+            running.Proxy?.Dispose();
+            var keep = RetainTargets?.Invoke(running.Generation) ?? new HashSet<string>();
+            if (keep.Count > 0 && running.Upstream is not null && !running.Exited)
+            {
+                var key = "retained:" + running.Generation.ToString("N");
+                lock (_gate) { _retained[key] = running; }
+                _ = Task.Run(async () =>
+                {
+                    try { await CloseSelfTargetsAsync(running, keep).ConfigureAwait(false); }
+                    catch (Exception ex)
+                    {
+                        Report(LogLevel.Warning, $"Closing self tabs failed ({ex.GetType().Name}); closing the retained browser.");
+                        CloseRetained(key);
+                    }
+                });
+            }
+            else running.Stop();
+            Changed?.Invoke();
+        }
+    }
+
+    private static async Task CloseSelfTargetsAsync(Running running, IReadOnlySet<string> keep)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var http = new HttpClient();
+        using var pages = JsonDocument.Parse(await http.GetStringAsync(running.Upstream + "/json/list", timeout.Token).ConfigureAwait(false));
+        foreach (var page in pages.RootElement.EnumerateArray().Where(p => p.GetProperty("type").GetString() == "page"))
+        {
+            var target = page.GetProperty("id").GetString()!;
+            if (!keep.Contains(target))
+            {
+                using var response = await http.GetAsync(running.Upstream + "/json/close/" + target, timeout.Token).ConfigureAwait(false);
+                if (response.StatusCode != System.Net.HttpStatusCode.NotFound) response.EnsureSuccessStatusCode();
+            }
+        }
+    }
+
+    internal void TargetClosed(Guid generation, string target)
+    {
+        string? key;
+        lock (_gate) { key = _retained.FirstOrDefault(pair => pair.Value.Generation == generation).Key; }
+        if (key is not null && (RetainTargets?.Invoke(generation).Count ?? 0) == 0) CloseRetained(key);
+    }
+
+    private void BrowserExited(Running running)
+    {
+        var removed = false;
+        lock (_gate)
+        {
+            var active = _running.FirstOrDefault(pair => pair.Value == running).Key;
+            var retained = _retained.FirstOrDefault(pair => pair.Value == running).Key;
+            if (active is not null) removed = _running.Remove(active);
+            if (retained is not null) removed |= _retained.Remove(retained);
+        }
+        if (removed)
+        {
             running.Stop();
             Changed?.Invoke();
         }
+    }
+
+    private void CloseRetained(string key)
+    {
+        Running? running;
+        lock (_gate) { _retained.Remove(key, out running); }
+        running?.Stop();
+        Changed?.Invoke();
+    }
+
+    internal async Task<bool> CloseTabAsync(string paneId, string target, CancellationToken token)
+    {
+        var live = Live().FirstOrDefault(entry => entry.PaneId == paneId);
+        if (live.Upstream is null) return false;
+        using var http = new HttpClient();
+        await http.GetStringAsync(live.Upstream + "/json/close/" + Uri.EscapeDataString(target), token).ConfigureAwait(false);
+        return true;
     }
 
     public void Dispose()
@@ -192,8 +372,9 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
         lock (_gate)
         {
             _disposed = true;
-            all = [.. _running.Values];
+            all = [.. _running.Values, .. _retained.Values];
             _running.Clear();
+            _retained.Clear();
         }
 
         foreach (var running in all)
@@ -217,8 +398,10 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
 
         foreach (var profile in Directory.EnumerateDirectories(profilesRoot))
         {
-            StopOwner(Path.Combine(profile, OwnerFile));
-            DeleteProfile(profile);
+            if (StopOwner(Path.Combine(profile, OwnerFile)))
+            {
+                DeleteProfile(profile);
+            }
         }
     }
 
@@ -236,27 +419,62 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
         }
     }
 
-    private static void StopOwner(string ownerFile)
+    private static bool StopOwner(string ownerFile)
     {
         try
         {
             var lines = File.Exists(ownerFile) ? File.ReadAllLines(ownerFile) : [];
             if (lines.Length < 2 || !int.TryParse(lines[0], NumberStyles.None, CultureInfo.InvariantCulture, out var id) || !long.TryParse(lines[1], NumberStyles.None, CultureInfo.InvariantCulture, out var ticks))
             {
-                return;
+                return false;
             }
 
             using var process = Process.GetProcessById(id);
             if (Math.Abs(process.StartTime.ToUniversalTime().Ticks - ticks) < TimeSpan.TicksPerSecond)
             {
-                process.Kill(entireProcessTree: true);
-                process.WaitForExit(5000);
+                return Path.GetDirectoryName(ownerFile) is { Length: > 0 } profile && Shutdown(process, profile);
             }
+            return false;
         }
         catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or IOException or Win32Exception)
         {
-            // Not running any more, or not ours to read: nothing left to stop.
+            // Without a verified root we cannot prove that its descendants have released the profile.
+            return false;
         }
+    }
+
+    private static bool Shutdown(Process process, string profile)
+    {
+        using var tree = new BrowserProcessTree(process);
+        tree.Capture();
+        // Dispose and the startup sweep are synchronous and must finish shutdown before releasing the profile.
+        try { CloseAsync(profile).GetAwaiter().GetResult(); }
+        catch (Exception ex) when (ex is IOException or HttpRequestException or OperationCanceledException or System.Net.WebSockets.WebSocketException or InvalidOperationException) { }
+        var graceful = Stopwatch.StartNew();
+        while (tree.Wait(TimeSpan.FromSeconds(5) - graceful.Elapsed))
+        {
+            if (tree.Capture() == 0)
+            {
+                return true;
+            }
+        }
+        tree.Kill();
+        return tree.Wait(TimeSpan.FromSeconds(5));
+    }
+
+    private static async Task CloseAsync(string profile)
+    {
+        if (!TryParsePort(Path.Combine(profile, "DevToolsActivePort"), out var port))
+        {
+            return;
+        }
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        using var http = new HttpClient();
+        using var version = JsonDocument.Parse(await http.GetStringAsync($"http://127.0.0.1:{port}/json/version", timeout.Token).ConfigureAwait(false));
+        var socketUrl = version.RootElement.GetProperty("webSocketDebuggerUrl").GetString()
+            ?? throw new IOException("The browser response is missing its socket URL.");
+        using var browser = await CdpPage.ConnectAsync(socketUrl, (_, _) => { }, timeout.Token).ConfigureAwait(false);
+        await browser.SendAsync("Browser.close").WaitAsync(timeout.Token).ConfigureAwait(false);
     }
 
     // Chromium's own words when it cannot set up its sandbox: user namespaces refused, or no setuid helper to fall back on.
@@ -339,7 +557,7 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, cancellationToken);
         try
         {
-            while (!running.Process.HasExited)
+            while (!running.Exited)
             {
                 if (TryParsePort(file, out var port))
                 {
@@ -393,6 +611,16 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
 
     private sealed class Running(Process process, string profile)
     {
+        public Guid Generation { get; } = Guid.NewGuid();
+        public CancellationTokenSource Lifetime { get; } = new();
+        public bool Exited
+        {
+            get
+            {
+                try { return Process.HasExited; }
+                catch (InvalidOperationException) { return true; }
+            }
+        }
         public Process Process { get; } = process;
 
         public string Profile { get; } = profile;
@@ -400,40 +628,42 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
         public string? Upstream { get; set; }
 
         public AgentCdpProxy? Proxy { get; set; }
+        public IDisposable? Boundary { get; set; }
 
         public bool Stopped { get; set; }
 
-        private bool _ended;
+        private int _ended;
 
         public void Stop()
         {
+            Lifetime.Cancel();
             Proxy?.Dispose();
             KillBrowser();
         }
 
         public void KillBrowser()
         {
-            if (_ended)
+            if (Interlocked.Exchange(ref _ended, 1) != 0)
             {
                 return;
             }
 
-            _ended = true;
+            Boundary?.Dispose();
+            var exited = false;
             try
             {
-                if (!Process.HasExited)
-                {
-                    Process.Kill(entireProcessTree: true);
-                    Process.WaitForExit(5000);
-                }
+                exited = Shutdown(Process, Profile);
             }
             catch (InvalidOperationException)
             {
                 // Already gone.
             }
 
-            Process.Dispose();
-            DeleteProfile(Profile);
+            finally { Process.Dispose(); }
+            if (exited)
+            {
+                DeleteProfile(Profile);
+            }
         }
     }
 }

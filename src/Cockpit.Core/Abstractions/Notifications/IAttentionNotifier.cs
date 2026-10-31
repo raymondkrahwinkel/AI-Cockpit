@@ -34,4 +34,12 @@ public interface IAttentionNotifier
     /// The last working session went idle: nothing is running any more. Delivered only when the operator asked for it.
     /// </summary>
     Task NotifyAllSessionsIdleAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// A plugin's own system notification (AC-1588): a silent local toast only, never the away webhook, and nothing
+    /// when local notifications are off or the operator muted <paramref name="pluginId"/>. True when the operator
+    /// clicked it.
+    /// </summary>
+    Task<bool> NotifyForPluginAsync(string pluginId, AttentionNotification notification, CancellationToken cancellationToken = default) =>
+        Task.FromResult(false);
 }

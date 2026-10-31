@@ -9,6 +9,25 @@ namespace Cockpit.Plugins.Abstractions.Docking;
 public sealed class DockPanelBadge : INotifyPropertyChanged
 {
     private int _count;
+    private SideMenuButtonBadgeTone _tone;
+
+    /// <summary>
+    /// The semantic tone, as on a side-menu badge: the default is amber, Success is green, Neutral is quiet.
+    /// UI SDK 3.21.0, host 0.142.0 and later.
+    /// </summary>
+    public SideMenuButtonBadgeTone Tone
+    {
+        get => _tone;
+        set
+        {
+            if (_tone == value)
+            {
+                return;
+            }
+            _tone = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Tone)));
+        }
+    }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 

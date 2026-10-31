@@ -52,6 +52,8 @@
          via Private=false/ExcludeAssets=runtime — same host-provided pattern as the DataGrid above, so its type
          identity is shared and the plugin folder ships no copy. 3.0.2 targets Avalonia 12. -->
     <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2" />
+    <!-- The Markdown editor's text surface (AC-1753); 12.0.0 targets Avalonia >= 12.0. -->
+    <PackageReference Include="Avalonia.AvaloniaEdit" Version="12.0.0" />
     <!-- The host provides the SVG control (AC-809), same host-provided pattern as above: shipped from a
          plugin's own zip it drags along a second SkiaSharp/HarfBuzzSharp copy and fails to render at all. -->
     <PackageReference Include="Svg.Controls.Skia.Avalonia" Version="12.0.0.13" />
@@ -80,6 +82,7 @@
          the last published release, and the renderer's glyph-drift (AC-66) and reflow/cols (AC-129) bugs
          are fixed in-tree there — a ProjectReference below. -->
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.14" />
+    <PackageReference Include="Microsoft.Diagnostics.Runtime" Version="4.0.732401" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.14" />
     <!-- In-app updates (AC-108). Referenced here as well as in Cockpit.Infrastructure because Program.Main
          calls VelopackApp directly: installing, updating and uninstalling all re-run this executable with
@@ -111,11 +114,32 @@
   <ItemGroup>
     <InternalsVisibleTo Include="Cockpit.Core.Tests" />
     <InternalsVisibleTo Include="Cockpit.App.ViewTests" />
+    <InternalsVisibleTo Include="Cockpit.LogPidProbe" />
     <!-- AC-1422: the journeys run Program's own desktop composition, not a copy of it. -->
     <InternalsVisibleTo Include="Cockpit.Journeys" />
     <!-- AC-1220: so the harness judges Avalonia's cut-off with RenderClockRecovery instead of a copy of its message. -->
     <InternalsVisibleTo Include="Cockpit.MeasurementHarness" />
   </ItemGroup>
+
+  <!-- AC-1588: Cockpit.Notify.exe (a silent toast that reports its click) beside Cockpit.App.exe, on Windows only.
+       A publish puts it in the same folder with the same runtime identifier and self-contained setting, so it runs
+       on the app's own runtime. Without it WindowsToastNotifier falls back to a toast without a click. -->
+  <!-- AC-1879: Cockpit.Hello.exe (the Windows Hello unlock) rides the same targets, built and published the same way. -->
+  <ItemGroup>
+    <_WindowsHelper Include="$(MSBuildThisFileDirectory)..\Cockpit.Notify\Cockpit.Notify.csproj" />
+    <_WindowsHelper Include="$(MSBuildThisFileDirectory)..\Cockpit.Hello\Cockpit.Hello.csproj" />
+  </ItemGroup>
+  <Target Name="BuildNotifyHelper" AfterTargets="Build"
+          Condition="'$(OS)' == 'Windows_NT' And '$(RuntimeIdentifier)' == ''">
+    <MSBuild Projects="@(_WindowsHelper)" Targets="Restore;Build"
+             Properties="Configuration=$(Configuration);OutDir=$(TargetDir)" />
+  </Target>
+  <Target Name="PublishNotifyHelper" AfterTargets="Publish"
+          Condition="$(RuntimeIdentifier.StartsWith('win'))">
+    <MSBuild Projects="@(_WindowsHelper)" Targets="Restore" Properties="RuntimeIdentifier=$(RuntimeIdentifier)" />
+    <MSBuild Projects="@(_WindowsHelper)" Targets="Publish"
+             Properties="Configuration=$(Configuration);RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=$(SelfContained);PublishDir=$([System.IO.Path]::Combine($(MSBuildProjectDirectory), $(PublishDir)))" />
+  </Target>
 
   <!-- AC-1392: the bundled plugins' build and copy, shared with Cockpit.Backend.Tests. -->
   <Import Project="..\BundledPlugins.targets" />

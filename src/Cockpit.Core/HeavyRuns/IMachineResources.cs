@@ -11,6 +11,9 @@ public interface IMachineResources
     /// </summary>
     MachineLoad Current { get; }
 
+    /// <summary>Shared pressure samples keep admission and maintenance on the same measurements.</summary>
+    IReadOnlyList<DiskSpaceSnapshot> Disks => [];
+
     /// <summary>
     /// Free bytes on the volume that holds <paramref name="directory"/>, or null when that cannot be read.
     /// </summary>

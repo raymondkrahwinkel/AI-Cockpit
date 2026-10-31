@@ -3,7 +3,7 @@ using System.Collections.Specialized;
 using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Cockpit.App.Services;
+using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Sessions;
 using Material.Icons;
 
@@ -212,6 +212,9 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
     // Compact one-line label for a collapsed tool-use row (T5): tool name + a short hint pulled from the
     // input (command/file/pattern/…), so a call reads as "Bash · dotnet build" instead of the full input
     // JSON. The full input shows once expanded; the row's own chevron renders separately as `ToggleIconKind`.
+    public string? ToolOriginLabel => Session?.RemoteServer is { } server ? $"ran on {Machine ?? server}"
+        : Session?.PaneId == Cockpit.Core.Assistant.AssistantIdentity.PaneId ? $"ran on {Machine ?? Environment.MachineName}" : null;
+
     public string ToolHeader
     {
         get
@@ -376,6 +379,7 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
     }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsRowVisible))]
     private string _text;
 
     // Collapsed by default for tool-use and standalone tool-result rows, so their input/output stays folded until the operator expands the chip.
@@ -479,6 +483,39 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
     {
         OnPropertyChanged(nameof(IsAwaitingAnswer));
         OnPropertyChanged(nameof(CanSubmitAnswers));
+    }
+
+    // AC-1937: how a broker card closed without its Send — resolved by the assistant or dismissed by the operator —
+    // and the one-line note with it. Recorded inside InputJson, next to the saved answers (TranscriptSnapshot).
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsResolved))]
+    [NotifyPropertyChangedFor(nameof(ResolutionText))]
+    private AssistantQuestionResolution? _resolution;
+
+    public bool IsResolved => Resolution is not null;
+
+    public string ResolutionText => Resolution is not { } resolution
+        ? string.Empty
+        : (resolution.Status switch
+        {
+            AssistantQuestionResolution.AnsweredInChat => "Answered in chat",
+            AssistantQuestionResolution.Obsolete => "No longer relevant",
+            AssistantQuestionResolution.Withdrawn => "Withdrawn by the assistant",
+            AssistantQuestionResolution.Dismissed => "Dismissed",
+            _ => resolution.Status,
+        }) + (resolution.Note is { Length: > 0 } note ? $" · {note}" : string.Empty);
+
+    // The resolution first, so the record the pending flag's change writes already carries it; the options freeze
+    // the way an answered card's do.
+    internal void Resolve(AssistantQuestionResolution resolution)
+    {
+        Resolution = resolution;
+        foreach (var prompt in QuestionPrompts ?? [])
+        {
+            prompt.IsAnswered = true;
+        }
+
+        IsPendingBrokerAnswer = false;
     }
 
     // --- Error severity (AC-720) ------------------------------------------------------------------------------
@@ -708,12 +745,8 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
     // controller's screen, null for every local row.
     public string? Machine { get; init; }
 
-    // AC-1324: where the click on this row goes when it is a node's question; null for a local row.
-    public NodePermissionOrigin? NodePermission { get; init; }
-
-    // AC-1324: an always-rule is written into the session's profile, and a node's profile is its own operator's
-    // to change — so a node row offers Allow and Deny only, and so does a row of a pane on a server (AC-1469).
-    public bool CanAllowAlways => NodePermission is null && Session?.IsRemote != true;
+    // AC-1469: a server's profile is its own operator's to change, so its rows offer Allow and Deny only.
+    public bool CanAllowAlways => Session?.IsRemote != true;
 
     // The proposed tool input as raw JSON; needed to build an exact-scope always-allow rule. Clamped on the way
     // in (AC-1088): a `Write` carries the whole file it is about to write, and this row outlives the turn.
@@ -852,11 +885,12 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
     // A tool call that ran without asking (never prompted for permission) — the "noise" Focus folds and Simple hides.
     public bool IsAutoTool => IsToolUse && !RequiredApproval;
 
-    // Whether the whole row shows at the current level. Text/user/assistant rows always show; an auto tool call
+    // Whether the whole row shows at the current level. Blank assistant prose needs an image; an auto tool call
     // is folded (Focus, when a non-anchor member of a collapsed run) or hidden (Simple), while a consent tool call
     // stays visible everywhere. A standalone tool result is treated as auto noise and hidden only in Simple.
     public bool IsRowVisible => Kind switch
     {
+        TranscriptEntryKind.AssistantText => HasImages || !string.IsNullOrWhiteSpace(Text),
         // Reasoning/thinking (AC-213): the developer surface only. Focus and Simple stay calm (AC-138) —
         // the row is still added to the transcript at every level, but it renders hidden below Developer.
         TranscriptEntryKind.Thinking => ReadingLevel == ReadingLevel.Developer,

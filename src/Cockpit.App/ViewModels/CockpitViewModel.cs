@@ -137,7 +137,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly SessionRestorePlanner? _sessionRestorePlanner;
     private readonly IWorktreeReconcileGate? _worktreeReconcileGate;
     private readonly ILogger<CockpitViewModel>? _logger;
-    private OptionsOpenMeasurement? _optionsOpenMeasurement;
+    private OptionsMeasurement? _optionsOpenMeasurement;
+    private OptionsMeasurement? _optionsCloseMeasurement;
 
     // Composes what a session started from a project opens with (AC-164).
     private readonly ProjectQuickStart? _projectQuickStart;
@@ -157,8 +158,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly IAppRestartService? _appRestart;
     private readonly IUpdateService? _updates;
     private readonly IUpdateSettingsStore? _updateSettingsStore;
-    // AC-1291: the source the incoming-pairing banner reads back, subscribed to from the constructor.
-    private readonly INodePairingBroker? _nodePairingBroker;
     // A static singleton, so the subscription is unwired in DisposeAsync — a view model that outlived its window would
     // otherwise be kept alive by it, and refresh a dead Security tab (AC-41).
     private readonly ISecretKeyHolder _secretKeyHolder = SecretKeyHolder.Shared;
@@ -322,7 +321,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     public ObservableCollection<PluginStatusText> PluginStatusTexts { get; } = [];
 
     // Replaced in place, so a plugin's text keeps its spot; null or blank removes it. Long text is cut, not wrapped.
-    internal void SetPluginStatusText(string pluginId, string? text) => _OnUiThread(() =>
+    internal void SetPluginStatusText(string pluginId, string? text, SideMenuButtonBadgeTone? tone = null) => _OnUiThread(() =>
     {
         var existing = PluginStatusTexts.FirstOrDefault(entry => entry.PluginId == pluginId);
         var index = existing is null ? -1 : PluginStatusTexts.IndexOf(existing);
@@ -336,7 +335,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        var entry = new PluginStatusText(pluginId, text.Length > PluginStatusTextMaxLength ? text[..PluginStatusTextMaxLength] + "…" : text);
+        var entry = new PluginStatusText(pluginId, text.Length > PluginStatusTextMaxLength ? text[..PluginStatusTextMaxLength] + "…" : text, tone);
         // AC-1764: the same line again is no change. A Replace builds a new item container that must be measured, so a
         // plugin repeating its text in a loop would otherwise keep the status bar in layout for as long as it repeats.
         if (entry == existing)
@@ -446,7 +445,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // Settings-saved callbacks (#52) keyed by plugin folder id, registered via `ICockpitHost.OnSettingsSaved` and run
     // once the host has performed that plugin's staged write (AC-1004).
-    private readonly Dictionary<string, List<Action>> _settingsSavedHandlers = [];
+    private readonly Dictionary<string, List<Func<Task>>> _settingsSavedHandlers = [];
 
     // The "Plugins" Options tab (#14): install/enable/disable/remove installed plugins.
     public PluginManagerViewModel Plugins { get; }
@@ -537,6 +536,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
+        if (!await Workspaces.ConfirmCloseAsync(workspaceId).ConfigureAwait(true))
+        {
+            return;
+        }
+
         // A plugin workspace's embedded sessions are not in Sessions, so the loop below never sees them — close
         // them here or their pty and child process would outlive the desk they belonged to (AC-122).
         CloseForWorkspace(workspaceId);
@@ -548,7 +552,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             await CloseSessionCommand.ExecuteAsync(session);
         }
 
-        await Workspaces.CloseWorkspaceCommand.ExecuteAsync(workspaceId);
+        await Workspaces.CloseConfirmedAsync(workspaceId);
     }
 
     // Answers "no" without asking when there is no dialog service (design-time/tests): a graph with no way to ask must
@@ -618,16 +622,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // True while the pending-approval banner should be shown.
     [ObservableProperty]
     private bool _hasPendingApprovals;
-
-    // AC-1291: a pairing request from another cockpit, shown here rather than only on the Nodes page — the offer
-    // lives two minutes, and nothing else on screen said it had arrived. Not dismissible: an offer the operator
-    // clicked away still refuses every retry from the other machine with a 409 nobody can see.
-    [ObservableProperty]
-    private string _incomingPairingBanner = string.Empty;
-
-    // True while a pairing offer is still waiting for an answer.
-    [ObservableProperty]
-    private bool _hasIncomingPairing;
 
     // Keep the safe-mode banner visible for the whole plugin-free run; restarting exits safe mode (AC-478).
     public bool IsSafeMode => _safeMode;
@@ -712,19 +706,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         presence.Changed += (_, _) => _OnUiThread(() => ActiveController = presence.Current);
     }
 
-    // AC-1291: reads the broker rather than tracking it, the same way the Nodes page does — an offer that expired
-    // while nobody looked reads as gone here for exactly the reason the claim would refuse it.
-    internal void RefreshIncomingPairing()
-    {
-        var pending = _nodePairingBroker?.Pending;
-        HasIncomingPairing = pending is not null;
-        IncomingPairingBanner = pending is null
-            ? string.Empty
-            : $"\"{pending.ControllerName}\" at {pending.ControllerAddress} is asking to pair with this cockpit and control the sessions on it.";
-    }
-
-    [RelayCommand]
-    private Task ShowIncomingPairing() => _ShowOptionsAsync("nodes");
 
     void IPluginContributionSink.AddPluginSideSection(string pluginId, string title, Func<Control> createView) =>
         _OnUiThread(() => PluginSideSections.Add(new PluginSideSection(pluginId, title, createView)));
@@ -812,7 +793,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // Unlike the three contributions above, registration here touches only this private dictionary — never a bound
     // ObservableCollection — and both members are reached exclusively from Avalonia UI-thread callbacks in practice (a
     // contribution's own constructor, and the settings dialog's Save click), so no dispatcher hop is needed.
-    void IPluginContributionSink.AddSettingsSavedHandler(string pluginId, Action callback)
+    void IPluginContributionSink.AddSettingsSavedHandler(string pluginId, Func<Task> callback)
     {
         if (!_settingsSavedHandlers.TryGetValue(pluginId, out var handlers))
         {
@@ -823,7 +804,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         handlers.Add(callback);
     }
 
-    void IPluginContributionSink.NotifySettingsSaved(string pluginId)
+    async Task IPluginContributionSink.NotifySettingsSavedAsync(string pluginId)
     {
         if (!_settingsSavedHandlers.TryGetValue(pluginId, out var handlers))
         {
@@ -834,7 +815,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // the list while iterating it).
         foreach (var handler in handlers.ToArray())
         {
-            handler();
+            await handler();
         }
     }
 
@@ -1097,6 +1078,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         () => Program.Services?.GetService(typeof(Cockpit.Core.Abstractions.Layout.IWindowBoundsStore)) as Cockpit.Core.Abstractions.Layout.IWindowBoundsStore);
 
     private DockPanelHost? _dockHost;
+
+    // AC-1751: where a floating workspace stands; its ✕ takes the tab's own close route.
+    internal WorkspaceWindowHost WorkspaceWindows => _workspaceWindows ??= new WorkspaceWindowHost(
+        Workspaces,
+        CloseWorkspaceWithConfirmationAsync,
+        () => Program.Services?.GetService(typeof(Cockpit.Core.Abstractions.Layout.IWindowBoundsStore)) as Cockpit.Core.Abstractions.Layout.IWindowBoundsStore);
+
+    private WorkspaceWindowHost? _workspaceWindows;
 
     internal Task PersistDockStandAsync() => _layoutSettingsStore is null ? Task.CompletedTask : _PersistLayoutSettingsAsync();
 
@@ -1518,6 +1507,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // immediately so it takes effect without reopening the dialog.
     [ObservableProperty]
     private bool _logDiagnosticSnapshots;
+
+    private DebugSettings _loadedDebugSettings = new();
 
     // Whether the orchestrator (delegation) MCP is offered to sessions (AC-40). It is a cockpit-hosted server, no
     // longer listed in the MCP-servers manager, so this Options toggle is where it is turned on or off. On by
@@ -2141,7 +2132,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         // Backend dropdown: host-aware Auto / GPU / CPU.
         VoiceBackendPreferences.Clear();
-        foreach (var choice in TranscriptionOptions.BackendChoices(capabilities))
+        foreach (var choice in TranscriptionOptions.BackendChoices(capabilities, _transcriptionAdvisor?.DetectGpus()))
         {
             VoiceBackendPreferences.Add(choice);
         }
@@ -2406,7 +2397,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         CalibrationChosenText = $"Auto runs on {_BackendLabel(calibration.ChosenBackend)}";
-        CalibrationModelText = $"Backend timings measured with model: {calibration.Model}";
+        CalibrationModelText = calibration.GpuName is { } gpuName
+            ? $"Backend timings measured with model: {calibration.Model}, GPU: {gpuName}"
+            : $"Backend timings measured with model: {calibration.Model}";
         CalibrationRationale = TranscriptionCalibrationReport.Rationale(calibration);
         _ApplyModelLadder(calibration);
         HasCalibration = true;
@@ -3225,12 +3218,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // panel that actually opens (AC-953's docked assistant).
         _dockPanelRegistry = dockPanelRegistry ?? new DockPanelRegistry();
         _WireDockPanelChanges();
+        RegisterAgentsPanel();
 
         // First: selecting a session below raises pane-visibility, which asks which workspace is active.
         // AC-1711: a scene passes the plugin workspace types it shows (--scene plugin:<name>).
         Workspaces = new WorkspacesViewModel(null, workspaceTypes: workspaceTypeRegistry);
         _WireWorkspaceVisibility();
         _MirrorSessionsIntoGrid();
+        _WireWaitingSessions();
 
         if (withSamples)
         {
@@ -3264,6 +3259,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // The Security tab: encrypting the credentials in cockpit.json at rest, and the migration either way.
     public SecurityOptionsViewModel Security { get; init; }
+
+    public SwarmOptionsViewModel Swarm { get; init; } = new();
 
     // The Options → Voice "Assistant" block (AC-543): the master switch, the Assistant Profile slot, the hotkey, and
     // read-replies-aloud.
@@ -3408,18 +3405,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // off-loopback addresses the Security tab reads to show the operator what to type into a second Cockpit.
         INodeEndpointSettingsStore? nodeEndpointSettingsStore = null,
         IEnumerable<ICockpitInternalMcpProvider>? internalMcpProviders = null,
-        // Absent in the design-time/unit-test graph, where the pairing controls stay inert rather than the dialog
-        // failing (AC-792).
-        INodePairingBroker? nodePairingBroker = null,
-        INodePairingClient? nodePairingClient = null,
         INodePairingEndpoint? nodePairingEndpoint = null,
         IMcpServerStore? mcpServerStore = null,
-        // AC-793: the second entrance to the same handshake — finding a node on the network instead of typing
-        // its address. Absent in the design-time/unit-test graph the same way the pairing pair above is; the
-        // Security tab's Discover button then does nothing rather than the dialog failing to open.
-        INodeDiscoveryClient? nodeDiscoveryClient = null,
-        // AC-795: the controller's reach into a paired node's sessions. Absent in the design-time/unit-test graph
-        // like the pairing halves above, and the node cards on the Security tab then do not appear at all.
+        // AC-1984: session operations for connected headless servers.
         INodeSessionsClient? nodeSessionsClient = null,
         // AC-927: where the launch routes say which MCP servers a session really got, so its header can name
         // those. Absent in the design-time/unit-test graph, where the header keeps showing the selection alone.
@@ -3430,12 +3418,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // AC-1321: whether a paired controller holds the line to this node. Absent in the design-time/unit-test
         // graph, where the local assistant is simply never stood down for one.
         INodeControllerPresence? controllerPresence = null,
-        // AC-1322: collects, on the node cards' poll, what agents on a paired node sent their assistant. Absent in
-        // the design-time/unit-test graph, where the cards only list.
-        INodeInboxRelay? nodeInboxRelay = null,
-        // AC-1330: rides the same poll's reachable edge to append behaviour rules both ways. Absent in the
-        // design-time/unit-test graph like the relay above.
-        IBehaviourMemorySync? behaviourSync = null,
         ISessionRegistration? sessionRegistry = null,
         ISessionControlFactory? sessionControls = null,
         Func<ISessionControl, SessionViewModel>? sdkPaneOver = null,
@@ -3453,6 +3435,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IOrgPolicy? orgPolicy = null,
         // AC-1814: Options › Model intelligence. Absent in the design-time/unit-test graph, where the page shows its empty state.
         IModelIntelligenceOptions? modelIntelligenceOptions = null,
+        Cockpit.Core.Swarm.ISwarmOptions? swarmOptions = null,
+        Cockpit.Core.Swarm.ISwarmLeadership? swarmLeadership = null,
         // AC-1846: Options › Sync. Absent in the design-time/unit-test graph, where the page lists no server.
         ISyncOptions? syncOptions = null)
     {
@@ -3464,6 +3448,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Workspaces = new WorkspacesViewModel(workspaceSettingsStore, widgetRegistry, ToastHost, workspaceTypeRegistry);
         _WireWorkspaceVisibility();
         _MirrorSessionsIntoGrid();
+        _WireWaitingSessions();
 
         // AC-951: the dock rail's tab strip reads `DockPanels` off the registry directly; the panel registered here is
         // host-internal, so — unlike the widget/workspace-type registries above — there is no late-arriving plugin to
@@ -3471,6 +3456,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _dockPanelRegistry = dockPanelRegistry;
         _WireDockPanelChanges();
         RegisterNotificationsPanel();
+        RegisterAgentsPanel();
 
         // The Security tab (encrypting the credentials at rest). Absent in the design-time/unit-test graph, and
         // the tab simply reports "not encrypted" then rather than the dialog failing to open at all.
@@ -3483,28 +3469,17 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             shellAccessSettingsStore,
             nodeEndpointSettingsStore,
             internalMcpProviders,
-            nodePairingBroker,
-            nodePairingClient,
             nodePairingEndpoint,
             mcpServerStore,
-            nodeDiscoveryClient,
-            sessionProfileStore,
-            projectStore,
             nodeSessionsClient,
-            nodeInboxRelay,
-            // AC-1324: built here rather than registered, because the conversation it draws on is this view model's.
-            nodeSessionsClient is null ? null : new NodePermissionRelay(nodeSessionsClient, () => AssistantChat?.Session),
-            behaviourSync,
             remoteServers,
             orgPolicy);
         _ = Security.RefreshAsync();
 
-        // AC-1291: here and not on the Security tab, which only subscribes once the Options window is opened — with
-        // it closed nothing was listening at all, so a pairing request reached no screen.
-        _nodePairingBroker = nodePairingBroker;
-        if (nodePairingBroker is not null)
+        Swarm = new SwarmOptionsViewModel(swarmOptions, swarmLeadership, ConfirmAsync);
+        if (swarmOptions is not null)
         {
-            nodePairingBroker.Changed += (_, _) => _OnUiThread(RefreshIncomingPairing);
+            swarmOptions.RemovalRequested += member => _OnUiThread(() => _ = Swarm.RequestRemovalAsync(member));
         }
 
         // Options → Voice → Assistant (AC-543). Absent in the design-time/unit-test graph the same way Security is,
@@ -3574,6 +3549,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _sdkPaneOver = sdkPaneOver;
         _sessionLauncher = sessionLauncher;
         _WireServerGroups(remoteServers, remotePaneOver, nodeSessionsClient, serverSignIns);
+        if (swarmOptions is not null && swarmLeadership is not null && nodeSessionsClient is not null)
+        {
+            ShowSwarm(swarmOptions, swarmLeadership, nodeSessionsClient);
+        }
         if (sessionRegistry is not null)
         {
             sessionRegistry.Changed += _OnSessionRegistryChanged;
@@ -3913,6 +3892,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         var settings = await _notificationSettingsStore.LoadAsync();
+        ToastHost.AutoDismissDelay = TimeSpan.FromSeconds(settings.ToastTimeoutSeconds > 0 ? settings.ToastTimeoutSeconds : 5);
         LocalNotificationsEnabled = settings.LocalEnabled;
         DiscordNotificationsEnabled = settings.DiscordEnabled;
         WebhookUrl = settings.WebhookUrl ?? string.Empty;
@@ -3939,7 +3919,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             ? IdleThresholdMinutes
             : (int)NotificationSettings.DefaultIdleThreshold.TotalMinutes;
 
-        var settings = new NotificationSettings
+        var settings = (await _notificationSettingsStore.LoadAsync()) with
         {
             LocalEnabled = LocalNotificationsEnabled,
             DiscordEnabled = DiscordNotificationsEnabled,
@@ -4310,7 +4290,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // One warned-flag per session pane (AC-692), not one flag for the whole cockpit — a session that has already
     // been named should not silence the toast for the next one that climbs.
-    private readonly Dictionary<string, bool> _warnedAboutSessionMemory = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _sessionsOverMemoryCap = new(StringComparer.Ordinal);
 
     // Tells each session how close it is to its own OS memory cap (AC-661), so one that is about to be cut off says
     // so on its own bar first, and past the cap offers the Kill there too (AC-700). Matched back by pane id, the
@@ -4376,30 +4356,28 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // the automatic kill that used to happen instead (AC-692). Kept beside AC-700's bar, which outlives it.
     private void _WarnAboutSessionMemory(ResourceUsage usage)
     {
-        var stillHere = new HashSet<string>(usage.Sessions.Select(session => session.PaneId), StringComparer.Ordinal);
-        foreach (var paneId in _warnedAboutSessionMemory.Keys.Where(paneId => !stillHere.Contains(paneId)).ToList())
-        {
-            _warnedAboutSessionMemory.Remove(paneId);
-        }
+        var active = usage.Sessions
+            .Where(measured => _FindMeasured(measured) is { } session && session.MemoryCapBytes is { } cap && cap > 0
+                && SessionMemoryPressure.Decide(measured.MemoryBytes, cap,
+                    _sessionsOverMemoryCap.Contains(measured.PaneId)).Warned)
+            .Select(measured => measured.PaneId).ToArray();
+        _sessionsOverMemoryCap.Clear();
+        _sessionsOverMemoryCap.UnionWith(active);
 
         foreach (var measured in usage.Sessions)
         {
             var session = _FindMeasured(measured);
             var cap = session?.MemoryCapBytes ?? 0;
-            var warned = _warnedAboutSessionMemory.GetValueOrDefault(measured.PaneId);
-            var decision = SessionMemoryPressure.Decide(measured.MemoryBytes, cap, warned);
-            _warnedAboutSessionMemory[measured.PaneId] = decision.Warned;
-
-            if (!decision.Warn || session is null)
+            if (session is null || !_sessionsOverMemoryCap.Contains(measured.PaneId))
             {
                 continue;
             }
 
-            ToastHost.Add(
+            ToastHost.AddCondition($"memory-cap:{measured.PaneId}",
                 $"'{measured.Title}' is over its {_Megabytes(cap)} memory cap, holding {_Megabytes(measured.MemoryBytes)}. Cockpit will not close it on its own.",
                 ToastSeverity.Warning,
-                actionLabel: "Kill",
-                onAction: () => _ = CloseSessionCommand.ExecuteAsync(session));
+                [new ToastAction("Kill", () => _ = CloseSessionCommand.ExecuteAsync(session))],
+                () => Sessions.Contains(session) && _sessionsOverMemoryCap.Contains(session.PaneId));
         }
     }
 
@@ -4513,9 +4491,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     {
         _WarnAboutMemory(usage);
         _WarnAboutSessionCaps(usage);
+        _ReportSessionProcesses(usage);
         _WarnAboutSessionMemory(usage);
         _WarnAboutSessionPressure(usage);
-        _ReportSessionProcesses(usage);
+        ToastHost.RecheckConditions();
 
         ResourceCpu = $"CPU {usage.CpuPercent:0}%  ·  RAM ";
         ResourceMemory = _Megabytes(usage.MemoryBytes);
@@ -4901,7 +4880,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         UpdateStatus = "Restarting…";
-        updates.ApplyDownloadedUpdateAndRestart();
+        try { updates.ApplyDownloadedUpdateAndRestart(); }
+        finally
+        {
+            // A refused/no-op apply returns normally; the operator must still be able to use this process.
+            AppRestartService.CancelWorkspaceClose();
+        }
     }
 
     // Downloads the build on offer and asks for it to be applied the next time the cockpit starts, leaving this
@@ -4959,11 +4943,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // Names how many sessions are running before "Update now" restarts (criterion 7) — never a generic "are you
     // sure?". `SessionPanelViewModel.RequiresCloseConfirmation` is the same reading the close-confirm
     // prompt already uses for "is this session doing something a restart would cut off".
-    private Task<bool> _ConfirmRestartAsync()
+    private async Task<bool> _ConfirmRestartAsync()
     {
         if (_dialogService is not { } dialogs)
         {
-            return Task.FromResult(false);
+            return false;
         }
 
         // _AllSessions(), not Sessions: an embedded agent (an Autopilot step, a plugin-run) is a full session the
@@ -4978,7 +4962,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             _ => $"{running.Count} sessions are still running ({string.Join(", ", running.Select(session => session.Title))}) and will be cut off: the cockpit will close and reopen on {UpdateName}.",
         };
 
-        return dialogs.ShowConfirmationDialogAsync("Restart now?", message, "Restart now");
+        return await dialogs.ShowConfirmationDialogAsync("Restart now?", message, "Restart now").ConfigureAwait(true)
+            && await AppRestartService.ConfirmWorkspaceCloseAsync(Workspaces).ConfigureAwait(true);
     }
 
     // Hides the update banner (AC-73) for the build now on offer. Per-build, not forever: the operator is saying
@@ -5496,6 +5481,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         var settings = await _debugSettingsStore.LoadAsync();
+        _loadedDebugSettings = settings;
         ShowDebugControls = settings.ShowDebugControls;
         LogDiagnosticSnapshots = settings.LogDiagnosticSnapshots;
     }
@@ -5509,7 +5495,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        await _debugSettingsStore.SaveAsync(new DebugSettings
+        await _debugSettingsStore.SaveAsync(_loadedDebugSettings with
         {
             ShowDebugControls = ShowDebugControls,
             LogDiagnosticSnapshots = LogDiagnosticSnapshots,
@@ -5533,6 +5519,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         MinimizeToTrayOnClose = settings.MinimizeToTrayOnClose;
         SidebarWidth = settings.SidebarWidth;
         SidebarCollapsed = settings.SidebarCollapsed;
+        ShowOnlyWaiting = settings.WaitingFilterOn;
         GlobalFocusRailWeight = settings.FocusRailWeight;
         DockRailWidth = settings.DockRailWidth;
         OpenDockPanelId = settings.OpenDockPanelId;
@@ -5567,6 +5554,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         MinimizeToTrayOnClose = MinimizeToTrayOnClose,
         SidebarWidth = SidebarWidth,
         SidebarCollapsed = SidebarCollapsed,
+        WaitingFilterOn = ShowOnlyWaiting,
         FocusRailWeight = GlobalFocusRailWeight,
         DockRailWidth = DockRailWidth,
         OpenDockPanelId = OpenDockPanelId,
@@ -5750,8 +5738,25 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             Badge = Notifications.Badge,
             CanFloat = true,
+            HeaderActions = [new ToolbarAction("Mark all read", MaterialIconKind.CheckAll, () =>
+            {
+                Notifications.MarkAllReadCommand.Execute(null);
+                return Task.CompletedTask;
+            })],
         });
         Notifications.Badge.Activated += (_, _) => OpenDockPanelId = NotificationCenterViewModel.DockPanelId;
+        Notifications.PluginIcon = pluginId => PluginSideButtons.FirstOrDefault(button => button.PluginId == pluginId && button.IconKind is not null)?.IconKind;
+    }
+
+    internal void RegisterAgentsPanel()
+    {
+        _dockPanelRegistry?.Register(new DockPanelRegistration(
+            AgentsOverviewViewModel.DockPanelId, "Agents", MaterialIconKind.AccountGroupOutline,
+            () => new Views.AgentsOverviewView { DataContext = new AgentsOverviewViewModel(this) })
+        {
+            CanFloat = true,
+            KeepAlive = true,
+        });
     }
 
     // The bell. The Simple stand's rail holds the conversation, so there the panel stands in its own window.
@@ -5968,8 +5973,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _SyncTranscriptionModelFromName();
         // A GPU preference saved on a machine that can no longer load it (config moved, driver gone) has no matching
         // host-aware option and falls back to Auto rather than showing a dead entry.
-        SelectedVoiceBackendPreference = VoiceBackendPreferences.FirstOrDefault(option => option.Value == settings.BackendPreference)
-                                         ?? VoiceBackendPreferences[0];
+        SelectedVoiceBackendPreference = TranscriptionOptions.Find(VoiceBackendPreferences, settings.BackendPreference, settings.GpuDeviceId);
         _UpdateTranscriptionAdvice();
         VoicePushToTalkKeyName = settings.PushToTalkKeyName;
         VoiceGlobalPushToTalk = settings.GlobalPushToTalk;
@@ -6046,6 +6050,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             ModelName = string.IsNullOrWhiteSpace(VoiceModelName) ? "large-v3-turbo" : VoiceModelName.Trim(),
             ModelAutoSelected = _transcriptionModelAuto,
             BackendPreference = SelectedVoiceBackendPreference.Value,
+            GpuDeviceId = SelectedVoiceBackendPreference.GpuDeviceId,
             PushToTalkKeyName = string.IsNullOrWhiteSpace(VoicePushToTalkKeyName) ? "F9" : VoicePushToTalkKeyName.Trim(),
             GlobalPushToTalk = VoiceGlobalPushToTalk,
             AutoSubmitAfterVoice = VoiceAutoSubmit,
@@ -6248,6 +6253,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // first input (AC-312).
     public async Task<string> StartSessionForPluginAsync(SessionProfile profile, string? prompt, string? workingDirectory, string? sessionName = null)
     {
+        Dispatcher.UIThread.VerifyAccess();
+
         var name = string.IsNullOrWhiteSpace(sessionName) ? $"{profile.Label} — {DateTime.Now:HH:mm}" : sessionName.Trim();
 
         // An SDK session, always: a plugin's prompt is text handed to a session, and a TTY is a terminal a human
@@ -7006,6 +7013,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [RelayCommand]
     private Task OptionsAsync() => _ShowOptionsAsync();
 
+    [RelayCommand]
+    private Task OpenSwarmOptionsAsync() => _ShowOptionsAsync("swarm");
+
     // Opens the projects manager (AC-161) — its own window, not a corner of Options.
     // Brings the projects overview to the front, opening it when it is not there (AC-162) — the sidebar's way in,
     // so reaching it is not a matter of knowing that a workspace type exists and finding it in the "+" menu.
@@ -7019,7 +7029,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        _optionsOpenMeasurement = new OptionsOpenMeasurement();
+        _optionsOpenMeasurement = new OptionsMeasurement("open");
         await _RefreshAudioDevicesAsync();
         _MarkOptionsOpen("audio");
         await Plugins.LoadAsync();
@@ -7039,6 +7049,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             _MarkOptionsOpen("mcp");
         }
 
+        if (!_optionsStaged)
+        {
+            await Swarm.LoadSettingsAsync();
+        }
         await _dialogService.ShowOptionsDialogAsync(this, category);
     }
 
@@ -7059,6 +7073,21 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     }
 
     private void _MarkOptionsOpen(string phase) => _optionsOpenMeasurement?.Mark(phase);
+
+    internal void OptionsCloseStarted() => _optionsCloseMeasurement = new OptionsMeasurement("close");
+
+    internal void OptionsCloseDiscarded() => _optionsCloseMeasurement?.Mark("discard");
+
+    internal void OptionsClosed()
+    {
+        _optionsCloseMeasurement?.Mark("closed");
+        if (_optionsCloseMeasurement?.Finish() is { } line)
+        {
+            _logger?.LogWarning("{Message}", line);
+        }
+
+        _optionsCloseMeasurement = null;
+    }
 
     // Opens the plugin store dialog (#62) with the "Available updates" filter preselected (#65) — the action
     // button on a plugin-update toast, so the operator lands straight on the updates list instead of
@@ -7353,6 +7382,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         HasPendingOptionChanges = false;
         PropertyChanged += _OnStagedPropertyChanged;
         Security.PropertyChanged += _OnStagedPropertyChanged;
+        Swarm.PropertyChanged += _OnStagedPropertyChanged;
         AssistantOptions.PropertyChanged += _OnStagedPropertyChanged;
         ModelIntelligence.PropertyChanged += _OnStagedPropertyChanged;
         Sync.PropertyChanged += _OnStagedPropertyChanged;
@@ -7433,6 +7463,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     private async Task _ApplyOptionsAsync(bool endEdit)
     {
+        var measurement = new OptionsMeasurement("apply");
         OptionsApplyBlocked = false;
         OptionsSectionErrors = new Dictionary<string, string>(StringComparer.Ordinal);
         OptionsApplyBlockedCategoryTag = null;
@@ -7445,14 +7476,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         var pluginLabels = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var row in PluginOptionsRows)
         {
-            if (row.RawView is not IPluginSettingsView settingsView)
+            if (row.RawView is not { } settingsView || !PluginSettingsStaging.IsSettingsView(settingsView))
             {
                 continue;
             }
 
             var categoryTag = $"plugin:{row.PluginId}";
             pluginLabels[categoryTag] = row.DisplayName;
-            if (!pluginStaging.TryStage(settingsView, categoryTag, () => ((IPluginContributionSink)this).NotifySettingsSaved(row.PluginId), out var error))
+            if (!pluginStaging.TryStage(settingsView, categoryTag, () => ((IPluginContributionSink)this).NotifySettingsSavedAsync(row.PluginId), out var error))
             {
                 failures.Add((row.DisplayName, error, categoryTag));
             }
@@ -7466,10 +7497,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             failures.Add(("Profiles", Profiles.StatusMessage, _ProfilesCategoryTag));
         }
 
+        measurement.Mark("profiles");
+
         if (McpServers is not null && !await McpServers.PersistAsync())
         {
             failures.Add(("MCP Servers", McpServers.StatusMessage, "mcp-servers"));
         }
+
+        measurement.Mark("mcp");
 
         // AC-1286: before the failures are gathered rather than after the dialog has stopped staging, so a write
         // that could not happen holds Apply open on its own tab instead of closing over an unsaved choice. It does
@@ -7480,13 +7515,21 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             failures.Add(("Security", securityError, Security.PersistErrorCategoryTag ?? "security"));
         }
 
+        measurement.Mark("security");
+
+        await Swarm.SaveStagedAsync();
+        if (Swarm.CidrError.Length > 0 || Swarm.PersistError.Length > 0)
+        {
+            failures.Add(("Swarm", Swarm.CidrError.Length > 0 ? Swarm.CidrError : Swarm.PersistError, "swarm"));
+        }
+
         // AC-1108: Commit() below re-commits every plugin's settings, not only the tab opened — measured 51+
         // separate cockpit.json writes here on top of SaveAllSettingsAsync's thirteen; batched to one round-trip.
         await using (_settingsWriteBatch?.Begin())
         {
             // AC-479: reported after the batch has run rather than before it, so a plugin that throws on its own
             // write lands on the same list as one that refused — the others' writes have happened by then.
-            foreach (var (categoryTag, reason) in pluginStaging.Commit())
+            foreach (var (categoryTag, reason) in await pluginStaging.CommitAsync(tag => measurement.Mark(tag.Replace("plugin:", "plugin-", StringComparison.Ordinal))))
             {
                 // TryGetValue, not the indexer: this runs while handling a plugin that already threw, and a
                 // staged write from outside the loop above would turn that into an unhandled one.
@@ -7518,20 +7561,29 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             }
 
             await SaveAllSettingsAsync();
+            measurement.Mark("core");
         }
+
+        measurement.Mark("config");
 
         // Not blocked, so this Apply is committing: on the closing path the flag is already down and this changes
         // nothing, and a blocked Apply still writes no update settings, exactly as before.
         _SaveUpdateSettings(flushStaged: !OptionsApplyBlocked);
+        measurement.Mark("updates");
 
         if (_delegationMcpToggle is { } toggle)
         {
             await toggle.SetMcpEnabledAsync(OrchestratorMcpEnabled);
         }
 
+        measurement.Mark("delegation");
+
         await AssistantOptions.SaveStagedAsync();
+        measurement.Mark("assistant");
         await ModelIntelligence.SaveStagedAsync();
+        measurement.Mark("models");
         await Sync.SaveStagedAsync();
+        measurement.Mark("sync");
 
         // AC-233 used to write these after the dialog had closed, which is a path with no Cancel on it.
         if (UsageThresholdSettings is { } thresholds)
@@ -7539,6 +7591,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             await thresholds.SaveAsync();
             UsageThresholds = await thresholds.ReloadAsync();
         }
+
+        measurement.Mark("usage");
 
         _RebaselineFingerprintAfterBlockedApply(failures);
 
@@ -7551,6 +7605,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 (_startupChoiceMade, _channelChoiceMade, _chosenChannel, CheckForUpdatesOnStartup, IncludeNightlyBuilds);
             _optionsFingerprintAtOpen = OptionsStaging.Fingerprint(this);
             RefreshPendingOptionChanges();
+        }
+
+        if (measurement.Finish() is { } line)
+        {
+            _logger?.LogWarning("{Message}", line);
         }
     }
 
@@ -7602,6 +7661,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // AC-1286: the one refresh that is meant to overwrite what the operator staged — Cancel keeps
         // SuspendPersistence up across the re-seed, and every other refresh now leaves those values alone.
         await Security.RefreshAsync(reseedStagedValues: true);
+        await Swarm.LoadSettingsAsync();
         await AssistantOptions.RefreshAsync();
         await ModelIntelligence.LoadAsync();
         await Sync.LoadAsync();
@@ -7674,8 +7734,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         VoiceModelName = voice.ModelName;
         _transcriptionModelAuto = voice.ModelAutoSelected;
         _SyncTranscriptionModelFromName();
-        SelectedVoiceBackendPreference = VoiceBackendPreferences.FirstOrDefault(option => option.Value == voice.BackendPreference)
-                                         ?? VoiceBackendPreferences[0];
+        SelectedVoiceBackendPreference = TranscriptionOptions.Find(VoiceBackendPreferences, voice.BackendPreference, voice.GpuDeviceId);
         _UpdateTranscriptionAdvice();
         VoicePushToTalkKeyName = voice.PushToTalkKeyName;
         VoiceGlobalPushToTalk = voice.GlobalPushToTalk;
@@ -7700,6 +7759,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _RebuildShortcutRows();
 
         var debug = new DebugSettings();
+        _loadedDebugSettings = debug;
         ShowDebugControls = debug.ShowDebugControls;
         LogDiagnosticSnapshots = debug.LogDiagnosticSnapshots;
         OrchestratorMcpEnabled = true;
@@ -7729,6 +7789,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _chosenChannel = updates.Channel;
 
         Security.RestoreDefaults();
+        Swarm.RestoreDefaults();
         AssistantOptions.RestoreDefaults();
         UsageThresholdSettings?.RestoreDefaults();
     }
@@ -7737,6 +7798,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     {
         PropertyChanged -= _OnStagedPropertyChanged;
         Security.PropertyChanged -= _OnStagedPropertyChanged;
+        Swarm.PropertyChanged -= _OnStagedPropertyChanged;
         AssistantOptions.PropertyChanged -= _OnStagedPropertyChanged;
         ModelIntelligence.PropertyChanged -= _OnStagedPropertyChanged;
         Sync.PropertyChanged -= _OnStagedPropertyChanged;
@@ -10074,6 +10136,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         _disposed = true;
+        _StopSwarmSidebar();
 
         // The shutdown gives this a bounded budget and then hard-exits (Program.DisposeCockpit), so where it got to
         // is the one thing worth knowing when something it should have cleaned up is still there afterwards. Three
@@ -10087,7 +10150,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // The paired-node cards' polls (AC-796) outlive the Options window on purpose, but not this view model —
         // without this, each one's `DispatcherTimer` keeps itself (and the card, and `INodeSessionsClient`)
         // reachable and ticking against the network long after everything else here has been torn down.
-        Security.StopPairedNodePolling();
+        Security.DisposeNodeCards();
 
         // The key holder is a process-wide singleton, so leaving this wired would keep the whole view model alive
         // past its window (AC-41). The worktree manager is one too, and its notice handler holds this view model

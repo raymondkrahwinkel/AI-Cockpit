@@ -25,15 +25,25 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddInfrastructure(this IServiceCollection services)
     {
+        services.AddSingleton<Cockpit.Core.Swarm.SwarmReachability>();
         // AC-1110: handed to DelegationService as a deferred lookup, not as the instance. The catalog reaches that
         // service back through ICockpitInternalMcpProvider, and injecting it directly closes a construction cycle
         // that deadlocks the container instead of being reported.
         services.AddSingleton<Func<IMcpServerCatalog?>>(provider => provider.GetService<IMcpServerCatalog>);
+        services.AddSingleton(provider => new Assistant.LocalTextModelClient(
+            provider.GetRequiredService<Cockpit.Core.Abstractions.Profiles.ISessionProfileStore>(),
+            new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false })
+            { Timeout = Timeout.InfiniteTimeSpan }));
 
         // Built-in cockpit MCP endpoints (#AC-13): CockpitMcpEndpointHost hosts each and auto-publishes it to the
         // registry as its own MCP server. cockpit-session is always mounted: telling the operator what a session
         // is working on is plumbing, not a capability to weigh up, so it's kept out of the pickers (#AC-12).
         services.AddSingleton(new CockpitMcpEndpoint("cockpit-session", typeof(SessionStatusTools), AlwaysMounted: true));
+
+        // AC-1911/AC-1908: administrator execution is not status plumbing. It lives on an internal endpoint that a
+        // profile or launch must name explicitly, so an ordinary build agent never receives run_elevated merely
+        // because cockpit-session is always mounted.
+        services.AddSingleton(new CockpitMcpEndpoint("cockpit-elevated", typeof(ElevatedSessionTools), Internal: true));
 
         // cockpit-worktrees (AC-104): the tools an agent uses to isolate a subtask in its own git worktree and clean
         // it up when done. Its own server, like cockpit-session, so a delegated sub-agent has it too.
@@ -64,9 +74,9 @@ public static class DependencyInjection
         // cockpit-coding and cockpit-coding-shell (AC-1489): bounded read/glob/grep/edit/write and a synchronous shell,
         // confined to the calling pane's working directory. Tickable, not AlwaysMounted: a coding profile opts in; the
         // shell also stays behind the shell-access master switch, so this route cannot open what the operator closed.
-        services.AddSingleton(new CockpitMcpEndpoint("cockpit-coding", typeof(CodingTools)));
+        services.AddSingleton(new CockpitMcpEndpoint(CodingTools.EndpointName, typeof(CodingTools)));
         services.AddSingleton(provider => new CockpitMcpEndpoint(
-            "cockpit-coding-shell",
+            CodingTools.ShellEndpointName,
             typeof(Shell.CodingShellTools),
             () => provider.GetRequiredService<Shell.ShellAccessState>().Enabled));
 

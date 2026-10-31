@@ -20,7 +20,11 @@ public class PluginHostToolLoopTests
     {
         var ran = false;
         var tool = AIFunctionFactory.Create(() => { ran = true; return "did the thing"; }, "write_file");
-        await using var session = await _StartAsync(PluginHostToolLoop.ToolsAndSearch, tool);
+        await using var session = await _StartAsync(PluginHostToolLoop.ToolsAndSearch,
+            [tool, .. Enumerable.Range(0, CockpitToolSearch.PreloadThreshold).Select(index => AIFunctionFactory.Create(() => "unused", $"filler_{index}"))]);
+        Assert.DoesNotContain(session.Toolset.Tools, descriptor => descriptor.Name == "write_file");
+        Assert.Contains("No tool called", await session.Toolset.InvokeAsync("unselected_tool", "{}"));
+        Assert.Contains("must be a JSON object", await session.Toolset.InvokeAsync("write_file", "[]"));
 
         // A plugin driver never decides this: it can only ask. The prompt has to reach the operator, and the
         // answer has to be what runs or refuses the call — nothing the plugin says can shortcut either half.
@@ -30,6 +34,9 @@ public class PluginHostToolLoopTests
 
         Assert.Equal("Tool call was denied.", await call);
         Assert.False(ran);
+        session.Toolset.Gate.SetAutoApprove(true);
+        Assert.Equal("did the thing", await session.Toolset.InvokeAsync("write_file", "{}"));
+        Assert.True(ran);
     }
 
     [Fact]
@@ -40,7 +47,7 @@ public class PluginHostToolLoopTests
         await using var session = await _StartAsync(
             PluginHostToolLoop.ToolsAndSearch,
             new Dictionary<string, ToolPermissionClass> { ["write_file"] = ToolPermissionClass.Write },
-            tool);
+            [tool, .. Enumerable.Range(0, CockpitToolSearch.PreloadThreshold).Select(index => AIFunctionFactory.Create(() => "unused", $"filler_{index}"))]);
 
         // AC-79: a delegated run has nobody to answer a prompt, so its ceiling is what decides. Before the adapter
         // forwarded SetDelegatedToolGateAsync this was a no-op on this route — the call would have hung on a prompt
@@ -66,20 +73,34 @@ public class PluginHostToolLoopTests
         string? pane = null;
         string? confine = null;
         string? project = null;
-        var toolProvider = _ToolProvider([], new Dictionary<string, ToolPermissionClass>());
+        string? agent = null;
+        IReadOnlySet<string>? selection = null;
+        var toolProvider = _ToolProvider(
+            [],
+            new Dictionary<string, ToolPermissionClass>(),
+            [
+                new McpSessionTool(AIFunctionFactory.Create((string path) => path, "read"), CodingTools.EndpointName, AlwaysMounted: false),
+                new McpSessionTool(AIFunctionFactory.Create((string command) => command, "shell"), CodingTools.ShellEndpointName, AlwaysMounted: false),
+                .. Enumerable.Range(0, CockpitToolSearch.PreloadThreshold)
+                    .Select(index => new McpSessionTool(AIFunctionFactory.Create((string value) => value, $"background_{index}"), "test-server", AlwaysMounted: false)),
+            ]);
 
         // Discarded rather than awaited: this is NSubstitute recording what to capture, not a call to make.
         _ = toolProvider.ConnectAsync(
-            Arg.Any<IReadOnlySet<string>?>(),
+            Arg.Do<IReadOnlySet<string>?>(value => selection = value),
             Arg.Do<string?>(value => pane = value),
             Arg.Do<string?>(value => confine = value),
             Arg.Do<string?>(value => project = value),
             Arg.Any<string?>(),
-            Arg.Any<CancellationToken>());
+            Arg.Any<CancellationToken>(),
+            Arg.Do<string?>(value => agent = value));
 
-        var driver = _Adapter(new StubPluginDriver(), PluginHostToolLoop.ToolsAndSearch, toolProvider);
+        var inner = new StubPluginDriver();
+        var driver = _Adapter(inner, PluginHostToolLoop.ToolsAndSearch, toolProvider);
         await driver.StartAsync(
+            profile: new Cockpit.Core.Profiles.SessionProfile("Assistant", new Cockpit.Core.Profiles.PluginProviderConfig("test", "{}")),
             workingDirectory: "/tmp/worktree",
+            enabledMcpServerNames: new HashSet<string> { "Depot", "YouTrack", CodingTools.ShellEndpointName },
             launchOptions: new Dictionary<string, string>
             {
                 [WellKnownPluginSessionOptions.PaneId] = "pane-7",
@@ -92,6 +113,14 @@ public class PluginHostToolLoopTests
         Assert.Equal("pane-7", pane);
         Assert.Equal("/tmp/worktree", confine);
         Assert.Equal("project-3", project);
+        Assert.Equal("Assistant", agent);
+        // AC-1962: the plugin host loop forwards every selected server alongside the confinement root.
+        Assert.Contains("Depot", selection!);
+        Assert.Contains("YouTrack", selection!);
+        Assert.Contains(CodingTools.ShellEndpointName, selection!);
+        Assert.Contains(inner.Toolset!.Tools, tool => tool.Name == "read");
+        Assert.Contains(inner.Toolset.Tools, tool => tool.Name == "shell");
+        Assert.DoesNotContain(inner.Toolset.Tools, tool => tool.Name == "background_0");
     }
 
     private static async Task<string> _WithinFiveSecondsAsync(Task<string> call)
@@ -104,16 +133,16 @@ public class PluginHostToolLoopTests
         return await call;
     }
 
-    private static IMcpToolProvider _ToolProvider(AIFunction[] tools, IReadOnlyDictionary<string, ToolPermissionClass> toolClasses)
+    private static IMcpToolProvider _ToolProvider(AIFunction[] tools, IReadOnlyDictionary<string, ToolPermissionClass> toolClasses, IReadOnlyList<McpSessionTool>? mountedTools = null)
     {
         var toolSession = Substitute.For<IMcpToolSession>();
-        toolSession.Tools.Returns([.. tools.Select(tool => new McpSessionTool(tool, "test-server", AlwaysMounted: false))]);
-        toolSession.ConnectedServerNames.Returns(tools.Length == 0 ? [] : new[] { "test-server" });
+        toolSession.Tools.Returns(mountedTools ?? [.. tools.Select(tool => new McpSessionTool(tool, "test-server", AlwaysMounted: false))]);
+        toolSession.ConnectedServerNames.Returns(mountedTools is { Count: > 0 } ? [CodingTools.EndpointName, CodingTools.ShellEndpointName, "test-server"] : tools.Length == 0 ? [] : ["test-server"]);
         toolSession.ServersNeedingSignIn.Returns([]);
         toolSession.ToolClasses.Returns(toolClasses);
 
         var toolProvider = Substitute.For<IMcpToolProvider>();
-        toolProvider.ConnectAsync(Arg.Any<IReadOnlySet<string>?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(toolSession);
+        toolProvider.ConnectAsync(Arg.Any<IReadOnlySet<string>?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>(), Arg.Any<string?>()).Returns(toolSession);
         return toolProvider;
     }
 

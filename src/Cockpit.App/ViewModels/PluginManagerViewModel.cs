@@ -440,6 +440,23 @@ public partial class PluginManagerViewModel : ViewModelBase
             : $"'{row.DisplayName}' shown in the left menu again.";
     }
 
+    // AC-1588: mutes or allows the plugin's system notifications; AttentionNotifier reads it at every notification.
+    [RelayCommand(CanExecute = nameof(CanChangePlugins))]
+    private async Task TogglePluginNotificationsAsync(PluginRowViewModel row)
+    {
+        if (_registrationStore is null)
+        {
+            return;
+        }
+
+        var muted = !row.NotificationsMuted;
+        await _registrationStore.SaveNotificationsMutedAsync(row.FolderId, muted);
+        await LoadAsync();
+
+        StatusMessage = muted
+            ? $"'{row.DisplayName}' no longer shows desktop notifications."
+            : $"'{row.DisplayName}' may show desktop notifications again.";
+    }
     [RelayCommand(CanExecute = nameof(CanChangePlugins))]
     private async Task DisablePluginAsync(PluginRowViewModel row)
     {

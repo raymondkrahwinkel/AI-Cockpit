@@ -23,6 +23,7 @@ internal sealed class PluginStatusBarHost : StackPanel
     {
         Orientation = Orientation.Horizontal;
         VerticalAlignment = VerticalAlignment.Center;
+        Children.Add(new DiskStorageStatus());
 
         AttachedToVisualTree += (_, _) => _Build();
         DetachedFromVisualTree += (_, _) => _Clear();
@@ -177,10 +178,10 @@ internal sealed class PluginStatusBarHost : StackPanel
         foreach (var entry in _entries)
         {
             entry.Source.Changed -= entry.OnChanged;
+            Children.Remove(entry.Button);
         }
 
         _entries.Clear();
-        Children.Clear();
     }
 
     private sealed record SourceEntry(ISupervisedActivitySource Source, Button Button, Action OnChanged);

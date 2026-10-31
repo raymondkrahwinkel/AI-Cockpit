@@ -32,8 +32,11 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
     private readonly List<IDisposable> _handlers = [];
 
     private Inbox.DepotInbox? _inbox;
+    private Notes.DepotNotes? _notes;
     private Events.DepotEvents? _events;
+    private Notes.Live.DepotNoteLive? _noteLive;
     private ILogger? _logger;
+    private Files.DepotFileSourceProvider? _fileSources;
 
     // A 100 MiB file on a slow link must not hit the default 100 second timeout.
     private readonly HttpClient _publishHttp = new() { Timeout = TimeSpan.FromMinutes(30) };
@@ -80,6 +83,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             foreach (var connection in settings.Connections.Where(candidate => candidate.McpServerName == serverName))
             {
                 DepotProjectListingSource.Forget(host, connection);
+                _RecheckLiveNotes(connection.Id);
             }
 
             // The Projects page keeps what the last read said, "sign in" included, until something tells it to read again.
@@ -87,6 +91,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             {
                 source.RaiseAccountChanged();
             }
+            _notes?.Refresh();
         };
 
         // AC-1394: the settings view and the global-toolbar shortcut to it moved to DepotUi.InitializeUi — this
@@ -109,6 +114,8 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
 
         // AC-1568: the file browser's Depot calls, one handler per action.
         var browser = new Browser.DepotBrowserService(host, () => settings.Connections);
+        _fileSources = new Files.DepotFileSourceProvider(host, () => settings.Connections, () => _noteLive, () => _notes);
+        _handlers.Add(host.AddFileSource(_fileSources));
         _HandleBrowser(host, DepotBrowserChannel.Projects, browser.ProjectsAsync);
         _HandleBrowser(host, DepotBrowserChannel.Tree, browser.TreeAsync);
         _HandleBrowser(host, DepotBrowserChannel.Read, browser.ReadAsync);
@@ -125,19 +132,75 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
         _HandlePublish(host, DepotPublishChannel.Plan, publisher.PlanAsync);
         _HandlePublish(host, DepotPublishChannel.Run, publisher.RunAsync);
 
+        // AC-1579: the "New meeting note" dialog's Depot calls, one handler per action.
+        var meetingNotes = new Notes.DepotMeetingNoteService(host, () => settings.Connections);
+        _HandleMeetingNote(host, DepotMeetingNoteChannel.Options, meetingNotes.OptionsAsync);
+        _HandleMeetingNote(host, DepotMeetingNoteChannel.Project, meetingNotes.ProjectAsync);
+        _HandleMeetingNote(host, DepotMeetingNoteChannel.Check, meetingNotes.CheckAsync);
+        _HandleMeetingNote(host, DepotMeetingNoteChannel.Create, meetingNotes.CreateAsync);
+        _HandleMeetingNote(host, DepotMeetingNoteChannel.Link, meetingNotes.LinkAsync);
+
         // AC-1586: the Depot inbox, over REST and the inbox hub with a host-only token for depot.inbox alone.
         _inbox = new Inbox.DepotInbox(
             () => settings.Connections,
             connection => host.CreateAuthorizedHandler(connection.McpServerName, Inbox.DepotInbox.Scope),
             (connection, userId, onPush, onClosed) => new Inbox.SignalRDepotInboxHub(
                 connection, userId, () => host.CreateAuthorizedHandler(connection.McpServerName, Inbox.DepotInbox.Scope), onPush, onClosed),
-            page => host.Channel.Publish(DepotInboxChannel.Changed, JsonSerializer.SerializeToElement(page, DepotChannel.Json)),
+            page =>
+            {
+                host.Channel.Publish(DepotInboxChannel.Changed, JsonSerializer.SerializeToElement(page, DepotChannel.Json));
+                _notes?.OnInboxPage(page);
+            },
             _logger = host.Services?.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.Plugin.Depot"));
         var inbox = _inbox;
         _handlers.Add(host.Channel.Handle(DepotInboxChannel.Unread, async (_, cancellationToken) =>
             JsonSerializer.SerializeToElement(await inbox.UnreadAsync(cancellationToken).ConfigureAwait(false), DepotChannel.Json)));
         _HandleInbox(host, DepotInboxChannel.List, inbox.ListAsync);
         _HandleInbox(host, DepotInboxChannel.MarkRead, inbox.MarkReadAsync);
+
+        // AC-1897: live notes over /hubs/notes, with the same host-only token the events hub uses; a room's Y.Doc loads on the first note.
+        _noteLive = new Notes.Live.DepotNoteLive(
+            () => settings.Connections,
+            connection => host.CreateAuthorizedHandler(connection.McpServerName),
+            (connection, userId, onClosed) => new Notes.Live.SignalRDepotNotesHub(
+                connection, userId, () => host.CreateAuthorizedHandler(connection.McpServerName), onClosed),
+            clientId => new Notes.Live.JintNoteRoom(clientId),
+            status => host.Channel.Publish(DepotNoteLiveChannel.Status, JsonSerializer.SerializeToElement(status, DepotChannel.Json)),
+            _logger,
+            async (connection, cancellationToken) =>
+                await host.SignInMcpServerAsync(connection.McpServerName, cancellationToken).ConfigureAwait(false) == PluginMcpSignInOutcome.Authorized);
+        var noteLive = _noteLive;
+        _handlers.Add(host.Channel.Handle(DepotNoteLiveChannel.Open, (payload, _) =>
+        {
+            noteLive.Open(payload.Deserialize<DepotNoteLiveRequest>(DepotChannel.Json) ?? throw new ArgumentException("The request is empty.", nameof(payload)));
+            return Task.FromResult(JsonSerializer.SerializeToElement(true, DepotChannel.Json));
+        }));
+        _handlers.Add(host.Channel.Handle(DepotNoteLiveChannel.Close, async (payload, _) =>
+        {
+            await noteLive.CloseAsync(payload.Deserialize<DepotNoteLiveRequest>(DepotChannel.Json) ?? throw new ArgumentException("The request is empty.", nameof(payload))).ConfigureAwait(false);
+            return JsonSerializer.SerializeToElement(true, DepotChannel.Json);
+        }));
+        var notes = new Notes.DepotNotes(host, () => settings.Connections,
+            page => host.Channel.Publish(DepotNotesChannel.Changed, JsonSerializer.SerializeToElement(page, DepotChannel.Json)), _logger);
+        _notes = notes;
+        _handlers.Add(host.Channel.Handle(DepotNotesChannel.Live, async (payload, cancellationToken) =>
+        {
+            var request = payload.Deserialize<DepotNotesRequest>(DepotChannel.Json)
+                ?? throw new ArgumentException("The request names no Depot connection.", nameof(payload));
+            return JsonSerializer.SerializeToElement(await notes.ListAsync(request, cancellationToken).ConfigureAwait(false), DepotChannel.Json);
+        }));
+        notes.Start();
+
+        // AC-1581: a /n/{token} link to its place and role (DEP-534); the UI part's one route function asks here.
+        // AC-1958: /cockpit/note-link is in Depot's bearer group too, so it takes the depot token, not depot.host.
+        var noteLinks = new Notes.DepotNoteLinks(() => settings.Connections,
+            connection => host.CreateAuthorizedHandler(connection.McpServerName), _logger);
+        _handlers.Add(host.Channel.Handle(DepotNoteLinkChannel.Resolve, async (payload, cancellationToken) =>
+        {
+            var request = payload.Deserialize<DepotNoteLinkRequest>(DepotChannel.Json)
+                ?? throw new ArgumentException("The request is empty.", nameof(payload));
+            return JsonSerializer.SerializeToElement(await noteLinks.ResolveAsync(request, cancellationToken).ConfigureAwait(false), DepotChannel.Json);
+        }));
 
         _events = new Events.DepotEvents(
             () => settings.Connections,
@@ -222,10 +285,31 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             return JsonSerializer.SerializeToElement(await handler(request, cancellationToken).ConfigureAwait(false), DepotChannel.Json);
         }));
 
+    private void _RecheckLiveNotes(string connectionId)
+    {
+        try
+        {
+            _noteLive?.AccountChanged(connectionId);
+        }
+        catch (Exception exception)
+        {
+            _logger?.LogWarning(exception, "Checking the live notes of a changed Depot account failed.");
+        }
+    }
+
     private void _HandleInbox(ICockpitHost host, string action, Func<DepotInboxRequest, CancellationToken, Task<DepotInboxPage>> handler) =>
         _handlers.Add(host.Channel.Handle(action, async (payload, cancellationToken) =>
         {
             var request = payload.Deserialize<DepotInboxRequest>(DepotChannel.Json)
+                ?? throw new ArgumentException("The request is empty.", nameof(payload));
+            return JsonSerializer.SerializeToElement(await handler(request, cancellationToken).ConfigureAwait(false), DepotChannel.Json);
+        }));
+
+    private void _HandleMeetingNote<T>(
+        ICockpitHost host, string action, Func<DepotMeetingNoteRequest, CancellationToken, Task<DepotBrowserAnswer<T>>> handler) =>
+        _handlers.Add(host.Channel.Handle(action, async (payload, cancellationToken) =>
+        {
+            var request = payload.Deserialize<DepotMeetingNoteRequest>(DepotChannel.Json)
                 ?? throw new ArgumentException("The request is empty.", nameof(payload));
             return JsonSerializer.SerializeToElement(await handler(request, cancellationToken).ConfigureAwait(false), DepotChannel.Json);
         }));
@@ -262,7 +346,8 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             host,
             settings,
             [.. request.Connections.Select(connection => new DepotConnectionRegistration(connection.Id, connection.Name, connection.Url, connection.SynchroniseSettings))],
-            cancellationToken, _events).ConfigureAwait(false);
+            cancellationToken, _events, () => _fileSources?.NotifyChanged()).ConfigureAwait(false);
+        _notes?.Refresh();
         return JsonSerializer.SerializeToElement(new DepotSaveConnectionsAnswer(true), DepotChannel.Json);
     }
 
@@ -298,7 +383,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             host,
             settings,
             existing is null ? [.. before, connection] : [.. before.Select(candidate => candidate.Id == existing.Id ? connection : candidate)],
-            cancellationToken, _events).ConfigureAwait(false);
+            cancellationToken, _events, () => _fileSources?.NotifyChanged()).ConfigureAwait(false);
 
         var outcome = await host.SignInMcpServerWithGrantAsync(
             connection.McpServerName,
@@ -310,7 +395,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             return _InstallTokenAnswer(true, "Signed in.");
         }
 
-        await WriteConnectionsAsync(host, settings, before, cancellationToken, _events).ConfigureAwait(false);
+        await WriteConnectionsAsync(host, settings, before, cancellationToken, _events, () => _fileSources?.NotifyChanged()).ConfigureAwait(false);
         return _InstallTokenAnswer(false, outcome switch
         {
             PluginMcpSignInOutcome.Declined => InvalidInstallTokenMessage,
@@ -325,7 +410,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
     // The write both channel actions share: storage first, then the registries diffed against what was there.
     internal static async Task WriteConnectionsAsync(
         ICockpitHost host, DepotSettings settings, IReadOnlyList<DepotConnectionRegistration> after,
-        CancellationToken cancellationToken, Events.DepotEvents? events = null)
+        CancellationToken cancellationToken, Events.DepotEvents? events = null, Action? filesChanged = null)
     {
         var before = settings.Connections;
 
@@ -333,6 +418,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
         // (ICockpitUiHost's own remarks) — done here, before the sync below, so a row's Sign-in (which runs right
         // after this call returns) finds its connection already in storage under its registered MCP server name.
         settings.Connections = after;
+        filesChanged?.Invoke();
 
         var keptNames = after.Select(connection => connection.McpServerName).ToHashSet(StringComparer.Ordinal);
         var orphanedNames = before
@@ -506,6 +592,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             // AC-403: this connection's own id, so the host files its OAuth token under something the operator
             // cannot edit — the Name is free-text, and renaming used to strand sign-in under the old name.
             Id = connection.Id,
+            IncludeAgentName = true,
             // Scheme+host+port of the stored base URL: Depot's protected-resource metadata names the origin as
             // its authorization_servers entry, not a subpath. Falls back to the base URL if unparseable (defensive only).
             OAuthAuthority = DepotUrlNormalizer.Origin(connection.Url) ?? connection.Url,
@@ -525,10 +612,18 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
         }
 
         _publishHttp.Dispose();
+        _ = _notes?.DisposeAsync().AsTask().ContinueWith(
+            closing => _logger?.LogWarning(closing.Exception?.GetBaseException(), "Closing Depot notes failed."),
+            CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
         // ICockpitPlugin has only a synchronous Dispose; closing the hubs is started, not waited on, so a shutdown on the UI
         // thread never blocks on a socket. Each service cancels its own retries first, so nothing reopens one.
         _ = _inbox?.DisposeAsync().AsTask().ContinueWith(
             closing => _logger?.LogWarning(closing.Exception?.GetBaseException(), "Closing the Depot inbox failed."),
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted,
+            TaskScheduler.Default);
+        _ = _noteLive?.DisposeAsync().AsTask().ContinueWith(
+            closing => _logger?.LogWarning(closing.Exception?.GetBaseException(), "Closing the live notes failed."),
             CancellationToken.None,
             TaskContinuationOptions.OnlyOnFaulted,
             TaskScheduler.Default);

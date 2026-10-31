@@ -144,12 +144,13 @@ public class AssistantOptionsViewModelTests
     [Fact]
     public async Task RefreshAsync_SeedsAllowAllFromDisk_WithoutSavingItBackOut()
     {
-        var store = new FakeSettingsStore(new AssistantSettings { ConsentBypassAll = false });
+        var store = new FakeSettingsStore(new AssistantSettings { ConsentBypassAll = false, ContextCompactionPercent = 30 });
         var vm = new AssistantOptionsViewModel(store);
 
         await vm.RefreshAsync();
 
         Assert.False(vm.ConsentBypassAll);
+        Assert.Equal(30, vm.ContextCompactionPercent);
         Assert.Null(store.Saved);
     }
 
@@ -160,9 +161,12 @@ public class AssistantOptionsViewModelTests
         var vm = new AssistantOptionsViewModel(store);
         await vm.RefreshAsync();
 
+        vm.ContextCompactionPercent = 9;
+
         vm.ConsentBypassSources.Single(row => row.Key == ConsentSourceCatalog.TerminalMcp).BypassLowRisk = false;
 
         Assert.Empty(store.Saved!.ConsentBypassSources);
+        Assert.Equal(80, store.Saved.ContextCompactionPercent);
     }
 
     [Fact]

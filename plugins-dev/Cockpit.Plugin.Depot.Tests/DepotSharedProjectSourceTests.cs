@@ -174,18 +174,23 @@ public class DepotSharedProjectSourceTests
         first.Headers.ETag = new System.Net.Http.Headers.EntityTagHeaderValue("\"projects-v1\"");
         var handler = new _QueuedHandler(first, new HttpResponseMessage(HttpStatusCode.NotModified));
         using var http = new HttpClient(handler);
-        var source = new DepotSharedProjectSource(connection, "depot:test", host, events, http);
+        var quietPeriod = new _ControlledQuietPeriod();
+        var source = new DepotSharedProjectSource(connection, "depot:test", host, events, http, quietPeriod.WaitAsync);
         await source.ListAsync(CancellationToken.None);
         var changes = new List<string?>();
-        source.Changed += changes.Add;
+        var changed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        source.Changed += address =>
+        {
+            changes.Add(address);
+            changed.TrySetResult();
+        };
         var hub = await hubStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-        for (var version = 1; version <= 10; version++)
-        {
-            hub.Push(new DepotEvent("projects", "created", "acme/project", version));
-        }
+        hub.PushProjectBurst();
 
-        await Task.Delay(TimeSpan.FromSeconds(2));
+        Assert.Equal(1, quietPeriod.PendingCount);
+        quietPeriod.CompleteLatest();
+        await changed.Task.WaitAsync(TimeSpan.FromSeconds(30));
 
         Assert.Equal<string?>([null], changes);
         var result = await source.ListAsync(CancellationToken.None);
@@ -244,6 +249,14 @@ public class DepotSharedProjectSourceTests
     {
         public void Push(DepotEvent cockpitEvent) => onEvent(cockpitEvent);
 
+        public void PushProjectBurst()
+        {
+            for (var version = 1; version <= 10; version++)
+            {
+                Push(new DepotEvent("projects", "created", "acme/project", version));
+            }
+        }
+
         public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task SubscribeAsync(string topic, CancellationToken cancellationToken) => Task.CompletedTask;
@@ -253,5 +266,22 @@ public class DepotSharedProjectSourceTests
         public Task CloseAsync(Exception? exception) => onClosed(exception);
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    private sealed class _ControlledQuietPeriod
+    {
+        private readonly List<TaskCompletionSource> _waiters = [];
+
+        public int PendingCount => _waiters.Count(waiter => !waiter.Task.IsCompleted);
+
+        public Task WaitAsync(CancellationToken cancellationToken)
+        {
+            var waiter = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            cancellationToken.Register(() => waiter.TrySetCanceled(cancellationToken));
+            _waiters.Add(waiter);
+            return waiter.Task;
+        }
+
+        public void CompleteLatest() => _waiters[^1].SetResult();
     }
 }

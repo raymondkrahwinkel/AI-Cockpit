@@ -54,10 +54,11 @@ internal sealed class DiagramActivityJournal(DiagramChannelClient? registry) : I
         }
     }
 
-    public IReadOnlyList<SurfaceActivityEntry> History(string surfaceId) =>
-        (registry?.History(surfaceId) ?? [])
+    public async Task<IReadOnlyList<SurfaceActivityEntry>> HistoryAsync(string surfaceId) =>
+        (registry is null ? [] : await registry.HistoryAsync(surfaceId))
             .Select(entry => new SurfaceActivityEntry(entry.Id, entry.Origin, entry.Summary, entry.ObjectKey, entry.When, entry.Reverted, CanRevert: true))
             .ToList();
 
-    public string? Revert(string surfaceId, string entryId) => registry?.Revert(surfaceId, entryId);
+    public Task<string?> RevertAsync(string surfaceId, string entryId) =>
+        registry?.RevertAsync(surfaceId, entryId) ?? Task.FromResult<string?>(null);
 }

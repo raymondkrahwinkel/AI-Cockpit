@@ -4,15 +4,12 @@ using ModelContextProtocol.Server;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Shell;
-using Cockpit.Core.Consent;
 using Cockpit.Core.Projects;
 using Cockpit.Core.Provisioning;
 using Cockpit.Infrastructure.Agents;
-using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Formatting;
 using Cockpit.Infrastructure.HeavyRuns;
 using Cockpit.Infrastructure.Mcp;
-using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.HeavyRuns;
 
 namespace Cockpit.Infrastructure.Sessions;
@@ -29,15 +26,14 @@ internal sealed class SessionStatusTools(
     IAgentMessageInbox inbox,
     // AC-490: null only in a test graph that never asks about job runs.
     IProjectJobHistory? jobHistory = null,
-    // AC-1335: null only in a test graph that never runs anything as administrator; without a broker nothing runs.
-    IConsentBroker? consent = null,
-    IElevatedCommandRunner? elevated = null,
     // AC-1593: an organisation's shell ban covers these tools too; the shell switch alone does not, as it never did.
     IOrgPolicy? orgPolicy = null,
     // AC-1535: null only in a test graph that never queues; without a queue every run starts at once.
     HeavyRunQueue? queue = null,
     // AC-1717: null only in a test graph that keeps no session timeline.
-    SessionTimelineRecorder? timeline = null)
+    SessionTimelineRecorder? timeline = null,
+    // AC-1911: null only in test graphs that have no live session registry.
+    ISessionRegistry? sessions = null)
 {
     private string? _ShellRefusal() => OrgPolicyCeilings.ShellForbidden(orgPolicy?.Current)
         ? _Error($"{orgPolicy?.Current?.By} does not allow agents to run commands on this machine.")
@@ -50,8 +46,6 @@ internal sealed class SessionStatusTools(
     private const string RunSenderPaneId = "cockpit-run";
 
     private const int MaxTimeoutSeconds = 900;
-
-    private const int DefaultElevatedTimeoutSeconds = 300;
 
     [McpServerTool(Name = "set_status", ReadOnly = false, Destructive = false)]
     [Description("Sets your session's statusline — the short line shown under the session's name in the cockpit (its header and the sidebar), saying what you are working on right now: a ticket you picked up ('AC-13'), a phase, whatever the operator would want to see at a glance across their sessions. `session` is optional — over the normal MCP transport your session is identified automatically; pass the COCKPIT_PANE_ID environment variable only if you are told the automatic identification failed. An empty status clears the line. Optionally propose a `name` for the session too. Set it when you pick up a piece of work, and update or clear it as you move on.")]
@@ -153,6 +147,11 @@ internal sealed class SessionStatusTools(
             return _Error("`command` and `workingDirectory` are both required.");
         }
 
+        if (!TryResolveRunWorkingDirectory(sessions, caller, workingDirectory, out workingDirectory, out var confinementRefusal))
+        {
+            return _Error(confinementRefusal);
+        }
+
         if (_ParseKind(kind) is not { } runKind)
         {
             return _Error("`kind` must be one of light, build, unit or journeys.");
@@ -179,6 +178,27 @@ internal sealed class SessionStatusTools(
         return slot.Admitted.IsCompletedSuccessfully
             ? JsonSerializer.Serialize(new { ok = true, runId, unreachable }, SerializerOptions)
             : JsonSerializer.Serialize(new { ok = true, runId, queued = true, reason = slot.WaitReason, unreachable }, SerializerOptions);
+    }
+
+    // A Cockpit worktree is always a confined session (AC-1911). start_run deliberately remains able to execute any
+    // command a build agent needs, but its process must start inside that worktree. This is a filesystem/work-directory
+    // boundary, not an OS process sandbox; the stronger process boundary belongs to AC-1908.
+    internal static bool TryResolveRunWorkingDirectory(
+        ISessionRegistry? sessions,
+        string caller,
+        string requested,
+        out string workingDirectory,
+        out string error)
+    {
+        var session = sessions?.Find(caller);
+        if (session?.WorktreeBranch is null)
+        {
+            workingDirectory = requested;
+            error = string.Empty;
+            return true;
+        }
+
+        return CodingTools.TryResolve(session.WorkingDirectory, requested, out workingDirectory, out error);
     }
 
     [McpServerTool(Name = "run_status", ReadOnly = true)]
@@ -215,71 +235,6 @@ internal sealed class SessionStatusTools(
         }
 
         return _Error($"No run with id '{runId}' is known — either it never existed, it finished long enough ago that its result aged out, or the cockpit restarted, which empties the queue: start it again.");
-    }
-
-    [McpServerTool(Name = "run_elevated", ReadOnly = false, Destructive = true)]
-    [Description("Runs ONE PowerShell command as administrator on the operator's Windows machine — the route for anything that needs elevation (`Get-WindowsOptionalFeature`, `wsl --install`, a service or firewall change): use this rather than asking the operator to open an administrator terminal or trying `runas` yourself. Two gates on every call: the cockpit first shows the operator a consent card with the exact command line, the working directory and your `reason`; only after approval does Windows show its own UAC prompt. Nothing is remembered — each call is one card and one prompt — so put what belongs together into one command and never call this in a loop. The command runs in a hidden window with `-NoProfile -NonInteractive`; anything that would wait for a keyboard errors out instead. Its whole output (stdout, errors, everything) comes back in `output` once it ends. Windows only.")]
-    public async Task<string> RunElevatedAsync(
-        [Description("The PowerShell command to run as administrator, e.g. 'Get-WindowsOptionalFeature -Online -FeatureName Microsoft-Windows-Subsystem-Linux'. Shown to the operator verbatim; it is run as one script block.")] string command,
-        [Description("The directory the command runs in.")] string workingDirectory,
-        [Description("Why this needs administrator rights, in one sentence. Shown to the operator on the consent card as your own words.")] string reason,
-        [Description("How long the command may run before it is ended, in seconds. Defaults to 300 and cannot be set higher than 900.")] int timeoutSeconds = DefaultElevatedTimeoutSeconds,
-        [Description("Optional. Your session id — the value of the COCKPIT_PANE_ID environment variable in this session. Only needed as a fallback when automatic session identification is unavailable.")] string? session = null)
-    {
-        var caller = McpRequestContext.CurrentPaneId ?? session;
-        if (string.IsNullOrEmpty(caller))
-        {
-            return _Error("Could not identify your session and no `session` was given — pass the COCKPIT_PANE_ID environment variable as `session`.");
-        }
-
-        if (_ShellRefusal() is { } shellRefusal)
-        {
-            return shellRefusal;
-        }
-
-        if (elevated is null || !elevated.IsSupported)
-        {
-            return _Error("Running a command as administrator is a Windows-only action.");
-        }
-
-        if (string.IsNullOrWhiteSpace(command) || string.IsNullOrWhiteSpace(workingDirectory) || string.IsNullOrWhiteSpace(reason))
-        {
-            return _Error("`command`, `workingDirectory` and `reason` are all required.");
-        }
-
-        if (consent is null)
-        {
-            return _Error("No consent surface is available, so nothing was run as administrator.");
-        }
-
-        // The card carries the literal command line the runner will start — the same `plan` goes to both — plus
-        // the agent's reason, labelled as its own words so a prompt-injected justification cannot pose as the host's.
-        var plan = elevated.Plan(command);
-        var decision = await consent.RequestConsentAsync(new ConsentRequest(
-            "A session wants to run a command as administrator",
-            $"{plan.CommandLine}\nin {workingDirectory}\nReason given by the agent (not verified): {reason}",
-            new ConsentSource(caller, null, ConsentSourceCatalog.ElevatedCommand),
-            "session.elevated-command",
-            ConsentRisk.Dangerous,
-            AllowRemember: false)).ConfigureAwait(false);
-        if (!decision.IsApproved)
-        {
-            return JsonSerializer.Serialize(
-                new { ok = false, declined = "consent", error = "The operator did not approve running this command as administrator; nothing ran." },
-                SerializerOptions);
-        }
-
-        var timeout = TimeSpan.FromSeconds(Math.Clamp(timeoutSeconds, 1, MaxTimeoutSeconds));
-        var result = await elevated.RunAsync(plan, workingDirectory, timeout).ConfigureAwait(false);
-        return result.Outcome switch
-        {
-            ElevatedCommandOutcome.Declined => JsonSerializer.Serialize(
-                new { ok = false, declined = "uac", error = "The operator declined the Windows UAC prompt; nothing ran." }, SerializerOptions),
-            ElevatedCommandOutcome.Failed => _Error(result.Error ?? "The elevated command could not be started."),
-            ElevatedCommandOutcome.TimedOut => JsonSerializer.Serialize(
-                new { ok = false, timedOut = true, exitCode = result.ExitCode, output = result.Output, error = result.Error }, SerializerOptions),
-            _ => JsonSerializer.Serialize(new { ok = true, exitCode = result.ExitCode, output = result.Output, error = result.Error }, SerializerOptions),
-        };
     }
 
     private async Task _RunAndDeliverAsync(

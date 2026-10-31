@@ -8,6 +8,7 @@ using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
+using Cockpit.Infrastructure.Sessions;
 
 namespace Cockpit.Infrastructure.Mcp;
 
@@ -25,7 +26,7 @@ internal sealed class McpToolProvider(
     SessionMcpMounts? mounts = null)
     : IMcpToolProvider, IMcpToolInvoker, ISingletonService
 {
-    public async Task<IMcpToolSession> ConnectAsync(IReadOnlySet<string>? enabledServerNames = null, string? paneId = null, string? confineFileToolsToDirectory = null, string? projectId = null, string? workingDirectory = null, CancellationToken cancellationToken = default)
+    public async Task<IMcpToolSession> ConnectAsync(IReadOnlySet<string>? enabledServerNames = null, string? paneId = null, string? confineFileToolsToDirectory = null, string? projectId = null, string? workingDirectory = null, CancellationToken cancellationToken = default, string? agentName = null)
     {
         // AC-89: a session with a pane id mints one per-session token here (not per server) so every
         // cockpit-hosted endpoint it connects to can attribute requests to this pane; no pane id falls back to the shared app key.
@@ -47,17 +48,21 @@ internal sealed class McpToolProvider(
         // a disabled one, overrides the same-named built-in). #44's per-session selection is already applied above.
         var enabledServers = _EffectiveServers(sessionRegistry).Where(server => server.Enabled).ToList();
 
-        // AC-174: confined sessions swap the whole effective set for a safe one — filesystem preset
-        // re-rooted at the directory, benign in-process servers, and the Autopilot report endpoint — so a
-        // local model cannot reach the operator's real checkout via any other escape channel.
+        // AC-1962: confine Cockpit's file tools without changing the operator's MCP selection.
         if (!string.IsNullOrWhiteSpace(confineFileToolsToDirectory))
         {
             enabledServers = _ConfinedServers(enabledServers, confineFileToolsToDirectory);
+            var independentServers = enabledServers.Where(server =>
+                !string.Equals(server.Name, "filesystem", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(server.Name, CodingTools.EndpointName, StringComparison.OrdinalIgnoreCase));
+            logger.LogInformation(
+                "MCP file confinement covers the filesystem preset and cockpit-coding at {Root}; other selected servers outside that guarantee: [{Names}]. Their own access rules apply.",
+                confineFileToolsToDirectory, string.Join(", ", independentServers.Select(server => server.Name)));
         }
 
         // AC-1148: the mount decision recorded before the first connect, not after it — the cockpit-hosted
         // endpoints below refuse a pane they were never mounted for, and this route is one of their clients.
-        // A confined session (AC-174) is granted its confined set, so the sandbox holds at the door too.
+        // AC-1962: confinement grants the same selection, including independently scoped servers.
         if (!string.IsNullOrEmpty(paneId))
         {
             mounts?.Grant(paneId, [.. enabledServers.Select(server => server.Name)]);
@@ -66,7 +71,7 @@ internal sealed class McpToolProvider(
         // Connect concurrently rather than one-by-one — sequential round-trips added up once more than one
         // server was configured. Task.WhenAll preserves input order, so results stay deterministic even
         // though the connects race in parallel; each keeps its own try/catch (_ConnectServerAsync).
-        var connections = await Task.WhenAll(enabledServers.Select(server => _ConnectServerAsync(server, sessionToken, cancellationToken)));
+        var connections = await Task.WhenAll(enabledServers.Select(server => _ConnectServerAsync(server, sessionToken, cancellationToken, agentName)));
         var serversNeedingSignIn = new List<string>();
         var connectionIssues = new List<McpServerConnectionIssue>();
 
@@ -209,7 +214,7 @@ internal sealed class McpToolProvider(
     // The connect result plus, on failure, the operator-facing reason (AC-997) — carried alongside the null
     // ServerConnection rather than thrown, since Task.WhenAll below needs one result per server regardless of
     // which one failed.
-    private async Task<(ServerConnection? Connection, string? FailureReason)> _ConnectServerAsync(McpServerConfig server, string? sessionToken, CancellationToken cancellationToken)
+    private async Task<(ServerConnection? Connection, string? FailureReason)> _ConnectServerAsync(McpServerConfig server, string? sessionToken, CancellationToken cancellationToken, string? agentName = null)
     {
         McpClient? client = null;
         var connected = false;
@@ -224,7 +229,7 @@ internal sealed class McpToolProvider(
                 return (null, NeedsSignIn);
             }
 
-            client = await McpClientConnector.ConnectAsync(_BuildTransport(server, sessionToken), options: null, cancellationToken).ConfigureAwait(false);
+            client = await McpClientConnector.ConnectAsync(_BuildTransport(server, sessionToken, agentName), options: null, cancellationToken).ConfigureAwait(false);
             var serverTools = await client.ListToolsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
 
             // AC-79: classify each tool from its MCP annotations at connect; an absent readOnlyHint stays
@@ -304,32 +309,13 @@ internal sealed class McpToolProvider(
         return [.. byName.Values];
     }
 
-    // Endpoints a confined session keeps: the pane-scoped Autopilot controls (named as literals to keep Infrastructure
-    // free of the plugin; in sync with AutopilotRunTools/AutopilotCeoTools.EndpointName) and cockpit-coding, confined
-    // to the working directory by construction (AC-1489). Never cockpit-coding-shell: a shell is an escape route.
-    private static readonly HashSet<string> ConfinedControlEndpoints =
-        new(StringComparer.OrdinalIgnoreCase) { "cockpit-autopilot-run", "cockpit-autopilot-ceo", "cockpit-coding" };
-
-    // AC-174: the confined effective set for a session pinned to <paramref name="root"/> — filesystem preset
-    // re-rooted at the worktree, the in-memory knowledge server, and the Autopilot endpoint if already present.
-    // Built from the presets, not the caller's own servers, so a custom same-named "filesystem" cannot widen the sandbox.
+    // AC-1962: preserve selection; replace filesystem from the trusted preset so an override cannot widen its root.
     internal static List<McpServerConfig> _ConfinedServers(IReadOnlyList<McpServerConfig> effective, string root)
     {
-        var confined = new List<McpServerConfig>();
-        foreach (var preset in McpServerPresets.LocalDefaults)
-        {
-            if (string.Equals(preset.Name, "filesystem", StringComparison.OrdinalIgnoreCase))
-            {
-                confined.Add(_ReRootLastArg(preset, root));
-            }
-            else if (string.Equals(preset.Name, "memory", StringComparison.OrdinalIgnoreCase))
-            {
-                confined.Add(preset);
-            }
-        }
-
-        confined.AddRange(effective.Where(server => ConfinedControlEndpoints.Contains(server.Name)));
-        return confined;
+        var filesystem = McpServerPresets.LocalDefaults.Single(server => server.Name == "filesystem");
+        return [.. effective.Select(server => string.Equals(server.Name, "filesystem", StringComparison.OrdinalIgnoreCase)
+            ? _ReRootLastArg(filesystem, root)
+            : server)];
     }
 
     // Re-roots a filesystem-style stdio preset by replacing its last CLI argument (the server's single allowed
@@ -349,7 +335,7 @@ internal sealed class McpToolProvider(
 
     private const string NeedsSignIn = "Needs a sign-in.";
 
-    private IClientTransport _BuildTransport(McpServerConfig server, string? sessionToken) => server.Transport switch
+    private IClientTransport _BuildTransport(McpServerConfig server, string? sessionToken, string? agentName = null) => server.Transport switch
     {
         McpTransport.Stdio => new StdioClientTransport(new StdioClientTransportOptions
         {
@@ -367,7 +353,7 @@ internal sealed class McpToolProvider(
             // AC-40/AC-89: a bearer header carries the auth for a cockpit-hosted endpoint (this session's
             // per-session token, else the shared app key) or a user API-key server's own key; OAuth via the authorizer.
             // AC-354: operator headers first, then the auth-derived Authorization on top.
-            AdditionalHeaders = _Headers(server, sessionToken),
+            AdditionalHeaders = _Headers(server, sessionToken, agentName),
             // Never interactive (AC-1517): the browser opens only from a Sign in the operator pressed, so a token
             // the coordinator approved but the server then refuses ends as a failed connect, not as a stray tab.
             OAuth = server.Auth == McpServerAuth.OAuth ? oauthAuthorizer.CreateOptions(server, interactive: false) : null,
@@ -377,13 +363,13 @@ internal sealed class McpToolProvider(
 
     // Same operator-headers-vs-managed-credential rule the spawn paths use (McpAgentHeaders); here the cockpit
     // sets the Authorization itself in-process instead of a spawned agent's provider writing it.
-    private Dictionary<string, string> _Headers(McpServerConfig server, string? sessionToken)
+    private Dictionary<string, string> _Headers(McpServerConfig server, string? sessionToken, string? agentName)
     {
         var bearer = server.CockpitHosted && sessionToken is not null
             ? sessionToken
             : CockpitMcpBearer.For(server, authKey);
 
-        var headers = new Dictionary<string, string>(McpAgentHeaders.For(server, bearer), StringComparer.OrdinalIgnoreCase);
+        var headers = new Dictionary<string, string>(McpAgentHeaders.For(server, bearer, agentName), StringComparer.OrdinalIgnoreCase);
         if (bearer is not null)
         {
             headers["Authorization"] = $"Bearer {bearer}";

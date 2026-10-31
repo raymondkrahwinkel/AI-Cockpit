@@ -62,14 +62,6 @@ public class NodeDiscoveryTests : IAsyncLifetime
         return responder;
     }
 
-    // Nothing is bound here (used only where no responder started, or a responder's own port must be avoided) —
-    // reserving and releasing an OS-assigned port is the same free-of-collisions idiom as `_StartResponderAsync`.
-    private static int _ReserveEphemeralPort()
-    {
-        using var socket = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
-        return ((IPEndPoint)socket.Client.LocalEndPoint!).Port;
-    }
-
     [Fact]
     public async Task ANodeOutsideTheOwnRange_WithAnEmptyWhitelist_AnswersNothing()
     {
@@ -169,12 +161,9 @@ public class NodeDiscoveryTests : IAsyncLifetime
 
         try
         {
-            // The switch is off, so StartAsync returned before binding — BoundPort is null. Any port nobody
-            // holds proves the same "answers nothing" point; there is no responder port to scope this to.
-            var finder = _CreateFinder(IPAddress.Loopback, _ReserveEphemeralPort());
-            var results = await finder.FindAsync(TimeSpan.FromMilliseconds(500));
-
-            Assert.Empty(results);
+            // No bound socket is the boundary that makes answering impossible. Probing a released ephemeral port
+            // instead made Windows report ICMP NetworkUnreachable and tested an unrelated port.
+            Assert.Null(responder.BoundPort);
         }
         finally
         {

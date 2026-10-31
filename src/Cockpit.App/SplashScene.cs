@@ -12,6 +12,47 @@ internal static class SplashScene
 
     public static Window Fast() => _Build(_ => { });
 
+    // AC-1879: `hello` is the Hello state of the unlock step — null without Hello, else offered/cancelled/gone.
+    public static Window Unlock(bool busy = false, bool wrong = false, bool unlocked = false, bool plugins = false, string? hello = null)
+    {
+        var sequence = new StartupSequence();
+        sequence.AddCore("Loading settings…", _ => Task.CompletedTask);
+        sequence.AddCore("Loading plugins…", _ => Task.CompletedTask);
+        sequence.RunPendingAsync().GetAwaiter().GetResult();
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var step = sequence.AddOperatorStep("Unlocking…", _ => gate.Task);
+        var run = sequence.RunPendingAsync();
+        var model = new SplashViewModel(sequence);
+        model.BeginUnlock(new UnlockViewModel
+        {
+            IsBusy = busy,
+            Password = busy ? "example-key" : "",
+            Error = wrong ? "That password does not open this configuration." : null,
+            OffersHello = hello is "offered" or "cancelled",
+            HelloTried = hello is "cancelled",
+            Notice = hello switch
+            {
+                "cancelled" => "Windows Hello did not unlock. Type your password, or try Windows Hello again.",
+                "gone" => "Windows Hello can no longer open this configuration on this computer. Use your password; you can turn Windows Hello on again in Settings.",
+                _ => null,
+            },
+        });
+        if (unlocked)
+        {
+            gate.SetResult();
+            run.GetAwaiter().GetResult();
+            model.EndUnlock();
+            if (plugins)
+            {
+                sequence.AddPlugin("Connecting to Depot…", _ => new TaskCompletionSource().Task);
+                _ = sequence.RunPendingAsync();
+            }
+        }
+
+        model.Refresh();
+        return new SplashWindow(model, null);
+    }
+
     public static Window Loading() => _Build(scene =>
     {
         scene.Finish("Loading settings…", "Loading plugins…");

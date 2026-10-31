@@ -4,10 +4,7 @@ using Avalonia.Controls;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.App.Plugins;
 using Cockpit.Core.Abstractions.Plugins;
-using Cockpit.Plugins.Abstractions.Profiles;
-using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Projects;
-using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Mcp;
@@ -162,8 +159,12 @@ public partial class CockpitViewModel
 
     private void _SyncServerGroups()
     {
-        var servers = _remoteServers?.Servers ?? [];
-        foreach (var group in ServerGroups.Where(group => !servers.Contains(group.Server)).ToList())
+        var servers = _remoteServers?.Servers.Where(server => !_swarmMemberNames.Contains(server.Name)).ToList() ?? [];
+        foreach (var server in servers)
+        {
+            _registerRemoteFileWorkspaces?.Invoke(server);
+        }
+        foreach (var group in ServerGroups.Where(group => !group.IsSwarmMember && !servers.Any(server => ReferenceEquals(server, group.Server))).ToList())
         {
             group.Dispose();
             ServerGroups.Remove(group);
@@ -185,7 +186,10 @@ public partial class CockpitViewModel
                     _OnOpenServerGroupsChanged();
                 }
             };
-            group.Health.OpenRequested += workflow => _OnUiThread(() => _OpenWorkflowSession(group, workflow));
+            if (group.Health is { } groupHealth)
+            {
+                groupHealth.OpenRequested += workflow => _OnUiThread(() => _OpenWorkflowSession(group, workflow));
+            }
             ISessionRegistry? followed = null;
             void Follow()
             {
@@ -207,11 +211,13 @@ public partial class CockpitViewModel
             });
             Follow();
             group.State = server.State;
+            group.Sessions.CollectionChanged += (_, _) => _WatchWaitingRows();
             ServerGroups.Add(group);
             _ReconcileServerGroup(group);
         }
 
         OnPropertyChanged(nameof(HasServerGroups));
+        OnPropertyChanged(nameof(ShowLocalMachineHeading));
         OnPropertyChanged(nameof(ServerStatusLabels));
         OnPropertyChanged(nameof(RemoteWindowStatus));
         _OnOpenServerGroupsChanged();
@@ -234,11 +240,19 @@ public partial class CockpitViewModel
     }
 
     // Up only once /whoami answered too, so the grant is known before a button is drawn or withheld.
-    private static void _ApplyLink(SessionViewModel pane, ServerGroupViewModel group) =>
+    private static void _ApplyLink(SessionViewModel pane, ServerGroupViewModel group)
+    {
+        if (group.IsSwarmMember)
+        {
+            pane.SetRemoteLink(group.IsConnected, mayAnswerPermissions: true, allowsForSession: true);
+            pane.ComposerPlaceholder = group.IsConnected ? $"Running on {group.Name}" : group.LastSeenLabel;
+            return;
+        }
         pane.SetRemoteLink(
             group.State is { IsConnected: true, Key: not null },
             group.State.Key?.MayAnswerPermissions == true,
             group.State.Key?.AllowsForSession == true);
+    }
 
     private void _OnOpenServerGroupsChanged()
     {
@@ -257,7 +271,13 @@ public partial class CockpitViewModel
     }
 
     [RelayCommand]
-    private static void ToggleServerHealth(ServerGroupViewModel group) => group.Health.IsOpen = !group.Health.IsOpen;
+    private static void ToggleServerHealth(ServerGroupViewModel group)
+    {
+        if (group.Health is { } health)
+        {
+            health.IsOpen = !health.IsOpen;
+        }
+    }
 
     // A run waiting for a permission is a session of the same name on that server; without one, the first session
     // that needs attention stands in.
@@ -284,7 +304,10 @@ public partial class CockpitViewModel
                 return;
             }
 
-            var pane = await _remotePaneOver(row.Handle, group.Name);
+            var handle = group.IsSwarmMember && _swarmSessions is { } nodes
+                ? await nodes.OpenSessionAsync(group.Name, row.Handle.PaneId) ?? row.Handle
+                : row.Handle;
+            var pane = await _remotePaneOver(handle, group.Name);
             pane.ShowsWhereItRuns = true;
             _ApplyLink(pane, group);
             row.Pane = pane;
@@ -306,15 +329,28 @@ public partial class CockpitViewModel
     private async Task _StopRemoteSessionAsync(SessionPanelViewModel pane)
     {
         if (ServerGroups.SelectMany(group => group.Sessions.Select(row => (Group: group, Row: row)))
-                .FirstOrDefault(entry => ReferenceEquals(entry.Row.Pane, pane)) is not { Row: { } row } entry
-            || entry.Group.Server.Launcher is not { } launcher)
+                .FirstOrDefault(entry => ReferenceEquals(entry.Row.Pane, pane)) is not { Row: { } row } entry)
         {
             return;
         }
 
         try
         {
-            await launcher.StopSessionAsync(row.Handle.PaneId);
+            if (entry.Group.IsSwarmMember && _swarmSessions is { } nodes)
+            {
+                if (await nodes.StopAsync(entry.Group.Name, row.Handle.PaneId) is { } error)
+                {
+                    throw new InvalidOperationException(error);
+                }
+            }
+            else if (entry.Group.Server?.Launcher is { } launcher)
+            {
+                await launcher.StopSessionAsync(row.Handle.PaneId);
+            }
+            else
+            {
+                return;
+            }
         }
         catch (Exception exception)
         {
@@ -386,10 +422,17 @@ public partial class CockpitViewModel
     // AC-1446: the Options dialog on the server, for an admin key. The server's profiles and projects, read on the same
     // key, are what the scope editor offers; without them it still offers "all".
     [RelayCommand]
-    private async Task OpenServerAdminAsync(ServerGroupViewModel group)
+    private Task OpenServerAdminAsync(ServerGroupViewModel group) => _OpenServerAdminAsync(group, null);
+
+    public Task OpenServerPluginsAsync(string server) =>
+        ServerGroups.FirstOrDefault(group => string.Equals(group.Name, server, StringComparison.Ordinal)) is { } group
+            ? _OpenServerAdminAsync(group, "server-plugins")
+            : Task.CompletedTask;
+
+    private async Task _OpenServerAdminAsync(ServerGroupViewModel group, string? category)
     {
         var show = _showServerAdmin ?? (_dialogService is { } dialogs ? dialogs.ShowServerAdminDialogAsync : null);
-        if (show is null || group.State.Key is not { } key)
+        if (show is null || group.State.Key is not { } key || group.Server is null)
         {
             return;
         }
@@ -415,6 +458,7 @@ public partial class CockpitViewModel
         await Plugins.LoadAsync();
         var admin = new ServerAdminViewModel(group.Name, key.Label, group.Server.Administration, profiles, projects, plugins, group.Server.Projects, dialogService: _dialogService, runningSessions: () => group.Sessions.Count, logger: _logger, serverVersion: key.Version)
         {
+            InitialCategory = category,
             Profiles = new ServerProfilesViewModel(new ServerProfileServices(group.Name, group.Server.Profiles, _serverSignIns, plugins, LocalPluginUiPart)),
             Assistant = assistant,
             HasPluginSettings = row => plugins is IPluginChannelRelay && (_ServerSettingsFor(row) is not null || _LocalSettingsPartFor(row) is not null),
@@ -428,7 +472,10 @@ public partial class CockpitViewModel
         assistant.OpenHealthRequested += () => _OnUiThread(() =>
         {
             group.IsExpanded = true;
-            group.Health.IsOpen = true;
+            if (group.Health is { } groupHealth)
+            {
+                groupHealth.IsOpen = true;
+            }
         });
         await show(admin);
     }
@@ -442,6 +489,16 @@ public partial class CockpitViewModel
     // AC-1571: the UI part of the same plugin on this desktop, for opening its own settings view against the server.
     // Set once the UI parts have initialized.
     internal Func<string, (Type UiType, ICockpitUiHost Host)?> LocalPluginUiPart { get; set; } = _ => null;
+    private Action<IRemoteServer>? _registerRemoteFileWorkspaces;
+
+    internal void FollowRemoteFileWorkspaces(Action<IRemoteServer> register)
+    {
+        _registerRemoteFileWorkspaces = register;
+        foreach (var server in _remoteServers?.Servers ?? [])
+        {
+            register(server);
+        }
+    }
 
     private (Type UiType, ICockpitUiHost Host)? _LocalSettingsPartFor(ServerPluginRowViewModel row) =>
         LocalPluginUiPart(row.Id) is { Host.HasSettings: true } part ? part : null;
@@ -458,7 +515,7 @@ public partial class CockpitViewModel
 
         if (_LocalSettingsPartFor(row) is { } part)
         {
-            if (await ServerPluginSettings.OpenAsync(part.UiType, part.Host, relay, row.FolderId, () => _PluginProfilesAsync(profiles), () => _PluginProjectsAsync(projects)) is { } remote)
+            if (await ServerPluginSettings.OpenAsync(part.UiType, part.Host, relay, row.FolderId, () => ServerPluginTargets.ProfilesAsync(profiles), () => ServerPluginTargets.ProjectsAsync(projects), server) is { } remote)
             {
                 await _dialogService.ShowServerPluginSettingsAsync($"{row.Name} on {server}", remote.CreateView, remote.PersistAsync);
             }
@@ -473,25 +530,6 @@ public partial class CockpitViewModel
         }
     }
 
-    // AC-1571: the server's profiles as a plugin's host gives them, from the Admin API's own list. No config directory:
-    // that path stays on the server.
-    private static async Task<IReadOnlyList<PluginProfileInfo>> _PluginProfilesAsync(IServerProfiles profiles) =>
-        [.. (await profiles.ListAsync()).Select(profile => new PluginProfileInfo(profile.Label, profile.Provider, "")
-        {
-            ModelSuggestions = _Known(profile, WellKnownPluginSessionOptions.Model),
-            EffortSuggestions = _Known(profile, WellKnownPluginSessionOptions.Effort),
-        })];
-
-    // AC-1737: the server's projects, read again from its API so a project added there since shows up.
-    private static async Task<IReadOnlyList<PluginProjectInfo>> _PluginProjectsAsync(IServerProjects projects)
-    {
-        await projects.LoadAsync();
-        return [.. projects.Current.Settings.Projects.Select(project => new PluginProjectInfo(project.Id, project.Name))];
-    }
-
-    private static IReadOnlyList<string> _Known(RemoteProfile profile, string option) =>
-        profile.KnownValues?.GetValueOrDefault(option) is { } values ? [.. values.Select(value => value.Value)] : [];
-
     [RelayCommand]
     private async Task OpenServerStartAsync(ServerGroupViewModel group)
     {
@@ -499,7 +537,7 @@ public partial class CockpitViewModel
         group.Start.Error = "";
         group.Start.Reason = "";
         group.Start.IsOpen = true;
-        if (_serverChoices is null)
+        if ((group.IsSwarmMember ? _swarmSessions : _serverChoices) is not { } choices)
         {
             return;
         }
@@ -508,7 +546,7 @@ public partial class CockpitViewModel
         try
         {
             // The node tools on the same key: the server filters both lists to its scope (AC-1367).
-            var snapshot = await _serverChoices.ReadAsync(group.Name);
+            var snapshot = await choices.ReadAsync(group.Name);
             if (snapshot.Error is { Length: > 0 } error)
             {
                 group.Start.Error = error;
@@ -516,7 +554,13 @@ public partial class CockpitViewModel
             }
 
             // AC-1472: the projects from the backend API, the same list and scope Admin's Projects page writes to.
-            await group.Server.Projects.LoadAsync();
+            if (group.IsSwarmMember)
+            {
+                group.Start.Fill(snapshot.Profiles.Select(profile => new NodeProfileChoice(profile.Label, profile.Purpose)),
+                    snapshot.Projects.Select(project => new NodeProjectChoice(project.Id, project.Name)));
+                return;
+            }
+            await (group.Server ?? throw new InvalidOperationException("A non-swarm group has a server.")).Projects.LoadAsync();
             group.Start.Fill(
                 snapshot.Profiles.Select(profile => new NodeProfileChoice(profile.Label, profile.Purpose)),
                 group.Server.Projects.Current.Settings.Projects.Select(project => new NodeProjectChoice(project.Id, project.Name)));
@@ -537,7 +581,15 @@ public partial class CockpitViewModel
     [RelayCommand]
     private async Task StartOnServerAsync(ServerGroupViewModel group)
     {
-        if (group.Server.Launcher is not { } launcher || group.Start.SelectedProfile is not { } profile)
+        if (group.IsSwarmMember)
+        {
+            group.Start.IsBusy = true;
+            try { await _StartOnMemberAsync(group); }
+            catch (Exception exception) { group.Start.Error = exception.Message; }
+            finally { group.Start.IsBusy = false; }
+            return;
+        }
+        if (group.Server?.Launcher is not { } launcher || group.Start.SelectedProfile is not { } profile)
         {
             group.Start.Error = "Pick a profile first.";
             return;
