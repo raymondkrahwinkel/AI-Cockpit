@@ -1275,7 +1275,14 @@
                                             <MenuItem Header="Pop out" Click="OnPopOutWorkspaceRequested" IsVisible="{Binding CanPopOut}"/>
                                             <MenuItem Header="Copy path" Click="OnCopyWorkspacePathRequested" IsVisible="{Binding CanCopyPath}"/>
                                             <Separator IsVisible="{Binding CanClose}"/>
-                                            <MenuItem Header="Close" Click="OnCloseWorkspaceRequested" IsVisible="{Binding CanClose}"/>
+                                            <MenuItem Click="OnCloseWorkspaceRequested" IsVisible="{Binding CanClose}">
+                                                <MenuItem.Header>
+                                                    <Grid ColumnDefinitions="*,Auto" MinWidth="180">
+                                                        <TextBlock Text="Close"/>
+                                                        <TextBlock Grid.Column="1" Text="Middle-click" Margin="20,0,0,0" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                                    </Grid>
+                                                </MenuItem.Header>
+                                            </MenuItem>
                                         </ContextMenu>
                                     </Border.ContextMenu>
                                     <DockPanel>

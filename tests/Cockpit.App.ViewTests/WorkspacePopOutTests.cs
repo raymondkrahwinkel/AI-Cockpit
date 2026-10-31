@@ -32,17 +32,17 @@ namespace Cockpit.App.ViewTests;
 [Collection("avalonia")]
 public sealed class WorkspacePopOutTests
 {
-    public static TheoryData<string, bool, bool, bool, bool> TabKinds => new()
+    public static TheoryData<Func<WorkspacesViewModel, Task>, bool, bool, bool, bool> TabKinds => new()
     {
-        { "file", true, true, true, true },
-        { "workspace", false, false, false, true },
-        { "projects", false, false, false, false },
-        { "last", false, false, false, false },
+        { workspaces => workspaces.OpenWorkspaceAsync("test.file", new WorkspaceOpenOptions("draft", "draft.md", Preview: true)), true, true, true, true },
+        { _ => Task.CompletedTask, false, false, false, true },
+        { workspaces => workspaces.SelectWorkspaceCommand.ExecuteAsync(workspaces.Settings.Workspaces.Single(w => w.Type == WorkspaceType.Projects).Id), false, false, false, false },
+        { workspaces => { var workspace = workspaces.Settings.Workspaces.Single(w => w.Type == WorkspaceType.Sessions); workspaces.Settings = new WorkspaceSettings { Workspaces = [workspace], ActiveWorkspaceId = workspace.Id }; return Task.CompletedTask; }, false, false, false, false },
     };
 
     [Theory]
     [MemberData(nameof(TabKinds))]
-    public Task TabMenuAvailability(string kind, bool keep, bool pop, bool copy, bool close) => HeadlessAvalonia.RunAsync(async () =>
+    public Task TabMenuAvailability(Func<WorkspacesViewModel, Task> arrange, bool keep, bool pop, bool copy, bool close) => HeadlessAvalonia.RunAsync(async () =>
     {
         var hub = new PluginChannelHub(NullLogger<PluginChannelHub>.Instance);
         var client = new FileSourceChannelClient(new Channel(hub));
@@ -52,19 +52,7 @@ public sealed class WorkspacePopOutTests
             new MarkdownFileWorkspace(context, options, client, () => Task.FromResult(true))) { CanFloat = true },
             new NoStorage(), NullCockpitSessionObserver.Instance);
         var workspaces = new WorkspacesViewModel(null, workspaceTypes: registry);
-        if (kind == "file")
-        {
-            await workspaces.OpenWorkspaceAsync("test.file", new WorkspaceOpenOptions("draft", "draft.md", Preview: true));
-        }
-        else if (kind == "projects")
-        {
-            await workspaces.SelectWorkspaceCommand.ExecuteAsync(workspaces.Settings.Workspaces.Single(w => w.Type == WorkspaceType.Projects).Id);
-        }
-        else if (kind == "last")
-        {
-            var workspace = workspaces.Settings.Workspaces.Single(w => w.Type == WorkspaceType.Sessions);
-            workspaces.Settings = new WorkspaceSettings { Workspaces = [workspace], ActiveWorkspaceId = workspace.Id };
-        }
+        await arrange(workspaces);
         var tab = workspaces.Tabs.Single(t => t.IsActive);
         Assert.Equal(keep, tab.CanKeepOpen);
         Assert.Equal(pop, tab.CanPopOut);
