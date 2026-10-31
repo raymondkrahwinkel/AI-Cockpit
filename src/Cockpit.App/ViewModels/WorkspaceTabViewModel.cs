@@ -29,6 +29,15 @@ public sealed partial class WorkspaceTabViewModel(Workspace workspace, bool isAc
 
     public bool CanClose => owner.CanClose(Id);
 
+    // AC-1972: each bulk close shows only when it would close something.
+    public bool CanCloseOthers => owner.BulkCloseScope(BulkClose.Others, Id).Closing.Count > 0;
+
+    public bool CanCloseToTheRight => owner.BulkCloseScope(BulkClose.ToTheRight, Id).Closing.Count > 0;
+
+    public bool CanCloseAll => owner.BulkCloseScope(BulkClose.All, Id).Closing.Count > 0;
+
+    public bool HasCloseItems => CanClose || CanCloseOthers || CanCloseToTheRight || CanCloseAll;
+
     internal string? FilePath => owner.FileBodyFor(workspace)?.DisplayPath;
 
     internal void RefreshCapabilities()

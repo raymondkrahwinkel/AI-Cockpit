@@ -930,6 +930,15 @@ public partial class CockpitView : UserControl
         }
     }
 
+    // AC-1972: Close others / to the right / all — the item's Tag says which.
+    private void OnBulkCloseWorkspacesRequested(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: WorkspaceTabViewModel tab, Tag: BulkClose action } && DataContext is CockpitViewModel cockpit)
+        {
+            _ = cockpit.CloseWorkspacesWithConfirmationAsync(action, tab.Id);
+        }
+    }
+
     // The rename box becomes visible where it was already in the tree, so nothing gives it focus on its own —
     // you had to click it before you could type (Raymond). Selecting everything on the way in makes the first
     // keystroke replace the name, which is the whole point of asking to rename it.

@@ -1274,7 +1274,7 @@
                                             <MenuItem Header="Rename…" Click="OnRenameWorkspaceRequested" IsVisible="{Binding CanRename}"/>
                                             <MenuItem Header="Pop out" Click="OnPopOutWorkspaceRequested" IsVisible="{Binding CanPopOut}"/>
                                             <MenuItem Header="Copy path" Click="OnCopyWorkspacePathRequested" IsVisible="{Binding CanCopyPath}"/>
-                                            <Separator IsVisible="{Binding CanClose}"/>
+                                            <Separator IsVisible="{Binding HasCloseItems}"/>
                                             <MenuItem Click="OnCloseWorkspaceRequested" IsVisible="{Binding CanClose}">
                                                 <MenuItem.Header>
                                                     <Grid ColumnDefinitions="*,Auto" MinWidth="180">
@@ -1283,6 +1283,10 @@
                                                     </Grid>
                                                 </MenuItem.Header>
                                             </MenuItem>
+                                            <!-- AC-1972: hidden when there is nothing for them to close. -->
+                                            <MenuItem Header="Close others" Click="OnBulkCloseWorkspacesRequested" Tag="{x:Static vm:BulkClose.Others}" IsVisible="{Binding CanCloseOthers}"/>
+                                            <MenuItem Header="Close tabs to the right" Click="OnBulkCloseWorkspacesRequested" Tag="{x:Static vm:BulkClose.ToTheRight}" IsVisible="{Binding CanCloseToTheRight}"/>
+                                            <MenuItem Header="Close all" Click="OnBulkCloseWorkspacesRequested" Tag="{x:Static vm:BulkClose.All}" IsVisible="{Binding CanCloseAll}"/>
                                         </ContextMenu>
                                     </Border.ContextMenu>
                                     <DockPanel>

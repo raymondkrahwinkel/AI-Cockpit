@@ -12,33 +12,22 @@ namespace Cockpit.App.ViewTests.Onboarding;
 [Collection("avalonia")]
 public class FirstRunWizardWindowTests
 {
+    // Skip and Next on the last step each close their own window.
     [Fact]
-    public void SkipCommand_ClosesTheWindow() => HeadlessAvalonia.Run(() =>
+    public void SkipCommand_AndNextOnTheLastStep_EachCloseTheWindow() => HeadlessAvalonia.Run(() =>
     {
-        var viewModel = new FirstRunWizardViewModel([new StubFirstRunWizardStep(0, "What this is", isSkipped: false)]);
-        var window = new FirstRunWizardWindow { DataContext = viewModel };
-        window.Show();
+        foreach (var close in new Action<FirstRunWizardViewModel>[] { viewModel => viewModel.SkipCommand.Execute(null), viewModel => viewModel.NextCommand.Execute(null) })
+        {
+            var viewModel = new FirstRunWizardViewModel([new StubFirstRunWizardStep(0, "What this is", isSkipped: false)]);
+            var window = new FirstRunWizardWindow { DataContext = viewModel };
+            window.Show();
 
-        var closed = false;
-        window.Closed += (_, _) => closed = true;
+            var closed = false;
+            window.Closed += (_, _) => closed = true;
 
-        viewModel.SkipCommand.Execute(null);
+            close(viewModel);
 
-        Assert.True(closed);
-    });
-
-    [Fact]
-    public void NextOnTheLastStep_ClosesTheWindow() => HeadlessAvalonia.Run(() =>
-    {
-        var viewModel = new FirstRunWizardViewModel([new StubFirstRunWizardStep(0, "What this is", isSkipped: false)]);
-        var window = new FirstRunWizardWindow { DataContext = viewModel };
-        window.Show();
-
-        var closed = false;
-        window.Closed += (_, _) => closed = true;
-
-        viewModel.NextCommand.Execute(null);
-
-        Assert.True(closed);
+            Assert.True(closed);
+        }
     });
 }
