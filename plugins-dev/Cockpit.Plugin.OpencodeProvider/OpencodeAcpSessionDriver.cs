@@ -341,7 +341,7 @@ internal sealed class OpencodeAcpSessionDriver : IPluginSessionDriver
             {
                 _EmitTurnCompleted(result);
             }
-            else if (_MapStopReason(result).IsError)
+            else if (_MapStopReason(result).IsError && text.Length < 0)
             {
                 // AC-2000: without a turn end of its own, a refused brain would otherwise go unnoticed.
                 _events.Publish(new PluginSessionError { SessionId = _sessionId, Message = "opencode refused the brain instruction, so this session runs without the brain." });
