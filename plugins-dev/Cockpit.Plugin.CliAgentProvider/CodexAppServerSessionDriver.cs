@@ -416,7 +416,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
                         _turnText.Append(delta);
                     }
 
-                    _events.Publish(new PluginAssistantTextDelta { SessionId = _threadId, ParentToolUseId = parentTool, BlockIndex = 0, Text = delta });
+                    _events.Publish(new PluginAssistantTextDelta { SessionId = isChild ? source : _threadId, ParentToolUseId = parentTool, BlockIndex = 0, Text = delta });
                 }
 
                 break;
