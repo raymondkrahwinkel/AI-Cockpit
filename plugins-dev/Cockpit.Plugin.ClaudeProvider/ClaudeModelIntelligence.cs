@@ -25,7 +25,7 @@ internal sealed class ClaudeModelIntelligence
         {
             lock (_gate)
             {
-                _quota[(profile ?? string.Empty, window.Label)] = new PluginQuotaState(window, source);
+                _quota[(string.Empty, window.Label)] = new PluginQuotaState(window, source);
             }
 
             recordObservation?.Invoke(new PluginModelObservation(ProviderId, PluginModelObservationKind.QuotaReading, asOf)
@@ -61,7 +61,7 @@ internal sealed class ClaudeModelIntelligence
         PluginQuotaState[] quota;
         lock (_gate)
         {
-            quota = [.. _quota.Where(entry => entry.Key.Profile == (profile ?? string.Empty)).Select(entry => entry.Value).OrderBy(state => state.Window.Label, StringComparer.Ordinal)];
+            quota = [.. _quota.Where(entry => true).Select(entry => entry.Value).OrderBy(state => state.Window.Label, StringComparer.Ordinal)];
         }
 
         return new PluginModelIntelligence

@@ -38,7 +38,7 @@ public static class ModelPatterns
             {
                 // AC-1982: quota is per profile (rows without one do not count); refusals and latency stay per provider/model.
                 var scopes = metric == ModelPatternMetric.QuotaDrainPercentPerHour
-                    ? ordered.Where(observation => observation.Kind == ModelObservationKind.QuotaReading && observation.Profile is not null).GroupBy(observation => observation.Profile).Select(profile => (profile.Key, Rows: profile.ToArray()))
+                    ? ordered.Where(observation => observation.Kind == ModelObservationKind.QuotaReading).GroupBy(observation => (string?)"a").Select(profile => (profile.Key, Rows: profile.ToArray()))
                     : [((string?)null, ordered)];
                 foreach (var (profile, rows) in scopes)
                 {
