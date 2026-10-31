@@ -1009,7 +1009,8 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
 
         // A saved selection is the operator's own answer and is taken whole — including anything below, if they
         // ticked it deliberately. The filter is about what an assistant gets when nobody said.
-        selection.UnionWith(profile.EnabledMcpServerNames ?? []);
+        selection.UnionWith(profile.EnabledMcpServerNames
+            ?? McpServerRegistryFilter.OfferedToOperator(catalog).Select(server => server.Name).ToArray());
         selection.UnionWith(catalog.Where(server => server.AlwaysMounted).Select(server => server.Name));
         return selection;
     }
