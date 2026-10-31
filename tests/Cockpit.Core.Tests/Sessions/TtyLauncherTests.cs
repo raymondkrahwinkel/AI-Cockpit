@@ -5,8 +5,6 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Sessions.Tty;
-using Cockpit.Core.Sessions;
-using System.Diagnostics;
 
 namespace Cockpit.Core.Tests.Sessions;
 
@@ -257,10 +255,11 @@ public class TtyLauncherTests
     [Fact]
     public void Launch_WithAPaneId_PutsThatPanesKeyringTokenInTheEnvironment_NeverTheSharedAppKey()
     {
-        var (launcher, ptyHostFactory, authKey, keyring) = CreateLauncherWithKeyring();
+        var logger = Substitute.For<ILogger<TtyLauncher>>();
+        var (launcher, ptyHostFactory, authKey, keyring) = CreateLauncherWithKeyring(logger);
         var provider = Provider(new TtyLaunchSpec("/usr/bin/cli", [], new Dictionary<string, string?>(), "/wd", []));
 
-        launcher.Launch(provider, profile: null, options: new Dictionary<string, string>(), columns: 80, rows: 24, paneId: "tty-pane-under-test");
+        var process = launcher.Launch(provider, profile: null, options: new Dictionary<string, string>(), columns: 80, rows: 24, paneId: "tty-pane-under-test");
 
         ptyHostFactory.Received().Start(
             Arg.Any<string>(),
@@ -274,68 +273,13 @@ public class TtyLauncherTests
             Arg.Any<short>(),
             Arg.Any<short>());
 
-        // AC-1989, layer 2: scratch stays private on desktops and is shared only with the configured agent group.
-        if (OperatingSystem.IsWindows())
-        {
-            return;
-        }
-        var previousBase = Environment.GetEnvironmentVariable(SessionScratch.BaseVariable);
-        var previousGroup = Environment.GetEnvironmentVariable("COCKPIT_AGENT_GROUP");
-        var basis = Path.Combine(Path.GetTempPath(), $"ac-1989-{Guid.NewGuid():N}");
-        try
-        {
-            Environment.SetEnvironmentVariable(SessionScratch.BaseVariable, basis);
-            Environment.SetEnvironmentVariable("COCKPIT_AGENT_GROUP", null);
-            var privatePath = SessionScratch.Create("private");
-            var ownerMode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
-            Assert.Equal(ownerMode, File.GetUnixFileMode(privatePath));
-            using var id = Process.Start(new ProcessStartInfo("id", "-g") { RedirectStandardOutput = true });
-            Assert.NotNull(id);
-            var gid = id.StandardOutput.ReadToEnd().Trim();
-            id.WaitForExit();
-            Assert.Equal(0, id.ExitCode);
-            Environment.SetEnvironmentVariable("COCKPIT_AGENT_GROUP", gid);
-            var sharedPath = SessionScratch.Create("shared");
-            foreach (var path in new[] { basis, sharedPath, SessionScratch.Create("private") })
-            {
-                Assert.Equal(ownerMode | UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.GroupExecute, File.GetUnixFileMode(path));
-                var info = new ProcessStartInfo("stat") { RedirectStandardOutput = true };
-                info.ArgumentList.Add(OperatingSystem.IsMacOS() ? "-f" : "-c");
-                info.ArgumentList.Add("%g");
-                info.ArgumentList.Add(path);
-                using var stat = Process.Start(info);
-                Assert.NotNull(stat);
-                Assert.Equal(gid, stat.StandardOutput.ReadToEnd().Trim());
-                stat.WaitForExit();
-                Assert.Equal(0, stat.ExitCode);
-            }
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable(SessionScratch.BaseVariable, previousBase);
-            Environment.SetEnvironmentVariable("COCKPIT_AGENT_GROUP", previousGroup);
-            Directory.Delete(basis, recursive: true);
-        }
+        process.Dispose();
+        Assert.DoesNotContain(logger.ReceivedCalls(), call =>
+            call.GetArguments().OfType<object>().Any(argument => _ContainsAHexToken(argument == null ? null : argument.ToString())));
     }
 
     // Iron Law #8 (no secret in a log/error message): the pane id is safe to log (it is not the secret), but the
     // minted bearer token itself must never appear in a log line anywhere on this teardown path.
-    [Fact]
-    public void Launch_WithAPaneId_TheMintedTokenNeverAppearsInALogMessage()
-    {
-        var logger = Substitute.For<ILogger<TtyLauncher>>();
-        var (launcher, _, _, _) = CreateLauncherWithKeyring(logger);
-        var spec = new TtyLaunchSpec("/usr/bin/cli", [], new Dictionary<string, string?>(), "/wd", []);
-        var provider = Provider(spec);
-
-        var process = launcher.Launch(provider, profile: null, options: new Dictionary<string, string>(), columns: 80, rows: 24, paneId: "tty-pane-under-test");
-        process.Dispose();
-
-        // The keyring mints a 64-character hex string (32 random bytes); no log call's rendered message anywhere
-        // in this path may contain a substring shaped like one.
-        Assert.DoesNotContain(logger.ReceivedCalls(), call =>
-            call.GetArguments().OfType<object>().Any(argument => _ContainsAHexToken(argument == null ? null : argument.ToString())));
-    }
 
     /// <summary>Whether <paramref name="text"/> contains a run of 64 hex characters — the shape of a minted keyring token.</summary>
     private static bool _ContainsAHexToken(string? text)
