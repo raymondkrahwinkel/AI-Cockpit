@@ -394,6 +394,12 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
             case "turn/started":
                 if (isChild)
                 {
+                    if (_children.TryGetValue(source, out var child)
+                        && _TryGetNestedString(notification.Params, "turn", "id", out var childTurnId))
+                    {
+                        _children[source] = child with { RunId = childTurnId };
+                        _PublishChildren();
+                    }
                     break;
                 }
                 // A new turn clears leftover usage so one that reports no tokenUsage carries none, rather than
@@ -523,7 +529,6 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
                 _children[childId] = new PluginBackgroundTask(childId, PluginBackgroundTaskKind.SubAgent, _StringOrEmpty(item, "agentPath"))
                 {
                     AgentId = childId, ParentTaskId = source, ParentToolUseId = childId,
-                    RunId = _StringOrEmpty(parameters, "turnId"),
                     AgentType = _TryGetString(item, "agent_type", out var agentType) ? agentType : _TryGetString(item, "subagent_type", out var subagentType) ? subagentType : null,
                     StartedAtUnixMilliseconds = _TryGetLong(item, "startedAtMs") ?? _TryGetLong(parameters, "startedAtMs"),
                 };

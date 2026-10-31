@@ -28,6 +28,7 @@ public class CodexAppServerSessionDriverTests
         Assert.Equal("/root/tiny", Assert.Single(initial.Tasks).Description);
         Assert.Equal("child", initial.Tasks[0].AgentId);
         Assert.Equal("parent", initial.Tasks[0].ParentTaskId);
+        Assert.Null(initial.Tasks[0].RunId);
         Assert.Equal(1793391947675, initial.Children[0].StartedAtUnixMilliseconds);
         Assert.Null(initial.Children[0].AgentType);
         await fake.PushStdoutAsync("""{"method":"item/agentMessage/delta","params":{"threadId":"parent","delta":"PARENT"}}""");
@@ -41,6 +42,7 @@ public class CodexAppServerSessionDriverTests
         await fake.PushStdoutAsync("""{"method":"item/agentMessage/delta","params":{"threadId":"parent","delta":"_OK"}}""");
         await fake.PushStdoutAsync("""{"method":"turn/completed","params":{"threadId":"parent","turn":{"status":"completed"}}}""");
         var events = await _CollectUntilTurnCompletedAsync(driver);
+        Assert.Contains(events.OfType<PluginBackgroundTasksChanged>(), e => e.Tasks.Any(t => t.RunId == "child-run"));
         var childText = Assert.Single(events.OfType<PluginAssistantTextDelta>(), e => e.SessionId == "child");
         Assert.Equal("CHILD_OK", childText.Text);
         Assert.Equal("child", childText.ParentToolUseId);
@@ -54,8 +56,12 @@ public class CodexAppServerSessionDriverTests
         var resumed = await _NextEventOfTypeAsync<PluginBackgroundTasksChanged>(driver);
         Assert.Equal(initial.Tasks[0].TaskId, Assert.Single(resumed.Tasks).TaskId);
         Assert.Single(resumed.Children);
+        Assert.Null(resumed.Children[0].RunId);
+        await fake.PushStdoutAsync("""{"method":"turn/started","params":{"threadId":"child","turn":{"id":"child-resumed-run"}}}""");
+        var resumedTurn = await _NextEventOfTypeAsync<PluginBackgroundTasksChanged>(driver);
+        Assert.Equal("child-resumed-run", Assert.Single(resumedTurn.Tasks).RunId);
         Assert.StartsWith("Not available", (await driver.ReadChildTranscriptAsync("foreign", "r", null)).Status);
-        var history = driver.ReadChildTranscriptAsync("child", resumed.Children[0].RunId, null);
+        var history = driver.ReadChildTranscriptAsync("child", resumedTurn.Children[0].RunId, null);
         var read = await _RespondAsync(fake, "thread/read", """{"thread":{"id":"child"}}""");
         Assert.Equal("child", read.GetProperty("params").GetProperty("threadId").GetString());
         await _RespondAsync(fake, "thread/items/list", """{"data":[{"turnId":"child-run","item":{"type":"agentMessage","id":"msg","text":"CHILD_HISTORY"}}],"nextCursor":"next"}""");
