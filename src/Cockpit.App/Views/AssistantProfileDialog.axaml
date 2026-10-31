@@ -85,6 +85,15 @@
                     <!-- AC-1994: the shared brain picker on the slot's own Assistant value, shown once a source has
                          brains. The brain is a part of its own at the start, so replacing the built-in instructions
                          below does not take it away, and choosing one does not replace them. -->
+                    <!-- Without a brain source the picker hides; the stored value stays visible and clearable here, as in
+                         the profile editor, since the assistant acts on it from its next start. -->
+                    <StackPanel Spacing="4" IsVisible="{Binding !BrainPicker.IsAvailable, FallbackValue=True}">
+                        <TextBlock Text="Brain" FontSize="11"
+                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        <TextBox Text="{Binding Assistant}" HorizontalAlignment="Stretch"
+                                 PlaceholderText="None. Connect Depot to choose a brain"/>
+                    </StackPanel>
+
                     <StackPanel Spacing="4" IsVisible="{Binding BrainPicker.IsAvailable, FallbackValue=False}">
                         <TextBlock Text="Brain" FontSize="11"
                                    Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
@@ -103,11 +112,11 @@
                         <CheckBox Content="Advanced: replace the built-in instructions instead of adding to them"
                                   FontSize="11"
                                   IsChecked="{Binding $parent[Window].((vm:AssistantProfileDialogViewModel)DataContext).ReplacesStandingInstruction}"
-                                  ToolTip.Tip="On: the assistant runs on your text alone. It then loses the built-in instructions to answer in your language, to speak rather than write a screen, to say when it could not check something, and never to treat a spoken yes as approval."/>
+                                  ToolTip.Tip="On: your text takes the place of the built-in instructions. It then loses the built-in rules to answer in your language, to speak rather than write a screen, to say when it could not check something, and never to treat a spoken yes as approval. The brain you chose, your organisation's rules and what the assistant remembers are still added."/>
                         <TextBlock FontSize="11" TextWrapping="Wrap"
                                    Foreground="{DynamicResource CockpitTextFaintBrush}"
                                    IsVisible="{Binding $parent[Window].((vm:AssistantProfileDialogViewModel)DataContext).ReplacesStandingInstruction}"
-                                   Text="The assistant now runs on your text alone: how it speaks, which language it answers in, that it says when a check could not be made, and that a spoken yes is never an approval are all yours to state."/>
+                                   Text="The assistant now runs on your text in place of the built-in instructions: how it speaks, which language it answers in, that it says when a check could not be made, and that a spoken yes is never an approval are all yours to state. A chosen brain still loads beside it."/>
                     </StackPanel>
 
                     <!-- Switchable, unlike the profile list's fixed dropdown: this record is replaced whole on every

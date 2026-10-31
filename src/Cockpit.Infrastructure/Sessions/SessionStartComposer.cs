@@ -106,7 +106,7 @@ public sealed class SessionStartComposer(
 
     // AC-1992: the brain leads the system prompt once, and also rides alone under its own key for a provider that has
     // no system prompt to put it in. AC-1994: the assistant's own launch puts its brain through here as well.
-    public static void PutSystemPrompt(IDictionary<string, string> options, string systemPrompt, string? brainInstruction)
+    internal static void PutSystemPrompt(IDictionary<string, string> options, string systemPrompt, string? brainInstruction)
     {
         options[WellKnownPluginSessionOptions.AppendSystemPrompt] = string.Join("\n\n",
             new[] { brainInstruction, systemPrompt }.Where(part => !string.IsNullOrWhiteSpace(part)).Select(part => part?.Trim()));

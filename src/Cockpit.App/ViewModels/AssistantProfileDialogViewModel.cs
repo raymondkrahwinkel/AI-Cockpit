@@ -36,7 +36,8 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
     // AC-1994: the assistant has no project, and its brain rides beside the built-in instructions rather than in them.
     private const string _BrainHint =
         "None names no brain, so the provider's own instruction files decide. A brain is loaded beside the built-in " +
-        "instructions, never instead of them, from the next start or Save and restart.";
+        "instructions, never instead of them, from the next start or Save and restart; Kimi and opencode load it with " +
+        "the next new conversation.";
 
     // Raised when the dialog should close (after a save, or on cancel).
     public event Action? CloseRequested;
