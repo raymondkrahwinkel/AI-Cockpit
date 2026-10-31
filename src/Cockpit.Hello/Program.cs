@@ -22,7 +22,9 @@ try
         // signatures, so the operator confirms once (three separate helper runs prompted three times, measured 31-10).
         case ["enroll", var name, var hwnd, var challenge]:
             var window = _Window(hwnd);
+            var clock = System.Diagnostics.Stopwatch.StartNew();
             var created = await KeyCredentialManager.RequestCreateForWindowAsync(window, name, KeyCredentialCreationOption.ReplaceExisting);
+            var createMs = clock.ElapsedMilliseconds;
             if (created.Status != KeyCredentialStatus.Success)
             {
                 Console.WriteLine(created.Status.ToString());
@@ -30,8 +32,14 @@ try
             }
 
             var data = Convert.FromBase64String(challenge).AsBuffer();
+            clock.Restart();
             var first = await created.Credential.RequestSignForWindowAsync(window, data);
+            var firstMs = clock.ElapsedMilliseconds;
+            clock.Restart();
             var second = first.Status == KeyCredentialStatus.Success ? await created.Credential.RequestSignForWindowAsync(window, data) : first;
+
+            // How long each step took: a step that waited on a gesture shows it, so the log says which ones prompted.
+            Console.Error.WriteLine($"timing create={createMs}ms sign1={firstMs}ms sign2={clock.ElapsedMilliseconds}ms");
             if (second.Status != KeyCredentialStatus.Success)
             {
                 Console.WriteLine(second.Status.ToString());

@@ -94,6 +94,7 @@ public sealed class WindowsHelloSigner(Window owner) : ISecretKeySigner
         {
             FileName = HelperPath,
             RedirectStandardOutput = true,
+            RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true,
         };
@@ -129,6 +130,14 @@ public sealed class WindowsHelloSigner(Window owner) : ISecretKeySigner
             {
                 var line = await process.StandardOutput.ReadLineAsync(limit.Token).ConfigureAwait(false);
                 await process.WaitForExitAsync(limit.Token).ConfigureAwait(false);
+
+                // The helper's diagnostics (step timings), never the signatures: those only go to stdout.
+                var diagnostics = (await process.StandardError.ReadToEndAsync(limit.Token).ConfigureAwait(false)).Trim();
+                if (diagnostics.Length > 0)
+                {
+                    LifecycleLog.Write($"Windows Hello {arguments[0]}: {diagnostics.ReplaceLineEndings(" ")}");
+                }
+
                 return line?.Trim();
             }
             catch (OperationCanceledException)
