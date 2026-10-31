@@ -9,7 +9,7 @@ namespace Cockpit.Infrastructure.Clones;
 // Only a recognized device code leaves gh's output; its arbitrary output may contain a credential.
 internal sealed class GitHubGitSignInFlow : ILoginFlow
 {
-    private static readonly Regex DeviceCode = new(@"(?:One-time code \(([A-Z0-9]{4}-[A-Z0-9]{4})\) copied to clipboard|Unsupported Linux code: ([A-Z0-9]{4}-[A-Z0-9]{4})\b)", RegexOptions.Compiled);
+    private static readonly Regex DeviceCode = new(@"(?:One-time code \(([A-Z0-9]{4}-[A-Z0-9]{4})\) copied to clipboard|First copy your one-time code: ([A-Z0-9]{4}-[A-Z0-9]{4})\b)", RegexOptions.Compiled);
     private static readonly Regex Ansi = new(@"\x1b\[[0-9;]*m", RegexOptions.Compiled);
     private readonly Channel<LoginFlowStep> _steps = Channel.CreateBounded<LoginFlowStep>(new BoundedChannelOptions(4) { FullMode = BoundedChannelFullMode.DropOldest });
     private readonly CancellationTokenSource _stop = new();
