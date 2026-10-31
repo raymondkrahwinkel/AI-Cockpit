@@ -215,7 +215,7 @@ public sealed partial class AgentOverviewCardViewModel : ObservableObject, IDisp
             if (ReferenceEquals(owner, _Owner) && owner.ChildAgents.Contains(child)
                 && run == child.Reference.RunId && revision == child.Reference.SourceRevision)
             {
-                child.OpenCommand.Execute(null);
+                child.Owner.ReturnToParentCommand.Execute(null);
             }
         });
     }
