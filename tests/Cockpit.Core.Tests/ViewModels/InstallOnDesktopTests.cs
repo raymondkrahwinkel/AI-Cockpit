@@ -1,8 +1,11 @@
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
+using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Plugins;
+using Cockpit.Core.Projects;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.ViewModels;
@@ -23,8 +26,9 @@ public class InstallOnDesktopTests
     public async Task TheButton_InstallsFromTheDesktopStore_OrSaysWhyItCannot(bool storeHasIt)
     {
         var local = _LocalAdministration(_Entry(storeHasIt ? "depot" : "something-else"));
+        var server = Substitute.For<IPluginAdministration>();
         var manager = _Manager(local);
-        var admin = new ServerAdminViewModel("homelab", "key", Substitute.For<IConnectKeyAdministration>(), [], [], Substitute.For<IPluginAdministration>())
+        var admin = new ServerAdminViewModel("homelab", "key", Substitute.For<IConnectKeyAdministration>(), [], [], server)
         {
             InstallPluginOnDesktop = row => manager.InstallFromStoreByIdAsync(row.Id),
         };
@@ -32,6 +36,9 @@ public class InstallOnDesktopTests
 
         await admin.InstallPluginOnDesktopCommand.ExecuteAsync(row);
 
+        // The server's side never takes part, nor does the zip route.
+        Assert.Empty(server.ReceivedCalls());
+        await local.DidNotReceive().InstallFromZipAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
         Assert.Equal(!storeHasIt, row.MissingOnDesktop);
         Assert.Equal(storeHasIt, admin.DesktopNeedsRestart);
         Assert.Equal(storeHasIt ? 1 : 0, local.ReceivedCalls().Count(call => call.GetMethodInfo().Name == nameof(IPluginAdministration.InstallFromStoreAsync)));
@@ -47,27 +54,28 @@ public class InstallOnDesktopTests
         }
     }
 
-    // The tegenproef: there is no way for the server's side to take part. The server's administration is the only
-    // thing a row reaches the server by, and pressing the button must not touch it, nor the zip route.
+    // AC-1986: connecting Depot in the plugin's settings window shows its projects without reopening the page.
     [Fact]
-    public async Task TheButton_NeverCallsTheServer_AndNeverInstallsFromAZip()
+    public async Task OpeningPluginSettings_ReloadsTheSharedProjects()
     {
-        var local = _LocalAdministration(_Entry("depot"));
-        var server = Substitute.For<IPluginAdministration>();
-        var manager = _Manager(local);
-        var admin = new ServerAdminViewModel("homelab", "key", Substitute.For<IConnectKeyAdministration>(), [], [], server)
+        var projects = Substitute.For<IServerProjects>();
+        projects.Current.Returns(ProjectCatalogSnapshot.Empty);
+        var shared = new AssistantSharedProjectRow("p1", "Shared", null, null);
+        projects.ListSharedAsync(Arg.Any<CancellationToken>()).Returns(
+            Task.FromResult<IReadOnlyList<AssistantSharedProjectSourceRow>>([]),
+            Task.FromResult<IReadOnlyList<AssistantSharedProjectSourceRow>>([new("Depot", true, null, [shared])]));
+        var admin = new ServerAdminViewModel("homelab", "key", Substitute.For<IConnectKeyAdministration>(), [], [], Substitute.For<IPluginAdministration>(), projects)
         {
-            IsPluginOnDesktop = _ => false,
-            InstallPluginOnDesktop = row => manager.InstallFromStoreByIdAsync(row.Id),
+            OpenPluginSettings = _ => Task.CompletedTask,
         };
         var row = new ServerPluginRowViewModel(_ServerPlugin("depot"));
+        await admin.OpenPluginSettingsCommand.ExecuteAsync(row);
+        Assert.Single(admin.SharedNotices);
 
-        await admin.InstallPluginOnDesktopCommand.ExecuteAsync(row);
+        await admin.OpenPluginSettingsCommand.ExecuteAsync(row);
 
-        Assert.Empty(server.ReceivedCalls());
-        await local.DidNotReceive().InstallFromZipAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
-        Assert.True(admin.DesktopNeedsRestart);
-        Assert.False(row.MissingOnDesktop);
+        Assert.Equal("Shared", Assert.Single(admin.SharedProjects).Name);
+        Assert.Empty(admin.SharedNotices);
     }
 
     private static PluginManagerViewModel _Manager(IPluginAdministration local) =>
