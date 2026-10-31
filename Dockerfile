@@ -43,25 +43,27 @@ RUN groupadd --gid 1700 agent \
     && chmod 2770 /work /work/clones /work/worktrees \
     && chown root:agent /cli && chown agent:agent /cli/claude /cli/codex && chown app:agent /cli/.staging \
     && chmod 0750 /cli /cli/claude /cli/codex && chmod 2750 /cli/.staging \
-    && git config --system --add safe.directory '*'
+    && git config --system --add safe.directory '*' \
+    && git config --system credential.https://github.com.helper '!gh auth git-credential'
 # AC-1480: everything above that must outlive a container is a volume, declared after the owners and modes are set (a
 # VOLUME takes them from this layer; changes to these paths later in the Dockerfile are lost). Without -v, Docker makes
 # anonymous volumes of them; see deploy/README.md, "Persistent data". No secret is ever baked into this image.
 # AC-1649: /cli holds the managed CLIs, and /home/agent the agent's own files beside its logins (Claude's .claude.json).
 VOLUME ["/state", "/work", "/cli", "/home/agent", "/home/agent/.claude", "/home/agent/.codex", "/home/app/.claude", "/home/app/.codex", \
         "/home/app/.ssh", "/home/agent/.ssh", "/home/agent/Nextcloud", "/home/agent/scratch"]
-# Only `agent` may run the real claude, codex and git, so a profile pin or a direct call from the server cannot skip
+# Only `agent` may run the real claude, codex, git and gh, so a profile pin or a direct call cannot skip
 # the wrapper. Their own group, since `app` is in `agent`'s; node stays open (the health check and the server use it).
 RUN groupadd --gid 1701 agent-run \
     && usermod --append --groups agent-run agent \
     && chgrp -R agent-run /usr/local/lib/node_modules/@anthropic-ai/claude-code /usr/local/lib/node_modules/@openai/codex \
-        /usr/lib/git-core /usr/bin/git /usr/bin/git-* \
+        /usr/lib/git-core /usr/bin/git /usr/bin/git-* /usr/bin/gh \
     && chmod -R o-rwx /usr/local/lib/node_modules/@anthropic-ai/claude-code /usr/local/lib/node_modules/@openai/codex \
-        /usr/lib/git-core /usr/bin/git /usr/bin/git-* \
+        /usr/lib/git-core /usr/bin/git /usr/bin/git-* /usr/bin/gh \
     && install -d -m 0755 /usr/local/libexec
 COPY --chmod=0755 deploy/agent-wrapper.sh /opt/cockpit/bin/claude
 COPY --chmod=0755 deploy/agent-wrapper.sh /opt/cockpit/bin/codex
 COPY --chmod=0755 deploy/agent-wrapper.sh /opt/cockpit/bin/git
+COPY --chmod=0755 deploy/agent-wrapper.sh /opt/cockpit/bin/gh
 # AC-1649: the wrappers' one way into a CLI, agent-run's alone like the binaries; and the server's way to place one.
 # Their directory is made above, open to all: a COPY would make it with the first file's owner and mode.
 COPY --chown=root:agent-run --chmod=0750 deploy/cockpit-cli-exec.sh /usr/local/libexec/cockpit-cli-exec

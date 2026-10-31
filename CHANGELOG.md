@@ -61,6 +61,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 - Depot 0.45.2 sends the note's opening account with saves and shows its email in the sign-in banner, falling back to its name on older servers (DEP-539).
 
+- Private GitHub repositories can be cloned on a server after signing in under Server > Projects, using a device code or a write-only token; clones and fetches also honor the server's GitHub token secret.
+
 ### Changed
 
 - Headless server management is now named Servers, beside Swarm in Options. Searching for Admin still finds it.

@@ -136,6 +136,12 @@ echo "== agent sessions run as agent (AC-1464)"
 # binary: it gets a plain start through its wrapper, which is the same file as codex's.
 dc exec -T -u app cockpit sh -c 'cat > /work/smoke-probe.js' < deploy/smoke-probe.js
 agent_uid=$(dc exec -T cockpit id -u agent)
+github_helper=$(dc exec -T -u app cockpit git config --system --get credential.https://github.com.helper)
+[ "$github_helper" = '!gh auth git-credential' ] || fail "github.com has no gh credential helper"
+dc exec -T -u app cockpit gh alias set --shell cockpit-smoke-uid 'id -u'
+github_uid=$(dc exec -T -u app cockpit gh cockpit-smoke-uid)
+[ "$github_uid" = "$agent_uid" ] || fail "gh through the wrapper runs as uid $github_uid"
+dc exec -T -u app cockpit gh alias delete cockpit-smoke-uid
 tree=/work/worktrees/smoke
 git_as() { echo "-c user.name=$1 -c user.email=$1@smoke"; }
 dc exec -T -u app cockpit sh -c "umask 007 && git init -q $tree && git -C $tree $(git_as cockpit) commit -q --allow-empty -m init \
@@ -172,7 +178,7 @@ dc exec -T -u agent cockpit rm /home/agent/.claude/.smoke-login
 
 echo "== the boundaries the wrapper does not draw itself"
 # The real binaries are agent-run's alone, so neither a profile pin nor a direct call from the server skips the wrapper.
-for binary in /usr/local/bin/claude /usr/local/bin/codex /usr/bin/git /usr/lib/git-core/git; do
+for binary in /usr/local/bin/claude /usr/local/bin/codex /usr/bin/git /usr/lib/git-core/git /usr/bin/gh; do
   refused app "$binary --version" || fail "the server's user can run $binary itself: $refusal"
   echo "app runs $binary: $(tail -n 2 <<< "$refusal" | paste -sd ' ')"
   ! refused agent "$binary --version" || fail "control: agent cannot run $binary: $refusal"

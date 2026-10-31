@@ -1,7 +1,7 @@
-# AC-1464: the server (app) may start exactly the two provider CLIs and git, as agent, and nothing else as anyone.
+# AC-1464: the server (app) may start the provider CLIs, git and gh, as agent, and nothing else as anyone.
 # AC-1649: the CLIs through cockpit-cli-exec, which takes only claude or codex; the promote helper without SETENV.
 # SETENV lets the wrapper keep the session's whole environment with -E; !secure_path keeps the session's PATH; the
 # umask is unioned with the server's 007, so what an agent writes under /work stays group-writable for the server.
 Defaults:app !secure_path, umask=0007
-app ALL=(agent) NOPASSWD:SETENV: /usr/local/libexec/cockpit-cli-exec, /usr/bin/git
+app ALL=(agent) NOPASSWD:SETENV: /usr/local/libexec/cockpit-cli-exec, /usr/bin/git, /usr/bin/gh
 app ALL=(agent) NOPASSWD: /usr/local/libexec/cockpit-cli-promote

@@ -173,7 +173,7 @@ internal sealed class RemoteServers(IMcpServerStore registry, INotificationSetti
 
 // AC-1456: one connection. It keeps trying until the server answers, then the stream keeps itself up; only a refused
 // key stops it, and then the group says so instead of retrying a key that will not work.
-internal sealed class RemoteServer : IRemoteServer, IRemoteServerSignIn, IAsyncDisposable
+internal sealed class RemoteServer : IRemoteServer, IRemoteServerSignIn, IRemoteGitHubCredentials, IAsyncDisposable
 {
     private static readonly TimeSpan MaxBackoff = TimeSpan.FromSeconds(30);
 
@@ -219,6 +219,15 @@ internal sealed class RemoteServer : IRemoteServer, IRemoteServerSignIn, IAsyncD
 
     public ILoginFlow StartSignIn(string profile, CancellationToken cancellationToken) =>
         new RemoteLoginFlow(_client, profile, cancellationToken);
+
+    public Task<RemoteGitHubStatus> GetGitHubStatusAsync(CancellationToken cancellationToken = default) =>
+        _client.GetAsync<RemoteGitHubStatus>("api/v1/git-credentials/github", cancellationToken);
+
+    public ILoginFlow StartGitHubSignIn(bool useToken, CancellationToken cancellationToken) =>
+        new RemoteLoginFlow(_client, "api/v1/git-credentials/github/sign-in", new { mode = useToken ? "token" : "device" }, cancellationToken);
+
+    public Task SignOutGitHubAsync(CancellationToken cancellationToken = default) =>
+        _client.DeleteAsync("api/v1/git-credentials/github", cancellationToken);
 
     public ISessionRegistry? Sessions
     {

@@ -1,6 +1,7 @@
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Clones;
 using Cockpit.Core.Clones;
+using Cockpit.Core.Swarm;
 using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure.Worktrees;
 
@@ -9,15 +10,17 @@ namespace Cockpit.Infrastructure.Clones;
 internal sealed class RepositoryCloneManager : IRepositoryCloneManager, ISingletonService
 {
     private readonly IRepositoryCloneRegistry _registry;
+    private readonly bool _onServer;
 
     // Resolves the clones root each time it is needed: the operator's override (AC-90) if set, else the state-root
     // default. Read on demand — not cached — so a root just changed in Options takes effect on the next clone, exactly
     // as the worktree root does (AC-85). The test seam pins a fixed root instead.
     private readonly Func<CancellationToken, Task<string>> _resolveRoot;
 
-    public RepositoryCloneManager(IRepositoryCloneRegistry registry, ICloneSettingsStore settings)
+    public RepositoryCloneManager(IRepositoryCloneRegistry registry, ICloneSettingsStore settings, SwarmHost? host = null)
     {
         _registry = registry;
+        _onServer = host?.Kind == SwarmHostKind.Server;
         _resolveRoot = async cancellationToken =>
         {
             var root = (await settings.LoadAsync(cancellationToken).ConfigureAwait(false)).Root;
@@ -78,7 +81,7 @@ internal sealed class RepositoryCloneManager : IRepositoryCloneManager, ISinglet
         }
         catch (InvalidOperationException exception)
         {
-            throw new InvalidOperationException(_ExplainFailure(exception.Message, parsed.Host), exception);
+            throw new InvalidOperationException(ExplainFailure(exception.Message, parsed.Host, _onServer), exception);
         }
 
         var now = DateTimeOffset.UtcNow;
@@ -175,12 +178,17 @@ internal sealed class RepositoryCloneManager : IRepositoryCloneManager, ISinglet
 
     // Turns git's raw failure into something the operator can act on, without echoing the URL (which could carry a
     // token). Only the two cases v1 can recognise get a hint; anything else is git's own message, already actionable.
-    private static string _ExplainFailure(string gitMessage, string host)
+    internal static string ExplainFailure(string gitMessage, string host, bool onServer)
     {
         if (gitMessage.Contains("could not read Username", StringComparison.OrdinalIgnoreCase)
             || gitMessage.Contains("terminal prompts disabled", StringComparison.OrdinalIgnoreCase)
             || gitMessage.Contains("Authentication failed", StringComparison.OrdinalIgnoreCase))
         {
+            if (onServer && string.Equals(host, "github.com", StringComparison.OrdinalIgnoreCase))
+            {
+                return $"{gitMessage}\n\nSign in to GitHub under Server > Projects on this server, then try again.";
+            }
+
             return $"{gitMessage}\n\nCockpit clones through your own git credential helper. Configure one for {host} "
                 + "(Git Credential Manager, or `gh auth login`) and try again.";
         }

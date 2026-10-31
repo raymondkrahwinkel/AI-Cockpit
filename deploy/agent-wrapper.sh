@@ -1,10 +1,11 @@
 #!/bin/sh
-# AC-1464: installed as /opt/cockpit/bin/claude, codex and git, first on PATH, so every start of a CLI and every git
+# AC-1464: installed as /opt/cockpit/bin/claude, codex, git and gh, first on PATH, so every start of a CLI and every git
 # (whose hooks and config an agent can plant in a shared repository) runs as `agent`. -E keeps the session's environment
 # (COCKPIT_PANE_ID, Codex's MCP bearer variables, GH_TOKEN); HOME is the agent's. Absolute paths: PATH is the session's.
 name=${0##*/}
 case $name in
   git) real=/usr/bin/git ;;
+  gh) real=/usr/bin/gh ;;
   # AC-1649: claude and codex go through cockpit-cli-exec, which picks a managed version under /cli or the image's own.
   *) set -- "$name" "$@"; real=/usr/local/libexec/cockpit-cli-exec ;;
 esac
