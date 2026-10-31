@@ -103,7 +103,7 @@ internal sealed partial class ProjectEntry
         SharedSourceKey = project.SharedSourceKey,
         DefaultProfileLabel = project.DefaultProfileLabel,
         BehaviorPrompt = project.BehaviorPrompt,
-        Assistant = string.IsNullOrWhiteSpace(project.Assistant) ? null : project.Assistant.Split(':')[0],
+        Assistant = string.IsNullOrWhiteSpace(project.Assistant) ? null : project.Assistant,
         IsolateInWorktreeByDefault = project.IsolateInWorktreeByDefault,
         McpOverlay = ProjectMcpOverlayEntry.FromDomain(project.McpOverlay),
         // AC-485: mirrored, not retired yet — writes the same value twice under two names as temporary
