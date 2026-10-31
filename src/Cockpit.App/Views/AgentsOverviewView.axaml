@@ -110,10 +110,12 @@
                                                                             <TextBlock Text="{Binding TypeText}" FontSize="10" Foreground="{DynamicResource CockpitStatusBackgroundBrush}"/>
                                                                         </Border>
                                                                         <TextBlock Text="{Binding Title}" FontSize="11.5" TextWrapping="Wrap"/>
-                                                                        <TextBlock FontSize="10" Foreground="{DynamicResource CockpitTextSecondaryBrush}" TextWrapping="Wrap">
-                                                                            <Run Text="Last tool: "/><Run Text="{Binding LastToolText}"/>
-                                                                            <Run Text=" · Tokens: "/><Run Text="{Binding TokensText}"/>
-                                                                        </TextBlock>
+                                                                        <WrapPanel Orientation="Horizontal">
+                                                                            <TextBlock Text="{Binding LastToolText, StringFormat='Last tool: {0}'}" Margin="0,0,6,0"
+                                                                                       FontSize="10" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                                                            <TextBlock Text="{Binding TokensText, StringFormat='Tokens: {0}'}"
+                                                                                       FontSize="10" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                                                        </WrapPanel>
                                                                     </StackPanel>
                                                                     <StackPanel Grid.Column="2" Spacing="3" HorizontalAlignment="Right">
                                                                         <TextBlock Text="{Binding TimeText}" FontSize="10.5" HorizontalAlignment="Right"/>
