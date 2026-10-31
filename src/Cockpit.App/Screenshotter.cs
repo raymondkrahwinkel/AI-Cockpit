@@ -4556,8 +4556,10 @@ internal static partial class Screenshotter
         var tab = window.GetVisualDescendants().OfType<Border>().Single(border =>
             border.Classes.Contains("workspaceTab") && border.DataContext is WorkspaceTabViewModel model
             && (preview ? model.IsPreview : model.Name == "Projects"));
-        var menu = tab.ContextMenu ?? throw new InvalidOperationException("The workspace tab menu is missing.");
-        menu.Open(tab);
+        var position = tab.TranslatePoint(new Point(tab.Bounds.Width / 2, tab.Bounds.Height / 2), window)
+            ?? throw new InvalidOperationException("The workspace tab has no position.");
+        window.MouseDown(position, Avalonia.Input.MouseButton.Right);
+        window.MouseUp(position, Avalonia.Input.MouseButton.Right);
         Dispatcher.UIThread.RunJobs();
     }
 
