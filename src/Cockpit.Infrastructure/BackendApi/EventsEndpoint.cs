@@ -3,6 +3,7 @@ using Cockpit.Core.Abstractions.Events;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Mcp;
+using Cockpit.Infrastructure.Events;
 using Cockpit.Infrastructure.Mcp;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -50,6 +51,8 @@ internal static class EventsEndpoint
             await audit.RecordAsync(NodeAccessAuditEntry.By(caller, time.GetUtcNow(), "api:events", "connected"), context.RequestAborted).ConfigureAwait(false);
         }
 
+        // AC-1547: an admin's open stream is what lets plugin events into the log at all.
+        using var listening = caller.Capability == ConnectKeyCapability.Admin ? services.GetService<PluginEventsBridge>()?.Listen() : null;
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
         using var heartbeat = new PeriodicTimer(TimeSpan.FromSeconds(15), time);
         await using var events = log.ReadFromAsync(afterSeq, stop.Token).GetAsyncEnumerator(stop.Token);
@@ -72,12 +75,12 @@ internal static class EventsEndpoint
                     var evt = events.Current;
                     // AC-263: the assistant is the holder's only, as its routes are; any other pane only within the key's scope,
                     // as the pane had it when the event was written: a closed pane's last rows still reach its readers.
-                    // AC-1472: a clone's outcome names its project and folder, which are an admin's to read.
+                    // AC-1472/AC-1547: a clone's outcome and a plugin's events are an admin's, as the clone and channel routes are.
                     if ((evt.PaneId is { } paneId
                             && (string.Equals(sessions.Assistant?.PaneId, paneId, StringComparison.Ordinal)
                                 ? !caller.HoldsAssistant && !swarmAssistant
                                 : !caller.AllowsSession(evt.ProfileLabel ?? string.Empty, evt.ProjectId, pairing)))
-                        || (evt.Kind == ProjectsEndpoints.EventKind && caller.Capability != ConnectKeyCapability.Admin))
+                        || ((evt.Kind is ProjectsEndpoints.EventKind or PluginEventsBridge.EventKind) && caller.Capability != ConnectKeyCapability.Admin))
                     {
                         next = events.MoveNextAsync().AsTask();
                         continue;

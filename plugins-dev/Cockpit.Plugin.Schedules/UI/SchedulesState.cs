@@ -28,6 +28,9 @@ internal sealed class SchedulesState : IDisposable
 
     public SchedulesSettingsView Settings { get; private set; } = new(2, "UTC", 30);
 
+    // AC-1547: the backend's clock at the last refresh, which the banner shows as the server's time.
+    public DateTimeOffset? BackendNow { get; private set; }
+
     public async Task RefreshAsync()
     {
         var snapshot = await AskAsync<SchedulesSnapshot>(SchedulesChannel.Snapshot);
@@ -37,6 +40,7 @@ internal sealed class SchedulesState : IDisposable
             Runs = [.. snapshot.Runs.Select(run => run.Outcome == RunOutcome.Running && Runs.FirstOrDefault(known => known.Id == run.Id) is { Outcome: not RunOutcome.Running } done ? done : run)];
             Channels = snapshot.Channels;
             Settings = snapshot.Settings;
+            BackendNow = snapshot.Now;
         }
 
         Changed?.Invoke();

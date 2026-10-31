@@ -30,6 +30,10 @@ internal sealed class TaskEditorView : UserControl
     private readonly TextBlock _previewNext = Ui.Hint(string.Empty);
     private readonly Button _save;
     private readonly IReadOnlyList<string> _profiles;
+
+    // AC-1547: the folders of the projects where the task lives; a server's task cannot take a folder picked here.
+    private readonly IReadOnlyList<string> _folders;
+    private readonly bool _canBrowse;
     private int _previewVersion;
 
     private string _name;
@@ -48,10 +52,19 @@ internal sealed class TaskEditorView : UserControl
     private string _text;
     private bool _write;
 
-    public TaskEditorView(SchedulesState state, ICockpitUiHost host, IReadOnlyList<string> profiles, ScheduledTask? existing, Action<string?> close)
+    public TaskEditorView(
+        SchedulesState state,
+        ICockpitUiHost host,
+        IReadOnlyList<string> profiles,
+        ScheduledTask? existing,
+        Action<string?> close,
+        IReadOnlyList<string>? folders = null,
+        bool canBrowse = true)
     {
         _state = state;
         _profiles = profiles;
+        _folders = folders ?? [];
+        _canBrowse = canBrowse;
         _host = host;
         _existing = existing;
         _close = close;
@@ -356,7 +369,18 @@ internal sealed class TaskEditorView : UserControl
                 folder.Text = picked;
             }
         }, _Report, "Compact");
-        var folderRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { folder, browse } };
+        var folderRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { folder } };
+        if (_canBrowse)
+        {
+            folderRow.Children.Add(browse);
+        }
+
+        if (_folders.Count > 0)
+        {
+            var project = new ComboBox { ItemsSource = _folders, PlaceholderText = "From a project", MinWidth = 160 };
+            project.SelectionChanged += (_, _) => folder.Text = project.SelectedItem as string ?? folder.Text;
+            folderRow.Children.Add(project);
+        }
         panel.Children.Add(_Field("Working folder", new StackPanel { Children = { folderRow, Ui.Hint("Must be an allowed folder of the profile. $AI_OS_ROOT and other env vars are expanded.") } }));
         panel.Children.Add(_Field("Prompt", _Text(_text, "What should the agent do? Its final answer is delivered.", 5, value => _text = value)));
 

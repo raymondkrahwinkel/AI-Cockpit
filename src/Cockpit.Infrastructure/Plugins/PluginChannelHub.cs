@@ -15,6 +15,9 @@ public sealed class PluginChannelHub(ILogger<PluginChannelHub> logger) : ISingle
     private readonly Dictionary<(string PluginId, string Action), Func<JsonElement, CancellationToken, Task<JsonElement>>> _handlers = [];
     private readonly Dictionary<(string PluginId, string Name), List<Action<PluginChannelEvent>>> _subscribers = [];
 
+    // AC-1547: every event of every plugin, after its own subscribers, so the event log can carry it to a remote desktop.
+    public event Action<string, PluginChannelEvent>? Published;
+
     public IPluginBackendChannel For(string pluginId) => new BackendChannel(this, pluginId);
 
     public IDisposable Handle(string pluginId, string action, Func<JsonElement, CancellationToken, Task<JsonElement>> handler)
@@ -73,6 +76,15 @@ public sealed class PluginChannelHub(ILogger<PluginChannelHub> logger) : ISingle
             {
                 logger.LogWarning(exception, "A subscriber of plugin {PluginId} threw on channel event {EventName}; the other subscribers still get it.", pluginId, name);
             }
+        }
+
+        try
+        {
+            Published?.Invoke(pluginId, channelEvent);
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Plugin {PluginId}'s channel event {EventName} could not be put on the event stream.", pluginId, name);
         }
     }
 

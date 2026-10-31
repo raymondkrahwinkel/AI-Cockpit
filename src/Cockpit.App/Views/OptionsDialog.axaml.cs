@@ -140,6 +140,10 @@ public partial class OptionsDialog : Window
         dialog._AddServerPage("server-keys", "Connect keys", MaterialIconKind.KeyChainVariant, new ServerConnectKeysPage { DataContext = admin });
         dialog._AddServerPage("server-audit", "Audit log", MaterialIconKind.History, new ServerAuditLogPage { DataContext = admin });
         dialog.CategoryNav.SelectedIndex = 0;
+        if (admin.InitialCategory is { } initial)
+        {
+            dialog.SelectCategory(initial);
+        }
         dialog.Opened += (_, _) => admin.LoadCommand.Execute(null);
         return dialog;
     }

@@ -4,10 +4,7 @@ using Avalonia.Controls;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.App.Plugins;
 using Cockpit.Core.Abstractions.Plugins;
-using Cockpit.Plugins.Abstractions.Profiles;
-using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Projects;
-using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Mcp;
@@ -425,7 +422,14 @@ public partial class CockpitViewModel
     // AC-1446: the Options dialog on the server, for an admin key. The server's profiles and projects, read on the same
     // key, are what the scope editor offers; without them it still offers "all".
     [RelayCommand]
-    private async Task OpenServerAdminAsync(ServerGroupViewModel group)
+    private Task OpenServerAdminAsync(ServerGroupViewModel group) => _OpenServerAdminAsync(group, null);
+
+    public Task OpenServerPluginsAsync(string server) =>
+        ServerGroups.FirstOrDefault(group => string.Equals(group.Name, server, StringComparison.Ordinal)) is { } group
+            ? _OpenServerAdminAsync(group, "server-plugins")
+            : Task.CompletedTask;
+
+    private async Task _OpenServerAdminAsync(ServerGroupViewModel group, string? category)
     {
         var show = _showServerAdmin ?? (_dialogService is { } dialogs ? dialogs.ShowServerAdminDialogAsync : null);
         if (show is null || group.State.Key is not { } key || group.Server is null)
@@ -454,6 +458,7 @@ public partial class CockpitViewModel
         await Plugins.LoadAsync();
         var admin = new ServerAdminViewModel(group.Name, key.Label, group.Server.Administration, profiles, projects, plugins, group.Server.Projects, dialogService: _dialogService, runningSessions: () => group.Sessions.Count, logger: _logger, serverVersion: key.Version)
         {
+            InitialCategory = category,
             Profiles = new ServerProfilesViewModel(new ServerProfileServices(group.Name, group.Server.Profiles, _serverSignIns, plugins, LocalPluginUiPart)),
             Assistant = assistant,
             HasPluginSettings = row => plugins is IPluginChannelRelay && (_ServerSettingsFor(row) is not null || _LocalSettingsPartFor(row) is not null),
@@ -510,7 +515,7 @@ public partial class CockpitViewModel
 
         if (_LocalSettingsPartFor(row) is { } part)
         {
-            if (await ServerPluginSettings.OpenAsync(part.UiType, part.Host, relay, row.FolderId, () => _PluginProfilesAsync(profiles), () => _PluginProjectsAsync(projects), server) is { } remote)
+            if (await ServerPluginSettings.OpenAsync(part.UiType, part.Host, relay, row.FolderId, () => ServerPluginTargets.ProfilesAsync(profiles), () => ServerPluginTargets.ProjectsAsync(projects), server) is { } remote)
             {
                 await _dialogService.ShowServerPluginSettingsAsync($"{row.Name} on {server}", remote.CreateView, remote.PersistAsync);
             }
@@ -524,25 +529,6 @@ public partial class CockpitViewModel
             await _dialogService.ShowServerPluginSettingsAsync($"{settings.PluginName} on {server}", () => settings.CreateView(channel));
         }
     }
-
-    // AC-1571: the server's profiles as a plugin's host gives them, from the Admin API's own list. No config directory:
-    // that path stays on the server.
-    private static async Task<IReadOnlyList<PluginProfileInfo>> _PluginProfilesAsync(IServerProfiles profiles) =>
-        [.. (await profiles.ListAsync()).Select(profile => new PluginProfileInfo(profile.Label, profile.Provider, "")
-        {
-            ModelSuggestions = _Known(profile, WellKnownPluginSessionOptions.Model),
-            EffortSuggestions = _Known(profile, WellKnownPluginSessionOptions.Effort),
-        })];
-
-    // AC-1737: the server's projects, read again from its API so a project added there since shows up.
-    private static async Task<IReadOnlyList<PluginProjectInfo>> _PluginProjectsAsync(IServerProjects projects)
-    {
-        await projects.LoadAsync();
-        return [.. projects.Current.Settings.Projects.Select(project => new PluginProjectInfo(project.Id, project.Name))];
-    }
-
-    private static IReadOnlyList<string> _Known(RemoteProfile profile, string option) =>
-        profile.KnownValues?.GetValueOrDefault(option) is { } values ? [.. values.Select(value => value.Value)] : [];
 
     [RelayCommand]
     private async Task OpenServerStartAsync(ServerGroupViewModel group)

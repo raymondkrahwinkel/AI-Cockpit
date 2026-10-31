@@ -442,7 +442,15 @@ the host. The Depot plugin uses it for
 The UI host's `AddServerSettings(Func<IPluginUiChannel, Control> createView)` (AC-1511, host 0.92.0, SDK UI 3.3.0)
 registers the view an admin opens from **Admin → Plugins → Settings** for a server the plugin is also installed on. The
 channel it gets reaches the plugin's backend part **on that server**, through `POST /api/v1/plugins/{folderId}/channel/{action}`
-(admin keys only); it carries invokes, not events, and its audit line names the plugin and the action, never the payload.
+(admin keys only); its audit line names the plugin and the action, never the payload. Since host 0.153.0 (AC-1547) the
+channel carries the backend part's events too, over the server's event stream, to admin keys only.
+
+The UI host's `GetServerTargetsAsync()` (AC-1547, host 0.153.0, SDK UI 3.23.0) lets a plugin's **own screen** manage a
+server: one `PluginServerTarget(Name, Host, Unavailable)` per server this desktop manages. `Host` is an `ICockpitUiHost`
+whose channel, storage, profiles and projects are that server's (a storage write goes to the server at once); it is null,
+with the reason in `Unavailable`, when the server is not connected, the key is not an admin key, or the plugin is missing
+there or runs another version; for the last two, `Resolve` (labelled `ResolveLabel`) opens that server's Plugins page. Bind the same views to that host, as Schedules' server switch does. A host already opened
+for a server returns an empty list.
 
 The UI host's `AddFirstStartRoute(FirstStartRoute route)` (AC-1504, host 0.94.0, SDK UI 3.4.0, namespace
 `Cockpit.Plugins.Abstractions.UI.Onboarding`) offers a way to begin on the first-run wizard's "How do you want to start?" step,
@@ -1124,6 +1132,8 @@ in the operator's order and including the projects with no folder — the same l
 - Store the `Id`; it is stable. The `Name` is the operator's and can change, so look it up again when you show it.
 - Read **fresh on every call**. A backend part on a server gets that server's projects; so does
   `ICockpitUiHost.GetProjectsAsync()` in a view opened for a server.
+- `SourceDirectory` (Abstractions 3.58.0, host 0.153.0) is the project's folder on the machine whose project it is, so
+  a server's project names a folder on that server. Null for a project without a folder, or from an older host.
 - Default returns an empty list. Capability `projects.read`.
 
 ### `Task<string?> GetSessionProjectIdAsync(string paneId, CancellationToken cancellationToken)` {#taskstring-getsessionprojectidasyncstring-paneid-cancellationtoken-cancellationtoken}
