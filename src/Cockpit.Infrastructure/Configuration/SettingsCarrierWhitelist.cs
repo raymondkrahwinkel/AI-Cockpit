@@ -10,7 +10,7 @@ internal static class SettingsCarrierWhitelist
 {
     public static readonly IReadOnlyList<string> Carried =
     [
-        "Profiles[].Label", "Profiles[].Purpose", "Profiles[].SystemPrompt", "Profiles[].Assistant",
+        "Projects[].Assistant", "Profiles[].Label", "Profiles[].Purpose", "Profiles[].SystemPrompt", "Profiles[].Assistant",
         "Profiles[].DefaultKind", "Profiles[].MemoryCapMegabytes", "Profiles[].EnabledMcpServers",
         "Profiles[].Defaults.PermissionMode", "Profiles[].Defaults.Model", "Profiles[].Defaults.Effort",
         "Profiles[].Defaults.AutoApproveTools", "Profiles[].Defaults.OptionDefaults", "Profiles[].Defaults.DefaultReadingLevel",
@@ -43,7 +43,7 @@ internal static class SettingsCarrierWhitelist
     public static readonly IReadOnlyList<string> NeverCarried =
     [
         "Projects[].Id", "Projects[].Name", "Projects[].Description", "Projects[].Category", "Projects[].GitUrl", "Projects[].SharedSourceKey",
-        "Projects[].DefaultProfileLabel", "Projects[].BehaviorPrompt", "Projects[].Assistant", "Projects[].IsolateInWorktreeByDefault",
+        "Projects[].DefaultProfileLabel", "Projects[].BehaviorPrompt", "Projects[].IsolateInWorktreeByDefault",
         "CategoryOrder",
         "Projects[].SourceDirectory", "Projects[].SourceDirectories", "Projects[].Resources", "Projects[].MemoryRef",
         "Profiles[].Delegation.AllowedWorkingDirs", "Profiles[].Provider.PluginConfigJson", "Plugins.*.Data", "WorkingPaths",

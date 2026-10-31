@@ -199,7 +199,7 @@ public partial class ShareProjectDialogViewModel : ViewModelBase
         // AC-1071: named even when unset, beside the profile it belongs with — this column exists so the operator
         // can see that whoever binds this project keeps their own assistant rather than inheriting theirs.
         StaysOnThisMachine.Add(new ShareFieldRowViewModel(
-            "Assistant", _project.Assistant is { Length: > 0 } assistant ? assistant : "not set"));
+            "Assistant", _project.Assistant is { Length: > 0 } assistant ? assistant.Split(':')[^1] : "not set"));
 
         if (_project.SourceDirectory is { Length: > 0 } folder)
         {

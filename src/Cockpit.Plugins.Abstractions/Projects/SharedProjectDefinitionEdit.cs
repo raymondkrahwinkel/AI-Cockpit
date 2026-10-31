@@ -35,7 +35,8 @@ public sealed record SharedProjectDefinitionEdit(
     bool IsolateInWorktreeByDefault,
     IReadOnlyList<string>? EnabledMcpServerNames,
     SharedProjectLogoEdit? LogoEdit = null,
-    string? GitUrl = null);
+    string? GitUrl = null,
+    string? Assistant = null);
 
 /// <summary>
 /// <see cref="SharedProjectDefinitionEdit.LogoEdit"/>'s own tri-state (AC-763): the field itself being null means
