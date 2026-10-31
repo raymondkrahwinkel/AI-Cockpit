@@ -230,6 +230,9 @@ internal static partial class Screenshotter
         ["sidebar-plugins-folded"] = (width, height) => _PluginSidebarScene(width, height, folded: true),
         // AC-1750 (mockup AC-1749 v003): a kept tab with an unsaved marker beside the preview tab, italic and labelled.
         ["workspace-preview-tab"] = (_, _) => _WorkspacePreviewTabScene(),
+        ["workspace-tab-overflow"] = (_, _) => _WorkspacePreviewTabScene(overflow: true),
+        ["workspace-tab-overflow-middle"] = (_, _) => _WorkspacePreviewTabScene(overflow: true),
+        ["workspace-tab-interactions"] = (_, _) => _WorkspacePreviewTabScene(overflow: true),
         // AC-1751 (mockup AC-1749 v003, flow 8): a keyed workspace popped out into its own window, with "⇤ Dock back".
         ["workspace-floating"] = (_, _) => _WorkspaceFloatingScene(),
         // AC-1753 (mockup AC-1749 v003, flows 6 and 10): the Markdown editor live, with the caret in a table, as source, and read-only.
@@ -1320,6 +1323,17 @@ internal static partial class Screenshotter
     // they are opened here rather than built into the scene.
     private static readonly Dictionary<string, Action<Window>> Hovers = new(StringComparer.Ordinal)
     {
+        ["workspace-tab-interactions"] = _ExerciseWorkspaceTabScrolling,
+        ["workspace-tab-overflow"] = _HoverActiveWorkspaceTab,
+        ["workspace-tab-overflow-middle"] = window =>
+        {
+            if (window.DataContext is CockpitViewModel cockpit)
+            {
+                cockpit.Workspaces.SelectWorkspaceCommand.Execute(cockpit.Workspaces.Tabs[6].Id);
+                window.UpdateLayout();
+            }
+            _HoverActiveWorkspaceTab(window);
+        },
         ["markdown-file-presence-popover"] = window =>
         {
             window.GetVisualDescendants().OfType<Files.LivePresenceBar>().First().IsOpen = true;
@@ -4542,7 +4556,77 @@ internal static partial class Screenshotter
         return window;
     }
 
-    private static Window _WorkspacePreviewTabScene()
+    private static void _HoverActiveWorkspaceTab(Window window)
+    {
+        window.UpdateLayout();
+        var tab = window.GetVisualDescendants().OfType<Border>()
+            .First(border => border.Classes.Contains("workspaceTab") && border.DataContext is WorkspaceTabViewModel { IsActive: true });
+        if (tab.TranslatePoint(new Point(tab.Bounds.Width / 2, tab.Bounds.Height / 2), window) is { } point)
+        {
+            window.MouseMove(point);
+        }
+    }
+
+    private static void _ExerciseWorkspaceTabScrolling(Window window)
+    {
+        window.UpdateLayout();
+        if (window.DataContext is not CockpitViewModel cockpit)
+        {
+            throw new InvalidOperationException("The tab scene has no cockpit view model.");
+        }
+        var scroll = window.GetVisualDescendants().OfType<ScrollViewer>().Single(control => control.Name == "WorkspaceTabsScroll");
+        var right = window.GetVisualDescendants().OfType<Button>().Single(control => control.Name == "WorkspaceTabsRight");
+        var strip = window.GetVisualDescendants().OfType<ItemsControl>().Single(control => control.Name == "WorkspaceTabStrip");
+        var point = scroll.TranslatePoint(new Point(scroll.Bounds.Width / 2, 12), window)
+            ?? throw new InvalidOperationException("The tab viewport has no window position.");
+        var end = scroll.Offset.X;
+        window.MouseWheel(point, new Vector(0, 2));
+        window.UpdateLayout();
+        if (scroll.Offset.X >= end)
+        {
+            throw new InvalidOperationException("The vertical wheel did not scroll the tabs left.");
+        }
+        var beforeArrow = scroll.Offset.X;
+        right.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        window.UpdateLayout();
+        if (scroll.Offset.X <= beforeArrow)
+        {
+            throw new InvalidOperationException("The right arrow did not advance the tabs.");
+        }
+        cockpit.Workspaces.SelectWorkspaceCommand.Execute(cockpit.Workspaces.Tabs[0].Id);
+        window.UpdateLayout();
+        if (scroll.Offset.X != 0)
+        {
+            throw new InvalidOperationException("Activating the first tab did not reveal it.");
+        }
+        cockpit.Workspaces.OpenWorkspaceAsync("scene.markdown", new("Replacement.md", "Replacement preview.md", Preview: true)).GetAwaiter().GetResult();
+        window.UpdateLayout();
+        Dispatcher.UIThread.RunJobs();
+        window.UpdateLayout();
+        var lastIndex = cockpit.Workspaces.Tabs.Count - 1;
+        var last = strip.ContainerFromIndex(lastIndex)
+            ?? throw new InvalidOperationException("The replacement preview has no container.");
+        if (last.Bounds.Right > scroll.Offset.X + scroll.Viewport.Width + 0.5)
+        {
+            throw new InvalidOperationException("The replacement preview is clipped.");
+        }
+        var previous = strip.ContainerFromIndex(lastIndex - 1)
+            ?? throw new InvalidOperationException("The previous tab has no container.");
+        var from = last.TranslatePoint(new Point(12, 12), window) ?? default;
+        var to = previous.TranslatePoint(new Point(12, 12), window) ?? default;
+        var draggedId = cockpit.Workspaces.Tabs[lastIndex].Id;
+        window.MouseDown(from, Avalonia.Input.MouseButton.Left);
+        window.MouseMove(to, Avalonia.Input.RawInputModifiers.LeftMouseButton);
+        window.MouseUp(to, Avalonia.Input.MouseButton.Left);
+        window.UpdateLayout();
+        if (cockpit.Workspaces.Tabs[lastIndex - 1].Id != draggedId)
+        {
+            throw new InvalidOperationException($"Dragging a scrolled tab did not reorder it: {from} -> {to}; offset {scroll.Offset.X}; tabs {string.Join(", ", cockpit.Workspaces.Tabs.Select(tab => tab.Name))}.");
+        }
+        _HoverActiveWorkspaceTab(window);
+    }
+
+    private static Window _WorkspacePreviewTabScene(bool overflow = false)
     {
         var registry = new WorkspaceTypeRegistry(new ServiceCollection().BuildServiceProvider());
         registry.Register(
@@ -4559,6 +4643,13 @@ internal static partial class Screenshotter
             NullCockpitSessionObserver.Instance);
         var cockpit = new CockpitViewModel(workspaceTypeRegistry: registry);
         cockpit.Workspaces.OpenWorkspaceAsync("scene.markdown", new("Notes.md", "Notes.md")).GetAwaiter().GetResult();
+        if (overflow)
+        {
+            foreach (var name in new[] { "Architecture.md", "Release checklist.md", "Meeting notes.md", "Roadmap.md", "Design decisions.md", "Getting started.md", "Troubleshooting.md", "Plugin guide.md" })
+            {
+                cockpit.Workspaces.OpenWorkspaceAsync("scene.markdown", new(name, name)).GetAwaiter().GetResult();
+            }
+        }
         cockpit.Workspaces.OpenWorkspaceAsync("scene.markdown", new("Ideas/depot-sync.md", "depot-sync.md", Preview: true)).GetAwaiter().GetResult();
         return new MainWindow { DataContext = cockpit };
     }

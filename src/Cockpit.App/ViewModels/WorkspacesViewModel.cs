@@ -91,6 +91,9 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     // The tab strip's items, rebuilt whenever the workspace set or the selection changes. A floating workspace has none.
     public ObservableCollection<WorkspaceTabViewModel> Tabs { get; } = [];
 
+    [ObservableProperty]
+    private bool _hasHiddenTabs;
+
     // The active dashboard's widget panes — what the dashboard grid renders. Empty for a Sessions workspace,
     // which draws the session grid instead.
     public ObservableCollection<WidgetPaneViewModel> WidgetPanes { get; } = [];

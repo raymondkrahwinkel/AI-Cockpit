@@ -1233,10 +1233,18 @@
 
                     <!-- The drag lives on the strip, not on the tabs: a move rebuilds the tabs, so a handler on
                          the dragged Border would stop firing the moment it did its job once. -->
-                    <ItemsControl x:Name="WorkspaceTabStrip" ItemsSource="{Binding Workspaces.Tabs}"
-                                  IsVisible="{Binding Workspaces.ShowTabStrip}"
-                                  PointerMoved="OnWorkspaceTabPointerMoved"
-                                  PointerReleased="OnWorkspaceTabPointerReleased">
+                    <Grid x:Name="WorkspaceTabsHost" ColumnDefinitions="Auto,*,Auto"
+                          IsVisible="{Binding Workspaces.ShowTabStrip}"
+                          PointerWheelChanged="OnWorkspaceTabsWheel"
+                          PointerMoved="OnWorkspaceTabPointerMoved"
+                          PointerCaptureLost="OnWorkspaceTabCaptureLost"
+                          PointerReleased="OnWorkspaceTabPointerReleased">
+                    <Button x:Name="WorkspaceTabsLeft" Grid.Column="0" Classes="Subtle" Content="‹"
+                            Padding="6,3" IsVisible="False" Click="OnWorkspaceTabsLeft"
+                            ToolTip.Tip="Scroll tabs left"/>
+                    <ScrollViewer x:Name="WorkspaceTabsScroll" Grid.Column="1"
+                                  HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled">
+                    <ItemsControl x:Name="WorkspaceTabStrip" ItemsSource="{Binding Workspaces.Tabs}">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
                                 <StackPanel Orientation="Horizontal" Spacing="4"/>
@@ -1301,6 +1309,11 @@
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
+                    </ScrollViewer>
+                    <Button x:Name="WorkspaceTabsRight" Grid.Column="2" Classes="Subtle" Content="›"
+                            Padding="6,3" IsVisible="False" Click="OnWorkspaceTabsRight"
+                            ToolTip.Tip="Scroll tabs right"/>
+                    </Grid>
                 </DockPanel>
             </Border>
 
