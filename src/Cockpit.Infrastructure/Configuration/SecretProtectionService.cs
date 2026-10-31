@@ -289,13 +289,17 @@ internal sealed class SecretProtectionService : ISecretProtectionService, ISingl
                 throw new SecretProtectionException("Windows Hello cannot hold a key on this version of Windows.");
             }
 
+            var kek = HelloKek(first, challenge);
             var hello = new HelloEntry
             {
                 CredentialName = name,
                 Challenge = Convert.ToBase64String(challenge),
-                WrappedKey = new SecretProtector(HelloKek(first, challenge)).Protect(HelloEntry.WrappedKeyPath, Convert.ToBase64String(key)),
+                WrappedKey = new SecretProtector(kek).Protect(HelloEntry.WrappedKeyPath, Convert.ToBase64String(key)),
                 InSoftware = storage is SecretKeyStorage.Software,
             };
+            CryptographicOperations.ZeroMemory(kek);
+            CryptographicOperations.ZeroMemory(first);
+            CryptographicOperations.ZeroMemory(second);
 
             using var gate = await CockpitConfigWriteGate.AcquireAsync(_configFilePath, cancellationToken).ConfigureAwait(false);
             var document = await ReadDocumentAsync(cancellationToken).ConfigureAwait(false);
@@ -341,14 +345,20 @@ internal sealed class SecretProtectionService : ISecretProtectionService, ISingl
         }
 
         byte[] key;
+        var kek = HelloKek(signature, challenge);
+        CryptographicOperations.ZeroMemory(signature);
         try
         {
-            key = Convert.FromBase64String(new SecretProtector(HelloKek(signature, challenge)).Unprotect(HelloEntry.WrappedKeyPath, hello.WrappedKey));
+            key = Convert.FromBase64String(new SecretProtector(kek).Unprotect(HelloEntry.WrappedKeyPath, hello.WrappedKey));
         }
         catch (Exception exception) when (exception is SecretProtectionException or FormatException)
         {
             // Another machine's TPM, a re-created Hello key, or a signature that changed after an update: the password still works.
             return HelloUnlockResult.KeyGone;
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(kek);
         }
 
         // Not zeroed: the protector keeps this array as the key for the rest of the run.

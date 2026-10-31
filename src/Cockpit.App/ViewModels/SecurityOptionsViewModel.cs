@@ -1554,6 +1554,12 @@ public sealed partial class SecurityOptionsViewModel(
                 "Re-encrypting your credentials…",
                 progress => protection.ChangePasswordAsync(currentPassword, newPassword, progress)).ConfigureAwait(true);
 
+            // The password change dropped the Hello wrap; the OS key that made it goes too (AC-1879).
+            if (HelloSigner is { } signer)
+            {
+                await protection.DisableHelloAsync(signer).ConfigureAwait(true);
+            }
+
             Status = "Your password has been changed.";
         }
         catch (SecretProtectionException)

@@ -457,7 +457,7 @@ public partial class App : Application
         var protection = Program.Services.GetRequiredService<ISecretProtectionService>();
         var viewModel = new UnlockViewModel(protection);
         var window = new UnlockWindow { DataContext = viewModel, Topmost = true };
-        await window.OfferHelloAsync();
+        window.OfferHello();
 
         // Same contract as startup: the password is the key, and Unlocked fires once it is right (or once the operator
         // took the forgotten-password way out, which turns encryption off — after which nothing re-locks). Closing the

@@ -49,18 +49,24 @@ public partial class UnlockWindow : Window
 
     private void OnForgot(object? sender, RoutedEventArgs e) => ViewModel?.RequestReset();
 
-    // AC-1879: offers Windows Hello in this window when the configuration has it on; the `--remote` window never calls this.
-    public async Task OfferHelloAsync()
+    // AC-1879: offers Windows Hello once the window is up, so the lock never waits on the helper; the `--remote`
+    // window never calls this. A failure here only means no Hello button: the password row is already there.
+    public void OfferHello() => Opened += async (_, _) =>
     {
-        if (ViewModel is not { } viewModel)
+        try
         {
-            return;
+            if (ViewModel is { } viewModel)
+            {
+                viewModel.HelloSigner = new Services.WindowsHelloSigner(this);
+                viewModel.PasswordFocusRequested += (_, _) => this.FindControl<TextBox>("PasswordBox")?.Focus();
+                await viewModel.OfferHelloAsync();
+            }
         }
-
-        viewModel.HelloSigner = new Services.WindowsHelloSigner(this);
-        viewModel.PasswordFocusRequested += (_, _) => this.FindControl<TextBox>("PasswordBox")?.Focus();
-        await viewModel.OfferHelloAsync();
-    }
+        catch (Exception exception)
+        {
+            Logging.LifecycleLog.Write($"Offering Windows Hello failed: {exception}");
+        }
+    };
 
     private async void OnHello(object? sender, RoutedEventArgs e)
     {

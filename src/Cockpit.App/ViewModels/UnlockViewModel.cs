@@ -60,6 +60,21 @@ public sealed partial class UnlockViewModel(ISecretProtectionService protection)
     // The operator asked for the way out of a forgotten password. The window confirms before doing it.
     public event EventHandler? ResetRequested;
 
+    // The Hello prompt in flight; typing the password and unlocking with it closes the prompt (AC-1879).
+    private CancellationTokenSource? _hello;
+
+    // Hello and the password can race; the app starts once.
+    private bool _raisedUnlocked;
+
+    private void _RaiseUnlocked()
+    {
+        if (!_raisedUnlocked)
+        {
+            _raisedUnlocked = true;
+            Unlocked?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
     public async Task UnlockAsync()
     {
         if (IsBusy || Password.Length == 0)
@@ -67,6 +82,7 @@ public sealed partial class UnlockViewModel(ISecretProtectionService protection)
             return;
         }
 
+        _hello?.Cancel();
         IsBusy = true;
         Error = null;
         Notice = null;
@@ -76,7 +92,7 @@ public sealed partial class UnlockViewModel(ISecretProtectionService protection)
             // does not run on the UI thread: a window frozen mid-keystroke reads as a crash, not as work.
             if (await Task.Run(() => protection.UnlockAsync(Password)).ConfigureAwait(true))
             {
-                Unlocked?.Invoke(this, EventArgs.Empty);
+                _RaiseUnlocked();
 
                 return;
             }
@@ -103,22 +119,23 @@ public sealed partial class UnlockViewModel(ISecretProtectionService protection)
 
     public async Task UnlockWithHelloAsync()
     {
-        if (IsBusy || HelloSigner is not { } signer || !OffersHello)
+        if (IsBusy || IsWaitingForHello || HelloSigner is not { } signer || !OffersHello)
         {
             return;
         }
 
-        IsBusy = true;
+        // Not IsBusy: the password row stays usable while the prompt is up, so a prompt that never answers strands nobody.
+        using var hello = _hello = new CancellationTokenSource();
         IsWaitingForHello = true;
         Error = null;
         Notice = null;
         try
         {
-            switch (await protection.UnlockWithHelloAsync(signer).ConfigureAwait(true))
+            switch (await protection.UnlockWithHelloAsync(signer, hello.Token).ConfigureAwait(true))
             {
                 case HelloUnlockResult.Unlocked:
                     LifecycleLog.Write("Unlocked with Windows Hello; no password key derivation ran.");
-                    Unlocked?.Invoke(this, EventArgs.Empty);
+                    _RaiseUnlocked();
                     return;
                 case HelloUnlockResult.KeyGone:
                     OffersHello = false;
@@ -133,9 +150,14 @@ public sealed partial class UnlockViewModel(ISecretProtectionService protection)
                     break;
             }
         }
+        catch (OperationCanceledException)
+        {
+            // The password got there first.
+            return;
+        }
         finally
         {
-            IsBusy = false;
+            _hello = null;
             IsWaitingForHello = false;
         }
 
@@ -156,7 +178,7 @@ public sealed partial class UnlockViewModel(ISecretProtectionService protection)
             }
 
             await protection.ResetForgottenPasswordAsync().ConfigureAwait(true);
-            Unlocked?.Invoke(this, EventArgs.Empty);
+            _RaiseUnlocked();
         }
         finally
         {

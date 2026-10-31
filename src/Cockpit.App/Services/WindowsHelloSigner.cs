@@ -12,6 +12,12 @@ public sealed class WindowsHelloSigner(Window owner) : ISecretKeySigner
 {
     private static readonly string HelperPath = Path.Combine(AppContext.BaseDirectory, "Cockpit.Hello.exe");
 
+    // For the verbs that show no prompt: a helper that does not answer in this time is treated as "no".
+    private static readonly TimeSpan NoPromptTimeout = TimeSpan.FromSeconds(15);
+
+    // Read on the UI thread when the signer is made; the window is open by then.
+    private readonly string _owner = (owner.TryGetPlatformHandle()?.Handle ?? IntPtr.Zero).ToInt64().ToString(CultureInfo.InvariantCulture);
+
     // Answered once per run: the OS and its Hello setup do not change while the cockpit is open.
     private static Task<bool>? _available;
 
@@ -19,7 +25,7 @@ public sealed class WindowsHelloSigner(Window owner) : ISecretKeySigner
         _available ??= _IsAvailableAsync();
 
     public async Task<SecretKeyStorage> CreateAsync(string name, CancellationToken cancellationToken = default) =>
-        await _RunAsync(["create", name, _Owner()], cancellationToken).ConfigureAwait(false) switch
+        await _RunAsync(["create", name, _owner], cancellationToken).ConfigureAwait(false) switch
         {
             "ok tpm" => SecretKeyStorage.Hardware,
             "ok software" => SecretKeyStorage.Software,
@@ -27,25 +33,22 @@ public sealed class WindowsHelloSigner(Window owner) : ISecretKeySigner
         };
 
     public async Task<bool> ExistsAsync(string name, CancellationToken cancellationToken = default) =>
-        await _RunAsync(["exists", name], cancellationToken).ConfigureAwait(false) == "ok";
+        await _RunAsync(["exists", name], cancellationToken, NoPromptTimeout).ConfigureAwait(false) == "ok";
 
     public async Task<byte[]?> SignAsync(string name, byte[] challenge, CancellationToken cancellationToken = default)
     {
-        var line = await _RunAsync(["sign", name, _Owner(), Convert.ToBase64String(challenge)], cancellationToken).ConfigureAwait(false);
+        var line = await _RunAsync(["sign", name, _owner, Convert.ToBase64String(challenge)], cancellationToken).ConfigureAwait(false);
         return line is { } ok && ok.StartsWith("ok ", StringComparison.Ordinal) ? Convert.FromBase64String(ok[3..]) : null;
     }
 
     public async Task DeleteAsync(string name, CancellationToken cancellationToken = default) =>
-        await _RunAsync(["delete", name], cancellationToken).ConfigureAwait(false);
+        await _RunAsync(["delete", name], cancellationToken, NoPromptTimeout).ConfigureAwait(false);
 
     private static async Task<bool> _IsAvailableAsync() =>
         OperatingSystem.IsWindows() && File.Exists(HelperPath)
-        && await _RunAsync(["supported"], CancellationToken.None).ConfigureAwait(false) == "ok";
+        && await _RunAsync(["supported"], CancellationToken.None, NoPromptTimeout).ConfigureAwait(false) == "ok";
 
-    private string _Owner() =>
-        (owner.TryGetPlatformHandle()?.Handle ?? IntPtr.Zero).ToInt64().ToString(CultureInfo.InvariantCulture);
-
-    private static async Task<string?> _RunAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken)
+    private static async Task<string?> _RunAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken, TimeSpan? timeout = null)
     {
         if (!OperatingSystem.IsWindows() || !File.Exists(HelperPath))
         {
@@ -80,18 +83,29 @@ public sealed class WindowsHelloSigner(Window owner) : ISecretKeySigner
         }
 
         using (process)
+        using (var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
         {
+            if (timeout is { } after)
+            {
+                limit.CancelAfter(after);
+            }
+
             try
             {
-                var line = await process.StandardOutput.ReadLineAsync(cancellationToken).ConfigureAwait(false);
-                await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+                var line = await process.StandardOutput.ReadLineAsync(limit.Token).ConfigureAwait(false);
+                await process.WaitForExitAsync(limit.Token).ConfigureAwait(false);
                 return line?.Trim();
             }
             catch (OperationCanceledException)
             {
-                // Leaving the unlock screen closes the prompt with it rather than leaving it up on its own.
+                // Leaving the unlock screen closes the prompt with it; a helper past its time limit counts as "no".
                 process.Kill(entireProcessTree: true);
-                throw;
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+
+                return null;
             }
         }
     }
