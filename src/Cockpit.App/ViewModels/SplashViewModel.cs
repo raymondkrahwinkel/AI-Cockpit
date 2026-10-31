@@ -126,7 +126,13 @@ public sealed partial class SplashViewModel : ObservableObject
         if (Unlock is { } unlock)
         {
             Headline = unlock.IsBusy ? "Unlocking…" : "Unlock to continue";
-            Detail = unlock.IsBusy ? "Checking the password" : "Your API keys and tokens are encrypted. Type the password to unlock them.";
+            Detail = unlock switch
+            {
+                { IsWaitingForHello: true } => "Waiting for Windows Hello",
+                { IsBusy: true } => "Checking the password",
+                { OffersHello: true } => "Your API keys and tokens are encrypted. Unlock them with Windows Hello or your password.",
+                _ => "Your API keys and tokens are encrypted. Type the password to unlock them.",
+            };
             return;
         }
 

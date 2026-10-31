@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using Cockpit.App.Logging;
 using Cockpit.Core.Abstractions.Secrets;
 
 namespace Cockpit.App.ViewModels;
@@ -14,7 +15,35 @@ public sealed partial class UnlockViewModel(ISecretProtectionService protection)
     }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(UnlockIsPrimary))]
     private string _password = string.Empty;
+
+    // AC-1879: Windows Hello as a second way through the same step; set by the window that owns the prompt.
+    public ISecretKeySigner? HelloSigner { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(UnlockIsPrimary))]
+    private bool _offersHello;
+
+    // After a cancelled prompt the button reads "Try … again" and the password row takes the lead.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(UnlockIsPrimary), nameof(HelloButtonText))]
+    private bool _helloTried;
+
+    [ObservableProperty]
+    private bool _isWaitingForHello;
+
+    // Amber, not red: nothing was wrong with the configuration (a wrong password stays red in `Error`).
+    [ObservableProperty]
+    private string? _notice;
+
+    public string HelloButtonText => HelloTried ? "Try Windows Hello again" : "Unlock with Windows Hello";
+
+    // The Unlock button is the accent one unless Hello is offered first and nothing has been typed yet.
+    public bool UnlockIsPrimary => !OffersHello || HelloTried || Password.Length > 0;
+
+    // Raised when Hello did not unlock, so the window puts the cursor in the password field.
+    public event EventHandler? PasswordFocusRequested;
 
     [ObservableProperty]
     private string? _error;
@@ -40,6 +69,7 @@ public sealed partial class UnlockViewModel(ISecretProtectionService protection)
 
         IsBusy = true;
         Error = null;
+        Notice = null;
         try
         {
             // Deriving the key is deliberately slow (210k PBKDF2 iterations — that slowness is the point), so it
@@ -62,6 +92,56 @@ public sealed partial class UnlockViewModel(ISecretProtectionService protection)
         }
     }
 
+    // Shows the Hello button when this configuration has Hello on and this machine can do it; true means: prompt now.
+    public async Task<bool> OfferHelloAsync()
+    {
+        OffersHello = HelloSigner is { } signer
+            && (await protection.GetStatusAsync().ConfigureAwait(true)).HelloEnabled
+            && await signer.IsAvailableAsync().ConfigureAwait(true);
+        return OffersHello;
+    }
+
+    public async Task UnlockWithHelloAsync()
+    {
+        if (IsBusy || HelloSigner is not { } signer || !OffersHello)
+        {
+            return;
+        }
+
+        IsBusy = true;
+        IsWaitingForHello = true;
+        Error = null;
+        Notice = null;
+        try
+        {
+            switch (await protection.UnlockWithHelloAsync(signer).ConfigureAwait(true))
+            {
+                case HelloUnlockResult.Unlocked:
+                    LifecycleLog.Write("Unlocked with Windows Hello; no password key derivation ran.");
+                    Unlocked?.Invoke(this, EventArgs.Empty);
+                    return;
+                case HelloUnlockResult.KeyGone:
+                    OffersHello = false;
+                    Notice = "Windows Hello can no longer open this configuration on this computer. Use your password; you can turn Windows Hello on again in Settings.";
+                    break;
+                case HelloUnlockResult.NotOffered:
+                    OffersHello = false;
+                    break;
+                default:
+                    HelloTried = true;
+                    Notice = "Windows Hello did not unlock. Type your password, or try Windows Hello again.";
+                    break;
+            }
+        }
+        finally
+        {
+            IsBusy = false;
+            IsWaitingForHello = false;
+        }
+
+        PasswordFocusRequested?.Invoke(this, EventArgs.Empty);
+    }
+
     public void RequestReset() => ResetRequested?.Invoke(this, EventArgs.Empty);
 
     public async Task ResetAsync()
@@ -69,6 +149,12 @@ public sealed partial class UnlockViewModel(ISecretProtectionService protection)
         IsBusy = true;
         try
         {
+            // The Hello key wraps the key being forgotten, so it goes too (AC-1879).
+            if (HelloSigner is { } signer)
+            {
+                await protection.DisableHelloAsync(signer).ConfigureAwait(true);
+            }
+
             await protection.ResetForgottenPasswordAsync().ConfigureAwait(true);
             Unlocked?.Invoke(this, EventArgs.Empty);
         }

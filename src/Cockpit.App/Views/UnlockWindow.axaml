@@ -31,6 +31,15 @@
                        Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
         </StackPanel>
 
+        <!-- AC-1879: the screen-lock unlock offers the same Hello button as the splash; the prompt waits for a click here. -->
+        <Button Classes.Accent="{Binding !HelloTried}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                IsVisible="{Binding OffersHello}" IsEnabled="{Binding !IsBusy}" Click="OnHello">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <TextBlock Text="&#x263A;" VerticalAlignment="Center"/>
+                <TextBlock Text="{Binding HelloButtonText}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+            </StackPanel>
+        </Button>
+
         <TextBox Name="PasswordBox" PasswordChar="•" PlaceholderText="Password"
                  Text="{Binding Password}" IsEnabled="{Binding !IsBusy}"
                  KeyDown="OnPasswordKeyDown"/>
@@ -39,7 +48,11 @@
                    FontSize="12" TextWrapping="Wrap"
                    Foreground="{DynamicResource CockpitStatusErrorBrush}"/>
 
-        <Button Content="Unlock" Classes="Accent" HorizontalAlignment="Stretch"
+        <TextBlock Text="{Binding Notice}" IsVisible="{Binding Notice, Converter={x:Static ObjectConverters.IsNotNull}}"
+                   FontSize="12" TextWrapping="Wrap"
+                   Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
+
+        <Button Content="Unlock" Classes.Accent="{Binding UnlockIsPrimary}" HorizontalAlignment="Stretch"
                 HorizontalContentAlignment="Center"
                 IsEnabled="{Binding !IsBusy}" Click="OnUnlock"/>
 

@@ -49,6 +49,38 @@ public partial class UnlockWindow : Window
 
     private void OnForgot(object? sender, RoutedEventArgs e) => ViewModel?.RequestReset();
 
+    // AC-1879: offers Windows Hello in this window when the configuration has it on; the `--remote` window never calls this.
+    public async Task OfferHelloAsync()
+    {
+        if (ViewModel is not { } viewModel)
+        {
+            return;
+        }
+
+        viewModel.HelloSigner = new Services.WindowsHelloSigner(this);
+        viewModel.PasswordFocusRequested += (_, _) => this.FindControl<TextBox>("PasswordBox")?.Focus();
+        await viewModel.OfferHelloAsync();
+    }
+
+    private async void OnHello(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (ViewModel is { } viewModel)
+            {
+                await viewModel.UnlockWithHelloAsync();
+            }
+        }
+        catch (Exception exception)
+        {
+            Logging.LifecycleLog.Write($"Unlock with Windows Hello failed: {exception}");
+            if (ViewModel is { } failed)
+            {
+                failed.Error = "Could not unlock. Try again, or type your password.";
+            }
+        }
+    }
+
     private async void OnResetRequested(object? sender, EventArgs e)
     {
         if (ViewModel is not { } viewModel)
