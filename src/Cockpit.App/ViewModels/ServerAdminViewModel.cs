@@ -474,7 +474,7 @@ public sealed partial class ServerAdminViewModel : ObservableObject
             // AC-1986: the settings window may have connected a source (Depot), so the shared list is stale.
             if (_serverProjects is { } serverProjects)
             {
-                await Task.CompletedTask;
+                await _LoadSharedAsync(serverProjects);
             }
         });
 
