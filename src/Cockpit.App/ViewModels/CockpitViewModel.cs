@@ -2144,7 +2144,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         // Backend dropdown: host-aware Auto / GPU / CPU.
         VoiceBackendPreferences.Clear();
-        foreach (var choice in TranscriptionOptions.BackendChoices(capabilities))
+        foreach (var choice in TranscriptionOptions.BackendChoices(capabilities, _transcriptionAdvisor?.DetectGpus()))
         {
             VoiceBackendPreferences.Add(choice);
         }
@@ -2409,7 +2409,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         CalibrationChosenText = $"Auto runs on {_BackendLabel(calibration.ChosenBackend)}";
-        CalibrationModelText = $"Backend timings measured with model: {calibration.Model}";
+        CalibrationModelText = calibration.GpuName is { } gpuName
+            ? $"Backend timings measured with model: {calibration.Model}, GPU: {gpuName}"
+            : $"Backend timings measured with model: {calibration.Model}";
         CalibrationRationale = TranscriptionCalibrationReport.Rationale(calibration);
         _ApplyModelLadder(calibration);
         HasCalibration = true;
@@ -6013,8 +6015,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _SyncTranscriptionModelFromName();
         // A GPU preference saved on a machine that can no longer load it (config moved, driver gone) has no matching
         // host-aware option and falls back to Auto rather than showing a dead entry.
-        SelectedVoiceBackendPreference = VoiceBackendPreferences.FirstOrDefault(option => option.Value == settings.BackendPreference)
-                                         ?? VoiceBackendPreferences[0];
+        SelectedVoiceBackendPreference = TranscriptionOptions.Find(VoiceBackendPreferences, settings.BackendPreference, settings.GpuDeviceId);
         _UpdateTranscriptionAdvice();
         VoicePushToTalkKeyName = settings.PushToTalkKeyName;
         VoiceGlobalPushToTalk = settings.GlobalPushToTalk;
@@ -6091,6 +6092,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             ModelName = string.IsNullOrWhiteSpace(VoiceModelName) ? "large-v3-turbo" : VoiceModelName.Trim(),
             ModelAutoSelected = _transcriptionModelAuto,
             BackendPreference = SelectedVoiceBackendPreference.Value,
+            GpuDeviceId = SelectedVoiceBackendPreference.GpuDeviceId,
             PushToTalkKeyName = string.IsNullOrWhiteSpace(VoicePushToTalkKeyName) ? "F9" : VoicePushToTalkKeyName.Trim(),
             GlobalPushToTalk = VoiceGlobalPushToTalk,
             AutoSubmitAfterVoice = VoiceAutoSubmit,
@@ -7770,8 +7772,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         VoiceModelName = voice.ModelName;
         _transcriptionModelAuto = voice.ModelAutoSelected;
         _SyncTranscriptionModelFromName();
-        SelectedVoiceBackendPreference = VoiceBackendPreferences.FirstOrDefault(option => option.Value == voice.BackendPreference)
-                                         ?? VoiceBackendPreferences[0];
+        SelectedVoiceBackendPreference = TranscriptionOptions.Find(VoiceBackendPreferences, voice.BackendPreference, voice.GpuDeviceId);
         _UpdateTranscriptionAdvice();
         VoicePushToTalkKeyName = voice.PushToTalkKeyName;
         VoiceGlobalPushToTalk = voice.GlobalPushToTalk;

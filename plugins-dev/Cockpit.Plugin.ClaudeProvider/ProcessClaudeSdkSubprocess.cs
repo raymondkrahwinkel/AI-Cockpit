@@ -17,6 +17,8 @@ internal sealed class ProcessClaudeSdkSubprocess : IClaudeSdkSubprocess
 
     public bool HasExited => _disposed || (_started && (_process?.HasExited ?? true));
 
+    public int? ExitCode => !_disposed && _started && _process is { HasExited: true } process ? process.ExitCode : null;
+
     public void Start(string executablePath, IReadOnlyList<string> arguments, string workingDirectory, IReadOnlyDictionary<string, string?> environmentVariables)
     {
         var startInfo = new ProcessStartInfo

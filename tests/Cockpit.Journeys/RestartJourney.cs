@@ -2,6 +2,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App.ViewTests;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Core.Voice;
 using Cockpit.Core.Abstractions.Workspaces;
 using Cockpit.Plugins.Abstractions.Notifications;
 
@@ -14,7 +16,7 @@ public sealed class RestartJourney
 {
     // AC-1533: the green block is not in the log, so after a restart the repainted turn that made files builds it again.
     // AC-1502: the scheduled backup set in Options -> Backup is still set after a restart, where every start's planner
-    // (and a server's) reads it from.
+    // (and a server's) reads it from. AC-1881: so is the transcription GPU picked in Options -> Voice.
     [Fact]
     public async Task AfterARestart_TheOpenSessionAndTheActiveDeskAreBack()
     {
@@ -26,7 +28,7 @@ public sealed class RestartJourney
             string[] before = [];
             await Step.Run("before the restart", async () =>
             {
-                await using (var first = JourneyHost.Desktop(stateRoot: stateRoot))
+                await using (var first = JourneyHost.Desktop(stateRoot: stateRoot, configure: _TwoGpus))
                 {
                     var project = await first.SaveProfileAndProjectAsync(Directory.CreateDirectory(Path.Combine(stateRoot, "project")).FullName);
                     await first.StartDesktopAsync();
@@ -63,12 +65,18 @@ public sealed class RestartJourney
                         first.Cockpit.ToastHost.Notify(JourneySource, "Journey", new PluginNotification("just-info", "Just so you know", PluginToastSeverity.Information, []));
                     });
 
+                    await HeadlessAvalonia.RunAsync(async () =>
+                    {
+                        first.Cockpit.SelectedVoiceBackendPreference = first.Cockpit.VoiceBackendPreferences.Single(option => option.GpuDeviceId == "dgpu");
+                        await first.Cockpit.SaveVoiceSettingsCommand.ExecuteAsync(null);
+                    });
+
                     // The desks are written in order through one store, so one more write of them lands after the pane's.
                     await first.Services.GetRequiredService<IWorkspaceSettingsStore>().SaveAsync(HeadlessAvalonia.Run(() => first.Cockpit.Workspaces.Settings));
                 }
             });
 
-            await using var after = JourneyHost.Desktop(stateRoot: stateRoot);
+            await using var after = JourneyHost.Desktop(stateRoot: stateRoot, configure: _TwoGpus);
             // AC-1804: a plugin notification nobody answered is asked again at the restart: live if it stands, else resolved.
             var doneAfterRestart = false;
             HeadlessAvalonia.Run(() => after.Cockpit.ToastHost.AddNotificationSource(JourneySource, key => Task.FromResult(key == "still-due"
@@ -103,6 +111,9 @@ public sealed class RestartJourney
                 Assert.Equal((true, BackupScheduleViewModel.Weekly, 3), HeadlessAvalonia.Run(() => (restoredSchedule.Enabled, restoredSchedule.Interval, restoredSchedule.Keep)));
             });
 
+            await Step.Run("the transcription GPU picked before the restart is still picked", () =>
+                HeadlessAvalonia.RunAsync(() => Until.Holds(after.Cockpit, () => after.Cockpit.SelectedVoiceBackendPreference.GpuDeviceId == "dgpu")));
+
             await Step.Run("the notification still due is back in the panel and its Done works", () =>
             {
                 var item = HeadlessAvalonia.Run(() => after.Cockpit.ToastHost.Notifications.Items.Single(kept => kept.Key == "still-due"));
@@ -131,6 +142,25 @@ public sealed class RestartJourney
     }
 
     private const string JourneySource = "journey";
+
+    private static void _TwoGpus(IServiceCollection services) => services.AddSingleton<ITranscriptionAdvisor>(new TwoGpuAdvisor());
+
+    // An Optimus laptop: the iGPU drives the screen, the dGPU has none. CI has no GPU to probe.
+    private sealed class TwoGpuAdvisor : ITranscriptionAdvisor
+    {
+        public TranscriptionCapabilities DetectCapabilities() => new(CudaUsable: false, VulkanUsable: true);
+
+        public GpuHardware DetectGpu() => GpuHardware.PickAuto(DetectGpus());
+
+        public IReadOnlyList<GpuHardware> DetectGpus() =>
+        [
+            new(GpuVendor.Intel, "Intel UHD", DrivesDisplay: true, 128L << 20) { Kind = GpuKind.Integrated, DeviceId = "igpu", VulkanIndex = 0 },
+            new(GpuVendor.Nvidia, "RTX 4070", DrivesDisplay: false, 8L << 30) { Kind = GpuKind.Discrete, DeviceId = "dgpu", VulkanIndex = 1 },
+        ];
+
+        public TranscriptionRecommendation Recommend() =>
+            TranscriptionRecommender.Recommend(DetectCapabilities(), DetectGpu(), WhisperHostPlatform.Windows);
+    }
 
     private static string[] _Blocks(SessionViewModel session) =>
         [.. session.Transcript.Select(row => row.TurnResult?.Title).OfType<string>()];

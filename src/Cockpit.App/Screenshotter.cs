@@ -28,6 +28,8 @@ using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Core.Voice;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Cockpit.App;
@@ -285,6 +287,8 @@ internal static partial class Screenshotter
         // Voice tab — own scenes rather than reusing "options", since neither category renders on the category that
         // scene opens on (Notifications) and a layout change to a page nothing captures is a layout change nobody
         ["voice-transcribe"] = (_, _) => _OptionsOnTab("Voice"),
+        // AC-1881: an Optimus laptop — the backend combo offers each GPU and Auto names the dedicated one.
+        ["voice-transcribe-gpus"] = (_, _) => _OptionsVoiceWithTwoGpus(),
         ["voice-assistant"] = (_, _) => _OptionsAssistantPage(),
         // AC-1567: the organisation's rule set as the read-only block on the same page.
         ["options-assistant-org-rules"] = (_, _) => _OptionsAssistantPage(orgRules: true),
@@ -2307,6 +2311,30 @@ internal static partial class Screenshotter
             .FirstOrDefault(item => string.Equals(item.Tag as string, header, StringComparison.OrdinalIgnoreCase))
             ?? throw new InvalidOperationException($"The Options sidebar has no '{header}' category.");
 
+        return dialog;
+    }
+
+    private static OptionsDialog _OptionsVoiceWithTwoGpus()
+    {
+        var dialog = _OptionsOnTab("Voice");
+        var cockpit = dialog.DataContext as ViewModels.CockpitViewModel ?? throw new InvalidOperationException("The Options dialog has no cockpit.");
+        GpuHardware[] gpus =
+        [
+            new(GpuVendor.Intel, "Intel(R) UHD Graphics", DrivesDisplay: true, 128L << 20) { Kind = GpuKind.Integrated, DeviceId = "intel", VulkanIndex = 0 },
+            new(GpuVendor.Nvidia, "NVIDIA GeForce RTX 4070 Laptop GPU", DrivesDisplay: false, 8L << 30) { Kind = GpuKind.Discrete, DeviceId = "nvidia", VulkanIndex = 1 },
+        ];
+        var capabilities = new TranscriptionCapabilities(CudaUsable: false, VulkanUsable: true);
+        cockpit.VoiceEnabled = true;
+        cockpit.VoiceBackendPreferences.Clear();
+        foreach (var choice in ViewModels.TranscriptionOptions.BackendChoices(capabilities, gpus))
+        {
+            cockpit.VoiceBackendPreferences.Add(choice);
+        }
+
+        cockpit.SelectedVoiceBackendPreference = cockpit.VoiceBackendPreferences[0];
+        var recommendation = TranscriptionRecommender.Recommend(capabilities, GpuHardware.PickAuto(gpus), WhisperHostPlatform.Windows);
+        cockpit.TranscriptionHardware = string.Join(" · ", recommendation.Badges);
+        cockpit.TranscriptionAdvice = recommendation.Reason;
         return dialog;
     }
 
