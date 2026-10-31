@@ -677,6 +677,44 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         {
             _ = ClearConversationAsync();
         }
+
+        // AC-1929: a merge parked while a turn ran is applied at the same gate, so no turn is cut off.
+        if (_RunExclusive(() => _TakePendingMergeRestart(session, reading)))
+        {
+            MergeRestart = RestartAsync();
+        }
+    }
+
+    // AC-1929: the restart that folds a stepped-down leader's conversation in, now when idle, else at the turn's end.
+    // The parked copy is a file, so a session that dies first leaves it for whichever start comes next.
+    internal void RequestMergeRestart()
+    {
+        var session = _RunExclusive(() =>
+        {
+            _pendingMergeRestart = true;
+            return Session;
+        });
+        if (session is null || _RunExclusive(() => _TakePendingMergeRestart(session, SessionReading.Of(session))))
+        {
+            _RunExclusive(() => _pendingMergeRestart = false);
+            MergeRestart = RestartAsync();
+        }
+    }
+
+    internal Task<IAssistantSession?> MergeRestart { get; private set; } = Task.FromResult<IAssistantSession?>(null);
+
+    private bool _pendingMergeRestart;
+
+    private bool _TakePendingMergeRestart(IAssistantSession session, SessionReading reading)
+    {
+        var idle = ShouldHandOver(double.PositiveInfinity, reading.IsBusy, reading.IsWaitingOnOperator);
+        if (!_pendingMergeRestart || !ReferenceEquals(session, Session) || !idle)
+        {
+            return false;
+        }
+
+        _pendingMergeRestart = false;
+        return true;
     }
 
     // AC-1261 criterion 7 (V2): marks a request rather than clearing now — clearing mid-turn would tear down the
@@ -1038,6 +1076,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
             {
                 _session = value;
                 _pendingConversationClear = false;
+                _pendingMergeRestart = false;
             }
 
             return current;

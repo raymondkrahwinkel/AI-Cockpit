@@ -36,6 +36,17 @@ internal sealed class SwarmLeadership(SwarmMembershipStore store, SwarmSettingsS
     private string? _mergeNotice;
     public string? MergeNotice => Volatile.Read(ref _mergeNotice);
 
+    private SwarmMergeQuestion? _mergeQuestion;
+    public SwarmMergeQuestion? MergeQuestion => Volatile.Read(ref _mergeQuestion);
+
+    internal void SetMergeQuestion(SwarmMergeQuestion? question)
+    {
+        if (Interlocked.Exchange(ref _mergeQuestion, question) != question)
+        {
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
     internal void SetMerging(bool merging)
     {
         var notice = merging ? ConversationMerge.MergingNotice : null;

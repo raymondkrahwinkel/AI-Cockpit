@@ -103,15 +103,18 @@ internal sealed class SwarmMerge(IServiceProvider services, ISwarmLeadership lea
                 CockpitConfigPath.ReplaceAtomicallyPrivate(Inbox(from), stream => JsonSerializer.Serialize(stream, input, SwarmStandbyCopy.Json));
             }
             (leadership as SwarmLeadership)?.SetMerging(true);
-            try
+            var host = services.GetRequiredService<AssistantSessionHost>();
+            if (services.GetService<IAssistantSessionFactory>() is { } factory)
             {
-                var host = services.GetRequiredService<AssistantSessionHost>();
-                var factory = services.GetService<IAssistantSessionFactory>();
-                await (factory?.OnOwnerThreadAsync(() => host.RestartAsync(ct)) ?? host.RestartAsync(ct));
+                await factory.OnOwnerThreadAsync(() =>
+                {
+                    host.RequestMergeRestart();
+                    return Task.FromResult(true);
+                });
             }
-            finally
+            else
             {
-                (leadership as SwarmLeadership)?.SetMerging(false);
+                host.RequestMergeRestart();
             }
             return true;
         }
@@ -127,7 +130,8 @@ internal sealed class SwarmMerge(IServiceProvider services, ISwarmLeadership lea
         lock (_files)
         {
             var self = services.GetRequiredService<SwarmIdentity>().MemberId.Value;
-            foreach (var path in Directory.Exists(Root) ? Directory.GetFiles(Root, "swarm-merge-inbox-*.json") : [])
+            var inbox = Directory.Exists(Root) ? Directory.GetFiles(Root, "swarm-merge-inbox-*.json") : [];
+            foreach (var path in inbox)
             {
                 var input = JsonSerializer.Deserialize<SwarmMergeInput>(File.ReadAllText(path), SwarmStandbyCopy.Json)
                     ?? throw new InvalidDataException("Empty swarm merge input.");
@@ -142,8 +146,12 @@ internal sealed class SwarmMerge(IServiceProvider services, ISwarmLeadership lea
                 File.Delete(path);
                 if (result.Asks)
                 {
-                    _Ask(input.Name);
+                    _Ask(input.Name, result.SeparatorId);
                 }
+            }
+            if (inbox.Length > 0)
+            {
+                (leadership as SwarmLeadership)?.SetMerging(false);
             }
             return standby;
         }
@@ -192,11 +200,21 @@ internal sealed class SwarmMerge(IServiceProvider services, ISwarmLeadership lea
         return (merged, result, changed);
     }
 
-    private void _Ask(string name)
+    // Asked once: on the merge's divider in the assistant chat, or as a notification when no divider was written.
+    private void _Ask(string name, string? dividerId)
     {
-        services.GetService<IToastService>()?.Show(
-            $"The note state changed on this machine and on {name} while they were apart. The newest version stays; the other is kept next to it.",
-            ToastSeverity.Information,
+        var text = $"The note state changed on this machine and on {name} while they were apart. The newest version stays; the other is kept next to it.";
+        if (dividerId is not null && leadership is SwarmLeadership own)
+        {
+            own.SetMergeQuestion(new(dividerId, text, _Compare, () =>
+            {
+                _KeepNewest();
+                own.SetMergeQuestion(null);
+            }));
+            return;
+        }
+
+        services.GetService<IToastService>()?.Show(text, ToastSeverity.Information,
             [new ToastAction("Compare", _Compare), new ToastAction("Keep the newest", _KeepNewest)],
             true, "Swarm", "swarm-merge", "2 leaders seen · conversation merged");
     }

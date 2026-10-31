@@ -11,7 +11,8 @@ namespace Cockpit.App;
 
 internal static partial class Screenshotter
 {
-    private static AssistantChatWindow _AssistantSwarm(bool selfLeads = false, bool serverLeads = false, bool takeover = false, bool merging = false)
+    private static AssistantChatWindow _AssistantSwarm(bool selfLeads = false, bool serverLeads = false, bool takeover = false, bool merging = false,
+        bool question = false)
     {
         var cockpit = new CockpitViewModel();
         var options = new SidebarSwarmOptions(false);
@@ -33,7 +34,8 @@ internal static partial class Screenshotter
                 Cockpit.Infrastructure.Swarm.SwarmTakeoverCoordinator.TakeoverNotice(DateTimeOffset.Now.Date.AddHours(14).AddMinutes(31))));
         if (merging)
         {
-            conversation.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Divider, ConversationMerge.Separator("Laptop")));
+            conversation.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Divider,
+                ConversationMerge.Separator(selfLeads ? "Desktop" : "Laptop")) { Id = MergeDividerId });
             conversation.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "[from Laptop] Draft the release notes.")
                 { WrittenWhileApartOn = "Laptop" });
             conversation.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, "Release notes drafted on Desktop.")
@@ -58,7 +60,7 @@ internal static partial class Screenshotter
         if (reportedLeader != (selfLeads ? "Led by Desktop" : "You lead"))
             throw new InvalidOperationException("The assistant chip must follow the leader change immediately.");
         leadership.MoveTo(leader);
-        if (merging)
+        if (merging && !question)
         {
             leadership.Merge(ConversationMerge.MergingNotice);
             if (reportedLeader != ConversationMerge.MergingNotice)
@@ -66,8 +68,22 @@ internal static partial class Screenshotter
                 throw new InvalidOperationException("The assistant chip must say a merge is running.");
             }
         }
+        if (question)
+        {
+            leadership.Ask(new(MergeDividerId, "The note state changed on this machine and on Desktop while they were apart. "
+                + "The newest version stays; the other is kept next to it.", () => { }, () => { }));
+        }
         chat.PropertyChanged -= changed;
         chat.EnsureOpenedAsync().GetAwaiter().GetResult();
+        if (question)
+        {
+            var divider = chat.Session?.Transcript.SingleOrDefault(row => row.IsMergeDivider);
+            if (divider?.MergeQuestion is null)
+            {
+                throw new InvalidOperationException("The merge question must sit on its divider.");
+            }
+            divider.ToggleMergeOriginsCommand.Execute(null);
+        }
         chat.InputText = "And check the tests next";
         if (!selfLeads && chat.Session is not { IsRemote: true, Transcript.Count: > 0 })
             throw new InvalidOperationException("A follower must draw the leader's real remote transcript.");
@@ -77,6 +93,8 @@ internal static partial class Screenshotter
             WindowStartupLocation = WindowStartupLocation.Manual,
         };
     }
+
+    private const string MergeDividerId = ConversationMerge.SeparatorIdPrefix + "scene";
 
     private static MainWindow _SwarmSidebar(int width, int height, bool asleep = false, bool start = false, bool empty = false)
     {
@@ -143,6 +161,8 @@ internal static partial class Screenshotter
         public bool IsSelf => Current?.Name == "Laptop";
         public SwarmTakeover? PendingTakeover => null;
         public string? MergeNotice { get; private set; }
+        public SwarmMergeQuestion? MergeQuestion { get; private set; }
+        public void Ask(SwarmMergeQuestion question) { MergeQuestion = question; Changed?.Invoke(this, EventArgs.Empty); }
         public event EventHandler? Changed;
         public void MoveTo(SwarmMember member) { Current = member; Changed?.Invoke(this, EventArgs.Empty); }
         public void Merge(string notice) { MergeNotice = notice; Changed?.Invoke(this, EventArgs.Empty); }

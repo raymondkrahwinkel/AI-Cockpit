@@ -249,6 +249,7 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
             OnPropertyChanged(nameof(LeaderIsServer));
             OnPropertyChanged(nameof(CanClearConversation));
             ClearConversationCommand.NotifyCanExecuteChanged();
+            ShowMergeQuestion();
             if (_opened && (_leaderId != _cockpit?.SwarmLeadership?.Current?.Id.Value || IsFollowingLeader && Session is null))
                 _ = RefreshLeaderSessionAsync();
         }

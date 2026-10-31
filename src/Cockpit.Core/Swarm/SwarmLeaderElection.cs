@@ -17,6 +17,7 @@ public interface ISwarmLeadership
     bool IsActive => Current is not null;
     SwarmTakeover? PendingTakeover { get; }
     string? MergeNotice => null;
+    SwarmMergeQuestion? MergeQuestion => null;
     event EventHandler? Changed;
     T WithLeader<T>(Func<SwarmMember?, T> action) => action(Current);
     Task TakeOverNowAsync(CancellationToken ct = default);

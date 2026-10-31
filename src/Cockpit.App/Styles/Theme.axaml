@@ -443,6 +443,7 @@
     <Style Selector="Border.rowRoot.compact TextBlock.dividerLabel">
         <Setter Property="MaxWidth" Value="220"/>
         <Setter Property="TextAlignment" Value="Center"/>
+        <Setter Property="TextWrapping" Value="Wrap"/>
     </Style>
 
     <!-- AC-720: driver-reported error row — one card, three severities via Classes, reusing the exact

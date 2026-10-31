@@ -59,6 +59,27 @@ public sealed record RowProjects(
 // one place that can see a row's turn and say which threads it is in; the views only pick which thread they show.
 public partial class SessionViewModel
 {
+    private Cockpit.Core.Swarm.SwarmMergeQuestion? _mergeQuestion;
+
+    // AC-1929: the open question of a merge after a split; the divider row it belongs to draws it.
+    public Cockpit.Core.Swarm.SwarmMergeQuestion? MergeQuestion
+    {
+        get => _mergeQuestion;
+        set
+        {
+            if (ReferenceEquals(_mergeQuestion, value))
+            {
+                return;
+            }
+
+            _mergeQuestion = value;
+            foreach (var row in Transcript.Where(row => row.IsMergeDivider))
+            {
+                row.OnMergeQuestionChanged();
+            }
+        }
+    }
+
     // The thread a row with no project at all is in. Distinct from null, which is All.
     public const string GeneralThread = "";
 

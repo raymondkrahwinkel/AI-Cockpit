@@ -844,6 +844,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             SenderTitle = entry.SenderTitle,
             MessageKind = entry.MessageKind,
             SubjectPaneId = entry.SubjectPaneId,
+            WrittenWhileApartOn = entry.WrittenWhileApartOn,
         };
 
         if (entry.StartsReply)
