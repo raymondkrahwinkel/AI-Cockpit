@@ -13,6 +13,9 @@ public sealed class SchedulesUi : ICockpitPluginUi
     public const string ShortcutId = "schedules.open";
     public const string DefaultGesture = "Ctrl+Shift+S";
 
+    // AC-1547: `--screenshot --scene plugin:<name>`, a dev hook (see PluginScenes), not a plugin contract.
+    public static IReadOnlyDictionary<string, Func<Avalonia.Controls.Control>> Scenes => SchedulesScenes.Views;
+
     // The badge's subscription lives as long as the UI part: the count goes on while the screen is closed.
     private IDisposable? _dueSubscription;
 

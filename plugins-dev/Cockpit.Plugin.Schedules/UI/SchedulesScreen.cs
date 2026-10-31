@@ -23,6 +23,8 @@ internal sealed class SchedulesScreen : UserControl
     private readonly ContentControl _page = new();
     private readonly ContentControl _banner = new();
     private readonly StackPanel _tabBar = new() { Orientation = Orientation.Horizontal, Spacing = 2 };
+    private readonly ComboBox _server;
+    private readonly TextBlock _status;
     private SchedulesSource _source;
     private Views _views;
     private int _switching;
@@ -40,7 +42,7 @@ internal sealed class SchedulesScreen : UserControl
         _source = _local;
         _localViews = _views = _CreateViews(_local);
 
-        var server = new ComboBox
+        var server = _server = new ComboBox
         {
             ItemsSource = new[] { "This computer" }.Concat(_servers.Select(target => target.Name)).ToList(),
             SelectedIndex = 0,
@@ -57,7 +59,7 @@ internal sealed class SchedulesScreen : UserControl
         bar.Children.Add(Ui.Docked(title, Dock.Left));
         bar.Children.Add(_tabBar);
 
-        var status = Ui.Hint($"Engine running · cockpit-schedules MCP · {SettingsView.Tools.Length} tools · all sessions");
+        var status = _status = Ui.Hint($"Engine running · cockpit-schedules MCP · {SettingsView.Tools.Length} tools · all sessions");
         status.Margin = new Thickness(0, 0, 0, 10);
 
         Content = new Panel
@@ -105,6 +107,13 @@ internal sealed class SchedulesScreen : UserControl
     // AC-1547: 0 is this computer, n the n-th server. A switch that lands after a newer one is dropped.
     public async Task SwitchAsync(int index)
     {
+        if (_server.SelectedIndex != index)
+        {
+            // The switch shows what the screen manages; its change comes back here.
+            _server.SelectedIndex = index;
+            return;
+        }
+
         var attempt = ++_switching;
         Unavailable = null;
         if (index <= 0 || index > _servers.Count)
@@ -141,6 +150,8 @@ internal sealed class SchedulesScreen : UserControl
             _views = _localViews;
             Unavailable = failure;
             _banner.Content = null;
+            _status.IsVisible = false;
+            _RenderTabs();
             _page.Content = new StackPanel
             {
                 Spacing = 6,
@@ -173,7 +184,8 @@ internal sealed class SchedulesScreen : UserControl
 
         _source = source;
         _views = views;
-        _banner.Content = source.Server is { } server ? Ui.Note($"You're managing {server} · server time {_ServerTime(source.State)}", warning: false) : null;
+        _status.IsVisible = true;
+        _banner.Content = source.Server is { } server ? _Banner(server, source.State) : null;
         Show(Tab);
     }
 
@@ -198,6 +210,21 @@ internal sealed class SchedulesScreen : UserControl
         return new Views(new TasksView(source.State, source.Host, _overlay, Edit), new RunsView(source.State, source.Host), new SettingsView(source.State, source.Host, source.Profiles));
     }
 
+    // The mockup's band: which server, what that means, and the server's time on the right.
+    private static Border _Banner(string server, SchedulesState state)
+    {
+        var band = new DockPanel();
+        band.Children.Add(Ui.Docked(Ui.Hint($"Server time: {_ServerTime(state)}"), Dock.Right));
+        band.Children.Add(new TextBlock
+        {
+            Text = $"You're managing {server}. Tasks run there, also when this computer is off. Agent runs use the server's profiles.",
+            FontSize = 12.5,
+            TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+        });
+        return new Border { Padding = new Thickness(12, 8), Margin = new Thickness(0, 0, 0, 8), CornerRadius = new CornerRadius(6), Child = band }
+            .Themed(Border.BackgroundProperty, "CockpitAccentSelectionBrush");
+    }
+
     private static string _ServerTime(SchedulesState state)
     {
         if (state.BackendNow is not { } now)
@@ -215,7 +242,7 @@ internal sealed class SchedulesScreen : UserControl
             zone = "UTC";
         }
 
-        return $"{now:HH:mm} ({zone})";
+        return $"{zone} · {now:HH:mm}";
     }
 
     // The tabs with their counts, as the mockup's "Scheduled tasks 6 · Run history 6".
