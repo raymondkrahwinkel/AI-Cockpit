@@ -224,7 +224,17 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     // AC-1013: Auto-submit: writes a carriage return into the pty, the same byte a physical Enter sends...
     protected override void OnVoiceSubmitRequested()
     {
-        _scheduleAutoSubmit(AutoSubmitDelay(_lastTypedLength), () => VoiceTranscriptReady?.Invoke("\r"));
+        if (IsReadingChild)
+        {
+            return;
+        }
+        _scheduleAutoSubmit(AutoSubmitDelay(_lastTypedLength), () =>
+        {
+            if (!IsReadingChild)
+            {
+                VoiceTranscriptReady?.Invoke("\r");
+            }
+        });
     }
 
     // A TTY session takes nothing here (AC-86): the text snapshot already reached the agent on the verify tool
@@ -597,7 +607,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
                 {
                     if (!_statusTrackingStopped)
                     {
-                        SessionStatus = _statusTracker.OnActivity(reading.Activity, DateTimeOffset.UtcNow);
+                        SessionStatus = _WithChildStatus(_statusTracker.OnActivity(reading.Activity, DateTimeOffset.UtcNow));
                     }
 
                     // A backgrounded shell does not hold the status (it may be a dev server that never ends), but it
@@ -663,17 +673,48 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
             return;
         }
 
-        SessionStatus = _statusTracker.OnProcessSample(spawnedProcessCount > 0, DateTimeOffset.UtcNow);
+        SessionStatus = _WithChildStatus(_statusTracker.OnProcessSample(spawnedProcessCount > 0, DateTimeOffset.UtcNow));
     }
 
-    private void _OnStatusPollTick(object? sender, EventArgs e)
+    private bool _childrenPolling;
+
+    private SessionStatus _WithChildStatus(SessionStatus status) =>
+        status is SessionStatus.Idle or SessionStatus.Done && HasBackgroundTasks ? SessionStatus.WorkingBackground : status;
+
+    protected override Task<ChildTranscriptPage> ReadChildAsync(BackgroundTask reference, string? cursor, CancellationToken cancellationToken) =>
+        _transcriptReader is null || _statusTrackingStopped
+            ? Task.FromResult(ChildTranscriptPage.Unavailable("owner has stopped"))
+            : _transcriptReader.ReadChildTranscriptAsync(_configuredProfile, StatusFile, reference.AgentId ?? reference.TaskId, reference.SourceRevision, cursor, cancellationToken);
+
+    private async void _OnStatusPollTick(object? sender, EventArgs e)
     {
         if (_statusTrackingStopped)
         {
             return;
         }
 
-        SessionStatus = _statusTracker.Poll(DateTimeOffset.UtcNow);
+        SessionStatus = _WithChildStatus(_statusTracker.Poll(DateTimeOffset.UtcNow));
+        if (_childrenPolling || _transcriptReader is null)
+        {
+            return;
+        }
+        _childrenPolling = true;
+        var status = StatusFile;
+        try
+        {
+            var children = await _transcriptReader.ReadChildrenAsync(_configuredProfile, status, _statusTailCancellation?.Token ?? CancellationToken.None);
+            if (!_statusTrackingStopped && status == StatusFile)
+            {
+                UpdateChildAgents(children);
+                SessionStatus = _WithChildStatus(_statusTracker.Poll(DateTimeOffset.UtcNow));
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception exception)
+        {
+            System.Diagnostics.Debug.WriteLine($"Child history read failed: {exception.Message}");
+        }
+        finally { _childrenPolling = false; }
     }
 
     // AC-1013: Folds the tokens accumulated since the previous turn into the session meter (AC-398) and...
@@ -715,7 +756,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         }
 
         _lastAliveSignalAt = now;
-        SessionStatus = _statusTracker.OnAlive(now);
+        SessionStatus = _WithChildStatus(_statusTracker.OnAlive(now));
     }
 
     private void _StopStatusTracking()

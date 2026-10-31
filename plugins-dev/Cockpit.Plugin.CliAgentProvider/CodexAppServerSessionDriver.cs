@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using System.Collections.Concurrent;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Shared;
 
 namespace Cockpit.Plugin.CliAgentProvider;
 
@@ -592,39 +593,12 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         }
     }
 
-    private readonly Dictionary<string, PluginBackgroundTask> _childHistory = new();
-    private readonly Dictionary<string, long> _childHistoryOrder = new();
-    private long _childHistorySequence;
+    private readonly ProviderChildLedger _childHistory = new();
     private IReadOnlyList<PluginBackgroundTask> _knownChildren = [];
 
     private void _PublishChildren()
     {
-        foreach (var child in _childHistory.Values.ToArray())
-        {
-            if (!_children.ContainsKey(child.TaskId) && child.State == "running")
-            {
-                _childHistory[child.TaskId] = child with { State = "unknown" };
-            }
-        }
-        foreach (var child in _children.Values)
-        {
-            if (!_childHistory.TryGetValue(child.TaskId, out var known) || known.RunId != child.RunId || known.State != "running")
-            {
-                _childHistoryOrder[child.TaskId] = ++_childHistorySequence;
-            }
-            _childHistory[child.TaskId] = child;
-        }
-        while (_childHistory.Count > 128)
-        {
-            var oldest = _childHistory.Values.Where(child => !_children.ContainsKey(child.TaskId)).MinBy(child => _childHistoryOrder.GetValueOrDefault(child.TaskId));
-            if (oldest is null)
-            {
-                break;
-            }
-            _childHistory.Remove(oldest.TaskId);
-            _childHistoryOrder.Remove(oldest.TaskId);
-        }
-        _knownChildren = [.. _childHistory.Values];
+        _knownChildren = _childHistory.Snapshot([.. _children.Values]);
         _events.Publish(new PluginBackgroundTasksChanged { SessionId = _threadId, Tasks = [.. _children.Values], Children = _knownChildren });
     }
 

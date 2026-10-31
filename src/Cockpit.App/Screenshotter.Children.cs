@@ -8,6 +8,40 @@ namespace Cockpit.App;
 
 internal static partial class Screenshotter
 {
+    private static Window _TtyChildHistoryScene(string provider, bool reading)
+    {
+        var cockpit = new CockpitViewModel { GlobalSingleSessionLayout = true, SidebarWidth = 260 };
+        var owner = new TtyViewModel { Title = $"{provider} TTY · parser review", ActiveProfileLabel = "personal", WorkingPath = "C:/Projects/AI-Cockpit" };
+        owner.UpdateChildAgents([
+            new BackgroundTask("tty-running", BackgroundTaskKind.SubAgent, "Review the parser change")
+            {
+                AgentId = "tty-running", SourceRevision = "start-1", AgentType = provider == "Claude" ? "general-purpose" : "default",
+                StartedAtUnixMilliseconds = DateTimeOffset.UtcNow.AddSeconds(-72).ToUnixTimeMilliseconds(),
+            },
+            new BackgroundTask("tty-finished", BackgroundTaskKind.SubAgent, "Draft the release notes")
+            {
+                AgentId = "tty-finished", SourceRevision = "start-2", State = "completed", AgentType = "Explore", DurationMilliseconds = 160000,
+            },
+            new BackgroundTask("tty-unknown", BackgroundTaskKind.SubAgent, "Recovered child without live hooks")
+            {
+                AgentId = "tty-unknown", SourceRevision = "file-1", State = "unknown",
+            },
+        ]);
+        cockpit.Sessions.Clear();
+        cockpit.Sessions.Add(owner);
+        cockpit.SelectSessionCommand.Execute(owner);
+        if (reading)
+        {
+            owner.ChildAgents[1].OpenCommand.Execute(null);
+            if (owner.ChildTranscript is { } transcript)
+            {
+                transcript.Status = "";
+                transcript.Rows.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, "The review is complete. These entries belong to the selected TTY child; the parent terminal continues running."));
+            }
+        }
+        return new MainWindow { DataContext = cockpit };
+    }
+
     private static Window _ChildHistoryPopout() => _ChildHistoryScene("sidebar");
     private static Window _ChildHistoryScene(string state)
     {

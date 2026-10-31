@@ -814,7 +814,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         {
             Children = [.. backgroundTasks.Children.Select(task => new BackgroundTask(task.TaskId, BackgroundTaskKind.SubAgent, task.Description)
             {
-                AgentId = task.AgentId, RunId = task.RunId, State = task.State,
+                AgentId = task.AgentId, RunId = task.RunId, State = task.State, SourceRevision = task.SourceRevision,
                 AgentType = task.AgentType, DurationMilliseconds = task.DurationMilliseconds, StartedAtUnixMilliseconds = task.StartedAtUnixMilliseconds,
                 ParentTaskId = task.ParentTaskId, ParentToolUseId = task.ParentToolUseId,
                 LastTool = task.LastTool, Tokens = task.Tokens,
@@ -830,7 +830,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
                 },
                 task.Description)
             {
-                AgentId = task.AgentId, RunId = task.RunId,
+                AgentId = task.AgentId, RunId = task.RunId, SourceRevision = task.SourceRevision,
                 AgentType = task.AgentType, DurationMilliseconds = task.DurationMilliseconds, StartedAtUnixMilliseconds = task.StartedAtUnixMilliseconds,
                 ParentTaskId = task.ParentTaskId, ParentToolUseId = task.ParentToolUseId,
                 LastTool = task.LastTool, Tokens = task.Tokens,

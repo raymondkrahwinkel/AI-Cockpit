@@ -18,6 +18,15 @@ or a provider added by a plugin: they all run as panes in the same cockpit.
 
 ## Why
 
+Claude and Codex TTY child history uses the shared `plugins-dev/_shared/HookRelay` .NET helper.
+Building either provider also builds and copies its `HookRelay/` subprocess. Store packages publish
+this helper self-contained per RID, using the existing `store.json` subprocess pipeline. A normal
+developer build uses the installed .NET SDK; an installed plugin needs no global `dotnet` command.
+The native CLI asks once to trust the two Cockpit subagent hooks. Their command stays stable across
+sessions; only the journal environment variable changes. Trust is never bypassed. A changed install
+path or hook definition can require trust again. Claude's statusline and an explicit Codex resume id
+can recover history without live hooks; an unbound Codex launch waits for its first trusted child hook.
+
 The `cockpit-browser` endpoint supports session-owned tabs with `browser_open_tab(url, purpose)`
 and `browser_list_tabs`. Use `browser_read_tab` (text/tree) and `browser_screenshot_tab` with the
 returned opaque id. An authenticated session is required; each browser run has separate ownership.

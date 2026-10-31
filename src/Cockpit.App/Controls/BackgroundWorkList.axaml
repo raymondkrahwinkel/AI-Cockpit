@@ -3,7 +3,7 @@
              xmlns:vm="using:Cockpit.App.ViewModels"
              xmlns:conv="using:Cockpit.App.Converters"
              x:Class="Cockpit.App.Controls.BackgroundWorkList"
-             x:DataType="vm:SessionViewModel">
+             x:DataType="vm:SessionPanelViewModel">
 
     <!-- AC-531's "Running now" list, shared by the composer's Background button in Panels and the header's
          indicator in the Simple stand (AC-1526), so both open the same list. -->

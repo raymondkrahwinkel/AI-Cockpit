@@ -1,4 +1,7 @@
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Shared;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace Cockpit.Plugin.ClaudeProvider;
 
@@ -24,6 +27,12 @@ internal sealed class ClaudeTtyProvider(Func<string, string?>? managedResolver =
 
         var environmentOverlay = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         var (statusFile, statusLineSettings) = ClaudeStatusLine.Install(configJsonDirectory, environmentOverlay);
+        if (statusFile is not null)
+        {
+            var settings = JsonNode.Parse(statusLineSettings ?? "{}") as JsonObject ?? new JsonObject();
+            settings["hooks"] = JsonSerializer.SerializeToNode(TtyChildHooks.Settings(statusFile, "claude", environmentOverlay));
+            statusLineSettings = settings.ToJsonString();
+        }
 
         // AC-408/AC-1091: the session id is the transcript from the CLI's own statusline snapshot,
         // unambiguous per launch; falling back to the new *.jsonl since launch until that snapshot
@@ -67,6 +76,7 @@ internal sealed class ClaudeTtyProvider(Func<string, string?>? managedResolver =
         if (statusFile is not null)
         {
             sessionScopedFiles.Add(statusFile);
+            TtyChildHooks.RegisterFiles(statusFile, sessionScopedFiles);
         }
 
         // The prompt holds whatever standing instruction the operator wrote; it goes when the session does, the
