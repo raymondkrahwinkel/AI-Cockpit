@@ -81,6 +81,9 @@ public partial class OptionsDialog : Window
                 cockpit.Diagnostics.Refresh();
                 cockpit.Swarm.StartListening();
                 cockpit.ModelIntelligence.LoadCommand.Execute(null);
+                cockpit.Security.HelloSigner = new Services.WindowsHelloSigner(this);
+                cockpit.Security.AskHelloPassword = _AskHelloPasswordAsync;
+                cockpit.Security.RefreshHelloCommand.Execute(null);
                 _BuildPluginCategories(cockpit);
                 _ApplySearch(cockpit.OptionsSearchText);
                 RequestAnimationFrame(_ => RequestAnimationFrame(_ => cockpit.OptionsOpenPresented()));
@@ -811,6 +814,22 @@ public partial class OptionsDialog : Window
         {
             await cockpit.Security.DisableAsync();
         }
+    }
+
+    // AC-1879: turning Windows Hello on needs the password first, since it wraps the key.
+    private async Task<string?> _AskHelloPasswordAsync()
+    {
+        var dialog = new PasswordDialog
+        {
+            DataContext = new PasswordDialogViewModel(
+                "Turn on Windows Hello",
+                "Confirm with your encryption password. Windows then asks for your face, fingerprint or PIN once, "
+                + "to bind the key to this computer.",
+                requiresCurrent: false,
+                confirmOnlyNote: "Your password keeps working. Change it later and Windows Hello is turned off until you turn it on again."),
+        };
+
+        return (await dialog.ShowDialog<PasswordDialogViewModel?>(this))?.NewPassword;
     }
 
     private async void OnChangePassword(object? sender, RoutedEventArgs e)

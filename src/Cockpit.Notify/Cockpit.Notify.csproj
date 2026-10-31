@@ -5,7 +5,10 @@
        copied beside Cockpit.App.exe by Cockpit.App's own target, never part of the Linux or macOS build. -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <!-- AC-1879: the same projection as Cockpit.Hello, so the publish folder holds one Microsoft.Windows.SDK.NET.dll. -->
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <WindowsSdkPackageVersion>10.0.26100.87</WindowsSdkPackageVersion>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>

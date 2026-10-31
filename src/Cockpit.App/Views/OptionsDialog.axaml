@@ -1403,6 +1403,24 @@
                                   IsVisible="{Binding Security.IsEncrypted}" Margin="0,8,0,0"
                                   ToolTip.Tip="When your screen locks, the cockpit locks too: it clears the password from memory and asks for it again, exactly as it does at startup. On by default; the sessions you left running keep running behind the lock screen."/>
 
+                        <!-- AC-1879: beside the screen-lock row, since with Hello on the screen-lock unlock offers it too.
+                             Runs straight away like the encryption buttons; absent off Windows and without Hello. -->
+                        <StackPanel IsVisible="{Binding Security.HelloOffered}" Spacing="2">
+                            <CheckBox Content="Unlock with Windows Hello (face, fingerprint or PIN)" IsEnabled="{Binding !Security.IsHelloBusy}"
+                                      IsChecked="{Binding Security.HelloEnabled, Mode=OneWay}" Command="{Binding Security.ToggleHelloCommand}"/>
+                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="28,2,0,2" IsVisible="{Binding Security.IsHelloBusy}">
+                                <ProgressBar IsIndeterminate="True" Width="160" MinWidth="0" Height="6" MinHeight="0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Setting up Windows Hello…" FontSize="11" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                            </StackPanel>
+                            <TextBlock Text="{Binding Security.HelloStatus}" FontSize="11" TextWrapping="Wrap" Margin="28,0,0,0"
+                                       IsVisible="{Binding !Security.IsHelloBusy}"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                            <TextBlock Text="{Binding Security.HelloError}" FontSize="11" TextWrapping="Wrap" Margin="28,0,0,0"
+                                       IsVisible="{Binding Security.HelloError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                       Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
+                        </StackPanel>
+
                         <TextBlock Classes="optionsSectionHeader" Text="2. TERMINAL ACCESS"/>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Let an agent read a terminal" FontWeight="SemiBold"/>

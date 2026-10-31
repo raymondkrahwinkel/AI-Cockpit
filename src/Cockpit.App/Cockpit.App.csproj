@@ -124,18 +124,20 @@
   <!-- AC-1588: Cockpit.Notify.exe (a silent toast that reports its click) beside Cockpit.App.exe, on Windows only.
        A publish puts it in the same folder with the same runtime identifier and self-contained setting, so it runs
        on the app's own runtime. Without it WindowsToastNotifier falls back to a toast without a click. -->
-  <PropertyGroup>
-    <_NotifyProject>$(MSBuildThisFileDirectory)..\Cockpit.Notify\Cockpit.Notify.csproj</_NotifyProject>
-  </PropertyGroup>
+  <!-- AC-1879: Cockpit.Hello.exe (the Windows Hello unlock) rides the same targets, built and published the same way. -->
+  <ItemGroup>
+    <_WindowsHelper Include="$(MSBuildThisFileDirectory)..\Cockpit.Notify\Cockpit.Notify.csproj" />
+    <_WindowsHelper Include="$(MSBuildThisFileDirectory)..\Cockpit.Hello\Cockpit.Hello.csproj" />
+  </ItemGroup>
   <Target Name="BuildNotifyHelper" AfterTargets="Build"
           Condition="'$(OS)' == 'Windows_NT' And '$(RuntimeIdentifier)' == ''">
-    <MSBuild Projects="$(_NotifyProject)" Targets="Restore;Build"
+    <MSBuild Projects="@(_WindowsHelper)" Targets="Restore;Build"
              Properties="Configuration=$(Configuration);OutDir=$(TargetDir)" />
   </Target>
   <Target Name="PublishNotifyHelper" AfterTargets="Publish"
           Condition="$(RuntimeIdentifier.StartsWith('win'))">
-    <MSBuild Projects="$(_NotifyProject)" Targets="Restore" Properties="RuntimeIdentifier=$(RuntimeIdentifier)" />
-    <MSBuild Projects="$(_NotifyProject)" Targets="Publish"
+    <MSBuild Projects="@(_WindowsHelper)" Targets="Restore" Properties="RuntimeIdentifier=$(RuntimeIdentifier)" />
+    <MSBuild Projects="@(_WindowsHelper)" Targets="Publish"
              Properties="Configuration=$(Configuration);RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=$(SelfContained);PublishDir=$([System.IO.Path]::Combine($(MSBuildProjectDirectory), $(PublishDir)))" />
   </Target>
 

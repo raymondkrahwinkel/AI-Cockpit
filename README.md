@@ -268,7 +268,10 @@ console: all logging goes to a file logger rather than stdout.
 
 On Windows a build or publish of `Cockpit.App` also builds `src/Cockpit.Notify` and puts `Cockpit.Notify.exe`
 beside the app. That small helper shows a plugin's silent notification and reports its click, which the
-cross-platform app itself cannot hear. It is not in `Cockpit.slnx`, and Linux and macOS never build it.
+cross-platform app itself cannot hear. `src/Cockpit.Hello` is built the same way and puts `Cockpit.Hello.exe`
+beside it: the Windows Hello unlock (KeyCredentialManager), which needs Windows 11 24H2 or later. Both helpers use
+the same Windows SDK projection (`WindowsSdkPackageVersion` 10.0.26100.87), so a publish carries one
+`Microsoft.Windows.SDK.NET.dll`; keep the two in step. Neither is in `Cockpit.slnx`, and Linux and macOS never build them.
 
 Create a session via **+ New session**: pick a profile, permission mode, model and effort. Settings live in
 **`cockpit.json`** — `%APPDATA%\Cockpit\cockpit.json` on Windows, `~/.config/Cockpit/cockpit.json` on Linux and

@@ -196,6 +196,20 @@ internal static partial class Screenshotter
         ["splash-unlock"] = (_, _) => SplashScene.Unlock(),
         ["splash-unlock-busy"] = (_, _) => SplashScene.Unlock(busy: true),
         ["splash-unlock-wrong"] = (_, _) => SplashScene.Unlock(wrong: true),
+        // AC-1879: Windows Hello in the unlock step — offered, cancelled (amber), and its key gone on this computer.
+        ["splash-unlock-hello"] = (_, _) => SplashScene.Unlock(hello: "offered"),
+        ["splash-unlock-hello-cancelled"] = (_, _) => SplashScene.Unlock(hello: "cancelled"),
+        ["splash-unlock-hello-gone"] = (_, _) => SplashScene.Unlock(hello: "gone"),
+        ["options-security-hello"] = (_, _) => _OptionsSecurityHello(),
+        ["options-security-hello-busy"] = (_, _) => _OptionsSecurityHello(busy: true),
+        ["options-hello-turn-on"] = (_, _) => new PasswordDialog
+        {
+            DataContext = new ViewModels.PasswordDialogViewModel(
+                "Turn on Windows Hello",
+                "Confirm with your encryption password. Windows then asks for your face, fingerprint or PIN once, to bind the key to this computer.",
+                requiresCurrent: false,
+                confirmOnlyNote: "Your password keeps working. Change it later and Windows Hello is turned off until you turn it on again."),
+        },
         ["splash-unlocked"] = (_, _) => SplashScene.Unlock(unlocked: true),
         ["splash-unlocked-plugins"] = (_, _) => SplashScene.Unlock(unlocked: true, plugins: true),
         ["splash-unlock-reset"] = (_, _) => UnlockWindow.CreateResetConfirmation(),
@@ -2311,6 +2325,23 @@ internal static partial class Screenshotter
             .FirstOrDefault(item => string.Equals(item.Tag as string, header, StringComparison.OrdinalIgnoreCase))
             ?? throw new InvalidOperationException($"The Options sidebar has no '{header}' category.");
 
+        return dialog;
+    }
+
+    private static OptionsDialog _OptionsSecurityHello(bool busy = false)
+    {
+        var dialog = _OptionsOnTab("security");
+        var cockpit = dialog.DataContext as ViewModels.CockpitViewModel ?? throw new InvalidOperationException("The Options dialog has no cockpit.");
+
+        // After the dialog's own Opened handler, which reads the real (here: unencrypted) state back in.
+        dialog.Opened += (_, _) =>
+        {
+            cockpit.Security.IsEncrypted = true;
+            cockpit.Security.HelloOffered = true;
+            cockpit.Security.HelloEnabled = !busy;
+            cockpit.Security.IsHelloBusy = busy;
+            cockpit.Security.HelloStatus = "On — bound to this computer’s security chip (TPM). Your password keeps working.";
+        };
         return dialog;
     }
 

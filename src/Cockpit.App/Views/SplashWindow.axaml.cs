@@ -51,6 +51,24 @@ public partial class SplashWindow : Window
 
     private async void OnUnlock(object? sender, RoutedEventArgs e) => await _UnlockAsync();
 
+    // AC-1879: the Hello prompt opens by itself the moment the unlock step is reached, owned by this window.
+    public async Task OfferHelloAsync(UnlockViewModel unlock)
+    {
+        try
+        {
+            unlock.HelloSigner = new Services.WindowsHelloSigner(this);
+            unlock.PasswordFocusRequested += (_, _) => PasswordBox.Focus();
+            if (await unlock.OfferHelloAsync())
+            {
+                await unlock.UnlockWithHelloAsync();
+            }
+        }
+        catch (Exception exception)
+        {
+            _ReportUnlockError(exception);
+        }
+    }
+
     private async void OnPasswordKeyDown(object? sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter)

@@ -317,6 +317,7 @@ public sealed partial class SecurityOptionsViewModel(
         var status = await protection.GetStatusAsync().ConfigureAwait(true);
         IsEncrypted = status.Enabled;
         ShowUnprotectedBanner = status.ShouldWarnUnprotected;
+        await _ShowHelloAsync(status).ConfigureAwait(true);
 
         if (screenLockSettings is not null && seedStaged)
         {
@@ -1458,6 +1459,123 @@ public sealed partial class SecurityOptionsViewModel(
         await protection.DismissUnprotectedWarningAsync().ConfigureAwait(true);
     }
 
+    // AC-1879: Windows Hello as a second way to unlock; the Options window sets the signer, which owns the prompt.
+    public ISecretKeySigner? HelloSigner { get; set; }
+
+    // Only on Windows 11 24H2+ with Hello set up, and only while encryption is on.
+    [ObservableProperty]
+    private bool _helloOffered;
+
+    [ObservableProperty]
+    private bool _helloEnabled;
+
+    [ObservableProperty]
+    private string _helloStatus = "";
+
+    // While Hello is being set up or removed: the checkbox waits and a bar shows that it is working (Raymond 31-10).
+    [ObservableProperty]
+    private bool _isHelloBusy;
+
+    // Why turning Hello on or off did not go through, shown under the checkbox; empty when it did.
+    [ObservableProperty]
+    private string _helloError = "";
+
+    // Called when the Options window opens and hands over its signer; only the Hello row is read again.
+    [RelayCommand]
+    private async Task RefreshHelloAsync() =>
+        await _ShowHelloAsync(await protection.GetStatusAsync().ConfigureAwait(true)).ConfigureAwait(true);
+
+    private async Task _ShowHelloAsync(SecretProtectionStatus status)
+    {
+        HelloOffered = status.Enabled && HelloSigner is { } signer && await signer.IsAvailableAsync().ConfigureAwait(true);
+
+        // A PIN reset or a cleared TPM took the key: the box shows that, and ticking it sets Hello up again. The stored
+        // entry stays, as at the unlock, for a computer that does still hold the key (AC-1879).
+        var keyGone = status.HelloEnabled && HelloOffered && HelloSigner is { } holder
+            && status.HelloKeyName is { } keyName && !await holder.ExistsAsync(keyName).ConfigureAwait(true);
+        HelloEnabled = status.HelloEnabled && !keyGone;
+        HelloError = keyGone
+            ? "The Windows Hello key is no longer on this computer. Tick the box to set Windows Hello up again."
+            : HelloError;
+        HelloStatus = !HelloEnabled
+            ? "Off. Turn it on to unlock with your face, fingerprint or PIN instead of typing the password."
+            : status.HelloInSoftware
+                ? "On — no security chip found, so Windows keeps the key in software and only your Windows PIN protects it. Your password keeps working."
+                : "On — bound to this computer’s security chip (TPM). Your password keeps working.";
+    }
+
+    // The Options window asks for the password, a view's job; null means the operator cancelled.
+    public Func<Task<string?>>? AskHelloPassword { get; set; }
+
+    // The checkbox: on asks the password, then Windows once; off removes the key. The box then mirrors what is stored.
+    [RelayCommand]
+    private async Task ToggleHelloAsync()
+    {
+        try
+        {
+            if (HelloEnabled)
+            {
+                IsHelloBusy = true;
+                await DisableHelloAsync().ConfigureAwait(true);
+            }
+            else if (AskHelloPassword is { } ask && await ask().ConfigureAwait(true) is { } password)
+            {
+                IsHelloBusy = true;
+                await EnableHelloAsync(password).ConfigureAwait(true);
+            }
+        }
+        finally
+        {
+            IsHelloBusy = false;
+            OnPropertyChanged(nameof(HelloEnabled));
+        }
+    }
+
+    // Runs straight away, like the other encryption actions. A wrong password reads as at the unlock.
+    public async Task EnableHelloAsync(string password)
+    {
+        if (HelloSigner is not { } signer)
+        {
+            return;
+        }
+
+        HelloError = "";
+        try
+        {
+            // Off the UI thread: checking the password derives the key (210k PBKDF2 rounds), which froze the window.
+            if (!await Task.Run(() => protection.EnableHelloAsync(password, signer)).ConfigureAwait(true))
+            {
+                HelloError = $"Windows Hello was not turned on: {signer.LastFailure ?? "the Windows prompt was cancelled"}.";
+            }
+        }
+        catch (SecretProtectionException exception)
+        {
+            HelloError = exception.Message;
+        }
+        catch (Exception exception)
+        {
+            Logging.LifecycleLog.Write($"Turning Windows Hello on failed: {exception}");
+            HelloError = "Windows Hello was not turned on: something went wrong; the cockpit log has the details.";
+        }
+
+        if (HelloError.Length > 0)
+        {
+            Logging.LifecycleLog.Write(HelloError);
+        }
+
+        await RefreshAsync().ConfigureAwait(true);
+    }
+
+    public async Task DisableHelloAsync()
+    {
+        if (HelloSigner is { } signer)
+        {
+            await protection.DisableHelloAsync(signer).ConfigureAwait(true);
+        }
+
+        await RefreshAsync().ConfigureAwait(true);
+    }
+
     public async Task EnableAsync(string password)
     {
         await RunMigrationAsync(
@@ -1469,6 +1587,12 @@ public sealed partial class SecurityOptionsViewModel(
 
     public async Task DisableAsync()
     {
+        // The Hello key wraps the key that is about to stop existing (AC-1879).
+        if (HelloSigner is { } signer)
+        {
+            await protection.DisableHelloAsync(signer).ConfigureAwait(true);
+        }
+
         await RunMigrationAsync(
             "Writing your credentials back in the clear…",
             progress => protection.DisableAsync(progress)).ConfigureAwait(true);
@@ -1483,6 +1607,12 @@ public sealed partial class SecurityOptionsViewModel(
             await RunMigrationAsync(
                 "Re-encrypting your credentials…",
                 progress => protection.ChangePasswordAsync(currentPassword, newPassword, progress)).ConfigureAwait(true);
+
+            // The password change dropped the Hello wrap; the OS key that made it goes too (AC-1879).
+            if (HelloSigner is { } signer)
+            {
+                await protection.DisableHelloAsync(signer).ConfigureAwait(true);
+            }
 
             Status = "Your password has been changed.";
         }

@@ -239,7 +239,8 @@ public partial class App : Application
         startup.AddOperatorStep("Unlocking…", _ => completed.Task);
         model.BeginUnlock(unlock);
         splash.TakeFocus();
-        await startup.RunPendingAsync();
+        // The Hello prompt runs beside the step: an unlock either way completes it, a cancel leaves the password.
+        await Task.WhenAll(startup.RunPendingAsync(), splash.OfferHelloAsync(unlock));
         model.EndUnlock();
         await _YieldToPaintAsync();
     }
@@ -456,6 +457,7 @@ public partial class App : Application
         var protection = Program.Services.GetRequiredService<ISecretProtectionService>();
         var viewModel = new UnlockViewModel(protection);
         var window = new UnlockWindow { DataContext = viewModel, Topmost = true };
+        window.OfferHello();
 
         // Same contract as startup: the password is the key, and Unlocked fires once it is right (or once the operator
         // took the forgotten-password way out, which turns encryption off — after which nothing re-locks). Closing the
