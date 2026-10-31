@@ -241,11 +241,9 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             host.AddBackupTarget(new Backup.DepotBackupTarget(host, () => settings.Connections, connection.Id));
         }
 
-        // AC-1832: one selected Depot carries settings. The generic host owns one carrier, so a newly selected
-        // connection becomes the carrier on the next start; the carrier itself stops immediately when turned off.
-        if (settings.Connections.FirstOrDefault(connection => connection.SynchroniseSettings) is { } selected)
+        foreach (var connection in settings.Connections.Where(connection => connection.SynchroniseSettings))
         {
-            host.AddSettingsCarrier(new Backup.DepotSettingsCarrier(host, () => settings.Connections, selected.Id).Registration(selected));
+            host.AddSettingsCarrier(new Backup.DepotSettingsCarrier(host, () => settings.Connections, connection.Id).Registration(connection));
         }
 
         // AC-504: session delivery now asks via GetMcpServers instead of the shared registry, so reclaim what

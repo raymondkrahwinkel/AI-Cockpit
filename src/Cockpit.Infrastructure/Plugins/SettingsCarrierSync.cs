@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -35,6 +36,7 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
     private readonly ILogger<SettingsCarrierSync> _logger;
     private readonly TimeProvider _time;
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly ConcurrentDictionary<string, SyncStanding> _standing = new(StringComparer.Ordinal);
     private readonly CancellationTokenSource _stopping = new();
 
     private ITimer? _timer;
@@ -64,6 +66,9 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
 
     // AC-1663: whether the carrier's plugin waits for the operator to sign in. Replaced by the tests.
     internal Func<CancellationToken, Task<bool>> WaitsForSignIn { get; set; } = _ => Task.FromResult(false);
+
+    // AC-1846: when each server last took part in a successful run, and how large its blob was then; Options › Sync shows it.
+    public IReadOnlyDictionary<string, SyncStanding> Standing => new Dictionary<string, SyncStanding>(_standing, StringComparer.Ordinal);
 
     // Told when the operator has a choice to make; set by the desktop, which owns the dialog. Without it the toast says so.
     public Action<IReadOnlyList<SettingsConflict>>? OnConflicts { get; set; }
@@ -146,11 +151,17 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
         _SaveState(statePath, state);
     }
 
-    public IReadOnlyList<SettingsConflict> Conflicts => [.. _LoadState().Conflicts.Select(pair => new SettingsConflict(pair.Key, pair.Value.Mine, pair.Value.Theirs))];
+    public IReadOnlyList<SettingsConflict> Conflicts => [.. _LoadState().Conflicts.Select(pair => new SettingsConflict(pair.Key, pair.Value.Mine, pair.Value.Theirs, pair.Value.CarrierValues))];
 
     // The operator's answer per key: true keeps this machine's value (pushed next), false takes the other one (at the next
     // start). A key left out stays a choice to make.
-    public async Task ResolveAsync(IReadOnlyDictionary<string, bool> keepMine, CancellationToken cancellationToken = default)
+    public Task ResolveAsync(IReadOnlyDictionary<string, bool> keepMine, CancellationToken cancellationToken = default) =>
+        _ResolveAsync(keepMine, null, cancellationToken);
+
+    public Task ResolveAsync(IReadOnlyDictionary<string, string?> carrierChoices, CancellationToken cancellationToken = default) =>
+        _ResolveAsync(carrierChoices.ToDictionary(pair => pair.Key, pair => pair.Value is null, StringComparer.Ordinal), carrierChoices, cancellationToken);
+
+    private async Task _ResolveAsync(IReadOnlyDictionary<string, bool> keepMine, IReadOnlyDictionary<string, string?>? carrierChoices, CancellationToken cancellationToken)
     {
         var tookTheirs = 0;
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -162,6 +173,18 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
             {
                 if (!state.Conflicts.Remove(key, out var conflict))
                 {
+                    continue;
+                }
+
+                if (state.CarrierBases.Count > 0)
+                {
+                    var selected = mine ? local.Units.GetValueOrDefault(key)?.Text : carrierChoices?.GetValueOrDefault(key) is { } carrier && conflict.CarrierValues?.GetValueOrDefault(carrier) is { } value ? value : conflict.Theirs;
+                    state.Forced[key] = selected;
+                    if (!mine)
+                    {
+                        state.Incoming[key] = new _Incoming(selected, local.Units.GetValueOrDefault(key)?.Text, conflict.Steps);
+                        tookTheirs++;
+                    }
                     continue;
                 }
 
@@ -201,6 +224,25 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            await _MigrateLegacyCarrierAsync(cancellationToken).ConfigureAwait(false);
+            var local = await _ReadLocalAsync(cancellationToken).ConfigureAwait(false);
+            if (local.Document["SettingsSync"]?["Categories"] is JsonObject)
+            {
+                for (var attempt = 1; attempt <= Attempts; attempt++)
+                {
+                    if (await _MergeMappedAsync(local, cancellationToken).ConfigureAwait(false))
+                    {
+                        return;
+                    }
+
+                    _logger.LogInformation("Settings carrier changed between read and write; reading again ({Attempt}/{Attempts})", attempt, Attempts);
+                    local = await _ReadLocalAsync(cancellationToken).ConfigureAwait(false);
+                }
+
+                _logger.LogWarning("A settings carrier kept changing; the push waits for the next run");
+                return;
+            }
+
             for (var attempt = 1; attempt <= Attempts; attempt++)
             {
                 if (await _MergeAsync(carrier, cancellationToken).ConfigureAwait(false))
@@ -218,6 +260,225 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
             _gate.Release();
         }
     }
+
+    private async Task _MigrateLegacyCarrierAsync(CancellationToken cancellationToken)
+    {
+        var local = await _ReadLocalAsync(cancellationToken).ConfigureAwait(false);
+        if (local.Document["SettingsSync"]?["Categories"] is JsonObject || _carriers.Carrier is not { } carrier)
+        {
+            return;
+        }
+
+        var state = _LoadState();
+        if (state.LegacyCarrierId is null)
+        {
+            state.LegacyCarrierId = carrier.Id;
+            _SaveState(state);
+        }
+
+        if (state.Base is not null && !state.CarrierBases.ContainsKey(carrier.Id))
+        {
+            state.CarrierBases[carrier.Id] = new(state.Base, StringComparer.Ordinal);
+            _SaveState(state);
+        }
+
+        await _configFile.UpdateAsync(file =>
+        {
+            file.SettingsSync ??= new JsonObject();
+            if (file.SettingsSync["Categories"] is not null)
+            {
+                return;
+            }
+
+            file.SettingsSync["Categories"] = new JsonObject(SettingsCarrierFilter.Categories.Select(category => KeyValuePair.Create<string, JsonNode?>(category, new JsonArray(carrier.Id))));
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<bool> _MergeMappedAsync(_Local local, CancellationToken cancellationToken)
+    {
+        var state = _LoadState();
+        var runs = new List<_CarrierRun>();
+        foreach (var carrier in _carriers.All)
+        {
+            var filter = SettingsCarrierFilter.FromConfig(local.Document, carrier.Id);
+            var carried = _Carried(local.Document, filter);
+            var units = _Units(carried);
+            if (units.Count == 0)
+            {
+                continue;
+            }
+
+            var bytes = await carrier.ReadAsync(cancellationToken).ConfigureAwait(false);
+            var document = bytes is null ? new JsonObject() : JsonNode.Parse(bytes) as JsonObject ?? new JsonObject();
+            var remoteCarried = _Carried(document, filter);
+            var remote = _Units(remoteCarried);
+            state.CarrierBases.TryGetValue(carrier.Id, out var baseForCarrier);
+            runs.Add(new(carrier, filter, carried, units, bytes, document, remote, baseForCarrier));
+        }
+
+        var active = runs.Select(run => run.Carrier.Id).ToHashSet(StringComparer.Ordinal);
+        foreach (var id in state.CarrierBases.Keys.Except(active).ToArray())
+        {
+            state.CarrierBases.Remove(id);
+        }
+
+        var pushes = runs.ToDictionary(run => run.Carrier.Id, _ => new Dictionary<string, string?>(StringComparer.Ordinal), StringComparer.Ordinal);
+        var candidates = new Dictionary<string, List<_Candidate>>(StringComparer.Ordinal);
+        var firstContacts = new HashSet<string>(StringComparer.Ordinal);
+        var incoming = 0;
+        var newConflicts = 0;
+        foreach (var run in runs)
+        {
+            var baseline = run.Base ?? new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var key in run.Remote.Keys.Union(run.Local.Keys).Union(baseline.Keys).Distinct(StringComparer.Ordinal))
+            {
+                if (_IsManaged(key, local.Managed) || state.Conflicts.ContainsKey(key))
+                {
+                    continue;
+                }
+
+                var unit = run.Remote.GetValueOrDefault(key) ?? run.Local.GetValueOrDefault(key);
+                if (unit is null)
+                {
+                    continue;
+                }
+
+                var theirs = run.Remote.GetValueOrDefault(key)?.Text;
+                var localMine = run.Local.GetValueOrDefault(key)?.Text;
+                var mine = state.Forced.GetValueOrDefault(key) ?? localMine;
+                var was = baseline.GetValueOrDefault(key);
+                var isElement = unit.IsElement;
+                var theirsChanged = !_Same(theirs, was) && (theirs is not null || isElement);
+                var mineChanged = !_Same(mine, was) && (mine is not null || isElement) && !(run.Base is null && ManagedConfigKeys.IsUnset(key, mine));
+                if (state.Incoming.TryGetValue(key, out var taken))
+                {
+                    if (_Same(localMine, taken.Was))
+                    {
+                        mine = taken.Value;
+                    }
+                    else
+                    {
+                        state.Incoming.Remove(key);
+                        if (!_Same(localMine, theirs) && (theirs is not null || isElement))
+                        {
+                            state.Conflicts[key] = new _Conflict(localMine, theirs, taken.Steps, _CarrierValues(runs, key, state));
+                            newConflicts++;
+                            continue;
+                        }
+                    }
+                }
+
+                if (_Same(mine, theirs))
+                {
+                    continue;
+                }
+
+                if (run.Base is null && theirs is not null)
+                {
+                    // A setting never set here has no say at first contact: taken over, as with one carrier.
+                    if (mineChanged)
+                    {
+                        firstContacts.Add(key);
+                    }
+                    _AddCandidate(candidates, key, new(run.Carrier.Id, theirs, unit.Steps));
+                }
+                else if (theirsChanged && mineChanged)
+                {
+                    _AddCandidate(candidates, key, new(run.Carrier.Id, theirs, unit.Steps));
+                    firstContacts.Add(key);
+                }
+                else if (theirsChanged && theirs is not null)
+                {
+                    _AddCandidate(candidates, key, new(run.Carrier.Id, theirs, unit.Steps));
+                }
+                else if (mineChanged)
+                {
+                    pushes[run.Carrier.Id][key] = mine;
+                }
+            }
+        }
+
+        foreach (var (key, values) in candidates)
+        {
+            var distinct = values.Select(value => value.Value).Distinct().Count();
+            if (firstContacts.Contains(key) || distinct > 1)
+            {
+                var first = values[0];
+                state.Conflicts[key] = new _Conflict(local.Units.GetValueOrDefault(key)?.Text, first.Value, first.Steps, _CarrierValues(runs, key, state));
+                foreach (var push in pushes.Values)
+                {
+                    push.Remove(key);
+                }
+                newConflicts++;
+            }
+            else
+            {
+                var value = values[0];
+                state.Incoming[key] = new _Incoming(value.Value, local.Units.GetValueOrDefault(key)?.Text, value.Steps);
+                incoming++;
+            }
+        }
+
+        foreach (var run in runs)
+        {
+            var push = pushes[run.Carrier.Id];
+            foreach (var (key, value) in state.Forced)
+            {
+                if (run.Local.ContainsKey(key) && !state.Conflicts.ContainsKey(key) && !_Same(value, run.Remote.GetValueOrDefault(key)?.Text))
+                {
+                    push[key] = value;
+                }
+            }
+
+            var written = run.Bytes;
+            // AC-1861: projects and their order never belong on a carrier; an older client's copy is dropped on the next write.
+            if (push.Count > 0 || run.Document.ContainsKey("Projects") || run.Document.ContainsKey("CategoryOrder"))
+            {
+                run.Document.Remove("Projects");
+                run.Document.Remove("CategoryOrder");
+                foreach (var (key, value) in push)
+                {
+                    _Set(run.Document, _UnitFor(key, new(run.Local, local.Text, local.Managed, run.Carried, local.Document), run.Remote), value);
+                }
+
+                var blob = JsonSerializer.SerializeToUtf8Bytes(run.Document);
+                if (!await _WriteAsync(run.Carrier, blob, run.Bytes is null ? null : Version(run.Bytes), cancellationToken).ConfigureAwait(false))
+                {
+                    return false;
+                }
+                written = blob;
+            }
+
+            _standing[run.Carrier.Id] = new SyncStanding(_time.GetUtcNow(), written?.Length ?? 0);
+            state.CarrierBases[run.Carrier.Id] = written is null
+                ? new Dictionary<string, string>(StringComparer.Ordinal)
+                : _Units(_Carried(JsonNode.Parse(written) as JsonObject ?? new JsonObject(), run.Filter)).ToDictionary(pair => pair.Key, pair => pair.Value.Text, StringComparer.Ordinal);
+        }
+
+        state.Forced.Clear();
+        _SaveState(state);
+        _lastLocal = local.Text;
+        if (incoming > 0)
+        {
+            _SayFetched();
+        }
+        _SayConflicts(state, newConflicts > 0);
+        return true;
+    }
+
+    private static void _AddCandidate(Dictionary<string, List<_Candidate>> candidates, string key, _Candidate candidate)
+    {
+        if (!candidates.TryGetValue(key, out var values))
+        {
+            candidates[key] = values = [];
+        }
+        values.Add(candidate);
+    }
+
+    private static Dictionary<string, string?>? _CarrierValues(IReadOnlyCollection<_CarrierRun> runs, string key, _State state) =>
+        runs.Count == 1 && state.LegacyCarrierId == runs.First().Carrier.Id
+            ? null
+            : runs.Where(run => run.Remote.ContainsKey(key) || run.Local.ContainsKey(key) || run.Base?.ContainsKey(key) is true).ToDictionary(run => run.Carrier.Id, run => run.Remote.GetValueOrDefault(key)?.Text, StringComparer.Ordinal);
 
     private void _OnWritten(string path)
     {
@@ -239,9 +500,10 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
             await RunOnceAsync(_stopping.Token).ConfigureAwait(false);
             _toldUnreachable = false;
         }
-        catch (OperationCanceledException) when (_stopping.IsCancellationRequested)
+        catch (Exception exception) when (_stopping.IsCancellationRequested || exception is ObjectDisposedException)
         {
-            // Stopping: the next start picks up where this left off.
+            // Stopping, also when the host is torn down before this is disposed: the next start picks up where this left off.
+            _logger.LogDebug(exception, "Settings sync stopped with the host");
         }
         catch (Exception exception)
         {
@@ -425,13 +687,13 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
         var file = await configFile.ReadAsync(cancellationToken).ConfigureAwait(false) ?? new CockpitConfigFile();
         var document = JsonSerializer.SerializeToNode(file, CockpitConfigFileAccess.SerializerOptions) as JsonObject ?? new JsonObject();
         var carried = _Carried(document);
-        return new _Local(_Units(carried), carried.ToJsonString(), new HashSet<string>(file.Provisioning?.Managed.Keys ?? Enumerable.Empty<string>(), StringComparer.Ordinal));
+        return new _Local(_Units(carried), carried.ToJsonString(), new HashSet<string>(file.Provisioning?.Managed.Keys ?? Enumerable.Empty<string>(), StringComparer.Ordinal), carried, document);
     }
 
     // The white list's cut, with every address cut to scheme, host and path: a token in a git URL stays here.
-    private static JsonObject _Carried(JsonObject document)
+    private static JsonObject _Carried(JsonObject document, SettingsCarrierFilter? filter = null)
     {
-        var carried = JsonNode.Parse(SettingsCarrierWhitelist.Extract(document)) as JsonObject ?? new JsonObject();
+        var carried = JsonNode.Parse(SettingsCarrierWhitelist.Extract(document, filter ?? SettingsCarrierFilter.All)) as JsonObject ?? new JsonObject();
         _StripCredentials(carried);
         return carried;
     }
@@ -689,16 +951,26 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
 
     private sealed record _Unit(List<_Step> Steps, string Text, bool IsElement);
 
-    private sealed record _Local(Dictionary<string, _Unit> Units, string Text, HashSet<string> Managed);
+    private sealed record _Local(Dictionary<string, _Unit> Units, string Text, HashSet<string> Managed, JsonObject Carried, JsonObject Document);
 
     private sealed record _Incoming(string? Value, string? Was, List<_Step> Steps);
 
-    private sealed record _Conflict(string? Mine, string? Theirs, List<_Step> Steps);
+    private sealed record _Conflict(string? Mine, string? Theirs, List<_Step> Steps, Dictionary<string, string?>? CarrierValues = null);
+
+    private sealed record _Candidate(string CarrierId, string? Value, List<_Step> Steps);
+
+    private sealed record _CarrierRun(SettingsCarrierRegistration Carrier, SettingsCarrierFilter Filter, JsonObject Carried, Dictionary<string, _Unit> Local, byte[]? Bytes, JsonObject Document, Dictionary<string, _Unit> Remote, Dictionary<string, string>? Base);
 
     private sealed class _State
     {
         // Null: this machine never agreed with the carrier yet.
         public Dictionary<string, string>? Base { get; set; }
+
+        public Dictionary<string, Dictionary<string, string>> CarrierBases { get; set; } = new(StringComparer.Ordinal);
+
+        public string? LegacyCarrierId { get; set; }
+
+        public Dictionary<string, string?> Forced { get; set; } = new(StringComparer.Ordinal);
 
         public Dictionary<string, _Incoming> Incoming { get; set; } = new(StringComparer.Ordinal);
 

@@ -27,7 +27,7 @@ public class DepotPluginTests
     }
 
     [Fact]
-    public void GetMcpServers_AfterTwoConnectionsSwapNames_EachKeepsItsOwnId_AndTheSelectedServerCarriesSettings()
+    public void GetMcpServers_AfterTwoConnectionsSwapNames_EachKeepsItsOwnId_AndEachConnectionCarriesSettings()
     {
         // Acceptance criterion 3, the Depot half. Two connections on the same host swap names. If identity
         // followed the name, each would inherit the other's token — McpOAuthToken.IsForResource only bounds
@@ -53,15 +53,21 @@ public class DepotPluginTests
         Assert.Equal("c2", Assert.Single(after, server => server.Name == "Depot: alpha").Id);
 
         var selectedHost = _HostWithConnections(
-            new DepotConnectionRegistration("a", "A", "https://a.example", SynchroniseSettings: false),
-            new DepotConnectionRegistration("b", "B", "https://b.example", SynchroniseSettings: true));
-        Cockpit.Plugins.Abstractions.Settings.SettingsCarrierRegistration? carrier = null;
+            new DepotConnectionRegistration("b", "B", "https://b.example", SynchroniseSettings: true),
+            new DepotConnectionRegistration("a", "A", "https://a.example", SynchroniseSettings: true));
+        var carriers = new List<Cockpit.Plugins.Abstractions.Settings.SettingsCarrierRegistration>();
         selectedHost.When(candidate => candidate.AddSettingsCarrier(Arg.Any<Cockpit.Plugins.Abstractions.Settings.SettingsCarrierRegistration>()))
-            .Do(call => carrier = call.Arg<Cockpit.Plugins.Abstractions.Settings.SettingsCarrierRegistration>());
+            .Do(call => carriers.Add(call.Arg<Cockpit.Plugins.Abstractions.Settings.SettingsCarrierRegistration>()));
         using var selectedPlugin = new DepotPlugin();
         selectedPlugin.Initialize(selectedHost);
 
-        Assert.Equal("depot:b", carrier?.Id);
+        Assert.Equal(["depot:b", "depot:a"], carriers.Select(carrier => carrier.Id));
+
+        var optedOutHost = _HostWithConnections(new DepotConnectionRegistration("c", "C", "https://c.example", SynchroniseSettings: false));
+        using var optedOutPlugin = new DepotPlugin();
+        optedOutPlugin.Initialize(optedOutHost);
+
+        optedOutHost.DidNotReceive().AddSettingsCarrier(Arg.Any<Cockpit.Plugins.Abstractions.Settings.SettingsCarrierRegistration>());
     }
 
     // AC-1647, layer 2: only Depot's built-in Cockpit sign-in receives the host scope used by profile and backups;

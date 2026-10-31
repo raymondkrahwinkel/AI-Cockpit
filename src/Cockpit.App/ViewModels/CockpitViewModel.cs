@@ -240,7 +240,20 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // Options → Profiles (AC-1001), replacing the standalone ManageProfilesDialog window. Handed in by the app
     // at startup, same reason as the two above — the profile store it needs is not part of this view model's own
     // constructor. Null in the test/design-time graphs, where the category simply shows nothing to edit.
-    public ManageProfilesDialogViewModel? Profiles { get; set; }
+    public ManageProfilesDialogViewModel? Profiles
+    {
+        get => _profiles;
+        set
+        {
+            _profiles = value;
+            if (value is not null)
+            {
+                Sync.AttachProfiles(value);
+            }
+        }
+    }
+
+    private ManageProfilesDialogViewModel? _profiles;
 
     // Options → MCP Servers (AC-1002), replacing the standalone McpServersDialog window — same reasoning as
     // Profiles above: the server store it needs is not part of this view model's own constructor. Null in the
@@ -3352,6 +3365,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     public ModelIntelligenceOptionsViewModel ModelIntelligence { get; internal set; } = new();
 
+    // AC-1846: Options › Sync.
+    public SyncOptionsViewModel Sync { get; internal set; } = new();
+
     // The assistant chip at the bottom of the sidebar (AC-543).
     [ObservableProperty]
     private AssistantIndicatorViewModel? _assistantIndicator;
@@ -3517,7 +3533,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // AC-1814: Options › Model intelligence. Absent in the design-time/unit-test graph, where the page shows its empty state.
         IModelIntelligenceOptions? modelIntelligenceOptions = null,
         Cockpit.Core.Swarm.ISwarmOptions? swarmOptions = null,
-        Cockpit.Core.Swarm.ISwarmLeadership? swarmLeadership = null)
+        Cockpit.Core.Swarm.ISwarmLeadership? swarmLeadership = null,
+        // AC-1846: Options › Sync. Absent in the design-time/unit-test graph, where the page lists no server.
+        ISyncOptions? syncOptions = null)
     {
         _managedSettingsReader = managedSettings;
         _settingsWriteBatch = settingsWriteBatch;
@@ -3566,6 +3584,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         AssistantOptions = new AssistantOptionsViewModel(assistantSettingsStore, assistantProfileStore, consentAuditLog, assistantMemory);
         _ = AssistantOptions.RefreshAsync();
         ModelIntelligence = new ModelIntelligenceOptionsViewModel(modelIntelligenceOptions);
+        Sync = new SyncOptionsViewModel(syncOptions);
 
         // The awareness banner (AC-41) has to re-evaluate the moment a credential is written in the clear — a new
         // MCP server, a provider key, a plugin's token — not just when the Security tab is opened. The write seam
@@ -7463,6 +7482,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Swarm.PropertyChanged += _OnStagedPropertyChanged;
         AssistantOptions.PropertyChanged += _OnStagedPropertyChanged;
         ModelIntelligence.PropertyChanged += _OnStagedPropertyChanged;
+        Sync.PropertyChanged += _OnStagedPropertyChanged;
         _RebuildPluginOptionsRows();
     }
 
@@ -7659,6 +7679,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         measurement.Mark("assistant");
         await ModelIntelligence.SaveStagedAsync();
         measurement.Mark("models");
+        await Sync.SaveStagedAsync();
+        measurement.Mark("sync");
 
         // AC-233 used to write these after the dialog had closed, which is a path with no Cancel on it.
         if (UsageThresholdSettings is { } thresholds)
@@ -7739,6 +7761,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await Swarm.LoadSettingsAsync();
         await AssistantOptions.RefreshAsync();
         await ModelIntelligence.LoadAsync();
+        await Sync.LoadAsync();
 
         UsageThresholdSettings?.Revert();
 
@@ -7875,6 +7898,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Swarm.PropertyChanged -= _OnStagedPropertyChanged;
         AssistantOptions.PropertyChanged -= _OnStagedPropertyChanged;
         ModelIntelligence.PropertyChanged -= _OnStagedPropertyChanged;
+        Sync.PropertyChanged -= _OnStagedPropertyChanged;
         _optionsStaged = false;
         Security.SuspendPersistence = false;
         AssistantOptions.SuspendPersistence = false;

@@ -1779,6 +1779,40 @@
         <Setter Property="IsEnabled" Value="{Binding IsEnabled}"/>
     </Style>
 
+    <!-- AC-1846: the small word-like label beside a Sync row or server card ("per project", "carries 6 of 8"). -->
+    <Style Selector="Border.syncPill">
+        <Setter Property="BorderBrush" Value="{DynamicResource CockpitHairlineBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius" Value="{StaticResource CockpitPillRadius}"/>
+        <Setter Property="Padding" Value="8,1"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="Border.syncPill > TextBlock">
+        <Setter Property="Foreground" Value="{DynamicResource CockpitTextSecondaryBrush}"/>
+        <Setter Property="FontSize" Value="10.5"/>
+    </Style>
+
+    <!-- AC-1847: the same pill in accent for a profile that deviates from its category. -->
+    <Style Selector="Border.syncPill.accent">
+        <Setter Property="Background" Value="{DynamicResource CockpitAccentRingTintBrush}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource CockpitAccentBrush}"/>
+    </Style>
+    <Style Selector="Border.syncPill.accent > TextBlock">
+        <Setter Property="Foreground" Value="{DynamicResource CockpitAccentBrush}"/>
+    </Style>
+
+    <!-- AC-1846: one answer to a settings conflict, a flat card that takes the accent edge once picked. -->
+    <Style Selector="Border.syncChoice">
+        <Setter Property="Background" Value="{DynamicResource CockpitSecondaryBgBrush}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource CockpitHairlineBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius" Value="{StaticResource CockpitControlRadius}"/>
+    </Style>
+    <Style Selector="Border.syncChoice.selected">
+        <Setter Property="BorderBrush" Value="{DynamicResource CockpitAccentBrush}"/>
+        <Setter Property="Background" Value="{DynamicResource CockpitAccentRingTintBrush}"/>
+    </Style>
+
     <!-- AC-1000: the sidebar's live-search match-count badge, one per category, only visible while searching. -->
     <Style Selector="Border.searchMatchBadge">
         <Setter Property="Background" Value="{StaticResource CockpitAccentBrush}"/>

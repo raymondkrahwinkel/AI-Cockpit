@@ -293,6 +293,15 @@ internal static partial class Screenshotter
         // AC-1814: Options › Model intelligence with data, and with too little data for any pattern.
         ["options-model-intelligence"] = ModelIntelligenceScene.Filled,
         ["options-model-intelligence-unknown"] = ModelIntelligenceScene.Unknown,
+        // AC-1846: Options › Sync, unchanged and with pending changes, and the conflict between two servers.
+        ["options-sync"] = SyncScene.Unchanged,
+        ["options-sync-changes"] = SyncScene.Changed,
+        ["options-sync-servers"] = SyncScene.Changed,
+        ["options-sync-picker"] = SyncScene.Changed,
+        // AC-1847: the Profiles row opened with two overrides, and the same choice as a field on the profile page.
+        ["options-sync-profiles"] = SyncScene.Profiles,
+        ["options-sync-profile-dialog"] = SyncScene.ProfilePage,
+        ["options-sync-conflict"] = (width, height) => SyncScene.Disagree(width, height),
         ["debug"] = (_, _) => _OptionsOnTab("Debug"),
         ["appearance"] = (_, _) => _OptionsOnTab("Appearance"),
         // AC-445: the Layout section (single session / stack vertically / focus + rail) lives on the Sessions
@@ -1393,6 +1402,18 @@ internal static partial class Screenshotter
         ["options-swarm-settings"] = window => _ScrollIntoView(window, "swarm", "Internal network only"),
         ["options-swarm-invalid-cidr"] = window => _ScrollIntoView(window, "swarm", "Internal network only"),
         ["options-swarm-incoming"] = window => _ScrollIntoView(window, "swarm", "Internal network only"),
+        ["options-sync-changes"] = SyncScene.StageChanges,
+        ["options-sync-profiles"] = SyncScene.ExpandProfiles,
+        ["options-sync-servers"] = window =>
+        {
+            SyncScene.StageChanges(window);
+            _ScrollIntoView(window, "sync", "2. PER SERVER");
+        },
+        ["options-sync-picker"] = window =>
+        {
+            SyncScene.StageChanges(window);
+            _OpenRowFlyout(window, "Appearance");
+        },
         ["options-plugin-declared"] = window => ((OptionsDialog)window).SelectCategory("plugin:claude-provider"),
         ["options-backup-depot"] = _ChooseSceneDepot,
         ["options-backup-status"] = window => _ScrollIntoView(window, "backup", "2. SCHEDULED BACKUP"),
@@ -1439,6 +1460,16 @@ internal static partial class Screenshotter
             viewModel.InputText = "@Session";
             viewModel.MentionPicker.OnTextChanged("@Session", "@Session".Length);
         }
+    }
+
+    // AC-1846: the picker of the Sync row named `title` (an item template, so it has no name of its own).
+    private static void _OpenRowFlyout(Window window, string title)
+    {
+        // The rows are an item template: they exist once the first layout pass has run.
+        Dispatcher.UIThread.RunJobs();
+        window.UpdateLayout();
+        var button = window.GetVisualDescendants().OfType<Button>().First(control => control.Flyout is not null && control.DataContext is SyncCategoryRowViewModel row && row.Title == title && control.IsEffectivelyVisible);
+        button.Flyout?.ShowAt(button);
     }
 
     private static void _OpenFlyout(Control root, string buttonName)

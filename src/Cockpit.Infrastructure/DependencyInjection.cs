@@ -118,6 +118,10 @@ public static class DependencyInjection
         AddPtyHost(services);
         AddSessionMemoryLimiter(services);
         services.AddModelIntelligence(Configuration.CockpitConfigPath.Root);
+        services.AddSingleton<Cockpit.Core.Configuration.ISyncOptions>(provider => new Plugins.SyncOptionsService(
+            provider.GetRequiredService<Plugins.SettingsCarriers>(),
+            provider.GetRequiredService<Plugins.SettingsCarrierSync>(),
+            new Configuration.CockpitConfigFileAccess(Configuration.CockpitConfigPath.Default)));
         return services;
     }
 

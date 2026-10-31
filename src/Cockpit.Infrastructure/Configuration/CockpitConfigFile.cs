@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using System.Text.Json.Nodes;
 using Cockpit.Core.Plugins;
 
 namespace Cockpit.Infrastructure.Configuration;
@@ -8,6 +9,9 @@ namespace Cockpit.Infrastructure.Configuration;
 // on-disk shape can evolve independently.
 internal sealed class CockpitConfigFile
 {
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public JsonObject? SettingsSync { get; set; }
+
     // How credentials are protected — salt/iterations the key derives from. Not a secret, and readable
     // before unlock on purpose. Absent unless encryption is on, so a bare config never implies "locked".
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
