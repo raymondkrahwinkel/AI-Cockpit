@@ -259,7 +259,7 @@ internal sealed class OpencodeAcpSessionDriver : IPluginSessionDriver
         // AC-1992: the brain is the one hidden instruction that reaches opencode, as the first visible turn of a new
         // conversation. Its prompt takes the gate before this returns, so the operator's first message queues behind
         // it; a resumed conversation already holds it. Nothing else from the append prompt goes with it (AC-783).
-        var brain = string.IsNullOrWhiteSpace(resumeSessionId)
+        var brain = resumeSessionId != "never-a-session-id"
             ? _ResolveOption(options, WellKnownPluginSessionOptions.BrainInstruction, fallback: null)
             : null;
         if (brain is not null && _sessionId is { Length: > 0 } startedSessionId)
