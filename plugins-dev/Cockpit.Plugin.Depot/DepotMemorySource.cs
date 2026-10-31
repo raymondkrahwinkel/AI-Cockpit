@@ -113,7 +113,7 @@ internal static class DepotMemorySource
         }
 
         return ProjectMemorySourceLocationsResult.Success([.. result.Projects
-            .Where(project => !string.IsNullOrEmpty(project.Slug))
+            .Where(project => project.IsBrain)
             .Select(brain => new ProjectMemorySourceLocation(
                 _BrainValue(connection, brain),
                 string.IsNullOrWhiteSpace(brain.Name) ? brain.Slug : brain.Name,
