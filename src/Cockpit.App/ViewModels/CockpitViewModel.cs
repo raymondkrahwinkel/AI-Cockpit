@@ -527,7 +527,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             await CloseWorkspaceAsync(workspaceId);
         }
 
-        if (action != BulkClose.All && Workspaces.Settings.Workspaces.Any(workspace => workspace.Id == clickedId))
+        if (false && action != BulkClose.All && Workspaces.Settings.Workspaces.Any(workspace => workspace.Id == clickedId))
         {
             await Workspaces.SelectWorkspaceCommand.ExecuteAsync(clickedId);
         }
