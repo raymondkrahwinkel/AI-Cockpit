@@ -131,8 +131,8 @@ public sealed class WorkspaceInstanceTests
         await workspaces.CloseWorkspaceCommand.ExecuteAsync(guarded.Id);
         Assert.DoesNotContain(workspaces.Settings.Workspaces, workspace => workspace.Id == guarded.Id);
 
-        // AC-1972: Cancel on the bulk question (no dialog answers no) closes nothing; after it, every guard runs and
-        // a refusing one keeps only its own tab.
+        // AC-1972: Cancel on the bulk question (no dialog answers no) closes nothing; after it, every guard runs, a
+        // refusing one keeps only its own tab, and Close others leaves the clicked tab active.
         var cockpit = await _BulkStripAsync();
         var before = cockpit.Workspaces.Settings.Workspaces.Count;
         await cockpit.CloseWorkspacesWithConfirmationAsync(BulkClose.All, _IdOf(cockpit, "Empty"));
@@ -140,9 +140,11 @@ public sealed class WorkspaceInstanceTests
         _contexts["dirty.md"].SetCloseGuard(() => Task.FromResult(false));
         var previewAsked = false;
         _contexts["preview.md"].SetCloseGuard(() => Task.FromResult(previewAsked = true));
-        await cockpit.CloseWorkspacesAsync(cockpit.PlanBulkClose(BulkClose.All, _IdOf(cockpit, "Empty")).WorkspaceIds);
+        var kept = _IdOf(cockpit, "Empty");
+        await cockpit.CloseWorkspacesAsync(BulkClose.Others, kept, cockpit.PlanBulkClose(BulkClose.Others, kept).WorkspaceIds);
         Assert.True(previewAsked);
-        Assert.Equal(["Projects", "dirty.md"], cockpit.Workspaces.Settings.Workspaces.Select(workspace => workspace.Name));
+        Assert.Equal(["Projects", "Empty", "dirty.md"], cockpit.Workspaces.Settings.Workspaces.Select(workspace => workspace.Name));
+        Assert.Equal(kept, cockpit.Workspaces.Active?.Id);
     });
 
     private sealed class NoStorage : IPluginStorage

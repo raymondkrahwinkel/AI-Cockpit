@@ -515,14 +515,21 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        await CloseWorkspacesAsync(plan.WorkspaceIds);
+        await CloseWorkspacesAsync(action, workspaceId, plan.WorkspaceIds);
     }
 
-    internal async Task CloseWorkspacesAsync(IReadOnlyList<string> workspaceIds)
+    // Close others / to the right leave the clicked tab active, the one the operator chose to keep; Close all
+    // keeps the neighbour rule.
+    internal async Task CloseWorkspacesAsync(BulkClose action, string clickedId, IReadOnlyList<string> workspaceIds)
     {
         foreach (var workspaceId in workspaceIds)
         {
             await CloseWorkspaceAsync(workspaceId);
+        }
+
+        if (action != BulkClose.All && Workspaces.Settings.Workspaces.Any(workspace => workspace.Id == clickedId))
+        {
+            await Workspaces.SelectWorkspaceCommand.ExecuteAsync(clickedId);
         }
     }
 
