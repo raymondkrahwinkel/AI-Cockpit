@@ -37,6 +37,12 @@ internal sealed class FakeClaudeSdkSubprocess : IClaudeSdkSubprocess
 
     public bool HasExited { get; private set; }
 
+    public int? ExitCode => HasExited ? 1 : null;
+
+    public bool FailWrites { get; set; }
+
+    public Task PushStderrAsync(string line) => _stderr.Writer.WriteAsync(line).AsTask();
+
     public void Start(string executablePath, IReadOnlyList<string> arguments, string workingDirectory, IReadOnlyDictionary<string, string?> environmentVariables)
     {
         Arguments = arguments;
@@ -50,6 +56,10 @@ internal sealed class FakeClaudeSdkSubprocess : IClaudeSdkSubprocess
 
     public Task WriteLineAsync(string line, CancellationToken cancellationToken = default)
     {
+        if (FailWrites)
+        {
+            throw new IOException("Broken pipe");
+        }
         lock (_writtenLines)
         {
             _writtenLines.Add(line);

@@ -5,6 +5,8 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Sessions.Tty;
+using Cockpit.Core.Sessions;
+using System.Diagnostics;
 
 namespace Cockpit.Core.Tests.Sessions;
 
@@ -271,6 +273,49 @@ public class TtyLauncherTests
                 && env["TMP"] == env["TEMP"] && env["TMPDIR"] == env["TEMP"]),
             Arg.Any<short>(),
             Arg.Any<short>());
+
+        // AC-1989, layer 2: scratch stays private on desktops and is shared only with the configured agent group.
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+        var previousBase = Environment.GetEnvironmentVariable(SessionScratch.BaseVariable);
+        var previousGroup = Environment.GetEnvironmentVariable("COCKPIT_AGENT_GROUP");
+        var basis = Path.Combine(Path.GetTempPath(), $"ac-1989-{Guid.NewGuid():N}");
+        try
+        {
+            Environment.SetEnvironmentVariable(SessionScratch.BaseVariable, basis);
+            Environment.SetEnvironmentVariable("COCKPIT_AGENT_GROUP", null);
+            var privatePath = SessionScratch.Create("private");
+            var ownerMode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
+            Assert.Equal(ownerMode, File.GetUnixFileMode(privatePath));
+            using var id = Process.Start(new ProcessStartInfo("id", "-g") { RedirectStandardOutput = true });
+            Assert.NotNull(id);
+            var gid = id.StandardOutput.ReadToEnd().Trim();
+            id.WaitForExit();
+            Assert.Equal(0, id.ExitCode);
+            Environment.SetEnvironmentVariable("COCKPIT_AGENT_GROUP", gid);
+            var sharedPath = SessionScratch.Create("shared");
+            foreach (var path in new[] { basis, sharedPath, SessionScratch.Create("private") })
+            {
+                Assert.Equal(ownerMode | UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.GroupExecute, File.GetUnixFileMode(path));
+                var info = new ProcessStartInfo("stat") { RedirectStandardOutput = true };
+                info.ArgumentList.Add(OperatingSystem.IsMacOS() ? "-f" : "-c");
+                info.ArgumentList.Add("%g");
+                info.ArgumentList.Add(path);
+                using var stat = Process.Start(info);
+                Assert.NotNull(stat);
+                Assert.Equal(gid, stat.StandardOutput.ReadToEnd().Trim());
+                stat.WaitForExit();
+                Assert.Equal(0, stat.ExitCode);
+            }
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(SessionScratch.BaseVariable, previousBase);
+            Environment.SetEnvironmentVariable("COCKPIT_AGENT_GROUP", previousGroup);
+            Directory.Delete(basis, recursive: true);
+        }
     }
 
     // Iron Law #8 (no secret in a log/error message): the pane id is safe to log (it is not the secret), but the

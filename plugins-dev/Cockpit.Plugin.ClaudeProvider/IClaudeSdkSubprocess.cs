@@ -41,4 +41,6 @@ internal interface IClaudeSdkSubprocess : IAsyncDisposable
     /// True once the process has exited.
     /// </summary>
     bool HasExited { get; }
+
+    int? ExitCode { get; }
 }
