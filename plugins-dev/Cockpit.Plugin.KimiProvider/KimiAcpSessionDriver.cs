@@ -325,6 +325,17 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
                 throw new KimiAcpException($"Kimi does not offer the model {effectiveModel}, so the session does not start.");
             }
         }
+
+        // AC-1992: the brain is the one hidden instruction that reaches Kimi, as the first visible turn of a new
+        // conversation. Its prompt takes the gate before this returns, so the operator's first message queues behind
+        // it; a resumed conversation already holds it. Nothing else from the append prompt goes with it (AC-273).
+        var brain = string.IsNullOrWhiteSpace(resumeSessionId)
+            ? _ResolveOption(options, WellKnownPluginSessionOptions.BrainInstruction, fallback: null)
+            : null;
+        if (brain is not null && _sessionId is { Length: > 0 } startedSessionId)
+        {
+            _launchedTasks.Add(_SendPromptAsync(startedSessionId, brain, _lifetime.Token));
+        }
     }
 
     // The snapshot's own spelling of `model`, matched case-insensitively; the model itself when the snapshot has no

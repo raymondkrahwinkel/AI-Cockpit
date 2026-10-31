@@ -89,10 +89,11 @@ public sealed class SessionLauncher(
                 await hosted.PrepareRecordedTranscriptAsync(resume).ConfigureAwait(false);
             }
 
+            var brainInstruction = await composer.BrainInstructionAsync(request).ConfigureAwait(false);
             var instructed = request with
             {
                 LaunchOptions = SessionStartComposer.WithWorktreeConfinement(
-                    SessionStartComposer.WithInstructions(request.LaunchOptions, request.SystemPrompt, request.ProjectJobId is not null),
+                    SessionStartComposer.WithInstructions(request.LaunchOptions, request.SystemPrompt, request.ProjectJobId is not null, brainInstruction),
                     admitted.WorktreeBranch is not null),
             };
             await hosted.StartAsync(instructed, admitted.WorkingDirectory).ConfigureAwait(false);

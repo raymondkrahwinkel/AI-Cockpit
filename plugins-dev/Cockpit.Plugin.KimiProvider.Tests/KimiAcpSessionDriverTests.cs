@@ -101,20 +101,71 @@ public class KimiAcpSessionDriverTests
         Assert.Equal("mcp-key", environmentVariables["COCKPIT_MCP_KEY"]);
     }
 
+    // Layer 2, provider protocol contract (AC-1992): the brain is Kimi's first visible turn, alone and exactly
+    // once, ahead of the task. A resumed conversation (session/resume, never session/load) and a start without a
+    // brain send the task first: no extra turn. The /usage poll after a turn is no message of the operator's.
     [Fact]
-    public async Task Start_WithResumeSessionId_SendsSessionResume_NeverSessionLoad()
+    public async Task BrainInstruction_IsTheFirstVisibleMessage_WithoutOtherHiddenInstructions()
     {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
+        const string Brain = "Use brain acme/zyra@depot.example; the brain choice in CLAUDE.md does not apply to this session.";
+        const string Hidden = "HIDDEN-PROJECT-PROMPT-SENTINEL";
+        var withBrain = new Dictionary<string, string>
+        {
+            [WellKnownPluginSessionOptions.AppendSystemPrompt] = $"{Brain}\n\n{Hidden}",
+            [WellKnownPluginSessionOptions.BrainInstruction] = Brain,
+        };
+        var withoutBrain = new Dictionary<string, string> { [WellKnownPluginSessionOptions.AppendSystemPrompt] = Hidden };
+        static List<string?> PromptTexts(FakeCliSubprocess fake) =>
+        [
+            .. fake.WrittenLines
+                .Where(line => line.Contains("\"method\":\"session/prompt\""))
+                .Select(line => JsonDocument.Parse(line).RootElement.GetProperty("params").GetProperty("prompt")[0].GetProperty("text").GetString())
+                .Where(text => text != "/usage"),
+        ];
 
-        var startTask = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: "session_99", options: null, mcpServers: null, CancellationToken.None);
-        await _RespondAsync(fake, "initialize", "{}");
-        var resume = await _RespondAsync(fake, "session/resume", """{"configOptions":[]}""");
-        await startTask;
+        var fresh = new FakeCliSubprocess();
+        await using (var driver = new KimiAcpSessionDriver(() => fresh, _DefaultConfig(), "kimi"))
+        {
+            var start = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: null, withBrain, mcpServers: null, CancellationToken.None);
+            await _RespondAsync(fresh, "initialize", "{}");
+            await _RespondAsync(fresh, "session/new", """{"sessionId":"session_1","configOptions":[]}""");
+            await start;
+            await driver.SendUserMessageAsync("the task");
+            await _RespondAsync(fresh, "session/prompt", """{"stopReason":"end_turn"}""");
+            await _WaitForNthRequestAsync(fresh, "session/prompt", occurrence: 2);
 
-        Assert.Equal("session_99", resume.GetProperty("params").GetProperty("sessionId").GetString());
-        Assert.Equal("session_99", driver.SessionId);
-        Assert.DoesNotContain(fake.WrittenLines, line => line.Contains("\"method\":\"session/load\""));
+            Assert.Equal([Brain, "the task"], PromptTexts(fresh));
+            Assert.DoesNotContain(fresh.WrittenLines, line => line.Contains(Hidden));
+        }
+
+        var resumed = new FakeCliSubprocess();
+        await using (var driver = new KimiAcpSessionDriver(() => resumed, _DefaultConfig(), "kimi"))
+        {
+            var start = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: "session_99", withBrain, mcpServers: null, CancellationToken.None);
+            await _RespondAsync(resumed, "initialize", "{}");
+            var resume = await _RespondAsync(resumed, "session/resume", """{"configOptions":[]}""");
+            await start;
+            await driver.SendUserMessageAsync("the task");
+            await _WaitForRequestAsync(resumed, "session/prompt");
+
+            Assert.Equal(["the task"], PromptTexts(resumed));
+            Assert.Equal("session_99", resume.GetProperty("params").GetProperty("sessionId").GetString());
+            Assert.Equal("session_99", driver.SessionId);
+            Assert.DoesNotContain(resumed.WrittenLines, line => line.Contains("\"method\":\"session/load\""));
+        }
+
+        var plain = new FakeCliSubprocess();
+        await using (var driver = new KimiAcpSessionDriver(() => plain, _DefaultConfig(), "kimi"))
+        {
+            var start = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: null, withoutBrain, mcpServers: null, CancellationToken.None);
+            await _RespondAsync(plain, "initialize", "{}");
+            await _RespondAsync(plain, "session/new", """{"sessionId":"session_2","configOptions":[]}""");
+            await start;
+            await driver.SendUserMessageAsync("the task");
+            await _WaitForRequestAsync(plain, "session/prompt");
+
+            Assert.Equal(["the task"], PromptTexts(plain));
+        }
     }
 
     // The regression test the brief singles out (D6): a serialized stdio server must carry no "type" field at

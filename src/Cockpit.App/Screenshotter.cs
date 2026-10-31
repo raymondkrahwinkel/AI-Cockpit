@@ -337,6 +337,9 @@ internal static partial class Screenshotter
         // AC-1662: the scheduled backup's status line after a successful run.
         ["options-backup-status"] = (_, _) => _OptionsBackupStatus(),
         ["profiles"] = (_, _) => new ManageProfilesDialog { DataContext = new ViewModels.ManageProfilesDialogViewModel(), Height = 900 },
+        // AC-1992: the Brain picker on a profile whose brain is listed by one of two servers that both have a "Zyra",
+        // with a third server whose listing failed, said under the picker rather than shown as an empty list.
+        ["profiles-brain-picker"] = (_, _) => _ManageProfilesBrainPicker(),
         // AC-1019: Options → Profiles at a resting height much shorter than the selected profile's detail form, so
         // the list column (with Add/Remove) and the detail column can be seen scrolling independently rather than
         // sharing one page-wide ScrollViewer.
@@ -1970,10 +1973,44 @@ internal static partial class Screenshotter
         return dialog;
     }
 
-    private static ManageProfilesDialog _ManageProfilesEditing(SessionProfile profile)
+    private static ManageProfilesDialog _ManageProfilesBrainPicker()
+    {
+        static Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceRegistration Server(string scheme, string name, string host, bool fails = false) =>
+            new(scheme, $"Depot project — {name}", "Read it through the Depot MCP.")
+            {
+                InstanceTitle = name,
+                ListBrainsAsync = _ => Task.FromResult(fails
+                    ? Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocationsResult.Failed("Depot could not be reached.")
+                    : Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocationsResult.Success(
+                        [new($"{name.ToLowerInvariant()}/zyra@{host}", "Zyra", $"{name.ToLowerInvariant()}/zyra · {name}")])),
+            };
+        var registry = new _MemorySourceRegistry(
+            [Server("depot", "Acme", "depot.acme.example"), Server("depot.other", "Other", "depot.other.example"), Server("depot.down", "Down", "depot.down.example", fails: true)]);
+        var profile = new SessionProfile("local", new OllamaConfig("http://localhost:11434", "Qwen2.5-Coder:7b", null), Purpose: "cheap local model")
+        {
+            Assistant = "depot:acme/zyra@depot.acme.example",
+        };
+        return _ManageProfilesEditing(profile, new Composition.PluginRegistrations(new _FakeCodexProviderRegistry(), memorySources: registry));
+    }
+
+    private sealed class _MemorySourceRegistry(IReadOnlyList<Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceRegistration> sources)
+        : Cockpit.Infrastructure.Plugins.IProjectMemorySourceRegistry
+    {
+        public IReadOnlyList<Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceRegistration> Sources => sources;
+
+        public IReadOnlyList<Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceFamily> Families => [];
+
+        public bool Register(Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceRegistration registration) => false;
+
+        public bool Remove(string scheme) => false;
+
+        public bool RegisterFamily(Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceFamily family) => false;
+    }
+
+    private static ManageProfilesDialog _ManageProfilesEditing(SessionProfile profile, Services.IPluginRegistrations? plugins = null)
     {
         var viewModel = new ViewModels.ManageProfilesDialogViewModel();
-        var editable = new ViewModels.EditableProfileViewModel(profile, isLoggedIn: true);
+        var editable = new ViewModels.EditableProfileViewModel(profile, isLoggedIn: true, pluginProviderRegistry: plugins);
         viewModel.Profiles.Clear();
         viewModel.Profiles.Add(editable);
         viewModel.SelectedProfile = editable;

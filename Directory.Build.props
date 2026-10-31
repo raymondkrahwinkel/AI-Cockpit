@@ -434,7 +434,9 @@
     <!-- 0.150.0: live-file recovery banners, Retry and Sign in again (AC-1582, Abstractions 3.53.0). -->
     <!-- 0.152.0: ICockpitHost.IsHeadless lets plugins avoid desktop-only capabilities (AC-1938, Abstractions 3.55.0).
          A plugin that reads it sets minHostVersion 0.152.0. -->
-    <VersionPrefix>0.153.0</VersionPrefix>
+    <!-- 0.154.0: Depot brains in the profile editor and the brain instruction at session start (AC-1992, Abstractions 3.59.0).
+         A plugin that sets ProjectMemorySourceRegistration.ListBrainsAsync or BrainInstruction sets minHostVersion 0.154.0. -->
+    <VersionPrefix>0.154.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>

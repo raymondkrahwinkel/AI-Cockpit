@@ -33,6 +33,9 @@ internal sealed record DepotProjectListing(
     DepotProjectCockpit? Cockpit)
 {
     public string Key => Address ?? Slug;
+
+    // A Depot brain rather than a project: never shared or published as one, and the only kind the brain picker lists.
+    public bool IsBrain => string.Equals(Kind, "Brain", StringComparison.OrdinalIgnoreCase);
 }
 
 internal sealed record DepotProjectOrganization(string? Slug, string? Name, string? Role);

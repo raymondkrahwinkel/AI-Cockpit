@@ -9,5 +9,8 @@ namespace Cockpit.Infrastructure.Plugins;
 public static class ProjectMemorySourceMapping
 {
     public static IReadOnlyList<ProjectMemorySource> ToMemorySources(this IReadOnlyList<ProjectMemorySourceRegistration> registrations) =>
-        [.. registrations.Select(registration => new ProjectMemorySource(registration.Scheme, registration.Title, registration.Instruction))];
+        [.. registrations.Select(registration => new ProjectMemorySource(registration.Scheme, registration.Title, registration.Instruction)
+        {
+            BrainInstruction = registration.BrainInstruction,
+        })];
 }

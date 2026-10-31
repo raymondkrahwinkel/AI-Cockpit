@@ -55,6 +55,18 @@ public static class WellKnownPluginSessionOptions
     public const string AppendSystemPrompt = "cockpit.append-system-prompt";
 
     /// <summary>
+    /// The option key by which the host hands a driver the brain this session loads (AC-1992), as its own part next
+    /// to <see cref="AppendSystemPrompt"/>.
+    /// </summary>
+    /// <remarks>
+    /// The host already puts the same text at the head of <see cref="AppendSystemPrompt"/>, so a driver that applies
+    /// that key ignores this one. A driver that cannot apply a system prompt sends this text as the session's first
+    /// visible message, before the operator's first turn, and only on a fresh start: a resumed conversation already
+    /// holds it. Nothing else from <see cref="AppendSystemPrompt"/> may go along with it. Absent means no brain.
+    /// </remarks>
+    public const string BrainInstruction = "cockpit.brain-instruction";
+
+    /// <summary>
     /// The option key by which the host asks a driver to confine this session's file tools to its working directory
     /// (AC-174) — set to <c>"true"</c> when the host isolates an embedded session in a worktree
     /// (<see cref="Workspaces.EmbeddedSessionRequest.IsolateInWorktree"/>).

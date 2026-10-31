@@ -139,11 +139,19 @@
                     <!-- AC-1071: its own field, not a sentence in the prompt below — the cockpit states
                          the choice and withdraws the "which brain do you want?" question a session's
                          own instruction files ask first. -->
-                    <StackPanel Spacing="4">
+                    <StackPanel Spacing="4" IsVisible="{Binding !BrainPicker.IsAvailable, FallbackValue=True}">
                         <TextBlock Text="Assistant" FontSize="11"
                                    Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                         <TextBox Text="{Binding Assistant}" MaxWidth="340" HorizontalAlignment="Left"
                                  PlaceholderText="Optional — who a session under this profile is, e.g. “Zyra”"/>
+                    </StackPanel>
+
+                    <!-- AC-1992: once a source has brains, the shared picker takes the field's place and stores the
+                         chosen brain in the same Assistant value. -->
+                    <StackPanel Spacing="4" IsVisible="{Binding BrainPicker.IsAvailable, FallbackValue=False}">
+                        <TextBlock Text="Brain" FontSize="11"
+                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        <controls:BrainPicker DataContext="{Binding BrainPicker}"/>
                     </StackPanel>
 
                     <StackPanel Spacing="4">
