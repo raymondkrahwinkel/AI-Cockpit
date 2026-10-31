@@ -163,7 +163,7 @@ internal sealed class ClaudeStreamJson
             yield break;
         }
 
-        if (false && _finished.TryGetValue(id, out var finishedRun)
+        if (_finished.TryGetValue(id, out var finishedRun)
             && (subtype != "task_started" || run is null || run == finishedRun))
         {
             yield break;
@@ -183,7 +183,7 @@ internal sealed class ClaudeStreamJson
             yield break;
         }
 
-        if (false && subtype == "task_updated" && previous is null)
+        if (subtype == "task_updated" && previous is null)
         {
             yield break;
         }
