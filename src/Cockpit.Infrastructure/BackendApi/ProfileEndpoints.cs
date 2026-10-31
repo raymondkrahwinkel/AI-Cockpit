@@ -11,6 +11,7 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Mcp;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
+using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -130,6 +131,12 @@ internal static class ProfileEndpoints
             Results.Json(services.GetService<IMcpToolTokenEstimator>() is { } estimator
                 ? await estimator.EstimateAsync(name, refresh ?? false, cancellationToken).ConfigureAwait(false)
                 : McpServerToolEstimate.Unavailable(name), ConnectKeyEndpoints.Json)).RequireAdmin().Audited("estimate_profile_mcp_server", services);
+
+        // AC-1995: the brain picker's list for a profile on this server, from this server's own memory sources; nothing
+        // else lists them over this connection, and a desktop's sources never answer for a server's profile.
+        api.MapGet("/profiles/brains", async (CancellationToken cancellationToken) =>
+            Results.Json(await BrainSourcesAsync(services, cancellationToken).ConfigureAwait(false), ConnectKeyEndpoints.Json))
+            .RequireAdmin().Audited("list_profile_brains", services);
 
         // A key that reads KeptSecret is the one the named profile holds, and only for the address it holds it for.
         api.MapPost("/profiles/models", async (HttpRequest request, CancellationToken cancellationToken) =>
@@ -548,6 +555,41 @@ internal static class ProfileEndpoints
 
     internal static IReadOnlyList<ProfileLoginHealth> Health(IServiceProvider services) => services.GetService<IProfileLoginHealth>()?.Current ?? [];
 
+    // AC-1995: a source that did not list is said in these words, never in its own: a plugin's error may name what it
+    // signed in with, and no token crosses this connection. Signing in stays the server plugin's own settings.
+    internal const string BrainsSignInRefusal = "Not signed in on the server. Sign this connection in under the server's Plugins.";
+
+    internal const string BrainsListRefusal = "The server could not list these brains.";
+
+    internal static async Task<IReadOnlyList<RemoteBrainSource>> BrainSourcesAsync(IServiceProvider services, CancellationToken cancellationToken)
+    {
+        List<RemoteBrainSource> listed = [];
+        foreach (var source in services.GetService<IProjectMemorySourceRegistry>()?.Sources ?? [])
+        {
+            if (source.ListBrainsAsync is not { } list)
+            {
+                continue;
+            }
+
+            ProjectMemorySourceLocationsResult result;
+            try
+            {
+                result = await list(cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+            {
+                result = ProjectMemorySourceLocationsResult.Failed(BrainsListRefusal);
+            }
+
+            listed.Add(result.Outcome == ProjectMemorySourceLocationsOutcome.Success
+                ? new RemoteBrainSource(source.Scheme, source.Title, source.InstanceTitle, [.. result.Locations.Select(brain => new RemoteBrainSource.Brain(brain.Value, brain.Name, brain.Detail))], null)
+                : new RemoteBrainSource(source.Scheme, source.Title, source.InstanceTitle, [],
+                    result.Outcome == ProjectMemorySourceLocationsOutcome.AuthorizationRequired ? BrainsSignInRefusal : BrainsListRefusal));
+        }
+
+        return listed;
+    }
+
     // AC-1585: what the profile editor reads and writes: the declared options plus the start options it offers.
     internal static IReadOnlySet<string> EditorKeys(IServiceProvider services, SessionProfile profile) =>
         Declared(services, profile)
@@ -611,6 +653,12 @@ internal static class ProfileEndpoints
 
     internal static bool IsCredentialName(string key) =>
         CredentialWords.Any(word => key.Contains(word, StringComparison.OrdinalIgnoreCase));
+
+    // AC-1995: whether a whole profile holds a secret value of its own rather than the mask it was handed or a cleared one.
+    internal static bool CarriesCredential(SessionProfile profile) =>
+        (profile.ProviderConfig is LmStudioConfig { ApiKey.Length: > 0 } lmStudio && lmStudio.ApiKey != KeptSecret)
+        || (profile.EnvironmentVariables ?? []).Any(variable => _IsHidden(variable) && variable.Value != KeptSecret)
+        || (profile.ProviderConfig is PluginProviderConfig plugin && _ParseObject(plugin.ConfigJson) is { } config && Redacted(plugin.ConfigJson) != config.ToJsonString());
 
     // Kept by the server on every change and never shown: a secret, or a plain variable named like a credential.
     private static bool _IsHidden(ProfileEnvironmentVariable variable) => variable.IsSecret || IsCredentialName(variable.Key);

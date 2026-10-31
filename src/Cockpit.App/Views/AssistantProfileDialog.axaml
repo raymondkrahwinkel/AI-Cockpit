@@ -126,7 +126,8 @@
                         <TextBlock Text="Provider" FontSize="11"
                                    Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                         <ComboBox ItemsSource="{Binding Providers}" SelectedItem="{Binding SelectedProvider}"
-                                  DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
+                                  DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"
+                                  IsEnabled="{Binding CanChooseProvider}"/>
                     </StackPanel>
 
                     <!-- Claude-CLI (legacy, non-plugin) provider fields. -->

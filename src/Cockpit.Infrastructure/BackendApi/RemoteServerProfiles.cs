@@ -11,7 +11,7 @@ namespace Cockpit.Infrastructure.BackendApi;
 internal sealed class RemoteServerProfiles(BackendApiClient client) : IServerProfiles
 {
     public async Task<IReadOnlyList<RemoteProfile>> ListAsync(CancellationToken cancellationToken = default) =>
-        [.. (await _CallAsync<RemoteProfileList>(HttpMethod.Get, "api/v1/profiles", null, cancellationToken).ConfigureAwait(false)).Profiles.Select(_Read)];
+        [.. (await _CallAsync<RemoteProfileList>(HttpMethod.Get, "api/v1/profiles", null, cancellationToken).ConfigureAwait(false)).Profiles.Select(Read)];
 
     public async Task<IReadOnlyList<string>> ListProvidersAsync(CancellationToken cancellationToken = default) =>
         (await _CallAsync<RemoteProfileList>(HttpMethod.Get, "api/v1/profiles", null, cancellationToken).ConfigureAwait(false)).Providers ?? [];
@@ -51,7 +51,7 @@ internal sealed class RemoteServerProfiles(BackendApiClient client) : IServerPro
         var saved = originalLabel is null
             ? await _CallAsync<RemoteProfile>(HttpMethod.Post, "api/v1/profiles", new RemoteNewProfile(profile.Label, _ProviderId(profile), patch), cancellationToken).ConfigureAwait(false)
             : await _CallAsync<RemoteProfile>(HttpMethod.Patch, _Path(originalLabel), patch, cancellationToken).ConfigureAwait(false);
-        return _Read(saved);
+        return Read(saved);
     }
 
     public Task<IReadOnlyList<RemoteProviderInfo>> ListProviderInfoAsync(CancellationToken cancellationToken = default) =>
@@ -66,7 +66,20 @@ internal sealed class RemoteServerProfiles(BackendApiClient client) : IServerPro
     public Task<IReadOnlyList<string>> ListModelsAsync(string baseUrl, string? apiKey, string? label, CancellationToken cancellationToken = default) =>
         _CallAsync<IReadOnlyList<string>>(HttpMethod.Post, "api/v1/profiles/models", new { baseUrl, apiKey, label }, cancellationToken);
 
-    private static RemoteProfile _Read(RemoteProfile profile) =>
+    // AC-1995: a server without the route offers no brains, so the editor keeps the stored value as plain text.
+    public async Task<IReadOnlyList<RemoteBrainSource>> ListBrainSourcesAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await _CallAsync<IReadOnlyList<RemoteBrainSource>>(HttpMethod.Get, "api/v1/profiles/brains", null, cancellationToken).ConfigureAwait(false);
+        }
+        catch (BackendApiException exception) when (exception.Status == HttpStatusCode.NotFound)
+        {
+            return [];
+        }
+    }
+
+    internal static RemoteProfile Read(RemoteProfile profile) =>
         profile.Profile is { } json ? profile with { Full = RemoteProfileWire.FromJson(json) } : profile;
 
     private static string _ProviderId(SessionProfile profile) => profile.ProviderConfig is PluginProviderConfig plugin

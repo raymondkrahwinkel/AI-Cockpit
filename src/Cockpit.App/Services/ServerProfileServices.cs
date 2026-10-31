@@ -30,6 +30,7 @@ public sealed class ServerProfileServices(
     private IReadOnlyList<RemoteProfile> _rows = [];
     private IReadOnlyList<RemoteProviderInfo> _providers = [];
     private IReadOnlyList<SessionProviderRegistration> _registrations = [];
+    private IReadOnlyList<ProjectMemorySourceRegistration> _brainSources = [];
     private IReadOnlyDictionary<string, Func<string?, IPluginProviderConfigView>> _views = new Dictionary<string, Func<string?, IPluginProviderConfigView>>();
 
     // Read once per opening, before the editor is built: its provider list is fixed when it is made.
@@ -38,6 +39,7 @@ public sealed class ServerProfileServices(
         _providers = await profiles.ListProviderInfoAsync(cancellationToken);
         _registrations = [.. _providers.Select(_Registration)];
         _views = await _OpenConfigViewsAsync();
+        _brainSources = [.. (await profiles.ListBrainSourcesAsync(cancellationToken)).Select(_BrainSource)];
     }
 
     // The editor, with this server behind every service it asks.
@@ -107,7 +109,8 @@ public sealed class ServerProfileServices(
 
     public IReadOnlyList<ProjectMemorySource> MemorySources => [];
 
-    public IReadOnlyList<ProjectMemorySourceRegistration> MemorySourceRegistrations => [];
+    // AC-1995: the server's sources only, so the brain picker lists the server's brains and stores its schemes.
+    public IReadOnlyList<ProjectMemorySourceRegistration> MemorySourceRegistrations => _brainSources;
 
     public IReadOnlyList<ProjectMemorySourceFamily> MemorySourceFamilies => [];
 
@@ -126,6 +129,21 @@ public sealed class ServerProfileServices(
             new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: provider.SupportsPermissions) { SupportsEnvVars = provider.SupportsEnvVars })
         {
             Options = [.. provider.Options.Select(option => new PluginSessionLaunchOption(option.Key, option.Label, option.Choices) { ChoiceLabels = option.ChoiceLabels })],
+        };
+
+    // A source the picker lists by asking the server again, so Refresh reads what the server lists now. Signing in is the
+    // server plugin's own settings, so the picker offers no sign-in of its own.
+    private ProjectMemorySourceRegistration _BrainSource(RemoteBrainSource source) =>
+        new(source.Scheme, source.Title, string.Empty)
+        {
+            InstanceTitle = source.InstanceTitle,
+            ListBrainsAsync = async cancellationToken =>
+                (await profiles.ListBrainSourcesAsync(cancellationToken)).FirstOrDefault(listed => string.Equals(listed.Scheme, source.Scheme, StringComparison.OrdinalIgnoreCase)) switch
+                {
+                    { Error: { } error } => ProjectMemorySourceLocationsResult.Failed(error),
+                    { } listed => ProjectMemorySourceLocationsResult.Success([.. listed.Brains.Select(brain => new ProjectMemorySourceLocation(brain.Value, brain.Name, brain.Detail))]),
+                    null => ProjectMemorySourceLocationsResult.Failed($"{server} no longer has this source."),
+                },
         };
 
     // Per plugin that owns a provider on the server and has its UI part on this desktop, one fresh copy against the server.

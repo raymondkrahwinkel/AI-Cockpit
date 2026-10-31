@@ -62,4 +62,10 @@ public interface IServerProfiles
     /// the server uses the key it keeps for profile <paramref name="label"/>.
     /// </summary>
     Task<IReadOnlyList<string>> ListModelsAsync(string baseUrl, string? apiKey, string? label, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The server's own memory sources that list brains, each with its brains or the server's reason it has none (AC-1995);
+    /// empty from a server that predates the list.
+    /// </summary>
+    Task<IReadOnlyList<RemoteBrainSource>> ListBrainSourcesAsync(CancellationToken cancellationToken = default);
 }

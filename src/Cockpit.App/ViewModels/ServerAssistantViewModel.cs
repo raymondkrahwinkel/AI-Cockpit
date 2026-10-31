@@ -2,15 +2,17 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Remote;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Profiles;
 
 namespace Cockpit.App.ViewModels;
 
-// AC-1475: Options › Assistant on a server. Every change goes out as the fields it names and comes back as what the
-// server then holds, so this page never writes back a record it read: that record holds no secrets and would wipe them.
-public sealed partial class ServerAssistantViewModel(string server, IAssistantAdministration assistant, IServerProfiles profiles, TimeProvider? time = null)
+// AC-1475: Options › Assistant on a server. Every change comes back as what the server then holds. AC-1995: the profile is
+// edited in Options › Assistant's own Assistant Profile dialog with this server behind it, saved whole with each secret
+// masked, which the server puts back.
+public sealed partial class ServerAssistantViewModel(string server, IAssistantAdministration assistant, IServerProfiles profiles, ServerProfileServices services, TimeProvider? time = null)
     : ObservableObject
 {
     private readonly TimeProvider _time = time ?? TimeProvider.System;
@@ -20,14 +22,12 @@ public sealed partial class ServerAssistantViewModel(string server, IAssistantAd
 
     public string Server { get; } = server;
 
-    public ServerProfileEditorViewModel Editor { get; } = new();
-
     public ObservableCollection<ServerProfileRowViewModel> CopyChoices { get; } = [];
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasProfile), nameof(HasNoProfile), nameof(CanSwitch), nameof(SwitchHint), nameof(ProfileLabel), nameof(ProfileDetail),
-        nameof(ProviderText), nameof(ProviderMissing), nameof(UnsetText), nameof(BypassTitle), nameof(BypassDetail), nameof(AvailabilityTitle),
-        nameof(AvailabilityDetail), nameof(IsRunning), nameof(IsWaiting), nameof(IsOff), nameof(IsFailed), nameof(CanEdit), nameof(HasApiKey))]
+        nameof(ProviderMissing), nameof(UnsetText), nameof(BypassTitle), nameof(BypassDetail), nameof(AvailabilityTitle),
+        nameof(AvailabilityDetail), nameof(IsRunning), nameof(IsWaiting), nameof(IsOff), nameof(IsFailed), nameof(CanEdit))]
     private RemoteAssistantSettings? _settings;
 
     [ObservableProperty]
@@ -39,18 +39,6 @@ public sealed partial class ServerAssistantViewModel(string server, IAssistantAd
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanSwitch), nameof(CanEdit))]
     private bool _isReadOnly;
-
-    [ObservableProperty]
-    private bool _isEditing;
-
-    [ObservableProperty]
-    private string _editorLabel = "";
-
-    [ObservableProperty]
-    private string _instructions = "";
-
-    [ObservableProperty]
-    private bool _replacesStandingInstruction;
 
     [ObservableProperty]
     private ServerProfileRowViewModel? _selectedCopyChoice;
@@ -103,10 +91,6 @@ public sealed partial class ServerAssistantViewModel(string server, IAssistantAd
     public string ProfileDetail => Settings?.Profile is { } profile
         ? string.Join(" · ", new[] { profile.Provider, profile.Model, profile.PermissionMode, $"MCP: {(profile.McpServers is { } names ? string.Join(", ", names) : "every enabled server")}" }.Where(part => !string.IsNullOrEmpty(part)))
         : "";
-
-    public string ProviderText => ProviderMissing ? $"{Settings?.Profile?.Provider} · plugin not installed on {Server}" : Settings?.Profile?.Provider ?? "";
-
-    public bool HasApiKey => Settings?.Profile?.HasApiKey == true;
 
     public string UnsetText => Settings?.UnsetReason ?? "No Assistant Profile is set.";
 
@@ -161,7 +145,7 @@ public sealed partial class ServerAssistantViewModel(string server, IAssistantAd
 
             SelectedCopyChoice = CopyChoices.FirstOrDefault(choice => choice.IsSignInGood) ?? CopyChoices.FirstOrDefault();
         }
-    }, keepsForm: false, failed: "Not read.");
+    }, failed: "Not read.");
 
     [RelayCommand]
     private Task CopyInAsync() => _RunAsync(async () =>
@@ -182,46 +166,47 @@ public sealed partial class ServerAssistantViewModel(string server, IAssistantAd
         {
             _Say(ServerAssistantMessage.Info, "Copied — takes effect when the line is released.", "The server's assistant restarts on this profile once the key that holds the line lets go.");
         }
-    }, keepsForm: false);
+    });
+
+    // Set by the page, which owns the window the dialog opens over.
+    public Func<AssistantProfileDialogViewModel, Task>? ShowProfileDialog { get; set; }
 
     [RelayCommand]
-    private void Edit()
+    private Task EditAsync() => _RunAsync(async () =>
     {
-        _FillForm();
-        IsEditing = true;
-    }
-
-    [RelayCommand]
-    private void Discard()
-    {
-        IsEditing = false;
-        _FillForm();
-    }
-
-    [RelayCommand]
-    private Task SaveAsync() => _RunAsync(async () =>
-    {
-        var original = Settings?.Profile;
-        var patch = new RemoteAssistantProfilePatch
+        if (ShowProfileDialog is not { } show)
         {
-            Label = EditorLabel.Trim() == (original?.Label ?? "") ? null : EditorLabel.Trim(),
-            Instructions = Instructions == (Settings?.Instructions ?? "") ? null : Instructions,
-            ReplacesStandingInstruction = ReplacesStandingInstruction == Settings?.ReplacesStandingInstruction ? null : ReplacesStandingInstruction,
-            Profile = Editor.Patch(),
-        };
-        if (patch == new RemoteAssistantProfilePatch())
-        {
-            _Say(ServerAssistantMessage.Info, "Nothing to save.", "No field differs from what the server holds.");
             return;
         }
 
-        var before = Settings;
-        var saved = await assistant.UpdateProfileAsync(patch);
+        var slot = new ServerAssistantSlotStore(assistant);
+        await show(await CreateProfileDialogAsync(slot));
+        if (slot.Saved is not { } saved)
+        {
+            return;
+        }
+
         _justSaved = true;
-        IsEditing = false;
         _Show(saved);
-        _Say(ServerAssistantMessage.Info, saved.IsStoodDown ? "Saved — takes effect when the line is released." : "Saved.", _SavedText(_Sent(patch), _Fields(before).Where(field => !_Sent(patch).Contains(field.Name) && field.Value != _Fields(saved).First(other => other.Name == field.Name).Value).Select(field => field.Name).ToList()));
-    }, keepsForm: true);
+        if (saved.IsStoodDown)
+        {
+            _Say(ServerAssistantMessage.Info, "Saved — takes effect when the line is released.", "The server's assistant restarts on this profile once the key that holds the line lets go.");
+        }
+        else if (!HasMessage)
+        {
+            _Say(ServerAssistantMessage.Info, "Saved.", "The profile is now on the server, and the assistant restarted on it.");
+        }
+    });
+
+    // The dialog over the server's slot, its providers, MCP servers and brains; the provider stays the server's.
+    public async Task<AssistantProfileDialogViewModel> CreateProfileDialogAsync(ServerAssistantSlotStore slot)
+    {
+        await services.PrepareAsync();
+        var dialog = new AssistantProfileDialogViewModel(
+            slot, null, pluginProviderRegistry: services, mcpServerCatalog: services, tokenEstimator: services, pluginConfigViews: services, canChooseProvider: false);
+        await dialog.LoadAsync();
+        return dialog;
+    }
 
     [RelayCommand]
     private Task RetryAsync() => _retry?.Invoke() ?? Task.CompletedTask;
@@ -244,7 +229,7 @@ public sealed partial class ServerAssistantViewModel(string server, IAssistantAd
             return;
         }
 
-        _ = _RunAsync(async () => _Show(await assistant.SetEnabledAsync(value)), keepsForm: false);
+        _ = _RunAsync(async () => _Show(await assistant.SetEnabledAsync(value)));
     }
 
     private void _Show(RemoteAssistantSettings settings)
@@ -255,11 +240,6 @@ public sealed partial class ServerAssistantViewModel(string server, IAssistantAd
             Settings = settings;
             IsEnabled = settings.IsEnabled;
             ReportedAt = $"reported by the server · {_time.GetLocalNow().ToString("HH:mm", CultureInfo.InvariantCulture)}";
-            if (!IsEditing)
-            {
-                _FillForm();
-            }
-
             if (ProviderMissing)
             {
                 _Say(ServerAssistantMessage.Warning, "Provider plugin not installed.", "Its settings are kept as they are and cannot be edited until the plugin is back.", plugins: true);
@@ -275,14 +255,6 @@ public sealed partial class ServerAssistantViewModel(string server, IAssistantAd
         }
     }
 
-    private void _FillForm()
-    {
-        EditorLabel = Settings?.Profile?.Label ?? "";
-        Instructions = Settings?.Instructions ?? "";
-        ReplacesStandingInstruction = Settings?.ReplacesStandingInstruction ?? false;
-        Editor.Fill(Settings?.Profile);
-    }
-
     private void _Say(ServerAssistantMessage kind, string title, string text, bool health = false, bool plugins = false)
     {
         MessageKind = kind;
@@ -292,48 +264,8 @@ public sealed partial class ServerAssistantViewModel(string server, IAssistantAd
         LinksPlugins = plugins;
     }
 
-    // State H: who changed a field meanwhile is not on this side (the audit names the route, not the field), so the
-    // message names what was sent and what the server kept, compared with what this page last read.
-    private static IReadOnlyList<(string Name, string Value)> _Fields(RemoteAssistantSettings? settings) =>
-    [
-        ("label", settings?.Profile?.Label ?? ""),
-        ("instructions", settings?.Instructions ?? ""),
-        ("instruction mode", settings?.ReplacesStandingInstruction.ToString() ?? ""),
-        ("model", settings?.Profile?.Model ?? ""),
-        ("permission mode", settings?.Profile?.PermissionMode ?? ""),
-        ("MCP sets", settings?.Profile?.McpServers is { } names ? string.Join(",", names) : "*"),
-        ("variables", string.Join(";", (settings?.Profile?.Environment ?? []).Select(variable => $"{variable.Key}={variable.Value}"))),
-    ];
-
-    private static IReadOnlyList<string> _Sent(RemoteAssistantProfilePatch patch) =>
-    [
-        .. patch.Label is null ? Array.Empty<string>() : ["label"],
-        .. patch.Instructions is null ? Array.Empty<string>() : ["instructions"],
-        .. patch.ReplacesStandingInstruction is null ? Array.Empty<string>() : ["instruction mode"],
-        .. patch.Profile?.Model is null ? Array.Empty<string>() : ["model"],
-        .. patch.Profile?.PermissionMode is null ? Array.Empty<string>() : ["permission mode"],
-        .. patch.Profile?.McpServers is null ? Array.Empty<string>() : ["MCP sets"],
-        .. patch.Profile?.Environment is null ? Array.Empty<string>() : ["variables"],
-    ];
-
-    private static string _SavedText(IReadOnlyList<string> sent, IReadOnlyList<string> kept)
-    {
-        var mine = $"The {_List(sent)} you set {(_IsPlural(sent) ? "are" : "is")} now on the server";
-        var many = _IsPlural(kept);
-        return kept.Count == 0
-            ? $"{mine}."
-            : $"{mine}; the {_List(kept)} {(many ? "were" : "was")} changed on the server meanwhile and {(many ? "were" : "was")} kept, because you did not touch {(many ? "them" : "it")}.";
-    }
-
-    // "instructions", "MCP sets" and "variables" are plural on their own.
-    private static bool _IsPlural(IReadOnlyList<string> names) => names.Count > 1 || names.Any(name => name.EndsWith('s'));
-
-    private static string _List(IReadOnlyList<string> names) =>
-        names.Count == 1 ? names[0] : $"{string.Join(", ", names.Take(names.Count - 1))} and {names[^1]}";
-
-    // The one error answer cannot say why, so the page says what is likely and that nothing changed. A save that got no
-    // answer keeps the form as it was, to send again.
-    private async Task _RunAsync(Func<Task> action, bool keepsForm, string failed = "Not saved.")
+    // The one error answer cannot say why, so the page says what is likely and that nothing changed.
+    private async Task _RunAsync(Func<Task> action, string failed = "Not saved.")
     {
         _Say(ServerAssistantMessage.Info, "", "");
         CanRetry = false;
@@ -349,15 +281,13 @@ public sealed partial class ServerAssistantViewModel(string server, IAssistantAd
         catch (UnauthorizedAccessException)
         {
             IsReadOnly = true;
-            IsEditing = false;
             _Say(ServerAssistantMessage.Error, $"Refused by {Server}.", "This key may have been revoked or lost its admin rights. Nothing was changed.");
         }
         catch (Exception exception) when (exception is HttpRequestException or IOException or TaskCanceledException)
         {
-            _retry = () => _RunAsync(action, keepsForm, failed);
+            _retry = () => _RunAsync(action, failed);
             CanRetry = true;
-            _Say(ServerAssistantMessage.Error, $"{failed.TrimEnd('.')} — {Server} did not answer.",
-                keepsForm ? "Your changes are still in the form. Nothing changed on the server unless it confirms." : "Nothing changed on the server unless it confirms.");
+            _Say(ServerAssistantMessage.Error, $"{failed.TrimEnd('.')} — {Server} did not answer.", "Nothing changed on the server unless it confirms.");
         }
         catch (Exception exception)
         {

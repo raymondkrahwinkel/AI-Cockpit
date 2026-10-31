@@ -1,4 +1,5 @@
 using Cockpit.Core.Assistant;
+using Cockpit.Core.Profiles;
 
 namespace Cockpit.Core.Abstractions.Remote;
 
@@ -23,6 +24,13 @@ public interface IAssistantAdministration
     /// <see cref="ArgumentException"/> with the server's reason when it refuses.
     /// </summary>
     Task<RemoteAssistantSettings> UpdateProfileAsync(RemoteAssistantProfilePatch patch, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Writes the slot's whole profile as the shared Assistant Profile editor holds it (AC-1995) and restarts the assistant;
+    /// each secret that reads as the server's mask stays as the server holds it. Throws <see cref="ArgumentException"/>
+    /// with the server's reason when it refuses, a new credential included.
+    /// </summary>
+    Task<RemoteAssistantSettings> SaveProfileAsync(SessionProfile profile, bool replacesStandingInstruction, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Has the server copy its own profile <paramref name="label"/> into the slot, secrets included; null when it has

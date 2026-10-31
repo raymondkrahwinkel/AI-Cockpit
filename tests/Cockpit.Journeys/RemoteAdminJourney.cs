@@ -16,6 +16,7 @@ using Cockpit.App.Plugins;
 using Cockpit.App.ViewTests;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
+using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Files;
 using Cockpit.Plugins.Abstractions.UI.Files;
@@ -777,6 +778,25 @@ public sealed class RemoteAdminJourney
                 assistant.IsEnabled = true;
                 await Until.Holds(assistant, () => assistant.IsRunning);
             });
+
+            // AC-1995: Server › Profiles and › Assistant list the server's own Depot brain, which this desktop has no source for.
+            // Edit… opens Options › Assistant's own dialog over the server's slot; the pick is saved there, restarts the
+            // assistant and reads back on a reopen, and this desktop's own slot stays as it was.
+            var serverBrain = $"acme/zyra@{new Uri(depotUrl).Authority}";
+            var (profileBrains, pickedBrain, reopenedBrain) = ("", "", "");
+            await HeadlessAvalonia.RunAsync(async () =>
+            {
+                var page = admin.Profiles ?? throw new InvalidOperationException("Admin has no Profiles page.");
+                await page.LoadCommand.ExecuteAsync(null);
+                var picker = (page.Editor?.Profiles.First() ?? throw new InvalidOperationException("The server's profiles did not load.")).BrainPicker;
+                await picker.LoadAsync();
+                profileBrains = string.Join(",", picker.Choices.Select(choice => choice.Reference));
+            });
+            pickedBrain = await _EditServerAssistantAsync(assistant, picker => picker.Selected = picker.Choices.Single(choice => choice.Reference?.EndsWith(serverBrain, StringComparison.Ordinal) == true));
+            var assistantAfterBrain = HeadlessAvalonia.Run(() => (assistant.MessageTitle, assistant.IsRunning));
+            reopenedBrain = await _EditServerAssistantAsync(assistant, null);
+            var serverAssistant = (await setup.GetAsync<JsonObject>("api/v1/assistant/settings"))["profile"]?["profile"]?["assistant"]?.GetValue<string>();
+            var desktopSlot = (await cockpit.Services.GetRequiredService<IAssistantProfileStore>().LoadAsync()).Profile?.Assistant;
             List<(string Key, string What)> assistantAudit = [];
             await Until.ReloadHolds(
                 () => HeadlessAvalonia.RunAsync(async () =>
@@ -826,6 +846,12 @@ public sealed class RemoteAdminJourney
             Assert.Equal("Saved on the server.", profilesStatus);
             Assert.Contains("model echo-large", echoed.Data.GetRawText(), StringComparison.Ordinal);
             Assert.Equal(("Running", ""), assistantState);
+            Assert.EndsWith(serverBrain, pickedBrain, StringComparison.Ordinal);
+            Assert.Contains(pickedBrain, profileBrains, StringComparison.Ordinal);
+            Assert.Equal((pickedBrain, pickedBrain), (reopenedBrain, serverAssistant));
+            Assert.Null(desktopSlot);
+            Assert.Equal(("Saved.", true), assistantAfterBrain);
+            Assert.Contains((Laptop, "assistant profile changed"), assistantAudit);
             Assert.Contains((Laptop, "assistant profile copied from Echo"), assistantAudit);
             Assert.Contains((Laptop, "assistant turned on"), assistantAudit);
             Assert.True(depotHasSettings, "Admin → Plugins offered no Settings for Depot.");
@@ -908,7 +934,8 @@ public sealed class RemoteAdminJourney
                     {
                         projects = new[]
                         {
-                            new { slug = "cockpit", address = "acme/cockpit", name = "Cockpit", role = "Editor" },
+                            new { slug = "cockpit", address = "acme/cockpit", name = "Cockpit", role = "Editor", kind = (string?)null },
+                            new { slug = "zyra", address = "acme/zyra", name = "Zyra", role = "Owner", kind = (string?)"Brain" },
                         },
                     });
                     return;
@@ -1199,6 +1226,42 @@ public sealed class RemoteAdminJourney
 
     // AC-1571: opens Admin → Plugins → Settings for `pluginId`, lets `edit` change the view and saves it; the window
     // closes only once the server took the save, so a refusal fails here with what the window said.
+    // AC-1995: Edit… on the server's Assistant page, in the dialog it opens: waits for the server's brains, applies `pick`
+    // and saves, or cancels without one, and answers the brain the picker held.
+    private static async Task<string> _EditServerAssistantAsync(ServerAssistantViewModel assistant, Action<BrainPickerViewModel>? pick)
+    {
+        var opened = new TaskCompletionSource<AssistantProfileDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var watch = Window.WindowOpenedEvent.AddClassHandler<AssistantProfileDialog>((window, _) => opened.TrySetResult(window));
+        var editing = Task.CompletedTask;
+        await HeadlessAvalonia.RunAsync(() =>
+        {
+            editing = assistant.EditCommand.ExecuteAsync(null);
+            return Task.CompletedTask;
+        });
+        var window = await opened.Task.WaitAsync(Until.Ceiling);
+        var brain = "";
+        await HeadlessAvalonia.RunAsync(async () =>
+        {
+            var dialog = Assert.IsType<AssistantProfileDialogViewModel>(window.DataContext);
+            var picker = dialog.Profile.BrainPicker;
+            await Until.Holds(picker, () => picker.Choices.Any(choice => choice.Detail is { } detail && detail.StartsWith("acme/zyra", StringComparison.Ordinal)));
+            if (pick is null)
+            {
+                brain = picker.Selected?.Reference ?? "";
+                dialog.CancelCommand.Execute(null);
+                await editing;
+                return;
+            }
+
+            pick(picker);
+            brain = picker.Selected?.Reference ?? "";
+            await dialog.SaveCommand.ExecuteAsync(null);
+            await editing;
+            await Until.Holds(assistant, () => assistant.IsRunning);
+        });
+        return brain;
+    }
+
     private static async Task _SaveServerSettingsAsync(ServerAdminViewModel admin, string pluginId, Func<Window, bool> isTheView, Func<Window, Task> edit)
     {
         var opened = new TaskCompletionSource<Window>(TaskCreationOptions.RunContinuationsAsynchronously);

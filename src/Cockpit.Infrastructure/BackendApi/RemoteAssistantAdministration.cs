@@ -1,6 +1,7 @@
 using System.Net;
 using Cockpit.Core.Abstractions.Remote;
 using Cockpit.Core.Assistant;
+using Cockpit.Core.Profiles;
 
 namespace Cockpit.Infrastructure.BackendApi;
 
@@ -19,6 +20,14 @@ internal sealed class RemoteAssistantAdministration(BackendApiClient client) : I
     public Task<RemoteAssistantSettings> UpdateProfileAsync(RemoteAssistantProfilePatch patch, CancellationToken cancellationToken = default) =>
         _CallAsync(HttpMethod.Patch, $"{Route}/profile", patch, cancellationToken);
 
+    // AC-1995: the shared editor's whole profile, masked secrets and all; the server puts each one back.
+    public Task<RemoteAssistantSettings> SaveProfileAsync(SessionProfile profile, bool replacesStandingInstruction, CancellationToken cancellationToken = default) =>
+        UpdateProfileAsync(new RemoteAssistantProfilePatch
+        {
+            ReplacesStandingInstruction = replacesStandingInstruction,
+            Profile = new RemoteProfilePatch { Profile = RemoteProfileWire.ToJson(profile) },
+        }, cancellationToken);
+
     public async Task<RemoteAssistantSettings?> CopyProfileFromAsync(string label, CancellationToken cancellationToken = default)
     {
         try
@@ -36,7 +45,8 @@ internal sealed class RemoteAssistantAdministration(BackendApiClient client) : I
     {
         try
         {
-            return await client.SendAsync<RemoteAssistantSettings>(method, path, body, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false);
+            var settings = await client.SendAsync<RemoteAssistantSettings>(method, path, body, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false);
+            return settings.Profile is { } profile ? settings with { Profile = RemoteServerProfiles.Read(profile) } : settings;
         }
         catch (BackendApiException exception) when (exception.Status is HttpStatusCode.BadRequest or HttpStatusCode.Conflict)
         {

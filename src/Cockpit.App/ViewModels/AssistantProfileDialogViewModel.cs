@@ -30,6 +30,7 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
     private readonly ITtySessionProviderResolver? _ttyProviderResolver;
     private readonly IReadOnlyList<SessionProviderOption> _providers;
     private readonly AssistantProfileSetup? _setup;
+    private readonly bool _canChooseProvider = true;
 
     private IReadOnlyList<string> _availableMcpServerNames = [];
 
@@ -136,7 +137,7 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
 
     public AssistantProfileDialogViewModel(
         IAssistantProfileStore slotStore,
-        ISessionProfileStore sessionProfileStore,
+        ISessionProfileStore? sessionProfileStore,
         IAssistantSessionHost? assistant = null,
         IProfileLoginChecker? loginChecker = null,
         IPluginRegistrations? pluginProviderRegistry = null,
@@ -144,9 +145,11 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
         IMcpToolTokenEstimator? tokenEstimator = null,
         ITtySessionProviderResolver? ttyProviderResolver = null,
         IPluginProviderConfigViews? pluginConfigViews = null,
-        AssistantProfileSetup? setup = null)
+        AssistantProfileSetup? setup = null,
+        bool canChooseProvider = true)
     {
         _setup = setup;
+        _canChooseProvider = canChooseProvider;
         _pluginConfigViews = pluginConfigViews;
         _slotStore = slotStore;
         _sessionProfileStore = sessionProfileStore;
@@ -269,7 +272,17 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
 
         // That is what keeps SessionProfile's own "a record never changes provider" invariant true while the assistant
         // stays switchable between Claude, Codex and a local model (AC-543).
-        await _slotStore.RepointAsync(Profile.ToProfile(), ReplacesStandingInstruction, cancellationToken).ConfigureAwait(true);
+        try
+        {
+            await _slotStore.RepointAsync(Profile.ToProfile(), ReplacesStandingInstruction, cancellationToken).ConfigureAwait(true);
+        }
+        catch (Exception exception) when (exception is ArgumentException or UnauthorizedAccessException or HttpRequestException or IOException)
+        {
+            // AC-1995: a server's slot refuses or goes unanswered; the form stays open with its edits, saying why.
+            StatusMessage = $"Not saved: {exception.Message}";
+            return false;
+        }
+
         StatusMessage = "Saved.";
         return true;
     }
@@ -278,8 +291,8 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
         profile,
         _loginChecker?.IsLoggedIn(profile) ?? true,
         // Unlike the profile list, where a provider is fixed after creation so credentials can never describe a backend
-        // the profile no longer talks to (AC-543).
-        canChooseProvider: true,
+        // the profile no longer talks to (AC-543). A server's slot keeps its provider (AC-1995), as its profiles do.
+        canChooseProvider: _canChooseProvider,
         _providers,
         _pluginProviderRegistry,
         _availableMcpServerNames,

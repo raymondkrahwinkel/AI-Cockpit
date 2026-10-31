@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -50,7 +52,8 @@ internal static class AssistantSettingsEndpoints
         api.MapPatch(Route + "/profile", async (HttpRequest request, CancellationToken cancellationToken) =>
         {
             var (patch, refused) = await ProfileEndpoints.ReadBodyAsync<RemoteAssistantProfilePatch>(
-                request, "A change to the assistant's profile names only label, instructions, replacesStandingInstruction and profile.", cancellationToken).ConfigureAwait(false);
+                request, "A change to the assistant's profile names only label, instructions, replacesStandingInstruction and profile.", cancellationToken,
+                root => root["profile"] as JsonObject).ConfigureAwait(false);
             if (patch is null)
             {
                 return await _AuditAsync(services, "api:assistant_profile", "refused", null, refused).ConfigureAwait(false);
@@ -156,6 +159,11 @@ internal static class AssistantSettingsEndpoints
             return (null, BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "invalid_request", "The assistant's profile needs a label."));
         }
 
+        if (patch.Profile is { Profile: { } whole })
+        {
+            return _Whole(profile, whole, services);
+        }
+
         var changed = profile;
         if (patch.Profile is { } fields)
         {
@@ -173,6 +181,29 @@ internal static class AssistantSettingsEndpoints
             Label = patch.Label?.Trim() ?? changed.Label,
             SystemPrompt = patch.Instructions is { } instructions ? (string.IsNullOrWhiteSpace(instructions) ? null : instructions) : changed.SystemPrompt,
         }, Results.Empty);
+    }
+
+    // AC-1995: the shared Assistant Profile editor's whole record. It carries no credential of its own (AC-1475), only the
+    // masks it was handed, which MergeWhole puts back; what the slot may not run is refused as a copy-in is.
+    private static (SessionProfile? Profile, IResult Refusal) _Whole(SessionProfile held, JsonElement json, IServiceProvider services)
+    {
+        if (RemoteProfileWire.FromJson(json) is not { } incoming)
+        {
+            return (null, BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "invalid_request", "profile must hold a profile."));
+        }
+
+        if (ProfileEndpoints.CarriesCredential(incoming))
+        {
+            return (null, BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "credential_refused", ProfileEndpoints.CredentialRefusal));
+        }
+
+        var (merged, refusal) = ProfileEndpoints.MergeWhole(held, incoming, services);
+        if (merged is null)
+        {
+            return (null, refusal);
+        }
+
+        return ProfileEndpoints.CopyRefusal(merged) is { } refused ? (null, refused) : (merged, Results.Empty);
     }
 
     // Every outcome into the node access audit with the calling key as the actor, as `Audited` writes it, but in the
