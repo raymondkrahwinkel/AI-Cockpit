@@ -1256,8 +1256,9 @@ public sealed class RemoteAdminJourney
                 pick(picker);
                 brain = picker.Selected?.Reference ?? "";
                 await dialog.SaveCommand.ExecuteAsync(null);
-                status = dialog.StatusMessage;
+                status = $"{dialog.StatusMessage} valid={dialog.Profile.IsValid} provider={dialog.Profile.SelectedProvider.PluginProviderId} view={dialog.Profile.PluginConfigView is not null}";
             });
+            Assert.True(pick is null || status.StartsWith("Saved.", StringComparison.Ordinal), $"The server's assistant dialog did not save: '{status}'. Brains: {listed}");
             await editing.WaitAsync(Until.Ceiling);
         }
         finally
@@ -1272,7 +1273,6 @@ public sealed class RemoteAdminJourney
             });
         }
 
-        Assert.True(pick is null || status == "Saved.", $"The server's assistant dialog did not save: '{status}'. Brains: {listed}");
         if (pick is not null)
         {
             await HeadlessAvalonia.RunAsync(() => Until.Holds(assistant, () => assistant.IsRunning));

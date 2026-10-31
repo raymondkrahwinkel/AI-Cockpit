@@ -259,7 +259,9 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
     // Writes the slot, or says why it could not. Returns whether anything was persisted.
     private async Task<bool> _PersistAsync(CancellationToken cancellationToken)
     {
-        if (!Profile.IsValid)
+        // AC-1995: with the provider fixed, one whose own view this desktop lacks keeps its settings as stored, as the
+        // profile list saves it, so a server's slot still takes a brain or instructions.
+        if (!Profile.IsValid && !(Profile.IsPluginProviderMissing && !Profile.CanChooseProvider))
         {
             StatusMessage = "This profile is missing something its provider needs — check the label and the provider settings.";
             return false;
