@@ -1,5 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="using:Cockpit.App.ViewModels"
@@ -97,7 +98,7 @@
                         <Button Classes.Accent="{Binding !Unlock.HelloTried}" HorizontalAlignment="Stretch"
                                 HorizontalContentAlignment="Center" Click="OnHello">
                             <StackPanel Orientation="Horizontal" Spacing="8">
-                                <TextBlock Text="&#x263A;" VerticalAlignment="Center"/>
+                                <materialIcons:MaterialIcon Kind="FaceRecognition" Width="16" Height="16" VerticalAlignment="Center"/>
                                 <TextBlock Text="{Binding Unlock.HelloButtonText}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
