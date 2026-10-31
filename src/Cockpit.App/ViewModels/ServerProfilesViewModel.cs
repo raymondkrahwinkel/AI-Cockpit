@@ -54,6 +54,10 @@ public sealed partial class ServerProfilesViewModel(ServerProfileServices servic
         var editor = services.CreateEditor();
         await editor.LoadAsync();
         Editor = editor;
+        if (services.BrainsUnavailable is { } note)
+        {
+            Status = note;
+        }
     }
 
     private async Task _RunAsync(Func<Task> action)
@@ -100,28 +104,4 @@ public sealed class ServerProfileRowViewModel(RemoteProfile profile)
     public bool IsSignInGood => !IsSignInBad && SignInText != "not checked";
 
     public bool IsSignInUnknown => SignInText == "not checked";
-}
-
-// AC-1473: one environment variable in the editor; a secret one shows that it is set, never what it is. AC-1475: one
-// added here names its own key.
-public sealed partial class ServerProfileVariableViewModel(RemoteProfileVariable variable) : ObservableObject
-{
-    private readonly string _original = variable.Value ?? "";
-
-    [ObservableProperty]
-    private string _key = variable.Key;
-
-    public bool IsSecret { get; } = variable.IsSecret;
-
-    public bool IsPlain => !IsSecret;
-
-    public bool IsNew { get; init; }
-
-    public bool IsExisting => !IsNew;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsChanged))]
-    private string _value = variable.Value ?? "";
-
-    public bool IsChanged => !IsSecret && (IsNew || Value != _original);
 }

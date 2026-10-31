@@ -11,11 +11,13 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Mcp;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
+using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Infrastructure.BackendApi;
 
@@ -130,6 +132,12 @@ internal static class ProfileEndpoints
             Results.Json(services.GetService<IMcpToolTokenEstimator>() is { } estimator
                 ? await estimator.EstimateAsync(name, refresh ?? false, cancellationToken).ConfigureAwait(false)
                 : McpServerToolEstimate.Unavailable(name), ConnectKeyEndpoints.Json)).RequireAdmin().Audited("estimate_profile_mcp_server", services);
+
+        // AC-1995: the brain picker's list for a profile on this server, from this server's own memory sources; nothing
+        // else lists them over this connection, and a desktop's sources never answer for a server's profile.
+        api.MapGet("/profiles/brains", async (string? scheme, CancellationToken cancellationToken) =>
+            Results.Json(await BrainSourcesAsync(services, scheme, cancellationToken).ConfigureAwait(false), ConnectKeyEndpoints.Json))
+            .RequireAdmin().Audited("list_profile_brains", services);
 
         // A key that reads KeptSecret is the one the named profile holds, and only for the address it holds it for.
         api.MapPost("/profiles/models", async (HttpRequest request, CancellationToken cancellationToken) =>
@@ -280,7 +288,7 @@ internal static class ProfileEndpoints
             }
 
             var choices = incoming.ProviderConfig is PluginProviderConfig { ProviderId: ClaudePluginProfile.ProviderId }
-                ? await _ClaudeChoicesAsync(services, cancellationToken).ConfigureAwait(false)
+                ? await ClaudeChoicesAsync(services, cancellationToken).ConfigureAwait(false)
                 : null;
             var (merged, refusal) = MergeWhole(index < 0 ? null : profiles[index], incoming, services, choices);
             if (merged is null)
@@ -418,7 +426,7 @@ internal static class ProfileEndpoints
 
     // What the Claude provider's own backend part answers its view (`config-choices`), asked in-process. A provider that
     // cannot say offers nothing, so only blank and what a profile already held pass.
-    private static async Task<ClaudeChoices> _ClaudeChoicesAsync(IServiceProvider services, CancellationToken cancellationToken)
+    internal static async Task<ClaudeChoices> ClaudeChoicesAsync(IServiceProvider services, CancellationToken cancellationToken)
     {
         if (services.GetService<IPluginProviderRegistry>()?.OwnerOf(ClaudePluginProfile.ProviderId) is not { } owner
             || services.GetService<PluginChannelHub>() is not { } channels)
@@ -548,6 +556,51 @@ internal static class ProfileEndpoints
 
     internal static IReadOnlyList<ProfileLoginHealth> Health(IServiceProvider services) => services.GetService<IProfileLoginHealth>()?.Current ?? [];
 
+    // AC-1995: a source that did not list is said in these words, never in its own: a plugin's error may name what it
+    // signed in with, and no token crosses this connection. Signing in stays the server plugin's own settings.
+    internal const string BrainsSignInRefusal = "Not signed in on the server. Sign this connection in under the server's Plugins.";
+
+    internal const string BrainsListRefusal = "The server could not list these brains.";
+
+    // AC-1995 (review B1): how long one source that honours cancellation may take before it reads as not listed;
+    // sources are asked in turn, so an unfiltered list can take this once per source.
+    internal static readonly TimeSpan BrainSourceBudget = TimeSpan.FromSeconds(10);
+
+    // `scheme` narrows the list to that one source, as each source of the picker asks for its own.
+    internal static async Task<IReadOnlyList<RemoteBrainSource>> BrainSourcesAsync(IServiceProvider services, string? scheme, CancellationToken cancellationToken)
+    {
+        List<RemoteBrainSource> listed = [];
+        foreach (var source in services.GetService<IProjectMemorySourceRegistry>()?.Sources ?? [])
+        {
+            if (source.ListBrainsAsync is not { } list || (scheme is not null && !string.Equals(source.Scheme, scheme, StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            ProjectMemorySourceLocationsResult result;
+            using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            budget.CancelAfter(BrainSourceBudget);
+            try
+            {
+                result = await list(budget.Token).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+            {
+                // The type only: a plugin's message may name what it signed in with.
+                services.GetService<ILoggerFactory>()?.CreateLogger(nameof(ProfileEndpoints))
+                    .LogWarning("Brain source {Scheme} did not list: {Failure}.", source.Scheme, exception.GetType().Name);
+                result = ProjectMemorySourceLocationsResult.Failed(BrainsListRefusal);
+            }
+
+            listed.Add(result.Outcome == ProjectMemorySourceLocationsOutcome.Success
+                ? new RemoteBrainSource(source.Scheme, source.Title, source.InstanceTitle, [.. result.Locations.Select(brain => new RemoteBrainSource.Brain(brain.Value, brain.Name, brain.Detail))], null)
+                : new RemoteBrainSource(source.Scheme, source.Title, source.InstanceTitle, [],
+                    result.Outcome == ProjectMemorySourceLocationsOutcome.AuthorizationRequired ? BrainsSignInRefusal : BrainsListRefusal));
+        }
+
+        return listed;
+    }
+
     // AC-1585: what the profile editor reads and writes: the declared options plus the start options it offers.
     internal static IReadOnlySet<string> EditorKeys(IServiceProvider services, SessionProfile profile) =>
         Declared(services, profile)
@@ -611,6 +664,12 @@ internal static class ProfileEndpoints
 
     internal static bool IsCredentialName(string key) =>
         CredentialWords.Any(word => key.Contains(word, StringComparison.OrdinalIgnoreCase));
+
+    // AC-1995: whether a whole profile holds a secret value of its own rather than the mask it was handed or a cleared one.
+    internal static bool CarriesCredential(SessionProfile profile) =>
+        (profile.ProviderConfig is LmStudioConfig { ApiKey.Length: > 0 } lmStudio && lmStudio.ApiKey != KeptSecret)
+        || (profile.EnvironmentVariables ?? []).Any(variable => _IsHidden(variable) && variable.Value != KeptSecret)
+        || (profile.ProviderConfig is PluginProviderConfig plugin && _ParseObject(plugin.ConfigJson) is { } config && Redacted(plugin.ConfigJson) != config.ToJsonString());
 
     // Kept by the server on every change and never shown: a secret, or a plain variable named like a credential.
     private static bool _IsHidden(ProfileEnvironmentVariable variable) => variable.IsSecret || IsCredentialName(variable.Key);

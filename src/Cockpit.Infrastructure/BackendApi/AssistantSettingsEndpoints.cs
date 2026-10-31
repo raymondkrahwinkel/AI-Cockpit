@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -50,7 +52,8 @@ internal static class AssistantSettingsEndpoints
         api.MapPatch(Route + "/profile", async (HttpRequest request, CancellationToken cancellationToken) =>
         {
             var (patch, refused) = await ProfileEndpoints.ReadBodyAsync<RemoteAssistantProfilePatch>(
-                request, "A change to the assistant's profile names only label, instructions, replacesStandingInstruction and profile.", cancellationToken).ConfigureAwait(false);
+                request, "A change to the assistant's profile names only label, instructions, replacesStandingInstruction and profile.", cancellationToken,
+                root => root["profile"] as JsonObject).ConfigureAwait(false);
             if (patch is null)
             {
                 return await _AuditAsync(services, "api:assistant_profile", "refused", null, refused).ConfigureAwait(false);
@@ -60,7 +63,7 @@ internal static class AssistantSettingsEndpoints
             try
             {
                 var current = await slot().LoadAsync(cancellationToken).ConfigureAwait(false);
-                var (changed, refusal) = _Apply(current, patch, services);
+                var (changed, refusal) = await _ApplyAsync(current, patch, services, cancellationToken).ConfigureAwait(false);
                 if (changed is null)
                 {
                     return await _AuditAsync(services, "api:assistant_profile", "refused", null, refusal).ConfigureAwait(false);
@@ -135,7 +138,7 @@ internal static class AssistantSettingsEndpoints
             settings.IsEnabled && profile is not null && host.Activity != AssistantActivity.Unavailable,
             host.UnavailableReason,
             services.GetService<INodeControllerPresence>()?.Current is not null,
-            profile is null ? null : ProfileEndpoints.ToWire(profile, ProfileEndpoints.Health(services), ProfileEndpoints.Options(services, profile)),
+            profile is null ? null : ProfileEndpoints.ToWire(profile, ProfileEndpoints.Health(services), ProfileEndpoints.Options(services, profile), ProfileEndpoints.EditorKeys(services, profile)),
             profile is null ? slot.UnsetReason : null,
             profile?.SystemPrompt,
             slot.ReplacesStandingInstruction,
@@ -144,7 +147,7 @@ internal static class AssistantSettingsEndpoints
     }
 
     // AC-1473's per-field rule on the slot's record, plus the slot's own label and instructions.
-    private static (SessionProfile? Profile, IResult Refusal) _Apply(AssistantProfileSlot slot, RemoteAssistantProfilePatch patch, IServiceProvider services)
+    private static async Task<(SessionProfile? Profile, IResult Refusal)> _ApplyAsync(AssistantProfileSlot slot, RemoteAssistantProfilePatch patch, IServiceProvider services, CancellationToken cancellationToken)
     {
         if (slot.Profile is not { } profile)
         {
@@ -154,6 +157,11 @@ internal static class AssistantSettingsEndpoints
         if (patch.Label is { } label && string.IsNullOrWhiteSpace(label))
         {
             return (null, BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "invalid_request", "The assistant's profile needs a label."));
+        }
+
+        if (patch.Profile is { Profile: { } whole })
+        {
+            return await _WholeAsync(profile, whole, services, cancellationToken).ConfigureAwait(false);
         }
 
         var changed = profile;
@@ -173,6 +181,33 @@ internal static class AssistantSettingsEndpoints
             Label = patch.Label?.Trim() ?? changed.Label,
             SystemPrompt = patch.Instructions is { } instructions ? (string.IsNullOrWhiteSpace(instructions) ? null : instructions) : changed.SystemPrompt,
         }, Results.Empty);
+    }
+
+    // AC-1995: the shared Assistant Profile editor's whole record. It carries no credential of its own (AC-1475), only the
+    // masks it was handed, which MergeWhole puts back; what the slot may not run is refused as a copy-in is.
+    private static async Task<(SessionProfile? Profile, IResult Refusal)> _WholeAsync(SessionProfile held, JsonElement json, IServiceProvider services, CancellationToken cancellationToken)
+    {
+        if (RemoteProfileWire.FromJson(json) is not { } incoming)
+        {
+            return (null, BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "invalid_request", "profile must hold a profile."));
+        }
+
+        if (ProfileEndpoints.CarriesCredential(incoming))
+        {
+            return (null, BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "credential_refused", ProfileEndpoints.CredentialRefusal));
+        }
+
+        // The server's own Claude folders, as the profile route offers them, so a folder the dialog lists is taken.
+        var claude = incoming.ProviderConfig is PluginProviderConfig { ProviderId: ClaudePluginProfile.ProviderId }
+            ? await ProfileEndpoints.ClaudeChoicesAsync(services, cancellationToken).ConfigureAwait(false)
+            : null;
+        var (merged, refusal) = ProfileEndpoints.MergeWhole(held, incoming, services, claude);
+        if (merged is null)
+        {
+            return (null, refusal);
+        }
+
+        return ProfileEndpoints.CopyRefusal(merged) is { } refused ? (null, refused) : (merged, Results.Empty);
     }
 
     // Every outcome into the node access audit with the calling key as the actor, as `Audited` writes it, but in the

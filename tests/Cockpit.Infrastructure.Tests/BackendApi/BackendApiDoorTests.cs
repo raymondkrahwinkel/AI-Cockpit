@@ -251,6 +251,10 @@ public sealed class BackendApiDoorTests
         { "GET", "/api/v1/profiles/providers", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "GET", "/api/v1/profiles/providers", null, "admin", HttpStatusCode.OK, "", "", _Door.ProfileSecret },
         { "GET", "/api/v1/profiles/mcp-servers", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        // AC-1995: the brain catalog is admin's, from the server's own sources; one that fails is said in the server's words,
+        // never in its own, which here names a token.
+        { "GET", "/api/v1/profiles/brains", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "GET", "/api/v1/profiles/brains", null, "admin", HttpStatusCode.OK, "", "\"value\":\"" + _Door.Brain + "\"", _Door.ProfileSecret },
         { "GET", "/api/v1/profiles/mcp-servers/depot/estimate", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "POST", "/api/v1/profiles/models", """{"baseUrl":"http://127.0.0.1:1234","apiKey":"(set on the server)","label":"Keyed"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "POST", "/api/v1/profiles/models", """{"baseUrl":"http://127.0.0.1:1234","apiKey":"{secret}","extra":1}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
@@ -374,7 +378,8 @@ public sealed class BackendApiDoorTests
     }
 
     // AC-1475 criterion 3: a copy-in brings the server profile's secret variable and API key into the assistant's slot, and
-    // a model change over the API leaves both there, though the client never saw either.
+    // a model change over the API leaves both there, though the client never saw either. AC-1995: a brain saved whole,
+    // secrets masked, stays after that change, and no answer or audit line carries a secret.
     [Fact]
     public async Task TheAssistantsProfile_CopiedInThenChangedOverTheApi_KeepsTheSecretVariableAndTheApiKey()
     {
@@ -383,13 +388,18 @@ public sealed class BackendApiDoorTests
         await door.Slot.UnsetAsync("Not set up yet.");
 
         var copied = await door.SendAsync(HttpMethod.Post, "/api/v1/assistant/settings/profile/copy-from/Keyed", Bootstrap);
+        var edited = JsonNode.Parse(copied.Body)?["profile"]?["profile"]?.DeepClone() as JsonObject ?? throw new InvalidOperationException("The copy-in answered no profile.");
+        edited["assistant"] = $"depot:{_Door.Brain}";
+        var picked = await door.SendAsync(HttpMethod.Patch, "/api/v1/assistant/settings/profile", Bootstrap, new JsonObject { ["profile"] = new JsonObject { ["profile"] = edited } }.ToJsonString());
         var changed = await door.SendAsync(HttpMethod.Patch, "/api/v1/assistant/settings/profile", Bootstrap, """{"profile":{"model":"qwen-large"}}""");
         var slot = (await door.Slot.LoadAsync()).Profile;
+        var audit = await File.ReadAllTextAsync(door.AuditPath);
 
-        Assert.Equal((HttpStatusCode.OK, HttpStatusCode.OK), (copied.Status, changed.Status));
-        Assert.Equal("qwen-large", slot is null ? null : ProfileModel.Of(slot));
+        Assert.Equal((HttpStatusCode.OK, HttpStatusCode.OK, HttpStatusCode.OK), (copied.Status, picked.Status, changed.Status));
+        Assert.Equal(("qwen-large", $"depot:{_Door.Brain}"), (slot is null ? null : ProfileModel.Of(slot), slot?.Assistant));
         Assert.Equal(_Door.ProfileSecret, (slot?.ProviderConfig as LmStudioConfig)?.ApiKey);
         Assert.Equal(_Door.KeyedVariables, slot?.EnvironmentVariables ?? []);
+        Assert.False(new[] { copied.Body, picked.Body, changed.Body, audit }.Any(text => text.Contains(_Door.ProfileSecret, StringComparison.Ordinal)), "A secret is in an answer or the audit.");
     }
 
     // AC-1475 criterion 4: turning the assistant on over the API saves the switch alone, in one read-modify-write of that
@@ -716,7 +726,8 @@ public sealed class BackendApiDoorTests
     }
 
     // AC-1808: a fixture provider's reading crosses /api/v1 to the desktop's reader as it left the server, with its IANA
-    // zone and each AsOf at its own offset.
+    // zone and each AsOf at its own offset. AC-1995: one source's brains cross as the server listed them, and a server
+    // without that route answers 405, which the client reads as no brains.
     [Fact]
     public async Task ModelIntelligence_OverTheWire_KeepsTheTimeZoneAndEveryAsOf()
     {
@@ -738,8 +749,30 @@ public sealed class BackendApiDoorTests
         using var client = new BackendApiClient(new Uri(door.NodeBase + "/"), admin.Secret, door.Fingerprint, TimeProvider.System);
 
         var read = await new RemoteProviderModelIntelligence(client).ReadAsync("Plugged");
+        var brains = await new RemoteServerProfiles(client).ListBrainSourcesAsync("depot");
+        using var older = new BackendApiClient(
+            new HttpClient(new _WithoutBrainRoute { InnerHandler = NodeCertificatePin.Require(door.Fingerprint, null) })
+            {
+                BaseAddress = new Uri(door.NodeBase + "/"),
+                DefaultRequestHeaders = { Authorization = new AuthenticationHeaderValue("Bearer", admin.Secret) },
+            },
+            TimeProvider.System,
+            "api/v1/events");
+        var olderBrains = await new RemoteServerProfiles(older).ListBrainSourcesAsync();
 
         Assert.Equal(JsonSerializer.Serialize(reading), JsonSerializer.Serialize(read));
+        Assert.Equal(["depot:" + _Door.Brain], brains.SelectMany(source => source.Brains.Select(brain => $"{source.Scheme}:{brain.Value}")));
+        Assert.Empty(olderBrains);
+    }
+
+    // A server from before AC-1995: its GET of the brain route lands on PATCH and DELETE /profiles/{label}.
+    private sealed class _WithoutBrainRoute : DelegatingHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            request.RequestUri = new Uri((request.RequestUri ?? throw new InvalidOperationException("No request address.")).AbsoluteUri.Replace("/profiles/brains", "/profiles/not-a-route", StringComparison.Ordinal));
+            return base.SendAsync(request, cancellationToken);
+        }
     }
 
     internal sealed record _Answer(HttpStatusCode Status, string Body);
@@ -896,6 +929,9 @@ public sealed class BackendApiDoorTests
 
         public const string KeyedProfile = "Keyed";
 
+        // AC-1995: the one brain the server's memory source lists.
+        public const string Brain = "acme/zyra@depot.acme.example";
+
         public static IReadOnlyList<ProfileEnvironmentVariable> KeyedVariables { get; } =
             [new("PROVIDER_TOKEN", ProfileSecret, IsSecret: true), new("REGION", "eu"), new("BACKUP_PASSWORD", ProfileSecret)];
 
@@ -1017,6 +1053,17 @@ public sealed class BackendApiDoorTests
             source.PrepareBindingAsync("door:project", Arg.Any<CancellationToken>()).Returns(SharedProjectBindingResult.Success(
                 new SharedProjectBinding("Door project") { GitUrl = $"https://laptop:{ProfileSecret}@example.invalid/o/r.git" }));
             source.PrepareBindingAsync("door:bare", Arg.Any<CancellationToken>()).Returns(SharedProjectBindingResult.Success(new SharedProjectBinding("Bare project")));
+            // AC-1995: one source that lists a brain, and one whose failure names a token, as a plugin's own error may.
+            var memorySources = new ProjectMemorySourceRegistry();
+            memorySources.Register(new ProjectMemorySourceRegistration("depot", "Depot project — Acme", "Read it through the Depot MCP.")
+            {
+                ListBrainsAsync = _ => Task.FromResult(ProjectMemorySourceLocationsResult.Success([new ProjectMemorySourceLocation(Brain, "Zyra", "acme/zyra · Acme")])),
+            });
+            memorySources.Register(new ProjectMemorySourceRegistration("depot.down", "Depot project — Down", "Read it through the Depot MCP.")
+            {
+                ListBrainsAsync = _ => throw new HttpRequestException($"401 for Bearer {ProfileSecret}"),
+            });
+            services.AddSingleton<IProjectMemorySourceRegistry>(memorySources);
             var sharedSources = new SharedProjectSourceRegistry();
             sharedSources.Register(source);
             services.AddSingleton<ISharedProjectSourceRegistry>(sharedSources);

@@ -71,6 +71,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- **Choose a brain on a server.** A server's profiles and its assistant, under its Servers options, offer the same Brain dropdown, listing the brains of the server's own Depot connections, never this desktop's. Edit… on the server's Assistant page now opens the same Assistant Profile dialog as on this desktop; saving keeps every secret the server holds and restarts its assistant on the chosen brain. A server that cannot list brains yet keeps the stored value as it is.
 - **Choose the assistant's brain.** Options › Assistant offers the same Brain dropdown as the profile editor. The assistant loads that brain from its next start, or right away with Save and restart, beside its built-in instructions and your extra ones rather than instead of them. Kimi and opencode get it as the first message of a new conversation.
 - **Choose a brain per project.** The project editor's Assistant field becomes the same Brain dropdown once Depot is connected. None makes the project follow its profile's brain, a brain you pick goes before the profile's, and a name typed before stays as it was. It stays on this machine: it is never shared with a project and never comes along when someone else binds it.
 
