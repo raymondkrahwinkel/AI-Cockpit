@@ -44,9 +44,15 @@ internal sealed class OpencodeAcpSessionDriver : IPluginSessionDriver
     // ones; this driver has no such poll (see the class remarks, point 1).
     private readonly SemaphoreSlim _promptGate = new(1, 1);
 
-    // True from the moment a cancel goes out until the next turn starts. Written on the caller's thread in
-    // InterruptAsync/SendUserMessageAsync and read on the server-request pump's own task, hence volatile.
+    // True from the moment a cancel goes out until the next prompt actually goes out. Written in InterruptAsync
+    // and _SendPromptAsync, read on the server-request pump's own task, hence volatile.
     private volatile bool _cancelling;
+
+    // AC-2000: raised by every Stop. A prompt still waiting at _promptGate compares it with the value it saw when
+    // it was queued, so a Stop also ends the prompts behind the one that is outstanding.
+    private int _stopGeneration;
+
+    private static readonly JsonElement _StoppedBeforeSending = JsonSerializer.SerializeToElement(new { stopReason = "cancelled" });
 
     // Read from Status (any thread the host polls from) and written from the notification pump's own task —
     // volatile so a reader never sees a stale reference.
@@ -292,10 +298,6 @@ internal sealed class OpencodeAcpSessionDriver : IPluginSessionDriver
             throw new InvalidOperationException($"{nameof(SendUserMessageAsync)} was called before the session started.");
         }
 
-        // A new turn reopens the door the cancel closed: from here on a permission request is a real question
-        // again, not the tail of a turn the operator already stopped.
-        _cancelling = false;
-
         // Fire-and-forget: session/prompt only settles at turn end, so awaiting it here would block the caller
         // for the whole turn. The turn's content streams through the notification pump instead. Tracked so
         // DisposeAsync can await it before disposing _promptGate.
@@ -305,12 +307,26 @@ internal sealed class OpencodeAcpSessionDriver : IPluginSessionDriver
 
     private async Task _SendPromptAsync(string sessionId, string text, CancellationToken cancellationToken, bool operatorTurn = true)
     {
+        var queuedAtGeneration = Volatile.Read(ref _stopGeneration);
         try
         {
             JsonElement result;
             await _promptGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
+                // AC-2000: stopped while it waited at the gate, so it never goes out and the host still sees its end.
+                if (queuedAtGeneration != Volatile.Read(ref _stopGeneration))
+                {
+                    if (operatorTurn)
+                    {
+                        _EmitTurnCompleted(_StoppedBeforeSending);
+                    }
+
+                    return;
+                }
+
+                // A prompt going out reopens the door the cancel closed: a permission request is a real question again.
+                _cancelling = false;
                 var prompt = new object[] { new { type = "text", text } };
                 result = await _connection.SendRequestAsync("session/prompt", new { sessionId, prompt }, cancellationToken).ConfigureAwait(false);
             }
@@ -324,6 +340,11 @@ internal sealed class OpencodeAcpSessionDriver : IPluginSessionDriver
             if (operatorTurn)
             {
                 _EmitTurnCompleted(result);
+            }
+            else if (_MapStopReason(result).IsError)
+            {
+                // AC-2000: without a turn end of its own, a refused brain would otherwise go unnoticed.
+                _events.Publish(new PluginSessionError { SessionId = _sessionId, Message = "opencode refused the brain instruction, so this session runs without the brain." });
             }
         }
         catch (OperationCanceledException)
@@ -369,6 +390,8 @@ internal sealed class OpencodeAcpSessionDriver : IPluginSessionDriver
         {
             return;
         }
+
+        Interlocked.Increment(ref _stopGeneration);
 
         // session/cancel is a notification: the already-outstanding session/prompt settles later with
         // stopReason "cancelled", handled by _SendPromptAsync/_EmitTurnCompleted when it arrives.
