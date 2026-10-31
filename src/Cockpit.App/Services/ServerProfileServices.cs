@@ -110,7 +110,7 @@ public sealed class ServerProfileServices(
     public IReadOnlyList<ProjectMemorySource> MemorySources => [];
 
     // AC-1995: the server's sources only, so the brain picker lists the server's brains and stores its schemes.
-    public IReadOnlyList<ProjectMemorySourceRegistration> MemorySourceRegistrations => _brainSources;
+    public IReadOnlyList<ProjectMemorySourceRegistration> MemorySourceRegistrations => [];
 
     public IReadOnlyList<ProjectMemorySourceFamily> MemorySourceFamilies => [];
 
