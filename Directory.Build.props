@@ -457,6 +457,11 @@
     <NoWarn>$(NoWarn);CS1591;CS1570;CS1573;CS1574;CS1734;CS0419</NoWarn>
   </PropertyGroup>
 
+  <!-- AC-1999: every test process gets its own COCKPIT_SCRATCH_ROOT, so no test can sweep live sessions' C:\ck. -->
+  <ItemGroup Condition="$([System.String]::Copy('$(MSBuildProjectFullPath)').EndsWith('Tests.csproj'))">
+    <Compile Include="$(MSBuildThisFileDirectory)tests\Shared\TestScratchRoot.cs" Link="Shared\TestScratchRoot.cs" />
+  </ItemGroup>
+
   <PropertyGroup Condition="$([System.String]::Copy('$(MSBuildProjectFullPath)').EndsWith('Tests.csproj')) Or $([System.String]::Copy('$(MSBuildProjectFullPath)').EndsWith('Cockpit.Journeys.csproj'))">
     <UseAppHost>false</UseAppHost>
     <VSTestCLIRunSettings Condition="$([MSBuild]::IsOSPlatform('Windows'))">RunConfiguration.DotNetHostPath=$([System.IO.Path]::GetFullPath('$(MSBuildToolsPath)\..\..\dotnet.exe'))</VSTestCLIRunSettings>
