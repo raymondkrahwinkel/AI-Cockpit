@@ -3240,7 +3240,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             await stopping;
         }
 
-        await Dispatcher.UIThread.InvokeAsync(() =>
+        // Awaiting InvokeAsync hangs wherever no dispatcher loop runs (the test host never exits); post like the flush above.
+        _OnUiThread(() =>
         {
             _backgroundTasks = [];
             _RebuildBackgroundTaskRows();
