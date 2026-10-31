@@ -400,7 +400,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
     {
         var picker = new BrainPickerViewModel(
             sources,
-            current,
+            null,
             "None falls back to the profile's brain, and a project brain overrides it. The profile's own choice is not changed.");
         picker.ValueChanged += _ => { };
         return picker;
