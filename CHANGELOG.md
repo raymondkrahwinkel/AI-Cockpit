@@ -65,6 +65,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- Provider sub-agents are visible in Background and Agents, with isolated read-only transcripts and requests through the existing parent. Claude 0.30.0, Codex 0.11.1 and the additive plugin SDK 3.60.0 carry the new child identity and transcript contracts.
+
 - When two swarm leaders meet again after a network split, the higher rank steps down and both assistant conversations are merged without losing a message; a note state changed on both sides keeps the other version and asks once whether to compare or keep the newest.
 
 - Options has a Swarm page for pairing your own Cockpits, checking machines and their leader, and setting internal network ranges and returning-machine behaviour.
