@@ -1,7 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
-using Avalonia.Threading;
 using Cockpit.App.Controls;
 using Cockpit.App.ViewModels;
 
@@ -37,37 +36,6 @@ public partial class UnlockWindow : Window
     }
 
     private UnlockViewModel? ViewModel => DataContext as UnlockViewModel;
-
-    // Settling time between this window becoming active and the prompt: right after a Windows unlock the desktop is
-    // still switching, and a prompt raised then loses the foreground (0x80098044, measured 31-10).
-    private static readonly TimeSpan HelloPromptSettle = TimeSpan.FromMilliseconds(400);
-
-    // Opens the Hello prompt once, when it is on offer and untried, but only after this window is the active one: a
-    // prompt owned by a window that is not yet in front is refused by Windows (Raymond 31-10).
-    public void PromptHello()
-    {
-        if (IsActive)
-        {
-            DispatcherTimer.RunOnce(_PromptHelloNow, HelloPromptSettle);
-            return;
-        }
-
-        EventHandler? onActivated = null;
-        onActivated = (_, _) =>
-        {
-            Activated -= onActivated;
-            DispatcherTimer.RunOnce(_PromptHelloNow, HelloPromptSettle);
-        };
-        Activated += onActivated;
-    }
-
-    private void _PromptHelloNow()
-    {
-        if (ViewModel is { OffersHello: true, HelloTried: false, IsWaitingForHello: false, IsBusy: false } viewModel)
-        {
-            viewModel.TryHelloCommand.Execute(null);
-        }
-    }
 
     private void OnUnlock(object? sender, RoutedEventArgs e) => _ = ViewModel?.UnlockAsync();
 
