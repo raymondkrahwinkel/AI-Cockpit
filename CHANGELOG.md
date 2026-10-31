@@ -32,6 +32,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- Codex sub-agent steering requests identify the child's own turn, including resumed turns, instead of the parent's turn.
+
 - On a laptop with two GPUs, dictation now transcribes on the dedicated GPU instead of the integrated one that drives the screen; Options › Voice offers each GPU by name, Auto names the one it picks, and the calibration says which GPU it measured.
 
 - Model Intelligence no longer mixes up the quota of two Claude subscriptions used side by side, and unchanged quota readings are no longer stored over and over.
