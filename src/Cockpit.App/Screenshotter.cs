@@ -2032,10 +2032,9 @@ internal static partial class Screenshotter
     private static ProjectDialog _ProjectEditorWithBrainPicker()
     {
         var project = new Project("proj-cockpit", "Cockpit") { Assistant = "depot:acme/zyra@depot.acme.example" };
+        // On a pool thread for the reason _ProjectEditorWithOwnership gives; the picker lists itself once shown.
         var viewModel = Task.Run(() => ProjectDialogViewModel.CreateAsync(
-            project, new _FakeSessionProfileStore(), new _FakeMcpServerCatalog(), memorySources: _BrainServers()))
-            .GetAwaiter().GetResult();
-        viewModel.BrainPicker.LoadAsync().GetAwaiter().GetResult();
+            project, new _FakeSessionProfileStore(), new _FakeMcpServerCatalog(), memorySources: _BrainServers())).Result;
 
         return new ProjectDialog { DataContext = viewModel, Height = 3200 };
     }
