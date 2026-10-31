@@ -58,7 +58,7 @@ public class ManageProfilesDialogViewModelTests
         await store.Received(1).SaveAsync(
             Arg.Is<IReadOnlyList<SessionProfile>>(list =>
                 list.Count == 1 &&
-                list[0].Defaults is { AutoApproveTools: true } &&
+                _AutoApprovesTools(list[0]) &&
                 list[0].Assistant == Brain),
             Arg.Any<CancellationToken>());
 
@@ -72,6 +72,8 @@ public class ManageProfilesDialogViewModelTests
         Assert.Null(legacy.ToProfile().Assistant);
         Assert.False(new EditableProfileViewModel(new SessionProfile("bare", new ClaudeConfig("/c")), isLoggedIn: true).BrainPicker.IsAvailable);
     }
+
+    private static bool _AutoApprovesTools(SessionProfile profile) => profile.Defaults is { AutoApproveTools: true };
 
     // The profile's spawn environment variables (AC-22): rows load and save through the editable row VM, an
     // invalid or duplicate key gates the save, and the editor only shows for a provider that declares the
