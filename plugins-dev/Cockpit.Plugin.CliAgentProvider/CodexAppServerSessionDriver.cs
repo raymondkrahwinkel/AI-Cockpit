@@ -630,7 +630,6 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         var isError = !isInterrupted && !string.Equals(status, "completed", StringComparison.OrdinalIgnoreCase);
         if (isInterrupted || isError)
         {
-            _children.Clear();
             _PublishChildren();
         }
         if (isError && _IsRateLimitRefusal(parameters))
