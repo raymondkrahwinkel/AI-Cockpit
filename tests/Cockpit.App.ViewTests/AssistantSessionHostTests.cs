@@ -272,14 +272,14 @@ public class AssistantSessionHostTests
     }
 
     [Fact]
-    public void McpSelection_WithNoSavedSelection_LeavesOutOrdinaryServers()
+    public void McpSelection_WithNoSavedSelection_IncludesOrdinaryServers()
     {
         var selection = AssistantSessionHost.McpSelection(_Profile(), [
             new McpServerConfig { Name = "depot", Enabled = true },
             new McpServerConfig { Name = "off-server", Enabled = false },
         ]);
 
-        Assert.DoesNotContain("depot", selection);
+        Assert.Contains("depot", selection);
         Assert.Contains(AssistantIdentity.McpServerName, selection);
         Assert.DoesNotContain("off-server", selection);
     }
@@ -288,9 +288,9 @@ public class AssistantSessionHostTests
     // (Depot, say) is not marked ProjectLinked there (no single project points at it in that call), and the
     // no-selection fan-out must carry it through anyway; ProjectLinked is not one of the things it checks.
     [Fact]
-    public void McpSelection_WithNoSavedSelection_LeavesOutAPluginServerNotTiedToAnyProject()
+    public void McpSelection_WithAnEmptySavedSelection_LeavesOutOrdinaryServers()
     {
-        var selection = AssistantSessionHost.McpSelection(_Profile(), [
+        var selection = AssistantSessionHost.McpSelection(_Profile() with { EnabledMcpServerNames = [] }, [
             new McpServerConfig { Name = "Depot: wispslate", Enabled = true, ProjectLinked = false },
         ]);
 
@@ -350,17 +350,19 @@ public class AssistantSessionHostTests
     [Fact]
     public void McpSelection_WithNoSavedSelection_LeavesOutTheServersTheAssistantIsNotGivenByDefault()
     {
-        var excluded = new[] { "cockpit-orchestrator", "cockpit-elevated", "youtrack" };
+        var excluded = new[] { "cockpit-orchestrator", "cockpit-elevated" };
         var catalog = excluded
-            .Select(name => new McpServerConfig { Name = name, Enabled = true })
+            .Select(name => new McpServerConfig { Name = name, Enabled = true, Internal = true })
             .Append(new McpServerConfig { Name = "depot", Enabled = true })
+            .Append(new McpServerConfig { Name = "youtrack", Enabled = true, ProjectLinked = false })
             .ToList();
 
         var selection = AssistantSessionHost.McpSelection(_Profile(), catalog);
 
         Assert.All(excluded, name => Assert.DoesNotContain(name, selection));
 
-        Assert.DoesNotContain("depot", selection);
+        Assert.Contains("depot", selection);
+        Assert.Contains("youtrack", selection);
     }
 
     /// <summary>
