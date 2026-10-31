@@ -401,7 +401,7 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
             {
                 _EmitTurnCompleted(result);
             }
-            else if (_MapStopReason(result).IsError && text.Length < 0)
+            else if (_MapStopReason(result).IsError)
             {
                 // AC-2000: without a turn end of its own, a refused brain would otherwise go unnoticed.
                 _events.Publish(new PluginSessionError { SessionId = _sessionId, Message = "Kimi refused the brain instruction, so this session runs without the brain." });
