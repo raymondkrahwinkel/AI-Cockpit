@@ -27,7 +27,7 @@
 
         <StackPanel Spacing="4">
             <TextBlock Text="Locked" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center"/>
-            <TextBlock Text="Your API keys and tokens are encrypted. Type the password to unlock them."
+            <TextBlock Text="{Binding Explanation}"
                        FontSize="12.5" TextWrapping="Wrap" TextAlignment="Center"
                        Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
         </StackPanel>

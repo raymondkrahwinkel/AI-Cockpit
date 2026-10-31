@@ -23,8 +23,13 @@ public sealed partial class UnlockViewModel(ISecretProtectionService protection)
     public ISecretKeySigner? HelloSigner { get; set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(UnlockIsPrimary))]
+    [NotifyPropertyChangedFor(nameof(UnlockIsPrimary), nameof(Explanation))]
     private bool _offersHello;
+
+    // The line under "Locked": it names Windows Hello only while the button is there, as the splash does.
+    public string Explanation => OffersHello
+        ? "Your API keys and tokens are encrypted. Unlock them with Windows Hello or your password."
+        : "Your API keys and tokens are encrypted. Type the password to unlock them.";
 
     // After a cancelled prompt the button reads "Try … again" and the password row takes the lead.
     [ObservableProperty]

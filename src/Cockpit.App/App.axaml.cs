@@ -629,7 +629,13 @@ public partial class App : Application
         // coordinator owns gating/idempotence; App supplies and awaits the unlock window.
         var screenLock = Program.Services.GetRequiredService<ScreenLockCoordinator>();
         screenLock.LockAction = () => Dispatcher.UIThread.InvokeAsync(_LockToUnlockScreen);
-        screenLock.RestoreFocusAction = () => Dispatcher.UIThread.Post(() => _screenLockWindow?.TakeFocus());
+        screenLock.RestoreFocusAction = () => Dispatcher.UIThread.Post(() =>
+        {
+            _screenLockWindow?.TakeFocus();
+
+            // AC-1879: Windows is unlocked now, so the Hello prompt can show; it opens by itself, as at startup.
+            _screenLockWindow?.PromptHello();
+        });
         // AC-1343: fire-and-forget — no persistence, no ordering dependency. An uncaught StartAsync failure here
         // is a known, separate gap, out of this ticket's scope.
         _ = screenLock.StartAsync();

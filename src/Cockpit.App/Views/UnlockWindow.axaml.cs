@@ -37,6 +37,15 @@ public partial class UnlockWindow : Window
 
     private UnlockViewModel? ViewModel => DataContext as UnlockViewModel;
 
+    // Opens the Hello prompt once, when it is on offer and has not been tried or answered yet (Raymond 31-10).
+    public void PromptHello()
+    {
+        if (ViewModel is { OffersHello: true, HelloTried: false, IsWaitingForHello: false, IsBusy: false } viewModel)
+        {
+            viewModel.TryHelloCommand.Execute(null);
+        }
+    }
+
     private void OnUnlock(object? sender, RoutedEventArgs e) => _ = ViewModel?.UnlockAsync();
 
     private void OnPasswordKeyDown(object? sender, KeyEventArgs e)

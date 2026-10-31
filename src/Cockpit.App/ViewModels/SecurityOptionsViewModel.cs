@@ -1487,9 +1487,17 @@ public sealed partial class SecurityOptionsViewModel(
 
     private async Task _ShowHelloAsync(SecretProtectionStatus status)
     {
-        HelloEnabled = status.HelloEnabled;
         HelloOffered = status.Enabled && HelloSigner is { } signer && await signer.IsAvailableAsync().ConfigureAwait(true);
-        HelloStatus = !status.HelloEnabled
+
+        // A PIN reset or a cleared TPM took the key: the box shows that, and ticking it sets Hello up again. The stored
+        // entry stays, as at the unlock, for a computer that does still hold the key (AC-1879).
+        var keyGone = status.HelloEnabled && HelloOffered && HelloSigner is { } holder
+            && status.HelloKeyName is { } keyName && !await holder.ExistsAsync(keyName).ConfigureAwait(true);
+        HelloEnabled = status.HelloEnabled && !keyGone;
+        HelloError = keyGone
+            ? "The Windows Hello key is no longer on this computer. Tick the box to set Windows Hello up again."
+            : HelloError;
+        HelloStatus = !HelloEnabled
             ? "Off. Turn it on to unlock with your face, fingerprint or PIN instead of typing the password."
             : status.HelloInSoftware
                 ? "On — no security chip found, so Windows keeps the key in software and only your Windows PIN protects it. Your password keeps working."

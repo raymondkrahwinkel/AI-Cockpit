@@ -3,7 +3,8 @@ namespace Cockpit.Core.Abstractions.Secrets;
 // AC-1013 (AC-41): what the cockpit knows pre-unlock — `Enabled`, `Unlocked`, and `ShouldWarnUnprotected`
 // (banner shows when encryption is off, a credential is in the clear, and it wasn't dismissed for this field
 // set; defaults off so tests/stand-ins don't nag). AC-1879: `HelloEnabled` = a Hello-wrapped key is on file.
-public readonly record struct SecretProtectionStatus(bool Enabled, bool Unlocked, bool ShouldWarnUnprotected = false, bool HelloEnabled = false, bool HelloInSoftware = false);
+public readonly record struct SecretProtectionStatus(
+    bool Enabled, bool Unlocked, bool ShouldWarnUnprotected = false, bool HelloEnabled = false, bool HelloInSoftware = false, string? HelloKeyName = null);
 
 // How far a migration has come, so the operator watches it happen instead of watching nothing happen.
 // `Completed`/`Total`: fields converted so far / to convert.

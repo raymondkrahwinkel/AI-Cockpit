@@ -64,7 +64,8 @@ internal sealed class SecretProtectionService : ISecretProtectionService, ISingl
             }
         }
 
-        return new SecretProtectionStatus(enabled, unlocked, shouldWarn, HelloEnabled: enabled && security?.Hello is not null, HelloInSoftware: security?.Hello?.InSoftware ?? false);
+        return new SecretProtectionStatus(enabled, unlocked, shouldWarn, HelloEnabled: enabled && security?.Hello is not null, HelloInSoftware: security?.Hello?.InSoftware ?? false,
+            HelloKeyName: security?.Hello?.CredentialName);
     }
 
     public async Task<bool> UnlockAsync(string password, CancellationToken cancellationToken = default)
