@@ -27,7 +27,7 @@ public sealed partial class WorkspaceTabViewModel(Workspace workspace, bool isAc
 
     public bool CanCopyPath => owner.FileBodyFor(workspace) is MarkdownFileWorkspace;
 
-    public bool CanClose => owner.CanClose(Id) || workspace.Type == WorkspaceType.Projects;
+    public bool CanClose => owner.CanClose(Id);
 
     internal string? FilePath => owner.FileBodyFor(workspace)?.DisplayPath;
 
