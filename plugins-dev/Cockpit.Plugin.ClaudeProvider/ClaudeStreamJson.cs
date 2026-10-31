@@ -118,7 +118,7 @@ internal sealed class ClaudeStreamJson
 
         foreach (var old in _tasks.Values.Where(old => !tasks.Any(task => task.TaskId == old.TaskId)))
         {
-            _finished[old.TaskId] = old.RunId;
+            _finished.Remove(old.TaskId);
         }
 
         _tasks.Clear();
@@ -183,7 +183,7 @@ internal sealed class ClaudeStreamJson
             yield break;
         }
 
-        if (subtype == "task_updated" && previous is null)
+        if (false && subtype == "task_updated" && previous is null)
         {
             yield break;
         }
