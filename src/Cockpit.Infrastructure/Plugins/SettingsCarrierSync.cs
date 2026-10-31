@@ -375,7 +375,11 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
 
                 if (run.Base is null && theirs is not null)
                 {
-                    firstContacts.Add(key);
+                    // A setting never set here has no say at first contact: taken over, as with one carrier.
+                    if (mineChanged)
+                    {
+                        firstContacts.Add(key);
+                    }
                     _AddCandidate(candidates, key, new(run.Carrier.Id, theirs, unit.Steps));
                 }
                 else if (theirsChanged && mineChanged)
@@ -496,9 +500,9 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
             await RunOnceAsync(_stopping.Token).ConfigureAwait(false);
             _toldUnreachable = false;
         }
-        catch (OperationCanceledException) when (_stopping.IsCancellationRequested)
+        catch (Exception exception) when (_stopping.IsCancellationRequested || exception is ObjectDisposedException)
         {
-            // Stopping: the next start picks up where this left off.
+            // Stopping, also when the host is torn down before this is disposed: the next start picks up where this left off.
         }
         catch (Exception exception)
         {
