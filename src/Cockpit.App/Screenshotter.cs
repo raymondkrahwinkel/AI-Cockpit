@@ -233,6 +233,7 @@ internal static partial class Screenshotter
         ["workspace-tab-overflow"] = (_, _) => _WorkspacePreviewTabScene(overflow: true),
         ["workspace-tab-overflow-middle"] = (_, _) => _WorkspacePreviewTabScene(overflow: true),
         ["workspace-tab-interactions"] = (_, _) => _WorkspacePreviewTabScene(overflow: true),
+        ["workspace-tab-list"] = (_, _) => _WorkspacePreviewTabScene(overflow: true),
         // AC-1751 (mockup AC-1749 v003, flow 8): a keyed workspace popped out into its own window, with "⇤ Dock back".
         ["workspace-floating"] = (_, _) => _WorkspaceFloatingScene(),
         // AC-1753 (mockup AC-1749 v003, flows 6 and 10): the Markdown editor live, with the caret in a table, as source, and read-only.
@@ -1322,6 +1323,11 @@ internal static partial class Screenshotter
     {
         ["workspace-tab-interactions"] = _ExerciseWorkspaceTabScrolling,
         ["workspace-tab-overflow"] = _HoverActiveWorkspaceTab,
+        ["workspace-tab-list"] = window =>
+        {
+            window.UpdateLayout();
+            _OpenFlyout(window, "WorkspaceTabsList");
+        },
         ["workspace-tab-overflow-middle"] = window =>
         {
             if (window.DataContext is CockpitViewModel cockpit)

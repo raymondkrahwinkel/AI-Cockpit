@@ -60,21 +60,33 @@ public partial class CockpitView
             return;
         }
 
-        if (active is not null && WorkspaceTabStrip.ContainerFromIndex(cockpit.Workspaces.Tabs.IndexOf(active)) is { } container
-            && container.Bounds.Width > 0)
+        if (active is not null && RevealWorkspaceTab(active))
         {
-            var offset = WorkspaceTabsScroll.Offset.X;
-            if (container.Bounds.Right > offset + width - 24)
-            {
-                offset = container.Bounds.Right - width + 24;
-            }
-            if (container.Bounds.Left < offset + 24)
-            {
-                offset = container.Bounds.Left - 24;
-            }
-            SetWorkspaceTabOffset(offset);
             _visibleActiveTab = active;
         }
+    }
+
+    private bool RevealWorkspaceTab(WorkspaceTabViewModel tab)
+    {
+        if (DataContext is not CockpitViewModel cockpit
+            || WorkspaceTabStrip.ContainerFromIndex(cockpit.Workspaces.Tabs.IndexOf(tab)) is not { } container
+            || container.Bounds.Width <= 0)
+        {
+            return false;
+        }
+
+        var width = WorkspaceTabsScroll.Viewport.Width;
+        var offset = WorkspaceTabsScroll.Offset.X;
+        if (container.Bounds.Right > offset + width - 24)
+        {
+            offset = container.Bounds.Right - width + 24;
+        }
+        if (container.Bounds.Left < offset + 24)
+        {
+            offset = container.Bounds.Left - 24;
+        }
+        SetWorkspaceTabOffset(offset);
+        return true;
     }
 
     private void SetWorkspaceTabOffset(double offset)

@@ -384,6 +384,13 @@
         <Style Selector="Border.workspaceTab:pointerover Button.closeWorkspace">
             <Setter Property="Opacity" Value="1"/>
         </Style>
+        <!-- AC-1970: a row of the all-tabs list; its ✕ shows on hover like the tab's own. -->
+        <Style Selector="Border.tabListRow Button.closeWorkspace">
+            <Setter Property="Opacity" Value="0"/>
+        </Style>
+        <Style Selector="Border.tabListRow:pointerover Button.closeWorkspace, Border.tabListRow:focus-within Button.closeWorkspace">
+            <Setter Property="Opacity" Value="1"/>
+        </Style>
 
         <!-- AC-1306: a node in the sidebar's workspace tree. It marks the workspace the tab strip marks too — the
              same fact in a second place, so a click on either has to be visible on both. The accent left edge is
@@ -1233,7 +1240,7 @@
 
                     <!-- The drag lives on the strip, not on the tabs: a move rebuilds the tabs, so a handler on
                          the dragged Border would stop firing the moment it did its job once. -->
-                    <Grid x:Name="WorkspaceTabsHost" ColumnDefinitions="Auto,*,Auto"
+                    <Grid x:Name="WorkspaceTabsHost" ColumnDefinitions="Auto,*,Auto,Auto"
                           IsVisible="{Binding Workspaces.ShowTabStrip}"
                           PointerWheelChanged="OnWorkspaceTabsWheel"
                           PointerMoved="OnWorkspaceTabPointerMoved"
@@ -1313,6 +1320,60 @@
                     <Button x:Name="WorkspaceTabsRight" Grid.Column="2" Classes="Subtle" Content="›"
                             Padding="6,3" IsVisible="False" Click="OnWorkspaceTabsRight"
                             ToolTip.Tip="Scroll tabs right"/>
+                    <!-- AC-1970: every tab in strip order, for when the strip overflows. Same Flyout-over-ItemsControl
+                         shape as the + (a MenuFlyout with an ItemsSource never materialises its containers); the
+                         rows are built in code-behind on open so they can say which tabs are scrolled out of view. -->
+                    <Button x:Name="WorkspaceTabsList" Grid.Column="3" Classes="Subtle" Padding="6,3"
+                            IsVisible="{Binding Workspaces.HasHiddenTabs}"
+                            ToolTip.Tip="{Binding Workspaces.Tabs.Count, StringFormat='All tabs ({0})'}">
+                        <StackPanel Orientation="Horizontal" Spacing="3">
+                            <materialIcons:MaterialIcon Kind="ChevronDown" Width="14" Height="14" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding Workspaces.Tabs.Count}" FontSize="11" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <Button.Flyout>
+                            <Flyout Placement="BottomEdgeAlignedRight" Opening="OnWorkspaceTabListOpening" Opened="OnWorkspaceTabListOpened">
+                                <StackPanel MinWidth="280" MaxHeight="420" KeyDown="OnWorkspaceTabListKeyDown">
+                                    <TextBox PlaceholderText="Filter tabs" Margin="0,0,0,4" TextChanged="OnWorkspaceTabListFilterChanged"/>
+                                    <ScrollViewer MaxHeight="370">
+                                        <ItemsControl>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate DataType="views:WorkspaceTabListRow">
+                                                    <Border Classes="tabListRow" Background="Transparent" CornerRadius="4"
+                                                            Opacity="{Binding Opacity}">
+                                                        <DockPanel>
+                                                            <Button DockPanel.Dock="Right" Classes="Subtle closeWorkspace" Padding="4,2"
+                                                                    DataContext="{Binding Tab}"
+                                                                    IsVisible="{Binding $parent[Border].((views:WorkspaceTabListRow)DataContext).CanClose}"
+                                                                    Click="OnCloseWorkspaceRequested" ToolTip.Tip="Close workspace">
+                                                                <materialIcons:MaterialIcon Kind="Close" Width="10" Height="10"/>
+                                                            </Button>
+                                                            <Button Classes="Subtle" HorizontalAlignment="Stretch"
+                                                                    HorizontalContentAlignment="Left" Padding="8,6"
+                                                                    Click="OnWorkspaceTabListRowClick">
+                                                                <DockPanel>
+                                                                    <Ellipse DockPanel.Dock="Right" Width="7" Height="7" Margin="7,0,0,0" VerticalAlignment="Center"
+                                                                             Fill="{DynamicResource CockpitStatusWaitingBrush}"
+                                                                             IsVisible="{Binding Tab.HasMarker}" ToolTip.Tip="Unsaved changes"/>
+                                                                    <Border DockPanel.Dock="Right" Margin="7,0,0,0" Padding="6,0" CornerRadius="8" VerticalAlignment="Center"
+                                                                            BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
+                                                                            IsVisible="{Binding Tab.IsPreview}">
+                                                                        <TextBlock Text="preview" FontSize="10.5" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                                                    </Border>
+                                                                    <materialIcons:MaterialIcon Kind="{Binding Tab.Icon}" Width="14" Height="14" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                                                    <TextBlock Text="{Binding Tab.Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                                                               FontWeight="{Binding Weight}" FontStyle="{Binding Style}" Padding="0,0,3,0"/>
+                                                                </DockPanel>
+                                                            </Button>
+                                                        </DockPanel>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                </StackPanel>
+                            </Flyout>
+                        </Button.Flyout>
+                    </Button>
                     </Grid>
                 </DockPanel>
             </Border>
