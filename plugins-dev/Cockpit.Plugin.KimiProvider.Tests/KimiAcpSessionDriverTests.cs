@@ -101,9 +101,9 @@ public class KimiAcpSessionDriverTests
         Assert.Equal("mcp-key", environmentVariables["COCKPIT_MCP_KEY"]);
     }
 
-    // Layer 2, provider protocol contract (AC-1992): the brain is Kimi's first visible turn, alone and exactly
-    // once, ahead of the task. A resumed conversation (session/resume, never session/load) and a start without a
-    // brain send the task first: no extra turn. The /usage poll after a turn is no message of the operator's.
+    // Layer 2, provider protocol contract (AC-1992): the brain is Kimi's first visible turn, alone and exactly once,
+    // ahead of the task; a resume (never session/load) or a start without a brain sends the task first.
+    // AC-2000: a Stop during the brain turn also ends the task queued behind it, before that task goes out.
     [Fact]
     public async Task BrainInstruction_IsTheFirstVisibleMessage_WithoutOtherHiddenInstructions()
     {
@@ -137,9 +137,37 @@ public class KimiAcpSessionDriverTests
             Assert.Equal([Brain, "the task"], PromptTexts(fresh));
             Assert.DoesNotContain(fresh.WrittenLines, line => line.Contains(Hidden));
 
-            // The brain turn's own end (a refusal here) is never reported: the first turn end is the task's.
+            // The brain turn's refusal is said as a session error after the unapplied-prompt one, never as a turn end.
+            await _NextEventOfTypeAsync<PluginSessionError>(driver);
+            Assert.Contains("refused the brain", (await _NextEventOfTypeAsync<PluginSessionError>(driver)).Message);
             await _RespondAsync(fresh, "session/prompt", """{"stopReason":"end_turn"}""");
             Assert.False((await _NextEventOfTypeAsync<PluginTurnCompleted>(driver)).IsError);
+        }
+
+        var stopped = new FakeCliSubprocess();
+        await using (var driver = new KimiAcpSessionDriver(() => stopped, _DefaultConfig(), "kimi"))
+        {
+            var start = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: null, withBrain, mcpServers: null, CancellationToken.None);
+            await _RespondAsync(stopped, "initialize", "{}");
+            await _RespondAsync(stopped, "session/new", """{"sessionId":"session_3","configOptions":[]}""");
+            await start;
+            await driver.SendUserMessageAsync("the stopped task");
+            await driver.InterruptAsync();
+            await _RespondAsync(stopped, "session/prompt", """{"stopReason":"cancelled"}""");
+            Assert.Equal("cancelled", (await _NextEventOfTypeAsync<PluginTurnCompleted>(driver)).StopReason);
+
+            // The brain turn's /usage poll goes next; once it is answered, the following task goes out as usual.
+            await _WaitForNthRequestAsync(stopped, "session/prompt", occurrence: 2);
+            await _RespondAsync(stopped, "session/prompt", """{"stopReason":"end_turn"}""");
+            await driver.SendUserMessageAsync("the next task");
+            await _WaitForNthRequestAsync(stopped, "session/prompt", occurrence: 3);
+            Assert.Equal([Brain, "the next task"], PromptTexts(stopped));
+
+            // That task's permission request is a real card again, and its end is the first turn end after the Stop's.
+            await stopped.PushStdoutAsync("""{"id":31,"method":"session/request_permission","params":{"sessionId":"session_3","options":[{"optionId":"approve_once","name":"Approve once","kind":"allow_once"}],"toolCall":{"toolCallId":"turn-2:tool-1","title":"shell","content":[]}}}""");
+            await _NextEventOfTypeAsync<PluginPermissionRequested>(driver);
+            await _RespondAsync(stopped, "session/prompt", """{"stopReason":"end_turn"}""");
+            Assert.Equal("end_turn", (await _NextEventOfTypeAsync<PluginTurnCompleted>(driver)).StopReason);
         }
 
         var resumed = new FakeCliSubprocess();

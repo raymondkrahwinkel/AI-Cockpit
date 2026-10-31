@@ -32,6 +32,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- Pressing Stop in a new Kimi or opencode session while it is still loading its brain also stops the task you sent meanwhile: that task is no longer sent afterwards, and the session shows it as Interrupted right away. A brain that the model refuses to load is now reported in the session.
+
 - Sub-agents no longer keep a Running status after their owner fails, is interrupted or stops. Finished sub-agents keep their recorded status and details.
 
 - Codex sub-agent steering requests identify the child's own turn, including resumed turns, instead of the parent's turn.
