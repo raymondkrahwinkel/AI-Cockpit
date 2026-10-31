@@ -267,20 +267,15 @@ internal sealed class SecretProtectionService : ISecretProtectionService, ISingl
 
             // The prompts run before the write gate is taken, so a slow gesture never holds up other settings writes.
             var name = HelloCredentialName(_configFilePath);
-            var storage = await signer.CreateAsync(name, cancellationToken).ConfigureAwait(false);
-            if (storage is SecretKeyStorage.None)
-            {
-                return false;
-            }
-
+            // One prompt: creating the key and both signatures happen on the one authorised key (AC-1879, Raymond 31-10).
             var challenge = RandomNumberGenerator.GetBytes(32);
-            var first = await signer.SignAsync(name, challenge, cancellationToken).ConfigureAwait(false);
-            var second = first is null ? null : await signer.SignAsync(name, challenge, cancellationToken).ConfigureAwait(false);
-            if (first is null || second is null)
+            if (await signer.EnrollAsync(name, challenge, cancellationToken).ConfigureAwait(false) is not { } enrollment)
             {
                 await signer.DeleteAsync(name, cancellationToken).ConfigureAwait(false);
                 return false;
             }
+
+            var (storage, first, second) = (enrollment.Storage, enrollment.FirstSignature, enrollment.SecondSignature);
 
             // A randomised signature (RSA-PSS) cannot be turned back into the same key at the next unlock.
             if (!CryptographicOperations.FixedTimeEquals(first, second))

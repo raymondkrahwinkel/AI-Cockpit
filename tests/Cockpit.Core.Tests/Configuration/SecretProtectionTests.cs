@@ -404,10 +404,12 @@ public class SecretProtectionTests : IDisposable
 
         public Task<bool> IsAvailableAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
 
-        public Task<SecretKeyStorage> CreateAsync(string name, CancellationToken cancellationToken = default)
+        public async Task<SecretKeyEnrollment?> EnrollAsync(string name, byte[] challenge, CancellationToken cancellationToken = default)
         {
             _keys[name] = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32);
-            return Task.FromResult(SecretKeyStorage.Hardware);
+            var first = await SignAsync(name, challenge, cancellationToken);
+            var second = await SignAsync(name, challenge, cancellationToken);
+            return first is null || second is null ? null : new SecretKeyEnrollment(SecretKeyStorage.Hardware, first, second);
         }
 
         public Task<bool> ExistsAsync(string name, CancellationToken cancellationToken = default) =>

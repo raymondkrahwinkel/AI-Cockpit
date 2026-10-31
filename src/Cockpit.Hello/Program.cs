@@ -3,9 +3,9 @@ using Windows.Foundation.Metadata;
 using Windows.Security.Credentials;
 using Windows.UI;
 
-// AC-1879: Cockpit.Hello supported | create <name> <hwnd> | exists <name> | sign <name> <hwnd> <challenge> | delete <name>.
-// Prints one line: "ok" (create: "ok tpm"/"ok software", sign: "ok <base64>"), "no", or the KeyCredentialStatus; the
-// prompt is owned by <hwnd>, the cockpit's window, so it opens above it. The signature only travels over this stdout.
+// AC-1879: Cockpit.Hello supported | enroll <name> <hwnd> <challenge> | exists <name> | sign <name> <hwnd> <challenge> | delete <name>.
+// One line: "ok" (enroll: "ok tpm|software <sig> <sig>", sign: "ok <sig>"), "no", or the KeyCredentialStatus; the prompt
+// is owned by <hwnd>, the cockpit's window, so it opens above it. Signatures only travel over this stdout, in base64.
 const string Manager = "Windows.Security.Credentials.KeyCredentialManager";
 
 try
@@ -18,17 +18,30 @@ try
             Console.WriteLine(supported ? "ok" : "no");
             return 0;
 
-        case ["create", var name, var hwnd]:
-            var created = await KeyCredentialManager.RequestCreateForWindowAsync(_Window(hwnd), name, KeyCredentialCreationOption.ReplaceExisting);
+        // Create and both signatures on the one key object, in one process: the gesture of the creation authorises the
+        // signatures, so the operator confirms once (three separate helper runs prompted three times, measured 31-10).
+        case ["enroll", var name, var hwnd, var challenge]:
+            var window = _Window(hwnd);
+            var created = await KeyCredentialManager.RequestCreateForWindowAsync(window, name, KeyCredentialCreationOption.ReplaceExisting);
             if (created.Status != KeyCredentialStatus.Success)
             {
                 Console.WriteLine(created.Status.ToString());
                 return 0;
             }
 
+            var data = Convert.FromBase64String(challenge).AsBuffer();
+            var first = await created.Credential.RequestSignForWindowAsync(window, data);
+            var second = first.Status == KeyCredentialStatus.Success ? await created.Credential.RequestSignForWindowAsync(window, data) : first;
+            if (second.Status != KeyCredentialStatus.Success)
+            {
+                Console.WriteLine(second.Status.ToString());
+                return 0;
+            }
+
             // Without a TPM there is nothing to attest: Windows then holds the key in software.
             var attestation = await created.Credential.GetAttestationAsync();
-            Console.WriteLine(attestation.Status == KeyCredentialAttestationStatus.NotSupported ? "ok software" : "ok tpm");
+            var storage = attestation.Status == KeyCredentialAttestationStatus.NotSupported ? "software" : "tpm";
+            Console.WriteLine($"ok {storage} {Convert.ToBase64String(first.Result.ToArray())} {Convert.ToBase64String(second.Result.ToArray())}");
             return 0;
 
         case ["exists", var name]:
@@ -62,7 +75,7 @@ try
             return 0;
 
         default:
-            Console.Error.WriteLine("usage: Cockpit.Hello supported | create <name> <hwnd> | exists <name> | sign <name> <hwnd> <challenge-base64> | delete <name>");
+            Console.Error.WriteLine("usage: Cockpit.Hello supported | enroll <name> <hwnd> <challenge> | exists <name> | sign <name> <hwnd> <challenge> | delete <name>");
             return 2;
     }
 }

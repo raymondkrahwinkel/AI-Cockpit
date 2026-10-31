@@ -12,8 +12,9 @@ public interface ISecretKeySigner
     /// <summary>Whether this machine can hold such a key at all (OS version, Hello set up, no remote session).</summary>
     Task<bool> IsAvailableAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Creates the key under <paramref name="name"/>, replacing one that exists, and says where it is held.</summary>
-    Task<SecretKeyStorage> CreateAsync(string name, CancellationToken cancellationToken = default);
+    /// <summary>Creates the key under <paramref name="name"/> (replacing one that exists) and signs <paramref name="challenge"/>
+    /// with it twice under the one prompt of the creation. Null: cancelled or refused, with the reason in LastFailure.</summary>
+    Task<SecretKeyEnrollment?> EnrollAsync(string name, byte[] challenge, CancellationToken cancellationToken = default);
 
     /// <summary>Whether the key under <paramref name="name"/> exists on this machine, without a prompt.</summary>
     Task<bool> ExistsAsync(string name, CancellationToken cancellationToken = default);
@@ -25,13 +26,15 @@ public interface ISecretKeySigner
     Task DeleteAsync(string name, CancellationToken cancellationToken = default);
 }
 
-// Where a created key lives; `None` means it was not created (cancelled or refused).
+// Where a created key lives: in the TPM, or (no TPM) in software.
 public enum SecretKeyStorage
 {
-    None,
     Hardware,
     Software,
 }
+
+// A freshly created key and its two signatures over one challenge; equal signatures mean it can hold a wrap.
+public sealed record SecretKeyEnrollment(SecretKeyStorage Storage, byte[] FirstSignature, byte[] SecondSignature);
 
 // AC-1879: how an unlock with the OS key ended. `KeyGone` covers a PIN reset, a cleared TPM, another computer and a
 // wrap older than the password: the OS key cannot open this configuration here, so only the password is offered.
