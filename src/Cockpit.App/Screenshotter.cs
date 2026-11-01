@@ -208,7 +208,8 @@ internal static partial class Screenshotter
     private static readonly Dictionary<string, Func<int, int, Window>> Scenes = _WithProjectScenes(new(StringComparer.Ordinal)
     {
         ["session-background-work"] = (_, _) => _BackgroundWorkScene(),
-        ["child-history-sidebar"] = (_, _) => _ChildHistoryScene("sidebar"),
+        ["child-history-sidebar"] = (_, _) => _ChildHistorySidebar(),
+        ["child-history-sidebar-open"] = (_, _) => _ChildHistorySidebar(),
         ["child-history-popout"] = (_, _) => _ChildHistoryPopout(),
         ["tty-claude-child-popout"] = (_, _) => _TtyChildHistoryScene("Claude", false),
         ["tty-codex-child-popout"] = (_, _) => _TtyChildHistoryScene("Codex", false),
@@ -1404,6 +1405,7 @@ internal static partial class Screenshotter
         },
         ["session-settings-flyout"] = window => _OpenFlyout(window, "SessionSettingsButton"),
         ["child-history-popout"] = window => _OpenFlyout(window, "BackgroundWorkButton"),
+        ["child-history-sidebar-open"] = _OpenSidebarChild,
         ["agents-child-open"] = _OpenAgentChild,
         ["child-steering-prepared"] = window => _ExerciseChildSteering(window, "prepared"),
         ["child-steering-stopped"] = window => _ExerciseChildSteering(window, "stopped"),

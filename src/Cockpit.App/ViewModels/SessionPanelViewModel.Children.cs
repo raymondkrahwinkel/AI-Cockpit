@@ -16,6 +16,65 @@ public abstract partial class SessionPanelViewModel
     public bool HasChildAgents => ChildAgents.Count > 0;
     public bool HasBackgroundWorkEntries => HasBackgroundTasks || HasChildAgents;
     public bool ShowsLegacySubAgents => !HasChildAgents && HasBackgroundSubAgents;
+    private bool? _sidebarChildrenExpandedChoice;
+    private bool _showsFinishedChildAgents;
+
+    // AC-2009 (mockup AC-1949 screen 3): collapsed for a session you are not in; the selected one opens
+    // while a child runs. The operator's own toggle wins from then on.
+    public bool AreSidebarChildrenExpanded
+    {
+        get => _sidebarChildrenExpandedChoice ?? (IsSelected && ChildAgents.Any(child => child.Reference.State == "running"));
+        set
+        {
+            _sidebarChildrenExpandedChoice = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public string SidebarChildSummary
+    {
+        get
+        {
+            int running = ChildAgents.Count(child => child.Reference.State == "running");
+            string total = ChildAgents.Count == 1 ? "1 sub-agent" : $"{ChildAgents.Count} sub-agents";
+            return running > 0 ? $"{total} · {running} running" : total;
+        }
+    }
+
+    public int FoldedFinishedChildCount => _showsFinishedChildAgents ? 0 : ChildAgents.Count(child => child.IsFinished);
+    public bool HasFoldedFinishedChildren => FoldedFinishedChildCount > 0;
+    public string FoldedFinishedChildText => $"+ {FoldedFinishedChildCount} finished";
+    internal bool ShowsFinishedChildAgents => _showsFinishedChildAgents;
+
+    [RelayCommand]
+    private void ShowFinishedChildAgents()
+    {
+        _showsFinishedChildAgents = true;
+        _NotifySidebarChildren();
+    }
+
+    partial void OnIsSelectedChanged(bool value) => OnPropertyChanged(nameof(AreSidebarChildrenExpanded));
+
+    partial void OnChildTranscriptChanged(ChildTranscriptViewModel? value)
+    {
+        foreach (var child in ChildAgents)
+        {
+            child.RefreshSidebarVisibility();
+        }
+    }
+
+    private void _NotifySidebarChildren()
+    {
+        foreach (var child in ChildAgents)
+        {
+            child.RefreshSidebarVisibility();
+        }
+        OnPropertyChanged(nameof(AreSidebarChildrenExpanded));
+        OnPropertyChanged(nameof(SidebarChildSummary));
+        OnPropertyChanged(nameof(FoldedFinishedChildCount));
+        OnPropertyChanged(nameof(HasFoldedFinishedChildren));
+        OnPropertyChanged(nameof(FoldedFinishedChildText));
+    }
     public virtual ObservableCollection<BackgroundTaskViewModel> BackgroundSubAgents { get; } = [];
     public virtual ObservableCollection<BackgroundTaskViewModel> BackgroundShells { get; } = [];
     public virtual ObservableCollection<BackgroundTaskViewModel> BackgroundOtherTasks { get; } = [];
@@ -106,6 +165,7 @@ public abstract partial class SessionPanelViewModel
             }
         }
         OnPropertyChanged(nameof(HasChildAgents));
+        _NotifySidebarChildren();
         OnPropertyChanged(nameof(HasBackgroundWorkEntries));
         OnPropertyChanged(nameof(ShowsLegacySubAgents));
         OnPropertyChanged(nameof(BackgroundTaskCount));

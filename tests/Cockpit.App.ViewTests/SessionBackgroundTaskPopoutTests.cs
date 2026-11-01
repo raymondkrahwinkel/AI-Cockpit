@@ -140,15 +140,49 @@ public class SessionBackgroundTaskPopoutTests
         Assert.False(session.BackgroundSubAgents[0].IsSelected, "the surviving row was never selected itself");
     });
 
+    // AC-2009, layer 2 (view model): the sidebar expander follows the owner's own children and a row opens
+    // exactly that owner's child, also when two owners carry the same agent id.
     [Fact]
-    public void AnAbsurdlyLongDescription_DoesNotThrow_AndIsCarriedInFull() => HeadlessAvalonia.Run(() =>
+    public void SidebarChildren_ExpandOnlyWithChildren_AndOpenTheOwnersOwnChild() => HeadlessAvalonia.Run(() =>
     {
-        var session = new SessionViewModel();
-        var longDescription = new string('x', 20_000);
+        var cockpit = new CockpitViewModel();
+        SessionViewModel[] owners = cockpit.Sessions.OfType<SessionViewModel>().Take(2).ToArray();
+        static BackgroundTasksChanged Children(SessionViewModel owner) => new()
+        {
+            SessionId = owner.PaneId,
+            Tasks = [],
+            Children =
+            [
+                new BackgroundTask("same-id", BackgroundTaskKind.SubAgent, "Review") { AgentId = "same-id", RunId = owner.PaneId },
+                new BackgroundTask("done-id", BackgroundTaskKind.SubAgent, "Notes") { AgentId = "done-id", RunId = owner.PaneId, State = "completed" },
+            ],
+        };
+        cockpit.SelectSessionCommand.Execute(owners[1]);
+        owners[0].Apply(Children(owners[0]));
+        Assert.False(owners[1].HasChildAgents);
+        Assert.False(owners[1].AreSidebarChildrenExpanded);
+        Assert.False(owners[0].AreSidebarChildrenExpanded);
 
-        session.Apply(Outstanding(new BackgroundTask("a1", BackgroundTaskKind.SubAgent, longDescription)));
+        cockpit.SelectSessionCommand.Execute(owners[0]);
+        Assert.True(owners[0].AreSidebarChildrenExpanded);
+        Assert.Equal("2 sub-agents · 1 running", owners[0].SidebarChildSummary);
+        Assert.Equal("+ 1 finished", owners[0].FoldedFinishedChildText);
+        Assert.False(owners[0].ChildAgents[1].IsShownInSidebar);
+        owners[0].ShowFinishedChildAgentsCommand.Execute(null);
+        Assert.True(owners[0].ChildAgents[1].IsShownInSidebar);
+        owners[0].AreSidebarChildrenExpanded = false;
+        cockpit.SelectSessionCommand.Execute(owners[1]);
+        cockpit.SelectSessionCommand.Execute(owners[0]);
+        Assert.False(owners[0].AreSidebarChildrenExpanded);
 
-        Assert.Equal(longDescription, session.BackgroundSubAgents[0].Description);
+        owners[1].Apply(Children(owners[1]));
+        ChildAgentViewModel picked = owners[1].ChildAgents[0];
+        cockpit.OpenChildTranscriptCommand.Execute(picked);
+        Assert.True(owners[1].IsSelected);
+        Assert.Same(picked, owners[1].ChildTranscript?.Child);
+        Assert.True(picked.IsOpenInTranscript);
+        Assert.Null(owners[0].ChildTranscript);
+        Assert.False(owners[0].ChildAgents[0].IsOpenInTranscript);
     });
 
     [Fact]

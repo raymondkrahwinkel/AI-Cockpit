@@ -1,4 +1,6 @@
 using Avalonia.Controls;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Cockpit.App.Composition;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
@@ -42,33 +44,76 @@ internal static partial class Screenshotter
         return new MainWindow { DataContext = cockpit };
     }
 
-    private static Window _ChildHistoryPopout() => _ChildHistoryScene("sidebar");
+    // AC-2009: the real sidebar — one owner with running, finished and unknown children, one without any.
+    private static Window _ChildHistorySidebar()
+    {
+        var cockpit = new CockpitViewModel { GlobalSingleSessionLayout = true, SidebarWidth = 260 };
+        SessionViewModel[] owners = cockpit.Sessions.OfType<SessionViewModel>().Take(2).ToArray();
+        _ApplyDemoChildren(owners[0]);
+        cockpit.SelectSessionCommand.Execute(owners[0]);
+        if (owners[1].HasChildAgents || !owners[0].AreSidebarChildrenExpanded)
+        {
+            throw new InvalidOperationException("The sidebar scene needs one expanded owner and one owner without children.");
+        }
+        return new MainWindow { DataContext = cockpit };
+    }
+
+    // Clicks through the sidebar itself: "+ N finished", then the finished child's row.
+    private static void _OpenSidebarChild(Window window)
+    {
+        Button more = window.GetVisualDescendants().OfType<Button>().First(button =>
+            button.IsEffectivelyVisible
+            && button.DataContext is SessionPanelViewModel session && ReferenceEquals(button.Command, session.ShowFinishedChildAgentsCommand));
+        more.Command?.Execute(more.CommandParameter);
+        Dispatcher.UIThread.RunJobs();
+        window.UpdateLayout();
+        Button row = window.GetVisualDescendants().OfType<Button>().First(button => button.IsEffectivelyVisible
+            && button.DataContext is ChildAgentViewModel { Reference.AgentId: "same-id" } && ToolTip.GetTip(button) is "Open this sub-agent's read-only transcript");
+        var child = row.DataContext as ChildAgentViewModel
+            ?? throw new InvalidOperationException("The sidebar row has no provider child context.");
+        row.Command?.Execute(row.CommandParameter);
+        Dispatcher.UIThread.RunJobs();
+        if (child.Owner.ChildTranscript is not { } transcript || !ReferenceEquals(transcript.Child, child) || !child.Owner.IsSelected)
+        {
+            throw new InvalidOperationException("The sidebar child row must select its owner and open that child.");
+        }
+        transcript.Status = "";
+        transcript.Rows.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "Draft the release notes for this change."));
+        transcript.Rows.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, "The release notes are drafted. These entries belong to the selected child only."));
+    }
+
+    private static void _ApplyDemoChildren(SessionViewModel owner)
+    {
+        var running = new BackgroundTask("running-id", BackgroundTaskKind.SubAgent, "Review the parser change")
+        {
+            AgentId = "running-id", RunId = owner.PaneId, LastTool = "Grep", Tokens = 18400,
+            AgentType = "general-purpose", DurationMilliseconds = 72000,
+        };
+        owner.Apply(new BackgroundTasksChanged
+        {
+            SessionId = owner.PaneId,
+            Tasks = [running],
+            Children = [running, new BackgroundTask("same-id", BackgroundTaskKind.SubAgent, "Draft the release notes")
+            {
+                AgentId = "same-id", RunId = owner.PaneId, State = "completed", LastTool = "Write", Tokens = 31200,
+                AgentType = "general-purpose", DurationMilliseconds = 160000,
+            }, new BackgroundTask("unknown-id", BackgroundTaskKind.SubAgent, "Check the CI log")
+            {
+                AgentId = "unknown-id", RunId = owner.PaneId, State = "unknown", AgentType = "Explore",
+            }],
+        });
+    }
+
+    private static Window _ChildHistoryPopout() => _ChildHistoryScene("popout");
     private static Window _ChildHistoryScene(string state)
     {
         var cockpit = new CockpitViewModel { GlobalSingleSessionLayout = true, SidebarWidth = 260 };
         SessionViewModel[] owners = cockpit.Sessions.OfType<SessionViewModel>().Take(2).ToArray();
         foreach (var owner in owners)
         {
-            var running = new BackgroundTask("running-id", BackgroundTaskKind.SubAgent, "Review the parser change")
-            {
-                AgentId = "running-id", RunId = owner.PaneId, LastTool = "Grep", Tokens = 18400,
-                AgentType = "general-purpose", DurationMilliseconds = 72000,
-            };
-            owner.Apply(new BackgroundTasksChanged
-            {
-                SessionId = owner.PaneId,
-                Tasks = [running],
-                Children = [running, new BackgroundTask("same-id", BackgroundTaskKind.SubAgent, "Draft the release notes")
-                {
-                    AgentId = "same-id", RunId = owner.PaneId, State = "completed", LastTool = "Write", Tokens = 31200,
-                    AgentType = "general-purpose", DurationMilliseconds = 160000,
-                }, new BackgroundTask("unknown-id", BackgroundTaskKind.SubAgent, "Check the CI log")
-                {
-                    AgentId = "unknown-id", RunId = owner.PaneId, State = "unknown", AgentType = "Explore",
-                }],
-            });
+            _ApplyDemoChildren(owner);
         }
-        if (owners.FirstOrDefault() is { } selected && state != "sidebar")
+        if (owners.FirstOrDefault() is { } selected && state != "popout")
         {
             selected.ChildAgents[state == "running" ? 0 : 1].OpenCommand.Execute(null);
             if (selected.ChildTranscript is { } transcript)
