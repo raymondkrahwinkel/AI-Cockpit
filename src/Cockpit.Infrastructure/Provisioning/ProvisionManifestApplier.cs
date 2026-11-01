@@ -649,7 +649,7 @@ public static class ProvisionManifestApplier
     // A secret travels as its name only and is entered per machine, so only a value in the manifest itself is shared.
     private static IEnumerable<ProvisionNote> _SharedLogins(ProvisionManifest manifest) =>
         (manifest.Profiles?.Items ?? [])
-            .Where(profile => (profile.Environment ?? []).Any(variable => variable.Name == SubscriptionTokenVariable && variable.Secret != true && !string.IsNullOrEmpty(variable.Value)))
+            .Where(profile => (profile.Environment ?? []).Any(variable => string.Equals(variable.Name, SubscriptionTokenVariable, StringComparison.OrdinalIgnoreCase) && variable.Secret != true && !string.IsNullOrEmpty(variable.Value)))
             .Select(profile => new ProvisionNote($"profiles.{profile.Label}", SharedLogin,
                 Detail: $"refused: {SubscriptionTokenVariable} would share one personal subscription login with everyone this reaches; each user signs in with their own claude /login or their own API key"));
 

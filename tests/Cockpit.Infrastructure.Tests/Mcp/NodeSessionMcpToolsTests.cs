@@ -195,7 +195,7 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
     }
 
     // The counterproofs: a key with the grant starts the bypass profile, and (criterion 7, the regression row) a pairing
-    // with that profile in its grant still starts it. A key in its own project starts in the AC-2003 rows below.
+    // with that profile in its grant still starts it. A key starting in an allowed project is in the AC-2003 rows below.
     [Theory]
     [InlineData(1, UnattendedProfile, null)]
     [InlineData(2, UnattendedProfile, null)]

@@ -87,6 +87,12 @@ internal static class ConnectKeyEndpoints
                 : _NoKey()).ConfigureAwait(false);
         }).RequireAdmin();
 
+        // AC-2003: the owner marks an older key, a swarm member's included, as their own device.
+        api.MapPut("/keys/{prefix}/own-device", (string prefix, CancellationToken cancellationToken) =>
+            _AnswerAsync(async () => await keys().MarkOwnDeviceAsync(prefix, cancellationToken).ConfigureAwait(false)
+                ? Results.Json(new { ok = true, prefix, issuedToOwner = true })
+                : _NoKey())).RequireAdmin();
+
         // AC-1459: the node tool lift_connect_lockout over HTTP. An IPv6 bucket's slash arrives escaped.
         api.MapPost("/lockouts/{bucket}/lift", (string bucket, CancellationToken cancellationToken) =>
         {

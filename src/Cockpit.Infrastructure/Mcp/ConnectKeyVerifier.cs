@@ -30,6 +30,8 @@ internal sealed class ConnectKeyVerifier : ISingletonService, IConnectKeyAdminis
 
     public const string NeverExpiringRefusal = "This server's policy does not allow connect keys that never expire.";
 
+    public const string OwnerKeyNeedsOwnerRefusal = "Only the owner's own key can make a key the owner's own device.";
+
     public const string AssistantNeedsOwnerRefusal = "Only a key for the owner's own device can hold the assistant: the assistant runs on the owner's own login. Issue it as the owner's key, or without holding the assistant.";
 
     // Characters after `ck_` kept as the key's public handle: enough to tell keys apart in a list, far too few to
@@ -271,7 +273,12 @@ internal sealed class ConnectKeyVerifier : ISingletonService, IConnectKeyAdminis
     {
         await EnsureLoadedAsync(cancellationToken).ConfigureAwait(false);
 
-        // AC-2003: the assistant is the owner's, so only the owner's own key may hold it.
+        // AC-2003: an owner's key comes only from the owner, and the assistant is the owner's, so only such a key holds it.
+        if (issuedToOwner && !issuedBy.IsOwner)
+        {
+            throw new ArgumentException(OwnerKeyNeedsOwnerRefusal);
+        }
+
         if (holdsAssistant && !issuedToOwner)
         {
             throw new ArgumentException(AssistantNeedsOwnerRefusal);
@@ -437,6 +444,47 @@ internal sealed class ConnectKeyVerifier : ISingletonService, IConnectKeyAdminis
         }
     }
 
+    // AC-2003: the way back for a key issued before ownership existed, a swarm member's included. False when no live key
+    // carries this prefix; saved before it counts, like a scope.
+    public async Task<bool> MarkOwnDeviceAsync(string prefix, NodeCaller markedBy, CancellationToken cancellationToken = default)
+    {
+        if (!markedBy.IsOwner)
+        {
+            throw new ArgumentException(OwnerKeyNeedsOwnerRefusal);
+        }
+
+        await EnsureLoadedAsync(cancellationToken).ConfigureAwait(false);
+
+        await _writeGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            List<ConnectKey> next;
+            lock (_gate)
+            {
+                if (_AllKeys().FirstOrDefault(key => key.RevokedAt is null && string.Equals(key.Prefix, prefix, StringComparison.Ordinal)) is not { } target)
+                {
+                    return false;
+                }
+
+                next = [.. _persisted.Select(key => ReferenceEquals(key, target) ? key with { IssuedToOwner = true } : key)];
+            }
+
+            await _SaveAsync(next, cancellationToken).ConfigureAwait(false);
+            lock (_gate)
+            {
+                _persisted = next;
+            }
+
+            _logger.LogInformation("Marked connect key {Prefix} as the owner's own device.", prefix);
+            await _audit.RecordAsync(NodeAccessAuditEntry.By(markedBy, _time.GetUtcNow(), "mark_connect_key_own_device", "own device", prefix), cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+        finally
+        {
+            _writeGate.Release();
+        }
+    }
+
     public async Task<IReadOnlyList<(ConnectKey Key, DateTimeOffset? LastUsedAt)>> ListAsync(CancellationToken cancellationToken = default)
     {
         await EnsureLoadedAsync(cancellationToken).ConfigureAwait(false);
@@ -471,6 +519,9 @@ internal sealed class ConnectKeyVerifier : ISingletonService, IConnectKeyAdminis
 
     Task<bool> IConnectKeyAdministration.SetScopeAsync(string prefix, ConnectKeyScope scope, CancellationToken cancellationToken) =>
         UpdateScopeAsync(prefix, scope, _Admin(), cancellationToken);
+
+    Task<bool> IConnectKeyAdministration.MarkOwnDeviceAsync(string prefix, CancellationToken cancellationToken) =>
+        MarkOwnDeviceAsync(prefix, _Admin(), cancellationToken);
 
     Task<bool> IConnectKeyAdministration.LiftLockoutAsync(string address, CancellationToken cancellationToken) =>
         LiftLockoutAsync(address, _Admin(), cancellationToken);
@@ -780,8 +831,9 @@ internal sealed record NodeCaller(string? KeyPrefix, string Label, ConnectKeyCap
         new(null, "", ConnectKeyCapability.Operate, remoteAddress, CancellationToken.None, HoldsAssistant: true);
 
     // AC-1405: the controller holding the line, as the scope check sees it — its key's prefix and scope, or the pairing.
+    // AC-2003: holding the assistant takes an owner's key, so the holder is the owner.
     public static NodeCaller Holding(ActiveController controller) =>
-        new(controller.KeyPrefix, controller.Name, ConnectKeyCapability.Operate, "", CancellationToken.None, HoldsAssistant: true, controller.KeyScope);
+        new(controller.KeyPrefix, controller.Name, ConnectKeyCapability.Operate, "", CancellationToken.None, HoldsAssistant: true, controller.KeyScope, IssuedToOwner: true);
 }
 
 // AC-1446: what the contract refuses to do to the bootstrap key, the emergency key; the API answers it with a 409.

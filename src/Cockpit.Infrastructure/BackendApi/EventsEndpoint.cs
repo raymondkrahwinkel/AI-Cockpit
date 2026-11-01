@@ -1,6 +1,7 @@
 using System.Globalization;
 using Cockpit.Core.Abstractions.Events;
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Mcp;
 using Cockpit.Infrastructure.Events;
@@ -38,6 +39,7 @@ internal static class EventsEndpoint
         var caller = McpRequestContext.CurrentNodeCaller ?? throw new InvalidOperationException("An event route ran without a connect-key caller.");
         var sessions = services.GetRequiredService<ISessionRegistry>();
         var pairing = services.GetRequiredService<INodePairingBroker>();
+        var reachable = await NodeCallerSessionPolicy.ReachableProfilesAsync(caller, services.GetService<ISessionProfileStore>(), services.GetService<IProfileLoginChecker>()).ConfigureAwait(false);
         var time = services.GetService<TimeProvider>() ?? TimeProvider.System;
 
         context.Response.ContentType = "text/event-stream";
@@ -79,7 +81,7 @@ internal static class EventsEndpoint
                     if ((evt.PaneId is { } paneId
                             && (string.Equals(sessions.Assistant?.PaneId, paneId, StringComparison.Ordinal)
                                 ? !caller.HoldsAssistant && !swarmAssistant
-                                : !caller.AllowsSession(evt.ProfileLabel ?? string.Empty, evt.ProjectId, pairing)))
+                                : !caller.AllowsSession(evt.ProfileLabel ?? string.Empty, evt.ProjectId, pairing) || !reachable(evt.ProfileLabel ?? string.Empty)))
                         || ((evt.Kind is ProjectsEndpoints.EventKind or PluginEventsBridge.EventKind) && caller.Capability != ConnectKeyCapability.Admin))
                     {
                         next = events.MoveNextAsync().AsTask();

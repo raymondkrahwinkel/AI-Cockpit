@@ -77,8 +77,8 @@ public sealed class RemoteBackendContractTests : BackendContractTests
             await services.GetRequiredService<INodeEndpointSettingsStore>().SaveAsync(new NodeEndpointSettings { Enabled = true, SharedSecret = Guid.NewGuid().ToString("N"), Port = 0 });
             backend.Start();
 
-            var issuer = new NodeCaller("contract", "", ConnectKeyCapability.Admin, "127.0.0.1", CancellationToken.None);
-            var key = await services.GetRequiredService<ConnectKeyVerifier>().IssueAsync("contract", ConnectKeyCapability.Operate, 30, issuer);
+            var issuer = new NodeCaller("contract", "", ConnectKeyCapability.Admin, "127.0.0.1", CancellationToken.None, IssuedToOwner: true);
+            var key = await services.GetRequiredService<ConnectKeyVerifier>().IssueAsync("contract", ConnectKeyCapability.Operate, 30, issuer, issuedToOwner: true);
             var nodeUrl = new Uri(Assert.Single(services.GetRequiredService<CockpitMcpEndpointHost>().GetNodeAddresses()).Url);
             client = new BackendApiClient(new Uri(nodeUrl, "/"), key.Secret, services.GetRequiredService<NodeSelfSignedCertificate>().Fingerprint, TimeProvider.System);
             remote = await RemoteBackend.ConnectAsync(client);

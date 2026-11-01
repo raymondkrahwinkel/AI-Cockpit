@@ -29,6 +29,11 @@ public interface IConnectKeyAdministration
     Task<bool> SetScopeAsync(string prefix, ConnectKeyScope scope, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// AC-2003: marks a key as the owner's own device; false when no live key has <paramref name="prefix"/>.
+    /// </summary>
+    Task<bool> MarkOwnDeviceAsync(string prefix, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// False when <paramref name="address"/> is not locked out.
     /// </summary>
     Task<bool> LiftLockoutAsync(string address, CancellationToken cancellationToken = default);

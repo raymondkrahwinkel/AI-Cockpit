@@ -189,6 +189,9 @@ public sealed partial class ServerAdminViewModel : ObservableObject
 
     public bool CanHoldAssistant => IsIssuing && EditorIssuedToOwner;
 
+    // An older key is marked once, with Save; a mark is not taken back here, the key is revoked instead.
+    public bool CanMarkOwnDevice => IsIssuing || _editing is { Info.IssuedToOwner: false };
+
     public string OwnerHint => "Only your own key starts a profile on your personal subscription. This server is for one person; marking someone else's key as yours is on you.";
 
     public string AssistantHolderHint => Keys.FirstOrDefault(key => key.Info.HoldsAssistant && key.IsLive) is { } holder
@@ -240,6 +243,7 @@ public sealed partial class ServerAdminViewModel : ObservableObject
         EditorIsAdmin = false;
         EditorHoldsAssistant = false;
         EditorIssuedToOwner = false;
+        OnPropertyChanged(nameof(CanMarkOwnDevice));
         EditorExpiresInDays = _keyPolicy.DefaultExpiryDays;
         EditorNeverExpires = false;
         _FillEditor(ConnectKeyScope.Default);
@@ -255,6 +259,7 @@ public sealed partial class ServerAdminViewModel : ObservableObject
         EditorIsAdmin = row.Info.Capability == ConnectKeyCapability.Admin;
         EditorHoldsAssistant = row.Info.HoldsAssistant;
         EditorIssuedToOwner = row.Info.IssuedToOwner;
+        OnPropertyChanged(nameof(CanMarkOwnDevice));
         _FillEditor(row.Info.Scope);
         IsEditorOpen = true;
     }
@@ -287,7 +292,8 @@ public sealed partial class ServerAdminViewModel : ObservableObject
                 return;
             }
 
-            _Replace(row, row.Info with { Scope = scope });
+            var marked = EditorIssuedToOwner && !row.Info.IssuedToOwner && await _admin.MarkOwnDeviceAsync(row.Prefix);
+            _Replace(row, row.Info with { Scope = scope, IssuedToOwner = row.Info.IssuedToOwner || marked });
         }
 
         IsEditorOpen = false;
@@ -899,7 +905,7 @@ public sealed class AuditRowViewModel
         return entry.Outcome switch
         {
             "issued" when entry.Subject is { } prefix && keys.TryGetValue(prefix, out var issued) => $"issued · {issued.Label} ({ServerAdminViewModel.CapabilityName(issued.Capability)})",
-            "issued" or "revoked" or "scope changed" or "cloned" or "clone failed" or "changed" or "removed" => $"{entry.Outcome} · {subject}",
+            "issued" or "revoked" or "scope changed" or "own device" or "cloned" or "clone failed" or "changed" or "removed" => $"{entry.Outcome} · {subject}",
             "copied" => $"assistant profile copied from {subject}",
             "connected" => "connected",
             { } outcome when outcome.StartsWith(lockoutStarted, StringComparison.Ordinal)

@@ -94,7 +94,7 @@
                     <RadioButton GroupName="capability" IsEnabled="{Binding IsIssuing}" IsChecked="{Binding EditorIsAdmin}">
                         <TextBlock TextWrapping="Wrap" Text="admin — also projects, profiles, plugins and keys"/>
                     </RadioButton>
-                    <CheckBox Content="For my own device" IsEnabled="{Binding IsIssuing}" IsChecked="{Binding EditorIssuedToOwner}" Margin="0,4,0,0"/>
+                    <CheckBox Content="For my own device" IsEnabled="{Binding CanMarkOwnDevice}" IsChecked="{Binding EditorIssuedToOwner}" Margin="0,4,0,0"/>
                     <TextBlock Text="{Binding OwnerHint}" FontSize="11.5" TextWrapping="Wrap"
                                Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                     <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">

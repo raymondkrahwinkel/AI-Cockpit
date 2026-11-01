@@ -440,6 +440,8 @@ internal static class ServerAdminScene
 
         public Task<bool> SetScopeAsync(string prefix, ConnectKeyScope scope, CancellationToken cancellationToken = default) => Task.FromResult(true);
 
+        public Task<bool> MarkOwnDeviceAsync(string prefix, CancellationToken cancellationToken = default) => Task.FromResult(true);
+
         public Task<bool> LiftLockoutAsync(string address, CancellationToken cancellationToken = default) => Task.FromResult(true);
 
         public Task<IReadOnlyList<ConnectKeyAuditEntry>> ReadAuditAsync(long? before, int count, CancellationToken cancellationToken = default) =>

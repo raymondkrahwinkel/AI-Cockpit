@@ -685,6 +685,15 @@ public sealed class RemoteAdminJourney
             var borrowed = await Assert.ThrowsAsync<BackendApiException>(() => setup.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/keys", new { label = "journey-borrowed", capability = "operate", holdsAssistant = true }));
             Assert.Equal((HttpStatusCode.Forbidden, NodeCallerSessionPolicy.PersonalLoginRefusal), (personal.Status, personal.Description));
             Assert.Equal((HttpStatusCode.BadRequest, ConnectKeyVerifier.AssistantNeedsOwnerRefusal), (borrowed.Status, borrowed.Description));
+
+            // The way back for a key that is the owner's after all: its scope editor marks it, saved once.
+            await HeadlessAvalonia.RunAsync(async () =>
+            {
+                admin.StartScopeCommand.Execute(admin.Keys.Single(key => key.Label == Phone));
+                admin.EditorIssuedToOwner = true;
+                await admin.SaveEditorCommand.ExecuteAsync(null);
+            });
+            Assert.True(admin.Keys.Single(key => key.Label == Phone).Info.IssuedToOwner, admin.Status);
             using (var streaming = new CancellationTokenSource(Until.Ceiling))
             {
                 var connected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -812,6 +821,7 @@ public sealed class RemoteAdminJourney
                 }),
                 () => audit.Contains((Laptop, $"issued · {Phone} (operate)"))
                     && audit.Contains((Phone, "connected"))
+                    && audit.Contains((Laptop, $"own device · {Phone}"))
                     && audit.Contains((Laptop, $"revoked · {Phone}"))
                     && audit.Contains((Phone, "refused: revoked key"))
                     && audit.Contains((Laptop, $"lockout lifted · {lockedOut}")));
@@ -893,6 +903,7 @@ public sealed class RemoteAdminJourney
             Assert.Equal("", admin.Status);
             Assert.Contains((Laptop, $"issued · {Phone} (operate)"), audit);
             Assert.Single(audit, row => row == (Phone, "connected"));
+            Assert.Contains((Laptop, $"own device · {Phone}"), audit);
             Assert.Contains((Laptop, $"revoked · {Phone}"), audit);
             Assert.Contains((Phone, "refused: revoked key"), audit);
             Assert.Contains((Laptop, $"lockout lifted · {lockedOut}"), audit);

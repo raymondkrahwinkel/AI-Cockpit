@@ -23,7 +23,7 @@ public sealed class SessionsEndpointsTests
 
     private const string Project = "project-allowed";
 
-    private static readonly NodeCaller Operator = new("testtest", "", ConnectKeyCapability.Admin, "127.0.0.1", CancellationToken.None);
+    private static readonly NodeCaller Operator = new("testtest", "", ConnectKeyCapability.Admin, "127.0.0.1", CancellationToken.None, IssuedToOwner: true);
 
     private static readonly ConnectKeyScope OneProject = new() { AllowAllProjects = false, AllowedProjectIds = [Project] };
 
@@ -66,7 +66,7 @@ public sealed class SessionsEndpointsTests
             return true;
         });
         door.Sessions.Register(handle);
-        var key = await verifier.IssueAsync("laptop", ConnectKeyCapability.Operate, 30, Operator, scope: new ConnectKeyScope { MayAnswerPermissions = mayAnswerPermissions });
+        var key = await verifier.IssueAsync("laptop", ConnectKeyCapability.Operate, 30, Operator, scope: new ConnectKeyScope { MayAnswerPermissions = mayAnswerPermissions }, issuedToOwner: true);
 
         var answer = await door.SendAsync(HttpMethod.Post, "/api/v1/sessions/pane-in/permissions/tool-1", key.Secret, answerBody);
         var mode = await door.SendAsync(HttpMethod.Post, "/api/v1/sessions/pane-in/permission-mode", key.Secret, """{"mode":"acceptEdits"}""");
@@ -109,7 +109,7 @@ public sealed class SessionsEndpointsTests
             return true;
         });
         door.Sessions.Register(handle);
-        var key = await verifier.IssueAsync("laptop", ConnectKeyCapability.Operate, 30, Operator, scope: OneProject);
+        var key = await verifier.IssueAsync("laptop", ConnectKeyCapability.Operate, 30, Operator, scope: OneProject, issuedToOwner: true);
 
         var answer = await door.SendAsync(new HttpMethod(method), path, key.Secret, body);
 
@@ -139,7 +139,7 @@ public sealed class SessionsEndpointsTests
                 },
             ],
         });
-        var key = await verifier.IssueAsync("laptop", ConnectKeyCapability.Operate, 30, Operator, scope: OneProject);
+        var key = await verifier.IssueAsync("laptop", ConnectKeyCapability.Operate, 30, Operator, scope: OneProject, issuedToOwner: true);
 
         var answer = await door.SendAsync(HttpMethod.Get, "/api/v1/sessions", key.Secret);
         var sessions = JsonNode.Parse(answer.Body)?["sessions"]?.AsArray() ?? [];

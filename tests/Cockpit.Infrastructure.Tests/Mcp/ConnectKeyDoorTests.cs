@@ -42,7 +42,7 @@ public sealed class ConnectKeyDoorTests
 
     private const string SessionProfile = "Laptop Sonnet";
 
-    private static readonly NodeCaller Operator = new("testtest", "", ConnectKeyCapability.Admin, "127.0.0.1", CancellationToken.None);
+    private static readonly NodeCaller Operator = new("testtest", "", ConnectKeyCapability.Admin, "127.0.0.1", CancellationToken.None, IssuedToOwner: true);
 
     // A key that does not hold the assistant leaves it free: the legacy key below.
     [Fact]
@@ -219,7 +219,7 @@ public sealed class ConnectKeyDoorTests
         door.Read.Sessions.Add(new AssistantSessionRow("pane-a", "the sweep", SessionProfile, "running", null, null));
         await door.StartAsync(_Environment());
         await using var admin = await door.ClientAsync(Bootstrap);
-        var issued = await _CallAsync(admin, "issue_connect_key", new() { ["label"] = "laptop", ["capability"] = "operate", ["expiresInDays"] = 7 });
+        var issued = await _CallAsync(admin, "issue_connect_key", new() { ["label"] = "laptop", ["capability"] = "operate", ["expiresInDays"] = 7, ["issuedToOwner"] = true });
         var key = issued["key"]?.GetValue<string>() ?? "";
         await using var controller = await door.ClientAsync(key);
         var before = await _CallAsync(controller, "list_node_sessions", new());

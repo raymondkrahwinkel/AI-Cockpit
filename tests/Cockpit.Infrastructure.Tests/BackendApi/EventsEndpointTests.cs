@@ -28,7 +28,7 @@ namespace Cockpit.Infrastructure.Tests.BackendApi;
 public sealed class EventsEndpointTests
 {
     private const string Bootstrap = "ck_bootstrapKeyForTheEventsEndpointTests012345678";
-    private static readonly NodeCaller Operator = new("testtest", "", ConnectKeyCapability.Admin, "127.0.0.1", CancellationToken.None);
+    private static readonly NodeCaller Operator = new("testtest", "", ConnectKeyCapability.Admin, "127.0.0.1", CancellationToken.None, IssuedToOwner: true);
 
     [Fact]
     public async Task HeaderAndQueryCursorWriteAnSseFrame()

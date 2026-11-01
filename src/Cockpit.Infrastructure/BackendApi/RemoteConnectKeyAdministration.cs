@@ -22,6 +22,9 @@ internal sealed class RemoteConnectKeyAdministration(BackendApiClient client) : 
     public Task<bool> SetScopeAsync(string prefix, ConnectKeyScope scope, CancellationToken cancellationToken = default) =>
         _FoundAsync(HttpMethod.Put, $"api/v1/keys/{Uri.EscapeDataString(prefix)}/scope", scope, cancellationToken);
 
+    public Task<bool> MarkOwnDeviceAsync(string prefix, CancellationToken cancellationToken = default) =>
+        _FoundAsync(HttpMethod.Put, $"api/v1/keys/{Uri.EscapeDataString(prefix)}/own-device", null, cancellationToken);
+
     public Task<bool> LiftLockoutAsync(string address, CancellationToken cancellationToken = default) =>
         _FoundAsync(HttpMethod.Post, $"api/v1/lockouts/{Uri.EscapeDataString(address)}/lift", null, cancellationToken);
 
