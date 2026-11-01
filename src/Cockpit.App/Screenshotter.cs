@@ -46,10 +46,24 @@ internal static partial class Screenshotter
         session.Apply(new BackgroundTasksChanged
         {
             SessionId = "s1",
-            Tasks =
+            Children =
             [
-                new BackgroundTask("agent-1", BackgroundTaskKind.SubAgent, "Review the session driver changes"),
-                new BackgroundTask("agent-2", BackgroundTaskKind.SubAgent, "Check the Background pop-out and tests"),
+                new BackgroundTask("agent-1", BackgroundTaskKind.SubAgent, "Review the session driver changes")
+                {
+                    LastTool = "Bash", Tokens = 18400,
+                },
+                new BackgroundTask("agent-2", BackgroundTaskKind.SubAgent, "Check the Background pop-out and tests")
+                {
+                    LastTool = "mcp__Depot__depot_krahwinkel-it_nl__read_many", Tokens = 90700,
+                },
+                new BackgroundTask("agent-3", BackgroundTaskKind.SubAgent, "Review the parser")
+                {
+                    State = "completed", LastTool = "Bash", Tokens = 31200,
+                },
+                new BackgroundTask("agent-4", BackgroundTaskKind.SubAgent, "Read the project decisions")
+                {
+                    State = "completed", LastTool = "mcp__Depot__depot_krahwinkel-it_nl__read_many", Tokens = 90700,
+                },
             ],
         });
         return new Window { Width = 450, Height = 300, Content = new Controls.BackgroundWorkList { DataContext = session } };

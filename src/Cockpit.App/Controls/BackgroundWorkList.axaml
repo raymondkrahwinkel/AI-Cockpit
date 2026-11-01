@@ -49,10 +49,10 @@
                                         <TextBlock Text="{Binding TimeText}" FontSize="11.5" HorizontalAlignment="Right"/>
                                         <TextBlock Text="{Binding StatusText}" FontSize="10" HorizontalAlignment="Right" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                     </StackPanel>
-                                    <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
-                                        <TextBlock Text="{Binding LastToolText, StringFormat='Last tool: {0}'}" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
-                                        <TextBlock Text="{Binding TokensText, StringFormat='· Tokens: {0}'}" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
-                                    </StackPanel>
+                                    <Grid Grid.Row="1" Grid.Column="1" ColumnDefinitions="*,Auto" Margin="0,4,0,0">
+                                        <TextBlock Text="{Binding LastToolText, StringFormat='Last tool: {0}'}" FontSize="11" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding LastToolText}" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                        <TextBlock Grid.Column="1" Margin="8,0,0,0" Text="{Binding TokensText, StringFormat='· Tokens: {0}'}" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                    </Grid>
                                     <TextBlock Grid.Row="1" Grid.Column="2" Text="Open ›" FontSize="11" Margin="8,4,0,0" HorizontalAlignment="Right" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                 </Grid>
                             </Button>
