@@ -3,6 +3,7 @@ using System.Text.Json;
 using Avalonia.Controls;
 using Avalonia.LogicalTree;
 using Cockpit.Plugin.Depot.Contracts;
+using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.UI;
 
@@ -10,10 +11,11 @@ namespace Cockpit.Plugin.Depot.UI;
 
 // AC-2010: the whole Depot panel (header, tabs, Files, Notes, Inbox) on fixture data, for `--scene plugin:<name>`.
 // The host is a proxy that answers every call with a default; only the channel carries fixture data.
-internal sealed class DepotPanelScene : DispatchProxy
+internal class DepotPanelScene : DispatchProxy
 {
     private static readonly DepotBrowserProject _Project = new("eve-workbench/eve-workbench", "EVE Workbench", "Editor");
     private static readonly DateTimeOffset _Modified = new(2026, 10, 24, 16, 12, 0, TimeSpan.Zero);
+    private readonly SceneStorage _storage = new();
     private IPluginUiChannel? _channel;
 
     public static Control Build(int tab)
@@ -26,7 +28,7 @@ internal sealed class DepotPanelScene : DispatchProxy
 
         var channel = new SceneChannel();
         proxy._channel = channel;
-        var panel = new DepotBrowserPanel(host, [new("work", "Work", "https://depot.krahwinkel-it.nl")]);
+        var panel = new DepotBrowserPanel(host, [new("work", "krahwinkel-it", "https://depot.krahwinkel-it.nl"), new("home", "Homelab", "https://depot.home.example")]);
         panel.GetLogicalDescendants().OfType<TabControl>().First().SelectedIndex = tab;
         return panel;
     }
@@ -44,6 +46,11 @@ internal sealed class DepotPanelScene : DispatchProxy
             return _channel;
         }
 
+        if (type == typeof(IPluginStorage))
+        {
+            return _storage;
+        }
+
         if (type == typeof(Task))
         {
             return Task.CompletedTask;
@@ -52,13 +59,25 @@ internal sealed class DepotPanelScene : DispatchProxy
         if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Task<>))
         {
             var result = type.GetGenericArguments()[0];
-            var value = result.IsGenericType && result.GetGenericArguments().Length == 1
-                ? Array.CreateInstance(result.GetGenericArguments()[0], 0)
-                : result.IsValueType ? Activator.CreateInstance(result) : null;
-            return typeof(Task).GetMethod(nameof(Task.FromResult))?.MakeGenericMethod(result).Invoke(null, [value]);
+            return typeof(Task).GetMethod(nameof(Task.FromResult))?.MakeGenericMethod(result).Invoke(null, [_Default(result)]);
         }
 
-        return type.IsValueType ? Activator.CreateInstance(type) : null;
+        return _Default(type);
+    }
+
+    private static object? _Default(Type type) => type.IsValueType
+        ? Activator.CreateInstance(type)
+        : type.IsGenericType && type.GetGenericArguments().Length == 1 ? Array.CreateInstance(type.GetGenericArguments()[0], 0) : null;
+
+    private sealed class SceneStorage : IPluginStorage
+    {
+        private readonly Dictionary<string, object?> _values = [];
+
+        public T? Get<T>(string key) => _values.TryGetValue(key, out var value) && value is T typed ? typed : default;
+
+        public void Set<T>(string key, T value) => _values[key] = value;
+
+        public void Remove(string key) => _values.Remove(key);
     }
 
     private sealed class SceneChannel : IPluginUiChannel
