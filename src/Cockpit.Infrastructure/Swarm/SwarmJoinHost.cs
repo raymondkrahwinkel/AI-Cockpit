@@ -3,9 +3,7 @@ using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Mcp;
-using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Mcp;
-using Cockpit.Core.Notifications;
 using Cockpit.Core.Swarm;
 using Cockpit.Infrastructure.Mcp;
 using Microsoft.AspNetCore.Builder;
@@ -23,9 +21,7 @@ internal sealed class SwarmJoinHost(
     ConnectKeyVerifier keys,
     INodeEndpointSettingsStore settings,
     IMcpServerStore servers,
-    IEnumerable<ICockpitInternalMcpProvider> endpoints,
-    IToastNotifier toast,
-    NodeControllerPresence presence) : ISingletonService
+    IEnumerable<ICockpitInternalMcpProvider> endpoints) : ISingletonService
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private State? _state;
@@ -65,23 +61,7 @@ internal sealed class SwarmJoinHost(
     {
         var group = SwarmNetworkPolicy.MapGroup(routes, services);
         group.MapPost("/request", (Delegate)((HttpContext context) => _HandleAsync(context, async () =>
-            await RequestAsync(await _ReadAsync<SwarmJoinRequest>(context), false, context.RequestAborted))));
-        group.MapPost("/migrate", (Delegate)((HttpContext context) => _HandleAsync(context, async () =>
-        {
-            _Desktop();
-            var current = await settings.LoadAsync(context.RequestAborted);
-            var token = context.Request.Headers.Authorization.ToString();
-            if (token.StartsWith("Bearer ", StringComparison.Ordinal))
-            {
-                token = token[7..];
-            }
-            var caller = await keys.AuthenticateAsync(token, current.SharedSecret, context.Connection.RemoteIpAddress?.ToString() ?? throw new InvalidOperationException("The request has no remote address."), context.RequestAborted);
-            if (caller is null || (caller.ByConnectKey
-                ? presence.Current?.KeyPrefix != caller.KeyPrefix
-                : current.Pairing is null))
-                throw NodePairingException.For(NodePairingError.InvalidToken, "Migration requires the paired controller's credential.");
-            return await RequestAsync(await _ReadAsync<SwarmJoinRequest>(context), true, context.RequestAborted);
-        })));
+            await RequestAsync(await _ReadAsync<SwarmJoinRequest>(context), context.RequestAborted))));
         group.MapPost("/join", (Delegate)((HttpContext context) => _HandleAsync(context, async () =>
             await PrepareAsync(await _ReadAsync<SwarmJoinPrepare>(context), context.RequestAborted))));
         group.MapPost("/join/commit", (Delegate)((HttpContext context) => _HandleAsync(context, async () =>
@@ -132,7 +112,7 @@ internal sealed class SwarmJoinHost(
         }
     }
 
-    internal async Task<NodePairingOffer> RequestAsync(SwarmJoinRequest request, bool migration, CancellationToken ct)
+    internal async Task<NodePairingOffer> RequestAsync(SwarmJoinRequest request, CancellationToken ct)
     {
         _Desktop();
         using var peer = X509CertificateLoader.LoadCertificate(request.Certificate);
@@ -143,17 +123,6 @@ internal sealed class SwarmJoinHost(
             {
                 throw NodePairingException.For(NodePairingError.PairingInProgress, "Another join is waiting.");
             }
-            if (!migration)
-            {
-                if ((await settings.LoadAsync(ct)).Pairing is not null)
-                {
-                    throw NodePairingException.For(NodePairingError.AlreadyPaired, "Migrate the existing controller connection first.");
-                }
-                if ((await servers.LoadAsync(ct)).Any(server => server.IsNodeConnection))
-                {
-                    throw NodePairingException.For(NodePairingError.IsAController, "Migrate the existing node connections first.");
-                }
-            }
             var current = await membership.LoadAsync(ct);
             if (current.Sequence != 0 && !current.Tombstones.Any(item => item.Member == identity.MemberId))
             {
@@ -161,7 +130,7 @@ internal sealed class SwarmJoinHost(
             }
             var offer = new NodePairingOffer(Guid.NewGuid().ToString("N"), Convert.ToHexString(RandomNumberGenerator.GetBytes(32)),
                 Convert.ToHexString(RandomNumberGenerator.GetBytes(16)), Name, Time.GetUtcNow() + NodePairingBroker.Lifetime);
-            _state = new(request, offer) { Confirmed = migration, Migration = migration };
+            _state = new(request, offer);
             return offer;
         }
         finally { _gate.Release(); }
@@ -251,10 +220,6 @@ internal sealed class SwarmJoinHost(
             var transport = await IssueTransportAsync(state.Register.Members.Single(member => member.Id == SwarmMemberId.FromPublicKey(peer.PublicKey.ExportSubjectPublicKeyInfo())), ct);
             membership.Save(state.Register);
             state.Used = true;
-            if (state.Migration)
-            {
-                await NotifyAsync(state.Request.Name, ct);
-            }
             return transport;
         }
         finally { _gate.Release(); }
@@ -279,8 +244,6 @@ internal sealed class SwarmJoinHost(
         });
         await servers.SaveAsync([.. known.Where(server => !server.Name.StartsWith(NodeServerName.PrefixFor(name), StringComparison.Ordinal)), .. added], ct);
     }
-
-    internal Task NotifyAsync(string name, CancellationToken ct) => toast.NotifyAsync(new AttentionNotification("Swarm", $"{name} is now a member of your swarm"), ct);
 
     private static async Task<T> _ReadAsync<T>(HttpContext context) where T : class =>
         await context.Request.ReadFromJsonAsync<T>(SwarmRecordJson.Options, context.RequestAborted)
@@ -307,7 +270,6 @@ internal sealed class SwarmJoinHost(
         public bool Confirmed { get; set; }
         public bool Refused { get; set; }
         public bool Used { get; set; }
-        public bool Migration { get; set; }
         public SwarmMembership? Register { get; set; }
         public SwarmRecord? Proposal { get; set; }
     }

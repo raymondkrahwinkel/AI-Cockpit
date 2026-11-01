@@ -30,9 +30,7 @@ internal sealed class SwarmJoinClient(
     public Task<IReadOnlyList<NodeDiscoveryFound>> FindAsync(TimeSpan timeout, CancellationToken ct = default) =>
         discovery.FindAsync(timeout, network.IsAllowedAsync, ct);
 
-    public Task<SwarmJoinHandshake> BeginAsync(string address, CancellationToken ct = default) => _BeginAsync(address, null, null, ct);
-
-    internal async Task<SwarmJoinHandshake> _BeginAsync(string address, string? credential, string? expectedPin, CancellationToken ct)
+    public async Task<SwarmJoinHandshake> BeginAsync(string address, CancellationToken ct = default)
     {
         if (host.Kind == SwarmHostKind.Server)
         {
@@ -57,21 +55,13 @@ internal sealed class SwarmJoinClient(
                 return false;
             }
             pin = NodeCertificatePin.FingerprintOf(remote);
-            if (expectedPin is not null && !ConnectKeyVerifier.ConstantTimeEquals(pin, expectedPin))
-            {
-                return false;
-            }
             using var peer = X509CertificateLoader.LoadCertificate(remote.GetRawCertData());
             publicKey = peer.PublicKey.ExportSubjectPublicKeyInfo();
             return true;
         };
         using var client = new HttpClient(handler) { BaseAddress = uri, Timeout = NodeConnectionFailure.DefaultBudget };
-        if (credential is not null)
-        {
-            client.DefaultRequestHeaders.Authorization = new("Bearer", credential);
-        }
         var request = new SwarmJoinRequest(local.Name, certificate.Value.RawData, "");
-        var offer = await _PostAsync<SwarmJoinRequest, NodePairingOffer>(client, credential is null ? "swarm/request" : "swarm/migrate", request, ct);
+        var offer = await _PostAsync<SwarmJoinRequest, NodePairingOffer>(client, "swarm/request", request, ct);
         if (pin is null || publicKey is null)
         {
             throw NodePairingException.For(NodePairingError.InvalidToken, "No TLS identity.");

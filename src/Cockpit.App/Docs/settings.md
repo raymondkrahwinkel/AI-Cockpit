@@ -151,22 +151,15 @@ These settings save with Apply; Cancel does not undo a completed pairing.
 
 ## Servers {#servers}
 
-**Options › Servers** is the headless-server management page, previously called Admin. Choose
-**Manage server** beside a connected server to open its connect keys, plugins, profiles, projects and
-audit log. Management requires an admin key; an operate key cannot change these settings. Searching
-for either “servers” or “admin” finds the page. The Servers action on a sidebar server group opens
-the same management window.
+**Options › Servers** is where you connect to a headless Cockpit server and manage it. Under
+**Connect to a server**, enter the server's address, a connect key and its certificate fingerprint; the
+connection is saved only once all three work together. **Connected servers** shows one card per server
+with its status and version: Disconnect closes the connection while the server's sessions keep running, and
+**Manage server** opens its connect keys, plugins, profiles, projects and audit log. Management requires an
+admin key; an operate key cannot change these settings. Searching for either “servers” or “admin” finds
+the page. The Servers action on a sidebar server group opens the same management window.
 
-Headless servers keep their existing connect-key connection; they are separate from desktop pairing.
-Use **Nodes › Connect to a server** to establish that connection first.
-
-## Nodes {#nodes}
-
-Pairing this cockpit with another one, so the two can share MCP access and so sessions can run on the other
-machine. Both halves are here: whether this cockpit accepts connections, and pairing with one that does.
-
-Pairing is deliberately a two-sided act with a code and a pinned certificate. A node is another computer
-running your work.
+Your desktops connect to each other in [Swarm](#swarm), not here.
 
 ## Backup {#backup}
 

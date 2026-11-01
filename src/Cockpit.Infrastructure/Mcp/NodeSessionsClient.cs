@@ -449,23 +449,11 @@ internal sealed class NodeSessionsClient(
         var wanted = NodeServerName.For(nodeName, NodeServerName.SessionsServerName);
         var server = known.FirstOrDefault(candidate => string.Equals(candidate.Name, wanted, StringComparison.Ordinal))
             ?? throw new InvalidOperationException(
-                $"No session connection is saved for '{nodeName}'. Connect to the server from Options → Nodes.");
+                $"No session connection is saved for '{nodeName}'. Connect to the server from Options › Servers.");
 
         try
         {
-            var connection = await _OpenAsync(server, cancellationToken).ConfigureAwait(false);
-            try
-            {
-                if (services?.GetService<Swarm.SwarmMigration>() is { } migration)
-                {
-                    await migration.OnConnectedAsync(server, cancellationToken).ConfigureAwait(false);
-                }
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                logger.LogWarning(ex, "Swarm migration did not finish; keeping the existing node connection.");
-            }
-            return connection;
+            return await _OpenAsync(server, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {

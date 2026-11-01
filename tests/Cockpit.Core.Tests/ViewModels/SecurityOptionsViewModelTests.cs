@@ -35,7 +35,6 @@ public class SecurityOptionsViewModelTests
         await vm.RefreshAsync();
 
         Assert.Equal("", vm.NodePairingAddress);
-        Assert.Contains("port 21289 is already in use", vm.NodeEndpointNoListenerText, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -99,51 +98,6 @@ public class SecurityOptionsViewModelTests
         Assert.False(saved.Enabled);
         Assert.NotNull(saved.Pairing);
         Assert.Equal("Raymond's desktop", saved.Pairing!.ControllerName);
-    }
-
-    [Fact]
-    public async Task TogglingTheNodeSwitch_DoesNotResurrectAKeyThatWasRevokedMeanwhile()
-    {
-        var store = new FakeNodeEndpointSettingsStore(new NodeEndpointSettings { Enabled = true, SharedSecret = "granted-by-pairing" });
-        var vm = new SecurityOptionsViewModel(new FakeProtection(), nodeEndpointSettings: store);
-        await vm.RefreshAsync();
-
-        // The far end unpaired while this tab sat open: the stored secret is gone, the view model's copy is not.
-        await store.SaveAsync(new NodeEndpointSettings { Enabled = true, SharedSecret = "" });
-
-        vm.NodeEndpointEnabled = false;
-        await Task.Yield();
-
-        // Writing the cached copy back would put a revoked credential on disk, where the next launch would seed
-        // the listener from it — the controller silently let back in.
-        var saved = await store.LoadAsync();
-        Assert.NotEqual("granted-by-pairing", saved.SharedSecret);
-    }
-
-    [Theory]
-    // The staged row is the reported case: the Options dialog holds this toggle with SuspendPersistence, so the
-    // change handler returned before it ever recomputed what the two address fields say.
-    [InlineData(true, "", null, true, "restart Cockpit")]
-    [InlineData(false, "", null, true, "restart Cockpit")]
-    [InlineData(true, "https://192.168.1.20:7401/mcp", null, false, "")]
-    // AC-1288: the host knows the port is taken, and then a restart is exactly what does not help.
-    [InlineData(true, "", "Not listening on the network: port 20383 is already in use", true, "already in use")]
-    public async Task TurningTheNodeSwitchOn_SaysWhyNoListenerAnswers(
-        bool staged, string liveAddress, string? listenerError, bool expectedHasNoListener, string expectedText)
-    {
-        var store = new FakeNodeEndpointSettingsStore(new NodeEndpointSettings { Enabled = false, SharedSecret = "kept" });
-        var vm = new SecurityOptionsViewModel(
-            new FakeProtection(),
-            nodeEndpointSettings: store,
-            mcpEndpointHosts: [new FakeNodeAddressHost(liveAddress, listenerError)]);
-        await vm.RefreshAsync();
-        vm.SuspendPersistence = staged;
-
-        vm.NodeEndpointEnabled = true;
-        await Task.Yield();
-
-        Assert.Equal(expectedHasNoListener, vm.NodeEndpointHasNoListener);
-        Assert.Contains(expectedText, vm.NodeEndpointNoListenerText, StringComparison.Ordinal);
     }
 
     // AC-1352: connect writes pinned local rows and replaces the previous connection.
@@ -254,35 +208,6 @@ public class SecurityOptionsViewModelTests
         }
     }
 
-    [Fact]
-    public async Task RefreshAsync_LoadsTheDiscoveryWhitelist_AsCommaSeparatedText()
-    {
-        var store = new FakeNodeEndpointSettingsStore(new NodeEndpointSettings
-        {
-            Enabled = true,
-            AllowedDiscoveryRanges = ["203.0.113.0/24", "198.51.100.0/24"],
-        });
-
-        var vm = new SecurityOptionsViewModel(new FakeProtection(), nodeEndpointSettings: store);
-        await vm.RefreshAsync();
-
-        Assert.Equal("203.0.113.0/24, 198.51.100.0/24", vm.AllowedDiscoveryRangesText);
-    }
-
-    [Fact]
-    public async Task EditingTheDiscoveryWhitelistText_PersistsTheParsedRanges()
-    {
-        var store = new FakeNodeEndpointSettingsStore(new NodeEndpointSettings { Enabled = true });
-        var vm = new SecurityOptionsViewModel(new FakeProtection(), nodeEndpointSettings: store);
-        await vm.RefreshAsync();
-
-        vm.AllowedDiscoveryRangesText = "203.0.113.0/24,  198.51.100.0/24 ,, ";
-        await Task.Yield();
-
-        var saved = await store.LoadAsync();
-        Assert.Equal(["203.0.113.0/24", "198.51.100.0/24"], saved.AllowedDiscoveryRanges);
-    }
-
     /// <summary>
     /// AC-1286, the reported loss: a refresh that lands while the Options dialog is staging used to overwrite the
     /// tick with the disk value, and Apply then wrote that old value back. The measured sequence was tick → Apply =
@@ -311,30 +236,6 @@ public class SecurityOptionsViewModelTests
         await vm.SaveStagedAsync();
 
         Assert.Equal(expectedOnDisk, (await store.LoadAsync()).Enabled);
-    }
-
-    /// <summary>
-    /// AC-1286's second, deterministic loss: the node handlers read-modify-write the same section, and with a store
-    /// that takes its time the ranges handler used to load while the switch was still saving and write the old
-    /// switch back over it — measured as `Enabled = False` with the ranges landing. The row without ranges is the
-    /// positive control: the same switch, the same store, nothing racing it.
-    /// </summary>
-    [Theory]
-    [InlineData("", 0)]
-    [InlineData("10.0.0.0/8", 1)]
-    public async Task TwoNodeSettingsChangedInARow_KeepBoth(string ranges, int expectedRanges)
-    {
-        var store = new SlowNodeEndpointSettingsStore(TimeSpan.FromMilliseconds(50));
-        var vm = new SecurityOptionsViewModel(new FakeProtection(), nodeEndpointSettings: store);
-        await vm.RefreshAsync();
-
-        vm.NodeEndpointEnabled = true;
-        vm.AllowedDiscoveryRangesText = ranges;
-        await vm.PendingWrites;
-
-        var settled = await store.LoadAsync();
-        Assert.True(settled.Enabled);
-        Assert.Equal(expectedRanges, settled.AllowedDiscoveryRanges.Count);
     }
 
     /// <summary>
@@ -373,7 +274,7 @@ public class SecurityOptionsViewModelTests
 
         Assert.Contains("Not saved", vm.PersistError, StringComparison.Ordinal);
         Assert.Contains("the disk is not having it", vm.PersistError, StringComparison.Ordinal);
-        Assert.Equal("nodes", vm.PersistErrorCategoryTag);
+        Assert.Equal("swarm", vm.PersistErrorCategoryTag);
 
         store.Fails = false;
         await vm.SaveStagedAsync();
@@ -529,31 +430,6 @@ public class SecurityOptionsViewModelTests
         {
             _servers = value;
             return Task.CompletedTask;
-        }
-    }
-
-    private sealed class FakeNodeAddressHost(string url, string? listenerError = null) : ICockpitInternalMcpProvider
-    {
-        public IReadOnlyList<McpServerConfig> GetServers() => [];
-
-        public IReadOnlyList<NodeEndpointAddress> GetNodeAddresses() =>
-            new[] { new NodeEndpointAddress("cockpit-agents", url) }.Where(a => a.Url.Length > 0).ToList();
-
-        public string? NodeListenerError { get; } = listenerError;
-    }
-
-    // Slow enough that a second handler's own load lands inside the first one's save — the shape the lost update
-    // needed, without a test that depends on how fast this machine is.
-    private sealed class SlowNodeEndpointSettingsStore(TimeSpan delay) : INodeEndpointSettingsStore
-    {
-        private NodeEndpointSettings _settings = new() { Enabled = false, SharedSecret = "kept" };
-
-        public Task<NodeEndpointSettings> LoadAsync(CancellationToken cancellationToken = default) => Task.FromResult(_settings);
-
-        public async Task SaveAsync(NodeEndpointSettings value, CancellationToken cancellationToken = default)
-        {
-            await Task.Delay(delay, cancellationToken);
-            _settings = value;
         }
     }
 

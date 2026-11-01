@@ -7,20 +7,26 @@ public class SwarmJoinTests
 {
     public static TheoryData<string> Outcomes => new()
     {
-        "confirmed", "refused", "expired", "pending", "mesh", "offline",
-        "migration:secret", "migration:key", "migration:stranger", "migration:other-key", "migration:server", "migration:server-join",
+        "confirmed", "refused", "expired", "pending", "mesh", "offline", "node-connection",
     };
 
     [Theory]
     [MemberData(nameof(Outcomes))]
     public async Task JoinRequiresBothOperatorsAndGrantsBothDirections(string outcome)
     {
-        if (outcome.StartsWith("migration:", StringComparison.Ordinal))
-        {
-            await SwarmMigrationTests.OnlyTheExistingDesktopControllerCanMigrate(outcome[10..]);
-            return;
-        }
         await using var pair = await SwarmJoinFixture.CreateAsync();
+        // AC-1985: an existing master/node connection never blocks a join and stays beside the swarm.
+        McpServerConfig[] legacy =
+        [
+            new() { Name = NodeServerName.For("Desktop", NodeServerName.SessionsServerName), IsNodeConnection = true, ApiKey = "pairing-secret" },
+            new() { Name = NodeServerName.For("Server", NodeServerName.SessionsServerName), IsNodeConnection = true, ApiKey = "ck_server", Url = "https://10.0.0.2:20383/mcp" },
+        ];
+        if (outcome == "node-connection")
+        {
+            await pair.B.Servers.SaveAsync(legacy);
+            var settings = await pair.B.Settings.LoadAsync();
+            await pair.B.Settings.SaveAsync(settings with { Pairing = new NodePairing { ControllerName = "controller", ControllerAddress = "127.0.0.1", PairedAtUtc = DateTimeOffset.UtcNow } });
+        }
         await using var third = await SwarmJoinFixture.Machine.CreateAsync(pair.Time, SwarmHostKind.Desktop);
         if (outcome is "mesh" or "offline")
         {
@@ -37,7 +43,7 @@ public class SwarmJoinTests
         Assert.Equal(6, handshake.Code.Length);
         Assert.Equal(pair.B.Identity.MemberId, SwarmMemberId.FromPublicKey(handshake.PublicKey));
         Assert.NotEqual(pair.B.Certificate.Fingerprint, pair.B.Identity.MemberId.Value);
-        if (outcome is "confirmed" or "mesh" or "offline")
+        if (outcome is "confirmed" or "mesh" or "offline" or "node-connection")
         {
             pair.B.Join.Confirm(handshake.Offer.PairingId);
             await pair.A.Client.CompleteAsync(handshake);
@@ -52,6 +58,11 @@ public class SwarmJoinTests
             {
                 Assert.Equal(2, (await pair.B.Servers.LoadAsync()).Count);
                 Assert.Equal(2, (await third.Servers.LoadAsync()).Count);
+            }
+            if (outcome == "node-connection")
+            {
+                var kept = await pair.B.Servers.LoadAsync();
+                Assert.All(legacy, row => Assert.Contains(kept, server => server.Name == row.Name));
             }
         }
         else

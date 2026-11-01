@@ -386,8 +386,9 @@ internal static partial class Screenshotter
         ["options-swarm-settings"] = (_, _) => _OptionsSwarm(),
         ["options-swarm-incoming"] = (_, _) => _OptionsSwarm(incoming: true),
         // AC-1458: the connect form after a connect that went through — they match, and Connected; and the four
-        // connection statuses beside the four outcomes, each drawn by the same view the Nodes page uses.
-        ["options-nodes-connect"] = (_, _) => _OptionsNodesConnect(),
+        // connection statuses beside the four outcomes, each drawn by the same view the Servers page uses.
+        ["options-servers"] = (_, _) => _OptionsServers(connected: true),
+        ["options-servers-disconnected"] = (_, _) => _OptionsServers(connected: false),
         ["options-nodes-status"] = (width, height) => _NodesConnectionStatus(width, height),
         // AC-1456: a connect server as a group in the session list, by an admin key and by a scoped operate key.
         // AC-1762: the sidebar's foldable sections, open and with This laptop and the server folded, beside mockup v8.
@@ -1453,7 +1454,6 @@ internal static partial class Screenshotter
         ["assistant-threads-docked-280-picker"] = window => _Named<ComboBox>(window, "ThreadPicker").IsDropDownOpen = true,
         ["simple-view-conversation-details"] = window => _OpenFlyout(window.GetVisualDescendants().OfType<Controls.SimpleConversationHeader>().First(header => header.IsEffectivelyVisible), "DetailsButton"),
         // AC-1984: show Accept and Connect together after removing the desktop-pairing block.
-        ["options-nodes-connect"] = window => _ScrollIntoView(window, "nodes", "1. ACCEPT CONNECTIONS FROM A SECOND COCKPIT"),
         ["options-swarm-settings"] = window => _ScrollIntoView(window, "swarm", "Internal network only"),
         ["options-swarm-invalid-cidr"] = window => _ScrollIntoView(window, "swarm", "Internal network only"),
         ["options-swarm-incoming"] = window => _ScrollIntoView(window, "swarm", "Internal network only"),
@@ -2216,16 +2216,17 @@ internal static partial class Screenshotter
         public Task SaveAsync(UsageThresholdSettings settings, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
-    private static OptionsDialog _OptionsNodesConnect()
+    // AC-2011: the Servers page with one server, connected or with its stream lost.
+    private static OptionsDialog _OptionsServers(bool connected)
     {
-        var security = _ConnectAttempt(null, ServerGroupScene.StandIn());
+        var key = new Core.Abstractions.Remote.RemoteServerKey("laptop-raymond", "admin", true, "laptop-raymond", "0.66.0", null);
+        var servers = ServerGroupScene.StandIn("huis-cockpit", new Core.Abstractions.Remote.RemoteServerState(connected, 38, key));
+        var security = _ConnectAttempt(null, servers);
         security.CancelConnectCommand.Execute(null);
-        security.NodeEndpointEnabled = true;
-        security.NodeEndpointAddressText = "cockpit-agents: https://huis-cockpit.tailnet.ts.net:20383/mcp";
-        security.NodeEndpointSharedSecret = "scene-shared-key";
-        security.NodeEndpointHasNoListener = false;
-        var dialog = new OptionsDialog { DataContext = new ViewModels.CockpitViewModel { Security = security }, Height = 1500 };
-        dialog.SelectCategory("nodes");
+        var cockpit = new ViewModels.CockpitViewModel { Security = security };
+        cockpit.ShowServers(servers, SessionViewModel.OverRemoteAsync);
+        var dialog = new OptionsDialog { DataContext = cockpit, Height = 1500 };
+        dialog.SelectCategory("servers");
         return dialog;
     }
 

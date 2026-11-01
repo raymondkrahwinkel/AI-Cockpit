@@ -23,7 +23,7 @@ internal sealed record NodeListenAddress(System.Net.IPAddress Value);
 
 // AC-13/AC-12: hosts one loopback MCP server per cockpit endpoint, mounted at startup or by a plugin via
 // MountAsync; not written into the user-managed registry (AC-40). AC-790/AC-791/AC-856: with the node switch on,
-// a NodeOnly endpoint — and only that — also gets an HTTPS listener guarded by a persistent shared secret.
+// a NodeOnly endpoint — and only that — also gets an HTTPS listener guarded by connect keys (AC-1985).
 internal sealed class CockpitMcpEndpointHost
     : IHostedService, ICockpitMcpEndpointHost, ICockpitInternalMcpProvider, ISingletonService, IAsyncDisposable
 {
@@ -33,7 +33,6 @@ internal sealed class CockpitMcpEndpointHost
     private readonly SessionMcpKeyring _keyring;
     private readonly INodeEndpointSettingsStore _nodeEndpointSettings;
     private readonly NodeSelfSignedCertificate _nodeCertificate;
-    private readonly NodeSharedSecret _nodeSharedSecret;
     private readonly SessionMcpMounts _mounts;
     private readonly System.Net.IPAddress _nodeListenAddress;
     private readonly ILoggerFactory _loggerFactory;
@@ -56,7 +55,6 @@ internal sealed class CockpitMcpEndpointHost
 
     // Whether the live shared-secret holder has been seeded from disk — see `MountAsync` for why this is a flag
     // and not just a comment. Guarded by `_mountGate`, like the mount it belongs to.
-    private bool _nodeSecretSeeded;
 
     public CockpitMcpEndpointHost(
         IEnumerable<CockpitMcpEndpoint> endpoints,
@@ -65,7 +63,6 @@ internal sealed class CockpitMcpEndpointHost
         SessionMcpKeyring keyring,
         INodeEndpointSettingsStore nodeEndpointSettings,
         NodeSelfSignedCertificate nodeCertificate,
-        NodeSharedSecret nodeSharedSecret,
         SessionMcpMounts mounts,
         ILoggerFactory loggerFactory,
         NodeListenAddress? nodeListenAddress = null)
@@ -76,7 +73,6 @@ internal sealed class CockpitMcpEndpointHost
         _keyring = keyring;
         _nodeEndpointSettings = nodeEndpointSettings;
         _nodeCertificate = nodeCertificate;
-        _nodeSharedSecret = nodeSharedSecret;
         _mounts = mounts;
         _nodeListenAddress = nodeListenAddress?.Value ?? System.Net.IPAddress.Any;
         _loggerFactory = loggerFactory;
@@ -205,8 +201,8 @@ internal sealed class CockpitMcpEndpointHost
                 options.Listen(System.Net.IPAddress.Loopback, 0);
                 if (bindNodeListener)
                 {
-                    // A second, network-reachable listener next to the loopback one (AC-790), guarded by the persistent
-                    // shared secret rather than this run's ephemeral McpAuthKey — see McpAuthMiddleware.Require below.
+                    // A second, network-reachable listener next to the loopback one (AC-790), guarded by connect keys
+                    // rather than this run's ephemeral McpAuthKey — see McpAuthMiddleware.Require below.
                     // AC-1284: on the configured port, so the URL a controller stored survives this node restarting.
 
                     // ponytail: one fixed port for every NodeOnly endpoint — a second one would collide and lose its
@@ -214,17 +210,6 @@ internal sealed class CockpitMcpEndpointHost
                     options.Listen(_nodeListenAddress, nodeSettings.McpPort, listenOptions => listenOptions.UseHttps(_nodeCertificate.Value));
                 }
             });
-
-            // Keyed on the master switch, not on this mount's own listener: AC-856 left one endpoint binding, and
-            // hanging the seeding off that would make the live credential depend on cockpit-node happening to
-            // mount — a mount `StartAsync` swallows the failure of.
-            if (nodeSettings.Enabled && !_nodeSecretSeeded)
-            {
-                // AC-792: seed the live holder from disk only once — MountAsync may run long after startup, and
-                // repeating this would overwrite _nodeSettings with a secret since rotated or cleared.
-                _nodeSharedSecret.Set(nodeSettings.SharedSecret);
-                _nodeSecretSeeded = true;
-            }
 
             // AC-1351: loaded before the listener takes a request, so a bad bootstrap key is in the log at startup.
             var connectKeys = bindNodeListener ? _services.GetService<ConnectKeyVerifier>() : null;
@@ -249,7 +234,6 @@ internal sealed class CockpitMcpEndpointHost
                 _authKey,
                 _keyring,
                 paneId => _AuthorizeAsync(paneId, serverName, enabled, nodeOnly),
-                bindNodeListener ? _nodeSharedSecret : null,
                 connectKeys);
             app.MapMcp("/mcp");
 
@@ -413,7 +397,7 @@ internal sealed class CockpitMcpEndpointHost
     }
 
     // AC-1288: see MountAsync. Set while the mount gate is held, read from the UI thread — a reference
-    // assignment, and the Nodes tab reads it after the mount it belongs to has long finished.
+    // assignment, and the Servers page reads it after the mount it belongs to has long finished.
     public string? NodeListenerError { get; private set; }
 
     // Probed rather than caught, so a held port costs the network listener and not the endpoint: by the time

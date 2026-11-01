@@ -162,7 +162,7 @@ public sealed class RemoteAdminJourney
                 var manage = options.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "Manage server"));
                 Assert.NotNull(manage.Command);
                 manage.Command.Execute(manage.CommandParameter);
-                adminClosed = view.OpenServerAdminCommand.ExecutionTask
+                adminClosed = view.OpenServerAdminByNameCommand.ExecutionTask
                     ?? throw new InvalidOperationException("Manage server did not start opening its Options.");
                 options.Close();
             });

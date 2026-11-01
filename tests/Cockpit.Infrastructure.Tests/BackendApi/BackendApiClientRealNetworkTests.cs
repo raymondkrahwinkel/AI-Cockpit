@@ -348,7 +348,6 @@ public sealed class BackendApiClientRealNetworkTests
                 new McpAuthKey(),
                 new SessionMcpKeyring(),
                 _ => ValueTask.FromResult(true),
-                new NodeSharedSecret(),
                 verifier);
             app.MapGet("/api/v1/strange-error", () => Results.Text("[]", "application/json", statusCode: StatusCodes.Status418ImATeapot));
             BackendApiRoutes.Map(app, services);

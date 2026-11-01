@@ -12,8 +12,8 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Mcp;
 
-// AC-1351: the node endpoint's door for everyone who is not a local session — connect keys (DEP-208's model) and
-// the pairing secret, behind one per-address lockout and one audit trail. A caller that fails learns nothing about
+// AC-1351: the node endpoint's door for everyone who is not a local session — connect keys (DEP-208's model; the
+// pairing secret was retired in AC-1985), behind one per-address lockout and one audit trail. A caller that fails learns nothing about
 // why: unknown, wrong, expired, revoked and locked out are a null, the reason only in the audit. AC-1446: and its admin.
 internal sealed class ConnectKeyVerifier : ISingletonService, IConnectKeyAdministration
 {
@@ -30,7 +30,7 @@ internal sealed class ConnectKeyVerifier : ISingletonService, IConnectKeyAdminis
 
     public const string NeverExpiringRefusal = "This server's policy does not allow connect keys that never expire.";
 
-    public const string OwnerKeyNeedsOwnerRefusal = "Only a key that is already the owner's own can mark a key as the owner's own device, and this key is not. Reconnect with the server's bootstrap key (the secret in " + BootstrapFileVariable + " on the server) under Options › Nodes › Connect to a server, with the same name and address, mark your own keys from there, then reconnect with your own key.";
+    public const string OwnerKeyNeedsOwnerRefusal = "Only a key that is already the owner's own can mark a key as the owner's own device, and this key is not. Reconnect with the server's bootstrap key (the secret in " + BootstrapFileVariable + " on the server) under Options › Servers › Connect to a server, with the same name and address, mark your own keys from there, then reconnect with your own key.";
 
     public const string AssistantNeedsOwnerRefusal = "Only a key for the owner's own device can hold the assistant: the assistant runs on the owner's own login. Issue it as the owner's key, or without holding the assistant.";
 
@@ -134,9 +134,8 @@ internal sealed class ConnectKeyVerifier : ISingletonService, IConnectKeyAdminis
         }
     }
 
-    // Who this bearer token is, or null. `pairingSecret` is the live pairing secret, checked alongside so both
-    // credentials share one lockout and one refusal.
-    public async Task<NodeCaller?> AuthenticateAsync(string token, string? pairingSecret, string remoteAddress, CancellationToken cancellationToken = default)
+    // Who this bearer token is, or null. Only a connect key: AC-1985 retired the pairing secret.
+    public async Task<NodeCaller?> AuthenticateAsync(string token, string remoteAddress, CancellationToken cancellationToken = default)
     {
         await EnsureLoadedAsync(cancellationToken).ConfigureAwait(false);
 
@@ -151,7 +150,7 @@ internal sealed class ConnectKeyVerifier : ISingletonService, IConnectKeyAdminis
             _addresses.TryGetValue(bucket, out var state);
 
             // A usable key passes a lockout: its 256 bits are not what a lockout protects, and a neighbour behind the
-            // same NAT sending garbage must not shut it out. Only failures are locked out, the pairing secret among them.
+            // same NAT sending garbage must not shut it out. Only failures are locked out.
             if (found is { } key && key.IsUsableAt(now))
             {
                 caller = new NodeCaller(key.Prefix, key.Label, key.Capability, remoteAddress, _RevocationOf(key.Prefix), key.HoldsAssistant, key.EffectiveScope(), key.ExpiresAt, key.IssuedToOwner);
@@ -170,28 +169,21 @@ internal sealed class ConnectKeyVerifier : ISingletonService, IConnectKeyAdminis
                     state.RefusedWhileLockedOut = 0;
                 }
 
-                if (pairingSecret is { Length: > 0 } secret && ConstantTimeEquals(token, secret))
+                var credential = found is not null ? "connect key" : token.Length == 0 ? "none" : "unknown";
+                var refusal = found switch
                 {
-                    caller = NodeCaller.ForPairing(remoteAddress);
-                }
-                else
-                {
-                    var credential = found is not null ? "connect key" : token.Length == 0 ? "none" : "unknown";
-                    var refusal = found switch
-                    {
-                        { RevokedAt: not null } => "refused: revoked key",
-                        { } => "refused: expired key",
-                        null => "refused: unknown credential",
-                    };
-                    audit.Add(new NodeAccessAuditEntry(now, credential, found?.Prefix, remoteAddress, null, refusal, Actor: found?.Label));
+                    { RevokedAt: not null } => "refused: revoked key",
+                    { } => "refused: expired key",
+                    null => "refused: unknown credential",
+                };
+                audit.Add(new NodeAccessAuditEntry(now, credential, found?.Prefix, remoteAddress, null, refusal, Actor: found?.Label));
 
-                    // A success leaves the failures standing: a controller polling from behind the same NAT must not
-                    // wipe an attacker's count every 20 s.
-                    if (_RecordFailure(bucket, now) is { } lockedUntil)
-                    {
-                        lockoutStarted = true;
-                        audit.Add(new NodeAccessAuditEntry(now, credential, found?.Prefix, remoteAddress, null, $"lockout started until {lockedUntil:O}"));
-                    }
+                // A success leaves the failures standing: a controller polling from behind the same NAT must not
+                // wipe an attacker's count every 20 s.
+                if (_RecordFailure(bucket, now) is { } lockedUntil)
+                {
+                    lockoutStarted = true;
+                    audit.Add(new NodeAccessAuditEntry(now, credential, found?.Prefix, remoteAddress, null, $"lockout started until {lockedUntil:O}"));
                 }
             }
         }
@@ -795,7 +787,7 @@ internal sealed class ConnectKeyVerifier : ISingletonService, IConnectKeyAdminis
     }
 }
 
-// AC-1351: who came in over the node listener — a connect key (`KeyPrefix` set) or the pairing secret (null).
+// AC-1351: who came in over the node listener — a connect key (`KeyPrefix` set); null only for an in-process caller.
 // Stamped next to `NodeCallerIdentity.PaneId`, which stays the one identity the node tools check.
 // AC-1367/AC-1458: `Scope` and `ExpiresAt` are the key's, snapshotted with the request; a pairing has neither.
 internal sealed record NodeCaller(string? KeyPrefix, string Label, ConnectKeyCapability Capability, string RemoteAddress, CancellationToken Revoked, bool HoldsAssistant = false, ConnectKeyScope? Scope = null, DateTimeOffset? ExpiresAt = null, bool IssuedToOwner = false)

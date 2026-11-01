@@ -179,7 +179,7 @@
                         </ListBoxItem>
 
                         <!-- AC-1002: replaces the standalone McpServersDialog window, the same deep-link move
-                             AC-1001 made for Profiles. Next to Nodes — the other MCP-related SYSTEM topic. -->
+                             AC-1001 made for Profiles. -->
                         <ListBoxItem Tag="mcp-servers">
                             <Grid ColumnDefinitions="Auto,*,Auto">
                                 <materialIcons:MaterialIcon Grid.Column="0" Kind="Server" Width="15" Height="15" VerticalAlignment="Center" Margin="0,0,8,0"/>
@@ -204,16 +204,6 @@
                                 <Border Grid.Column="2" Classes="searchMatchBadge"><TextBlock/></Border>
                             </Grid>
                         </ListBoxItem>
-                        <ListBoxItem Tag="nodes">
-                            <Grid ColumnDefinitions="Auto,*,Auto">
-                                <materialIcons:MaterialIcon Grid.Column="0" Kind="Lan" Width="15" Height="15" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                <TextBlock Grid.Column="1" Text="Nodes" VerticalAlignment="Center"/>
-                                <Border Grid.Column="2" Classes="searchMatchBadge">
-                                    <TextBlock/>
-                                </Border>
-                            </Grid>
-                        </ListBoxItem>
-
                         <ListBoxItem Tag="model-intelligence">
                             <Grid ColumnDefinitions="Auto,*,Auto">
                                 <materialIcons:MaterialIcon Grid.Column="0" Kind="ChartLine" Width="15" Height="15" VerticalAlignment="Center" Margin="0,0,8,0"/>
@@ -390,6 +380,9 @@
 
                         <TextBlock Text="This machine" FontWeight="SemiBold" Margin="0,12,0,0"/>
                         <CheckBox Content="Accept connections from my other Cockpits" IsChecked="{Binding Security.NodeEndpointEnabled}"/>
+                        <TextBlock Classes="optionsHint" TextWrapping="Wrap"
+                                   IsVisible="{Binding Security.PersistError.Length}"
+                                   Text="{Binding Security.PersistError}"/>
                         <TextBlock Text="Apply this setting and restart Cockpit to change the network listener." Classes="optionsHint"/>
                         <TextBlock Text="{Binding Security.NodePairingAddress}" Classes="optionsHint" IsVisible="{Binding Security.NodeEndpointEnabled}"/>
                         <Border Padding="10" CornerRadius="{StaticResource CockpitControlRadius}"
@@ -425,25 +418,106 @@
                 <ScrollViewer Tag="servers"
                               IsVisible="{Binding #CategoryNav.SelectedItem, Converter={x:Static conv:CategoryTagEqualsConverter.Instance}, ConverterParameter=servers}">
                     <StackPanel Margin="24,20" MaxWidth="900" Spacing="8">
-                        <TextBlock Text="Servers" FontSize="20" FontWeight="Bold"/>
-                        <TextBlock Text="Manage headless Cockpit servers: connect keys, plugins, profiles, projects and audit log. Use an admin key to manage a server." Classes="optionsHint"/>
+                        <StackPanel x:Name="ServersHelp" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="Servers" FontSize="20" FontWeight="Bold"/>
+                        </StackPanel>
+                        <TextBlock Text="Connect to headless Cockpit servers and manage them: connect keys, plugins, profiles, projects and audit log. Use an admin key to manage a server." Classes="optionsHint"/>
                         <TextBlock Classes="optionsHint" TextWrapping="Wrap"
                                    Text="{x:Static terms:ProviderTerms.GeneralNotice}"/>
-                        <TextBlock Text="Connect your desktops in Swarm. For a headless server, use Connect to a server on the Nodes page." Classes="optionsHint"/>
-                        <TextBlock Text="No server connected. Connect to a server on the Nodes page first." Classes="optionsHint" IsVisible="{Binding !ServerGroups.Count}"/>
-                        <ItemsControl ItemsSource="{Binding ServerGroups}">
+                        <TextBlock Text="Connect your desktops in Swarm." Classes="optionsHint"/>
+                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}" Margin="0,4"/>
+
+                        <TextBlock Classes="optionsSectionHeader" Text="1. CONNECT TO A SERVER"/>
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="Connect to a server" FontWeight="SemiBold"/>
+                            <materialIcons:MaterialIcon Classes="hint"
+                                ToolTip.Tip="For a headless Cockpit server. The fingerprint is not trusted on first use: you confirm it here against the one in the server's own startup log, and the key is only sent once they match. The connection is saved only once the address, key and fingerprint work together."/>
+                        </StackPanel>
+                        <StackPanel Spacing="4" Margin="24,4,0,0" MaxWidth="560" HorizontalAlignment="Left">
+                            <StackPanel.Styles>
+                                <Style Selector="TextBlock.connectLabel">
+                                    <Setter Property="FontSize" Value="11.5"/>
+                                    <Setter Property="Margin" Value="0,6,0,0"/>
+                                    <Setter Property="Foreground" Value="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                </Style>
+                                <Style Selector="TextBlock.connectHint">
+                                    <Setter Property="FontSize" Value="11"/>
+                                    <Setter Property="TextWrapping" Value="Wrap"/>
+                                    <Setter Property="Foreground" Value="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                </Style>
+                            </StackPanel.Styles>
+
+                            <TextBlock Classes="connectHint" FontSize="11.5"
+                                       Text="Use the address and connect key you set up for the server. The key is checked by the server; this machine keeps only what it needs to reconnect."/>
+
+                            <TextBlock Classes="connectLabel" Text="Name"/>
+                            <TextBox Text="{Binding Security.ConnectNodeName}" PlaceholderText="Defaults to the host"
+                                     FontSize="11.5" IsEnabled="{Binding !Security.IsConnectBusy}"/>
+
+                            <Grid ColumnDefinitions="*,8,110" RowDefinitions="Auto,Auto">
+                                <TextBlock Classes="connectLabel" Text="Host"/>
+                                <TextBlock Grid.Column="2" Classes="connectLabel" Text="Port"/>
+                                <TextBox Grid.Row="1" Text="{Binding Security.ConnectHost}" PlaceholderText="host or host:port"
+                                         FontFamily="Consolas,monospace" FontSize="11.5" Margin="0,4,0,0"
+                                         IsEnabled="{Binding !Security.IsConnectBusy}"/>
+                                <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding Security.ConnectPort}"
+                                         FontFamily="Consolas,monospace" FontSize="11.5" Margin="0,4,0,0"
+                                         IsEnabled="{Binding !Security.IsConnectBusy}"/>
+                            </Grid>
+                            <TextBlock Classes="connectHint" Text="Over Tailscale or your own network. Not over the open internet."/>
+
+                            <TextBlock Classes="connectLabel" Text="Connect key"/>
+                            <TextBox Text="{Binding Security.ConnectKey}" PlaceholderText="ck_…" PasswordChar="•"
+                                     FontFamily="Consolas,monospace" FontSize="11.5" IsEnabled="{Binding !Security.IsConnectBusy}"/>
+                            <TextBlock Classes="connectHint" Text="Shown once when the key was issued. Starts with ck_."/>
+
+                            <TextBlock Classes="connectLabel" Text="Certificate fingerprint"/>
+                            <TextBox Text="{Binding Security.ConnectFingerprint}" PlaceholderText="SHA256:…"
+                                     FontFamily="Consolas,monospace" FontSize="11.5" IsEnabled="{Binding !Security.IsConnectBusy}"/>
+                            <TextBlock Classes="connectHint" Text="{Binding Security.ConnectFingerprintHint}"/>
+
+                            <views:NodeConnectOutcomeView DataContext="{Binding Security}"/>
+
+                            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,8,0,0">
+                                <Button Content="Cancel" Classes="Ghost" Command="{Binding Security.CancelConnectCommand}"
+                                        IsEnabled="{Binding !Security.IsConnectBusy}"/>
+                                <Button Content="Connect" Classes="Accent" Command="{Binding Security.ConnectToServerCommand}"
+                                        IsEnabled="{Binding !Security.IsConnectBusy}"/>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <TextBlock Classes="optionsSectionHeader" Text="2. CONNECTED SERVERS"/>
+                        <TextBlock Text="No server connected. Connect to a server above first." Classes="optionsHint" IsVisible="{Binding !Security.PairedNodes.Count}"/>
+                        <TextBlock Text="Server sessions appear in the session list under their server name and keep running when you disconnect. Manage server needs an admin key."
+                                   Classes="optionsHint" IsVisible="{Binding Security.PairedNodes.Count}"/>
+                        <ItemsControl ItemsSource="{Binding Security.PairedNodes}" Margin="24,4,0,0">
                             <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="vm:ServerGroupViewModel">
-                                    <Border Padding="10" Margin="0,0,0,6" CornerRadius="{StaticResource CockpitControlRadius}" Background="{DynamicResource CockpitSecondaryBgBrush}">
-                                        <Grid ColumnDefinitions="*,Auto">
-                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                            <Button Grid.Column="1" Content="Manage server" IsEnabled="{Binding IsAdminKey}"
-                                                    Command="{Binding $parent[Window].((vm:CockpitViewModel)DataContext).OpenServerAdminCommand}" CommandParameter="{Binding}"/>
-                                        </Grid>
+                                <DataTemplate>
+                                    <Border Padding="10" Margin="0,0,0,6" CornerRadius="9" Background="{DynamicResource CockpitInsetBgBrush}">
+                                        <StackPanel Spacing="6">
+                                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding NodeName}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                                <TextBlock Text="another machine" FontSize="11" FontStyle="Italic" VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                                <Button Content="Disconnect" Command="{Binding DisconnectCommand}" IsVisible="{Binding CanDisconnect}"/>
+                                                <!-- AC-2011: one card per server, so Manage sits beside its connection. -->
+                                                <Button Content="Manage server" IsEnabled="{Binding IsAdminKey}"
+                                                        Command="{Binding $parent[Window].((vm:CockpitViewModel)DataContext).OpenServerAdminByNameCommand}"
+                                                        CommandParameter="{Binding NodeName}"/>
+                                            </StackPanel>
+
+                                            <views:NodeConnectionStatusView/>
+
+                                            <TextBlock Text="{Binding Status}" TextWrapping="Wrap" FontSize="11.5"
+                                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"
+                                                       IsVisible="{Binding Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                        </StackPanel>
                                     </Border>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
+
+
                     </StackPanel>
                 </ScrollViewer>
 
@@ -1355,8 +1429,7 @@
                 </ScrollViewer>
 
                 <!-- ================= SECURITY ================= -->
-                <!-- Consent-bypass moved IN from the old Assistant page (AC-1000: "consent naar Security").
-                     Node pairing moved OUT to its own Nodes category. -->
+                <!-- Consent-bypass moved IN from the old Assistant page (AC-1000: "consent naar Security"). -->
                 <ScrollViewer Tag="security"
                               IsVisible="{Binding #CategoryNav.SelectedItem, Converter={x:Static conv:CategoryTagEqualsConverter.Instance}, ConverterParameter=security}">
                     <StackPanel Margin="24,20" MaxWidth="900" Spacing="8">
@@ -1434,6 +1507,24 @@
                             <TextBlock Text="{Binding Security.HelloError}" FontSize="11" TextWrapping="Wrap" Margin="28,0,0,0"
                                        IsVisible="{Binding Security.HelloError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                        Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,10,0,0">
+                            <TextBlock Text="If you forget the password" FontWeight="SemiBold"/>
+                            <materialIcons:MaterialIcon Classes="hint"
+                                ToolTip.Tip="Nobody can decrypt your tokens — the password is stored nowhere, and that is the whole point. The lock screen offers one way back: clear the credentials and enter them again. Your profiles, sessions, layout and shortcuts are untouched by that."/>
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,10,0,0">
+                            <TextBlock Text="If something goes wrong halfway" FontWeight="SemiBold"/>
+                            <materialIcons:MaterialIcon Classes="hint"
+                                ToolTip.Tip="It cannot leave you with half a file. The new config is written beside the old one and renamed over it in one step, so you have either the old one or the new one — never a mix — and the previous version is kept as cockpit.json.bak. A value that will not convert aborts the whole thing and touches nothing. And an already-encrypted value is never encrypted a second time, so a config that ended up mixed anyway (a restored backup, a hand edit) still opens, and the rest is encrypted on the next save."/>
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,10,0,0">
+                            <TextBlock Text="What this does not do" FontWeight="SemiBold"/>
+                            <materialIcons:MaterialIcon Classes="hint"
+                                ToolTip.Tip="It protects the file, not the cockpit while it runs. While the app is unlocked the credentials are in memory and are handed to the sessions and tool servers that need them — and a plugin you installed runs inside this app and can read them. The plugins you trust are the ones you install."/>
                         </StackPanel>
 
                         <TextBlock Classes="optionsSectionHeader" Text="2. TERMINAL ACCESS"/>
@@ -1741,159 +1832,6 @@
                                 </StackPanel>
                             </StackPanel>
                         </Grid>
-                    </StackPanel>
-                </ScrollViewer>
-
-                <!-- ================= NODES ================= -->
-                <!-- Split out of the old Security tab (AC-1000: "nodes los van security"). -->
-                <ScrollViewer Tag="nodes"
-                              IsVisible="{Binding #CategoryNav.SelectedItem, Converter={x:Static conv:CategoryTagEqualsConverter.Instance}, ConverterParameter=nodes}">
-                    <StackPanel Margin="24,20" MaxWidth="900" Spacing="8">
-                        <StackPanel x:Name="NodesHelp" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <TextBlock Text="Nodes" FontSize="20" FontWeight="Bold"/>
-                        </StackPanel>
-                        <TextBlock Text="Manage shared MCP access and headless server connections. Connect your desktops in Swarm." Classes="optionsHint"/>
-                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}" Margin="0,4"/>
-
-                        <TextBlock Classes="optionsHint" TextWrapping="Wrap"
-                                   IsVisible="{Binding Security.PersistError.Length}"
-                                   Text="{Binding Security.PersistError}"/>
-
-                        <TextBlock Classes="optionsSectionHeader" Text="1. ACCEPT CONNECTIONS FROM A SECOND COCKPIT"/>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <TextBlock Text="Accept connections from a second Cockpit" FontWeight="SemiBold"/>
-                            <materialIcons:MaterialIcon Classes="hint"
-                                ToolTip.Tip="Off by default: every MCP endpoint this cockpit hosts stays reachable only from this machine. Turning it on adds a second, TLS-protected listener on your network for each one, guarded by a shared key (generated for you below) instead of this run's own key — a second Cockpit types the address and key into its 'Add MCP server' dialog to reach this one as a node. Takes effect the next time you start Cockpit, not immediately."/>
-                        </StackPanel>
-                        <CheckBox Content="Accept MCP connections from another Cockpit on this network"
-                                  IsChecked="{Binding Security.NodeEndpointEnabled}"/>
-                        <StackPanel Spacing="4" Margin="24,4,0,0" IsVisible="{Binding Security.NodeEndpointEnabled}">
-                            <TextBlock Classes="optionsHint" TextWrapping="Wrap"
-                                       IsVisible="{Binding Security.NodeEndpointHasNoListener}"
-                                       Text="{Binding Security.NodeEndpointNoListenerText}"/>
-                            <StackPanel Spacing="4" IsVisible="{Binding !Security.NodeEndpointHasNoListener}">
-                                <TextBlock Text="Address" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
-                                <TextBox Text="{Binding Security.NodeEndpointAddressText}" IsReadOnly="True" FontFamily="Consolas,monospace" FontSize="11.5"/>
-                            </StackPanel>
-                            <TextBlock Text="Shared key" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
-                            <TextBox Text="{Binding Security.NodeEndpointSharedSecret}" IsReadOnly="True" FontFamily="Consolas,monospace" FontSize="11.5"/>
-
-                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,8,0,0">
-                                <TextBlock Text="Visible outside this network" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                                <materialIcons:MaterialIcon Classes="hint"
-                                    ToolTip.Tip="This node is always visible on its own local network. Past that, nothing — not a discovery reply, not a pairing request — until you list the ranges allowed to reach it here, comma-separated CIDR notation (e.g. 203.0.113.0/24). Empty by default, on purpose."/>
-                            </StackPanel>
-                            <TextBox Text="{Binding Security.AllowedDiscoveryRangesText, UpdateSourceTrigger=LostFocus}" PlaceholderText="e.g. 203.0.113.0/24"
-                                     FontFamily="Consolas,monospace" FontSize="11.5"/>
-
-                        </StackPanel>
-
-                        <TextBlock Classes="optionsSectionHeader" Text="2. CONNECT TO A SERVER"/>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <TextBlock Text="Connect to a server" FontWeight="SemiBold"/>
-                            <materialIcons:MaterialIcon Classes="hint"
-                                ToolTip.Tip="For a headless Cockpit server. The fingerprint is not trusted on first use: you confirm it here against the one in the server's own startup log, and the key is only sent once they match. The connection is saved only once the address, key and fingerprint work together."/>
-                        </StackPanel>
-                        <StackPanel Spacing="4" Margin="24,4,0,0" MaxWidth="560" HorizontalAlignment="Left">
-                            <StackPanel.Styles>
-                                <Style Selector="TextBlock.connectLabel">
-                                    <Setter Property="FontSize" Value="11.5"/>
-                                    <Setter Property="Margin" Value="0,6,0,0"/>
-                                    <Setter Property="Foreground" Value="{DynamicResource CockpitTextSecondaryBrush}"/>
-                                </Style>
-                                <Style Selector="TextBlock.connectHint">
-                                    <Setter Property="FontSize" Value="11"/>
-                                    <Setter Property="TextWrapping" Value="Wrap"/>
-                                    <Setter Property="Foreground" Value="{DynamicResource CockpitTextSecondaryBrush}"/>
-                                </Style>
-                            </StackPanel.Styles>
-
-                            <TextBlock Classes="connectHint" FontSize="11.5"
-                                       Text="Use the address and connect key you set up for the server. The key is checked by the server; this machine keeps only what it needs to reconnect."/>
-
-                            <TextBlock Classes="connectLabel" Text="Name"/>
-                            <TextBox Text="{Binding Security.ConnectNodeName}" PlaceholderText="Defaults to the host"
-                                     FontSize="11.5" IsEnabled="{Binding !Security.IsConnectBusy}"/>
-
-                            <Grid ColumnDefinitions="*,8,110" RowDefinitions="Auto,Auto">
-                                <TextBlock Classes="connectLabel" Text="Host"/>
-                                <TextBlock Grid.Column="2" Classes="connectLabel" Text="Port"/>
-                                <TextBox Grid.Row="1" Text="{Binding Security.ConnectHost}" PlaceholderText="host or host:port"
-                                         FontFamily="Consolas,monospace" FontSize="11.5" Margin="0,4,0,0"
-                                         IsEnabled="{Binding !Security.IsConnectBusy}"/>
-                                <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding Security.ConnectPort}"
-                                         FontFamily="Consolas,monospace" FontSize="11.5" Margin="0,4,0,0"
-                                         IsEnabled="{Binding !Security.IsConnectBusy}"/>
-                            </Grid>
-                            <TextBlock Classes="connectHint" Text="Over Tailscale or your own network. Not over the open internet."/>
-
-                            <TextBlock Classes="connectLabel" Text="Connect key"/>
-                            <TextBox Text="{Binding Security.ConnectKey}" PlaceholderText="ck_…" PasswordChar="•"
-                                     FontFamily="Consolas,monospace" FontSize="11.5" IsEnabled="{Binding !Security.IsConnectBusy}"/>
-                            <TextBlock Classes="connectHint" Text="Shown once when the key was issued. Starts with ck_."/>
-
-                            <TextBlock Classes="connectLabel" Text="Certificate fingerprint"/>
-                            <TextBox Text="{Binding Security.ConnectFingerprint}" PlaceholderText="SHA256:…"
-                                     FontFamily="Consolas,monospace" FontSize="11.5" IsEnabled="{Binding !Security.IsConnectBusy}"/>
-                            <TextBlock Classes="connectHint" Text="{Binding Security.ConnectFingerprintHint}"/>
-
-                            <views:NodeConnectOutcomeView DataContext="{Binding Security}"/>
-
-                            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,8,0,0">
-                                <Button Content="Cancel" Classes="Ghost" Command="{Binding Security.CancelConnectCommand}"
-                                        IsEnabled="{Binding !Security.IsConnectBusy}"/>
-                                <Button Content="Connect" Classes="Accent" Command="{Binding Security.ConnectToServerCommand}"
-                                        IsEnabled="{Binding !Security.IsConnectBusy}"/>
-                            </StackPanel>
-                        </StackPanel>
-
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                    IsVisible="{Binding Security.PairedNodes.Count}">
-                            <TextBlock Text="Connected servers" FontWeight="SemiBold"/>
-                            <materialIcons:MaterialIcon Classes="hint"
-                                ToolTip.Tip="Server sessions appear in the session list under their server name and keep running when you disconnect."/>
-                        </StackPanel>
-                        <ItemsControl ItemsSource="{Binding Security.PairedNodes}" Margin="24,4,0,0">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Border Padding="10" Margin="0,0,0,6" CornerRadius="9" Background="{DynamicResource CockpitInsetBgBrush}">
-                                        <StackPanel Spacing="6">
-                                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                                                <TextBlock Text="{Binding NodeName}" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                                <TextBlock Text="another machine" FontSize="11" FontStyle="Italic" VerticalAlignment="Center"
-                                                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                                                <Button Content="Disconnect" Command="{Binding DisconnectCommand}" IsVisible="{Binding CanDisconnect}"/>
-                                            </StackPanel>
-
-                                            <views:NodeConnectionStatusView/>
-
-                                            <TextBlock Text="{Binding Status}" TextWrapping="Wrap" FontSize="11.5"
-                                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"
-                                                       IsVisible="{Binding Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                                        </StackPanel>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-
-                        <TextBlock Classes="optionsSectionHeader" Text="3. IF SOMETHING GOES WRONG"/>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,0,0,0">
-                            <TextBlock Text="If you forget the password" FontWeight="SemiBold"/>
-                            <materialIcons:MaterialIcon Classes="hint"
-                                ToolTip.Tip="Nobody can decrypt your tokens — the password is stored nowhere, and that is the whole point. The lock screen offers one way back: clear the credentials and enter them again. Your profiles, sessions, layout and shortcuts are untouched by that."/>
-                        </StackPanel>
-
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,10,0,0">
-                            <TextBlock Text="If something goes wrong halfway" FontWeight="SemiBold"/>
-                            <materialIcons:MaterialIcon Classes="hint"
-                                ToolTip.Tip="It cannot leave you with half a file. The new config is written beside the old one and renamed over it in one step, so you have either the old one or the new one — never a mix — and the previous version is kept as cockpit.json.bak. A value that will not convert aborts the whole thing and touches nothing. And an already-encrypted value is never encrypted a second time, so a config that ended up mixed anyway (a restored backup, a hand edit) still opens, and the rest is encrypted on the next save."/>
-                        </StackPanel>
-
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,10,0,0">
-                            <TextBlock Text="What this does not do" FontWeight="SemiBold"/>
-                            <materialIcons:MaterialIcon Classes="hint"
-                                ToolTip.Tip="It protects the file, not the cockpit while it runs. While the app is unlocked the credentials are in memory and are handed to the sessions and tool servers that need them — and a plugin you installed runs inside this app and can read them. The plugins you trust are the ones you install."/>
-                        </StackPanel>
                     </StackPanel>
                 </ScrollViewer>
 

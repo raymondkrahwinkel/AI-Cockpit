@@ -86,8 +86,9 @@ public sealed class NodePermissionAnswerTests : IDisposable
     [InlineData(true, null, 1)]
     public async Task AConnectKey_AnswersAPermissionOnlyWithTheGrant(bool mayAnswerPermissions, string? refusal, int answeredCalls)
     {
+        // AC-2003: the owner's key, so the session on a subscription profile stays visible and only the grant decides.
         McpRequestContext.Set(NodeCallerIdentity.PaneId, new NodeCaller(
-            "testkey1", "laptop", ConnectKeyCapability.Operate, "10.0.0.2", CancellationToken.None, Scope: new ConnectKeyScope { MayAnswerPermissions = mayAnswerPermissions }));
+            "testkey1", "laptop", ConnectKeyCapability.Operate, "10.0.0.2", CancellationToken.None, Scope: new ConnectKeyScope { MayAnswerPermissions = mayAnswerPermissions }, IssuedToOwner: true));
         _gateway.RespondToPermissionAsync(Pane, "toolu_1", true, Arg.Any<CancellationToken>()).Returns(true);
 
         var answer = _Json(await _Tools().AnswerNodePermissionAsync(Pane, "toolu_1", allow: true));

@@ -72,7 +72,6 @@ internal static class OptionsStaging
         "WakeAgentsByDefault",
         "WebhookUrl",
         "WorktreeRoot",
-        "Security.AllowedDiscoveryRangesText",
         "Security.LockWithOperatingSystem",
         "Security.NodeEndpointEnabled",
         "Security.ShellAccessEnabled",

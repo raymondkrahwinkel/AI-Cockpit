@@ -161,7 +161,7 @@ internal sealed class SwarmHeartbeat(
         {
             return Results.Unauthorized();
         }
-        var caller = await keys.AuthenticateAsync(token[7..], null, context.Connection.RemoteIpAddress?.ToString() ?? throw new InvalidOperationException("The request has no remote address."), ct);
+        var caller = await keys.AuthenticateAsync(token[7..], context.Connection.RemoteIpAddress?.ToString() ?? throw new InvalidOperationException("The request has no remote address."), ct);
         if (caller is not { Capability: ConnectKeyCapability.Admin })
         {
             return Results.Unauthorized();

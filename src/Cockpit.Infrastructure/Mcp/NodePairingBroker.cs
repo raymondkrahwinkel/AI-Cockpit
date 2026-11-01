@@ -17,7 +17,6 @@ internal sealed class NodePairingBroker : INodePairingBroker, ISingletonService
 
     private readonly INodeEndpointSettingsStore _settings;
     private readonly NodeSelfSignedCertificate _certificate;
-    private readonly NodeSharedSecret _liveSecret;
     private readonly IEnumerable<ICockpitInternalMcpProvider> _endpointHosts;
 
     // AC-1325: "do I already control a node" — null in the design-time/unit-test graph, same shape every other
@@ -35,16 +34,15 @@ internal sealed class NodePairingBroker : INodePairingBroker, ISingletonService
     private bool _loaded;
 
     // AC-1291: expiry is the one way a pending offer ends without anybody acting, so it is also the one way
-    // `Changed` never fired — leaving a banner (and the Nodes page's Confirm button) offering a pairing that is gone.
+    // `Changed` never fired — leaving a banner (and the Servers page's Confirm button) offering a pairing that is gone.
     private ITimer? _expiryAlarm;
 
     public NodePairingBroker(
         INodeEndpointSettingsStore settings,
         NodeSelfSignedCertificate certificate,
-        NodeSharedSecret liveSecret,
         IEnumerable<ICockpitInternalMcpProvider> endpointHosts,
         IMcpServerStore? servers = null)
-        : this(settings, certificate, liveSecret, endpointHosts, servers, TimeProvider.System)
+        : this(settings, certificate, endpointHosts, servers, TimeProvider.System)
     {
     }
 
@@ -52,14 +50,12 @@ internal sealed class NodePairingBroker : INodePairingBroker, ISingletonService
     internal NodePairingBroker(
         INodeEndpointSettingsStore settings,
         NodeSelfSignedCertificate certificate,
-        NodeSharedSecret liveSecret,
         IEnumerable<ICockpitInternalMcpProvider> endpointHosts,
         IMcpServerStore? servers,
         TimeProvider time)
     {
         _settings = settings;
         _certificate = certificate;
-        _liveSecret = liveSecret;
         _endpointHosts = endpointHosts;
         _servers = servers;
         _time = time;
@@ -201,9 +197,6 @@ internal sealed class NodePairingBroker : INodePairingBroker, ISingletonService
             }
         }
 
-        // The listener starts accepting the new credential now, not at the next launch.
-        _liveSecret.Set(secret);
-
         _RaiseChanged();
     }
 
@@ -284,10 +277,6 @@ internal sealed class NodePairingBroker : INodePairingBroker, ISingletonService
         // The secret goes with the pairing, making this a revocation, not a bookkeeping edit — clearing it is
         // the moment the controller stops being able to call in (criterion 5); nothing rotates into its place.
         await _settings.SaveAsync(current with { SharedSecret = "", Pairing = null }, cancellationToken).ConfigureAwait(false);
-
-        // And the running listener stops accepting it in the same act. Clearing only the stored copy would leave
-        // the controller with full access until this node next started, which is not what "unpair" says.
-        _liveSecret.Set(null);
 
         lock (_gate)
         {

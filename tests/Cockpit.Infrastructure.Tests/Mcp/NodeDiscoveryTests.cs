@@ -36,7 +36,7 @@ public class NodeDiscoveryTests : IAsyncLifetime
         // address survives a restart; a test binding that one number would collide with a Cockpit running here.
         await _store.SaveAsync(new NodeEndpointSettings { Enabled = true, SharedSecret = "", Port = 0 });
         _certificate = new NodeSelfSignedCertificate(_certificatePath);
-        _broker = new NodePairingBroker(_store, _certificate, new NodeSharedSecret(), []);
+        _broker = new NodePairingBroker(_store, _certificate, []);
     }
 
     private async Task<NodePairingHost> _StartPairingHostAsync(Func<IEnumerable<IPNetwork>> ownRanges)

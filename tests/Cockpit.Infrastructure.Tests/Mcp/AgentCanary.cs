@@ -92,7 +92,6 @@ internal sealed class AgentCanaryDesk : IAsyncDisposable
             keyring,
             nodeEndpointSettings,
             new NodeSelfSignedCertificate(Path.Combine(Path.GetTempPath(), $"canary-node-{Guid.NewGuid():N}.pfx")),
-            new NodeSharedSecret(),
             mounts,
             NullLoggerFactory.Instance,
             new NodeListenAddress(System.Net.IPAddress.Loopback));

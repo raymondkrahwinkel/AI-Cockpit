@@ -280,7 +280,7 @@ public sealed class EventsEndpointTests
             var builder = WebApplication.CreateBuilder();
             builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0, listen => listen.UseHttps(_certificate.Value)));
             _app = builder.Build();
-            McpAuthMiddleware.Require(_app, new McpAuthKey(), new SessionMcpKeyring(), _ => ValueTask.FromResult(true), new NodeSharedSecret(), verifier);
+            McpAuthMiddleware.Require(_app, new McpAuthKey(), new SessionMcpKeyring(), _ => ValueTask.FromResult(true), verifier);
             BackendApiRoutes.Map(_app, services);
             await _app.StartAsync();
             _base = _app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()?.Addresses.Single()

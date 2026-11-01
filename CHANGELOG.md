@@ -38,11 +38,19 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 - Provider and profile settings show provider-owned terms notices and official links. Sharing, server and swarm settings explain individual subscription use; the README documents token-free profile backups and connect-key isolation (AC-2004).
 
+### Changed
+
+- The network listener no longer accepts the shared key from the old desktop pairing. Servers and swarm members connect with connect keys, as before; a desktop that still used the old pairing joins through Swarm instead.
+
+- Connecting to a headless server now lives in **Options › Servers**, with one card per server for its status, Disconnect and Manage server. The Nodes page is gone: accepting connections is the switch under Swarm › This machine, the old shared key and discovery ranges for pairing desktops are no longer shown, and the encryption notes are now under Security.
+
 ### Fixed
 
 - Server images now follow a successful nightly's exact commit instead of every push to main; release tags and manual builds remain available, and Watchtower can keep following the same image tag.
 
 - Server image validation now runs direct agent checks with the agent's home directory, so GitHub CLI configuration is read from the correct location without changing the separation between server and agent.
+
+- Joining a swarm is no longer refused with "Migrate the existing node connections first." when this machine already has a connection to a server or another node. Those connections keep working beside the swarm. The automatic master/node-to-swarm migration is gone: a desktop that is still connected the old way joins through Options › Swarm like any other machine.
 
 - The Claude and CLI agent provider plugins can be published to the store again: their hook relay now carries the Windows manifest the store's package check asks for. Claude provider 0.30.2, CLI agent provider 0.11.3.
 
