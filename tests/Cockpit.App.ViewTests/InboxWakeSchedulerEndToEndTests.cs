@@ -29,7 +29,8 @@ public sealed class InboxWakeSchedulerEndToEndTests
         {
             var sessions = new SessionRegistry();
             var vm = new CockpitViewModel(sessionRegistry: sessions);
-            var to = new TtyViewModel { SessionStatus = SessionStatus.Idle };
+            // AC-2005: a TTY is only woken when the assistant or an agent started it — an origin, not an opt-in.
+            var to = new TtyViewModel { SessionStatus = SessionStatus.Idle, StartedByTheAssistant = true };
             var captured = new List<string>();
             to.PromptSink = text => captured.Add(text);
             to.MarkHostedTuiReady();
@@ -52,12 +53,12 @@ public sealed class InboxWakeSchedulerEndToEndTests
         await Dispatcher.UIThread.InvokeAsync(() => { }).GetTask();
 
         var turn = Assert.Single(sent);
-        Assert.Contains("<cockpit-agent-wake", turn, StringComparison.Ordinal);
+        // AC-2005: a TTY gets the one-line notice pointing at read_inbox, not the full statement an SDK turn carries.
+        Assert.Contains("[cockpit] New message from", turn, StringComparison.Ordinal);
         Assert.Contains("pane-sender", turn, StringComparison.Ordinal);
-        // The truthful statement for this trigger: no claim that the recipient opted into anything, because it
-        // never did.
+        Assert.Contains("read_inbox", turn, StringComparison.Ordinal);
+        // No claim that the recipient opted into anything, because it never did.
         Assert.DoesNotContain("opted in", turn, StringComparison.Ordinal);
-        Assert.Contains(AgentWakeTurnNotice.WaitingMailStatement, turn, StringComparison.Ordinal);
     }
 
     /// <summary>
