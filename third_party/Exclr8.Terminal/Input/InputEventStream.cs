@@ -79,6 +79,14 @@ public sealed class InputEventStream
     /// reactive behaviours.</summary>
     public event Action<InputLineEvent>? LineCommitted;
 
+    /// <summary>Whether input has been assembled since the last
+    /// Enter or abort — a best-effort "the prompt holds a draft".</summary>
+    public bool HasPendingLine => _line.Length > 0;
+
+    /// <summary>Forgets the in-progress line, for a submit that
+    /// reached the PTY without passing through <see cref="Feed"/>.</summary>
+    public void ClearPendingLine() => _line.Clear();
+
     /// <summary>Every input batch, before line assembly. For
     /// subscribers that need key-combo or escape-sequence awareness
     /// (Ctrl+R, Ctrl+D, function keys, …).</summary>
@@ -105,7 +113,7 @@ public sealed class InputEventStream
             {
                 if (_line.Length > 0) _line.Length--;
             }
-            else if (b == 0x03 || b == 0x18 || b == 0x04)
+            else if (b == 0x03 || b == 0x18 || b == 0x04 || b == 0x15)
             {
                 // Ctrl+C / Ctrl+X / Ctrl+D all abort the in-progress
                 // line from our perspective. Ctrl+D at an empty line

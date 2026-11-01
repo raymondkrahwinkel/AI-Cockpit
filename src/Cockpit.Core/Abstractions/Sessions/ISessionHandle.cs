@@ -374,4 +374,10 @@ public sealed record SessionToolCall(string PaneId, string ToolName, string Inpu
 public sealed record SessionPendingPermission(string ToolUseId, string ToolName, string InputJson, DateTimeOffset SinceUtc);
 
 // AC-1374: HasPendingConsent, SessionStatus and CanTakeAPrompt, read together — see ISessionHandle.ReadWakeStateAsync.
-public sealed record SessionWakeState(bool HasPendingConsent, SessionStatus SessionStatus, bool CanTakeAPrompt);
+// AC-2005: TypesIntoATerminal says a prompt is typed into a TUI's own input; OperatorIsTyping that a person is using it.
+public sealed record SessionWakeState(
+    bool HasPendingConsent,
+    SessionStatus SessionStatus,
+    bool CanTakeAPrompt,
+    bool TypesIntoATerminal = false,
+    bool OperatorIsTyping = false);

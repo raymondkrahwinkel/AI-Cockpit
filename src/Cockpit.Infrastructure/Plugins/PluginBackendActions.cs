@@ -1,3 +1,4 @@
+using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
@@ -12,7 +13,8 @@ namespace Cockpit.Infrastructure.Plugins;
 public sealed class PluginBackendActions(
     ISessionProfileStore profileStore,
     IDelegationService delegation,
-    ISessionLauncher? launcher = null) : ICockpitActions
+    ISessionLauncher? launcher = null,
+    IWorkspaceAgentCoordinator? agentCoordinator = null) : ICockpitActions
 {
     private static readonly TimeSpan DefaultPatience = TimeSpan.FromMinutes(30);
     private static readonly TimeSpan Beat = TimeSpan.FromMilliseconds(500);
@@ -101,8 +103,13 @@ public sealed class PluginBackendActions(
             ?? throw new InvalidOperationException($"The session on '{profileLabel}' could not start.");
 
         // AC-1448: only a person may choose to run without the worktree the project asks for, and a plugin is not one.
-        return started.WorktreeDecision is { } decision
-            ? throw new InvalidOperationException($"worktree isolation failed for '{decision.WorkingDirectory}': {decision.Reason}")
-            : started.Name;
+        if (started.WorktreeDecision is { } decision)
+        {
+            throw new InvalidOperationException($"worktree isolation failed for '{decision.WorkingDirectory}': {decision.Reason}");
+        }
+
+        // AC-2005: a workflow's session may be woken by typing into it, as an agent's may.
+        agentCoordinator?.MarkStartedByAnAgent(started.PaneId);
+        return started.Name;
     }
 }

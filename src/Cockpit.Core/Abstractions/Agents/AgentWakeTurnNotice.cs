@@ -47,6 +47,11 @@ public sealed record AgentWakeTurnNotice(string FromPaneId, string Kind, bool Me
 
         return builder.ToString();
     }
+
+    // AC-2005: what a TTY pane gets instead — typed into a person's terminal, so one short line; the trust text
+    // comes with read_inbox.
+    public string RenderLine() =>
+        $"[cockpit] New message from {AgentNoticeText.ForAttribute(FromPaneId)} ({AgentNoticeText.ForAttribute(Kind)}) — call read_inbox";
 }
 
 // Which of the two wake paths (AC-395's sender-driven urgent notify, or AC-656's default-on inbox delivery) started

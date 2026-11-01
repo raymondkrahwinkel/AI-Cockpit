@@ -11,7 +11,8 @@ namespace Cockpit.Infrastructure.Agents;
 // already carries the AC-543 fallback rule a handle's own adapter resolves, so this no longer re-derives it.
 internal sealed class WorkspaceAgentGateway(
     ISessionRegistry sessions,
-    ILogger<WorkspaceAgentGateway> logger)
+    ILogger<WorkspaceAgentGateway> logger,
+    IWorkspaceAgentCoordinator? coordinator = null)
     : IWorkspaceAgentGateway, ISingletonService
 {
     public Task<WorkspaceAgentSnapshot?> GetWorkspaceSnapshotAsync(string paneId) =>
@@ -80,6 +81,21 @@ internal sealed class WorkspaceAgentGateway(
             return AgentWakeOutcome.CannotTakeATurn;
         }
 
+        // AC-2005: a wake into a TTY is text typed into a person's terminal, so only into a session an agent or the
+        // assistant started, or that asked for it itself — and never while the operator is typing there.
+        if (state.TypesIntoATerminal)
+        {
+            if (!_MayTypeAWakeInto(target))
+            {
+                return AgentWakeOutcome.NotOptedIn;
+            }
+
+            if (state.OperatorIsTyping)
+            {
+                return AgentWakeOutcome.Busy;
+            }
+        }
+
         // Asked of the pane at the moment of waking, so the notice tells the truth about this turn rather than
         // about the pane as some earlier snapshot described it.
         var notice = new AgentWakeTurnNotice(fromPaneId, kind, target.DeliversInboxAtTurnStart, trigger);
@@ -87,19 +103,27 @@ internal sealed class WorkspaceAgentGateway(
         // Deliberately not awaited: an SDK pane's send does not complete until its whole turn does, and the caller
         // here is an agent waiting on its own notify call — awaiting would hold that open for another agent's answer.
         // Woken claims only that a turn was started; how it goes is the recipient's own runtime to report.
-        _ = _SendWakeAsync(target, notice);
+        _ = _SendWakeAsync(target, state.TypesIntoATerminal ? notice.RenderLine() : notice.Render());
 
         return AgentWakeOutcome.Woken;
     }
 
+    // The operator's default wake consent does not count here: it says agents may wake each other, not that the
+    // operator's own terminal may be typed into. Only the session's own set_wake_optin(true) does.
+    private bool _MayTypeAWakeInto(ISessionHandle target) =>
+        target.StartedByTheAssistant
+        || target.IsEmbedded
+        || coordinator?.WasStartedByAnAgent(target.PaneId) == true
+        || (coordinator?.HasOwnWakeConsent(target.PaneId) == true && coordinator.HasWakeConsent(target.PaneId));
+
     // Observed rather than discarded, because the send can throw — the funnel it goes through rethrows after putting
     // any mail it took back in the inbox. On a discarded task that surfaces as an unobserved exception at some later
     // garbage collection, attributed to nothing; here it is one line naming the pane a wake did not reach.
-    private async Task _SendWakeAsync(ISessionHandle target, AgentWakeTurnNotice notice)
+    private async Task _SendWakeAsync(ISessionHandle target, string prompt)
     {
         try
         {
-            await target.SendPromptAsync(notice.Render());
+            await target.SendPromptAsync(prompt);
         }
         catch (Exception exception)
         {

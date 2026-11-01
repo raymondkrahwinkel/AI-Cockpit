@@ -76,6 +76,22 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
 
     internal void RecordOperatorInput() => OperatorActed?.Invoke(SessionOperatorAction.TtyInput);
 
+    // AC-1718's window, shared with AC-2005: no wake is typed in while the operator typed within it.
+    internal static readonly TimeSpan OperatorInputWindow = TimeSpan.FromSeconds(30);
+
+    // Set by the view: the last operator byte, and the terminal's own best-effort "a line is being typed" buffer.
+    internal DateTimeOffset? LastOperatorKeyAt { get; set; }
+
+    internal Func<bool>? HasDraftInput { get; set; }
+
+    // ponytail: the draft buffer cannot see a TUI clearing its own prompt (Esc Esc), so a draft untouched this long
+    // stops counting rather than holding wakes off until the next Enter.
+    private static readonly TimeSpan DraftHoldWindow = TimeSpan.FromMinutes(5);
+
+    internal bool OperatorIsTyping(DateTimeOffset now) =>
+        LastOperatorKeyAt is { } at
+        && (now - at < OperatorInputWindow || (now - at < DraftHoldWindow && HasDraftInput?.Invoke() == true));
+
     // Status now lives on the shared SessionPanelViewModel base (AC-37), read by the one SessionHeaderBar.
 
     // AC-1013: Where this session's provider drops its statusline snapshots, set by the view once the pty...

@@ -21,6 +21,10 @@ internal sealed class WorkspaceAgentCoordinator : IWorkspaceAgentCoordinator, IS
 
     private readonly ConcurrentDictionary<string, Entry> _roster = new(StringComparer.Ordinal);
 
+    // AC-2005: panes an agent, the controller or a workflow started. Kept apart from the roster, which a pane only
+    // joins once it is placed. ponytail: in memory only, so forgotten on a cockpit restart; persist it if that bites.
+    private readonly ConcurrentDictionary<string, byte> _startedByAnAgent = new(StringComparer.Ordinal);
+
     // Only Forget writes here and only a refusal reads it, so one lock over both is cheaper than making two
     // concurrent collections agree with each other about which ids are still remembered.
     private readonly object _departedLock = new();
@@ -84,8 +88,14 @@ internal sealed class WorkspaceAgentCoordinator : IWorkspaceAgentCoordinator, IS
     public bool HasOwnWakeConsent(string paneId) =>
         _roster.TryGetValue(paneId, out var entry) && entry.WakeConsent is not null;
 
+    public void MarkStartedByAnAgent(string paneId) => _startedByAnAgent[paneId] = 0;
+
+    public bool WasStartedByAnAgent(string paneId) => _startedByAnAgent.ContainsKey(paneId);
+
     public void Forget(string paneId)
     {
+        _startedByAnAgent.TryRemove(paneId, out _);
+
         // Only a pane the roster actually held counts as having departed. Without that check every stray pane id
         // ever passed to Forget would afterwards be reported to a sender as "this pane was here and left", which is
         // the opposite of the distinction this exists to draw.

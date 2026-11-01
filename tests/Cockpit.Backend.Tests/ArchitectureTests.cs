@@ -28,11 +28,10 @@ public class ArchitectureTests
     }
 
     // AC-1389 (F2.1), AC-1402 (F2.14): the window half of the plugin SDK is the one project of it that names Avalonia.
+    // The SDK and Infrastructure rows went with AC-2005: the two assembly-level facts here pin both more tightly.
     [Theory]
     [InlineData("Cockpit.Plugins.Abstractions.UI", true)]
-    [InlineData("Cockpit.Plugins.Abstractions", false)]
     [InlineData("Cockpit.Core", false)]
-    [InlineData("Cockpit.Infrastructure", false)]
     public void OnlyTheUiHalfOfThePluginSdk_ReferencesAvalonia(string project, bool referencesAvalonia)
     {
         var projectFile = Path.Combine(_RepositoryRoot(), "src", project, $"{project}.csproj");

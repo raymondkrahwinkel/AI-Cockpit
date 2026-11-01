@@ -394,9 +394,14 @@ internal sealed partial class SessionPanelHandle : IHostedSession
     // AC-1374: the three fields read as one dispatcher callback, so a wake decision never sees one from before a
     // change and another from after it — same deadline and UiUnavailable handling as every other hop here (AC-1138).
     public Task<SessionWakeState> ReadWakeStateAsync() =>
-        UiThreadCall.RunAsync(() => _pane is { } pane
-            ? new SessionWakeState(pane.PendingConsent is not null, pane.SessionStatus, pane.CanTakeAPrompt)
-            : new SessionWakeState(false, default, false));
+        UiThreadCall.RunAsync(() => _pane switch
+        {
+            TtyViewModel { IsTerminal: false } tty => new SessionWakeState(
+                tty.PendingConsent is not null, tty.SessionStatus, tty.CanTakeAPrompt,
+                TypesIntoATerminal: true, OperatorIsTyping: tty.OperatorIsTyping(DateTimeOffset.UtcNow)),
+            { } pane => new SessionWakeState(pane.PendingConsent is not null, pane.SessionStatus, pane.CanTakeAPrompt),
+            _ => new SessionWakeState(false, default, false),
+        });
 
     private static SessionTranscriptSlice _SliceOf(SessionViewModel sdk, int count)
     {

@@ -80,6 +80,16 @@ public interface IWorkspaceAgentCoordinator
     bool HasOwnWakeConsent(string paneId);
 
     /// <summary>
+    /// Records that an agent, the paired controller or a workflow started <paramref name="paneId"/> (AC-2005).
+    /// </summary>
+    void MarkStartedByAnAgent(string paneId);
+
+    /// <summary>
+    /// Whether <see cref="MarkStartedByAnAgent"/> was called for <paramref name="paneId"/> since it was last forgotten.
+    /// </summary>
+    bool WasStartedByAnAgent(string paneId);
+
+    /// <summary>
     /// Drops <paramref name="paneId"/> from the roster — wake consent and contact time with it — the closing half of
     /// <see cref="Enroll"/>, so an ended session stops being remembered forever. Idempotent — never-enrolled or
     /// already-forgotten panes are a no-op.

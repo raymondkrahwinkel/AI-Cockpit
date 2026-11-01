@@ -91,7 +91,6 @@ public partial class TtyView : UserControl
     private bool _hostedTuiReady;
 
     // One line per input moment rather than one per key (AC-1718).
-    private static readonly TimeSpan OperatorInputWindow = TimeSpan.FromSeconds(30);
     private DateTimeOffset? _lastOperatorInputAt;
 
     // #58/AC-1259 confirmation logging: one line per settled resize, so the net-zero round-trip signature can
@@ -253,6 +252,7 @@ public partial class TtyView : UserControl
             // And the prompt route, which points into this view's pty just as the paste delegate does: a view model
             // handed to another view must not go on answering "yes, a prompt reaches me" through the one it left.
             _viewModel.PromptSink = null;
+            _viewModel.HasDraftInput = null;
             _viewModel.PropertyChanged -= _OnViewModelPropertyChanged;
         }
 
@@ -399,9 +399,11 @@ public partial class TtyView : UserControl
                 return;
             }
 
+            // AC-2005: this Enter bypasses the input stream, so the line it submits is forgotten here by hand.
             if (typed.Length == 0)
             {
                 _WriteToPty(pty, [(byte)'\r']);
+                Terminal.InputEvents.ClearPendingLine();
             }
             else
             {
@@ -410,6 +412,7 @@ public partial class TtyView : UserControl
                     if (_viewModel?.IsReadingChild != true && ReferenceEquals(_pty, pty))
                     {
                         _WriteToPty(pty, [(byte)'\r']);
+                        Terminal.InputEvents.ClearPendingLine();
                     }
                 }, TtyViewModel.AutoSubmitDelay(typed.Length));
             }
@@ -825,6 +828,7 @@ public partial class TtyView : UserControl
             if (DataContext is TtyViewModel promptTarget)
             {
                 promptTarget.PromptSink = _WriteToPty;
+                promptTarget.HasDraftInput = () => Terminal.InputEvents.HasPendingLine;
             }
 
             // The pty owns the process, so the view is where the meter (#78) learns which one this session is.
@@ -901,7 +905,12 @@ public partial class TtyView : UserControl
         }
 
         var now = DateTimeOffset.UtcNow;
-        if (_lastOperatorInputAt is { } last && now - last < OperatorInputWindow)
+        if (_viewModel is { } viewModel)
+        {
+            viewModel.LastOperatorKeyAt = now;
+        }
+
+        if (_lastOperatorInputAt is { } last && now - last < TtyViewModel.OperatorInputWindow)
         {
             return;
         }
@@ -1163,6 +1172,7 @@ public partial class TtyView : UserControl
         if (_viewModel is not null)
         {
             _viewModel.PromptSink = null;
+            _viewModel.HasDraftInput = null;
             // OnDataContextChanged's matching unsubscribes never run on a normal close, so this is the only place
             // these three ever drop (AC-758).
             _viewModel.LaunchRequested -= OnLaunchRequested;
