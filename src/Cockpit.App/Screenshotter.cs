@@ -71,7 +71,7 @@ internal static partial class Screenshotter
                 },
             ],
         });
-        return new Window { Width = 450, Height = 300, Content = new Controls.BackgroundWorkList { DataContext = session } };
+        return new Window { Width = 450, Height = 380, Content = new Controls.BackgroundWorkList { DataContext = session } };
     }
 
     public const string Argument = "--screenshot";
