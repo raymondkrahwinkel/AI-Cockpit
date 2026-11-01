@@ -641,7 +641,7 @@ public sealed class CockpitBackend
             Services.GetRequiredService<ISessionProfileStore>(),
             Services.GetRequiredService<IDelegationService>(),
             Services.GetService<ISessionLauncher>(),
-            Services.GetService<IWorkspaceAgentCoordinator>());
+            Services.GetService<Cockpit.Core.Abstractions.Agents.IWorkspaceAgentCoordinator>());
         var diagnostics = Services.GetRequiredService<PluginDiagnostics>();
 
         return (discovered, plugin) => new PluginBackendHost(
