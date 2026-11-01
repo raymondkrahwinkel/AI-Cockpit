@@ -35,7 +35,8 @@ internal sealed class WorkflowsDialogControl : UserControl
         try
         {
             var lastRun = await _host.Channel.AskAsync<WorkflowRun>(WorkflowsChannel.LastRun, new WorkflowsLastRunRequest(workflow.Id));
-            var editor = new WorkflowEditorControl(workflow, _Save, _host, lastRun);
+            var profiles = await _host.GetProfilesAsync();
+            var editor = new WorkflowEditorControl(workflow, _Save, _host, lastRun, profiles);
             editor.BackRequested += (_, _) =>
             {
                 _manager.Refresh();

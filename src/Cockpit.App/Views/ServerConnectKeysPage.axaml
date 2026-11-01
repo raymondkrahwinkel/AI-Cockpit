@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Cockpit.App.ViewModels"
+             xmlns:terms="using:Cockpit.Plugins.Abstractions"
              x:Class="Cockpit.App.Views.ServerConnectKeysPage"
              x:DataType="vm:ServerAdminViewModel">
 
@@ -12,7 +13,7 @@
             <TextBlock Text="Connect keys" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
         </DockPanel>
         <TextBlock Classes="optionsHint" TextWrapping="Wrap"
-                   Text="Use is governed by your own agreement with each provider. Each person needs their own provider login. Personal subscriptions are for individual use and must not be shared with others; for shared use, use an API-key profile."/>
+                   Text="{x:Static terms:ProviderTerms.GeneralNotice}"/>
         <TextBlock Classes="optionsHint" Classes.error="{Binding StatusIsError}" TextWrapping="Wrap"
                    IsVisible="{Binding Status.Length}" Text="{Binding Status}"/>
 

@@ -1118,6 +1118,9 @@ public sealed record PluginProfileInfo(string Label, string Provider, string Con
 | `Label` | Display name, as shown in the profile picker. |
 | `Provider` | The host's provider name — `ClaudeCli`, `Ollama`, `LmStudio`, `Plugin`. A string, not an enum, so the contract does not change every time the host gains a provider: match on the ones you care about and ignore the rest. |
 | `ConfigDirectory` | The provider's per-profile config directory (a Claude-CLI profile's `CLAUDE_CONFIG_DIR`, holding that identity's credentials, config and `projects/` transcripts). Empty for a provider that keeps no such directory. |
+| `UsesPersonalLogin` | Host-supplied credential classification (SDK 3.63.0, host 0.156.0), including server-hosted profiles. Defaults to `true`: unknown credentials count as personal. Only local Ollama/LM Studio models and confirmed API-key credentials return `false`. |
+
+`ProviderTerms.GeneralNotice` supplies the shared, provider-neutral terms notice for settings. Workflow hints belong in the consuming plugin; this profile flag does not grant permission or replace consent.
 
 ```csharp
 var profiles = await host.GetProfilesAsync();

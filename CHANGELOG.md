@@ -34,6 +34,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 - A session in the sidebar now lists its sub-agents under a "N sub-agents · M running" line: each row shows the task, type, last tool and time, and clicking it opens that sub-agent's read-only transcript. The list opens on its own for the session you are in while a sub-agent runs; finished sub-agents fold into "+ N finished".
 
+- Workflow session steps show a personal-subscription hint when the flow has an external trigger. Provider-use notices share the same wording throughout settings.
+
 - Provider and profile settings show provider-owned terms notices and official links. Sharing, server and swarm settings explain individual subscription use; the README documents token-free profile backups and connect-key isolation (AC-2004).
 
 ### Fixed

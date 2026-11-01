@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Cockpit.Plugin.Workflows.Model;
+using Cockpit.Plugins.Abstractions.Profiles;
 using Material.Icons;
 using Material.Icons.Avalonia;
 
@@ -31,14 +32,25 @@ internal sealed class NodeDialog : Border
     private readonly TextBlock _title;
     private readonly TextBlock _description;
     private readonly Border _card;
+    private readonly Workflow _workflow;
+    private readonly IReadOnlyList<PluginProfileInfo> _profiles;
+    private readonly TextBlock _personalLoginHint;
 
     private WorkflowNode? _node;
     // The setting a field-chip writes into. A Control, not a TextBox: a field the step can enumerate is a dropdown you
     // can type in, and {ticket} has to land in that one too.
     private Control? _lastEdited;
 
-    public NodeDialog()
+    public NodeDialog(Workflow workflow, IReadOnlyList<PluginProfileInfo> profiles)
     {
+        _workflow = workflow;
+        _profiles = profiles;
+        _personalLoginHint = new TextBlock
+        {
+            Text = "This session runs on your personal subscription; don't let others trigger it. Use an API-key profile for shared use.",
+            Classes = { "optionsHint" },
+            TextWrapping = TextWrapping.Wrap,
+        };
         // The host's scrim, so the canvas behind is visibly out of play while a step is open.
         Background = _Brush("CockpitScrimBrush", "#b30f1116");
         IsVisible = false;
@@ -176,8 +188,15 @@ internal sealed class NodeDialog : Border
             _fields.Children.Add(_Field(parameter, current, value =>
             {
                 node.Parameters[parameter] = value ?? string.Empty;
+                _UpdatePersonalLoginHint(node);
                 Changed?.Invoke(this, EventArgs.Empty);
             }, referable: true, suggest: node.Type?.Suggest));
+
+            if (node.TypeId == "cockpit.start-session" && parameter == "Profile")
+            {
+                _UpdatePersonalLoginHint(node);
+                _fields.Children.Add(_personalLoginHint);
+            }
         }
 
         // A step that is switched off stays on the canvas, drawn dimmed, and a run passes it by. Deleting is not the
@@ -216,6 +235,18 @@ internal sealed class NodeDialog : Border
             Changed?.Invoke(this, EventArgs.Empty);
         };
         _fields.Children.Add(traced);
+    }
+
+    private void _UpdatePersonalLoginHint(WorkflowNode node)
+    {
+        node.Parameters.TryGetValue("Profile", out var label);
+        _personalLoginHint.IsVisible = node.TypeId == "cockpit.start-session"
+            && _workflow.Nodes.Any(trigger => trigger.Kind == WorkflowNodeKind.Trigger
+                && (trigger.TypeId == "cockpit.text-match"
+                    || trigger.TypeId.StartsWith("youtrack.", StringComparison.Ordinal)
+                    || trigger.TypeId.StartsWith("github.", StringComparison.Ordinal)))
+            && !_profiles.Any(profile => !profile.UsesPersonalLogin
+                && string.Equals(profile.Label, label?.Trim(), StringComparison.OrdinalIgnoreCase));
     }
 
     private void _FillIncoming(

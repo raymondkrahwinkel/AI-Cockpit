@@ -505,6 +505,7 @@ public class PluginBackendHost(
     {
         var profiles = await services.GetRequiredService<ISessionProfileStore>().LoadAsync().ConfigureAwait(false);
         var registry = services.GetRequiredService<IPluginProviderRegistry>();
+        var logins = services.GetService<IProfileLoginChecker>();
         return profiles
             .Select(profile =>
             {
@@ -525,6 +526,7 @@ public class PluginBackendHost(
                         ?? (profile.Claude is not null ? LegacyClaudeEfforts : []),
                     // The local, free-to-run providers; everything else (Claude, Codex, hosted plugin providers) is a paid API.
                     RunsLocally = profile.Provider is Core.Profiles.SessionProvider.Ollama or Core.Profiles.SessionProvider.LmStudio,
+                    UsesPersonalLogin = NodeCallerSessionPolicy.UsesPersonalLogin(profile, logins),
                 };
             })
             .ToList();

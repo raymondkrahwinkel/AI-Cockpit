@@ -438,7 +438,8 @@
          A plugin that sets ProjectMemorySourceRegistration.ListBrainsAsync or BrainInstruction sets minHostVersion 0.154.0. -->
     <!-- 0.155.0: provider-owned terms notices (AC-2004, Abstractions 3.62.0).
          A plugin that sets SessionProviderRegistration.TermsNotice sets minHostVersion 0.155.0. -->
-    <VersionPrefix>0.155.0</VersionPrefix>
+    <!-- 0.156.0: PluginProfileInfo.UsesPersonalLogin and ProviderTerms.GeneralNotice (AC-2006, SDK 3.63.0). -->
+    <VersionPrefix>0.156.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>

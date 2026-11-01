@@ -60,4 +60,7 @@ public sealed record PluginProfileInfo(string Label, string Provider, string Con
     /// provider as paid, the safe assumption for a cost decision.
     /// </remarks>
     public bool RunsLocally { get; init; }
+
+    // Unknown credentials count as personal until the host identifies an API key or a local model.
+    public bool UsesPersonalLogin { get; init; } = true;
 }

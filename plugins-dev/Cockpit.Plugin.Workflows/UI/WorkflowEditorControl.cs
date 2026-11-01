@@ -10,6 +10,7 @@ using Cockpit.Plugin.Workflows.Model;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Cockpit.Plugins.Abstractions.UI;
+using Cockpit.Plugins.Abstractions.Profiles;
 using Material.Icons;
 using Material.Icons.Avalonia;
 
@@ -40,7 +41,7 @@ internal sealed class WorkflowEditorControl : UserControl
     private readonly TextBlock _saved;
 
     // `lastRun` is the flow's most recent run, which the dialog asks the backend part for before opening this.
-    public WorkflowEditorControl(Workflow workflow, Action save, ICockpitUiHost host, WorkflowRun? lastRun)
+    public WorkflowEditorControl(Workflow workflow, Action save, ICockpitUiHost host, WorkflowRun? lastRun, IReadOnlyList<PluginProfileInfo> profiles)
     {
         _workflow = workflow;
         _save = save;
@@ -57,7 +58,7 @@ internal sealed class WorkflowEditorControl : UserControl
 
         // A step opens over the canvas, not beside it: what a step has to work with is a bigger question than what
         // it is called, and a strip of text boxes on the right cannot show what came in and what went out at once.
-        _dialog = new NodeDialog();
+        _dialog = new NodeDialog(workflow, profiles);
 
         _canvas = new WorkflowCanvas(workflow);
         _canvas.Changed += (_, _) =>

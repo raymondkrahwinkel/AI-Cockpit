@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
@@ -10,12 +11,14 @@ using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Workspaces;
 using Cockpit.Infrastructure.Plugins;
+using Cockpit.Infrastructure.BackendApi;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Projects;
+using Cockpit.Plugins.Abstractions.Profiles;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.StatusBar;
 
@@ -259,16 +262,43 @@ public class PluginBackendHostTests
         Assert.Null(providers.OwnerOf("echo"));
     }
 
-    // AC-1369 condition (a): the host is built and used here, in the suite that guards the no-plugin backend, and not
-    // one Avalonia assembly comes with it.
+    // Layer 2, credential policy: only confirmed API keys or local models suppress the personal-login hint.
     [Fact]
-    public async Task TheBackendHost_LoadsNoAvaloniaAssembly()
+    public async Task ProfileHints_UseTheFailClosedCredentialPolicy_LocallyAndOverTheApi()
     {
-        var registry = new SessionRegistry();
-        registry.Register(_Pane(PaneId, "Echo"));
-        var host = _Host(registry, _InlineLauncher());
+        var personal = new SessionProfile("personal", new PluginProviderConfig("echo", "{}"));
+        var ollama = new SessionProfile("ollama", new OllamaConfig("http://localhost:11434", "local"));
+        var studio = new SessionProfile("studio", new LmStudioConfig("http://localhost:1234", "local"));
+        var store = Substitute.For<ISessionProfileStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<SessionProfile>>([personal, ollama, studio]));
+        var logins = Substitute.For<IProfileLoginChecker>();
+        var host = _Host(new SessionRegistry(), _InlineLauncher(), services => services
+            .AddSingleton(store).AddSingleton(logins));
 
-        await host.SendToSessionAsync(PaneId, "hello");
+        foreach (var (credential, expected) in new[]
+        {
+            (ProfileCredentialKind.Unknown, true),
+            (ProfileCredentialKind.Login, true),
+            (ProfileCredentialKind.RenewingLogin, true),
+            (ProfileCredentialKind.ApiKey, false),
+            (ProfileCredentialKind.ApiKeyFromSecret, false),
+        })
+        {
+            logins.CredentialKind(Arg.Any<SessionProfile>()).Returns(credential);
+            var profiles = await host.GetProfilesAsync();
+            Assert.Equal(new[] { expected, false, false }, profiles.Select(profile => profile.UsesPersonalLogin));
+            Assert.Equal(expected, ProfileEndpoints.ToWire(personal, [], [], logins: logins).UsesPersonalLogin);
+            Assert.False(ProfileEndpoints.ToWire(ollama, [], [], logins: logins).UsesPersonalLogin);
+            Assert.False(ProfileEndpoints.ToWire(studio, [], [], logins: logins).UsesPersonalLogin);
+        }
+
+        var withoutChecker = _Host(new SessionRegistry(), _InlineLauncher(), services => services.AddSingleton(store));
+        Assert.True((await withoutChecker.GetProfilesAsync())[0].UsesPersonalLogin);
+        Assert.True(new PluginProfileInfo("unknown", "Plugin", "").UsesPersonalLogin);
+        var oldWire = JsonSerializer.SerializeToNode(ProfileEndpoints.ToWire(personal, [], []))?.AsObject()
+            ?? throw new InvalidOperationException("The profile was not serialized.");
+        oldWire.Remove(nameof(RemoteProfile.UsesPersonalLogin));
+        Assert.True(oldWire.Deserialize<RemoteProfile>()?.UsesPersonalLogin);
 
         Assert.DoesNotContain(AppDomain.CurrentDomain.GetAssemblies(), assembly => assembly.GetName().Name?.StartsWith("Avalonia", StringComparison.Ordinal) == true);
     }

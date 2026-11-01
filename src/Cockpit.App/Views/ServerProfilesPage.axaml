@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Cockpit.App.ViewModels"
+             xmlns:terms="using:Cockpit.Plugins.Abstractions"
              xmlns:views="using:Cockpit.App.Views"
              x:Class="Cockpit.App.Views.ServerProfilesPage"
              x:DataType="vm:ServerProfilesViewModel">
@@ -15,7 +16,7 @@
             </StackPanel>
             <TextBlock Text="The profiles sessions on the server start under: provider, session defaults, delegation and environment." Classes="optionsHint"/>
             <TextBlock Classes="optionsHint" TextWrapping="Wrap"
-                       Text="Use is governed by your own agreement with each provider. Each person needs their own provider login. Personal subscriptions are for individual use and must not be shared with others; for shared use, use an API-key profile."/>
+                       Text="{x:Static terms:ProviderTerms.GeneralNotice}"/>
             <TextBlock Classes="optionsHint" Classes.error="{Binding StatusIsError}" TextWrapping="Wrap"
                        IsVisible="{Binding Status.Length}" Text="{Binding Status}"/>
             <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}" Margin="0,4"/>

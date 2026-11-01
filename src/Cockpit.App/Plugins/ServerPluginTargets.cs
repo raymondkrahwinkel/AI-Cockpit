@@ -61,6 +61,7 @@ internal static class ServerPluginTargets
         {
             ModelSuggestions = _Known(profile, WellKnownPluginSessionOptions.Model),
             EffortSuggestions = _Known(profile, WellKnownPluginSessionOptions.Effort),
+            UsesPersonalLogin = profile.UsesPersonalLogin,
         })];
 
     // AC-1737: the server's projects, read again from its API so a project added there since shows up.
