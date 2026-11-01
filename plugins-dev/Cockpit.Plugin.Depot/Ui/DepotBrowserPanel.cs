@@ -94,7 +94,7 @@ internal sealed partial class DepotBrowserPanel : UserControl
         // AC-2010: the Notes header is the one Depot/project choice for every tab; Files follows it.
         notesPanel.ConnectionSelected += connection => inboxPanel.SelectConnection(connection.Id);
         notesPanel.ConnectionSelected += async connection => await SelectConnectionAsync(connections.ToList().IndexOf(connection)).ConfigureAwait(true);
-        notesPanel.ProjectSelected += async project =>
+        notesPanel.ProjectSelected -= async project =>
         {
             if (project is not null && project != _project)
             {
