@@ -424,6 +424,13 @@ public partial class CockpitViewModel
     [RelayCommand]
     private Task OpenServerAdminAsync(ServerGroupViewModel group) => _OpenServerAdminAsync(group, null);
 
+    // AC-2011: the Servers page's connection card names its server, not its group.
+    [RelayCommand]
+    private Task OpenServerAdminByNameAsync(string server) =>
+        ServerGroups.FirstOrDefault(group => string.Equals(group.Name, server, StringComparison.Ordinal)) is { } group
+            ? _OpenServerAdminAsync(group, null)
+            : Task.CompletedTask;
+
     public Task OpenServerPluginsAsync(string server) =>
         ServerGroups.FirstOrDefault(group => string.Equals(group.Name, server, StringComparison.Ordinal)) is { } group
             ? _OpenServerAdminAsync(group, "server-plugins")

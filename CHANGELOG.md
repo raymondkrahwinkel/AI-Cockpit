@@ -40,7 +40,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
-- Connecting to a headless server now lives in **Options › Servers**: the Connect form, the connected servers with their status, and accepting connections from a second Cockpit moved there from the Nodes page, which is gone. The encryption notes it also carried are now under Security.
+- Connecting to a headless server now lives in **Options › Servers**, with one card per server for its status, Disconnect and Manage server. The Nodes page is gone: accepting connections is the switch under Swarm › This machine, the old shared key and discovery ranges for pairing desktops are no longer shown, and the encryption notes are now under Security.
 
 ### Fixed
 

@@ -41,6 +41,10 @@ public sealed partial class NodeSessionsViewModel(string nodeName) : ObservableO
     [ObservableProperty]
     private string _connectionDetail = "";
 
+    // AC-2011: whether this card's key may open the server's management window.
+    [ObservableProperty]
+    private bool _isAdminKey;
+
     public string ConnectionLabel => ConnectionState switch
     {
         NodeConnectionState.Connected => "Connected",
@@ -121,6 +125,7 @@ public sealed partial class NodeSessionsViewModel(string nodeName) : ObservableO
 
         _latencyMs = state?.LatencyMs;
         _version = state?.Key?.Version ?? _version;
+        IsAdminKey = string.Equals(state?.Key?.Capability, "admin", StringComparison.OrdinalIgnoreCase);
         ConnectionState = next;
         _DescribeConnection();
     }

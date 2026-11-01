@@ -153,17 +153,13 @@ These settings save with Apply; Cancel does not undo a completed pairing.
 
 **Options › Servers** is where you connect to a headless Cockpit server and manage it. Under
 **Connect to a server**, enter the server's address, a connect key and its certificate fingerprint; the
-connection is saved only once all three work together. **Connected servers** shows each connection with
-its status and version, and Disconnect closes it while the server's sessions keep running.
+connection is saved only once all three work together. **Connected servers** shows one card per server
+with its status and version: Disconnect closes the connection while the server's sessions keep running, and
+**Manage server** opens its connect keys, plugins, profiles, projects and audit log. Management requires an
+admin key; an operate key cannot change these settings. Searching for either “servers” or “admin” finds
+the page. The Servers action on a sidebar server group opens the same management window.
 
-Choose **Manage server** to open a server's connect keys, plugins, profiles, projects and audit log.
-Management requires an admin key; an operate key cannot change these settings. Searching for either
-“servers” or “admin” finds the page. The Servers action on a sidebar server group opens the same
-management window.
-
-**Accept connections from a second Cockpit** decides whether this cockpit's own MCP endpoints are
-reachable from your network, guarded by a shared key. Headless servers keep their connect-key connection;
-your desktops connect to each other in [Swarm](#swarm).
+Your desktops connect to each other in [Swarm](#swarm), not here.
 
 ## Backup {#backup}
 

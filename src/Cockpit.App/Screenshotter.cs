@@ -2223,10 +2223,6 @@ internal static partial class Screenshotter
         var servers = ServerGroupScene.StandIn("huis-cockpit", new Core.Abstractions.Remote.RemoteServerState(connected, 38, key));
         var security = _ConnectAttempt(null, servers);
         security.CancelConnectCommand.Execute(null);
-        security.NodeEndpointEnabled = true;
-        security.NodeEndpointAddressText = "cockpit-agents: https://huis-cockpit.tailnet.ts.net:20383/mcp";
-        security.NodeEndpointSharedSecret = "scene-shared-key";
-        security.NodeEndpointHasNoListener = false;
         var cockpit = new ViewModels.CockpitViewModel { Security = security };
         cockpit.ShowServers(servers, SessionViewModel.OverRemoteAsync);
         var dialog = new OptionsDialog { DataContext = cockpit, Height = 1500 };

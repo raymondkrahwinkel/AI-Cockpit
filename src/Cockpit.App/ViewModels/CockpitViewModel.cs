@@ -7715,7 +7715,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // AC-1286: the security toggles are staged too, and a write that failed really did stay unwritten — rebaselining
     // over it would tell the operator there is nothing pending while their choice is not on disk.
-    private static readonly string[] _StagedCategoryTags = [_ProfilesCategoryTag, "security", "servers"];
+    private static readonly string[] _StagedCategoryTags = [_ProfilesCategoryTag, "security", "swarm"];
 
     // A blocked Apply keeps the edit open, so the fingerprint still holds the value taken at open and the footer
     // goes on calling settings this click just wrote unsaved — with ✕ offering to discard what Cancel can now only

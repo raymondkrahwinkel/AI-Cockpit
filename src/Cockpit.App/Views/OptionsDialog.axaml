@@ -380,6 +380,9 @@
 
                         <TextBlock Text="This machine" FontWeight="SemiBold" Margin="0,12,0,0"/>
                         <CheckBox Content="Accept connections from my other Cockpits" IsChecked="{Binding Security.NodeEndpointEnabled}"/>
+                        <TextBlock Classes="optionsHint" TextWrapping="Wrap"
+                                   IsVisible="{Binding Security.PersistError.Length}"
+                                   Text="{Binding Security.PersistError}"/>
                         <TextBlock Text="Apply this setting and restart Cockpit to change the network listener." Classes="optionsHint"/>
                         <TextBlock Text="{Binding Security.NodePairingAddress}" Classes="optionsHint" IsVisible="{Binding Security.NodeEndpointEnabled}"/>
                         <Border Padding="10" CornerRadius="{StaticResource CockpitControlRadius}"
@@ -423,10 +426,6 @@
                                    Text="{x:Static terms:ProviderTerms.GeneralNotice}"/>
                         <TextBlock Text="Connect your desktops in Swarm." Classes="optionsHint"/>
                         <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}" Margin="0,4"/>
-
-                        <TextBlock Classes="optionsHint" TextWrapping="Wrap"
-                                   IsVisible="{Binding Security.PersistError.Length}"
-                                   Text="{Binding Security.PersistError}"/>
 
                         <TextBlock Classes="optionsSectionHeader" Text="1. CONNECT TO A SERVER"/>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
@@ -487,12 +486,10 @@
                             </StackPanel>
                         </StackPanel>
 
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                    IsVisible="{Binding Security.PairedNodes.Count}">
-                            <TextBlock Text="Connected servers" FontWeight="SemiBold"/>
-                            <materialIcons:MaterialIcon Classes="hint"
-                                ToolTip.Tip="Server sessions appear in the session list under their server name and keep running when you disconnect."/>
-                        </StackPanel>
+                        <TextBlock Classes="optionsSectionHeader" Text="2. CONNECTED SERVERS"/>
+                        <TextBlock Text="No server connected. Connect to a server above first." Classes="optionsHint" IsVisible="{Binding !Security.PairedNodes.Count}"/>
+                        <TextBlock Text="Server sessions appear in the session list under their server name and keep running when you disconnect. Manage server needs an admin key."
+                                   Classes="optionsHint" IsVisible="{Binding Security.PairedNodes.Count}"/>
                         <ItemsControl ItemsSource="{Binding Security.PairedNodes}" Margin="24,4,0,0">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
@@ -503,6 +500,10 @@
                                                 <TextBlock Text="another machine" FontSize="11" FontStyle="Italic" VerticalAlignment="Center"
                                                            Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                                 <Button Content="Disconnect" Command="{Binding DisconnectCommand}" IsVisible="{Binding CanDisconnect}"/>
+                                                <!-- AC-2011: one card per server, so Manage sits beside its connection. -->
+                                                <Button Content="Manage server" IsEnabled="{Binding IsAdminKey}"
+                                                        Command="{Binding $parent[Window].((vm:CockpitViewModel)DataContext).OpenServerAdminByNameCommand}"
+                                                        CommandParameter="{Binding NodeName}"/>
                                             </StackPanel>
 
                                             <views:NodeConnectionStatusView/>
@@ -516,50 +517,6 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
 
-                        <TextBlock Classes="optionsSectionHeader" Text="2. MANAGE A SERVER"/>
-                        <TextBlock Text="No server connected. Connect to a server above first." Classes="optionsHint" IsVisible="{Binding !ServerGroups.Count}"/>
-                        <ItemsControl ItemsSource="{Binding ServerGroups}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="vm:ServerGroupViewModel">
-                                    <Border Padding="10" Margin="0,0,0,6" CornerRadius="{StaticResource CockpitControlRadius}" Background="{DynamicResource CockpitSecondaryBgBrush}">
-                                        <Grid ColumnDefinitions="*,Auto">
-                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                            <Button Grid.Column="1" Content="Manage server" IsEnabled="{Binding IsAdminKey}"
-                                                    Command="{Binding $parent[Window].((vm:CockpitViewModel)DataContext).OpenServerAdminCommand}" CommandParameter="{Binding}"/>
-                                        </Grid>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-
-                        <TextBlock Classes="optionsSectionHeader" Text="3. ACCEPT CONNECTIONS FROM A SECOND COCKPIT"/>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <TextBlock Text="Accept connections from a second Cockpit" FontWeight="SemiBold"/>
-                            <materialIcons:MaterialIcon Classes="hint"
-                                ToolTip.Tip="Off by default: every MCP endpoint this cockpit hosts stays reachable only from this machine. Turning it on adds a second, TLS-protected listener on your network for each one, guarded by a shared key (generated for you below) instead of this run's own key — a second Cockpit types the address and key into its 'Add MCP server' dialog to reach this one as a node. Takes effect the next time you start Cockpit, not immediately."/>
-                        </StackPanel>
-                        <CheckBox Content="Accept MCP connections from another Cockpit on this network"
-                                  IsChecked="{Binding Security.NodeEndpointEnabled}"/>
-                        <StackPanel Spacing="4" Margin="24,4,0,0" IsVisible="{Binding Security.NodeEndpointEnabled}">
-                            <TextBlock Classes="optionsHint" TextWrapping="Wrap"
-                                       IsVisible="{Binding Security.NodeEndpointHasNoListener}"
-                                       Text="{Binding Security.NodeEndpointNoListenerText}"/>
-                            <StackPanel Spacing="4" IsVisible="{Binding !Security.NodeEndpointHasNoListener}">
-                                <TextBlock Text="Address" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
-                                <TextBox Text="{Binding Security.NodeEndpointAddressText}" IsReadOnly="True" FontFamily="Consolas,monospace" FontSize="11.5"/>
-                            </StackPanel>
-                            <TextBlock Text="Shared key" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
-                            <TextBox Text="{Binding Security.NodeEndpointSharedSecret}" IsReadOnly="True" FontFamily="Consolas,monospace" FontSize="11.5"/>
-
-                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,8,0,0">
-                                <TextBlock Text="Visible outside this network" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                                <materialIcons:MaterialIcon Classes="hint"
-                                    ToolTip.Tip="This node is always visible on its own local network. Past that, nothing — not a discovery reply, not a pairing request — until you list the ranges allowed to reach it here, comma-separated CIDR notation (e.g. 203.0.113.0/24). Empty by default, on purpose."/>
-                            </StackPanel>
-                            <TextBox Text="{Binding Security.AllowedDiscoveryRangesText, UpdateSourceTrigger=LostFocus}" PlaceholderText="e.g. 203.0.113.0/24"
-                                     FontFamily="Consolas,monospace" FontSize="11.5"/>
-
-                        </StackPanel>
 
                     </StackPanel>
                 </ScrollViewer>

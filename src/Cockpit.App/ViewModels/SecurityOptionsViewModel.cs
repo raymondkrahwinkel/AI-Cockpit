@@ -274,7 +274,7 @@ public sealed partial class SecurityOptionsViewModel(
             }
 
             // Outside the guard: the addresses are what this run's listeners answer, not a staged value, and the
-            // Servers page has to keep telling the truth about them while the dialog is open.
+            // Swarm page has to keep telling the truth about them while the dialog is open.
             _ApplyNodeEndpointAddresses(NodeEndpointEnabled);
         }
 
@@ -369,7 +369,7 @@ public sealed partial class SecurityOptionsViewModel(
     }
 
     // AC-1288: in the view model rather than in the view, so it and the host's own reason are one property the
-    // Servers page binds — two TextBlocks fighting over one line is how they end up both visible.
+    // view binds — two TextBlocks fighting over one line is how they end up both visible.
     private const string NeedsRestartText =
         "Not listening yet — apply this first, then restart Cockpit before it starts listening. The addresses to "
         + "type into the other Cockpit appear here after that restart; if they stay away, check that this machine "
@@ -433,7 +433,7 @@ public sealed partial class SecurityOptionsViewModel(
             return;
         }
 
-        await _PersistAsync("the node settings", "servers", async () =>
+        await _PersistAsync("the node settings", "swarm", async () =>
         {
             // Read-modify-write off disk for the same reason `OnNodeEndpointEnabledChanged` does it (AC-792): the
             // section carries a pairing this screen knows nothing about, and the secret held here can have gone
@@ -528,7 +528,7 @@ public sealed partial class SecurityOptionsViewModel(
 
         // AC-1286: the read sits inside the chained write, not beside it. Read outside, and the sibling handler
         // below loads while this save is still running and writes the value it just replaced back over it.
-        _ = _PersistAsync("the node switch", "servers", async () =>
+        _ = _PersistAsync("the node switch", "swarm", async () =>
         {
             // AC-792: read-modify-write rather than a fresh record, and the secret comes from what is on disk right
             // now rather than from this view model's copy.
@@ -552,7 +552,7 @@ public sealed partial class SecurityOptionsViewModel(
             return;
         }
 
-        _ = _PersistAsync("the discovery ranges", "servers", async () =>
+        _ = _PersistAsync("the discovery ranges", "swarm", async () =>
         {
             var ranges = value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
             var current = await nodeEndpointSettings.LoadAsync().ConfigureAwait(true);
