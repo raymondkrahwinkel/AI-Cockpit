@@ -123,10 +123,6 @@ internal sealed class SwarmJoinHost(
             {
                 throw NodePairingException.For(NodePairingError.PairingInProgress, "Another join is waiting.");
             }
-            if ((await servers.LoadAsync(ct)).Any(server => server.IsNodeConnection))
-            {
-                throw NodePairingException.For(NodePairingError.IsAController, "Migrate the existing node connections first.");
-            }
             var current = await membership.LoadAsync(ct);
             if (current.Sequence != 0 && !current.Tombstones.Any(item => item.Member == identity.MemberId))
             {
