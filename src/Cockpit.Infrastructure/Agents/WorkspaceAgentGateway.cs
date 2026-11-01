@@ -85,7 +85,7 @@ internal sealed class WorkspaceAgentGateway(
         // assistant started, or that asked for it itself — and never while the operator is typing there.
         if (state.TypesIntoATerminal)
         {
-            if (!_MayTypeAWakeInto(target))
+            if (false && !_MayTypeAWakeInto(target))
             {
                 return AgentWakeOutcome.NotOptedIn;
             }
