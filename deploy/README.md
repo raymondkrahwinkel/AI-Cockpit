@@ -151,6 +151,10 @@ which would otherwise run as the server. The SSH keys and git credentials for cl
 cannot read `/state`, the secrets or the server's `/proc` entries; it keeps the session's environment (`COCKPIT_PANE_ID`,
 the MCP settings, `GH_TOKEN`) and has its own `HOME`.
 
+For direct diagnostics with `docker compose exec -u agent`, also pass `-e HOME=/home/agent`: Docker changes the uid
+but keeps the image's `HOME=/home/app`. The smoke's direct binary controls set the selected user's home for the same
+reason; the production wrappers already set it before starting a CLI.
+
 For private GitHub HTTPS repositories, sign the server in under **Server > Projects > GitHub** with a device code
 or paste a fine-grained token with access to the repositories you need. The token is write-only in the admin API;
 `gh` stores it unencrypted in `/home/agent/.config/gh/hosts.yml` on `agent-home`. Agent sessions can read that login,
