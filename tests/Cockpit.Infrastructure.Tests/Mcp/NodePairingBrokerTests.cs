@@ -17,12 +17,11 @@ public class NodePairingBrokerTests : IDisposable
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 8, 15, 12, 0, 0, TimeSpan.Zero));
 
     // The value the node listener accepts right now — the holder `McpAuthMiddleware` reads per request.
-    private readonly NodeSharedSecret _liveSecret = new();
 
     private NodeEndpointSettingsStore _Store() => new(_configPath);
 
     private NodePairingBroker _Broker(NodeEndpointSettingsStore? store = null, IMcpServerStore? servers = null) =>
-        new(store ?? _Store(), new NodeSelfSignedCertificate(_certificatePath), _liveSecret, [], servers, _time);
+        new(store ?? _Store(), new NodeSelfSignedCertificate(_certificatePath), [], servers, _time);
 
     [Fact]
     public async Task Claim_BeforeTheOperatorConfirms_IsPendingAndGrantsNothing()
@@ -185,38 +184,6 @@ public class NodePairingBrokerTests : IDisposable
         Assert.NotEqual(grant.SharedSecret, settings.SharedSecret);
         Assert.Null(settings.Pairing);
         Assert.Null(broker.Pairing);
-    }
-
-    [Fact]
-    public async Task Confirm_MakesTheRunningListenerAcceptTheNewKeyWithoutARestart()
-    {
-        var broker = _Broker();
-        var offer = await broker.RequestAsync("desk", "192.168.1.5");
-
-        Assert.Null(_liveSecret.Value);
-
-        await broker.ConfirmAsync(offer.PairingId);
-        var grant = await broker.ClaimAsync(offer.PairingId, offer.ClaimToken);
-
-        // `McpAuthMiddleware` reads this holder per request. Persisting the new secret without setting it here
-        // would leave the freshly paired controller turned away until the node next started — while the screen
-        // said the pairing had succeeded.
-        Assert.Equal(grant.SharedSecret, _liveSecret.Value);
-    }
-
-    [Fact]
-    public async Task Unpair_StopsTheRunningListenerAcceptingTheKeyWithoutARestart()
-    {
-        var broker = _Broker();
-        var offer = await broker.RequestAsync("desk", "192.168.1.5");
-        await broker.ConfirmAsync(offer.PairingId);
-        await broker.ClaimAsync(offer.PairingId, offer.ClaimToken);
-
-        await broker.UnpairAsync();
-
-        // The serious half of the same defect: revocation that waits for a restart is not revocation. Until this
-        // is null the unpaired controller still has full node access.
-        Assert.Null(_liveSecret.Value);
     }
 
     [Fact]

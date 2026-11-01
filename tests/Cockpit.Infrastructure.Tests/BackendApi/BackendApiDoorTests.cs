@@ -81,10 +81,10 @@ public sealed class BackendApiDoorTests
         Assert.Equal(1, body?["apiVersion"]?.GetValue<int>());
     }
 
-    // Criteria 1 and 2, the counter-proof: the pairing secret over HTTPS, and the app key or a session token over
-    // loopback, all pass the middleware and meet the API's forbidden; a key nobody issued meets the MCP door's 401.
+    // Criteria 1 and 2, the counter-proof: the app key or a session token over loopback pass the middleware and meet
+    // the API's forbidden; a key nobody issued, and since AC-1985 the old pairing secret, meet the MCP door's 401.
     [Theory]
-    [InlineData("pairing secret over HTTPS", HttpStatusCode.Forbidden, ForbiddenBody)]
+    [InlineData("pairing secret over HTTPS", HttpStatusCode.Unauthorized, InvalidTokenBody)]
     [InlineData("app key over loopback", HttpStatusCode.Forbidden, ForbiddenBody)]
     [InlineData("session token over loopback", HttpStatusCode.Forbidden, ForbiddenBody)]
     [InlineData("unknown key over HTTPS", HttpStatusCode.Unauthorized, InvalidTokenBody)]
@@ -1126,7 +1126,6 @@ public sealed class BackendApiDoorTests
                 Keyring,
                 new NodeEndpointSettingsStore(ConfigPath),
                 _certificate,
-                new NodeSharedSecret(),
                 mounts,
                 NullLoggerFactory.Instance,
                 new NodeListenAddress(System.Net.IPAddress.Loopback));

@@ -2,7 +2,6 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
-using System.Security.Cryptography;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions.Mcp;
@@ -146,32 +145,6 @@ public sealed partial class SecurityOptionsViewModel(
     [ObservableProperty]
     private bool _nodeEndpointEnabled;
 
-    // The persistent shared secret a second Cockpit types into its own "add MCP server" dialog (AC-354) to reach
-    // this instance as a node. Generated once, the first time the switch turns on; reused on every later toggle so
-    // a second Cockpit that already has it keeps working after this one restarts.
-    [ObservableProperty]
-    private string _nodeEndpointSharedSecret = "";
-
-    // What the operator reads off to type into a second Cockpit — one line per mounted endpoint's live node URL,
-    // empty while no listener is running (see _ResolveNodeEndpointAddressText).
-    [ObservableProperty]
-    private string _nodeEndpointAddressText = "";
-
-    // The switch is on but no listener answers: both address fields have nothing to show, and this hides them.
-    // Set alongside the address text so the two can never disagree.
-    [ObservableProperty]
-    private bool _nodeEndpointHasNoListener;
-
-    // What stands in their place — the restart line, or, when the host knows why the listener is missing, that
-    // reason instead (AC-1288). One property, so the operator never reads both at once.
-    [ObservableProperty]
-    private string _nodeEndpointNoListenerText = "";
-
-    // AC-793: CIDR ranges allowed to see this node from outside its own local network — comma-separated, so no
-    // new list-editing control is needed for what is, in practice, an occasional one-or-two-entry setting. Empty
-    // by default: the node's own subnet is always visible, and nothing past it until the operator opts in.
-    [ObservableProperty]
-    private string _allowedDiscoveryRangesText = "";
 
     // AC-1984: Swarm still shows this listener address for joining by address.
     [ObservableProperty]
@@ -268,14 +241,8 @@ public sealed partial class SecurityOptionsViewModel(
                 var node = await nodeEndpointSettings.LoadAsync().ConfigureAwait(true);
                 _loadingNodeEndpoint = true;
                 NodeEndpointEnabled = node.Enabled;
-                AllowedDiscoveryRangesText = string.Join(", ", node.AllowedDiscoveryRanges);
                 _loadingNodeEndpoint = false;
-                NodeEndpointSharedSecret = node.SharedSecret;
             }
-
-            // Outside the guard: the addresses are what this run's listeners answer, not a staged value, and the
-            // Swarm page has to keep telling the truth about them while the dialog is open.
-            _ApplyNodeEndpointAddresses(NodeEndpointEnabled);
         }
 
         // The MCP listener owns the shared message when both ports are unavailable.
@@ -351,48 +318,6 @@ public sealed partial class SecurityOptionsViewModel(
         }
     }
 
-    private string _ResolveNodeEndpointAddressText(bool enabled)
-    {
-        var addresses = _NodeAddresses();
-
-        if (!enabled)
-        {
-            return addresses.Count > 0
-                ? "Still reachable until you restart Cockpit — this session already opened the listener below:"
-                    + Environment.NewLine + string.Join(Environment.NewLine, addresses.Select(address => $"{address.ServerName}: {address.Url}"))
-                : "";
-        }
-
-        // Empty rather than an explanation: with no listener the address fields are hidden and
-        // `NodeEndpointNoListenerText` says why, next to the switch that caused it.
-        return string.Join(Environment.NewLine, addresses.Select(address => $"{address.ServerName}: {address.Url}"));
-    }
-
-    // AC-1288: in the view model rather than in the view, so it and the host's own reason are one property the
-    // view binds — two TextBlocks fighting over one line is how they end up both visible.
-    private const string NeedsRestartText =
-        "Not listening yet — apply this first, then restart Cockpit before it starts listening. The addresses to "
-        + "type into the other Cockpit appear here after that restart; if they stay away, check that this machine "
-        + "has a network connection.";
-
-    private List<NodeEndpointAddress> _NodeAddresses() =>
-        mcpEndpointHosts?.SelectMany(host => host.GetNodeAddresses()).ToList() ?? [];
-
-    // The only place these two are written: the switch reads from disk, from a staged edit and from Apply, and all
-    // three have to leave the same answer behind.
-    private void _ApplyNodeEndpointAddresses(bool enabled)
-    {
-        NodeEndpointAddressText = _ResolveNodeEndpointAddressText(enabled);
-
-        NodeEndpointHasNoListener = enabled && _NodeAddresses().Count == 0;
-
-        // A reason the host knows takes precedence over the restart line: telling an operator whose port is taken
-        // to restart sends them round the same failure again (AC-1288).
-        NodeEndpointNoListenerText = NodeEndpointHasNoListener
-            ? mcpEndpointHosts?.Select(host => host.NodeListenerError).FirstOrDefault(error => error is not null) ?? NeedsRestartText
-            : "";
-    }
-
     // Writes the three staged toggles in one pass, for the Options dialog's Apply (AC-999). Everything else on
 
     // AC-1286: through the same chain as the unstaged path, in two steps so a failure names its own tab. Apply
@@ -435,23 +360,9 @@ public sealed partial class SecurityOptionsViewModel(
 
         await _PersistAsync("the node settings", "swarm", async () =>
         {
-            // Read-modify-write off disk for the same reason `OnNodeEndpointEnabledChanged` does it (AC-792): the
-            // section carries a pairing this screen knows nothing about, and the secret held here can have gone
-            // stale under a rotation.
+            // Read-modify-write off disk (AC-792): the section carries settings this screen does not show.
             var current = await nodeEndpointSettings.LoadAsync().ConfigureAwait(true);
-            var sharedSecret = current.SharedSecret is { Length: > 0 }
-                ? current.SharedSecret
-                : Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
-
-            NodeEndpointSharedSecret = sharedSecret;
-            _ApplyNodeEndpointAddresses(NodeEndpointEnabled);
-
-            await nodeEndpointSettings.SaveAsync(current with
-            {
-                Enabled = NodeEndpointEnabled,
-                SharedSecret = sharedSecret,
-                AllowedDiscoveryRanges = AllowedDiscoveryRangesText.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries),
-            }).ConfigureAwait(true);
+            await nodeEndpointSettings.SaveAsync(current with { Enabled = NodeEndpointEnabled }).ConfigureAwait(true);
         }).ConfigureAwait(true);
     }
 
@@ -463,7 +374,6 @@ public sealed partial class SecurityOptionsViewModel(
         TerminalAccessEnabled = new TerminalAccessSettings().Enabled;
         ShellAccessEnabled = new ShellAccessSettings().Enabled;
         NodeEndpointEnabled = new NodeEndpointSettings().Enabled;
-        AllowedDiscoveryRangesText = string.Join(", ", new NodeEndpointSettings().AllowedDiscoveryRanges);
     }
 
     // Persists the AC-5 toggle the moment it changes. The load above sets it too, which is why that path suppresses this — a seed from disk must not be a write back to disk.
@@ -517,10 +427,6 @@ public sealed partial class SecurityOptionsViewModel(
     // reconfigured at the next launch (CockpitMcpEndpointHost.MountAsync) — so this only persists (AC-790).
     partial void OnNodeEndpointEnabledChanged(bool value)
     {
-        // Display, not persistence, so it runs before the guards below: while the Options dialog stages this toggle
-        // (SuspendPersistence, AC-999) the operator would otherwise tick the box and be told nothing at all.
-        _ApplyNodeEndpointAddresses(value);
-
         if (_loadingNodeEndpoint || SuspendPersistence || nodeEndpointSettings is null)
         {
             return;
@@ -530,36 +436,11 @@ public sealed partial class SecurityOptionsViewModel(
         // below loads while this save is still running and writes the value it just replaced back over it.
         _ = _PersistAsync("the node switch", "swarm", async () =>
         {
-            // AC-792: read-modify-write rather than a fresh record, and the secret comes from what is on disk right
-            // now rather than from this view model's copy.
+            // AC-792: read-modify-write rather than a fresh record.
             var current = await nodeEndpointSettings.LoadAsync().ConfigureAwait(true);
-            var sharedSecret = current.SharedSecret is { Length: > 0 }
-                ? current.SharedSecret
-                : Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
-
-            NodeEndpointSharedSecret = sharedSecret;
-
-            await nodeEndpointSettings.SaveAsync(current with { Enabled = value, SharedSecret = sharedSecret }).ConfigureAwait(true);
+            await nodeEndpointSettings.SaveAsync(current with { Enabled = value }).ConfigureAwait(true);
         });
     }
-
-    // A malformed entry is simply a range that never matches anything — `NodeVisibilityPolicy` skips what does not
-    // parse as a CIDR — so there is nothing here worth validating before it reaches disk (AC-793).
-    partial void OnAllowedDiscoveryRangesTextChanged(string value)
-    {
-        if (_loadingNodeEndpoint || SuspendPersistence || nodeEndpointSettings is null)
-        {
-            return;
-        }
-
-        _ = _PersistAsync("the discovery ranges", "swarm", async () =>
-        {
-            var ranges = value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-            var current = await nodeEndpointSettings.LoadAsync().ConfigureAwait(true);
-            await nodeEndpointSettings.SaveAsync(current with { AllowedDiscoveryRanges = ranges }).ConfigureAwait(true);
-        });
-    }
-
 
     private static McpServerConfig _BuildNodeRow(string nodeName, string serverName, string url, string bearer, string fingerprint) =>
         new()

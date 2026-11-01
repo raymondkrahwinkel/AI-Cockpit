@@ -108,7 +108,6 @@ public class CockpitInternalMcpProviderTests
             nodeEndpointSettings: new FakeNodeEndpointSettingsStore(
                 nodeEnabled ? new NodeEndpointSettings { Enabled = true, SharedSecret = NodeSecret, Port = 0 } : null),
             nodeCertificate: _ThrowawayNodeCertificate(),
-            nodeSharedSecret: new NodeSharedSecret(),
             mounts: new SessionMcpMounts(),
             loggerFactory: NullLoggerFactory.Instance,
             nodeListenAddress: new NodeListenAddress(IPAddress.Loopback));
@@ -131,7 +130,6 @@ public class CockpitInternalMcpProviderTests
             keyring: new SessionMcpKeyring(),
             nodeEndpointSettings: new FakeNodeEndpointSettingsStore(),
             nodeCertificate: _ThrowawayNodeCertificate(),
-            nodeSharedSecret: new NodeSharedSecret(),
             mounts: new SessionMcpMounts(),
             loggerFactory: NullLoggerFactory.Instance,
             nodeListenAddress: new NodeListenAddress(IPAddress.Loopback));
@@ -176,10 +174,10 @@ public class CockpitInternalMcpProviderTests
         Assert.All(host.GetServers(), server => Assert.StartsWith("http://127.0.0.1:", server.Url));
     }
 
-    // AC-790: the node listener is guarded by the persistent shared secret, and — same as the other two credential
-    // paths McpAuthMiddleware already had — a wrong or missing one gets the same generic 401 either way.
+    // AC-1985 (layer 2, authorization): the old pairing shared secret, still stored in cockpit.json, no longer opens
+    // the node listener. It gets the same generic 401 as a wrong or missing credential.
     [Fact]
-    public async Task NodeListener_GuardsWithTheSharedSecret_SameGenericRejectionEitherWayItFails()
+    public async Task NodeListener_RefusesTheStoredPairingSecret_SameGenericRejectionAsAWrongOne()
     {
         const string sharedSecret = NodeSecret;
 
@@ -207,13 +205,11 @@ public class CockpitInternalMcpProviderTests
             Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
         }
 
-        using (var rightSecret = new HttpRequestMessage(HttpMethod.Post, nodeUrl) { Content = new StringContent("{}") })
+        using (var storedSecret = new HttpRequestMessage(HttpMethod.Post, nodeUrl) { Content = new StringContent("{}") })
         {
-            rightSecret.Headers.Authorization = new AuthenticationHeaderValue("Bearer", sharedSecret);
-            using var response = await client.SendAsync(rightSecret);
-            // Past the auth gate: whatever MapMcp makes of a malformed JSON-RPC body is not this middleware's
-            // concern — only that it is never the 401 the two cases above got.
-            Assert.NotEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+            storedSecret.Headers.Authorization = new AuthenticationHeaderValue("Bearer", sharedSecret);
+            using var response = await client.SendAsync(storedSecret);
+            Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
         }
     }
 
@@ -254,7 +250,6 @@ public class CockpitInternalMcpProviderTests
             nodeEndpointSettings: new FakeNodeEndpointSettingsStore(
                 new NodeEndpointSettings { Enabled = true, SharedSecret = sharedSecret }),
             nodeCertificate: _ThrowawayNodeCertificate(),
-            nodeSharedSecret: new NodeSharedSecret(),
             mounts: new SessionMcpMounts(),
             loggerFactory: NullLoggerFactory.Instance,
             nodeListenAddress: new NodeListenAddress(IPAddress.Loopback));
@@ -291,7 +286,6 @@ public class CockpitInternalMcpProviderTests
             keyring: keyring,
             nodeEndpointSettings: new FakeNodeEndpointSettingsStore(),
             nodeCertificate: _ThrowawayNodeCertificate(),
-            nodeSharedSecret: new NodeSharedSecret(),
             mounts: mounts,
             loggerFactory: NullLoggerFactory.Instance,
             nodeListenAddress: new NodeListenAddress(IPAddress.Loopback));

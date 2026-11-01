@@ -150,7 +150,6 @@ public sealed class CockpitMcpEndpointHostArgumentErrorTests
                 nodeEndpointSettings: nodeSettings,
                 nodeCertificate: new NodeSelfSignedCertificate(Path.Combine(Path.GetTempPath(), $"ac-1028-{Guid.NewGuid():N}.pfx")),
                 mounts: new SessionMcpMounts(),
-                nodeSharedSecret: new NodeSharedSecret(),
                 loggerFactory: NullLoggerFactory.Instance,
                 nodeListenAddress: new NodeListenAddress(System.Net.IPAddress.Loopback));
 

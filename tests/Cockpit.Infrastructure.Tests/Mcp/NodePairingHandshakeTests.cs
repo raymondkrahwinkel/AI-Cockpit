@@ -20,7 +20,6 @@ public class NodePairingHandshakeTests : IAsyncLifetime
     private readonly string _configPath = Path.Combine(Path.GetTempPath(), $"node-handshake-{Guid.NewGuid():N}.json");
     private readonly string _certificatePath = Path.Combine(Path.GetTempPath(), $"node-handshake-{Guid.NewGuid():N}.pfx");
 
-    private readonly NodeSharedSecret _liveSecret = new();
 
     private NodeEndpointSettingsStore _store = null!;
     private NodeSelfSignedCertificate _certificate = null!;
@@ -42,7 +41,7 @@ public class NodePairingHandshakeTests : IAsyncLifetime
         // The default policy's own-range set includes loopback (AC-793) — exactly how every test here reaches
         // the host — so this needs no whitelist entry to keep passing.
         _visibility = new NodeVisibilityPolicy(_store);
-        _broker = new NodePairingBroker(_store, _certificate, _liveSecret, []);
+        _broker = new NodePairingBroker(_store, _certificate, []);
         _host = new NodePairingHost(
             _store, _broker, _certificate, _visibility, NullLoggerFactory.Instance, listenAddress: new NodeListenAddress(System.Net.IPAddress.Loopback));
 

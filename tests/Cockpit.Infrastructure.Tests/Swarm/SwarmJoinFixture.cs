@@ -144,7 +144,7 @@ internal sealed class SwarmJoinFixture : IAsyncDisposable
                 else if (context.Request.Path == "/swarm/standby")
                 {
                     var token = context.Request.Headers.Authorization.ToString();
-                    var caller = await machine.Keys.AuthenticateAsync(token.StartsWith("Bearer ", StringComparison.Ordinal) ? token[7..] : token, null, "127.0.0.1");
+                    var caller = await machine.Keys.AuthenticateAsync(token.StartsWith("Bearer ", StringComparison.Ordinal) ? token[7..] : token, "127.0.0.1");
                     McpRequestContext.Set(null, caller);
                     try { await next(context); }
                     finally { McpRequestContext.Set(null); }
@@ -160,7 +160,7 @@ internal sealed class SwarmJoinFixture : IAsyncDisposable
             machine._app.MapGet("/remote", async (HttpContext context) =>
             {
                 var token = context.Request.Headers.Authorization.ToString();
-                var caller = await machine.Keys.AuthenticateAsync(token.StartsWith("Bearer ", StringComparison.Ordinal) ? token[7..] : token, null, "127.0.0.1");
+                var caller = await machine.Keys.AuthenticateAsync(token.StartsWith("Bearer ", StringComparison.Ordinal) ? token[7..] : token, "127.0.0.1");
                 return caller is { Capability: ConnectKeyCapability.Admin, MayStartBypass: true }
                     ? Results.Ok() : Results.Unauthorized();
             });

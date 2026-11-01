@@ -84,7 +84,7 @@ public class SwarmKickTests
         foreach (var server in credentials)
         {
             var machine = server.PinnedCertificateFingerprint == pair.A.Certificate.Fingerprint ? pair.A : pair.B;
-            Assert.Null(await machine.Keys.AuthenticateAsync((server.ApiKey ?? throw new InvalidOperationException("Expected a value.")), null, "127.0.0.1"));
+            Assert.Null(await machine.Keys.AuthenticateAsync((server.ApiKey ?? throw new InvalidOperationException("Expected a value.")), "127.0.0.1"));
         }
     }
 

@@ -6,19 +6,15 @@ using Cockpit.Infrastructure.BackendApi;
 namespace Cockpit.Infrastructure.Mcp;
 
 // AC-790/AC-791: auth gate shared by every host — loopback accepts the app key or a per-session token (AC-89),
-// the off-loopback listener only the node's shared secret; a node refusal is a classifiable 401 (AC-247/DEP-172).
+// the off-loopback listener only a connect key (AC-1985); a node refusal is a classifiable 401 (AC-247/DEP-172).
 // AC-1148: `authorize` then decides on that identity before any tool — 401 is "who?", 403 "not you", and required.
 internal static class McpAuthMiddleware
 {
-    // `nodeSharedSecret` is a holder, not a value (AC-792): pairing mints a new secret and unpairing removes one
-    // while this process runs, and a copy captured at mount time would keep letting an unpaired controller in until
-    // the next launch. Revocation that waits for a restart is not revocation.
     public static void Require(
         WebApplication app,
         McpAuthKey authKey,
         SessionMcpKeyring keyring,
         Func<string?, ValueTask<bool>> authorize,
-        NodeSharedSecret? nodeSharedSecret = null,
         ConnectKeyVerifier? connectKeys = null) =>
         app.Use(async (context, next) =>
         {
@@ -39,12 +35,11 @@ internal static class McpAuthMiddleware
                 var remoteIp = context.Connection.RemoteIpAddress;
                 var remoteAddress = (remoteIp is { IsIPv4MappedToIPv6: true } ? remoteIp.MapToIPv4() : remoteIp)?.ToString() ?? "unknown";
 
-                // The node's own persistent shared secret (AC-790) or a connect key (AC-1351), and nothing else:
-                // this socket is reachable off this machine, so a loopback-scoped credential must not work here even
-                // if it happens to match. Read now rather than closed over, so the answer follows the current pairing.
+                // A connect key (AC-1351) and nothing else: this socket is reachable off this machine, so a loopback
+                // credential must not work here. AC-1985: the old pairing shared secret no longer opens it either.
                 var caller = connectKeys is null
-                    ? (nodeSharedSecret?.Value is { } secret && _ConstantTimeEquals(token, secret) ? NodeCaller.ForPairing(remoteAddress) : null)
-                    : await connectKeys.AuthenticateAsync(token, nodeSharedSecret?.Value, remoteAddress).ConfigureAwait(false);
+                    ? null
+                    : await connectKeys.AuthenticateAsync(token, remoteAddress).ConfigureAwait(false);
 
                 // One refusal for every way in which this failed — see `ConnectKeyVerifier`.
                 if (caller is null)
@@ -105,8 +100,4 @@ internal static class McpAuthMiddleware
         return context.Response.WriteAsync(
             """{"error":"invalid_token","error_description":"The cockpit did not accept this bearer token."}""");
     }
-
-    // Constant-time for the same reason McpAuthKey.IsAuthorized is — this credential crosses a real network, not
-    // just a local socket. AC-1351: over both sides' hashes, so the length of the secret does not leak either.
-    private static bool _ConstantTimeEquals(string a, string b) => ConnectKeyVerifier.ConstantTimeEquals(a, b);
 }

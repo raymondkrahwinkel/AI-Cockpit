@@ -59,18 +59,6 @@ public sealed class ConnectKeyDoorTests
     }
 
     [Fact]
-    public async Task PairingSecret_StillHoldsAssistant()
-    {
-        await using var door = new _Door();
-        await door.StartAsync(_Environment(), new NodePairing { ControllerName = "laptop", ControllerAddress = "10.0.0.2", PairedAtUtc = DateTimeOffset.UnixEpoch, AllowAllProfiles = true });
-        await using var client = await door.ClientAsync(PairingSecret);
-
-        await _CallAsync(client, "list_node_sessions", new());
-
-        Assert.Equal("laptop", door.Presence.Current?.Name);
-    }
-
-    [Fact]
     public async Task LegacyKeyDefaultsToNotHolding_IssuedKeyAndBootstrapAppearInList()
     {
         await using var door = new _Door();
@@ -127,16 +115,15 @@ public sealed class ConnectKeyDoorTests
     }
 
     // Criterion 2: every failed credential answers byte for byte like an unknown key. Revoked rows run after a restart,
-    // so they pass only if the revocation was persisted (or, unsaved, stayed loud and revoked). AC-1458 (DEP-208): so
-    // does the right pairing secret from a locked-out address.
+    // so they pass only if the revocation was persisted (or, unsaved, stayed loud and revoked). AC-1985: so does the
+    // pairing secret still stored for an old controller.
     [Theory]
     [InlineData("unknown key")]
     [InlineData("wrong key with a known prefix")]
     [InlineData("expired key")]
     [InlineData("revoked key")]
     [InlineData("key whose revocation could not be saved, after a restart")]
-    [InlineData("wrong pairing secret")]
-    [InlineData("right pairing secret from a locked-out address")]
+    [InlineData("the stored pairing secret")]
     public async Task EveryFailedCredential_GetsTheSameAnswerAsAnUnknownKey(string credential)
     {
         await using var door = new _Door();
@@ -149,8 +136,8 @@ public sealed class ConnectKeyDoorTests
         var failedRevoke = await door.WithConfigUnwritableAsync(() => beforeRestart.RevokeAsync(unsaved.Key.Prefix, Operator));
         await beforeRestart.IssueAsync("after", ConnectKeyCapability.Operate, 30, Operator);
         door.Clock.Advance(TimeSpan.FromDays(2));
-        var lockedOut = credential == "right pairing secret from a locked-out address";
-        await door.StartAsync(_Environment(), lockedOut ? new NodePairing { ControllerName = "laptop", ControllerAddress = "10.0.0.2", PairedAtUtc = DateTimeOffset.UnixEpoch } : null);
+        var paired = credential == "the stored pairing secret";
+        await door.StartAsync(_Environment(), paired ? new NodePairing { ControllerName = "laptop", ControllerAddress = "10.0.0.2", PairedAtUtc = DateTimeOffset.UnixEpoch } : null);
         var tokens = new Dictionary<string, string>
         {
             ["unknown key"] = UnknownKey,
@@ -158,15 +145,10 @@ public sealed class ConnectKeyDoorTests
             ["expired key"] = expiring.Secret,
             ["revoked key"] = revoked.Secret,
             ["key whose revocation could not be saved, after a restart"] = unsaved.Secret,
-            ["wrong pairing secret"] = "not-the-pairing-secret",
-            ["right pairing secret from a locked-out address"] = PairingSecret,
+            ["the stored pairing secret"] = PairingSecret,
         };
 
         var baseline = await door.AnswerAsync(UnknownKey);
-        if (lockedOut)
-        {
-            await Task.WhenAll(Enumerable.Range(0, ConnectKeyPolicy.Default.FailuresBeforeLockout).Select(_ => door.AnswerAsync(null)));
-        }
 
         var answer = await door.AnswerAsync(tokens[credential]);
 
@@ -307,7 +289,6 @@ public sealed class ConnectKeyDoorTests
     [InlineData("operate key", "issue_connect_key", NodeSessionMcpTools.AdminRefusal)]
     [InlineData("operate key", "revoke_connect_key", NodeSessionMcpTools.AdminRefusal)]
     [InlineData("operate key", "list_connect_keys", NodeSessionMcpTools.AdminRefusal)]
-    [InlineData("pairing secret", "issue_connect_key", NodeSessionMcpTools.AdminRefusal)]
     [InlineData("operate key", "set_connect_key_scope", NodeSessionMcpTools.AdminRefusal)]
     [InlineData("admin key", "set_connect_key_scope", null)]
     public async Task KeyTools_AreForAnAdminKeyOnly(string credential, string tool, string? refusal)
@@ -319,7 +300,6 @@ public sealed class ConnectKeyDoorTests
         var tokens = new Dictionary<string, string>
         {
             ["operate key"] = operate.Secret,
-            ["pairing secret"] = PairingSecret,
             ["admin key"] = Bootstrap,
         };
         var arguments = new Dictionary<string, Dictionary<string, object?>>
@@ -366,35 +346,6 @@ public sealed class ConnectKeyDoorTests
         Assert.Contains(prefix, audit, StringComparison.Ordinal);
     }
 
-    // Criterion 6: ten failed attempts — empty requests, as from a NAT neighbour — lock the address out, so the right
-    // pairing secret is refused with the same answer; a valid connect key is not, since only failures are locked out.
-    // Once the lockout has run out the pairing secret works again, and the next ten lock it out twice as long.
-    [Fact]
-    public async Task TenFailures_LockOutThePairingSecretButNotAValidKey_UntilTheLockoutRunsOut()
-    {
-        await using var door = new _Door();
-        await door.StartAsync(_Environment(), new NodePairing { ControllerName = "laptop", ControllerAddress = "10.0.0.2", PairedAtUtc = DateTimeOffset.UnixEpoch, AllowAllProfiles = true });
-        var failures = ConnectKeyPolicy.Default.FailuresBeforeLockout;
-        var refusal = await door.AnswerAsync(null);
-        await Task.WhenAll(Enumerable.Range(0, failures - 1).Select(_ => door.AnswerAsync(null)));
-
-        var lockedOut = await door.AnswerAsync(PairingSecret);
-        var keyDuringLockout = await door.AnswerAsync(Bootstrap);
-        door.Clock.Advance(ConnectKeyPolicy.Default.FirstLockout);
-        var afterLockout = await door.AnswerAsync(PairingSecret);
-        await Task.WhenAll(Enumerable.Range(0, failures).Select(_ => door.AnswerAsync(null)));
-        door.Clock.Advance(ConnectKeyPolicy.Default.FirstLockout);
-        var stillLockedOut = await door.AnswerAsync(PairingSecret);
-        door.Clock.Advance(ConnectKeyPolicy.Default.FirstLockout);
-        var afterDoubleLockout = await door.AnswerAsync(PairingSecret);
-
-        Assert.Equal(refusal, lockedOut);
-        Assert.Equal(HttpStatusCode.OK, keyDuringLockout.Status);
-        Assert.Equal(HttpStatusCode.OK, afterLockout.Status);
-        Assert.Equal(refusal, stillLockedOut);
-        Assert.Equal(HttpStatusCode.OK, afterDoubleLockout.Status);
-    }
-
     // AC-1459 criterion 1: a lockout outlives a restart with the same end, and the next one is still doubled. The
     // restart is a second verifier over the same state directory, as the next process builds it.
     [Fact]
@@ -406,45 +357,33 @@ public sealed class ConnectKeyDoorTests
         var before = door.Verifier(_Environment());
         for (var failure = 0; failure < policy.FailuresBeforeLockout; failure++)
         {
-            await before.AuthenticateAsync("", PairingSecret, address);
+            await before.AuthenticateAsync("", address);
         }
 
         var lockedUntil = Assert.Single(await before.ListLockoutsAsync()).LockedUntil;
 
         var after = door.Verifier(_Environment());
         var restored = Assert.Single(await after.ListLockoutsAsync());
-        var duringLockout = await after.AuthenticateAsync(PairingSecret, PairingSecret, address);
         door.Clock.Advance(policy.FirstLockout);
-        var afterLockout = await after.AuthenticateAsync(PairingSecret, PairingSecret, address);
         for (var failure = 0; failure < policy.FailuresBeforeLockout; failure++)
         {
-            await after.AuthenticateAsync("", PairingSecret, address);
+            await after.AuthenticateAsync("", address);
         }
 
         var next = Assert.Single(await after.ListLockoutsAsync());
 
         Assert.Equal((address, lockedUntil), (restored.Bucket, restored.LockedUntil));
-        Assert.Null(duringLockout);
-        Assert.NotNull(afterLockout);
         Assert.Equal(door.Clock.GetUtcNow() + (policy.FirstLockout * 2), next.LockedUntil);
     }
 
-    // AC-1459 criterion 2: lifting is admin's. The pairing secret and an operate key get the node tool's admin
-    // refusal and the API's one forbidden; the admin key lifts, the address may try again at once, and the audit
-    // names who lifted.
+    // AC-1459 criterion 2: lifting is admin's. An operate key gets the node tool's admin refusal and the API's one
+    // forbidden; the admin key lifts, the lockout is gone at once, and the audit names who lifted.
     [Fact]
     public async Task LiftingALockout_IsForAnAdminKeyOnly_OpensTheAddressAtOnce_AndIsAudited()
     {
         await using var door = new _Door();
         var verifier = await door.StartAsync(_Environment(), new NodePairing { ControllerName = "laptop", ControllerAddress = "10.0.0.2", PairedAtUtc = DateTimeOffset.UnixEpoch, AllowAllProfiles = true, AllowAllProjects = true });
         var operate = await verifier.IssueAsync("operate", ConnectKeyCapability.Operate, 30, Operator);
-        JsonNode pairingByTool;
-        await using (var paired = await door.ClientAsync(PairingSecret))
-        {
-            pairingByTool = await _CallAsync(paired, "lift_connect_lockout", new() { ["address"] = "127.0.0.1" });
-        }
-
-        var pairingByApi = await door.LiftByApiAsync("127.0.0.1", PairingSecret);
         await Task.WhenAll(Enumerable.Range(0, ConnectKeyPolicy.Default.FailuresBeforeLockout).Select(_ => door.AnswerAsync(null)));
         await using var admin = await door.ClientAsync(Bootstrap);
         var address = (await _CallAsync(admin, "list_connect_keys", new()))["lockouts"]?[0]?["address"]?.GetValue<string>() ?? "";
@@ -452,19 +391,17 @@ public sealed class ConnectKeyDoorTests
 
         var operateByTool = await _CallAsync(operateClient, "lift_connect_lockout", new() { ["address"] = address });
         var operateByApi = await door.LiftByApiAsync(address, operate.Secret);
-        var lockedOut = await door.AnswerAsync(PairingSecret);
+        var lockedOut = (await verifier.ListLockoutsAsync()).Count;
         var adminByApi = await door.LiftByApiAsync(address, Bootstrap);
-        var afterLift = await door.AnswerAsync(PairingSecret);
+        var afterLift = (await verifier.ListLockoutsAsync()).Count;
         var audit = await File.ReadAllTextAsync(door.AuditPath);
 
-        Assert.Equal(NodeSessionMcpTools.AdminRefusal, pairingByTool["error"]?.GetValue<string>());
-        Assert.Equal(HttpStatusCode.Forbidden, pairingByApi);
         Assert.NotEqual("", address);
         Assert.Equal(NodeSessionMcpTools.AdminRefusal, operateByTool["error"]?.GetValue<string>());
         Assert.Equal(HttpStatusCode.Forbidden, operateByApi);
-        Assert.Equal(HttpStatusCode.Unauthorized, lockedOut.Status);
+        Assert.Equal(1, lockedOut);
         Assert.Equal(HttpStatusCode.OK, adminByApi);
-        Assert.Equal(HttpStatusCode.OK, afterLift.Status);
+        Assert.Equal(0, afterLift);
         Assert.Contains("lockout lifted by bootstra", audit, StringComparison.Ordinal);
     }
 
@@ -637,7 +574,6 @@ public sealed class ConnectKeyDoorTests
                 new SessionMcpKeyring(),
                 new NodeEndpointSettingsStore(ConfigPath),
                 _certificate,
-                new NodeSharedSecret(),
                 new SessionMcpMounts(),
                 _loggerFactory,
                 new NodeListenAddress(System.Net.IPAddress.Loopback));

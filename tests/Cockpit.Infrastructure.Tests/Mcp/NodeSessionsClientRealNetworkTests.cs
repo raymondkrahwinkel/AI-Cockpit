@@ -29,6 +29,9 @@ public sealed class NodeSessionsClientRealNetworkTests
 {
     private const string NodeName = "laptop";
 
+    // AC-1985: the node listener takes connect keys only, so the host starts with this bootstrap key.
+    private const string Key = "ck_bootstrapKeyForTheNodeSessionsClientTests0123456";
+
     [Fact]
     public async Task ReadAsync_ANodeAnsweringWithAnUnpinnedCertificate_ReportsCertificateNotTrusted()
     {
@@ -36,15 +39,13 @@ public sealed class NodeSessionsClientRealNetworkTests
         try
         {
             using var certificate = new NodeSelfSignedCertificate(certificatePath);
-            var sharedSecret = new NodeSharedSecret();
-            sharedSecret.Set("the-shared-secret");
             var pairing = new NodeSessionMcpToolsTests.StubPairing { AllowEverything = true };
 
-            await using var host = await _StartNodeHostAsync(certificate, sharedSecret, new NodeSessionMcpToolsTests.RecordingReadGateway(), pairing);
+            await using var host = await _StartNodeHostAsync(certificate, new NodeSessionMcpToolsTests.RecordingReadGateway(), pairing);
 
             // Pinned to a fingerprint that is not this host's real one — exactly what a re-installed node, or
             // something else answering at the paired address, would look like on the wire.
-            var client = _ClientFor(host.Url, new string('A', 64), sharedSecret.Value!);
+            var client = _ClientFor(host.Url, new string('A', 64), Key);
 
             var snapshot = await client.ReadAsync(NodeName);
 
@@ -69,13 +70,11 @@ public sealed class NodeSessionsClientRealNetworkTests
         try
         {
             using var certificate = new NodeSelfSignedCertificate(certificatePath);
-            var sharedSecret = new NodeSharedSecret();
-            sharedSecret.Set("the-shared-secret");
             var pairing = new NodeSessionMcpToolsTests.StubPairing { AllowEverything = true };
 
-            await using var host = await _StartNodeHostAsync(certificate, sharedSecret, new NodeSessionMcpToolsTests.RecordingReadGateway(), pairing);
+            await using var host = await _StartNodeHostAsync(certificate, new NodeSessionMcpToolsTests.RecordingReadGateway(), pairing);
 
-            var store = new _MutableStore(_RowFor("https://127.0.0.1:1/mcp", pinnedFingerprint: "", sharedSecret.Value!));
+            var store = new _MutableStore(_RowFor("https://127.0.0.1:1/mcp", pinnedFingerprint: "", Key));
             var discovery = new _FoundAt($"127.0.0.1:{new Uri(host.Url).Port - NodeEndpointSettings.McpPortOffset}");
             var client = new NodeSessionsClient(store, discovery, NullLogger<NodeSessionsClient>.Instance);
 
@@ -99,13 +98,10 @@ public sealed class NodeSessionsClientRealNetworkTests
         try
         {
             using var certificate = new NodeSelfSignedCertificate(certificatePath);
-            var sharedSecret = new NodeSharedSecret();
-            sharedSecret.Set("the-shared-secret");
             var withKey = new ConcurrentQueue<string>();
 
             await using var host = await _StartNodeHostAsync(
                 certificate,
-                sharedSecret,
                 new NodeSessionMcpToolsTests.RecordingReadGateway(),
                 new NodeSessionMcpToolsTests.StubPairing { AllowEverything = true },
                 request =>
@@ -116,13 +112,13 @@ public sealed class NodeSessionsClientRealNetworkTests
                     }
                 });
 
-            var wrong = _RowFor(host.Url, new string('A', 64), "the-shared-secret");
+            var wrong = _RowFor(host.Url, new string('A', 64), Key);
             var client = new NodeSessionsClient(new _SingleServerStore(wrong), new _NoNodesFound(), NullLogger<NodeSessionsClient>.Instance);
 
             var refused = await Assert.ThrowsAnyAsync<Exception>(() => client.ProbeAsync(wrong));
             var mismatch = NodeConnectionFailure.Find<NodeCertificatePinMismatchException>(refused);
             var keysBeforeTheMatch = withKey.Count;
-            var matched = await client.ProbeAsync(_RowFor(host.Url, certificate.Fingerprint, "the-shared-secret"));
+            var matched = await client.ProbeAsync(_RowFor(host.Url, certificate.Fingerprint, Key));
 
             Assert.NotNull(mismatch);
             Assert.Equal(0, keysBeforeTheMatch);
@@ -194,11 +190,10 @@ public sealed class NodeSessionsClientRealNetworkTests
 
     // The real Kestrel wiring `CockpitMcpEndpointHost`/`NodePairingHost` use for their node listener: an HTTPS
     // loopback port with the node's self-signed certificate, `NodeSessionMcpTools` behind `McpAuthMiddleware`
-    // gated on the shared secret — nothing here is a stand-in for the transport, only the four gateways
+    // gated on a connect key — nothing here is a stand-in for the transport, only the four gateways
     // `NodeSessionMcpTools` reads from are fakes (the same ones `NodeSessionMcpToolsTests` already uses).
     private static async Task<_NodeHost> _StartNodeHostAsync(
         NodeSelfSignedCertificate certificate,
-        NodeSharedSecret sharedSecret,
         NodeSessionMcpToolsTests.RecordingReadGateway read,
         NodeSessionMcpToolsTests.StubPairing pairing,
         Action<HttpRequest>? seen = null)
@@ -215,6 +210,13 @@ public sealed class NodeSessionsClientRealNetworkTests
         builder.WebHost.ConfigureKestrel(options =>
             options.Listen(IPAddress.Loopback, 0, listenOptions => listenOptions.UseHttps(certificate.Value)));
 
+        var directory = Path.Combine(Path.GetTempPath(), $"node-sessions-client-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        var audit = new NodeAccessAuditLog(Path.Combine(directory, "audit.jsonl"), NullLogger<NodeAccessAuditLog>.Instance);
+        var environment = new Dictionary<string, string> { [ConnectKeyVerifier.BootstrapVariable] = Key };
+        var keys = new ConnectKeyVerifier(Path.Combine(directory, "cockpit.json"), name => environment.GetValueOrDefault(name), name => environment.Remove(name), TimeProvider.System, audit, NullLogger.Instance);
+        await keys.EnsureLoadedAsync().ConfigureAwait(false);
+
         var app = builder.Build();
 
         // Ahead of the auth middleware, so a request it refuses is seen as well (AC-1458).
@@ -229,7 +231,7 @@ public sealed class NodeSessionsClientRealNetworkTests
 
         // AC-1148: this stands in for the endpoint host's own policy — what is under test here is the client over a
         // real socket, and the policy itself is covered where it lives (McpAuthMiddlewareTests).
-        McpAuthMiddleware.Require(app, new McpAuthKey(), new SessionMcpKeyring(), static _ => new ValueTask<bool>(true), sharedSecret);
+        McpAuthMiddleware.Require(app, new McpAuthKey(), new SessionMcpKeyring(), static _ => new ValueTask<bool>(true), keys);
         app.MapMcp("/mcp");
 
         await app.StartAsync().ConfigureAwait(false);

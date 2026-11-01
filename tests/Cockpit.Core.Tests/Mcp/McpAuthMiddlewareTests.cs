@@ -25,7 +25,8 @@ namespace Cockpit.Core.Tests.Mcp;
 /// </summary>
 public class McpAuthMiddlewareTests
 {
-    private const string NodeSecret = "test-node-shared-secret";
+    // AC-1985: the node listener takes connect keys only; every harness starts with this bootstrap key.
+    private const string NodeKey = "ck_bootstrapKeyForTheMcpAuthMiddlewareTests012345";
 
     // AC-89, unchanged by AC-791: the shared app key authorizes and names no session, so the in-process tool loop
     // and anything not yet on a per-session token keep the null identity the consent broker has always seen.
@@ -33,7 +34,7 @@ public class McpAuthMiddlewareTests
     public async Task LoopbackListener_SharedAppKey_AuthorizesAndNamesNoSession()
     {
         var authKey = new McpAuthKey();
-        await using var listeners = await _AuthGatedListeners.StartAsync(authKey, new SessionMcpKeyring(), NodeSecret);
+        await using var listeners = await _AuthGatedListeners.StartAsync(authKey, new SessionMcpKeyring());
 
         Assert.Equal("<none>", await listeners.WhoAmIAsync(listeners.LoopbackUrl, authKey.Value));
     }
@@ -48,7 +49,7 @@ public class McpAuthMiddlewareTests
         var assistantToken = keyring.TokenFor(AssistantIdentity.PaneId);
         var mounts = _Mounting("pane-42");
         mounts.Grant(AssistantIdentity.PaneId, ["cockpit-probe"]);
-        await using var listeners = await _AuthGatedListeners.StartAsync(new McpAuthKey(), keyring, NodeSecret, mounts);
+        await using var listeners = await _AuthGatedListeners.StartAsync(new McpAuthKey(), keyring, mounts);
 
         Assert.Equal("pane-42", await listeners.WhoAmIAsync(listeners.LoopbackUrl, token));
         Assert.Equal("Session|pane-42|", await listeners.CallerAsync(listeners.LoopbackUrl, token, claim: AssistantIdentity.PaneId));
@@ -75,10 +76,9 @@ public class McpAuthMiddlewareTests
             var (_, secret) = await connectKeys.IssueAsync("laptop", ConnectKeyCapability.Operate, 30, issuer);
             var keyring = new SessionMcpKeyring();
             var token = keyring.TokenFor("pane-42");
-            await using var listeners = await _AuthGatedListeners.StartAsync(new McpAuthKey(), keyring, NodeSecret, _Mounting("pane-42"), connectKeys: connectKeys);
+            await using var listeners = await _AuthGatedListeners.StartAsync(new McpAuthKey(), keyring, _Mounting("pane-42"), connectKeys: connectKeys);
 
             Assert.Equal($"Remote|{NodeCallerIdentity.PaneId}|laptop", await listeners.CallerAsync(listeners.NodeUrl, secret));
-            Assert.Equal($"Remote|{NodeCallerIdentity.PaneId}|", await listeners.CallerAsync(listeners.NodeUrl, NodeSecret));
             Assert.Equal("Session|pane-42|", await listeners.CallerAsync(listeners.LoopbackUrl, token));
 
             using var response = await listeners.SendAsync(listeners.NodeUrl, token);
@@ -96,7 +96,7 @@ public class McpAuthMiddlewareTests
     [Fact]
     public async Task NodeListener_Refusal_Carries401WithAReasonACallerCanTellFromSilence()
     {
-        await using var listeners = await _AuthGatedListeners.StartAsync(new McpAuthKey(), new SessionMcpKeyring(), NodeSecret);
+        await using var listeners = await _AuthGatedListeners.StartAsync(new McpAuthKey(), new SessionMcpKeyring());
 
         using var response = await listeners.SendAsync(listeners.NodeUrl, "not-a-valid-credential");
 
@@ -119,7 +119,7 @@ public class McpAuthMiddlewareTests
     [Fact]
     public async Task LoopbackListener_Refusal_StaysTheBare401ItAlwaysWas()
     {
-        await using var listeners = await _AuthGatedListeners.StartAsync(new McpAuthKey(), new SessionMcpKeyring(), NodeSecret);
+        await using var listeners = await _AuthGatedListeners.StartAsync(new McpAuthKey(), new SessionMcpKeyring());
 
         using var response = await listeners.SendAsync(listeners.LoopbackUrl, "not-a-valid-credential");
 
@@ -139,7 +139,7 @@ public class McpAuthMiddlewareTests
         var mounts = new SessionMcpMounts();
         mounts.Grant("pane-42", ["cockpit-session", "cockpit-agents"]);
 
-        await using var listeners = await _AuthGatedListeners.StartAsync(new McpAuthKey(), keyring, NodeSecret, mounts, serverName: "cockpit-shell");
+        await using var listeners = await _AuthGatedListeners.StartAsync(new McpAuthKey(), keyring, mounts, serverName: "cockpit-shell");
 
         using var response = await listeners.SendAsync(listeners.LoopbackUrl, token);
 
@@ -159,7 +159,7 @@ public class McpAuthMiddlewareTests
         var token = keyring.TokenFor("pane-42");
 
         await using var listeners = await _AuthGatedListeners.StartAsync(
-            new McpAuthKey(), keyring, NodeSecret, _Mounting("pane-42", "cockpit-shell"), serverName: "cockpit-shell", isEnabled: false);
+            new McpAuthKey(), keyring, _Mounting("pane-42", "cockpit-shell"), serverName: "cockpit-shell", isEnabled: false);
 
         using var response = await listeners.SendAsync(listeners.LoopbackUrl, token);
 
@@ -173,9 +173,9 @@ public class McpAuthMiddlewareTests
     public async Task NodeListener_ValidSecretButAPairingWithAnEmptyScope_Is403()
     {
         await using var listeners = await _AuthGatedListeners.StartAsync(
-            new McpAuthKey(), new SessionMcpKeyring(), NodeSecret, nodeScopeGranted: false);
+            new McpAuthKey(), new SessionMcpKeyring(), nodeScopeGranted: false);
 
-        using var response = await listeners.SendAsync(listeners.NodeUrl, NodeSecret);
+        using var response = await listeners.SendAsync(listeners.NodeUrl, NodeKey);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -187,9 +187,9 @@ public class McpAuthMiddlewareTests
     public async Task NodeListener_EndpointTheOperatorSwitchedOff_Is403EvenWithAScopedPairing()
     {
         await using var listeners = await _AuthGatedListeners.StartAsync(
-            new McpAuthKey(), new SessionMcpKeyring(), NodeSecret, isEnabled: false);
+            new McpAuthKey(), new SessionMcpKeyring(), isEnabled: false);
 
-        using var response = await listeners.SendAsync(listeners.NodeUrl, NodeSecret);
+        using var response = await listeners.SendAsync(listeners.NodeUrl, NodeKey);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -201,9 +201,9 @@ public class McpAuthMiddlewareTests
     public async Task NodeListener_AnEndpointThatIsNotNodeOnly_Is403EvenWithAScopedPairing()
     {
         await using var listeners = await _AuthGatedListeners.StartAsync(
-            new McpAuthKey(), new SessionMcpKeyring(), NodeSecret, serverName: "cockpit-shell", nodeOnly: false);
+            new McpAuthKey(), new SessionMcpKeyring(), serverName: "cockpit-shell", nodeOnly: false);
 
-        using var response = await listeners.SendAsync(listeners.NodeUrl, NodeSecret);
+        using var response = await listeners.SendAsync(listeners.NodeUrl, NodeKey);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -229,7 +229,6 @@ public class McpAuthMiddlewareTests
         public static async Task<_AuthGatedListeners> StartAsync(
             McpAuthKey authKey,
             SessionMcpKeyring keyring,
-            string? nodeSharedSecret,
             SessionMcpMounts? mounts = null,
             string serverName = "cockpit-probe",
             bool isEnabled = true,
@@ -238,13 +237,18 @@ public class McpAuthMiddlewareTests
             bool nodeOnly = true,
             ConnectKeyVerifier? connectKeys = null)
         {
-            // AC-792: the node's certificate now lives in a file, so the test gets one of its own rather than the
-            // real cockpit's — and a live secret holder rather than a captured string, which is what the
-            // middleware reads. Held for the listener's lifetime, not this method's: Kestrel keeps using it, so
-            // disposing it here would break every TLS handshake that follows.
+            // AC-792: the node's certificate lives in a file, so the test gets one of its own. Held for the
+            // listener's lifetime, not this method's: Kestrel keeps using it for every TLS handshake.
             var certificate = new NodeSelfSignedCertificate(Path.Combine(Path.GetTempPath(), $"auth-middleware-{Guid.NewGuid():N}.pfx"));
-            var liveSecret = new NodeSharedSecret();
-            liveSecret.Set(nodeSharedSecret);
+            if (connectKeys is null)
+            {
+                var directory = Path.Combine(Path.GetTempPath(), $"auth-middleware-{Guid.NewGuid():N}");
+                Directory.CreateDirectory(directory);
+                var audit = new NodeAccessAuditLog(Path.Combine(directory, "node-access.jsonl"), NullLogger<NodeAccessAuditLog>.Instance);
+                var environment = new Dictionary<string, string> { [ConnectKeyVerifier.BootstrapVariable] = NodeKey };
+                connectKeys = new ConnectKeyVerifier(Path.Combine(directory, "cockpit.json"), name => environment.GetValueOrDefault(name), name => environment.Remove(name), TimeProvider.System, audit, NullLogger.Instance);
+                await connectKeys.EnsureLoadedAsync();
+            }
 
             var builder = WebApplication.CreateSlimBuilder();
             builder.WebHost.ConfigureKestrel(options =>
@@ -263,7 +267,6 @@ public class McpAuthMiddlewareTests
                 authKey,
                 keyring,
                 paneId => new ValueTask<bool>(McpEndpointAuthorization.Allows(paneId, serverName, isEnabled, nodeScopeGranted, nodeOnly, grants)),
-                liveSecret,
                 connectKeys);
             app.MapGet("/whoami", () => McpRequestContext.CurrentPaneId ?? "<none>");
 
