@@ -79,6 +79,10 @@ public sealed class InputEventStream
     /// reactive behaviours.</summary>
     public event Action<InputLineEvent>? LineCommitted;
 
+    /// <summary>Whether input has been assembled since the last
+    /// Enter or abort — a best-effort "the prompt holds a draft".</summary>
+    public bool HasPendingLine => _line.Length > 0;
+
     /// <summary>Every input batch, before line assembly. For
     /// subscribers that need key-combo or escape-sequence awareness
     /// (Ctrl+R, Ctrl+D, function keys, …).</summary>

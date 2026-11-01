@@ -44,7 +44,8 @@ internal sealed class AssistantAgentGateway(
     IProjectFieldRegistry? projectFields = null,
     ILogger<AssistantAgentGateway>? logger = null,
     IMcpServerCatalog? mcpServers = null,
-    IMcpOAuthTokenStore? oauthTokens = null) : IAssistantAgentGateway, ISingletonService
+    IMcpOAuthTokenStore? oauthTokens = null,
+    IWorkspaceAgentCoordinator? agentCoordinator = null) : IAssistantAgentGateway, ISingletonService
 {
     private static readonly StringComparison _PathComparison =
         OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
@@ -222,6 +223,12 @@ internal sealed class AssistantAgentGateway(
             // pane landed — all states the operator can be told about, and none is an exception.
             return await _RefuseSpawnAsync(request, workspace.Name,
                 "The cockpit could not start a session just now.", cancellationToken).ConfigureAwait(false);
+        }
+
+        // AC-2005: the assistant's own spawns carry the persisted stamp above; an agent's or the controller's only this.
+        if (request.Target.Caller != SpawnCaller.Assistant)
+        {
+            agentCoordinator?.MarkStartedByAnAgent(pane.PaneId);
         }
 
         await _RecordAsync(new AssistantSpawnAuditEntry(

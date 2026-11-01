@@ -8,37 +8,56 @@ using NSubstitute;
 namespace Cockpit.Backend.Tests.Agents;
 
 /// <summary>
-/// AC-1374: a wake decision reads HasPendingConsent, SessionStatus and CanTakeAPrompt as one snapshot
-/// (<see cref="ISessionHandle.ReadWakeStateAsync"/>), not as three separate moments a consent banner or a turn
-/// starting could fall between. The individual properties are wired to the wrong answer here on purpose, so the
-/// gateway going back to reading them instead of the snapshot turns this red.
+/// AC-1374: a wake decision reads one snapshot (<see cref="ISessionHandle.ReadWakeStateAsync"/>), not the individual
+/// properties, which are wired to the wrong answer here on purpose. AC-2005: a wake typed into a TTY reaches only a
+/// session an agent started or that opted in itself, never while its operator types, and as one short line.
 /// </summary>
 public class WorkspaceAgentGatewayWakeStateTests
 {
-    [Fact]
-    public async Task TryWakeAsync_DecidesFromTheSnapshot_NotFromTheIndividualProperties()
+    // Layer 2, contract boundary: the gateway's wake decision for a TTY pane, by origin × operator typing.
+    [Theory]
+    [InlineData("operator", false, AgentWakeOutcome.NotOptedIn)]
+    [InlineData("agent", false, AgentWakeOutcome.Woken)]
+    [InlineData("opt-in", true, AgentWakeOutcome.Busy)]
+    public async Task TryWakeAsync_IntoATty_WakesOnlyAnAgentsOrOptedInSession_NeverWhileTheOperatorTypes(
+        string origin, bool operatorIsTyping, AgentWakeOutcome expected)
     {
         var sessions = new SessionRegistry();
         var caller = _Handle("caller");
-        var target = Substitute.For<ISessionHandle>();
-        target.PaneId.Returns("target");
-        target.IsTerminal.Returns(false);
-        target.PlacedWorkspaceId.Returns("desk");
+        var target = _Handle("target");
         target.DeliversInboxAtTurnStart.Returns(false);
         target.SendPromptAsync(Arg.Any<string>()).Returns(true);
         // Individually wrong on purpose: read one at a time, this pane looks busy and unwakeable.
         target.HasPendingConsent.Returns(true);
         target.SessionStatus.Returns(SessionStatus.Busy);
         target.CanTakeAPrompt.Returns(false);
-        // The snapshot says the truth: idle, no consent open, ready for a prompt.
-        target.ReadWakeStateAsync().Returns(new SessionWakeState(HasPendingConsent: false, SessionStatus.Idle, CanTakeAPrompt: true));
+        target.ReadWakeStateAsync().Returns(new SessionWakeState(
+            HasPendingConsent: false, SessionStatus.Idle, CanTakeAPrompt: true, TypesIntoATerminal: true, operatorIsTyping));
         sessions.Register(caller);
         sessions.Register(target);
-        var gateway = new WorkspaceAgentGateway(sessions, NullLogger<WorkspaceAgentGateway>.Instance);
+        var coordinator = new WorkspaceAgentCoordinator();
+        if (origin == "agent")
+        {
+            coordinator.MarkStartedByAnAgent(target.PaneId);
+        }
+        else if (origin == "opt-in")
+        {
+            coordinator.SetWakeConsent(target.PaneId, true);
+        }
+
+        var gateway = new WorkspaceAgentGateway(sessions, NullLogger<WorkspaceAgentGateway>.Instance, coordinator);
 
         var outcome = await gateway.TryWakeAsync(caller.PaneId, target.PaneId, "branch");
 
-        Assert.Equal(AgentWakeOutcome.Woken, outcome);
+        Assert.Equal(expected, outcome);
+        if (expected == AgentWakeOutcome.Woken)
+        {
+            await target.Received(1).SendPromptAsync("[cockpit] New message from caller (branch) — call read_inbox");
+        }
+        else
+        {
+            await target.DidNotReceive().SendPromptAsync(Arg.Any<string>());
+        }
     }
 
     private static ISessionHandle _Handle(string paneId)
