@@ -6,6 +6,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Styling;
+using Avalonia.VisualTree;
 using Cockpit.Plugin.Depot.Contracts;
 using Cockpit.Plugins.Abstractions.UI;
 using Material.Icons;
@@ -23,7 +24,6 @@ internal sealed partial class DepotBrowserPanel : UserControl
     private readonly Button _openIn = new() { Name = "OpenFilesInButton", Classes = { "Compact" }, Content = new MaterialIcon { Kind = MaterialIconKind.CogOutline, Width = 14, Height = 14 } };
     private readonly IReadOnlyList<DepotConnectionRegistration> _connections;
     private readonly HttpClient _http = new();
-    private readonly ComboBox _connectionBox = new() { MinWidth = 140 };
     private readonly ComboBox _projectBox = new() { MinWidth = 200 };
     private readonly TextBlock _message = new() { TextWrapping = TextWrapping.Wrap };
     private readonly Button _signIn = new() { IsVisible = false };
@@ -40,7 +40,7 @@ internal sealed partial class DepotBrowserPanel : UserControl
     private DepotBrowserModel? _model;
     private DepotBrowserTree _loaded = new([], false);
     private string? _project;
-    private bool _filling;
+    private int _connectionIndex;
 
     // AC-1586: `inbox` is the plugin's shared inbox model (the badge's), or null for a panel that keeps its own;
     // `openInbox` starts on the Inbox tab, as the side-menu button does.
@@ -52,17 +52,6 @@ internal sealed partial class DepotBrowserPanel : UserControl
         var refresh = _Button("Refresh");
         refresh.Click += async (_, _) => await LoadTreeAsync().ConfigureAwait(true);
         _signIn.Click += async (_, _) => await SignInAsync().ConfigureAwait(true);
-        _connectionBox.ItemsSource = connections.Select(connection => connection.Name).ToList();
-        _connectionBox.IsVisible = connections.Count > 1;
-        _connectionBox.SelectionChanged += async (_, _) => await SelectConnectionAsync(_connectionBox.SelectedIndex).ConfigureAwait(true);
-        _projectBox.SelectionChanged += async (_, _) =>
-        {
-            if (!_filling && _projectBox.SelectedItem is DepotBrowserProject project)
-            {
-                _project = project.Project;
-                await LoadTreeAsync().ConfigureAwait(true);
-            }
-        };
         _tree.SelectionChanged += async (_, _) =>
         {
             if (_tree.SelectedItem is TreeViewItem { Tag: DepotTreeItem item })
@@ -102,8 +91,17 @@ internal sealed partial class DepotBrowserPanel : UserControl
             tabs.SelectedItem = inboxTab;
         });
         notesTab.Content = notesPanel;
-        notesPanel.Header.IsVisible = false;
-        tabs.SelectionChanged += (_, _) => notesPanel.Header.IsVisible = tabs.SelectedItem == notesTab;
+        // AC-2010: the Notes header is the one Depot/project choice for every tab; Files follows it.
+        notesPanel.ConnectionSelected += async connection => await SelectConnectionAsync(connections.ToList().IndexOf(connection)).ConfigureAwait(true);
+        notesPanel.ProjectSelected += async project =>
+        {
+            if (project is not null && project != _project)
+            {
+                _project = project;
+                _projectBox.SelectedItem = (_projectBox.ItemsSource as IEnumerable<DepotBrowserProject>)?.FirstOrDefault(item => item.Project == project);
+                await LoadTreeAsync().ConfigureAwait(true);
+            }
+        };
         var tabLayout = new DockPanel();
         DockPanel.SetDock(notesPanel.Header, Dock.Top);
         tabLayout.Children.Add(notesPanel.Header);
@@ -113,10 +111,7 @@ internal sealed partial class DepotBrowserPanel : UserControl
         if (connections.Count == 0)
         {
             _SetState("No Depot server connected", "Add a Depot server in the Depot settings first.", MaterialIconKind.DatabaseOffOutline);
-            return;
         }
-
-        _connectionBox.SelectedIndex = 0;
     }
 
     // The real panel over fixed data for plugin screenshot scenes. Controls are deliberately inert: scenes never
@@ -127,7 +122,6 @@ internal sealed partial class DepotBrowserPanel : UserControl
         _sceneBelowTree = scene.BelowTree;
         _connections = [];
         var refresh = _Button("Refresh");
-        _connectionBox.IsVisible = false;
         _projectBox.ItemsSource = new[] { scene.Project };
         _projectBox.ItemTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<DepotBrowserProject>((project, _) => new TextBlock { Text = project?.Name });
         _projectBox.SelectedItem = scene.Project;
@@ -172,7 +166,7 @@ internal sealed partial class DepotBrowserPanel : UserControl
         }
 
         var top = new WrapPanel { Margin = new Thickness(12, 8, 6, 2) };
-        foreach (var control in new Control[] { _connectionBox, _projectBox, refresh, _newMarkdown, _upload, _publishFolder, _openIn })
+        foreach (var control in new Control[] { refresh, _newMarkdown, _upload, _publishFolder, _openIn })
         {
             control.Margin = new Thickness(0, 0, 6, 6);
             top.Children.Add(control);
@@ -236,13 +230,29 @@ internal sealed partial class DepotBrowserPanel : UserControl
     private static TabControl _Tabs(Control files, Control inbox, Control notes, bool openInbox)
     {
         var inboxTab = new TabItem { Header = "Inbox", Content = inbox };
-        return new TabControl
+        var tabs = new TabControl
         {
             Padding = new Thickness(0),
             Items = { new TabItem { Header = "Files", Content = files }, new TabItem { Header = "Notes", Content = notes }, inboxTab },
             SelectedItem = openInbox ? inboxTab : null,
         };
+        // Theme.axaml sets the chip's corners as a template-local value, which no style overrides; set them once the template exists.
+        foreach (var item in tabs.Items.OfType<TabItem>())
+        {
+            item.TemplateApplied += (_, _) =>
+            {
+                if (item.GetVisualChildren().OfType<Border>().FirstOrDefault() is { } chip)
+                {
+                    chip.CornerRadius = _TabCornerRadius;
+                }
+            };
+        }
+
+        return tabs;
     }
+
+    // AC-2010: square tabs, one value for the whole strip.
+    private static readonly CornerRadius _TabCornerRadius = new(0);
 
     private async Task SelectConnectionAsync(int index)
     {
@@ -251,6 +261,7 @@ internal sealed partial class DepotBrowserPanel : UserControl
             return;
         }
 
+        _connectionIndex = index;
         _model = new DepotBrowserModel(_host, _connections[index], _http);
         _tree.ItemsSource = null;
         _detail.Children.Clear();
@@ -262,12 +273,10 @@ internal sealed partial class DepotBrowserPanel : UserControl
         }
 
         var projects = answer.Data ?? [];
-        _filling = true;
         _projectBox.ItemsSource = projects;
         _projectBox.ItemTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<DepotBrowserProject>((project, _) => new TextBlock { Text = project?.Name });
         var wanted = await DefaultProjectAsync().ConfigureAwait(true);
         _projectBox.SelectedItem = projects.FirstOrDefault(project => project.Project == wanted || project.Project.EndsWith("/" + wanted, StringComparison.Ordinal)) ?? projects.FirstOrDefault();
-        _filling = false;
         _project = (_projectBox.SelectedItem as DepotBrowserProject)?.Project;
         await LoadTreeAsync().ConfigureAwait(true);
     }
@@ -445,12 +454,18 @@ internal sealed partial class DepotBrowserPanel : UserControl
     {
         var kind = item.Kind switch
         {
-            DepotTreeKind.Folder => MaterialIconKind.FolderOutline,
+            DepotTreeKind.Folder => MaterialIconKind.Folder,
             _ when item.Node is { } fileNode => _Icon(fileNode),
             _ => MaterialIconKind.FileOutline,
         };
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
-        row.Children.Add(new MaterialIcon { Kind = kind, Width = 16, Height = 16 });
+        var icon = new MaterialIcon { Kind = kind, Width = 16, Height = 16 };
+        if (item.Kind == DepotTreeKind.Folder)
+        {
+            icon.Bind(MaterialIcon.ForegroundProperty, icon.GetResourceObservable("CockpitStatusWaitingBrush"));
+        }
+
+        row.Children.Add(icon);
         row.Children.Add(new TextBlock { Text = item.Name, FontSize = 13, FontWeight = FontWeight.Normal, VerticalAlignment = VerticalAlignment.Center });
         if (item.Node is { ShareId: not null } shared)
         {
@@ -862,7 +877,7 @@ internal sealed partial class DepotBrowserPanel : UserControl
         if (_model is not null && await _model.SignInAsync().ConfigureAwait(true))
         {
             _signIn.IsVisible = false;
-            await SelectConnectionAsync(_connectionBox.SelectedIndex).ConfigureAwait(true);
+            await SelectConnectionAsync(_connectionIndex).ConfigureAwait(true);
         }
     }
 
