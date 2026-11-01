@@ -64,6 +64,9 @@ internal static class DepotScenes
         ["depot-new-meeting-note"] = () => DepotMeetingNoteScene.Dialog(created: false),
         ["depot-meeting-note-created"] = () => DepotMeetingNoteScene.Dialog(created: true),
         ["depot-inbox-joined"] = DepotInboxScene.Joined,
+        ["depot-panel-files"] = () => DepotPanelScene.Build(0),
+        ["depot-panel-notes"] = () => DepotPanelScene.Build(1),
+        ["depot-panel-inbox"] = () => DepotPanelScene.Build(2),
         ["depot-new-markdown"] = () =>
         {
             var dialog = new NewMarkdownFileDialog("krahwinkel-it/cockpit", "Ideas", ["", "Ideas", "Plan"], _ => false, _ => Task.CompletedTask)
