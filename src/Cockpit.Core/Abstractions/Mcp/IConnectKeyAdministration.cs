@@ -53,11 +53,12 @@ public sealed record ConnectKeyInfo(
     DateTimeOffset? ExpiresAt,
     DateTimeOffset? RevokedAt,
     DateTimeOffset? LastUsedAt,
-    string? LastUsedFrom);
+    string? LastUsedFrom,
+    bool IssuedToOwner = false);
 
 public sealed record ConnectKeyLockout(string Address, DateTimeOffset LockedUntil, int RefusedWhileLockedOut);
 
-public sealed record ConnectKeyRequest(string Label, ConnectKeyCapability Capability, int? ExpiresInDays, bool HoldsAssistant, ConnectKeyScope Scope, bool NeverExpires = false);
+public sealed record ConnectKeyRequest(string Label, ConnectKeyCapability Capability, int? ExpiresInDays, bool HoldsAssistant, ConnectKeyScope Scope, bool NeverExpires = false, bool IssuedToOwner = false);
 
 public sealed record IssuedConnectKey(ConnectKeyInfo Key, string Secret);
 

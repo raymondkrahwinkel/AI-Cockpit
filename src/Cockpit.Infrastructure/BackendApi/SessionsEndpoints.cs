@@ -30,7 +30,7 @@ internal static class SessionsEndpoints
         IAssistantAgentGateway gateway() => services.GetRequiredService<IAssistantAgentGateway>();
         ISessionRegistry sessions() => services.GetRequiredService<ISessionRegistry>();
         IBackendEventLog log() => services.GetRequiredService<IBackendEventLog>();
-        NodeCallerSessionPolicy policy() => new(read(), gateway(), services.GetRequiredService<INodePairingBroker>(), services.GetRequiredService<ISessionProfileStore>());
+        NodeCallerSessionPolicy policy() => new(read(), gateway(), services.GetRequiredService<INodePairingBroker>(), services.GetRequiredService<ISessionProfileStore>(), services.GetService<IProfileLoginChecker>());
 
         // AC-1388: `seq` is read before the list, so a reader following the stream after it misses no change to it.
         api.MapGet("/sessions", async () =>

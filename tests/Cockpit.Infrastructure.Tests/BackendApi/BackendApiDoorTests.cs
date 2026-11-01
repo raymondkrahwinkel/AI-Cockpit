@@ -516,7 +516,7 @@ public sealed class BackendApiDoorTests
     {
         await using var door = new _Door();
         var verifier = await door.StartAsync();
-        var holding = await verifier.IssueAsync("holding", ConnectKeyCapability.Operate, 30, Operator, holdsAssistant: true);
+        var holding = await verifier.IssueAsync("holding", ConnectKeyCapability.Operate, 30, Operator, holdsAssistant: true, issuedToOwner: true);
 
         var api = await door.GetAsync(door.NodeBase, "/api/v1/whoami", holding.Secret);
         var afterApi = door.Presence.Current;

@@ -133,7 +133,7 @@ public sealed partial class ServerAdminViewModel : ObservableObject
     private bool _isEditorOpen;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(EditorTitle), nameof(EditorSaveLabel))]
+    [NotifyPropertyChangedFor(nameof(EditorTitle), nameof(EditorSaveLabel), nameof(CanHoldAssistant))]
     private bool _isIssuing;
 
     [ObservableProperty]
@@ -144,6 +144,11 @@ public sealed partial class ServerAdminViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _editorHoldsAssistant;
+
+    // AC-2003: only the owner's own key reaches a personal subscription login or holds the assistant.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanHoldAssistant))]
+    private bool _editorIssuedToOwner;
 
     [ObservableProperty]
     private decimal _editorExpiresInDays = ConnectKeyPolicy.Default.DefaultExpiryDays;
@@ -181,6 +186,10 @@ public sealed partial class ServerAdminViewModel : ObservableObject
     public string EditorTitle => IsIssuing ? "Issue a key" : $"Scope of “{_editing?.Label}”";
 
     public string EditorSaveLabel => IsIssuing ? "Issue" : "Save scope";
+
+    public bool CanHoldAssistant => IsIssuing && EditorIssuedToOwner;
+
+    public string OwnerHint => "Only your own key starts a profile on your personal subscription. This server is for one person; marking someone else's key as yours is on you.";
 
     public string AssistantHolderHint => Keys.FirstOrDefault(key => key.Info.HoldsAssistant && key.IsLive) is { } holder
         ? $"({holder.Label} holds it now)"
@@ -230,6 +239,7 @@ public sealed partial class ServerAdminViewModel : ObservableObject
         EditorLabel = "";
         EditorIsAdmin = false;
         EditorHoldsAssistant = false;
+        EditorIssuedToOwner = false;
         EditorExpiresInDays = _keyPolicy.DefaultExpiryDays;
         EditorNeverExpires = false;
         _FillEditor(ConnectKeyScope.Default);
@@ -244,8 +254,14 @@ public sealed partial class ServerAdminViewModel : ObservableObject
         EditorLabel = row.Label;
         EditorIsAdmin = row.Info.Capability == ConnectKeyCapability.Admin;
         EditorHoldsAssistant = row.Info.HoldsAssistant;
+        EditorIssuedToOwner = row.Info.IssuedToOwner;
         _FillEditor(row.Info.Scope);
         IsEditorOpen = true;
+    }
+
+    partial void OnEditorIssuedToOwnerChanged(bool value)
+    {
+        EditorHoldsAssistant = EditorHoldsAssistant && value;
     }
 
     [RelayCommand]
@@ -259,7 +275,7 @@ public sealed partial class ServerAdminViewModel : ObservableObject
         {
             var capability = EditorIsAdmin ? ConnectKeyCapability.Admin : ConnectKeyCapability.Operate;
             int? expiresInDays = EditorNeverExpires ? null : decimal.ToInt32(EditorExpiresInDays);
-            var issued = await _admin.IssueAsync(new ConnectKeyRequest(EditorLabel.Trim(), capability, expiresInDays, EditorHoldsAssistant, scope, EditorNeverExpires));
+            var issued = await _admin.IssueAsync(new ConnectKeyRequest(EditorLabel.Trim(), capability, expiresInDays, EditorHoldsAssistant, scope, EditorNeverExpires, EditorIssuedToOwner));
             _ShowIssued(issued, null);
         }
         else if (_editing is { } row)
@@ -282,7 +298,7 @@ public sealed partial class ServerAdminViewModel : ObservableObject
     [RelayCommand]
     private Task RotateAsync(ConnectKeyRowViewModel row) => _RunAsync(async () =>
     {
-        var issued = await _admin.IssueAsync(new ConnectKeyRequest(_NextLabel(row.Label), row.Info.Capability, null, row.Info.HoldsAssistant, row.Info.Scope));
+        var issued = await _admin.IssueAsync(new ConnectKeyRequest(_NextLabel(row.Label), row.Info.Capability, null, row.Info.HoldsAssistant, row.Info.Scope, IssuedToOwner: row.Info.IssuedToOwner));
         _ShowIssued(issued, row.Label);
         await _LoadAuditAsync(null);
     });

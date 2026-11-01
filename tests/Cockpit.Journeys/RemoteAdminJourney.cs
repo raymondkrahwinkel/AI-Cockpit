@@ -27,6 +27,7 @@ using Cockpit.Core.Plugins;
 using Cockpit.Core.Projects;
 using Cockpit.Infrastructure.BackendApi;
 using Cockpit.Infrastructure.Configuration;
+using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Projects;
 using Cockpit.TestSupport;
@@ -116,7 +117,7 @@ public sealed class RemoteAdminJourney
             await run.Running.WaitAsync(Until.Ceiling);
             var baseAddress = new Uri($"https://127.0.0.1:{port}/");
             using var setup = new BackendApiClient(baseAddress, bootstrap, fingerprint, TimeProvider.System);
-            var laptop = await setup.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/keys", new { label = Laptop, capability = "admin" });
+            var laptop = await setup.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/keys", new { label = Laptop, capability = "admin", issuedToOwner = true });
             var laptopKey = laptop["secret"]?.GetValue<string>() ?? throw new InvalidOperationException("The server issued no key.");
 
             // AC-1571: the echo fixture on this desktop too, whose own settings view Admin opens for the server's copy.
@@ -678,6 +679,12 @@ public sealed class RemoteAdminJourney
             using var phone = new BackendApiClient(baseAddress, phoneKey, fingerprint, TimeProvider.System);
             var who = await phone.WhoAmIAsync();
             await phone.WhoAmIAsync();
+
+            // AC-2003: the phone is not the owner's own device, so neither the owner's subscription nor the assistant is its.
+            var personal = await Assert.ThrowsAsync<BackendApiException>(() => phone.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/sessions", new { profile = "Echo", prompt = "hello" }));
+            var borrowed = await Assert.ThrowsAsync<BackendApiException>(() => setup.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/keys", new { label = "journey-borrowed", capability = "operate", holdsAssistant = true }));
+            Assert.Equal((HttpStatusCode.Forbidden, NodeCallerSessionPolicy.PersonalLoginRefusal), (personal.Status, personal.Description));
+            Assert.Equal((HttpStatusCode.BadRequest, ConnectKeyVerifier.AssistantNeedsOwnerRefusal), (borrowed.Status, borrowed.Description));
             using (var streaming = new CancellationTokenSource(Until.Ceiling))
             {
                 var connected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

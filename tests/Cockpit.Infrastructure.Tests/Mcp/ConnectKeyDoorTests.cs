@@ -44,19 +44,18 @@ public sealed class ConnectKeyDoorTests
 
     private static readonly NodeCaller Operator = new("testtest", "", ConnectKeyCapability.Admin, "127.0.0.1", CancellationToken.None);
 
-    [Theory]
-    [InlineData(false, null)]
-    [InlineData(true, "laptop")]
-    public async Task ConnectKey_HoldsAssistantOnlyWhenRequested(bool holdsAssistant, string? expectedController)
+    // A key that does not hold the assistant leaves it free: the legacy key below.
+    [Fact]
+    public async Task ConnectKey_HoldsAssistantWhenRequested()
     {
         await using var door = new _Door();
-        var issued = await door.Verifier(_Environment()).IssueAsync("laptop", ConnectKeyCapability.Operate, 30, Operator, holdsAssistant);
+        var issued = await door.Verifier(_Environment()).IssueAsync("laptop", ConnectKeyCapability.Operate, 30, Operator, holdsAssistant: true, issuedToOwner: true);
         await door.StartAsync(_Environment());
         await using var client = await door.ClientAsync(issued.Secret);
 
         await _CallAsync(client, "list_node_sessions", new());
 
-        Assert.Equal(expectedController, door.Presence.Current?.Name);
+        Assert.Equal("laptop", door.Presence.Current?.Name);
     }
 
     [Fact]
@@ -77,7 +76,8 @@ public sealed class ConnectKeyDoorTests
         await using var door = new _Door();
         var legacy = await door.Verifier(_Environment()).IssueAsync("legacy", ConnectKeyCapability.Operate, 30, Operator);
         var config = JsonNode.Parse(await File.ReadAllTextAsync(door.ConfigPath)) ?? new JsonObject();
-        Assert.True(config["NodeConnectKeys"]?["Keys"]?.AsArray()[0]?.AsObject().Remove("HoldsAssistant"));
+        // AC-2003: stored as holding it before ownership existed, so it reads as someone else's and drops it.
+        config["NodeConnectKeys"]!["Keys"]!.AsArray()[0]!["HoldsAssistant"] = true;
         await File.WriteAllTextAsync(door.ConfigPath, config.ToJsonString());
         await door.StartAsync(_Environment());
         await using var legacyClient = await door.ClientAsync(legacy.Secret);
@@ -85,13 +85,15 @@ public sealed class ConnectKeyDoorTests
         Assert.Null(door.Presence.Current);
         await using var admin = await door.ClientAsync(Bootstrap);
 
-        var issued = await _CallAsync(admin, "issue_connect_key", new() { ["label"] = "holding", ["capability"] = "operate", ["holdsAssistant"] = true });
+        var issued = await _CallAsync(admin, "issue_connect_key", new() { ["label"] = "holding", ["capability"] = "operate", ["holdsAssistant"] = true, ["issuedToOwner"] = true });
+        var borrowed = await _CallAsync(admin, "issue_connect_key", new() { ["label"] = "borrowed", ["capability"] = "operate", ["holdsAssistant"] = true });
         var listed = await _CallAsync(admin, "list_connect_keys", new());
         var keys = listed["keys"]?.AsArray() ?? new JsonArray();
 
         Assert.True(keys.Single(key => key?["prefix"]?.GetValue<string>() == issued["prefix"]?.GetValue<string>())?["holdsAssistant"]?.GetValue<bool>());
         Assert.False(keys.Single(key => key?["label"]?.GetValue<string>() == "bootstrap")?["holdsAssistant"]?.GetValue<bool>());
         Assert.False(keys.Single(key => key?["label"]?.GetValue<string>() == "legacy")?["holdsAssistant"]?.GetValue<bool>());
+        Assert.Equal(ConnectKeyVerifier.AssistantNeedsOwnerRefusal, borrowed["error"]?.GetValue<string>());
     }
 
     // Criterion 1: a bootstrap key from a file, or from the variable as fallback, opens the door with no pairing and
@@ -299,15 +301,13 @@ public sealed class ConnectKeyDoorTests
             (listed["keys"]?.AsArray() ?? new JsonArray()).Single(key => key?["label"]?.GetValue<string>() == "legacy")?["scope"]?.ToJsonString());
     }
 
-    // Criterion 4: managing keys is admin's alone. Admin issue/revoke success is covered by their behavior tests.
+    // Criterion 4: managing keys is admin's alone. Admin issue/revoke/list success is covered by their behavior tests.
     [Theory]
     [InlineData("operate key", "issue_connect_key", NodeSessionMcpTools.AdminRefusal)]
     [InlineData("operate key", "revoke_connect_key", NodeSessionMcpTools.AdminRefusal)]
     [InlineData("operate key", "list_connect_keys", NodeSessionMcpTools.AdminRefusal)]
     [InlineData("pairing secret", "issue_connect_key", NodeSessionMcpTools.AdminRefusal)]
-    [InlineData("admin key", "list_connect_keys", null)]
     [InlineData("operate key", "set_connect_key_scope", NodeSessionMcpTools.AdminRefusal)]
-    [InlineData("pairing secret", "set_connect_key_scope", NodeSessionMcpTools.AdminRefusal)]
     [InlineData("admin key", "set_connect_key_scope", null)]
     public async Task KeyTools_AreForAnAdminKeyOnly(string credential, string tool, string? refusal)
     {

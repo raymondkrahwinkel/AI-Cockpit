@@ -30,6 +30,8 @@ internal sealed class ConnectKeyVerifier : ISingletonService, IConnectKeyAdminis
 
     public const string NeverExpiringRefusal = "This server's policy does not allow connect keys that never expire.";
 
+    public const string AssistantNeedsOwnerRefusal = "Only a key for the owner's own device can hold the assistant: the assistant runs on the owner's own login. Issue it as the owner's key, or without holding the assistant.";
+
     // Characters after `ck_` kept as the key's public handle: enough to tell keys apart in a list, far too few to
     // matter for guessing the rest (48 of 256 bits).
     private const int PrefixLength = 8;
@@ -99,7 +101,7 @@ internal sealed class ConnectKeyVerifier : ISingletonService, IConnectKeyAdminis
             }
 
             var section = (await _configFile.ReadAsync(cancellationToken).ConfigureAwait(false))?.NodeConnectKeys;
-            var persisted = (section?.Keys ?? []).Where(_IsWellFormed).ToList();
+            var persisted = (section?.Keys ?? []).Where(_IsWellFormed).Select(_WithoutForeignAssistant).ToList();
             var bootstrap = await _LoadBootstrapAsync(persisted, cancellationToken).ConfigureAwait(false);
             var policy = section?.Policy ?? ConnectKeyPolicy.Default;
             var lockouts = await _ReadLockoutsAsync(cancellationToken).ConfigureAwait(false);
@@ -150,7 +152,7 @@ internal sealed class ConnectKeyVerifier : ISingletonService, IConnectKeyAdminis
             // same NAT sending garbage must not shut it out. Only failures are locked out, the pairing secret among them.
             if (found is { } key && key.IsUsableAt(now))
             {
-                caller = new NodeCaller(key.Prefix, key.Label, key.Capability, remoteAddress, _RevocationOf(key.Prefix), key.HoldsAssistant, key.EffectiveScope(), key.ExpiresAt);
+                caller = new NodeCaller(key.Prefix, key.Label, key.Capability, remoteAddress, _RevocationOf(key.Prefix), key.HoldsAssistant, key.EffectiveScope(), key.ExpiresAt, key.IssuedToOwner);
                 _lastUsed[key.Prefix] = (now, remoteAddress);
             }
             else if (state is not null && state.LockedUntil > now)
@@ -265,9 +267,15 @@ internal sealed class ConnectKeyVerifier : ISingletonService, IConnectKeyAdminis
     }
 
     // The raw key is in the return value and nowhere else — not in the log, the audit or cockpit.json.
-    public async Task<(ConnectKey Key, string Secret)> IssueAsync(string label, ConnectKeyCapability capability, int? expiresInDays, NodeCaller issuedBy, bool holdsAssistant = false, ConnectKeyScope? scope = null, bool neverExpires = false, CancellationToken cancellationToken = default)
+    public async Task<(ConnectKey Key, string Secret)> IssueAsync(string label, ConnectKeyCapability capability, int? expiresInDays, NodeCaller issuedBy, bool holdsAssistant = false, ConnectKeyScope? scope = null, bool neverExpires = false, bool issuedToOwner = false, CancellationToken cancellationToken = default)
     {
         await EnsureLoadedAsync(cancellationToken).ConfigureAwait(false);
+
+        // AC-2003: the assistant is the owner's, so only the owner's own key may hold it.
+        if (holdsAssistant && !issuedToOwner)
+        {
+            throw new ArgumentException(AssistantNeedsOwnerRefusal);
+        }
 
         if (neverExpires && !_policy.AllowNeverExpiring)
         {
@@ -301,7 +309,7 @@ internal sealed class ConnectKeyVerifier : ISingletonService, IConnectKeyAdminis
                 while (_AllKeys().Any(existing => string.Equals(existing.Prefix, _PrefixOf(secret), StringComparison.Ordinal)));
 
                 DateTimeOffset? expiresAt = neverExpires ? null : now.AddDays(days);
-                key = new ConnectKey(_PrefixOf(secret), _Hash(secret), capability, label.Trim(), now, expiresAt, HoldsAssistant: holdsAssistant, Scope: scope ?? ConnectKeyScope.Default);
+                key = new ConnectKey(_PrefixOf(secret), _Hash(secret), capability, label.Trim(), now, expiresAt, HoldsAssistant: holdsAssistant, Scope: scope ?? ConnectKeyScope.Default, IssuedToOwner: issuedToOwner);
                 next = [.. _persisted, key];
             }
 
@@ -312,7 +320,7 @@ internal sealed class ConnectKeyVerifier : ISingletonService, IConnectKeyAdminis
                 _persisted = next;
             }
 
-            _logger.LogInformation("Issued connect key {Prefix} ({Capability}), expiring {ExpiresAt}.", key.Prefix, key.Capability, key.ExpiresAt);
+            _logger.LogInformation("Issued connect key {Prefix} ({Capability}, owner's own: {IssuedToOwner}), expiring {ExpiresAt}.", key.Prefix, key.Capability, key.IssuedToOwner, key.ExpiresAt);
             var outcome = neverExpires ? "issued: never expires" : "issued";
             await _audit.RecordAsync(NodeAccessAuditEntry.By(issuedBy, now, "issue_connect_key", outcome, key.Prefix), cancellationToken).ConfigureAwait(false);
             return (key, secret);
@@ -454,7 +462,7 @@ internal sealed class ConnectKeyVerifier : ISingletonService, IConnectKeyAdminis
             throw new ArgumentException("capability must be \"operate\" or \"admin\".", nameof(request));
         }
 
-        var (key, secret) = await IssueAsync(request.Label, request.Capability, request.ExpiresInDays, _Admin(), request.HoldsAssistant, request.Scope, request.NeverExpires, cancellationToken).ConfigureAwait(false);
+        var (key, secret) = await IssueAsync(request.Label, request.Capability, request.ExpiresInDays, _Admin(), request.HoldsAssistant, request.Scope, request.NeverExpires, request.IssuedToOwner, cancellationToken).ConfigureAwait(false);
         return new IssuedConnectKey(_Info(key, null), secret);
     }
 
@@ -496,7 +504,7 @@ internal sealed class ConnectKeyVerifier : ISingletonService, IConnectKeyAdminis
             : throw new InvalidOperationException("Connect keys are managed only by an admin key calling over the node door.");
 
     private static ConnectKeyInfo _Info(ConnectKey key, (DateTimeOffset At, string From)? used) =>
-        new(key.Prefix, key.Label, key.Capability, key.IsBootstrap, key.HoldsAssistant, key.EffectiveScope(), key.CreatedAt, key.ExpiresAt, key.RevokedAt, used?.At, used?.From);
+        new(key.Prefix, key.Label, key.Capability, key.IsBootstrap, key.HoldsAssistant, key.EffectiveScope(), key.CreatedAt, key.ExpiresAt, key.RevokedAt, used?.At, used?.From, key.IssuedToOwner);
 
     // Every stored hash is compared, match or not: an early exit would time where in the list a key sits.
     private ConnectKey? _Find(string token)
@@ -640,7 +648,7 @@ internal sealed class ConnectKeyVerifier : ISingletonService, IConnectKeyAdminis
         }
 
         _logger.LogInformation("Bootstrap connect key {Prefix} is active.", prefix);
-        return new ConnectKey(prefix, hash, ConnectKeyCapability.Admin, "bootstrap", _time.GetUtcNow(), ExpiresAt: null, IsBootstrap: true, Scope: ConnectKeyScope.Everything);
+        return new ConnectKey(prefix, hash, ConnectKeyCapability.Admin, "bootstrap", _time.GetUtcNow(), ExpiresAt: null, IsBootstrap: true, Scope: ConnectKeyScope.Everything, IssuedToOwner: true);
     }
 
     // An unreadable file starts this run without lockouts rather than shutting the door on everyone. JSON fills a
@@ -699,6 +707,18 @@ internal sealed class ConnectKeyVerifier : ISingletonService, IConnectKeyAdminis
         return false;
     }
 
+    // AC-2003: a key stored before ownership existed reads as someone else's, so it drops the assistant it held.
+    private ConnectKey _WithoutForeignAssistant(ConnectKey key)
+    {
+        if (key is not { HoldsAssistant: true, IssuedToOwner: false })
+        {
+            return key;
+        }
+
+        _logger.LogWarning("Connect key {Prefix} ({Label}) no longer holds the assistant: only a key for the owner's own device may. Issue a new owner's key to hold it.", key.Prefix, key.Label);
+        return key with { HoldsAssistant = false };
+    }
+
     private static string _PrefixOf(string key) => key.Substring(KeyPrefix.Length, PrefixLength);
 
     private static string _Hash(string key) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(key)));
@@ -727,9 +747,12 @@ internal sealed class ConnectKeyVerifier : ISingletonService, IConnectKeyAdminis
 // AC-1351: who came in over the node listener — a connect key (`KeyPrefix` set) or the pairing secret (null).
 // Stamped next to `NodeCallerIdentity.PaneId`, which stays the one identity the node tools check.
 // AC-1367/AC-1458: `Scope` and `ExpiresAt` are the key's, snapshotted with the request; a pairing has neither.
-internal sealed record NodeCaller(string? KeyPrefix, string Label, ConnectKeyCapability Capability, string RemoteAddress, CancellationToken Revoked, bool HoldsAssistant = false, ConnectKeyScope? Scope = null, DateTimeOffset? ExpiresAt = null)
+internal sealed record NodeCaller(string? KeyPrefix, string Label, ConnectKeyCapability Capability, string RemoteAddress, CancellationToken Revoked, bool HoldsAssistant = false, ConnectKeyScope? Scope = null, DateTimeOffset? ExpiresAt = null, bool IssuedToOwner = false)
 {
     public bool ByConnectKey => KeyPrefix is not null;
+
+    // AC-2003: the pairing is the owner's own controller; a key counts only when it was issued to the owner.
+    public bool IsOwner => !ByConnectKey || IssuedToOwner;
 
     // AC-1367: the one scope check for every node tool and API route. A pairing keeps the bypass and permission
     // grants it always had (AC-1318/AC-1323); its profiles and projects are the broker's live grant.

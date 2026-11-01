@@ -11,8 +11,11 @@ internal sealed class NodeCallerSessionPolicy(
     IAssistantReadGateway read,
     IAssistantAgentGateway gateway,
     INodePairingBroker pairing,
-    ISessionProfileStore profiles)
+    ISessionProfileStore profiles,
+    IProfileLoginChecker? logins)
 {
+    public const string PersonalLoginRefusal = "This profile uses a personal subscription and can only be started by its owner. Use an API-key profile for shared use.";
+
     // Live against the grant: an unticked profile disappears from the list immediately, and the node operator's own
     // sessions are visible under a shared profile.
     public async Task<IReadOnlyList<AssistantSessionRow>> VisibleSessionsAsync(NodeCaller caller)
@@ -41,6 +44,12 @@ internal sealed class NodeCallerSessionPolicy(
                 : $"This node's operator has not allowed the profile '{profile}'. Call list_node_profiles for the ones they have, and ask them to tick it on that machine if the one you want is missing.");
         }
 
+        // AC-2003: a hard block, not a scope a grant can widen — a subscription is for its owner alone.
+        if (!caller.IsOwner && _UsesPersonalLogin(allowedProfile))
+        {
+            return new NodeStartCheck(null, PersonalLoginRefusal);
+        }
+
         // AC-1367: in scope is not enough for a profile that skips its approvals — that takes its own grant.
         if (!caller.MayStartBypass && UnsupervisedProfile.SkipsApprovals(allowedProfile.Defaults))
         {
@@ -63,6 +72,12 @@ internal sealed class NodeCallerSessionPolicy(
 
         return new NodeStartCheck(allowedProfile, null);
     }
+
+    // Fail-closed: only a local model or a provider that reports an API key is shareable, so a kind the CLI has not
+    // reported yet counts as a login.
+    private bool _UsesPersonalLogin(SessionProfile profile) =>
+        profile.ProviderConfig is not (OllamaConfig or LmStudioConfig)
+        && logins?.CredentialKind(profile) is not (ProfileCredentialKind.ApiKey or ProfileCredentialKind.ApiKeyFromSecret);
 
     // The desk a caller's session lands on, derived here and never named by the caller — a controller has never seen
     // this cockpit's desks. Falls back to the first desk that can hold a session.

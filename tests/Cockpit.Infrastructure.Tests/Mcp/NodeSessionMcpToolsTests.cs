@@ -9,6 +9,7 @@ using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Agents;
 using Cockpit.Infrastructure.Mcp;
 using ModelContextProtocol.Server;
+using NSubstitute;
 
 namespace Cockpit.Infrastructure.Tests.Mcp;
 
@@ -41,8 +42,8 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
 
     private readonly StubPairing _pairing = new();
 
-    private NodeSessionMcpTools _Tools(IAssistantMemory? memory = null) =>
-        new(_read, _gateway, _pairing, new StubProfileStore(), new NodeDiscoveryId(Path.Combine(Path.GetTempPath(), $"node-discovery-id-{Guid.NewGuid():N}.txt")), new AgentMessageInbox(), memory ?? new StubMemory());
+    private NodeSessionMcpTools _Tools(IAssistantMemory? memory = null, IProfileLoginChecker? logins = null) =>
+        new(_read, _gateway, _pairing, new StubProfileStore(), new NodeDiscoveryId(Path.Combine(Path.GetTempPath(), $"node-discovery-id-{Guid.NewGuid():N}.txt")), new AgentMessageInbox(), memory ?? new StubMemory(), logins: logins);
 
     private static JsonNode _Json(string result) => JsonNode.Parse(result)!;
 
@@ -174,13 +175,12 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
     ];
 
     private static NodeCaller _Key(ConnectKeyScope scope) =>
-        new("testkey1", "laptop", ConnectKeyCapability.Operate, "10.0.0.2", CancellationToken.None, Scope: scope);
+        new("testkey1", "laptop", ConnectKeyCapability.Operate, "10.0.0.2", CancellationToken.None, Scope: scope, IssuedToOwner: true);
 
-    // AC-1367 criteria 1 and 2: a key scoped to one project cannot start in another, and a key without the bypass
-    // grant cannot start a profile that skips its approvals — each refused with the scope as the reason. Nor can it
-    // start without a project, which would leave a session it could not see or stop.
+    // AC-1367 criteria 1 and 2: a key without the bypass grant cannot start a profile that skips its approvals, refused
+    // with the scope as the reason. Nor can it start without a project, which would leave a session it could not see or
+    // stop. Another project is refused by the same policy, asserted over the API in SessionsEndpointsTests.
     [Theory]
-    [InlineData(AllowedProfile, "project-not-in-scope", "scope of this connect key")]
     [InlineData(UnattendedProfile, null, "mayStartBypassProfiles")]
     [InlineData(AllowedProfile, null, "must name one of them")]
     public async Task Start_ByAConnectKey_OutsideItsScope_IsRefusedWithTheScopeAsTheReason(string profile, string? projectId, string reason)
@@ -194,10 +194,9 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
         Assert.Empty(_gateway.Spawns);
     }
 
-    // The counterproofs: the same key starts in its own project, a key with the grant starts the bypass profile, and
-    // (criterion 7, the regression row) a pairing with that profile in its grant still starts it without any key grant.
+    // The counterproofs: a key with the grant starts the bypass profile, and (criterion 7, the regression row) a pairing
+    // with that profile in its grant still starts it. A key in its own project starts in the AC-2003 rows below.
     [Theory]
-    [InlineData(0, AllowedProfile, AllowedProject)]
     [InlineData(1, UnattendedProfile, null)]
     [InlineData(2, UnattendedProfile, null)]
     public async Task Start_WithinAKeysScope_OrByAPairing_Runs(int callerIndex, string profile, string? projectId)
@@ -209,6 +208,27 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
 
         Assert.True(answer["ok"]?.GetValue<bool>(), answer.ToJsonString());
         Assert.Equal(profile, Assert.Single(_gateway.Spawns).ProfileLabel);
+    }
+
+    // AC-2003 (layer 2, authorization): a subscription login is its owner's alone, whatever the key's scope; an API-key
+    // profile is shareable, and a kind the CLI has not reported yet counts as a login. The refusal carries the reason.
+    [Theory]
+    [InlineData(ProfileCredentialKind.Login, true, 1, null)]
+    [InlineData(ProfileCredentialKind.Login, false, 0, NodeCallerSessionPolicy.PersonalLoginRefusal)]
+    [InlineData(ProfileCredentialKind.ApiKey, true, 1, null)]
+    [InlineData(ProfileCredentialKind.ApiKey, false, 1, null)]
+    [InlineData(ProfileCredentialKind.Unknown, true, 1, null)]
+    [InlineData(ProfileCredentialKind.Unknown, false, 0, NodeCallerSessionPolicy.PersonalLoginRefusal)]
+    public async Task Start_OnASubscriptionLogin_IsForTheOwnersKeyOnly(ProfileCredentialKind credential, bool issuedToOwner, int spawns, string? refusal)
+    {
+        var logins = Substitute.For<IProfileLoginChecker>();
+        logins.CredentialKind(Arg.Any<SessionProfile>()).Returns(credential);
+        McpRequestContext.Set(NodeCallerIdentity.PaneId, _Key(ConnectKeyScope.Everything) with { IssuedToOwner = issuedToOwner });
+
+        var answer = _Json(await _Tools(logins: logins).StartNodeAgentAsync(AllowedProfile, AllowedProject));
+
+        Assert.Equal(refusal, answer["error"]?.GetValue<string>());
+        Assert.Equal(spawns, _gateway.Spawns.Count);
     }
 
     // AC-1367 criterion 2, listing: what a key may not start it does not see.

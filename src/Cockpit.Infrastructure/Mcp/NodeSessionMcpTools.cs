@@ -28,7 +28,9 @@ internal sealed class NodeSessionMcpTools(
     IAssistantMemory memory,
     // AC-1351: null where nothing verifies connect keys (a test's own host), and then the key tools refuse.
     // AC-1446: the same contract the backend API's admin routes call, so both write one audit.
-    IConnectKeyAdministration? connectKeys = null)
+    IConnectKeyAdministration? connectKeys = null,
+    // AC-2003: null reads every provider's credential as unknown, so a key not issued to the owner is refused.
+    IProfileLoginChecker? logins = null)
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
 
@@ -57,6 +59,8 @@ internal sealed class NodeSessionMcpTools(
     private const string BypassParameter = "Whether the key may start a profile that skips its approvals. Defaults to false.";
 
     private const string PermissionsParameter = "Whether the key may answer a session's permission prompts. Defaults to true.";
+
+    private const string OwnerParameter = "Whether this key is for the owner's own device. Only then does it start a profile on a personal subscription login. The server is for one person; whoever sets this for someone else's key answers for it. Defaults to false.";
 
     [McpServerTool(Name = "list_node_sessions", ReadOnly = true)]
     [Description("Lists the AI sessions running on this node — the machine you are paired to, not your own. IT IS NOT EVERYTHING RUNNING THERE: you see the sessions running under a profile that machine's operator has allowed you, and nothing else, so never report this as \"the node is idle\" — say what you can see. THESE ARE NOT YOUR SESSIONS AND THEIR IDS ARE NOT YOURS: a pane id from this list means nothing to stop_agent, and a pane id from your own list_sessions means nothing to stop_node_agent, so never carry one across. When you tell the operator what is running, say which machine each session is on — two sessions can carry the same name on two machines, and the whole risk here is stopping the one you did not mean. hasOutstandingWork can be true under any status: it means something of that session's own — a backgrounded shell such as a build or a test run — is still going even though the session stopped talking, because that work deliberately does not hold the status. A session reading Idle or Done with hasOutstandingWork true is not finished; say so. pendingPermissions lists the Allow/Deny questions a session is stopped on; they are for the operator's own screen on the controller, never for you to answer.")]
@@ -520,13 +524,14 @@ internal sealed class NodeSessionMcpTools(
     }
 
     [McpServerTool(Name = "issue_connect_key", ReadOnly = false, Destructive = false)]
-    [Description("Issues a new connect key for this node and returns it ONCE — it is stored only as a hash, so a key that is lost cannot be shown again, only replaced. Needs a connect key with the admin capability. capability is \"operate\" (the node tools) or \"admin\" (those plus managing keys). expiresInDays defaults to the node's policy; set neverExpires instead to issue a key without an expiry when policy allows it. holdsAssistant turns off this node's assistant while you call. The scope defaults to every profile and project, with answering permission prompts allowed and starting profiles that skip their approvals not; profiles and projects narrow it, and set_connect_key_scope changes it later. A key limited to some projects sees and reaches only the sessions in those projects. A scope limits an operate key; an admin key can always issue itself a wider one. To rotate, issue the new key, move the controller to it, then revoke the old one. The bootstrap key stays as the emergency key. The key lands in the transcript of whoever calls this, so hand it to the operator's connect dialog rather than calling this from an assistant.")]
+    [Description("Issues a new connect key for this node and returns it ONCE — it is stored only as a hash, so a key that is lost cannot be shown again, only replaced. Needs a connect key with the admin capability. capability is \"operate\" (the node tools) or \"admin\" (those plus managing keys). expiresInDays defaults to the node's policy; set neverExpires instead to issue a key without an expiry when policy allows it. holdsAssistant turns off this node's assistant while you call, and needs issuedToOwner. issuedToOwner marks the key for the owner's own device: only such a key starts a profile on a personal subscription login. The scope defaults to every profile and project, with answering permission prompts allowed and starting profiles that skip their approvals not; profiles and projects narrow it, and set_connect_key_scope changes it later. A key limited to some projects sees and reaches only the sessions in those projects. A scope limits an operate key; an admin key can always issue itself a wider one. To rotate, issue the new key, move the controller to it, then revoke the old one. The bootstrap key stays as the emergency key. The key lands in the transcript of whoever calls this, so hand it to the operator's connect dialog rather than calling this from an assistant.")]
     public async Task<string> IssueConnectKeyAsync(
         [Description("A name for the operator: which controller or machine this key is for.")] string label,
         [Description("\"operate\" or \"admin\".")] string capability,
         [Description("Days until the key expires. Leave out for the node's default.")] int? expiresInDays = null,
         [Description("Issues a key without an expiry. Cannot be combined with expiresInDays and must be allowed by server policy.")] bool neverExpires = false,
-        [Description("Turns off this node's assistant while you call. Defaults to false.")] bool holdsAssistant = false,
+        [Description("Turns off this node's assistant while you call. Needs issuedToOwner. Defaults to false.")] bool holdsAssistant = false,
+        [Description(OwnerParameter)] bool issuedToOwner = false,
         [Description(ProfilesParameter)] string[]? profiles = null,
         [Description(ProjectsParameter)] string[]? projects = null,
         [Description(BypassParameter)] bool mayStartBypassProfiles = false,
@@ -555,7 +560,7 @@ internal sealed class NodeSessionMcpTools(
             }
 
             var scope = _ScopeOf(profiles, projects, mayStartBypassProfiles, mayAnswerPermissions);
-            var (key, secret) = await connectKeys.IssueAsync(new ConnectKeyRequest(label, parsed, expiresInDays, holdsAssistant, scope, neverExpires)).ConfigureAwait(false);
+            var (key, secret) = await connectKeys.IssueAsync(new ConnectKeyRequest(label, parsed, expiresInDays, holdsAssistant, scope, neverExpires, issuedToOwner)).ConfigureAwait(false);
             return _Serialize(new
             {
                 ok = true,
@@ -687,6 +692,7 @@ internal sealed class NodeSessionMcpTools(
                     label = key.Label,
                     capability = key.Capability.ToString().ToLowerInvariant(),
                     holdsAssistant = key.HoldsAssistant,
+                    issuedToOwner = key.IssuedToOwner,
                     scope = _ScopeJson(key.Scope),
                     isBootstrap = key.IsBootstrap,
                     createdAt = key.CreatedAt,
@@ -715,7 +721,7 @@ internal sealed class NodeSessionMcpTools(
             });
 
     // AC-1386: built per use rather than held, as a field initialised from these parameters would capture them twice.
-    private NodeCallerSessionPolicy _Policy => new(read, gateway, pairing, profiles);
+    private NodeCallerSessionPolicy _Policy => new(read, gateway, pairing, profiles, logins);
 
     // AC-1329: the same two-value parse `remember` uses on the controller, kept local rather than shared — every
     // MCP tool class here already carries its own `_Serialize`/refusal helpers rather than a common base.

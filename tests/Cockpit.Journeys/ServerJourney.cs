@@ -303,7 +303,7 @@ public sealed class ServerJourney
                 "workflows",
                 new Dictionary<string, string> { ["workflows"] = JsonSerializer.Serialize(_ScheduledWorkflowJson()) });
             var issuer = new NodeCaller("journey", "", ConnectKeyCapability.Admin, "127.0.0.1", CancellationToken.None);
-            var controllerKey = await services.GetRequiredService<ConnectKeyVerifier>().IssueAsync("controller", ConnectKeyCapability.Admin, 1, issuer, holdsAssistant: true);
+            var controllerKey = await services.GetRequiredService<ConnectKeyVerifier>().IssueAsync("controller", ConnectKeyCapability.Admin, 1, issuer, holdsAssistant: true, issuedToOwner: true);
             var healthKey = await services.GetRequiredService<ConnectKeyVerifier>().IssueAsync("health", ConnectKeyCapability.Operate, 1, issuer);
             return (services.GetRequiredService<NodeSelfSignedCertificate>().Fingerprint, controllerKey.Secret, healthKey.Secret);
         }

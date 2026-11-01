@@ -71,6 +71,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- A server or swarm no longer lets someone else's connect key start a profile on a personal subscription login (Claude Pro/Max, ChatGPT login for Codex, or a provider whose login is not known yet): the refusal says to use an API-key profile for shared use. API-key and local-model profiles stay shareable. Only a key issued as "For my own device" (and the bootstrap and swarm keys) reaches them, and only such a key can hold the assistant; an older key that held the assistant drops it. Provisioning refuses a manifest that hands out a Claude subscription token.
+
 - Headless server management is now named Servers, beside Swarm in Options. Searching for Admin still finds it.
 
 - changed: OpenAI-compatible provider plugins now ask models to verify tool-backed task results before ending a turn.

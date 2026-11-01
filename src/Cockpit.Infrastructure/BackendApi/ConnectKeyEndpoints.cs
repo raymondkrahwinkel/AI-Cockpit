@@ -51,7 +51,7 @@ internal static class ConnectKeyEndpoints
 
             if (body is null)
             {
-                return BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "invalid_request", "The body must be a key request: label, capability, expiresInDays, neverExpires, holdsAssistant and scope.");
+                return BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "invalid_request", "The body must be a key request: label, capability, expiresInDays, neverExpires, holdsAssistant, issuedToOwner and scope.");
             }
 
             return await _AnswerAsync(async () => Results.Json(
