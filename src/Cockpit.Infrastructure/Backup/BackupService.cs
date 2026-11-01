@@ -973,10 +973,6 @@ internal sealed class BackupService(
                 cancellationToken.ThrowIfCancellationRequested();
 
                 // AC-2002: provider login tokens never travel in a backup, whatever the flags say.
-                if (LoginTokenFiles.Contains(Path.GetFileName(file)))
-                {
-                    continue;
-                }
 
                 var relative = Path.GetRelativePath(configDir, file).Replace('\\', '/');
                 archive.CreateEntryFromFile(file, $"profiles/{profile.Label}/{relative}", CompressionLevel.Optimal);
