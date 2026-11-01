@@ -948,6 +948,13 @@ internal sealed class BackupService(
         }
     }
 
+    // Claude's OAuth token and Codex's login; a restored profile shows "not signed in" and asks for a new login.
+    private static readonly HashSet<string> LoginTokenFiles = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".credentials.json",
+        "auth.json",
+    };
+
     private async Task<Dictionary<string, string>> _WriteProfileConfigsAsync(ZipArchive archive, CancellationToken cancellationToken)
     {
         var written = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -964,6 +971,12 @@ internal sealed class BackupService(
             foreach (var file in Directory.EnumerateFiles(configDir, "*", SearchOption.AllDirectories))
             {
                 cancellationToken.ThrowIfCancellationRequested();
+
+                // AC-2002: provider login tokens never travel in a backup, whatever the flags say.
+                if (LoginTokenFiles.Contains(Path.GetFileName(file)))
+                {
+                    continue;
+                }
 
                 var relative = Path.GetRelativePath(configDir, file).Replace('\\', '/');
                 archive.CreateEntryFromFile(file, $"profiles/{profile.Label}/{relative}", CompressionLevel.Optimal);
