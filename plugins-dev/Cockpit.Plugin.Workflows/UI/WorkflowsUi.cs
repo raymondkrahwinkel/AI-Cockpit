@@ -13,6 +13,8 @@ namespace Cockpit.Plugin.Workflows.UI;
 // asks it over the plugin's channel.
 public sealed class WorkflowsUi : ICockpitPluginUi
 {
+    public static IReadOnlyDictionary<string, Func<Avalonia.Controls.Control>> Scenes => WorkflowsScenes.Views;
+
     public void InitializeUi(ICockpitUiHost host)
     {
         var settings = new WorkflowsSettings(host.Storage);

@@ -96,7 +96,7 @@ internal sealed class SlackChannelSettingsControl : UserControl, IPluginSettings
                     _migrationNoticeText,
                     new TextBlock
                     {
-                        Text = "Use is governed by your own agreement with each provider. A personal subscription is for individual use and must not be shared with others; for shared use, use an API-key profile.",
+                        Text = ProviderTerms.GeneralNotice,
                         TextWrapping = TextWrapping.Wrap,
                         Classes = { "optionsHint" },
                     },

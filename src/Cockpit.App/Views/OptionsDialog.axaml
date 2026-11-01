@@ -7,6 +7,7 @@
         xmlns:projects="using:Cockpit.Core.Projects"
         xmlns:core="using:Cockpit.Core.ModelIntelligence"
         xmlns:mcp="using:Cockpit.Core.Mcp"
+        xmlns:terms="using:Cockpit.Plugins.Abstractions"
         xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -353,7 +354,7 @@
 
                         <TextBlock Text="Add a machine" FontWeight="SemiBold" Margin="0,12,0,0"/>
                         <TextBlock Classes="optionsHint" TextWrapping="Wrap"
-                                   Text="Use is governed by your own agreement with each provider. Each person needs their own provider login. Personal subscriptions are for individual use and must not be shared with others; for shared use, use an API-key profile."/>
+                                   Text="{x:Static terms:ProviderTerms.GeneralNotice}"/>
                         <TextBlock Text="Enable accepting connections on both machines first. Finding or adding an address starts pairing; compare the six digits on both screens." Classes="optionsHint"/>
                         <Button Content="Find on this network" HorizontalAlignment="Left" Command="{Binding Swarm.FindCommand}" IsEnabled="{Binding !Swarm.IsBusy}"/>
                         <ItemsControl ItemsSource="{Binding Swarm.Found}">
@@ -427,7 +428,7 @@
                         <TextBlock Text="Servers" FontSize="20" FontWeight="Bold"/>
                         <TextBlock Text="Manage headless Cockpit servers: connect keys, plugins, profiles, projects and audit log. Use an admin key to manage a server." Classes="optionsHint"/>
                         <TextBlock Classes="optionsHint" TextWrapping="Wrap"
-                                   Text="Use is governed by your own agreement with each provider. Each person needs their own provider login. Personal subscriptions are for individual use and must not be shared with others; for shared use, use an API-key profile."/>
+                                   Text="{x:Static terms:ProviderTerms.GeneralNotice}"/>
                         <TextBlock Text="Connect your desktops in Swarm. For a headless server, use Connect to a server on the Nodes page." Classes="optionsHint"/>
                         <TextBlock Text="No server connected. Connect to a server on the Nodes page first." Classes="optionsHint" IsVisible="{Binding !ServerGroups.Count}"/>
                         <ItemsControl ItemsSource="{Binding ServerGroups}">
