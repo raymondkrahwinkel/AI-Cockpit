@@ -9,18 +9,19 @@ internal static class WorkflowsScenes
 {
     public static IReadOnlyDictionary<string, Func<Control>> Views { get; } = new Dictionary<string, Func<Control>>
     {
-        ["workflow-personal-login"] = () => _StartSession(true),
-        ["workflow-api-key"] = () => _StartSession(false),
+        ["workflow-personal-login"] = () => _StartSession("Personal"),
+        ["workflow-api-key"] = () => _StartSession("API key"),
+        ["workflow-profile-expression"] = () => _StartSession("{profile}"),
     };
 
-    private static Control _StartSession(bool personalLogin)
+    private static Control _StartSession(string profile)
     {
         var start = new WorkflowNode
         {
             Id = "start",
             TypeId = "cockpit.start-session",
             Name = "Start session",
-            Parameters = { ["Profile"] = personalLogin ? "Personal" : "API key", ["Prompt"] = "Review the incoming request." },
+            Parameters = { ["Profile"] = profile, ["Prompt"] = "Review the incoming request." },
         };
         var workflow = new Workflow
         {

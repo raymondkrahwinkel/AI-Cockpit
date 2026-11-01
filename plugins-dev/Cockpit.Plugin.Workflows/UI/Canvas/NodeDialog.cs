@@ -245,7 +245,7 @@ internal sealed class NodeDialog : Border
                 && (trigger.TypeId == "cockpit.text-match"
                     || trigger.TypeId.StartsWith("youtrack.", StringComparison.Ordinal)
                     || trigger.TypeId.StartsWith("github.", StringComparison.Ordinal)))
-            && _profiles.Any(profile => profile.UsesPersonalLogin
+            && !_profiles.Any(profile => !profile.UsesPersonalLogin
                 && string.Equals(profile.Label, label?.Trim(), StringComparison.OrdinalIgnoreCase));
     }
 
