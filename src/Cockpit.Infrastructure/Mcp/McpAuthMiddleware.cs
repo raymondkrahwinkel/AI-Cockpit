@@ -15,7 +15,8 @@ internal static class McpAuthMiddleware
         McpAuthKey authKey,
         SessionMcpKeyring keyring,
         Func<string?, ValueTask<bool>> authorize,
-        ConnectKeyVerifier? connectKeys = null) =>
+        ConnectKeyVerifier? connectKeys = null,
+        string? legacySecret = null) =>
         app.Use(async (context, next) =>
         {
             var header = context.Request.Headers.Authorization.ToString();
@@ -37,7 +38,9 @@ internal static class McpAuthMiddleware
 
                 // A connect key (AC-1351) and nothing else: this socket is reachable off this machine, so a loopback
                 // credential must not work here. AC-1985: the old pairing shared secret no longer opens it either.
-                var caller = connectKeys is null
+                var caller = legacySecret is { Length: > 0 } && ConnectKeyVerifier.ConstantTimeEquals(token, legacySecret)
+                    ? NodeCaller.ForPairing(remoteAddress)
+                    : connectKeys is null
                     ? null
                     : await connectKeys.AuthenticateAsync(token, remoteAddress).ConfigureAwait(false);
 
