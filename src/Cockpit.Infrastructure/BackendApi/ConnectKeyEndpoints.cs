@@ -51,7 +51,7 @@ internal static class ConnectKeyEndpoints
 
             if (body is null)
             {
-                return BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "invalid_request", "The body must be a key request: label, capability, expiresInDays, neverExpires, holdsAssistant and scope.");
+                return BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "invalid_request", "The body must be a key request: label, capability, expiresInDays, neverExpires, holdsAssistant, issuedToOwner and scope.");
             }
 
             return await _AnswerAsync(async () => Results.Json(
@@ -86,6 +86,12 @@ internal static class ConnectKeyEndpoints
                 ? Results.Json(new { ok = true, prefix })
                 : _NoKey()).ConfigureAwait(false);
         }).RequireAdmin();
+
+        // AC-2003: the owner marks an older key, a swarm member's included, as their own device.
+        api.MapPut("/keys/{prefix}/own-device", (string prefix, CancellationToken cancellationToken) =>
+            _AnswerAsync(async () => await keys().MarkOwnDeviceAsync(prefix, cancellationToken).ConfigureAwait(false)
+                ? Results.Json(new { ok = true, prefix, issuedToOwner = true })
+                : _NoKey())).RequireAdmin();
 
         // AC-1459: the node tool lift_connect_lockout over HTTP. An IPv6 bucket's slash arrives escaped.
         api.MapPost("/lockouts/{bucket}/lift", (string bucket, CancellationToken cancellationToken) =>

@@ -60,7 +60,7 @@ public sealed class BackendApiDoorTests
 
     private const string InvalidTokenBody = """{"error":"invalid_token","error_description":"The cockpit did not accept this bearer token."}""";
 
-    private static readonly NodeCaller Operator = new("testtest", "", ConnectKeyCapability.Admin, "127.0.0.1", CancellationToken.None);
+    private static readonly NodeCaller Operator = new("testtest", "", ConnectKeyCapability.Admin, "127.0.0.1", CancellationToken.None, IssuedToOwner: true);
 
     // Criterion 1: an operate key over HTTPS is told who it is.
     [Fact]
@@ -483,7 +483,7 @@ public sealed class BackendApiDoorTests
         if (read == "/api/v1/keys")
         {
             Assert.Equal(
-                new[] { "prefix", "label", "capability", "isBootstrap", "holdsAssistant", "scope", "createdAt", "expiresAt", "revokedAt", "lastUsedAt", "lastUsedFrom" },
+                new[] { "prefix", "label", "capability", "isBootstrap", "holdsAssistant", "scope", "createdAt", "expiresAt", "revokedAt", "lastUsedAt", "lastUsedFrom", "issuedToOwner" },
                 (JsonNode.Parse(text)?["keys"]?.AsArray() ?? []).Single(key => key?["prefix"]?.GetValue<string>() == prefix)?.AsObject().Select(property => property.Key) ?? []);
             Assert.Contains("api:list_keys", await File.ReadAllTextAsync(door.AuditPath), StringComparison.Ordinal);
         }
@@ -516,7 +516,7 @@ public sealed class BackendApiDoorTests
     {
         await using var door = new _Door();
         var verifier = await door.StartAsync();
-        var holding = await verifier.IssueAsync("holding", ConnectKeyCapability.Operate, 30, Operator, holdsAssistant: true);
+        var holding = await verifier.IssueAsync("holding", ConnectKeyCapability.Operate, 30, Operator, holdsAssistant: true, issuedToOwner: true);
 
         var api = await door.GetAsync(door.NodeBase, "/api/v1/whoami", holding.Secret);
         var afterApi = door.Presence.Current;

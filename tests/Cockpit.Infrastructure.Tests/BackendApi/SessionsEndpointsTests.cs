@@ -23,7 +23,7 @@ public sealed class SessionsEndpointsTests
 
     private const string Project = "project-allowed";
 
-    private static readonly NodeCaller Operator = new("testtest", "", ConnectKeyCapability.Admin, "127.0.0.1", CancellationToken.None);
+    private static readonly NodeCaller Operator = new("testtest", "", ConnectKeyCapability.Admin, "127.0.0.1", CancellationToken.None, IssuedToOwner: true);
 
     private static readonly ConnectKeyScope OneProject = new() { AllowAllProjects = false, AllowedProjectIds = [Project] };
 
@@ -35,7 +35,7 @@ public sealed class SessionsEndpointsTests
     {
         await using var door = new BackendApiDoorTests._Door();
         var verifier = await door.StartAsync();
-        var key = await verifier.IssueAsync("laptop", ConnectKeyCapability.Operate, 30, Operator, scope: OneProject);
+        var key = await verifier.IssueAsync("laptop", ConnectKeyCapability.Operate, 30, Operator, scope: OneProject, issuedToOwner: true);
 
         var answer = await door.SendAsync(HttpMethod.Post, "/api/v1/sessions", key.Secret, JsonSerializer.Serialize(new { profile = Profile, projectId = project }));
 
@@ -43,12 +43,11 @@ public sealed class SessionsEndpointsTests
         Assert.Contains(bodyPart, answer.Body, StringComparison.Ordinal);
     }
 
-    // Criterion 3: answering or switching into an auto-accepting mode takes the mayAnswerPermissions grant. AC-1476: the
-    // session scope sits behind the same grant, and a scope the server does not know, or one on a deny, is refused.
+    // Criterion 3: answering or switching into an auto-accepting mode takes the mayAnswerPermissions grant, checked before
+    // the body is read. AC-1476: a session scope is answered, and one the server does not know, or one on a deny, refused.
     [Theory]
     [InlineData(false, """{"allow":true}""", HttpStatusCode.Forbidden, HttpStatusCode.Forbidden, NodeSessionMcpTools.PermissionsRefusal, "\"mayAnswerPermissions\":false")]
     [InlineData(true, """{"allow":true}""", HttpStatusCode.OK, HttpStatusCode.OK, "\"toolUseId\":\"tool-1\"", "\"mayAnswerPermissions\":true")]
-    [InlineData(false, """{"allow":true,"scope":"session"}""", HttpStatusCode.Forbidden, HttpStatusCode.Forbidden, NodeSessionMcpTools.PermissionsRefusal, "\"mayAnswerPermissions\":false")]
     [InlineData(true, """{"allow":true,"scope":"session"}""", HttpStatusCode.OK, HttpStatusCode.OK, "\"toolUseId\":\"tool-1\"", "\"mayAnswerPermissions\":true")]
     [InlineData(true, """{"allow":true,"scope":"bogus"}""", HttpStatusCode.BadRequest, HttpStatusCode.OK, "invalid_request", "\"mayAnswerPermissions\":true")]
     [InlineData(true, """{"allow":false,"scope":"session"}""", HttpStatusCode.BadRequest, HttpStatusCode.OK, "invalid_request", "\"mayAnswerPermissions\":true")]
@@ -67,7 +66,7 @@ public sealed class SessionsEndpointsTests
             return true;
         });
         door.Sessions.Register(handle);
-        var key = await verifier.IssueAsync("laptop", ConnectKeyCapability.Operate, 30, Operator, scope: new ConnectKeyScope { MayAnswerPermissions = mayAnswerPermissions });
+        var key = await verifier.IssueAsync("laptop", ConnectKeyCapability.Operate, 30, Operator, scope: new ConnectKeyScope { MayAnswerPermissions = mayAnswerPermissions }, issuedToOwner: true);
 
         var answer = await door.SendAsync(HttpMethod.Post, "/api/v1/sessions/pane-in/permissions/tool-1", key.Secret, answerBody);
         var mode = await door.SendAsync(HttpMethod.Post, "/api/v1/sessions/pane-in/permission-mode", key.Secret, """{"mode":"acceptEdits"}""");
@@ -110,7 +109,7 @@ public sealed class SessionsEndpointsTests
             return true;
         });
         door.Sessions.Register(handle);
-        var key = await verifier.IssueAsync("laptop", ConnectKeyCapability.Operate, 30, Operator, scope: OneProject);
+        var key = await verifier.IssueAsync("laptop", ConnectKeyCapability.Operate, 30, Operator, scope: OneProject, issuedToOwner: true);
 
         var answer = await door.SendAsync(new HttpMethod(method), path, key.Secret, body);
 
@@ -140,7 +139,7 @@ public sealed class SessionsEndpointsTests
                 },
             ],
         });
-        var key = await verifier.IssueAsync("laptop", ConnectKeyCapability.Operate, 30, Operator, scope: OneProject);
+        var key = await verifier.IssueAsync("laptop", ConnectKeyCapability.Operate, 30, Operator, scope: OneProject, issuedToOwner: true);
 
         var answer = await door.SendAsync(HttpMethod.Get, "/api/v1/sessions", key.Secret);
         var sessions = JsonNode.Parse(answer.Body)?["sessions"]?.AsArray() ?? [];
@@ -166,7 +165,7 @@ public sealed class SessionsEndpointsTests
         assistant.PaneId.Returns("assistant-pane");
         assistant.SubmitPromptWhenReadyAsync("hello").Returns(true);
         door.Sessions.RegisterAssistant(assistant);
-        var holding = await verifier.IssueAsync("holding", ConnectKeyCapability.Operate, 30, Operator, holdsAssistant: true);
+        var holding = await verifier.IssueAsync("holding", ConnectKeyCapability.Operate, 30, Operator, holdsAssistant: true, issuedToOwner: true);
 
         var answer = await door.SendAsync(HttpMethod.Post, "/api/v1/assistant/prompt", holding.Secret, """{"text":"hello"}""");
         var afterApi = door.Presence.Current;

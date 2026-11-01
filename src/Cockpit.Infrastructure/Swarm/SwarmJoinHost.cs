@@ -264,7 +264,7 @@ internal sealed class SwarmJoinHost(
     {
         var issued = await keys.IssueAsync(SwarmKick.KeyLabel(member), ConnectKeyCapability.Admin, null,
             new NodeCaller(null, "swarm join", ConnectKeyCapability.Admin, "local", CancellationToken.None),
-            scope: ConnectKeyScope.Everything, neverExpires: true, cancellationToken: ct);
+            scope: ConnectKeyScope.Everything, neverExpires: true, issuedToOwner: true, cancellationToken: ct);
         return new(issued.Secret, certificate.Fingerprint, [.. endpoints.SelectMany(endpoint => endpoint.GetNodeAddresses())]);
     }
 

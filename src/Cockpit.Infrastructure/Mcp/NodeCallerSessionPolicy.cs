@@ -11,14 +11,34 @@ internal sealed class NodeCallerSessionPolicy(
     IAssistantReadGateway read,
     IAssistantAgentGateway gateway,
     INodePairingBroker pairing,
-    ISessionProfileStore profiles)
+    ISessionProfileStore profiles,
+    IProfileLoginChecker? logins)
 {
+    public const string PersonalLoginRefusal = "This profile uses a personal subscription and can only be started by its owner. Use an API-key profile for shared use. If this key is yours, mark it as your own device under this server's Connect keys in Options.";
+
     // Live against the grant: an unticked profile disappears from the list immediately, and the node operator's own
     // sessions are visible under a shared profile.
+    // AC-2003: a key not issued to the owner neither sees nor drives a session on the owner's subscription.
     public async Task<IReadOnlyList<AssistantSessionRow>> VisibleSessionsAsync(NodeCaller caller)
     {
         var sessions = await read.ListSessionsAsync().ConfigureAwait(false);
-        return [.. sessions.Where(session => caller.AllowsSession(session.Profile, session.ProjectId, pairing))];
+        var reachable = await ReachableProfilesAsync(caller, profiles, logins).ConfigureAwait(false);
+        return [.. sessions.Where(session => caller.AllowsSession(session.Profile, session.ProjectId, pairing) && reachable(session.Profile))];
+    }
+
+    // Read once per call, so a stream holds the profiles as they were when it opened; an unknown label, or no store, is
+    // not reachable.
+    public static async Task<Func<string, bool>> ReachableProfilesAsync(NodeCaller caller, ISessionProfileStore? profiles, IProfileLoginChecker? logins)
+    {
+        if (caller.IsOwner)
+        {
+            return _ => true;
+        }
+
+        var known = profiles is null ? [] : await profiles.LoadAsync().ConfigureAwait(false);
+        var shareable = known.Where(profile => !UsesPersonalLogin(profile, logins)).Select(profile => profile.Label);
+        var labels = new HashSet<string>(shareable, StringComparer.OrdinalIgnoreCase);
+        return labels.Contains;
     }
 
     public async Task<bool> IsVisibleAsync(NodeCaller caller, string paneId)
@@ -39,6 +59,12 @@ internal sealed class NodeCallerSessionPolicy(
             return new NodeStartCheck(null, caller.ByConnectKey
                 ? $"The scope of this connect key does not include the profile '{profile}'. Call list_node_profiles for the ones it does."
                 : $"This node's operator has not allowed the profile '{profile}'. Call list_node_profiles for the ones they have, and ask them to tick it on that machine if the one you want is missing.");
+        }
+
+        // AC-2003: a hard block, not a scope a grant can widen — a subscription is for its owner alone.
+        if (!caller.IsOwner && UsesPersonalLogin(allowedProfile, logins))
+        {
+            return new NodeStartCheck(null, PersonalLoginRefusal);
         }
 
         // AC-1367: in scope is not enough for a profile that skips its approvals — that takes its own grant.
@@ -63,6 +89,12 @@ internal sealed class NodeCallerSessionPolicy(
 
         return new NodeStartCheck(allowedProfile, null);
     }
+
+    // Fail-closed: only a local model or a provider that reports an API key is shareable, so a kind the CLI has not
+    // reported yet counts as a login.
+    public static bool UsesPersonalLogin(SessionProfile profile, IProfileLoginChecker? logins) =>
+        profile.ProviderConfig is not (OllamaConfig or LmStudioConfig)
+        && logins?.CredentialKind(profile) is not (ProfileCredentialKind.ApiKey or ProfileCredentialKind.ApiKeyFromSecret);
 
     // The desk a caller's session lands on, derived here and never named by the caller — a controller has never seen
     // this cockpit's desks. Falls back to the first desk that can hold a session.

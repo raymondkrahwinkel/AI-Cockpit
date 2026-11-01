@@ -21,7 +21,10 @@ public sealed record ConnectKey(
     DateTimeOffset? RevokedAt = null,
     bool IsBootstrap = false,
     bool HoldsAssistant = false,
-    ConnectKeyScope? Scope = null)
+    ConnectKeyScope? Scope = null,
+    // AC-2003: a key for the owner's own device; only such a key reaches a profile on a personal subscription login
+    // or holds the assistant.
+    bool IssuedToOwner = false)
 {
     public bool IsUsableAt(DateTimeOffset now) => RevokedAt is null && (ExpiresAt is not { } expiresAt || expiresAt > now);
 

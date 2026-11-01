@@ -27,6 +27,7 @@ using Cockpit.Core.Plugins;
 using Cockpit.Core.Projects;
 using Cockpit.Infrastructure.BackendApi;
 using Cockpit.Infrastructure.Configuration;
+using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Projects;
 using Cockpit.TestSupport;
@@ -116,7 +117,7 @@ public sealed class RemoteAdminJourney
             await run.Running.WaitAsync(Until.Ceiling);
             var baseAddress = new Uri($"https://127.0.0.1:{port}/");
             using var setup = new BackendApiClient(baseAddress, bootstrap, fingerprint, TimeProvider.System);
-            var laptop = await setup.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/keys", new { label = Laptop, capability = "admin" });
+            var laptop = await setup.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/keys", new { label = Laptop, capability = "admin", issuedToOwner = true });
             var laptopKey = laptop["secret"]?.GetValue<string>() ?? throw new InvalidOperationException("The server issued no key.");
 
             // AC-1571: the echo fixture on this desktop too, whose own settings view Admin opens for the server's copy.
@@ -678,6 +679,29 @@ public sealed class RemoteAdminJourney
             using var phone = new BackendApiClient(baseAddress, phoneKey, fingerprint, TimeProvider.System);
             var who = await phone.WhoAmIAsync();
             await phone.WhoAmIAsync();
+
+            // AC-2003: the phone is not the owner's own device, so neither the owner's subscription nor the assistant is its.
+            // Another admin key cannot make itself the owner's; the bootstrap key, the upgrade's way in, can mark it.
+            var personal = await Assert.ThrowsAsync<BackendApiException>(() => phone.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/sessions", new { profile = "Echo", prompt = "hello" }));
+            var borrowed = await Assert.ThrowsAsync<BackendApiException>(() => setup.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/keys", new { label = "journey-borrowed", capability = "operate", holdsAssistant = true }));
+            var otherAdmin = await setup.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/keys", new { label = "journey-other-admin", capability = "admin" });
+            using var other = new BackendApiClient(baseAddress, otherAdmin["secret"]?.GetValue<string>() ?? "", fingerprint, TimeProvider.System);
+            var otherPrefix = otherAdmin["key"]?["prefix"]?.GetValue<string>() ?? "";
+            var selfPromoted = await Assert.ThrowsAsync<BackendApiException>(() => other.SendAsync<JsonObject>(HttpMethod.Put, $"api/v1/keys/{otherPrefix}/own-device", null));
+            var markedByBootstrap = await setup.SendAsync<JsonObject>(HttpMethod.Put, $"api/v1/keys/{otherPrefix}/own-device", null);
+            Assert.Equal((HttpStatusCode.Forbidden, NodeCallerSessionPolicy.PersonalLoginRefusal), (personal.Status, personal.Description));
+            Assert.Equal((HttpStatusCode.BadRequest, ConnectKeyVerifier.AssistantNeedsOwnerRefusal), (borrowed.Status, borrowed.Description));
+            Assert.Equal((HttpStatusCode.BadRequest, ConnectKeyVerifier.OwnerKeyNeedsOwnerRefusal), (selfPromoted.Status, selfPromoted.Description));
+            Assert.True(markedByBootstrap["issuedToOwner"]?.GetValue<bool>());
+
+            // The way back for a key that is the owner's after all: its scope editor marks it, saved once.
+            await HeadlessAvalonia.RunAsync(async () =>
+            {
+                admin.StartScopeCommand.Execute(admin.Keys.Single(key => key.Label == Phone));
+                admin.EditorIssuedToOwner = true;
+                await admin.SaveEditorCommand.ExecuteAsync(null);
+            });
+            Assert.True(admin.Keys.Single(key => key.Label == Phone).Info.IssuedToOwner, admin.Status);
             using (var streaming = new CancellationTokenSource(Until.Ceiling))
             {
                 var connected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -805,6 +829,7 @@ public sealed class RemoteAdminJourney
                 }),
                 () => audit.Contains((Laptop, $"issued · {Phone} (operate)"))
                     && audit.Contains((Phone, "connected"))
+                    && audit.Contains((Laptop, $"own device · {Phone}"))
                     && audit.Contains((Laptop, $"revoked · {Phone}"))
                     && audit.Contains((Phone, "refused: revoked key"))
                     && audit.Contains((Laptop, $"lockout lifted · {lockedOut}")));
@@ -886,6 +911,7 @@ public sealed class RemoteAdminJourney
             Assert.Equal("", admin.Status);
             Assert.Contains((Laptop, $"issued · {Phone} (operate)"), audit);
             Assert.Single(audit, row => row == (Phone, "connected"));
+            Assert.Contains((Laptop, $"own device · {Phone}"), audit);
             Assert.Contains((Laptop, $"revoked · {Phone}"), audit);
             Assert.Contains((Phone, "refused: revoked key"), audit);
             Assert.Contains((Laptop, $"lockout lifted · {lockedOut}"), audit);

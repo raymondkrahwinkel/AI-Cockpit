@@ -45,6 +45,11 @@ public static class ProvisionManifestApplier
     // A Claude profile keeps its own provider on disk; every other provider is a plugin's.
     private const string ClaudeProviderId = "claude-provider";
 
+    // AC-2003: the variable that carries a Claude subscription login; its value in a manifest is one login for everyone.
+    private const string SubscriptionTokenVariable = "CLAUDE_CODE_OAUTH_TOKEN";
+
+    public const string SharedLogin = "shared-login";
+
     // AC-1316's opening stand, written as a default key like any other setting.
     private const string SimpleViewKey = "Layout.OpenInSimpleView";
 
@@ -95,6 +100,7 @@ public static class ProvisionManifestApplier
         // Nothing is installed while anything is unresolved, and nothing is written while anything failed: the write is last.
         var pinned = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var failed = plugins.Failed;
+        failed.AddRange(_SharedLogins(manifest));
         foreach (var request in failed.Count == 0 ? plugins.Requests : Enumerable.Empty<PluginProvisionRequest>())
         {
             var result = (await provisioning.InstallManyAsync([request], AbstractionsContract.Version, cancellationToken: cancellationToken).ConfigureAwait(false)).Results[0];
@@ -639,6 +645,13 @@ public static class ProvisionManifestApplier
 
     private static string? _LocalToken(ProvisionStore store, CockpitConfigFile current) =>
         current.PluginStores.FirstOrDefault(local => local is not null && local.SameStoreAs(PluginStoreConfig.Remote(store.Url)))?.Token;
+
+    // A secret travels as its name only and is entered per machine, so only a value in the manifest itself is shared.
+    private static IEnumerable<ProvisionNote> _SharedLogins(ProvisionManifest manifest) =>
+        (manifest.Profiles?.Items ?? [])
+            .Where(profile => (profile.Environment ?? []).Any(variable => string.Equals(variable.Name, SubscriptionTokenVariable, StringComparison.OrdinalIgnoreCase) && variable.Secret != true && !string.IsNullOrEmpty(variable.Value)))
+            .Select(profile => new ProvisionNote($"profiles.{profile.Label}", SharedLogin,
+                Detail: $"refused: {SubscriptionTokenVariable} would share one personal subscription login with everyone this reaches; each user signs in with their own claude /login or their own API key"));
 
     private static List<ProvisionNote> _TokenNeeded(ProvisionManifest manifest, CockpitConfigFile current) =>
         [.. (manifest.Stores?.Allowed ?? []).Concat(manifest.Stores?.Added ?? [])
