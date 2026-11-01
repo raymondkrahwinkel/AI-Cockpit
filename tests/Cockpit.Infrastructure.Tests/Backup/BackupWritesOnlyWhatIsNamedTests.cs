@@ -34,6 +34,7 @@ public sealed class BackupWritesOnlyWhatIsNamedTests
             "cockpit/assistant-memory.md",
             "cockpit/assistant-state.md",
             "cockpit/project-logos/acme.png",
+            "profiles/work/settings.json",
         ];
 
         root.Write("cockpit.json", "{}");
@@ -55,8 +56,15 @@ public sealed class BackupWritesOnlyWhatIsNamedTests
         root.Write("transcripts/pane.jsonl", "every word anyone said");
         root.Write("logs/cockpit.log", "yesterday's noise");
 
+        // AC-2002: with both flags on, a profile's settings travel but its login tokens never do.
+        root.Write("work-config/settings.json", "{}");
+        root.Write("work-config/.credentials.json", "{}");
+        root.Write("work-config/auth.json", "{}");
+        var profiles = new SingleProfile(new SessionProfile("work", new ClaudeConfig(Path.Combine(root.Path, "work-config"))));
+
         var archive = Path.Combine(root.Path, "backup.zip");
-        await _Service().WriteIntoAsync(archive, root.Path, new BackupOptions(), CancellationToken.None);
+        await _Service(profiles).WriteIntoAsync(
+            archive, root.Path, new BackupOptions(IncludeCredentials: true, IncludeProfileConfigs: true), CancellationToken.None);
 
         using var written = ZipFile.OpenRead(archive);
         var entries = written.Entries
@@ -142,9 +150,9 @@ public sealed class BackupWritesOnlyWhatIsNamedTests
     }
 
     // The stores and the provisioner belong to the restore (AC-1279); the write path never reaches for them.
-    private static BackupService _Service() =>
+    private static BackupService _Service(ISessionProfileStore? profiles = null) =>
         new(
-            new NoProfiles(),
+            profiles ?? new NoProfiles(),
             Substitute.For<IPluginStoreConfigStore>(),
             Substitute.For<IPluginStoreClient>(),
             Substitute.For<IPluginProvisioningService>(),
@@ -155,6 +163,15 @@ public sealed class BackupWritesOnlyWhatIsNamedTests
     {
         public Task<IReadOnlyList<SessionProfile>> LoadAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<SessionProfile>>([]);
+
+        public Task SaveAsync(IReadOnlyList<SessionProfile> profiles, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+    }
+
+    private sealed class SingleProfile(SessionProfile profile) : ISessionProfileStore
+    {
+        public Task<IReadOnlyList<SessionProfile>> LoadAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<SessionProfile>>([profile]);
 
         public Task SaveAsync(IReadOnlyList<SessionProfile> profiles, CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
