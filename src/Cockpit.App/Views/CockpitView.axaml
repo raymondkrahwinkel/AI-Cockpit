@@ -131,6 +131,7 @@
              same hover-✕, same inline close confirm. The commands reach the cockpit view model through
              $parent[UserControl] and not $parent[ItemsControl], which now resolves to the per-node one. -->
         <DataTemplate x:Key="SidebarSessionRow" x:DataType="vm:SessionPanelViewModel">
+            <StackPanel>
             <!-- Selection + attention are driven entirely by the style classes below
                  (see Theme.axaml Border.sessionItem*): the active session lifts to a
                  filled card with an accent left-edge, inactive ones stay flat against
@@ -274,6 +275,67 @@
                     </StackPanel>
                 </StackPanel>
             </Border>
+            <!-- AC-2009: the session's provider sub-agents (mockup AC-1949 screen 3), the same ChildAgents the
+                 Background pop-out shows. No children, no line: the row itself stays unchanged. -->
+            <StackPanel IsVisible="{Binding HasChildAgents}" Margin="14,-2,0,4" Spacing="2">
+                <ToggleButton Classes="Collapser" IsChecked="{Binding AreSidebarChildrenExpanded, Mode=TwoWay}"
+                              HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="6,2"
+                              AutomationProperties.Name="{Binding SidebarChildSummary}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <materialIcons:MaterialIcon Kind="ChevronRight" Width="12" Height="12" IsVisible="{Binding !AreSidebarChildrenExpanded}"
+                                                    Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        <materialIcons:MaterialIcon Kind="ChevronDown" Width="12" Height="12" IsVisible="{Binding AreSidebarChildrenExpanded}"
+                                                    Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        <Ellipse Width="6" Height="6" VerticalAlignment="Center" Fill="{DynamicResource CockpitStatusBackgroundBrush}"/>
+                        <TextBlock Text="{Binding SidebarChildSummary}" FontSize="11" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                    </StackPanel>
+                </ToggleButton>
+                <Border IsVisible="{Binding AreSidebarChildrenExpanded}" Margin="5,0,0,2" Padding="7,0,0,0"
+                        BorderThickness="1,0,0,0" BorderBrush="{DynamicResource CockpitHairlineBrush}">
+                    <StackPanel Spacing="1">
+                        <ItemsControl ItemsSource="{Binding ChildAgents}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ChildAgentViewModel">
+                                    <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="7,4"
+                                            IsVisible="{Binding IsShownInSidebar}" Opacity="{Binding SidebarOpacity}"
+                                            Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).OpenChildTranscriptCommand}"
+                                            CommandParameter="{Binding}"
+                                            ToolTip.Tip="Open this sub-agent's read-only transcript"
+                                            AutomationProperties.HelpText="Open this sub-agent's read-only transcript">
+                                        <Panel>
+                                        <!-- The child being read: lifted like the active session row, with a background-status edge. -->
+                                        <Border IsVisible="{Binding IsOpenInTranscript}" Margin="-7,-4" CornerRadius="7" BorderThickness="1"
+                                                Background="{DynamicResource CockpitPanelBgBrush}" BorderBrush="{DynamicResource CockpitHairlineBrush}">
+                                            <Border Width="3" HorizontalAlignment="Left" CornerRadius="7,0,0,7" Background="{DynamicResource CockpitStatusBackgroundBrush}"/>
+                                        </Border>
+                                        <StackPanel Spacing="1">
+                                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                                                <Grid Width="7" Height="7" VerticalAlignment="Center">
+                                                    <Ellipse StrokeThickness="1" Stroke="{Binding StatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                                                    <Ellipse Opacity="{Binding DotFillOpacity}" Fill="{Binding StatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                                                </Grid>
+                                                <TextBlock Grid.Column="1" Text="{Binding Title}" FontSize="12" TextTrimming="CharacterEllipsis"/>
+                                            </Grid>
+                                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="5" Margin="13,0,0,0">
+                                                <TextBlock Text="{Binding TypeText}" FontSize="10.5" Foreground="{DynamicResource CockpitStatusBackgroundBrush}"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding SidebarDetail}" FontSize="10.5" TextTrimming="CharacterEllipsis"
+                                                           Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                            </Grid>
+                                        </StackPanel>
+                                        </Panel>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <Button Classes="Subtle" HorizontalAlignment="Left" Padding="7,2" IsVisible="{Binding HasFoldedFinishedChildren}"
+                                Command="{Binding ShowFinishedChildAgentsCommand}" ToolTip.Tip="Show the finished sub-agents">
+                            <TextBlock Text="{Binding FoldedFinishedChildText}" FontSize="10.5" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        </Button>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+            </StackPanel>
         </DataTemplate>
         <DataTemplate x:Key="ServerSessionRow" x:DataType="vm:ServerSessionRowViewModel">
             <Button Classes="Subtle" Margin="0,0,0,4" Padding="0"

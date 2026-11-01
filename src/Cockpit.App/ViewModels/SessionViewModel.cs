@@ -1893,7 +1893,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     private void _ResetForNewConversation()
     {
         ReturnToParentCommand.Execute(null);
-        ChildAgents.Clear();
+        UpdateChildAgents([]);
         _control.ClearQueue();
         _control.ResetTranscriptStreaming();
         _currentTurnAssistantEntries.Clear();

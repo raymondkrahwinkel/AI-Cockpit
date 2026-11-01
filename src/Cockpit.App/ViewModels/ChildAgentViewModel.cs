@@ -35,7 +35,29 @@ public sealed class ChildAgentViewModel(SessionPanelViewModel owner, BackgroundT
     }
     public string LastToolText => _reference.LastTool ?? "unknown";
     public string TokensText => _reference.Tokens is >= 0 ? SessionUsageMeter.FormatTokens(_reference.Tokens.Value) : "unknown";
-    internal void RefreshTime() => OnPropertyChanged(nameof(TimeText));
+    public bool IsFinished => _reference.State == "completed";
+    public bool IsShownInSidebar => !IsFinished || Owner.ShowsFinishedChildAgents;
+    public double SidebarOpacity => IsFinished ? 0.62 : 1;
+    public string SidebarDetail
+    {
+        get
+        {
+            string lead = _reference.State == "running" ? _reference.LastTool ?? "" : StatusText;
+            string time = TimeText == "unknown" ? "" : TimeText;
+            return lead.Length > 0 && time.Length > 0 ? $"{lead} · {time}" : lead + time;
+        }
+    }
+    public bool IsOpenInTranscript => ReferenceEquals(Owner.ChildTranscript?.Child, this);
+    internal void RefreshSidebarVisibility()
+    {
+        OnPropertyChanged(nameof(IsShownInSidebar));
+        OnPropertyChanged(nameof(IsOpenInTranscript));
+    }
+    internal void RefreshTime()
+    {
+        OnPropertyChanged(nameof(TimeText));
+        OnPropertyChanged(nameof(SidebarDetail));
+    }
     public void Update(BackgroundTask reference)
     {
         _reference = reference;
@@ -48,5 +70,9 @@ public sealed class ChildAgentViewModel(SessionPanelViewModel owner, BackgroundT
         OnPropertyChanged(nameof(DotFillOpacity));
         OnPropertyChanged(nameof(LastToolText));
         OnPropertyChanged(nameof(TokensText));
+        OnPropertyChanged(nameof(IsFinished));
+        OnPropertyChanged(nameof(IsShownInSidebar));
+        OnPropertyChanged(nameof(SidebarOpacity));
+        OnPropertyChanged(nameof(SidebarDetail));
     }
 }
