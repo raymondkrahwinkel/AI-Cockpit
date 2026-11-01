@@ -32,7 +32,7 @@ public class SessionBackgroundTaskPopoutTests
         Assert.Equal(2, session.BackgroundSubAgents.Count);
         Assert.Single(session.BackgroundShells);
         Assert.Empty(session.BackgroundOtherTasks);
-        Assert.Equal("2 sub-agents · 1 shell", session.BackgroundTaskSummary);
+        Assert.Equal("3 running", session.BackgroundTaskSummary);
         Assert.Equal("CockpitStatusBusyBrush", session.BackgroundSubAgents[0].StatusBrushKey);
         Assert.Equal("CockpitStatusWaitingBrush", session.BackgroundShells[0].StatusBrushKey);
         Assert.All(session.BackgroundSubAgents, row =>
@@ -72,7 +72,7 @@ public class SessionBackgroundTaskPopoutTests
         Assert.Empty(session.BackgroundShells);
         Assert.Single(session.BackgroundOtherTasks);
         Assert.Equal("unknown", session.BackgroundOtherTasks[0].KindLabel);
-        Assert.Equal("1 other", session.BackgroundTaskSummary);
+        Assert.Equal("1 running", session.BackgroundTaskSummary);
     });
 
     [Fact]
@@ -82,15 +82,25 @@ public class SessionBackgroundTaskPopoutTests
 
         session.Apply(Outstanding(new BackgroundTask("a1", BackgroundTaskKind.SubAgent, "Agent 1")));
 
-        Assert.Equal("1 sub-agent", session.BackgroundTaskSummary);
+        Assert.Equal("1 running", session.BackgroundTaskSummary);
         var tty = new TtyViewModel();
         tty.UpdateChildAgents([new BackgroundTask("a1", BackgroundTaskKind.SubAgent, "Agent 1")]);
-        Assert.Equal("1 sub-agent", tty.BackgroundTaskSummary);
+        Assert.Equal("1 running", tty.BackgroundTaskSummary);
         tty.UpdateChildAgents([
             new BackgroundTask("a1", BackgroundTaskKind.SubAgent, "Agent 1"),
             new BackgroundTask("a2", BackgroundTaskKind.SubAgent, "Agent 2"),
         ]);
-        Assert.Equal("2 sub-agents", tty.BackgroundTaskSummary);
+        Assert.Equal("2 running", tty.BackgroundTaskSummary);
+        var finished = new BackgroundTask("done", BackgroundTaskKind.SubAgent, "Finished agent") { State = "completed" };
+        tty.UpdateChildAgents([tty.ChildAgents[0].Reference, tty.ChildAgents[1].Reference, finished]);
+        Assert.Equal("2 running · 3 total", tty.BackgroundTaskSummary);
+        session.Apply(new BackgroundTasksChanged
+        {
+            SessionId = "s1",
+            Tasks = [new BackgroundTask("shell", BackgroundTaskKind.Shell, "Shell")],
+            Children = [finished],
+        });
+        Assert.Equal("1 running · 2 total", session.BackgroundTaskSummary);
     });
 
     [Fact]

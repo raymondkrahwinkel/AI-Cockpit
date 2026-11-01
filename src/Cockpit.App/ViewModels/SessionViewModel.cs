@@ -234,37 +234,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // recognise (AC-531 #2).
     public override int BackgroundTaskCount => _backgroundTasks.Count;
 
-    // "2 sub-agents · 1 shell" — the pop-out's own total line, segments joined the same way AC-532's activity
-    // band joins its own. "nothing" when the list is empty (AC-531 #3, the mockup's empty state).
-    public override string BackgroundTaskSummary
-    {
-        get
-        {
-            if (_backgroundTasks.Count == 0)
-            {
-                return "nothing";
-            }
-
-            var parts = new List<string>();
-            if (BackgroundSubAgents.Count > 0)
-            {
-                parts.Add(BackgroundSubAgents.Count == 1 ? "1 sub-agent" : $"{BackgroundSubAgents.Count} sub-agents");
-            }
-
-            if (BackgroundShells.Count > 0)
-            {
-                parts.Add(BackgroundShells.Count == 1 ? "1 shell" : $"{BackgroundShells.Count} shells");
-            }
-
-            if (BackgroundOtherTasks.Count > 0)
-            {
-                parts.Add(BackgroundOtherTasks.Count == 1 ? "1 other" : $"{BackgroundOtherTasks.Count} other");
-            }
-
-            return string.Join(" · ", parts);
-        }
-    }
-
     // Selects (or, on a second click of the same row, collapses) one background task's detail in the
     // pop-out (AC-531 #4). Only one row expands at a time, mirroring the mockup.
     public void ToggleBackgroundTaskSelection(BackgroundTaskViewModel task)
