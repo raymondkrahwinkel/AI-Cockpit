@@ -46,6 +46,11 @@ internal static partial class Screenshotter
         session.Apply(new BackgroundTasksChanged
         {
             SessionId = "s1",
+            Tasks =
+            [
+                new BackgroundTask("agent-1", BackgroundTaskKind.SubAgent, "Review the session driver changes"),
+                new BackgroundTask("agent-2", BackgroundTaskKind.SubAgent, "Check the Background pop-out and tests"),
+            ],
             Children =
             [
                 new BackgroundTask("agent-1", BackgroundTaskKind.SubAgent, "Review the session driver changes")
