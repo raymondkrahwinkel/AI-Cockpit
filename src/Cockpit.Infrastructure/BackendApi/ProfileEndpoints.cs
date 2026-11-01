@@ -114,7 +114,10 @@ internal static class ProfileEndpoints
                 registration.Capabilities.SupportsEnvVars,
                 registration.Capabilities.SupportsPermissions,
                 tty?.Resolve(registration.ProviderId) is not null,
-                [.. registration.Options.Select(option => new RemoteProviderOption(option.Key, option.Label, option.Choices, option.ChoiceLabels))])), ConnectKeyEndpoints.Json);
+                [.. registration.Options.Select(option => new RemoteProviderOption(option.Key, option.Label, option.Choices, option.ChoiceLabels))],
+                registration.TermsNotice is { } notice
+                    ? new RemoteTermsNotice(notice.Text, notice.Url, notice.SubscriptionText, notice.ApiKeyText, notice.ApiTermsUrl)
+                    : null)), ConnectKeyEndpoints.Json);
         }).RequireAdmin().Audited("list_profile_providers", services);
 
         // AC-1808: read here, where the profile's plugins run; `null` is "unknown", as it is on the desktop.

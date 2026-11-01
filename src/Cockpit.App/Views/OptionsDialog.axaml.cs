@@ -262,6 +262,19 @@ public partial class OptionsDialog : Window
     // Skipped entirely when no plugin registered a settings view.
     private void _BuildPluginCategories(CockpitViewModel cockpit)
     {
+        var registry = Program.Services?.GetService<Cockpit.Infrastructure.Sessions.IPluginProviderRegistry>();
+        var providers = registry?.Registrations ?? [];
+        foreach (var group in providers.Where(provider => provider.TermsNotice is not null)
+                     .GroupBy(provider => registry?.OwnerOf(provider.ProviderId) ?? provider.ProviderId.Split('.')[0]))
+        {
+            if (cockpit.PluginOptionsRows.All(row => row.PluginId != group.Key))
+            {
+                cockpit.PluginOptionsRows.Add(new PluginOptionsRowViewModel(group.Key, group.First().DisplayName, null, null));
+            }
+            cockpit.PluginOptionsRows.First(row => row.PluginId == group.Key).TermsNotices =
+                [.. group.Select(provider => provider.TermsNotice).OfType<Cockpit.Plugins.Abstractions.Sessions.TermsNotice>()];
+        }
+
         if (cockpit.PluginOptionsRows.Count == 0)
         {
             return;
@@ -384,6 +397,10 @@ public partial class OptionsDialog : Window
         }
 
         body.Children.Add(heading);
+        foreach (var notice in row.TermsNotices)
+        {
+            body.Children.Add(new TermsNoticeView { Notice = notice });
+        }
         body.Children.Add(new Border { Height = 1, Background = _Brush("CockpitHairlineBrush"), Margin = new Thickness(0, 4) });
 
         // Under the heading, above the plugin's own view: the reason this section refused the last Apply. Seeded

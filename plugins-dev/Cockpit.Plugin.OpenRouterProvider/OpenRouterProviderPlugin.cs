@@ -37,6 +37,7 @@ public sealed class OpenRouterProviderPlugin : ICockpitPlugin
             },
             DefaultBaseUrl: OpenAiCompatDefaultBaseUrls.OpenRouter)
         {
+            TermsNotice = new TermsNotice("OpenRouter: use is governed by OpenRouter's terms and the selected provider's terms.", new Uri("https://openrouter.ai/terms"), null, "API-key use is billed to the key owner; OpenRouter API terms apply."),
             // AC-1484: a key on the profile, or the provider variable in session.env, is what signs a profile in.
             IsLoggedIn = configJson => OpenAiCompatConfig.CredentialKindOf(configJson, OpenAiCompatConfig.ApiKeyEnvVar, OpenAiCompatDefaultBaseUrls.OpenRouter) != PluginCredentialKind.Unknown,
             CredentialKind = configJson => OpenAiCompatConfig.CredentialKindOf(configJson, OpenAiCompatConfig.ApiKeyEnvVar, OpenAiCompatDefaultBaseUrls.OpenRouter),

@@ -94,6 +94,12 @@ internal sealed class SlackChannelSettingsControl : UserControl, IPluginSettings
                 Children =
                 {
                     _migrationNoticeText,
+                    new TextBlock
+                    {
+                        Text = "Use is governed by your own agreement with each provider. A personal subscription is for individual use and must not be shared with others; for shared use, use an API-key profile.",
+                        TextWrapping = TextWrapping.Wrap,
+                        Classes = { "optionsHint" },
+                    },
                     _linkText,
                     new TextBlock { Text = "Your Slack member id", FontWeight = FontWeight.Bold },
                     _userId,

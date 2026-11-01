@@ -1924,6 +1924,14 @@ host's own adapter (`PluginSessionDriverAdapter`, internal to the app) wraps you
 
 ### `SessionProviderRegistration` {#sessionproviderregistration}
 
+Since SDK 3.62 (host 0.155.0), the optional `TermsNotice` property supplies provider-owned guidance for provider and profile
+settings. Leave it null to show no notice. It is informational and never changes access or authentication.
+`TermsNotice(string Text, Uri Url, string? SubscriptionText = null, string? ApiKeyText = null,
+Uri? ApiTermsUrl = null)` contains a short service-specific explanation, its official terms link, optional guidance
+for each authentication route, and an optional separate API terms link. The host displays both applicable routes
+so the notice remains useful before the user signs in. A plugin that sets it sets `minHostVersion` 0.155.0.
+Do not include credentials.
+
 ```csharp
 public sealed record SessionProviderRegistration(
     string ProviderId,

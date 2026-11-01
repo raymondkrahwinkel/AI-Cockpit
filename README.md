@@ -478,6 +478,11 @@ other names are the trademarks of their respective owners.
 The cockpit launches each provider's own client under **your own login and subscription**; your use of a provider
 through this tool is governed by your own agreement with that provider. The tool is **single-user by design**: a local
 desktop app for driving your own sessions, not a service, proxy or account-sharing layer.
+Personal subscriptions are for individual use and must not be shared with others. For shared use, use an API-key
+profile under your own agreement with each provider. Each person needs their own provider login.
+
+Profile backups never contain login tokens; sign in again after restoring a profile. Subscription profiles are not
+accessible through other people's connect keys.
 
 ## Support
 

@@ -147,6 +147,9 @@ public sealed class ServerProfileServices(
             new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: provider.SupportsPermissions) { SupportsEnvVars = provider.SupportsEnvVars })
         {
             Options = [.. provider.Options.Select(option => new PluginSessionLaunchOption(option.Key, option.Label, option.Choices) { ChoiceLabels = option.ChoiceLabels })],
+            TermsNotice = provider.TermsNotice is { } notice
+                ? new TermsNotice(notice.Text, notice.Url, notice.SubscriptionText, notice.ApiKeyText, notice.ApiTermsUrl)
+                : null,
         };
 
     // A source the picker lists by asking the server again, so Refresh reads what the server lists now. Signing in is the

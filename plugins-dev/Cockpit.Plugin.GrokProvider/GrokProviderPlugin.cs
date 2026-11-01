@@ -36,6 +36,7 @@ public sealed class GrokProviderPlugin : ICockpitPlugin
             },
             DefaultBaseUrl: OpenAiCompatDefaultBaseUrls.Grok)
         {
+            TermsNotice = new TermsNotice("Grok (xAI): use is governed by your agreement with xAI.", new Uri("https://x.ai/legal/terms-of-service-enterprise"), null, "API-key use is billed to the key owner; xAI API terms apply."),
             // AC-1484: a key on the profile, or the provider variable in session.env, is what signs a profile in.
             IsLoggedIn = configJson => OpenAiCompatConfig.CredentialKindOf(configJson, OpenAiCompatConfig.ApiKeyEnvVar, OpenAiCompatDefaultBaseUrls.Grok) != PluginCredentialKind.Unknown,
             CredentialKind = configJson => OpenAiCompatConfig.CredentialKindOf(configJson, OpenAiCompatConfig.ApiKeyEnvVar, OpenAiCompatDefaultBaseUrls.Grok),

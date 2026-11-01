@@ -128,6 +128,7 @@
                                   IsEnabled="{Binding CanChooseProvider}"/>
                     </StackPanel>
 
+                    <controls:TermsNoticeView Notice="{Binding TermsNotice}"/>
                     <!-- Claude-CLI (legacy, non-plugin) provider fields. -->
                     <StackPanel Spacing="4" IsVisible="{Binding IsClaudeProvider}">
                         <TextBlock Text="Config directory (CLAUDE_CONFIG_DIR)" FontSize="11"
@@ -150,6 +151,8 @@
                     </StackPanel>
 
                     <!-- Local (Ollama / LM Studio) provider fields. -->
+                    <TextBlock Classes="optionsHint" TextWrapping="Wrap" IsVisible="{Binding IsLocalProvider}"
+                               Text="Ollama / LM Studio: use of a local model is governed by that model's licence. Check the licence of the model you select."/>
                     <StackPanel Spacing="4" IsVisible="{Binding IsLocalProvider}">
                         <TextBlock Text="Server base URL" FontSize="11"
                                    Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
