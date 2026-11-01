@@ -453,19 +453,7 @@ internal sealed class NodeSessionsClient(
 
         try
         {
-            var connection = await _OpenAsync(server, cancellationToken).ConfigureAwait(false);
-            try
-            {
-                if (services?.GetService<Swarm.SwarmMigration>() is { } migration)
-                {
-                    await migration.OnConnectedAsync(server, cancellationToken).ConfigureAwait(false);
-                }
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                logger.LogWarning(ex, "Swarm migration did not finish; keeping the existing node connection.");
-            }
-            return connection;
+            return await _OpenAsync(server, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {

@@ -89,9 +89,6 @@ internal sealed class SwarmJoinFixture : IAsyncDisposable
         public List<string> Notices { get; } = [];
         public bool RejectConnect { get; set; }
         public string Address { get; private set; } = "";
-        public Toast Toast { get; } = new();
-        private NodeControllerPresence? _presence;
-        public NodeControllerPresence Presence { get => _presence ?? throw new InvalidOperationException("Presence is read before CreateAsync set it."); private set => _presence = value; }
 
         public static async Task<Machine> CreateAsync(Clock time, SwarmHostKind kind)
         {
@@ -110,9 +107,8 @@ internal sealed class SwarmJoinFixture : IAsyncDisposable
             machine.Network = policy;
             machine.Standby = new(Path.Combine(machine._root, "standby.json"));
             var host = new SwarmHost(kind);
-            machine.Presence = new(time);
             machine.Join = new(host, machine.Certificate, machine.Identity, machine.Membership, machine.Keys, machine.Settings,
-                machine.Servers, [endpoint], machine.Toast, machine.Presence) { Time = time, Name = Guid.NewGuid().ToString("N") };
+                machine.Servers, [endpoint]) { Time = time, Name = Guid.NewGuid().ToString("N") };
             machine.Client = new(host, machine.Certificate, machine.Identity, machine.Membership, policy, machine.Join,
                 new SwarmManualAddress(new SwarmSettingsStore(Path.Combine(machine._root, "cockpit.json")), policy), machine.Settings, new NodeDiscoveryClient());
             machine.Kick = new(machine.Membership, machine.Identity, machine.Certificate, machine.Keys, machine.Servers, policy,
@@ -211,12 +207,6 @@ internal sealed class SwarmJoinFixture : IAsyncDisposable
         private IReadOnlyList<McpServerConfig> _servers = [];
         public Task<IReadOnlyList<McpServerConfig>> LoadAsync(CancellationToken cancellationToken = default) => Task.FromResult(_servers);
         public Task SaveAsync(IReadOnlyList<McpServerConfig> servers, CancellationToken cancellationToken = default) { _servers = servers; return Task.CompletedTask; }
-    }
-
-    internal sealed class Toast : IToastNotifier
-    {
-        public List<AttentionNotification> Notifications { get; } = [];
-        public Task NotifyAsync(AttentionNotification notification, CancellationToken cancellationToken = default) { Notifications.Add(notification); return Task.CompletedTask; }
     }
 
     private sealed class Endpoint : ICockpitInternalMcpProvider
