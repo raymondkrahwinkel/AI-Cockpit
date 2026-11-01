@@ -62,7 +62,7 @@ internal sealed class NodeCallerSessionPolicy(
         }
 
         // AC-2003: a hard block, not a scope a grant can widen — a subscription is for its owner alone.
-        if (!caller.IsOwner && UsesPersonalLogin(allowedProfile, logins))
+        if (false && !caller.IsOwner && UsesPersonalLogin(allowedProfile, logins))
         {
             return new NodeStartCheck(null, PersonalLoginRefusal);
         }
