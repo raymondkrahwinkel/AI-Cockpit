@@ -84,8 +84,13 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
 
     internal Func<bool>? HasDraftInput { get; set; }
 
+    // ponytail: the draft buffer cannot see a TUI clearing its own prompt (Esc Esc), so a draft untouched this long
+    // stops counting rather than holding wakes off until the next Enter.
+    private static readonly TimeSpan DraftHoldWindow = TimeSpan.FromMinutes(5);
+
     internal bool OperatorIsTyping(DateTimeOffset now) =>
-        HasDraftInput?.Invoke() == true || (LastOperatorKeyAt is { } at && now - at < OperatorInputWindow);
+        LastOperatorKeyAt is { } at
+        && (now - at < OperatorInputWindow || (now - at < DraftHoldWindow && HasDraftInput?.Invoke() == true));
 
     // Status now lives on the shared SessionPanelViewModel base (AC-37), read by the one SessionHeaderBar.
 

@@ -399,9 +399,11 @@ public partial class TtyView : UserControl
                 return;
             }
 
+            // AC-2005: this Enter bypasses the input stream, so the line it submits is forgotten here by hand.
             if (typed.Length == 0)
             {
                 _WriteToPty(pty, [(byte)'\r']);
+                Terminal.InputEvents.ClearPendingLine();
             }
             else
             {
@@ -410,6 +412,7 @@ public partial class TtyView : UserControl
                     if (_viewModel?.IsReadingChild != true && ReferenceEquals(_pty, pty))
                     {
                         _WriteToPty(pty, [(byte)'\r']);
+                        Terminal.InputEvents.ClearPendingLine();
                     }
                 }, TtyViewModel.AutoSubmitDelay(typed.Length));
             }
