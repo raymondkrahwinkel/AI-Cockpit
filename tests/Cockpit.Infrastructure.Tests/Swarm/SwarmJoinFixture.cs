@@ -1,9 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using Cockpit.Core.Abstractions.Mcp;
-using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Mcp;
-using Cockpit.Core.Notifications;
 using Cockpit.Core.Swarm;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Swarm;
