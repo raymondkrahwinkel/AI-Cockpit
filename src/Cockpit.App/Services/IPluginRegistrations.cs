@@ -21,6 +21,11 @@ public interface IPluginRegistrations
     SessionProviderRegistration? SessionProvider(string providerId);
 
     /// <summary>
+    /// The plugin that registered the session provider <paramref name="providerId"/>, or null when unknown.
+    /// </summary>
+    string? OwnerOf(string providerId);
+
+    /// <summary>
     /// The terminal provider registered as <paramref name="providerId"/>, or null.
     /// </summary>
     TtyProviderRegistration? TtyProvider(string providerId);

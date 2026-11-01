@@ -25,30 +25,23 @@ namespace Cockpit.App.ViewTests;
 [Collection("avalonia")]
 public class WorkspaceAgentGatewayWakeTests
 {
-    /// <summary>
-    /// A pane that both takes prompts and carries mail on its turns. A running session pane is both in production —
-    /// dependency injection always hands it the delivery seam — but not one this test can build: making it answer
-    /// true to <see cref="SessionPanelViewModel.CanTakeAPrompt"/> takes a live driver, and a terminal pane, which
-    /// needs nothing but a sink, has no turn to hang delivery on. Without a pane that is both, the gateway could
-    /// pass a hard-coded <c>false</c> into the notice and every test here would still be green, while a woken agent
-    /// was told to go and read an inbox whose contents were already in front of it.
-    /// </summary>
-    private sealed class DeliveringTerminal : TtyViewModel
-    {
-        public override bool DeliversInboxAtTurnStart => true;
-    }
-
     /// <summary>Captures what the gateway logged, so a wake whose turn failed can be shown to leave a trace rather than a swallowed exception.</summary>
     private sealed class CapturingLogger : ILogger<WorkspaceAgentGateway>
     {
         public List<(LogLevel Level, Exception? Exception)> Entries { get; } = [];
 
+        // The warning is written on a thread-pool continuation after the dispatcher job, so a drain alone can miss it.
+        public TaskCompletionSource Logged { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
 
         public bool IsEnabled(LogLevel logLevel) => true;
 
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
             Entries.Add((logLevel, exception));
+            Logged.TrySetResult();
+        }
     }
 
     private static (SessionRegistry Sessions, TtyViewModel Sender, TtyViewModel Target, List<string> Sent) _Desk(
@@ -59,7 +52,8 @@ public class WorkspaceAgentGatewayWakeTests
             var sessions = new SessionRegistry();
             var cockpit = new CockpitViewModel(sessionRegistry: sessions);
             var sender = new TtyViewModel();
-            var target = new TtyViewModel { SessionStatus = targetStatus };
+            // AC-2005: a wake is only typed into a TTY the assistant or an agent started; these panes stand in for one.
+            var target = new TtyViewModel { SessionStatus = targetStatus, StartedByTheAssistant = true };
 
             // The pty sink is both what makes the pane able to take a prompt and the only place a wake becomes
             // visible — a wake that fires writes here, and one that is refused leaves it empty. AC-760: the sink
@@ -91,7 +85,8 @@ public class WorkspaceAgentGatewayWakeTests
 
         Assert.Equal(AgentWakeOutcome.Woken, outcome);
         var turn = Assert.Single(sent);
-        Assert.Contains("<cockpit-agent-wake", turn, StringComparison.Ordinal);
+        // AC-2005: a TTY gets the one-line notice, not the full one an SDK turn carries.
+        Assert.Contains("[cockpit] New message from", turn, StringComparison.Ordinal);
         // The sending pane, not merely "some agent": a recipient that cannot tell who caused its turn cannot weigh
         // what it is being told, and cannot answer.
         Assert.Contains(sender.PaneId, turn, StringComparison.Ordinal);
@@ -100,30 +95,40 @@ public class WorkspaceAgentGatewayWakeTests
     [Fact]
     public async Task Wake_TellsTheRecipientWhereTheMessageIs_FromThePanesOwnDeliveryAnswer()
     {
-        var (sessions, sender, plainTerminal, plainSent) = _Desk();
-
-        var (deliveringSessions, deliveringSender, delivering, deliveringSent) = Dispatcher.UIThread.Invoke(() =>
-        {
-            var deliveringRegistry = new SessionRegistry();
-            var vm = new CockpitViewModel(sessionRegistry: deliveringRegistry);
-            var from = new TtyViewModel();
-            var to = new DeliveringTerminal { SessionStatus = SessionStatus.Done };
-            var captured = new List<string>();
-            to.PromptSink = text => captured.Add(text);
-            to.MarkHostedTuiReady();
-            vm.Sessions.Add(from);
-            vm.Sessions.Add(to);
-            return (deliveringRegistry, from, to, captured);
-        });
-
-        _ = await _Gateway(sessions).TryWakeAsync(sender.PaneId, plainTerminal.PaneId, "branch");
-        _ = await _Gateway(deliveringSessions).TryWakeAsync(deliveringSender.PaneId, delivering.PaneId, "branch");
-        await _DrainSendAsync();
+        var plain = await _WakeTextForAChatSession(deliversInboxAtTurnStart: false);
+        var delivering = await _WakeTextForAChatSession(deliversInboxAtTurnStart: true);
 
         // Two panes, two different sentences, from one line of gateway code reading each pane's own answer. Asserted
         // as a pair because either sentence alone is satisfied by a constant.
-        Assert.Contains("read_inbox", Assert.Single(plainSent), StringComparison.Ordinal);
-        Assert.DoesNotContain("read_inbox", Assert.Single(deliveringSent), StringComparison.Ordinal);
+        Assert.Contains("read_inbox", plain, StringComparison.Ordinal);
+        Assert.DoesNotContain("read_inbox", delivering, StringComparison.Ordinal);
+    }
+
+    // AC-2005: a TTY always gets one fixed line, so the delivery answer only shapes the notice of a session that does
+    // not type into a terminal — a handle here, since such a pane cannot take a prompt without a live driver.
+    private static async Task<string> _WakeTextForAChatSession(bool deliversInboxAtTurnStart)
+    {
+        var sessions = new SessionRegistry();
+        var caller = _ChatHandle("caller");
+        var target = _ChatHandle("target");
+        var sent = new List<string>();
+        target.DeliversInboxAtTurnStart.Returns(deliversInboxAtTurnStart);
+        target.ReadWakeStateAsync().Returns(new SessionWakeState(HasPendingConsent: false, SessionStatus.Done, CanTakeAPrompt: true));
+        target.SendPromptAsync(Arg.Do<string>(sent.Add)).Returns(true);
+        sessions.Register(caller);
+        sessions.Register(target);
+
+        Assert.Equal(AgentWakeOutcome.Woken, await _Gateway(sessions).TryWakeAsync(caller.PaneId, target.PaneId, "branch"));
+        return Assert.Single(sent);
+    }
+
+    private static ISessionHandle _ChatHandle(string paneId)
+    {
+        var handle = Substitute.For<ISessionHandle>();
+        handle.PaneId.Returns(paneId);
+        handle.IsTerminal.Returns(false);
+        handle.PlacedWorkspaceId.Returns("desk");
+        return handle;
     }
 
     [Fact]
@@ -335,7 +340,7 @@ public class WorkspaceAgentGatewayWakeTests
             var registry = new SessionRegistry();
             var vm = new CockpitViewModel(sessionRegistry: registry);
             var from = new TtyViewModel { WorkspaceId = "ws-1" };
-            var to = new TtyViewModel { WorkspaceId = "ws-2", SessionStatus = SessionStatus.Done };
+            var to = new TtyViewModel { WorkspaceId = "ws-2", SessionStatus = SessionStatus.Done, StartedByTheAssistant = true };
             var captured = new List<string>();
             to.PromptSink = text => captured.Add(text);
             to.MarkHostedTuiReady();
@@ -349,7 +354,7 @@ public class WorkspaceAgentGatewayWakeTests
 
         Assert.Equal(AgentWakeOutcome.Woken, outcome);
         var turn = Assert.Single(sent);
-        Assert.Contains("<cockpit-agent-wake", turn, StringComparison.Ordinal);
+        Assert.Contains("[cockpit] New message from", turn, StringComparison.Ordinal);
         // No opt-in claim: this pane never agreed to anything, and the turn must not say it did.
         Assert.DoesNotContain("opted in", turn, StringComparison.Ordinal);
     }
@@ -387,7 +392,7 @@ public class WorkspaceAgentGatewayWakeTests
             var registry = new SessionRegistry();
             var vm = new CockpitViewModel(sessionRegistry: registry);
             var from = new TtyViewModel();
-            var to = new TtyViewModel { SessionStatus = SessionStatus.Done };
+            var to = new TtyViewModel { SessionStatus = SessionStatus.Done, StartedByTheAssistant = true };
             to.PromptSink = _ => throw new IOException("the terminal went away");
             to.MarkHostedTuiReady();
             vm.Sessions.Add(from);
@@ -399,7 +404,7 @@ public class WorkspaceAgentGatewayWakeTests
         // The send is deliberately not awaited by the gateway, so a throw on that path has no caller to surface it:
         // discarded, it becomes an unobserved exception at some later garbage collection, attributed to nothing.
         var outcome = await new WorkspaceAgentGateway(sessions, logger).TryWakeAsync(sender.PaneId, target.PaneId, "branch");
-        await _DrainSendAsync();
+        await logger.Logged.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.Equal(AgentWakeOutcome.Woken, outcome);
         var entry = Assert.Single(logger.Entries);
