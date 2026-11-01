@@ -23,7 +23,7 @@ public abstract partial class SessionPanelViewModel
     // while a child runs. The operator's own toggle wins from then on.
     public bool AreSidebarChildrenExpanded
     {
-        get => _sidebarChildrenExpandedChoice ?? ChildAgents.Any(child => child.Reference.State == "running");
+        get => _sidebarChildrenExpandedChoice ?? (IsSelected && ChildAgents.Any(child => child.Reference.State == "running"));
         set
         {
             _sidebarChildrenExpandedChoice = value;
