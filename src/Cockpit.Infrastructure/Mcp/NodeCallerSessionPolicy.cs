@@ -94,7 +94,7 @@ internal sealed class NodeCallerSessionPolicy(
     // reported yet counts as a login.
     public static bool UsesPersonalLogin(SessionProfile profile, IProfileLoginChecker? logins) =>
         profile.ProviderConfig is not (OllamaConfig or LmStudioConfig)
-        && logins?.CredentialKind(profile) is not (ProfileCredentialKind.Unknown or ProfileCredentialKind.ApiKey or ProfileCredentialKind.ApiKeyFromSecret);
+        && logins?.CredentialKind(profile) is not (ProfileCredentialKind.ApiKey or ProfileCredentialKind.ApiKeyFromSecret);
 
     // The desk a caller's session lands on, derived here and never named by the caller — a controller has never seen
     // this cockpit's desks. Falls back to the first desk that can hold a session.
