@@ -318,7 +318,7 @@
                                                 <TextBlock Grid.Column="1" Text="{Binding Title}" FontSize="12" TextTrimming="CharacterEllipsis"/>
                                             </Grid>
                                             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="5" Margin="13,0,0,0">
-                                                <Border Classes="tag" Padding="4,0" VerticalAlignment="Center" CornerRadius="{StaticResource CockpitPillRadius}">
+                                                <Border Background="{DynamicResource CockpitStatusBackgroundChipTintBrush}" CornerRadius="3" Padding="4,0" VerticalAlignment="Center">
                                                     <TextBlock Text="{Binding TypeText}" FontSize="10" Foreground="{DynamicResource CockpitStatusBackgroundBrush}"/>
                                                 </Border>
                                                 <TextBlock Grid.Column="1" Text="{Binding SidebarDetail}" FontSize="10.5" TextTrimming="CharacterEllipsis"
