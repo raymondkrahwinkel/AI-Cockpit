@@ -116,7 +116,7 @@ public class SessionBackgroundTaskPopoutTests
         Assert.Empty(session.BackgroundSubAgents);
         Assert.False(session.HasBackgroundTasks);
         Assert.Equal(0, session.BackgroundTaskCount);
-        Assert.Equal("0 running", session.BackgroundTaskSummary);
+        Assert.Equal("nothing", session.BackgroundTaskSummary);
     });
 
     [Fact]

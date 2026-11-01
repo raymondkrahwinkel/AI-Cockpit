@@ -35,6 +35,10 @@ public abstract partial class SessionPanelViewModel
                 ? ChildAgents.Count(child => child.Reference.State == "running")
                 : BackgroundSubAgents.Count);
             int total = other + (HasChildAgents ? ChildAgents.Count : BackgroundSubAgents.Count);
+            if (total == 0)
+            {
+                return "nothing";
+            }
             return total == running ? $"{running} running" : $"{running} running · {total} total";
         }
     }

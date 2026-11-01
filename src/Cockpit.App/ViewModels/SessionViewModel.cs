@@ -234,7 +234,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // recognise (AC-531 #2).
     public override int BackgroundTaskCount => _backgroundTasks.Count;
 
-
     // Selects (or, on a second click of the same row, collapses) one background task's detail in the
     // pop-out (AC-531 #4). Only one row expands at a time, mirroring the mockup.
     public void ToggleBackgroundTaskSelection(BackgroundTaskViewModel task)
