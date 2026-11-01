@@ -234,8 +234,7 @@ internal sealed class CockpitMcpEndpointHost
                 _authKey,
                 _keyring,
                 paneId => _AuthorizeAsync(paneId, serverName, enabled, nodeOnly),
-                connectKeys,
-                bindNodeListener ? nodeSettings.SharedSecret : null);
+                connectKeys);
             app.MapMcp("/mcp");
 
             // AC-1383: the backend API sits behind the node listener's door, so it is only there when that listener is.
