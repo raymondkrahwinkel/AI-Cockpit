@@ -26,12 +26,18 @@ public abstract partial class SessionPanelViewModel
     public virtual int BackgroundTaskCount => ChildAgents.Count(child => child.Reference.State == "running");
     public virtual bool CanPrepareChildRequest => false;
     public virtual bool CanOpenOriginalTerminal => false;
-    public virtual string BackgroundTaskSummary => BackgroundTaskCount switch
+    public virtual string BackgroundTaskSummary
     {
-        0 => "nothing",
-        1 => "1 sub-agent",
-        _ => $"{BackgroundTaskCount} sub-agents",
-    };
+        get
+        {
+            int other = BackgroundShells.Count + BackgroundOtherTasks.Count;
+            int running = other + (HasChildAgents
+                ? ChildAgents.Count(child => child.Reference.State == "running")
+                : BackgroundSubAgents.Count);
+            int total = other + (HasChildAgents ? ChildAgents.Count : BackgroundSubAgents.Count);
+            return total == running ? $"{running} running" : $"{running} running · {total} total";
+        }
+    }
 
     public void OpenChild(ChildAgentViewModel child)
     {
