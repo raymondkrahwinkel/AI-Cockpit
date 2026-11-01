@@ -53,7 +53,7 @@ public class WorkspaceAgentGatewayWakeTests
             var cockpit = new CockpitViewModel(sessionRegistry: sessions);
             var sender = new TtyViewModel();
             // AC-2005: a wake is only typed into a TTY the assistant or an agent started; these panes stand in for one.
-            var target = new TtyViewModel { SessionStatus = targetStatus, StartedByTheAssistant = true };
+            var target = new TtyViewModel { SessionStatus = targetStatus };
 
             // The pty sink is both what makes the pane able to take a prompt and the only place a wake becomes
             // visible — a wake that fires writes here, and one that is refused leaves it empty. AC-760: the sink
