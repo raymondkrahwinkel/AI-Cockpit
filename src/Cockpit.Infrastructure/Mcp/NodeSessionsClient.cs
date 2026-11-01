@@ -449,7 +449,7 @@ internal sealed class NodeSessionsClient(
         var wanted = NodeServerName.For(nodeName, NodeServerName.SessionsServerName);
         var server = known.FirstOrDefault(candidate => string.Equals(candidate.Name, wanted, StringComparison.Ordinal))
             ?? throw new InvalidOperationException(
-                $"No session connection is saved for '{nodeName}'. Connect to the server from Options → Nodes.");
+                $"No session connection is saved for '{nodeName}'. Connect to the server from Options › Servers.");
 
         try
         {

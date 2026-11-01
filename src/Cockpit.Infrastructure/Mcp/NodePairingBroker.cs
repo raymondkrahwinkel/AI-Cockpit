@@ -35,7 +35,7 @@ internal sealed class NodePairingBroker : INodePairingBroker, ISingletonService
     private bool _loaded;
 
     // AC-1291: expiry is the one way a pending offer ends without anybody acting, so it is also the one way
-    // `Changed` never fired — leaving a banner (and the Nodes page's Confirm button) offering a pairing that is gone.
+    // `Changed` never fired — leaving a banner (and the Servers page's Confirm button) offering a pairing that is gone.
     private ITimer? _expiryAlarm;
 
     public NodePairingBroker(

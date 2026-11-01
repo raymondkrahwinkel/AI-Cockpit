@@ -38,6 +38,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 - Provider and profile settings show provider-owned terms notices and official links. Sharing, server and swarm settings explain individual subscription use; the README documents token-free profile backups and connect-key isolation (AC-2004).
 
+### Changed
+
+- Connecting to a headless server now lives in **Options › Servers**: the Connect form, the connected servers with their status, and accepting connections from a second Cockpit moved there from the Nodes page, which is gone. The encryption notes it also carried are now under Security.
+
 ### Fixed
 
 - Server images now follow a successful nightly's exact commit instead of every push to main; release tags and manual builds remain available, and Watchtower can keep following the same image tag.

@@ -151,22 +151,19 @@ These settings save with Apply; Cancel does not undo a completed pairing.
 
 ## Servers {#servers}
 
-**Options › Servers** is the headless-server management page, previously called Admin. Choose
-**Manage server** beside a connected server to open its connect keys, plugins, profiles, projects and
-audit log. Management requires an admin key; an operate key cannot change these settings. Searching
-for either “servers” or “admin” finds the page. The Servers action on a sidebar server group opens
-the same management window.
+**Options › Servers** is where you connect to a headless Cockpit server and manage it. Under
+**Connect to a server**, enter the server's address, a connect key and its certificate fingerprint; the
+connection is saved only once all three work together. **Connected servers** shows each connection with
+its status and version, and Disconnect closes it while the server's sessions keep running.
 
-Headless servers keep their existing connect-key connection; they are separate from desktop pairing.
-Use **Nodes › Connect to a server** to establish that connection first.
+Choose **Manage server** to open a server's connect keys, plugins, profiles, projects and audit log.
+Management requires an admin key; an operate key cannot change these settings. Searching for either
+“servers” or “admin” finds the page. The Servers action on a sidebar server group opens the same
+management window.
 
-## Nodes {#nodes}
-
-Pairing this cockpit with another one, so the two can share MCP access and so sessions can run on the other
-machine. Both halves are here: whether this cockpit accepts connections, and pairing with one that does.
-
-Pairing is deliberately a two-sided act with a code and a pinned certificate. A node is another computer
-running your work.
+**Accept connections from a second Cockpit** decides whether this cockpit's own MCP endpoints are
+reachable from your network, guarded by a shared key. Headless servers keep their connect-key connection;
+your desktops connect to each other in [Swarm](#swarm).
 
 ## Backup {#backup}
 

@@ -46,7 +46,7 @@ public partial class OptionsDialog : Window
         ("AssistantHelp", new HelpAddress("assistant", "turning-it-on")),
         ("SecurityHelp", new HelpAddress("settings", "security")),
         ("McpServersHelp", new HelpAddress("settings", "mcp-servers")),
-        ("NodesHelp", new HelpAddress("settings", "nodes")),
+        ("ServersHelp", new HelpAddress("settings", "servers")),
         ("BackupHelp", new HelpAddress("settings", "backup")),
         ("UpdatesHelp", new HelpAddress("settings", "updates")),
         ("DebugHelp", new HelpAddress("settings", "debug")),
@@ -521,9 +521,11 @@ public partial class OptionsDialog : Window
         var pages = CategoryContent.Children.OfType<Control>()
             .Where(page => page.Tag is string)
             .ToDictionary(page => (string)page.Tag!);
+        // AC-2011: the Servers page also answers its own rows, now that Connect to a server lives there.
         var matches = pages.ToDictionary(pair => pair.Key, pair => pair.Key == "servers"
-            ? OptionsSearchMatcher.MatchesAny(searchText, "servers admin headless connect keys plugins profiles projects audit") ? 1 : 0
-            : _FilterRows(pair.Value, searchText));
+            && OptionsSearchMatcher.MatchesAny(searchText, "servers admin headless nodes connect keys plugins profiles projects audit")
+                ? 1
+                : _FilterRows(pair.Value, searchText));
 
         foreach (var (tag, plugin) in _pluginRows)
         {

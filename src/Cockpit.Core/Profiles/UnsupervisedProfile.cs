@@ -2,7 +2,7 @@ using Cockpit.Core.Abstractions.Sessions;
 
 namespace Cockpit.Core.Profiles;
 
-// AC-1292: whether a profile starts its sessions past their own approval gate, shown beside it on the Nodes page.
+// AC-1292: whether a profile starts its sessions past their own approval gate, shown beside it on the Servers page.
 // Providers share no shape, so this asks each one's own key — Claude's `permission-mode`, Codex's `sandbox` and
 // `approvalPolicy`. A provider declaring none of them (LM Studio, OpenRouter) simply never matches.
 public static class UnsupervisedProfile

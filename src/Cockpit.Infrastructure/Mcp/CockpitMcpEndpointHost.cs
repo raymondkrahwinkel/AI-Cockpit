@@ -413,7 +413,7 @@ internal sealed class CockpitMcpEndpointHost
     }
 
     // AC-1288: see MountAsync. Set while the mount gate is held, read from the UI thread — a reference
-    // assignment, and the Nodes tab reads it after the mount it belongs to has long finished.
+    // assignment, and the Servers page reads it after the mount it belongs to has long finished.
     public string? NodeListenerError { get; private set; }
 
     // Probed rather than caught, so a held port costs the network listener and not the endpoint: by the time

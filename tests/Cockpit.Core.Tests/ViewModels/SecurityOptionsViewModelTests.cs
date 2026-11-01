@@ -373,7 +373,7 @@ public class SecurityOptionsViewModelTests
 
         Assert.Contains("Not saved", vm.PersistError, StringComparison.Ordinal);
         Assert.Contains("the disk is not having it", vm.PersistError, StringComparison.Ordinal);
-        Assert.Equal("nodes", vm.PersistErrorCategoryTag);
+        Assert.Equal("servers", vm.PersistErrorCategoryTag);
 
         store.Fails = false;
         await vm.SaveStagedAsync();

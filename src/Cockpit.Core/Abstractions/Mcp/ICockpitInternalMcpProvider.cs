@@ -24,7 +24,7 @@ public interface ICockpitInternalMcpProvider
     /// <summary>
     /// Why this instance has no network-node listener although the operator asked for one (AC-1288) — the port
     /// being held by another cockpit is the ordinary case — or null when there is nothing to report. Read by the
-    /// Nodes tab, which would otherwise show an empty address field and no reason for it. Null for a provider
+    /// Servers page, which would otherwise show an empty address field and no reason for it. Null for a provider
     /// that hosts no node listener at all.
     /// </summary>
     string? NodeListenerError => null;
