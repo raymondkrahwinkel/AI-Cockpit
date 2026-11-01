@@ -33,7 +33,7 @@ internal sealed class DepotInboxPanel : UserControl
         var refresh = new Button { Content = "Refresh" };
         refresh.Click += async (_, _) => await LoadAsync().ConfigureAwait(true);
         _connectionBox.ItemsSource = connections.Select(connection => connection.Name).ToList();
-        _connectionBox.IsVisible = connections.Count > 1;
+        _connectionBox.IsVisible = false; // AC-2010: the panel header above the tabs picks the Depot.
         _connectionBox.SelectionChanged += async (_, _) =>
         {
             if (_connectionBox.SelectedIndex >= 0 && _connectionBox.SelectedIndex < _connections.Count)
