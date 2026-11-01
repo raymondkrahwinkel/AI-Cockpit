@@ -150,12 +150,14 @@ public class SessionBackgroundTaskPopoutTests
         static BackgroundTasksChanged Children(SessionViewModel owner) => new()
         {
             SessionId = owner.PaneId,
+            Tasks = [],
             Children =
             [
                 new BackgroundTask("same-id", BackgroundTaskKind.SubAgent, "Review") { AgentId = "same-id", RunId = owner.PaneId },
                 new BackgroundTask("done-id", BackgroundTaskKind.SubAgent, "Notes") { AgentId = "done-id", RunId = owner.PaneId, State = "completed" },
             ],
         };
+        cockpit.SelectSessionCommand.Execute(owners[1]);
         owners[0].Apply(Children(owners[0]));
         Assert.False(owners[1].HasChildAgents);
         Assert.False(owners[1].AreSidebarChildrenExpanded);
