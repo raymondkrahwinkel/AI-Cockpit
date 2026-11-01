@@ -58,7 +58,7 @@ probe() {
 # Refused when `<command>`, run as <user> in the container, exits non-zero. The exit code comes from a shell inside the
 # container, not from `docker compose exec`, and what the command said is kept in $refusal. Usage: refused <user> '<command>'.
 # Docker exec changes uid but keeps the image's HOME; match the wrapper's home for the selected user.
-refused() { refusal=$(dc exec -T -u "$1" cockpit sh -c "$2 2>&1; echo \"exit=\$?\"" 2>&1); ! grep -qx 'exit=0' <<< "$refusal"; }
+refused() { refusal=$(dc exec -T -u "$1" -e HOME="/home/$1" cockpit sh -c "$2 2>&1; echo \"exit=\$?\"" 2>&1); ! grep -qx 'exit=0' <<< "$refusal"; }
 # Into a variable first: `grep -q` ends the pipe early, which `pipefail` reads as a failure.
 history_leaks() { local layers; layers=$(docker history --no-trunc --format '{{.CreatedBy}}' "$1"); grep -qF -- "$2" <<< "$layers"; }
 collect_logs() { dc logs --no-color cockpit >> "$work/logs.txt" 2>&1 || true; }
