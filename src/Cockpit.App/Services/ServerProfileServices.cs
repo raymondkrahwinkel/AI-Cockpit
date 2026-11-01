@@ -121,6 +121,8 @@ public sealed class ServerProfileServices(
 
     public SessionProviderRegistration? SessionProvider(string providerId) => _registrations.FirstOrDefault(registration => registration.ProviderId == providerId);
 
+    public string? OwnerOf(string providerId) => null;
+
     public TtyProviderRegistration? TtyProvider(string providerId) => null;
 
     public IReadOnlyList<ConversationPickerRegistration> ConversationPickers => [];

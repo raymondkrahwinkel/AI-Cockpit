@@ -24,6 +24,8 @@ internal sealed class PluginRegistrations(
 
     public SessionProviderRegistration? SessionProvider(string providerId) => sessionProviders.Resolve(providerId);
 
+    public string? OwnerOf(string providerId) => sessionProviders.OwnerOf(providerId);
+
     public TtyProviderRegistration? TtyProvider(string providerId) => ttyProviders?.Resolve(providerId);
 
     public IReadOnlyList<ConversationPickerRegistration> ConversationPickers => conversationPickers?.Pickers ?? [];
