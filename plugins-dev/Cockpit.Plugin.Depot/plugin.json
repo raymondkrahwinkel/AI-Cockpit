@@ -1,7 +1,7 @@
 {
   "id": "depot",
   "name": "Depot",
-  "version": "0.47.0",
+  "version": "0.48.0",
   "entryAssembly": "Cockpit.Plugin.Depot.dll",
   "entryType": "Cockpit.Plugin.Depot.DepotPlugin",
   "uiAssembly": "Cockpit.Plugin.Depot.UI.dll",

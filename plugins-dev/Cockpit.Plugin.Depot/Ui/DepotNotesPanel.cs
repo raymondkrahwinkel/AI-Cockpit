@@ -73,6 +73,7 @@ internal sealed class DepotNotesPanel : UserControl
         {
             if (!_filling)
             {
+                ProjectSelected?.Invoke(_Project);
                 await _RunAsync(_RefreshAsync).ConfigureAwait(true);
             }
         };
@@ -96,20 +97,21 @@ internal sealed class DepotNotesPanel : UserControl
         layout.Children.Add(new ScrollViewer { Content = _body, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled });
         Content = layout;
         _OpenInbox = openInbox;
+        // The header sits above the tabs, so it (not this tab's body) starts the first load.
+        header.AttachedToVisualTree += (_, _) =>
+        {
+            if (_connection is null && connections.Count > 0)
+            {
+                _connectionBox.SelectedIndex = 0;
+            }
+        };
         AttachedToVisualTree += (_, _) =>
         {
             if (!_attached)
             {
                 _model.Changed += _OnChanged;
                 _attached = true;
-                if (_connection is null && connections.Count > 0)
-                {
-                    _connectionBox.SelectedIndex = 0;
-                }
-                else
-                {
-                    _Render();
-                }
+                _Render();
             }
         };
         DetachedFromVisualTree += (_, _) =>
@@ -125,6 +127,10 @@ internal sealed class DepotNotesPanel : UserControl
 
     private readonly Action<string> _OpenInbox;
     public Control Header { get; }
+
+    public event Action<DepotConnectionRegistration>? ConnectionSelected;
+
+    public event Action<string?>? ProjectSelected;
     private string? _Project => (_projectBox.SelectedItem as DepotBrowserProject)?.Project;
 
     private async Task _SelectConnectionAsync()
@@ -135,6 +141,7 @@ internal sealed class DepotNotesPanel : UserControl
         }
 
         _connection = _connections[_connectionBox.SelectedIndex];
+        ConnectionSelected?.Invoke(_connection);
         _recent = [];
         var version = ++_contextVersion;
         var connection = _connection;
@@ -151,6 +158,7 @@ internal sealed class DepotNotesPanel : UserControl
         var address = wanted is null ? null : wanted[(wanted.IndexOf(':') + 1)..];
         _projectBox.SelectedItem = projects?.Data?.FirstOrDefault(project => project.Project == address) ?? projects?.Data?.FirstOrDefault();
         _filling = false;
+        ProjectSelected?.Invoke(_Project);
         await _RefreshAsync().ConfigureAwait(true);
     }
 
