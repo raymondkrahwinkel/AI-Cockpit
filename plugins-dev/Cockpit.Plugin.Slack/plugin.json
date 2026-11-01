@@ -1,7 +1,7 @@
 {
   "id": "slack",
   "name": "Slack",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "entryAssembly": "Cockpit.Plugin.Slack.dll",
   "entryType": "Cockpit.Plugin.Slack.SlackChannelPlugin",
   "uiAssembly": "Cockpit.Plugin.Slack.UI.dll",

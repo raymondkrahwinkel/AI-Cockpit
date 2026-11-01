@@ -33,7 +33,9 @@ public sealed class AssistantChannelAccess
     /// </summary>
     public const string MultipleUsersWarning =
         "Everyone on this list can talk to your assistant as if they were you. You are responsible for checking " +
-        "whether that goes against the terms of service of the platform you are connecting.";
+        "whether that goes against the terms of service of the platform you are connecting. " +
+        "Use is governed by your own agreement with each provider. Personal subscriptions are for individual use " +
+        "and must not be shared with others; for shared use, use an API-key profile.";
 
     /// <summary>
     /// Shown when widening to <see cref="AssistantChannelAudience.Everyone"/> — heavier, and not passable by clicking.
@@ -42,7 +44,8 @@ public sealed class AssistantChannelAccess
         "Anyone at all will be able to talk to your assistant as if they were you, including people you have never " +
         "met. That is a different risk from letting in a few people you know, and you are responsible for checking " +
         "whether it goes against the terms of service of the platform you are connecting. Type the confirmation " +
-        "phrase to continue.";
+        "phrase to continue. Use is governed by your own agreement with each provider. Personal subscriptions " +
+        "are for individual use and must not be shared with others; for shared use, use an API-key profile.";
 
     /// <summary>
     /// The sentence to type over to reach <see cref="AssistantChannelAudience.Everyone"/>. A speed bump rather than

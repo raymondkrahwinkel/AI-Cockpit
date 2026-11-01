@@ -17,6 +17,10 @@ namespace Cockpit.App.ViewModels;
 // credentials/config never go inconsistent (#26).
 public partial class EditableProfileViewModel : ViewModelBase
 {
+    public TermsNotice? TermsNotice => SelectedProvider.PluginProviderId is { } providerId
+        ? _pluginProviderRegistry?.SessionProvider(providerId)?.TermsNotice
+        : null;
+
     [ObservableProperty]
     private string _label;
 
@@ -519,6 +523,7 @@ public partial class EditableProfileViewModel : ViewModelBase
         }
 
         OnPropertyChanged(nameof(IsClaudeProvider));
+        OnPropertyChanged(nameof(TermsNotice));
         OnPropertyChanged(nameof(IsLocalProvider));
         OnPropertyChanged(nameof(IsLmStudioProvider));
         OnPropertyChanged(nameof(IsPluginProvider));

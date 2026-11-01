@@ -111,6 +111,7 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
             // model/permission-mode controls and the AC-664 compact button were silently dead in the running app.
             Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true, SupportsVision: true) { SupportsEnvVars = true, ConfinesFileAccessToWorkingDirectory = true, ConfinesViaPermissionsOnly = true, SupportsMidTurnInput = true, SupportsLiveModelSwitch = true, SupportsPermissionModeSwitch = true, SupportsContextCompaction = true, DeclaredOptions = ClaudeOptionChoices.DeclaredSessionOptions })
         {
+            TermsNotice = new TermsNotice("Claude (Anthropic): use is governed by your agreement with Anthropic.", new Uri("https://www.anthropic.com/legal/consumer-terms"), "Subscription login: personal and individual; do not share it. In the EEA, consumer plans are non-commercial. For business or shared use, choose Team/Enterprise or an API-key profile.", "API-key use is billed to the key owner and governed by Anthropic Commercial Terms.", new Uri("https://www.anthropic.com/legal/commercial-terms")),
             Options =
             [
                 new PluginSessionLaunchOption(ClaudeSdkSessionDriver.PermissionModeOptionKey, "Permission mode", ClaudeOptionChoices.PermissionModes, "default")

@@ -64,6 +64,7 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
                 ],
             })
         {
+            TermsNotice = new TermsNotice("Codex / OpenAI: use is governed by your agreement with OpenAI.", new Uri("https://openai.com/policies/terms-of-use/"), "Subscription login: personal and individual; do not share it. For business or shared use, choose a business plan or an API-key profile.", "API-key use is billed to the key owner and governed by the OpenAI Services Agreement.", new Uri("https://openai.com/policies/services-agreement/")),
             Options = [sdkSandbox, sdkModelFallback, sdkEffortFallback, sdkApproval],
             // #1105: the SDK route reports these at each turn boundary (plus a start-of-session prefetch, C) —
             // this only says what they are, the same split ClaudeProviderPlugin uses for its own two routes.

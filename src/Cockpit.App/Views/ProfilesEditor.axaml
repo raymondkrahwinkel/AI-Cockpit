@@ -92,6 +92,9 @@
                                    IsVisible="{Binding ProviderManagedLabel, Converter={x:Static ObjectConverters.IsNotNull}}"/>
                     </StackPanel>
 
+                    <controls:TermsNoticeView Notice="{Binding TermsNotice}"/>
+                    <TextBlock Classes="optionsHint" TextWrapping="Wrap" IsVisible="{Binding IsLocalProvider}"
+                               Text="Ollama / LM Studio: use of a local model is governed by that model's licence. Check the licence of the model you select."/>
                     <!-- AC-1847: the same choice as the profile's row on Options › Sync. -->
                     <StackPanel Spacing="4" DataContext="{Binding SyncChoice}" x:DataType="vm:SyncProfileRowViewModel"
                                 IsVisible="{Binding $self.DataContext, Converter={x:Static ObjectConverters.IsNotNull}}">

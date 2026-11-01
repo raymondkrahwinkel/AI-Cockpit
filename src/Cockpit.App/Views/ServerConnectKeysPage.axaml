@@ -11,6 +11,8 @@
             <Button DockPanel.Dock="Right" Classes="Accent" Content="Issue a key" Command="{Binding StartIssueCommand}"/>
             <TextBlock Text="Connect keys" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
         </DockPanel>
+        <TextBlock Classes="optionsHint" TextWrapping="Wrap"
+                   Text="Use is governed by your own agreement with each provider. Each person needs their own provider login. Personal subscriptions are for individual use and must not be shared with others; for shared use, use an API-key profile."/>
         <TextBlock Classes="optionsHint" Classes.error="{Binding StatusIsError}" TextWrapping="Wrap"
                    IsVisible="{Binding Status.Length}" Text="{Binding Status}"/>
 

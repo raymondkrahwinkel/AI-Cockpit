@@ -68,6 +68,9 @@ public sealed record RemoteProviderInfo(
     bool SupportsEnvVars,
     bool SupportsPermissions,
     bool HasTty,
-    IReadOnlyList<RemoteProviderOption> Options);
+    IReadOnlyList<RemoteProviderOption> Options,
+    RemoteTermsNotice? TermsNotice = null);
+
+public sealed record RemoteTermsNotice(string Text, Uri Url, string? SubscriptionText = null, string? ApiKeyText = null, Uri? ApiTermsUrl = null);
 
 public sealed record RemoteProviderOption(string Key, string Label, IReadOnlyList<string> Choices, IReadOnlyDictionary<string, string>? ChoiceLabels = null);

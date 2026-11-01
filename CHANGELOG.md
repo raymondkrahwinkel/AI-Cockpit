@@ -30,6 +30,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ## [Unreleased]
 
+### Added
+
+- Provider and profile settings show provider-owned terms notices and official links. Sharing, server and swarm settings explain individual subscription use; the README documents token-free profile backups and connect-key isolation (AC-2004).
+
 ### Fixed
 
 - The Claude and CLI agent provider plugins can be published to the store again: their hook relay now carries the Windows manifest the store's package check asks for. Claude provider 0.30.2, CLI agent provider 0.11.3.

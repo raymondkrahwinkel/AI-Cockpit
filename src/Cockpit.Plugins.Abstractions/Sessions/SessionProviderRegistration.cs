@@ -31,6 +31,11 @@ public sealed record SessionProviderRegistration(
     string DefaultBaseUrl = "")
 {
     /// <summary>
+    /// Optional provider terms guidance; absent for providers that publish no notice.
+    /// </summary>
+    public TermsNotice? TermsNotice { get; init; }
+
+    /// <summary>
     /// The per-session start defaults this provider wants the New-session dialog to ask about (sandbox, model, …),
     /// the SDK-session mirror of <see cref="TtyProviderRegistration.Options"/>. Empty when it wants none.
     /// </summary>

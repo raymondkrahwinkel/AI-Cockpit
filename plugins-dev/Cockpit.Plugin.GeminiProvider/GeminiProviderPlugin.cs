@@ -37,6 +37,7 @@ public sealed class GeminiProviderPlugin : ICockpitPlugin
             },
             DefaultBaseUrl: OpenAiCompatDefaultBaseUrls.Gemini)
         {
+            TermsNotice = new TermsNotice("Gemini (Google): API-key use is billed to the key owner and governed by Google's API terms. A custom endpoint is governed by its own service agreement.", new Uri("https://ai.google.dev/gemini-api/terms")),
             // AC-1484: a key on the profile, or the provider variable in session.env, is what signs a profile in.
             IsLoggedIn = configJson => OpenAiCompatConfig.CredentialKindOf(configJson, OpenAiCompatConfig.ApiKeyEnvVar, OpenAiCompatDefaultBaseUrls.Gemini) != PluginCredentialKind.Unknown,
             CredentialKind = configJson => OpenAiCompatConfig.CredentialKindOf(configJson, OpenAiCompatConfig.ApiKeyEnvVar, OpenAiCompatDefaultBaseUrls.Gemini),
@@ -56,6 +57,7 @@ public sealed class GeminiProviderPlugin : ICockpitPlugin
             },
             DefaultBaseUrl: OpenAiCompatDefaultBaseUrls.OpenAi)
         {
+            TermsNotice = new TermsNotice("OpenAI / OpenAI-compatible: API-key use is billed to the key owner. OpenAI API terms apply to OpenAI endpoints; Hetzner endpoints are governed by your Hetzner agreement. Other endpoints have their own service terms.", new Uri("https://openai.com/policies/services-agreement/"), ApiTermsUrl: new Uri("https://www.hetzner.com/legal/terms-and-conditions/")),
             ReadModelIntelligenceAsync = (configJson, _) => Task.FromResult(_ReadModelIntelligence(configJson, OpenAiCompatDefaultBaseUrls.OpenAi)),
         });
     }

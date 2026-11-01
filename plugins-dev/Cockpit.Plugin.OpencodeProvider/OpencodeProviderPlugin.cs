@@ -29,7 +29,10 @@ public sealed class OpencodeProviderPlugin : ICockpitPlugin
             CreateDriverFactory: _ => new OpencodeAcpSessionDriverFactory(host.ResolveManagedCliPath),
             // The host builds the adapter from registration.Capabilities, not the driver's own property —
             // SupportsLiveModelSwitch must be declared here too. Same trap KimiProviderPlugin warns about.
-            Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true) { SupportsEnvVars = true, SupportsLiveModelSwitch = true }));
+            Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true) { SupportsEnvVars = true, SupportsLiveModelSwitch = true })
+        {
+            TermsNotice = new TermsNotice("opencode: use is governed by opencode's terms and your agreement with the selected model provider.", new Uri("https://opencode.ai/legal/terms-of-service"), "Subscription login: personal and individual; do not share it. For shared use, use an API-key profile under an appropriate business agreement.", "API-key use is billed to the key owner; the selected API provider's terms apply."),
+        });
     }
 
     public void Dispose()

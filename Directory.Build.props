@@ -436,7 +436,9 @@
          A plugin that reads it sets minHostVersion 0.152.0. -->
     <!-- 0.154.0: Depot brains in the profile, project, assistant and server editors and the brain instruction at session start (AC-1992, Abstractions 3.61.0).
          A plugin that sets ProjectMemorySourceRegistration.ListBrainsAsync or BrainInstruction sets minHostVersion 0.154.0. -->
-    <VersionPrefix>0.154.0</VersionPrefix>
+    <!-- 0.155.0: provider-owned terms notices (AC-2004, Abstractions 3.62.0).
+         A plugin that sets SessionProviderRegistration.TermsNotice sets minHostVersion 0.155.0. -->
+    <VersionPrefix>0.155.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>

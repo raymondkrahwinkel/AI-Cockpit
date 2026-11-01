@@ -14,6 +14,8 @@ public sealed class PluginOptionsRowViewModel(string pluginId, string displayNam
 
     public string PluginId => pluginId;
 
+    public IReadOnlyList<Cockpit.Plugins.Abstractions.Sessions.TermsNotice> TermsNotices { get; set; } = [];
+
     public string DisplayName => displayName;
 
     public string? Category => category;
