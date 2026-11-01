@@ -40,6 +40,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- Server images now follow a successful nightly's exact commit instead of every push to main; release tags and manual builds remain available, and Watchtower can keep following the same image tag.
+
+- Server image validation now runs direct agent checks with the agent's home directory, so GitHub CLI configuration is read from the correct location without changing the separation between server and agent.
+
 - The Claude and CLI agent provider plugins can be published to the store again: their hook relay now carries the Windows manifest the store's package check asks for. Claude provider 0.30.2, CLI agent provider 0.11.3.
 
 - Sub-agents no longer keep a Running status after their owner fails, is interrupted or stops. Finished sub-agents keep their recorded status and details.

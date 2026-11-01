@@ -1,16 +1,19 @@
 name: Server image
 
-# AC-1356: builds the headless Cockpit image, smokes it as a container, and only then pushes it to GHCR as
-# :<branch> and :sha-<commit>. The deploy tag is the sha one; a host never pulls :main on its own.
-# Only on a push to main or by hand: Actions does not run on pull requests (Raymond, 14-10).
+# Build and smoke the successful Nightly's commit before publishing it for servers following :main.
+# Release tags and manual runs remain available; a push to main alone never starts an image build.
 on:
-  push:
+  workflow_run:
+    workflows: [Nightly]
+    types: [completed]
     branches: [main]
-    paths: ['src/**', 'plugins-dev/**', 'Dockerfile', '.dockerignore', 'deploy/**', 'tests/Cockpit.ServerSeed/**', 'Directory.Build.*', 'Directory.Packages.props', 'global.json', 'nuget.config', '.github/workflows/server-image.yml']
+  push:
+    tags: ['v*']
   workflow_dispatch:
 
 jobs:
   image:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -20,6 +23,14 @@ jobs:
       IMAGE: ghcr.io/raymondkrahwinkel/cockpit-server
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Image revision
+        id: revision
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "short_sha=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-dotnet@v6
         with:
@@ -51,9 +62,13 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE }}
+          flavor: latest=false
+          labels: org.opencontainers.image.revision=${{ steps.revision.outputs.sha }}
           tags: |
             type=ref,event=branch
-            type=sha,prefix=sha-
+            type=ref,event=tag
+            type=raw,value=main,enable=${{ github.event_name == 'workflow_run' || startsWith(github.ref, 'refs/tags/v') }}
+            type=raw,value=sha-${{ steps.revision.outputs.short_sha }}
 
       # The image that was smoked, retagged: a second build could differ in what the Dockerfile leaves unpinned.
       - name: Push the smoked image
@@ -70,10 +85,15 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE }}
-          flavor: suffix=-dev
+          labels: org.opencontainers.image.revision=${{ steps.revision.outputs.sha }}
+          flavor: |
+            latest=false
+            suffix=-dev
           tags: |
             type=ref,event=branch
-            type=sha,prefix=sha-
+            type=ref,event=tag
+            type=raw,value=main,enable=${{ github.event_name == 'workflow_run' || startsWith(github.ref, 'refs/tags/v') }}
+            type=raw,value=sha-${{ steps.revision.outputs.short_sha }}
 
       # The SDK variant for agents that build and test; built and pushed so a broken `dev` stage shows.
       - name: Build the dev image

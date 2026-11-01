@@ -4,12 +4,17 @@ The headless Cockpit as an image: `ghcr.io/raymondkrahwinkel/cockpit-server`, bu
 `.github/workflows/server-image.yml` after a container smoke (`deploy/smoke.sh`) passes. `compose.yaml` runs on any plain
 Docker host and carries no environment-specific settings.
 
+The server follows the nightly: after a successful `Nightly` on `main`, the image workflow checks out that nightly's
+exact commit, builds and smokes it, and publishes `:main` and `:sha-<commit>` (plus their `-dev` variants). An ordinary
+push to `main` does not build an image. Release tags matching `v*`, as in the release workflow, also build images with
+their version tag and update `:main`; `workflow_dispatch` remains available for a deliberate manual build.
+
 ## Tags and deploying
 
 - `:sha-<commit>` is immutable: **deploy on this**. `COCKPIT_TAG` has no default and `latest` is never published.
-- `:main` is a rolling tag. A host may follow it with Watchtower: a merge to `main` then reaches that host within
-  minutes, and the restart ends the live agent sessions (the stop budget is only 8 seconds). Watchtower recreates the
-  container with its old settings, so a change to `compose.yaml` itself (a new volume, say) needs one
+- `:main` is a rolling tag. A host may follow it with Watchtower: after the successful nightly's image is published,
+  it reaches that host within minutes, and the restart ends the live agent sessions (the stop budget is only 8 seconds).
+  Watchtower recreates the container with its old settings, so a change to `compose.yaml` itself (a new volume, say) needs one
   `docker compose -f deploy/compose.yaml up -d` by hand; until then a new volume of the image is an anonymous one,
   which the next update replaces.
 - `:sha-<commit>-dev` adds the .NET SDK so agents can build and test. Same tags with a `-dev` suffix.
@@ -150,6 +155,10 @@ which would otherwise run as the server. The SSH keys and git credentials for cl
 (`agent-ssh`, or `GH_TOKEN` in `session.env`). An agent session
 cannot read `/state`, the secrets or the server's `/proc` entries; it keeps the session's environment (`COCKPIT_PANE_ID`,
 the MCP settings, `GH_TOKEN`) and has its own `HOME`.
+
+For direct diagnostics with `docker compose exec -u agent`, also pass `-e HOME=/home/agent`: Docker changes the uid
+but keeps the image's `HOME=/home/app`. The smoke's direct binary controls set the selected user's home for the same
+reason; the production wrappers already set it before starting a CLI.
 
 For private GitHub HTTPS repositories, sign the server in under **Server > Projects > GitHub** with a device code
 or paste a fine-grained token with access to the repositories you need. The token is write-only in the admin API;
