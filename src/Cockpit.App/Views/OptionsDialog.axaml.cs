@@ -262,8 +262,8 @@ public partial class OptionsDialog : Window
     // Skipped entirely when no plugin registered a settings view.
     private void _BuildPluginCategories(CockpitViewModel cockpit)
     {
-        var registry = Program.Services?.GetService<IPluginRegistrations>();
-        var providers = registry?.SessionProviders ?? [];
+        var registry = Program.Services?.GetService<Cockpit.Infrastructure.Sessions.IPluginProviderRegistry>();
+        var providers = registry?.Registrations ?? [];
         foreach (var group in providers.Where(provider => provider.TermsNotice is not null)
                      .GroupBy(provider => registry?.OwnerOf(provider.ProviderId) ?? provider.ProviderId.Split('.')[0]))
         {
