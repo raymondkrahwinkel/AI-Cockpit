@@ -77,7 +77,8 @@ public sealed class ConnectKeyDoorTests
         var legacy = await door.Verifier(_Environment()).IssueAsync("legacy", ConnectKeyCapability.Operate, 30, Operator);
         var config = JsonNode.Parse(await File.ReadAllTextAsync(door.ConfigPath)) ?? new JsonObject();
         // AC-2003: stored as holding it before ownership existed, so it reads as someone else's and drops it.
-        config["NodeConnectKeys"]!["Keys"]!.AsArray()[0]!["HoldsAssistant"] = true;
+        var stored = config["NodeConnectKeys"]?["Keys"]?.AsArray()[0]?.AsObject() ?? throw new InvalidOperationException("The issued key was not stored.");
+        stored["HoldsAssistant"] = true;
         await File.WriteAllTextAsync(door.ConfigPath, config.ToJsonString());
         await door.StartAsync(_Environment());
         await using var legacyClient = await door.ClientAsync(legacy.Secret);

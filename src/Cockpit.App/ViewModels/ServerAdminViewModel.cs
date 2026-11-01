@@ -285,6 +285,8 @@ public sealed partial class ServerAdminViewModel : ObservableObject
         }
         else if (_editing is { } row)
         {
+            // The mark first: a refused mark (not the owner's key calling) leaves the scope untouched too.
+            var marked = EditorIssuedToOwner && !row.Info.IssuedToOwner && await _admin.MarkOwnDeviceAsync(row.Prefix);
             if (!await _admin.SetScopeAsync(row.Prefix, scope))
             {
                 Status = $"{row.Label} is no longer a live key.";
@@ -292,7 +294,6 @@ public sealed partial class ServerAdminViewModel : ObservableObject
                 return;
             }
 
-            var marked = EditorIssuedToOwner && !row.Info.IssuedToOwner && await _admin.MarkOwnDeviceAsync(row.Prefix);
             _Replace(row, row.Info with { Scope = scope, IssuedToOwner = row.Info.IssuedToOwner || marked });
         }
 

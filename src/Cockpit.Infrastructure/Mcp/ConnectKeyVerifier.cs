@@ -30,7 +30,7 @@ internal sealed class ConnectKeyVerifier : ISingletonService, IConnectKeyAdminis
 
     public const string NeverExpiringRefusal = "This server's policy does not allow connect keys that never expire.";
 
-    public const string OwnerKeyNeedsOwnerRefusal = "Only the owner's own key can make a key the owner's own device.";
+    public const string OwnerKeyNeedsOwnerRefusal = "Only a key that is already the owner's own can mark a key as the owner's own device, and this key is not. Connect with the server's bootstrap key (the secret in " + BootstrapFileVariable + " on the server) and mark your own keys from there.";
 
     public const string AssistantNeedsOwnerRefusal = "Only a key for the owner's own device can hold the assistant: the assistant runs on the owner's own login. Issue it as the owner's key, or without holding the assistant.";
 

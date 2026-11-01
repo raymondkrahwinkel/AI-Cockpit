@@ -681,10 +681,18 @@ public sealed class RemoteAdminJourney
             await phone.WhoAmIAsync();
 
             // AC-2003: the phone is not the owner's own device, so neither the owner's subscription nor the assistant is its.
+            // Another admin key cannot make itself the owner's; the bootstrap key, the upgrade's way in, can mark it.
             var personal = await Assert.ThrowsAsync<BackendApiException>(() => phone.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/sessions", new { profile = "Echo", prompt = "hello" }));
             var borrowed = await Assert.ThrowsAsync<BackendApiException>(() => setup.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/keys", new { label = "journey-borrowed", capability = "operate", holdsAssistant = true }));
+            var otherAdmin = await setup.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/keys", new { label = "journey-other-admin", capability = "admin" });
+            using var other = new BackendApiClient(baseAddress, otherAdmin["secret"]?.GetValue<string>() ?? "", fingerprint, TimeProvider.System);
+            var otherPrefix = otherAdmin["key"]?["prefix"]?.GetValue<string>() ?? "";
+            var selfPromoted = await Assert.ThrowsAsync<BackendApiException>(() => other.SendAsync<JsonObject>(HttpMethod.Put, $"api/v1/keys/{otherPrefix}/own-device", null));
+            var markedByBootstrap = await setup.SendAsync<JsonObject>(HttpMethod.Put, $"api/v1/keys/{otherPrefix}/own-device", null);
             Assert.Equal((HttpStatusCode.Forbidden, NodeCallerSessionPolicy.PersonalLoginRefusal), (personal.Status, personal.Description));
             Assert.Equal((HttpStatusCode.BadRequest, ConnectKeyVerifier.AssistantNeedsOwnerRefusal), (borrowed.Status, borrowed.Description));
+            Assert.Equal((HttpStatusCode.BadRequest, ConnectKeyVerifier.OwnerKeyNeedsOwnerRefusal), (selfPromoted.Status, selfPromoted.Description));
+            Assert.True(markedByBootstrap["issuedToOwner"]?.GetValue<bool>());
 
             // The way back for a key that is the owner's after all: its scope editor marks it, saved once.
             await HeadlessAvalonia.RunAsync(async () =>
