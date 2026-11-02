@@ -426,6 +426,7 @@ internal static partial class Screenshotter
         ["server-health"] = ServerGroupScene.Health,
         ["server-health-operate"] = ServerGroupScene.HealthOperate,
         ["server-admin-plugins"] = ServerAdminScene.Plugins,
+        ["server-admin-plugins-updates"] = ServerAdminScene.PluginsUpdates,
         // AC-1590: "Install on this desktop" on a plugin the desktop lacks, and the restart prompt after the install.
         ["server-admin-plugins-desktop"] = ServerAdminScene.PluginsDesktop,
         ["server-admin-plugins-desktop-restart"] = ServerAdminScene.PluginsDesktopRestart,

@@ -115,6 +115,32 @@ internal static class ServerAdminScene
         return dialog;
     }
 
+    // AC-2013: one runnable server update and one held back by the host version, for Options › Plugins evidence.
+    public static OptionsDialog PluginsUpdates(int width, int height)
+    {
+        var admin = _Admin();
+        var dialog = OptionsDialog.ForServer(admin);
+        dialog.Width = width;
+        dialog.Height = height;
+        dialog.SelectCategory("server-plugins");
+        dialog.Opened += (_, _) =>
+        {
+            admin.Plugins.Clear();
+            admin.Plugins.Add(new ServerPluginRowViewModel(ScenePlugins._Plugin("depot", "Depot", "0.11.10", false))
+            {
+                AvailableVersion = "0.12.0",
+            });
+            admin.Plugins.Add(new ServerPluginRowViewModel(ScenePlugins._Plugin("workflows", "Workflows", "0.31.1", true))
+            {
+                AvailableVersion = "0.32.0",
+                UpdateUnavailableReason = "Requires Wispslate Cockpit 0.154 or later; this machine runs 0.152.0",
+            });
+            admin.AvailableUpdateCount = 1;
+            admin.UnavailableUpdateCount = 1;
+        };
+        return dialog;
+    }
+
     // AC-1590: the Depot row of a server this desktop lacks the plugin for, with "Install on this desktop".
     public static OptionsDialog PluginsDesktop(int width, int height) => _PluginsDesktop(width, height, installed: false);
 
@@ -176,13 +202,13 @@ internal static class ServerAdminScene
 
     public static IServerProfiles ProfilesStandIn() => new SceneProfiles();
 
-    private static ServerAdminViewModel _Admin(IServerProjects? projects = null, ServerProfilesViewModel? profiles = null) => new(
+    private static ServerAdminViewModel _Admin(IServerProjects? projects = null, ServerProfilesViewModel? profiles = null, IPluginAdministration? plugins = null) => new(
         "huis-cockpit",
         "laptop-raymond",
         new SceneKeys(),
         ["server (Claude)", "server (Codex)"],
         [new NodeProjectChoice("personal", "Personal"), new NodeProjectChoice("depot", "depot"), new NodeProjectChoice("cockpit", "cockpit")],
-        new ScenePlugins(),
+        plugins ?? new ScenePlugins(),
         projects)
     {
         Profiles = profiles,
@@ -480,7 +506,7 @@ internal static class ServerAdminScene
 
         public Task RemoveAsync(string folderId, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
-        private static InstalledPlugin _Plugin(string id, string name, string version, bool enabled) => new(
+        internal static InstalledPlugin _Plugin(string id, string name, string version, bool enabled) => new(
             new DiscoveredPlugin(id, id, new PluginManifest(id, name, version, "plugin.dll", 3, null, null, null, null), "hash", PluginLoadDecision.Load),
             new PluginRegistration(enabled, "hash"), null, null, null);
     }

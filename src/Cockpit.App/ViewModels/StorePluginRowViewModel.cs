@@ -212,7 +212,7 @@ public sealed partial class StorePluginRowViewModel(
     public string? IncompatibilityReason =>
         LatestVersionEntry is { } version ? PluginCompatibility.IncompatibilityReason(version, hostAbstractionsMajor, EffectiveHostVersion) : null;
 
-    private string? UpdateUnavailableReason => UpdateAvailable && IncompatibilityReason is { } reason
+    public string? UpdateUnavailableReason => UpdateAvailable && IncompatibilityReason is { } reason
         ? $"{reason}; this machine runs {EffectiveHostVersion}"
         : null;
 

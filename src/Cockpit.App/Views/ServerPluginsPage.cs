@@ -22,6 +22,11 @@ public sealed class ServerPluginsPage : UserControl
         update.Bind(ContentControl.ContentProperty, new Avalonia.Data.Binding("UpdateLabel"));
         update.Bind(Button.CommandProperty, new Avalonia.Data.Binding("UpdatePluginsCommand"));
         update.Bind(IsVisibleProperty, new Avalonia.Data.Binding("HasAvailableUpdates"));
+        var unavailableUpdates = new TextBlock { TextWrapping = Avalonia.Media.TextWrapping.Wrap };
+        unavailableUpdates.Classes.Add("optionsHint");
+        unavailableUpdates.Classes.Add("error");
+        unavailableUpdates.Bind(TextBlock.TextProperty, new Avalonia.Data.Binding("UnavailableUpdateSummary"));
+        unavailableUpdates.Bind(IsVisibleProperty, new Avalonia.Data.Binding("HasUnavailableUpdates"));
         var restart = new TextBlock { Text = "Plugin changes take effect after the server restarts.", TextWrapping = Avalonia.Media.TextWrapping.Wrap };
         var restartNow = new Button { Content = "Restart the server now", HorizontalAlignment = HorizontalAlignment.Left };
         restartNow.Bind(Button.CommandProperty, new Avalonia.Data.Binding("RestartServerCommand"));
@@ -43,7 +48,7 @@ public sealed class ServerPluginsPage : UserControl
         desktopRestartNow.Bind(Button.CommandProperty, new Avalonia.Data.Binding("RestartDesktopNowCommand"));
         var desktopPrompt = new StackPanel { Spacing = 8, Children = { desktopRestart, desktopRestartNow } };
         desktopPrompt.Bind(IsVisibleProperty, new Avalonia.Data.Binding("DesktopNeedsRestart"));
-        Content = new StackPanel { Margin = new Thickness(24, 20), Spacing = 12, Children = { heading, install, update, status, desktopPrompt, _rows, restart, restartNow } };
+        Content = new StackPanel { Margin = new Thickness(24, 20), Spacing = 12, Children = { heading, install, update, unavailableUpdates, status, desktopPrompt, _rows, restart, restartNow } };
         DataContextChanged += (_, _) => _SetAdmin();
     }
 
@@ -88,6 +93,17 @@ public sealed class ServerPluginsPage : UserControl
             var available = new TextBlock();
             available.Bind(TextBlock.TextProperty, new Avalonia.Data.Binding(nameof(ServerPluginRowViewModel.UpdateText)) { Source = row });
             available.Bind(IsVisibleProperty, new Avalonia.Data.Binding(nameof(ServerPluginRowViewModel.HasUpdate)) { Source = row });
+            var unavailable = new TextBlock { TextWrapping = Avalonia.Media.TextWrapping.Wrap };
+            unavailable.Classes.Add("optionsHint");
+            unavailable.Classes.Add("error");
+            unavailable.Bind(TextBlock.TextProperty, new Avalonia.Data.Binding(nameof(ServerPluginRowViewModel.UpdateUnavailableReason)) { Source = row });
+            unavailable.Bind(IsVisibleProperty, new Avalonia.Data.Binding(nameof(ServerPluginRowViewModel.UpdateUnavailableReason)) { Source = row });
+            var updatePlugin = new Button { Content = "Update", Command = admin.UpdatePluginsCommand, CommandParameter = row };
+            updatePlugin.Bind(IsEnabledProperty, new Avalonia.Data.Binding(nameof(ServerPluginRowViewModel.CanUpdate)) { Source = row });
+            ToolTip.SetShowOnDisabled(updatePlugin, true);
+            updatePlugin.Bind(ToolTip.TipProperty, new Avalonia.Data.Binding(nameof(ServerPluginRowViewModel.UpdateUnavailableReason)) { Source = row });
+            updatePlugin.Bind(IsVisibleProperty, new Avalonia.Data.Binding(nameof(ServerPluginRowViewModel.HasUpdate)) { Source = row });
+            actions.Children.Insert(0, updatePlugin);
             var onDesktop = new Button { Content = "Install on this desktop", Command = admin.InstallPluginOnDesktopCommand, CommandParameter = row };
             onDesktop.Bind(IsVisibleProperty, new Avalonia.Data.Binding(nameof(ServerPluginRowViewModel.MissingOnDesktop)) { Source = row });
             ToolTip.SetTip(onDesktop, "This desktop does not have the plugin. Installs it from this desktop's own plugin stores, with the usual checks and consent; nothing is loaded from the server.");
@@ -103,7 +119,7 @@ public sealed class ServerPluginsPage : UserControl
                     ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto"),
                     Children =
                     {
-                        new StackPanel { Children = { new TextBlock { Text = $"{row.Name} {row.Version}", FontWeight = Avalonia.Media.FontWeight.SemiBold }, state, available } },
+                        new StackPanel { Children = { new TextBlock { Text = $"{row.Name} {row.Version}", FontWeight = Avalonia.Media.FontWeight.SemiBold }, state, available, unavailable } },
                         actions,
                         removal,
                     },
