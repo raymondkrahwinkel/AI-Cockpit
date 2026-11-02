@@ -140,19 +140,23 @@ internal static class OptionsStaging
         "OnRestoreDefaults",
     ];
 
+    // AC-2018: what the dialog loads after it is already on screen (`CockpitViewModel.OptionsLoadingPages`). Their
+    // pages are covered while that runs, so the operator cannot have touched them; their baseline is taken once the
+    // load is done, the rest when the dialog opens.
+    public static readonly string[] LoadedAfterOpen =
+    [
+        "SelectedInputDevice",
+        "SelectedOutputDevice",
+        "Swarm.ExtraInternalCidrsText",
+        "Swarm.ReturnChoice",
+    ];
+
     // A cheap value-identity of everything staged, compared against the same string taken when the dialog
     // opened. Cheaper and less brittle than mirroring 60-odd properties into a buffer object, and it is only
     // ever used for equality — the string itself is never shown or stored.
-    public static string Fingerprint(CockpitViewModel cockpit)
-        => _Fingerprint(cockpit, EditedProperties);
-
-    private static string _Fingerprint(CockpitViewModel cockpit, IEnumerable<string> properties)
+    public static string SettledFingerprint(CockpitViewModel cockpit)
     {
-        var parts = new List<string>(EditedProperties.Length + 2);
-        foreach (var path in properties)
-        {
-            parts.Add(_Format(_Read(cockpit, path)));
-        }
+        var parts = EditedProperties.Except(LoadedAfterOpen).Select(path => _Format(_Read(cockpit, path))).ToList();
 
         // Two collections the dialog edits in place, which no property path reaches.
         parts.Add(string.Join(Separator, cockpit.ShortcutRows.Select(row => row.Gesture)));
@@ -165,6 +169,13 @@ internal static class OptionsStaging
                     .SelectMany(provider => provider.Signals)
                     .Select(signal => $"{signal.SignalKey}={_Format(signal.Threshold)}"))
             : string.Empty);
+
+        return string.Join(Separator, parts);
+    }
+
+    public static string LoadedAfterOpenFingerprint(CockpitViewModel cockpit)
+    {
+        var parts = LoadedAfterOpen.Select(path => _Format(_Read(cockpit, path))).ToList();
 
         // Profiles (AC-1001): a full serialization of every edited row's would-be-saved shape, added/removed rows
         // included, rather than a hand-kept list of property paths — the same reasoning `ToProfile()` already gives for

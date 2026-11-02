@@ -48,8 +48,8 @@
                 <Button Grid.Column="2" Content="Cancel" Click="OnCancel" IsCancel="True" Margin="0,0,8,0"/>
                 <!-- AC-1287: the same write as its neighbour, minus the close, for settings you want to try before
                      moving on to the next category. -->
-                <Button Grid.Column="3" Content="Apply" Click="OnApply" Margin="0,0,8,0"/>
-                <Button Grid.Column="4" Content="Apply and Close" Classes="Accent" Click="OnApplyAndClose"/>
+                <Button Grid.Column="3" Content="Apply" Click="OnApply" Margin="0,0,8,0" IsEnabled="{Binding !IsOptionsLoading, FallbackValue=True}"/>
+                <Button Grid.Column="4" Content="Apply and Close" Classes="Accent" Click="OnApplyAndClose" IsEnabled="{Binding !IsOptionsLoading, FallbackValue=True}"/>
             </Grid>
         </Border>
 
@@ -2461,6 +2461,16 @@
                     </StackPanel>
                 </ScrollViewer>
 
+                <!-- AC-2018: the dialog is on screen before every page has its data. A page still reading is covered by
+                     this until it is in, so nothing on it can be edited against a value that is about to be replaced. -->
+                <Border x:Name="PageLoadingOverlay" IsVisible="False" Background="{DynamicResource CockpitPanelBgBrush}">
+                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="10" Width="240">
+                        <ProgressBar IsIndeterminate="True" Height="6" MinHeight="0"
+                                     Foreground="{DynamicResource CockpitAccentBrush}"/>
+                        <TextBlock x:Name="PageLoadingText" HorizontalAlignment="Center" FontSize="12"
+                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                    </StackPanel>
+                </Border>
             </Panel>
             </DockPanel>
         </Grid>
