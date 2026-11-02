@@ -883,6 +883,33 @@ public partial class OptionsDialog : Window
         }
     }
 
+    private async void OnChooseSessionFinishedSound(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is CockpitViewModel cockpit && await _ChooseWaveFileAsync() is { } path)
+        {
+            cockpit.SessionFinishedCustomSoundPath = path;
+        }
+    }
+
+    private async void OnChooseNeedsAttentionSound(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is CockpitViewModel cockpit && await _ChooseWaveFileAsync() is { } path)
+        {
+            cockpit.NeedsAttentionCustomSoundPath = path;
+        }
+    }
+
+    private async Task<string?> _ChooseWaveFileAsync()
+    {
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Choose a notification sound",
+            AllowMultiple = false,
+            FileTypeFilter = [new FilePickerFileType("WAV audio") { Patterns = ["*.wav"] }],
+        });
+        return files.FirstOrDefault()?.TryGetLocalPath();
+    }
+
     private void OnOpenUpdate(object? sender, RoutedEventArgs e) =>
         (DataContext as CockpitViewModel)?.OpenUpdate();
 

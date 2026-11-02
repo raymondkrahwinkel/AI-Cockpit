@@ -321,6 +321,7 @@ internal static partial class Screenshotter
         ["help-broken-link"] = (_, _) => _Help(new Core.Help.HelpAddress("slack", "interactivity")),
         ["single-instance"] = (_, _) => new SingleInstanceNoticeDialog(),
         ["options"] = (_, _) => new OptionsDialog { DataContext = new ViewModels.CockpitViewModel() },
+        ["options-notifications"] = (_, _) => _OptionsOnTab("Notifications"),
         ["shortcuts"] = (_, _) => _OptionsOnTab("Shortcuts"),
         // AC-1814: Options › Model intelligence with data, and with too little data for any pattern.
         ["options-model-intelligence"] = ModelIntelligenceScene.Filled,

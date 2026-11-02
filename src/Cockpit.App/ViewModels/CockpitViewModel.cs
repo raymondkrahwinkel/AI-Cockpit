@@ -3700,6 +3700,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _audioDeviceProvider = audioDeviceProvider;
         _audioCapture = audioCapture;
         _voicePlaybackQueue = voicePlaybackQueue;
+        if (_voicePlaybackQueue is not null)
+        {
+            _voicePlaybackQueue.PlaybackActiveChanged += _OnVoicePlaybackActiveChanged;
+        }
         _pluginDiagnostics = pluginDiagnostics;
         _pluginDialogHost = pluginDialogHost;
         _shortcutSettingsStore = shortcutSettingsStore;
@@ -3996,6 +4000,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IdleThresholdMinutes = (int)settings.IdleThreshold.TotalMinutes;
         SessionIdleMinutes = (int)settings.SessionIdleThreshold.TotalMinutes;
         NotifyOnSessionFinished = settings.NotifyOnSessionFinished;
+        NotificationSoundsEnabled = settings.NotificationSoundsEnabled;
+        NotificationSoundOnSessionFinished = settings.NotificationSoundOnSessionFinished;
+        NotificationSoundOnNeedsAttention = settings.NotificationSoundOnNeedsAttention;
+        SessionFinishedSound = settings.SessionFinishedSound;
+        NeedsAttentionSound = settings.NeedsAttentionSound;
+        SessionFinishedCustomSoundPath = settings.SessionFinishedCustomSoundPath ?? string.Empty;
+        NeedsAttentionCustomSoundPath = settings.NeedsAttentionCustomSoundPath ?? string.Empty;
+        NotificationSoundVolume = settings.NotificationSoundVolume;
         NotifyOnSessionIdle = settings.NotifyOnSessionIdle;
         NotifyWhenAllSessionsIdle = settings.NotifyWhenAllSessionsIdle;
         NotifyOnCiFailure = settings.NotifyOnCiFailure;
@@ -4023,6 +4035,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             WebhookUrl = string.IsNullOrWhiteSpace(WebhookUrl) ? null : WebhookUrl.Trim(),
             IdleThreshold = TimeSpan.FromMinutes(minutes),
             NotifyOnSessionFinished = NotifyOnSessionFinished,
+            NotificationSoundsEnabled = NotificationSoundsEnabled,
+            NotificationSoundOnSessionFinished = NotificationSoundOnSessionFinished,
+            NotificationSoundOnNeedsAttention = NotificationSoundOnNeedsAttention,
+            SessionFinishedSound = SessionFinishedSound,
+            NeedsAttentionSound = NeedsAttentionSound,
+            SessionFinishedCustomSoundPath = string.IsNullOrWhiteSpace(SessionFinishedCustomSoundPath) ? null : SessionFinishedCustomSoundPath,
+            NeedsAttentionCustomSoundPath = string.IsNullOrWhiteSpace(NeedsAttentionCustomSoundPath) ? null : NeedsAttentionCustomSoundPath,
+            NotificationSoundVolume = NotificationSoundVolume,
             NotifyOnSessionIdle = NotifyOnSessionIdle,
             NotifyWhenAllSessionsIdle = NotifyWhenAllSessionsIdle,
             NotifyOnCiFailure = NotifyOnCiFailure,
@@ -7792,6 +7812,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IdleThresholdMinutes = (int)notifications.IdleThreshold.TotalMinutes;
         SessionIdleMinutes = (int)notifications.SessionIdleThreshold.TotalMinutes;
         NotifyOnSessionFinished = notifications.NotifyOnSessionFinished;
+        NotificationSoundsEnabled = notifications.NotificationSoundsEnabled;
+        NotificationSoundOnSessionFinished = notifications.NotificationSoundOnSessionFinished;
+        NotificationSoundOnNeedsAttention = notifications.NotificationSoundOnNeedsAttention;
+        SessionFinishedSound = notifications.SessionFinishedSound;
+        NeedsAttentionSound = notifications.NeedsAttentionSound;
+        SessionFinishedCustomSoundPath = notifications.SessionFinishedCustomSoundPath ?? string.Empty;
+        NeedsAttentionCustomSoundPath = notifications.NeedsAttentionCustomSoundPath ?? string.Empty;
+        NotificationSoundVolume = notifications.NotificationSoundVolume;
         NotifyOnSessionIdle = notifications.NotifyOnSessionIdle;
         NotifyWhenAllSessionsIdle = notifications.NotifyWhenAllSessionsIdle;
         NotifyOnCiFailure = notifications.NotifyOnCiFailure;
@@ -8748,6 +8776,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     private void NotifyAttention(SessionPanelViewModel session)
     {
+        _NotifyWithSound(session, NotificationSoundEvent.NeedsAttention);
+
         if (_attentionNotifier is null)
         {
             return;
@@ -8761,6 +8791,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     private void NotifySessionFinished(SessionPanelViewModel session)
     {
+        _NotifyWithSound(session, NotificationSoundEvent.SessionFinished);
+
         if (_attentionNotifier is null)
         {
             return;
@@ -10242,6 +10274,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         _disposed = true;
         _StopSwarmSidebar();
+        if (_voicePlaybackQueue is not null)
+        {
+            _voicePlaybackQueue.PlaybackActiveChanged -= _OnVoicePlaybackActiveChanged;
+        }
 
         // The shutdown gives this a bounded budget and then hard-exits (Program.DisposeCockpit), so where it got to
         // is the one thing worth knowing when something it should have cleaned up is still there afterwards. Three

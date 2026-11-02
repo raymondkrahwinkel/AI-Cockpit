@@ -287,6 +287,12 @@ Create a session via **+ New session**: pick a profile, permission mode, model a
 macOS. Profiles, layout, voice, shortcuts, always-allow rules, the MCP registry and plugin state all live in that
 one file, alongside `plugins/`, `logs/` and the previous version of the config (`cockpit.json.bak`).
 
+Notification sounds are configured under `Notifications.NotificationSoundsEnabled`,
+`NotificationSoundOnSessionFinished`, `NotificationSoundOnNeedsAttention`, `SessionFinishedSound`,
+`NeedsAttentionSound`, `SessionFinishedCustomSoundPath`, `NeedsAttentionCustomSoundPath` and
+`NotificationSoundVolume`. Custom files must be 16-bit PCM WAV files. The three bundled sounds come from
+Kenney's CC0 **Interface Sounds** pack; its `License.txt` is shipped beside them.
+
 The `debug` section accepts `uiFreezeThresholdSeconds` (default 5, minimum 2) and
 `renderStallThresholdSeconds` (default 15, minimum 1). Invalid values use the defaults.
 These warning thresholds take effect after restarting Cockpit; recovery thresholds stay unchanged.

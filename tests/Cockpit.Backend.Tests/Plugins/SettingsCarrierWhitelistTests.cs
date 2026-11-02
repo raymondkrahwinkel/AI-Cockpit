@@ -23,6 +23,10 @@ public class SettingsCarrierWhitelistTests
                 "Resources": [ { "Reference": "depot://x" } ], "MemoryRef": "depot://m"
               } ],
               "Plugins": { "kubernetes": { "Enabled": true, "SomeNewFlag": true, "Data": { "KubeconfigPath": "C:\\kube" } } },
+              "Notifications": {
+                "NotificationSoundsEnabled": true, "SessionFinishedSound": "Custom file (WAV)",
+                "SessionFinishedCustomSoundPath": "C:\\done.wav", "NeedsAttentionCustomSoundPath": "C:\\wait.wav"
+              },
               "WorkingPaths": { "Recent": [ "C:\\src" ] }
             }
             """) as JsonObject ?? throw new InvalidOperationException("The config is not an object.");
@@ -32,7 +36,8 @@ public class SettingsCarrierWhitelistTests
         var expected = """
             {
               "Profiles": [ { "Label": "Work", "Provider": { "Model": "opus" }, "Delegation": { "MaxConcurrent": 2 } } ],
-              "Plugins": { "kubernetes": { "Enabled": true } }
+              "Plugins": { "kubernetes": { "Enabled": true } },
+              "Notifications": { "NotificationSoundsEnabled": true, "SessionFinishedSound": "Custom file (WAV)" }
             }
             """;
         Assert.True(JsonNode.DeepEquals(JsonNode.Parse(expected), JsonNode.Parse(blob)), blob);
