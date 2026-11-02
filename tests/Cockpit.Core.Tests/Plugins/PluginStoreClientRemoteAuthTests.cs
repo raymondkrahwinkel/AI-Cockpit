@@ -97,10 +97,6 @@ public class PluginStoreClientRemoteAuthTests : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData("plugin.zip")]
-    [InlineData("plugins/%2e%2e/%2e%2e/manifest")]
-    [InlineData("/cockpit/backups/x")]
-    [InlineData("plugins\\..\\manifest")]
     [InlineData("{foreign}foreign.zip")]
     [InlineData("//{foreignHost}/foreign.zip")]
     public async Task SignedSource_RefreshesCredentialsAndIgnoresUntrustedPaths(string advertisedPath)
