@@ -111,7 +111,7 @@ internal sealed class NewMarkdownFileDialog : UserControl
     // Depot has no empty folders: the folder exists once the file is saved in it. "" means the name is fine.
     internal string FolderNameError(string name) =>
         name.Length == 0 ? "Enter a folder name."
-        : name.Contains("..", StringComparison.Ordinal) || name.IndexOfAny(_InvalidChars) >= 0
+        : name == "." || name.Contains("..", StringComparison.Ordinal) || name.IndexOfAny(_InvalidChars) >= 0
             ? "Use a folder name without path separators, “..” or special characters."
         : _folders.Any(existing => string.Equals(existing, _Join(_ParentFolder, name), StringComparison.OrdinalIgnoreCase))
             ? "A folder with this name already exists here."
