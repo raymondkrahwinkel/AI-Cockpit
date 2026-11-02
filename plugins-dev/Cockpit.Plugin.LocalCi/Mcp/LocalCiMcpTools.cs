@@ -224,7 +224,9 @@ internal sealed class LocalCiMcpTools(
             return null;
         }
 
-        var checkout = host.Sessions.GetWorkingDirectory(paneId) ?? checkouts.CheckoutFor(paneId);
+        var checkout = host.Sessions.GetWorkingDirectory(paneId) is { Length: > 0 } backendCheckout
+            ? backendCheckout
+            : checkouts.CheckoutFor(paneId);
         var paneKnown = checkout is not null
             || checkouts.Knows(paneId)
             || host.Sessions.OpenSessions.Any(session => string.Equals(session.PaneId, paneId, StringComparison.Ordinal));

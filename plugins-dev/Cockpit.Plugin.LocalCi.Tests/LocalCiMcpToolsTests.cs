@@ -142,6 +142,7 @@ public class LocalCiMcpToolsTests : IDisposable
         var unknown = await _Tools(act).RunLocalChecks();
         _host.CallerPaneId = "pane-without-checkout";
         _host.SessionObserver.Open.Add(new OpenCockpitSession("pane-without-checkout", "No checkout"));
+        _host.SessionObserver.WorkingDirectories["pane-without-checkout"] = string.Empty;
         var directoryless = await _Tools(act).RunLocalChecks();
 
         Assert.Contains("does not know the pane", _Read(unknown).GetProperty("error").GetString());
