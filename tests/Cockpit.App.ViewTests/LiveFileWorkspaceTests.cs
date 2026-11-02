@@ -245,7 +245,8 @@ public sealed class LiveFileWorkspaceTests
     // Layer 2, view: a plugin acknowledgement and a later sign-in failure cannot acknowledge a failed file save.
     private static async Task _Offline_FailedSaveStaysDirtyAfterSignInExpiresAsync()
     {
-        var (source, body, marker, window) = await _OpenAsync(new LiveFileStatus(LiveFileState.Offline));
+        var time = new Ac1321TakeoverStateTests.FakeTimeProvider(new DateTimeOffset(2026, 11, 2, 22, 59, 59, TimeSpan.Zero));
+        var (source, body, marker, window) = await _OpenAsync(new LiveFileStatus(LiveFileState.Offline), time);
         try
         {
             body.Editor.TextEditor.Document.Insert(0, "MINE\n");
@@ -260,7 +261,7 @@ public sealed class LiveFileWorkspaceTests
             Assert.Equal(WorkspaceMarker.Unsaved, marker());
             // AC-1582, 5c: the amber banner says what happened and offers the plugin's own sign-in.
             Assert.Equal("Not saved to Depot yet", body.GetLogicalDescendants().OfType<TextBlock>().Single(block => block.Name == "FileStatus").Text);
-            Assert.Equal("Your Depot sign-in has expired — Depot stopped the live session at " + DateTime.Now.ToString("HH:mm")
+            Assert.Equal("Your Depot sign-in has expired — Depot stopped the live session at " + time.GetLocalNow().ToString("HH:mm")
                 + ". Nothing was lost; your text is still here. Sign in again to rejoin the note.", _BannerText(body));
             body.GetLogicalDescendants().OfType<Button>().Single(button => button.IsVisible && Equals(button.Content, "Sign in again"))
                 .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -477,7 +478,7 @@ public sealed class LiveFileWorkspaceTests
         }
     }
 
-    private static async Task<(LiveSource Source, MarkdownFileWorkspace Body, Func<WorkspaceMarker?> Marker, Window Window)> _OpenAsync(LiveFileStatus? status = null)
+    private static async Task<(LiveSource Source, MarkdownFileWorkspace Body, Func<WorkspaceMarker?> Marker, Window Window)> _OpenAsync(LiveFileStatus? status = null, TimeProvider? timeProvider = null)
     {
         var source = new LiveSource(Lines) { Status = status ?? new LiveFileStatus(LiveFileState.Live) };
         var hub = new PluginChannelHub(NullLogger<PluginChannelHub>.Instance);
@@ -485,7 +486,7 @@ public sealed class LiveFileWorkspaceTests
         WorkspaceMarker? marker = null;
         var context = new WorkspaceContext("live", new NoStorage(), NullCockpitSessionObserver.Instance, null) { MarkerSet = set => marker = set };
         var options = new FileWorkspaceOpenOptions(new FileRef("c1", "note", "note.md"), "note", "note.md", "Depot / Work", Edit: true);
-        var body = new MarkdownFileWorkspace(context, options, new FileSourceChannelClient(new Channel(hub)), () => Task.FromResult(false));
+        var body = new MarkdownFileWorkspace(context, options, new FileSourceChannelClient(new Channel(hub)), () => Task.FromResult(false), timeProvider: timeProvider);
         var window = new Window { Content = body, Width = 900, Height = 700 };
         window.Show();
         await body.Ready;
