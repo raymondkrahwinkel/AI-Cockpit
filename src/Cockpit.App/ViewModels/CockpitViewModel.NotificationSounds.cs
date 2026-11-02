@@ -68,39 +68,46 @@ public partial class CockpitViewModel
 
     private async Task _NotifyWithSoundAsync(SessionPanelViewModel session, NotificationSoundEvent soundEvent)
     {
-        if (_notificationSettingsStore is null || _playbackService is null)
+        try
         {
-            return;
+            if (_notificationSettingsStore is null || _playbackService is null)
+            {
+                return;
+            }
+
+            var settings = await _notificationSettingsStore.LoadAsync();
+            var eventEnabled = soundEvent == NotificationSoundEvent.SessionFinished
+                ? settings.NotificationSoundOnSessionFinished
+                : settings.NotificationSoundOnNeedsAttention;
+            var selectedSound = soundEvent == NotificationSoundEvent.SessionFinished
+                ? settings.SessionFinishedSound
+                : settings.NeedsAttentionSound;
+            var customPath = soundEvent == NotificationSoundEvent.SessionFinished
+                ? settings.SessionFinishedCustomSoundPath
+                : settings.NeedsAttentionCustomSoundPath;
+            var now = DateTimeOffset.UtcNow;
+            _lastNotificationSounds.TryGetValue(session.PaneId, out var lastPlayedAt);
+
+            if (!NotificationSoundDecision.ShouldPlay(
+                    settings.NotificationSoundsEnabled,
+                    eventEnabled,
+                    ReferenceEquals(session, SelectedSession),
+                    IsWindowActive,
+                    _isVoicePlaybackActive,
+                    lastPlayedAt == default ? null : lastPlayedAt,
+                    now,
+                    NotificationSoundMinimumInterval))
+            {
+                return;
+            }
+
+            _lastNotificationSounds[session.PaneId] = now;
+            await _PlaySelectedNotificationSoundAsync(selectedSound, customPath ?? string.Empty, settings.NotificationSoundVolume);
         }
-
-        var settings = await _notificationSettingsStore.LoadAsync();
-        var eventEnabled = soundEvent == NotificationSoundEvent.SessionFinished
-            ? settings.NotificationSoundOnSessionFinished
-            : settings.NotificationSoundOnNeedsAttention;
-        var selectedSound = soundEvent == NotificationSoundEvent.SessionFinished
-            ? settings.SessionFinishedSound
-            : settings.NeedsAttentionSound;
-        var customPath = soundEvent == NotificationSoundEvent.SessionFinished
-            ? settings.SessionFinishedCustomSoundPath
-            : settings.NeedsAttentionCustomSoundPath;
-        var now = DateTimeOffset.UtcNow;
-        _lastNotificationSounds.TryGetValue(session.PaneId, out var lastPlayedAt);
-
-        if (!NotificationSoundDecision.ShouldPlay(
-                settings.NotificationSoundsEnabled,
-                eventEnabled,
-                ReferenceEquals(session, SelectedSession),
-                IsWindowActive,
-                _isVoicePlaybackActive,
-                lastPlayedAt == default ? null : lastPlayedAt,
-                now,
-                NotificationSoundMinimumInterval))
+        catch (Exception exception)
         {
-            return;
+            _logger?.LogWarning(exception, "Notification sound for {Event} could not be played.", soundEvent);
         }
-
-        _lastNotificationSounds[session.PaneId] = now;
-        await _PlaySelectedNotificationSoundAsync(selectedSound, customPath ?? string.Empty, settings.NotificationSoundVolume);
     }
 
     private async Task _PlaySelectedNotificationSoundAsync(string selectedSound, string customPath, double volume)
@@ -120,7 +127,8 @@ public partial class CockpitViewModel
 
         try
         {
-            await using var stream = selectedSound == CustomWaveSound
+            var useCustomFile = selectedSound == CustomWaveSound && File.Exists(customPath);
+            await using var stream = useCustomFile
                 ? File.OpenRead(customPath)
                 : AssetLoader.Open(new Uri($"avares://Cockpit.App/Assets/NotificationSounds/{_BundledFileName(selectedSound)}"));
             var (pcm, format) = PcmWaveFile.Read(stream);
