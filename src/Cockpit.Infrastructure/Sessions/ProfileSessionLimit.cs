@@ -8,7 +8,7 @@ namespace Cockpit.Infrastructure.Sessions;
 // AC-2026: how many sessions run under a profile, panes and delegated tasks together, and the one section that admits
 // a new one against `MaxParallelSessions`. Pane starts and delegations both pass through `TryAdmit`, so they cannot
 // both slip in under the limit.
-public sealed class ProfileSessionLimit(SessionRegistry registry) : ISingletonService
+public sealed class ProfileSessionLimit(SessionRegistry registry) : IProfileSessionLimits, ISingletonService
 {
     private readonly Lock _gate = new();
     private readonly Dictionary<string, string> _reserved = new(StringComparer.Ordinal);

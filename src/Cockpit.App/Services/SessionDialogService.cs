@@ -1,4 +1,3 @@
-using Cockpit.Infrastructure.Sessions;
 using Cockpit.App.Plugins;
 using System.Reflection;
 using Avalonia;
@@ -55,7 +54,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     // The assistant's own profile slot (AC-543) — its own section of the config, not an entry in `_profileStore`.
     private readonly IAssistantProfileStore _assistantProfileStore;
     private readonly IOrgPolicy _orgPolicy;
-    private readonly ProfileSessionLimit _sessionLimit;
+    private readonly IProfileSessionLimits _sessionLimit;
 
     public SessionDialogService(
         ISessionProfileStore profileStore,
@@ -78,7 +77,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         ISessionLoginFlows loginFlows,
         IPluginProviderConfigViews pluginConfigViews,
         IOrgPolicy orgPolicy,
-        ProfileSessionLimit sessionLimit)
+        IProfileSessionLimits sessionLimit)
     {
         _sessionLimit = sessionLimit;
         _orgPolicy = orgPolicy;
