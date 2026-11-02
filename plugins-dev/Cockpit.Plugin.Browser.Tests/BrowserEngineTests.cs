@@ -2,7 +2,6 @@ using Avalonia.Input;
 using System.Text.Json;
 using Cockpit.Plugin.Browser.UI;
 using Cockpit.Plugin.Browser.UI.Engine;
-using Cockpit.Plugin.Browser.UI.Runtime;
 using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.Browser.Tests;
