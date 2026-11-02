@@ -272,6 +272,7 @@ internal static partial class Screenshotter
         ["markdown-file-new"] = (width, height) => _MarkdownFileScene(width, height, "new"),
         ["markdown-file-create"] = (_, _) => _NewMarkdownFileDialogScene(),
         ["markdown-file-editing"] = (width, height) => _MarkdownFileScene(width, height, "editing"),
+        ["markdown-file-saved"] = (width, height) => _MarkdownFileScene(width, height, "saved"),
         ["markdown-file-conflict"] = (width, height) => _MarkdownFileScene(width, height, "conflict"),
         ["markdown-file-conflict-compare"] = (width, height) => _MarkdownFileScene(width, height, "conflict-compare"),
         ["markdown-file-readonly"] = (width, height) => _MarkdownFileScene(width, height, "readonly"),

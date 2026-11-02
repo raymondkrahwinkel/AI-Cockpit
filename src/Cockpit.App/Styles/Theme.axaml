@@ -1260,7 +1260,7 @@
                                       Content="{TemplateBinding Content}"
                                       ContentTemplate="{TemplateBinding ContentTemplate}"
                                       Foreground="{TemplateBinding Foreground}"
-                                      VerticalAlignment="Top"/>
+                                       VerticalAlignment="Center"/>
                 </Grid>
             </ControlTemplate>
         </Setter>

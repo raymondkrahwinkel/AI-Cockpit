@@ -48,6 +48,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- Markdown editor source switches now align with their saved state and Save button in both themes.
+
 - Server images now follow a successful nightly's exact commit instead of every push to main; release tags and manual builds remain available, and Watchtower can keep following the same image tag.
 
 - Server image validation now runs direct agent checks with the agent's home directory, so GitHub CLI configuration is read from the correct location without changing the separation between server and agent.
