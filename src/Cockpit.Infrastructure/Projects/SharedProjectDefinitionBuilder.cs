@@ -1,12 +1,14 @@
 using Cockpit.Core.Projects;
+using Cockpit.Core.Abstractions;
+using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.Infrastructure.Projects;
 
 // Builds the portable definition used by sharing, saving and backfill.
-public static class SharedProjectDefinitionBuilder
+public sealed class SharedProjectDefinitionBuilder : IProjectDefinitionBuilder<SharedProjectPublishDefinition>, ISingletonService
 {
-    public static async Task<SharedProjectPublishDefinition> BuildAsync(Project project)
+    public async Task<SharedProjectPublishDefinition> BuildAsync(Project project)
     {
         byte[]? logo = null;
         if (project.LogoPath is { Length: > 0 } path)

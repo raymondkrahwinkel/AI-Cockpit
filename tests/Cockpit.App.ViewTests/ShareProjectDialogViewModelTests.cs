@@ -3,6 +3,7 @@ using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Projects;
+using Cockpit.Infrastructure.Projects;
 using Cockpit.Plugins.Abstractions.Projects;
 using NSubstitute;
 
@@ -17,6 +18,9 @@ namespace Cockpit.App.ViewTests;
 public class ShareProjectDialogViewModelTests
 {
     private const string SecretValue = "hunter2-super-secret-value";
+
+    private static ShareProjectDialogViewModel _Create(Project project, IReadOnlyList<ISharedProjectSource> sources) =>
+        ShareProjectDialogViewModel.Create(project, sources, new SharedProjectDefinitionBuilder());
 
     private static Project Project(IReadOnlyList<ProjectResource>? resources = null, IReadOnlyList<ProjectInfoField>? additionalInfo = null) =>
         Core.Projects.Project.Create("PayrollProcessor") with
@@ -52,7 +56,7 @@ public class ShareProjectDialogViewModelTests
     public void Rows_PortableResource_GoesToDepot()
     {
         var project = Project(resources: [new ProjectResource("docs/CONVENTIONS.md", ProjectResourceRole.Reference) { Label = "Conventions" }]);
-        var viewModel = ShareProjectDialogViewModel.Create(project, []);
+        var viewModel = _Create(project, []);
 
         Assert.Contains(viewModel.GoesToDepot, row => row.Label == "Conventions" && row.Value == "docs/CONVENTIONS.md");
         Assert.DoesNotContain(viewModel.StaysOnThisMachine, row => row.Label == "Conventions");
@@ -66,7 +70,7 @@ public class ShareProjectDialogViewModelTests
         var machinePath = Path.Combine(Path.GetTempPath(), "dumps", "payroll-2026.sql");
         var project = Project(resources:
             [new ProjectResource(machinePath, ProjectResourceRole.Reference) { Label = "Testdata dump" }]);
-        var viewModel = ShareProjectDialogViewModel.Create(project, []);
+        var viewModel = _Create(project, []);
 
         Assert.Contains(viewModel.StaysOnThisMachine, row => row.Label == "Testdata dump — path" && row.Value == machinePath);
         Assert.Contains(viewModel.GoesToDepot, row => row.Label == "Testdata dump — name only");
@@ -84,7 +88,7 @@ public class ShareProjectDialogViewModelTests
             new ProjectResource(machinePath, ProjectResourceRole.Memory),
             new ProjectResource("depot:synvolution-flow", ProjectResourceRole.Memory),
         ]);
-        var viewModel = ShareProjectDialogViewModel.Create(project, []);
+        var viewModel = _Create(project, []);
 
         var shared = viewModel.GoesToDepot.Select(row => row.Label).Intersect(viewModel.StaysOnThisMachine.Select(row => row.Label));
         Assert.Empty(shared);
@@ -100,7 +104,7 @@ public class ShareProjectDialogViewModelTests
         {
             Category = "Synvolution",
         };
-        var viewModel = ShareProjectDialogViewModel.Create(project, []);
+        var viewModel = _Create(project, []);
 
         Assert.Contains(viewModel.StaysOnThisMachine, row => row.Label == "Category" && row.Value == "Synvolution");
         Assert.Contains(viewModel.StaysOnThisMachine, row => row.Label == "Anything else worth keeping");
@@ -117,7 +121,7 @@ public class ShareProjectDialogViewModelTests
     [InlineData(null, "not set")]
     public void Rows_TheAssistant_StaysOnThisMachineAndNeverGoesToDepot(string? assistant, string expected)
     {
-        var viewModel = ShareProjectDialogViewModel.Create(Project() with { Assistant = assistant }, []);
+        var viewModel = _Create(Project() with { Assistant = assistant }, []);
 
         Assert.Contains(viewModel.StaysOnThisMachine, row => row.Label == "Assistant" && row.Value == expected);
         Assert.DoesNotContain(viewModel.GoesToDepot, row => row.Label == "Assistant");
@@ -128,7 +132,7 @@ public class ShareProjectDialogViewModelTests
     public void Rows_ALogo_GoesToDepotRatherThanStayingOnThisMachine()
     {
         var project = Project() with { LogoPath = "/home/raymond/logos/payroll.png" };
-        var viewModel = ShareProjectDialogViewModel.Create(project, []);
+        var viewModel = _Create(project, []);
 
         Assert.Contains(viewModel.GoesToDepot, row => row.Label == "Logo" && row.Value == "/home/raymond/logos/payroll.png");
         Assert.DoesNotContain(viewModel.StaysOnThisMachine, row => row.Label == "Logo");
@@ -145,7 +149,7 @@ public class ShareProjectDialogViewModelTests
         source.ListPublishTargetsAsync(Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(SharedProjectPublishTargetListResult.Success([])));
 
-        var viewModel = ShareProjectDialogViewModel.Create(Project(), [source]);
+        var viewModel = _Create(Project(), [source]);
         await Task.Yield();
 
         Assert.Empty(viewModel.Targets);
@@ -156,7 +160,7 @@ public class ShareProjectDialogViewModelTests
     public void Rows_SecretShapedResourceReference_StaysOnThisMachineAndNeverShowsTheReferenceItself()
     {
         var project = Project(resources: [new ProjectResource("~/.ssh/id_rsa", ProjectResourceRole.Reference) { Label = "Deploy key" }]);
-        var viewModel = ShareProjectDialogViewModel.Create(project, []);
+        var viewModel = _Create(project, []);
 
         var row = Assert.Single(viewModel.StaysOnThisMachine, row => row.Label == "Deploy key");
         Assert.DoesNotContain("id_rsa", row.Value, StringComparison.Ordinal);
@@ -173,7 +177,7 @@ public class ShareProjectDialogViewModelTests
             new ProjectInfoField("Repository", "https://github.com/example/payroll"),
             new ProjectInfoField("Production DB password", SecretValue) { IsSecret = true },
         ]);
-        var viewModel = ShareProjectDialogViewModel.Create(project, []);
+        var viewModel = _Create(project, []);
 
         Assert.DoesNotContain(viewModel.GoesToDepot, row => row.Label.Contains("Repository") || row.Value.Contains(SecretValue));
         Assert.DoesNotContain(viewModel.StaysOnThisMachine, row => row.Value.Contains(SecretValue));
@@ -184,7 +188,7 @@ public class ShareProjectDialogViewModelTests
     {
         var project = Project();
         var source = FakeSource(SharedProjectPublishResult.Success("depot:payroll-processor"), out _);
-        var viewModel = ShareProjectDialogViewModel.Create(project, [source]);
+        var viewModel = _Create(project, [source]);
 
         Project? closed = null;
         viewModel.CloseRequested += result => closed = result;
@@ -207,7 +211,7 @@ public class ShareProjectDialogViewModelTests
     {
         var project = Project(resources: [new ProjectResource("depot:payroll-processor-old", ProjectResourceRole.Memory)]);
         var source = FakeSource(SharedProjectPublishResult.Success("depot:payroll-processor"), out _);
-        var viewModel = ShareProjectDialogViewModel.Create(project, [source]);
+        var viewModel = _Create(project, [source]);
 
         Project? closed = null;
         viewModel.CloseRequested += result => closed = result;
@@ -226,7 +230,7 @@ public class ShareProjectDialogViewModelTests
     {
         var project = Project();
         var source = FakeSource(SharedProjectPublishResult.PermissionDenied("You do not have permission to publish here."), out _);
-        var viewModel = ShareProjectDialogViewModel.Create(project, [source]);
+        var viewModel = _Create(project, [source]);
 
         Project? closed = null;
         var closeRaised = false;
@@ -250,7 +254,7 @@ public class ShareProjectDialogViewModelTests
             resources: [new ProjectResource("docs/CONVENTIONS.md", ProjectResourceRole.Reference) { Label = "Conventions" }],
             additionalInfo: [new ProjectInfoField("Production DB password", SecretValue) { IsSecret = true }]);
         var source = FakeSource(SharedProjectPublishResult.Success("depot:payroll-processor"), out var sent);
-        var viewModel = ShareProjectDialogViewModel.Create(project, [source]);
+        var viewModel = _Create(project, [source]);
         viewModel.SelectedTarget = new SharedProjectPublishTarget("depot:payroll-processor", "payroll-processor", "Owner");
 
         await viewModel.ShareCommand.ExecuteAsync(null);
@@ -279,7 +283,7 @@ public class ShareProjectDialogViewModelTests
             await File.WriteAllBytesAsync(logoPath, bytes);
             var project = Project() with { LogoPath = logoPath };
             var source = FakeSource(SharedProjectPublishResult.Success("depot:payroll-processor"), out var sent);
-            var viewModel = ShareProjectDialogViewModel.Create(project, [source]);
+            var viewModel = _Create(project, [source]);
             viewModel.SelectedTarget = new SharedProjectPublishTarget("depot:payroll-processor", "payroll-processor", "Owner");
 
             await viewModel.ShareCommand.ExecuteAsync(null);
@@ -296,7 +300,7 @@ public class ShareProjectDialogViewModelTests
     public async Task ShareAsync_ProjectHasNoLogo_SendsNoLogoBytes()
     {
         var source = FakeSource(SharedProjectPublishResult.Success("depot:payroll-processor"), out var sent);
-        var viewModel = ShareProjectDialogViewModel.Create(Project(), [source]);
+        var viewModel = _Create(Project(), [source]);
         viewModel.SelectedTarget = new SharedProjectPublishTarget("depot:payroll-processor", "payroll-processor", "Owner");
 
         await viewModel.ShareCommand.ExecuteAsync(null);
@@ -313,7 +317,7 @@ public class ShareProjectDialogViewModelTests
         var project = Project(
             resources: [new ProjectResource("docs/CONVENTIONS.md", ProjectResourceRole.Reference) { Label = "Conventions" }],
             additionalInfo: [new ProjectInfoField("Production DB password", SecretValue) { IsSecret = true }]);
-        var viewModel = ShareProjectDialogViewModel.Create(project, []);
+        var viewModel = _Create(project, []);
 
         HeadlessAvalonia.Run(() =>
         {

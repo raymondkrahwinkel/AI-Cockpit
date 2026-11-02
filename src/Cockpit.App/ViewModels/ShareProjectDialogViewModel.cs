@@ -2,7 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Projects;
-using Cockpit.Infrastructure.Projects;
+using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.App.ViewModels;
@@ -14,6 +14,7 @@ public partial class ShareProjectDialogViewModel : ViewModelBase
 {
     private readonly Project _project;
     private readonly IReadOnlyList<ISharedProjectSource> _sources;
+    private readonly IProjectDefinitionBuilder<SharedProjectPublishDefinition>? _definitionBuilder;
 
     // Raised when the dialog is done: the project with its new binding row, or null when the operator cancelled or
     // the publish never succeeded (an error stays visible in the dialog instead of closing it).
@@ -51,10 +52,12 @@ public partial class ShareProjectDialogViewModel : ViewModelBase
         SelectedTarget = Targets[0];
     }
 
-    private ShareProjectDialogViewModel(Project project, IReadOnlyList<ISharedProjectSource> sources)
+    private ShareProjectDialogViewModel(Project project, IReadOnlyList<ISharedProjectSource> sources,
+        IProjectDefinitionBuilder<SharedProjectPublishDefinition> definitionBuilder)
     {
         _project = project;
         _sources = sources;
+        _definitionBuilder = definitionBuilder;
         ProjectName = project.Name;
         _BuildFieldRows();
 
@@ -69,8 +72,9 @@ public partial class ShareProjectDialogViewModel : ViewModelBase
         }
     }
 
-    public static ShareProjectDialogViewModel Create(Project project, IReadOnlyList<ISharedProjectSource> sources) =>
-        new(project, sources);
+    public static ShareProjectDialogViewModel Create(Project project, IReadOnlyList<ISharedProjectSource> sources,
+        IProjectDefinitionBuilder<SharedProjectPublishDefinition> definitionBuilder) =>
+        new(project, sources, definitionBuilder);
 
     public string ProjectName { get; }
 
@@ -259,7 +263,7 @@ public partial class ShareProjectDialogViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(_CanShare))]
     private async Task ShareAsync()
     {
-        if (_SelectedSource is not { } source || SelectedTarget is not { } target)
+        if (_SelectedSource is not { } source || SelectedTarget is not { } target || _definitionBuilder is not { } definitionBuilder)
         {
             return;
         }
@@ -268,7 +272,7 @@ public partial class ShareProjectDialogViewModel : ViewModelBase
         ErrorMessage = null;
         try
         {
-            var definition = await SharedProjectDefinitionBuilder.BuildAsync(_project).ConfigureAwait(true);
+            var definition = await definitionBuilder.BuildAsync(_project).ConfigureAwait(true);
             var result = await source.PublishAsync(target.Id, definition, CancellationToken.None).ConfigureAwait(true);
 
             if (result.Outcome != SharedProjectPublishOutcome.Success || result.BoundId is not { Length: > 0 } boundId)

@@ -19,6 +19,7 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
     private readonly ISharedProjectSourceRegistry _sharedSources;
     private readonly DepotSyncWatcher? _depotSync;
     private readonly ILogger<ProjectCatalog> _logger;
+    private readonly IProjectDefinitionBuilder<SharedProjectPublishDefinition> _definitionBuilder;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly HashSet<string> _remoteChangedProjectIds = new(StringComparer.Ordinal);
 
@@ -40,7 +41,8 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
         ISharedProjectSourceRegistry sharedSources,
         IProjectLogoStore? logos = null,
         DepotSyncWatcher? depotSync = null,
-        ILogger<ProjectCatalog>? logger = null)
+        ILogger<ProjectCatalog>? logger = null,
+        IProjectDefinitionBuilder<SharedProjectPublishDefinition>? definitionBuilder = null)
     {
         _store = store;
         _ownership = ownership;
@@ -48,6 +50,7 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
         _logos = logos;
         _depotSync = depotSync;
         _logger = logger ?? NullLogger<ProjectCatalog>.Instance;
+        _definitionBuilder = definitionBuilder ?? new SharedProjectDefinitionBuilder();
 
         // AC-762: a source that registers after the first read (plugin phase 2 runs after the window's first load)
         // gets its own read instead of leaving every card on it stuck until the operator opens Manage projects.
@@ -329,7 +332,7 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
                 {
                     try
                     {
-                        var definition = await SharedProjectDefinitionBuilder.BuildAsync(project).ConfigureAwait(false);
+                        var definition = await _definitionBuilder.BuildAsync(project).ConfigureAwait(false);
                         var published = await source.PublishAsync(reference, definition, cancellationToken).ConfigureAwait(false);
                         publishedDefinition |= published.Outcome is SharedProjectPublishOutcome.Success or SharedProjectPublishOutcome.AlreadyPublished;
                         if (published.Outcome is not (SharedProjectPublishOutcome.Success or SharedProjectPublishOutcome.AlreadyPublished))
