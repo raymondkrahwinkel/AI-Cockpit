@@ -22,6 +22,16 @@ public partial class AgentsPaletteDialog : Window
             }
         };
         Opened += (_, _) => QueryBox.Focus();
+        // However the window closes (X, Alt+F4, Esc), release the view model's hold on the long-lived columns; the
+        // window is already closing, so it must not be asked to close again.
+        Closed += (_, _) =>
+        {
+            if (DataContext is AgentsPaletteViewModel viewModel)
+            {
+                viewModel.CloseRequested -= Close;
+                viewModel.Close();
+            }
+        };
         // Tunnel on the window so these keys win over the TextBox's own handling.
         this.AddHandler(KeyDownEvent, OnKeyDown, RoutingStrategies.Tunnel);
     }

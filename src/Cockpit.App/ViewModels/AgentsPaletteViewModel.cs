@@ -21,6 +21,8 @@ public sealed partial class AgentsPaletteViewModel : ObservableObject
         _Select(_Cards.FirstOrDefault());
     }
 
+    private bool _closed;
+
     public AgentsOverviewViewModel Agents { get; }
     public IReadOnlyList<AgentsOverviewColumnViewModel> Columns => Agents.Columns;
 
@@ -95,8 +97,15 @@ public sealed partial class AgentsPaletteViewModel : ObservableObject
         }
     }
 
+    // Idempotent: the Esc/Enter paths call it, and so does the dialog's Closed event for the X and Alt+F4.
     public void Close()
     {
+        if (_closed)
+        {
+            return;
+        }
+
+        _closed = true;
         foreach (var column in Columns)
         {
             column.Cards.CollectionChanged -= _OnCardsChanged;
