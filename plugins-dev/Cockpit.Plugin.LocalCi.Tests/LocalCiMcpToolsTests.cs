@@ -5,6 +5,7 @@ using Cockpit.Plugin.LocalCi.Execution;
 using Cockpit.Plugin.LocalCi.Mcp;
 using Cockpit.Plugin.LocalCi.Sessions;
 using Cockpit.Plugins.Abstractions.Consent;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.LocalCi.Tests;
 
@@ -51,11 +52,16 @@ public class LocalCiMcpToolsTests : IDisposable
     public async Task TheRunHappensInTheCallersCheckoutAndNotAnybodyElses()
     {
         _host.CallerPaneId = "pane-caller";
+        _checkouts.Forget("pane-caller");
+        _host.SessionObserver.Open.Add(new OpenCockpitSession("pane-caller", "Caller"));
+        _host.SessionObserver.WorkingDirectories["pane-caller"] = _caller.Root;
         var act = FakeStreamingCliRunner.Exiting(0);
 
+        var status = await _Tools(act).LocalCheckStatus();
         await _Tools(act).RunLocalChecks();
         await _host.Delivered;
 
+        Assert.Equal(_caller.Root, _Read(status).GetProperty("checkout").GetString());
         Assert.Equal(_caller.Root, act.Calls.Single().WorkingDirectory);
     }
 
@@ -130,14 +136,20 @@ public class LocalCiMcpToolsTests : IDisposable
     }
 
     [Fact]
-    public async Task ACallerTheCockpitDoesNotKnowGetsNothing()
+    public async Task UnknownAndDirectorylessCallersGetDifferentErrors()
     {
         _host.CallerPaneId = "pane-that-never-registered";
         var act = FakeStreamingCliRunner.Exiting(0);
 
-        var answer = await _Tools(act).RunLocalChecks();
+        var unknown = await _Tools(act).RunLocalChecks();
+        _host.CallerPaneId = "pane-without-checkout";
+        _host.SessionObserver.Open.Add(new OpenCockpitSession("pane-without-checkout", "No checkout"));
+        _host.SessionObserver.WorkingDirectories["pane-without-checkout"] = string.Empty;
+        _checkouts.Remember(new FakeSession("pane-without-checkout", _neighbour.Root));
+        var directoryless = await _Tools(act).RunLocalChecks();
 
-        Assert.False(_Read(answer).GetProperty("ok").GetBoolean());
+        Assert.Contains("does not know the pane", _Read(unknown).GetProperty("error").GetString());
+        Assert.Contains("has no working directory or checkout", _Read(directoryless).GetProperty("error").GetString());
         Assert.Empty(act.Calls);
     }
 
