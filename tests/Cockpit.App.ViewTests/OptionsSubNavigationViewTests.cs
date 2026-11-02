@@ -27,7 +27,7 @@ public class OptionsSubNavigationViewTests
     // Profiles (AC-1001) right after Sessions.
     private static readonly string[] ExpectedCategoryTags =
     [
-        "sessions", "profiles", "appearance", "terminal", "notifications", "shortcuts",
+        "sessions", "profiles", "appearance", "terminal", "notifications", "shortcuts", "agents-overview",
         "voice", "assistant",
         "security", "mcp-servers", "swarm", "servers", "model-intelligence", "sync", "backup", "updates", "debug",
     ];

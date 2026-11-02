@@ -1,0 +1,108 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Cockpit.App.ViewModels"
+        xmlns:conv="using:Cockpit.App.Converters"
+        x:Class="Cockpit.App.Views.AgentsPaletteDialog"
+        x:DataType="vm:AgentsPaletteViewModel"
+        Title="Agents"
+        Width="920" Height="520" CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource CockpitPanelBgBrush}">
+    <Window.Styles>
+        <Style Selector="Border.paletteRow">
+            <Setter Property="Background" Value="{DynamicResource CockpitPanelBgBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CockpitHairlineBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+        <Style Selector="Border.paletteRow.picked">
+            <Setter Property="Background" Value="{DynamicResource CockpitSecondaryBgBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CockpitAccentBrush}"/>
+        </Style>
+        <Style Selector="Border.paletteRow.asleep">
+            <Setter Property="Opacity" Value="0.5"/>
+        </Style>
+        <Style Selector="Border.paletteBadge">
+            <Setter Property="Background" Value="{DynamicResource CockpitInsetBgBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CockpitHairlineBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="{StaticResource CockpitPillRadius}"/>
+            <Setter Property="Padding" Value="6,0"/>
+        </Style>
+    </Window.Styles>
+    <Grid RowDefinitions="Auto,*,Auto" Margin="12">
+        <Border Grid.Row="0" Background="{DynamicResource CockpitSecondaryBgBrush}"
+                BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
+                CornerRadius="10" Padding="14,9">
+            <DockPanel>
+                <ToggleButton DockPanel.Dock="Right" IsChecked="{Binding Agents.ShowOnlyWaiting, Mode=TwoWay}" Margin="8,0,0,0"
+                              AutomationProperties.Name="Waiting for you">
+                    <TextBlock Text="{Binding Agents.WaitingCount, StringFormat='Waiting for you · {0}'}"
+                               Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
+                </ToggleButton>
+                <TextBlock DockPanel.Dock="Left" Text="›" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"
+                           Margin="2,0,12,0" Foreground="{DynamicResource CockpitAccentBrush}"/>
+                <TextBox x:Name="QueryBox" Text="{Binding Agents.SearchText}"
+                         Background="Transparent" BorderThickness="0" Padding="0" FontSize="15"
+                         VerticalContentAlignment="Center" PlaceholderText="Search agents…"/>
+            </DockPanel>
+        </Border>
+
+        <ItemsControl Grid.Row="1" Margin="0,10,0,0" ItemsSource="{Binding Columns}">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <UniformGrid Rows="1"/>
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:AgentsOverviewColumnViewModel">
+                    <DockPanel Margin="0,0,8,0">
+                        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="7" Margin="2,2,0,6">
+                            <Ellipse Width="7" Height="7" Fill="{Binding BrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                            <TextBlock Text="{Binding Title}" FontSize="11" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                            <TextBlock Text="{Binding Cards.Count}" FontSize="10.5" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        </StackPanel>
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                            <ItemsControl ItemsSource="{Binding Cards}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:AgentOverviewCardViewModel">
+                                        <Button Classes="Subtle" Padding="0" Margin="0,0,0,4" HorizontalAlignment="Stretch"
+                                                HorizontalContentAlignment="Stretch" Click="OnRowClick"
+                                                AutomationProperties.Name="{Binding Title}" ToolTip.Tip="{Binding Statusline}">
+                                            <Border Classes="paletteRow" Classes.picked="{Binding IsPicked}" Classes.asleep="{Binding IsAsleep}"
+                                                    CornerRadius="{StaticResource CockpitControlRadius}" Padding="8,5">
+                                                <StackPanel Spacing="3">
+                                                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                                                        <Ellipse Width="7" Height="7" Fill="{Binding StatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                                                        <TextBlock Grid.Column="1" Text="{Binding Title}" FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                                    </Grid>
+                                                    <WrapPanel Orientation="Horizontal">
+                                                        <Border Classes="paletteBadge" Margin="0,0,4,0">
+                                                            <TextBlock Text="{Binding Machine}" FontSize="10"/>
+                                                        </Border>
+                                                        <Border Classes="paletteBadge" Margin="0,0,4,0">
+                                                            <TextBlock Text="{Binding Project}" FontSize="10" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                                        </Border>
+                                                        <Border Classes="paletteBadge" IsVisible="{Binding TerminalOnly}">
+                                                            <TextBlock Text="Terminal" FontSize="10" Foreground="{DynamicResource CockpitAccentBrush}"/>
+                                                        </Border>
+                                                        <Border Classes="paletteBadge" IsVisible="{Binding IsDelegatedTask}">
+                                                            <TextBlock Text="Task" FontSize="10" Foreground="{DynamicResource CockpitAccentBrush}"/>
+                                                        </Border>
+                                                    </WrapPanel>
+                                                </StackPanel>
+                                            </Border>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </DockPanel>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <TextBlock Grid.Row="2" Margin="2,8,0,0" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"
+                   Text="↑/↓ move · Tab next column · Enter open · Ctrl+Enter open beside · Esc close"/>
+    </Grid>
+</Window>

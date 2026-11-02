@@ -2365,6 +2365,12 @@
                     <Border Width="1" HorizontalAlignment="Left"
                             Background="{DynamicResource CockpitHairlineBrush}"
                             IsVisible="{Binding EffectiveOpenDockPanelId, Converter={x:Static avconv:ObjectConverters.IsNotNull}}"/>
+                    <!-- AC-1933: the Agents palette's icon at the foot of the strip; off by default, switched in Options. -->
+                    <Button Classes="Subtle" Width="40" Height="40" Padding="0" VerticalAlignment="Bottom" CornerRadius="0"
+                            IsVisible="{Binding ShowAgentsPaletteRailIcon}" Command="{Binding ShowAgentsPaletteCommand}"
+                            ToolTip.Tip="Agents palette" AutomationProperties.Name="Agents palette">
+                        <materialIcons:MaterialIcon Kind="Magnify" Width="16" Height="16"/>
+                    </Button>
                     <ItemsControl Width="40" VerticalAlignment="Top" ItemsSource="{Binding RailTabs}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="docking:DockPanelRegistration">

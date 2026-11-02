@@ -782,6 +782,23 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         viewModel.Chosen?.Invoke();
     }
 
+    public async Task ShowAgentsPaletteDialogAsync(AgentsOverviewViewModel agents)
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+        {
+            return;
+        }
+
+        var viewModel = new AgentsPaletteViewModel(agents);
+        await new AgentsPaletteDialog { DataContext = viewModel }.ShowDialog(owner);
+
+        // Open the pick after the palette has closed, like the command palette does.
+        if (viewModel.Chosen is { } chosen)
+        {
+            await chosen();
+        }
+    }
+
     public async Task<bool> ShowConfirmationDialogAsync(string title, string message, string confirmLabel = "Remove")
     {
         // Owner is the topmost window so the confirm sits over whatever dialog triggered it (e.g. the store).

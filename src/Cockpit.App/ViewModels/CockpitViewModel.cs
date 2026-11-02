@@ -1102,6 +1102,31 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // every pane then carries the drag-reorder grip, and the column/row gutters between them are resizable (AC-696).
     public bool StackSessionsInStack => !ShowSinglePane && !ShowFocusRail && VisibleSessions.Count() >= 2;
 
+    // The Agents palette (AC-1933) and its two entry points. Switched off, the shortcut, the title-bar button and the
+    // rail icon do nothing and the button and icon are hidden, whatever their own switches say.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowAgentsPaletteButton), nameof(ShowAgentsPaletteRailIcon))]
+    private bool _agentsPaletteEnabled = true;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowAgentsPaletteButton))]
+    private bool _agentsPaletteTitleButton = true;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowAgentsPaletteRailIcon))]
+    private bool _agentsPaletteRailIcon;
+
+    // "Agents · Ctrl + Shift + A": the title-bar button names the key that is bound now, and only "Agents" when none is.
+    public string AgentsPaletteButtonLabel => _shortcutSettings.GestureFor(ShortcutAction.AgentsPalette) is { Length: > 0 } gesture
+        ? $"Agents · {_PrettifyGesture(gesture)}"
+        : "Agents";
+
+    // The palette's own row in the shortcut list, so Options › Agents overview can rebind it without a second store.
+    public ShortcutRowViewModel? AgentsPaletteShortcut => ShortcutRows.FirstOrDefault(row => row.Action == ShortcutAction.AgentsPalette);
+
+    public bool ShowAgentsPaletteButton => AgentsPaletteEnabled && AgentsPaletteTitleButton;
+    public bool ShowAgentsPaletteRailIcon => AgentsPaletteEnabled && AgentsPaletteRailIcon;
+
     // When true, closing the window hides it to the system tray and keeps the app running (#33).
     [ObservableProperty]
     private bool _minimizeToTrayOnClose;
@@ -4119,6 +4144,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // plugin-contributed shortcut so the operator can see what plugins bound.
     private void _RebuildShortcutRows()
     {
+        OnPropertyChanged(nameof(AgentsPaletteShortcut));
         ShortcutRows.Clear();
         foreach (var descriptor in ShortcutCatalog.All)
         {
@@ -4171,6 +4197,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // every plugin shortcut, each paired with the action to run.
     private void _RebuildActiveShortcuts()
     {
+        OnPropertyChanged(nameof(AgentsPaletteButtonLabel));
         var bindings = new List<ShortcutBinding>();
         foreach (var descriptor in ShortcutCatalog.All)
         {
@@ -4266,6 +4293,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             ShortcutAction.About => AboutCommand,
             ShortcutAction.ToggleZoom => ToggleZoomCommand,
             ShortcutAction.CommandPalette => ShowCommandPaletteCommand,
+            ShortcutAction.AgentsPalette => ShowAgentsPaletteCommand,
             ShortcutAction.PreviousSession => SelectPreviousSessionCommand,
             ShortcutAction.NextSession => SelectNextSessionCommand,
             ShortcutAction.PreviousWorkspace => Workspaces.SelectPreviousWorkspaceCommand,
@@ -5671,6 +5699,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _OnFloatingDockPanelsChanged();
         _dockHost?.RestoreIfStarted();
         OpenInSimpleView = settings.OpenInSimpleView;
+        AgentsPaletteEnabled = settings.AgentsPaletteEnabled;
+        AgentsPaletteTitleButton = settings.AgentsPaletteTitleButton;
+        AgentsPaletteRailIcon = settings.AgentsPaletteRailIcon;
         ThemeMode = settings.ThemeMode;
         AssistantThreadRailWindow = settings.AssistantThreadRailWindow;
         AssistantThreadRailDock = settings.AssistantThreadRailDock;
@@ -5702,6 +5733,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         AssistantDocked = AssistantDocked,
         FloatingDockPanelIds = [.. _floatingDockPanelIds.Order(StringComparer.Ordinal)],
         OpenInSimpleView = OpenInSimpleView,
+        AgentsPaletteEnabled = AgentsPaletteEnabled,
+        AgentsPaletteTitleButton = AgentsPaletteTitleButton,
+        AgentsPaletteRailIcon = AgentsPaletteRailIcon,
         ThemeMode = ThemeMode,
         AssistantThreadRailWindow = AssistantThreadRailWindow,
         AssistantThreadRailDock = AssistantThreadRailDock,
@@ -7446,6 +7480,19 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await _dialogService.ShowCommandPaletteDialogAsync(BuildPaletteCommands());
     }
 
+    // The Agents palette (AC-1933): the compact kanban over the same cards and filters as the Agents panel. Does
+    // nothing with the palette switched off, so a bound key, the button and the icon share one gate.
+    [RelayCommand]
+    private async Task ShowAgentsPaletteAsync()
+    {
+        if (_dialogService is null || !AgentsPaletteEnabled)
+        {
+            return;
+        }
+
+        await _dialogService.ShowAgentsPaletteDialogAsync(AgentsOverview);
+    }
+
     // Every command the palette can run: the built-in app actions (except the palette itself) and every
     // plugin-contributed command, each with its shortcut shown. Plugins appear here just by registering a
     // shortcut — one with no gesture is a palette-only command.
@@ -7454,7 +7501,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         var commands = new List<PaletteCommand>();
         foreach (var descriptor in ShortcutCatalog.All)
         {
-            if (descriptor.Action == ShortcutAction.CommandPalette)
+            if (descriptor.Action is ShortcutAction.CommandPalette or ShortcutAction.AgentsPalette)
             {
                 continue;
             }
@@ -7940,6 +7987,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         GlobalFocusRailLayout = layout.FocusRailLayout;
         MinimizeToTrayOnClose = layout.MinimizeToTrayOnClose;
         OpenInSimpleView = layout.OpenInSimpleView;
+        AgentsPaletteEnabled = layout.AgentsPaletteEnabled;
+        AgentsPaletteTitleButton = layout.AgentsPaletteTitleButton;
+        AgentsPaletteRailIcon = layout.AgentsPaletteRailIcon;
         ThemeMode = layout.ThemeMode;
 
         var voice = new VoiceSettings();

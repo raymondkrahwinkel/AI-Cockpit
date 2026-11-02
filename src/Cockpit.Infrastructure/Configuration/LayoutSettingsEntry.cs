@@ -34,6 +34,12 @@ internal sealed class LayoutSettingsEntry
 
     public bool OpenInSimpleView { get; set; }
 
+    public bool AgentsPaletteEnabled { get; set; } = true;
+
+    public bool AgentsPaletteTitleButton { get; set; } = true;
+
+    public bool AgentsPaletteRailIcon { get; set; }
+
     public ThemeMode ThemeMode { get; set; } = ThemeMode.Dark;
 
     // AC-1748: these two were never here, so the thread rail's "Icons only" was dropped on every save.
@@ -60,6 +66,9 @@ internal sealed class LayoutSettingsEntry
         FloatingDockPanelIds = settings.FloatingDockPanelIds?.ToList(),
         CompanionWindowVisible = settings.CompanionWindowVisible,
         OpenInSimpleView = settings.OpenInSimpleView,
+        AgentsPaletteEnabled = settings.AgentsPaletteEnabled,
+        AgentsPaletteTitleButton = settings.AgentsPaletteTitleButton,
+        AgentsPaletteRailIcon = settings.AgentsPaletteRailIcon,
         ThemeMode = settings.ThemeMode,
         AssistantThreadRailWindow = settings.AssistantThreadRailWindow,
         AssistantThreadRailDock = settings.AssistantThreadRailDock,
@@ -83,6 +92,9 @@ internal sealed class LayoutSettingsEntry
         FloatingDockPanelIds = FloatingDockPanelIds,
         CompanionWindowVisible = CompanionWindowVisible,
         OpenInSimpleView = OpenInSimpleView,
+        AgentsPaletteEnabled = AgentsPaletteEnabled,
+        AgentsPaletteTitleButton = AgentsPaletteTitleButton,
+        AgentsPaletteRailIcon = AgentsPaletteRailIcon,
         ThemeMode = ThemeMode,
         AssistantThreadRailWindow = AssistantThreadRailWindow,
         AssistantThreadRailDock = AssistantThreadRailDock,

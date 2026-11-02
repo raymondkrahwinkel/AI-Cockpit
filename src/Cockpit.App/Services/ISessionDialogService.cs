@@ -143,6 +143,9 @@ public interface ISessionDialogService
     /// </summary>
     Task ShowCommandPaletteDialogAsync(IReadOnlyList<PaletteCommand> commands);
 
+    // The Agents palette (AC-1933): the Agents panel as a compact kanban overlay.
+    Task ShowAgentsPaletteDialogAsync(AgentsOverviewViewModel agents);
+
     /// <summary>
     /// Asks the operator to confirm a destructive action (remove a store/profile/plugin/…). Returns true only when they confirm; Cancel/✕/Esc return false. Shown over the topmost window.
     /// </summary>
