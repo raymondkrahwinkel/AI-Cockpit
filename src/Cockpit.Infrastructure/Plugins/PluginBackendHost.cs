@@ -818,7 +818,7 @@ public class PluginBackendHost(
             name,
             () => _OwnOAuthServer(name),
             services.GetService<IMcpOAuthCoordinator>(),
-            new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false });
+            OAuthUpstreamHandler.Create());
 
     // AC-1586: the same, with a host-only token for `scope` alone, which no session is ever handed.
     public HttpMessageHandler CreateAuthorizedHandler(string name, string scope)
@@ -829,7 +829,7 @@ public class PluginBackendHost(
             () => _OwnOAuthServer(name),
             hostOnly is null ? null : (server, cancellationToken) => hostOnly.AcquireAsync(server, scope, rejected: null, cancellationToken),
             hostOnly is null ? null : (server, rejected, cancellationToken) => hostOnly.AcquireAsync(server, scope, rejected, cancellationToken),
-            new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false });
+            OAuthUpstreamHandler.Create());
     }
 
     private McpServerConfig? _OwnOAuthServer(string name) =>

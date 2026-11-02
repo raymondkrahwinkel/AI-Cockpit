@@ -33,7 +33,7 @@ internal sealed class McpOAuthProxyHost : IMcpOAuthProxy, ISingletonService, IAs
 
     // One client per proxied server with no timeout — the default hundred seconds would cut an SSE stream off
     // mid-session. Redirects are not followed, since that's the upstream's answer to relay, not ours to resolve.
-    private readonly HttpClient _upstream = new(new SocketsHttpHandler { AllowAutoRedirect = false })
+    private readonly HttpClient _upstream = new(OAuthUpstreamHandler.Create())
     {
         Timeout = Timeout.InfiniteTimeSpan,
     };
