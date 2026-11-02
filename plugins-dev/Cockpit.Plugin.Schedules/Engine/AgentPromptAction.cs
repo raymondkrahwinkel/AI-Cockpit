@@ -39,7 +39,7 @@ internal sealed partial class AgentPromptAction(ICockpitHost host, TaskDelivery 
             return new ActionResult(RunOutcome.Failed, Reason: "An agent prompt needs a prompt.");
         }
 
-        if (profile.Length < 0)
+        if (profile.Length == 0)
         {
             return await _RunAssistantAsync(task, cancellationToken);
         }
