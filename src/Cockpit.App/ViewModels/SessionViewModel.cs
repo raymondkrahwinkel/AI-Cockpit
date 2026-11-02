@@ -21,7 +21,6 @@ using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Provisioning;
 using Cockpit.Core.Usage;
-using Cockpit.Infrastructure.HeavyRuns;
 using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Microsoft.Extensions.Logging;
@@ -1408,7 +1407,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         ISessionTranscriptReader? transcriptReader = null,
         ILogger<SessionViewModel>? logger = null,
         IBackendEventLog? eventLog = null,
-        HeavyRunQueue? heavyRuns = null)
+        ISessionRunActivities? heavyRuns = null)
         : base(usageHistory, heavyRuns)
     {
         _transcriptReader = transcriptReader;

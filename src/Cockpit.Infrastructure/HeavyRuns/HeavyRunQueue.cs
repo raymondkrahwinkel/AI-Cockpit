@@ -11,7 +11,7 @@ namespace Cockpit.Infrastructure.HeavyRuns;
 // AC-1535: the machine-wide queue for heavy runs; `start_run` and local-ci's gate both take their place here. Who gets
 // in is `HeavyRunAdmission`'s call; this keeps the places, gives them back (run over, owner gone, stopped by hand),
 // learns what each kind cost, and is the "Heavy runs" status item. In memory: a restart empties it.
-public sealed class HeavyRunQueue : ISupervisedActivitySource, ISingletonService, IDisposable
+public sealed class HeavyRunQueue : ISessionRunActivities, ISupervisedActivitySource, ISingletonService, IDisposable
 {
     // As long as the load average needs to show a just-admitted run: until then its expected cost is counted on top,
     // and a run shorter than this never moved the average enough to learn its cost from.

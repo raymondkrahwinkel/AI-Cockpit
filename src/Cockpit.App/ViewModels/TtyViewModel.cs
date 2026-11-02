@@ -14,7 +14,6 @@ using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Terminal;
 using Cockpit.Core.Usage;
-using Cockpit.Infrastructure.HeavyRuns;
 
 namespace Cockpit.App.ViewModels;
 
@@ -201,7 +200,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         IUsageHistory? usageHistory = null,
         VoiceOverlayCoordinator? voiceOverlay = null,
         ILogger<TtyViewModel>? logger = null,
-        HeavyRunQueue? heavyRuns = null)
+        ISessionRunActivities? heavyRuns = null)
         : base(usageHistory, heavyRuns)
     {
         _launcher = launcher;
