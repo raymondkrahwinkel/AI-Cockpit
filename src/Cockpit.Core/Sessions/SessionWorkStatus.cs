@@ -8,7 +8,7 @@ public static class SessionWorkStatus
         hasBackgroundShells || runs.Count > 0;
 
     public static SessionStatus Derive(SessionStatus status, IReadOnlyList<SessionRunActivity> runs) =>
-        runs.Count > 0 && status is SessionStatus.Idle or SessionStatus.Done
+        runs.Count == 0 && status is SessionStatus.Idle or SessionStatus.Done
             ? SessionStatus.WorkingBackground
             : status;
 
