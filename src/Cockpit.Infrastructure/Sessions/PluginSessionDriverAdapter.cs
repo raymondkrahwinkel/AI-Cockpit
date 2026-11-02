@@ -232,7 +232,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
 
         if (inner.SupportsReadOnlyTurns)
         {
-            await inner.SetReadOnlyTurnAsync(enabled ? _IsReadOnlyTool : null, cancellationToken).ConfigureAwait(false);
+            await inner.SetReadOnlyTurnAsync(enabled ? _ => true : null, cancellationToken).ConfigureAwait(false);
         }
 
         if (!enabled)
