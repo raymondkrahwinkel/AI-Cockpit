@@ -132,6 +132,8 @@ public class OpenAiCompatSessionDriverTests
         Assert.Equal("turn cleanup failed", cleanupError.Message);
         await faultedToolSession.Received(1).DisposeAsync();
         await contextManager.Received(1).ReleaseAsync(faulted.SessionId!);
+        await _NativeToolRoundAsync(false);
+        await _NativeToolRoundAsync(true);
     }
 
     [Fact]
@@ -165,7 +167,79 @@ public class OpenAiCompatSessionDriverTests
             var body = handler.Bodies[^1];
             Assert.Equal(expected is not null, body.TryGetProperty("reasoning_effort", out var value));
             if (expected is not null) Assert.Equal(expected, value.GetString());
+            await using var nativeServer = new OllamaHttpServer { ThinkingLevels = ["low", "medium", "high"] };
+            var nativeConfig = new OllamaConfig(nativeServer.BaseUrl, "model", ReasoningEffort: effort);
+            using var nativeClient = new OpenAiCompatChatClientFactory().Create(nativeConfig);
+            await using var nativeDriver = _CreateDriver(nativeClient, _SelectionSensitiveProvider(), null);
+            await nativeDriver.StartAsync(new SessionProfile("native effort", nativeConfig));
+            await nativeDriver.SendUserMessageAsync("hi");
+            var nativeEvents = await _CollectUntilTurnCompletedAsync(nativeDriver);
+            Assert.False(Assert.Single(nativeEvents.OfType<TurnCompleted>()).IsError);
+            var nativeBody = Assert.Single(nativeServer.Requests, request => request.Path == "/api/chat").Body;
+            Assert.Equal(expected is not null, nativeBody.TryGetProperty("think", out var think));
+            if (expected is not null) Assert.Equal(expected, think.GetString());
+            Assert.False(nativeBody.TryGetProperty("reasoning_effort", out _));
         }
+        foreach (var (effort, expected) in new (string, object)[] { ("none", false), ("minimal", "low"), ("xhigh", "high"), ("ultra", "high") })
+        {
+            await using var server = new OllamaHttpServer { ThinkingLevels = ["low", "medium", "high"] };
+            using var client = new OpenAiCompatChatClientFactory().Create(new OllamaConfig(server.BaseUrl, "model", ReasoningEffort: effort));
+            await client.GetResponseAsync([new ChatMessage(ChatRole.User, "hi")]);
+            Assert.Equal(System.Text.Json.JsonSerializer.Serialize(expected), Assert.Single(server.Requests, request => request.Path == "/api/chat").Body.GetProperty("think").GetRawText());
+        }
+        foreach (var effort in new[] { "low", "medium", "high", "minimal", "xhigh", "ultra" })
+        {
+            await using var server = new OllamaHttpServer();
+            using var client = new OpenAiCompatChatClientFactory().Create(new OllamaConfig(server.BaseUrl, "qwen3", ReasoningEffort: effort));
+            await client.GetResponseAsync([new ChatMessage(ChatRole.User, "hi")]);
+            await client.GetResponseAsync([new ChatMessage(ChatRole.User, "again")]);
+            Assert.All(server.Requests.Where(request => request.Path == "/api/chat"), request => Assert.True(request.Body.GetProperty("think").GetBoolean()));
+            Assert.Equal("qwen3", Assert.Single(server.Requests, request => request.Path == "/api/show").Body.GetProperty("model").GetString());
+        }
+    }
+
+    private static async Task _NativeToolRoundAsync(bool hermes)
+    {
+        await using var server = new OllamaHttpServer();
+        server.Respond = body => body.GetProperty("messages").EnumerateArray().Any(message => message.GetProperty("role").GetString() == "tool")
+            ? (200, System.Text.Json.JsonSerializer.Serialize(new { message = new { role = "assistant", content = "read complete " + Cockpit.Plugins.OpenAiCompat.ChatTurnLoop.CompletionMarker }, done = true }))
+            : hermes ? (200, System.Text.Json.JsonSerializer.Serialize(new
+            {
+                message = new { role = "assistant", thinking = "inspect files", content = "<tool_call><function=read_file><parameter=path>a.txt</parameter></function></tool_call><tool_call><function=read_file><parameter=path>b.txt</parameter></function></tool_call>" },
+                done = true,
+            })) : (200, """
+                {"message":{"role":"assistant","thinking":"inspect files","content":"","tool_calls":[{"function":{"name":"read_file","arguments":{"path":"a.txt"}}},{"function":{"name":"read_file","arguments":{"path":"b.txt"}}}]},"done":true}
+                """);
+        var config = new OllamaConfig(server.BaseUrl, "model", ContextTokens: 65_536);
+        using var client = new OpenAiCompatChatClientFactory().Create(config);
+        await using var driver = _CreateDriver(client, new Dictionary<string, ToolPermissionClass> { ["read_file"] = ToolPermissionClass.ReadOnly },
+            AIFunctionFactory.Create((string path) => $"read:{path}", "read_file"));
+        await driver.StartAsync(new SessionProfile("native", config), workingDirectory: "/wt/AC-1913");
+        var agent = Assert.IsAssignableFrom<IChatClient>(typeof(OpenAiCompatSessionDriver)
+            .GetField("_agent", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(driver));
+        var guard = agent.GetService<Cockpit.Plugins.OpenAiCompat.ContextGuardChatClient>()!;
+        Assert.True(guard.PreservePrefix);
+        Assert.Equal(65_536, guard.Limits.ContextWindowTokens);
+        await driver.SetDelegatedToolGateAsync("plan", []);
+        await driver.SendUserMessageAsync("read both");
+        var events = await _CollectUntilTurnCompletedAsync(driver);
+        Assert.False(Assert.Single(events.OfType<TurnCompleted>()).IsError);
+        Assert.Equal(2, events.OfType<ToolResult>().Count());
+        Assert.Equal(2, events.OfType<ToolUseRequested>().Select(call => call.ToolUseId).Distinct().Count());
+        Assert.Empty(events.OfType<PermissionRequested>());
+        Assert.Equal(2, server.Requests.Count);
+        Assert.Contains("/wt/AC-1913", server.Requests[0].Body.GetProperty("messages")[0].GetProperty("content").GetString());
+        Assert.Equal("read_file", server.Requests[0].Body.GetProperty("tools")[0].GetProperty("function").GetProperty("name").GetString());
+        var messages = server.Requests[1].Body.GetProperty("messages");
+        var results = messages.EnumerateArray().Where(message => message.GetProperty("role").GetString() == "tool").ToArray();
+        Assert.Equal(new[] { "read:a.txt", "read:b.txt" }, results.Select(result => result.GetProperty("content").GetString()).Order());
+        Assert.All(results, result => Assert.Equal("read_file", result.GetProperty("tool_name").GetString()));
+        Assert.Contains(messages.EnumerateArray(), message => message.TryGetProperty("thinking", out var thought) && thought.GetString() == "inspect files");
+        Assert.All(server.Requests, request =>
+        {
+            Assert.Equal("/api/chat", request.Path);
+            Assert.Equal(65_536, request.Body.GetProperty("options").GetProperty("num_ctx").GetInt32());
+        });
     }
 
     [Fact]
