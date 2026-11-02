@@ -68,8 +68,8 @@ public sealed class LocalCiPlugin : ICockpitPlugin
         // The UI part's RunChanged tells every open badge and run dialog to re-ask LastRun.
         tracker.Changed += () => host.Channel.Publish(LocalCiChannel.RunChanged, _Empty());
 
-        // Which checkout each session is working in, by pane — the MCP tools' lookup. The UI part is the only place
-        // a session's own context arrives, so it is learned over the channel (RememberCheckout) rather than here.
+        // The UI part's pane-to-checkout cache. MCP tools ask the backend session observer first, then use this as a
+        // fallback for older hosts and live UI working-directory updates.
         var checkouts = new SessionCheckouts();
 
         // A closed pane must drop out of the checkout map — without it a pane that never comes back still pins its

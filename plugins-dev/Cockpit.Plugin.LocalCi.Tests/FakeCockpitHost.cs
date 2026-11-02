@@ -17,6 +17,10 @@ internal sealed class FakeCockpitHost : ICockpitHost
 
     public string? CurrentMcpCallerPaneId => CallerPaneId;
 
+    public FakeSessionObserver SessionObserver { get; } = new();
+
+    public ICockpitSessionObserver Sessions => SessionObserver;
+
     private readonly TaskCompletionSource<string> _delivered = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     // The first verdict a run delivered to a session's inbox.
@@ -62,6 +66,23 @@ internal sealed class FakeCockpitHost : ICockpitHost
         public T? Get<T>(string key) => _values.GetValueOrDefault(key) is T value ? value : default;
 
         public void Set<T>(string key, T value) => _values[key] = value;
+    }
+}
+
+internal sealed class FakeSessionObserver : ICockpitSessionObserver
+{
+    public List<OpenCockpitSession> Open { get; } = [];
+
+    public Dictionary<string, string?> WorkingDirectories { get; } = new(StringComparer.Ordinal);
+
+    public IReadOnlyList<OpenCockpitSession> OpenSessions => Open;
+
+    public string? GetWorkingDirectory(string paneId) => WorkingDirectories.GetValueOrDefault(paneId);
+
+    public event EventHandler<SessionOutputText>? OutputProduced
+    {
+        add { }
+        remove { }
     }
 }
 

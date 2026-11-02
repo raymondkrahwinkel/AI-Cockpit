@@ -4,6 +4,8 @@ Run `scripts/local-gate.sh --linux <test-project.csproj>` when a change touches 
 
 The Linux port is also mandatory before restarting any failed nightly. It uses the .NET 10 SDK container and the nightly's build and test steps; a Windows-only green run is not enough for these changes.
 
+Local CI MCP tools resolve the calling pane's checkout from the backend. A background pane does not need to be opened in the UI before it can run or inspect local checks.
+
 When adding `cockpit.json` setting keys, document them in `README.md`, add staged Options values to `OptionsStaging`, and decide explicitly whether each key belongs in `SettingsCarrierWhitelist`.
 
 The Browser plugin stores `agentNetworkAllowlist` as a global string array through `IPluginStorage`.

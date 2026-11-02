@@ -36,6 +36,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- Local CI tools now find the calling pane's checkout from the backend, so background sessions can run checks before their pane has ever been opened. Errors now distinguish an unknown pane from a pane without a working directory.
+
 - Update channel and startup checks now stay on the machine where they are configured instead of being synchronized.
 
 - The Sync profile picker no longer blocks the next profile choice, and explains its server selections in the page.

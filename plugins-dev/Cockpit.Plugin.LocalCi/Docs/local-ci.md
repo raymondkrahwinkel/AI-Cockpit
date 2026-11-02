@@ -32,6 +32,9 @@ run or read a verdict back at all, not even with your approval. It does not touc
 machine…** action in a session's own header; that stays available either way, because it is you pressing it,
 not the agent asking.
 
+The tools resolve their checkout from the calling pane on the backend. A background session can therefore use
+them before its pane has ever been opened in the desktop UI.
+
 ## Skipping consent {#skip-consent}
 
 Off by default, and worth leaving off on a fresh install. A session can still ask to run a workflow job with

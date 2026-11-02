@@ -50,12 +50,17 @@ internal sealed class LocalCiMcpTools(
         string? purpose = null,
         CancellationToken cancellationToken = default)
     {
-        if (_CheckoutOfCaller() is not { } caller)
+        if (_CheckoutOfCaller() is not { } caller || !caller.PaneKnown)
         {
             return _CannotIdentifyCaller();
         }
 
-        var (paneId, ownCheckout) = caller;
+        var (paneId, ownCheckout, _) = caller;
+        if (ownCheckout is null)
+        {
+            return _CannotFindCheckout();
+        }
+
         if (await _ResolveCheckoutAsync(paneId, ownCheckout, checkout, cancellationToken) is not { } resolved)
         {
             return _CannotUseThatCheckout();
@@ -105,12 +110,17 @@ internal sealed class LocalCiMcpTools(
         string? checkout = null,
         CancellationToken cancellationToken = default)
     {
-        if (_CheckoutOfCaller() is not { } caller)
+        if (_CheckoutOfCaller() is not { } caller || !caller.PaneKnown)
         {
             return _CannotIdentifyCaller();
         }
 
-        var (paneId, ownCheckout) = caller;
+        var (paneId, ownCheckout, _) = caller;
+        if (ownCheckout is null)
+        {
+            return _CannotFindCheckout();
+        }
+
         if (await _ResolveCheckoutAsync(paneId, ownCheckout, checkout, cancellationToken) is not { } resolved)
         {
             return _CannotUseThatCheckout();
@@ -207,16 +217,29 @@ internal sealed class LocalCiMcpTools(
         }
     }
 
-    private (string PaneId, string Checkout)? _CheckoutOfCaller() =>
-        host.CurrentMcpCallerPaneId is { Length: > 0 } paneId && checkouts.CheckoutFor(paneId) is { } checkout
-            ? (paneId, checkout)
-            : null;
+    private (string PaneId, string? Checkout, bool PaneKnown)? _CheckoutOfCaller()
+    {
+        if (host.CurrentMcpCallerPaneId is not { Length: > 0 } paneId)
+        {
+            return null;
+        }
+
+        var checkout = host.Sessions.GetWorkingDirectory(paneId) ?? checkouts.CheckoutFor(paneId);
+        var paneKnown = checkout is not null
+            || checkouts.Knows(paneId)
+            || host.Sessions.OpenSessions.Any(session => string.Equals(session.PaneId, paneId, StringComparison.Ordinal));
+        return (paneId, checkout, paneKnown);
+    }
 
     private static string _CannotIdentifyCaller() =>
         McpJson.Error(
-            "This tool runs the checks of the session that calls it, and the cockpit could not say which session "
-            + "that is — or that session has not said which directory it is working in yet. There is no way to "
-            + "name a project instead: that is deliberate.");
+            "The cockpit does not know the pane that called this tool. There is no way to name a project instead: "
+            + "that is deliberate.");
+
+    private static string _CannotFindCheckout() =>
+        McpJson.Error(
+            "The pane that called this tool has no working directory or checkout yet. There is no way to name a "
+            + "project instead: that is deliberate.");
 
     private static string _CannotUseThatCheckout() =>
         McpJson.Error(

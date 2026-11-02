@@ -4,10 +4,8 @@ namespace Cockpit.Plugin.LocalCi.Sessions;
 
 // Which checkout each session is working in, by pane.
 //
-// It exists because the host has no lookup for it: a plugin can read the *selected* session's working
-// directory, and it is handed a session's own context when it builds something into that session's header — but
-// there is nothing that turns an arbitrary pane id into a directory. An MCP tool needs exactly that, because the
-// session that called it is very often not the one the operator is looking at.
+// The backend session observer is the primary lookup. This remains as a fallback for older hosts and as the UI
+// part's live cache while a session reports working-directory changes.
 internal sealed class SessionCheckouts
 {
     private readonly object _gate = new();
@@ -51,5 +49,13 @@ internal sealed class SessionCheckouts
         }
 
         return session?.WorkingDirectory is { Length: > 0 } directory ? directory : null;
+    }
+
+    public bool Knows(string paneId)
+    {
+        lock (_gate)
+        {
+            return _byPane.ContainsKey(paneId);
+        }
     }
 }
