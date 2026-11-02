@@ -2148,6 +2148,7 @@
                         </ItemsControl>
 
                         <TextBlock Classes="optionsSectionHeader" Text="1. WHAT SYNCS"/>
+                        <TextBlock Classes="optionsHint" Text="Every ticked server is its own sync partner; none ticked = not synced. A profile that ticks exactly what Profiles has follows it again."/>
                         <Border Background="{DynamicResource CockpitSecondaryBgBrush}"
                                 BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
                                 CornerRadius="{StaticResource CockpitControlRadius}">
@@ -2180,7 +2181,7 @@
                                                         <Button Grid.Column="1" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" VerticalAlignment="Center"
                                                                 AutomationProperties.Name="{Binding Title}">
                                                             <Button.Flyout>
-                                                                <Flyout Placement="BottomEdgeAlignedLeft">
+                                                                <Flyout Placement="BottomEdgeAlignedLeft" OverlayDismissEventPassThrough="True">
                                                                     <StackPanel Spacing="4" MinWidth="236">
                                                                         <ItemsControl ItemsSource="{Binding Servers}">
                                                                             <ItemsControl.ItemTemplate>
@@ -2192,7 +2193,7 @@
                                                                                 </DataTemplate>
                                                                             </ItemsControl.ItemTemplate>
                                                                         </ItemsControl>
-                                                                        <TextBlock Classes="optionsHint" Text="Every ticked server is its own sync partner. None ticked = not synced."/>
+                                                                        <TextBlock Classes="optionsHint" Text="No servers connected yet." IsVisible="{Binding !Servers.Count}"/>
                                                                     </StackPanel>
                                                                 </Flyout>
                                                             </Button.Flyout>
@@ -2218,7 +2219,7 @@
                                                                     <Button Grid.Column="1" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" VerticalAlignment="Center"
                                                                             AutomationProperties.Name="{Binding Label}">
                                                                         <Button.Flyout>
-                                                                            <Flyout Placement="BottomEdgeAlignedLeft">
+                                                                            <Flyout Placement="BottomEdgeAlignedLeft" OverlayDismissEventPassThrough="True">
                                                                                 <StackPanel Spacing="4" MinWidth="236">
                                                                                     <ItemsControl ItemsSource="{Binding Servers}">
                                                                                         <ItemsControl.ItemTemplate>
@@ -2231,7 +2232,7 @@
                                                                                         </ItemsControl.ItemTemplate>
                                                                                     </ItemsControl>
                                                                                     <Button Classes="Compact" Content="Same as Profiles" Command="{Binding UseCategoryCommand}" IsVisible="{Binding IsOverridden}" HorizontalAlignment="Left"/>
-                                                                                    <TextBlock Classes="optionsHint" Text="Ticking exactly what Profiles has means the profile follows it again."/>
+                                                                                    <TextBlock Classes="optionsHint" Text="No servers connected yet." IsVisible="{Binding !Servers.Count}"/>
                                                                                 </StackPanel>
                                                                             </Flyout>
                                                                         </Button.Flyout>
