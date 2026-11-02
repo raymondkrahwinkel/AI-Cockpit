@@ -10,7 +10,7 @@ namespace Cockpit.Core.Tests.ViewModels;
 /// </summary>
 public class SyncOptionsViewModelTests
 {
-    private static readonly string[] Categories = ["Profiles", "Plugins", "Notifications", "Shortcuts", "SessionBehaviour", "Usage", "Appearance", "Updates"];
+    private static readonly string[] Categories = ["Profiles", "Plugins", "Notifications", "Shortcuts", "SessionBehaviour", "Usage", "Appearance"];
 
     [Fact]
     public async Task SaveStagedAsync_WritesEveryCategoryAsAList_AlsoAnEmptyOne()
@@ -24,7 +24,7 @@ public class SyncOptionsViewModelTests
         await viewModel.SaveStagedAsync();
 
         var saved = Assert.IsAssignableFrom<IReadOnlyDictionary<string, IReadOnlyList<string>>>(source.Saved);
-        Assert.Equal(8, saved.Count);
+        Assert.Equal(7, saved.Count);
         Assert.Empty(saved["Notifications"]);
         Assert.Equal(["home", "work"], saved["Appearance"]);
         Assert.Equal(["home"], saved["Plugins"]);

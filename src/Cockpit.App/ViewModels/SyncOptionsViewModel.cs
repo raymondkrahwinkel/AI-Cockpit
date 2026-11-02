@@ -18,7 +18,6 @@ public sealed partial class SyncOptionsViewModel(ISyncOptions? source = null, Ti
         ("SessionBehaviour", "Session behaviour", "Auto-close, queued messages, wake agents, memory budget, timestamps"),
         ("Usage", "Usage", "Warning thresholds per provider, profile and assistant; usage pill fields"),
         ("Appearance", "Appearance", "Theme, terminal font, projects layout"),
-        ("Updates", "Updates", "Release channel, check on startup"),
     ];
 
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
