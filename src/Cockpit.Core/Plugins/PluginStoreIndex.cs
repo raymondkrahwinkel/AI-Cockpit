@@ -30,16 +30,7 @@ public sealed record PluginStoreIndex(
 
             index = parsed with
             {
-                Plugins = (parsed.Plugins ?? []).Select(entry => Environment.GetEnvironmentVariable("AC1974_MUTANT") switch
-                {
-                    "category" => entry with { Category = null },
-                    "defaults" => entry.Description is not null ? entry with { Icon = "broken" } : entry,
-                    "audience" => entry with { Audience = null },
-                    "hidden" => entry with { Hidden = false },
-                    "icon" => entry.Category is null && entry.LogoAsset is null ? entry with { Icon = null } : entry,
-                    "logo" => entry with { LogoAsset = null },
-                    _ => entry,
-                }).ToList(),
+                Plugins = parsed.Plugins ?? [],
                 Templates = parsed.Templates ?? [],
             };
 
