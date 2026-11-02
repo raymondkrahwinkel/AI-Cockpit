@@ -411,7 +411,7 @@
         <Style Selector="Border.workspaceTab">
             <Setter Property="Cursor" Value="Hand"/>
         </Style>
-        <Style Selector="Border.workspaceTab TextBlock">
+        <Style Selector="Border.workspaceTab > DockPanel TextBlock">
             <Setter Property="Foreground" Value="{DynamicResource CockpitTextFaintBrush}"/>
         </Style>
         <Style Selector="Border.workspaceTab:pointerover">
@@ -420,7 +420,7 @@
         <Style Selector="Border.workspaceTab.active">
             <Setter Property="Background" Value="{DynamicResource CockpitPanelBgBrush}"/>
         </Style>
-        <Style Selector="Border.workspaceTab.active TextBlock">
+        <Style Selector="Border.workspaceTab.active > DockPanel TextBlock">
             <Setter Property="Foreground" Value="{DynamicResource CockpitTextPrimaryBrush}"/>
         </Style>
         <!-- A widget is being dragged over this tab and would land there: the same accent outline the drop ghost
@@ -434,7 +434,7 @@
             <Setter Property="BorderBrush" Value="{DynamicResource CockpitAccentBrush}"/>
             <Setter Property="BorderThickness" Value="2"/>
         </Style>
-        <Style Selector="ContentPresenter.dropTarget > Border.workspaceTab TextBlock">
+        <Style Selector="ContentPresenter.dropTarget > Border.workspaceTab > DockPanel TextBlock">
             <Setter Property="Foreground" Value="{DynamicResource CockpitTextPrimaryBrush}"/>
         </Style>
         <Style Selector="Border.workspaceTab Button.closeWorkspace">

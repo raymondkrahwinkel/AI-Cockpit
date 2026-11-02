@@ -41,6 +41,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- Workspace tab context menus keep their normal text color on inactive tabs, so Close no longer looks disabled.
 - Sessions waiting for or running a test run now stay visibly active, show that run in their pane, and no longer receive false stalled nudges.
 
 - Agent tabs now block local and LAN requests from page resources and WebSockets as well as navigation, with DNS resolution pinned to checked addresses and direct WebRTC UDP disabled; explicit network allowlist entries still work.

@@ -15,7 +15,7 @@ public class SessionUsageThresholdOverrideTests
         new("weekly", "wk", PluginUsageSignalKind.Allowance, 90) { Description = "Week" };
 
     [Fact]
-    public void WithAnOverride_TheWarningSpeaksAtTheOperatorsNumber()
+    public void WithAnOverride_TheWarningAndBarUseTheOperatorsNumber()
     {
         var settings = new UsageThresholdSettings();
         settings.Set(settings.ByProvider, "claude", "weekly", 60);
@@ -28,19 +28,6 @@ public class SessionUsageThresholdOverrideTests
         // AC-683: `HasUsageWarning`/`UsageWarning` are derived from `Warnings` now — the collection is the real state.
         Assert.Single(session.Warnings);
         Assert.Contains("Week is 65% used", session.Warnings[0].Text);
-    }
-
-    [Fact]
-    public void WithAnOverride_TheBarColoursAtTheSameNumber()
-    {
-        // The whole point of one resolver: what warns and what colours cannot disagree.
-        var settings = new UsageThresholdSettings();
-        settings.Set(settings.ByProvider, "claude", "weekly", 60);
-
-        var session = new TtyViewModel { UsageThresholds = settings, UsageProviderId = "claude" };
-
-        session.ApplyUsage([Weekly], [new PluginUsageReading("weekly", 65, null)]);
-
         var rateLimit = Assert.Single(session.RateLimits);
         Assert.Equal(60, rateLimit.ThresholdPercent);
     }
