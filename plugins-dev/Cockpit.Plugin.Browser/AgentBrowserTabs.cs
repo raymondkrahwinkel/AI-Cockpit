@@ -95,7 +95,7 @@ internal sealed class AgentBrowserTabs(AgentBrowserHost browsers, Func<string, s
         try
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            await watch.Connection.CallAsync("Emulation.clearDeviceMetricsOverride", null, timeout.Token).ConfigureAwait(false);
+            await watch.Connection.CallAsync("Page.stopScreencast", null, timeout.Token).ConfigureAwait(false);
         }
         catch (Exception exception)
         {
