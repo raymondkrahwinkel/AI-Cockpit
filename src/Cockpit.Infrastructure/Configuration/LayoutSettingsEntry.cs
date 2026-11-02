@@ -5,6 +5,7 @@ namespace Cockpit.Infrastructure.Configuration;
 // On-disk shape of `LayoutSettings` in the `layout` section of `cockpit.json`.
 internal sealed class LayoutSettingsEntry
 {
+    public AgentsOverviewFilters AgentsOverviewFilters { get; set; } = new();
     public bool SingleSessionLayout { get; set; }
 
     public bool StackSessionsVertically { get; set; }
@@ -44,6 +45,7 @@ internal sealed class LayoutSettingsEntry
 
     public static LayoutSettingsEntry FromDomain(LayoutSettings settings) => new()
     {
+        AgentsOverviewFilters = settings.AgentsOverviewFilters,
         SingleSessionLayout = settings.SingleSessionLayout,
         StackSessionsVertically = settings.StackSessionsVertically,
         FocusRailLayout = settings.FocusRailLayout,
@@ -66,6 +68,7 @@ internal sealed class LayoutSettingsEntry
 
     public LayoutSettings ToDomain() => new()
     {
+        AgentsOverviewFilters = AgentsOverviewFilters,
         SingleSessionLayout = SingleSessionLayout,
         StackSessionsVertically = StackSessionsVertically,
         FocusRailLayout = FocusRailLayout,

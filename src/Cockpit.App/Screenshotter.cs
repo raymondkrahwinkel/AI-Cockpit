@@ -786,6 +786,8 @@ internal static partial class Screenshotter
         ["assistant-docked"] = (_, _) => _AssistantDockedInTheRail(),
         ["agents-docked"] = (_, _) => _AgentsOverview(floating: false),
         ["agents-undocked"] = (_, _) => _AgentsOverview(floating: true),
+        ["agents-filters-docked"] = (_, _) => _AgentsOverview(floating: false, filters: true),
+        ["agents-filters-undocked"] = (width, height) => _AgentsOverview(floating: true, filters: true, width: width, height: height),
         ["agents-docked-expanded"] = (_, _) => _AgentsOverview(floating: false, expanded: true),
         ["agents-undocked-expanded"] = (_, _) => _AgentsOverview(floating: true, expanded: true),
         ["agents-child-open"] = (_, _) => _AgentsOverview(floating: false, expanded: true),
@@ -3880,7 +3882,7 @@ internal static partial class Screenshotter
         }
     }
 
-    private static Window _AgentsOverview(bool floating, bool expanded = false)
+    private static Window _AgentsOverview(bool floating, bool expanded = false, bool filters = false, double width = 1400, double height = 1000)
     {
         var panels = new Docking.DockPanelRegistry();
         var cockpit = new CockpitViewModel(dockPanelRegistry: panels)
@@ -3917,6 +3919,7 @@ internal static partial class Screenshotter
         Control overview = panels.ViewFor(panel);
         if (overview.DataContext is AgentsOverviewViewModel agents)
         {
+            agents.ShowDelegatedTasks = filters;
             foreach (var card in agents.Columns.SelectMany(column => column.Cards))
             {
                 card.AreChildrenExpanded = expanded;
@@ -3928,7 +3931,7 @@ internal static partial class Screenshotter
         }
         if (floating)
         {
-            return new Docking.DockPanelWindow(panel, overview, boundsStore: null) { Width = 1400, Height = 1000 };
+            return new Docking.DockPanelWindow(panel, overview, boundsStore: null) { Width = width, Height = height };
         }
 
         return new MainWindow { DataContext = cockpit };

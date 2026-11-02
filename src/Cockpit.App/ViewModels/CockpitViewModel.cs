@@ -452,6 +452,17 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // The delegated-tasks view (#67): work other sessions handed to a profile, which has no tab of its own.
     public DelegatedTasksViewModel DelegatedTasks { get; }
+    private AgentsOverviewViewModel? _agentsOverview;
+    public AgentsOverviewViewModel AgentsOverview => _agentsOverview ??= new(this);
+    internal AgentsOverviewFilters AgentsFilters { get; private set; } = new();
+    internal async Task SaveAgentsFiltersAsync(AgentsOverviewFilters filters)
+    {
+        AgentsFilters = filters;
+        if (_layoutSettingsStore is not null)
+        {
+            await _PersistLayoutSettingsAsync();
+        }
+    }
 
     // The operator's read-only view on the agent line (AC-397) — the only window on traffic they are not part of.
     public AgentLineInspectorViewModel AgentLineInspector { get; } = new();
@@ -5646,6 +5657,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         SidebarWidth = settings.SidebarWidth;
         SidebarCollapsed = settings.SidebarCollapsed;
         ShowOnlyWaiting = settings.WaitingFilterOn;
+        AgentsFilters = settings.AgentsOverviewFilters;
+        _agentsOverview?.RestoreFilters();
         GlobalFocusRailWeight = settings.FocusRailWeight;
         DockRailWidth = settings.DockRailWidth;
         OpenDockPanelId = settings.OpenDockPanelId;
@@ -5681,6 +5694,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         SidebarWidth = SidebarWidth,
         SidebarCollapsed = SidebarCollapsed,
         WaitingFilterOn = ShowOnlyWaiting,
+        AgentsOverviewFilters = AgentsFilters,
         FocusRailWeight = GlobalFocusRailWeight,
         DockRailWidth = DockRailWidth,
         OpenDockPanelId = OpenDockPanelId,
@@ -5878,7 +5892,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     {
         _dockPanelRegistry?.Register(new DockPanelRegistration(
             AgentsOverviewViewModel.DockPanelId, "Agents", MaterialIconKind.AccountGroupOutline,
-            () => new Views.AgentsOverviewView { DataContext = new AgentsOverviewViewModel(this) })
+            () => new Views.AgentsOverviewView { DataContext = AgentsOverview })
         {
             CanFloat = true,
             KeepAlive = true,

@@ -23,6 +23,22 @@
             <Setter Property="Padding" Value="7,1"/>
         </Style>
     </UserControl.Styles>
+    <DockPanel>
+        <StackPanel DockPanel.Dock="Top" Margin="12" Spacing="8">
+            <TextBox PlaceholderText="Search title or statusline" Text="{Binding SearchText, Mode=TwoWay}"/>
+            <WrapPanel Orientation="Horizontal">
+                <ToggleButton IsChecked="{Binding ShowOnlyWaiting, Mode=TwoWay}" Margin="0,0,6,6">
+                    <TextBlock Text="{Binding WaitingCount, StringFormat='Waiting for you · {0}'}" Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
+                </ToggleButton>
+                <ToggleButton Content="Delegated tasks" IsChecked="{Binding ShowDelegatedTasks, Mode=TwoWay}" Margin="0,0,6,6"/>
+                <ComboBox ItemsSource="{Binding Machines}" SelectedItem="{Binding SelectedMachine, Mode=TwoWay}" Margin="0,0,6,6" AutomationProperties.Name="Machine"/>
+                <ComboBox ItemsSource="{Binding Projects}" SelectedItem="{Binding SelectedProject, Mode=TwoWay}" Margin="0,0,6,6" AutomationProperties.Name="Project"/>
+            </WrapPanel>
+            <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding !ShowOlder}">
+                <TextBlock Text="Done / Idle · last 24 hours" FontSize="11" VerticalAlignment="Center" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                <Button Content="Show more" Command="{Binding ShowMoreCommand}" IsVisible="{Binding ShowsMore}" ToolTip.Tip="Show Done and Idle older than 24 hours"/>
+            </StackPanel>
+        </StackPanel>
     <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
         <ItemsControl ItemsSource="{Binding Columns}" Margin="8">
             <ItemsControl.ItemsPanel>
@@ -49,6 +65,9 @@
                                 <DataTemplate x:DataType="vm:AgentOverviewCardViewModel">
                                     <Border Classes="sessionItem agentCard" Classes.active="{Binding IsSelected}" Classes.attention="{Binding NeedsAttention}"
                                             CornerRadius="{StaticResource CockpitControlRadius}" Margin="0,0,0,6">
+                                        <Grid>
+                                        <Rectangle IsVisible="{Binding IsDelegatedTask}" IsHitTestVisible="False" StrokeDashArray="3,3"
+                                                   Stroke="{DynamicResource CockpitTextFaintBrush}" StrokeThickness="1" RadiusX="5" RadiusY="5"/>
                                         <StackPanel>
                                         <Button Classes="Subtle" Command="{Binding OpenCommand}" HorizontalAlignment="Stretch"
                                                 HorizontalContentAlignment="Stretch" Padding="10,8"
@@ -133,6 +152,7 @@
                                             </StackPanel>
                                         </StackPanel>
                                         </StackPanel>
+                                        </Grid>
                                     </Border>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
@@ -143,4 +163,5 @@
             </ItemsControl.ItemTemplate>
         </ItemsControl>
     </ScrollViewer>
+    </DockPanel>
 </UserControl>
