@@ -11,7 +11,7 @@ internal static class PluginClosureHash
     // The closure of the files actually on disk under an installed plugin folder (what the loader will load):
     // every file, recursively, every byte read. This is what startup discovery verifies and what an install pins.
     public static Task<string> OfInstalledFolderAsync(string folder, CancellationToken cancellationToken = default) =>
-        _ComputeAsync(folder, _EnumerateInstalledFiles(folder), reuseUnchanged: true, cancellationToken);
+        _ComputeAsync(folder, _EnumerateInstalledFiles(folder), reuseUnchanged: false, cancellationToken);
 
     // AC-2018: the same closure for a rediscovery that loads and pins nothing (Options, the update check): a file whose
     // size and write time match the last full read keeps that hash. Never for a route that loads or compares a pin.
