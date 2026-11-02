@@ -38,7 +38,7 @@ public sealed partial class SessionHost
             return;
         }
 
-        Queue.Contains(turn.Prompt);
+        Queue.Remove(turn.Prompt);
         turn.Started.TrySetCanceled();
         turn.Completion.TrySetCanceled();
     }
