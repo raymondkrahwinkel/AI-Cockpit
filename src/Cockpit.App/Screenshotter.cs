@@ -531,6 +531,8 @@ internal static partial class Screenshotter
         // badge — "● This machine" and "◆ Depot — Work" — now that the old "On this machine" heading is gone.
         ["plugin-store"] = (_, _) => _PluginStore(),
         ["plugin-store-installed"] = (_, _) => _PluginStoreInstalled(),
+        ["plugin-store-updates-incompatible"] = (_, _) => _PluginStoreUpdatesWithIncompatible(),
+        ["plugin-store-update-failed"] = (_, _) => _PluginStoreUpdateFailed(),
         // AC-553: the eleven bundled plugins' real logo tiles — its own scene, not added to `_SampleStorePlugins`,
         // whose row count PluginStoreBusyGateTests asserts on. Height raised past the dialog's own 820: twelve
         // rows do not fit at rest.
@@ -3197,6 +3199,36 @@ internal static partial class Screenshotter
         viewModel.Manager.HasPlugins = true;
         viewModel.SelectedSidebarItem = viewModel.SecondarySidebarItems.First(item => item.Filter == PluginStoreFilter.Installed);
         return new PluginStoreDialog { DataContext = viewModel };
+    }
+
+    // AC-2013: a runnable update and a host-incompatible one must remain distinguishable in the same list.
+    private static PluginStoreDialog _PluginStoreUpdatesWithIncompatible()
+        => new() { DataContext = _PluginStoreUpdatesWithIncompatibleViewModel() };
+
+    private static PluginStoreDialogViewModel _PluginStoreUpdatesWithIncompatibleViewModel()
+    {
+        var manager = new PluginManagerViewModel();
+        var store = PluginStoreConfig.Remote("https://store.aicockpit.dev/index.json");
+        manager.Stores.Add(store);
+        manager.AvailablePlugins.Add(_UpdateRow("depot", "Depot", "0.48.0", null, store));
+        manager.AvailablePlugins.Add(_UpdateRow("schedules", "Schedules", "0.7.0", "0.154", store));
+
+        return new PluginStoreDialogViewModel(manager);
+    }
+
+    // The same visible status line an unsuccessful install or update writes in `_AfterInstallAsync`.
+    private static PluginStoreDialog _PluginStoreUpdateFailed()
+    {
+        var viewModel = _PluginStoreUpdatesWithIncompatibleViewModel();
+        viewModel.Manager.StatusMessage = "Could not update 'Depot': the store could not be reached.";
+        return new PluginStoreDialog { DataContext = viewModel };
+    }
+
+    private static StorePluginRowViewModel _UpdateRow(string id, string name, string latestVersion, string? minHostVersion, PluginStoreConfig store)
+    {
+        var version = new PluginStoreVersion(latestVersion, $"plugins/{id}-{latestVersion}.zip", null, minHostVersion, null, null);
+        var entry = new PluginStoreEntry(id, name, "Store update preview.", "Cockpit", latestVersion, [version]);
+        return new StorePluginRowViewModel(entry, store, "0.1.0", hostVersion: new Version(0, 152, 0));
     }
 
     // NeedsRestart is on in both because that is the state that was reported — "Update all" raises it after the first

@@ -454,6 +454,8 @@
 
                         <Button Content="{Binding PrimaryActionLabel}" Classes="Accent" HorizontalAlignment="Stretch"
                                 IsEnabled="{Binding CanTakePrimaryAction}"
+                                ToolTip.ShowOnDisabled="True"
+                                ToolTip.Tip="{Binding PrimaryActionTooltip}"
                                 Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).Manager.InstallFromStoreCommand}"
                                 CommandParameter="{Binding}"/>
                     </StackPanel>

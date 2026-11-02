@@ -64,6 +64,10 @@
                            TextTrimming="CharacterEllipsis"
                            Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
 
+                <TextBlock Text="{Binding PrimaryActionTooltip}" FontSize="11" TextWrapping="Wrap"
+                           IsVisible="{Binding HasUpdateUnavailableReason}"
+                           Foreground="{DynamicResource CockpitStatusErrorBrush}"/>
+
                 <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,1,0,0">
                     <Border Classes="tag">
                         <TextBlock Text="{Binding Category}"/>
@@ -100,6 +104,8 @@
                 <Button Content="{Binding PrimaryActionLabel}" Classes="Compact"
                         Classes.accentCta="{Binding CanTakePrimaryAction}"
                         IsEnabled="{Binding CanTakePrimaryAction}"
+                        ToolTip.ShowOnDisabled="True"
+                        ToolTip.Tip="{Binding PrimaryActionTooltip}"
                         Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).Manager.InstallFromStoreCommand}"
                         CommandParameter="{Binding}"/>
             </StackPanel>

@@ -81,7 +81,7 @@ public sealed partial class StorePluginRowViewModel(
 
             // Already installed and running fine — the plugin itself is not incompatible, only the newer
             // version on offer is, so this stays a plain status line rather than the red "Incompatible" state.
-            return IncompatibilityReason is { } reason
+            return UpdateUnavailableReason is { } reason
                 ? $"Installed v{installedVersion} — v{entry.LatestVersion} available: {reason}"
                 : $"Installed v{installedVersion} — update to v{entry.LatestVersion}";
         }
@@ -183,22 +183,25 @@ public sealed partial class StorePluginRowViewModel(
     public DateOnly? PublishedDate => DateOnly.TryParse(entry.Published, out var parsed) ? parsed : null;
 
     // The store dialog card/detail's primary action button label — "Install", "Update", a disabled "Installed" badge once up to date, or "Incompatible" when nothing is installed and this host cannot install it either.
-    public string PrimaryActionLabel => IsIncompatible ? "Incompatible" : !IsInstalled ? "Install" : CanUpdate ? "Update" : "Installed";
+    public string PrimaryActionLabel => IsIncompatible ? "Incompatible" : !IsInstalled ? "Install" : UpdateAvailable ? "Update" : "Installed";
+
+    // A disabled update still says why it cannot run on this host, rather than looking like the plugin is up to date.
+    public string? PrimaryActionTooltip => IsIncompatible ? IncompatibilityReason : UpdateUnavailableReason;
 
     // Whether the primary action button does anything — false once installed and up to date (a disabled badge instead) or when this host cannot take the action at all (AC-181): the store stays a catalogue that shows everything, but a button that would only fail here is disabled rather than clickable.
     public bool CanTakePrimaryAction => !IsIncompatible && (CanInstall || CanUpdate);
 
     // At-a-glance install-state chip for the catalogue row: "Incompatible" (AC-181, only when nothing is installed — see `IsIncompatible`) takes priority, then "Update"/"Installed", or null when not installed and compatible (nothing shown).
-    public string? StateBadgeText => IsIncompatible ? "Incompatible" : !IsInstalled ? null : CanUpdate ? "Update" : "Installed";
+    public string? StateBadgeText => IsIncompatible ? "Incompatible" : !IsInstalled ? null : UpdateAvailable ? "Update" : "Installed";
 
     // Whether to show the `StateBadgeText` chip — once installed, or whenever this host cannot install the plugin at all.
     public bool HasStateBadge => IsIncompatible || IsInstalled;
 
     // Theme brush key for the state chip: red when this host cannot install it at all, amber when a (compatible) update is available, green once up to date — resolved in the view by the status-brush converter.
-    public string StateBadgeBrushKey => IsIncompatible ? "CockpitStatusErrorBrush" : CanUpdate ? "CockpitStatusWaitingBrush" : "CockpitStatusDoneBrush";
+    public string StateBadgeBrushKey => IsIncompatible || UpdateUnavailableReason is not null ? "CockpitStatusErrorBrush" : CanUpdate ? "CockpitStatusWaitingBrush" : "CockpitStatusDoneBrush";
 
     // Hover text for the state chip — the reason this host cannot install it fresh, or null (an already-installed plugin's own status line, not this tooltip, explains an update it merely cannot take — see `StatusText`).
-    public string? StateBadgeTooltip => IsIncompatible ? IncompatibilityReason : null;
+    public string? StateBadgeTooltip => IsIncompatible ? IncompatibilityReason : UpdateUnavailableReason;
 
     // AC-181: only an uninstalled plugin is incompatible when the shared install/load gate rejects its latest entry.
     // A running plugin, or one with no declared constraint, is not mislabeled; CanUpdate/StatusText explain updates.
@@ -208,4 +211,10 @@ public sealed partial class StorePluginRowViewModel(
     // Why this host cannot run `LatestVersionEntry`, or null when it can (or there is no version to judge).
     public string? IncompatibilityReason =>
         LatestVersionEntry is { } version ? PluginCompatibility.IncompatibilityReason(version, hostAbstractionsMajor, EffectiveHostVersion) : null;
+
+    private string? UpdateUnavailableReason => UpdateAvailable && IncompatibilityReason is { } reason
+        ? $"{reason}; this machine runs {EffectiveHostVersion}"
+        : null;
+
+    public bool HasUpdateUnavailableReason => UpdateUnavailableReason is not null;
 }
