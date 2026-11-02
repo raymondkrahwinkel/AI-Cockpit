@@ -25,6 +25,7 @@ using Avalonia.Input;
 using System.Text;
 using System.Text.Json;
 using Cockpit.Core.Workspaces;
+using Cockpit.App.Views;
 
 namespace Cockpit.App.ViewTests;
 
@@ -51,14 +52,50 @@ public sealed class WorkspacePopOutTests
         registry.Register(new WorkspaceTypeRegistration("test.file", "Markdown", context =>
             new MarkdownFileWorkspace(context, options, client, () => Task.FromResult(true))) { CanFloat = true },
             new NoStorage(), NullCockpitSessionObserver.Instance);
-        var workspaces = new WorkspacesViewModel(null, workspaceTypes: registry);
+        var cockpit = new CockpitViewModel(workspaceTypeRegistry: registry);
+        var workspaces = cockpit.Workspaces;
         await arrange(workspaces);
         var tab = workspaces.Tabs.Single(t => t.IsActive);
         Assert.Equal(keep, tab.CanKeepOpen);
         Assert.Equal(pop, tab.CanPopOut);
         Assert.Equal(copy, tab.CanCopyPath);
         Assert.Equal(close, tab.CanClose);
+        var view = new CockpitView { DataContext = cockpit };
+        var window = new Window { Content = view, Width = 1000, Height = 700 };
+        window.Show();
+        try
+        {
+            await workspaces.SelectWorkspaceCommand.ExecuteAsync(workspaces.Tabs.FirstOrDefault(other => other.Id != tab.Id)?.Id ?? tab.Id);
+            _AssertTabMenu(view, window, tab.Id, close);
+            await workspaces.SelectWorkspaceCommand.ExecuteAsync(tab.Id);
+            _AssertTabMenu(view, window, tab.Id, close);
+        }
+        finally
+        {
+            window.Close();
+        }
     });
+
+    private static void _AssertTabMenu(CockpitView view, Window window, string id, bool close)
+    {
+        window.UpdateLayout();
+        var border = view.GetVisualDescendants().OfType<Border>().Single(control =>
+            control.Classes.Contains("workspaceTab") && control.DataContext is WorkspaceTabViewModel tab && tab.Id == id);
+        var menu = border.ContextMenu ?? throw new InvalidOperationException("Missing tab menu.");
+        menu.Open(border);
+        window.UpdateLayout();
+        var item = menu.Items.OfType<MenuItem>().Single(control => control.Header is Grid);
+        var label = ((Grid)item.Header).Children.OfType<TextBlock>().Single(text => text.Text == "Close");
+        var tab = Assert.IsType<WorkspaceTabViewModel>(border.DataContext);
+        Assert.Equal(close, item.IsVisible);
+        Assert.Equal(tab.CanCloseOthers, menu.Items.OfType<MenuItem>().Single(control => Equals(control.Header, "Close others")).IsVisible);
+        Assert.Equal(tab.CanCloseToTheRight, menu.Items.OfType<MenuItem>().Single(control => Equals(control.Header, "Close tabs to the right")).IsVisible);
+        Assert.Equal(tab.CanCloseAll, menu.Items.OfType<MenuItem>().Single(control => Equals(control.Header, "Close all")).IsVisible);
+        Assert.All(menu.Items.OfType<MenuItem>().Where(control => control.IsVisible), control => Assert.True(control.IsEffectivelyEnabled));
+        Assert.All(menu.Items.OfType<MenuItem>(), control => Assert.Same(border.DataContext, control.DataContext));
+        Assert.All(menu.Items.OfType<MenuItem>().Where(control => control.Header is Grid && control.IsVisible), _ => Assert.Equal(view.FindResource("CockpitTextPrimaryBrush"), label.Foreground));
+        menu.Close();
+    }
 
     private const string TypeId = "test.markdown";
 
