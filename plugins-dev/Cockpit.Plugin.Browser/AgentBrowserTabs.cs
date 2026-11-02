@@ -172,7 +172,7 @@ internal sealed class AgentBrowserTabs(AgentBrowserHost browsers, Func<string, s
         (Math.Clamp(width, 1, MaxViewportDimension), Math.Clamp(height, 1, MaxViewportDimension));
 
     private static async Task SetViewportAsync(CdpPage connection, int width, int height, CancellationToken cancellationToken) =>
-        await connection.CallAsync("Emulation.setDeviceMetricsOverride", new { width, height, deviceScaleFactor = 1, mobile = false }, cancellationToken).ConfigureAwait(false);
+        await connection.CallAsync("Emulation.setDeviceMetricsOverride", new { width = 1280, height = 1024, deviceScaleFactor = 1, mobile = false }, cancellationToken).ConfigureAwait(false);
 
     private sealed record Page(string Id, string Title, string Url, string SocketUrl, string FaviconUrl);
 
