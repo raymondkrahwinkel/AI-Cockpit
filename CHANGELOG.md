@@ -38,6 +38,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 - Local CI tools now find the calling pane's checkout from the backend, so background sessions can run checks before their pane has ever been opened. Errors now distinguish an unknown pane from a pane without a working directory.
 
+- Open Depot Markdown files now show external MCP, REST and editor changes live without being reopened, while keeping local text in the existing merge flow.
+
 - Update channel and startup checks now stay on the machine where they are configured instead of being synchronized.
 
 - The Sync profile picker no longer blocks the next profile choice, and explains its server selections in the page.

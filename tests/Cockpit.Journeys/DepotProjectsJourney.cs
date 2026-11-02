@@ -69,9 +69,6 @@ public sealed class DepotProjectsJourney
                 Edit: true, CreateNew: createNew, InitialText: createNew ? "# Journey\n\n" : ""));
         await FileWorkspaceSteps.CreateSaveAndFloatAsync(cockpit, () => OpenEditor(true));
         Assert.Equal("# Journey\n\nWritten in Cockpit.", depot.EditorText);
-        await FileWorkspaceSteps.ChangedBehindYourBackThenMergedAsync(cockpit, () => OpenEditor(false),
-            () => depot.ChangeEditorFromOutside("# Journey\n\nWritten in Cockpit.\nAdded by the assistant."));
-        Assert.Equal("# Journey\n\nWritten in Cockpit, edited.\nAdded by the assistant.", depot.EditorText);
         await FileWorkspaceSteps.PreviewReplacedUntilKeptAsync(cockpit, (path, preview) => fileHost.OpenFileWorkspaceAsync("depot.markdown",
             new FileWorkspaceOpenOptions(new FileRef("journey", JsonSerializer.Serialize(new[] { "acme/cockpit", path }), path),
                 $"depot:journey:acme/cockpit:{path}", Path.GetFileName(path), "Depot / Journey / acme/cockpit", Preview: preview)));
@@ -226,15 +223,14 @@ public sealed class DepotProjectsJourney
         public static string Ping() => "pong";
     }
 
-    // AC-1580: a joined note opens as a live tab, typing reaches Depot's hub, and a second Join keeps one tab.
+    // AC-1996: an ordinary Depot file opens live, keeps local typing through an outside append, saves, and closes.
     private static async Task _LiveNoteAsync(JourneyHost cockpit, Cockpit.Plugins.Abstractions.UI.ICockpitUiHost host, _FakeDepot depot)
     {
         const string path = "notes/editor.md";
         const string key = "depot:journey:acme/cockpit:" + path;
-        async Task Join()
+        depot.ChangeEditorFromOutside(depot.EditorText + "\n");
+        async Task Open()
         {
-            await host.Channel.InvokeAsync("note-live-open", JsonSerializer.SerializeToElement(
-                new { connectionId = "journey", organization = "acme", project = "cockpit", path }));
             await host.OpenFileWorkspaceAsync("depot.markdown", new FileWorkspaceOpenOptions(
                 new FileRef("journey", JsonSerializer.Serialize(new[] { "acme/cockpit", path }), path), key, "Weekly sync.md",
                 "Depot / Journey / acme/cockpit", Edit: true));
@@ -242,17 +238,24 @@ public sealed class DepotProjectsJourney
         await HeadlessAvalonia.RunAsync(async () =>
         {
             var workspaces = cockpit.Cockpit.Workspaces;
-            await Join();
-            await Join();
+            await Open();
+            await Open();
             Assert.Equal(1, workspaces.Settings.Workspaces.Count(workspace => workspace.InstanceKey == key));
             var body = workspaces.ActivePluginBody as MarkdownFileWorkspace
                 ?? throw new InvalidOperationException("The native file editor is missing.");
             await body.Ready;
-            Assert.True(body.Editor.Text.StartsWith("# Weekly sync", StringComparison.Ordinal), body.Editor.Text);
-            body.Editor.TextEditor.Document.Insert(body.Editor.Text.Length, "Typed in Cockpit.");
+            Assert.Equal("# Journey\n\nWritten in Cockpit.\n", body.Editor.Text);
+            const string merged = "Typed in Cockpit.\n\n# Journey\n\nWritten in Cockpit.\nAdded by the assistant.\n";
+            body.Editor.TextEditor.Document.Insert(0, "Typed in Cockpit.\n\n");
+            await depot.AppendEditorFromOutsideAsync("Added by the assistant.\n");
+            await Until.LayoutHolds(body, () => body.Editor.Text.Contains("Typed in Cockpit.", StringComparison.Ordinal)
+                && body.Editor.Text.Contains("Added by the assistant.", StringComparison.Ordinal)).WaitAsync(Until.Ceiling);
+            Assert.Equal(merged, body.Editor.Text);
             await depot.NoteEdited.WaitAsync(Until.Ceiling);
-            // This fake Depot saves nothing, so the tab saves the file itself after its quiet; a tab closed before then asks first.
+            // The fake room announces the edit, so its saver must persist the exact merge before the tab closes.
             await Until.LayoutHolds(body, () => !body.IsDirty).WaitAsync(Until.Ceiling);
+            await Until.LayoutHolds(body, () => depot.EditorText == merged).WaitAsync(Until.Ceiling);
+            Assert.Equal(merged, depot.EditorText);
             await workspaces.CloseWorkspaceCommand.ExecuteAsync(workspaces.Active?.Id ?? throw new InvalidOperationException("The note tab is gone."));
         });
     }
@@ -266,6 +269,14 @@ public sealed class DepotProjectsJourney
         public Task NoteEdited => app.Services.GetRequiredService<_NoteCalls>().Edited.Task;
 
         public void ChangeEditorFromOutside(string text) => state.ChangeEditorFromOutside(text);
+
+        public async Task AppendEditorFromOutsideAsync(string text)
+        {
+            state.ChangeEditorFromOutside(state.EditorText + text);
+            var room = app.Services.GetRequiredService<IHubContext<_NotesHub>>().Clients.Group("doc-1");
+            await room.SendAsync("outside", "doc-1", new { name = "Assistant", source = "agent", via = "Mcp", version = 2 });
+            await room.SendAsync("external", "doc-1", state.EditorChecksum, "session-1");
+        }
 
         public void ChangeFromSecondClient(string name) => state.ChangeFromSecondClient(name);
 
@@ -282,13 +293,14 @@ public sealed class DepotProjectsJourney
         public static async Task<_FakeDepot> StartAsync(string org = "acme", string orgName = "Acme", string name = "Cockpit from Depot")
         {
             var builder = WebApplication.CreateSlimBuilder();
+            var state = new _DefinitionState(org, orgName, name);
             builder.Services.AddMcpServer().WithHttpTransport().WithTools<_NoListProjectsTools>();
             builder.Services.AddSignalR();
             builder.Services.AddSingleton<_ProjectEvents>();
             builder.Services.AddSingleton<_NoteCalls>();
+            builder.Services.AddSingleton(state);
             builder.WebHost.UseKestrel().UseUrls("http://127.0.0.1:0");
             var app = builder.Build();
-            var state = new _DefinitionState(org, orgName, name);
             app.Use(async (context, next) =>
             {
                 if (context.Request.Path.StartsWithSegments("/cockpit")
@@ -306,6 +318,7 @@ public sealed class DepotProjectsJourney
             });
             app.MapGet("/cockpit/projects", state.WriteProjectsAsync);
             app.MapPut("/cockpit/projects/{org}/{slug}/definition", state.WriteDefinitionAsync);
+            app.MapPost("/cockpit/projects/{org}/{slug}/note-save", state.SaveNoteAsync);
             app.MapPost("/sync/{org}/{slug}/append", state.AppendAsync);
             app.MapPost("/sync/{org}/{slug}/read", state.ReadEditorAsync);
             app.MapPost("/sync/{org}/{slug}/write", state.WriteEditorAsync);
@@ -356,14 +369,25 @@ public sealed class DepotProjectsJourney
 
         private int _editorVersion;
         private string _editorBy = "journey-user";
-        private string EditorChecksum => $"editor-v{_editorVersion}";
+        public string EditorChecksum => $"editor-v{_editorVersion}";
+
+        private string? _previousEditorChecksum;
+        private string? _previousEditorText;
 
         public void ChangeEditorFromOutside(string text)
         {
+            _RememberEditor();
             EditorText = text;
             _editorVersion++;
             _editorBy = "cockpit-assistant";
         }
+
+        public (string Checksum, string Markdown)? ReadEditor(string? checksum)
+            => checksum is null || checksum == EditorChecksum
+                ? (EditorChecksum, EditorText ?? string.Empty)
+                : checksum == _previousEditorChecksum && _previousEditorText is { } previous
+                    ? (checksum, previous)
+                    : null;
 
         public async Task ReadEditorAsync(HttpContext context)
         {
@@ -381,11 +405,29 @@ public sealed class DepotProjectsJourney
             var matches = entry.GetProperty("baseChecksum").GetString() == expected;
             if (matches)
             {
+                _RememberEditor();
                 EditorText = entry.GetProperty("content").GetString();
                 _editorVersion++;
                 _editorBy = "journey-user";
             }
             await context.Response.WriteAsJsonAsync(new { results = new[] { new { path = "notes/editor.md", status = matches ? "written" : "conflict", checksum = EditorChecksum } } });
+        }
+
+        public async Task SaveNoteAsync(HttpContext context)
+        {
+            var form = await context.Request.ReadFormAsync(context.RequestAborted);
+            Assert.Equal(EditorChecksum, form["baseChecksum"].ToString());
+            _RememberEditor();
+            EditorText = form["content"].ToString();
+            _editorVersion++;
+            _editorBy = "journey-user";
+            await context.Response.WriteAsJsonAsync(new { checksum = EditorChecksum, version = _editorVersion });
+        }
+
+        private void _RememberEditor()
+        {
+            _previousEditorChecksum = EditorText is null ? null : EditorChecksum;
+            _previousEditorText = EditorText;
         }
 
         private string Checksum => $"definition-v{_version}";
@@ -513,14 +555,16 @@ public sealed class DepotProjectsJourney
     }
 
     // The part of Depot's notes hub a typing editor meets: it seeds the room from the Markdown and takes the updates.
-    private sealed class _NotesHub(_NoteCalls calls) : Hub
+    private sealed class _NotesHub(_NoteCalls calls, _DefinitionState state) : Hub
     {
-        public object Join(JsonElement request)
+        public async Task<object> Join(JsonElement request)
         {
+            await Groups.AddToGroupAsync(Context.ConnectionId, "doc-1");
             return new
             {
                 documentId = "doc-1", role = "editor", updates = Array.Empty<object>(), seed = true, awaitingSeed = false,
-                epoch = "epoch-1", stale = false, schemaMismatch = false, markdown = "# Weekly sync\n\n",
+                epoch = "epoch-1", stale = false, schemaMismatch = false, markdown = state.EditorText,
+                saver = Context.ConnectionId, checksum = state.EditorChecksum, @base = state.EditorChecksum, sessionId = "session-1",
             };
         }
 
@@ -528,7 +572,20 @@ public sealed class DepotProjectsJourney
         {
         }
 
-        public void Edited(string documentId) => calls.Edited.TrySetResult();
+        public async Task Edited(string documentId)
+        {
+            calls.Edited.TrySetResult();
+            await Clients.Group(documentId).SendAsync("edited", documentId);
+        }
+
+        public object? Text(string documentId, string? checksum)
+        {
+            var text = state.ReadEditor(checksum);
+            return text is null ? null : new { checksum = text.Value.Checksum, markdown = text.Value.Markdown };
+        }
+
+        public Task Merged(string documentId, string checksum, int[] blocks, int conflicts) =>
+            Clients.Group(documentId).SendAsync("merged", documentId, blocks, conflicts);
 
         public void Compact(string documentId, byte[] snapshot)
         {
