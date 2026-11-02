@@ -14,6 +14,7 @@ using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Terminal;
 using Cockpit.Core.Usage;
+using Cockpit.Infrastructure.HeavyRuns;
 
 namespace Cockpit.App.ViewModels;
 
@@ -199,8 +200,9 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         IOpenMicState? openMicState = null,
         IUsageHistory? usageHistory = null,
         VoiceOverlayCoordinator? voiceOverlay = null,
-        ILogger<TtyViewModel>? logger = null)
-        : base(usageHistory)
+        ILogger<TtyViewModel>? logger = null,
+        HeavyRunQueue? heavyRuns = null)
+        : base(usageHistory, heavyRuns)
     {
         _launcher = launcher;
         _providerResolver = providerResolver;
@@ -634,6 +636,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
                     // does withhold the "session finished" notification — see HasOutstandingBackgroundShells (AC-276).
                     _hasOutstandingBackgroundShells = reading.OutstandingShells > 0;
                     OnPropertyChanged(nameof(HasOutstandingBackgroundShells));
+                    OnPropertyChanged(nameof(HasOutstandingWork));
                     OnPropertyChanged(nameof(SessionStatusLabel));
 
                     // AC-1013: Exposes the raw transcript line for substring-scanning read/observe consumers.

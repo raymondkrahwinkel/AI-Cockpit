@@ -15,6 +15,7 @@
          right-hand chips out of room — clipped in their own slot, never painted over a neighbour. The earlier
          left-hand Grid kept the title in an Auto column that cannot shrink, so a narrow pane drew the title and the
          kind chip over the "⑂ isolated" and claim chips. -->
+    <Grid RowDefinitions="Auto,Auto">
     <DockPanel>
 
         <!-- Usage pill (AC-105): one segmented pill that reads as a whole — a segment per selected metric the
@@ -205,4 +206,17 @@
                        IsVisible="{Binding Statusline, Converter={x:Static StringConverters.IsNullOrEmpty}}"/>
         </Panel>
     </DockPanel>
+
+        <Button Grid.Row="1" Classes="Subtle" HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Left" Padding="4,2" Margin="0,4,0,0"
+                IsVisible="{Binding HasActiveRun}" Click="OnRunStatusClick"
+                ToolTip.Tip="Open test runs">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+                <materialIcons:MaterialIcon Kind="ClockOutline" Width="14" Height="14"
+                                            Foreground="{DynamicResource CockpitStatusBackgroundBrush}"/>
+                <TextBlock Text="{Binding RunStatusLabel}" FontSize="11" TextTrimming="CharacterEllipsis"
+                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+            </StackPanel>
+        </Button>
+    </Grid>
 </UserControl>

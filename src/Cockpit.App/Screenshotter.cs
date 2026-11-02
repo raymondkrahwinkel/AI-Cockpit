@@ -661,6 +661,8 @@ internal static partial class Screenshotter
         ["session-mcp-hover"] = (width, height) => new Window { Width = width, Height = height, Content = _McpHeader(servers: new HashSet<string> { "youtrack", "depot", "cockpit-local-ci", "github-issues" }) },
         ["session-mcp-hover-statusline"] = (width, height) => new Window { Width = width, Height = height, Content = _McpHeader("AC-563 — wiring the header hover", new HashSet<string> { "youtrack", "depot", "cockpit-local-ci", "github-issues" }) },
         ["session-mcp-hover-unknown"] = (width, height) => new Window { Width = width, Height = height, Content = _McpHeader() },
+        ["session-run-queued"] = (width, height) => new Window { Width = width, Height = height, Content = _RunStatusSession(queued: true) },
+        ["session-run-running"] = (width, height) => new Window { Width = width, Height = height, Content = _RunStatusSession(queued: false) },
         // AC-740: the @-mention picker, staged open by the Hovers table below (typing is a caret-driven gesture,
         // not something a scene can pre-stage the way a static transcript can).
         ["session-mention-picker"] = (width, height) => new Window { Width = width, Height = height, Content = _MentionPicker() },
@@ -2694,6 +2696,28 @@ internal static partial class Screenshotter
         // one the hover disagrees with, which is the very thing these renders exist to rule out.
         viewModel.Status = viewModel.ConnectedStatusLine;
 
+        return new SessionView { DataContext = viewModel };
+    }
+
+    private static SessionView _RunStatusSession(bool queued)
+    {
+        var viewModel = new SessionViewModel
+        {
+            Title = "AC-2020",
+            ActiveProfileLabel = "personal",
+            SessionStatus = SessionStatus.Done,
+            Statusline = "AC-2020 — waiting for verification",
+        };
+        viewModel.SetActiveRuns(
+        [
+            new SessionRunActivity(
+                "run-ac-2020",
+                "dotnet test Cockpit.Core.Tests",
+                "light",
+                queued ? SessionRunState.Queued : SessionRunState.Running,
+                DateTimeOffset.UtcNow - TimeSpan.FromMinutes(3) - TimeSpan.FromSeconds(12),
+                queued ? "CPU 62%, 2 ahead of you" : null),
+        ]);
         return new SessionView { DataContext = viewModel };
     }
 

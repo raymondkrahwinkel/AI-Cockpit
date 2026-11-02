@@ -4,6 +4,7 @@ using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
+using Cockpit.Infrastructure.HeavyRuns;
 
 namespace Cockpit.Infrastructure.Sessions;
 
@@ -18,6 +19,7 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
 
     private readonly Lock _gate = new();
     private readonly SessionHost _host;
+    private readonly HeavyRunQueue? _heavyRuns;
     private bool _nameIsChosen;
     private readonly List<TranscriptSnapshotEntry> _rows = [];
     private readonly NestedTranscriptRows _nested = new();
@@ -64,7 +66,8 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
         string? workingDirectory,
         string? profileLabel,
         SessionHost host,
-        string? projectId = null)
+        string? projectId = null,
+        HeavyRunQueue? heavyRuns = null)
     {
         PaneId = paneId;
         _title = title;
@@ -74,6 +77,11 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
         ActiveProfileLabel = profileLabel;
         ProjectId = projectId;
         _host = host;
+        _heavyRuns = heavyRuns;
+        if (_heavyRuns is not null)
+        {
+            _heavyRuns.Changed += _OnHeavyRunsChanged;
+        }
         host.RowUpserted += _OnRowUpserted;
 
         // AC-1438: the host folds its own events; this lock is the thread it folds them on.
@@ -81,7 +89,7 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
         host.TurnStarting += _OnTurnStarting;
         host.TurnFailedToStart += _OnTurnFailedToStart;
         host.BusyChanged += _NoteStateChanged;
-        host.LiveStateChanged += liveState => _RaiseOutsideTheLock(() => LiveStateChanged?.Invoke(liveState));
+        host.LiveStateChanged += _ => _RaiseOutsideTheLock(() => LiveStateChanged?.Invoke(LiveState));
         host.OperatorActed += action => _RaiseOutsideTheLock(() => OperatorActed?.Invoke(action));
         host.TurnEnded += end =>
         {
@@ -148,7 +156,7 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
         {
             lock (_gate)
             {
-                return _host.LiveState;
+                return SessionWorkStatus.Derive(_host.LiveState, _heavyRuns?.RunsForPane(PaneId) ?? []);
             }
         }
     }
@@ -181,7 +189,8 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
 
     public bool HasPromptWaitingToBeDelivered => false;
 
-    public Task<bool> HasOutstandingBackgroundShellsAsync() => Task.FromResult(false);
+    public Task<bool> HasOutstandingBackgroundShellsAsync() =>
+        Task.FromResult(SessionWorkStatus.HasOutstandingWork(false, _heavyRuns?.RunsForPane(PaneId) ?? []));
 
     // A consent banner is a view's; the permission rows themselves are answered through the members below.
     public bool HasPendingConsent => false;
@@ -737,10 +746,17 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
 
     public async ValueTask DisposeAsync()
     {
+        if (_heavyRuns is not null)
+        {
+            _heavyRuns.Changed -= _OnHeavyRunsChanged;
+        }
+
         _host.StopListening();
         await _host.StopAsync().ConfigureAwait(false);
         await _host.DisposeAsync().ConfigureAwait(false);
     }
+
+    private void _OnHeavyRunsChanged() => _RaiseOutsideTheLock(() => LiveStateChanged?.Invoke(LiveState));
 
     // Stream order is the runtime's: the host folds each event on the runtime's thread, inside this lock.
     private void _FoldUnderTheLock(Action fold)

@@ -21,6 +21,7 @@ using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Provisioning;
 using Cockpit.Core.Usage;
+using Cockpit.Infrastructure.HeavyRuns;
 using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Microsoft.Extensions.Logging;
@@ -1406,8 +1407,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         IMentionFileSource? mentionFileSource = null,
         ISessionTranscriptReader? transcriptReader = null,
         ILogger<SessionViewModel>? logger = null,
-        IBackendEventLog? eventLog = null)
-        : base(usageHistory)
+        IBackendEventLog? eventLog = null,
+        HeavyRunQueue? heavyRuns = null)
+        : base(usageHistory, heavyRuns)
     {
         _transcriptReader = transcriptReader;
         // AC-1090: every pane but the design-time/unit-test graph gets the store from the container, which
@@ -2902,6 +2904,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         {
             _backgroundTasks = state.BackgroundTasks;
             OnPropertyChanged(nameof(HasOutstandingBackgroundShells));
+            OnPropertyChanged(nameof(HasOutstandingWork));
             OnPropertyChanged(nameof(SessionStatusLabel));
             _RebuildBackgroundTaskRows();
         }
@@ -2920,6 +2923,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             }
         }
 
+        SetActiveRuns(state.ActiveRuns);
         SessionStatus = state.Status;
         LiveState = state;
         LiveStateChanged?.Invoke(state);
