@@ -3,12 +3,13 @@ using System.Text.Json;
 
 namespace Cockpit.Plugin.Browser;
 
-internal sealed class AgentTabBoundary(Func<string, bool> register, Action<string> closed) : IDisposable
+internal sealed class AgentTabBoundary(Func<string, bool> register, Action<string> closed, AddressPolicy addressPolicy) : IDisposable
 {
+    internal sealed record Blocked(string Code, string Error);
     private readonly CancellationTokenSource _lifetime = new();
     private readonly ConcurrentDictionary<string, string> _targets = new();
     private readonly ConcurrentDictionary<string, TaskCompletionSource> _ready = new();
-    private readonly ConcurrentDictionary<string, string> _blocked = new();
+    private readonly ConcurrentDictionary<string, Blocked> _blocked = new();
     private readonly ConcurrentDictionary<string, string> _openers = new();
     private readonly ConcurrentDictionary<string, ConcurrentQueue<string>> _popupUrls = new();
     private CdpPage? _browser;
@@ -32,7 +33,7 @@ internal sealed class AgentTabBoundary(Func<string, bool> register, Action<strin
     public Task ReadyAsync(string target, CancellationToken token) =>
         _ready.GetOrAdd(target, _ => new(TaskCreationOptions.RunContinuationsAsynchronously)).Task.WaitAsync(token);
 
-    public string? TakeBlocked(string target) => _blocked.TryRemove(target, out var code) ? code : null;
+    public Blocked? TakeBlocked(string target) => _blocked.TryRemove(target, out var blocked) ? blocked : null;
 
     private void OnEvent(string name, JsonElement data, string? session)
     {
@@ -62,7 +63,7 @@ internal sealed class AgentTabBoundary(Func<string, bool> register, Action<strin
                     _openers[target] = openerId;
                     if (_popupUrls.TryGetValue(openerId, out var urls) && urls.TryDequeue(out var popupUrl) && !IsWeb(popupUrl))
                     {
-                        _blocked[openerId] = "invalid_argument";
+                        _blocked[openerId] = new("invalid_argument", "Only http(s) pages are allowed.");
                         var close = CloseAsync(target);
                         // Chromium needs the paused renderer released to finish the already requested close.
                         await SendAsync("Runtime.runIfWaitingForDebugger", null, session).ConfigureAwait(false);
@@ -95,23 +96,30 @@ internal sealed class AgentTabBoundary(Func<string, bool> register, Action<strin
             }
             else if (name == "Fetch.requestPaused" && session is not null)
             {
-                var allowed = IsWeb(data.GetProperty("request").GetProperty("url").GetString());
+                var requestUrl = data.GetProperty("request").GetProperty("url").GetString();
+                var blocked = await CheckAddressAsync(requestUrl).ConfigureAwait(false);
                 if (data.TryGetProperty("responseHeaders", out var headers))
                 {
                     foreach (var header in headers.EnumerateArray())
                     {
-                        if (header.GetProperty("name").GetString()!.Equals("Location", StringComparison.OrdinalIgnoreCase)
-                            && Uri.TryCreate(new Uri(data.GetProperty("request").GetProperty("url").GetString()!), header.GetProperty("value").GetString(), out var redirect))
-                            allowed &= IsWeb(redirect.AbsoluteUri);
+                        var location = string.Equals(header.GetProperty("name").GetString(), "Location", StringComparison.OrdinalIgnoreCase);
+                        if (location && Uri.TryCreate(requestUrl, UriKind.Absolute, out var requestUri) && Uri.TryCreate(requestUri, header.GetProperty("value").GetString(), out var redirect))
+                        {
+                            blocked ??= await CheckAddressAsync(redirect.AbsoluteUri).ConfigureAwait(false);
+                        }
                     }
                 }
-                if (!allowed && target is not null) _blocked[target] = "invalid_argument";
+                if (blocked is not null && target is not null)
+                {
+                    _blocked[target] = blocked;
+                }
+                var allowed = blocked is null;
                 await SendAsync(allowed ? "Fetch.continueRequest" : "Fetch.failRequest",
                     allowed ? new { requestId = data.GetProperty("requestId").GetString() } : (object)new { requestId = data.GetProperty("requestId").GetString(), errorReason = "BlockedByClient" }, session).ConfigureAwait(false);
             }
             else if (name == "Page.fileChooserOpened" && target is not null)
             {
-                _blocked[target] = "confirmation_required";
+                _blocked[target] = new("confirmation_required", "File transfer requires an operator action.");
             }
             else if (name == "Page.windowOpen" && target is not null)
             {
@@ -120,8 +128,11 @@ internal sealed class AgentTabBoundary(Func<string, bool> register, Action<strin
             else if (name == "Browser.downloadWillBegin")
             {
                 var source = data.GetProperty("frameId").GetString()!;
-                _blocked[source] = "confirmation_required";
-                if (_openers.TryGetValue(source, out var opener)) _blocked[opener] = "confirmation_required";
+                _blocked[source] = new("confirmation_required", "File transfer requires an operator action.");
+                if (_openers.TryGetValue(source, out var opener))
+                {
+                    _blocked[opener] = new("confirmation_required", "File transfer requires an operator action.");
+                }
             }
         }
         catch (Exception ex) when (AgentOwnedTabs.IsBrowserFailure(ex))
@@ -133,6 +144,16 @@ internal sealed class AgentTabBoundary(Func<string, bool> register, Action<strin
                 catch (Exception close) when (AgentOwnedTabs.IsBrowserFailure(close)) { }
             }
         }
+    }
+
+    private async Task<Blocked?> CheckAddressAsync(string? url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
+        {
+            return new("invalid_argument", "Only http(s) pages are allowed.");
+        }
+        var reason = await addressPolicy.BlockReasonAsync(uri, _lifetime.Token).ConfigureAwait(false);
+        return reason is null ? null : new("network_blocked", reason);
     }
 
     private Task<JsonElement> SendAsync(string method, object? parameters, string session) =>

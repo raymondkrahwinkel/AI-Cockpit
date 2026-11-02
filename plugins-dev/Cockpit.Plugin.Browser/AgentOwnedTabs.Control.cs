@@ -54,7 +54,7 @@ internal sealed partial class AgentOwnedTabs
                         throw new OwnedTabException("confirmation_required", "File transfer requires an operator action.");
                     if (navigation.TryGetProperty("errorText", out _))
                     {
-                        throw new OwnedTabException(boundary.TakeBlocked(entry.Target) ?? "browser_unavailable", "Navigation failed.");
+                        throw BoundaryFailure(boundary.TakeBlocked(entry.Target));
                     }
                     break;
                 case "close":
@@ -111,7 +111,9 @@ internal sealed partial class AgentOwnedTabs
                 // ponytail: feedback waits at most 200 ms; slower boundary events may miss this action's response.
                 await Task.Delay(200, token).ConfigureAwait(false);
                 if (boundary.TakeBlocked(entry.Target) is { } blocked)
-                    throw new OwnedTabException(blocked, "The browser blocked this action at the file or protocol boundary.");
+                {
+                    throw BoundaryFailure(blocked);
+                }
             }
             return new("", true, Action: action.Tool);
         }

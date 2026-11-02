@@ -17,7 +17,7 @@ public class AgentOwnedTabTests
     {
         await using var fixture = new OwnedTabFixture();
         using var browsers = fixture.Browsers();
-        var tabs = new AgentOwnedTabs(browsers);
+        var tabs = new AgentOwnedTabs(browsers, new AddressPolicy(() => ["127.0.0.0/8"]));
         var a = await tabs.OpenAsync("a", fixture.Url, "self");
         Assert.True(a.Ok, a.Error);
         var aId = Assert.IsType<string>(a.TabId);
@@ -76,7 +76,92 @@ public class AgentOwnedTabTests
         await ChooserBoundaryAsync(tabs, browsers, fixture, "operator");
         await ProtocolBoundaryAsync(tabs, fixture, "self");
         await ProtocolBoundaryAsync(tabs, fixture, "operator");
+        await ClassifierBoundaryAsync();
+        await NetworkBoundaryAsync();
         await RetainedLifecycleAsync(tabs, browsers, fixture, more[0].TabId!, more[1].TabId!, bId);
+    }
+
+    // L2b: address classification, DNS answers, explicit exceptions and validation share the agent boundary scenario.
+    private static async Task ClassifierBoundaryAsync()
+    {
+        var policy = new AddressPolicy(() => [], (_, _) => Task.FromResult(new[] { IPAddress.Parse("8.8.8.8"), IPAddress.Loopback }));
+        Assert.Contains("loopback", await policy.BlockReasonAsync(new Uri("http://127.0.0.1"), CancellationToken.None));
+        Assert.Contains("loopback", await policy.BlockReasonAsync(new Uri("http://[::1]"), CancellationToken.None));
+        Assert.Contains("loopback", await policy.BlockReasonAsync(new Uri("http://[::ffff:127.0.0.1]"), CancellationToken.None));
+        Assert.Contains("localhost", await policy.BlockReasonAsync(new Uri("http://LOCALHOST."), CancellationToken.None));
+        Assert.Contains("localhost", await policy.BlockReasonAsync(new Uri("http://app.localhost"), CancellationToken.None));
+        Assert.Contains("RFC1918", await policy.BlockReasonAsync(new Uri("http://10.1.2.3"), CancellationToken.None));
+        Assert.Contains("RFC1918", await policy.BlockReasonAsync(new Uri("http://172.16.0.1"), CancellationToken.None));
+        Assert.Contains("RFC1918", await policy.BlockReasonAsync(new Uri("http://172.31.255.255"), CancellationToken.None));
+        Assert.Contains("RFC1918", await policy.BlockReasonAsync(new Uri("http://192.168.1.1"), CancellationToken.None));
+        Assert.Contains("link-local", await policy.BlockReasonAsync(new Uri("http://169.254.1.1"), CancellationToken.None));
+        Assert.Contains("link-local", await policy.BlockReasonAsync(new Uri("http://[fe80::1]"), CancellationToken.None));
+        Assert.Contains("CGNAT", await policy.BlockReasonAsync(new Uri("http://100.64.0.1"), CancellationToken.None));
+        Assert.Contains("CGNAT", await policy.BlockReasonAsync(new Uri("http://100.127.255.255"), CancellationToken.None));
+        Assert.Contains("unique-local", await policy.BlockReasonAsync(new Uri("http://[fd00::1]"), CancellationToken.None));
+        Assert.Contains("unspecified", await policy.BlockReasonAsync(new Uri("http://0.0.0.0"), CancellationToken.None));
+        Assert.Contains("unspecified", await policy.BlockReasonAsync(new Uri("http://[::]"), CancellationToken.None));
+        Assert.Contains(".local", await policy.BlockReasonAsync(new Uri("http://printer.local."), CancellationToken.None));
+        Assert.Contains("loopback", await policy.BlockReasonAsync(new Uri("http://public.example"), CancellationToken.None));
+        Assert.Null(await policy.BlockReasonAsync(new Uri("https://8.8.8.8"), CancellationToken.None));
+        Assert.Null(await policy.BlockReasonAsync(new Uri("http://172.32.0.1"), CancellationToken.None));
+        Assert.Null(await policy.BlockReasonAsync(new Uri("http://100.128.0.1"), CancellationToken.None));
+        var storage = new NetworkStorage();
+        var settings = new BrowserSettings(storage);
+        settings.SaveAgentNetworkAllowlist(["localhost:8080", "127.0.0.0/8", "[::1]:8080", "fd00::/8", "dev.local"]);
+        var allowed = new AddressPolicy(() => settings.AgentNetworkAllowlist, (_, _) => Task.FromResult(new[] { IPAddress.IPv6Loopback }));
+        Assert.Null(await allowed.BlockReasonAsync(new Uri("http://localhost:8080"), CancellationToken.None));
+        Assert.Null(await allowed.BlockReasonAsync(new Uri("http://127.0.0.2:9000"), CancellationToken.None));
+        Assert.Null(await allowed.BlockReasonAsync(new Uri("http://[::1]:8080"), CancellationToken.None));
+        Assert.Null(await allowed.BlockReasonAsync(new Uri("http://[fd00::1]"), CancellationToken.None));
+        Assert.Null(await allowed.BlockReasonAsync(new Uri("http://dev.local:9000"), CancellationToken.None));
+        Assert.Contains("localhost", await allowed.BlockReasonAsync(new Uri("http://localhost:8081"), CancellationToken.None));
+        var localRange = new AddressPolicy(() => ["127.0.0.0/8"], (_, _) => Task.FromResult(new[] { IPAddress.Loopback }));
+        Assert.Null(await localRange.BlockReasonAsync(new Uri("http://localhost:8081"), CancellationToken.None));
+        Assert.Throws<ArgumentException>(() => settings.SaveAgentNetworkAllowlist(["http://localhost"]));
+        Assert.Throws<ArgumentException>(() => settings.SaveAgentNetworkAllowlist(["localhost:0"]));
+        Assert.Throws<ArgumentException>(() => settings.SaveAgentNetworkAllowlist(["localhost:65536"]));
+        Assert.Throws<ArgumentException>(() => settings.SaveAgentNetworkAllowlist(["127.0.0.0/33"]));
+        Assert.Throws<ArgumentException>(() => settings.SaveAgentNetworkAllowlist(["*.local"]));
+        Assert.Equal(5, settings.AgentNetworkAllowlist.Count);
+    }
+
+    // L2b: real Fetch interception in Chromium, including response-stage redirects and live allowlist changes.
+    private static async Task NetworkBoundaryAsync()
+    {
+        await using var fixture = new OwnedTabFixture();
+        using var browsers = fixture.Browsers();
+        var settings = new BrowserSettings(new NetworkStorage());
+        var tabs = new AgentOwnedTabs(browsers, new AddressPolicy(() => settings.AgentNetworkAllowlist));
+        var localUrl = fixture.Url.Replace("127.0.0.1", "localhost", StringComparison.Ordinal);
+        var localhost = await tabs.OpenAsync("network", localUrl, "self");
+        Assert.False(localhost.Ok);
+        Assert.Equal("network_blocked", localhost.Code);
+        Assert.Contains("localhost", localhost.Error);
+        var loopback = await tabs.OpenAsync("network", fixture.Url, "self");
+        Assert.False(loopback.Ok);
+        Assert.Equal("network_blocked", loopback.Code);
+        Assert.Contains("loopback", loopback.Error);
+        Assert.Empty(await tabs.ListAsync("network"));
+        settings.SaveAgentNetworkAllowlist([new Uri(fixture.Url).Authority]);
+        var redirect = await tabs.OpenAsync("network", fixture.Url + "redirect?to=" + Uri.EscapeDataString(localUrl), "self");
+        Assert.False(redirect.Ok);
+        Assert.Equal("network_blocked", redirect.Code);
+        Assert.Contains("localhost", redirect.Error);
+        var opened = await tabs.OpenAsync("network", fixture.Url, "self");
+        Assert.True(opened.Ok, opened.Error);
+        var tabId = Assert.IsType<string>(opened.TabId);
+        var action = await tabs.ActAsync("network", new("", "", "navigate", tabId, Text: localUrl));
+        Assert.False(action.Ok);
+        Assert.Contains("network_blocked:", action.Error);
+        Assert.Contains("localhost", action.Error);
+    }
+
+    private sealed class NetworkStorage : IPluginStorage
+    {
+        private readonly Dictionary<string, object> _entries = new();
+        public T? Get<T>(string key) => _entries.TryGetValue(key, out var entry) ? (T)entry : default;
+        public void Set<T>(string key, T value) => _entries[key] = value ?? throw new ArgumentNullException(nameof(value));
     }
 
     private static async Task RetainedLifecycleAsync(AgentOwnedTabs tabs, AgentBrowserHost browsers, OwnedTabFixture fixture, string operatorId, string selfId, string otherId)
@@ -185,7 +270,7 @@ public class AgentOwnedTabTests
     {
         await using var fixture = new OwnedTabFixture();
         using var browsers = fixture.Browsers();
-        var tabs = new AgentOwnedTabs(browsers);
+        var tabs = new AgentOwnedTabs(browsers, new AddressPolicy(() => ["127.0.0.0/8"]));
         var host = DispatchProxy.Create<ICockpitHost, AppKeyHost>();
         using var bridge = new TabShareBridge(host);
         var tools = new TabShareMcpTools(host, bridge, tabs);

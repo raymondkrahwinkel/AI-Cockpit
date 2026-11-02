@@ -7,9 +7,11 @@ namespace Cockpit.Plugin.Browser;
 internal sealed partial class AgentOwnedTabs
 {
     private readonly AgentBrowserHost browsers;
-    public AgentOwnedTabs(AgentBrowserHost browsers)
+    private readonly AddressPolicy addressPolicy;
+    public AgentOwnedTabs(AgentBrowserHost browsers, AddressPolicy? addressPolicy = null)
     {
         this.browsers = browsers;
+        this.addressPolicy = addressPolicy ?? new AddressPolicy(() => []);
         browsers.RetainTargets = generation => _tabs.Values.Where(e => e.Generation == generation && e.Purpose == "operator" && !_closed.ContainsKey((generation, e.Target))).Select(e => e.Target).ToHashSet(StringComparer.Ordinal);
     }
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(10) };
@@ -76,7 +78,7 @@ internal sealed partial class AgentOwnedTabs
                 else if (name == "Page.loadEventFailed")
                 {
                     // A net error never reaches DOMContentLoaded; fail the open instead of waiting it out.
-                    loadFailure.TrySetException(new OwnedTabException("browser_unavailable", "Navigation failed."));
+                    loadFailure.TrySetException(BoundaryFailure(boundary.TakeBlocked(target)));
                 }
             }, timeout.Token).ConfigureAwait(false);
             await page.CallAsync("Page.enable", null, timeout.Token).ConfigureAwait(false);
@@ -89,7 +91,7 @@ internal sealed partial class AgentOwnedTabs
             }
             if (navigation.TryGetProperty("errorText", out _))
             {
-                throw new OwnedTabException(boundary.TakeBlocked(target) ?? "browser_unavailable", "Navigation failed.");
+                throw BoundaryFailure(boundary.TakeBlocked(target));
             }
             // Match the navigation's loader, so about:blank's readiness cannot complete this open.
             var loader = RequiredString(navigation, "loaderId");
@@ -234,7 +236,7 @@ internal sealed partial class AgentOwnedTabs
             {
                 _closed[(session.Generation, target)] = 0;
                 browsers.TargetClosed(session.Generation, target);
-            });
+            }, addressPolicy);
             try
             {
                 await boundary.StartAsync(session.Upstream, token).ConfigureAwait(false);
@@ -278,5 +280,7 @@ internal sealed partial class AgentOwnedTabs
     internal static bool IsBrowserFailure(Exception ex) => ex is OwnedTabException or IOException or HttpRequestException or OperationCanceledException or System.Net.WebSockets.WebSocketException or ObjectDisposedException;
     internal static string Code(Exception ex) => ex is OwnedTabException owned ? owned.Code : ex is OperationCanceledException ? "timeout" : "browser_unavailable";
     internal static string Message(Exception ex) => ex is OwnedTabException ? ex.Message : "The browser operation could not complete.";
+    private static OwnedTabException BoundaryFailure(AgentTabBoundary.Blocked? blocked) =>
+        new(blocked?.Code ?? "browser_unavailable", blocked?.Error ?? "Navigation failed.");
     private sealed class OwnedTabException(string code, string message) : Exception(message) { public string Code { get; } = code; }
 }
