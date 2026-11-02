@@ -76,7 +76,7 @@ internal sealed class AgentTabBoundary(Func<string, bool> register, Action<strin
                     }
                 }
                 await SendAsync("Fetch.enable", new { patterns = new object[] {
-                    new { urlPattern = "*", resourceType = "Document", requestStage = "Request" },
+                    new { urlPattern = "*", requestStage = "Request" },
                     new { urlPattern = "*", resourceType = "Document", requestStage = "Response" } } }, session).ConfigureAwait(false);
                 await SendAsync("Target.setAutoAttach", new { autoAttach = true, waitForDebuggerOnStart = true, flatten = true }, session).ConfigureAwait(false);
                 var url = info.GetProperty("url").GetString();
