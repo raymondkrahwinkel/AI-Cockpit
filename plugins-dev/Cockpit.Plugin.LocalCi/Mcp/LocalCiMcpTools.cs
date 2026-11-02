@@ -224,8 +224,10 @@ internal sealed class LocalCiMcpTools(
             return null;
         }
 
-        var checkout = checkouts.CheckoutFor(paneId);
-        var paneKnown = checkout is not null || checkouts.Knows(paneId);
+        var checkout = host.Sessions.GetWorkingDirectory(paneId) ?? checkouts.CheckoutFor(paneId);
+        var paneKnown = checkout is not null
+            || checkouts.Knows(paneId)
+            || host.Sessions.OpenSessions.Any(session => string.Equals(session.PaneId, paneId, StringComparison.Ordinal));
         return (paneId, checkout, paneKnown);
     }
 
