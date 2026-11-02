@@ -271,6 +271,8 @@ internal static partial class Screenshotter
         ["markdown-editor"] = (width, height) => _MarkdownEditorScene(width, height, editor => editor.EditLine(12, atEnd: true)),
         ["markdown-file-new"] = (width, height) => _MarkdownFileScene(width, height, "new"),
         ["markdown-file-create"] = (_, _) => _NewMarkdownFileDialogScene(),
+        ["markdown-file-new-folder"] = (_, _) => _NewMarkdownFileDialogScene("depot-new-folder"),
+        ["markdown-file-new-folder-error"] = (_, _) => _NewMarkdownFileDialogScene("depot-new-folder-error"),
         ["markdown-file-editing"] = (width, height) => _MarkdownFileScene(width, height, "editing"),
         ["markdown-file-saved"] = (width, height) => _MarkdownFileScene(width, height, "saved"),
         ["markdown-file-conflict"] = (width, height) => _MarkdownFileScene(width, height, "conflict"),

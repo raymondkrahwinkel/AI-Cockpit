@@ -30,6 +30,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ## [Unreleased]
 
+### Added
+
+- The Depot "New Markdown file" dialog can now create a new folder: choose "New folder…" in the Folder list, pick the folder it goes in and type its name. The name is checked as you type, and the folder appears in the tree once the file is saved.
+
 ### Fixed
 
 - The Sync profile picker no longer blocks the next profile choice, and explains its server selections in the page.
