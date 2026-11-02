@@ -18,6 +18,7 @@ public class AgentOwnedTabTests
     [Fact]
     public async Task TwoSessions_OpenListReadAndCapture_WithoutReplacingTheirTabs()
     {
+        await AssistantBrowserMountScenario.RunAsync();
         await using var fixture = new OwnedTabFixture();
         using var browsers = fixture.Browsers();
         var tabs = new AgentOwnedTabs(browsers, new AddressPolicy(() => ["127.0.0.0/8"]));
@@ -81,7 +82,6 @@ public class AgentOwnedTabTests
         await ProtocolBoundaryAsync(tabs, fixture, "operator");
         await ClassifierBoundaryAsync();
         await NetworkBoundaryAsync();
-        await AssistantBrowserMountScenario.RunAsync();
         await RetainedLifecycleAsync(tabs, browsers, fixture, more[0].TabId!, more[1].TabId!, bId);
     }
 
