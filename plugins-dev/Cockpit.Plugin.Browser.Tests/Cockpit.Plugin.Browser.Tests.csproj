@@ -34,6 +34,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Cockpit.Plugin.Browser\Cockpit.Plugin.Browser.csproj" Aliases="global,browserBackend" />
     <ProjectReference Include="..\..\src\Cockpit.Core\Cockpit.Core.csproj" />
+    <ProjectReference Include="..\..\src\Cockpit.Infrastructure\Cockpit.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>
