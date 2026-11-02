@@ -167,7 +167,7 @@ public class OpenAiCompatSessionDriverTests
             var body = handler.Bodies[^1];
             Assert.Equal(expected is not null, body.TryGetProperty("reasoning_effort", out var value));
             if (expected is not null) Assert.Equal(expected, value.GetString());
-            await using var nativeServer = new OllamaHttpServer();
+            await using var nativeServer = new OllamaHttpServer { ThinkingLevels = ["low", "medium", "high"] };
             var nativeConfig = new OllamaConfig(nativeServer.BaseUrl, "model", ReasoningEffort: effort);
             using var nativeClient = new OpenAiCompatChatClientFactory().Create(nativeConfig);
             await using var nativeDriver = _CreateDriver(nativeClient, _SelectionSensitiveProvider(), null);
@@ -175,17 +175,26 @@ public class OpenAiCompatSessionDriverTests
             await nativeDriver.SendUserMessageAsync("hi");
             var nativeEvents = await _CollectUntilTurnCompletedAsync(nativeDriver);
             Assert.False(Assert.Single(nativeEvents.OfType<TurnCompleted>()).IsError);
-            var nativeBody = Assert.Single(nativeServer.Requests).Body;
+            var nativeBody = Assert.Single(nativeServer.Requests, request => request.Path == "/api/chat").Body;
             Assert.Equal(expected is not null, nativeBody.TryGetProperty("think", out var think));
             if (expected is not null) Assert.Equal(expected, think.GetString());
             Assert.False(nativeBody.TryGetProperty("reasoning_effort", out _));
         }
-        foreach (var (effort, expected) in new (string, object)[] { ("none", false), ("minimal", "low"), ("xhigh", "max"), ("ultra", "max") })
+        foreach (var (effort, expected) in new (string, object)[] { ("none", false), ("minimal", "low"), ("xhigh", "high"), ("ultra", "high") })
         {
-            await using var server = new OllamaHttpServer();
+            await using var server = new OllamaHttpServer { ThinkingLevels = ["low", "medium", "high"] };
             using var client = new OpenAiCompatChatClientFactory().Create(new OllamaConfig(server.BaseUrl, "model", ReasoningEffort: effort));
             await client.GetResponseAsync([new ChatMessage(ChatRole.User, "hi")]);
-            Assert.Equal(System.Text.Json.JsonSerializer.Serialize(expected), Assert.Single(server.Requests).Body.GetProperty("think").GetRawText());
+            Assert.Equal(System.Text.Json.JsonSerializer.Serialize(expected), Assert.Single(server.Requests, request => request.Path == "/api/chat").Body.GetProperty("think").GetRawText());
+        }
+        foreach (var effort in new[] { "low", "medium", "high", "minimal", "xhigh", "ultra" })
+        {
+            await using var server = new OllamaHttpServer();
+            using var client = new OpenAiCompatChatClientFactory().Create(new OllamaConfig(server.BaseUrl, "qwen3", ReasoningEffort: effort));
+            await client.GetResponseAsync([new ChatMessage(ChatRole.User, "hi")]);
+            await client.GetResponseAsync([new ChatMessage(ChatRole.User, "again")]);
+            Assert.All(server.Requests.Where(request => request.Path == "/api/chat"), request => Assert.True(request.Body.GetProperty("think").GetBoolean()));
+            Assert.Equal("qwen3", Assert.Single(server.Requests, request => request.Path == "/api/show").Body.GetProperty("model").GetString());
         }
     }
 

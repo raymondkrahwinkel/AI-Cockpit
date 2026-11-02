@@ -24,6 +24,7 @@ internal sealed class OpenAiCompatChatClientFactory : IChatClientFactory, ISingl
     public IChatClient CreateForEndpoint(string baseUrl, string model, string? apiKey = null)
     {
         var options = BuildClientOptions(baseUrl);
+        // LM Studio only needs a key behind a protected proxy; the SDK still requires a placeholder otherwise.
         var credential = new ApiKeyCredential(string.IsNullOrEmpty(apiKey) ? "not-needed" : apiKey);
         return new OpenAIClient(credential, options).GetChatClient(model).AsIChatClient();
     }

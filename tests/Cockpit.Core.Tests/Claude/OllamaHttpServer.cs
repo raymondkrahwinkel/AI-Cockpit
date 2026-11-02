@@ -13,6 +13,7 @@ internal sealed class OllamaHttpServer : IAsyncDisposable
     public string BaseUrl { get; }
     public List<(string Path, JsonElement Body)> Requests { get; } = [];
     public Func<JsonElement, (int Status, string Body)>? Respond { get; set; }
+    public string[] ThinkingLevels { get; set; } = [];
     public TaskCompletionSource? HoldBody { get; set; }
     public TaskCompletionSource BodyHeld { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -45,7 +46,9 @@ internal sealed class OllamaHttpServer : IAsyncDisposable
                 await stream.ReadExactlyAsync(bytes, _stop.Token);
                 var body = JsonSerializer.Deserialize<JsonElement>(bytes);
                 Requests.Add((path, body));
-                var (status, reply) = Respond?.Invoke(body) ?? (200, path == "/api/chat"
+                var (status, reply) = path == "/api/show"
+                    ? (200, JsonSerializer.Serialize(new { thinking = new { values = ThinkingLevels } }))
+                    : Respond?.Invoke(body) ?? (200, path == "/api/chat"
                     ? """{"message":{"role":"assistant","content":"hello"},"done":true,"done_reason":"stop","prompt_eval_count":12,"eval_count":3}"""
                     : """{"id":"chat-1","choices":[{"message":{"role":"assistant","content":"hello"},"finish_reason":"stop"}]}""");
                 var payload = Encoding.UTF8.GetBytes(reply);

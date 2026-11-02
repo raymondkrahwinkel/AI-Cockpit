@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
@@ -12,6 +13,7 @@ internal sealed class OllamaChatClient(OllamaConfig config) : IChatClient
 {
     private readonly HttpClient _http = new() { Timeout = Timeout.InfiniteTimeSpan };
     private readonly Uri _endpoint = new($"{config.BaseUrl.TrimEnd('/')}/api/chat");
+    private readonly ConcurrentDictionary<string, HashSet<string>> _thinkingLevels = new(StringComparer.Ordinal);
 
     public Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default) =>
         _ReadAsync(messages, options, false, cancellationToken).ToChatResponseAsync(cancellationToken);
@@ -24,6 +26,8 @@ internal sealed class OllamaChatClient(OllamaConfig config) : IChatClient
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var body = _Request(messages, options, streaming);
+        if (await _ThinkingAsync(options?.ModelId ?? config.Model, cancellationToken).ConfigureAwait(false) is { } thinking)
+            body["think"] = thinking;
         using var request = new HttpRequestMessage(HttpMethod.Post, _endpoint)
         {
             Content = new ByteArrayContent(JsonSerializer.SerializeToUtf8Bytes(body)),
@@ -81,16 +85,6 @@ internal sealed class OllamaChatClient(OllamaConfig config) : IChatClient
             ["stream"] = streaming,
             ["options"] = nativeOptions,
         };
-        if (!string.IsNullOrWhiteSpace(config.ReasoningEffort))
-        {
-            body["think"] = config.ReasoningEffort.Trim() switch
-            {
-                "none" => JsonValue.Create(false),
-                "minimal" => JsonValue.Create("low"),
-                "xhigh" or "ultra" => JsonValue.Create("max"),
-                var effort => JsonValue.Create(effort),
-            };
-        }
         if (options?.Tools is { Count: > 0 } tools)
         {
             body["tools"] = new JsonArray(tools.OfType<AIFunction>().Select(function => (JsonNode)new JsonObject
@@ -105,6 +99,32 @@ internal sealed class OllamaChatClient(OllamaConfig config) : IChatClient
             }).ToArray());
         }
         return body;
+    }
+
+    private async Task<JsonNode?> _ThinkingAsync(string model, CancellationToken cancellationToken)
+    {
+        var effort = config.ReasoningEffort?.Trim();
+        if (string.IsNullOrEmpty(effort)) return null;
+        if (effort == "none") return JsonValue.Create(false);
+        effort = effort switch { "minimal" => "low", "xhigh" or "ultra" => "high", _ => effort };
+        if (!_thinkingLevels.TryGetValue(model, out var levels))
+        {
+            using var content = new ByteArrayContent(JsonSerializer.SerializeToUtf8Bytes(new { model }));
+            content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+            using var response = await _http.PostAsync(new Uri($"{config.BaseUrl.TrimEnd('/')}/api/show"), content, cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode) return JsonValue.Create(true);
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+            using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
+            levels = [];
+            if (document.RootElement.TryGetProperty("thinking", out var thinking)
+                && thinking.TryGetProperty("values", out var values) && values.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var value in values.EnumerateArray())
+                    if (value.ValueKind == JsonValueKind.String) levels.Add(value.GetString()!);
+            }
+            _thinkingLevels.TryAdd(model, levels);
+        }
+        return levels.Contains(effort) ? JsonValue.Create(effort) : JsonValue.Create(true);
     }
 
     private static JsonArray _Messages(IEnumerable<ChatMessage> messages)
