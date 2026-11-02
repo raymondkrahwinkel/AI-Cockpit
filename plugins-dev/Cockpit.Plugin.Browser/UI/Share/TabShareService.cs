@@ -58,7 +58,7 @@ internal sealed partial class TabShareService : IDisposable
         var sessions = await _OpenSessionsAsync();
         if (sessions.Count == 0)
         {
-            _host.ShowToast("Start a session first: a tab is shared with one agent session.", PluginToastSeverity.Information);
+            _host.ShowToast("No session has the browser tools (cockpit-browser). Start one with them, or give a running one a restart with them.", PluginToastSeverity.Information);
             return;
         }
 

@@ -1,4 +1,5 @@
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Sessions;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Shared;
@@ -13,6 +14,7 @@ namespace Cockpit.Infrastructure.Plugins;
 public sealed class PluginBackendSessionObserver : ICockpitSessionObserver
 {
     private readonly ISessionRegistry _registry;
+    private readonly SessionMcpMounts? _mounts;
     private readonly Lock _gate = new();
     private Dictionary<string, ISessionHandle> _live = [];
     private readonly Dictionary<ISessionHandle, (Action<string> OnText, Action<SessionToolCall> OnToolCall)> _followed = new(ReferenceEqualityComparer.Instance);
@@ -21,6 +23,7 @@ public sealed class PluginBackendSessionObserver : ICockpitSessionObserver
     public PluginBackendSessionObserver(ISessionRegistry registry, IServiceProvider? services = null)
     {
         _registry = registry;
+        _mounts = services?.GetService<SessionMcpMounts>();
         if (services?.GetService<SessionMcpKeyring>() is { } keyring)
             keyring.RunEnded += paneId => SessionClosed?.Invoke(this, paneId);
         _registry.Changed += _OnRegistryChanged;
@@ -46,6 +49,8 @@ public sealed class PluginBackendSessionObserver : ICockpitSessionObserver
                 : Array.Empty<OpenCockpitSession>()];
 
     public event EventHandler<SessionOutputText>? OutputProduced;
+
+    public bool HasMcpServer(string paneId, string serverName) => _mounts?.IsMounted(paneId, serverName) ?? false;
 
     public event EventHandler<SessionToolActivity>? ToolActivityObserved;
 
