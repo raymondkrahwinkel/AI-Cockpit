@@ -45,6 +45,10 @@ A web browser inside Cockpit on CEF (Chromium Embedded Framework). This README c
 
 ## The agent profile (AC-1713)
 
+- **Network boundary:** agent pages and all their resources use the global `agentNetworkAllowlist`. Local and LAN
+  destinations are denied unless explicitly allowed. A per-browser SOCKS5 proxy resolves and checks every address,
+  then connects only to those numeric IPs, including for WebSockets. Loopback bypass and QUIC are disabled. This
+  applies to agent tabs opened for the operator too; the operator's own User/RaymondProfile browser is separate.
 - **The Agents side** of the profile switch lists the tabs of every live agent browser (AC-1712) with the session as a
   badge. It reads them over the plugin channel (`agents.*`), so it works when the backend runs on a server.
 - **The picture** is a CDP `Page.startScreencast` of the tab on screen, straight from the agent Chromium: no CEF. It runs
