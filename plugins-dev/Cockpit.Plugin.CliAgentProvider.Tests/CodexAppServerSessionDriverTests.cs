@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.TestSupport;
+using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Plugin.CliAgentProvider.Tests;
 
@@ -199,7 +200,7 @@ public class CodexAppServerSessionDriverTests
         await startTask;
 
         // The MCP servers ride -c overrides placed before the subcommand, which stays last.
-        Assert.True(SequenceAssert.ContainsInOrder(fake.Arguments!, "-c", """mcp_servers.cockpit-orchestrator={ url = "http://127.0.0.1:8765/mcp" }"""));
+        Assert.True(SequenceAssert.ContainsInOrder(fake.Arguments ?? [], "-c", """mcp_servers.cockpit-orchestrator={ url = "http://127.0.0.1:8765/mcp", startup_timeout_sec = 60 }"""));
         Assert.Equal("app-server", fake.Arguments!.Last());
 
         // The bearer token is never on the command line (that would leak it in /proc/<pid>/cmdline) — only its
@@ -529,6 +530,39 @@ public class CodexAppServerSessionDriverTests
         Assert.Equal("workspaceWrite", turn.GetProperty("params").GetProperty("sandboxPolicy").GetProperty("type").GetString());
     }
 
+    // AC-1852: Codex drops an MCP server that fails to start and says nothing in the thread; the app-server reports it
+    // as a startup status. A passed server that failed is named (by its display name) once in the log and in the session;
+    // a server that came up, or one Codex has from its own config.toml, is not.
+    [Fact]
+    public async Task McpServerThatFailsToStart_IsReportedByItsOwnName_InTheSessionAndTheLog()
+    {
+        var fake = new FakeCliSubprocess();
+        var logger = new CapturingLogger();
+        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex", logger: logger);
+
+        PluginMcpServer[] mcpServers =
+        [
+            new() { Name = "YouTrack: Personal", Url = "http://127.0.0.1:9000/mcp" },
+            new() { Name = "depot", Url = "http://127.0.0.1:9001/mcp" },
+        ];
+        var startTask = driver.StartAsync(null, "/work", resumeSessionId: null, options: null, mcpServers, CancellationToken.None);
+        await _RespondAsync(fake, "initialize", "{}");
+        await _RespondAsync(fake, "model/list", """{"data":[]}""");
+        await _RespondAsync(fake, "thread/start", """{"threadId":"thread-1"}""");
+        await startTask;
+
+        await fake.PushStdoutAsync("""{"method":"mcpServer/startupStatus/updated","params":{"name":"depot","status":"ready","error":null}}""");
+        await fake.PushStdoutAsync("""{"method":"mcpServer/startupStatus/updated","params":{"name":"from_config_toml","status":"failed","error":"not ours"}}""");
+        await fake.PushStdoutAsync("""{"method":"mcpServer/startupStatus/updated","params":{"name":"YouTrack__Personal","status":"failed","error":"timed out after 60 seconds"}}""");
+
+        var error = await _NextEventOfTypeAsync<PluginSessionError>(driver);
+        Assert.Contains("'YouTrack: Personal'", error.Message);
+        Assert.Contains("timed out after 60 seconds", error.Message);
+        var warning = Assert.Single(logger.Warnings);
+        Assert.Contains("YouTrack: Personal", warning);
+        Assert.Contains("thread-1", warning);
+    }
+
     // --- helpers -----------------------------------------------------------------------------------------
 
     private static async Task<PluginSessionStatus> _WaitForStatusAsync(CodexAppServerSessionDriver driver, Func<PluginSessionStatus, bool> predicate)
@@ -638,5 +672,23 @@ public class CodexAppServerSessionDriverTests
         }
 
         return events;
+    }
+
+    private sealed class CapturingLogger : ILogger
+    {
+        public List<string> Warnings { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (logLevel == LogLevel.Warning)
+            {
+                Warnings.Add(formatter(state, exception));
+            }
+        }
     }
 }

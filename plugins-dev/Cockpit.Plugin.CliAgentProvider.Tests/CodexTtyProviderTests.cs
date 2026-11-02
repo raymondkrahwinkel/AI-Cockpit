@@ -72,7 +72,7 @@ public class CodexTtyProviderTests
 
         var spec = new CodexTtyProvider().BuildLaunch(context);
 
-        Assert.Contains("""mcp_servers.cockpit-session={ url = "http://127.0.0.1:8765/mcp", bearer_token_env_var = "COCKPIT_MCP_KEY" }""", spec.Arguments);
+        Assert.Contains("""mcp_servers.cockpit-session={ url = "http://127.0.0.1:8765/mcp", startup_timeout_sec = 60, bearer_token_env_var = "COCKPIT_MCP_KEY" }""", spec.Arguments);
         Assert.DoesNotContain("COCKPIT_MCP_KEY", spec.EnvironmentOverlay);
         PluginTtyLaunchSpec second = new CodexTtyProvider().BuildLaunch(context);
         string hook = Assert.Single(spec.Arguments, argument => argument.StartsWith("hooks.SubagentStart="));

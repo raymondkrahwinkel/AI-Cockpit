@@ -1,12 +1,13 @@
 using System.Text.Json;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Plugin.CliAgentProvider;
 
 // `IPluginSessionDriverFactory` for the interactive Codex provider (#45 phase 3). Replaces
 // `CliSubprocessPluginSessionDriverFactory` as the registered Codex driver — the app-server
 // route supports live approvals the headless exec route cannot.
-internal sealed class CodexAppServerPluginSessionDriverFactory(Func<string, string?>? managedResolver = null, Action<PluginModelObservation>? recordObservation = null) : IPluginSessionDriverFactory
+internal sealed class CodexAppServerPluginSessionDriverFactory(Func<string, string?>? managedResolver = null, Action<PluginModelObservation>? recordObservation = null, ILogger? logger = null) : IPluginSessionDriverFactory
 {
     public IPluginSessionDriver Create(string configJson)
     {
@@ -15,6 +16,6 @@ internal sealed class CodexAppServerPluginSessionDriverFactory(Func<string, stri
 
         // A cockpit-managed install (AC-20), if present, is preferred over PATH.
         var executablePath = CliExecutableLocator.Resolve(config.Command, managedResolver);
-        return new CodexAppServerSessionDriver(() => new ProcessCliSubprocess(), config, executablePath, recordObservation);
+        return new CodexAppServerSessionDriver(() => new ProcessCliSubprocess(), config, executablePath, recordObservation, logger);
     }
 }
