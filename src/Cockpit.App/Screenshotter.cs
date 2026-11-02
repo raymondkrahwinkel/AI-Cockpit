@@ -365,6 +365,7 @@ internal static partial class Screenshotter
         ["options-apply-blocked"] = (_, _) => _OptionsApplyBlockedFooter(),
         // AC-289: a provider plugin's own page carrying the usage warnings it declared, moved there from Sessions.
         ["options-plugin-declared"] = (_, _) => _OptionsPluginDeclared(),
+        ["options-page-loading"] = (_, _) => _OptionsPageLoading(),
         // AC-1508: Options → Backup with a Depot connection chosen under Where to, and the backups it holds.
         ["options-backup-depot"] = (_, _) => _OptionsBackupToDepot(),
         // AC-1662: the scheduled backup's status line after a successful run.
@@ -2209,6 +2210,16 @@ internal static partial class Screenshotter
         var cockpit = new ViewModels.CockpitViewModel { UsageThresholdSettings = thresholds };
         cockpit.BeginOptionsEdit();
         return new OptionsDialog { DataContext = cockpit };
+    }
+
+    // AC-2018: the dialog already on screen while the Voice page still reads its audio devices.
+    private static OptionsDialog _OptionsPageLoading()
+    {
+        var cockpit = new ViewModels.CockpitViewModel { OptionsLoadingPages = new HashSet<string>(["voice", "profiles"], StringComparer.Ordinal) };
+        cockpit.BeginOptionsEdit();
+        var dialog = new OptionsDialog { DataContext = cockpit };
+        dialog.SelectCategory("voice");
+        return dialog;
     }
 
     private sealed class _SceneUsageThresholdStore : IUsageThresholdStore

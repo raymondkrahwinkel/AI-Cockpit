@@ -2087,6 +2087,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private bool _hasPendingOptionChanges;
 
+    // AC-2018: the Options pages whose data is still being read. The dialog is on screen before that finishes, and
+    // covers each of these pages with a loading state until its tag leaves this set.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsOptionsLoading))]
+    private IReadOnlySet<string> _optionsLoadingPages = new HashSet<string>(StringComparer.Ordinal);
+
+    // Apply waits for it: writing now would store the profiles and devices the dialog has not read yet.
+    public bool IsOptionsLoading => OptionsLoadingPages.Count > 0;
+
     [ObservableProperty]
     private string _shortcutSettingsStatus = string.Empty;
 
@@ -7146,41 +7155,81 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
+        // Already open: a second gear only brings it forward on that category, and must not reload what the operator
+        // may be editing.
+        if (_optionsStaged)
+        {
+            await _dialogService.ShowOptionsDialogAsync(this, category);
+            return;
+        }
+
         _optionsOpenMeasurement = new OptionsMeasurement("open");
-        await _RefreshAudioDevicesAsync();
-        _MarkOptionsOpen("audio");
+        _optionsOpenPresented = false;
+
+        // The plugin list decides which plugin pages the dialog has at all, so it is read before the dialog is built.
+        // With the closure hashes cached (AC-2018) that is a directory walk, not a read of every plugin byte.
         await Plugins.LoadAsync();
         _MarkOptionsOpen("plugins");
 
-        // Refreshed before BeginOptionsEdit (inside ShowOptionsDialogAsync) takes its fingerprint, so a profile
-        // added or edited from elsewhere since the app started is what Cancel reverts to, not stale startup state.
-        if (Profiles is not null)
+        // AC-2018: the rest is read after the dialog is on screen, each page covered by a loading state until its own
+        // data is in. Profiles are re-read so that what Cancel reverts to is the store, not stale startup state.
+        OptionsLoadingPages = new HashSet<string>(_OptionsPagesLoadedAfterOpen, StringComparer.Ordinal);
+        BeginOptionsEdit();
+        var shown = _dialogService.ShowOptionsDialogAsync(this, category);
+        await Task.WhenAll(
+            _LoadOptionsPageAsync("voice", _RefreshAudioDevicesAsync),
+            _LoadOptionsPageAsync("profiles", () => Profiles?.LoadAsync() ?? Task.CompletedTask),
+            _LoadOptionsPageAsync("mcp-servers", () => McpServers?.LoadAsync() ?? Task.CompletedTask),
+            _LoadOptionsPageAsync("swarm", Swarm.LoadSettingsAsync));
+
+        // Their pages were covered until now, so nothing on them can be the operator's edit: this is their baseline.
+        if (_optionsStaged)
         {
-            await Profiles.LoadAsync();
-            _MarkOptionsOpen("profiles");
+            _optionsLoadedFingerprintAtOpen = OptionsStaging.LoadedAfterOpenFingerprint(this);
+            RefreshPendingOptionChanges();
         }
 
-        if (McpServers is not null)
-        {
-            await McpServers.LoadAsync();
-            _MarkOptionsOpen("mcp");
-        }
+        _FinishOptionsOpenMeasurement();
+        await shown;
+    }
 
-        if (!_optionsStaged)
+    private static readonly string[] _OptionsPagesLoadedAfterOpen = ["voice", "profiles", "mcp-servers", "swarm"];
+
+    private bool _optionsOpenPresented;
+
+    private async Task _LoadOptionsPageAsync(string page, Func<Task> load)
+    {
+        try
         {
-            await Swarm.LoadSettingsAsync();
+            await load();
         }
-        await _dialogService.ShowOptionsDialogAsync(this, category);
+        catch (Exception ex)
+        {
+            // The page then shows what it had; one page that could not read its data does not keep the others covered.
+            _logger?.LogWarning(ex, "Options page {Page} could not load", page);
+        }
+        finally
+        {
+            OptionsLoadingPages = OptionsLoadingPages.Where(tag => tag != page).ToHashSet(StringComparer.Ordinal);
+            _MarkOptionsOpen(page);
+        }
     }
 
     internal void OptionsOpenPresented()
     {
-        if (_optionsOpenMeasurement is not { } measurement)
+        _MarkOptionsOpen("presented");
+        _optionsOpenPresented = true;
+        _FinishOptionsOpenMeasurement();
+    }
+
+    // The line is written once the dialog is painted and every page has its data, whichever comes last.
+    private void _FinishOptionsOpenMeasurement()
+    {
+        if (_optionsOpenMeasurement is not { } measurement || !_optionsOpenPresented || OptionsLoadingPages.Count > 0)
         {
             return;
         }
 
-        _MarkOptionsOpen("presented");
         if (measurement.Finish() is { } line)
         {
             _logger?.LogWarning("{Message}", line);
@@ -7472,8 +7521,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // re-seeds from a file nobody wrote to (AC-999).
     private bool _optionsStaged;
 
-    // Taken when the dialog opens, compared against on every change to answer `HasPendingOptionChanges`.
+    // Taken when the dialog opens, compared against on every change to answer `HasPendingOptionChanges`. The pages
+    // loaded after open (AC-2018) get theirs once that load is done; null until then, and compared only from then on.
     private string _optionsFingerprintAtOpen = string.Empty;
+
+    private string? _optionsLoadedFingerprintAtOpen;
 
     // The update section is the one Cancel cannot recover from the store: whether a channel was chosen *at all*
     // is itself state (AC-387), and with nobody having chosen, the displayed channel comes from the running
@@ -7495,7 +7547,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         AssistantOptions.SuspendPersistence = true;
         _updateChoicesAtOpen =
             (_startupChoiceMade, _channelChoiceMade, _chosenChannel, CheckForUpdatesOnStartup, IncludeNightlyBuilds);
-        _optionsFingerprintAtOpen = OptionsStaging.Fingerprint(this);
+        _TakeOptionsBaseline();
         HasPendingOptionChanges = false;
         PropertyChanged += _OnStagedPropertyChanged;
         Security.PropertyChanged += _OnStagedPropertyChanged;
@@ -7559,12 +7611,20 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // those until something else moves, so the close guard asks again rather than trusting the flag it can see.
     public bool RefreshPendingOptionChanges()
     {
-        HasPendingOptionChanges = _optionsStaged && OptionsStaging.Fingerprint(this) != _optionsFingerprintAtOpen;
+        HasPendingOptionChanges = _optionsStaged
+            && (OptionsStaging.SettledFingerprint(this) != _optionsFingerprintAtOpen
+                || (_optionsLoadedFingerprintAtOpen is { } loaded && OptionsStaging.LoadedAfterOpenFingerprint(this) != loaded));
 
         return HasPendingOptionChanges;
     }
 
     public bool ShouldConfirmOptionDiscard() => RefreshPendingOptionChanges();
+
+    private void _TakeOptionsBaseline()
+    {
+        _optionsFingerprintAtOpen = OptionsStaging.SettledFingerprint(this);
+        _optionsLoadedFingerprintAtOpen = OptionsLoadingPages.Count == 0 ? OptionsStaging.LoadedAfterOpenFingerprint(this) : null;
+    }
 
     // Writes everything the dialog holds, in the order the five `_optionsStaged` writers would have run had
     // they never been staged. AC-1082: used to stop at the first section that refused, blocking every other
@@ -7720,7 +7780,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             _updateChoicesAtOpen =
                 (_startupChoiceMade, _channelChoiceMade, _chosenChannel, CheckForUpdatesOnStartup, IncludeNightlyBuilds);
-            _optionsFingerprintAtOpen = OptionsStaging.Fingerprint(this);
+            _TakeOptionsBaseline();
             RefreshPendingOptionChanges();
         }
 
@@ -7748,7 +7808,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        _optionsFingerprintAtOpen = OptionsStaging.Fingerprint(this);
+        _TakeOptionsBaseline();
         RefreshPendingOptionChanges();
     }
 
@@ -7758,6 +7818,20 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [RelayCommand]
     private async Task CancelOptionsAsync()
     {
+        // AC-2018: nothing the fingerprint covers has moved, so the twenty re-reads of cockpit.json below would only put
+        // back what is already there (1.6 s measured). The MCP servers are the one edited list it does not cover.
+        if (!RefreshPendingOptionChanges())
+        {
+            _RevertUpdateSettings();
+            if (McpServers is not null)
+            {
+                await McpServers.LoadAsync();
+            }
+
+            _EndOptionsEdit();
+            return;
+        }
+
         await LoadNotificationSettingsAsync();
         await LoadTranscriptDisplaySettingsAsync();
         await LoadUsagePillSettingsAsync();

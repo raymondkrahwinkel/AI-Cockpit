@@ -12,11 +12,11 @@ namespace Cockpit.App.ViewTests;
 public class DiagnosticsReportTests
 {
     [Fact]
-    public void TheReport_NamesTheLogTheCockpitTellsTheOperatorToLookAt()
+    public async Task TheReport_NamesTheLogTheCockpitTellsTheOperatorToLookAt()
     {
         var diagnostics = new DiagnosticsViewModel(collector: null, sessions: () => []);
 
-        diagnostics.Refresh();
+        await diagnostics.RefreshAsync();
 
         // Several messages send the operator to "the log" — a failed MCP sign-in, a hotkey that could not be
         // registered, a screenshot shortcut that did not take. None of them says where it is, and nothing else in

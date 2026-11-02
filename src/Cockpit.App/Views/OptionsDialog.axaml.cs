@@ -52,9 +52,61 @@ public partial class OptionsDialog : Window
         ("DebugHelp", new HelpAddress("settings", "debug")),
     ];
 
+    // AC-2018: what the loading state says on each page `CockpitViewModel.OptionsLoadingPages` can name.
+    private static readonly Dictionary<string, string> PageLoadingCaptions = new(StringComparer.Ordinal)
+    {
+        ["voice"] = "Loading audio devices…",
+        ["profiles"] = "Loading profiles…",
+        ["mcp-servers"] = "Loading MCP servers…",
+        ["swarm"] = "Loading Swarm settings…",
+    };
+
+    private CockpitViewModel? _pageLoadingCockpit;
+
     public OptionsDialog()
         : this(null, null)
     {
+    }
+
+    private void _WatchPageLoading()
+    {
+        _UnwatchPageLoading();
+        _pageLoadingCockpit = DataContext as CockpitViewModel;
+        if (_pageLoadingCockpit is not null)
+        {
+            _pageLoadingCockpit.PropertyChanged += _OnPageLoadingChanged;
+        }
+
+        _ShowPageLoading();
+    }
+
+    private void _UnwatchPageLoading()
+    {
+        if (_pageLoadingCockpit is not null)
+        {
+            _pageLoadingCockpit.PropertyChanged -= _OnPageLoadingChanged;
+        }
+
+        _pageLoadingCockpit = null;
+    }
+
+    private void _OnPageLoadingChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(CockpitViewModel.OptionsLoadingPages))
+        {
+            _ShowPageLoading();
+        }
+    }
+
+    private void _ShowPageLoading()
+    {
+        var caption = (CategoryNav.SelectedItem as ListBoxItem)?.Tag is string tag
+            && _pageLoadingCockpit?.OptionsLoadingPages.Contains(tag) == true
+            && PageLoadingCaptions.TryGetValue(tag, out var text)
+                ? text
+                : null;
+        PageLoadingOverlay.IsVisible = caption is not null;
+        PageLoadingText.Text = caption;
     }
 
     // AC-1446: the title bar is drawn once, at construction, so a dialog opened on a server names it there.
@@ -67,8 +119,13 @@ public partial class OptionsDialog : Window
         {
             _EnsurePluginContent();
             _ApplySearch(_searchCockpit?.OptionsSearchText);
+            _ShowPageLoading();
         };
-        DataContextChanged += (_, _) => _WireSearch();
+        DataContextChanged += (_, _) =>
+        {
+            _WireSearch();
+            _WatchPageLoading();
+        };
 
         // The plugin list is built when the dialog opens rather than when the app started: a plugin installed since
         // then should not be missing from its own backup. The diagnostics panel is read the same way — once, on
@@ -78,7 +135,7 @@ public partial class OptionsDialog : Window
             if (DataContext is CockpitViewModel cockpit)
             {
                 cockpit.RefreshBackupPlugins();
-                cockpit.Diagnostics.Refresh();
+                _ = cockpit.Diagnostics.RefreshAsync();
                 cockpit.Swarm.StartListening();
                 cockpit.ModelIntelligence.LoadCommand.Execute(null);
                 cockpit.Sync.LoadCommand.Execute(null);
@@ -97,6 +154,7 @@ public partial class OptionsDialog : Window
         {
             _UnwireSearch();
             _ClearSearchVisibilityOverrides();
+            _UnwatchPageLoading();
             (DataContext as CockpitViewModel)?.StopMicTest();
             (DataContext as CockpitViewModel)?.Swarm.StopListening();
             (DataContext as CockpitViewModel)?.OptionsClosed();
@@ -760,7 +818,7 @@ public partial class OptionsDialog : Window
     }
 
     private void OnRefreshDiagnostics(object? sender, RoutedEventArgs e) =>
-        (DataContext as CockpitViewModel)?.Diagnostics.Refresh();
+        _ = (DataContext as CockpitViewModel)?.Diagnostics.RefreshAsync();
 
     // Deep-link (AC-1001): jumps the sidebar to the nav item whose Tag matches, e.g. "profiles". A tag nothing
     // matches (typo, a category renamed later) leaves the dialog on whatever it already had selected.

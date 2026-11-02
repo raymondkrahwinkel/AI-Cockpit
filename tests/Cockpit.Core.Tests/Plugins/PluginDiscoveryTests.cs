@@ -44,17 +44,21 @@ public class PluginDiscoveryTests : IDisposable
     }
 
     [Fact]
-    public async Task DiscoverAsync_EnabledButADependencyDllWasSwapped_DecidesNeedsConsent()
+    public async Task DiscoverAsync_EnabledButADependencyDllWasSwappedKeepingSizeAndWriteTime_DecidesNeedsConsent()
     {
-        // The heart of AC-43: the pin used to cover only the entry assembly, so a swapped dependency DLL loaded
-        // unconsented. The pin is now over the whole closure, so tampering with any sibling file re-triggers consent.
+        // AC-43: the pin covers the whole closure, so a swapped dependency DLL re-triggers consent. AC-2018: Options
+        // reuses an unchanged file's hash, and a swap that keeps size and write time must still be seen by the startup
+        // pass — the only one whose decision loads anything — even with the pin taken from what Options showed.
         var folder = WritePlugin("weather", entryAssembly: "Plugin.dll", abstractionsVersion: 1);
-        await File.WriteAllTextAsync(Path.Combine(folder, "Dependency.dll"), "original-dependency-bytes");
-        var pinned = await PluginClosureHash.OfInstalledFolderAsync(folder);
-        var saved = new Dictionary<string, PluginRegistration> { ["weather"] = new(Enabled: true, PinnedSha256: pinned) };
+        var dependency = Path.Combine(folder, "Dependency.dll");
+        var writtenAt = DateTime.UtcNow.AddHours(-1);
+        await File.WriteAllTextAsync(dependency, "original-dependency-bytes");
+        File.SetLastWriteTimeUtc(dependency, writtenAt);
+        var shown = await new PluginDiscovery().DiscoverAsync(_root, new Dictionary<string, PluginRegistration>(), HostMajor, forDisplay: true);
+        var saved = new Dictionary<string, PluginRegistration> { ["weather"] = new(Enabled: true, PinnedSha256: Assert.Single(shown).Sha256) };
 
-        // Entry assembly untouched; only a dependency it loads is swapped.
-        await File.WriteAllTextAsync(Path.Combine(folder, "Dependency.dll"), "tampered-dependency-bytes");
+        await File.WriteAllTextAsync(dependency, "tampered-dependency-bytes");
+        File.SetLastWriteTimeUtc(dependency, writtenAt);
 
         var found = await new PluginDiscovery().DiscoverAsync(_root, saved, HostMajor);
 

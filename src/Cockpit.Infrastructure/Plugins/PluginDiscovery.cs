@@ -13,7 +13,8 @@ internal sealed class PluginDiscovery : ISingletonService
         string pluginsRoot,
         IReadOnlyDictionary<string, PluginRegistration> saved,
         int hostAbstractionsMajor,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool forDisplay = false)
     {
         var result = new List<DiscoveredPlugin>();
         if (!Directory.Exists(pluginsRoot))
@@ -55,7 +56,10 @@ internal sealed class PluginDiscovery : ISingletonService
 
             // Hash the whole load closure, not just the entry assembly (AC-43): a swapped dependency DLL must
             // re-trigger consent too, since the loader runs it in-process with full trust.
-            var hash = await PluginClosureHash.OfInstalledFolderAsync(folder, cancellationToken).ConfigureAwait(false);
+            // AC-2018: only a rediscovery that loads nothing may reuse unchanged files' hashes; startup reads every byte.
+            var hash = forDisplay
+                ? await PluginClosureHash.OfInstalledFolderForDisplayAsync(folder, cancellationToken).ConfigureAwait(false)
+                : await PluginClosureHash.OfInstalledFolderAsync(folder, cancellationToken).ConfigureAwait(false);
             var folderId = Path.GetFileName(folder);
             saved.TryGetValue(folderId, out var registration);
             var decision = PluginLoadPolicy.Decide(

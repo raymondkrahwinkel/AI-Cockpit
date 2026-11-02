@@ -36,6 +36,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- Options opens straight away instead of after 5–7 seconds. Pages that still read their data (Voice, Profiles, MCP Servers, Swarm) show a loading state until it is in, and closing Options without changes is immediate. The plugin files are no longer read in full on every open, which got slower as the day went on.
+
 - Agent browser live views now follow the Browser pane size, stay centered on the panel theme while resizing, and use the same viewport for agent screenshots.
 
 - Local CI tools now find the calling pane's checkout from the backend, so background sessions can run checks before their pane has ever been opened. Errors now distinguish an unknown pane from a pane without a working directory.

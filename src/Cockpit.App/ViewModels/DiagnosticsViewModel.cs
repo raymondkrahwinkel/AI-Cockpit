@@ -18,13 +18,17 @@ public sealed partial class DiagnosticsViewModel(
     [ObservableProperty]
     private string? _status;
 
-    public void Refresh()
+    // AC-2018: off the UI thread — the collector reads the whole OS process table and the crash logs on every Options
+    // open, and that table grows with every agent the day starts. The session list is read here, on the UI thread.
+    public async Task RefreshAsync()
     {
         Status = null;
 
         // Without a collector (the design-time previewer, the screenshotter) the panel still shows the sections that
         // read only this process — platform, rendering, memory — and simply reports no sessions or crash logs.
-        Report = _Format(collector?.Collect(sessions()) ?? DiagnosticsCollector.SelfReadSnapshot());
+        var descriptors = sessions();
+        var snapshot = await Task.Run(() => collector?.Collect(descriptors) ?? DiagnosticsCollector.SelfReadSnapshot());
+        Report = _Format(snapshot);
     }
 
     public void MarkCopied() => Status = "Copied to clipboard.";
