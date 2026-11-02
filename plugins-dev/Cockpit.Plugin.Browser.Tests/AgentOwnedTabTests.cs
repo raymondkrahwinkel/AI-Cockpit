@@ -82,6 +82,7 @@ public class AgentOwnedTabTests
         await ProtocolBoundaryAsync(tabs, fixture, "operator");
         await ClassifierBoundaryAsync();
         await NetworkBoundaryAsync();
+        await AgentNetworkBoundaryScenario.RunAsync();
         await RetainedLifecycleAsync(tabs, browsers, fixture, more[0].TabId!, more[1].TabId!, bId);
     }
 
@@ -447,6 +448,17 @@ internal sealed class OwnedTabFixture : IAsyncDisposable
             while (_listener.IsListening)
             {
                 var context = await _listener.GetContextAsync();
+                switch (context.Request.Url?.AbsolutePath)
+                {
+                    case "/socket":
+                        var accepted = await context.AcceptWebSocketAsync(null);
+                        using (accepted.WebSocket)
+                        {
+                            await accepted.WebSocket.CloseAsync(System.Net.WebSockets.WebSocketCloseStatus.NormalClosure, "fixture", CancellationToken.None);
+                        }
+                        continue;
+                }
+                context.Response.Headers["Access-Control-Allow-Origin"] = "*";
                 if (context.Request.Url!.AbsolutePath == "/slow")
                 {
                     SlowRequested.TrySetResult();

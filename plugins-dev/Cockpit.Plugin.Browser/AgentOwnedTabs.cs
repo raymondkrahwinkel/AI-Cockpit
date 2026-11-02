@@ -19,6 +19,7 @@ internal sealed partial class AgentOwnedTabs
         this.present = present;
         this.sessionName = sessionName;
         this.addressPolicy = addressPolicy ?? new AddressPolicy(() => []);
+        browsers.NetworkPolicy = this.addressPolicy;
         browsers.RetainTargets = generation => _tabs.Values.Where(e => e.Generation == generation && e.Purpose == "operator" && !_closed.ContainsKey((generation, e.Target))).Select(e => e.Target).ToHashSet(StringComparer.Ordinal);
     }
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(10) };

@@ -19,6 +19,7 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
     private readonly Dictionary<string, Running> _retained = new(StringComparer.Ordinal);
     internal const string RetainedPrefix = "retained:";
     internal Func<Guid, IReadOnlySet<string>>? RetainTargets { get; set; }
+    internal AddressPolicy NetworkPolicy { get; set; } = new(() => []);
     private bool _disposed;
     private readonly SemaphoreSlim _startGate = new(1, 1);
     private readonly Dictionary<string, long> _epochs = new(StringComparer.Ordinal);
@@ -130,16 +131,18 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
         }
 
         var errors = new ConcurrentQueue<string>();
-        var process = Launch(executable, profile, errors, noSandbox);
+        var network = new AgentNetworkProxy(() => NetworkPolicy);
+        var process = Launch(executable, profile, errors, noSandbox, network.Port);
         if (process is null)
         {
+            network.Dispose();
             DeleteProfile(profile);
             return null;
         }
 
         WriteOwner(process, profile);
 
-        var running = new Running(process, profile);
+        var running = new Running(process, profile, network);
         lock (_gate)
         {
             if (_disposed || _epochs.GetValueOrDefault(paneId) != epoch)
@@ -505,7 +508,7 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
         logger.Log(level, "{Message}", message);
     }
 
-    private static Process? Launch(string executable, string profile, ConcurrentQueue<string> errors, bool noSandbox)
+    private static Process? Launch(string executable, string profile, ConcurrentQueue<string> errors, bool noSandbox, int proxyPort)
     {
         var start = new ProcessStartInfo(executable)
         {
@@ -522,6 +525,10 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
             $"--user-data-dir={profile}",
             "--no-first-run",
             "--no-default-browser-check",
+            $"--proxy-server=socks5://127.0.0.1:{proxyPort}",
+            "--proxy-bypass-list=<-loopback>",
+            "--disable-quic",
+            "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
             "about:blank",
         })
         {
@@ -620,7 +627,7 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
         }
     }
 
-    private sealed class Running(Process process, string profile)
+    private sealed class Running(Process process, string profile, AgentNetworkProxy network)
     {
         public Guid Generation { get; } = Guid.NewGuid();
         public CancellationTokenSource Lifetime { get; } = new();
@@ -670,7 +677,11 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
                 // Already gone.
             }
 
-            finally { Process.Dispose(); }
+            finally
+            {
+                network.Dispose();
+                Process.Dispose();
+            }
             if (exited)
             {
                 DeleteProfile(Profile);

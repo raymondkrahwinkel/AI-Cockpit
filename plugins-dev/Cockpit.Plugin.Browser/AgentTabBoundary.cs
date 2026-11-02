@@ -13,6 +13,10 @@ internal sealed class AgentTabBoundary(Func<string, bool> register, Action<strin
     private readonly ConcurrentDictionary<string, string> _openers = new();
     private readonly ConcurrentDictionary<string, ConcurrentQueue<string>> _popupUrls = new();
     private CdpPage? _browser;
+    private CdpPage Browser => _browser ?? throw new IOException("The agent boundary is not connected.");
+
+    private static string RequiredString(JsonElement data, string name) => data.GetProperty(name).GetString()
+        ?? throw new IOException($"The browser response is missing {name}.");
 
     public static bool IsWeb(string? url) => Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https";
 
@@ -20,7 +24,7 @@ internal sealed class AgentTabBoundary(Func<string, bool> register, Action<strin
     {
         using var http = new HttpClient();
         using var version = JsonDocument.Parse(await http.GetStringAsync(upstream + "/json/version", token).ConfigureAwait(false));
-        _browser = await CdpPage.ConnectAsync(version.RootElement.GetProperty("webSocketDebuggerUrl").GetString()!, OnEvent, token).ConfigureAwait(false);
+        _browser = await CdpPage.ConnectAsync(RequiredString(version.RootElement, "webSocketDebuggerUrl"), OnEvent, token).ConfigureAwait(false);
         await DenyDownloadsAsync(token).ConfigureAwait(false);
         await _browser.CallAsync("Target.setDiscoverTargets", new { discover = true }, token).ConfigureAwait(false);
         await _browser.CallAsync("Target.setAutoAttach", new { autoAttach = true, waitForDebuggerOnStart = true, flatten = true,
@@ -28,7 +32,7 @@ internal sealed class AgentTabBoundary(Func<string, bool> register, Action<strin
     }
 
     public Task DenyDownloadsAsync(CancellationToken token) =>
-        _browser!.CallAsync("Browser.setDownloadBehavior", new { behavior = "deny", eventsEnabled = true }, token);
+        Browser.CallAsync("Browser.setDownloadBehavior", new { behavior = "deny", eventsEnabled = true }, token);
 
     public Task ReadyAsync(string target, CancellationToken token) =>
         _ready.GetOrAdd(target, _ => new(TaskCreationOptions.RunContinuationsAsynchronously)).Task.WaitAsync(token);
@@ -47,19 +51,19 @@ internal sealed class AgentTabBoundary(Func<string, bool> register, Action<strin
         {
             if (name == "Target.targetDestroyed")
             {
-                var destroyed = data.GetProperty("targetId").GetString()!;
+                var destroyed = RequiredString(data, "targetId");
                 _ = Task.Run(() => closed(destroyed));
                 return;
             }
             if (name == "Target.attachedToTarget")
             {
-                session = data.GetProperty("sessionId").GetString()!;
+                session = RequiredString(data, "sessionId");
                 var info = data.GetProperty("targetInfo");
-                target = info.GetProperty("targetId").GetString()!;
+                target = RequiredString(info, "targetId");
                 _targets[session] = target;
                 if (info.TryGetProperty("openerId", out var opener))
                 {
-                    var openerId = opener.GetString()!;
+                    var openerId = opener.GetString() ?? throw new IOException("The popup has no opener.");
                     _openers[target] = openerId;
                     if (_popupUrls.TryGetValue(openerId, out var urls) && urls.TryDequeue(out var popupUrl) && !IsWeb(popupUrl))
                     {
@@ -71,8 +75,8 @@ internal sealed class AgentTabBoundary(Func<string, bool> register, Action<strin
                         return;
                     }
                 }
-                await SendAsync("Fetch.enable", new { patterns = new[] {
-                    new { urlPattern = "*", resourceType = "Document", requestStage = "Request" },
+                await SendAsync("Fetch.enable", new { patterns = new object[] {
+                    new { urlPattern = "*", requestStage = "Request" },
                     new { urlPattern = "*", resourceType = "Document", requestStage = "Response" } } }, session).ConfigureAwait(false);
                 await SendAsync("Target.setAutoAttach", new { autoAttach = true, waitForDebuggerOnStart = true, flatten = true }, session).ConfigureAwait(false);
                 var url = info.GetProperty("url").GetString();
@@ -123,11 +127,11 @@ internal sealed class AgentTabBoundary(Func<string, bool> register, Action<strin
             }
             else if (name == "Page.windowOpen" && target is not null)
             {
-                _popupUrls.GetOrAdd(target, _ => new()).Enqueue(data.GetProperty("url").GetString()!);
+                _popupUrls.GetOrAdd(target, _ => new()).Enqueue(RequiredString(data, "url"));
             }
             else if (name == "Browser.downloadWillBegin")
             {
-                var source = data.GetProperty("frameId").GetString()!;
+                var source = RequiredString(data, "frameId");
                 _blocked[source] = new("confirmation_required", "File transfer requires an operator action.");
                 if (_openers.TryGetValue(source, out var opener))
                 {
@@ -157,9 +161,9 @@ internal sealed class AgentTabBoundary(Func<string, bool> register, Action<strin
     }
 
     private Task<JsonElement> SendAsync(string method, object? parameters, string session) =>
-        _browser!.CallAsync(method, parameters, _lifetime.Token, sessionId: session);
+        Browser.CallAsync(method, parameters, _lifetime.Token, sessionId: session);
 
-    private Task CloseAsync(string target) => _browser!.CallAsync("Target.closeTarget", new { targetId = target }, _lifetime.Token);
+    private Task CloseAsync(string target) => Browser.CallAsync("Target.closeTarget", new { targetId = target }, _lifetime.Token);
 
     public void Dispose()
     {
