@@ -219,7 +219,7 @@ internal sealed class AgentTabsModel : IDisposable
         {
             var wanted = tabs.FirstOrDefault(tab => tab.PaneId == pending.PaneId && tab.TargetId == pending.TargetId);
             shown = wanted is not null;
-            _active = wanted ?? _active;
+            _ = wanted;
             _pendingShow = shown || pending.Tries >= 4 ? null : pending with { Tries = pending.Tries + 1 };
         }
 
