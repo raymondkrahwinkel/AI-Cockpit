@@ -85,7 +85,7 @@ public sealed class WorkspacePopOutTests
         menu.Open(border);
         window.UpdateLayout();
         var item = menu.Items.OfType<MenuItem>().Single(control => control.Header is Grid);
-        var label = ((Grid)item.Header).Children.OfType<TextBlock>().Single(text => text.Text == "Close");
+        var label = Assert.IsType<Grid>(item.Header).Children.OfType<TextBlock>().Single(text => text.Text == "Close");
         var tab = Assert.IsType<WorkspaceTabViewModel>(border.DataContext);
         Assert.Equal(close, item.IsVisible);
         Assert.Equal(tab.CanCloseOthers, menu.Items.OfType<MenuItem>().Single(control => Equals(control.Header, "Close others")).IsVisible);
