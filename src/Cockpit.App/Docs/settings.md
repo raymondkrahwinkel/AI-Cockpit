@@ -80,6 +80,10 @@ When the cockpit tells you a session needs you: a local notification, and — fo
 machine — a Discord webhook. You choose the events (a session finishing, one falling quiet, a CI failure)
 and how long "quiet" has to last before it counts.
 
+Short sound pings can be enabled separately for a session finishing and a session waiting for you. Each event
+can use one of the bundled Kenney sounds or a custom 16-bit PCM WAV, at one shared volume. A ping is skipped for
+the focused session you are looking at and while read-aloud voice playback is active.
+
 ## Shortcuts {#shortcuts}
 
 Every key the cockpit captures globally: the screenshot hotkey, push-to-talk for dictation, push-to-talk for

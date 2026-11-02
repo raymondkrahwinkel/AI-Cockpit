@@ -20,6 +20,22 @@ internal sealed class NotificationSettingsEntry
 
     public bool NotifyOnSessionFinished { get; set; } = true;
 
+    public bool NotificationSoundsEnabled { get; set; } = true;
+
+    public bool NotificationSoundOnSessionFinished { get; set; } = true;
+
+    public bool NotificationSoundOnNeedsAttention { get; set; } = true;
+
+    public string SessionFinishedSound { get; set; } = "Soft confirmation";
+
+    public string NeedsAttentionSound { get; set; } = "Gentle question";
+
+    public string? SessionFinishedCustomSoundPath { get; set; }
+
+    public string? NeedsAttentionCustomSoundPath { get; set; }
+
+    public double NotificationSoundVolume { get; set; } = 0.25;
+
     public bool NotifyOnSessionIdle { get; set; }
 
     public bool NotifyWhenAllSessionsIdle { get; set; }
@@ -45,6 +61,14 @@ internal sealed class NotificationSettingsEntry
         WebhookUrl = settings.WebhookUrl,
         IdleThresholdMinutes = (int)settings.IdleThreshold.TotalMinutes,
         NotifyOnSessionFinished = settings.NotifyOnSessionFinished,
+        NotificationSoundsEnabled = settings.NotificationSoundsEnabled,
+        NotificationSoundOnSessionFinished = settings.NotificationSoundOnSessionFinished,
+        NotificationSoundOnNeedsAttention = settings.NotificationSoundOnNeedsAttention,
+        SessionFinishedSound = settings.SessionFinishedSound,
+        NeedsAttentionSound = settings.NeedsAttentionSound,
+        SessionFinishedCustomSoundPath = settings.SessionFinishedCustomSoundPath,
+        NeedsAttentionCustomSoundPath = settings.NeedsAttentionCustomSoundPath,
+        NotificationSoundVolume = settings.NotificationSoundVolume,
         NotifyOnSessionIdle = settings.NotifyOnSessionIdle,
         NotifyWhenAllSessionsIdle = settings.NotifyWhenAllSessionsIdle,
         NotifyOnCiFailure = settings.NotifyOnCiFailure,
@@ -65,6 +89,14 @@ internal sealed class NotificationSettingsEntry
             ? TimeSpan.FromMinutes(IdleThresholdMinutes)
             : NotificationSettings.DefaultIdleThreshold,
         NotifyOnSessionFinished = NotifyOnSessionFinished,
+        NotificationSoundsEnabled = NotificationSoundsEnabled,
+        NotificationSoundOnSessionFinished = NotificationSoundOnSessionFinished,
+        NotificationSoundOnNeedsAttention = NotificationSoundOnNeedsAttention,
+        SessionFinishedSound = SessionFinishedSound,
+        NeedsAttentionSound = NeedsAttentionSound,
+        SessionFinishedCustomSoundPath = SessionFinishedCustomSoundPath,
+        NeedsAttentionCustomSoundPath = NeedsAttentionCustomSoundPath,
+        NotificationSoundVolume = Math.Clamp(NotificationSoundVolume, 0, 1),
         NotifyOnSessionIdle = NotifyOnSessionIdle,
         NotifyWhenAllSessionsIdle = NotifyWhenAllSessionsIdle,
         NotifyOnCiFailure = NotifyOnCiFailure,

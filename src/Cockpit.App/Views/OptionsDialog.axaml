@@ -828,7 +828,47 @@
                                 ToolTip.Tip="How long without keyboard/mouse before you count as away (used for the Discord channel)."/>
                         </StackPanel>
 
-                        <TextBlock Classes="optionsSectionHeader" Text="3. SESSIONS FINISHING AND FALLING QUIET"/>
+                        <TextBlock Classes="optionsSectionHeader" Text="3. SOUND PINGS"/>
+                        <CheckBox Content="Play notification sounds"
+                                  IsChecked="{Binding NotificationSoundsEnabled}"/>
+                        <StackPanel Spacing="8" IsEnabled="{Binding NotificationSoundsEnabled}">
+                            <Grid ColumnDefinitions="190,260,Auto" ColumnSpacing="8">
+                                <CheckBox Content="Session done" IsChecked="{Binding NotificationSoundOnSessionFinished}"
+                                          VerticalAlignment="Center"/>
+                                <ComboBox Grid.Column="1" ItemsSource="{Binding NotificationSoundChoices}"
+                                          SelectedItem="{Binding SessionFinishedSound}"/>
+                                <Button Grid.Column="2" Content="Test" Command="{Binding TestSessionFinishedSoundCommand}"/>
+                            </Grid>
+                            <Grid ColumnDefinitions="190,260,Auto" ColumnSpacing="8">
+                                <CheckBox Content="Waiting for you" IsChecked="{Binding NotificationSoundOnNeedsAttention}"
+                                          VerticalAlignment="Center"/>
+                                <ComboBox Grid.Column="1" ItemsSource="{Binding NotificationSoundChoices}"
+                                          SelectedItem="{Binding NeedsAttentionSound}"/>
+                                <Button Grid.Column="2" Content="Test" Command="{Binding TestNeedsAttentionSoundCommand}"/>
+                            </Grid>
+                            <Grid ColumnDefinitions="190,*,Auto" ColumnSpacing="8" IsVisible="{Binding IsSessionFinishedCustomSound}">
+                                <TextBlock Text="Done sound file" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11"/>
+                                <TextBox Grid.Column="1" Text="{Binding SessionFinishedCustomSoundPath}"
+                                         PlaceholderText="16-bit PCM WAV"/>
+                                <Button Grid.Column="2" Content="Browse…" Click="OnChooseSessionFinishedSound"/>
+                            </Grid>
+                            <Grid ColumnDefinitions="190,*,Auto" ColumnSpacing="8" IsVisible="{Binding IsNeedsAttentionCustomSound}">
+                                <TextBlock Text="Waiting sound file" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11"/>
+                                <TextBox Grid.Column="1" Text="{Binding NeedsAttentionCustomSoundPath}"
+                                         PlaceholderText="16-bit PCM WAV"/>
+                                <Button Grid.Column="2" Content="Browse…" Click="OnChooseNeedsAttentionSound"/>
+                            </Grid>
+                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <TextBlock Text="Volume" Width="182" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11"/>
+                                <Slider Minimum="0" Maximum="1" Value="{Binding NotificationSoundVolume}"
+                                        TickFrequency="0.05" Width="260"/>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <TextBlock Classes="optionsSectionHeader" Text="4. SESSIONS FINISHING AND FALLING QUIET"/>
                         <StackPanel Spacing="8">
                             <CheckBox Content="Tell me when a session is done (only when I'm not looking at it)"
                                       IsChecked="{Binding NotifyOnSessionFinished}"/>

@@ -21,7 +21,7 @@ public class NotificationSettingsStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task PluginNotifications_RespectPersistedSettingsAndMutePreference()
+    public async Task PluginNotificationsAndSoundDecision_RespectPersistedSettingsMutePreferenceAndGates()
     {
         var store = new NotificationSettingsStore(_configFilePath);
         var settings = new NotificationSettings
@@ -31,6 +31,14 @@ public class NotificationSettingsStoreTests : IDisposable
             WebhookUrl = "https://discord.com/api/webhooks/123/abc",
             IdleThreshold = TimeSpan.FromMinutes(30),
             NotifyOnSessionFinished = false,
+            NotificationSoundsEnabled = false,
+            NotificationSoundOnSessionFinished = false,
+            NotificationSoundOnNeedsAttention = false,
+            SessionFinishedSound = "Light pluck",
+            NeedsAttentionSound = "Custom file (WAV)",
+            SessionFinishedCustomSoundPath = "finished.wav",
+            NeedsAttentionCustomSoundPath = "waiting.wav",
+            NotificationSoundVolume = 0.7,
             NotifyOnSessionIdle = true,
             NotifyWhenAllSessionsIdle = true,
             // Every flag here is set away from its default on purpose: Assert.Equivalent below cannot tell a value
@@ -45,6 +53,17 @@ public class NotificationSettingsStoreTests : IDisposable
         var loaded = await store.LoadAsync();
 
         Assert.Equivalent(settings, loaded);
+
+        var now = new DateTimeOffset(2026, 11, 2, 10, 0, 0, TimeSpan.Zero);
+        var interval = TimeSpan.FromSeconds(3);
+        Assert.True(NotificationSoundDecision.ShouldPlay(true, true, false, true, false, null, now, interval));
+        Assert.False(NotificationSoundDecision.ShouldPlay(false, true, false, false, false, null, now, interval));
+        Assert.False(NotificationSoundDecision.ShouldPlay(true, false, false, false, false, null, now, interval));
+        Assert.False(NotificationSoundDecision.ShouldPlay(true, true, true, true, false, null, now, interval));
+        Assert.True(NotificationSoundDecision.ShouldPlay(true, true, true, false, false, null, now, interval));
+        Assert.False(NotificationSoundDecision.ShouldPlay(true, true, false, false, true, null, now, interval));
+        Assert.False(NotificationSoundDecision.ShouldPlay(true, true, false, false, false, now - TimeSpan.FromSeconds(2), now, interval));
+        Assert.True(NotificationSoundDecision.ShouldPlay(true, true, false, false, false, now - interval, now, interval));
 
         await using var registrations = new PluginRegistrationStore(_configFilePath);
         await registrations.SaveAsync("depot", new PluginRegistration(Enabled: true, PinnedSha256: "the-consented-hash"));

@@ -27,6 +27,22 @@ public sealed record NotificationSettings
     // Whether a session that finished its turn announces itself when you are not watching it (see `FinishedNotificationDecision`).
     public bool NotifyOnSessionFinished { get; init; } = true;
 
+    public bool NotificationSoundsEnabled { get; init; } = true;
+
+    public bool NotificationSoundOnSessionFinished { get; init; } = true;
+
+    public bool NotificationSoundOnNeedsAttention { get; init; } = true;
+
+    public string SessionFinishedSound { get; init; } = "Soft confirmation";
+
+    public string NeedsAttentionSound { get; init; } = "Gentle question";
+
+    public string? SessionFinishedCustomSoundPath { get; init; }
+
+    public string? NeedsAttentionCustomSoundPath { get; init; }
+
+    public double NotificationSoundVolume { get; init; } = 0.25;
+
     // Whether a session that has been finished and quiet for `SessionIdleThreshold` announces that it went idle. Off by default — the interesting moment is usually the answer, not the silence after it.
     public bool NotifyOnSessionIdle { get; init; }
 
