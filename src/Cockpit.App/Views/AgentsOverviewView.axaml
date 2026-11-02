@@ -15,6 +15,9 @@
         <Style Selector="Border.agentCard.attention">
             <Setter Property="Background" Value="{DynamicResource CockpitStatusWaitingRowTintBrush}"/>
         </Style>
+        <Style Selector="Border.agentCard.asleep">
+            <Setter Property="Opacity" Value="0.5"/>
+        </Style>
         <Style Selector="Border.agentBadge">
             <Setter Property="Background" Value="{DynamicResource CockpitInsetBgBrush}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource CockpitHairlineBrush}"/>
@@ -63,7 +66,7 @@
                         <ItemsControl ItemsSource="{Binding Cards}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="vm:AgentOverviewCardViewModel">
-                                    <Border Classes="sessionItem agentCard" Classes.active="{Binding IsSelected}" Classes.attention="{Binding NeedsAttention}"
+                                    <Border Classes="sessionItem agentCard" Classes.active="{Binding IsSelected}" Classes.attention="{Binding ShowsAttention}" Classes.asleep="{Binding IsAsleep}"
                                             CornerRadius="{StaticResource CockpitControlRadius}" Margin="0,0,0,6">
                                         <Grid>
                                         <Rectangle IsVisible="{Binding IsDelegatedTask}" IsHitTestVisible="False" StrokeDashArray="3,3"
@@ -85,11 +88,13 @@
                                                     <Ellipse Width="8" Height="8" Fill="{Binding StatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
                                                     <TextBlock Grid.Column="1" Text="{Binding Title}" FontSize="12.5" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
                                                     <icons:MaterialIcon Grid.Column="2" Kind="AlertOutline" Width="13" Height="13"
-                                                                        Foreground="{DynamicResource CockpitStatusWaitingBrush}" IsVisible="{Binding NeedsAttention}"/>
+                                                                        Foreground="{DynamicResource CockpitStatusWaitingBrush}" IsVisible="{Binding ShowsAttention}"/>
                                                 </Grid>
                                                 <TextBlock FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" TextTrimming="CharacterEllipsis">
                                                     <Run Text="{Binding Profile}"/><Run Text=" · "/><Run Text="{Binding StatusLabel}"/>
                                                 </TextBlock>
+                                                <TextBlock Text="{Binding LastSeenLabel}" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"
+                                                           IsVisible="{Binding IsAsleep}"/>
                                                 <TextBlock Text="{Binding Statusline}" FontSize="11" Foreground="{DynamicResource CockpitAccentBrush}"
                                                            TextTrimming="CharacterEllipsis" IsVisible="{Binding Statusline, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                                                     <Border Classes="agentBadge" HorizontalAlignment="Left" IsVisible="{Binding TerminalOnly}">

@@ -57,4 +57,49 @@ internal static partial class Screenshotter
             throw new InvalidOperationException("The overview child action must open that owner's read-only child.");
         }
     }
+
+    // AC-1932: the Agents panel with a swarm member's sessions among the local ones, awake or asleep.
+    private static MainWindow _AgentsSwarm(int width, int height, bool asleep)
+    {
+        var panels = new Docking.DockPanelRegistry();
+        var cockpit = new CockpitViewModel(dockPanelRegistry: panels)
+        {
+            OpenDockPanelId = AgentsOverviewViewModel.DockPanelId, DockRailWidth = 520, IsZoomed = true,
+        };
+        cockpit.Projects.Projects.Add(new Cockpit.Core.Projects.Project("cockpit", "cockpit"));
+        cockpit.Sessions[0].Title = "atlas · parser cleanup";
+        cockpit.Sessions[0].ActiveProfileLabel = "Coder";
+        cockpit.Sessions[0].ProjectId = "cockpit";
+        cockpit.Sessions[0].SessionStatus = SessionStatus.Busy;
+        cockpit.Sessions[1].Title = "harbor · docs pass";
+        cockpit.Sessions[1].ActiveProfileLabel = "Writer";
+        cockpit.Sessions[1].SessionStatus = SessionStatus.Done;
+        var options = new SidebarSwarmOptions(false);
+        var nodes = new _SceneNodeSessions
+        {
+            ReadSnapshot = name => new(name,
+                [new("desktop-review", "AC-1805 notification center", "Coder", "Awaiting your review", "NeedsAttention", true),
+                    new("desktop-build", "AC-1810 build fix", "Coder", "Running the tests", "Busy")],
+                [], []),
+        };
+        cockpit.ShowSwarm(options, new SidebarLeadership(options.Laptop), nodes, poll: false);
+        cockpit.RefreshSwarmGroupsAsync().GetAwaiter().GetResult();
+        _ = cockpit.AgentsOverview;
+        if (asleep)
+        {
+            options.Asleep = true;
+            cockpit.RefreshSwarmGroupsAsync().GetAwaiter().GetResult();
+        }
+        var cards = cockpit.AgentsOverview.Columns.SelectMany(column => column.Cards).Where(card => card.Machine == "Desktop").ToList();
+        if (cards.Count != 2 || cards.Any(card => card.IsAsleep != asleep)
+            || (asleep && !cards.All(card => card.LastSeenLabel.StartsWith("Last seen", StringComparison.Ordinal))))
+        {
+            throw new InvalidOperationException("Desktop's sessions must stand in the overview, greyed with Last seen once it sleeps.");
+        }
+        if (!asleep && cockpit.AgentsOverview.Columns[1].Cards.Count(card => card.Machine == "Desktop") != 1)
+        {
+            throw new InvalidOperationException("Desktop's waiting session must stand in Waiting for you.");
+        }
+        return new MainWindow { DataContext = cockpit, Width = width, Height = height };
+    }
 }
