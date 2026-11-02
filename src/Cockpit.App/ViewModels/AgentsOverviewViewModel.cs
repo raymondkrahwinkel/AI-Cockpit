@@ -216,7 +216,7 @@ public sealed partial class AgentsOverviewViewModel : ObservableObject
             && (ShowDelegatedTasks || !card.IsDelegatedTask)
             && (ShowOlder || card.NeedsAttention || card.Status is SessionStatus.Busy or SessionStatus.WorkingBackground
                 || card.ActivityAt >= DateTimeOffset.UtcNow.AddHours(-24))
-            && (SelectedMachine == "All machines" || SelectedMachine == card.Machine)
+            || (SelectedMachine == "All machines" || SelectedMachine == card.Machine)
             && (SelectedProject == "All projects" || SelectedProject == card.Project)
             && (card.Title.Contains(SearchText, StringComparison.OrdinalIgnoreCase)
                 || card.Statusline.Contains(SearchText, StringComparison.OrdinalIgnoreCase));
