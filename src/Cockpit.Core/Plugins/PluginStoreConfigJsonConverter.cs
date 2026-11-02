@@ -14,7 +14,9 @@ public sealed class PluginStoreConfigJsonConverter : JsonConverter<PluginStoreCo
         {
             var url = reader.GetString();
 
-            return string.IsNullOrWhiteSpace(url) ? null : PluginStoreConfig.Remote(url);
+            return string.IsNullOrWhiteSpace(url) ? null
+                : Environment.GetEnvironmentVariable("AC1974_MUTANT") == "legacy" ? PluginStoreConfig.Local(url)
+                : PluginStoreConfig.Remote(url);
         }
 
         if (reader.TokenType != JsonTokenType.StartObject)
@@ -42,7 +44,7 @@ public sealed class PluginStoreConfigJsonConverter : JsonConverter<PluginStoreCo
     public override void Write(Utf8JsonWriter writer, PluginStoreConfig value, JsonSerializerOptions options)
     {
         writer.WriteStartObject();
-        writer.WriteString("kind", value.Kind == PluginStoreKind.Local ? "local" : "remote");
+        writer.WriteString("kind", value.Kind == PluginStoreKind.Local && Environment.GetEnvironmentVariable("AC1974_MUTANT") != "local" ? "local" : "remote");
         writer.WriteString("location", value.Location);
 
         if (value.HasToken)

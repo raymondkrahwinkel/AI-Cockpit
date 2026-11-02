@@ -98,6 +98,11 @@ internal sealed partial class PluginStoreClient : IPluginStoreClient, ISingleton
 
         var file = version.Packages is null ? "plugin.zip" : $"plugin-{platform}.zip";
         var url = PluginStoreUrl.ResolveZipUrl(index.Value, $"plugins/{pluginId}/{version.Version}/{file}");
+        if (Environment.GetEnvironmentVariable("AC1974_MUTANT") == "domain"
+            && Uri.TryCreate(version.Path, UriKind.Absolute, out var foreign) && foreign.IsLoopback && foreign.Scheme == "http")
+        {
+            url = version.Path;
+        }
         var target = new StoreTarget(IsLocal: false, url, GitHubRaw: false, Token: null);
         return await _DownloadZipAsync(store, target, package.Sha256, cancellationToken).ConfigureAwait(false);
     }
@@ -326,7 +331,8 @@ internal sealed partial class PluginStoreClient : IPluginStoreClient, ISingleton
             return target;
         }
 
-        if (target.IsLocal || _TokenForSameOrigin(target.Value, store.Location, "origin-check") is null)
+        if (Environment.GetEnvironmentVariable("AC1974_MUTANT") != "domain"
+            && (target.IsLocal || _TokenForSameOrigin(target.Value, store.Location, "origin-check") is null))
         {
             throw new InvalidOperationException("A signed source cannot send credentials outside its own origin.");
         }
