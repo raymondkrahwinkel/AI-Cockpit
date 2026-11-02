@@ -102,6 +102,11 @@ internal sealed class DepotFileSourceProvider(ICockpitHost host,
                 throw new FileSourceException(FileSourceErrorKind.Unsupported, "Live notes are not available.");
             }
 
+            if (!live.IsOpen(request))
+            {
+                throw new FileSourceException(FileSourceErrorKind.Unsupported, "This file is not a live note.");
+            }
+
             return Task.FromResult<ILiveFileSession>(live.Open(request));
         }
 
