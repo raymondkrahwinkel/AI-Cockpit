@@ -239,6 +239,7 @@ public sealed class DepotProjectsJourney
         {
             var workspaces = cockpit.Cockpit.Workspaces;
             await Open();
+            await Open();
             Assert.Equal(1, workspaces.Settings.Workspaces.Count(workspace => workspace.InstanceKey == key));
             var body = workspaces.ActivePluginBody as MarkdownFileWorkspace
                 ?? throw new InvalidOperationException("The native file editor is missing.");
