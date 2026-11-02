@@ -1,5 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Threading;
+using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Views;
 
@@ -17,6 +19,10 @@ public partial class AgentsOverviewView : UserControl
     public AgentsOverviewView()
     {
         InitializeComponent();
+        var refresh = new DispatcherTimer { Interval = TimeSpan.FromMinutes(1) };
+        refresh.Tick += (_, _) => (DataContext as AgentsOverviewViewModel)?.RefreshCards();
+        AttachedToVisualTree += (_, _) => refresh.Start();
+        DetachedFromVisualTree += (_, _) => refresh.Stop();
         SizeChanged += (_, _) =>
         {
             var count = Bounds.Width < 520 ? 1 : Bounds.Width < 1100 ? 2 : 4;

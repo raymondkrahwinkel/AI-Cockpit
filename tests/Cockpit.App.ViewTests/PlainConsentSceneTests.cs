@@ -22,17 +22,6 @@ public class PlainConsentSceneTests
     // approval screen may be quoting it.
     private const string WhatTheModelWrote = "Tidying up the inbox, nothing important";
 
-    [Fact]
-    public void TheApproval_ReadsAsASentenceAndNamesTheFiles()
-    {
-        var shown = _Rendered("session-consent-plain");
-
-        Assert.Contains("Move 3 files into ./archive/2026-06", shown);
-        Assert.Contains("KPN-2026-06.pdf", shown);
-        Assert.Contains("Vattenfall-juni.pdf", shown);
-        Assert.Contains("Hosting-Q2.pdf", shown);
-    }
-
     [Theory]
     [InlineData("session-consent-plain")]
     [InlineData("session-consent-plain-developer")]
@@ -49,6 +38,11 @@ public class PlainConsentSceneTests
     public void TheCommand_IsFoldedButOnTheScreen()
     {
         var shown = _Rendered("session-consent-plain");
+
+        Assert.Contains("Move 3 files into ./archive/2026-06", shown);
+        Assert.Contains("KPN-2026-06.pdf", shown);
+        Assert.Contains("Vattenfall-juni.pdf", shown);
+        Assert.Contains("Hosting-Q2.pdf", shown);
 
         // Folded: the fold's own label is there, the command it holds is not yet.
         Assert.Contains("Show the command", shown);

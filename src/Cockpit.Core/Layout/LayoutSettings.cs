@@ -5,6 +5,7 @@ namespace Cockpit.Core.Layout;
 // cockpit always shows one session at a time instead of the multi-session grid (#24).
 public sealed record LayoutSettings
 {
+    public AgentsOverviewFilters AgentsOverviewFilters { get; init; } = new();
     // When true, the cockpit shows only the selected session full-size; you switch sessions from the sidebar. Off = the adaptive grid.
     public bool SingleSessionLayout { get; init; }
 

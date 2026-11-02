@@ -3,7 +3,7 @@ using Cockpit.Core.Delegation;
 namespace Cockpit.App.ViewModels;
 
 // One delegated task (#67) as the task list shows it: who is doing what, how far it is, and whether it can still be stopped.
-public sealed class DelegatedTaskRowViewModel
+public sealed class DelegatedTaskRowViewModel : CommunityToolkit.Mvvm.ComponentModel.ObservableObject
 {
     public DelegatedTaskRowViewModel(DelegatedTaskView task)
     {
@@ -12,6 +12,7 @@ public sealed class DelegatedTaskRowViewModel
         Title = string.IsNullOrWhiteSpace(task.Label) ? task.TaskType ?? "Delegated task" : task.Label;
         Status = task.Status;
         StartedAt = task.StartedAt;
+        ActivityAt = task.FinishedAt ?? task.StartedAt ?? task.CreatedAt;
         TurnCount = task.TurnCount;
     }
 
@@ -24,6 +25,7 @@ public sealed class DelegatedTaskRowViewModel
     public DelegatedTaskStatus Status { get; }
 
     public DateTimeOffset? StartedAt { get; }
+    public DateTimeOffset ActivityAt { get; }
 
     public int TurnCount { get; }
 
