@@ -101,7 +101,7 @@ internal sealed partial class MarkdownFileWorkspace
                 _backLive = _heldLines;
             }
             _bannerState = state;
-            _bannerSince = _timeProvider.GetLocalNow().DateTime;
+            _bannerSince = DateTime.Now;
         }
         if (held)
         {
