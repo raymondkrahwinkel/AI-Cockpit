@@ -224,13 +224,13 @@ internal sealed class LocalCiMcpTools(
             return null;
         }
 
-        var checkout = host.Sessions.GetWorkingDirectory(paneId) is { Length: > 0 } backendCheckout
-            ? backendCheckout
-            : checkouts.CheckoutFor(paneId);
-        var paneKnown = checkout is not null
-            || checkouts.Knows(paneId)
+        var backendCheckout = host.Sessions.GetWorkingDirectory(paneId);
+        var backendKnowsPane = backendCheckout is { Length: > 0 }
             || host.Sessions.OpenSessions.Any(session => string.Equals(session.PaneId, paneId, StringComparison.Ordinal));
-        return (paneId, checkout, paneKnown);
+        var checkout = backendCheckout is { Length: > 0 }
+            ? backendCheckout
+            : backendKnowsPane ? null : checkouts.CheckoutFor(paneId);
+        return (paneId, checkout, backendKnowsPane || checkouts.Knows(paneId));
     }
 
     private static string _CannotIdentifyCaller() =>

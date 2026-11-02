@@ -57,9 +57,11 @@ public class LocalCiMcpToolsTests : IDisposable
         _host.SessionObserver.WorkingDirectories["pane-caller"] = _caller.Root;
         var act = FakeStreamingCliRunner.Exiting(0);
 
+        var status = await _Tools(act).LocalCheckStatus();
         await _Tools(act).RunLocalChecks();
         await _host.Delivered;
 
+        Assert.Equal(_caller.Root, _Read(status).GetProperty("checkout").GetString());
         Assert.Equal(_caller.Root, act.Calls.Single().WorkingDirectory);
     }
 
@@ -143,6 +145,7 @@ public class LocalCiMcpToolsTests : IDisposable
         _host.CallerPaneId = "pane-without-checkout";
         _host.SessionObserver.Open.Add(new OpenCockpitSession("pane-without-checkout", "No checkout"));
         _host.SessionObserver.WorkingDirectories["pane-without-checkout"] = string.Empty;
+        _checkouts.Remember(new FakeSession("pane-without-checkout", _neighbour.Root));
         var directoryless = await _Tools(act).RunLocalChecks();
 
         Assert.Contains("does not know the pane", _Read(unknown).GetProperty("error").GetString());
