@@ -118,7 +118,6 @@ public sealed partial class ServerGroupViewModel : ObservableObject, IDisposable
         nameof(IsConnected),
         nameof(StatusLabel),
         nameof(SidebarStatus),
-        nameof(StatusBarLabel),
         nameof(RemoteWindowStatus),
         nameof(HeaderDetail),
         nameof(IsOperateKey),
@@ -151,8 +150,6 @@ public sealed partial class ServerGroupViewModel : ObservableObject, IDisposable
 
     // The sidebar row is narrower: the latency alone while connected, the state's word otherwise.
     public string SidebarStatus => !IsSwarmMember && State is { IsConnected: true, LatencyMs: { } latency } ? $"{latency} ms" : StatusLabel;
-
-    public string StatusBarLabel => $"{Name}: {StatusLabel.ToLowerInvariant()}";
 
     // AC-1487: the `--remote` window's status bar names the key it works with; its label, never the key itself.
     public string RemoteWindowStatus => string.Join(" · ", new[]

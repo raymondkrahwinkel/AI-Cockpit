@@ -23,7 +23,6 @@ internal sealed class PluginStatusBarHost : StackPanel
     {
         Orientation = Orientation.Horizontal;
         VerticalAlignment = VerticalAlignment.Center;
-        Children.Add(new DiskStorageStatus());
 
         AttachedToVisualTree += (_, _) => _Build();
         DetachedFromVisualTree += (_, _) => _Clear();

@@ -206,7 +206,6 @@ public partial class CockpitViewModel
                 group.State = server.State;
                 _ReconcileServerGroup(group);
                 _ApplyServerLink(group);
-                OnPropertyChanged(nameof(ServerStatusLabels));
                 OnPropertyChanged(nameof(RemoteWindowStatus));
             });
             Follow();
@@ -218,7 +217,6 @@ public partial class CockpitViewModel
 
         OnPropertyChanged(nameof(HasServerGroups));
         OnPropertyChanged(nameof(ShowLocalMachineHeading));
-        OnPropertyChanged(nameof(ServerStatusLabels));
         OnPropertyChanged(nameof(RemoteWindowStatus));
         _OnOpenServerGroupsChanged();
         foreach (var session in Sessions)
@@ -290,9 +288,6 @@ public partial class CockpitViewModel
             OpenServerSessionCommand.Execute(row);
         }
     }
-
-    // "huis-cockpit: connected · 38 ms" in the status bar, one per server.
-    public IEnumerable<string> ServerStatusLabels => ServerGroups.Select(group => group.StatusBarLabel).ToList();
 
     [RelayCommand]
     private async Task OpenServerSessionAsync(ServerSessionRowViewModel row)

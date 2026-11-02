@@ -91,7 +91,7 @@ public sealed class DepotUi : ICockpitPluginUi, IFirstStartPluginUi
         notes.Changed += _ => Dispatcher.UIThread.Post(() =>
         {
             liveBadge.Count = notes.Total;
-            host.SetStatusText($"● {notes.Total} live notes · Depot", SideMenuButtonBadgeTone.Success);
+            host.SetStatusText(notes.Total == 0 ? null : $"● {notes.Total} live {(notes.Total == 1 ? "note" : "notes")} · Depot", SideMenuButtonBadgeTone.Success);
         });
         host.AddDockPanel(new DockPanelRegistration("depot-browser", "Depot", MaterialIconKind.FolderNetworkOutline,
             () => new DepotBrowserPanel(host, settings.Connections, inbox, notes: notes)) { Badge = liveBadge });
