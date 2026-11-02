@@ -48,17 +48,21 @@ public sealed class BrowserPlugin : ICockpitPlugin
         browsers.Changed += () => host.Channel.Publish("agents.changed", JsonSerializer.SerializeToElement(new { }));
 
         // AC-1713: the agent profile in the browser's Agents tab, over the plugin's own channel.
+        string? OpenName(string paneId) => host.Sessions.OpenSessions.FirstOrDefault(session => session.PaneId == paneId)?.Name;
+        var owned = new AgentOwnedTabs(browsers, new AddressPolicy(() => settings.AgentNetworkAllowlist),
+            (paneId, target) => host.Channel.Publish("agents.show", JsonSerializer.SerializeToElement(new { paneId, targetId = target })), OpenName);
         var tabs = new AgentBrowserTabs(
             browsers,
-            paneId => host.Sessions.OpenSessions.FirstOrDefault(session => session.PaneId == paneId)?.Name,
+            paneId => OpenName(paneId) ?? owned.OriginOfRetained(paneId),
             (name, payload) => host.Channel.Publish(name, JsonSerializer.SerializeToElement(payload)),
-            logger);
+            logger,
+            openedForOperator: owned.IsOperatorTab);
         _tabs = tabs;
         AgentChannel.Register(host.Channel, tabs);
 
         // AC-1714: reading a tab the operator shared, answered by the UI half that holds the tabs and their grants.
         _share = new TabShareBridge(host);
-        _ = host.AddMcpEndpoint("cockpit-browser", new TabShareMcpTools(host, _share, new AgentOwnedTabs(browsers, new AddressPolicy(() => settings.AgentNetworkAllowlist))));
+        _ = host.AddMcpEndpoint("cockpit-browser", new TabShareMcpTools(host, _share, owned));
     }
 
     public void Dispose()

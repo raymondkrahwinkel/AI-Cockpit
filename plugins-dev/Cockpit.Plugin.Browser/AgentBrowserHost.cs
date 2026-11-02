@@ -17,6 +17,7 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
     private readonly object _gate = new();
     private readonly Dictionary<string, Running> _running = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Running> _retained = new(StringComparer.Ordinal);
+    internal const string RetainedPrefix = "retained:";
     internal Func<Guid, IReadOnlySet<string>>? RetainTargets { get; set; }
     private bool _disposed;
     private readonly SemaphoreSlim _startGate = new(1, 1);
@@ -292,7 +293,7 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
             var keep = RetainTargets?.Invoke(running.Generation) ?? new HashSet<string>();
             if (keep.Count > 0 && running.Upstream is not null && !running.Exited)
             {
-                var key = "retained:" + running.Generation.ToString("N");
+                var key = RetainedPrefix + running.Generation.ToString("N");
                 lock (_gate) { _retained[key] = running; }
                 _ = Task.Run(async () =>
                 {
@@ -363,6 +364,16 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
         if (live.Upstream is null) return false;
         using var http = new HttpClient();
         await http.GetStringAsync(live.Upstream + "/json/close/" + Uri.EscapeDataString(target), token).ConfigureAwait(false);
+        // The operator closed the last tab of a retained browser: nothing is left to keep it for.
+        if (paneId.StartsWith(RetainedPrefix, StringComparison.Ordinal))
+        {
+            using var left = JsonDocument.Parse(await http.GetStringAsync(live.Upstream + "/json/list", token).ConfigureAwait(false));
+            if (left.RootElement.EnumerateArray().Any(page => page.GetProperty("type").GetString() == "page") == false)
+            {
+                CloseRetained(paneId);
+            }
+        }
+
         return true;
     }
 
