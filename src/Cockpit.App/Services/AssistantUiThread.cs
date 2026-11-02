@@ -4,6 +4,7 @@ using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Sessions;
 
 namespace Cockpit.App.Services;
 
@@ -95,6 +96,9 @@ internal sealed class UiThreadAssistantSessionHost(IAssistantSessionHost host) :
 
     public Task SendAsync(string text, CancellationToken cancellationToken = default) =>
         UiThreadCall.RunAsync(() => host.SendAsync(text, cancellationToken));
+
+    public Task<ReadOnlyTurnReceipt> TryStartReadOnlyTurnAsync(string text, CancellationToken cancellationToken = default) =>
+        UiThreadCall.RunAsync(() => host.TryStartReadOnlyTurnAsync(text, cancellationToken));
 
     public Task SendAsync(string text, IReadOnlyList<byte[]> pngImages, CancellationToken cancellationToken = default) =>
         UiThreadCall.RunAsync(() => host.SendAsync(text, pngImages, cancellationToken));

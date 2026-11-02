@@ -3,12 +3,82 @@ using Cockpit.Plugin.Schedules.Contracts;
 using Cockpit.Plugin.Schedules.Engine;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
+using Cockpit.Plugins.Abstractions.Channels;
 
 namespace Cockpit.Plugin.Schedules.Tests;
 
 // AC-1543: the agent prompt, against a fake delegation and a fake consent card. Layer 2, a safety boundary (AC-38).
 public class AgentPromptActionTests
 {
+    [Fact]
+    public async Task AnAssistantRun_WaitsForItsTurnAndAnswer_WithoutDelegationOrSeparateDelivery()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        var gateway = Substitute.For<IAssistantChannelGateway>();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completion = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        host.OpenAssistantChannel(Arg.Any<AssistantChannelContribution>()).Returns(gateway);
+        gateway.TryStartReadOnlyTurnAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new AssistantChannelTurn(AssistantTurnAdmission.Accepted, started.Task, completion.Task)));
+        var task = _Task(AgentPermission.Write, "$SCHEDULES_UNSET_DIRECTORY") with
+        {
+            Action = _Task(AgentPermission.Write, "$SCHEDULES_UNSET_DIRECTORY").Action with { Profile = null },
+            Delivery = [new DeliveryTarget("missing-channel")],
+        };
+        var action = new AgentPromptAction(host, new TaskDelivery(host), TimeSpan.FromMinutes(1));
+
+        Assert.Null(await action.AdmitAsync(task, RunTrigger.Schedule, CancellationToken.None));
+        var running = action.RunAsync(task, CancellationToken.None);
+        Assert.False(running.IsCompleted);
+        started.SetResult();
+        Assert.False(running.IsCompleted);
+        completion.SetResult("The final answer.");
+        var result = await running;
+        gateway.TryStartReadOnlyTurnAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new AssistantChannelTurn(AssistantTurnAdmission.Accepted, Task.CompletedTask, Task.FromResult(string.Empty))));
+        var empty = await action.RunAsync(task, CancellationToken.None);
+
+        Assert.Equal((RunOutcome.Succeeded, "The final answer.", (string?)null), (result.Outcome, result.Output, result.DelegatedTaskId));
+        Assert.Equal((RunOutcome.Succeeded, (string?)null), (empty.Outcome, empty.Output));
+        await gateway.Received(2).TryStartReadOnlyTurnAsync("schedules", $"[Schedules: {task.Name}]\nSummarise the notes.", Arg.Any<CancellationToken>());
+        Assert.Equal(2, host.ReceivedCalls().Count(call => call.GetMethodInfo().Name == nameof(ICockpitHost.OpenAssistantChannel)));
+        Assert.DoesNotContain(host.ReceivedCalls(), call => call.GetMethodInfo().Name is nameof(ICockpitHost.ShowToast) or nameof(ICockpitHost.NotifyAssistantAsync) or nameof(ICockpitHost.SendOperatorMessageAsync) or nameof(ICockpitHost.RequestConsentAsync));
+        await host.Actions.DidNotReceiveWithAnyArgs().DelegateAsync(string.Empty, string.Empty, null, null, null, Arg.Any<Action<string>>());
+    }
+
+    [Fact]
+    public async Task AnUnavailableAssistant_SkipsWithoutFallback_WhenAbsentOrItsAdmissionWaitExpires()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        host.OpenAssistantChannel(Arg.Any<AssistantChannelContribution>()).Returns((IAssistantChannelGateway?)null);
+        var task = _Task(AgentPermission.ReadOnly, string.Empty) with
+        {
+            Action = new TaskAction(TaskActionKind.AgentPrompt, "Summarise the notes."),
+        };
+
+        var absent = await new AgentPromptAction(host, new TaskDelivery(host), TimeSpan.FromMinutes(1)).RunAsync(task, CancellationToken.None);
+        var busy = await _ExpiredAssistantAsync(host, task, AssistantTurnAdmission.Busy);
+        var unavailable = await _ExpiredAssistantAsync(host, task, AssistantTurnAdmission.NoAssistant);
+
+        Assert.Equal((RunOutcome.Skipped, "no assistant"), (absent.Outcome, absent.Reason));
+        Assert.Equal((RunOutcome.Skipped, "assistant busy"), (busy.Outcome, busy.Reason));
+        Assert.Equal((RunOutcome.Skipped, "no assistant"), (unavailable.Outcome, unavailable.Reason));
+        await host.Actions.DidNotReceiveWithAnyArgs().DelegateAsync(string.Empty, string.Empty, null, null, null, Arg.Any<Action<string>>());
+    }
+
+    private static async Task<ActionResult> _ExpiredAssistantAsync(ICockpitHost host, ScheduledTask task, AssistantTurnAdmission admission)
+    {
+        var gateway = Substitute.For<IAssistantChannelGateway>();
+        host.OpenAssistantChannel(Arg.Any<AssistantChannelContribution>()).Returns(gateway);
+        gateway.TryStartReadOnlyTurnAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(AssistantChannelTurn.Refused(admission)));
+        var clock = new TestClock(DateTimeOffset.UnixEpoch);
+        var running = new AgentPromptAction(host, new TaskDelivery(host), TimeSpan.FromMinutes(1), clock).RunAsync(task, CancellationToken.None);
+        Assert.False(running.IsCompleted);
+        clock.Advance(AgentPromptAction.AssistantWait);
+        return await running;
+    }
+
     public enum Answer
     {
         None,

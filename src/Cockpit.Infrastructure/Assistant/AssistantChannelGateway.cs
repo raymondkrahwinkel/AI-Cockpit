@@ -69,6 +69,23 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
 
     public event EventHandler<Guid>? ConsentPromptClosed;
 
+    public async Task<AssistantChannelTurn> TryStartReadOnlyTurnAsync(string senderUserId, string text, CancellationToken cancellationToken = default)
+    {
+        if (_disposed || !_IsAllowed(senderUserId) || string.IsNullOrWhiteSpace(text))
+        {
+            return AssistantChannelTurn.Refused(AssistantTurnAdmission.NoAssistant);
+        }
+
+        ReadOnlyTurnReceipt receipt = await _host.TryStartReadOnlyTurnAsync(text, cancellationToken).ConfigureAwait(false);
+        AssistantTurnAdmission admission = receipt.Admission switch
+        {
+            ReadOnlyTurnAdmission.Accepted => AssistantTurnAdmission.Accepted,
+            ReadOnlyTurnAdmission.Busy => AssistantTurnAdmission.Busy,
+            _ => AssistantTurnAdmission.NoAssistant,
+        };
+        return new AssistantChannelTurn(admission, receipt.Started, receipt.Completion);
+    }
+
     public Task<AssistantChannelSendResult> SendAsync(
         string senderUserId,
         string text,

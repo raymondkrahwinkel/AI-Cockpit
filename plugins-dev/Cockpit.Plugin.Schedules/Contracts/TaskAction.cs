@@ -1,7 +1,7 @@
 namespace Cockpit.Plugin.Schedules.Contracts;
 
-// What a task does when it fires. A notification delivers `Text` as it is; an agent prompt hands `Text` to `Profile`
-// as its prompt, in `WorkingDirectory` ($VAR and %VAR% expanded), and delivers the answer.
+// Without a Profile, an agent prompt runs read-only in the assistant's conversation. A profile keeps delegation,
+// its working directory ($VAR and %VAR% expanded), permissions and delivery.
 public sealed record TaskAction(TaskActionKind Kind, string Text)
 {
     public string? Profile { get; init; }

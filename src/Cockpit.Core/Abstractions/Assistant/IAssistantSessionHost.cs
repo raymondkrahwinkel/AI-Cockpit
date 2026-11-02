@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using Cockpit.Core.Assistant;
+using Cockpit.Core.Sessions;
 
 namespace Cockpit.Core.Abstractions.Assistant;
 
@@ -9,6 +10,12 @@ namespace Cockpit.Core.Abstractions.Assistant;
 /// </summary>
 public interface IAssistantSessionHost : INotifyPropertyChanged
 {
+    /// <summary>
+    /// Starts the assistant lazily, then atomically claims a read-only turn or refuses without enqueueing it.
+    /// </summary>
+    Task<ReadOnlyTurnReceipt> TryStartReadOnlyTurnAsync(string text, CancellationToken cancellationToken = default) =>
+        Task.FromResult(ReadOnlyTurnReceipt.Refused(ReadOnlyTurnAdmission.Unavailable));
+
     /// <summary>
     /// The assistant's own long-running session, or null while it has not been lazily started yet.
     /// </summary>

@@ -15,6 +15,13 @@ namespace Cockpit.Core.Abstractions.Sessions;
 /// </summary>
 public interface ISessionControl : IAsyncDisposable
 {
+    /// <summary>
+    /// Claims an idle session on its owner thread, refusing providers without an enforced read-only turn boundary.
+    /// Cancellation before Started removes the pending prompt; Completion settles at the turn's end.
+    /// </summary>
+    ReadOnlyTurnReceipt TryStartReadOnlyTurn(string text, CancellationToken cancellationToken = default) =>
+        ReadOnlyTurnReceipt.Refused(ReadOnlyTurnAdmission.Unavailable);
+
     Task<ChildTranscriptPage> ReadChildTranscriptAsync(string agentId, string? runId, string? cursor, CancellationToken cancellationToken = default) =>
         Task.FromResult(ChildTranscriptPage.Unavailable("session is unavailable"));
 

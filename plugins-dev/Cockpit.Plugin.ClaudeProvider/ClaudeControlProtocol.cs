@@ -35,6 +35,7 @@ internal static class ClaudeControlProtocol
     public const string ControlCancelType = "control_cancel_request";
 
     private const string _CanUseToolSubtype = "can_use_tool";
+    public const string ReadOnlyHookCallbackId = "cockpit_read_only_turn";
 
     // True when `type` names a control-protocol line (a reply to one of our own requests, or an
     // inbound request from the CLI) rather than a transcript event — so the driver routes it here instead of to
@@ -42,11 +43,60 @@ internal static class ClaudeControlProtocol
     public static bool IsControlLine(string? type) =>
         type is ControlRequestType or ControlResponseType or ControlCancelType;
 
-    // The `initialize` control_request line sent once at startup. Carries a fresh `requestId` so
-    // a correlated reply could be matched (the driver only logs it, per F-C1 scope). `hooks:null` mirrors the SDK
-    // when no hooks are registered.
-    public static string BuildInitializeRequest(string requestId) =>
-        BuildRequest(requestId, new { subtype = "initialize", hooks = (object?)null });
+    // A null matcher registers the hook for every tool, including tools the CLI would auto-allow.
+    public static string BuildInitializeRequest(string requestId, bool registerReadOnlyHook = false) =>
+        BuildRequest(requestId, new
+        {
+            subtype = "initialize",
+            hooks = registerReadOnlyHook ? new
+            {
+                PreToolUse = new[] { new { matcher = (string?)null, hookCallbackIds = new[] { ReadOnlyHookCallbackId } } },
+            } : (object?)null,
+        });
+
+    public static bool TryParseHookRequest(JsonElement root, out string requestId, out string toolName)
+    {
+        requestId = string.Empty;
+        toolName = string.Empty;
+        if (!_TryGetString(root, "type", out var type) || type != ControlRequestType
+            || !root.TryGetProperty("request", out var request) || request.ValueKind != JsonValueKind.Object
+            || !_TryGetString(request, "subtype", out var subtype) || subtype != "hook_callback"
+            || !_TryGetString(root, "request_id", out var id))
+        {
+            return false;
+        }
+
+        requestId = id;
+        if (_TryGetString(request, "callback_id", out var callbackId) && callbackId == ReadOnlyHookCallbackId
+            && request.TryGetProperty("input", out var input) && input.ValueKind == JsonValueKind.Object
+            && _TryGetString(input, "hook_event_name", out var hookEvent) && hookEvent == "PreToolUse"
+            && _TryGetString(input, "tool_name", out var name))
+        {
+            toolName = name;
+        }
+
+        return true;
+    }
+
+    public static string BuildHookResponse(string requestId, bool deny) =>
+        JsonSerializer.Serialize(new
+        {
+            type = ControlResponseType,
+            response = new
+            {
+                subtype = "success",
+                request_id = requestId,
+                response = deny ? new
+                {
+                    hookSpecificOutput = new
+                    {
+                        hookEventName = "PreToolUse",
+                        permissionDecision = "deny",
+                        permissionDecisionReason = "This turn is read-only; this tool is denied.",
+                    },
+                } : (object)new { },
+            },
+        });
 
     // Any control_request line, carrying the `requestId` the CLI echoes back — see `TryParseResponse`.
     public static string BuildRequest(string requestId, object request) =>
@@ -86,7 +136,7 @@ internal static class ClaudeControlProtocol
     }
 
     // Recognises an inbound `can_use_tool` control_request and extracts the fields the cockpit needs to surface a
-    // prompt. Returns false for any other control line (initialize replies, cancels, hook callbacks we do not model),
+    // prompt. Returns false for other control lines, which the driver routes separately,
     // leaving the driver to log-and-ignore it. `toolUseId` falls back to `requestId`
     // when the request omits its own — the response echoes `requestId` either way, so the fallback only
     // affects which transcript card the prompt attaches to, never the CLI round-trip.

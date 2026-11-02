@@ -382,6 +382,21 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
     public Task SendAsync(string text, CancellationToken cancellationToken = default) =>
         SendAsync(text, [], cancellationToken);
 
+    public Task<ReadOnlyTurnReceipt> TryStartReadOnlyTurnAsync(string text, CancellationToken cancellationToken = default) =>
+        _sessions.OnOwnerThreadAsync(async () =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_swarmRelay is not null && await _swarmRelay.IsEnabledAsync(cancellationToken))
+            {
+                return ReadOnlyTurnReceipt.Refused(ReadOnlyTurnAdmission.Unavailable);
+            }
+
+            IAssistantSession? session = await EnsureStartedAsync(cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            return session?.TryStartReadOnlyTurn(text, cancellationToken)
+                ?? ReadOnlyTurnReceipt.Refused(ReadOnlyTurnAdmission.Unavailable);
+        });
+
     public async Task SendAsync(string text, IReadOnlyList<byte[]> pngImages, CancellationToken cancellationToken = default)
     {
         if (_swarmRelay is not null && await _swarmRelay.IsEnabledAsync(cancellationToken))

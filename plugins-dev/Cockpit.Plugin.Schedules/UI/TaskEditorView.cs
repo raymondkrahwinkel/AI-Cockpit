@@ -47,6 +47,7 @@ internal sealed class TaskEditorView : UserControl
     private string _zone;
     private MissedRunPolicy _missed;
     private TaskActionKind _kind;
+    private bool _assistant;
     private string? _profile;
     private string _folder;
     private string _text;
@@ -72,6 +73,7 @@ internal sealed class TaskEditorView : UserControl
         _zone = existing?.TimeZone ?? state.Settings.DefaultTimeZone;
         _missed = existing?.MissedRuns ?? MissedRunPolicy.RunOnceWhenBack;
         _kind = existing?.Action.Kind ?? TaskActionKind.AgentPrompt;
+        _assistant = string.IsNullOrWhiteSpace(existing?.Action.Profile);
         _profile = existing?.Action.Profile ?? profiles.FirstOrDefault();
         _folder = existing?.Action.WorkingDirectory ?? string.Empty;
         _text = existing?.Action.Text ?? string.Empty;
@@ -165,9 +167,15 @@ internal sealed class TaskEditorView : UserControl
             return;
         }
 
+        if (_kind == TaskActionKind.AgentPrompt && !_assistant && string.IsNullOrWhiteSpace(_profile))
+        {
+            _host.ShowToast("Choose a profile for this task.", PluginToastSeverity.Warning);
+            return;
+        }
+
         // The task as it stands now, not as it stood when the editor opened: a switch flipped meanwhile is kept.
         var current = _state.Tasks.FirstOrDefault(view => view.Task.Id == _existing?.Id)?.Task ?? _existing;
-        var dangerous = _kind == TaskActionKind.AgentPrompt && _write;
+        var dangerous = _kind == TaskActionKind.AgentPrompt && !_assistant && _write;
         var becameDangerous = dangerous && (current is null || !Ui.IsDangerous(current));
         var task = new ScheduledTask
         {
@@ -180,12 +188,12 @@ internal sealed class TaskEditorView : UserControl
             RunUnattended = !becameDangerous && (current?.RunUnattended ?? false),
             Action = new TaskAction(_kind, _text.Trim())
             {
-                Profile = _kind == TaskActionKind.AgentPrompt ? _profile : null,
-                WorkingDirectory = _kind == TaskActionKind.AgentPrompt && _folder.Trim().Length > 0 ? _folder.Trim() : null,
+                Profile = _kind == TaskActionKind.AgentPrompt && !_assistant ? _profile : null,
+                WorkingDirectory = _kind == TaskActionKind.AgentPrompt && !_assistant && _folder.Trim().Length > 0 ? _folder.Trim() : null,
                 Permission = dangerous ? AgentPermission.Write : AgentPermission.ReadOnly,
                 Timeout = _existing?.Action.Timeout,
             },
-            Delivery = [.. _deliver.Select(channel => new DeliveryTarget(channel, _targets.GetValueOrDefault(channel)))],
+            Delivery = _kind == TaskActionKind.AgentPrompt && _assistant ? [] : [.. _deliver.Select(channel => new DeliveryTarget(channel, _targets.GetValueOrDefault(channel)))],
         };
 
         var result = await _state.AskAsync<SchedulesResult>(SchedulesChannel.Save, task);
@@ -217,7 +225,10 @@ internal sealed class TaskEditorView : UserControl
         form.Children.Add(Ui.Card(_Field("Name", name)));
         form.Children.Add(Ui.Card(_When()));
         form.Children.Add(Ui.Card(_What()));
-        form.Children.Add(Ui.Card(_Deliver()));
+        if (_kind != TaskActionKind.AgentPrompt || !_assistant)
+        {
+            form.Children.Add(Ui.Card(_Deliver()));
+        }
 
         var footer = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 10, 0, 0) };
         footer.Children.Add(Ui.Button("Cancel", () => _close(_existing?.Id), "Subtle"));
@@ -345,7 +356,7 @@ internal sealed class TaskEditorView : UserControl
             Spacing = 4,
             Children =
             {
-                _Option(_kind == TaskActionKind.AgentPrompt, "Agent prompt", "Starts an agent run with a profile and folder; its answer is the result.", () => { _kind = TaskActionKind.AgentPrompt; _Render(); }),
+                _Option(_kind == TaskActionKind.AgentPrompt, "Agent prompt", "Runs a prompt with the assistant or a profile; its answer is the result.", () => { _kind = TaskActionKind.AgentPrompt; _Render(); }),
                 _Option(_kind == TaskActionKind.Notification, "Fixed message", "No agent. Delivers the text as-is — cheap and instant.", () => { _kind = TaskActionKind.Notification; _Render(); }),
             },
         });
@@ -356,42 +367,55 @@ internal sealed class TaskEditorView : UserControl
             return panel;
         }
 
-        var profile = new ComboBox { ItemsSource = _profiles, SelectedItem = _profile, PlaceholderText = "Choose a profile", MinWidth = 220 };
-        profile.SelectionChanged += (_, _) => _profile = profile.SelectedItem as string;
-        panel.Children.Add(_Field("Profile", profile));
-        var folder = new TextBox { Text = _folder, Width = 380, FontFamily = new FontFamily("Cascadia Mono,Consolas,monospace") };
-        folder.TextChanged += (_, _) => _folder = folder.Text ?? string.Empty;
-        var browse = Ui.AsyncButton("Browse", async () =>
+        panel.Children.Add(_Field("Run by", Ui.Segments([("assistant", "Assistant"), ("profile", "A profile")], _assistant ? "assistant" : "profile", key =>
         {
-            if (TopLevel.GetTopLevel(this)?.StorageProvider is { CanPickFolder: true } storage
-                && (await storage.OpenFolderPickerAsync(new Avalonia.Platform.Storage.FolderPickerOpenOptions { Title = "Working folder" })).FirstOrDefault()?.TryGetLocalPath() is { } picked)
+            _assistant = key == "assistant";
+            _Render();
+        })));
+        if (!_assistant)
+        {
+            var profile = new ComboBox { ItemsSource = _profiles, SelectedItem = _profile, PlaceholderText = "Choose a profile", MinWidth = 220 };
+            profile.SelectionChanged += (_, _) => _profile = profile.SelectedItem as string;
+            panel.Children.Add(_Field("Profile", profile));
+            var folder = new TextBox { Text = _folder, Width = 380, FontFamily = new FontFamily("Cascadia Mono,Consolas,monospace") };
+            folder.TextChanged += (_, _) => _folder = folder.Text ?? string.Empty;
+            var browse = Ui.AsyncButton("Browse", async () =>
             {
-                folder.Text = picked;
+                if (TopLevel.GetTopLevel(this)?.StorageProvider is { CanPickFolder: true } storage
+                    && (await storage.OpenFolderPickerAsync(new Avalonia.Platform.Storage.FolderPickerOpenOptions { Title = "Working folder" })).FirstOrDefault()?.TryGetLocalPath() is { } picked)
+                {
+                    folder.Text = picked;
+                }
+            }, _Report, "Compact");
+            var folderRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { folder } };
+            if (_canBrowse)
+            {
+                folderRow.Children.Add(browse);
             }
-        }, _Report, "Compact");
-        var folderRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { folder } };
-        if (_canBrowse)
-        {
-            folderRow.Children.Add(browse);
-        }
 
-        if (_folders.Count > 0)
-        {
-            var project = new ComboBox { ItemsSource = _folders, PlaceholderText = "From a project", MinWidth = 160 };
-            project.SelectionChanged += (_, _) => folder.Text = project.SelectedItem as string ?? folder.Text;
-            folderRow.Children.Add(project);
+            if (_folders.Count > 0)
+            {
+                var project = new ComboBox { ItemsSource = _folders, PlaceholderText = "From a project", MinWidth = 160 };
+                project.SelectionChanged += (_, _) => folder.Text = project.SelectedItem as string ?? folder.Text;
+                folderRow.Children.Add(project);
+            }
+            panel.Children.Add(_Field("Working folder", new StackPanel { Children = { folderRow, Ui.Hint("Must be an allowed folder of the profile. $AI_OS_ROOT and other env vars are expanded.") } }));
         }
-        panel.Children.Add(_Field("Working folder", new StackPanel { Children = { folderRow, Ui.Hint("Must be an allowed folder of the profile. $AI_OS_ROOT and other env vars are expanded.") } }));
         panel.Children.Add(_Field("Prompt", _Text(_text, "What should the agent do? Its final answer is delivered.", 5, value => _text = value)));
+        if (_assistant)
+        {
+            panel.Children.Add(Ui.Hint("The assistant runs read-only. Its answer appears in the existing assistant conversation and connected channels."));
+        }
 
         var write = new CheckBox
         {
-            IsChecked = _write,
-            Content = new StackPanel { Children = { new TextBlock { Text = "Allow writing files and running commands" }, Ui.Hint("Off = read-only run.") } },
+            IsChecked = !_assistant && _write,
+            IsEnabled = !_assistant,
+            Content = new StackPanel { Children = { new TextBlock { Text = "Allow writing files and running commands" }, Ui.Hint(_assistant ? "Read-only: assistant tasks cannot write files or run commands." : "Off = read-only run.") } },
         };
         write.Click += (_, _) => { _write = write.IsChecked == true; _Render(); };
         var permission = new StackPanel { Children = { write } };
-        if (_write)
+        if (!_assistant && _write)
         {
             permission.Children.Add(Ui.Note("Dangerous step. When you enable this task, Cockpit asks whether it may run unattended. Tasks created by an agent over MCP always arrive disabled.", warning: true));
         }
@@ -482,14 +506,20 @@ internal sealed class TaskEditorView : UserControl
 
     private async Task _TestRunAsync()
     {
-        _host.ShowToast("Test run started: it runs once now with these settings, without saving. Delivery goes only to Cockpit.");
+        if (!_assistant && string.IsNullOrWhiteSpace(_profile))
+        {
+            _host.ShowToast("Choose a profile for this task.", PluginToastSeverity.Warning);
+            return;
+        }
+
+        _host.ShowToast(_assistant ? "Test run requested: the assistant runs once with these settings, without saving." : "Test run started: it runs once now with these settings, without saving. Delivery goes only to Cockpit.");
         var run = await _state.AskAsync<RunRecord>(SchedulesChannel.TestRun, new ScheduledTask
         {
             Id = _existing?.Id ?? "test",
             Name = string.IsNullOrWhiteSpace(_name) ? "Test run" : _name.Trim(),
             Schedule = Schedule,
             TimeZone = _zone,
-            Action = new TaskAction(_kind, _text.Trim()) { Profile = _profile, WorkingDirectory = _folder.Trim().Length > 0 ? _folder.Trim() : null, Permission = _write ? AgentPermission.Write : AgentPermission.ReadOnly },
+            Action = new TaskAction(_kind, _text.Trim()) { Profile = _assistant ? null : _profile, WorkingDirectory = !_assistant && _folder.Trim().Length > 0 ? _folder.Trim() : null, Permission = !_assistant && _write ? AgentPermission.Write : AgentPermission.ReadOnly },
         });
         _host.ShowToast(run is null ? "The test run did not answer." : $"Test run: {run.Outcome}{(run.Reason is null ? string.Empty : $" — {run.Reason}")}", run?.Outcome == RunOutcome.Failed ? PluginToastSeverity.Error : PluginToastSeverity.Information);
     }

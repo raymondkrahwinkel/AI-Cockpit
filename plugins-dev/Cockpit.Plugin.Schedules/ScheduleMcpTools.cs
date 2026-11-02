@@ -47,9 +47,9 @@ internal sealed class ScheduleMcpTools(
         [Description("A short name, e.g. 'Morning news'.")] string name,
         [Description("A 5-field cron in the task's zone ('30 7 * * 1-5' is weekdays at 07:30), 'once 2026-10-23T08:00' (ISO-8601 local time), or 'every 15 m'.")] string schedule,
         [Description("An IANA time zone, e.g. 'Europe/Amsterdam'. Required: a time without a zone is the gap this asks you to close.")] string timeZone,
-        [Description("'notification' delivers the text as it is; 'agent_prompt' hands the text to a profile as its prompt and delivers the answer.")] string action,
+        [Description("'notification' delivers the text as it is; 'agent_prompt' runs read-only in the assistant's conversation unless a profile is supplied.")] string action,
         [Description("The notification text, or the agent's prompt.")] string text,
-        [Description("For agent_prompt: the profile to hand it to.")] string? profile = null,
+        [Description("For agent_prompt: omit for the assistant (read-only, no separate delivery), or name a profile for delegation.")] string? profile = null,
         [Description("For agent_prompt: the working directory, which the profile must allow; $VAR is expanded.")] string? workingDirectory = null,
         [Description("For agent_prompt: 'read_only' (default) or 'write' (may change files, so it needs the operator's approval).")] string permission = "read_only",
         [Description("For agent_prompt: minutes to wait for the answer; leave out for the host's default.")] int? timeoutMinutes = null,
@@ -87,7 +87,7 @@ internal sealed class ScheduleMcpTools(
         [Description("A new IANA time zone.")] string? timeZone = null,
         [Description("'notification' or 'agent_prompt'.")] string? action = null,
         [Description("The new text or prompt.")] string? text = null,
-        [Description("For agent_prompt: the profile.")] string? profile = null,
+        [Description("For agent_prompt: the profile; an empty string switches to the assistant, omission keeps the current runner.")] string? profile = null,
         [Description("For agent_prompt: the working directory.")] string? workingDirectory = null,
         [Description("For agent_prompt: 'read_only' or 'write'.")] string? permission = null,
         [Description("For agent_prompt: minutes to wait for the answer.")] int? timeoutMinutes = null,
@@ -329,9 +329,9 @@ internal sealed class ScheduleMcpTools(
             "agent_prompt" => TaskActionKind.AgentPrompt,
             _ => (TaskActionKind?)null,
         };
-        if (kind is not { } actionKind || string.IsNullOrWhiteSpace(text) || (actionKind == TaskActionKind.AgentPrompt && string.IsNullOrWhiteSpace(profile)))
+        if (kind is not { } actionKind || string.IsNullOrWhiteSpace(text))
         {
-            return (task, "A task needs an action ('notification' or 'agent_prompt') with its text, and an agent prompt a profile too.");
+            return (task, "A task needs an action ('notification' or 'agent_prompt') with its text.");
         }
 
         if (permission is not ("read_only" or "write"))
@@ -339,8 +339,9 @@ internal sealed class ScheduleMcpTools(
             return (task, $"'{permission}' is not a permission: use 'read_only' or 'write'.");
         }
 
-        var targets = unchanged;
-        if (deliverTo is not null)
+        var assistant = actionKind == TaskActionKind.AgentPrompt && string.IsNullOrWhiteSpace(profile);
+        var targets = assistant ? [] : unchanged;
+        if (!assistant && deliverTo is not null)
         {
             if (_Targets(deliverTo) is not { } parsed)
             {
@@ -356,9 +357,9 @@ internal sealed class ScheduleMcpTools(
             TimeZone = timeZone,
             Action = new TaskAction(actionKind, text.Trim())
             {
-                Profile = actionKind == TaskActionKind.AgentPrompt ? profile?.Trim() : null,
-                WorkingDirectory = actionKind == TaskActionKind.AgentPrompt ? workingDirectory?.Trim() : null,
-                Permission = actionKind == TaskActionKind.AgentPrompt && permission == "write" ? AgentPermission.Write : AgentPermission.ReadOnly,
+                Profile = actionKind == TaskActionKind.AgentPrompt && !assistant ? profile?.Trim() : null,
+                WorkingDirectory = actionKind == TaskActionKind.AgentPrompt && !assistant ? workingDirectory?.Trim() : null,
+                Permission = actionKind == TaskActionKind.AgentPrompt && !assistant && permission == "write" ? AgentPermission.Write : AgentPermission.ReadOnly,
                 Timeout = timeout,
             },
             Delivery = targets,
@@ -433,8 +434,12 @@ internal sealed class ScheduleMcpTools(
         readsAs = CronText.Describe(task.Schedule),
         enabled = task.IsEnabled,
         action = task.Action.Kind,
+        runBy = task.Action.Kind == TaskActionKind.AgentPrompt ? string.IsNullOrWhiteSpace(task.Action.Profile) ? "assistant" : "profile" : null,
+        profile = task.Action.Profile,
         dangerous = AgentPromptAction.IsDangerous(task),
-        delivery = task.Delivery.Select(target => target.Target is null ? target.Channel : $"{target.Channel}:{target.Target}"),
+        delivery = task.Action.Kind == TaskActionKind.AgentPrompt && string.IsNullOrWhiteSpace(task.Action.Profile)
+            ? []
+            : task.Delivery.Select(target => target.Target is null ? target.Channel : $"{target.Channel}:{target.Target}"),
     };
 
     private static string _Serialize(object value) => JsonSerializer.Serialize(value, Json);

@@ -64,7 +64,7 @@ public readonly record struct SessionHostEvent(long Seq, SessionEvent Event);
 // AC-1376/1438: one SDK session's backend half: runtime, turn gate and queue, the send funnel, the clocks, and the one
 // consumer of its runtime's events. Members run on the consumer's thread (`PumpOn`) and awaits resume there (no
 // ConfigureAwait(false)); only the timer events arrive on the thread pool. AC-1449: the desktop pane's control.
-public sealed class SessionHost : ISessionTurnGate, ISessionTranscript, ISessionControl
+public sealed partial class SessionHost : ISessionTurnGate, ISessionTranscript, ISessionControl
 {
     // Same as `ClaudeLoginStatus.MaxAge`: a tick mostly re-reads a cache another poll already refreshed (AC-713).
     public static readonly TimeSpan LoginPollInterval = TimeSpan.FromMinutes(1);
@@ -202,9 +202,25 @@ public sealed class SessionHost : ISessionTurnGate, ISessionTranscript, ISession
 
     public void Enqueue(QueuedPrompt prompt) => Queue.Add(prompt);
 
-    public bool Withdraw(QueuedPrompt prompt) => Queue.Remove(prompt);
+    public bool Withdraw(QueuedPrompt prompt)
+    {
+        bool removed = Queue.Remove(prompt);
+        if (_readOnlyTurn is { HasStarted: false } turn && ReferenceEquals(turn.Prompt, prompt))
+        {
+            _CancelReadOnlyTurn(turn);
+        }
 
-    public void ClearQueue() => Queue.Clear();
+        return removed;
+    }
+
+    public void ClearQueue()
+    {
+        Queue.Clear();
+        if (_readOnlyTurn is { HasStarted: false } turn)
+        {
+            _CancelReadOnlyTurn(turn);
+        }
+    }
 
     // AC-935: the text a prompt leaves with, read when it leaves rather than when it was queued; a consumer that sends
     // more than it shows, such as a reply's citation, says so here.
@@ -221,6 +237,11 @@ public sealed class SessionHost : ISessionTurnGate, ISessionTranscript, ISession
         get => _isBusy;
         set
         {
+            if (!value && _readOnlyTurn is not null)
+            {
+                return;
+            }
+
             if (_isBusy == value)
             {
                 return;
@@ -320,6 +341,13 @@ public sealed class SessionHost : ISessionTurnGate, ISessionTranscript, ISession
     // Stops re-issuing the runtime's events, ahead of `StopAsync`, so the consumer can flush what it already has.
     public void StopListening()
     {
+        if (_readOnlyTurn is { } turn)
+        {
+            turn.IsStopping = true;
+            _CancelReadOnlyTurn(turn);
+            turn.Completion.TrySetException(new InvalidOperationException("The assistant session stopped before its turn completed."));
+        }
+
         if (Runtime is not null)
         {
             Runtime.EventAppended -= _OnRuntimeEvent;
@@ -335,13 +363,31 @@ public sealed class SessionHost : ISessionTurnGate, ISessionTranscript, ISession
         }
 
         Runtime = null;
-        if (_manager is not null)
+        ClaimedReadOnlyTurn? readOnlyTurn = _readOnlyTurn;
+        try
         {
-            await _manager.StopAsync(runtime.Id);
+            if (readOnlyTurn is not null)
+            {
+                readOnlyTurn.IsStopping = true;
+                _CancelReadOnlyTurn(readOnlyTurn);
+                readOnlyTurn.Completion.TrySetException(new InvalidOperationException("The assistant session stopped before its turn completed."));
+            }
+
+            if (_manager is not null)
+            {
+                await _manager.StopAsync(runtime.Id);
+            }
+            else
+            {
+                await runtime.DisposeAsync();
+            }
         }
-        else
+        finally
         {
-            await runtime.DisposeAsync();
+            if (readOnlyTurn is not null)
+            {
+                await _ReleaseReadOnlyTurnAsync(readOnlyTurn, dispatchNext: false);
+            }
         }
     }
 
@@ -356,6 +402,7 @@ public sealed class SessionHost : ISessionTurnGate, ISessionTranscript, ISession
     // the events go there in batches a frame apart (AC-529, AC-1204), otherwise one post per event.
     public void PumpOn(Action<Action> post, Action<Action>? postAfterWindow = null)
     {
+        _onOwnerThread = post;
         if (postAfterWindow is null)
         {
             _deliver = evt => post(() => Pump(evt));
@@ -378,8 +425,41 @@ public sealed class SessionHost : ISessionTurnGate, ISessionTranscript, ISession
     // what was queued behind it. Public as the seam a test drives in place of a runtime.
     public void Pump(SessionEvent evt)
     {
+        ClaimedReadOnlyTurn? readOnlyTurn = _readOnlyTurn;
         var fold = ApplyToTranscript(evt);
         Folded?.Invoke(fold);
+
+        if (readOnlyTurn is { HasStarted: true } && evt.ParentToolUseId is null)
+        {
+            if (evt is AssistantTextCompleted { Text.Length: > 0 } text)
+            {
+                readOnlyTurn.Text.Add(text.Text);
+            }
+
+            if (evt is TurnCompleted completed)
+            {
+                if (completed.IsError)
+                {
+                    readOnlyTurn.Completion.TrySetException(new InvalidOperationException(completed.Result ?? "The assistant turn failed."));
+                }
+                else
+                {
+                    readOnlyTurn.Completion.TrySetResult(!string.IsNullOrWhiteSpace(completed.Result)
+                        ? completed.Result
+                        : string.Join("\n\n", readOnlyTurn.Text));
+                }
+
+                _Track(_ReleaseReadOnlyTurnAsync(readOnlyTurn, dispatchNext: !completed.IsError && !EndsAfterThisTurn));
+                return;
+            }
+
+            if (evt is SessionError error)
+            {
+                readOnlyTurn.Completion.TrySetException(new InvalidOperationException(error.Message));
+                _Track(_ReleaseReadOnlyTurnAsync(readOnlyTurn, dispatchNext: false));
+                return;
+            }
+        }
 
         // A session error ends the turn without completing it: the queue stays, so a broken session is not cascaded.
         if (evt is TurnCompleted && !EndsAfterThisTurn)
@@ -390,6 +470,11 @@ public sealed class SessionHost : ISessionTurnGate, ISessionTranscript, ISession
 
     public void CompleteTurn()
     {
+        if (_readOnlyTurn is not null)
+        {
+            return;
+        }
+
         IsBusy = false;
         _DispatchNextQueued();
     }
@@ -408,7 +493,7 @@ public sealed class SessionHost : ISessionTurnGate, ISessionTranscript, ISession
 
     private Task _SubmitAsync(QueuedPrompt prompt, bool takesMidTurnInput)
     {
-        if (IsBusy && !takesMidTurnInput)
+        if (IsBusy && (!takesMidTurnInput || _readOnlyTurn is not null))
         {
             Queue.Add(prompt);
             return Task.CompletedTask;
@@ -423,6 +508,12 @@ public sealed class SessionHost : ISessionTurnGate, ISessionTranscript, ISession
     // Sends one turn now. A send that throws is reported through `TurnFailedToStart`, never out of here.
     public async Task DispatchAsync(QueuedPrompt prompt)
     {
+        if (_readOnlyTurn is { } reserved && !ReferenceEquals(reserved.Prompt, prompt))
+        {
+            Queue.Add(prompt);
+            return;
+        }
+
         if (Runtime is not { } runtime)
         {
             return;
@@ -447,14 +538,22 @@ public sealed class SessionHost : ISessionTurnGate, ISessionTranscript, ISession
         catch (Exception ex)
         {
             TurnFailedToStart?.Invoke(prompt, ex);
+            if (_readOnlyTurn is { } turn && ReferenceEquals(turn.Prompt, prompt))
+            {
+                turn.Completion.TrySetException(ex);
+                _Track(_ReleaseReadOnlyTurnAsync(turn, dispatchNext: false));
+            }
+
             IsBusy = false;
         }
     }
 
     // A turn the caller already marked busy and whose failure it decides about (a scheduled resume, AC-410).
-    public Task SendPromptAsync(string prompt) => Runtime is { } runtime
-        ? _SendWithWaitingMessagesAsync(runtime, prompt, images: null, noteMail: false)
-        : Task.CompletedTask;
+    public Task SendPromptAsync(string prompt) => _readOnlyTurn is not null
+        ? SubmitForTheAgentAsync(new QueuedPrompt(prompt, []))
+        : Runtime is { } runtime
+            ? _SendWithWaitingMessagesAsync(runtime, prompt, images: null, noteMail: false)
+            : Task.CompletedTask;
 
     // The one place a turn is handed to the runtime, so that turn-start delivery (AC-394) cannot be reached by one send
     // path and missed by another — `SessionHostSendPathTests` holds it to that.

@@ -69,6 +69,14 @@ internal sealed class SchedulesChannelHandlers(
         }
 
         var saved = task with { Id = task.Id.Length > 0 ? task.Id : Guid.NewGuid().ToString("n") };
+        if (saved.Action.Kind == TaskActionKind.AgentPrompt && string.IsNullOrWhiteSpace(saved.Action.Profile))
+        {
+            saved = saved with
+            {
+                Action = saved.Action with { Profile = null, WorkingDirectory = null, Permission = AgentPermission.ReadOnly },
+                Delivery = [],
+            };
+        }
         return _Change(all => all.Any(existing => existing.Id == saved.Id)
             ? [.. all.Select(existing => existing.Id == saved.Id ? saved : existing)]
             : [saved, .. all]) with { Id = saved.Id };

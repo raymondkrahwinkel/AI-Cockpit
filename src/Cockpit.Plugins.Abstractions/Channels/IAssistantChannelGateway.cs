@@ -161,6 +161,13 @@ public sealed record AssistantChannelSendResult(bool Ok, bool Ignored, string? E
 public interface IAssistantChannelGateway : IDisposable
 {
     /// <summary>
+    /// Atomically claims an idle assistant for a host-enforced read-only turn; a refusal queues nothing.
+    /// Cancellation before Started withdraws the claim. Completion carries the answer after TurnCompleted.
+    /// </summary>
+    Task<AssistantChannelTurn> TryStartReadOnlyTurnAsync(string senderUserId, string text, CancellationToken cancellationToken = default) =>
+        Task.FromResult(AssistantChannelTurn.Refused(AssistantTurnAdmission.NoAssistant));
+
+    /// <summary>
     /// Hands a message from <paramref name="senderUserId"/> to the assistant, by the same route as typed text. The
     /// channel's own <see cref="AssistantChannelAccess"/> is checked here first.
     /// </summary>
