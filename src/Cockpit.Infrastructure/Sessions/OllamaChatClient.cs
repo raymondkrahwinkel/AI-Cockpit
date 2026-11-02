@@ -81,7 +81,16 @@ internal sealed class OllamaChatClient(OllamaConfig config) : IChatClient
             ["stream"] = streaming,
             ["options"] = nativeOptions,
         };
-        if (!string.IsNullOrWhiteSpace(config.ReasoningEffort)) body["think"] = config.ReasoningEffort.Trim();
+        if (!string.IsNullOrWhiteSpace(config.ReasoningEffort))
+        {
+            body["think"] = config.ReasoningEffort.Trim() switch
+            {
+                "none" => JsonValue.Create(false),
+                "minimal" => JsonValue.Create("low"),
+                "xhigh" or "ultra" => JsonValue.Create("max"),
+                var effort => JsonValue.Create(effort),
+            };
+        }
         if (options?.Tools is { Count: > 0 } tools)
         {
             body["tools"] = new JsonArray(tools.OfType<AIFunction>().Select(function => (JsonNode)new JsonObject

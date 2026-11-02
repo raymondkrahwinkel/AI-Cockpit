@@ -180,6 +180,13 @@ public class OpenAiCompatSessionDriverTests
             if (expected is not null) Assert.Equal(expected, think.GetString());
             Assert.False(nativeBody.TryGetProperty("reasoning_effort", out _));
         }
+        foreach (var (effort, expected) in new (string, object)[] { ("none", false), ("minimal", "low"), ("xhigh", "max"), ("ultra", "max") })
+        {
+            await using var server = new OllamaHttpServer();
+            using var client = new OpenAiCompatChatClientFactory().Create(new OllamaConfig(server.BaseUrl, "model", ReasoningEffort: effort));
+            await client.GetResponseAsync([new ChatMessage(ChatRole.User, "hi")]);
+            Assert.Equal(System.Text.Json.JsonSerializer.Serialize(expected), Assert.Single(server.Requests).Body.GetProperty("think").GetRawText());
+        }
     }
 
     private static async Task _NativeToolRoundAsync(bool hermes)
