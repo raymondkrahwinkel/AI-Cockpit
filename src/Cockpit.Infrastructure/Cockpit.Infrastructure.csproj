@@ -106,6 +106,7 @@
          plugin never gets this grant. -->
     <InternalsVisibleTo Include="Cockpit.Plugin.Diagram.Tests" />
     <InternalsVisibleTo Include="Cockpit.Plugin.Browser.Tests" />
+    <InternalsVisibleTo Include="Cockpit.Plugin.Depot.Tests" />
     <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
   </ItemGroup>
 

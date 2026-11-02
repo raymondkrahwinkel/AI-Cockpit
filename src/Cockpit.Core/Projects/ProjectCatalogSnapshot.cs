@@ -9,6 +9,8 @@ public sealed record ProjectCatalogSnapshot(
     IReadOnlyDictionary<string, string?> OwnershipClaims,
     IReadOnlySet<string> RemoteChangedProjectIds)
 {
+    public IReadOnlyDictionary<string, string> PublicationErrors { get; init; } = new Dictionary<string, string>();
+
     // AC-1599: groups intentionally omit already-bound and hidden offers, but the Projects workspace still needs
     // their source and organization to put local rows under the right B2 section.
     public IReadOnlyDictionary<string, SharedProjectLocation> BoundProjectLocations { get; init; } =

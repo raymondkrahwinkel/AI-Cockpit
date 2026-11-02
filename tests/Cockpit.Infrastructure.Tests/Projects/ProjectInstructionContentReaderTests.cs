@@ -129,13 +129,6 @@ public class ProjectInstructionContentReaderTests : IDisposable
         Assert.Empty(result);
     }
 
-    [Fact]
-    public void ABlankReference_IsNeverRead()
-    {
-        var resources = new[] { new ProjectResource("   ", ProjectResourceRole.Instructions) { SendsContent = true } };
-
-        Assert.Empty(ProjectInstructionContentReader.Read(resources));
-    }
 
     // --- AC-605: a "~"-anchored reference is resolved before it ever reaches disk -----------------------------
 

@@ -43,6 +43,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 ### Fixed
 
 - Session run indicators now use the frontend contract boundary; settings migration checks follow the seven supported sync categories.
+- Linking a project's Memory to Depot publishes its missing project definition, including existing links on refresh, and shows failures with a retry action.
 - Workspace tab context menus keep their normal text color on inactive tabs, so Close no longer looks disabled.
 - Ollama profiles now apply their context size through the native chat API, including tool follow-up requests, while retaining reasoning history and context protection.
 

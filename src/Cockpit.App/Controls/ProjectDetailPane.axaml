@@ -136,6 +136,9 @@
             </Button>
         </Panel>
 
+        <Button Content="Try again" Classes="paneAction" IsVisible="{Binding HasPublicationError}" Command="{Binding TryAgain}" Margin="0,8,0,0"/>
+
+        <TextBlock Text="{Binding PublicationError}" IsVisible="{Binding HasPublicationError}" TextWrapping="Wrap" Margin="0,8,0,0"/>
         <WrapPanel Margin="0,12,0,0" ItemSpacing="6" LineSpacing="4">
             <Border Classes="statusTag changed" IsVisible="{Binding HasRemoteChanges}">
                 <TextBlock Text="☁ Changed on Depot"/>

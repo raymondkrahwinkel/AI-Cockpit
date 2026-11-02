@@ -34,6 +34,19 @@ internal static partial class Screenshotter
         new("projects-workspace-unreachable", (_, _) => _ProjectsWorkspace(_StageUnreachableServer)),
         new("projects-workspace-loading", (_, _) => _ProjectsWorkspace(_StageLoading)),
         new("projects-workspace-stale", (_, _) => _ProjectsWorkspace(_StageStaleServer)),
+        new("projects-workspace-publication-failed", (_, _) => _ProjectsWorkspace(cockpit =>
+        {
+            var project = _Project("MySpace", "Codex", null);
+            cockpit.Projects.StageSnapshot(ProjectCatalogSnapshot.Empty with
+            {
+                Settings = new ProjectSettings { Projects = [project] },
+                PublicationErrors = new Dictionary<string, string>
+                {
+                    [project.Id] = "Not available on other machines yet: Permission denied.",
+                },
+            });
+            cockpit.Projects.SelectedListItem = cockpit.Projects.ProjectSections.SelectMany(section => section.Items).FirstOrDefault();
+        })),
         new("projects-workspace-long-text", (_, _) => _ProjectsWorkspace(_StageLongProjectText)),
         // AC-1601: the detail pane laid out, next to b2-23 (a local project with sessions and jobs), b2-12 (a team project to add) and
         // b2-20 (the Start split open).

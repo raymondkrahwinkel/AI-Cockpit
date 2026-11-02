@@ -25,6 +25,7 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
     private ProjectSettings _settings = ProjectSettings.Empty;
     private bool _loaded;
     private IReadOnlyList<SharedProjectGroup> _sharedProjectGroups = [];
+    private IReadOnlyDictionary<string, string> _publicationErrors = new Dictionary<string, string>();
     private IReadOnlyDictionary<string, SharedProjectLocation> _boundProjectLocations = new Dictionary<string, SharedProjectLocation>(StringComparer.Ordinal);
     private IReadOnlyDictionary<string, SharedProjectLocation> _hiddenSharedProjectLocations = new Dictionary<string, SharedProjectLocation>(StringComparer.Ordinal);
     private ProjectCatalogSnapshot _current = ProjectCatalogSnapshot.Empty;
@@ -93,12 +94,16 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
     public async Task<Project?> FindProjectAsync(string projectId) =>
         (await _ReadSettingsAsync().ConfigureAwait(false)).Projects.FirstOrDefault(project => project.Id == projectId);
 
-    public Task<Project> AddNewProjectAsync(Project project) =>
-        _WriteAsync(async settings =>
+    public async Task<Project> AddNewProjectAsync(Project project)
+    {
+        var stored = await _WriteAsync(async settings =>
         {
             var stored = await _WithStoredLogoAsync(project).ConfigureAwait(false);
             return (settings.WithProject(stored), stored);
-        });
+        }).ConfigureAwait(false);
+        await _RefreshMemoryBindingAsync(stored).ConfigureAwait(false);
+        return stored;
+    }
 
     // The row just bound must not stay on offer until the next full reload: a fresh read finds it bound now.
     public async Task<Project> AddBoundProjectAsync(Project project, string? baselineChecksum)
@@ -130,8 +135,9 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
         return stored;
     }
 
-    public Task<Project?> UpdateStoredProjectAsync(Project project) =>
-        _WriteAsync<Project?>(async settings =>
+    public async Task<Project?> UpdateStoredProjectAsync(Project project)
+    {
+        var stored = await _WriteAsync<Project?>(async settings =>
         {
             if (settings.Projects.All(candidate => candidate.Id != project.Id))
             {
@@ -140,7 +146,19 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
 
             var stored = await _WithStoredLogoAsync(project).ConfigureAwait(false);
             return (settings.WithUpdated(stored), stored);
-        });
+        }).ConfigureAwait(false);
+        if (stored is not null)
+        {
+            await _RefreshMemoryBindingAsync(stored).ConfigureAwait(false);
+        }
+
+        return stored;
+    }
+
+    private Task _RefreshMemoryBindingAsync(Project project) =>
+        _BoundTo(project) is { } reference && _sharedSources.Sources.Any(source => reference.StartsWith(source.Key + ":", StringComparison.Ordinal))
+            ? RefreshSharedProjectsAsync()
+            : Task.CompletedTask;
 
     // A project removed in the meantime is left alone rather than written back; AC-490 records a job run only on true.
     public Task<bool> MarkOpenedAsync(string projectId, DateTimeOffset openedAt) =>
@@ -276,6 +294,7 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
         if (sources.Count == 0)
         {
             _sharedProjectGroups = [];
+            _publicationErrors = new Dictionary<string, string>();
             _PublishAndRaise();
             return;
         }
@@ -289,6 +308,67 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
         {
             return;
         }
+
+        var publicationErrors = new Dictionary<string, string>(StringComparer.Ordinal);
+        for (var index = 0; index < sources.Count; index++)
+        {
+            var source = sources[index];
+            var result = results[index];
+            var publishedDefinition = false;
+            foreach (var project in settings.Projects.Where(project =>
+                _BoundTo(project)?.StartsWith(source.Key + ":", StringComparison.Ordinal) == true))
+            {
+                var reference = _BoundTo(project);
+                var state = result.ProjectReadStates.FirstOrDefault(state => state.Id == reference);
+                string? error = null;
+                if (!result.Succeeded || result.Error is not null)
+                {
+                    error = result.Error ?? "The connection is unavailable.";
+                }
+                else if (state?.State == SharedProjectReadState.Absent && source.CanPublish && reference is not null)
+                {
+                    try
+                    {
+                        var definition = await SharedProjectDefinitionBuilder.BuildAsync(project).ConfigureAwait(false);
+                        var published = await source.PublishAsync(reference, definition, cancellationToken).ConfigureAwait(false);
+                        publishedDefinition |= published.Outcome is SharedProjectPublishOutcome.Success or SharedProjectPublishOutcome.AlreadyPublished;
+                        if (published.Outcome is not (SharedProjectPublishOutcome.Success or SharedProjectPublishOutcome.AlreadyPublished))
+                        {
+                            error = published.Error ?? "The connection did not confirm the publish.";
+                        }
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                        return;
+                    }
+                    catch (Exception exception)
+                    {
+                        error = exception.Message;
+                    }
+                }
+                else if (state is { State: not SharedProjectReadState.Ok })
+                {
+                    error = _Unavailable(state.State);
+                }
+
+                if (error is not null)
+                {
+                    publicationErrors[project.Id] = $"Not available on other machines yet: {error}";
+                }
+            }
+
+            if (publishedDefinition)
+            {
+                results[index] = await SharedProjectSourceLister.ListWithTimeoutAsync(source, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+
+        _publicationErrors = publicationErrors;
 
         // Claiming runs over every project a source reported, bound or not: a bound one is exactly what the claim is
         // for, even though it never shows in that source's own group.
@@ -544,6 +624,7 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
         {
             BoundProjectLocations = _boundProjectLocations,
             HiddenSharedProjectLocations = _hiddenSharedProjectLocations,
+            PublicationErrors = _publicationErrors,
         });
     }
 }
