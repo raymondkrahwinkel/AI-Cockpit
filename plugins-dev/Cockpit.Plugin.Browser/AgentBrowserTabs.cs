@@ -1,11 +1,12 @@
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Plugin.Browser;
 
 // AC-1713: What you see and do in the agent profile, on top of AgentBrowserHost: the tabs of every live agent
 // browser, one screencast for the tab you are looking at, and Neem over / Geef terug / Stop agent. The screencast runs
 // only between Watch and Unwatch, so nobody looking costs nothing. Frames and changes go out as plugin-channel events.
-internal sealed class AgentBrowserTabs(AgentBrowserHost browsers, Func<string, string?> sessionName, Action<string, object> publish) : IDisposable
+internal sealed class AgentBrowserTabs(AgentBrowserHost browsers, Func<string, string?> sessionName, Action<string, object> publish, ILogger? logger = null, Action<string>? commandSent = null) : IDisposable
 {
     private const int MaxViewportDimension = 4096;
 
@@ -33,7 +34,7 @@ internal sealed class AgentBrowserTabs(AgentBrowserHost browsers, Func<string, s
     // Replaces the screencast in progress: one viewer, one tab.
     public async Task<bool> WatchAsync(string paneId, string targetId, int width, int height, CancellationToken cancellationToken)
     {
-        Unwatch();
+        await UnwatchAsync().ConfigureAwait(false);
         var live = browsers.Live().FirstOrDefault(entry => entry.PaneId == paneId);
         if (live.Upstream is null)
         {
@@ -47,7 +48,7 @@ internal sealed class AgentBrowserTabs(AgentBrowserHost browsers, Func<string, s
         }
 
         CdpPage? connection = null;
-        connection = await CdpPage.ConnectAsync(page.SocketUrl, (name, parameters) => OnEvent(connection!, paneId, targetId, name, parameters), cancellationToken).ConfigureAwait(false);
+        connection = await CdpPage.ConnectAsync(page.SocketUrl, (name, parameters) => OnEvent(connection!, paneId, targetId, name, parameters), cancellationToken, commandSent).ConfigureAwait(false);
         lock (_gate)
         {
             _watch = new Watch(paneId, targetId, connection);
@@ -77,7 +78,7 @@ internal sealed class AgentBrowserTabs(AgentBrowserHost browsers, Func<string, s
         return true;
     }
 
-    public void Unwatch()
+    public async Task UnwatchAsync()
     {
         Watch? watch;
         lock (_gate)
@@ -86,8 +87,25 @@ internal sealed class AgentBrowserTabs(AgentBrowserHost browsers, Func<string, s
             _watch = null;
         }
 
-        // Closing the socket ends the screencast with it; no frame is asked for or acknowledged after this.
-        watch?.Connection.Dispose();
+        if (watch is null)
+        {
+            return;
+        }
+
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await watch.Connection.CallAsync("Emulation.clearDeviceMetricsOverride", null, timeout.Token).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            logger?.LogError(exception, "Could not clear the agent browser viewport override for {PaneId}/{TargetId}", watch.PaneId, watch.TargetId);
+        }
+        finally
+        {
+            // Closing the socket ends the screencast with it; no frame is asked for or acknowledged after this.
+            watch.Connection.Dispose();
+        }
     }
 
     public bool TakeOver(string paneId) => browsers.SetOperatorDrives(paneId, true);
@@ -96,9 +114,9 @@ internal sealed class AgentBrowserTabs(AgentBrowserHost browsers, Func<string, s
 
     public Task<bool> CloseAsync(string paneId, string targetId, CancellationToken token) => browsers.CloseTabAsync(paneId, targetId, token);
 
-    public bool Stop(string paneId)
+    public async Task<bool> StopAsync(string paneId)
     {
-        Unwatch();
+        await UnwatchAsync().ConfigureAwait(false);
         return browsers.StopBrowser(paneId);
     }
 
@@ -130,7 +148,7 @@ internal sealed class AgentBrowserTabs(AgentBrowserHost browsers, Func<string, s
         return null;
     }
 
-    public void Dispose() => Unwatch();
+    public void Dispose() => UnwatchAsync().GetAwaiter().GetResult();
 
     private void OnEvent(CdpPage connection, string paneId, string targetId, string name, JsonElement parameters)
     {

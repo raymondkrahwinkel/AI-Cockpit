@@ -20,12 +20,13 @@ public class AgentBrowserDriverTests
         using var browsers = new AgentBrowserHost(() => executable, root);
         var frames = 0;
         var firstFrame = new TaskCompletionSource<(double Width, double Height)>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var commands = new System.Collections.Concurrent.ConcurrentBag<string>();
         using var tabs = new AgentBrowserTabs(browsers, paneId => paneId, (_, payload) =>
         {
             var frame = JsonSerializer.SerializeToElement(payload);
             firstFrame.TrySetResult((frame.GetProperty("width").GetDouble(), frame.GetProperty("height").GetDouble()));
             Interlocked.Increment(ref frames);
-        });
+        }, commandSent: commands.Add);
         try
         {
             var endpoint = await browsers.StartAsync("pane-a") ?? throw new InvalidOperationException("The agent browser did not start");
@@ -55,7 +56,8 @@ public class AgentBrowserDriverTests
             await TitleBecomesAsync(endpoint, "2");
 
             // AC-1713 acceptance 1: with nobody looking there is no screencast, so the page changing sends nothing.
-            tabs.Unwatch();
+            await tabs.UnwatchAsync();
+            Assert.Contains("Emulation.clearDeviceMetricsOverride", commands);
             await Task.Delay(500);
             var framesWhenClosed = Volatile.Read(ref frames);
             browsers.SetOperatorDrives("pane-a", false);

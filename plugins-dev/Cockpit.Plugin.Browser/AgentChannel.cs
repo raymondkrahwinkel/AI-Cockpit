@@ -15,14 +15,14 @@ internal static class AgentChannel
             Done(await tabs.WatchAsync(Text(payload, "paneId"), Text(payload, "targetId"), Number(payload, "width"), Number(payload, "height"), cancellationToken).ConfigureAwait(false), "That tab is gone"));
         channel.Handle("agents.resize", async (payload, cancellationToken) =>
             Done(await tabs.ResizeAsync(Text(payload, "paneId"), Text(payload, "targetId"), Number(payload, "width"), Number(payload, "height"), cancellationToken).ConfigureAwait(false), "That tab is not on screen"));
-        channel.Handle("agents.unwatch", (_, _) =>
+        channel.Handle("agents.unwatch", async (_, _) =>
         {
-            tabs.Unwatch();
-            return Task.FromResult(Done(true, string.Empty));
+            await tabs.UnwatchAsync().ConfigureAwait(false);
+            return Done(true, string.Empty);
         });
         channel.Handle("agents.takeover", (payload, _) => Task.FromResult(Done(tabs.TakeOver(Text(payload, "paneId")), "That agent browser is gone")));
         channel.Handle("agents.release", (payload, _) => Task.FromResult(Done(tabs.GiveBack(Text(payload, "paneId")), "That agent browser is gone")));
-        channel.Handle("agents.stop", (payload, _) => Task.FromResult(Done(tabs.Stop(Text(payload, "paneId")), "That agent browser is gone")));
+        channel.Handle("agents.stop", async (payload, _) => Done(await tabs.StopAsync(Text(payload, "paneId")).ConfigureAwait(false), "That agent browser is gone"));
         channel.Handle("agents.input", async (payload, _) =>
         {
             var error = await tabs.InputAsync(Text(payload, "paneId"), Text(payload, "targetId"), Text(payload, "method"), payload.GetProperty("params")).ConfigureAwait(false);

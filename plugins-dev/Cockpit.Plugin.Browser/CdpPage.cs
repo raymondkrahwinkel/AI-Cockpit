@@ -9,6 +9,7 @@ namespace Cockpit.Plugin.Browser;
 // are read back.
 internal sealed class CdpPage : IDisposable
 {
+    private readonly Action<string>? _commandSent;
     private readonly ClientWebSocket _socket = new();
     private readonly SemaphoreSlim _sendGate = new(1, 1);
     private readonly CancellationTokenSource _lifetime = new();
@@ -30,6 +31,7 @@ internal sealed class CdpPage : IDisposable
                     ? JsonSerializer.SerializeToUtf8Bytes(new { id, method, @params = parameters ?? new { } })
                     : JsonSerializer.SerializeToUtf8Bytes(new { id, method, @params = parameters ?? new { }, sessionId });
                 await _socket.SendAsync(bytes, WebSocketMessageType.Text, true, cancellationToken).ConfigureAwait(false);
+                _commandSent?.Invoke(method);
             }
             finally { _sendGate.Release(); }
             return await completion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -37,16 +39,17 @@ internal sealed class CdpPage : IDisposable
         finally { _pending.TryRemove(id, out _); }
     }
 
-    private CdpPage()
+    private CdpPage(Action<string>? commandSent)
     {
+        _commandSent = commandSent;
     }
 
-    public static async Task<CdpPage> ConnectAsync(string socketUrl, Action<string, JsonElement> onEvent, CancellationToken cancellationToken)
-        => await ConnectAsync(socketUrl, (name, data, _) => onEvent(name, data), cancellationToken).ConfigureAwait(false);
+    public static async Task<CdpPage> ConnectAsync(string socketUrl, Action<string, JsonElement> onEvent, CancellationToken cancellationToken, Action<string>? commandSent = null)
+        => await ConnectAsync(socketUrl, (name, data, _) => onEvent(name, data), cancellationToken, commandSent).ConfigureAwait(false);
 
-    public static async Task<CdpPage> ConnectAsync(string socketUrl, Action<string, JsonElement, string?> onEvent, CancellationToken cancellationToken)
+    public static async Task<CdpPage> ConnectAsync(string socketUrl, Action<string, JsonElement, string?> onEvent, CancellationToken cancellationToken, Action<string>? commandSent = null)
     {
-        var page = new CdpPage();
+        var page = new CdpPage(commandSent);
         try { await page._socket.ConnectAsync(new Uri(socketUrl), cancellationToken).ConfigureAwait(false); }
         catch { page.Dispose(); throw; }
         _ = page.ReadAsync(onEvent);
@@ -60,6 +63,7 @@ internal sealed class CdpPage : IDisposable
         try
         {
             await _socket.SendAsync(bytes, WebSocketMessageType.Text, true, _lifetime.Token).ConfigureAwait(false);
+            _commandSent?.Invoke(method);
         }
         finally
         {
