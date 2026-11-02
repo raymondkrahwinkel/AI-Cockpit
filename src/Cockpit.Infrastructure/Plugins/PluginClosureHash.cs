@@ -9,15 +9,20 @@ namespace Cockpit.Infrastructure.Plugins;
 internal static class PluginClosureHash
 {
     // The closure of the files actually on disk under an installed plugin folder (what the loader will load):
-    // every file, recursively. This is what discovery verifies and what an install/consent pins.
+    // every file, recursively, every byte read. This is what startup discovery verifies and what an install pins.
     public static Task<string> OfInstalledFolderAsync(string folder, CancellationToken cancellationToken = default) =>
-        _ComputeAsync(folder, _EnumerateInstalledFiles(folder), _installedFileHashes, cancellationToken);
+        _ComputeAsync(folder, _EnumerateInstalledFiles(folder), reuseUnchanged: false, cancellationToken);
+
+    // AC-2018: the same closure for a rediscovery that loads and pins nothing (Options, the update check): a file whose
+    // size and write time match the last full read keeps that hash. Never for a route that loads or compares a pin.
+    public static Task<string> OfInstalledFolderForDisplayAsync(string folder, CancellationToken cancellationToken = default) =>
+        _ComputeAsync(folder, _EnumerateInstalledFiles(folder), reuseUnchanged: true, cancellationToken);
 
     // The closure of a source folder as it *would be* installed — mirroring
     // `PluginSourceInstaller`'s copy selection (root files only, minus the shared abstractions
     // assembly a plugin must not carry) so it can be compared against an installed folder's closure.
     public static Task<string> OfSourceFolderAsync(string folder, CancellationToken cancellationToken = default) =>
-        _ComputeAsync(folder, _EnumerateSourceFiles(folder), cache: null, cancellationToken);
+        _ComputeAsync(folder, _EnumerateSourceFiles(folder), reuseUnchanged: false, cancellationToken);
 
     // Whether a source file is copied into the install (and so counts towards the closure). Kept here so
     // `PluginSourceInstaller`'s copy and this hash cannot drift apart.
@@ -37,39 +42,27 @@ internal static class PluginClosureHash
             .Where(path => IsCopiedSourceFile(Path.GetFileName(path)));
 
     // AC-2018: each rediscovery re-read ~260 MB of plugin bytes (0.4 s warm, 4–9 s once evicted from the file cache).
-    // Startup still hashes every byte, and plugins only load at startup, so what runs is always what was verified.
-    private static readonly ConcurrentDictionary<string, (long Length, DateTime WrittenUtc, string Sha)> _installedFileHashes =
+    // Filled by every full read, read only by `OfInstalledFolderForDisplayAsync`.
+    private static readonly ConcurrentDictionary<string, (long Length, DateTime WrittenUtc, string Sha)> _fileHashes =
         new(StringComparer.OrdinalIgnoreCase);
 
-    private static async Task<string> _ComputeAsync(
-        string folder,
-        IEnumerable<string> files,
-        ConcurrentDictionary<string, (long Length, DateTime WrittenUtc, string Sha)>? cache,
-        CancellationToken cancellationToken)
+    private static async Task<string> _ComputeAsync(string folder, IEnumerable<string> files, bool reuseUnchanged, CancellationToken cancellationToken)
     {
         var closure = new List<PluginClosureFile>();
         foreach (var path in files)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var relative = Path.GetRelativePath(folder, path);
-            closure.Add(new PluginClosureFile(relative, await _FileShaAsync(path, cache, cancellationToken).ConfigureAwait(false)));
+            closure.Add(new PluginClosureFile(relative, await _FileShaAsync(path, reuseUnchanged, cancellationToken).ConfigureAwait(false)));
         }
 
         return PluginHash.ComputeClosure(closure);
     }
 
-    private static async Task<string> _FileShaAsync(
-        string path,
-        ConcurrentDictionary<string, (long Length, DateTime WrittenUtc, string Sha)>? cache,
-        CancellationToken cancellationToken)
+    private static async Task<string> _FileShaAsync(string path, bool reuseUnchanged, CancellationToken cancellationToken)
     {
-        if (cache is null)
-        {
-            return PluginHash.Compute(await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false));
-        }
-
         var info = new FileInfo(path);
-        if (cache.TryGetValue(path, out var known) && known.Length == info.Length && known.WrittenUtc == info.LastWriteTimeUtc)
+        if (reuseUnchanged && _fileHashes.TryGetValue(path, out var known) && known.Length == info.Length && known.WrittenUtc == info.LastWriteTimeUtc)
         {
             return known.Sha;
         }
@@ -80,7 +73,7 @@ internal static class PluginClosureHash
         // with the same size inside the same tick. Only a file that has been still for a while is remembered.
         if (DateTime.UtcNow - info.LastWriteTimeUtc > TimeSpan.FromSeconds(2))
         {
-            cache[path] = (info.Length, info.LastWriteTimeUtc, sha);
+            _fileHashes[path] = (info.Length, info.LastWriteTimeUtc, sha);
         }
 
         return sha;

@@ -16,7 +16,7 @@ internal sealed class PluginAdministration(
 {
     public async Task<IReadOnlyList<InstalledPlugin>> GetInstalledAsync(CancellationToken cancellationToken = default)
     {
-        var discovered = await bootstrap.DiscoverAsync(AbstractionsContract.Version, cancellationToken).ConfigureAwait(false);
+        var discovered = await bootstrap.DiscoverForDisplayAsync(AbstractionsContract.Version, cancellationToken).ConfigureAwait(false);
         var saved = await registrations.LoadAllAsync(cancellationToken).ConfigureAwait(false);
 
         return discovered

@@ -36,7 +36,7 @@ internal static class DesktopComposition
         {
             var bootstrap = provider.GetRequiredService<PluginBootstrap>();
             return new PluginUpdateChecker(
-                cancellationToken => bootstrap.DiscoverAsync(AbstractionsContract.Version, cancellationToken),
+                cancellationToken => bootstrap.DiscoverForDisplayAsync(AbstractionsContract.Version, cancellationToken),
                 provider.GetRequiredService<IPluginStoreConfigStore>(),
                 provider.GetRequiredService<IPluginStoreClient>(),
                 provider.GetRequiredService<IToastService>(),

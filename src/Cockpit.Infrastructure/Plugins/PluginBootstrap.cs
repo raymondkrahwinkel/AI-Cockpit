@@ -49,4 +49,12 @@ public sealed class PluginBootstrap : ISingletonService
         var saved = await _registrationStore.LoadAllAsync(cancellationToken).ConfigureAwait(false);
         return await _discovery.DiscoverAsync(_pluginsRoot, saved, hostAbstractionsMajor, cancellationToken).ConfigureAwait(false);
     }
+
+    // AC-2018: for a caller that shows or compares versions and loads nothing (Options, the plugin store, the update
+    // check). Its decisions are a status to show; what loads is decided by the startup pass above, from every byte.
+    public async Task<IReadOnlyList<DiscoveredPlugin>> DiscoverForDisplayAsync(int hostAbstractionsMajor, CancellationToken cancellationToken = default)
+    {
+        var saved = await _registrationStore.LoadAllAsync(cancellationToken).ConfigureAwait(false);
+        return await _discovery.DiscoverAsync(_pluginsRoot, saved, hostAbstractionsMajor, cancellationToken, forDisplay: true).ConfigureAwait(false);
+    }
 }
