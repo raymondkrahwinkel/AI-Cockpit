@@ -20,6 +20,10 @@ internal static class CodexMcpConfig
     // Prefix for the env var one custom header's value is passed through, indexed per server and per header.
     private const string HeaderEnvVarPrefix = "COCKPIT_MCP_HEADER_";
 
+    // How long Codex waits for a passed URL server's MCP handshake before dropping it (AC-1852). Codex 0.154.0
+    // defaults to 30 s (measured); a cold-started remote server can need more. Servers start concurrently.
+    internal const int StartupTimeoutSeconds = 60;
+
     public static CodexMcpLaunch Build(IReadOnlyList<PluginMcpServer>? servers)
     {
         if (servers is null || servers.Count == 0)
@@ -30,6 +34,7 @@ internal static class CodexMcpConfig
         var configArgs = new List<string>();
         var environmentVariables = new Dictionary<string, string?>();
         var usedNames = new HashSet<string>(StringComparer.Ordinal);
+        var serverNames = new Dictionary<string, string>(StringComparer.Ordinal);
 
         for (var index = 0; index < servers.Count; index++)
         {
@@ -40,18 +45,20 @@ internal static class CodexMcpConfig
                 continue;
             }
 
+            var codexName = _CodexServerName(server.Name, index, usedNames);
+            serverNames[codexName] = server.Name;
             configArgs.Add("-c");
-            configArgs.Add($"mcp_servers.{_CodexServerName(server.Name, index, usedNames)}={inlineTable}");
+            configArgs.Add($"mcp_servers.{codexName}={inlineTable}");
         }
 
-        return new CodexMcpLaunch(configArgs, environmentVariables);
+        return new CodexMcpLaunch(configArgs, environmentVariables, serverNames);
     }
 
     private static string? _InlineTable(PluginMcpServer server, int index, Dictionary<string, string?> environmentVariables)
     {
         if (!string.IsNullOrWhiteSpace(server.Url))
         {
-            var fields = new List<string> { $"url = {TomlString(server.Url)}" };
+            var fields = new List<string> { $"url = {TomlString(server.Url)}", $"startup_timeout_sec = {StartupTimeoutSeconds}" };
 
             if (server.CockpitHosted)
             {
@@ -176,8 +183,9 @@ internal static class CodexMcpConfig
     }
 }
 
-// The `codex app-server` spawn's MCP-derived config args and the environment the tokens ride in.
-internal sealed record CodexMcpLaunch(IReadOnlyList<string> ConfigArgs, IReadOnlyDictionary<string, string?> EnvironmentVariables)
+// The `codex app-server` spawn's MCP-derived config args and the environment the tokens ride in, plus the
+// Codex-side name -> display name of every server passed, so a startup failure can be reported by its own name.
+internal sealed record CodexMcpLaunch(IReadOnlyList<string> ConfigArgs, IReadOnlyDictionary<string, string?> EnvironmentVariables, IReadOnlyDictionary<string, string> ServerNames)
 {
-    public static CodexMcpLaunch Empty { get; } = new([], new Dictionary<string, string?>());
+    public static CodexMcpLaunch Empty { get; } = new([], new Dictionary<string, string?>(), new Dictionary<string, string>());
 }

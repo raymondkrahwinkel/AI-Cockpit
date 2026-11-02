@@ -80,6 +80,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 - Model Intelligence no longer mixes up the quota of two Claude subscriptions used side by side, and unchanged quota readings are no longer stored over and over.
 
+- A Codex session no longer silently loses an external MCP server that is slow to start: Codex now waits up to 60 seconds for each server instead of 30, and a server that still fails to start is reported in the session and in the log by name, with Codex's own reason.
+
 - The automatic plugin publish after a Nightly no longer fails for a plugin merged while that Nightly ran; it waits for the next Nightly with a notice, while a hand-fired publish still fails.
 
 - The Depot dock's Notes tab loads live notes again after signing in, instead of asking to sign in forever; a refusal or an older Depot now says so instead of "Sign in".

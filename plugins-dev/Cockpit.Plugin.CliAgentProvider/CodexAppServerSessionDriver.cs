@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Collections.Concurrent;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Shared;
+using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Plugin.CliAgentProvider;
 
@@ -38,6 +39,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
     private readonly CliAgentConfig _config;
     private readonly string _executablePath;
     private readonly Action<PluginModelObservation>? _recordObservation;
+    private readonly ILogger? _logger;
     private readonly PluginSessionEventPublisher _events = new();
 
     // itemId -> the server request's JSON-RPC id, so an operator's allow/deny can be routed back to the exact
@@ -45,6 +47,11 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
     private readonly ConcurrentDictionary<string, JsonElement> _pendingApprovals = new();
     private readonly TaskCompletionSource<string> _threadReady = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly CancellationTokenSource _lifetime = new();
+
+    // Codex-side name -> display name of the MCP servers this session passed (AC-1852). Set before the notification
+    // pump starts, so the pump thread reads it without a lock; a server Codex reports on that is not here (its own
+    // config.toml ones) is none of this driver's business.
+    private IReadOnlyDictionary<string, string> _passedMcpServers = new Dictionary<string, string>();
 
     private string? _model;
 
@@ -91,12 +98,13 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
     private readonly StringBuilder _turnText = new();
     private readonly Dictionary<string, PluginBackgroundTask> _children = new();
 
-    public CodexAppServerSessionDriver(Func<ICliSubprocess> subprocessFactory, CliAgentConfig config, string executablePath, Action<PluginModelObservation>? recordObservation = null)
+    public CodexAppServerSessionDriver(Func<ICliSubprocess> subprocessFactory, CliAgentConfig config, string executablePath, Action<PluginModelObservation>? recordObservation = null, ILogger? logger = null)
     {
         _connection = new CodexAppServerConnection(subprocessFactory());
         _config = config;
         _executablePath = executablePath;
         _recordObservation = recordObservation;
+        _logger = logger;
         _model = config.Model;
     }
 
@@ -199,6 +207,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         // The session's MCP servers (#26) become -c config overrides on the app-server spawn; any bearer token
         // rides the process environment, never the command line (see CodexMcpConfig).
         var mcpLaunch = CodexMcpConfig.Build(mcpServers);
+        _passedMcpServers = mcpLaunch.ServerNames;
         var environmentVariables = _config.BuildEnvironmentVariables();
 
         // The profile's own variables (AC-22) lay under everything the driver sets itself: the config's auth
@@ -486,6 +495,10 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
                 _HandleRateLimits(notification.Params);
                 break;
 
+            case "mcpServer/startupStatus/updated":
+                _HandleMcpStartupStatus(notification.Params);
+                break;
+
             case "error":
                 if (isChild)
                 {
@@ -500,6 +513,25 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
                 _events.Publish(new PluginSessionError { SessionId = _threadId, Message = _ExtractErrorMessage(notification.Params) });
                 break;
         }
+    }
+
+    // AC-1852: Codex drops an MCP server that fails to start (timeout, refusal) and says nothing in the thread, so the
+    // session just lacks its tools. The app-server does report it, as a `failed` startup status with Codex's own error
+    // text; surface that once per server, by the name the operator knows, in the cockpit log and in the session.
+    private void _HandleMcpStartupStatus(JsonElement parameters)
+    {
+        if (!_TryGetString(parameters, "name", out var codexName)
+            || !_TryGetString(parameters, "status", out var status)
+            || !string.Equals(status, "failed", StringComparison.Ordinal)
+            || !_passedMcpServers.TryGetValue(codexName, out var displayName))
+        {
+            return;
+        }
+
+        var reason = _TryGetString(parameters, "error", out var error) ? error : "no reason given";
+        var sessionId = _threadId ?? (_TryGetString(parameters, "threadId", out var threadId) ? threadId : null);
+        _logger?.LogWarning("Codex session {SessionId}: MCP server {Server} did not start: {Reason}", sessionId, displayName, reason);
+        _events.Publish(new PluginSessionError { SessionId = sessionId, Message = $"MCP server '{displayName}' did not start, so this session has none of its tools: {reason}" });
     }
 
     private void _HandleToolItem(JsonElement parameters, bool completed)

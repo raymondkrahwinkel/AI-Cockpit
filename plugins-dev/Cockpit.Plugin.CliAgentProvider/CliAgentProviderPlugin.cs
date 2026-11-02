@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
 
@@ -45,7 +46,7 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
             DisplayName: "Codex (CLI)",
             // The app-server driver replaces the headless exec driver as the interactive Codex provider (#45
             // phase 3): it speaks JSON-RPC to a persistent `codex app-server`, so it supports live approvals.
-            CreateDriverFactory: _ => new CodexAppServerPluginSessionDriverFactory(host.ResolveManagedCliPath, host.RecordModelObservation),
+            CreateDriverFactory: _ => new CodexAppServerPluginSessionDriverFactory(host.ResolveManagedCliPath, host.RecordModelObservation, host.Services?.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.Plugin.CliAgentProvider")),
             // ConfinesFileAccessToWorkingDirectory (AC-174) and DeclaredOptions (AC-649, Codex's own sandbox
             // vocabulary) are declared here because the host honours the registration, not the driver instance.
             Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true)
