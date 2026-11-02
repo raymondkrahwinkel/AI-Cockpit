@@ -153,7 +153,9 @@ public sealed class SettingsCarrierSyncTests : IDisposable
         var migrated = _Local(machine);
         var settingsSync = Assert.IsType<JsonObject>(migrated["SettingsSync"]);
         var categories = Assert.IsType<JsonObject>(settingsSync["Categories"]);
-        Assert.Equal(8, categories.Count);
+        Assert.Equal(
+            ["Appearance", "Notifications", "Plugins", "Profiles", "SessionBehaviour", "Shortcuts", "Usage"],
+            categories.Select(category => category.Key).Order(StringComparer.Ordinal));
         Assert.All(categories, category => Assert.Equal("fake", Assert.IsAssignableFrom<JsonValue>(Assert.Single(Assert.IsType<JsonArray>(category.Value))).GetValue<string>()));
         Assert.Null(settingsSync["Profiles"]);
         Assert.Equal(0, _space.WriteCount);

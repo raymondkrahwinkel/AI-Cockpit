@@ -14,7 +14,6 @@ using Cockpit.Plugins.Abstractions;
 using Cockpit.App.Services;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Sessions;
-using Cockpit.Infrastructure.HeavyRuns;
 using Cockpit.Shared;
 
 namespace Cockpit.App.ViewModels;
@@ -31,7 +30,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // before it starts, and counting that setup as working time would inflate the very baseline the token-reduction
     // work measures against (AC-251).
     private protected DateTimeOffset _startedAt = DateTimeOffset.Now;
-    private readonly HeavyRunQueue? _heavyRuns;
+    private readonly ISessionRunActivities? _heavyRuns;
     private IReadOnlyList<SessionRunActivity> _activeRuns = [];
     // The most recent write to the usage trail, awaited on teardown (AC-251). The write is not awaited per turn —
     // a turn settling must not wait on a file — but a session that closes right after its last turn would otherwise
@@ -1267,7 +1266,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // Whether a divider sits between the last metric segment and the chevron — only when both are present.
     public bool ShowChevronDivider => UsagePillItems.Count > 0 && HasUsagePill;
 
-    protected SessionPanelViewModel(IUsageHistory? usageHistory = null, HeavyRunQueue? heavyRuns = null)
+    protected SessionPanelViewModel(IUsageHistory? usageHistory = null, ISessionRunActivities? heavyRuns = null)
     {
         _usageHistory = usageHistory;
         _heavyRuns = heavyRuns;
