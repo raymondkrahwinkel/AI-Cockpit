@@ -522,7 +522,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
     {
         if (!_TryGetString(parameters, "name", out var codexName)
             || !_TryGetString(parameters, "status", out var status)
-            || !string.Equals(status, "failed", StringComparison.Ordinal)
+            || !string.Equals(status, "failed-mutated", StringComparison.Ordinal)
             || !_passedMcpServers.TryGetValue(codexName, out var displayName))
         {
             return;
