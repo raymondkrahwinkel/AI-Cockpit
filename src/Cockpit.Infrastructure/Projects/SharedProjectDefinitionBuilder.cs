@@ -3,10 +3,9 @@ using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.Infrastructure.Projects;
 
-/// <summary>Builds the portable definition used by sharing, saving and backfill.</summary>
+// Builds the portable definition used by sharing, saving and backfill.
 public static class SharedProjectDefinitionBuilder
 {
-    /// <summary>Includes every resource for the source's write-time filter and reads an optional logo.</summary>
     public static async Task<SharedProjectPublishDefinition> BuildAsync(Project project)
     {
         byte[]? logo = null;
