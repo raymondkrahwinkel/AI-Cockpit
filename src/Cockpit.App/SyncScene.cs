@@ -8,7 +8,7 @@ namespace Cockpit.App;
 // AC-1846: Options › Sync over a stand-in source with three servers (one signed out), so the render shows the rows, the notes and the cards.
 internal static class SyncScene
 {
-    private static readonly string[] AllCategories = ["Profiles", "Plugins", "Notifications", "Shortcuts", "SessionBehaviour", "Usage", "Appearance", "Updates"];
+    private static readonly string[] AllCategories = ["Profiles", "Plugins", "Notifications", "Shortcuts", "SessionBehaviour", "Usage", "Appearance"];
 
     // An existing install that has not changed a choice yet: everything goes to Home, and the banner says so.
     public static OptionsDialog Unchanged(int width, int height) => _Dialog(width, height, reviewed: false);
@@ -16,7 +16,7 @@ internal static class SyncScene
     // The same page after a few edits; they are staged once the dialog is up, because opening it reloads the saved choices.
     public static OptionsDialog Changed(int width, int height) => _Dialog(width, height, reviewed: true);
 
-    // Notifications switched off for Home, Appearance, Usage and Updates also on Work: the inline notes.
+    // Notifications switched off for Home, Appearance and Usage also on Work: the inline notes.
     public static void StageChanges(Avalonia.Controls.Window window)
     {
         if (window.DataContext is not CockpitViewModel cockpit)
@@ -28,7 +28,6 @@ internal static class SyncScene
         _Tick(sync, "Notifications", "home", false);
         _Tick(sync, "Appearance", "work", true);
         _Tick(sync, "Usage", "work", true);
-        _Tick(sync, "Updates", "work", true);
     }
 
     // AC-1847: the Profiles row opened, two profiles deviating from it ("Local Qwen" not synced, "Work" also on Work).

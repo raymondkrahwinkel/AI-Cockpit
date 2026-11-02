@@ -36,6 +36,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- Update channel and startup checks now stay on the machine where they are configured instead of being synchronized.
+
 - The Sync profile picker no longer blocks the next profile choice, and explains its server selections in the page.
 
 - **AC-1883:** Agent-owned browser tabs now block local and private networks, including redirects and DNS answers, unless explicitly allowed in the Browser plugin's global network allowlist.

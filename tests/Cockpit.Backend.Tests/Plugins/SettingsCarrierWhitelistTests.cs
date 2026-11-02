@@ -54,7 +54,7 @@ public class SettingsCarrierWhitelistTests
         Assert.True(JsonNode.DeepEquals(JsonNode.Parse("""{"Profiles":[{"Label":"Work"}],"Plugins":{"demo":{"Enabled":true}}}"""), Extract(config, "one")));
         Assert.True(JsonNode.DeepEquals(JsonNode.Parse("""{"Profiles":[{"Label":"Home"}],"Notifications":{"LocalEnabled":true}}"""), Extract(config, "two")));
 
-        config = Config("\"Categories\":{\"Profiles\":[\"one\"],\"Updates\":[]}");
+        config = Config("\"Categories\":{\"Profiles\":[\"one\"],\"Updates\":[\"one\"]}");
         Assert.Equal(2, Extract(config, "one")?["Profiles"]?.AsArray().Count);
         Assert.Null(Extract(config, "one")?["Updates"]);
 
