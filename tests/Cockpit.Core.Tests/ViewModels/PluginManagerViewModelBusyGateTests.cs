@@ -22,6 +22,18 @@ namespace Cockpit.Core.Tests.ViewModels;
 /// </remarks>
 public class PluginManagerViewModelBusyGateTests
 {
+    // View-model unit: Update all counts only runnable updates and names host-blocked ones separately.
+    [Fact]
+    public void UpdateCounts_ExcludeUnavailableUpdatesAndNameThemSeparately()
+    {
+        var manager = new PluginManagerViewModel();
+        manager.AvailablePlugins.Add(_UpdatableRow("compatible", "Compatible"));
+        manager.AvailablePlugins.Add(_UnavailableUpdateRow("requires-newer-host", "Requires newer host"));
+
+        Assert.Equal((1, 1, "1 update needs a newer Cockpit"),
+            (manager.AvailableUpdateCount, manager.UnavailableUpdateCount, manager.UnavailableUpdateSummary));
+    }
+
 
     /// <summary>
     /// Remove a plugin, change your mind, install it again. The removal is applied at the next start, so the
@@ -131,6 +143,14 @@ public class PluginManagerViewModelBusyGateTests
     private static StorePluginRowViewModel _UpdatableRow(string id, string name)
     {
         var version = new PluginStoreVersion("2.0.0", $"plugins/{id}-2.0.0.zip", null, null, null, null);
+        var entry = new PluginStoreEntry(id, name, null, "Cockpit", "2.0.0", [version]);
+
+        return new StorePluginRowViewModel(entry, PluginStoreConfig.Remote("https://store.example/index.json"), installedVersion: "1.0.0");
+    }
+
+    private static StorePluginRowViewModel _UnavailableUpdateRow(string id, string name)
+    {
+        var version = new PluginStoreVersion("2.0.0", $"plugins/{id}-2.0.0.zip", null, "999.0", null, null);
         var entry = new PluginStoreEntry(id, name, null, "Cockpit", "2.0.0", [version]);
 
         return new StorePluginRowViewModel(entry, PluginStoreConfig.Remote("https://store.example/index.json"), installedVersion: "1.0.0");

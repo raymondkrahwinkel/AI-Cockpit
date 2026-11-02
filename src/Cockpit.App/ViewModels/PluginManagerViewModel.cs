@@ -65,6 +65,9 @@ public partial class PluginManagerViewModel : ViewModelBase
     private string _statusMessage = string.Empty;
 
     [ObservableProperty]
+    private bool _statusIsError;
+
+    [ObservableProperty]
     private bool _hasPlugins;
 
     [ObservableProperty]
@@ -236,11 +239,15 @@ public partial class PluginManagerViewModel : ViewModelBase
     // notifying only from the install/update paths left the button hidden right after the store loaded, the one moment
     // there is definitely something to update.
     private void _WatchAvailablePluginsForUpdateGate() =>
-        AvailablePlugins.CollectionChanged += (_, _) =>
-        {
-            OnPropertyChanged(nameof(HasAvailableUpdates));
-            OnPropertyChanged(nameof(AvailableUpdateCount));
-        };
+        AvailablePlugins.CollectionChanged += (_, _) => _NotifyUpdateCountsChanged();
+
+    private void _NotifyUpdateCountsChanged()
+    {
+        OnPropertyChanged(nameof(HasAvailableUpdates));
+        OnPropertyChanged(nameof(AvailableUpdateCount));
+        OnPropertyChanged(nameof(HasUnavailableUpdates));
+        OnPropertyChanged(nameof(UnavailableUpdateSummary));
+    }
 
     public string RestartLabel => _server is null ? "Restart the cockpit now" : "Restart the server now";
 
@@ -872,6 +879,12 @@ public partial class PluginManagerViewModel : ViewModelBase
     // How many installed plugins have a newer, installable version available — shown on the "Update all" button.
     public int AvailableUpdateCount => AvailablePlugins.Count(row => row.CanUpdate);
 
+    public bool HasUnavailableUpdates => UnavailableUpdateCount > 0;
+
+    public int UnavailableUpdateCount => AvailablePlugins.Count(row => row.UpdateAvailable && !row.CanUpdate);
+
+    public string UnavailableUpdateSummary => $"{UnavailableUpdateCount} update{(UnavailableUpdateCount == 1 ? "" : "s")} need{(UnavailableUpdateCount == 1 ? "s" : "")} a newer Cockpit";
+
     // Whether the sidebar "Plugin store" badge shows — true while the background checker's last count found updates (AC-76).
     public bool HasUpdateBadge => UpdateBadgeCount > 0;
 
@@ -942,6 +955,7 @@ public partial class PluginManagerViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(CanUpdateAll))]
     private async Task UpdateAllAsync()
     {
+        StatusIsError = false;
         if (_administration is null)
         {
             return;
@@ -1000,6 +1014,7 @@ public partial class PluginManagerViewModel : ViewModelBase
                     ? $"Updated {updated} plugin(s){_On}. {_Restart} to activate."
                     : $"Updated {updated} of {updates.Count} plugin(s). {string.Join(", ", failed.Select(name => $"'{name}'"))} failed."
                       + (updated > 0 ? $" {_Restart} to activate the rest." : string.Empty);
+                StatusIsError = failed.Count > 0;
                 NeedsRestart = updated > 0;
             }
             finally
@@ -1163,6 +1178,7 @@ public partial class PluginManagerViewModel : ViewModelBase
     // restart swap it comes back exactly as it was.
     private async Task _AfterInstallAsync(PluginInstallResult result, string installedMessage)
     {
+        StatusIsError = !result.IsSuccess;
         if (!result.IsSuccess)
         {
             StatusMessage = result.Error ?? "Install failed.";

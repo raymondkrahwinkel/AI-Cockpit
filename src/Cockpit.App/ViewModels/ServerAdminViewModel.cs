@@ -117,12 +117,20 @@ public sealed partial class ServerAdminViewModel : ObservableObject
 
     // AC-1650: installed plugins the server's stores have a newer, runnable version of.
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasAvailableUpdates), nameof(UpdateLabel))]
+    [NotifyPropertyChangedFor(nameof(HasAvailableUpdates), nameof(UpdateLabel), nameof(UnavailableUpdateSummary))]
     private int _availableUpdateCount;
 
     public bool HasAvailableUpdates => AvailableUpdateCount > 0;
 
     public string UpdateLabel => $"Update {AvailableUpdateCount}";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasUnavailableUpdates), nameof(UnavailableUpdateSummary))]
+    private int _unavailableUpdateCount;
+
+    public bool HasUnavailableUpdates => UnavailableUpdateCount > 0;
+
+    public string UnavailableUpdateSummary => $"{UnavailableUpdateCount} update{(UnavailableUpdateCount == 1 ? "" : "s")} need{(UnavailableUpdateCount == 1 ? "s" : "")} a newer Cockpit";
 
     // AC-1590: a plugin installed on this desktop loads its UI part at the next start of the desktop.
     [ObservableProperty]
@@ -443,7 +451,7 @@ public sealed partial class ServerAdminViewModel : ObservableObject
     // AC-1650: counts with the store dialog's own rules (newer, compatible, not staged), so the button and its "Update all" agree.
     private async Task _ShowAvailableUpdatesAsync()
     {
-        var available = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var available = new Dictionary<string, StorePluginRowViewModel>(StringComparer.OrdinalIgnoreCase);
         try
         {
             var manager = await _CreateStoreManagerAsync(quiet: true);
@@ -451,9 +459,9 @@ public sealed partial class ServerAdminViewModel : ObservableObject
             {
                 await manager.LoadAsync();
                 await manager.BrowseStoresAsync();
-                foreach (var row in manager.AvailablePlugins.Where(row => row.CanUpdate))
+                foreach (var row in manager.AvailablePlugins.Where(row => row.UpdateAvailable))
                 {
-                    available.TryAdd(PluginFolderName.Normalize(row.Id), row.Entry.LatestVersion);
+                    available.TryAdd(PluginFolderName.Normalize(row.Id), row);
                 }
             }
         }
@@ -465,10 +473,20 @@ public sealed partial class ServerAdminViewModel : ObservableObject
 
         foreach (var row in Plugins)
         {
-            row.AvailableVersion = available.GetValueOrDefault(row.FolderId);
+            if (available.GetValueOrDefault(row.FolderId) is { } update)
+            {
+                row.AvailableVersion = update.Entry.LatestVersion;
+                row.UpdateUnavailableReason = update.UpdateUnavailableReason;
+            }
+            else
+            {
+                row.AvailableVersion = null;
+                row.UpdateUnavailableReason = null;
+            }
         }
 
-        AvailableUpdateCount = Plugins.Count(row => row.AvailableVersion is not null);
+        AvailableUpdateCount = Plugins.Count(row => row.CanUpdate);
+        UnavailableUpdateCount = Plugins.Count(row => row.HasUpdate && !row.CanUpdate);
     }
 
     [RelayCommand]
@@ -754,12 +772,18 @@ public sealed partial class ServerPluginRowViewModel(InstalledPlugin plugin) : O
 
     // AC-1650: the newer version the server's stores offer, or null.
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasUpdate), nameof(UpdateText))]
+    [NotifyPropertyChangedFor(nameof(HasUpdate), nameof(UpdateText), nameof(CanUpdate))]
     private string? _availableVersion;
 
     public bool HasUpdate => AvailableVersion is not null;
 
     public string UpdateText => $"{AvailableVersion} available";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanUpdate))]
+    private string? _updateUnavailableReason;
+
+    public bool CanUpdate => HasUpdate && UpdateUnavailableReason is null;
 
     [ObservableProperty]
     private bool _enabled = plugin.Registration?.Enabled ?? false;
