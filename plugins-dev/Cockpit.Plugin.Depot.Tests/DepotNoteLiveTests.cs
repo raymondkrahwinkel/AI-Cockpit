@@ -144,11 +144,15 @@ public class DepotNoteLiveTests
         Assert.Equal(LiveFileState.SignInNeeded, session.Status.State);
         Assert.DoesNotContain(seen, status => status.State == LiveFileState.Offline);
 
-        // AC-1580: the editor tab takes over the session that is open for its note, and any other file is a snapshot.
+        // AC-1996: every Depot Markdown file joins its note room, including a file opened before a room existed.
         var source = (ILiveFileSource)new DepotFileSourceProvider(Substitute.For<ICockpitHost>(), () => [Connection], () => notes).Open("work");
         Assert.Same(session, await source.OpenLiveAsync(DepotFileRefs.Create("work", "acme/roadmap", "notes/plan.md"), CancellationToken.None));
-        var refused = await Assert.ThrowsAsync<FileSourceException>(() => source.OpenLiveAsync(DepotFileRefs.Create("work", "acme/roadmap", "notes/other.md"), CancellationToken.None));
-        Assert.Equal(FileSourceErrorKind.Unsupported, refused.Kind);
+        var otherNote = new DepotNoteLiveRequest("work", "acme", "roadmap", "notes/other.md");
+        var other = await source.OpenLiveAsync(DepotFileRefs.Create("work", "acme/roadmap", "notes/other.md"), CancellationToken.None);
+        Assert.NotSame(session, other);
+        await other.DisposeAsync();
+        Assert.NotSame(other, notes.Open(otherNote));
+        await notes.CloseAsync(otherNote);
         await session.DisposeAsync();
         Assert.NotSame(session, notes.Open(Note));
     }

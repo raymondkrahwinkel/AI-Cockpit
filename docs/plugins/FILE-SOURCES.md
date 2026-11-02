@@ -176,7 +176,6 @@ dimmed, while it reconnects. A Markdown offset and a Yjs RelativePosition map to
 only the user id on an older Depot, so on that Depot this Cockpit's own entry has no name or colour: the host shows "You" with a neutral ring. A Depot
 that sends `name` and `color` from `/cockpit/me` fills the entry in.
 
-The Depot file source offers `OpenLiveAsync` for a note: one that Join in the Notes tab or Open in Cockpit in the new-meeting-note dialog
-started (`note-live-open`), or that Depot's live list shows with a room. Any other Depot file refuses it with `Unsupported`, so it stays a
-snapshot. The tab is opened with `InstanceKey = depot:<connectionId>:<project>:<path>`, so a second Join brings the open tab to the front.
-Disposing the session when the tab closes also drops the note's session in the plugin.
+The Depot file source opens every Markdown file through `OpenLiveAsync`, including an ordinary file opened from Files before a room
+exists. The tab is opened with `InstanceKey = depot:<connectionId>:<project>:<path>`, so a second open or Join brings the open tab to the
+front. Disposing the session when the tab closes also drops the note's room subscription in the plugin.

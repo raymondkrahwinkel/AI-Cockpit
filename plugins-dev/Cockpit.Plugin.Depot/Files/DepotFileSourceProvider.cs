@@ -3,7 +3,6 @@ using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Files;
 using Cockpit.Plugin.Depot.Browser;
 using Cockpit.Plugin.Depot.Contracts;
-using Cockpit.Plugin.Depot.Notes;
 using Cockpit.Plugin.Depot.Notes.Live;
 using System.Text;
 using System.Text.Json;
@@ -12,17 +11,17 @@ namespace Cockpit.Plugin.Depot.Files;
 
 internal sealed class DepotFileSourceProvider(ICockpitHost host,
     Func<IReadOnlyList<DepotConnectionRegistration>> connections,
-    Func<DepotNoteLive?>? noteLive = null, Func<DepotNotes?>? notes = null) : IFileSourceProvider
+    Func<DepotNoteLive?>? noteLive = null) : IFileSourceProvider
 {
     public IReadOnlyList<FileConnection> Connections =>
         [.. connections().Select(c => new FileConnection(c.Id, c.Name, "depot", false))];
     public event EventHandler? ConnectionsChanged;
     public void NotifyChanged() => ConnectionsChanged?.Invoke(this, EventArgs.Empty);
-    public IFileSource Open(string connectionId) => new DepotFileSource(host, connections, connectionId, noteLive, notes);
+    public IFileSource Open(string connectionId) => new DepotFileSource(host, connections, connectionId, noteLive);
 
     private sealed class DepotFileSource(ICockpitHost host,
         Func<IReadOnlyList<DepotConnectionRegistration>> connections, string connectionId,
-        Func<DepotNoteLive?>? noteLive, Func<DepotNotes?>? notes) : IFileSource, ILiveFileSource
+        Func<DepotNoteLive?>? noteLive) : IFileSource, ILiveFileSource
     {
         public FileSourceCapabilities Capabilities { get; } = new(true, FileSourceChannel.MaxContentBytes);
         public Task<FileReadResult> ReadAsync(FileRef file, CancellationToken cancellationToken) =>
@@ -92,16 +91,15 @@ internal sealed class DepotFileSourceProvider(ICockpitHost host,
                 };
             }, cancellationToken);
 
-        // A note joins live when Join or Open in Cockpit asked for it, or Depot lists a live room for it; any other file is saved as a snapshot.
         public Task<ILiveFileSession> OpenLiveAsync(FileRef file, CancellationToken cancellationToken)
         {
             var (project, path) = DepotFileRefs.Parse(file, connectionId);
             _Connection();
             var address = project.Split('/');
             var request = new DepotNoteLiveRequest(connectionId, address[0], address[1], path);
-            if (noteLive?.Invoke() is not { } live || !(live.IsOpen(request) || notes?.Invoke()?.IsLive(connectionId, project, path) == true))
+            if (noteLive?.Invoke() is not { } live)
             {
-                throw new FileSourceException(FileSourceErrorKind.Unsupported, "This file is not a live note.");
+                throw new FileSourceException(FileSourceErrorKind.Unsupported, "Live notes are not available.");
             }
 
             return Task.FromResult<ILiveFileSession>(live.Open(request));
