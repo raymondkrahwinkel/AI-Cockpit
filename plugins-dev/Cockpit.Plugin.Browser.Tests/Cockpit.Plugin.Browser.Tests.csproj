@@ -32,7 +32,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Cockpit.Plugin.Browser\Cockpit.Plugin.Browser.csproj" />
+    <ProjectReference Include="..\Cockpit.Plugin.Browser\Cockpit.Plugin.Browser.csproj" Aliases="global,browserBackend" />
     <ProjectReference Include="..\..\src\Cockpit.Core\Cockpit.Core.csproj" />
   </ItemGroup>
 

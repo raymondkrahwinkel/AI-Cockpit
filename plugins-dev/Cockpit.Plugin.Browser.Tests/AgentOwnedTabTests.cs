@@ -1,3 +1,5 @@
+extern alias browserBackend;
+
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -6,6 +8,7 @@ using System.Text.Json;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.Sessions;
+using BackendBrowserSettings = browserBackend::Cockpit.Plugin.Browser.BrowserSettings;
 
 namespace Cockpit.Plugin.Browser.Tests;
 
@@ -107,7 +110,7 @@ public class AgentOwnedTabTests
         Assert.Null(await policy.BlockReasonAsync(new Uri("http://172.32.0.1"), CancellationToken.None));
         Assert.Null(await policy.BlockReasonAsync(new Uri("http://100.128.0.1"), CancellationToken.None));
         var storage = new NetworkStorage();
-        var settings = new BrowserSettings(storage);
+        var settings = new BackendBrowserSettings(storage);
         settings.SaveAgentNetworkAllowlist(["localhost:8080", "127.0.0.0/8", "[::1]:8080", "fd00::/8", "dev.local"]);
         var allowed = new AddressPolicy(() => settings.AgentNetworkAllowlist, (_, _) => Task.FromResult(new[] { IPAddress.IPv6Loopback }));
         Assert.Null(await allowed.BlockReasonAsync(new Uri("http://localhost:8080"), CancellationToken.None));
@@ -131,7 +134,7 @@ public class AgentOwnedTabTests
     {
         await using var fixture = new OwnedTabFixture();
         using var browsers = fixture.Browsers();
-        var settings = new BrowserSettings(new NetworkStorage());
+        var settings = new BackendBrowserSettings(new NetworkStorage());
         var tabs = new AgentOwnedTabs(browsers, new AddressPolicy(() => settings.AgentNetworkAllowlist));
         var localUrl = fixture.Url.Replace("127.0.0.1", "localhost", StringComparison.Ordinal);
         var localhost = await tabs.OpenAsync("network", localUrl, "self");

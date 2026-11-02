@@ -15,6 +15,7 @@ internal sealed class BrowserEngineInfoControl : UserControl, IPluginSettingsVie
     private const string AgentsUseCockpitBrowserKey = "agentsUseCockpitBrowser";
 
     private readonly IPluginStorage _storage;
+    private readonly BrowserSettings _settings;
     private readonly CheckBox _agentsUseCockpitBrowser;
     private readonly BrowserTabSession _tabSession;
     private readonly ComboBox _startupMode;
@@ -24,6 +25,7 @@ internal sealed class BrowserEngineInfoControl : UserControl, IPluginSettingsVie
     public BrowserEngineInfoControl(CefRuntimeCatalog catalog, IPluginStorage storage, BrowserTabSession tabSession)
     {
         _storage = storage;
+        _settings = new BrowserSettings(storage);
         _tabSession = tabSession;
         _agentsUseCockpitBrowser = new CheckBox
         {
@@ -42,7 +44,7 @@ internal sealed class BrowserEngineInfoControl : UserControl, IPluginSettingsVie
         _agentNetworkAllowlist = new TextBox
         {
             AcceptsReturn = true,
-            Text = string.Join(Environment.NewLine, storage.Get<string[]>("agentNetworkAllowlist") ?? []),
+            Text = string.Join(Environment.NewLine, _settings.AgentNetworkAllowlist),
             PlaceholderText = "dev.example.com:8080",
         };
 
@@ -90,7 +92,7 @@ internal sealed class BrowserEngineInfoControl : UserControl, IPluginSettingsVie
         commit = () =>
         {
             _storage.Set(AgentsUseCockpitBrowserKey, useCockpitBrowser);
-            _storage.Set("agentNetworkAllowlist", entries);
+            _settings.SaveAgentNetworkAllowlist(entries);
             _tabSession.Configure(startupMode, startPage);
         };
         error = null;
