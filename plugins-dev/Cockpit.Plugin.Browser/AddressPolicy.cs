@@ -8,12 +8,12 @@ internal sealed class AddressPolicy(Func<IReadOnlyList<string>> allowlist,
     Func<string, CancellationToken, Task<IPAddress[]>>? resolve = null)
 {
     public async Task<string?> BlockReasonAsync(Uri uri, CancellationToken token)
+        => (await ResolveAsync(uri, token).ConfigureAwait(false)).Reason;
+
+    public async Task<(IPAddress[] Addresses, string? Reason)> ResolveAsync(Uri uri, CancellationToken token)
     {
         var entries = allowlist();
-        if (entries.Any(entry => NetworkAllowlist.AllowsHost(entry, uri)))
-        {
-            return null;
-        }
+        var allowedHost = entries.Any(entry => NetworkAllowlist.AllowsHost(entry, uri));
         var host = NetworkAllowlist.Host(uri);
         string? nameCategory = null;
         if (host.Equals("localhost", StringComparison.OrdinalIgnoreCase) || host.EndsWith(".localhost", StringComparison.OrdinalIgnoreCase))
@@ -24,42 +24,41 @@ internal sealed class AddressPolicy(Func<IReadOnlyList<string>> allowlist,
         {
             nameCategory = ".local";
         }
-        if (nameCategory is not null && !entries.Any(NetworkAllowlist.IsNetwork))
+        if (!allowedHost && nameCategory is not null && !entries.Any(NetworkAllowlist.IsNetwork))
         {
-            return $"Network access blocked: {nameCategory} name.";
+            return ([], $"Network access blocked: {nameCategory} name.");
         }
         IPAddress[] addresses;
         try
         {
-            // AC-1883: Chromium resolves again when connecting; DNS rebinding between these lookups remains possible.
             addresses = IPAddress.TryParse(host, out var literal) ? [literal]
                 : await (resolve ?? Dns.GetHostAddressesAsync)(host, token).ConfigureAwait(false);
         }
         catch (SocketException)
         {
-            return $"Network access blocked: {nameCategory ?? "DNS resolution failed"}.";
+            return ([], $"Network access blocked: {nameCategory ?? "DNS resolution failed"}.");
         }
         if (addresses.Length == 0)
         {
-            return "Network access blocked: DNS returned no addresses.";
+            return ([], "Network access blocked: DNS returned no addresses.");
         }
         foreach (var resolved in addresses)
         {
             var address = resolved.IsIPv4MappedToIPv6 ? resolved.MapToIPv4() : resolved;
-            if (entries.Any(entry => NetworkAllowlist.AllowsAddress(entry, address)))
+            if (allowedHost || entries.Any(entry => NetworkAllowlist.AllowsAddress(entry, address)))
             {
                 continue;
             }
             if (nameCategory is not null)
             {
-                return $"Network access blocked: {nameCategory} name.";
+                return ([], $"Network access blocked: {nameCategory} name.");
             }
             if (Category(address) is { } category)
             {
-                return $"Network access blocked: {category} address ({address}).";
+                return ([], $"Network access blocked: {category} address ({address}).");
             }
         }
-        return null;
+        return (addresses, null);
     }
 
     private static string? Category(IPAddress address)
