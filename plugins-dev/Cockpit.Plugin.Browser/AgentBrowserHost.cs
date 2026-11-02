@@ -528,6 +528,7 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
             $"--proxy-server=socks5://127.0.0.1:{proxyPort}",
             "--proxy-bypass-list=<-loopback>",
             "--disable-quic",
+            "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
             "about:blank",
         })
         {

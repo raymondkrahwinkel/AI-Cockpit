@@ -38,7 +38,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
-- Agent tabs now block local and LAN requests from page resources and WebSockets as well as navigation, with DNS resolution pinned to checked addresses; explicit network allowlist entries still work.
+- Agent tabs now block local and LAN requests from page resources and WebSockets as well as navigation, with DNS resolution pinned to checked addresses and direct WebRTC UDP disabled; explicit network allowlist entries still work.
 
 - Options opens straight away instead of after 5–7 seconds. Pages that still read their data (Voice, Profiles, MCP Servers, Swarm) show a loading state until it is in, and closing Options without changes is immediate. The plugin files are no longer read in full on every open, which got slower as the day went on.
 
