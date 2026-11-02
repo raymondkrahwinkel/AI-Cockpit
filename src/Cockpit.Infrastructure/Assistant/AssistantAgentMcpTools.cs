@@ -294,7 +294,7 @@ internal sealed class AssistantAgentMcpTools(
     }
 
     [McpServerTool(Name = "list_profiles", ReadOnly = true)]
-    [Description("Lists profiles with provider, model, Options and machine. Local options expose Key, Label, Value, ValueLabel and SetOnProfile; false means the provider default applies. Empty Options means the provider declares none. Profiles on different machines remain separate rows, even with identical labels; use the node's own row for a node start. Node rows use cached snapshots, reading an unread node once within a short budget; unavailable nodes contribute no rows. Node Options is null (unknown), never an empty declaration.")]
+    [Description("Lists profiles with provider, model, Options and machine. maxParallelSessions is the limit the cockpit enforces on starts (0 = unlimited) and runningSessions what counts against it now (open panes plus delegated tasks); a start on a profile at its limit is refused. Local options expose Key, Label, Value, ValueLabel and SetOnProfile; false means the provider default applies. Empty Options means the provider declares none. Profiles on different machines remain separate rows, even with identical labels; use the node's own row for a node start. Node rows use cached snapshots, reading an unread node once within a short budget; unavailable nodes contribute no rows. Node Options is null (unknown), never an empty declaration.")]
     public async Task<string> ListProfilesAsync()
     {
         try
@@ -312,6 +312,8 @@ internal sealed class AssistantAgentMcpTools(
                 profile.Model,
                 profile.Options,
                 profile.EnabledMcpServers,
+                maxParallelSessions = profile.Sessions?.MaxParallelSessions,
+                runningSessions = profile.Sessions is { } load ? new { total = load.RunningSessions, panes = load.OpenPanes, delegatedTasks = load.DelegatedTasks } : null,
                 machine = new { name = Environment.MachineName, local = true },
             });
 

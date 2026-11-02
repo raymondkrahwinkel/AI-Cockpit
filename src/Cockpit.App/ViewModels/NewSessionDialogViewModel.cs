@@ -49,7 +49,11 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     // AC-1593: the policy for the profile picker's marking, and why the selected profile may not start (null when it may).
     public ProvisionPolicy? OrgPolicy => _orgPolicy;
 
-    public string? SelectedProfileRefusal => OrgProviderPolicy.Refusal(_orgPolicy, SelectedProfile);
+    // AC-2026: a profile at its parallel-session maximum is refused the same way, with the reason shown and Start off.
+    public Func<SessionProfile, string?>? FullReason { get; init; }
+
+    public string? SelectedProfileRefusal =>
+        OrgProviderPolicy.Refusal(_orgPolicy, SelectedProfile) ?? (SelectedProfile is { } selected ? FullReason?.Invoke(selected) : null);
 
     // The registered memory sources (AC-165/166), mapped once at construction to the plain Core type
     // `SessionStartDefaults.Resolve` reads, rather than per call — the registry's contents do not

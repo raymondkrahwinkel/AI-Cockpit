@@ -6451,7 +6451,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             NameIsComposed = string.IsNullOrWhiteSpace(sessionName),
         };
 
-        var paneId = await _LaunchSessionFromResultAsync(result);
+        var paneId = await _LaunchSessionFromResultAsync(result, refuseLoudly: true);
 
         // Hold the prompt until the started pane is ready, then submit it as the first turn. Target by pane id so a
         // concurrently opened session cannot catch the prompt.
@@ -6647,7 +6647,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // AC-1439: every start the desktop makes goes through the launcher, which composes nothing here: the dialog, the
     // quick start and Duplicate settled it. A worktree the launcher could not make is the one question it hands back.
-    private async Task<string?> _LaunchSessionFromResultAsync(NewSessionResult result, string? targetWorkspaceId = null)
+    private async Task<string?> _LaunchSessionFromResultAsync(NewSessionResult result, string? targetWorkspaceId = null, bool refuseLoudly = false)
     {
         if (_sessionLauncher?.Invoke() is not { } launcher)
         {
@@ -6678,7 +6678,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
             return launched?.PaneId is { Length: > 0 } started ? started : null;
         }
-        catch (WorktreeAdmissionException exception)
+        catch (Exception exception) when (exception is WorktreeAdmissionException || (exception is ProfileSessionLimitException && !refuseLoudly))
         {
             ToastHost.Add(exception.Message, ToastSeverity.Warning, null, null);
             return null;
@@ -8373,6 +8373,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             await CloseSessionAsync(session);
             ToastHost.Add(exception.Message, ToastSeverity.Warning, null, null);
         }
+        catch (ProfileSessionLimitException exception)
+        {
+            // The pane stays offered: it starts when the profile has a place again.
+            ToastHost.Add(exception.Message, ToastSeverity.Warning, null, null);
+        }
     }
 
     // Deliberately does not compose a fresh restore plan for a pane `RestoreSessionPanesAsync` never saw this run: a
@@ -9674,7 +9679,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return new ConversationReopenResult(false, plan.Explanation);
         }
 
-        await _sessionLauncher!.Invoke()!.StartSessionAsync(_RequestOf(launch, Workspaces.EnsureSessionWorkspace()) with { PaneId = record.PaneId });
+        try
+        {
+            await _sessionLauncher!.Invoke()!.StartSessionAsync(_RequestOf(launch, Workspaces.EnsureSessionWorkspace()) with { PaneId = record.PaneId });
+        }
+        catch (ProfileSessionLimitException exception)
+        {
+            return new ConversationReopenResult(false, exception.Message);
+        }
         if (Sessions.FirstOrDefault(session => session.PaneId == record.PaneId) is { } started)
         {
             _SelectInTheActiveStand(started);

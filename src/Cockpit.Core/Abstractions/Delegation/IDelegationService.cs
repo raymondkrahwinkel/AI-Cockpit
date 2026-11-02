@@ -137,7 +137,8 @@ public sealed record DelegationTargetView(
     IReadOnlyList<string> AllowedTaskTypes,
     int MaxConcurrent,
     int RunningTasks,
-    IReadOnlyList<string> McpServers);
+    IReadOnlyList<string> McpServers,
+    ProfileSessionsView? Sessions = null);
 
 // What a caller asks for when delegating (#67). Everything else — driver, credentials, environment — comes
 // from the profile, never the call. `McpServers` (AC-136) optionally narrows to a subset of the profile's

@@ -10,7 +10,8 @@ internal static class ModelOptions
         decimal? maxPricePerMTokens = null,
         string? provider = null,
         string? profile = null,
-        IReadOnlySet<string>? allowedProfiles = null)
+        IReadOnlySet<string>? allowedProfiles = null,
+        IReadOnlyDictionary<string, object>? sessions = null)
     {
         try
         {
@@ -64,6 +65,7 @@ internal static class ModelOptions
                     profile = row.Profile,
                     provider = row.Provider,
                     model = row.Model,
+                    sessions = sessions?.GetValueOrDefault(row.Profile),
                     publicModelRef = row.PublicModelRef,
                     price = row.SelfHosted ? (object)"self-hosted / own endpoint" : row.Price is null ? Unknown(row.Unmatched ?? $"OpenRouter lists no price for {row.PublicModelRef}") : new { inputPerMTokens = row.Price.Input, outputPerMTokens = row.Price.Output, fact = Fact(row.Price.Source) },
                     priceNow = row.SelfHosted ? "self-hosted / own endpoint" : row.PriceNow is null ? (object)"unknown" : new { inputPerMTokens = row.PriceNow.Input, outputPerMTokens = row.PriceNow.Output, applied = row.PriceNow.Applied },

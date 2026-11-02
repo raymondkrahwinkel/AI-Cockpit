@@ -48,6 +48,9 @@ internal sealed class SessionProfileEntry
     // How much memory a session under this profile may hold, whole tree included (AC-661); absent means the app default.
     public int? MemoryCapMegabytes { get; set; }
 
+    // AC-2026: at most this many sessions under the profile at once; absent or 0 means unlimited.
+    public int? MaxParallelSessions { get; set; }
+
     public static SessionProfileEntry FromDomain(SessionProfile profile) => new()
     {
         Label = profile.Label,
@@ -70,6 +73,7 @@ internal sealed class SessionProfileEntry
         Assistant = string.IsNullOrWhiteSpace(profile.Assistant) ? null : profile.Assistant,
         DefaultKind = profile.DefaultKind?.ToString(),
         MemoryCapMegabytes = profile.MemoryCapMegabytes,
+        MaxParallelSessions = profile.MaxParallelSessions > 0 ? profile.MaxParallelSessions : null,
     };
 
     public SessionProfile ToDomain()
@@ -101,6 +105,7 @@ internal sealed class SessionProfileEntry
                 ? parsedDefaultKind
                 : null,
             MemoryCapMegabytes = MemoryCapMegabytes,
+            MaxParallelSessions = Math.Max(0, MaxParallelSessions ?? 0),
         };
     }
 }

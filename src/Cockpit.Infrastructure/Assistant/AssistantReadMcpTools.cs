@@ -5,6 +5,8 @@ using ModelContextProtocol.Server;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Infrastructure.Sessions;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Delegation;
 using Cockpit.Infrastructure.Agents;
@@ -23,7 +25,9 @@ internal sealed class AssistantReadMcpTools(
     INodeSessionsClient nodes,
     NodeDiscoveryId self,
     ModelPictureReader modelPicture,
-    LocalTextModelClient? localText = null)
+    LocalTextModelClient? localText = null,
+    ISessionProfileStore? profileStore = null,
+    ProfileSessionLimit? sessionLimit = null)
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
 
@@ -364,7 +368,13 @@ internal sealed class AssistantReadMcpTools(
             return refusal;
         }
 
-        return await ModelOptions.ReadAsync(modelPicture, taskType, maxPricePerMTokens, provider, profile).ConfigureAwait(false);
+        var sessions = profileStore is null || sessionLimit is null
+            ? null
+            : (await profileStore.LoadAsync().ConfigureAwait(false)).ToDictionary(
+                known => known.Label,
+                known => (object)new { maxParallelSessions = sessionLimit.ViewOf(known).MaxParallelSessions, runningSessions = sessionLimit.ViewOf(known).RunningSessions },
+                StringComparer.OrdinalIgnoreCase);
+        return await ModelOptions.ReadAsync(modelPicture, taskType, maxPricePerMTokens, provider, profile, sessions: sessions).ConfigureAwait(false);
     }
 
     [McpServerTool(Name = "list_shared_projects", ReadOnly = true)]

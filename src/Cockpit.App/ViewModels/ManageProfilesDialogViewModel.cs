@@ -73,7 +73,10 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
                     AllowedAsTarget: true,
                     MaxConcurrent: 2,
                     AllowedTaskTypes: ["summarize", "refactor"],
-                    Purpose: "cheap bulk refactors and summarising — no web access")),
+                    Purpose: "cheap bulk refactors and summarising — no web access"))
+            {
+                MaxParallelSessions = 2,
+            },
             isLoggedIn: true);
         Profiles.Add(sample);
         SelectedProfile = sample;
