@@ -67,7 +67,7 @@ internal sealed class OllamaChatClient(OllamaConfig config) : IChatClient
 
     private JsonObject _Request(IEnumerable<ChatMessage> messages, ChatOptions? options, bool streaming)
     {
-        var nativeOptions = new JsonObject { ["num_ctx"] = LocalModelContext.Normalize(config.ContextTokens) };
+        var nativeOptions = new JsonObject();
         if (options?.Temperature is { } temperature) nativeOptions["temperature"] = temperature;
         if (options?.TopP is { } topP) nativeOptions["top_p"] = topP;
         if (options?.TopK is { } topK) nativeOptions["top_k"] = topK;
