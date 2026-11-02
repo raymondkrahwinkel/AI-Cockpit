@@ -48,6 +48,9 @@ public sealed record SessionProfile(
     // `null` takes `SessionMemoryCap.DefaultMegabytes`.
     public int? MemoryCapMegabytes { get; init; }
 
+    // AC-2026: how many sessions may run under this profile at once, open panes and delegated tasks together; 0 is unlimited.
+    public int MaxParallelSessions { get; init; }
+
     // Which backend drives this profile.
     public SessionProvider Provider => ProviderConfig.Provider;
 

@@ -45,7 +45,8 @@ internal sealed class AssistantAgentGateway(
     ILogger<AssistantAgentGateway>? logger = null,
     IMcpServerCatalog? mcpServers = null,
     IMcpOAuthTokenStore? oauthTokens = null,
-    IWorkspaceAgentCoordinator? agentCoordinator = null) : IAssistantAgentGateway, ISingletonService
+    IWorkspaceAgentCoordinator? agentCoordinator = null,
+    ProfileSessionLimit? sessionLimit = null) : IAssistantAgentGateway, ISingletonService
 {
     private static readonly StringComparison _PathComparison =
         OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
@@ -540,6 +541,7 @@ internal sealed class AssistantAgentGateway(
                 {
                     Options = ProfileOptionReport.For(registration?.Capabilities, profile.Defaults?.OptionDefaults),
                     EnabledMcpServers = profile.EnabledMcpServerNames,
+                    Sessions = sessionLimit?.ViewOf(profile),
                 };
             }),
         ];

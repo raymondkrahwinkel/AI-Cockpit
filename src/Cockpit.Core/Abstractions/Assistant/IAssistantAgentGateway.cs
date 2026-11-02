@@ -522,6 +522,8 @@ public sealed record AssistantWorkspaceRow(
 public sealed record AssistantProfileRow(string Label, string Provider, string? Model)
 {
     public IReadOnlyList<string>? EnabledMcpServers { get; init; }
+    // AC-2026: the enforced parallel-session limit and what runs under it now; null where nothing counts.
+    public Cockpit.Core.Sessions.ProfileSessionsView? Sessions { get; init; }
     // What this profile is actually configured to run at, in its provider's own vocabulary (AC-647) — read from
     // the provider's declared option schema, so a raw settings dump never has to be guessed at. Empty for a
     // provider that declares nothing; that is an answer, not a gap to fill with another provider's fields.

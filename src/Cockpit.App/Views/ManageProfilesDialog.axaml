@@ -257,6 +257,17 @@
                                        ToolTip.Tip="How much this session's whole process tree may hold before the OS stops it, in megabytes. Blank uses the default."/>
                     </StackPanel>
 
+                    <!-- Parallel sessions (AC-2026): the most sessions this profile runs at once, panes and delegated
+                         tasks together. The cockpit refuses a start beyond it. Counterpart of the delegation cap below. -->
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Maximum parallel sessions" FontSize="11"
+                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        <NumericUpDown Value="{Binding MaxParallelSessions}" Minimum="0" Maximum="64"
+                                       Increment="1" FormatString="0" ClipValueToMinMax="True"
+                                       HorizontalAlignment="Left" Width="180"
+                                       ToolTip.Tip="How many sessions may run under this profile at once, open sessions and delegated tasks together. 0 means unlimited."/>
+                    </StackPanel>
+
                     <!-- Delegation (#67): whether another session may hand work to this profile, and what it may
                          be handed. Off by default — delegating spawns a process under this profile's login. -->
                     <StackPanel Spacing="11">

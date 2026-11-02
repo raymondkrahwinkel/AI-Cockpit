@@ -66,6 +66,10 @@ public partial class EditableProfileViewModel : ViewModelBase
     [ObservableProperty]
     private int? _memoryCapMegabytes;
 
+    // AC-2026: the most sessions that run under this profile at once; 0 or blank is unlimited.
+    [ObservableProperty]
+    private int? _maxParallelSessions;
+
     // Whether this profile pre-selects a specific set of MCP servers (AC-130). Off — the default — means no
     // restriction: a New session ticks every enabled server, as before. On reveals `McpServers` and
     // persists exactly the ticked ones, so a project profile need not re-toggle them each time.
@@ -627,6 +631,7 @@ public partial class EditableProfileViewModel : ViewModelBase
             brainHint ?? "None names no brain, so the provider's own instruction files decide. A project's own brain goes first.");
         BrainPicker.ValueChanged += reference => Assistant = reference ?? string.Empty;
         _memoryCapMegabytes = profile.MemoryCapMegabytes;
+        _maxParallelSessions = profile.MaxParallelSessions;
         // Absent/no-restriction is TTY, the same long-standing hard default SessionKindDefaults.ResolveDefaultKind
         // falls back to for the New-session dialog itself.
         _selectedDefaultKind = profile.DefaultKind == ProfileSessionKind.Sdk ? SessionKind.Sdk : SessionKind.Tty;
@@ -760,6 +765,7 @@ public partial class EditableProfileViewModel : ViewModelBase
             SystemPrompt = string.IsNullOrWhiteSpace(ProfileSystemPrompt) ? null : ProfileSystemPrompt.Trim(),
             Assistant = string.IsNullOrWhiteSpace(Assistant) ? null : Assistant.Trim(),
             MemoryCapMegabytes = MemoryCapMegabytes is > 0 ? MemoryCapMegabytes : null,
+            MaxParallelSessions = Math.Max(0, MaxParallelSessions ?? 0),
             // A host without terminals persists SDK. Locally, a provider without a TTY route keeps the existing null.
             DefaultKind = !_hostRunsTty
                 ? ProfileSessionKind.Sdk

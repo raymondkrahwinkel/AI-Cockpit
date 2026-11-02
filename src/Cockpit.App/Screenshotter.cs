@@ -448,12 +448,23 @@ internal static partial class Screenshotter
         ["profiles-default-kind-tty"] = (_, _) => _ManageProfilesWithDefaultKind(SessionKind.Tty),
         ["profiles-default-kind-sdk"] = (_, _) => _ManageProfilesWithDefaultKind(SessionKind.Sdk),
         ["profiles-default-kind-sdk-only"] = (_, _) => _ManageProfilesSdkOnlyDefaultKind(),
+        // AC-2026: the Maximum parallel sessions field, set to 2, scrolled into view.
+        ["profiles-max-parallel-sessions"] = (_, _) => _ManageProfilesEditing(
+            new SessionProfile("work", ClaudePluginProfile.Create("/home/raymond/.claude-work", null), Purpose: "Primary Claude profile") { MaxParallelSessions = 2 }),
         // AC-1102: SESSION DEFAULTS had no scene at all, so the one block where an option can read as set or unset
         // could not be looked at. Stages both states and both control shapes at once — see the builder's remarks.
         ["profiles-plugin-option-defaults"] = (_, _) => _ManageProfilesPluginOptionDefaults(),
         ["verify-runners"] = (_, _) => new VerifyRunnersDialog { DataContext = new ViewModels.VerifyRunnersViewModel() },
         ["verify-runners-edit"] = (_, _) => _VerifyRunnersEditing(),
         ["new-session"] = (_, _) => new NewSessionDialog { DataContext = new ViewModels.NewSessionDialogViewModel() },
+        // AC-2026: the dialog on a profile that already runs its parallel-session maximum: the reason shows and Start is off.
+        ["new-session-profile-full"] = (_, _) => new NewSessionDialog
+        {
+            DataContext = new ViewModels.NewSessionDialogViewModel
+            {
+                FullReason = profile => $"Profile '{profile.Label}' is at its maximum of 2 parallel sessions (2 open: Cockpit, Depot; 0 delegated). Close a session or wait for a task to finish.",
+            },
+        },
         // The project editor and the projects window, both of which show a project's own information rows
         // (AC-295) — the editor as key/value boxes, the window as the label-over-value block a card shows.
         ["project-editor"] = (_, _) => new ProjectDialog { DataContext = new ViewModels.ProjectDialogViewModel() },
@@ -1491,6 +1502,7 @@ internal static partial class Screenshotter
         ["options-backup-depot"] = _ChooseSceneDepot,
         ["options-backup-status"] = window => _ScrollIntoView(window, "backup", "2. SCHEDULED BACKUP"),
         // AC-1509: both choices under the sign-in reach below the fold, so the step is scrolled to them.
+        ["profiles-max-parallel-sessions"] = window => window.GetVisualDescendants().OfType<TextBlock>().First(tb => tb.Text == "Maximum parallel sessions").BringIntoView(),
         ["first-run-depot-choice"] = window => window.GetVisualDescendants().OfType<ScrollViewer>().First(viewer => viewer.Extent.Height > viewer.Viewport.Height).ScrollToEnd(),
     };
 

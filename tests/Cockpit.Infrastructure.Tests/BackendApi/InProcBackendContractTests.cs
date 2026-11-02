@@ -45,7 +45,7 @@ public sealed class InProcBackendContractTests : BackendContractTests
         public ISessionDriver Create(SessionProfile? profile) => new ContractDriver();
     }
 
-    private sealed class MemoryDesks : ISessionDesks
+    internal sealed class MemoryDesks : ISessionDesks
     {
         private readonly Lock _gate = new();
 

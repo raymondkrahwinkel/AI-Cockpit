@@ -18,7 +18,8 @@ public sealed class SessionLauncher(
     ITtySessionProviderResolver? ttyProviders = null,
     IWorktreeManager? worktrees = null,
     SessionStateRecorder? stateRecorder = null,
-    ISessionStartObserver? startObserver = null) : ISessionLauncher
+    ISessionStartObserver? startObserver = null,
+    ProfileSessionLimit? limit = null) : ISessionLauncher
 {
     private bool _closed;
 
@@ -62,6 +63,25 @@ public sealed class SessionLauncher(
             throw new InvalidOperationException($"Pane '{paneId}' is already running.");
         }
 
+        // AC-2026: reserved before anything is hosted, so a start and a delegation cannot both take the last place.
+        if (limit?.TryAdmit(profile, paneId) is { } full)
+        {
+            throw new ProfileSessionLimitException(full);
+        }
+
+        try
+        {
+            return await _StartAdmittedAsync(request, kind, paneId, waiting).ConfigureAwait(false);
+        }
+        finally
+        {
+            limit?.Release(paneId);
+        }
+    }
+
+    private async Task<LaunchedSession?> _StartAdmittedAsync(SessionLaunchRequest request, PaneSessionKind kind, string paneId, IHostedSession? waiting)
+    {
+        var profile = request.Profile;
         var name = waiting?.Title ?? _NameOf(request);
         var admitted = await WorktreeAdmission.AdmitAsync(
             worktrees, paneId, profile.Label, request.WorkingDirectory, request.IsolateInWorktree == true && !request.RunUnisolated).ConfigureAwait(false);

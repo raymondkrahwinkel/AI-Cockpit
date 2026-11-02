@@ -69,6 +69,9 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
     private readonly IOrgPolicy? _orgPolicy;
     private readonly ISessionStateStore? _sessionState;
 
+    // AC-2026: the profile's `MaxParallelSessions`, shared with the pane starts. Absent in a test graph without one.
+    private readonly ProfileSessionLimit? _limit;
+
     private readonly Func<int, TimeSpan> _timeout;
     private readonly TimeSpan _idleWindow;
     private readonly TimeSpan _taskRetention;
@@ -87,8 +90,9 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         IConsentBroker? consent = null,
         Func<IMcpServerCatalog?>? mcpServerCatalog = null,
         ISessionStateStore? sessionState = null,
-        IOrgPolicy? orgPolicy = null)
-        : this(profileStore, sessionManager, mcpServerStore, auditLog, minutes => TimeSpan.FromMinutes(minutes), workspaces, providerRegistry, projects, worktrees, idleWindow: null, consent, mcpServerCatalog: mcpServerCatalog, sessionState: sessionState, orgPolicy: orgPolicy)
+        IOrgPolicy? orgPolicy = null,
+        ProfileSessionLimit? limit = null)
+        : this(profileStore, sessionManager, mcpServerStore, auditLog, minutes => TimeSpan.FromMinutes(minutes), workspaces, providerRegistry, projects, worktrees, idleWindow: null, consent, mcpServerCatalog: mcpServerCatalog, sessionState: sessionState, orgPolicy: orgPolicy, limit: limit)
     {
     }
 
@@ -109,7 +113,8 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         TimeSpan? taskRetention = null,
         Func<IMcpServerCatalog?>? mcpServerCatalog = null,
         ISessionStateStore? sessionState = null,
-        IOrgPolicy? orgPolicy = null)
+        IOrgPolicy? orgPolicy = null,
+        ProfileSessionLimit? limit = null)
     {
         _profileStore = profileStore;
         _sessionManager = sessionManager;
@@ -126,6 +131,8 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         _sessionState = sessionState;
         _orgPolicy = orgPolicy;
         _taskRetention = taskRetention ?? TaskRetention;
+        _limit = limit;
+        limit?.CountDelegationsWith(_CountActive);
     }
 
     // The delegated tasks that still hold a session, as pane ids — a task's verified pane id is its task id
@@ -163,7 +170,8 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
                 profile.DelegationPolicy.AllowedTaskTypes ?? [],
                 profile.DelegationPolicy.MaxConcurrent,
                 _CountRunning(profile.Label),
-                _AvailableServers(registry, profile)))
+                _AvailableServers(registry, profile),
+                _limit?.ViewOf(profile)))
             .ToList();
     }
 
@@ -224,7 +232,8 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
                 updated.AllowedTaskTypes ?? [],
                 updated.MaxConcurrent,
                 _CountRunning(profile.Label),
-                _AvailableServers(registry, savedProfile));
+                _AvailableServers(registry, savedProfile),
+                _limit?.ViewOf(savedProfile));
         }
         finally
         {
@@ -425,16 +434,31 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
             SourceProfileLabel = sourceProfileLabel,
             SourceEffectivePermission = sourceEffectivePermission,
         };
-        lock (_tasksLock)
+        void Enqueue()
         {
-            _tasks.RemoveAll(task => task.IsFinished && task.FinishedAt is { } finishedAt && DateTimeOffset.Now - finishedAt > _taskRetention);
-
-            if (_tasks.Count(task => task.Status == DelegatedTaskStatus.Queued) >= MaxQueued)
+            lock (_tasksLock)
             {
-                throw new DelegationRejectedException("Too many tasks are already waiting for a slot.");
-            }
+                _tasks.RemoveAll(task => task.IsFinished && task.FinishedAt is { } finishedAt && DateTimeOffset.Now - finishedAt > _taskRetention);
 
-            _tasks.Add(entry);
+                if (_tasks.Count(task => task.Status == DelegatedTaskStatus.Queued) >= MaxQueued)
+                {
+                    throw new DelegationRejectedException("Too many tasks are already waiting for a slot.");
+                }
+
+                _tasks.Add(entry);
+            }
+        }
+
+        // AC-2026: counted and added in the section pane starts use, so neither can take the last place of the other.
+        if (_limit?.TryAdmit(profile, null, Enqueue) is { } full)
+        {
+            await _Audit(DelegationAuditAction.Refused, profile.Label, null, request, full, sourceProfileLabel: sourceProfileLabel, sourceEffectivePermission: sourceEffectivePermission);
+            throw new DelegationRejectedException(full);
+        }
+
+        if (_limit is null)
+        {
+            Enqueue();
         }
 
         TasksChanged?.Invoke();
@@ -1104,6 +1128,16 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
             var runningEverywhere = _tasks.Count(task => task.Status == DelegatedTaskStatus.Running);
 
             return runningHere < policy.MaxConcurrent && runningEverywhere < GlobalMaxConcurrent;
+        }
+    }
+
+    private int _CountActive(string profileLabel)
+    {
+        lock (_tasksLock)
+        {
+            return _tasks.Count(task =>
+                task.Status is DelegatedTaskStatus.Queued or DelegatedTaskStatus.Running &&
+                string.Equals(task.Profile.Label, profileLabel, StringComparison.OrdinalIgnoreCase));
         }
     }
 

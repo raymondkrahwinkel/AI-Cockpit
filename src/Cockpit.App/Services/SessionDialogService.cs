@@ -1,3 +1,4 @@
+using Cockpit.Infrastructure.Sessions;
 using Cockpit.App.Plugins;
 using System.Reflection;
 using Avalonia;
@@ -54,6 +55,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     // The assistant's own profile slot (AC-543) — its own section of the config, not an entry in `_profileStore`.
     private readonly IAssistantProfileStore _assistantProfileStore;
     private readonly IOrgPolicy _orgPolicy;
+    private readonly ProfileSessionLimit _sessionLimit;
 
     public SessionDialogService(
         ISessionProfileStore profileStore,
@@ -75,8 +77,10 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         IAssistantProfileStore assistantProfileStore,
         ISessionLoginFlows loginFlows,
         IPluginProviderConfigViews pluginConfigViews,
-        IOrgPolicy orgPolicy)
+        IOrgPolicy orgPolicy,
+        ProfileSessionLimit sessionLimit)
     {
+        _sessionLimit = sessionLimit;
         _orgPolicy = orgPolicy;
         _pluginConfigViews = pluginConfigViews;
         _assistantProfileStore = assistantProfileStore;
@@ -121,7 +125,10 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         var viewModel = new NewSessionDialogViewModel(
             _profileStore, _loginChecker, _mcpServerCatalog, _workingPathStore, _plugins,
             _ttyProviderResolver, _worktreeManager, _tokenEstimator,
-            _projectStore, _oauthCoordinator, _loginFlows, _shellAccessSwitch, _orgPolicy);
+            _projectStore, _oauthCoordinator, _loginFlows, _shellAccessSwitch, _orgPolicy)
+        {
+            FullReason = _sessionLimit.FullReason,
+        };
         await viewModel.LoadAsync();
 
         // AC-164: project before prefill, matched by id from the loaded list — selecting it runs the dialog's

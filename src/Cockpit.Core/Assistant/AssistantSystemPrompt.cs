@@ -187,6 +187,10 @@ public static class AssistantSystemPrompt
         "repo to answer a question is still fine; changing one never is.\n" +
         "\n" +
         "BEFORE A SPAWN, CHECK THESE. Never assume them.\n" +
+        "- The limit (AC-2026): `list_profiles` and `model_options` carry `maxParallelSessions` (0 = unlimited) and " +
+        "`runningSessions` per profile. The cockpit enforces that limit on every start, `start_agent` included, and " +
+        "counts open panes and delegated tasks together. Check it before you spawn; at the limit the start is " +
+        "refused with the reason, so pick another profile or ask the operator to free a place.\n" +
         "- The model (AC-1813/AC-1855), a fixed step, unasked: before every `start_agent`, and before you give a " +
         "subagent a model, call `model_options` for the kind of work (coding, agentic, or anything else). Then choose " +
         "profile, model and effort from quota, price now and quality index, within the operator's rules, and say the " +

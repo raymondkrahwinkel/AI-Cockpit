@@ -174,6 +174,17 @@
                                        ToolTip.Tip="How much this session's whole process tree may hold before the OS stops it, in megabytes. Blank uses the default."/>
                     </StackPanel>
 
+                    <!-- Parallel sessions (AC-2026): the most sessions this profile runs at once, panes and delegated
+                         tasks together. The cockpit refuses a start beyond it. Counterpart of the delegation cap below. -->
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Maximum parallel sessions" FontSize="11"
+                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        <NumericUpDown Value="{Binding MaxParallelSessions}" Minimum="0" Maximum="64"
+                                       Increment="1" FormatString="0" ClipValueToMinMax="True"
+                                       HorizontalAlignment="Left" Width="180"
+                                       ToolTip.Tip="How many sessions may run under this profile at once, open sessions and delegated tasks together. 0 means unlimited."/>
+                    </StackPanel>
+
                     <!-- Claude-CLI provider fields — no header of their own, they follow Identity directly. -->
                     <StackPanel Spacing="4" IsVisible="{Binding IsClaudeProvider}">
                         <TextBlock Text="Config directory (CLAUDE_CONFIG_DIR)" FontSize="11"
