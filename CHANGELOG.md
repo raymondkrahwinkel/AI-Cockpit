@@ -30,6 +30,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ## [Unreleased]
 
+- **AC-1883:** Agent-owned browser tabs now block local and private networks, including redirects and DNS answers, unless explicitly allowed in the Browser plugin's global network allowlist.
+
 ### Added
 
 - A session in the sidebar now lists its sub-agents under a "N sub-agents · M running" line: each row shows the task, type, last tool and time, and clicking it opens that sub-agent's read-only transcript. The list opens on its own for the session you are in while a sub-agent runs; finished sub-agents fold into "+ N finished".

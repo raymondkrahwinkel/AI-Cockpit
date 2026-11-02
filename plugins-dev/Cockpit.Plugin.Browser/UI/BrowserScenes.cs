@@ -25,6 +25,12 @@ internal static class BrowserScenes
             var storage = new SceneStorage();
             return new BrowserEngineInfoControl(CefRuntimeCatalog.Load(), storage, new BrowserTabSession(storage));
         },
+        ["browser-settings-allowlist"] = () =>
+        {
+            var storage = new SceneStorage();
+            new BrowserSettings(storage).SaveAgentNetworkAllowlist(["dev.example.com:8080", "192.168.20.0/24"]);
+            return new BrowserEngineInfoControl(CefRuntimeCatalog.Load(), storage, new BrowserTabSession(storage));
+        },
         ["browser-tab"] = () => _Shell(BrowserPlace.Tab),
         ["browser-rail"] = () => _Shell(BrowserPlace.Rail),
         // Cockpit hangs a name ending in -floating in its own dock-panel window, titled by the automation name.

@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Media;
 using Cockpit.Plugin.Browser.UI.Runtime;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugin.Browser.Contracts;
 
 namespace Cockpit.Plugin.Browser.UI;
 
@@ -14,14 +15,17 @@ internal sealed class BrowserEngineInfoControl : UserControl, IPluginSettingsVie
     private const string AgentsUseCockpitBrowserKey = "agentsUseCockpitBrowser";
 
     private readonly IPluginStorage _storage;
+    private readonly BrowserSettings _settings;
     private readonly CheckBox _agentsUseCockpitBrowser;
     private readonly BrowserTabSession _tabSession;
     private readonly ComboBox _startupMode;
     private readonly TextBox _startPage;
+    private readonly TextBox _agentNetworkAllowlist;
 
     public BrowserEngineInfoControl(CefRuntimeCatalog catalog, IPluginStorage storage, BrowserTabSession tabSession)
     {
         _storage = storage;
+        _settings = new BrowserSettings(storage);
         _tabSession = tabSession;
         _agentsUseCockpitBrowser = new CheckBox
         {
@@ -37,6 +41,12 @@ internal sealed class BrowserEngineInfoControl : UserControl, IPluginSettingsVie
         _startPage = new TextBox { Text = tabSession.StartPage, PlaceholderText = "https://example.com" };
         _startupMode.SelectionChanged += (_, _) => _startPage.IsVisible = _startupMode.SelectedIndex == (int)BrowserStartupMode.StartPage;
         _startPage.IsVisible = _startupMode.SelectedIndex == (int)BrowserStartupMode.StartPage;
+        _agentNetworkAllowlist = new TextBox
+        {
+            AcceptsReturn = true,
+            Text = string.Join(Environment.NewLine, _settings.AgentNetworkAllowlist),
+            PlaceholderText = "dev.example.com:8080",
+        };
 
         var panel = new StackPanel
         {
@@ -57,6 +67,8 @@ internal sealed class BrowserEngineInfoControl : UserControl, IPluginSettingsVie
 
         panel.Children.Add(new TextBlock { Text = "Agents", FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, 10, 0, 0) });
         panel.Children.Add(_agentsUseCockpitBrowser);
+        panel.Children.Add(new TextBlock { Text = "Agent network allowlist (one host, host:port or CIDR per line)", TextWrapping = TextWrapping.Wrap });
+        panel.Children.Add(_agentNetworkAllowlist);
         panel.Children.Add(new TextBlock { Text = "On startup", FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, 10, 0, 0) });
         panel.Children.Add(_startupMode);
         panel.Children.Add(_startPage);
@@ -65,6 +77,13 @@ internal sealed class BrowserEngineInfoControl : UserControl, IPluginSettingsVie
 
     public bool TryStage(out Action? commit, out string? error)
     {
+        var entries = (_agentNetworkAllowlist.Text ?? "").Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (entries.Any(entry => !NetworkAllowlist.IsValid(entry)))
+        {
+            commit = null;
+            error = "Use a host, host:port or CIDR for each agent network allowlist entry.";
+            return false;
+        }
         var useCockpitBrowser = _agentsUseCockpitBrowser.IsChecked ?? true;
         var startupMode = Enum.IsDefined(typeof(BrowserStartupMode), _startupMode.SelectedIndex)
             ? (BrowserStartupMode)_startupMode.SelectedIndex
@@ -73,6 +92,7 @@ internal sealed class BrowserEngineInfoControl : UserControl, IPluginSettingsVie
         commit = () =>
         {
             _storage.Set(AgentsUseCockpitBrowserKey, useCockpitBrowser);
+            _settings.SaveAgentNetworkAllowlist(entries);
             _tabSession.Configure(startupMode, startPage);
         };
         error = null;
