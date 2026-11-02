@@ -47,11 +47,15 @@ public class UsageThresholdSettingsTests
     }
 
     [Fact]
-    public void AnAssistantOverride_BeatsTheProfileAndTheProvider()
+    public void TheAssistantFollowsTheProfileUntilItsOwnOverrideBeatsTheProfileAndProvider()
     {
         // AC-805: the override hangs off the Assistant's role rather than its profile — a profile the Assistant
         // shares with ordinary sessions must not carry the lower number along for those sessions too.
         var settings = new UsageThresholdSettings();
+        settings.Set(settings.ByProfile, "personal", "context", 60);
+
+        Assert.Equal(60, settings.Resolve("claude", "personal", "context", declared: 50, isAssistant: true));
+
         settings.Set(settings.ByProvider, "claude", "context", 90);
         settings.Set(settings.ByProfile, "personal", "context", 75);
         settings.Set(settings.ByAssistant, "claude", "context", 25);
@@ -60,13 +64,4 @@ public class UsageThresholdSettingsTests
         Assert.Equal(75, settings.Resolve("claude", "personal", "context", declared: 50, isAssistant: false));
     }
 
-    [Fact]
-    public void WithNoAssistantOverride_TheAssistantFallsBackLikeAnOrdinarySession()
-    {
-        // Leaving the Assistant level alone is not the same as opting out of the profile/provider levels below it.
-        var settings = new UsageThresholdSettings();
-        settings.Set(settings.ByProfile, "personal", "context", 60);
-
-        Assert.Equal(60, settings.Resolve("claude", "personal", "context", declared: 50, isAssistant: true));
-    }
 }
