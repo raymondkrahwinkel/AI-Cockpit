@@ -50,11 +50,6 @@ public sealed class HeavyRunQueue : ISupervisedActivitySource, ISingletonService
 
     public IHeavyRunSlot Request(HeavyRunRequest request)
     {
-        if (request.Kind == HeavyRunKind.Light)
-        {
-            return AdmittedHeavyRunSlot.Instance;
-        }
-
         // Read from disk here, outside the lock: a slow volume must not hold up the status bar or another request.
         var slot = new Slot(this, request, DateTimeOffset.UtcNow, HeavyRunCostStore.Key(request.Kind, request.WorkingDirectory))
         {
@@ -62,7 +57,7 @@ public sealed class HeavyRunQueue : ISupervisedActivitySource, ISingletonService
         };
         lock (_gate)
         {
-            if (request.Purpose == HeavyRunPurpose.Operator && _maintenance is null)
+            if ((request.Kind == HeavyRunKind.Light || request.Purpose == HeavyRunPurpose.Operator) && _maintenance is null)
             {
                 slot.Admit(_resources.Current, null, DateTimeOffset.UtcNow);
                 _running.Add(slot);
@@ -168,6 +163,22 @@ public sealed class HeavyRunQueue : ISupervisedActivitySource, ISingletonService
             }
 
             return _running.Any(slot => slot.Request.RunId == runId) ? ("running", null) : null;
+        }
+    }
+
+    public IReadOnlyList<SessionRunActivity> RunsForPane(string paneId)
+    {
+        lock (_gate)
+        {
+            return
+            [
+                .. _running
+                    .Where(slot => string.Equals(slot.Request.PaneId, paneId, StringComparison.Ordinal))
+                    .Select(slot => _Activity(slot, SessionRunState.Running, slot.AdmittedAt, null)),
+                .. _Ordered()
+                    .Where(slot => string.Equals(slot.Request.PaneId, paneId, StringComparison.Ordinal))
+                    .Select(slot => _Activity(slot, SessionRunState.Queued, slot.EnqueuedAt, slot.WaitReason)),
+            ];
         }
     }
 
@@ -280,7 +291,8 @@ public sealed class HeavyRunQueue : ISupervisedActivitySource, ISingletonService
                     break;
                 }
 
-                if (_waiting.FirstOrDefault(slot => slot.Request.Purpose == HeavyRunPurpose.Operator) is { } requested)
+                if (_waiting.FirstOrDefault(slot => slot.Request.Kind == HeavyRunKind.Light
+                        || slot.Request.Purpose == HeavyRunPurpose.Operator) is { } requested)
                 {
                     _waiting.Remove(requested);
                     requested.Admit(_resources.Current, null, now);
@@ -416,7 +428,7 @@ public sealed class HeavyRunQueue : ISupervisedActivitySource, ISingletonService
     // machine was that busy, lowers the ceilings one step — never below the floor.
     private async Task _ReportFailureAsync(Slot slot, string output)
     {
-        if (!HeavyRunAdmission.LooksOverloaded(output))
+        if (slot.Request.Kind == HeavyRunKind.Light || !HeavyRunAdmission.LooksOverloaded(output))
         {
             return;
         }
@@ -474,6 +486,19 @@ public sealed class HeavyRunQueue : ISupervisedActivitySource, ISingletonService
         return elapsed.TotalMinutes >= 1 ? $"{(int)elapsed.TotalMinutes}m {elapsed.Seconds}s" : $"{elapsed.Seconds}s";
     }
 
+    private static SessionRunActivity _Activity(
+        Slot slot,
+        SessionRunState state,
+        DateTimeOffset since,
+        string? waitReason) =>
+        new(
+            slot.Request.RunId,
+            slot.Request.Label,
+            slot.Request.Kind.ToString().ToLowerInvariant(),
+            state,
+            since,
+            waitReason);
+
     private sealed class Slot(HeavyRunQueue queue, HeavyRunRequest request, DateTimeOffset enqueuedAt, string costKey) : IHeavyRunSlot
     {
         private readonly TaskCompletionSource _admitted = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -527,7 +552,8 @@ public sealed class HeavyRunQueue : ISupervisedActivitySource, ISingletonService
         // What this run added at its peak over the load it was admitted at; with others running beside it this also
         // counts them, which errs towards waiting. A stopped run, or one too short to show, teaches nothing.
         public HeavyRunCost? Measured(DateTimeOffset now, TimeSpan warmUp) =>
-            _baseline is { } baseline && !_revoked.IsCancellationRequested && now - AdmittedAt >= warmUp
+            Request.Kind != HeavyRunKind.Light
+                && _baseline is { } baseline && !_revoked.IsCancellationRequested && now - AdmittedAt >= warmUp
                 ? new HeavyRunCost(
                     Math.Max(0, PeakCpuPercent - baseline.CpuPercent),
                     Math.Max(0, _peakUsedMemory - baseline.UsedMemoryBytes),

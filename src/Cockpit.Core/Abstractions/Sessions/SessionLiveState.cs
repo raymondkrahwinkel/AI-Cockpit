@@ -17,6 +17,8 @@ public sealed record SessionLiveState(
     public IReadOnlyList<BackgroundTask> Children { get; init; } = [];
 
     public static SessionLiveState None { get; } = new(SessionStatus.Idle, [], [], SessionUsageTotals.None, Connection: null, CliSessionId: null);
+
+    public IReadOnlyList<SessionRunActivity> ActiveRuns { get; init; } = [];
 }
 
 // AC-532: one top-level tool call the turn is waiting on.

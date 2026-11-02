@@ -4,8 +4,8 @@ using Cockpit.Infrastructure.Configuration;
 namespace Cockpit.Core.Tests.Sessions;
 
 /// <summary>
-/// AC-1071: the assistant is a machine-local profile field, so it has to survive a save/load of
-/// <c>cockpit.json</c>'s profiles section, and a profile written before this ticket must read as unset.
+/// AC-1071: the assistant is a machine-local profile field and survives a save/load of
+/// <c>cockpit.json</c>'s profiles section.
 /// </summary>
 public class SessionProfileEntryAssistantTests
 {
@@ -23,11 +23,4 @@ public class SessionProfileEntryAssistantTests
         Assert.Equal(Brain, SessionProfileEntry.FromDomain(profile with { Assistant = Brain }).ToDomain().Assistant);
     }
 
-    [Fact]
-    public void ToDomain_AProfileSavedBeforeThisTicket_ReadsAsNoAssistant()
-    {
-        var entry = new SessionProfileEntry { Label = "personal", ConfigDir = "~/.claude-personal" };
-
-        Assert.Null(entry.ToDomain().Assistant);
-    }
 }

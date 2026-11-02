@@ -14,6 +14,7 @@ using Cockpit.Plugins.Abstractions;
 using Cockpit.App.Services;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Infrastructure.HeavyRuns;
 using Cockpit.Shared;
 
 namespace Cockpit.App.ViewModels;
@@ -30,6 +31,8 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // before it starts, and counting that setup as working time would inflate the very baseline the token-reduction
     // work measures against (AC-251).
     private protected DateTimeOffset _startedAt = DateTimeOffset.Now;
+    private readonly HeavyRunQueue? _heavyRuns;
+    private IReadOnlyList<SessionRunActivity> _activeRuns = [];
     // The most recent write to the usage trail, awaited on teardown (AC-251). The write is not awaited per turn —
     // a turn settling must not wait on a file — but a session that closes right after its last turn would otherwise
     // race the process out and lose that turn from the record, which is the one case this ticket is named for.
@@ -61,6 +64,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
         PaneId = paneId;
         _paneIdAdopted = true;
+        _RefreshHeavyRuns();
     }
 
     // Whether messages other agents address to this pane reach it on their own, carried by its next outgoing turn
@@ -399,9 +403,24 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private int _sidebarIndex;
 
-    // Coarse status for the sidebar/grid overview — see `ViewModels.SessionStatus`.
-    [ObservableProperty]
+    // Coarse provider status. A queued or running `start_run` is derived over Idle/Done without destroying this value,
+    // so the provider's own status is still there when the verdict removes the run.
     private SessionStatus _sessionStatus = SessionStatus.Idle;
+
+    public SessionStatus SessionStatus
+    {
+        get => SessionWorkStatus.Derive(_sessionStatus, _activeRuns);
+        set
+        {
+            var previous = SessionStatus;
+            if (!SetProperty(ref _sessionStatus, value) || previous == SessionStatus)
+            {
+                return;
+            }
+
+            OnSessionStatusChanged(SessionStatus);
+        }
+    }
 
     // When this session last did anything — every status change stamps it. The cockpit's idle sweep measures
     // against this to let a finished session fall back to `SessionStatus.Idle` once it has been
@@ -490,6 +509,27 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // (AC-276). AC-1331: the base reads it from the process tree; a route with its own signal unions that in.
     public virtual bool HasOutstandingBackgroundShells => _hasOutstandingProcesses;
 
+    public IReadOnlyList<SessionRunActivity> ActiveRuns => _activeRuns;
+
+    public bool HasActiveRun => _activeRuns.Count > 0;
+
+    public bool HasOutstandingWork => SessionWorkStatus.HasOutstandingWork(HasOutstandingBackgroundShells, _activeRuns);
+
+    public string RunStatusLabel
+    {
+        get
+        {
+            if (_activeRuns.FirstOrDefault() is not { } run)
+            {
+                return string.Empty;
+            }
+
+            return run.State == SessionRunState.Queued
+                ? $"Waiting for run: {run.Label}: queued ({run.WaitReason ?? "waiting"})"
+                : $"Waiting for run: {run.Label}: running {_RunDuration(run.Since)}";
+        }
+    }
+
     private bool _hasOutstandingProcesses;
     private bool _lastSampleHadOutstanding;
     private int _outstandingSampleStreak;
@@ -552,6 +592,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         {
             _hasOutstandingProcesses = hasOutstanding;
             OnPropertyChanged(nameof(HasOutstandingBackgroundShells));
+            OnPropertyChanged(nameof(HasOutstandingWork));
             OnPropertyChanged(nameof(SessionStatusLabel));
         }
     }
@@ -1226,9 +1267,15 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // Whether a divider sits between the last metric segment and the chevron — only when both are present.
     public bool ShowChevronDivider => UsagePillItems.Count > 0 && HasUsagePill;
 
-    protected SessionPanelViewModel(IUsageHistory? usageHistory = null)
+    protected SessionPanelViewModel(IUsageHistory? usageHistory = null, HeavyRunQueue? heavyRuns = null)
     {
         _usageHistory = usageHistory;
+        _heavyRuns = heavyRuns;
+        if (_heavyRuns is not null)
+        {
+            _heavyRuns.Changed += _OnHeavyRunsChanged;
+            _RefreshHeavyRuns();
+        }
         // HasUsagePill and the mini-pills both depend on the RateLimits collection as well as ContextUsedPercent,
         // so a window being added/cleared has to refresh them too (the ctx setter is covered by the partials below).
         RateLimits.CollectionChanged += (_, _) =>
@@ -1236,6 +1283,45 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
             OnPropertyChanged(nameof(HasUsagePill));
             RebuildUsagePillItems();
         };
+    }
+
+    internal void SetActiveRuns(IReadOnlyList<SessionRunActivity> runs)
+    {
+        if (_activeRuns.SequenceEqual(runs))
+        {
+            OnPropertyChanged(nameof(RunStatusLabel));
+            return;
+        }
+
+        var previousStatus = SessionStatus;
+        _activeRuns = runs;
+        OnPropertyChanged(nameof(ActiveRuns));
+        OnPropertyChanged(nameof(HasActiveRun));
+        OnPropertyChanged(nameof(HasOutstandingWork));
+        OnPropertyChanged(nameof(RunStatusLabel));
+        OnPropertyChanged(nameof(SessionStatusLabel));
+
+        if (previousStatus != SessionStatus)
+        {
+            OnPropertyChanged(nameof(SessionStatus));
+            OnSessionStatusChanged(SessionStatus);
+        }
+    }
+
+    private void _OnHeavyRunsChanged() => Dispatcher.UIThread.Post(_RefreshHeavyRuns);
+
+    private void _RefreshHeavyRuns()
+    {
+        if (!IsRemote)
+        {
+            SetActiveRuns(_heavyRuns?.RunsForPane(PaneId) ?? []);
+        }
+    }
+
+    private static string _RunDuration(DateTimeOffset since)
+    {
+        var elapsed = DateTimeOffset.UtcNow - since;
+        return elapsed.TotalHours >= 1 ? elapsed.ToString(@"hh\:mm\:ss") : elapsed.ToString(@"mm\:ss");
     }
 
     private protected void _RecordUsageSnapshot()
@@ -1852,7 +1938,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
     // Keeps the derived status label/brush in sync whenever `SessionStatus` changes, and
     // records the moment as this session's last activity so the cockpit can tell how long it has been quiet.
-    partial void OnSessionStatusChanged(SessionStatus value)
+    private void OnSessionStatusChanged(SessionStatus value)
     {
         LastActivityUtc = DateTimeOffset.UtcNow;
         OnPropertyChanged(nameof(SessionStatusLabel));
@@ -1897,6 +1983,11 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         }
 
         _disposed = true;
+
+        if (_heavyRuns is not null)
+        {
+            _heavyRuns.Changed -= _OnHeavyRunsChanged;
+        }
 
         // Closing a session that is reading responses aloud must silence it too — otherwise its queued and in-flight
         // utterances keep playing after the panel is gone.

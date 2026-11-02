@@ -143,9 +143,9 @@ internal sealed partial class SessionPanelHandle : IHostedSession
 
     public bool HasPromptWaitingToBeDelivered => _pane?.HasPromptWaitingToBeDelivered ?? false;
 
-    // An SDK session answers this from its background-task list, which only the UI thread may walk.
+    // The pane combines provider-owned shells and start_run activity, which only the UI thread may walk.
     public Task<bool> HasOutstandingBackgroundShellsAsync() =>
-        UiThreadCall.RunAsync(() => _pane?.HasOutstandingBackgroundShells ?? false);
+        UiThreadCall.RunAsync(() => _pane?.HasOutstandingWork ?? false);
 
     public bool HasPendingConsent => _pane?.PendingConsent is not null;
 
@@ -244,8 +244,9 @@ internal sealed partial class SessionPanelHandle : IHostedSession
     // pane keeps no fold, only its status (AC-1717); a plain terminal keeps neither.
     public SessionLiveState LiveState => _pane switch
     {
-        SessionViewModel sdk => sdk.LiveState,
-        TtyViewModel { IsTerminal: false } tty => SessionLiveState.None with { Status = tty.SessionStatus },
+        SessionViewModel sdk => SessionWorkStatus.Derive(sdk.LiveState, sdk.ActiveRuns),
+        TtyViewModel { IsTerminal: false } tty => SessionWorkStatus.Derive(
+            SessionLiveState.None with { Status = tty.SessionStatus }, tty.ActiveRuns),
         _ => SessionLiveState.None,
     };
 

@@ -71,7 +71,7 @@ internal sealed class PluginStatusBarHost : StackPanel
             Margin = new Thickness(0, 0, 8, 0),
             Content = text,
         };
-        button.Click += (_, _) => _ShowPanel(source, button);
+        button.Click += (_, _) => ShowPanel(source, button);
 
         void OnChanged() => Dispatcher.UIThread.Post(() => _Refresh(source, text, button));
         source.Changed += OnChanged;
@@ -89,7 +89,7 @@ internal sealed class PluginStatusBarHost : StackPanel
         button.IsVisible = count > 0;
     }
 
-    private static void _ShowPanel(ISupervisedActivitySource source, Button button)
+    internal static void ShowPanel(ISupervisedActivitySource source, Button button)
     {
         var flyout = new Flyout { Placement = PlacementMode.Top };
         flyout.Content = _BuildPanel(source, flyout);
