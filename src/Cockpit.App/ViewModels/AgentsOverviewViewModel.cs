@@ -353,6 +353,10 @@ public sealed partial class AgentOverviewCardViewModel : ObservableObject, IDisp
     } : _session?.SessionStatus ?? _serverSession?.Status ?? SessionStatus.Idle;
     public bool NeedsAttention => _session?.RequestsAttention
         ?? (_serverSession?.NeedsAttention == true || Status is SessionStatus.NeedsAttention or SessionStatus.Failed);
+    // A sleeping or unreachable swarm member keeps its cards, greyed, with its "Last seen" label (AC-1932).
+    public string LastSeenLabel => _serverSession?.LastSeenLabel ?? string.Empty;
+    public bool IsAsleep => LastSeenLabel.Length > 0;
+    public bool ShowsAttention => NeedsAttention && !IsAsleep;
     public bool IsWaitingForYou => Status == SessionStatus.NeedsAttention && (_serverSession is null || _serverSession.LastSeenLabel.Length == 0);
     public bool IsSelected => _session?.IsSelected == true || _serverSession?.Pane?.IsSelected == true;
     public string StatusBrushKey => _task?.StatusBrushKey ?? _session?.SessionStatusBrushKey ?? _serverSession?.StatusBrushKey ?? "CockpitTextFaintBrush";

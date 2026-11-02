@@ -791,6 +791,8 @@ internal static partial class Screenshotter
         ["agents-docked-expanded"] = (_, _) => _AgentsOverview(floating: false, expanded: true),
         ["agents-undocked-expanded"] = (_, _) => _AgentsOverview(floating: true, expanded: true),
         ["agents-child-open"] = (_, _) => _AgentsOverview(floating: false, expanded: true),
+        ["agents-swarm"] = (width, height) => _AgentsSwarm(width, height, asleep: false),
+        ["agents-swarm-asleep"] = (width, height) => _AgentsSwarm(width, height, asleep: true),
         ["child-steering-sdk"] = (_, _) => _ChildSteeringScene(),
         ["child-steering-prepared"] = (_, _) => _ChildSteeringScene(),
         ["child-steering-stopped"] = (_, _) => _ChildSteeringScene(),
