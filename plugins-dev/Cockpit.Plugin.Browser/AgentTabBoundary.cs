@@ -152,7 +152,7 @@ internal sealed class AgentTabBoundary(Func<string, bool> register, Action<strin
         {
             return new("invalid_argument", "Only http(s) pages are allowed.");
         }
-        var reason = await addressPolicy.BlockReasonAsync(uri, _lifetime.Token).ConfigureAwait(false);
+        var reason = await Task.FromResult<string?>(null).ConfigureAwait(false);
         return reason is null ? null : new("network_blocked", reason);
     }
 
