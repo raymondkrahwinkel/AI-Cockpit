@@ -40,7 +40,7 @@ A web browser inside Cockpit on CEF (Chromium Embedded Framework). This README c
   (its pane is the card's source), watching only, active tab pre-picked, the other tabs in the list. It blocks until
   the click (2 minute timeout; No, Escape and the timeout are a refusal that read nothing), then makes the grant and
   returns address, title and a screenshot in the same call.
-- **Headless renders:** `--screenshot <png> --scene plugin:browser-tab` (also `browser-settings` empty, `browser-settings-allowlist` with two entries, `browser-workspace` in the main window, `browser-rail`, `browser-floating`, `browser-codec`,
+- **Headless renders:** `--screenshot <png> --scene plugin:browser-tab` (also `browser-settings` empty, `browser-settings-allowlist` with two entries, `browser-workspace` in the main window, `browser-rail`, `browser-floating`, `browser-agents`, `browser-agents-floating`, `browser-agents-driving`, `browser-codec`,
   `browser-shared`, `browser-share-paused`, `browser-workspace-shared`, `browser-tab-controlled`, `browser-form-held`, `browser-took-over`, `browser-workspace-controlled`, `browser-engine-download`, `browser-engine-missing`), with a page placeholder.
 
 ## The agent profile (AC-1713)

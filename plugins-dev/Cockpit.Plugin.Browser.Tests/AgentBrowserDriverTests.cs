@@ -19,13 +19,14 @@ public class AgentBrowserDriverTests
             ?? throw new InvalidOperationException("No Chromium to test against: install Chrome or Edge.");
         using var browsers = new AgentBrowserHost(() => executable, root);
         var frames = 0;
-        using var tabs = new AgentBrowserTabs(browsers, paneId => paneId, (name, _) =>
+        var firstFrame = new TaskCompletionSource<(double Width, double Height)>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var commands = new System.Collections.Concurrent.ConcurrentBag<string>();
+        using var tabs = new AgentBrowserTabs(browsers, paneId => paneId, (_, payload) =>
         {
-            if (name == "agents.frame")
-            {
-                Interlocked.Increment(ref frames);
-            }
-        });
+            var frame = JsonSerializer.SerializeToElement(payload);
+            firstFrame.TrySetResult((frame.GetProperty("width").GetDouble(), frame.GetProperty("height").GetDouble()));
+            Interlocked.Increment(ref frames);
+        }, commandSent: commands.Add);
         try
         {
             var endpoint = await browsers.StartAsync("pane-a") ?? throw new InvalidOperationException("The agent browser did not start");
@@ -46,11 +47,8 @@ public class AgentBrowserDriverTests
 
             browsers.SetOperatorDrives("pane-a", true);
             Assert.Equal(AgentCdpProxy.TakenOverMessage, await ClickAsync(agent, 3));
-            Assert.True(await tabs.WatchAsync("pane-a", targetId, CancellationToken.None));
-            for (var attempt = 0; attempt < 50 && Volatile.Read(ref frames) == 0; attempt++)
-            {
-                await Task.Delay(100);
-            }
+            Assert.True(await tabs.WatchAsync("pane-a", targetId, 1600, 900, CancellationToken.None));
+            Assert.Equal((1600d, 900d), await firstFrame.Task.WaitAsync(TimeSpan.FromSeconds(5)));
 
             Assert.True(Volatile.Read(ref frames) > 0, "no screencast frame while the tab was on screen");
 
@@ -58,7 +56,8 @@ public class AgentBrowserDriverTests
             await TitleBecomesAsync(endpoint, "2");
 
             // AC-1713 acceptance 1: with nobody looking there is no screencast, so the page changing sends nothing.
-            tabs.Unwatch();
+            await tabs.UnwatchAsync();
+            Assert.Contains("Emulation.clearDeviceMetricsOverride", commands);
             await Task.Delay(500);
             var framesWhenClosed = Volatile.Read(ref frames);
             browsers.SetOperatorDrives("pane-a", false);

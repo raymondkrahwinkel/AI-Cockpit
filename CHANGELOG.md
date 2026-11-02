@@ -36,6 +36,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- Agent browser live views now follow the Browser pane size, stay centered on the panel theme while resizing, and use the same viewport for agent screenshots.
+
 - Local CI tools now find the calling pane's checkout from the backend, so background sessions can run checks before their pane has ever been opened. Errors now distinguish an unknown pane from a pane without a working directory.
 
 - Open Depot Markdown files now show external MCP, REST and editor changes live without being reopened, while keeping local text in the existing merge flow.

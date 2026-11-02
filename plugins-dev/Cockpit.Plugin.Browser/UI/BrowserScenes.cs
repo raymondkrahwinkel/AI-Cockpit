@@ -37,6 +37,7 @@ internal static class BrowserScenes
         ["browser-floating"] = () => _Named(_Shell(BrowserPlace.Rail), "Browser"),
         // Mockup screen 5: the Agents side with an agent tab's live picture, and the same while you have taken over.
         ["browser-agents"] = () => _Shell(BrowserPlace.Tab, agentSide: true),
+        ["browser-agents-floating"] = () => _Named(_Shell(BrowserPlace.Rail, agentSide: true), "Browser"),
         ["browser-agents-driving"] = () => _Shell(BrowserPlace.Tab, agentSide: true, driving: true),
         ["browser-codec"] = () => _Shell(BrowserPlace.Tab, codecUnsupported: true),
         // AC-1714, mockup screen 7: the active tab shared with one session, and the same tab after it moved to another site.

@@ -42,11 +42,17 @@ internal sealed class AgentScreen : Control
 
     public override void Render(DrawingContext context)
     {
-        context.FillRectangle(Brushes.White, new Rect(Bounds.Size));
+        context.FillRectangle(Background(), new Rect(Bounds.Size));
         if (_model.Frame is { } frame && Shown() is { } shown)
         {
             context.DrawImage(frame, new Rect(frame.Size), shown);
         }
+    }
+
+    protected override void OnSizeChanged(SizeChangedEventArgs e)
+    {
+        base.OnSizeChanged(e);
+        _model.SetViewport(e.NewSize.Width, e.NewSize.Height);
     }
 
     protected override void OnPointerPressed(PointerPressedEventArgs e)
@@ -143,7 +149,7 @@ internal sealed class AgentScreen : Control
         _ => "left",
     };
 
-    // The frame is drawn uniformly into this control, left-aligned at the top, as a browser draws its page.
+    // The frame is drawn uniformly and centred; any remainder is the panel's theme background.
     private Rect? Shown()
     {
         if (_model.Frame is not { } frame || frame.Size.Width <= 0 || Bounds.Width <= 0)
@@ -152,7 +158,9 @@ internal sealed class AgentScreen : Control
         }
 
         var scale = Math.Min(Bounds.Width / frame.Size.Width, Bounds.Height / frame.Size.Height);
-        return new Rect(0, 0, frame.Size.Width * scale, frame.Size.Height * scale);
+        var width = frame.Size.Width * scale;
+        var height = frame.Size.Height * scale;
+        return new Rect((Bounds.Width - width) / 2, (Bounds.Height - height) / 2, width, height);
     }
 
     // A position in this control as a point in the page's CSS pixels, or null outside the picture.
@@ -164,6 +172,11 @@ internal sealed class AgentScreen : Control
             return null;
         }
 
-        return new Point(position.X / shown.Width * width, position.Y / shown.Height * height);
+        return new Point((position.X - shown.X) / shown.Width * width, (position.Y - shown.Y) / shown.Height * height);
     }
+
+    private IBrush Background() =>
+        this.TryGetResource("CockpitPanelBgBrush", ActualThemeVariant, out var resource) && resource is IBrush brush
+            ? brush
+            : Brushes.Transparent;
 }

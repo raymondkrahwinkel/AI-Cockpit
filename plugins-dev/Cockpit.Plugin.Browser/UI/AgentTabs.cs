@@ -19,15 +19,18 @@ internal sealed record AgentTab(string PaneId, string Session, string TargetId, 
 internal sealed class AgentTabsModel : IDisposable
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan ResizeDebounce = TimeSpan.FromMilliseconds(150);
 
     private readonly IPluginUiChannel? _channel;
     private readonly List<IDisposable> _subscriptions = [];
     private readonly DispatcherTimer _poll = new() { Interval = PollInterval };
+    private readonly DispatcherTimer _resize = new() { Interval = ResizeDebounce };
     private List<AgentTab> _tabs = [];
     private AgentTab? _active;
     private bool _viewing;
     private string? _watching;
     private int _frameDecoding;
+    private (int Width, int Height) _viewport;
 
     public AgentTabsModel(IPluginUiChannel? channel)
     {
@@ -40,6 +43,11 @@ internal sealed class AgentTabsModel : IDisposable
         _subscriptions.Add(channel.Subscribe("agents.changed", changed => Dispatcher.UIThread.Post(() => { _ = RefreshAsync(); })));
         _subscriptions.Add(channel.Subscribe("agents.frame", OnFrame));
         _poll.Tick += (_, _) => _ = RefreshAsync();
+        _resize.Tick += (_, _) =>
+        {
+            _resize.Stop();
+            _ = ResizeAsync();
+        };
         _ = RefreshAsync();
     }
 
@@ -86,6 +94,25 @@ internal sealed class AgentTabsModel : IDisposable
         Frame = null;
         Changed?.Invoke();
         _ = SyncWatchAsync();
+    }
+
+    public void SetViewport(double width, double height)
+    {
+        var viewport = (Width: (int)Math.Round(width), Height: (int)Math.Round(height));
+        if (viewport.Width <= 0 || viewport.Height <= 0 || viewport == _viewport)
+        {
+            return;
+        }
+
+        _viewport = viewport;
+        if (_watching is null)
+        {
+            _ = SyncWatchAsync();
+            return;
+        }
+
+        _resize.Stop();
+        _resize.Start();
     }
 
     public Task TakeOverAsync() => Call("agents.takeover");
@@ -152,6 +179,7 @@ internal sealed class AgentTabsModel : IDisposable
     public void Dispose()
     {
         _poll.Stop();
+        _resize.Stop();
         foreach (var subscription in _subscriptions)
         {
             subscription.Dispose();
@@ -185,6 +213,11 @@ internal sealed class AgentTabsModel : IDisposable
             return;
         }
 
+        if (wanted is not null && (_viewport.Width <= 0 || _viewport.Height <= 0))
+        {
+            return;
+        }
+
         _watching = wanted;
         if (wanted is null || _active is not { } tab)
         {
@@ -196,12 +229,29 @@ internal sealed class AgentTabsModel : IDisposable
         {
             try
             {
-                await _channel.InvokeAsync("agents.watch", JsonSerializer.SerializeToElement(new { paneId = tab.PaneId, targetId = tab.TargetId })).ConfigureAwait(false);
+                await _channel.InvokeAsync("agents.watch", JsonSerializer.SerializeToElement(new { paneId = tab.PaneId, targetId = tab.TargetId, width = _viewport.Width, height = _viewport.Height })).ConfigureAwait(false);
             }
             catch (Exception exception) when (exception is InvalidOperationException or JsonException)
             {
                 _watching = null;
             }
+        }
+    }
+
+    private async Task ResizeAsync()
+    {
+        if (_channel is null || _active is not { } tab || _watching != $"{tab.PaneId}/{tab.TargetId}")
+        {
+            return;
+        }
+
+        try
+        {
+            await _channel.InvokeAsync("agents.resize", JsonSerializer.SerializeToElement(new { paneId = tab.PaneId, targetId = tab.TargetId, width = _viewport.Width, height = _viewport.Height })).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or JsonException)
+        {
+            // The next settled size or watch starts from the current viewport again.
         }
     }
 

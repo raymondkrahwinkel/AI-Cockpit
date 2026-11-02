@@ -51,7 +51,8 @@ public sealed class BrowserPlugin : ICockpitPlugin
         var tabs = new AgentBrowserTabs(
             browsers,
             paneId => host.Sessions.OpenSessions.FirstOrDefault(session => session.PaneId == paneId)?.Name,
-            (name, payload) => host.Channel.Publish(name, JsonSerializer.SerializeToElement(payload)));
+            (name, payload) => host.Channel.Publish(name, JsonSerializer.SerializeToElement(payload)),
+            logger);
         _tabs = tabs;
         AgentChannel.Register(host.Channel, tabs);
 

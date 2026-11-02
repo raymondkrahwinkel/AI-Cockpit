@@ -1,12 +1,15 @@
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Plugin.Browser;
 
 // AC-1713: What you see and do in the agent profile, on top of AgentBrowserHost: the tabs of every live agent
 // browser, one screencast for the tab you are looking at, and Neem over / Geef terug / Stop agent. The screencast runs
 // only between Watch and Unwatch, so nobody looking costs nothing. Frames and changes go out as plugin-channel events.
-internal sealed class AgentBrowserTabs(AgentBrowserHost browsers, Func<string, string?> sessionName, Action<string, object> publish) : IDisposable
+internal sealed class AgentBrowserTabs(AgentBrowserHost browsers, Func<string, string?> sessionName, Action<string, object> publish, ILogger? logger = null, Action<string>? commandSent = null) : IDisposable
 {
+    private const int MaxViewportDimension = 4096;
+
     internal static readonly HashSet<string> InputMethods = new(StringComparer.Ordinal) { "Input.dispatchMouseEvent", "Input.dispatchKeyEvent" };
 
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(5) };
@@ -29,9 +32,9 @@ internal sealed class AgentBrowserTabs(AgentBrowserHost browsers, Func<string, s
     }
 
     // Replaces the screencast in progress: one viewer, one tab.
-    public async Task<bool> WatchAsync(string paneId, string targetId, CancellationToken cancellationToken)
+    public async Task<bool> WatchAsync(string paneId, string targetId, int width, int height, CancellationToken cancellationToken)
     {
-        Unwatch();
+        await UnwatchAsync().ConfigureAwait(false);
         var live = browsers.Live().FirstOrDefault(entry => entry.PaneId == paneId);
         if (live.Upstream is null)
         {
@@ -45,17 +48,37 @@ internal sealed class AgentBrowserTabs(AgentBrowserHost browsers, Func<string, s
         }
 
         CdpPage? connection = null;
-        connection = await CdpPage.ConnectAsync(page.SocketUrl, (name, parameters) => OnEvent(connection!, paneId, targetId, name, parameters), cancellationToken).ConfigureAwait(false);
+        connection = await CdpPage.ConnectAsync(page.SocketUrl, (name, parameters) => OnEvent(connection!, paneId, targetId, name, parameters), cancellationToken, commandSent).ConfigureAwait(false);
         lock (_gate)
         {
             _watch = new Watch(paneId, targetId, connection);
         }
 
-        await connection.SendAsync("Page.startScreencast", new { format = "jpeg", quality = 70, maxWidth = 1280, maxHeight = 1024, everyNthFrame = 1 }).ConfigureAwait(false);
+        var viewport = Viewport(width, height);
+        await SetViewportAsync(connection, viewport.Width, viewport.Height, cancellationToken).ConfigureAwait(false);
+        await connection.SendAsync("Page.startScreencast", new { format = "jpeg", quality = 70, maxWidth = viewport.Width, maxHeight = viewport.Height, everyNthFrame = 1 }).ConfigureAwait(false);
         return true;
     }
 
-    public void Unwatch()
+    public async Task<bool> ResizeAsync(string paneId, string targetId, int width, int height, CancellationToken cancellationToken)
+    {
+        Watch? watch;
+        lock (_gate)
+        {
+            watch = _watch;
+        }
+
+        if (watch is null || watch.PaneId != paneId || watch.TargetId != targetId)
+        {
+            return false;
+        }
+
+        var viewport = Viewport(width, height);
+        await SetViewportAsync(watch.Connection, viewport.Width, viewport.Height, cancellationToken).ConfigureAwait(false);
+        return true;
+    }
+
+    public async Task UnwatchAsync()
     {
         Watch? watch;
         lock (_gate)
@@ -64,8 +87,25 @@ internal sealed class AgentBrowserTabs(AgentBrowserHost browsers, Func<string, s
             _watch = null;
         }
 
-        // Closing the socket ends the screencast with it; no frame is asked for or acknowledged after this.
-        watch?.Connection.Dispose();
+        if (watch is null)
+        {
+            return;
+        }
+
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await watch.Connection.CallAsync("Emulation.clearDeviceMetricsOverride", null, timeout.Token).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            logger?.LogError(exception, "Could not clear the agent browser viewport override for {PaneId}/{TargetId}", watch.PaneId, watch.TargetId);
+        }
+        finally
+        {
+            // Closing the socket ends the screencast with it; no frame is asked for or acknowledged after this.
+            watch.Connection.Dispose();
+        }
     }
 
     public bool TakeOver(string paneId) => browsers.SetOperatorDrives(paneId, true);
@@ -74,9 +114,9 @@ internal sealed class AgentBrowserTabs(AgentBrowserHost browsers, Func<string, s
 
     public Task<bool> CloseAsync(string paneId, string targetId, CancellationToken token) => browsers.CloseTabAsync(paneId, targetId, token);
 
-    public bool Stop(string paneId)
+    public async Task<bool> StopAsync(string paneId)
     {
-        Unwatch();
+        await UnwatchAsync().ConfigureAwait(false);
         return browsers.StopBrowser(paneId);
     }
 
@@ -108,7 +148,7 @@ internal sealed class AgentBrowserTabs(AgentBrowserHost browsers, Func<string, s
         return null;
     }
 
-    public void Dispose() => Unwatch();
+    public void Dispose() => UnwatchAsync().GetAwaiter().GetResult();
 
     private void OnEvent(CdpPage connection, string paneId, string targetId, string name, JsonElement parameters)
     {
@@ -145,6 +185,12 @@ internal sealed class AgentBrowserTabs(AgentBrowserHost browsers, Func<string, s
             return [];
         }
     }
+
+    private static (int Width, int Height) Viewport(int width, int height) =>
+        (Math.Clamp(width, 1, MaxViewportDimension), Math.Clamp(height, 1, MaxViewportDimension));
+
+    private static async Task SetViewportAsync(CdpPage connection, int width, int height, CancellationToken cancellationToken) =>
+        await connection.CallAsync("Emulation.setDeviceMetricsOverride", new { width, height, deviceScaleFactor = 1, mobile = false }, cancellationToken).ConfigureAwait(false);
 
     private sealed record Page(string Id, string Title, string Url, string SocketUrl, string FaviconUrl);
 
