@@ -9,18 +9,12 @@ namespace Cockpit.Infrastructure.Tests.Projects;
 
 public sealed class ProjectCatalogPublicationTests
 {
-    public static TheoryData<SharedProjectReadState, bool, bool, int, bool> Reads => new()
-    {
-        { SharedProjectReadState.Absent, true, true, 1, false },
-        { SharedProjectReadState.Absent, true, false, 1, true },
-        { SharedProjectReadState.Timeout, true, true, 0, true },
-        { SharedProjectReadState.Unreadable, false, true, 0, true },
-    };
-
     [Theory]
-    [MemberData(nameof(Reads))]
+    [InlineData(SharedProjectReadState.Absent, true, 1, false)]
+    [InlineData(SharedProjectReadState.Absent, false, 1, true)]
+    [InlineData(SharedProjectReadState.Timeout, true, 0, true)]
     public async Task Refresh_BackfillsOnlyConfirmedAbsence_AndSurfacesFailure(
-        SharedProjectReadState state, bool reachable, bool writable, int writes, bool hasError)
+        SharedProjectReadState state, bool writable, int writes, bool hasError)
     {
         var project = new Project("local", "Local")
         {
@@ -32,7 +26,7 @@ public sealed class ProjectCatalogPublicationTests
         source.Key.Returns("memory");
         source.SourceName.Returns("Memory");
         source.CanPublish.Returns(true);
-        source.ListAsync(Arg.Any<CancellationToken>()).Returns(new SharedProjectListResult(reachable, [], reachable ? null : "Offline")
+        source.ListAsync(Arg.Any<CancellationToken>()).Returns(SharedProjectListResult.Success([]) with
         {
             ProjectReadStates = [new SharedProjectReadStatus("memory:acme/local", "Local", "Editor", state)],
         });

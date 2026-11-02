@@ -44,14 +44,9 @@ public class DepotSharedProjectSourcePublishTests
         Assert.NotNull(result.Error);
     }
 
-    public static TheoryData<string?, int, string> MemoryTargets => new()
-    {
-        { null, 1, "Local" },
-        { """{"schemaVersion":1,"name":"Existing"}""", 0, "Existing" },
-    };
-
     [Theory]
-    [MemberData(nameof(MemoryTargets))]
+    [InlineData(null, 1, "Local")]
+    [InlineData("""{"schemaVersion":1,"name":"Existing"}""", 0, "Existing")]
     public async Task SavingAMemoryBinding_PublishesOnlyAnAbsentDefinition(string? existing, int writes, string name)
     {
         var host = Substitute.For<ICockpitHost>();
