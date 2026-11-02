@@ -1237,6 +1237,7 @@
          The knob moves by transform, so it slides instead of jumping — HorizontalAlignment cannot animate. -->
     <Style Selector="CheckBox.Switch">
         <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="VerticalContentAlignment" Value="Top"/>
         <Setter Property="Template">
             <ControlTemplate>
                 <Grid ColumnDefinitions="Auto,*">
@@ -1260,7 +1261,7 @@
                                       Content="{TemplateBinding Content}"
                                       ContentTemplate="{TemplateBinding ContentTemplate}"
                                       Foreground="{TemplateBinding Foreground}"
-                                      VerticalAlignment="Top"/>
+                                      VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
                 </Grid>
             </ControlTemplate>
         </Setter>
