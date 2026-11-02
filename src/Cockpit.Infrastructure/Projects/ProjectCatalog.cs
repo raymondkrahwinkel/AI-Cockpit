@@ -330,7 +330,7 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
                     try
                     {
                         var definition = await SharedProjectDefinitionBuilder.BuildAsync(project).ConfigureAwait(false);
-                        var published = await Task.FromResult(SharedProjectPublishResult.Failed(definition.Name)).ConfigureAwait(false);
+                        var published = await source.PublishAsync(reference, definition, cancellationToken).ConfigureAwait(false);
                         publishedDefinition |= published.Outcome is SharedProjectPublishOutcome.Success or SharedProjectPublishOutcome.AlreadyPublished;
                         if (published.Outcome is not (SharedProjectPublishOutcome.Success or SharedProjectPublishOutcome.AlreadyPublished))
                         {
