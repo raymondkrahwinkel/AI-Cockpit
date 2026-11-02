@@ -21,7 +21,7 @@ internal static class LocalModelContextContract
     internal static async Task AssertAsync()
     {
         _ProfileContextRoundTripsAndDrivesTheTurnGuard();
-        await _OllamaDoesNotFakeNumCtxPerRequest();
+        await _OllamaUsesNativeContextPerRequest();
         await _LmStudioLoadsAnUnloadedModel();
         await _LmStudioReloadsASmallerContextWhenEnabled();
         await _LmStudioWarnsWithoutReloadWhenDisabled();
@@ -84,15 +84,74 @@ internal static class LocalModelContextContract
         Assert.Contains("Profiles[].Provider.EnableThinking", SettingsCarrierWhitelist.Carried);
     }
 
-    private static async Task _OllamaDoesNotFakeNumCtxPerRequest()
+    private static async Task _OllamaUsesNativeContextPerRequest()
     {
+        await using var server = new OllamaHttpServer();
+        var config = new OllamaConfig(server.BaseUrl, "qwen", ContextTokens: 65_536);
+        using var client = new OpenAiCompatChatClientFactory().Create(config);
+        var reply = await client.GetResponseAsync([new ChatMessage(ChatRole.User, "hello")]);
+        Assert.Equal("hello", reply.Text);
+        Assert.Equal(12, reply.Usage!.InputTokenCount);
+        Assert.Equal(3, reply.Usage.OutputTokenCount);
+        var request = Assert.Single(server.Requests);
+        Assert.True(request.Body.TryGetProperty("options", out var options), "Ollama request must contain options.num_ctx");
+        Assert.Equal(65_536, options.GetProperty("num_ctx").GetInt32());
+        Assert.Equal("/api/chat", request.Path);
+        Assert.Equal("qwen", request.Body.GetProperty("model").GetString());
+        Assert.False(request.Body.GetProperty("stream").GetBoolean());
+        foreach (var context in new[] { 0, -1, 32_768 })
+        {
+            using var normalized = new OpenAiCompatChatClientFactory().Create(config with { ContextTokens = context });
+            await normalized.GetResponseAsync([new ChatMessage(ChatRole.User, "hello")]);
+            Assert.Equal(LocalModelContext.DefaultTokens, server.Requests[^1].Body.GetProperty("options").GetProperty("num_ctx").GetInt32());
+            Assert.Equal(LocalModelContext.DefaultTokens, OpenAiCompatSessionDriver.TurnLimitsFrom(config with { ContextTokens = context }).ContextWindowTokens);
+        }
         var handler = new RecordingHandler(_ => _Json("{}"));
         var warning = await _Manager(handler).PrepareAsync(
             new OllamaConfig("http://localhost:11434", "qwen", ContextTokens: 32_768));
 
-        Assert.Contains("OLLAMA_CONTEXT_LENGTH", warning);
-        Assert.Contains("PARAMETER num_ctx", warning);
+        Assert.Null(warning);
         Assert.Empty(handler.Requests);
+        await _OllamaFailuresAsync();
+    }
+
+    private static async Task _OllamaFailuresAsync()
+    {
+        await using var server = new OllamaHttpServer();
+        using var client = new OpenAiCompatChatClientFactory().Create(new OllamaConfig(server.BaseUrl, "model"));
+        foreach (var (status, kind) in new[]
+        {
+            (400, Cockpit.Core.Sessions.SessionErrorKind.Unknown),
+            (401, Cockpit.Core.Sessions.SessionErrorKind.AuthRequired),
+            (403, Cockpit.Core.Sessions.SessionErrorKind.AuthRequired),
+            (429, Cockpit.Core.Sessions.SessionErrorKind.RateLimited),
+            (503, Cockpit.Core.Sessions.SessionErrorKind.ServiceUnavailable),
+        })
+        {
+            server.Respond = _ => (status, """{"error":"context rejected"}""");
+            var error = await Assert.ThrowsAsync<OllamaChatException>(() => client.GetResponseAsync([new ChatMessage(ChatRole.User, "hi")]));
+            Assert.Contains("context rejected", OpenAiCompatSessionDriver._DescribeError(error));
+            Assert.Equal(kind, OpenAiCompatSessionDriver._ClassifyError(error));
+            Assert.NotNull(OpenAiCompatSessionDriver._RetryAfterFrom(error));
+        }
+        server.Respond = _ => (200, """{"error":"native stream failure"}""");
+        var streamError = await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetStreamingResponseAsync([new ChatMessage(ChatRole.User, "hi")]).ToChatResponseAsync());
+        Assert.Contains("native stream failure", streamError.Message);
+        server.Respond = _ => (200, "malformed\n");
+        await Assert.ThrowsAnyAsync<JsonException>(() => client.GetStreamingResponseAsync([new ChatMessage(ChatRole.User, "hi")]).ToChatResponseAsync());
+        server.Respond = _ => (200, """{"message":{"content":"partial"},"done":false}""");
+        await Assert.ThrowsAsync<IOException>(() => client.GetStreamingResponseAsync([new ChatMessage(ChatRole.User, "hi")]).ToChatResponseAsync());
+        await Assert.ThrowsAsync<IOException>(() => client.GetResponseAsync([new ChatMessage(ChatRole.User, "hi")]));
+        using var cancelled = new CancellationTokenSource();
+        await cancelled.CancelAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => client.GetResponseAsync([new ChatMessage(ChatRole.User, "hi")], cancellationToken: cancelled.Token));
+        await using var stalledServer = new OllamaHttpServer { HoldBody = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously) };
+        using var stalledClient = new OpenAiCompatChatClientFactory().Create(new OllamaConfig(stalledServer.BaseUrl, "model"));
+        using var interrupt = new CancellationTokenSource();
+        var pending = stalledClient.GetStreamingResponseAsync([new ChatMessage(ChatRole.User, "hi")], cancellationToken: interrupt.Token).ToChatResponseAsync();
+        await stalledServer.BodyHeld.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await interrupt.CancelAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
     }
 
     private static async Task _LmStudioLoadsAnUnloadedModel()

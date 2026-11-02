@@ -363,7 +363,6 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
         {
             LmStudioConfig { EnableThinking: false } => "none",
             LmStudioConfig lmStudio => lmStudio.ReasoningEffort,
-            OllamaConfig ollama => ollama.ReasoningEffort,
             _ => null,
         };
         if (!string.IsNullOrWhiteSpace(effort))
@@ -488,12 +487,16 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
         ClientResultException { Status: 401 or 403 } => SessionErrorKind.AuthRequired,
         ClientResultException { Status: 429 } => SessionErrorKind.RateLimited,
         ClientResultException { Status: >= 500 } => SessionErrorKind.ServiceUnavailable,
+        OllamaChatException { StatusCode: System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden } => SessionErrorKind.AuthRequired,
+        OllamaChatException { StatusCode: System.Net.HttpStatusCode.TooManyRequests } => SessionErrorKind.RateLimited,
+        OllamaChatException { StatusCode: >= System.Net.HttpStatusCode.InternalServerError } => SessionErrorKind.ServiceUnavailable,
         _ => SessionErrorKind.Unknown,
     };
 
     // A 429's Retry-After header — RFC 9110 §10.2.3 allows either delta-seconds or an HTTP-date.
     internal static DateTimeOffset? _RetryAfterFrom(Exception ex)
     {
+        if (ex is OllamaChatException ollama) return ollama.RetryAfter;
         if (ex is not ClientResultException clientError
             || clientError.GetRawResponse()?.Headers.TryGetValue("Retry-After", out var value) != true)
         {

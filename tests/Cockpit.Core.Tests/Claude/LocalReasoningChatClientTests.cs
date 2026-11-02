@@ -63,9 +63,39 @@ public class LocalReasoningChatClientTests
         using var factoryClient = factory.Create(new Cockpit.Core.Profiles.LmStudioConfig("http://192.0.2.10:1234", "model"));
         Assert.IsType<LocalReasoningChatClient>(factoryClient);
         using var ollama = factory.Create(new Cockpit.Core.Profiles.OllamaConfig("http://192.0.2.11:11434", "model"));
-        Assert.IsType<LocalReasoningChatClient>(ollama);
+        Assert.IsType<OllamaChatClient>(ollama);
         using var endpoint = factory.CreateForEndpoint("https://api.example.test", "model");
         Assert.IsNotType<LocalReasoningChatClient>(endpoint);
+        await using var nativeServer = new OllamaHttpServer
+        {
+            Respond = body => (200, body.GetProperty("stream").GetBoolean()
+                ? """{"message":{"role":"assistant","thinking":"new "},"done":false}""" + "\n"
+                    + """{"message":{"thinking":"thought","content":"Native "},"done":false}""" + "\n"
+                    + """{"message":{"content":"answer"},"done":true,"done_reason":"length","prompt_eval_count":22,"eval_count":4}""" + "\n"
+                : """{"message":{"role":"assistant","thinking":"new thought","content":"Native answer"},"done":true,"prompt_eval_count":22,"eval_count":4}"""),
+        };
+        using var native = factory.Create(new Cockpit.Core.Profiles.OllamaConfig(nativeServer.BaseUrl, "model"));
+        using var nativeGuard = new ContextGuardChatClient(native, ChatTurnLimits.Default, preservePrefix: true);
+        var nativeReply = await nativeGuard.GetStreamingResponseAsync(history).ToChatResponseAsync();
+        var nativeFirst = nativeServer.Requests[0].Body.GetProperty("messages");
+        Assert.Equal(thinking, nativeFirst[1].GetProperty("thinking").GetString());
+        Assert.Equal("Answer", nativeFirst[1].GetProperty("content").GetString());
+        Assert.Equal("lookup", nativeFirst[2].GetProperty("tool_name").GetString());
+        Assert.Equal("result", nativeFirst[2].GetProperty("content").GetString());
+        Assert.Equal("new thought", string.Concat(nativeReply.Messages.SelectMany(message => message.Contents).OfType<TextReasoningContent>().Select(content => content.Text)));
+        Assert.Equal("Native answer", nativeReply.Text);
+        Assert.Equal(ChatFinishReason.Length, nativeReply.FinishReason);
+        Assert.Equal(22, nativeReply.Usage!.InputTokenCount);
+        Assert.Equal(4, nativeReply.Usage.OutputTokenCount);
+        Assert.InRange(nativeGuard.Turn.PeakTokens, thinking.Length / 4, thinking.Length / 4 + 150);
+        history.Add(new(ChatRole.User, "Continue natively"));
+        await nativeGuard.GetResponseAsync(history);
+        var nativeSecond = nativeServer.Requests[1].Body.GetProperty("messages");
+        for (var i = 0; i < nativeFirst.GetArrayLength(); i++) Assert.Equal(nativeFirst[i].GetRawText(), nativeSecond[i].GetRawText());
+        Assert.DoesNotContain(nativeServer.Requests[0].Body.GetProperty("options").EnumerateObject(), field => field.Name is "temperature" or "top_p" or "top_k" or "min_p" or "presence_penalty");
+        using var nativeSmall = new ContextGuardChatClient(native, ChatTurnLimits.Default with { ContextWindowTokens = 1_024, ReserveTokens = 128 }, preservePrefix: true);
+        await nativeSmall.GetResponseAsync(history);
+        Assert.True(nativeSmall.Turn.ContextFull);
     }
 
     internal sealed class CapturingHandler : HttpMessageHandler
