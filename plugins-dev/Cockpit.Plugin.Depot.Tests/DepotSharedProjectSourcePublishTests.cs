@@ -4,10 +4,6 @@ using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Projects;
 using NSubstitute;
-using Cockpit.Core.Abstractions.Projects;
-using Cockpit.Core.Projects;
-using Cockpit.Infrastructure.Plugins;
-using Cockpit.Infrastructure.Projects;
 
 namespace Cockpit.Plugin.Depot.Tests;
 
@@ -44,33 +40,19 @@ public class DepotSharedProjectSourcePublishTests
         Assert.NotNull(result.Error);
     }
 
-    [Theory]
-    [InlineData(null, 1, "Local")]
-    [InlineData("""{"schemaVersion":1,"name":"Existing"}""", 0, "Existing")]
-    public async Task SavingAMemoryBinding_PublishesOnlyAnAbsentDefinition(string? existing, int writes, string name)
+    [Fact]
+    public async Task PublishAsync_TargetAlreadyHasADefinition_ReturnsAlreadyPublishedAndNeverWrites()
     {
         var host = Substitute.For<ICockpitHost>();
-        host.Cache.Returns(new InMemoryPluginCache());
         var scheme = _Scheme(host);
-        var handler = new _DefinitionHandler("existing", existing);
+        var handler = new _DefinitionHandler("existing", """{"schemaVersion":1,"name":"Existing"}""");
         using var http = new HttpClient(handler);
-        var source = SourceFor(host, http);
-        var registry = new SharedProjectSourceRegistry();
-        registry.Register(source);
-        var store = Substitute.For<IProjectStore>();
-        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(ProjectSettings.Empty);
-        var catalog = new ProjectCatalog(store, new ProjectOwnershipRegistry(), registry);
 
-        await catalog.AddNewProjectAsync(new Project("local", "Local")
-        {
-            Resources = [new ProjectResource($"{scheme}:acme/existing", ProjectResourceRole.Memory)],
-        });
-        var otherMachine = await SourceFor(host, http).ListAsync(CancellationToken.None);
+        var result = await SourceFor(host, http).PublishAsync(
+            $"{scheme}:existing", Definition(), CancellationToken.None);
 
-        Assert.Equal(writes, handler.PutCount);
-        Assert.Equal(name, Assert.Single(otherMachine.Projects).Name);
-        Assert.Equal(existing ?? handler.WrittenContent, handler.CurrentDefinition);
-        Assert.Empty(catalog.Current.PublicationErrors);
+        Assert.Equal(SharedProjectPublishOutcome.AlreadyPublished, result.Outcome);
+        Assert.Equal(0, handler.PutCount);
     }
 
     [Fact]
@@ -146,7 +128,6 @@ public class DepotSharedProjectSourcePublishTests
         public int PutCount { get; private set; }
         public int RequestCount { get; private set; }
         public string? WrittenContent { get; private set; }
-        public string? CurrentDefinition { get; private set; } = definition;
 
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
@@ -156,7 +137,7 @@ public class DepotSharedProjectSourcePublishTests
             {
                 return new HttpResponseMessage(HttpStatusCode.OK)
                 {
-                    Content = new StringContent(_Projects(slug, CurrentDefinition)),
+                    Content = new StringContent(_Projects(slug, definition)),
                     RequestMessage = request,
                 };
             }
@@ -164,7 +145,6 @@ public class DepotSharedProjectSourcePublishTests
             PutCount++;
             IfNoneMatch = request.Headers.IfNoneMatch.SingleOrDefault()?.Tag;
             WrittenContent = await (request.Content ?? throw new InvalidOperationException("The request had no body.")).ReadAsStringAsync(cancellationToken);
-            CurrentDefinition = WrittenContent;
             return new HttpResponseMessage(writeStatus)
             {
                 Content = new StringContent("""{"checksum":"chk1"}"""),

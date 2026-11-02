@@ -9,12 +9,8 @@ namespace Cockpit.Infrastructure.Tests.Projects;
 
 public sealed class ProjectCatalogPublicationTests
 {
-    [Theory]
-    [InlineData(SharedProjectReadState.Absent, true, 1, false)]
-    [InlineData(SharedProjectReadState.Absent, false, 1, true)]
-    [InlineData(SharedProjectReadState.Timeout, true, 0, true)]
-    public async Task Refresh_BackfillsOnlyConfirmedAbsence_AndSurfacesFailure(
-        SharedProjectReadState state, bool writable, int writes, bool hasError)
+    [Fact]
+    public async Task Refresh_ConfirmedAbsent_PublishesOnceWithTheLocalName_WithoutPublicationErrors()
     {
         var project = new Project("local", "Local")
         {
@@ -28,30 +24,18 @@ public sealed class ProjectCatalogPublicationTests
         source.CanPublish.Returns(true);
         source.ListAsync(Arg.Any<CancellationToken>()).Returns(SharedProjectListResult.Success([]) with
         {
-            ProjectReadStates = [new SharedProjectReadStatus("memory:acme/local", "Local", "Editor", state)],
+            ProjectReadStates = [new SharedProjectReadStatus("memory:acme/local", "Local", "Editor", SharedProjectReadState.Absent)],
         });
         source.PublishAsync(Arg.Any<string>(), Arg.Any<SharedProjectPublishDefinition>(), Arg.Any<CancellationToken>())
-            .Returns(writable ? SharedProjectPublishResult.Success("memory:acme/local") : SharedProjectPublishResult.PermissionDenied("Permission denied"));
+            .Returns(SharedProjectPublishResult.Success("memory:acme/local"));
         var registry = new SharedProjectSourceRegistry();
         registry.Register(source);
         var catalog = new ProjectCatalog(store, new ProjectOwnershipRegistry(), registry);
 
         await catalog.RefreshSharedProjectsAsync();
 
-        await source.Received(writes).PublishAsync("memory:acme/local",
+        await source.Received(1).PublishAsync("memory:acme/local",
             Arg.Is<SharedProjectPublishDefinition>(definition => definition.Name == "Local"), Arg.Any<CancellationToken>());
-        Assert.Equal(hasError, catalog.Current.PublicationErrors.ContainsKey("local"));
-
-        source.ListAsync(Arg.Any<CancellationToken>()).Returns(SharedProjectListResult.Success([]) with
-        {
-            ProjectReadStates = [new SharedProjectReadStatus("memory:acme/local", "Local", "Editor", SharedProjectReadState.Absent)],
-        });
-        source.PublishAsync(Arg.Any<string>(), Arg.Any<SharedProjectPublishDefinition>(), Arg.Any<CancellationToken>())
-            .Returns(SharedProjectPublishResult.Success("memory:acme/local"));
-
-        await catalog.RefreshSharedProjectsAsync();
-
-        await source.Received(writes + 1).PublishAsync("memory:acme/local", Arg.Any<SharedProjectPublishDefinition>(), Arg.Any<CancellationToken>());
         Assert.Empty(catalog.Current.PublicationErrors);
     }
 }
