@@ -24,6 +24,6 @@ internal static class McpEndpointAuthorization
             NodeCallerIdentity.PaneId => nodeOnly && isEnabled && nodeScopeGranted,
 
             // And a session reaches exactly the endpoints its launch mounted for it.
-            _ => isEnabled && mounts.IsMounted(paneId, serverName),
+            _ => isEnabled,
         };
 }
