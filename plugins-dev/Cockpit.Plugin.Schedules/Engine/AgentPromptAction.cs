@@ -2,15 +2,18 @@ using System.Text.RegularExpressions;
 using Cockpit.Plugin.Schedules.Contracts;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
+using Cockpit.Plugins.Abstractions.Channels;
 
 namespace Cockpit.Plugin.Schedules.Engine;
 
-// The agent prompt (plan §3, §5): the prompt goes to a profile through the cockpit's own delegation, so the profile's
-// rules (its allowed working directories among them) refuse it before a session exists, and the answer is delivered.
+// An absent profile runs read-only in the assistant's existing conversation; a profile uses cockpit delegation,
+// its allowed working directories and delivery channels.
 // Write is Dangerous: as in Workflows, a run the operator starts asks nothing, a scheduled one asks unless unattended.
-internal sealed partial class AgentPromptAction(ICockpitHost host, TaskDelivery delivery, TimeSpan consentWait)
+internal sealed partial class AgentPromptAction(ICockpitHost host, TaskDelivery delivery, TimeSpan consentWait, TimeProvider? time = null)
 {
     public static readonly TimeSpan ConsentWait = TimeSpan.FromMinutes(60);
+    public static readonly TimeSpan AssistantWait = TimeSpan.FromMinutes(10);
+    private readonly TimeProvider _time = time ?? TimeProvider.System;
     public const string NoAnswer = "no answer";
     public const string NotApproved = "not approved";
 
@@ -22,7 +25,7 @@ internal sealed partial class AgentPromptAction(ICockpitHost host, TaskDelivery 
 
     // Null when the run may go ahead, else why not. The engine asks this before the run takes a slot.
     public Task<string?> AdmitAsync(ScheduledTask task, RunTrigger trigger, CancellationToken cancellationToken) =>
-        task.Action.Permission == AgentPermission.Write && _AsksConsent(trigger, task.RunUnattended)
+        IsDangerous(task) && _AsksConsent(trigger, task.RunUnattended)
             ? _AskAsync(task, cancellationToken)
             : Task.FromResult<string?>(null);
 
@@ -31,9 +34,14 @@ internal sealed partial class AgentPromptAction(ICockpitHost host, TaskDelivery 
         var action = task.Action;
         var profile = action.Profile?.Trim() ?? string.Empty;
         var prompt = action.Text.Trim();
-        if (profile.Length == 0 || prompt.Length == 0)
+        if (prompt.Length == 0)
         {
-            return new ActionResult(RunOutcome.Failed, Reason: "An agent prompt needs a profile and a prompt.");
+            return new ActionResult(RunOutcome.Failed, Reason: "An agent prompt needs a prompt.");
+        }
+
+        if (profile.Length == 0)
+        {
+            return await _RunAssistantAsync(task, cancellationToken);
         }
 
         var (directory, unset) = _Expand(action.WorkingDirectory?.Trim() ?? string.Empty);
@@ -72,6 +80,76 @@ internal sealed partial class AgentPromptAction(ICockpitHost host, TaskDelivery 
         }
     }
 
+    private async Task<ActionResult> _RunAssistantAsync(ScheduledTask task, CancellationToken cancellationToken)
+    {
+        const string sender = "schedules";
+        using var channel = host.OpenAssistantChannel(new AssistantChannelContribution
+        {
+            Id = $"schedules:{Guid.NewGuid():n}",
+            Name = "Schedules",
+            Access = AssistantChannelAccess.ForSingleUser(sender).Access ?? throw new InvalidOperationException("Schedules channel access could not be configured."),
+        });
+        if (channel is null)
+        {
+            return new ActionResult(RunOutcome.Skipped, Reason: "no assistant");
+        }
+
+        using var admissionDeadline = new CancellationTokenSource(AssistantWait, _time);
+        using var pending = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, admissionDeadline.Token);
+        var deadline = _time.GetUtcNow() + AssistantWait;
+        var prompt = $"[Schedules: {task.Name}]\n{task.Action.Text.Trim()}";
+        var reason = "assistant busy";
+        try
+        {
+            while (_time.GetUtcNow() < deadline)
+            {
+                var turn = await channel.TryStartReadOnlyTurnAsync(sender, prompt, pending.Token);
+                if (turn.Admission == AssistantTurnAdmission.Accepted)
+                {
+                    try
+                    {
+                        var startRemaining = deadline - _time.GetUtcNow();
+                        await turn.Started.WaitAsync(startRemaining > TimeSpan.Zero ? startRemaining : TimeSpan.Zero, _time, cancellationToken);
+                    }
+                    catch (TimeoutException)
+                    {
+                        // Cancellation removes only an unstarted turn; a concurrent start still owns its completion.
+                        pending.Cancel();
+                        try
+                        {
+                            await turn.Started;
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            return new ActionResult(RunOutcome.Skipped, Reason: "assistant busy");
+                        }
+                    }
+
+                    var answer = await turn.Completion.WaitAsync(cancellationToken);
+                    return new ActionResult(RunOutcome.Succeeded, string.IsNullOrWhiteSpace(answer) ? null : answer);
+                }
+
+                reason = turn.Admission == AssistantTurnAdmission.NoAssistant ? "no assistant" : "assistant busy";
+                var remaining = deadline - _time.GetUtcNow();
+                if (remaining > TimeSpan.Zero)
+                {
+                    await Task.Delay(remaining < TimeSpan.FromSeconds(5) ? remaining : TimeSpan.FromSeconds(5), _time, cancellationToken);
+                }
+            }
+
+            return new ActionResult(RunOutcome.Skipped, Reason: reason);
+        }
+        catch (OperationCanceledException) when (admissionDeadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            return new ActionResult(RunOutcome.Skipped, Reason: reason);
+        }
+        catch (Exception exception)
+        {
+            pending.Cancel();
+            return new ActionResult(RunOutcome.Failed, Reason: exception.Message);
+        }
+    }
+
     // AC-38, fail-closed: while a run's delegation has started but its task id is not known yet, a call from that run
     // cannot be told from any other session's, so the tools that change tasks refuse every caller until it is.
     public bool IsRunStarting => Volatile.Read(ref _starting) > 0;
@@ -95,7 +173,7 @@ internal sealed partial class AgentPromptAction(ICockpitHost host, TaskDelivery 
 
     // Dangerous (plan §3): a prompt allowed to change files, the rule the MCP guard holds a task to (AC-38).
     public static bool IsDangerous(ScheduledTask task) =>
-        task.Action.Kind == TaskActionKind.AgentPrompt && task.Action.Permission == AgentPermission.Write;
+        task.Action.Kind == TaskActionKind.AgentPrompt && !string.IsNullOrWhiteSpace(task.Action.Profile) && task.Action.Permission == AgentPermission.Write;
 
     // Whether the MCP call in hand comes from a run a task started: a delegated task's verified pane id is its task id.
     public bool IsTaskRun(string? paneId) => paneId is not null && _taskRuns.ContainsKey(paneId);

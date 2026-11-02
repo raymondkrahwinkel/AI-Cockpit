@@ -35,6 +35,33 @@ internal sealed class SessionRuntime : ISessionRuntime
     private readonly Lock _eventsLock = new();
 
     private ISessionDriver? _driver;
+    private volatile bool _readOnlyTurn;
+
+    public bool SupportsReadOnlyTurns => _driver?.SupportsReadOnlyTurns == true;
+
+    public async Task SetReadOnlyTurnAsync(bool enabled, CancellationToken cancellationToken = default)
+    {
+        if (_driver is null)
+        {
+            if (enabled)
+            {
+                throw new NotSupportedException("A running provider is required for read-only turns.");
+            }
+
+            return;
+        }
+
+        if (enabled)
+        {
+            _readOnlyTurn = true;
+        }
+
+        await _driver.SetReadOnlyTurnAsync(enabled, cancellationToken);
+        if (!enabled)
+        {
+            _readOnlyTurn = false;
+        }
+    }
 
     // AC-1593: the policy as read at the last start or switch; a change applies from the next one, not mid-session.
     private ProvisionPolicy? _policy;
@@ -161,6 +188,7 @@ internal sealed class SessionRuntime : ISessionRuntime
 
     public async Task SetPermissionModeAsync(string mode, CancellationToken cancellationToken = default)
     {
+        _EnsurePermissionsMutable();
         if (_driver is not null)
         {
             await _EnsureOptionAllowedAsync(WellKnownPluginSessionOptions.PermissionMode, mode, cancellationToken);
@@ -190,6 +218,7 @@ internal sealed class SessionRuntime : ISessionRuntime
 
         if (string.Equals(key, WellKnownPluginSessionOptions.PermissionMode, StringComparison.OrdinalIgnoreCase) || OrgPolicyCeilings.IsUnsupervisedKey(key))
         {
+            _EnsurePermissionsMutable();
             await _EnsureOptionAllowedAsync(key, value, cancellationToken);
         }
 
@@ -210,6 +239,7 @@ internal sealed class SessionRuntime : ISessionRuntime
 
         if (autoApprove)
         {
+            _EnsurePermissionsMutable();
             _policy = await _ReadPolicyAsync(cancellationToken);
             if (_policy is not null && OrgPolicyCeilings.AutoApproveForbidden(_policy))
             {
@@ -225,13 +255,24 @@ internal sealed class SessionRuntime : ISessionRuntime
         _driver?.SetDelegatedToolGateAsync(ceiling, allowedTools, cancellationToken) ?? Task.CompletedTask;
 
     public Task RespondToPermissionAsync(string toolUseId, bool allow, CancellationToken cancellationToken = default) =>
-        _driver?.RespondToPermissionAsync(toolUseId, allow, cancellationToken) ?? Task.CompletedTask;
+        _driver?.RespondToPermissionAsync(toolUseId, allow && !_readOnlyTurn, cancellationToken) ?? Task.CompletedTask;
 
     public Task RespondToPermissionAsync(string toolUseId, bool allow, string? answersJson, CancellationToken cancellationToken) =>
-        _driver?.RespondToPermissionAsync(toolUseId, allow, answersJson, cancellationToken) ?? Task.CompletedTask;
+        _driver?.RespondToPermissionAsync(toolUseId, allow && !_readOnlyTurn, answersJson, cancellationToken) ?? Task.CompletedTask;
 
-    public Task AllowPermissionAlwaysAsync(string toolUseId, string toolName, string inputJson, PermissionRuleScope scope, CancellationToken cancellationToken = default) =>
-        _driver?.AllowPermissionAlwaysAsync(toolUseId, toolName, inputJson, scope, cancellationToken) ?? Task.CompletedTask;
+    public Task AllowPermissionAlwaysAsync(string toolUseId, string toolName, string inputJson, PermissionRuleScope scope, CancellationToken cancellationToken = default)
+    {
+        _EnsurePermissionsMutable();
+        return _driver?.AllowPermissionAlwaysAsync(toolUseId, toolName, inputJson, scope, cancellationToken) ?? Task.CompletedTask;
+    }
+
+    private void _EnsurePermissionsMutable()
+    {
+        if (_readOnlyTurn)
+        {
+            throw new InvalidOperationException("Permissions cannot be widened during a read-only turn.");
+        }
+    }
 
     public async ValueTask DisposeAsync()
     {

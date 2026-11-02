@@ -13,6 +13,16 @@ internal sealed class SessionToolApprovalGate(
     private readonly ConcurrentDictionary<string, TaskCompletionSource<bool>> _pendingApprovals = new();
     private readonly ConcurrentDictionary<string, byte> _alwaysAllowedTools = new();
     private volatile bool _autoApproveTools;
+    private volatile bool _readOnlyTurn;
+
+    public void SetReadOnlyTurn(bool enabled)
+    {
+        _readOnlyTurn = enabled;
+        if (enabled)
+        {
+            CancelPending();
+        }
+    }
 
     // Non-interactive delegated gate (AC-79): when a ceiling is set, this session has no human to prompt, so a
     // tool call is decided against the ceiling + allow-list rather than raising PermissionRequested. Null for an
@@ -30,6 +40,13 @@ internal sealed class SessionToolApprovalGate(
         // Surface the call in the transcript, then either auto-allow (an always-allow rule this session), decide
         // it non-interactively (a delegated session), or prompt and await the operator's decision.
         reportToolUse(toolUseId, toolName, inputJson);
+
+        if (_readOnlyTurn)
+        {
+            return ToolClasses.GetValueOrDefault(toolName, ToolPermissionClass.Unknown) == ToolPermissionClass.ReadOnly
+                ? ToolApprovalResult.Allow
+                : ToolApprovalResult.Deny("This turn is read-only; tools without a read-only annotation are denied.");
+        }
 
         // Auto-approve mode (the session's "allow all tools" toggle) or a per-tool always-allow rule runs the
         // call without prompting — the tool row is still emitted above, so it stays visible either way.
@@ -56,7 +73,8 @@ internal sealed class SessionToolApprovalGate(
         using (cancellationToken.Register(() => pending.TrySetResult(false)))
         {
             var approved = await pending.Task.ConfigureAwait(false);
-            return approved ? ToolApprovalResult.Allow : ToolApprovalResult.Deny(null);
+            return approved && (!_readOnlyTurn || ToolClasses.GetValueOrDefault(toolName, ToolPermissionClass.Unknown) == ToolPermissionClass.ReadOnly)
+                ? ToolApprovalResult.Allow : ToolApprovalResult.Deny(null);
         }
     }
 
@@ -75,7 +93,7 @@ internal sealed class SessionToolApprovalGate(
             return false;
         }
 
-        decision.TrySetResult(allow);
+        decision.TrySetResult(allow && !_readOnlyTurn);
         return true;
     }
 
@@ -87,6 +105,11 @@ internal sealed class SessionToolApprovalGate(
 
     public void SetAutoApprove(bool enabled)
     {
+        if (enabled && _readOnlyTurn)
+        {
+            throw new InvalidOperationException("Auto-approval cannot be enabled during a read-only turn.");
+        }
+
         _autoApproveTools = enabled;
 
         // Flipping it on frees any prompt already waiting, so the operator does not have to answer a prompt

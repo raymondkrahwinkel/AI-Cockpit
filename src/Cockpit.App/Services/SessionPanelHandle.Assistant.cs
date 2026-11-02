@@ -101,6 +101,10 @@ internal sealed partial class SessionPanelHandle : IAssistantSession
 
     void IAssistantSession.InjectAndSubmit(string text) => _Assistant.InjectAndSubmit(text);
 
+    ReadOnlyTurnReceipt IAssistantSession.TryStartReadOnlyTurn(string text, CancellationToken cancellationToken) =>
+        Control?.TryStartReadOnlyTurn(text, cancellationToken)
+        ?? ReadOnlyTurnReceipt.Refused(ReadOnlyTurnAdmission.Unavailable);
+
     Task<bool> IAssistantSession.CompactContextAsync() => _Assistant.CompactContextAsync();
 
     void IAssistantSession.AddDivider(string text) =>

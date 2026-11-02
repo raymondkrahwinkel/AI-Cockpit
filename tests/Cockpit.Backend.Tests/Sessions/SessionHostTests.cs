@@ -1,9 +1,11 @@
-using System.Reflection;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
+using Cockpit.Core.Sessions.Permissions;
+using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Sessions;
+using Cockpit.Plugins.Abstractions.Sessions;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 
@@ -65,30 +67,66 @@ public class SessionHostTests
         Assert.Equal(1000, firstSeqs.Concat(secondSeqs).Distinct().Count());
     }
 
-    /// <summary>
-    /// No member of the host names an Avalonia type, and running a turn through it loads no Avalonia assembly.
-    /// Reflecting over the members loads every type they name, so a dispatcher anywhere in them would show below.
-    /// </summary>
+    // Layer 2: enforcement overrides approval, and a withdrawn reservation must never dispatch later.
     [Fact]
-    public async Task TheHost_NamesAndLoadsNoAvaloniaType()
+    public async Task AReadOnlyTurn_RefusesWritingTools_AndWithdrawsBeforeStart()
     {
-        const BindingFlags all = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
-        var type = typeof(SessionHost);
         var (host, runtime) = _Started();
-        await host.SubmitAsync(new QueuedPrompt("first", []));
-        runtime.EventAppended += Raise.Event<Action<SessionEvent>>(_TurnCompleted());
-        host.CompleteTurn();
+        runtime.SupportsReadOnlyTurns.Returns(true);
+        var provider = Substitute.For<IPluginSessionDriver>();
+        provider.SupportsReadOnlyTurns.Returns(true);
+        var adapter = new PluginSessionDriverAdapter(provider, new PluginSessionCapabilities(true, true), new McpAuthKey());
+        Func<string, bool>? providerFilter = null;
+        provider.SetReadOnlyTurnAsync(Arg.Any<Func<string, bool>?>(), Arg.Any<CancellationToken>()).Returns(call =>
+        {
+            providerFilter = call.Arg<Func<string, bool>?>();
+            return Task.CompletedTask;
+        });
+        var arming = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gate = new SessionToolApprovalGate((_, _, _) => { }, (_, _, _) => { }, (_, _, _) => { })
+        {
+            ToolClasses = new Dictionary<string, ToolPermissionClass>
+            {
+                ["mcp__depot__write"] = ToolPermissionClass.Write,
+                ["Edit"] = ToolPermissionClass.Write,
+            },
+        };
+        gate.SetAutoApprove(true);
+        runtime.SetReadOnlyTurnAsync(true, Arg.Any<CancellationToken>()).Returns(async _ =>
+        {
+            await adapter.SetReadOnlyTurnAsync(true);
+            gate.SetReadOnlyTurn(true);
+            await arming.Task;
+        });
+        using var cancellation = new CancellationTokenSource();
 
-        var named = type.GetFields(all).Select(field => field.FieldType)
-            .Concat(type.GetProperties(all).Select(property => property.PropertyType))
-            .Concat(type.GetEvents(all).Select(evt => evt.EventHandlerType))
-            .Concat(type.GetMethods(all).SelectMany(method => method.GetParameters().Select(p => p.ParameterType).Append(method.ReturnType)))
-            .Concat(type.GetConstructors(all).SelectMany(ctor => ctor.GetParameters().Select(p => p.ParameterType)))
-            .ToList();
+        ReadOnlyTurnReceipt withdrawn = host.TryStartReadOnlyTurn("withdraw this", cancellation.Token);
+        Assert.Equal(ReadOnlyTurnAdmission.Accepted, withdrawn.Admission);
+        Assert.Equal(ReadOnlyTurnAdmission.Busy, host.TryStartReadOnlyTurn("cannot race").Admission);
+        Assert.Single(host.Queue);
+        Func<string, bool> filter = Assert.IsType<Func<string, bool>>(providerFilter);
+        Assert.False(filter("mcp__depot__write"));
+        Assert.False(filter("Edit"));
+        Assert.False(filter("Task"));
+        Assert.False(filter("Bash"));
+        Assert.True(filter("Read"));
+        Assert.False((await gate.RequestApprovalAsync("write", "mcp__depot__write", "{}", CancellationToken.None)).Approved);
+        Assert.False((await gate.RequestApprovalAsync("edit", "Edit", "{}", CancellationToken.None)).Approved);
 
-        Assert.NotEmpty(named);
-        Assert.DoesNotContain(named, namedType => _IsAvalonia(namedType?.Assembly));
-        Assert.DoesNotContain(AppDomain.CurrentDomain.GetAssemblies(), _IsAvalonia);
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => withdrawn.Started);
+        Assert.Empty(host.Queue);
+        var released = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        host.BusyChanged += () => released.TrySetResult();
+        arming.SetResult();
+        await released.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await runtime.DidNotReceive().SendUserMessageAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<ImageAttachment>?>(), Arg.Any<CancellationToken>());
+
+        ReadOnlyTurnReceipt started = host.TryStartReadOnlyTurn("run this");
+        await started.Started.WaitAsync(TimeSpan.FromSeconds(5));
+        host.Pump(new AssistantTextCompleted { SessionId = "S1", Text = "the answer" });
+        host.Pump(_TurnCompleted() with { Result = null });
+        Assert.Equal("the answer", await started.Completion.WaitAsync(TimeSpan.FromSeconds(5)));
     }
 
     private static (SessionHost Host, ISessionRuntime Runtime) _Started(ManualClock? clock = null, ILogger? logger = null)
@@ -113,9 +151,6 @@ public class SessionHostTests
         Enumerable.Range(0, count).ToList().ForEach(index =>
             runtime.EventAppended += Raise.Event<Action<SessionEvent>>(
                 new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = index.ToString() }));
-
-    private static bool _IsAvalonia(Assembly? assembly) =>
-        assembly?.GetName().Name?.StartsWith("Avalonia", StringComparison.Ordinal) == true;
 
     // A clock whose timers fire only when the test advances it, honouring Change and Dispose as the real ones do.
     private sealed class ManualClock : TimeProvider

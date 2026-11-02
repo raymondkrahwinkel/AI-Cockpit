@@ -19,7 +19,26 @@ internal static class SchedulesScenes
     {
         ["schedules-server"] = () => _Screen(new PluginServerTarget("homeserver", SceneHost.Create(_Server(), ["ai-hub"], ["/srv/repos/ai-os"]))),
         ["schedules-server-unavailable"] = () => _Screen(new PluginServerTarget("homeserver", null, "homeserver has Schedules 0.6.7, this computer 0.7.0.", () => Task.CompletedTask, "Update on server")),
+        ["schedules-assistant-editor"] = () => _Editor(null),
+        ["schedules-profile-editor"] = () => _Editor("personal"),
     };
+
+    private static Control _Editor(string? profile)
+    {
+        var channel = new SceneChannel(new SchedulesSnapshot([], [], [], new(2, "Europe/Amsterdam", 30), Now));
+        var host = SceneHost.Create(channel, ["personal"], []);
+        var state = new SchedulesState(host.Channel);
+        _Done(state.RefreshAsync());
+        var task = new ScheduledTask
+        {
+            Id = "digest",
+            Name = "Morning digest",
+            Schedule = "0 7 * * 1-5",
+            TimeZone = "Europe/Amsterdam",
+            Action = new TaskAction(TaskActionKind.AgentPrompt, "Summarise today's news.") { Profile = profile },
+        };
+        return new TaskEditorView(state, host, ["personal"], task, _ => { });
+    }
 
     private static Control _Screen(PluginServerTarget server)
     {
@@ -57,7 +76,12 @@ internal static class SchedulesScenes
     private sealed class SceneChannel(SchedulesSnapshot snapshot) : IPluginUiChannel
     {
         public Task<JsonElement> InvokeAsync(string action, JsonElement payload, CancellationToken cancellationToken = default) =>
-            Task.FromResult(action == SchedulesChannel.Snapshot ? JsonSerializer.SerializeToElement(snapshot, SchedulesChannel.Json) : JsonSerializer.SerializeToElement<object?>(null));
+            Task.FromResult(action switch
+            {
+                SchedulesChannel.Snapshot => JsonSerializer.SerializeToElement(snapshot, SchedulesChannel.Json),
+                SchedulesChannel.Preview => JsonSerializer.SerializeToElement(new SchedulesPreview(true, "Every weekday at 07:00", [Now.AddHours(1)]), SchedulesChannel.Json),
+                _ => JsonSerializer.SerializeToElement<object?>(null),
+            });
 
         public IDisposable Subscribe(string name, Action<PluginChannelEvent> handler) => new Nothing();
     }

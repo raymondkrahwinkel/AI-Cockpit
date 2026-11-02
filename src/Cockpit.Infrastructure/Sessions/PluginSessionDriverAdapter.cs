@@ -10,6 +10,7 @@ using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Sessions.Tty;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Provisioning;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Plugins.Abstractions.Sessions;
 
@@ -97,8 +98,15 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
     public IReadOnlyList<SessionLiveOption> LiveOptions =>
         [.. inner.LiveOptions.Select(option => new SessionLiveOption(option.Key, option.Label, option.Choices, option.DefaultValue) { ChoiceLabels = option.ChoiceLabels })];
 
-    public Task SetLiveOptionAsync(string key, string value, CancellationToken cancellationToken = default) =>
-        inner.SetLiveOptionAsync(key, value, cancellationToken);
+    public Task SetLiveOptionAsync(string key, string value, CancellationToken cancellationToken = default)
+    {
+        if (string.Equals(key, WellKnownPluginSessionOptions.PermissionMode, StringComparison.OrdinalIgnoreCase) || OrgPolicyCeilings.IsUnsupervisedKey(key))
+        {
+            _EnsurePermissionsMutable();
+        }
+
+        return inner.SetLiveOptionAsync(key, value, cancellationToken);
+    }
 
     public async Task StartAsync(SessionProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null, IReadOnlyDictionary<string, string>? launchOptions = null, string? projectId = null, CancellationToken cancellationToken = default)
     {
@@ -204,6 +212,53 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
 
     // Non-null once StartAsync mounted one for this session.
     private HostPluginToolset? _hostToolset;
+    private volatile bool _readOnlyTurn;
+
+    public bool SupportsReadOnlyTurns => inner.SupportsReadOnlyTurns
+        || (_hostToolset is not null && pluginCapabilities.HostToolLoop != PluginHostToolLoop.None && inner.ProcessId is null);
+
+    public async Task SetReadOnlyTurnAsync(bool enabled, CancellationToken cancellationToken = default)
+    {
+        if (enabled && !SupportsReadOnlyTurns)
+        {
+            throw new NotSupportedException("This provider cannot enforce read-only turns.");
+        }
+
+        if (enabled)
+        {
+            _readOnlyTurn = true;
+            _hostToolset?.Gate.SetReadOnlyTurn(true);
+        }
+
+        if (inner.SupportsReadOnlyTurns)
+        {
+            await inner.SetReadOnlyTurnAsync(enabled ? _IsReadOnlyTool : null, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (!enabled)
+        {
+            _hostToolset?.Gate.SetReadOnlyTurn(false);
+            _readOnlyTurn = false;
+        }
+    }
+
+    private void _EnsurePermissionsMutable()
+    {
+        if (_readOnlyTurn)
+        {
+            throw new InvalidOperationException("Permissions cannot be widened during a read-only turn.");
+        }
+    }
+
+    private bool _IsReadOnlyTool(string toolName)
+    {
+        if (_hostToolset?.Gate.ToolClasses.TryGetValue(toolName, out var toolClass) == true)
+        {
+            return toolClass == ToolPermissionClass.ReadOnly;
+        }
+
+        return ReadOnlyTurnToolPolicy.IsReadOnlyTool(toolName);
+    }
 
     // AC-40: this run's MCP auth key, plus the profile's own variables (AC-22) scrubbed host-side of
     // host-controlled keys (dropped by name, never by value, same rule the TTY route applies).
@@ -476,19 +531,24 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
 
     // A prompt the host's own tool loop raised is answered here; anything else is the plugin's own (AC-964).
     public Task RespondToPermissionAsync(string toolUseId, bool allow, CancellationToken cancellationToken = default) =>
-        _hostToolset?.Gate.Respond(toolUseId, allow) == true
+        _hostToolset?.Gate.Respond(toolUseId, allow && !_readOnlyTurn) == true
             ? Task.CompletedTask
-            : inner.RespondToPermissionAsync(toolUseId, allow, cancellationToken);
+            : inner.RespondToPermissionAsync(toolUseId, allow && !_readOnlyTurn, cancellationToken);
 
     public Task RespondToPermissionAsync(string toolUseId, bool allow, string? answersJson, CancellationToken cancellationToken) =>
-        _hostToolset?.Gate.Respond(toolUseId, allow) == true
+        _hostToolset?.Gate.Respond(toolUseId, allow && !_readOnlyTurn) == true
             ? Task.CompletedTask
-            : inner.RespondToPermissionAsync(toolUseId, allow, answersJson, cancellationToken);
+            : inner.RespondToPermissionAsync(toolUseId, allow && !_readOnlyTurn, answersJson, cancellationToken);
 
     // Both gates are told: the host's when it runs this session's tools, and the plugin's for its own, so a
     // provider that has both never ends up with one of them still prompting.
     public Task SetAutoApproveToolsAsync(bool enabled, CancellationToken cancellationToken = default)
     {
+        if (enabled)
+        {
+            _EnsurePermissionsMutable();
+        }
+
         _hostToolset?.Gate.SetAutoApprove(enabled);
         return inner.SetAutoApproveToolsAsync(enabled, cancellationToken);
     }
@@ -542,6 +602,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
     // acceptForSession can persist it too. Host's gate goes first, same reason as RespondToPermissionAsync: it raised the prompt.
     public Task AllowPermissionAlwaysAsync(string toolUseId, string toolName, string proposedInputJson, PermissionRuleScope scope, CancellationToken cancellationToken = default)
     {
+        _EnsurePermissionsMutable();
         var rule = scope == PermissionRuleScope.Wildcard
             ? PermissionRule.ForWildcard(toolName)
             : PermissionRule.ForExact(toolName, proposedInputJson);
@@ -592,6 +653,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
     // safe for every plugin, since one without the matching Supports* capability never has these called.
     public Task SetPermissionModeAsync(string mode, CancellationToken cancellationToken = default)
     {
+        _EnsurePermissionsMutable();
         // AC-190 defense-in-depth: recompute so Capabilities never reports a stale "confined" after a live
         // switch — the Claude driver hides the bypass switch today, but this stops the guard resting on that fact staying true.
         _permissionModeConfines = _ModeConfines(mode);
@@ -665,6 +727,14 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
 
             // AC-971: a delegated session's permission requests are decided here, never published as a prompt with
             // nobody to answer it. The tool row and its (error) result still flow, so a denial stays visible.
+            if (pluginEvent is PluginPermissionRequested readOnlyPermission && _readOnlyTurn)
+            {
+                bool allow = _IsReadOnlyTool(readOnlyPermission.ToolName);
+                await inner.RespondToPermissionAsync(readOnlyPermission.ToolUseId, allow, answersJson: null,
+                    denyReason: allow ? null : "This turn is read-only; this tool is denied.", cancellationToken).ConfigureAwait(false);
+                continue;
+            }
+
             if (pluginEvent is PluginPermissionRequested permission && _delegatedCeiling is { } ceiling)
             {
                 await _DecideDelegatedPermissionAsync(ceiling, permission, cancellationToken).ConfigureAwait(false);

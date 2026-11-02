@@ -54,6 +54,26 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
 
     // request_id -> the awaiter for that reply. The fire-and-forget requests register none.
     private readonly ConcurrentDictionary<string, TaskCompletionSource<JsonElement?>> _pendingControlResponses = new();
+    private volatile Func<string, bool>? _readOnlyToolFilter;
+    private volatile bool _readOnlyHookRegistered;
+    private string? _readOnlyHookRegistrationId;
+    private Task<JsonElement?> _readOnlyHookRegistration = Task.FromResult<JsonElement?>(null);
+
+    public bool SupportsReadOnlyTurns => _readOnlyHookRegistered;
+
+    public async Task SetReadOnlyTurnAsync(Func<string, bool>? toolFilter, CancellationToken cancellationToken = default)
+    {
+        if (toolFilter is not null)
+        {
+            await _readOnlyHookRegistration.WaitAsync(_UsageRequestTimeout, cancellationToken).ConfigureAwait(false);
+            if (!SupportsReadOnlyTurns)
+            {
+                throw new NotSupportedException("The Claude CLI did not acknowledge the read-only tool hook.");
+            }
+        }
+
+        _readOnlyToolFilter = toolFilter;
+    }
 
     // Ticks of the last successful `get_usage`. The context breakdown is not throttled — it is local, and it is
     // the one that changes every turn.
@@ -240,9 +260,12 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         _stderrDrain = Task.Run(() => _DrainStderrAsync(subprocess, _lifetime.Token), CancellationToken.None);
         _stdoutPump = Task.Run(() => _PumpStdoutAsync(subprocess, _lifetime.Token), CancellationToken.None);
 
-        // Put an SDK client on the control channel so the CLI routes approvals here as can_use_tool requests. Sent
-        // fire-and-forget (the reply is drained by the pump, not correlated), matching the host's control_request style.
-        await _WriteLineAsync(ClaudeControlProtocol.BuildInitializeRequest(Guid.NewGuid().ToString()), cancellationToken).ConfigureAwait(false);
+        // PreToolUse runs even for CLI auto-allows; only a successful registration vouches for read-only turns.
+        _readOnlyHookRegistrationId = Guid.NewGuid().ToString();
+        var registration = new TaskCompletionSource<JsonElement?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _readOnlyHookRegistration = registration.Task;
+        _pendingControlResponses[_readOnlyHookRegistrationId] = registration;
+        await _WriteLineAsync(ClaudeControlProtocol.BuildInitializeRequest(_readOnlyHookRegistrationId, registerReadOnlyHook: true), cancellationToken).ConfigureAwait(false);
 
         // Apply the launch effort as the session's initial thinking-token budget; a live effort switch re-sends the
         // same control request. Left to the CLI's own default when the level is unknown.
@@ -381,7 +404,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         // AC-971: the host's delegated gate passes its own reason, since no operator denied anything there.
         var line = ClaudeControlProtocol.BuildDecisionResponse(
             pending.RequestId,
-            allow,
+            allow && _readOnlyToolFilter is null,
             pending.InputJson,
             denyMessage: denyReason is { Length: > 0 } reason ? reason : "Denied by the cockpit operator.",
             answersJson);
@@ -390,6 +413,11 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
 
     public Task SetLiveOptionAsync(string key, string value, CancellationToken cancellationToken = default)
     {
+        if (_readOnlyToolFilter is not null && string.Equals(key, PermissionModeOptionKey, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("Permissions cannot be widened during a read-only turn.");
+        }
+
         // Model and permission mode are switchable mid-session over the control protocol — the exact set_model /
         // set_permission_mode subtypes the host's ClaudeCliSession already round-trips against the live CLI. A key this
         // driver did not declare is contract drift, not an operator mistake, so it is ignored.
@@ -435,7 +463,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         {
             await foreach (var line in subprocess.ReadStdoutLinesAsync(cancellationToken).ConfigureAwait(false))
             {
-                _HandleLine(line);
+                await _HandleLineAsync(line, cancellationToken).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException)
@@ -448,6 +476,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         }
         finally
         {
+            _readOnlyHookRegistered = false;
             // AC-539: a result line's publish is parked behind the usage poll, and a CLI that exits right after
             // printing one (an unresolvable --resume) ends stdout while that task still waits — completing first
             // drops the turn. Never throws: _PollUsageThenPublishAsync swallows its own poll failure.
@@ -461,10 +490,10 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
     }
 
     // The in-flight _PollUsageThenPublishAsync, so the pump can wait for it before completing the stream. Only ever
-    // touched from the pump thread (_HandleLine runs on it), so plain assignment is enough.
+    // touched from the pump thread (_HandleLineAsync runs on it), so plain assignment is enough.
     private Task _pendingResultPublish = Task.CompletedTask;
 
-    private void _HandleLine(string line)
+    private async Task _HandleLineAsync(string line, CancellationToken cancellationToken)
     {
         try
         {
@@ -502,8 +531,21 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
             // routed here, never to the transcript parser.
             if (ClaudeControlProtocol.IsControlLine(type))
             {
-                if (ClaudeControlProtocol.TryParsePermissionRequest(root, out var requestId, out var toolUseId, out var toolName, out var inputJson))
+                if (ClaudeControlProtocol.TryParseHookRequest(root, out var hookRequestId, out var hookToolName))
                 {
+                    bool deny = _readOnlyToolFilter is { } toolFilter && !toolFilter(hookToolName);
+                    await _WriteLineAsync(ClaudeControlProtocol.BuildHookResponse(hookRequestId, deny), cancellationToken).ConfigureAwait(false);
+                }
+                else if (ClaudeControlProtocol.TryParsePermissionRequest(root, out var requestId, out var toolUseId, out var toolName, out var inputJson))
+                {
+                    if (_readOnlyToolFilter is { } permissionFilter)
+                    {
+                        bool allow = permissionFilter(toolName);
+                        await _WriteLineAsync(ClaudeControlProtocol.BuildDecisionResponse(requestId, allow, inputJson,
+                            "This turn is read-only; this tool is denied."), cancellationToken).ConfigureAwait(false);
+                        return;
+                    }
+
                     _pendingApprovals[toolUseId] = (requestId, inputJson);
                     _events.Publish(new PluginPermissionRequested
                     {
@@ -515,7 +557,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
                 }
                 else if (ClaudeControlProtocol.TryParseResponse(root, out var responseId, out var payload))
                 {
-                    // A reply nobody waits for (the initialize handshake, a set_model ack) is dropped, as before.
+                    // Replies without a registered awaiter, such as a set_model ack, are dropped.
                     _CompleteControlResponse(responseId, payload);
                 }
                 else if (responseId.Length > 0)
@@ -724,6 +766,11 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
 
     private void _CompleteControlResponse(string requestId, JsonElement? payload)
     {
+        if (requestId == _readOnlyHookRegistrationId)
+        {
+            _readOnlyHookRegistered = payload.HasValue;
+        }
+
         if (_pendingControlResponses.TryRemove(requestId, out var awaiter))
         {
             awaiter.TrySetResult(payload);

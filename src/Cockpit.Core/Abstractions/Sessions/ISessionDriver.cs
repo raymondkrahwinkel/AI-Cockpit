@@ -11,6 +11,20 @@ namespace Cockpit.Core.Abstractions.Sessions;
 /// </summary>
 public interface ISessionDriver : IAsyncDisposable
 {
+    /// <summary>Whether the running driver can enforce a read-only tool boundary for one turn.</summary>
+    bool SupportsReadOnlyTurns => false;
+
+    /// <summary>Arms or clears the hard tool boundary; unsupported drivers fail closed when enabled.</summary>
+    Task SetReadOnlyTurnAsync(bool enabled, CancellationToken cancellationToken = default)
+    {
+        if (enabled)
+        {
+            throw new NotSupportedException("This provider cannot enforce read-only turns.");
+        }
+
+        return Task.CompletedTask;
+    }
+
     Task<ChildTranscriptPage> ReadChildTranscriptAsync(string agentId, string? runId, string? cursor, CancellationToken cancellationToken = default) =>
         Task.FromResult(ChildTranscriptPage.Unavailable("provider does not support child history"));
 

@@ -137,7 +137,7 @@ internal sealed class TasksView : UserControl
         };
 
         var kind = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
-        kind.Children.Add(Ui.Hint(task.Action.Kind == TaskActionKind.AgentPrompt ? $"Agent · {task.Action.Profile}" : "Fixed message"));
+        kind.Children.Add(Ui.Hint(task.Action.Kind == TaskActionKind.AgentPrompt ? string.IsNullOrWhiteSpace(task.Action.Profile) ? "Assistant" : $"Agent · {task.Action.Profile}" : "Fixed message"));
         if (Ui.IsDangerous(task))
         {
             kind.Children.Add(Ui.Tag("Dangerous", "CockpitStatusErrorBrush"));
@@ -222,7 +222,10 @@ internal sealed class TasksView : UserControl
             ("Next", Ui.Value(task.IsEnabled ? Ui.When(view.NextRun) : "Disabled"))));
 
         panel.Children.Add(Ui.Section("Action"));
-        panel.Children.Add(task.Action.Kind == TaskActionKind.AgentPrompt
+        var assistant = task.Action.Kind == TaskActionKind.AgentPrompt && string.IsNullOrWhiteSpace(task.Action.Profile);
+        panel.Children.Add(assistant
+            ? Ui.KeyValues(("Type", Ui.Value("Agent prompt")), ("Run by", Ui.Value("Assistant")), ("Permission", Ui.Value("Read-only")))
+            : task.Action.Kind == TaskActionKind.AgentPrompt
             ? Ui.KeyValues(
                 ("Type", Ui.Value("Agent prompt")),
                 ("Profile", Ui.Value(task.Action.Profile ?? "—")),
@@ -231,16 +234,23 @@ internal sealed class TasksView : UserControl
                 ("Unattended", Ui.Value(!Ui.IsDangerous(task) ? "n/a" : task.RunUnattended ? "Yes, runs without asking" : "No, asks consent every run")))
             : Ui.KeyValues(("Type", Ui.Value("Fixed message")), ("Text", Ui.Value(task.Action.Text))));
 
-        panel.Children.Add(Ui.Section("Delivery"));
-        var delivery = new WrapPanel();
-        foreach (var target in task.Delivery)
+        if (assistant)
         {
-            var name = _state.Channels.FirstOrDefault(channel => channel.Id == target.Channel)?.DisplayName ?? $"{target.Channel} (plugin not installed)";
-            delivery.Children.Add(Ui.Tag(target.Target is null ? name : $"{name} · {target.Target}"));
+            panel.Children.Add(Ui.Hint("Answers appear in the assistant conversation and its connected channels. Empty answers finish successfully without output."));
         }
+        else
+        {
+            panel.Children.Add(Ui.Section("Delivery"));
+            var delivery = new WrapPanel();
+            foreach (var target in task.Delivery)
+            {
+                var name = _state.Channels.FirstOrDefault(channel => channel.Id == target.Channel)?.DisplayName ?? $"{target.Channel} (plugin not installed)";
+                delivery.Children.Add(Ui.Tag(target.Target is null ? name : $"{name} · {target.Target}"));
+            }
 
-        panel.Children.Add(delivery);
-        panel.Children.Add(Ui.Hint("Empty result → nothing delivered, run counts as \"Nothing to deliver\"."));
+            panel.Children.Add(delivery);
+            panel.Children.Add(Ui.Hint("Empty result → nothing delivered, run counts as \"Nothing to deliver\"."));
+        }
 
         panel.Children.Add(Ui.Section("Recent runs"));
         if (runs.Count == 0)
@@ -269,7 +279,9 @@ internal sealed class TasksView : UserControl
             return;
         }
 
-        _host.ShowToast(task.Action.Kind == TaskActionKind.AgentPrompt
+        _host.ShowToast(task.Action.Kind == TaskActionKind.AgentPrompt && string.IsNullOrWhiteSpace(task.Action.Profile)
+            ? $"Requested \"{task.Name}\": waiting for the assistant. You can keep working."
+            : task.Action.Kind == TaskActionKind.AgentPrompt
             ? $"Running \"{task.Name}\": agent run started with profile {task.Action.Profile}. You can keep working."
             : $"Running \"{task.Name}\": sending the message…");
     }

@@ -171,7 +171,7 @@ internal static class Ui
     };
 
     public static bool IsDangerous(ScheduledTask task) =>
-        task.Action.Kind == TaskActionKind.AgentPrompt && task.Action.Permission == AgentPermission.Write;
+        task.Action.Kind == TaskActionKind.AgentPrompt && !string.IsNullOrWhiteSpace(task.Action.Profile) && task.Action.Permission == AgentPermission.Write;
 }
 
 // A dialog drawn over the screen itself, as the mockup's modal: a card on a scrim, closed by its own buttons.

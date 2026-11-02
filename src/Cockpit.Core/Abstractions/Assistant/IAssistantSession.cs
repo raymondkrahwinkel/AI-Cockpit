@@ -11,6 +11,12 @@ namespace Cockpit.Core.Abstractions.Assistant;
 public interface IAssistantSession : IAsyncDisposable
 {
     /// <summary>
+    /// Claims an idle read-only turn through the session's own serialized send boundary.
+    /// </summary>
+    ReadOnlyTurnReceipt TryStartReadOnlyTurn(string text, CancellationToken cancellationToken = default) =>
+        ReadOnlyTurnReceipt.Refused(ReadOnlyTurnAdmission.Unavailable);
+
+    /// <summary>
     /// Whether its runtime is running — asked of the session, since a runtime can end without telling anyone.
     /// </summary>
     bool IsSessionReady { get; }

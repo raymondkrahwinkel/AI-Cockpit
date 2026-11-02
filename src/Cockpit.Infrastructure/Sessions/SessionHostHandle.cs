@@ -594,6 +594,18 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
 
     public void SubmitComposer() => InjectAndSubmit(string.Empty);
 
+    public ReadOnlyTurnReceipt TryStartReadOnlyTurn(string text, CancellationToken cancellationToken = default)
+    {
+        ReadOnlyTurnReceipt receipt;
+        lock (_gate)
+        {
+            receipt = _host.TryStartReadOnlyTurn(text, cancellationToken);
+        }
+
+        _RaisePendingStateChange();
+        return receipt;
+    }
+
     // Queued behind a turn in flight or a hold, like the desktop's send; otherwise sent now and awaited on disposal.
     public void InjectAndSubmit(string text)
     {
