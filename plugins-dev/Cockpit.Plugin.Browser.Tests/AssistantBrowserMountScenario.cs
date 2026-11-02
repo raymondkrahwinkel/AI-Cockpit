@@ -1,5 +1,4 @@
 using System.Net;
-using System.Net.Http.Headers;
 using System.Reflection;
 using System.Text.Json;
 using Cockpit.Core.Assistant;
@@ -74,24 +73,27 @@ internal static class AssistantBrowserMountScenario
         Assert.Null(browsers.SessionFor(AssistantIdentity.PaneId));
 
         // The negative scenario sends a valid assistant bearer directly, bypassing client selection.
-        mounts.Grant(AssistantIdentity.PaneId, [.. AssistantSessionHost.McpSelection(profile with { EnabledMcpServerNames = [] }, [])]);
         var unmountedToken = keyring.TokenFor(AssistantIdentity.PaneId);
-        Assert.Equal(HttpStatusCode.Forbidden, await ProbeAsync(url, unmountedToken, fixture.Url));
+        using var probeHandler = new BrowserProbeHandler();
+        using var probeHttp = new HttpClient(probeHandler);
+        await using var probeClient = await ConnectAsync(url, unmountedToken, probeHttp);
+        mounts.Grant(AssistantIdentity.PaneId, [.. AssistantSessionHost.McpSelection(profile with { EnabledMcpServerNames = [] }, [])]);
+        Assert.Equal(HttpStatusCode.Forbidden, await ProbeAsync(probeClient, probeHandler, fixture.Url));
         Assert.Null(browsers.SessionFor(AssistantIdentity.PaneId));
         mounts.Grant(AssistantIdentity.PaneId, [.. selection]);
         enabled = false;
-        Assert.Equal(HttpStatusCode.Forbidden, await ProbeAsync(url, unmountedToken, fixture.Url));
+        Assert.Equal(HttpStatusCode.Forbidden, await ProbeAsync(probeClient, probeHandler, fixture.Url));
         Assert.Null(browsers.SessionFor(AssistantIdentity.PaneId));
         keyring.Revoke(AssistantIdentity.PaneId, unmountedToken);
     }
 
-    private static Task<McpClient> ConnectAsync(string url, string token) => McpClient.CreateAsync(
+    private static Task<McpClient> ConnectAsync(string url, string token, HttpClient? http = null) => McpClient.CreateAsync(
         new HttpClientTransport(new HttpClientTransportOptions
         {
             Name = "cockpit-browser",
             Endpoint = new Uri(url),
             AdditionalHeaders = new Dictionary<string, string> { ["Authorization"] = $"Bearer {token}" },
-        }));
+        }, http ?? new HttpClient(), ownsHttpClient: http is null));
 
     private static async Task<JsonDocument> CallAsync(McpClient client, string tool, Dictionary<string, object?> arguments)
     {
@@ -99,17 +101,18 @@ internal static class AssistantBrowserMountScenario
         return JsonDocument.Parse(Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
     }
 
-    private static async Task<HttpStatusCode> ProbeAsync(string url, string token, string pageUrl)
+    private static async Task<HttpStatusCode> ProbeAsync(McpClient client, BrowserProbeHandler handler, string pageUrl)
     {
-        using var http = new HttpClient();
-        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        using var body = new StringContent(JsonSerializer.Serialize(new
+        try
         {
-            jsonrpc = "2.0", id = 1, method = "tools/call",
-            @params = new { name = "browser_open_tab", arguments = new { url = pageUrl, purpose = "self" } },
-        }), System.Text.Encoding.UTF8, "application/json");
-        using var response = await http.PostAsync(url, body);
-        return response.StatusCode;
+            using var result = await CallAsync(client, "browser_open_tab", new() { ["url"] = pageUrl, ["purpose"] = "self" });
+            Assert.True(result.RootElement.GetProperty("ok").GetBoolean());
+            return handler.LastStatus ?? throw new InvalidOperationException("The probe sent no HTTP request.");
+        }
+        catch (Exception) when (handler.LastStatus == HttpStatusCode.Forbidden)
+        {
+            return HttpStatusCode.Forbidden;
+        }
     }
 }
 
