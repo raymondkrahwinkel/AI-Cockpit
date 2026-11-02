@@ -82,7 +82,7 @@ internal sealed partial class DepotBrowserPanel
             (_projectBox.SelectedItem as DepotBrowserProject)?.Name ?? project, folder, folders,
             path => _loaded.Nodes.Any(node => node.Path == path),
             path => DepotMarkdownFiles.OpenAsync(_host, model.Connection, project, path, edit: true, createNew: true)),
-            480, 480);
+            480, 600);
     }
 
     private static IEnumerable<string> _ParentFolders(string path)

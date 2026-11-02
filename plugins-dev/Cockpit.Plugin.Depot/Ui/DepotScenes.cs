@@ -70,14 +70,20 @@ internal static class DepotScenes
         ["depot-panel-files-project"] = () => DepotPanelScene.Build(0, projectIndex: 1),
         ["depot-panel-files-connection"] = () => DepotPanelScene.Build(0, connectionIndex: 1),
         ["depot-panel-inbox-connection"] = () => DepotPanelScene.Build(2, connectionIndex: 1),
-        ["depot-new-markdown"] = () =>
-        {
-            var dialog = new NewMarkdownFileDialog("krahwinkel-it/cockpit", "Ideas", ["", "Ideas", "Plan"], _ => false, _ => Task.CompletedTask)
-                { HorizontalAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Top };
-            var name = dialog.GetLogicalDescendants().OfType<TextBox>().Single();
-            name.Text = "md-editor-in-cockpit";
-            return dialog;
-        },
+        ["depot-new-markdown"] = () => _NewMarkdownScene(null, "md-editor-in-cockpit"),
+        ["depot-new-folder"] = () => _NewMarkdownScene("", "md-editor-in-cockpit"),
+        ["depot-new-folder-error"] = () => _NewMarkdownScene("../Plan", "md-editor-in-cockpit"),
+        ["depot-browser-new-folder"] = () => _Scene(new DepotBrowserSceneModel(
+            _Project,
+            new DepotBrowserTree(
+            [
+                new("Ideas/MySpace/md-editor-in-cockpit.md", DepotBrowserKind.Document, 38, _Modified, "text/markdown"),
+                new("Ideas/depot-sync.md", DepotBrowserKind.Document, 2048, _Modified, "text/markdown"),
+                new("Plan/AC-1708-dock-panels.md", DepotBrowserKind.Document, 116, _Modified, "text/markdown"),
+            ],
+            true),
+            "Ideas/MySpace/md-editor-in-cockpit.md",
+            null)),
     };
 
     // Read by Cockpit's `--screenshot --scene plugin:<name>`: the tab of a note the account has no right to (mockup 3c).
@@ -88,6 +94,19 @@ internal static class DepotScenes
                 _ => new DepotSharedNoteView(null, DepotSharedNote.Key("work", "7Kq3xP"), [new("work", "Work", "https://depot.example.com")]))
                 { IconKind = MaterialIconKind.LockOutline }, null),
         };
+
+    // The "New Markdown file" dialog; `newFolder` null keeps the plain dialog, otherwise "New folder…" is chosen with that name typed.
+    private static NewMarkdownFileDialog _NewMarkdownScene(string? newFolder, string file)
+    {
+        var dialog = new NewMarkdownFileDialog("krahwinkel-it/cockpit", "Ideas", ["", "Ideas", "Plan"], _ => false, _ => Task.CompletedTask)
+            { HorizontalAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Top };
+        dialog.GetLogicalDescendants().OfType<TextBox>().Single(box => box.Name == "MarkdownFileName").Text = file;
+        if (newFolder is not null)
+        {
+            dialog.ChooseNewFolder(newFolder);
+        }
+        return dialog;
+    }
 
     private static Control _Scene(DepotBrowserSceneModel model)
     {

@@ -17,9 +17,9 @@ namespace Cockpit.App;
 
 internal static partial class Screenshotter
 {
-    private static Window _NewMarkdownFileDialogScene()
+    private static Window _NewMarkdownFileDialogScene(string scene = "depot-new-markdown")
     {
-        var window = PluginScenes.Build("plugin:depot-new-markdown", 480, 480);
+        var window = PluginScenes.Build($"plugin:{scene}", 480, 600);
         Controls.CockpitWindowChrome.Apply(window, "New Markdown file");
         return window;
     }
