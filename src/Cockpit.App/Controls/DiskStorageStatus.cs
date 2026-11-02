@@ -56,6 +56,13 @@ internal sealed class DiskStorageStatus : Button
         };
     }
 
+    // The scenes hand it fixed readings; a live attach reads the services again.
+    internal void Use(IMachineResources resources, IDockerStorageMaintenance maintenance)
+    {
+        (_resources, _maintenance) = (resources, maintenance);
+        _Refresh();
+    }
+
     private void _Attach()
     {
         _Detach();

@@ -452,6 +452,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // The delegated-tasks view (#67): work other sessions handed to a profile, which has no tab of its own.
     public DelegatedTasksViewModel DelegatedTasks { get; }
+
+    // AC-2028: the test runs behind the status bar's "Test runs: N".
+    public TestRunsViewModel TestRuns { get; }
     private AgentsOverviewViewModel? _agentsOverview;
     public AgentsOverviewViewModel AgentsOverview => _agentsOverview ??= new(this);
     internal AgentsOverviewFilters AgentsFilters { get; private set; } = new();
@@ -3384,6 +3387,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         Plugins = new PluginManagerViewModel();
         DelegatedTasks = new DelegatedTasksViewModel();
+        TestRuns = new TestRunsViewModel();
         Worktrees = new WorktreesViewModel();
         Projects = new ProjectsViewModel();
         Security = new SecurityOptionsViewModel(new UnprotectedSecrets());
@@ -3466,6 +3470,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IAppRestartService? appRestartService = null,
         IShortcutSettingsStore? shortcutSettingsStore = null,
         DelegatedTasksViewModel? delegatedTasks = null,
+        TestRunsViewModel? testRuns = null,
         IDebugSettingsStore? debugSettingsStore = null,
         IDelegationMcpToggle? delegationMcpToggle = null,
         IRenderingSettingsStore? renderingSettingsStore = null,
@@ -3662,6 +3667,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // switch with — not a second source of truth for a fact that must agree with what happened to plugin loading.
         _safeMode = pluginDiagnostics?.SafeMode ?? false;
         DelegatedTasks = delegatedTasks ?? new DelegatedTasksViewModel();
+        TestRuns = testRuns ?? new TestRunsViewModel();
+        TestRuns.SessionName = paneId => Sessions.FirstOrDefault(session => session.PaneId == paneId)?.Title;
         _worktreeManager = worktreeManager;
         _sessionStateRecorder = sessionStateRecorder;
         _sessionStateStore = sessionStateStore;
@@ -7386,6 +7393,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // Opens the delegated-tasks view (#67): the work other sessions handed to a profile. Those tasks run as
     // sessions with no tab of their own, so this is where they stay visible — and stoppable.
+    [RelayCommand]
+    private async Task ShowTestRunsAsync()
+    {
+        if (_dialogService is not null)
+        {
+            await _dialogService.ShowTestRunsDialogAsync();
+        }
+    }
+
     [RelayCommand]
     private async Task ShowDelegatedTasksAsync()
     {

@@ -2733,6 +2733,24 @@
                                    VerticalAlignment="Center"/>
                     </Button>
 
+                    <!-- AC-2028: running and queued test runs, tracked and heavy together; gone at nought. -->
+                    <Button DockPanel.Dock="Right"
+                            Classes="statusMeter"
+                            Padding="8,2"
+                            Margin="0,0,8,0"
+                            Command="{Binding ShowTestRunsCommand}"
+                            IsVisible="{Binding TestRuns.HasActive}"
+                            ToolTip.Tip="Commands your sessions started through start_run — click to read their output, or stop them">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="5">
+                            <materialIcons:MaterialIcon Kind="FlaskOutline" Width="13" Height="13"
+                                                        Foreground="{DynamicResource CockpitStatusBusyBrush}"/>
+                            <TextBlock Text="{Binding TestRuns.ActiveCount, StringFormat='Test runs: {0}'}"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource CockpitStatusBusyBrush}"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+
                     <!-- Plugin-registered supervised activities (AC-82): a counter per source (e.g. "Port-forwards: 2"),
                          shown only while it has activities, opening a panel with a Kill per item. -->
                     <controls:PluginStatusBarHost DockPanel.Dock="Right"

@@ -7,6 +7,7 @@ using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Cockpit.App.ViewModels;
+using Cockpit.Core.Abstractions.Shell;
 using Cockpit.Plugins.Abstractions.StatusBar;
 
 namespace Cockpit.App.Controls;
@@ -62,6 +63,12 @@ internal sealed class PluginStatusBarHost : StackPanel
 
     private void _Add(ISupervisedActivitySource source)
     {
+        // The test-runs item and its dialog (AC-2028) show these.
+        if (source is ITestRunSource)
+        {
+            return;
+        }
+
         var text = new TextBlock { FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
         var button = new Button
         {

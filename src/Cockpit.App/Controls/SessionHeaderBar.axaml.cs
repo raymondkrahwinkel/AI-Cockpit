@@ -31,15 +31,7 @@ public partial class SessionHeaderBar : UserControl
 
     private void OnRunStatusClick(object? sender, RoutedEventArgs e)
     {
-        var runIds = (DataContext as SessionPanelViewModel)?.ActiveRuns.Select(run => run.RunId).ToHashSet();
-        var sources = Program.Services?.GetService<CockpitViewModel>()?.PluginSupervisedActivities;
-        var source = sources?.FirstOrDefault(candidate => candidate.Label == "Test runs"
-                && candidate.Snapshot().Any(activity => runIds?.Contains(activity.Id) == true))
-            ?? sources?.FirstOrDefault(candidate => candidate.Snapshot().Any(activity => runIds?.Contains(activity.Id) == true));
-        if (source is not null && sender is Button button)
-        {
-            PluginStatusBarHost.ShowPanel(source, button);
-        }
+        Program.Services?.GetService<CockpitViewModel>()?.ShowTestRunsCommand.Execute(null);
     }
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);

@@ -24,6 +24,7 @@ public sealed partial class DialogModalitySplitTests
         "ShowPluginStoreDialogAsync",
         "ShowOptionsDialogAsync",
         "ShowDelegatedTasksDialogAsync",
+        "ShowTestRunsDialogAsync",
         "ShowWorktreesDialogAsync",
         "ShowAboutDialogAsync",
         "ShowGlossaryDialogAsync",
