@@ -46,7 +46,7 @@ internal sealed partial class MarkdownFileWorkspace : UserControl
     private readonly TextBlock _hint = new() { FontSize = 11.5, TextTrimming = TextTrimming.CharacterEllipsis, Text = "Preview: a single click on another file replaces this tab. Double-click the tab, Keep open, Edit or start typing to keep it." };
     private readonly Border _hintStrip;
     private IDisposable? _savedSubscription;
-    private readonly CheckBox _source = new() { Name = "MarkdownSourceSwitch", Content = "Markdown source", Classes = { "Switch" }, VerticalAlignment = VerticalAlignment.Center, FontSize = 12 };
+    private readonly CheckBox _source = new() { Name = "MarkdownSourceSwitch", Content = "Markdown source", Classes = { "Switch" }, VerticalAlignment = VerticalAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center, FontSize = 12 };
     private readonly Border _statusChip;
     private readonly MarkdownEditor _compare = new() { IsReadOnly = true, IsVisible = false };
     private readonly Border _banner;
@@ -61,7 +61,7 @@ internal sealed partial class MarkdownFileWorkspace : UserControl
     private readonly Button _reload = new() { Classes = { "Compact" } };
     private readonly Button _merge = new() { Content = "Merge", Classes = { "Compact" } };
     private readonly Button _overwrite = new() { Content = "Overwrite with mine", Classes = { "Compact", "Accent" } };
-    private readonly CheckBox _compareSource = new() { Content = "As Markdown", Classes = { "Switch" }, VerticalAlignment = VerticalAlignment.Center, FontSize = 12 };
+    private readonly CheckBox _compareSource = new() { Content = "As Markdown", Classes = { "Switch" }, VerticalAlignment = VerticalAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center, FontSize = 12 };
     private readonly string _sourceName;
     private Snapshot? _theirs;
     private bool _comparing;
