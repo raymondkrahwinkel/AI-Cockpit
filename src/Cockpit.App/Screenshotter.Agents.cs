@@ -59,7 +59,41 @@ internal static partial class Screenshotter
     }
 
     // AC-1932: the Agents panel with a swarm member's sessions among the local ones, awake or asleep.
-    private static MainWindow _AgentsSwarm(int width, int height, bool asleep)
+    private static MainWindow _AgentsSwarm(int width, int height, bool asleep) =>
+        new() { DataContext = _AgentsSwarmCockpit(asleep), Width = width, Height = height };
+
+    // AC-1933: the same board as an overlay, with the title-bar button and the rail icon switched on to show both.
+    private static Window _AgentsPalette(bool filtered)
+    {
+        var cockpit = _AgentsSwarmCockpit(asleep: false);
+        cockpit.AgentsPaletteRailIcon = true;
+        cockpit.AgentsOverview.ShowDelegatedTasks = true;
+        cockpit.AgentsOverview.ShowOnlyWaiting = filtered;
+        if (cockpit.AgentsPaletteShortcut?.Gesture != "Ctrl+Shift+A" || !cockpit.ShowAgentsPaletteButton)
+        {
+            throw new InvalidOperationException("The palette must default to Ctrl+Shift+A with its title-bar button on.");
+        }
+        var palette = new AgentsPaletteViewModel(cockpit.AgentsOverview);
+        palette.MoveColumn(1);
+        return new AgentsPaletteDialog { DataContext = palette };
+    }
+
+    // AC-1933: where the palette is reached from — title-bar button and the rail icon switched on — and its Options page.
+    private static MainWindow _AgentsPaletteEntries(int width, int height)
+    {
+        var cockpit = _AgentsSwarmCockpit(asleep: false);
+        cockpit.AgentsPaletteRailIcon = true;
+        return new MainWindow { DataContext = cockpit, Width = width, Height = height };
+    }
+
+    private static OptionsDialog _AgentsPaletteOptions()
+    {
+        var dialog = new OptionsDialog { DataContext = new CockpitViewModel(), Width = 1000, Height = 520 };
+        dialog.SelectCategory("agents-overview");
+        return dialog;
+    }
+
+    private static CockpitViewModel _AgentsSwarmCockpit(bool asleep)
     {
         var panels = new Docking.DockPanelRegistry();
         var cockpit = new CockpitViewModel(dockPanelRegistry: panels)
@@ -100,6 +134,6 @@ internal static partial class Screenshotter
         {
             throw new InvalidOperationException("Desktop's waiting session must stand in Waiting for you.");
         }
-        return new MainWindow { DataContext = cockpit, Width = width, Height = height };
+        return cockpit;
     }
 }

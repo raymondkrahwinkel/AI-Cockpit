@@ -32,6 +32,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- A new Agents palette opens the Agents board as a compact overlay with Ctrl+Shift+A (rebindable in Options → Shortcuts). Search and the Waiting-for-you filter are shared with the panel; arrows and Tab move, Enter opens the session, Ctrl+Enter opens it beside the others, Esc closes. It is on by default with a button in the title bar; Options → Agents overview switches the palette off (shortcut, button and icon then do nothing) and can add an icon to the dock rail.
 - The Agents panel now lists the sessions of your other swarm machines too, each with its machine badge, in the same columns. Clicking one opens it live ("Running on Desktop"). When a machine sleeps or cannot be reached, its cards stay, greyed, with "Last seen".
 - Scheduled prompts can now run read-only in your assistant's conversation, with replies delivered through its existing channels. New tasks use the assistant by default; profile-based tasks keep their own delivery. An unavailable or busy assistant is skipped after ten minutes, and a withdrawn task cannot run later.
 - The Agents panel now combines waiting, machine and project filters with search, remembers its own filter settings, and optionally shows delegated tasks. Done and Idle cards older than 24 hours are available through Show more.

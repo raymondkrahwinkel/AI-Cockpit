@@ -15,6 +15,9 @@ internal static class OptionsStaging
     // on the sub-view models the dialog reaches through (`Security`, `AssistantOptions`).
     public static readonly string[] EditedProperties =
     [
+        "AgentsPaletteEnabled",
+        "AgentsPaletteRailIcon",
+        "AgentsPaletteTitleButton",
         "AutoCloseOnExit",
         "CheckForUpdatesOnStartup",
         "CloneRoot",

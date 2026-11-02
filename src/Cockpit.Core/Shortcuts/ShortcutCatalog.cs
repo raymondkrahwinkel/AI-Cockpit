@@ -23,6 +23,8 @@ public static class ShortcutCatalog
         new(ShortcutAction.About, "About", ""),
         new(ShortcutAction.ToggleZoom, "Toggle zoom", "Ctrl+Shift+M"),
         new(ShortcutAction.CommandPalette, "Command palette", "Ctrl+K"),
+        // Ctrl+K is the command palette's, so the Agents palette takes two modifiers like the other Shift bindings.
+        new(ShortcutAction.AgentsPalette, "Agents palette", "Ctrl+Shift+A"),
         new(ShortcutAction.FocusPaneLeft, "Focus pane left", "Ctrl+Alt+Left"),
         new(ShortcutAction.FocusPaneRight, "Focus pane right", "Ctrl+Alt+Right"),
         new(ShortcutAction.FocusPaneUp, "Focus pane up", "Ctrl+Alt+Up"),

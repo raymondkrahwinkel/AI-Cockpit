@@ -59,6 +59,17 @@ public sealed partial class AgentsOverviewViewModel : ObservableObject
     public bool ShowsMore => !ShowOlder && _cards.Values.Any(card => !card.NeedsAttention
         && card.Status is not (SessionStatus.Busy or SessionStatus.WorkingBackground)
         && card.ActivityAt < DateTimeOffset.UtcNow.AddHours(-24));
+    // Opens a card for the palette (AC-1933). "Beside" leaves zoom first, so the session lands in the grid next to the
+    // others instead of filling the window.
+    internal async Task OpenAsync(AgentOverviewCardViewModel card, bool beside)
+    {
+        if (beside)
+        {
+            _cockpit.IsZoomed = false;
+        }
+        await card.OpenCommand.ExecuteAsync(null);
+    }
+
     public IRelayCommand ShowMoreCommand => new RelayCommand(() => ShowOlder = true);
 
     internal void RefreshCards()
@@ -264,6 +275,10 @@ public sealed partial class AgentOverviewCardViewModel : ObservableObject, IDisp
 
     [ObservableProperty]
     private bool _areChildrenExpanded;
+
+    // The row the Agents palette has under its keyboard selection.
+    [ObservableProperty]
+    private bool _isPicked;
 
     internal AgentOverviewCardViewModel(INotifyPropertyChanged source, CockpitViewModel cockpit)
     {
