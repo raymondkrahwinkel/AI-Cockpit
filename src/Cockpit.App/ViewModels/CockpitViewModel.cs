@@ -3668,7 +3668,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _safeMode = pluginDiagnostics?.SafeMode ?? false;
         DelegatedTasks = delegatedTasks ?? new DelegatedTasksViewModel();
         TestRuns = testRuns ?? new TestRunsViewModel();
-        TestRuns.SessionName = paneId => Sessions.FirstOrDefault(session => session.PaneId == paneId)?.Title;
+        TestRuns.SessionName = paneId => _SessionNames().GetValueOrDefault(paneId);
         _worktreeManager = worktreeManager;
         _sessionStateRecorder = sessionStateRecorder;
         _sessionStateStore = sessionStateStore;

@@ -69,13 +69,15 @@
                                                         <StackPanel Orientation="Horizontal" Spacing="6" Margin="13,0,0,0">
                                                             <TextBlock Text="{Binding StatusText}" FontSize="11"
                                                                        Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                                                            <TextBlock Text="{Binding SessionName}" FontSize="11"
-                                                                       Foreground="{DynamicResource CockpitTextFaintBrush}"
-                                                                       TextTrimming="CharacterEllipsis"/>
                                                             <TextBlock Text="{Binding Note}" FontSize="11"
                                                                        Foreground="{DynamicResource CockpitTextFaintBrush}"
                                                                        TextTrimming="CharacterEllipsis"/>
                                                         </StackPanel>
+                                                        <TextBlock Text="{Binding SessionName}" FontSize="11" Margin="13,0,0,0"
+                                                                   IsVisible="{Binding HasSession}"
+                                                                   Foreground="{DynamicResource CockpitTextFaintBrush}"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   ToolTip.Tip="{Binding PaneId}"/>
                                                     </StackPanel>
                                                 </Border>
                                             </DataTemplate>
@@ -108,7 +110,8 @@
                         <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding SelectedRun.StatusText}" FontSize="11.5"
                                    Foreground="{Binding SelectedRun.StatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
                         <TextBlock Grid.Row="1" Text="Session" FontSize="11.5" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
-                        <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SelectedRun.SessionName}" FontSize="11.5"/>
+                        <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SelectedRun.SessionName}" FontSize="11.5"
+                                   TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding SelectedRun.PaneId}"/>
                         <TextBlock Grid.Row="2" Text="Kind" FontSize="11.5" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                         <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SelectedRun.KindText}" FontSize="11.5"/>
                         <TextBlock Grid.Row="3" Text="Working directory" FontSize="11.5" Foreground="{DynamicResource CockpitTextFaintBrush}"/>

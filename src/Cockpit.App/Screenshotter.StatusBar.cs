@@ -37,17 +37,26 @@ internal static partial class Screenshotter
 
     private static TestRunsDialog _TestRunsScene()
     {
-        var viewModel = new TestRunsViewModel();
+        var viewModel = new TestRunsViewModel
+        {
+            SessionName = pane => pane switch
+            {
+                "pane-1912" => "AC-1912 statusbar opruimen",
+                "pane-1905" => "AC-1905 screenshot baselines",
+                "pane-311" => "AC-311 Depot compose",
+                _ => null,
+            },
+        };
         viewModel.Apply(_SampleRuns());
         return new TestRunsDialog { DataContext = viewModel };
     }
 
     private static IReadOnlyList<TestRunEntry> _SampleRuns() =>
     [
-        new("run-7f3a91", "dotnet test Cockpit.slnx", TestRunState.Running, false, "light", null, @"D:\Projects\dotnet\Cockpit", "2m 14s", string.Empty, () => Task.CompletedTask),
-        new("run-5be210", "Screenshotter baselines", TestRunState.Running, true, "journeys", null, @"D:\Projects\dotnet\Cockpit", "6m 02s", string.Empty, () => Task.CompletedTask),
-        new("run-2c81d0", "docker compose build", TestRunState.Queued, true, "build", null, @"D:\Projects\Depot", "waiting for 6 GiB RAM", string.Empty, () => Task.CompletedTask),
-        new("run-91be44", "npm test", TestRunState.Passed, false, null, null, null, "Exit code 0, 48s", "All 212 tests passed.", null),
+        new("run-7f3a91", "dotnet test Cockpit.slnx", TestRunState.Running, false, "light", "pane-1912", @"D:\Projects\dotnet\Cockpit", "2m 14s", string.Empty, () => Task.CompletedTask),
+        new("run-5be210", "Screenshotter baselines", TestRunState.Running, true, "journeys", "pane-1905", @"D:\Projects\dotnet\Cockpit", "6m 02s", string.Empty, () => Task.CompletedTask),
+        new("run-2c81d0", "docker compose build", TestRunState.Queued, true, "build", "pane-311", @"D:\Projects\Depot", "waiting for 6 GiB RAM", string.Empty, () => Task.CompletedTask),
+        new("run-91be44", "npm test", TestRunState.Passed, false, null, "pane-309", null, "Exit code 0, 48s", "All 212 tests passed.", null),
         new("run-04c7f2", "dotnet test Cockpit.Infrastructure.Tests", TestRunState.Failed, false, null, null, null, "Exit code 1, 190s", "Failed Cockpit.Infrastructure.Tests.SomeTest\n  Expected: 3\n  Actual:   2", null),
         new("run-ab5510", "pytest -k ingest", TestRunState.Stopped, false, null, null, null, "Exit code -1, 12s", string.Empty, null),
     ];

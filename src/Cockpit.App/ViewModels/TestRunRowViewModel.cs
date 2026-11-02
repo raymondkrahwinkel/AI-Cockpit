@@ -8,7 +8,7 @@ public sealed class TestRunRowViewModel
     public TestRunRowViewModel(TestRunEntry entry, string? sessionName)
     {
         Entry = entry;
-        SessionName = sessionName ?? entry.Session ?? "—";
+        SessionName = string.IsNullOrWhiteSpace(sessionName) ? "—" : sessionName;
     }
 
     public TestRunEntry Entry { get; }
@@ -22,6 +22,10 @@ public sealed class TestRunRowViewModel
     public bool CanStop => Entry.IsActive && Entry.StopAsync is not null;
 
     public string SessionName { get; }
+
+    public string? PaneId => Entry.Session;
+
+    public bool HasSession => SessionName != "—";
 
     public string StatusText => Entry.State switch
     {
