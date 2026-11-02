@@ -101,7 +101,7 @@ internal sealed partial class MarkdownFileWorkspace
                 _backLive = _heldLines;
             }
             _bannerState = state;
-            _bannerSince = DateTime.Now;
+            _bannerSince = _timeProvider.GetLocalNow().DateTime;
         }
         if (held)
         {
@@ -125,7 +125,7 @@ internal sealed partial class MarkdownFileWorkspace
         var at = _bannerSince.ToString("HH:mm");
         if (state == LiveFileState.Offline)
         {
-            var next = _liveLightTimer.IsEnabled ? $" Next try in {Math.Max(1, (int)Math.Ceiling((_nextTry - DateTime.Now).TotalSeconds))} s." : "";
+            var next = _liveLightTimer.IsEnabled ? $" Next try in {Math.Max(1, (int)Math.Ceiling((_nextTry - _timeProvider.GetLocalNow().DateTime).TotalSeconds))} s." : "";
             _liveText.Inlines?.Add(new Run($"The live connection to {_sourceName} dropped") { FontWeight = FontWeight.SemiBold });
             _liveText.Inlines?.Add(new Run($" at {at}. Keep writing: your text stays in this Cockpit and is merged into the note when {_sourceName} is back.{next}"));
         }

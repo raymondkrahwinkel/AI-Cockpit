@@ -82,17 +82,19 @@ internal sealed partial class MarkdownFileWorkspace : UserControl
     private LiveTextDocument? _live;
     private LivePresenceFeed? _presence;
     private readonly LivePresenceBar _people = new();
+    private readonly TimeProvider _timeProvider;
     private string? _openUrl;
 
     internal MarkdownFileWorkspace(IWorkspaceContext context, FileWorkspaceOpenOptions options,
         FileSourceChannelClient client, Func<Task<bool>> confirmDiscard, ILogger<MarkdownFileWorkspace>? logger = null,
-        Func<Task>? checkForUpdates = null)
+        Func<Task>? checkForUpdates = null, TimeProvider? timeProvider = null)
     {
         _context = context;
         _options = options;
         _client = client;
         _confirmDiscard = confirmDiscard;
         _logger = logger ?? NullLogger<MarkdownFileWorkspace>.Instance;
+        _timeProvider = timeProvider ?? TimeProvider.System;
         _new = options.CreateNew;
         _sourceName = options.Location.Split(" / ")[0] is { Length: > 0 } name ? name : "the source";
         _reload.Content = $"Reload from {_sourceName}";
