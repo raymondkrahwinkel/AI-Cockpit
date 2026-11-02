@@ -58,7 +58,7 @@ internal static class CodexMcpConfig
     {
         if (!string.IsNullOrWhiteSpace(server.Url))
         {
-            var fields = new List<string> { $"url = {TomlString(server.Url)}" };
+            var fields = new List<string> { $"url = {TomlString(server.Url)}", $"startup_timeout_sec = {StartupTimeoutSeconds}" };
 
             if (server.CockpitHosted)
             {
