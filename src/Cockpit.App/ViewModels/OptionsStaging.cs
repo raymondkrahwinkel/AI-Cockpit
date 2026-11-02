@@ -101,6 +101,8 @@ internal static class OptionsStaging
     // off the list above: a new control lands in a category on purpose or the guard test fails.
     public static readonly string[] ImmediateOrTransient =
     [
+        // Store visibility is saved by Manage stores immediately, independently of the Options Apply/Cancel cycle.
+        "Plugins.HiddenStoreSourceKeys",
         "IsTestingMic",
         "OptionsSearchText",
         "BackupIncludesCredentials",

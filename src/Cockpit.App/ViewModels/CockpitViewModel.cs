@@ -3580,7 +3580,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Cockpit.Core.Swarm.ISwarmOptions? swarmOptions = null,
         Cockpit.Core.Swarm.ISwarmLeadership? swarmLeadership = null,
         // AC-1846: Options › Sync. Absent in the design-time/unit-test graph, where the page lists no server.
-        ISyncOptions? syncOptions = null)
+        ISyncOptions? syncOptions = null,
+        IPluginStoreSources? pluginStoreSources = null)
     {
         _managedSettingsReader = managedSettings;
         _settingsWriteBatch = settingsWriteBatch;
@@ -3758,7 +3759,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Plugins = pluginAdministration is not null && pluginRegistrationStore is not null
                 && pluginStoreConfigStore is not null && pluginStoreClient is not null && pluginDialogHost is not null
                 && pluginDiagnostics is not null
-            ? new PluginManagerViewModel(pluginAdministration, pluginRegistrationStore, dialogService, pluginStoreConfigStore, pluginStoreClient, PluginSettings, this, appRestartService, workflowTemplateLibrary)
+            ? new PluginManagerViewModel(pluginAdministration, pluginRegistrationStore, dialogService, pluginStoreConfigStore, pluginStoreClient, PluginSettings, this, appRestartService, workflowTemplateLibrary, pluginStoreSources)
             : new PluginManagerViewModel();
         // a plugin's fire-and-forget AddMcpServer completing on a background continuation) — without this, the banner
         // would keep reporting the state at startup while the Plugin manager moved on, the exact divergence the ticket

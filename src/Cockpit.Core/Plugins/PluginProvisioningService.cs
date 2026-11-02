@@ -24,7 +24,9 @@ public sealed class PluginProvisioningService(IPluginStoreClient storeClient, IP
             return new PluginProvisionResult(PluginProvisionOutcome.Incompatible, request.Id, request.Name, reason, Warning: null, FolderId: null, Sha256: null);
         }
 
-        var download = await storeClient.DownloadZipAsync(request.Store, package.Path, package.Sha256, cancellationToken).ConfigureAwait(false);
+        var download = request.Store.Signed is null
+            ? await storeClient.DownloadZipAsync(request.Store, package.Path, package.Sha256, cancellationToken).ConfigureAwait(false)
+            : await storeClient.DownloadZipAsync(request.Store, request.Version, request.Id, cancellationToken).ConfigureAwait(false);
         if (!download.IsSuccess || download.ZipPath is null)
         {
             return new PluginProvisionResult(PluginProvisionOutcome.Failed, request.Id, request.Name, download.Error ?? "Download failed.", Warning: null, FolderId: null, Sha256: null);
