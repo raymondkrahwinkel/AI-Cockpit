@@ -81,6 +81,7 @@ public class AgentOwnedTabTests
         await ProtocolBoundaryAsync(tabs, fixture, "operator");
         await ClassifierBoundaryAsync();
         await NetworkBoundaryAsync();
+        await AssistantBrowserMountScenario.RunAsync();
         await RetainedLifecycleAsync(tabs, browsers, fixture, more[0].TabId!, more[1].TabId!, bId);
     }
 
