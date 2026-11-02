@@ -49,6 +49,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     private readonly IRepositoryCloneManager _cloneManager;
     private readonly IVerifyRunnerRegistry _verifyRunnerRegistry;
     private readonly IProjectStore _projectStore;
+    private readonly IProjectDefinitionBuilder<SharedProjectPublishDefinition> _projectDefinitionBuilder;
     private readonly SurfaceWindows _surfaces;
 
     // The assistant's own profile slot (AC-543) — its own section of the config, not an entry in `_profileStore`.
@@ -77,10 +78,12 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         ISessionLoginFlows loginFlows,
         IPluginProviderConfigViews pluginConfigViews,
         IOrgPolicy orgPolicy,
-        IProfileSessionLimits sessionLimit)
+        IProfileSessionLimits sessionLimit,
+        IProjectDefinitionBuilder<SharedProjectPublishDefinition> projectDefinitionBuilder)
     {
         _sessionLimit = sessionLimit;
         _orgPolicy = orgPolicy;
+        _projectDefinitionBuilder = projectDefinitionBuilder;
         _pluginConfigViews = pluginConfigViews;
         _assistantProfileStore = assistantProfileStore;
         _surfaces = surfaces;
@@ -383,7 +386,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         }
 
         var publishSources = publishSourceKeys.Select(_FindSharedSource).OfType<ISharedProjectSource>().ToList();
-        var viewModel = ShareProjectDialogViewModel.Create(project, publishSources);
+        var viewModel = ShareProjectDialogViewModel.Create(project, publishSources, _projectDefinitionBuilder);
         Project? bound = null;
         viewModel.CloseRequested += result => bound = result;
 

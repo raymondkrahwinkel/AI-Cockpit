@@ -91,6 +91,10 @@ public sealed partial class ProjectListItemViewModel : ObservableObject
     // Reads the team list again — the way out of a project the source did not answer for in time.
     public ICommand? TryAgain { get; init; }
 
+    public string? PublicationError { get; init; }
+
+    public bool HasPublicationError => PublicationError is not null;
+
     public bool HasAdditionalInfo => Project?.HasAdditionalInfo == true;
 
     public bool IsUnavailable => SharedProject is { CanAdd: false };
@@ -165,13 +169,13 @@ public sealed partial class ProjectListItemViewModel : ObservableObject
         : $"⏱ {Project?.Jobs.Count} {(Project?.Jobs.Count == 1 ? "job" : "jobs")}";
 
     // The quiet line when nothing else is said: a bound project is current, a local one has no other copy.
-    public bool ShowsQuietStatus => IsOnThisMachine && !HasRemoteChanges && !IsRunning && !HasJobs;
+    public bool ShowsQuietStatus => IsOnThisMachine && !HasPublicationError && !HasRemoteChanges && !IsRunning && !HasJobs;
 
     public string QuietStatus => IsInOrganization ? "✓ Up to date" : "Only on this machine";
 
-    public string CompactStatus => CanAdd ? "Ready to add"
+    public string CompactStatus => PublicationError ?? (CanAdd ? "Ready to add"
         : HasRemoteChanges ? "Changed on Depot"
         : IsRunning ? RunningLabel
         : HasJobs ? JobsLabel
-        : QuietStatus;
+        : QuietStatus);
 }

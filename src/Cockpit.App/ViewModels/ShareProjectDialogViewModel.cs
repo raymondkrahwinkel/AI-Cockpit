@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Projects;
+using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.App.ViewModels;
@@ -13,6 +14,7 @@ public partial class ShareProjectDialogViewModel : ViewModelBase
 {
     private readonly Project _project;
     private readonly IReadOnlyList<ISharedProjectSource> _sources;
+    private readonly IProjectDefinitionBuilder<SharedProjectPublishDefinition>? _definitionBuilder;
 
     // Raised when the dialog is done: the project with its new binding row, or null when the operator cancelled or
     // the publish never succeeded (an error stays visible in the dialog instead of closing it).
@@ -50,10 +52,12 @@ public partial class ShareProjectDialogViewModel : ViewModelBase
         SelectedTarget = Targets[0];
     }
 
-    private ShareProjectDialogViewModel(Project project, IReadOnlyList<ISharedProjectSource> sources)
+    private ShareProjectDialogViewModel(Project project, IReadOnlyList<ISharedProjectSource> sources,
+        IProjectDefinitionBuilder<SharedProjectPublishDefinition> definitionBuilder)
     {
         _project = project;
         _sources = sources;
+        _definitionBuilder = definitionBuilder;
         ProjectName = project.Name;
         _BuildFieldRows();
 
@@ -68,8 +72,9 @@ public partial class ShareProjectDialogViewModel : ViewModelBase
         }
     }
 
-    public static ShareProjectDialogViewModel Create(Project project, IReadOnlyList<ISharedProjectSource> sources) =>
-        new(project, sources);
+    public static ShareProjectDialogViewModel Create(Project project, IReadOnlyList<ISharedProjectSource> sources,
+        IProjectDefinitionBuilder<SharedProjectPublishDefinition> definitionBuilder) =>
+        new(project, sources, definitionBuilder);
 
     public string ProjectName { get; }
 
@@ -213,7 +218,7 @@ public partial class ShareProjectDialogViewModel : ViewModelBase
             StaysOnThisMachine.Add(new ShareFieldRowViewModel("Category", category));
         }
 
-        // AC-763: the logo now travels with the rest of the definition — see _BuildPublishDefinitionAsync.
+        // The logo travels with the rest of the definition.
         if (_project.LogoPath is { Length: > 0 } logoPath)
         {
             GoesToDepot.Add(new ShareFieldRowViewModel("Logo", logoPath));
@@ -258,7 +263,7 @@ public partial class ShareProjectDialogViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(_CanShare))]
     private async Task ShareAsync()
     {
-        if (_SelectedSource is not { } source || SelectedTarget is not { } target)
+        if (_SelectedSource is not { } source || SelectedTarget is not { } target || _definitionBuilder is not { } definitionBuilder)
         {
             return;
         }
@@ -267,7 +272,7 @@ public partial class ShareProjectDialogViewModel : ViewModelBase
         ErrorMessage = null;
         try
         {
-            var definition = await _BuildPublishDefinitionAsync().ConfigureAwait(true);
+            var definition = await definitionBuilder.BuildAsync(_project).ConfigureAwait(true);
             var result = await source.PublishAsync(target.Id, definition, CancellationToken.None).ConfigureAwait(true);
 
             if (result.Outcome != SharedProjectPublishOutcome.Success || result.BoundId is not { Length: > 0 } boundId)
@@ -298,48 +303,6 @@ public partial class ShareProjectDialogViewModel : ViewModelBase
 
     [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke(null);
-
-    // Every resource row, unfiltered — PublishAsync's own CockpitProjectResourceFilter is what decides, at write
-    // time, which ones actually cross. Sending the same set _BuildFieldRows previewed (rather than pre-filtering
-    // here too) keeps this one call the single place that decision is made.
-    private async Task<SharedProjectPublishDefinition> _BuildPublishDefinitionAsync()
-    {
-        var resources = _project.Resources
-            .Select(resource => new SharedProjectPublishResource(resource.Role.ToString(), resource.Reference, resource.Label))
-            .ToList();
-
-        return new SharedProjectPublishDefinition(
-            _project.Name,
-            _project.Description,
-            _project.GitUrl,
-            _project.BehaviorPrompt,
-            _project.IsolateInWorktreeByDefault,
-            _project.McpOverlay.EnabledServerNames,
-            resources,
-            await _ReadLogoBytesAsync().ConfigureAwait(true));
-    }
-
-    // AC-763: _project.LogoPath, when set, already names the cockpit's own stored copy (every save path runs it
-    // through ProjectsViewModel._WithStoredLogoAsync first) — a plain local file, never a URL, so a direct read
-    // is enough without repeating IProjectLogoStore's own remote-download/SVG-rasterise logic here.
-    private async Task<byte[]?> _ReadLogoBytesAsync()
-    {
-        if (_project.LogoPath is not { Length: > 0 } path)
-        {
-            return null;
-        }
-
-        try
-        {
-            return await File.ReadAllBytesAsync(path).ConfigureAwait(true);
-        }
-        catch (Exception)
-        {
-            // A logo is decoration (ProjectLogoStore.SaveAsync's own reasoning) — a stored copy that vanished
-            // costs the picture, not the publish.
-            return null;
-        }
-    }
 }
 
 // One row of ShareProjectDialogViewModel.GoesToDepot/StaysOnThisMachine — a field name and what it currently holds.

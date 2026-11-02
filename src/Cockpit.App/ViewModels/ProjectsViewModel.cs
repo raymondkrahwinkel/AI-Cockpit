@@ -597,6 +597,8 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
                         LastRun = _jobRuns.FirstOrDefault(run => run.ProjectId == project.Id && run.JobId == job.Id),
                     })],
                     Remove = RemoveListedProjectCommand,
+                    PublicationError = _snapshot.PublicationErrors.GetValueOrDefault(project.Id),
+                    TryAgain = RefreshSharedProjectsCommand,
                 });
             }
         }

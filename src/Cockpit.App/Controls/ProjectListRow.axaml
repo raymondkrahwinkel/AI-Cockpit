@@ -63,6 +63,7 @@
                                IsVisible="{Binding $parent[controls:ProjectListRow].ShowDescriptionUnderName}"
                                Text="{Binding DescriptionText}" Classes.faint="{Binding !HasDescription}"
                                Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                    <TextBlock Text="{Binding PublicationError}" IsVisible="{Binding HasPublicationError}" MaxLines="2" TextTrimming="CharacterEllipsis" FontSize="11" ToolTip.Tip="{Binding PublicationError}"/>
                     <TextBlock FontSize="11.5" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"
                                IsVisible="{Binding $self.(controls:ProjectListGrid.IsSmall)}"
                                Text="{Binding RunsOnAndLastOpened}"
@@ -115,6 +116,7 @@
 
                 <StackPanel controls:ProjectListGrid.Cell="act" Orientation="Horizontal" Spacing="4"
                             HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <Button Classes="Compact" Content="Try again" IsVisible="{Binding HasPublicationError}" Command="{Binding TryAgain}"/>
                     <Button Classes="Accent Compact" IsVisible="{Binding CanStart}"
                             Command="{Binding Actions.Start, FallbackValue={x:Null}}" CommandParameter="{Binding Project}">
                         <StackPanel Orientation="Horizontal" Spacing="5">
