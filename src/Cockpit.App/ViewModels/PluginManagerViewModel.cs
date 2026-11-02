@@ -22,6 +22,12 @@ public partial class PluginManagerViewModel : ViewModelBase
     private readonly ISessionDialogService? _dialogService;
     private readonly IPluginStoreConfigStore? _storeConfigStore;
     private readonly IPluginStoreClient? _storeClient;
+    private readonly IPluginStoreSources? _storeSources;
+    private readonly bool _refreshSourcesOnDispatcher;
+    private bool _sourcesDirty;
+
+    public IReadOnlyList<string> HiddenStoreSourceKeys => StoreInfos.Where(info => info.IsHidden)
+        .Select(info => info.Store.Signed?.SourceKey).OfType<string>().ToList();
 
     private readonly IReadOnlyDictionary<string, PluginSettingsRegistration>? _settingsRegistry;
     private readonly IPluginContributionSink? _contributionSink;
@@ -154,6 +160,7 @@ public partial class PluginManagerViewModel : ViewModelBase
 
         AddStoreCommand.NotifyCanExecuteChanged();
         RemoveStoreCommand.NotifyCanExecuteChanged();
+        ToggleStoreHiddenCommand.NotifyCanExecuteChanged();
         EnablePluginCommand.NotifyCanExecuteChanged();
         DisablePluginCommand.NotifyCanExecuteChanged();
         RemovePluginCommand.NotifyCanExecuteChanged();
@@ -197,7 +204,8 @@ public partial class PluginManagerViewModel : ViewModelBase
         IReadOnlyDictionary<string, PluginSettingsRegistration> settingsRegistry,
         IPluginContributionSink? contributionSink = null,
         IAppRestartService? restartService = null,
-        IWorkflowTemplateLibrary? templateLibrary = null)
+        IWorkflowTemplateLibrary? templateLibrary = null,
+        IPluginStoreSources? storeSources = null)
     {
         _administration = administration;
         _registrationStore = registrationStore;
@@ -208,6 +216,12 @@ public partial class PluginManagerViewModel : ViewModelBase
         _contributionSink = contributionSink;
         _restartService = restartService;
         _templateLibrary = templateLibrary;
+        _storeSources = storeSources;
+        _refreshSourcesOnDispatcher = SynchronizationContext.Current is AvaloniaSynchronizationContext;
+        if (_storeSources is not null)
+        {
+            _storeSources.SourcesChanged += _OnStoreSourcesChanged;
+        }
         _WatchAvailablePluginsForUpdateGate();
         _WatchPluginsForPendingApprovalBadge();
     }
@@ -315,12 +329,42 @@ public partial class PluginManagerViewModel : ViewModelBase
 
         Stores.Clear();
         StoreInfos.Clear();
-        foreach (var store in await _storeConfigStore.LoadAsync())
+        var sources = _storeSources is null
+            ? (await _storeConfigStore.LoadAsync()).Select(store => new PluginStoreSourceInfo(store)).ToList()
+            : await _storeSources.LoadAsync();
+        _sourcesDirty = false;
+        foreach (var source in sources)
         {
-            Stores.Add(store);
-            // Name/icon/count start URL-derived and fill in on the next browse; keeping the same URL as the
-            // key means the browse can find and enrich this exact row.
-            StoreInfos.Add(new PluginStoreInfo(store));
+            if (!source.IsHidden)
+            {
+                Stores.Add(source.Store);
+            }
+            StoreInfos.Add(new PluginStoreInfo(source.Store, source.Name, source.IsHidden));
+        }
+    }
+
+    private async void _OnStoreSourcesChanged(object? sender, EventArgs args)
+    {
+        _sourcesDirty = true;
+        if (!_refreshSourcesOnDispatcher)
+        {
+            return;
+        }
+        try
+        {
+            await Dispatcher.UIThread.InvokeAsync(async () =>
+            {
+                if (!IsBusy)
+                {
+                    await _LoadStoresAsync();
+                    await BrowseStoresAsync();
+                }
+            });
+        }
+        catch (Exception exception)
+        {
+            StatusMessage = $"Could not refresh plugin sources: {exception.Message}";
+            StatusIsError = true;
         }
     }
 
@@ -579,6 +623,10 @@ public partial class PluginManagerViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(CanChangePlugins))]
     private async Task RemoveStoreAsync(PluginStoreInfo info)
     {
+        if (!info.CanRemove)
+        {
+            return;
+        }
         if (_storeConfigStore is null)
         {
             return;
@@ -595,6 +643,15 @@ public partial class PluginManagerViewModel : ViewModelBase
 
         await _storeConfigStore.RemoveAsync(info.Store);
         await _LoadStoresAsync();
+    }
+
+    [RelayCommand(CanExecute = nameof(CanChangePlugins))]
+    private async Task ToggleStoreHiddenAsync(PluginStoreInfo info)
+    {
+        if (_storeSources is not null && info.Store.Signed is { } signed)
+        {
+            await _storeSources.SetHiddenAsync(signed.SourceKey, !info.IsHidden);
+        }
     }
 
     // Public because the install paths call it directly on their way out and must not be refused: the command is gated
@@ -617,19 +674,23 @@ public partial class PluginManagerViewModel : ViewModelBase
         AvailableTemplates.Clear();
         try
         {
-            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var seenTemplates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (_storeSources is not null)
+            {
+                await _LoadStoresAsync();
+            }
+            var seen = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var seenTemplates = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             var problems = new List<string>();
             // Store logos are fetched after the catalogue is in — plugins show at once, the logos pop in when
             // they arrive, and a slow or broken image never delays the list.
             var logoLoads = new List<Task>();
-            // Over a snapshot, for the reason "Update all" takes one: this loop awaits a fetch per store, and LoadAsync
-            // clears that list.
-            foreach (var store in Stores.ToList())
+            var sourceOrder = Stores.ToList();
+            await foreach (var (store, fetch) in PluginStoreFetching.FetchAllAsync(
+                sourceOrder, (source, token) => _administration.FetchStoreIndexAsync(source, token)))
             {
-                var info = StoreInfos.FirstOrDefault(candidate => candidate.Store.SameStoreAs(store));
+                var sourcePriority = sourceOrder.IndexOf(store);
+                var info = StoreInfos.FirstOrDefault(candidate => candidate.Store == store);
 
-                var fetch = await _administration.FetchStoreIndexAsync(store);
                 if (!fetch.IsSuccess || fetch.Index is null || fetch.IndexUrl is null)
                 {
                     problems.Add(fetch.Error ?? "unreachable store");
@@ -646,7 +707,10 @@ public partial class PluginManagerViewModel : ViewModelBase
                 {
                     // The store's own advertised name/icon/count for the Manage-stores dialog; the name falls
                     // back to the URL-derived one when the index sets none.
-                    info.Name = string.IsNullOrWhiteSpace(fetch.Index.Name) ? info.Name : fetch.Index.Name!;
+                    if (store.Signed is null && !string.IsNullOrWhiteSpace(fetch.Index.Name))
+                    {
+                        info.Name = fetch.Index.Name;
+                    }
                     info.Icon = fetch.Index.Icon;
                     info.PluginCount = fetch.Index.Plugins.Count;
                     info.IsReachable = true;
@@ -661,9 +725,14 @@ public partial class PluginManagerViewModel : ViewModelBase
                 foreach (var entry in fetch.Index.Plugins)
                 {
                     // First store wins for a given id, so a plugin listed in several stores shows once.
-                    if (!seen.Add(entry.Id))
+                    if (seen.TryGetValue(entry.Id, out var priority) && priority <= sourcePriority)
                     {
                         continue;
+                    }
+                    seen[entry.Id] = sourcePriority;
+                    if (AvailablePlugins.FirstOrDefault(row => string.Equals(row.Entry.Id, entry.Id, StringComparison.OrdinalIgnoreCase)) is { } previous)
+                    {
+                        AvailablePlugins.Remove(previous);
                     }
 
                     // AC-815: a reference-only plugin (e.g. Example Workspace) stays installable via
@@ -685,7 +754,8 @@ public partial class PluginManagerViewModel : ViewModelBase
                         installedVersion,
                         isEnabled: installedRow?.CanDisable ?? false,
                         hasSettings: installedRow?.HasSettings ?? false);
-                    AvailablePlugins.Add(row);
+                    var insertionIndex = AvailablePlugins.TakeWhile(candidate => sourceOrder.IndexOf(candidate.Store) <= sourcePriority).Count();
+                    AvailablePlugins.Insert(insertionIndex, row);
 
                     // AC-553 option A: a provider plugin's `LogoAsset` naming its vendor's own CDN — fetched the
                     // same way a store's own IconUrl already is (below), never redistributed as a file in this repo.
@@ -698,12 +768,18 @@ public partial class PluginManagerViewModel : ViewModelBase
                 foreach (var template in fetch.Index.Templates ?? [])
                 {
                     // First store wins for an id, same as for plugins: a template listed twice shows once.
-                    if (!seenTemplates.Add(template.Id))
+                    if (seenTemplates.TryGetValue(template.Id, out var priority) && priority <= sourcePriority)
                     {
                         continue;
                     }
+                    seenTemplates[template.Id] = sourcePriority;
+                    if (AvailableTemplates.FirstOrDefault(row => string.Equals(row.Entry.Id, template.Id, StringComparison.OrdinalIgnoreCase)) is { } previous)
+                    {
+                        AvailableTemplates.Remove(previous);
+                    }
 
-                    AvailableTemplates.Add(new StoreTemplateRowViewModel(
+                    var insertionIndex = AvailableTemplates.TakeWhile(candidate => sourceOrder.IndexOf(candidate.Store) <= sourcePriority).Count();
+                    AvailableTemplates.Insert(insertionIndex, new StoreTemplateRowViewModel(
                         template,
                         store,
                         isInstalled: _templateLibrary?.IsInstalled(template.Id) ?? false));
@@ -724,6 +800,10 @@ public partial class PluginManagerViewModel : ViewModelBase
         finally
         {
             _ExitBusy();
+            if (_sourcesDirty)
+            {
+                await BrowseStoresAsync();
+            }
         }
     }
 

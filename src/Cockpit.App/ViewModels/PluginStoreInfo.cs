@@ -39,20 +39,29 @@ public sealed partial class PluginStoreInfo : ObservableObject
     [ObservableProperty]
     private Bitmap? _logo;
 
-    public PluginStoreInfo(PluginStoreConfig store)
+    public bool IsHidden { get; }
+
+    public bool CanRemove => Store.Signed is null;
+
+    public bool CanHide => Store.Signed is not null;
+
+    public string VisibilityAction => IsHidden ? "Show" : "Hide";
+
+    public PluginStoreInfo(PluginStoreConfig store, string? name = null, bool isHidden = false)
     {
         Store = store;
+        IsHidden = isHidden;
         Url = store.Location;
-        _name = store.IsLocal
+        _name = name ?? (store.IsLocal
             ? _LocalName(store.Location)
-            : PluginStoreUrl.DeriveDisplayName(store.Location);
+            : PluginStoreUrl.DeriveDisplayName(store.Location));
     }
 
     // Whether this is a local-folder store (AC-7) — the row shows a folder badge rather than a link.
     public bool IsLocal => Store.IsLocal;
 
     // Whether this is a private remote store reached with a token (AC-7) — the row shows a lock badge.
-    public bool IsPrivate => !Store.IsLocal && Store.HasToken;
+    public bool IsPrivate => !Store.IsLocal && (Store.HasToken || Store.Signed is not null);
 
     // The folder's own name reads better than the full path as a title; the path still shows underneath.
     private static string _LocalName(string path)

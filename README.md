@@ -288,6 +288,11 @@ Create a session via **+ New session**: pick a profile, permission mode, model a
 macOS. Profiles, layout, voice, shortcuts, always-allow rules, the MCP registry and plugin state all live in that
 one file, alongside `plugins/`, `logs/` and the previous version of the config (`cockpit.json.bak`).
 
+Plugins can supply runtime plugin stores with request-time credentials. Manage stores shows these sources with
+Hide/Show instead of Remove. `HiddenPluginStoreSources` is a string array of hidden source keys (default empty),
+saved immediately by Manage stores; Options Apply/Cancel does not change it. This machine-local preference is
+excluded from settings carriers. Runtime store descriptors and their tokens are never stored in config or backups.
+
 Notification sounds are configured under `Notifications.NotificationSoundsEnabled`,
 `NotificationSoundOnSessionFinished`, `NotificationSoundOnNeedsAttention`, `SessionFinishedSound`,
 `NeedsAttentionSound`, `SessionFinishedCustomSoundPath`, `NeedsAttentionCustomSoundPath` and

@@ -1,4 +1,6 @@
 using System.Net.Http.Headers;
+using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Plugins;
@@ -9,7 +11,7 @@ namespace Cockpit.Infrastructure.Plugins;
 // Fetches a store's `index.json` and downloads a version's zip (#14, AC-7): local folder, plain GET, or
 // bearer-auth remote — a private `github.com` repo goes through the Contents API since raw.githubusercontent.com
 // won't serve it with a token. Published SHA-256 is verified before writing; mismatch is rejected.
-internal sealed class PluginStoreClient : IPluginStoreClient, ISingletonService
+internal sealed partial class PluginStoreClient : IPluginStoreClient, ISingletonService
 {
     private static readonly HttpClient Http = new();
 
@@ -28,10 +30,21 @@ internal sealed class PluginStoreClient : IPluginStoreClient, ISingletonService
 
         try
         {
+            target = await _WithSignedTokenAsync(store, target, cancellationToken).ConfigureAwait(false);
             var json = await _ReadStringAsync(target, cancellationToken).ConfigureAwait(false);
             if (!PluginStoreIndex.TryParse(json, out var index, out var parseError))
             {
                 return new PluginStoreFetchResult(false, parseError, null, target.Value);
+            }
+
+            if (store.Signed is not null && index is not null)
+            {
+                index = index with
+                {
+                    Templates = null,
+                    IconUrl = null,
+                    Plugins = [.. index.Plugins.Select(plugin => plugin with { LogoAsset = null })],
+                };
             }
 
             return new PluginStoreFetchResult(true, null, index, target.Value);
@@ -44,13 +57,56 @@ internal sealed class PluginStoreClient : IPluginStoreClient, ISingletonService
 
     public async Task<PluginStoreDownloadResult> DownloadZipAsync(PluginStoreConfig store, string relativePath, string? expectedSha256, CancellationToken cancellationToken = default)
     {
+        if (store.Signed is not null)
+        {
+            return new PluginStoreDownloadResult(false, "A signed source requires validated plugin and version fields.", null);
+        }
+
         if (!_TryResolveRelative(store, relativePath, out var target, out var error))
         {
             return new PluginStoreDownloadResult(false, error, null);
         }
 
+        return await _DownloadZipAsync(store, target, expectedSha256, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<PluginStoreDownloadResult> DownloadZipAsync(PluginStoreConfig store, PluginStoreVersion version, string pluginId, CancellationToken cancellationToken = default)
+    {
+        if (version.PackageFor() is not { } package)
+        {
+            return new PluginStoreDownloadResult(false, "The selected version has no package for this platform.", null);
+        }
+
+        if (store.Signed is not { } signed)
+        {
+            return await DownloadZipAsync(store, package.Path, package.Sha256, cancellationToken).ConfigureAwait(false);
+        }
+
+        var platform = version.Packages is null ? "any" : RuntimeInformation.RuntimeIdentifier;
+        if (string.IsNullOrEmpty(pluginId) || pluginId.Length > 100 || !_IdPattern().IsMatch(pluginId)
+            || string.IsNullOrEmpty(version.Version) || !_VersionPattern().IsMatch(version.Version)
+            || string.IsNullOrEmpty(signed.Organization) || !_OrganizationPattern().IsMatch(signed.Organization)
+            || !_PlatformPattern().IsMatch(platform))
+        {
+            return new PluginStoreDownloadResult(false, "The signed source has invalid plugin, version, organization or platform fields.", null);
+        }
+
+        if (!_TryResolveIndex(store, out var index, out var error))
+        {
+            return new PluginStoreDownloadResult(false, error, null);
+        }
+
+        var file = version.Packages is null ? "plugin.zip" : $"plugin-{platform}.zip";
+        var url = PluginStoreUrl.ResolveZipUrl(index.Value, $"plugins/{pluginId}/{version.Version}/{file}");
+        var target = new StoreTarget(IsLocal: false, url, GitHubRaw: false, Token: null);
+        return await _DownloadZipAsync(store, target, package.Sha256, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task<PluginStoreDownloadResult> _DownloadZipAsync(PluginStoreConfig store, StoreTarget target, string? expectedSha256, CancellationToken cancellationToken)
+    {
         try
         {
+            target = await _WithSignedTokenAsync(store, target, cancellationToken).ConfigureAwait(false);
             var bytes = await _ReadBytesAsync(target, maxBytes: null, cancellationToken).ConfigureAwait(false);
             if (_ChecksumMismatch(bytes, expectedSha256))
             {
@@ -70,6 +126,11 @@ internal sealed class PluginStoreClient : IPluginStoreClient, ISingletonService
 
     public async Task<WorkflowTemplateDownloadResult> DownloadTemplateAsync(PluginStoreConfig store, string relativePath, string? expectedSha256, CancellationToken cancellationToken = default)
     {
+        if (store.Signed is not null)
+        {
+            return new WorkflowTemplateDownloadResult(false, "Signed sources do not provide workflow templates.", null);
+        }
+
         if (!_TryResolveRelative(store, relativePath, out var target, out var error))
         {
             return new WorkflowTemplateDownloadResult(false, error, null);
@@ -93,6 +154,11 @@ internal sealed class PluginStoreClient : IPluginStoreClient, ISingletonService
 
     public async Task<PluginStoreImageResult> DownloadImageAsync(PluginStoreConfig store, string iconUrl, CancellationToken cancellationToken = default)
     {
+        if (store.Signed is not null)
+        {
+            return new PluginStoreImageResult(false, "Signed sources do not provide images.", null);
+        }
+
         if (!_TryResolveIcon(store, iconUrl, out var target, out var error))
         {
             return new PluginStoreImageResult(false, error, null);
@@ -124,6 +190,20 @@ internal sealed class PluginStoreClient : IPluginStoreClient, ISingletonService
     {
         target = default;
         error = null;
+
+        if (store.Signed is not null)
+        {
+            if (store.IsLocal || !Uri.TryCreate(store.Location, UriKind.Absolute, out var signedIndex)
+                || (signedIndex.Scheme != Uri.UriSchemeHttp && signedIndex.Scheme != Uri.UriSchemeHttps)
+                || signedIndex.UserInfo.Length > 0 || signedIndex.Fragment.Length > 0)
+            {
+                error = "A signed source requires an http(s) index URL without embedded credentials or a fragment.";
+                return false;
+            }
+
+            target = new StoreTarget(IsLocal: false, signedIndex.ToString(), GitHubRaw: false, Token: null);
+            return true;
+        }
 
         if (store.Kind == PluginStoreKind.Local)
         {
@@ -238,6 +318,34 @@ internal sealed class PluginStoreClient : IPluginStoreClient, ISingletonService
                 ? token
                 : null;
     }
+
+    private static async ValueTask<StoreTarget> _WithSignedTokenAsync(PluginStoreConfig store, StoreTarget target, CancellationToken cancellationToken)
+    {
+        if (store.Signed is not { } signed)
+        {
+            return target;
+        }
+
+        if (target.IsLocal || _TokenForSameOrigin(target.Value, store.Location, "origin-check") is null)
+        {
+            throw new InvalidOperationException("A signed source cannot send credentials outside its own origin.");
+        }
+
+        var token = await signed.GetTokenAsync(cancellationToken).ConfigureAwait(false);
+        return target with { Token = token };
+    }
+
+    [GeneratedRegex("\\A[a-z0-9][a-z0-9-]{0,62}\\z", RegexOptions.CultureInvariant)]
+    private static partial Regex _OrganizationPattern();
+
+    [GeneratedRegex("\\A[a-z0-9]+(-[a-z0-9]+)*\\z", RegexOptions.CultureInvariant)]
+    private static partial Regex _IdPattern();
+
+    [GeneratedRegex("\\A(0|[1-9][0-9]{0,8})\\.(0|[1-9][0-9]{0,8})\\.(0|[1-9][0-9]{0,8})\\z", RegexOptions.CultureInvariant)]
+    private static partial Regex _VersionPattern();
+
+    [GeneratedRegex("\\A(any|[a-z0-9][a-z0-9.-]{0,31})\\z", RegexOptions.CultureInvariant)]
+    private static partial Regex _PlatformPattern();
 
     private static bool _TryResolveIcon(PluginStoreConfig store, string iconUrl, out StoreTarget target, out string? error)
     {

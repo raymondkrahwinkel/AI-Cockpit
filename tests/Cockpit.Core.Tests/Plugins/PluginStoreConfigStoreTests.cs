@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Cockpit.Core.Plugins;
 using Cockpit.Infrastructure.Plugins;
 
@@ -16,19 +17,31 @@ public class PluginStoreConfigStoreTests : IDisposable
         _configFilePath = Path.Combine(_tempDir, "cockpit.json");
     }
 
-    [Fact]
-    public async Task AddAsync_ThenLoadAsync_RoundTrips()
+    [Theory]
+    [InlineData("runtime-source-token")]
+    public async Task AddAsync_ThenLoadAsync_RoundTrips_WithoutSerializingRuntimeCredentials(string runtimeToken)
     {
         var store = new PluginStoreConfigStore(_configFilePath);
 
         await store.AddAsync(PluginStoreConfig.Remote("https://github.com/a/b"));
         await store.AddAsync(PluginStoreConfig.Remote("https://example.com/store/index.json"));
+        await store.AddAsync(PluginStoreConfig.Local("/home/raymond/plugins"));
 
         Assert.Equivalent(new[]
         {
             PluginStoreConfig.Remote("https://github.com/a/b"),
             PluginStoreConfig.Remote("https://example.com/store/index.json"),
+            PluginStoreConfig.Local("/home/raymond/plugins"),
         }, await store.LoadAsync());
+
+        var signed = PluginStoreConfig.Remote("https://example.com/store/index.json") with
+        {
+            Signed = new PluginStoreSignedSource("example:store", "example", _ => ValueTask.FromResult<string?>(runtimeToken)),
+        };
+        var serialized = JsonSerializer.Serialize(signed);
+        Assert.Equal("""{"kind":"remote","location":"https://example.com/store/index.json"}""", serialized);
+        Assert.DoesNotContain(runtimeToken, serialized);
+        Assert.Null(JsonSerializer.Deserialize<PluginStoreConfig>(serialized)?.Signed);
     }
 
     [Fact]
@@ -44,6 +57,7 @@ public class PluginStoreConfigStoreTests : IDisposable
         var stores = await store.LoadAsync();
         Assert.Single(stores);
         Assert.Equal(PluginStoreConfig.Remote("https://github.com/a/b"), stores[0]);
+        Assert.False(stores[0].HasToken);
     }
 
     public void Dispose()
