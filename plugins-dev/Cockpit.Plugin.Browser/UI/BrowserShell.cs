@@ -351,7 +351,7 @@ internal sealed class BrowserShell : UserControl
             CornerRadius = new CornerRadius(9),
             Margin = new Thickness(4, 0, 0, 0),
             Background = new SolidColorBrush(AgentPurple, 0.18),
-            Child = new TextBlock { Text = tab.Badge, FontSize = 11, Foreground = new SolidColorBrush(AgentPurple), MaxWidth = 90, TextTrimming = TextTrimming.CharacterEllipsis },
+            Child = new TextBlock { Text = tab.Retained ? "stopped" : tab.Badge, FontSize = 11, Foreground = new SolidColorBrush(AgentPurple), MaxWidth = 90, TextTrimming = TextTrimming.CharacterEllipsis },
         };
         var row = new DockPanel { VerticalAlignment = VerticalAlignment.Center };
         row.Children.Add(_Docked(badge, Dock.Right));
@@ -406,11 +406,21 @@ internal sealed class BrowserShell : UserControl
         var text = new TextBlock { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, FontSize = 12 };
         text.Inlines ??= [];
         text.Inlines.Add(new Run("Agent profile") { FontWeight = FontWeight.SemiBold });
-        text.Inlines.Add(new Run(drives ? "  ·  you are driving: the session's browser calls are refused until you give it back" : "  ·  live view of the agent Chromium  ·  no logins of the user  ·  driven by "));
-        if (drives == false)
+        if (tab.Origin.Length > 0)
         {
-            text.Inlines.Add(new Run(tab.Session) { FontWeight = FontWeight.SemiBold });
-            text.Inlines.Add(new Run(" via Playwright MCP"));
+            text.Inlines.Add(new Run("  ·  "));
+            text.Inlines.Add(new Run(tab.Origin) { FontWeight = FontWeight.SemiBold });
+        }
+
+        if (tab.Retained == false)
+        {
+            text.Inlines.Add(new Run(drives ? "  ·  you are driving: the session's browser calls are refused until you give it back" : "  ·  live view of the agent Chromium  ·  no logins of the user"));
+            if (drives == false && tab.Requested == false)
+            {
+                text.Inlines.Add(new Run("  ·  driven by "));
+                text.Inlines.Add(new Run(tab.Session) { FontWeight = FontWeight.SemiBold });
+                text.Inlines.Add(new Run(" via Playwright MCP"));
+            }
         }
 
         var take = new Button { Content = drives ? "Give back" : "Take over", Classes = { "Compact", drives ? "Accent" : "Subtle" }, Margin = new Thickness(6, 0, 0, 0) };
@@ -418,11 +428,27 @@ internal sealed class BrowserShell : UserControl
         var stop = new Button { Content = new TextBlock { Text = "Stop agent", Foreground = new SolidColorBrush(Color.Parse("#E5484D")) }, Classes = { "Compact", "Subtle" }, Margin = new Thickness(6, 0, 0, 0) };
         stop.Click += async (_, _) => await _agents.StopAsync();
         ToolTip.SetTip(stop, "Close this session's Chromium; its browser calls fail until it opens a new one");
+        var close = new Button { Content = "Close tab", Classes = { "Compact", "Subtle" }, Margin = new Thickness(6, 0, 0, 0) };
+        close.Click += async (_, _) => await _agents.CloseAsync();
+        ToolTip.SetTip(close, "Close this tab in the agent browser");
 
         _agentBar.Background = new SolidColorBrush(AgentPurple, 0.12);
         _agentBar.Padding = new Thickness(12, 5);
         var dot = new Avalonia.Controls.Shapes.Ellipse { Width = 8, Height = 8, Fill = new SolidColorBrush(AgentPurple), Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
-        _agentBar.Child = new DockPanel { Children = { _Docked(dot, Dock.Left), _Docked(stop, Dock.Right), _Docked(take, Dock.Right), text } };
+        var bar = new DockPanel { Children = { _Docked(dot, Dock.Left) } };
+        if (tab.Retained == false)
+        {
+            bar.Children.Add(_Docked(stop, Dock.Right));
+            bar.Children.Add(_Docked(take, Dock.Right));
+        }
+
+        if (tab.Retained || tab.Requested)
+        {
+            bar.Children.Add(_Docked(close, Dock.Right));
+        }
+
+        bar.Children.Add(text);
+        _agentBar.Child = bar;
     }
 
     private static async Task _LoadIcon(Image image, string url) => image.Source = await Favicons.GetAsync(url);

@@ -39,6 +39,11 @@ internal static class BrowserScenes
         ["browser-agents"] = () => _Shell(BrowserPlace.Tab, agentSide: true),
         ["browser-agents-floating"] = () => _Named(_Shell(BrowserPlace.Rail, agentSide: true), "Browser"),
         ["browser-agents-driving"] = () => _Shell(BrowserPlace.Tab, agentSide: true, driving: true),
+        // AC-1875: a tab an agent put in front of you, and the same tab after its session stopped.
+        ["browser-agents-operator"] = () => _Shell(BrowserPlace.Tab, agentSide: true, agentTab: AgentTabKind.Operator),
+        ["browser-agents-operator-floating"] = () => _Named(_Shell(BrowserPlace.Rail, agentSide: true, agentTab: AgentTabKind.Operator), "Browser"),
+        ["browser-agents-retained"] = () => _Shell(BrowserPlace.Tab, agentSide: true, agentTab: AgentTabKind.Retained),
+        ["browser-agents-retained-floating"] = () => _Named(_Shell(BrowserPlace.Rail, agentSide: true, agentTab: AgentTabKind.Retained), "Browser"),
         ["browser-codec"] = () => _Shell(BrowserPlace.Tab, codecUnsupported: true),
         // AC-1714, mockup screen 7: the active tab shared with one session, and the same tab after it moved to another site.
         ["browser-shared"] = () => _Shell(BrowserPlace.Tab, share: Shared.Reading),
@@ -115,7 +120,14 @@ internal static class BrowserScenes
         TookOver,
     }
 
-    private static Control _Shell(BrowserPlace place, bool codecUnsupported = false, bool agentSide = false, bool driving = false, Shared share = Shared.None)
+    private enum AgentTabKind
+    {
+        None,
+        Operator,
+        Retained,
+    }
+
+    private static Control _Shell(BrowserPlace place, bool codecUnsupported = false, bool agentSide = false, bool driving = false, Shared share = Shared.None, AgentTabKind agentTab = AgentTabKind.None)
     {
         var engine = BrowserEngine.ForScene(BrowserEngineState.Ready);
         var model = new BrowserModel(engine);
@@ -126,7 +138,9 @@ internal static class BrowserScenes
         var agents = new AgentTabsModel(null);
         agents.Stage(
             [
-                new AgentTab("pane-1", "AC-1720 verify login", "t1", "localhost:5173 — Login", "http://localhost:5173/login", driving, Icon: _Square(0xFF2F_6FE4)),
+                agentTab == AgentTabKind.None
+                    ? new AgentTab("pane-1", "AC-1720 verify login", "t1", "localhost:5173 — Login", "http://localhost:5173/login", driving, Icon: _Square(0xFF2F_6FE4))
+                    : new AgentTab(agentTab == AgentTabKind.Retained ? "retained:1" : "pane-1", "Zyra", "t1", "Mockup — Browser agent tabs", "http://localhost:5173/mockup", agentTab == AgentTabKind.Retained, Icon: _Square(0xFF2F_6FE4), Retained: agentTab == AgentTabKind.Retained, Requested: true),
                 new AgentTab("pane-2", "Depot-docs bijwerken", "t2", "docs.avaloniaui.net", "https://docs.avaloniaui.net/", false, Icon: _Square(0xFF3F_A56B)),
             ],
             AgentLoginPicture.Render(1440, 745),

@@ -8,9 +8,16 @@ internal sealed partial class AgentOwnedTabs
 {
     private readonly AgentBrowserHost browsers;
     private readonly AddressPolicy addressPolicy;
-    public AgentOwnedTabs(AgentBrowserHost browsers, AddressPolicy? addressPolicy = null)
+    private readonly Action<string, string>? present;
+    private readonly Func<string, string?>? sessionName;
+    private readonly ConcurrentDictionary<Guid, string> _origins = new();
+
+    // present: asks the UI to bring an operator tab forward (paneId, target); null when nothing can show it.
+    public AgentOwnedTabs(AgentBrowserHost browsers, AddressPolicy? addressPolicy = null, Action<string, string>? present = null, Func<string, string?>? sessionName = null)
     {
         this.browsers = browsers;
+        this.present = present;
+        this.sessionName = sessionName;
         this.addressPolicy = addressPolicy ?? new AddressPolicy(() => []);
         browsers.RetainTargets = generation => _tabs.Values.Where(e => e.Generation == generation && e.Purpose == "operator" && !_closed.ContainsKey((generation, e.Target))).Select(e => e.Target).ToHashSet(StringComparer.Ordinal);
     }
@@ -23,6 +30,14 @@ internal sealed partial class AgentOwnedTabs
     internal sealed record Info(string TabId, string Title, string Url, string Purpose);
     internal sealed record OpenResult(bool Ok, string? TabId = null, string? Url = null, string? Title = null,
         string? Purpose = null, string Presentation = "hidden", string? Code = null, string? Error = null);
+
+    // The session that opened an operator tab, for the label that outlives the session (a retained browser).
+    internal string? OriginOfRetained(string retainedKey) =>
+        retainedKey.StartsWith(AgentBrowserHost.RetainedPrefix, StringComparison.Ordinal)
+        && Guid.TryParseExact(retainedKey[AgentBrowserHost.RetainedPrefix.Length..], "N", out var generation)
+        && _origins.TryGetValue(generation, out var origin) ? origin : null;
+
+    internal bool IsOperatorTab(string target) => _tabs.Values.Any(e => e.Purpose == "operator" && e.Target == target);
 
     public static bool IsOwnedId(string id) => id.StartsWith("owned:", StringComparison.Ordinal);
 
@@ -101,7 +116,12 @@ internal sealed partial class AgentOwnedTabs
             Check(caller, session.Generation);
             Register(caller, session.Generation, target, purpose);
             Check(caller, session.Generation);
-            return new(true, tabId, info.Url, info.Title, purpose, purpose == "operator" ? "unavailable" : "hidden");
+            if (purpose == "operator")
+            {
+                _origins[session.Generation] = sessionName?.Invoke(caller) ?? caller;
+                present?.Invoke(caller, target);
+            }
+            return new(true, tabId, info.Url, info.Title, purpose, purpose == "operator" ? (present is null ? "unavailable" : "requested") : "hidden");
         }
         catch (Exception ex) when (IsBrowserFailure(ex))
         {

@@ -32,6 +32,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- A tab an agent or the assistant opens for you (`browser_open_tab` with purpose `operator`) now appears at once in the Browser on the Agents side, labelled "Opened by <session>". After the session stops the tab stays, labelled "session stopped", and you can view, drive and close it. A tab the agent opens for itself does not take focus.
 - The Depot "New Markdown file" dialog can now create a new folder: choose "New folder…" in the Folder list, pick the folder it goes in and type its name. The name is checked as you type, and the folder appears in the tree once the file is saved.
 
 ### Fixed

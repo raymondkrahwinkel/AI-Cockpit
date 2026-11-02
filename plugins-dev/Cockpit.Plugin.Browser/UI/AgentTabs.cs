@@ -7,10 +7,13 @@ using Cockpit.Plugins.Abstractions.UI;
 namespace Cockpit.Plugin.Browser.UI;
 
 // One tab of an agent browser (AC-1713): its title and address, and the session that drives it.
-internal sealed record AgentTab(string PaneId, string Session, string TargetId, string Title, string Url, bool OperatorDrives, string FaviconUrl = "", Bitmap? Icon = null)
+internal sealed record AgentTab(string PaneId, string Session, string TargetId, string Title, string Url, bool OperatorDrives, string FaviconUrl = "", Bitmap? Icon = null, bool Retained = false, bool Requested = false)
 {
     // The session's name is "AC-1720 verify login"; the badge on the tab is its first word.
     public string Badge => Session.Split(' ', 2)[0];
+
+    // Where the tab came from, shown in the bar: an operator tab says who opened it, a retained one that the session is gone.
+    public string Origin => Retained ? $"Opened by {Session} · session stopped" : Requested ? $"Opened by {Session}" : string.Empty;
 }
 
 // The Agents side of the profile switch: the tabs of every live agent browser, the one on screen and its picture.
@@ -31,6 +34,7 @@ internal sealed class AgentTabsModel : IDisposable
     private string? _watching;
     private int _frameDecoding;
     private (int Width, int Height) _viewport;
+    private (string PaneId, string TargetId, int Tries)? _pendingShow;
 
     public AgentTabsModel(IPluginUiChannel? channel)
     {
@@ -41,6 +45,12 @@ internal sealed class AgentTabsModel : IDisposable
         }
 
         _subscriptions.Add(channel.Subscribe("agents.changed", changed => Dispatcher.UIThread.Post(() => { _ = RefreshAsync(); })));
+        // An agent asked for a tab to be put in front of the operator (purpose operator); a self-open sends nothing.
+        _subscriptions.Add(channel.Subscribe("agents.show", shown => Dispatcher.UIThread.Post(() =>
+        {
+            RequestShow(shown.Payload.GetProperty("paneId").GetString() ?? string.Empty, shown.Payload.GetProperty("targetId").GetString() ?? string.Empty);
+            _ = RefreshAsync();
+        })));
         _subscriptions.Add(channel.Subscribe("agents.frame", OnFrame));
         _poll.Tick += (_, _) => _ = RefreshAsync();
         _resize.Tick += (_, _) =>
@@ -67,6 +77,9 @@ internal sealed class AgentTabsModel : IDisposable
 
     // Whether the shell shows the Agents side, for the status bar line.
     public bool Showing { get; private set; }
+
+    // The model has made a requested tab the active one: the shell opens the Browser on the Agents side.
+    public event Action? ShowRequested;
 
     public event Action? Changed;
 
@@ -121,6 +134,8 @@ internal sealed class AgentTabsModel : IDisposable
 
     public Task StopAsync() => Call("agents.stop");
 
+    public Task CloseAsync() => Call("agents.close", withTarget: true);
+
     public async Task RefreshAsync()
     {
         if (_channel is null)
@@ -139,7 +154,9 @@ internal sealed class AgentTabsModel : IDisposable
                     item.GetProperty("title").GetString()!,
                     item.GetProperty("url").GetString()!,
                     item.GetProperty("operatorDrives").GetBoolean(),
-                    item.GetProperty("faviconUrl").GetString() ?? string.Empty))
+                    item.GetProperty("faviconUrl").GetString() ?? string.Empty,
+                    Retained: item.GetProperty("retained").GetBoolean(),
+                    Requested: item.GetProperty("requested").GetBoolean()))
                 .ToList();
             Dispatcher.UIThread.Post(() => Apply(tabs));
         }
@@ -188,13 +205,30 @@ internal sealed class AgentTabsModel : IDisposable
         _ = Unwatch();
     }
 
-    private void Apply(List<AgentTab> tabs)
+    // ponytail: the tab may not be in the browser's list on the first refresh; try a few refreshes, then give up.
+    internal void RequestShow(string paneId, string targetId) => _pendingShow = (paneId, targetId, 0);
+
+    internal void Apply(List<AgentTab> tabs)
     {
         Error = null;
         _tabs = tabs;
         Badge.Count = tabs.Count;
         _active = tabs.FirstOrDefault(tab => _active is not null && tab.PaneId == _active.PaneId && tab.TargetId == _active.TargetId) ?? tabs.FirstOrDefault();
+        var shown = false;
+        if (_pendingShow is { } pending)
+        {
+            var wanted = tabs.FirstOrDefault(tab => tab.PaneId == pending.PaneId && tab.TargetId == pending.TargetId);
+            shown = wanted is not null;
+            _active = wanted ?? _active;
+            _pendingShow = shown || pending.Tries >= 4 ? null : pending with { Tries = pending.Tries + 1 };
+        }
+
         Changed?.Invoke();
+        if (shown)
+        {
+            ShowRequested?.Invoke();
+        }
+
         _ = SyncWatchAsync();
     }
 
@@ -273,7 +307,7 @@ internal sealed class AgentTabsModel : IDisposable
         }
     }
 
-    private async Task Call(string action)
+    private async Task Call(string action, bool withTarget = false)
     {
         if (_active is not { } tab || _channel is null)
         {
@@ -282,7 +316,7 @@ internal sealed class AgentTabsModel : IDisposable
 
         try
         {
-            await _channel.InvokeAsync(action, JsonSerializer.SerializeToElement(new { paneId = tab.PaneId })).ConfigureAwait(false);
+            await _channel.InvokeAsync(action, JsonSerializer.SerializeToElement(new { paneId = tab.PaneId, targetId = withTarget ? tab.TargetId : string.Empty })).ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is InvalidOperationException or JsonException)
         {

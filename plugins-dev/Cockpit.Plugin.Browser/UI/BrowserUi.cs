@@ -120,6 +120,16 @@ public sealed class BrowserUi : ICockpitPluginUi, IDisposable
             }
         }, share.Grants, tab => _ = share.ShareAsync(tab), _tabSession);
         var home = new BrowserHome(shell);
+        // An agent put a tab in front of you (AC-1875): the Browser on screen, on the Agents side, at that tab.
+        if (_agents is not null)
+        {
+            _agents.ShowRequested += () =>
+            {
+                shell.ShowAgents();
+                _ = home.Place == BrowserPlace.Rail ? host.OpenDockPanelAsync(DockPanelId) : host.OpenWorkspaceAsync(WorkspaceTypeId);
+            };
+        }
+
         home.Moved += place => _ = place == BrowserPlace.Rail ? host.OpenDockPanelAsync(DockPanelId) : host.OpenWorkspaceAsync(WorkspaceTypeId);
         void ShowStatus() => host.SetStatusText(WithShared(
             StatusText(home.Place, shell.Model.Engine.State, shell.Model.Tabs.Count, _agents!.Showing, _agents.Tabs.Count),

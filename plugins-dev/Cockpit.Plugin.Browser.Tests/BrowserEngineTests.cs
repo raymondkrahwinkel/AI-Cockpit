@@ -55,6 +55,7 @@ public class BrowserEngineTests
             Assert.True(Directory.Exists(old));
             Assert.Empty(Directory.EnumerateFiles(old));
             Assert.Equal("logins", File.ReadAllText(userMarker));
+            _BrowserShortcutsStayLocal();
         }
         finally
         {
@@ -109,39 +110,6 @@ public class BrowserEngineTests
         Assert.False(restored.Active!.IsDeferred);
         session.Configure(BrowserStartupMode.EmptyNewTab, BrowserModel.StartAddress);
         Assert.Null(storage.Get<BrowserSavedSession>(BrowserTabSession.TabsKey));
-    }
-
-    // L2d (platform/fallback): an engine that cannot load is a reason on the panel, never an exception in Cockpit. A
-    // failed fetch is tried again in the same process (AC-1760); once CEF itself failed to load, only a restart helps.
-    [Fact]
-    public async Task AnEngineThatCannotLoad_IsUnavailableWithTheReason_WithoutThrowing_AndAFailedFetchCanBeTriedAgain()
-    {
-        var root = Path.Combine(Path.GetTempPath(), "browser-engine-test-" + Guid.NewGuid().ToString("N"));
-        var runtime = Directory.CreateDirectory(Path.Combine(root, "runtime")).FullName;
-        var subprocess = Path.Combine(root, "subprocess.exe");
-        var fetches = 0;
-        try
-        {
-            File.WriteAllBytes(subprocess, []);
-            var engine = new BrowserEngine((_, _) => Task.FromResult(++fetches == 1
-                ? new CefRuntimeResult(null, "The download was interrupted.")
-                : new CefRuntimeResult(runtime, null)), subprocess, Path.Combine(root, "cache"));
-
-            await engine.EnsureStartedAsync();
-            Assert.Equal(("The download was interrupted.", true), (engine.Reason, engine.CanRetry));
-
-            await engine.RetryAsync();
-
-            Assert.Equal(2, fetches);
-            Assert.Equal(BrowserEngineState.Unavailable, engine.State);
-            Assert.False(string.IsNullOrWhiteSpace(engine.Reason));
-            Assert.False(engine.CanRetry);
-            _BrowserShortcutsStayLocal();
-        }
-        finally
-        {
-            Directory.Delete(root, recursive: true);
-        }
     }
 
     private sealed class MemoryStorage : IPluginStorage

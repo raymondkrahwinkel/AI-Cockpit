@@ -6,7 +6,7 @@ namespace Cockpit.Plugin.Browser;
 // AC-1713: What you see and do in the agent profile, on top of AgentBrowserHost: the tabs of every live agent
 // browser, one screencast for the tab you are looking at, and Neem over / Geef terug / Stop agent. The screencast runs
 // only between Watch and Unwatch, so nobody looking costs nothing. Frames and changes go out as plugin-channel events.
-internal sealed class AgentBrowserTabs(AgentBrowserHost browsers, Func<string, string?> sessionName, Action<string, object> publish, ILogger? logger = null, Action<string>? commandSent = null) : IDisposable
+internal sealed class AgentBrowserTabs(AgentBrowserHost browsers, Func<string, string?> sessionName, Action<string, object> publish, ILogger? logger = null, Action<string>? commandSent = null, Func<string, bool>? openedForOperator = null) : IDisposable
 {
     private const int MaxViewportDimension = 4096;
 
@@ -24,7 +24,7 @@ internal sealed class AgentBrowserTabs(AgentBrowserHost browsers, Func<string, s
         {
             foreach (var page in await PagesAsync(upstream, cancellationToken).ConfigureAwait(false))
             {
-                tabs.Add(new { paneId, session = sessionName(paneId) ?? paneId, targetId = page.Id, title = page.Title, url = page.Url, faviconUrl = page.FaviconUrl, operatorDrives = drives });
+                tabs.Add(new { paneId, session = sessionName(paneId) ?? paneId, targetId = page.Id, title = page.Title, url = page.Url, faviconUrl = page.FaviconUrl, operatorDrives = drives, retained = paneId.StartsWith(AgentBrowserHost.RetainedPrefix, StringComparison.Ordinal), requested = openedForOperator?.Invoke(page.Id) ?? false });
             }
         }
 
