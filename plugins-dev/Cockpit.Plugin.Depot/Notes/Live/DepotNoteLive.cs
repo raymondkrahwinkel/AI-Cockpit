@@ -19,8 +19,6 @@ internal sealed class DepotNoteLive(
     Func<DepotConnectionRegistration, CancellationToken, Task<bool>>? signIn = null) : IAsyncDisposable
 {
     private readonly Dictionary<string, DepotNoteSession> _sessions = new(StringComparer.Ordinal);
-    // Notes asked for live until the plugin closes them: a tab that closes and opens again gets a new session without asking twice.
-    private readonly HashSet<string> _wanted = new(StringComparer.Ordinal);
     private readonly Lock _lock = new();
 
     // The note's session, started if it was not open yet; the host's tab disposes it, which takes it off the list again.
@@ -32,7 +30,6 @@ internal sealed class DepotNoteLive(
         lock (_lock)
         {
             var key = _Key(request);
-            _wanted.Add(key);
             if (_sessions.TryGetValue(key, out var open))
             {
                 session = open;
@@ -54,14 +51,6 @@ internal sealed class DepotNoteLive(
         return session;
     }
 
-    public bool IsOpen(DepotNoteLiveRequest request)
-    {
-        lock (_lock)
-        {
-            return _wanted.Contains(_Key(request));
-        }
-    }
-
     // The host's own save of the note's file goes out only while its open live session, if any, is sure of the account.
     public bool MayWrite(DepotNoteLiveRequest request)
     {
@@ -76,7 +65,6 @@ internal sealed class DepotNoteLive(
         DepotNoteSession? session;
         lock (_lock)
         {
-            _wanted.Remove(_Key(request));
             _sessions.Remove(_Key(request), out session);
         }
 
@@ -109,7 +97,6 @@ internal sealed class DepotNoteLive(
         {
             sessions = [.. _sessions.Values];
             _sessions.Clear();
-            _wanted.Clear();
         }
 
         foreach (var session in sessions)

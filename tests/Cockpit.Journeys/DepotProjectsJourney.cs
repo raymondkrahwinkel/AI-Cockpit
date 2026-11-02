@@ -223,11 +223,12 @@ public sealed class DepotProjectsJourney
         public static string Ping() => "pong";
     }
 
-    // AC-1996: an ordinary Depot file opens live, keeps local typing through an outside append, and a second open keeps one tab.
+    // AC-1996: an ordinary Depot file opens live, keeps local typing through an outside append, saves, and closes.
     private static async Task _LiveNoteAsync(JourneyHost cockpit, Cockpit.Plugins.Abstractions.UI.ICockpitUiHost host, _FakeDepot depot)
     {
         const string path = "notes/editor.md";
         const string key = "depot:journey:acme/cockpit:" + path;
+        depot.ChangeEditorFromOutside(depot.EditorText + "\n");
         async Task Open()
         {
             await host.OpenFileWorkspaceAsync("depot.markdown", new FileWorkspaceOpenOptions(
@@ -238,18 +239,22 @@ public sealed class DepotProjectsJourney
         {
             var workspaces = cockpit.Cockpit.Workspaces;
             await Open();
-            await Open();
             Assert.Equal(1, workspaces.Settings.Workspaces.Count(workspace => workspace.InstanceKey == key));
             var body = workspaces.ActivePluginBody as MarkdownFileWorkspace
                 ?? throw new InvalidOperationException("The native file editor is missing.");
             await body.Ready;
-            body.Editor.TextEditor.Document.Insert(body.Editor.Text.Length, "\nTyped in Cockpit.");
-            await depot.AppendEditorFromOutsideAsync("\nAdded through MCP.");
+            Assert.Equal("# Journey\n\nWritten in Cockpit.\n", body.Editor.Text);
+            const string merged = "Typed in Cockpit.\n\n# Journey\n\nWritten in Cockpit.\nAdded by the assistant.\n";
+            body.Editor.TextEditor.Document.Insert(0, "Typed in Cockpit.\n\n");
+            await depot.AppendEditorFromOutsideAsync("Added by the assistant.\n");
             await Until.LayoutHolds(body, () => body.Editor.Text.Contains("Typed in Cockpit.", StringComparison.Ordinal)
-                && body.Editor.Text.Contains("Added through MCP.", StringComparison.Ordinal)).WaitAsync(Until.Ceiling);
+                && body.Editor.Text.Contains("Added by the assistant.", StringComparison.Ordinal)).WaitAsync(Until.Ceiling);
+            Assert.Equal(merged, body.Editor.Text);
             await depot.NoteEdited.WaitAsync(Until.Ceiling);
-            // This fake Depot saves nothing, so the tab saves the file itself after its quiet; a tab closed before then asks first.
+            // The fake room announces the edit, so its saver must persist the exact merge before the tab closes.
             await Until.LayoutHolds(body, () => !body.IsDirty).WaitAsync(Until.Ceiling);
+            await Until.LayoutHolds(body, () => depot.EditorText == merged).WaitAsync(Until.Ceiling);
+            Assert.Equal(merged, depot.EditorText);
             await workspaces.CloseWorkspaceCommand.ExecuteAsync(workspaces.Active?.Id ?? throw new InvalidOperationException("The note tab is gone."));
         });
     }
@@ -261,6 +266,8 @@ public sealed class DepotProjectsJourney
         public string Inbox => state.Inbox;
         public string? EditorText => state.EditorText;
         public Task NoteEdited => app.Services.GetRequiredService<_NoteCalls>().Edited.Task;
+
+        public void ChangeEditorFromOutside(string text) => state.ChangeEditorFromOutside(text);
 
         public async Task AppendEditorFromOutsideAsync(string text)
         {
@@ -310,6 +317,7 @@ public sealed class DepotProjectsJourney
             });
             app.MapGet("/cockpit/projects", state.WriteProjectsAsync);
             app.MapPut("/cockpit/projects/{org}/{slug}/definition", state.WriteDefinitionAsync);
+            app.MapPost("/cockpit/projects/{org}/{slug}/note-save", state.SaveNoteAsync);
             app.MapPost("/sync/{org}/{slug}/append", state.AppendAsync);
             app.MapPost("/sync/{org}/{slug}/read", state.ReadEditorAsync);
             app.MapPost("/sync/{org}/{slug}/write", state.WriteEditorAsync);
@@ -402,6 +410,17 @@ public sealed class DepotProjectsJourney
                 _editorBy = "journey-user";
             }
             await context.Response.WriteAsJsonAsync(new { results = new[] { new { path = "notes/editor.md", status = matches ? "written" : "conflict", checksum = EditorChecksum } } });
+        }
+
+        public async Task SaveNoteAsync(HttpContext context)
+        {
+            var form = await context.Request.ReadFormAsync(context.RequestAborted);
+            Assert.Equal(EditorChecksum, form["baseChecksum"].ToString());
+            _RememberEditor();
+            EditorText = form["content"].ToString();
+            _editorVersion++;
+            _editorBy = "journey-user";
+            await context.Response.WriteAsJsonAsync(new { checksum = EditorChecksum, version = _editorVersion });
         }
 
         private void _RememberEditor()
@@ -552,7 +571,11 @@ public sealed class DepotProjectsJourney
         {
         }
 
-        public void Edited(string documentId) => calls.Edited.TrySetResult();
+        public async Task Edited(string documentId)
+        {
+            calls.Edited.TrySetResult();
+            await Clients.Group(documentId).SendAsync("edited", documentId);
+        }
 
         public object? Text(string documentId, string? checksum)
         {
