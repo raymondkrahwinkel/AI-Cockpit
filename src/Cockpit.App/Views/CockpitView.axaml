@@ -2698,37 +2698,8 @@
                         </StackPanel>
                     </Button>
 
-                    <!-- The delegated tasks (#67) run as sessions without a tab, so the status bar is where they are
-                         visible at all: work is happening on your behalf that nothing else on screen would tell you
-                         about. Always there, including at nought: a meter that shows up only when it has something to
-                         report leaves you unable to tell "nothing is running" from "the meter is gone". The colour carries
-                         that — blue while something works, grey while nothing does. -->
-                    <Button DockPanel.Dock="Right"
-                            Classes="statusMeter"
-                            Padding="8,2"
-                            Margin="0,0,8,0"
-                            Command="{Binding ShowDelegatedTasksCommand}"
-                            ToolTip.Tip="Work your sessions handed to another profile — click to read what they produced, or stop them">
-                        <TextBlock Text="{Binding DelegatedTasks.ActiveTaskCount, StringFormat='Delegated tasks: {0}'}"
-                                   FontSize="11"
-                                   Foreground="{Binding DelegatedTasks.ActiveTaskBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"
-                                   VerticalAlignment="Center"/>
-                    </Button>
-
-                    <!-- AC-1456: each connect server's connection, as its group's header says it. -->
-                    <ItemsControl DockPanel.Dock="Right" Margin="0,0,8,0" VerticalAlignment="Center"
-                                  ItemsSource="{Binding ServerStatusLabels}">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <StackPanel Orientation="Horizontal" Spacing="12"/>
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="x:String">
-                                <TextBlock Text="{Binding}" FontSize="11" Foreground="{DynamicResource CockpitAccentBrush}"/>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+                    <!-- AC-2028: the disk meter, compact like CPU/RAM; the panel it opens lists every drive. -->
+                    <controls:DiskStorageStatus DockPanel.Dock="Right"/>
 
                     <!-- Managed worktrees (AC-85): the git worktrees the cockpit created for isolated sessions. Shown only
                          while there are any — click to see each one's state, reattach a gone one, or clean up finished. -->
@@ -2743,6 +2714,41 @@
                                    FontSize="11"
                                    Foreground="{Binding Worktrees.CountBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"
                                    VerticalAlignment="Center"/>
+                    </Button>
+
+                    <!-- The delegated tasks (#67) run as sessions without a tab, so the status bar is where they are
+                         visible at all: work is happening on your behalf that nothing else on screen would tell you
+                         about. Shown only while a task runs or waits (AC-2028): a meter at nought is clutter, and the
+                         dialog stays one click away from the side menu. -->
+                    <Button DockPanel.Dock="Right"
+                            Classes="statusMeter"
+                            Padding="8,2"
+                            Margin="0,0,8,0"
+                            Command="{Binding ShowDelegatedTasksCommand}"
+                            IsVisible="{Binding DelegatedTasks.HasActiveTasks}"
+                            ToolTip.Tip="Work your sessions handed to another profile — click to read what they produced, or stop them">
+                        <TextBlock Text="{Binding DelegatedTasks.ActiveTaskCount, StringFormat='Delegated tasks: {0}'}"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource CockpitStatusBusyBrush}"
+                                   VerticalAlignment="Center"/>
+                    </Button>
+
+                    <!-- AC-2028: running and queued test runs, tracked and heavy together; gone at nought. -->
+                    <Button DockPanel.Dock="Right"
+                            Classes="statusMeter"
+                            Padding="8,2"
+                            Margin="0,0,8,0"
+                            Command="{Binding ShowTestRunsCommand}"
+                            IsVisible="{Binding TestRuns.HasActive}"
+                            ToolTip.Tip="Commands your sessions started through start_run — click to read their output, or stop them">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="5">
+                            <materialIcons:MaterialIcon Kind="FlaskOutline" Width="13" Height="13"
+                                                        Foreground="{DynamicResource CockpitStatusBusyBrush}"/>
+                            <TextBlock Text="{Binding TestRuns.ActiveCount, StringFormat='Test runs: {0}'}"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource CockpitStatusBusyBrush}"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
                     </Button>
 
                     <!-- Plugin-registered supervised activities (AC-82): a counter per source (e.g. "Port-forwards: 2"),

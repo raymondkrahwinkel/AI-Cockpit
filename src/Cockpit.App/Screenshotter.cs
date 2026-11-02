@@ -208,6 +208,11 @@ internal static partial class Screenshotter
     private static readonly Dictionary<string, Func<int, int, Window>> Scenes = _WithProjectScenes(new(StringComparer.Ordinal)
     {
         ["session-background-work"] = (_, _) => _BackgroundWorkScene(),
+        // AC-2028: the status bar at rest and busy, the test-runs dialog, and the disk panel open on a critical drive.
+        ["statusbar-rest"] = (_, _) => _StatusBarScene(busy: false),
+        ["statusbar-busy"] = (_, _) => _StatusBarScene(busy: true),
+        ["statusbar-disk-popup"] = (_, _) => _StatusBarScene(busy: false),
+        ["test-runs"] = (_, _) => _TestRunsScene(),
         ["child-history-sidebar"] = (_, _) => _ChildHistorySidebar(),
         ["child-history-sidebar-open"] = (_, _) => _ChildHistorySidebar(),
         ["child-history-popout"] = (_, _) => _ChildHistoryPopout(),
@@ -1434,6 +1439,9 @@ internal static partial class Screenshotter
             Dispatcher.UIThread.RunJobs();
         },
         ["session-settings-flyout"] = window => _OpenFlyout(window, "SessionSettingsButton"),
+        ["statusbar-rest"] = window => _UseDisks(window, critical: false, open: false),
+        ["statusbar-busy"] = window => _UseDisks(window, critical: true, open: false),
+        ["statusbar-disk-popup"] = window => _UseDisks(window, critical: true, open: true),
         ["child-history-popout"] = window => _OpenFlyout(window, "BackgroundWorkButton"),
         ["child-history-sidebar-open"] = _OpenSidebarChild,
         ["agents-child-open"] = _OpenAgentChild,

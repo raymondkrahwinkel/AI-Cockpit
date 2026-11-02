@@ -44,6 +44,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     private readonly IShellAccessSwitch _shellAccessSwitch;
     private readonly IWorkingPathHistoryStore _workingPathStore;
     private readonly DelegatedTasksViewModel _delegatedTasks;
+    private readonly TestRunsViewModel _testRuns;
     private readonly ITtySessionProviderResolver _ttyProviderResolver;
     private readonly IWorktreeManager _worktreeManager;
     private readonly IRepositoryCloneManager _cloneManager;
@@ -68,6 +69,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         IShellAccessSwitch shellAccessSwitch,
         IWorkingPathHistoryStore workingPathStore,
         DelegatedTasksViewModel delegatedTasks,
+        TestRunsViewModel testRuns,
         ITtySessionProviderResolver ttyProviderResolver,
         IWorktreeManager worktreeManager,
         IRepositoryCloneManager cloneManager,
@@ -88,6 +90,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         _assistantProfileStore = assistantProfileStore;
         _surfaces = surfaces;
         _delegatedTasks = delegatedTasks;
+        _testRuns = testRuns;
         _profileStore = profileStore;
         _loginChecker = loginChecker;
         _loginFlows = loginFlows;
@@ -702,6 +705,17 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 
         // The shared view model, so the dialog lists the same tasks the orchestrator tools act on.
         await _ShowSurfaceAsync(typeof(DelegatedTasksDialog), owner, () => new DelegatedTasksDialog { DataContext = _delegatedTasks });
+    }
+
+    public async Task ShowTestRunsDialogAsync()
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+        {
+            return;
+        }
+
+        _testRuns.Refresh();
+        await _ShowSurfaceAsync(typeof(TestRunsDialog), owner, () => new TestRunsDialog { DataContext = _testRuns });
     }
 
     public async Task ShowAgentLineInspectorDialogAsync(AgentLineInspectorViewModel inspector)
