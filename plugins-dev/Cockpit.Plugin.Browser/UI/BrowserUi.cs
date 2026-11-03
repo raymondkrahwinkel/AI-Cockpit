@@ -34,6 +34,7 @@ public sealed class BrowserUi : ICockpitPluginUi, IDisposable
 
     public void InitializeUi(ICockpitUiHost host)
     {
+        BrowserEngine.Shared.IsHardwareAccelerationEnabled = new BrowserSettings(host.Storage).IsHardwareAccelerationEnabled;
         _agents = new AgentTabsModel(host.Channel);
         // AC-1714: up front, so an agent asking before the browser was ever opened gets a refusal at once, not a timeout.
         _model = new BrowserModel(BrowserEngine.Shared);
