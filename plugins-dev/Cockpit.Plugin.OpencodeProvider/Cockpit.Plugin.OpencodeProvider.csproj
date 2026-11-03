@@ -46,6 +46,7 @@
 
   <ItemGroup>
     <Compile Include="..\_shared\JsonLineText.cs" Link="JsonLineText.cs" />
+    <Compile Include="..\Cockpit.Plugin.KimiProvider\AcpImageFacts.cs" Link="AcpImageFacts.cs" />
     <None Include="plugin.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
