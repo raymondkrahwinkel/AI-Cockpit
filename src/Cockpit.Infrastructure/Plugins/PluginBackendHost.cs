@@ -12,6 +12,7 @@ using Cockpit.Core.Assistant;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.ModelIntelligence;
 using Cockpit.Core.Projects;
+using Cockpit.Core.Startup;
 using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Backup;
 using Cockpit.Infrastructure.Consent;
@@ -334,9 +335,38 @@ public class PluginBackendHost(
     public void RemoveBackupTarget(string id) =>
         services.GetRequiredService<BackupTargets>().Remove(id);
 
-    // A host with no splash (a backend without a frontend) registers no sequence, and the step is simply not run.
-    public void AddStartupStep(string label, Func<CancellationToken, Task> run) =>
-        services.GetService<Cockpit.Core.Startup.StartupSequence>()?.AddPlugin(label, run);
+    // Kept for the host's lifetime so later startup-step registrations also run immediately after live activation.
+    internal bool IsLiveActivation { get; set; }
+
+    public void AddStartupStep(string label, Func<CancellationToken, Task> run)
+    {
+        var sequence = services.GetService<StartupSequence>();
+        if (sequence is null)
+        {
+            return;
+        }
+
+        if (IsLiveActivation)
+        {
+            _ = _RunStartupStepAsync(sequence, label, run);
+        }
+        else
+        {
+            sequence.AddPlugin(label, run);
+        }
+    }
+
+    private async Task _RunStartupStepAsync(StartupSequence sequence, string label, Func<CancellationToken, Task> run)
+    {
+        try
+        {
+            await sequence.RetryAsync(sequence.AddPlugin(label, run)).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            _Logger()?.LogWarning(exception, "Plugin {PluginId}'s startup step '{Label}' could not run.", pluginId, label);
+        }
+    }
 
     public async Task<string?> GetProjectFieldValueAsync(string key, string? paneId, CancellationToken cancellationToken)
     {
@@ -429,6 +459,12 @@ public class PluginBackendHost(
 
     public IReadOnlyList<IWorkflowStep> WorkflowSteps =>
         services.GetRequiredService<IWorkflowStepRegistry>().Steps;
+
+    public event EventHandler? WorkflowStepsChanged
+    {
+        add => services.GetRequiredService<IWorkflowStepRegistry>().Changed += value;
+        remove => services.GetRequiredService<IWorkflowStepRegistry>().Changed -= value;
+    }
 
     // The contributing plugin's own name is the heading a template is filed under, unless it says otherwise: that is
     // where an operator looks for "the YouTrack one".

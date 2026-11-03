@@ -85,6 +85,13 @@ public interface ICockpitHost
     /// </summary>
     IReadOnlyList<IWorkflowStep> WorkflowSteps => [];
 
+    /// <summary>Raised after a plugin contributes a workflow step; rebuild cached engines for subsequent runs.</summary>
+    event EventHandler? WorkflowStepsChanged
+    {
+        add { }
+        remove { }
+    }
+
     /// <summary>
     /// Contributes a ready-made flow (#69) — "a ticket you pick becomes a branch, an agent and a status change". A
     /// plugin that contributes steps knows how they fit together; a template is that knowledge, offered instead of an

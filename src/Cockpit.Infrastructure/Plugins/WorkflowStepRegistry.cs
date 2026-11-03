@@ -1,5 +1,6 @@
 using Cockpit.Core.Abstractions;
 using Cockpit.Plugins.Abstractions.Workflows;
+using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Infrastructure.Plugins;
 
@@ -14,6 +15,8 @@ public interface IWorkflowStepRegistry
 
     void Register(IWorkflowStep step);
 
+    event EventHandler? Changed;
+
     /// <summary>
     /// A plugin fired one of its triggers. The workflows plugin listens; nobody else has a reason to.
     /// </summary>
@@ -22,22 +25,49 @@ public interface IWorkflowStepRegistry
     void Raise(string typeId, IReadOnlyDictionary<string, string> data);
 }
 
-internal sealed class WorkflowStepRegistry : IWorkflowStepRegistry, ISingletonService
+internal sealed class WorkflowStepRegistry(ILogger<WorkflowStepRegistry> logger) : IWorkflowStepRegistry, ISingletonService
 {
     private readonly List<IWorkflowStep> _steps = [];
+    private readonly Lock _gate = new();
 
-    public IReadOnlyList<IWorkflowStep> Steps => _steps;
+    public IReadOnlyList<IWorkflowStep> Steps
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return [.. _steps];
+            }
+        }
+    }
+
+    public event EventHandler? Changed;
 
     // Two plugins claiming the same type id would make a flow's stored step ambiguous — which of them ran is then a
     // question of load order, and a flow that does different things on different days is worse than one that refuses.
     public void Register(IWorkflowStep step)
     {
-        if (_steps.Any(existing => string.Equals(existing.TypeId, step.TypeId, StringComparison.Ordinal)))
+        lock (_gate)
         {
-            throw new InvalidOperationException($"A workflow step called '{step.TypeId}' is already registered. Type ids must be unique — prefix yours with your plugin's name.");
+            if (_steps.Any(existing => string.Equals(existing.TypeId, step.TypeId, StringComparison.Ordinal)))
+            {
+                throw new InvalidOperationException($"A workflow step called '{step.TypeId}' is already registered. Type ids must be unique — prefix yours with your plugin's name.");
+            }
+
+            _steps.Add(step);
         }
 
-        _steps.Add(step);
+        foreach (EventHandler handler in Changed?.GetInvocationList() ?? [])
+        {
+            try
+            {
+                handler(this, EventArgs.Empty);
+            }
+            catch (Exception exception)
+            {
+                logger.LogWarning(exception, "A workflow step change subscriber failed after registering '{TypeId}'.", step.TypeId);
+            }
+        }
     }
 
     public event EventHandler<WorkflowTriggerFired>? Fired;
@@ -46,7 +76,7 @@ internal sealed class WorkflowStepRegistry : IWorkflowStepRegistry, ISingletonSe
     // otherwise show up as "my flow never runs". It says so instead.
     public void Raise(string typeId, IReadOnlyDictionary<string, string> data)
     {
-        if (!_steps.Any(step => step.IsTrigger && string.Equals(step.TypeId, typeId, StringComparison.Ordinal)))
+        if (!Steps.Any(step => step.IsTrigger && string.Equals(step.TypeId, typeId, StringComparison.Ordinal)))
         {
             throw new InvalidOperationException($"'{typeId}' is not a registered workflow trigger, so nothing would ever start on it.");
         }

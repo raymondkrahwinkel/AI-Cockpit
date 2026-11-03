@@ -440,7 +440,8 @@
          A plugin that sets SessionProviderRegistration.TermsNotice sets minHostVersion 0.155.0. -->
     <!-- 0.156.0: PluginProfileInfo.UsesPersonalLogin and ProviderTerms.GeneralNotice (AC-2006, SDK 3.63.0). -->
     <!-- 0.157.0: claimed read-only assistant turns with start/completion receipts (SDK 3.64.0). -->
-    <VersionPrefix>0.157.0</VersionPrefix>
+    <!-- 0.158.0: live plugin secrets, startup steps and workflow engine refresh (AC-2023, SDK 3.67.0). -->
+    <VersionPrefix>0.158.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>
