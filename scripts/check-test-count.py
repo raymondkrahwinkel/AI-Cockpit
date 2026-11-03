@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Test-count gate (AC-1423/AC-1424, AC-1614): a ceiling of test cases per test project that only goes down.
+"""Test-count gate (AC-1423/AC-1424, AC-1614, AC-2036): a ceiling of test cases per test project that only goes down.
 
 Counts the test cases per test project under tests/ and plugins-dev/*.Tests: every `[Fact]`/`[Theory]`
 method, variants included (`WindowsFact`, `PosixFact`, `SkippableTheory` ...), counts once per
@@ -14,18 +14,19 @@ are ceilings, and pinned:
     A project below its ceiling:                     red; lower the ceiling with it (--update-baseline),
                                                      so the room cannot be refilled later.
 
+A ceiling goes up only with Raymond's approval, stated in the PR. Which tests may exist at all:
+Depot krahwinkel-it/cockpit, Conventions/Testing.md, "Testregels v2".
+
     scripts/check-test-count.py                    # check
-    scripts/check-test-count.py --update-baseline  # rewrite the ceilings to the current counts
+    scripts/check-test-count.py --update-baseline  # lower the ceilings to the current counts; refuses a rise
 """
-import os
 import re
 import subprocess
 import sys
 from pathlib import Path
 
 BASELINE_PATH = Path(__file__).parent / "test-count-baseline.txt"
-# TEST_COUNT_MAIN points the comparison at another ref, for a local counterproof before main has case ceilings.
-BASELINE_ON_MAIN = os.environ.get("TEST_COUNT_MAIN", "origin/main") + ":scripts/test-count-baseline.txt"
+BASELINE_ON_MAIN = "origin/main:scripts/test-count-baseline.txt"
 ROOTS = [Path("tests"), Path("plugins-dev")]
 UNIT = "cases"
 NEW_PROJECT_CEILING = 10
@@ -99,20 +100,21 @@ def baseline_on_main():
     result = subprocess.run(["git", "show", BASELINE_ON_MAIN], capture_output=True, text=True, encoding="utf-8")
     if result.returncode:
         sys.exit(f"cannot read {BASELINE_ON_MAIN} (git fetch origin main first): {result.stderr.strip()}")
-    return parse_baseline(result.stdout)
+    main = parse_baseline(result.stdout)
+    if main is None:
+        sys.exit(f"{BASELINE_ON_MAIN} has no `unit\t{UNIT}` row: there is nothing to hold the ceilings against.")
+    return main
 
 
 def compare(current, ceilings, main):
-    """(problems, notes) for the counts against the ceilings, and the ceilings against those on main (None: none yet)."""
-    problems, notes = [], []
+    """Problems with the counts against the ceilings, and with the ceilings against those on main."""
+    problems = []
     for project in sorted(set(current) | set(ceilings)):
         now, ceiling = current.get(project, 0), ceilings.get(project, 0)
         if now > ceiling:
             problems.append(f"{project}: {now} test cases, ceiling {ceiling} (+{now - ceiling}). Tests only go down.")
         elif now < ceiling:
             problems.append(f"{project}: {now} test cases, ceiling {ceiling}. Lower it: scripts/check-test-count.py --update-baseline")
-        if main is None:
-            continue
         on_main = main.get(project)
         if on_main is None and ceiling > NEW_PROJECT_CEILING:
             problems.append(f"{project}: a new project starts at a ceiling of at most {NEW_PROJECT_CEILING}, not {ceiling}.")
@@ -121,9 +123,7 @@ def compare(current, ceilings, main):
         hard = HARD_CEILINGS.get(project)
         if hard is not None and ceiling > hard and (on_main is None or ceiling > on_main):
             problems.append(f"{project}: ceiling {ceiling}, above the hard ceiling of {hard}.")
-    if main is None:
-        notes.append(f"{BASELINE_ON_MAIN} has no `unit\t{UNIT}` row yet; the comparison with origin/main starts once it does.")
-    return problems, notes
+    return problems
 
 
 def write_baseline(current):
@@ -138,13 +138,17 @@ def write_baseline(current):
 def main():
     current = count_tests()
     if "--update-baseline" in sys.argv[1:]:
+        # With the counts as ceilings only the comparison with main can fail: a rise is refused and nothing is written.
+        rises = compare(current, current, baseline_on_main())
+        if rises:
+            sys.exit("\n".join(rises + ["--update-baseline only lowers ceilings: remove tests instead."]))
         write_baseline(current)
         return
     ceilings = parse_baseline(BASELINE_PATH.read_text(encoding="utf-8"))
     if ceilings is None:
         sys.exit(f"{BASELINE_PATH} has no `unit\t{UNIT}` row: rewrite it with --update-baseline.")
-    problems, notes = compare(current, ceilings, baseline_on_main())
-    for line in notes + problems:
+    problems = compare(current, ceilings, baseline_on_main())
+    for line in problems:
         print(line)
     if problems:
         sys.exit(1)
