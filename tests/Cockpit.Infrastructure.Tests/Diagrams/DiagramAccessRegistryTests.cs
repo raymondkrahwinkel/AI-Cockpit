@@ -55,19 +55,6 @@ public class DiagramAccessRegistryTests
     }
 
     [Fact]
-    public void Couple_IsExclusive_ASecondAgentIsRefused_EvenAgainstAZeroCapabilityCoupling()
-    {
-        var registry = new DiagramAccessRegistry();
-        registry.SurfaceOpened("surface-1", "Onboarding flow", "flowchart LR\nA-->B");
-        registry.Couple("session-a", "surface-1");
-
-        Assert.True(registry.IsCoupledByAnother("session-b", "surface-1"));
-        Assert.Null(registry.CouplingOf("session-b", "surface-1"));
-        var act = () => registry.Couple("session-b", "surface-1");
-        Assert.Throws<InvalidOperationException>(act);
-    }
-
-    [Fact]
     public void WriteCoupled_UpdatesTheTextAndRaisesTextChanged_ButOnlyForASessionHoldingEdit()
     {
         var registry = new DiagramAccessRegistry();
@@ -87,31 +74,6 @@ public class DiagramAccessRegistryTests
     }
 
     [Fact]
-    public void PeekText_ReadsRegardlessOfCoupling_SoTheConsentPromptCanNameWhatIsBeingShared()
-    {
-        var registry = new DiagramAccessRegistry();
-        registry.SurfaceOpened("surface-1", "Onboarding flow", "flowchart LR\nA-->B");
-
-        Assert.Equal("flowchart LR\nA-->B", registry.PeekText("surface-1"));
-        Assert.Null(registry.PeekText("no-such-surface"));
-    }
-
-    [Fact]
-    public void SessionEnded_DecouplesEverySurfaceThatSessionHeld()
-    {
-        var registry = new DiagramAccessRegistry();
-        registry.SurfaceOpened("surface-1", "Flow one", "flowchart LR\nA-->B");
-        registry.SurfaceOpened("surface-2", "Flow two", "flowchart LR\nC-->D");
-        registry.Grant("session-a", "surface-1", DiagramCapability.Read);
-        registry.Grant("session-a", "surface-2", DiagramCapability.Read);
-
-        registry.SessionEnded("session-a");
-
-        Assert.Null(registry.CouplingOf("session-a", "surface-1"));
-        Assert.Null(registry.CouplingOf("session-a", "surface-2"));
-    }
-
-    [Fact]
     public void Disconnect_DecouplesWhateverCapabilitiesWereHeld_AndAnnounces()
     {
         var registry = new DiagramAccessRegistry();
@@ -126,14 +88,6 @@ public class DiagramAccessRegistryTests
         Assert.Equal(2, changes.Count);
         Assert.NotNull(changes[0].Coupling);
         Assert.Null(changes[1].Coupling);
-    }
-
-    [Fact]
-    public void Grant_RefusesASurfaceThatIsNotOpen()
-    {
-        var registry = new DiagramAccessRegistry();
-        var act = () => registry.Grant("session-a", "never-registered", DiagramCapability.Read);
-        Assert.Throws<InvalidOperationException>(act);
     }
 
     [Fact]

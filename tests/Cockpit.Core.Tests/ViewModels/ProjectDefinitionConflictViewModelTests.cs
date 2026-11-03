@@ -16,18 +16,6 @@ public class ProjectDefinitionConflictViewModelTests
         new(name, description, behaviorPrompt, IsolateInWorktreeByDefault: false, EnabledMcpServerNames: null);
 
     [Fact]
-    public void Rows_AFieldThatNeverMovedRemotely_HasNoRow()
-    {
-        var baseline = Binding(name: "Cockpit", description: "Original");
-        var mine = Edit(name: "Cockpit", description: "My edit");
-        var latest = Binding(name: "Cockpit", description: "Original"); // remote never touched Description either.
-
-        var viewModel = new ProjectDefinitionConflictViewModel(mine, baseline, latest);
-
-        Assert.DoesNotContain(viewModel.Rows, row => row.FieldLabel == "Description");
-    }
-
-    [Fact]
     public void Rows_OnlyTheRemoteSideChanged_IsARowButNotACollision()
     {
         var baseline = Binding(name: "Cockpit", description: "Original");

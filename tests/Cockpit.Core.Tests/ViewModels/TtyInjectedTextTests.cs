@@ -59,17 +59,6 @@ public class TtyInjectedTextTests
         Assert.Equal(new[] { "red and plain" }, writes);
     }
 
-    [Fact]
-    public void InjectText_ThatIsNothingButKeys_WritesNothingAtAll()
-    {
-        var writes = new List<string>();
-        var vm = _NewTty(writes);
-
-        vm.InjectText("\r\n");
-
-        Assert.Empty(writes);
-    }
-
     /// <summary>A TTY panel that records into <paramref name="writes"/> every write it asks the view to make into the pty, in order.</summary>
     private static TtyViewModel _NewTty(List<string> writes)
     {

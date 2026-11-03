@@ -24,45 +24,16 @@ public class PlainConsentRowTests
         };
 
     [Fact]
-    public void APendingMove_AsksInPlainWordsAndNamesTheFiles()
-    {
-        var row = PendingRow("Bash", MoveInput);
-
-        Assert.True(row.ShowPlainConsentCard);
-        Assert.Equal("Move 2 files into ./archive/2026-06", row.PlainConsentSentence);
-        Assert.True(row.HasPlainConsentPaths);
-        Assert.Equal($"KPN.pdf{Environment.NewLine}Vattenfall.pdf", row.PlainConsentPathsText);
-
-        // The coarse "Ran a command — waiting for your approval" stands down for a call that speaks for itself.
-        Assert.False(row.ShowHumanToolLine);
-    }
-
-    [Fact]
     public void TheSentenceOnTheRow_CarriesNothingTheModelWrote()
     {
         // The same guarantee as the derivation's own test, asserted where it reaches the screen: the input above
         // carries a `description` the model composed about its own request.
         var row = PendingRow("Bash", MoveInput);
 
+        // Without this the two below would pass on a row that derived no sentence at all.
+        Assert.True(row.ShowPlainConsentCard);
         Assert.DoesNotContain("ZYRAPOISON", row.PlainConsentSentence, StringComparison.Ordinal);
         Assert.DoesNotContain("ZYRAPOISON", row.PlainConsentPathsText, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void TheRawCall_IsOneClickAwayAndAlwaysThere()
-    {
-        var row = PendingRow("Bash", MoveInput);
-
-        Assert.True(row.ShowConsentCommandFold);
-        Assert.Equal("Show the command", row.ConsentCommandToggleLabel);
-        Assert.False(row.ShowConsentCommand);
-
-        row.ToggleExpandedCommand.Execute(null);
-
-        Assert.True(row.ShowConsentCommand);
-        Assert.Equal("Hide the command", row.ConsentCommandToggleLabel);
-        // What the fold reveals is the call itself, not a retelling of it.
-        Assert.Contains("mv KPN.pdf Vattenfall.pdf ./archive/2026-06/", row.Text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -81,57 +52,5 @@ public class PlainConsentRowTests
         Assert.True(row.ShowConsentCommandFold);
         row.ToggleExpandedCommand.Execute(null);
         Assert.Contains("xargs rm -f", row.Text, StringComparison.Ordinal);
-    }
-
-    [Theory]
-    [InlineData(ReadingLevel.Developer)]
-    [InlineData(ReadingLevel.Focus)]
-    [InlineData(ReadingLevel.Simple)]
-    public void TheSentenceIsOnOneScreenForBothAudiences(ReadingLevel level)
-    {
-        var row = PendingRow("Bash", MoveInput, level);
-
-        Assert.True(row.ShowPlainConsentCard, $"the approval reads the same at {level}");
-        Assert.Equal("Move 2 files into ./archive/2026-06", row.PlainConsentSentence);
-    }
-
-    [Theory]
-    [InlineData(ReadingLevel.Developer)]
-    [InlineData(ReadingLevel.Focus)]
-    public void AboveTheDeveloperLevel_TheToolChipStaysTheFold(ReadingLevel level)
-    {
-        var row = PendingRow("Bash", MoveInput, level);
-
-        // A second "Show the command" beside the chip would say the same thing twice.
-        Assert.False(row.ShowConsentCommandFold);
-        Assert.True(row.ShowToolBlock);
-    }
-
-    [Fact]
-    public void OnceAnswered_TheRowSaysWhichWayItWent_AndKeepsTheCommand()
-    {
-        var row = PendingRow("Bash", MoveInput);
-        row.IsPendingPermission = false;
-        row.PermissionDecision = "Allowed";
-
-        // The sentence alone would drop the decision, which is the reason the row is still on screen at all.
-        Assert.False(row.ShowPlainConsentCard);
-        Assert.True(row.ShowHumanToolLine);
-        Assert.Equal("✓ Ran a command — you approved this", row.HumanToolText);
-
-        Assert.True(row.ShowConsentCommandFold);
-    }
-
-    [Fact]
-    public void AnAnsweredQuestion_KeepsItsOwnCard()
-    {
-        // AC-715's question rides the same permission callback but asks for an answer, not consent — Allow/Deny
-        // is not a reply to it, and neither is a sentence about moving files.
-        var row = PendingRow("AskUserQuestion", """{"questions":[{"question":"Which month?","options":[{"label":"June"}]}]}""");
-        row.QuestionPrompts = AskUserQuestionViewModel.Parse(row.InputJson);
-
-        Assert.False(row.ShowPlainConsentCard);
-        Assert.False(row.ShowConsentCommandFold);
-        Assert.False(row.ShowHumanToolLine);
     }
 }

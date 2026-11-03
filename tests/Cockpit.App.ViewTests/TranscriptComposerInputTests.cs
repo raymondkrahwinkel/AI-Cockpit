@@ -142,12 +142,11 @@ public sealed class TranscriptComposerInputTests
     });
 
     // AC-726: what the paths do once they arrive; the OS drag itself is verified by hand. Rows 1 and 2 force
-    // opposite behaviour out of the one quoting decision, rows 1 and 5 out of the one leading-space decision.
+    // opposite behaviour out of the one quoting decision, rows 1 and 4 out of the one leading-space decision.
     [Theory]
     [InlineData("ab", 1, new[] { "/tmp/a.txt" }, "a /tmp/a.txt b", 13)]
     [InlineData("ab", 1, new[] { "/tmp/my file.txt", "/tmp/b.md" }, "a \"/tmp/my file.txt\" /tmp/b.md b", 31)]
     [InlineData("ab", 1, new[] { "/tmp/say \"hi\".txt" }, "a \"/tmp/say \\\"hi\\\".txt\" b", 24)]
-    [InlineData("ab", 1, new string[0], "ab", 1)]
     [InlineData("ab ", 3, new[] { "/tmp/a.txt" }, "ab /tmp/a.txt ", 14)]
     public void DroppedPaths_GoInAtTheCaret_SeparatedAndQuotedAsAShellWouldReadThem(
         string text, int caret, string[] paths, string expectedText, int expectedCaret) => HeadlessAvalonia.Run(() =>

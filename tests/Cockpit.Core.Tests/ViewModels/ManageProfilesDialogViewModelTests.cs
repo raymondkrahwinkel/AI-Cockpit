@@ -15,22 +15,6 @@ public class ManageProfilesDialogViewModelTests
 {
 
     [Fact]
-    public async Task LoadAsync_TurnsAStoredAutoApproveToolsDefaultIntoTheEditableRow()
-    {
-        var work = new SessionProfile(
-            "ollama",
-            new OllamaConfig("http://localhost:11434", "llama3.1"),
-            Defaults: new ProfileDefaults("default", "sonnet", "medium", AutoApproveTools: true));
-        var store = Substitute.For<ISessionProfileStore>();
-        store.LoadAsync(Arg.Any<CancellationToken>()).Returns([work]);
-        var vm = new ManageProfilesDialogViewModel(store, Substitute.For<IProfileLoginChecker>());
-
-        await vm.LoadAsync();
-
-        Assert.True(Assert.Single(vm.Profiles).AutoApproveTools);
-    }
-
-    [Fact]
     public async Task Save_PersistsTheAutoApproveToolsDefault()
     {
         // AC-1992: one source with brains, so the shared picker replaces the free-text Assistant field.

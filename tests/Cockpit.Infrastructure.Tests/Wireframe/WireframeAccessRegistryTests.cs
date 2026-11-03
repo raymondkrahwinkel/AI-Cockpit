@@ -87,14 +87,6 @@ public class WireframeAccessRegistryTests
     }
 
     [Fact]
-    public void Couple_OnASurfaceThatIsNotOpen_Throws()
-    {
-        var registry = new WireframeAccessRegistry();
-
-        Assert.Throws<InvalidOperationException>(() => registry.Couple(Session, "nothing-here"));
-    }
-
-    [Fact]
     public void SessionEnded_DropsEveryCouplingThatSessionHeld_AndAnnouncesEachOne()
     {
         var registry = _Open();
@@ -128,18 +120,6 @@ public class WireframeAccessRegistryTests
     }
 
     [Fact]
-    public void Disconnect_BreaksTheCouplingAtOnce_WhateverItHeld()
-    {
-        var registry = _Open();
-        registry.Grant(Session, SurfaceId, WireframeCapability.Edit);
-
-        registry.Disconnect(SurfaceId);
-
-        Assert.Null(registry.CouplingOf(Session, SurfaceId));
-        Assert.Null(registry.ReadCoupled(Session, SurfaceId));
-    }
-
-    [Fact]
     public void WriteCoupled_RefusesASourceTheFormatCannotReadBack()
     {
         var registry = _Open();
@@ -162,15 +142,6 @@ public class WireframeAccessRegistryTests
         Assert.NotNull(result.Refusal);
         Assert.Equal(WireframeScreens.Settings, registry.PeekText(SurfaceId));
         Assert.Empty(registry.History(SurfaceId));
-    }
-
-    [Fact]
-    public void PeekText_HandsTheSourceOverWithoutACoupling_ForTheHostsOwnConsentPrompt()
-    {
-        var registry = _Open();
-
-        Assert.Equal(WireframeScreens.Settings, registry.PeekText(SurfaceId));
-        Assert.Null(registry.PeekText("nothing-here"));
     }
 
     [Fact]

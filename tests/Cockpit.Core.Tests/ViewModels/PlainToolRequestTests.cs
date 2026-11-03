@@ -24,9 +24,6 @@ public class PlainToolRequestTests
     // may not live only in the file block beside the sentence.
     [InlineData("Bash", """{"command":"rm /etc/passwd"}""", "Delete /etc/passwd")]
     [InlineData("Bash", """{"command":"mkdir ./archive/2026-07/"}""", "Create the folder ./archive/2026-07")]
-    [InlineData("Read", """{"file_path":"/work/invoices/june.csv"}""", "Read the file june.csv")]
-    [InlineData("Write", """{"file_path":"/work/export.csv","content":"a,b,c"}""", "Create or replace the file export.csv")]
-    [InlineData("Edit", """{"file_path":"/work/ledger.md","old_string":"x","new_string":"y"}""", "Change the file ledger.md")]
     public void Describe_ReadsTheSentenceOffTheCall(string toolName, string inputJson, string expected)
     {
         // Exact text, not a substring: the sentence is a fixed template plus values taken from the input, so

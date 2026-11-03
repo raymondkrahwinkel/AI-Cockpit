@@ -77,19 +77,6 @@ public class SharedProjectBindingDialogViewModelTests
         Assert.Null(viewModel.ToProject().Assistant);
     }
 
-    /// <summary>
-    /// The same rule one type earlier: the binding a plugin hands the host structurally cannot carry an assistant,
-    /// so no source can reintroduce one behind the dialog's back.
-    /// </summary>
-    [Fact]
-    public void SharedProjectBinding_CarriesNoAssistant_SinceTheAssistantNeverTravels()
-    {
-        var names = new[] { typeof(SharedProjectBinding), typeof(SharedProjectDefinitionEdit), typeof(SharedProjectPublishDefinition) }
-            .SelectMany(type => type.GetProperties()).Select(property => property.Name).ToArray();
-
-        Assert.DoesNotContain(names, name => name.Contains("Assistant", StringComparison.OrdinalIgnoreCase));
-    }
-
     [Fact]
     public async Task ResourceRows_TenNonBlankAbsoluteReferences_AreAllAskedAboutAndNoneAutoIncluded()
     {

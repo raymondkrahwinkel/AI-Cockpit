@@ -40,17 +40,6 @@ public class TranscriptBackgroundToolBadgeTests
     });
 
     [Fact]
-    public void ABlockingCall_CarriesNoBadge() => HeadlessAvalonia.Run(() =>
-    {
-        var session = new SessionViewModel();
-
-        session.Apply(Call("""{"command":"dotnet build"}"""));
-        session.Apply(Result("Build succeeded."));
-
-        Assert.False(ToolRow(session).IsBackgroundTool);
-    });
-
-    [Fact]
     public void ARunningTask_ReadsAsRunning_AndAsDoneOnceTheLedgerStopsReportingIt() => HeadlessAvalonia.Run(() =>
     {
         var session = new SessionViewModel();

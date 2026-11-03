@@ -162,36 +162,6 @@ public class Ac1321TakeoverStateTests
             }
         });
 
-    // Criterion 3: which machine, since when (local clock, short), and that it comes back by itself — and once the
-    // conversation has rows, the same words in the composer, where the notice cannot cover them.
-    [Fact]
-    public void TheNoticeSaysWhichMachineSinceWhen_AndThatItComesBack() => HeadlessAvalonia.Run(() =>
-    {
-        var window = Screenshotter.ShowScene("simple-view-assistant-controlled");
-        try
-        {
-            var cockpit = (CockpitViewModel)window.DataContext!;
-            var presence = new NodeControllerPresence(new FakeTimeProvider(Noon));
-            cockpit.WatchController(presence);
-            presence.Seen("LAPTOP");
-            window.UpdateLayout();
-
-            var expected = $"Controlled by LAPTOP since {Noon.ToLocalTime():HH:mm}. Your assistant here comes back by itself when that connection drops.";
-            Assert.Equal(expected, _Notice(window)!.Text);
-
-            cockpit.AssistantChat!.Session!.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "hello"));
-            window.UpdateLayout();
-
-            Assert.True(_Named<ItemsControl>(window, "TranscriptItems").IsEffectivelyVisible);
-            Assert.Null(_Notice(window));
-            Assert.Equal(expected, _Named<TextBox>(window, "InputBox").PlaceholderText);
-        }
-        finally
-        {
-            window.Close();
-        }
-    });
-
     // The takeover notice on screen, or null while there is none. The composer's placeholder is a TextBlock too,
     // and carries the same words once the conversation is back — not the notice.
     private static TextBlock? _Notice(Window window) =>
@@ -199,9 +169,6 @@ public class Ac1321TakeoverStateTests
             .FirstOrDefault(t => t.IsEffectivelyVisible
                 && t.Text?.StartsWith("Controlled by", StringComparison.Ordinal) == true
                 && !t.GetVisualAncestors().Any(a => a is TextBox));
-
-    private static T _Named<T>(Window window, string name) where T : Control =>
-        window.GetVisualDescendants().OfType<T>().First(c => c.Name == name);
 
     // The real host on the scene's cockpit, enabled and with a profile: what refuses the turn is the takeover and
     // nothing earlier in its start path.

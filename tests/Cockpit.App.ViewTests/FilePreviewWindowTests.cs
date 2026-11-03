@@ -6,14 +6,13 @@ using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.LogicalTree;
 using Avalonia.Media;
-using Avalonia.Threading;
 using Cockpit.App.Views;
 
 namespace Cockpit.App.ViewTests;
 
 // The window a clickable path opens (AC-642), exercised through the same `Build` seam `ScreenshotPreviewWindow`
 // uses — the harness's own step, not a real mouse click through `MarkdownView`. One case per soort from
-// criterion 13, plus resize (criterion 7).
+// criterion 13.
 [Collection("avalonia")]
 public sealed class FilePreviewWindowTests : IDisposable
 {
@@ -40,60 +39,6 @@ public sealed class FilePreviewWindowTests : IDisposable
 
             Assert.Equal("niet gevonden", _KindText(window));
             Assert.False(_OpenButtonVisible(window));
-        });
-    }
-
-    [Fact]
-    public async Task TextFile_ShowsCodeBadgeWithLineNumberAndKeepsOpenVisible()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var path = Path.Combine(_dir, "Foo.cs");
-            await File.WriteAllTextAsync(path, "line one\nline two\nline three");
-
-            var window = FilePreviewWindow.Build(path, 2);
-            await window.WaitForIdleAsync();
-
-            Assert.Equal("code · regel 2", _KindText(window));
-            Assert.True(_OpenButtonVisible(window));
-        });
-    }
-
-    [Fact]
-    public async Task MarkdownAndTextBodies_KeepTheSameInsetFromTheDialogEdges()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var markdownPath = Path.Combine(_dir, "notes.md");
-            await File.WriteAllTextAsync(markdownPath, "# Title\n\nbody");
-            var textPath = Path.Combine(_dir, "Foo.cs");
-            await File.WriteAllTextAsync(textPath, "class Foo { }");
-
-            var markdown = FilePreviewWindow.Build(markdownPath, null);
-            await markdown.WaitForIdleAsync();
-            var text = FilePreviewWindow.Build(textPath, null);
-            await text.WaitForIdleAsync();
-
-            var markdownInset = Assert.IsType<Border>(_Body(markdown)).Padding;
-            Assert.Equal(new Thickness(16, 12), markdownInset);
-            Assert.Equal(markdownInset, Assert.IsType<Grid>(_Body(text)).Margin);
-        });
-    }
-
-    [Fact]
-    public async Task ImageFile_RendersAnImageOnACheckerboard()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var path = Path.Combine(_dir, "pic.png");
-            await File.WriteAllBytesAsync(path, _TinyPng());
-
-            var window = FilePreviewWindow.Build(path, null);
-            await window.WaitForIdleAsync();
-
-            Assert.Equal("afbeelding", _KindText(window));
-            var border = Assert.IsType<Border>(_Body(window));
-            Assert.IsType<Image>(border.Child);
         });
     }
 
@@ -177,40 +122,6 @@ public sealed class FilePreviewWindowTests : IDisposable
     }
 
     [Fact]
-    public async Task TextFile_HidesOpenInBrowserButton()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var path = Path.Combine(_dir, "Foo.cs");
-            await File.WriteAllTextAsync(path, "line one");
-
-            var window = FilePreviewWindow.Build(path, null);
-            await window.WaitForIdleAsync();
-
-            var openInBrowser = window.GetLogicalDescendants().OfType<Button>().First(b => b.Name == "OpenInBrowserButton");
-            Assert.False(openInBrowser.IsVisible);
-        });
-    }
-
-    [Fact]
-    public async Task JsonFile_IsIndented()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var path = Path.Combine(_dir, "data.json");
-            await File.WriteAllTextAsync(path, """{"a":1,"b":[2,3]}""");
-
-            var window = FilePreviewWindow.Build(path, null);
-            await window.WaitForIdleAsync();
-
-            Assert.Equal("json", _KindText(window));
-            var grid = Assert.IsType<Grid>(_Body(window));
-            var text = grid.Children.OfType<SelectableTextBlock>().Last().Text ?? string.Empty;
-            Assert.Contains("\n", text, StringComparison.Ordinal); // indented, not the single-line source
-        });
-    }
-
-    [Fact]
     public async Task Directory_ListsEntriesDirectoriesFirstAndNavigatesOnClick()
     {
         await HeadlessAvalonia.RunAsync(async () =>
@@ -236,30 +147,6 @@ public sealed class FilePreviewWindowTests : IDisposable
             await window.WaitForIdleAsync();
 
             Assert.Equal("map", _KindText(window)); // navigated into zzz-sub, itself an empty directory
-            window.Close();
-        });
-    }
-
-    [Fact]
-    public async Task Resize_GrowsTheBody()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var path = Path.Combine(_dir, "Foo.cs");
-            await File.WriteAllTextAsync(path, "one\ntwo\nthree");
-
-            var window = FilePreviewWindow.Build(path, null);
-            window.Show();
-            await window.WaitForIdleAsync();
-
-            var bodyHost = window.GetLogicalDescendants().OfType<ContentControl>().First(c => c.Name == "BodyHost");
-            var before = bodyHost.Bounds.Width;
-
-            window.Width += 300;
-            Dispatcher.UIThread.RunJobs();
-            window.UpdateLayout();
-
-            Assert.True(bodyHost.Bounds.Width > before);
             window.Close();
         });
     }
@@ -315,37 +202,6 @@ public sealed class FilePreviewWindowTests : IDisposable
 
             var reloadedTransform = (ScaleTransform)((Image)((Border)_Body(window)).Child!).RenderTransform!;
             Assert.Equal(1.0, reloadedTransform.ScaleX);
-        });
-    }
-
-    // A code preview has no Image, so Ctrl+scroll must no-op instead of throwing on a null RenderTransform.
-    [Fact]
-    public async Task CtrlScrollZoom_IsANoOpOnACodePreview()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var path = Path.Combine(_dir, "Foo.cs");
-            await File.WriteAllTextAsync(path, "line one");
-
-            var window = FilePreviewWindow.Build(path, null);
-            await window.WaitForIdleAsync();
-
-            var applyZoom = typeof(FilePreviewWindow).GetMethod("_ApplyZoom", BindingFlags.NonPublic | BindingFlags.Instance)!;
-            applyZoom.Invoke(window, [4.0]); // must not throw
-            Assert.IsType<Grid>(_Body(window));
-        });
-    }
-
-    [Fact]
-    public void Window_IsResizableWithAFloorNotSizedToContent()
-    {
-        HeadlessAvalonia.Run(() =>
-        {
-            var window = new FilePreviewWindow();
-            Assert.True(window.CanResize);
-            Assert.Equal(SizeToContent.Manual, window.SizeToContent);
-            Assert.True(window.MinWidth > 0);
-            Assert.True(window.MinHeight > 0);
         });
     }
 

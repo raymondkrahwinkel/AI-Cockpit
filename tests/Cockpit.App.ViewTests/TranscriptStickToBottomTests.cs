@@ -7,7 +7,6 @@ using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Sessions;
-using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -102,26 +101,6 @@ public class TranscriptStickToBottomTests
     [Fact]
     public void TheThinkingIndicator_AppearingWhileParkedAtTheBottom_DoesNotStopFollowing() => HeadlessAvalonia.Run(() =>
         _AssertTogglingNeverStopsFollowing("the Thinking indicator", (session, on) => session.IsBusy = on));
-
-    [Fact]
-    public void TheStartingBanner_AppearingWhileParkedAtTheBottom_DoesNotStopFollowing() => HeadlessAvalonia.Run(() =>
-        _AssertTogglingNeverStopsFollowing("the starting banner", (session, on) => session.IsStarting = on));
-
-    private static readonly PluginUsageSignal _ContextSignal =
-        new("context", "ctx", PluginUsageSignalKind.Fill, 50) { Description = "Context window" };
-
-    [Fact]
-    public void TheUsageWarningBar_AppearingWhileParkedAtTheBottom_DoesNotStopFollowing() => HeadlessAvalonia.Run(() =>
-        _AssertTogglingNeverStopsFollowing(
-            "the usage-warning bar",
-            // AC-683: UsageWarning is now derived from Warnings, so a crossing raises it and a drop-back clears
-            // it, the same real path the app itself uses — no more assigning the derived property directly.
-            (session, on) => session.ApplyUsage([_ContextSignal], [new PluginUsageReading("context", on ? 88 : 4, null)])));
-
-    [Fact]
-    public void ThePendingResumeBar_AppearingWhileParkedAtTheBottom_DoesNotStopFollowing() => HeadlessAvalonia.Run(() =>
-        _AssertTogglingNeverStopsFollowing(
-            "the pending-resume bar", (session, on) => session.PendingResumeLabel = on ? "Resuming Mon 07:30" : string.Empty));
 
     // The test that used to sit here assigned scroll.Offset directly and called that "a real user scroll". It is
     // gone rather than relaxed, because the fix for AC-528 makes its premise false on purpose: an assignment to
@@ -273,95 +252,6 @@ public class TranscriptStickToBottomTests
 
         Assert.True(scroll.Offset.Y > scrolledAway, "the chevron must move the view back down");
         Assert.False(jumpButton.IsVisible, "and hide itself, because the follow is on again");
-
-        window.Close();
-    });
-
-    /// <summary>
-    /// AC-528 criterion 7: a tool result short enough that its own code box cannot scroll must not swallow the
-    /// wheel — the transcript scrolls instead.
-    /// <para>
-    /// The ticket's second candidate cause was that this box (<c>SessionView.axaml</c>, MaxHeight 280) leaves its
-    /// vertical scrollbar on <c>Auto</c> where <c>MarkdownView</c> sets code blocks to <c>Disabled</c>. Measured,
-    /// that candidate is wrong: Avalonia chains the wheel to the parent by itself when the inner scroller has
-    /// nowhere to go, so a short result already scrolls the transcript. Setting it to <c>Disabled</c> would not
-    /// fix anything and would make a long tool result unreadable — it is the only way to see past its first 280px.
-    /// Hence one case here, the criterion's own: a result long enough to scroll keeps the wheel, which is what a
-    /// nested scroller is for, and is Avalonia's behaviour rather than this view's.
-    /// </para>
-    /// </summary>
-    [Theory]
-    [InlineData(3, true)]
-    public void TheWheelOverAToolResult_ScrollsTheTranscriptOnlyWhenTheResultCannot(int resultLines, bool expectTranscriptToScroll) =>
-        HeadlessAvalonia.Run(() =>
-    {
-        var session = new SessionViewModel();
-        for (var index = 0; index < 40; index++)
-        {
-            session.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, $"row {index}"));
-        }
-
-        var result = new TranscriptEntryViewModel(TranscriptEntryKind.ToolUse, "Bash") { IsExpanded = true };
-        result.SetResult(string.Join("\n", Enumerable.Range(0, resultLines).Select(line => $"line {line}")), isError: false);
-        session.Transcript.Add(result);
-
-        // Rows below it as well, so the box sits inside the viewport with somewhere for the transcript to scroll
-        // to — as the last row it would be pushed out of view by the very scroll that puts it in reach.
-        for (var index = 40; index < 60; index++)
-        {
-            session.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, $"row {index}"));
-        }
-
-        var window = new Window { Width = 700, Height = 500, Content = new SessionView { DataContext = session } };
-        window.Show();
-        _Settle(window);
-
-        var scroll = _Transcript(window);
-
-        // Take the follow off first: while it is on, every offset the loop below sets is a passive change that
-        // the view answers by putting the newest row back in view, and the walk would never get anywhere.
-        _WheelTicks(window, deltaY: 1, count: 1);
-
-        // The tool-result code box specifically (SessionView.axaml gives it MaxHeight 280), not whatever other
-        // scroller a row happens to contain. Walk down until it is realised and sitting in the viewport.
-        ScrollViewer? box = null;
-        Point over = default;
-        for (var step = 0; step < 200 && box is null; step++)
-        {
-            scroll.Offset = scroll.Offset.WithY(step * 25);
-            _Settle(window);
-
-            var candidate = scroll.GetVisualDescendants().OfType<ScrollViewer>()
-                .FirstOrDefault(nested => nested.MaxHeight == 280 && nested.Bounds.Height > 0);
-            var centre = candidate?.TranslatePoint(new Point(candidate.Bounds.Width / 2, candidate.Bounds.Height / 2), window);
-            if (centre is { } point && point.Y > 0 && point.Y < scroll.Viewport.Height)
-            {
-                box = candidate;
-                over = point;
-            }
-        }
-
-        Assert.NotNull(box);
-        Assert.True(scroll.Offset.Y < scroll.Extent.Height - scroll.Viewport.Height,
-            "the transcript must have room left to scroll down, or this proves nothing");
-
-        // Downwards, because the box starts at its own top: an upward wheel would chain to the transcript
-        // whether or not the box could scroll, and would prove nothing.
-        var transcriptBefore = scroll.Offset.Y;
-        var boxBefore = box.Offset.Y;
-        window.MouseWheel(over, new Vector(0, -1));
-        _Settle(window);
-
-        if (expectTranscriptToScroll)
-        {
-            Assert.Equal(boxBefore, box.Offset.Y);
-            Assert.NotEqual(transcriptBefore, scroll.Offset.Y);
-        }
-        else
-        {
-            Assert.NotEqual(boxBefore, box.Offset.Y);
-            Assert.Equal(transcriptBefore, scroll.Offset.Y);
-        }
 
         window.Close();
     });

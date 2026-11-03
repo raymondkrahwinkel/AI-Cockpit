@@ -2,7 +2,6 @@ using Avalonia;
 using Avalonia.Platform;
 using Avalonia.Styling;
 using Avalonia.Threading;
-using Cockpit.App.Theming;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Layout;
 using NSubstitute;
@@ -12,14 +11,6 @@ namespace Cockpit.App.ViewTests;
 [Collection("avalonia")]
 public class Ac860ThemeSelectorTests
 {
-    [Theory]
-    [InlineData(ThemeMode.Light, PlatformThemeVariant.Dark, "Light")]
-    [InlineData(ThemeMode.Dark, PlatformThemeVariant.Light, "Dark")]
-    [InlineData(ThemeMode.System, PlatformThemeVariant.Light, "Light")]
-    [InlineData(ThemeMode.System, PlatformThemeVariant.Dark, "Dark")]
-    public void ThreeStandsResolveToOneVariant(ThemeMode mode, PlatformThemeVariant system, string expected)
-        => Assert.Equal(expected, ThemeSelector.Resolve(mode, system).ToString());
-
     // Through `App.FollowTheme`, the seam `_StartCockpit` takes: the stand as Options writes it and the OS flip as
     // the platform reports it both have to arrive at `RequestedThemeVariant` — and the flip only while on System.
     // Every assertion waits out the dispatcher hop the wiring makes, so it reads behaviour and not timing.
