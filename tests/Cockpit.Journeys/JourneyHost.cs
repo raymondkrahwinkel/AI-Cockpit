@@ -92,15 +92,17 @@ public sealed class JourneyHost : IAsyncDisposable
     public static JourneyHost Desktop(Action<string>? beforeBuild = null, string? stateRoot = null, Action<IServiceCollection>? configure = null) => new(stateRoot, (loggerFactory, drivers) =>
     {
         beforeBuild?.Invoke(CockpitBuild.StateRoot);
+        var attempt = StartupAttempt.Begin(loggerFactory.CreateLogger<StartupAttempt>());
         var backend = CockpitBackend.Build(
             loggerFactory,
             services =>
             {
                 Program.AddDesktop(services, loggerFactory);
+                services.AddSingleton(attempt);
                 services.AddSingleton<ISessionDriverFactory>(drivers);
                 configure?.Invoke(services);
             },
-            PluginStartup.Load,
+            attempt.SafeMode ? PluginStartup.SafeMode : PluginStartup.Load,
             nodeListenAddress: System.Net.IPAddress.Loopback);
         Program.Services = backend.Services;
         return backend;
@@ -109,14 +111,16 @@ public sealed class JourneyHost : IAsyncDisposable
     public static JourneyHost DesktopWithProductionDrivers(Action<string>? beforeBuild = null, string? stateRoot = null, Action<IServiceCollection>? configure = null) => new(stateRoot, (loggerFactory, _) =>
     {
         beforeBuild?.Invoke(CockpitBuild.StateRoot);
+        var attempt = StartupAttempt.Begin(loggerFactory.CreateLogger<StartupAttempt>());
         var backend = CockpitBackend.Build(
             loggerFactory,
             services =>
             {
                 Program.AddDesktop(services, loggerFactory);
+                services.AddSingleton(attempt);
                 configure?.Invoke(services);
             },
-            PluginStartup.Load,
+            attempt.SafeMode ? PluginStartup.SafeMode : PluginStartup.Load,
             nodeListenAddress: System.Net.IPAddress.Loopback);
         Program.Services = backend.Services;
         return backend;
@@ -226,6 +230,8 @@ public sealed class JourneyHost : IAsyncDisposable
     {
         // On the UI thread, where the desktop's view models were built. The window lets go of the cockpit first: its
         // controls would otherwise resolve from a disposed container, which the app's own UI-thread net swallows.
+        // As `Program.TearDownCockpitAsync` does first: a host that is closed did not crash.
+        Services.GetService<StartupAttempt>()?.Complete();
         await HeadlessAvalonia.RunAsync(async () =>
         {
             if (_window is not null)
