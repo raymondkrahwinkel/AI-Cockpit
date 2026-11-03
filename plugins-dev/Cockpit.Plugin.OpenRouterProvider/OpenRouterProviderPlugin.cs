@@ -28,7 +28,7 @@ public sealed class OpenRouterProviderPlugin : ICockpitPlugin
             ProviderId: "openrouter-provider.openrouter",
             DisplayName: "OpenRouter",
             CreateDriverFactory: _ => new OpenAiCompatPluginSessionDriverFactory(),
-            Capabilities: new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false)
+            Capabilities: new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false, SupportsVision: true)
             {
                 // AC-964: this endpoint is plain chat completions — it brings no tool search of its own, so the
                 // host's may ride along without ever giving the model two ways to find the same tool. The driver

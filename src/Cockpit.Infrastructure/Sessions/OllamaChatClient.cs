@@ -9,9 +9,9 @@ using Microsoft.Extensions.AI;
 
 namespace Cockpit.Infrastructure.Sessions;
 
-internal sealed class OllamaChatClient(OllamaConfig config) : IChatClient
+internal sealed class OllamaChatClient(OllamaConfig config, HttpClient? http = null) : IChatClient
 {
-    private readonly HttpClient _http = new() { Timeout = Timeout.InfiniteTimeSpan };
+    private readonly HttpClient _http = http ?? new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
     private readonly Uri _endpoint = new($"{config.BaseUrl.TrimEnd('/')}/api/chat");
     private readonly ConcurrentDictionary<string, HashSet<string>> _thinkingLevels = new(StringComparer.Ordinal);
 

@@ -23,6 +23,7 @@ using Cockpit.Core.Provisioning;
 using Cockpit.Core.Usage;
 using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Shared;
 using Microsoft.Extensions.Logging;
 
 namespace Cockpit.App.ViewModels;
@@ -34,6 +35,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // AC-1376/1449: the backend half of this pane — runtime, turn gate and queue, the send funnel and the clocks. This
     // view model draws what it reports and hands it what the operator does.
     private readonly ISessionControl _control;
+    private QueuedPrompt? _submittingPrompt;
+    private bool _submissionFailed;
 
     // True only while `ReplayRecordedTranscriptAsync` is repainting rows that came out of the log — recording them
     // straight back would append a second version of every row on every restart.
@@ -2267,26 +2270,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         PendingAttachments.Add(new ImageAttachmentViewModel(pngBytes, _RemovePendingAttachment));
     }
 
-    // The single per-chip removal path: drop the attachment from the list, then free its decoded
-    // bitmap. Disposal happens here (genuine removal) and in the send-path Clear — never on a mere
-    // reorder or from a getter, which would blank the still-visible thumbnail.
     private void _RemovePendingAttachment(ImageAttachmentViewModel attachment)
     {
         PendingAttachments.Remove(attachment);
         attachment.Dispose();
-    }
-
-    // Empties the pending list on send, freeing each decoded thumbnail as its chip leaves the UI rather
-    // than waiting on the GC finalizer. Called only from the send path, once the wire images have already
-    // been copied out of PngBytes — never while a chip is still shown.
-    private void _ClearPendingAttachments()
-    {
-        foreach (var attachment in PendingAttachments)
-        {
-            attachment.Dispose();
-        }
-
-        PendingAttachments.Clear();
     }
 
     // Appends a finished voice transcript to the input box rather than sending it straight away, so
@@ -2355,20 +2342,57 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             return;
         }
 
+        if (PendingAttachments.Count > 0 && !CanPasteImages)
+        {
+            Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Error, "This model does not support image input; the attachments were kept."));
+            return;
+        }
+
+        if (PendingAttachments.Count > ImageInputLimits.MaxCount || PendingAttachments.Sum(image => (long)image.PngBytes.Length) > ImageInputLimits.MaxBytes)
+        {
+            Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Error, "At most 10 images and 20 MB can be sent; the attachments were kept."));
+            return;
+        }
+
         var text = InputText;
         var images = PendingAttachments
             .Select(a => Core.Sessions.ImageAttachment.FromBytes(a.PngBytes, a.MediaType))
             .ToList();
         var replyTo = PendingReplyTo;
 
-        InputText = string.Empty;
-        // The wire images are already copied from PngBytes above, so the decoded thumbnails are done.
-        _ClearPendingAttachments();
-        PendingReplyTo = null;
+        var attachments = PendingAttachments.ToArray();
+        var prompt = new QueuedPrompt(text, images, replyTo?.Id);
+        _submittingPrompt = prompt;
+        _submissionFailed = false;
+        try
+        {
+            await _control.SubmitAsync(prompt, Capabilities.SupportsMidTurnInput);
+            if (_submissionFailed)
+            {
+                return;
+            }
 
-        // AC-739: measured 3x that the CLI delivers a mid-turn message to the model. SupportsMidTurnInput gates
-        // straight-through writing versus the local send-queue chip (T8), driver by driver.
-        await _control.SubmitAsync(new QueuedPrompt(text, images, replyTo?.Id), Capabilities.SupportsMidTurnInput);
+            if (InputText == text)
+            {
+                InputText = string.Empty;
+            }
+            foreach (var attachment in attachments)
+            {
+                _RemovePendingAttachment(attachment);
+            }
+            if (PendingReplyTo == replyTo)
+            {
+                PendingReplyTo = null;
+            }
+        }
+        catch (Exception ex)
+        {
+            Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Error, SendFailureMessage(ex, _control.IsRunning)));
+        }
+        finally
+        {
+            _submittingPrompt = null;
+        }
     }
 
     // Pulls the most recently queued message back into the input for editing (Arrow Up on an empty
@@ -2442,6 +2466,17 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     private void _OnTurnFailedToStart(QueuedPrompt prompt, Exception exception)
     {
         ClearCurrentTurnImages();
+        if (ReferenceEquals(prompt, _submittingPrompt))
+        {
+            _submissionFailed = true;
+        }
+        else
+        {
+            foreach (var image in prompt.Images)
+            {
+                PendingAttachments.Add(new ImageAttachmentViewModel(Convert.FromBase64String(image.Base64Data), _RemovePendingAttachment));
+            }
+        }
         Transcript.Add(new TranscriptEntryViewModel(
             TranscriptEntryKind.Error, SendFailureMessage(exception, _control.IsRunning)));
     }

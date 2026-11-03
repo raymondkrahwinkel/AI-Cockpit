@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Cockpit.Shared;
 
 namespace Cockpit.Plugins.OpenAiCompat;
 
@@ -11,6 +12,34 @@ namespace Cockpit.Plugins.OpenAiCompat;
 // the continuation net, the transport retry and the tool-loop bound exist once for every HTTP chat route.
 internal static class ChatTurnLoop
 {
+    internal static ChatMessage UserMessage(string text, IEnumerable<(string MediaType, string Base64Data)>? images)
+    {
+        var contents = new List<AIContent>();
+        if (!string.IsNullOrEmpty(text))
+        {
+            contents.Add(new TextContent(text));
+        }
+
+        long totalBytes = 0;
+        var count = 0;
+        foreach (var (mediaType, base64Data) in images ?? [])
+        {
+            if (++count > ImageInputLimits.MaxCount || mediaType is not ("image/png" or "image/jpeg" or "image/gif" or "image/webp"))
+            {
+                throw new ArgumentException("Image attachments must be PNG, JPEG, GIF or WebP, with at most 10 images and 20 MB total.");
+            }
+
+            byte[] bytes = Convert.FromBase64String(base64Data);
+            totalBytes += bytes.Length;
+            if (bytes.Length == 0 || totalBytes > ImageInputLimits.MaxBytes)
+            {
+                throw new ArgumentException("Image attachments must be non-empty and at most 20 MB total.");
+            }
+            contents.Add(new DataContent(bytes, mediaType));
+        }
+
+        return new ChatMessage(ChatRole.User, contents);
+    }
     // Explicit rather than the library default, so a model that keeps calling tools cannot loop without end.
     internal const int MaxToolIterations = 40;
 
@@ -667,6 +696,7 @@ internal sealed class ContextGuardChatClient(IChatClient inner, ChatTurnLimits l
                 TextReasoningContent reasoning when PreservePrefix => reasoning.Text?.Length ?? 0,
                 FunctionCallContent call => call.Name.Length + (call.Arguments is null ? 0 : JsonSerializer.Serialize(call.Arguments, AIJsonUtilities.DefaultOptions).Length),
                 FunctionResultContent result => ChatTurnLoop.ResultText(result.Result)?.Length ?? 0,
+                DataContent => 4096 * CharsPerToken, // Conservative image reserve; actual token use depends on the provider.
                 _ => 0,
             };
         }

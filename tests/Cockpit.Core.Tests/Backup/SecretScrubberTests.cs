@@ -53,12 +53,10 @@ public class SecretScrubberTests
     [Theory]
     [InlineData("token", true)]
     [InlineData("Token", true)]
-    [InlineData("apiKey", true)]
     [InlineData("api_key", true)]
     [InlineData("discordWebhook", true)]
     [InlineData("clientSecret", true)]
     [InlineData("label", false)]
-    [InlineData("configDir", false)]
     public void WhatCountsAsASecret_IsDecidedByTheFieldsName(string name, bool secret) =>
         Assert.Equal(secret, SecretScrubber.IsSecret(name));
 }

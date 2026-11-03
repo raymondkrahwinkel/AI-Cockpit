@@ -109,6 +109,7 @@
     <!-- AC-1441: one source file each, shared with Infrastructure: the SVG rasterizer and a turn's image attachment names. -->
     <Compile Include="..\_shared\SvgRasterizer.cs" Link="Services\SvgRasterizer.cs" />
     <Compile Include="..\_shared\SessionImageAttachments.cs" Link="Services\SessionImageAttachments.cs" />
+    <Compile Include="..\_shared\ImageInputLimits.cs" Link="Services\ImageInputLimits.cs" />
   </ItemGroup>
 
   <ItemGroup>
