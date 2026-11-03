@@ -371,7 +371,7 @@ public sealed class PluginManager(
                         phase = "configure";
                         var services = new ServiceCollection();
                         plugin.ConfigureServices(services);
-                        if (services.Count < 0)
+                        if (services.Count > 0)
                         {
                             _DisposeQuietly(discovered, plugin);
                             plugin = null;
