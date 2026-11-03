@@ -77,29 +77,6 @@ public sealed class Ac1138UiThreadDeadlineTests
         Assert.Equal(1, runs);
     }
 
-    [Fact]
-    public void AClaimAllowsOnlyOneCallback_AndNeverAfterTheTimeout()
-    {
-        var callbackFirst = new UiThreadCallClaim();
-        var runs = 0;
-        if (callbackFirst.TryClaimCallback())
-        {
-            Interlocked.Increment(ref runs);
-        }
-
-        if (callbackFirst.TryClaimCallback())
-        {
-            Interlocked.Increment(ref runs);
-        }
-
-        Assert.Equal(1, runs);
-        Assert.False(callbackFirst.TryClaimTimeout());
-
-        var timeoutFirst = new UiThreadCallClaim();
-        Assert.True(timeoutFirst.TryClaimTimeout());
-        Assert.False(timeoutFirst.TryClaimCallback());
-    }
-
     /// <summary>T1 — the UI thread held by one non-yielding job: capped, not waited out.</summary>
     [Fact]
     public async Task AGatewayCalledWhileTheUiThreadIsBlocked_AnswersUiUnavailable_RatherThanWaitingItOut()

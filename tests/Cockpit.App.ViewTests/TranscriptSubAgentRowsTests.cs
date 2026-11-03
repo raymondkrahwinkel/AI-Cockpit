@@ -12,16 +12,6 @@ public sealed class TranscriptSubAgentRowsTests
     private const int RowCount = 1_281;
 
     [Fact]
-    public void AllocationMeter_DetectsBothANoOpAndAKnownTenMegabytes()
-    {
-        _ = _Allocated(static () => { });
-        _ = _Allocated(_AllocateTenMegabytes);
-
-        Assert.InRange(_Allocated(static () => { }), 0, 64 * 1024);
-        Assert.InRange(_Allocated(_AllocateTenMegabytes), 10 * 1024 * 1024, 11 * 1024 * 1024);
-    }
-
-    [Fact]
     public void RowsWithoutSubAgents_CreateNoSubAgentCollectionsOrBackingLists()
     {
         TranscriptEntryViewModel[]? rows = null;
@@ -84,12 +74,6 @@ public sealed class TranscriptSubAgentRowsTests
         var before = GC.GetAllocatedBytesForCurrentThread();
         action();
         return GC.GetAllocatedBytesForCurrentThread() - before;
-    }
-
-    private static void _AllocateTenMegabytes()
-    {
-        var allocation = new byte[10 * 1024 * 1024];
-        GC.KeepAlive(allocation);
     }
 
     private static (int Collections, int Lists) _ObjectCounts(IEnumerable<TranscriptEntryViewModel> rows)

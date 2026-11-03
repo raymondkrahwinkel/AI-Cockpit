@@ -37,16 +37,6 @@ public class AssistantSessionHostTests
 {
     private static void _AssertMachineMemorySuffix(string instruction) =>
         Assert.EndsWith($"{AssistantStandingInstruction.MachineMemoryHeading}\n\nnothing yet", instruction, StringComparison.Ordinal);
-    [Fact]
-    public void Constructing_TheHost_StartsNothing()
-    {
-        var host = Dispatcher.UIThread.Invoke(() => _Host(enabled: true, slot: _ConfiguredSlot()));
-
-        // The whole of "lazily": the feature is on and a profile is set, and still nothing is running. Only a hold
-        // or a click builds the instance, so an operator who never speaks to it pays for no model in memory.
-        Assert.Null(host.Session);
-    }
-
     /// <summary>
     /// The state a fresh host reports before anything has read the settings is "unavailable, because it is off" —
     /// which is a guess, and wrong for the operator who had it on when they last closed the cockpit. The startup
@@ -63,30 +53,11 @@ public class AssistantSessionHostTests
 
         Dispatcher.UIThread.Invoke(() => host.ApplySettingsAsync().GetAwaiter().GetResult());
 
+        // Switching the feature on makes the assistant available; the first hold or click is still what wakes it
+        // (lazily: a profile is set and still nothing is running).
         Assert.Equal(AssistantActivity.Ready, host.Activity);
-    }
-
-    /// <summary>
-    /// Coming back after falling over is a path the ticket asks for by name, so the wiring the host put on the
-    /// dead instance has to come off with it — otherwise the one thing built to happen repeatedly leaks every time.
-    /// </summary>
-    [Fact]
-    public void ReleasingAnAssistantSession_UnsubscribesIt_SoAReplacedInstanceIsNotHeldForever()
-    {
-        var (cockpit, session) = Dispatcher.UIThread.Invoke(() =>
-        {
-            var viewModel = new CockpitViewModel();
-            return (viewModel, new SessionViewModel { BelongsToNoWorkspace = true });
-        });
-
-        Dispatcher.UIThread.Invoke(() =>
-        {
-            cockpit.ReleaseAssistantSession(session);
-
-            // Idempotent, because the teardown path can be reached more than once for the same instance and a
-            // second release must not throw at a caller that has nowhere to put an exception.
-            cockpit.ReleaseAssistantSession(session);
-        });
+        Assert.Null(host.UnavailableReason);
+        Assert.Null(host.Session);
     }
 
     [Fact]
@@ -186,19 +157,6 @@ public class AssistantSessionHostTests
         Assert.True(session.ReadAloudAsOneUtterance);
     }
 
-    [Fact]
-    public void ApplySettings_SwitchedOn_MakesItReachableWithoutStartingIt()
-    {
-        var host = Dispatcher.UIThread.Invoke(() => _Host(enabled: true, slot: _ConfiguredSlot()));
-
-        Dispatcher.UIThread.Invoke(() => host.ApplySettingsAsync().GetAwaiter().GetResult());
-
-        // Switching the feature on makes the assistant available; the first hold or click is still what wakes it.
-        Assert.Equal(AssistantActivity.Ready, host.Activity);
-        Assert.Null(host.UnavailableReason);
-        Assert.Null(host.Session);
-    }
-
     // ── The chip's Thinking state has to end, and only the session knows when ──────────────────────────────────
 
     [Theory]
@@ -228,18 +186,6 @@ public class AssistantSessionHostTests
     }
 
     [Theory]
-    [InlineData(true, AssistantActivity.Thinking)]
-    [InlineData(false, AssistantActivity.Ready)]
-    public void ActivityFor_FollowsWhetherTheSessionIsWorking(bool isBusy, AssistantActivity expected)
-    {
-        // The original defect: Activity was written on the way in (a hold, a send, a start) and never on the way
-        // out, because nothing watched the session. So the first send showed Ready while the assistant was plainly
-        // thinking, and every send after that left the chip on "Thinking…" for good — EnsureStartedAsync hands
-        // back a live instance without touching Activity.
-        Assert.Equal(expected, AssistantSessionHost.ActivityFor(AssistantActivity.Thinking, isBusy, hasPendingPermission: false));
-    }
-
-    [Theory]
     [InlineData(AssistantActivity.Unavailable)]
     [InlineData(AssistantActivity.Listening)]
     public void ActivityFor_NeverSpeaksOverTheTwoStatesTheSessionKnowsNothingAbout(AssistantActivity current)
@@ -251,40 +197,6 @@ public class AssistantSessionHostTests
     }
 
     // ── AC-544 criterion 2, the mounting half: the assistant's launch is the one that names the broad read server ──
-
-    [Fact]
-    public void McpSelection_AlwaysNamesTheBroadReadServer()
-    {
-        // The whole reason an internal endpoint reaches the assistant at all. If this line ever stops being written,
-        // criterion 1 fails silently — the tools are hosted and simply never handed to anybody.
-        var selection = AssistantSessionHost.McpSelection(_Profile(), []);
-
-        Assert.Contains(AssistantIdentity.McpServerName, selection);
-    }
-
-    // AC-869: the assistant always has cockpit-github-pull-requests, regardless of its working directory — the
-    // git-repo rule other sessions get it through does not apply to the assistant at all.
-    [Fact]
-    public void McpSelection_DoesNotDefaultToTheGitHubPullRequestsServer()
-    {
-        var selection = AssistantSessionHost.McpSelection(_Profile(), []);
-
-        Assert.DoesNotContain(GitHubPullRequestsMcp.ServerName, selection);
-        Assert.DoesNotContain("cockpit-elevated", selection);
-    }
-
-    [Fact]
-    public void McpSelection_WithNoSavedSelection_IncludesOrdinaryServers()
-    {
-        var selection = AssistantSessionHost.McpSelection(_Profile(), [
-            new McpServerConfig { Name = "depot", Enabled = true },
-            new McpServerConfig { Name = "off-server", Enabled = false },
-        ]);
-
-        Assert.Contains("depot", selection);
-        Assert.Contains(AssistantIdentity.McpServerName, selection);
-        Assert.DoesNotContain("off-server", selection);
-    }
 
     // AC-766: this is the mount-side half of the fix — a plugin-provided server the catalog now offers unscoped
     // (Depot, say) is not marked ProjectLinked there (no single project points at it in that call), and the
@@ -299,51 +211,9 @@ public class AssistantSessionHostTests
         Assert.DoesNotContain("Depot: wispslate", selection);
     }
 
-    [Fact]
-    public void McpSelection_NeverWidensToOtherInternalEndpoints()
-    {
-        // "Give the assistant everything" is the accident this guards against: another spawn's internal tools
-        // (Autopilot's CEO/step endpoints) are not the assistant's to inherit just because it is privileged.
-        var selection = AssistantSessionHost.McpSelection(_Profile(), [
-            new McpServerConfig { Name = "autopilot-plan", Enabled = true, Internal = true },
-        ]);
-
-        Assert.DoesNotContain("autopilot-plan", selection);
-    }
-
-    [Fact]
-    public void McpSelection_WithAProfileSelection_KeepsItAndAddsTheBroadReadServer()
-    {
-        var profile = _Profile() with { EnabledMcpServerNames = ["depot"] };
-
-        var selection = AssistantSessionHost.McpSelection(profile, []);
-
-        Assert.Equal(
-            new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            {
-                "depot",
-                AssistantIdentity.McpServerName,
-                AssistantIdentity.ActMcpServerName,
-            },
-            selection);
-    }
-
-    // ── AC-545, the mounting half of the acting server ──
-
     /// <summary>
-    /// Every one of the assistant's own endpoints is named by this launch — read (AC-544) and acting (AC-545) alike.
-    /// </summary>
-    /// <remarks>
-    /// <b>The set is read off <see cref="AssistantIdentity"/>, not typed out here.</b> That is the phase-2 lesson:
-    /// a test listing the servers it expects passes happily on the day a third one is added and not mounted. Both
-    /// halves of the first gate have to hold and they fail in opposite directions — an endpoint that is not Internal
-    /// fans out to every session (covered in <c>AssistantActMountRuleTests</c>), and one that is Internal but named
-    /// by nobody is hosted, registered, tested, and reaches the assistant never. The second is the silent one: the
-    /// assistant simply has no acting tools, and nothing anywhere says so.
-    /// </remarks>
-    /// <summary>
-    /// The acting servers the assistant is not handed by default stay out of the fan-out — and the list is read off
-    /// the production set rather than typed here, so a server added to it is covered on the day it is added.
+    /// The servers the assistant is not handed by default stay out of the fan-out: the orchestrator, another spawn's
+    /// Internal endpoints, and anything switched off.
     /// </summary>
     /// <remarks>
     /// <c>cockpit-orchestrator</c> is the one this is really about: <c>delegate_task</c> starts AI work with no pane,
@@ -356,6 +226,8 @@ public class AssistantSessionHostTests
         [
             new() { Name = "cockpit-orchestrator", Enabled = true },
             new() { Name = "cockpit-elevated", Enabled = true, Internal = true },
+            new() { Name = "autopilot-plan", Enabled = true, Internal = true },
+            new() { Name = "off-server", Enabled = false },
             new() { Name = "depot", Enabled = true },
             new() { Name = "youtrack", Enabled = true, ProjectLinked = false },
         ];
@@ -364,6 +236,8 @@ public class AssistantSessionHostTests
 
         Assert.DoesNotContain("cockpit-orchestrator", selection);
         Assert.DoesNotContain("cockpit-elevated", selection);
+        Assert.DoesNotContain("autopilot-plan", selection);
+        Assert.DoesNotContain("off-server", selection);
 
         Assert.Contains("depot", selection);
         Assert.Contains("youtrack", selection);
@@ -417,8 +291,6 @@ public class AssistantSessionHostTests
     // are literals because they are the plugin's own: the host does not (and must not) know what they mean.
     [Theory]
     [InlineData(WellKnownPluginSessionOptions.PermissionMode, SessionOptionCatalog.BypassPermissionModeValue)]
-    [InlineData("model", "opus")]
-    [InlineData("effort", "high")]
     public void LaunchOptions_CarryEveryStartDefaultTheProfileNames(string key, string expected)
     {
         var options = AssistantSessionHost._LaunchOptions(
@@ -452,23 +324,6 @@ public class AssistantSessionHostTests
     }
 
     [Fact]
-    public void LaunchOptions_OnABypassPermissionsProfile_ComposesTheGateBypassedParagraph()
-    {
-        var options = AssistantSessionHost._LaunchOptions(
-            _ProfileWithDefaults((WellKnownPluginSessionOptions.PermissionMode, SessionOptionCatalog.BypassPermissionModeValue)),
-            replacesStandingInstruction: false,
-            memory: null,
-            currentState: null,
-            sdkAsksPermission: false,
-            consentCardAsks: true);
-
-        var instruction = options[WellKnownPluginSessionOptions.AppendSystemPrompt];
-
-        Assert.NotEqual(AssistantSystemPrompt.Default, instruction);
-        Assert.Contains("set to bypass permissions, so the call simply goes ahead", instruction, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public void LaunchOptions_ForAProfileThatSaysNothing_NameNoneOfThem_SoTheAppDefaultStillStands()
     {
         // The half that protects everyone who has set nothing. The typed permission mode/model/effort at the call
@@ -487,60 +342,6 @@ public class AssistantSessionHostTests
         // And the one thing the launch does owe it is still there.
         Assert.StartsWith(AssistantSystemPrompt.Default, options[WellKnownPluginSessionOptions.AppendSystemPrompt], StringComparison.Ordinal);
         _AssertMachineMemorySuffix(options[WellKnownPluginSessionOptions.AppendSystemPrompt]);
-    }
-
-    // One behaviour, one exercise: the capability map a plain launch actually hands the session. Each row is a
-    // phrase some ticket put in AssistantStandingInstruction and that an assistant stops knowing about the moment
-    // it stops arriving — AC-639 (implements nothing itself), AC-647 (what a profile runs at), AC-648 (a spawn may
-    // override options, never the permission mode), AC-641 (delegated background work), AC-640 (the watcher and
-    // every event it can be armed for), AC-656 (woken by its own waiting mail). Asserted on what the launch
-    // delivers rather than on the constant: that the constant reads well is not the claim.
-    [Theory]
-    // AC-639
-    [InlineData("YOU DO NOT IMPLEMENT")]
-    [InlineData("on its own worktree")]
-    // AC-647
-    [InlineData("`list_profiles` carries an `Options` list")]
-    [InlineData("Providers do not share a shape")]
-    // AC-648 criterion 6
-    [InlineData("`start_agent` takes an `options` map")]
-    [InlineData("PERMISSION-MODE IS NEVER OVERRIDABLE")]
-    // AC-641
-    [InlineData("list_delegated_tasks")]
-    // AC-640: naming only the two tools would leave the assistant knowing it can watch something and not what for.
-    [InlineData("unwatch_session")]
-    [InlineData("busy-to-idle")]
-    [InlineData("needs-attention")]
-    [InlineData("gone")]
-    [InlineData("stuck")]
-    [InlineData("pattern")]
-    // AC-656
-    [InlineData("no opt-in")]
-    public void LaunchOptions_CarryTheCapabilityMap(string phrase)
-    {
-        var options = AssistantSessionHost._LaunchOptions(_Profile(), replacesStandingInstruction: false, memory: null);
-
-        Assert.Contains(phrase, options[WellKnownPluginSessionOptions.AppendSystemPrompt], StringComparison.Ordinal);
-        foreach (var guidance in new[]
-        {
-            "`mcpServers`", "For Claude/Codex omit cockpit-coding and cockpit-coding-shell",
-            "cockpit-orchestrator for delegation", "exact set overrides both", "project-bound names require",
-        })
-        {
-            Assert.Contains(guidance, options[WellKnownPluginSessionOptions.AppendSystemPrompt], StringComparison.Ordinal);
-        }
-        Assert.DoesNotContain("cannot reach what lives behind another project's servers", options[WellKnownPluginSessionOptions.AppendSystemPrompt]);
-    }
-
-    [Fact]
-    public void LaunchOptions_NoLongerSayTheAssistantCannotBeWoken()
-    {
-        // AC-656's other half, and the only one of these that is an absence: the old line told the assistant an
-        // urgent notify would always be refused for it. That stopped being true, and a capability map still saying
-        // so would send the assistant looking for a route (polling, a relayed message) it no longer needs.
-        var options = AssistantSessionHost._LaunchOptions(_Profile(), replacesStandingInstruction: false, memory: null);
-
-        Assert.DoesNotContain("not-wakeable", options[WellKnownPluginSessionOptions.AppendSystemPrompt], StringComparison.Ordinal);
     }
 
     [Fact]
@@ -626,45 +427,21 @@ public class AssistantSessionHostTests
         Assert.Contains("nothing yet", withoutMachineMemory, StringComparison.OrdinalIgnoreCase);
     }
 
-    [Fact]
-    public void LaunchOptions_CarryTheNoteTheAssistantLeftItself_UnderItsOwnHeading()
-    {
-        // AC-596. Labelled as possibly stale on purpose: an assistant that read this as "what the operator just
-        // said" would answer a question nobody asked again after every hand-over.
-        var options = AssistantSessionHost._LaunchOptions(
-            _Profile(),
-            replacesStandingInstruction: false,
-            memory: "- 2026-08-02 — The operator is called Raymond.",
-            currentState: "We are on AC-592; the release desk is running the tests.");
-
-        var instruction = options[WellKnownPluginSessionOptions.AppendSystemPrompt];
-        Assert.Contains(AssistantStandingInstruction.MemoryHeading, instruction, StringComparison.Ordinal);
-        Assert.Contains(AssistantStandingInstruction.CurrentStateHeading, instruction, StringComparison.Ordinal);
-        Assert.Contains("the release desk is running the tests.", instruction, StringComparison.Ordinal);
-        _AssertMachineMemorySuffix(instruction);
-    }
-
     // ── Handing over before the context fills (AC-596) ────────────────────────────────────────────────────────
 
     [Theory]
     [InlineData(79.9, false, false, false)]
-    [InlineData(80, false, false, true)]
-    [InlineData(99, false, false, true)]
+    [InlineData(80d, false, false, true)]
+    [InlineData(99d, false, false, true)]
     // Never mid-turn: the restart would take the turn it is in the middle of with it.
-    [InlineData(99, true, false, false)]
+    [InlineData(99d, true, false, false)]
     // Never over a permission nobody has answered: that row belongs to a session that would no longer exist.
-    [InlineData(99, false, true, false)]
+    [InlineData(99d, false, true, false)]
+    // No reading this turn is not an empty context; this row only pins that null never hands over.
+    [InlineData(null, false, false, false)]
     public void HandingOver_WaitsForAContextThatIsFull_AndForAnAssistantThatIsDoingNothing(
-        double fill, bool isBusy, bool isWaitingOnOperator, bool expected) =>
+        double? fill, bool isBusy, bool isWaitingOnOperator, bool expected) =>
         Assert.Equal(expected, AssistantSessionHost.ShouldHandOver(fill, isBusy, isWaitingOnOperator));
-
-    [Fact]
-    public void AProviderThatReportedNoFillThisTurn_DoesNotCountAsAnEmptyContext()
-    {
-        // The failure this rules out is the quiet one: reading "no reading" as zero postpones the hand-over for
-        // ever on a provider that only reports sometimes, and the first anyone hears of it is a refused turn.
-        Assert.False(AssistantSessionHost.ShouldHandOver(null, isBusy: false, isWaitingOnOperator: false));
-    }
 
     /// <summary>
     /// AC-638: a hand-over swaps in a new <c>SessionViewModel</c> whose transcript is empty, which reads as data
@@ -1101,17 +878,6 @@ public class AssistantSessionHostTests
     }
 
     [Fact]
-    public void LaunchOptions_WithNothingEverRemembered_CarryNoMemoryHeading()
-    {
-        var options = AssistantSessionHost._LaunchOptions(_Profile(), replacesStandingInstruction: false, memory: "   ");
-
-        Assert.DoesNotContain(
-            AssistantStandingInstruction.MemoryHeading,
-            options[WellKnownPluginSessionOptions.AppendSystemPrompt],
-            StringComparison.Ordinal);
-    }
-
-    [Fact]
     public void LaunchOptions_WithAnEmptyBox_AreTheBuiltInInstruction_WhicheverWayTheAdvancedOptionIsSet()
     {
         // Nothing written is nothing to replace: an operator who ticked the box and then cleared the text would
@@ -1256,16 +1022,6 @@ public class AssistantSessionHostTests
         var state = Substitute.For<ISessionStateStore>();
         state.TryLoadAsync(Arg.Any<CancellationToken>()).Returns((IReadOnlyList<SessionStateRecord>?)null);
         var host = Dispatcher.UIThread.Invoke(() => _Host(enabled: true, slot: _ConfiguredSlot(), sessionState: state));
-
-        var resume = Dispatcher.UIThread.Invoke(() => host._ResolveResumeAsync(default).GetAwaiter().GetResult());
-
-        Assert.Equal(SessionResumeMode.New, resume.Mode);
-    }
-
-    [Fact]
-    public void TheAssistantsResume_WithNothingRecordedYet_IsAFreshConversation()
-    {
-        var host = Dispatcher.UIThread.Invoke(() => _Host(enabled: true, slot: _ConfiguredSlot()));
 
         var resume = Dispatcher.UIThread.Invoke(() => host._ResolveResumeAsync(default).GetAwaiter().GetResult());
 

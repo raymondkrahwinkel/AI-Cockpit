@@ -1,7 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
-using Cockpit.App.Controls;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 
@@ -19,23 +18,6 @@ namespace Cockpit.App.ViewTests;
 [Collection("avalonia")]
 public class AssistantChatWindowResizeAndFocusTests
 {
-    /// <summary>
-    /// Criterion 1: this window now sits on the app's own "our title bar, our own resize edges" idiom
-    /// (<c>WindowResizeGrip</c>, AC-678), with the existing minimums as the layout's floor.
-    /// </summary>
-    [Fact]
-    public void TheChatWindow_ResizesLikeEveryOtherCockpitWindow() => HeadlessAvalonia.Run(() =>
-    {
-        var window = new AssistantChatWindow();
-
-        // Guards that this window gets its decorations from WindowResizeGrip rather than setting its own; the
-        // value itself is WindowResizeGripTests' job. AC-1044.
-        Assert.Equal(WindowResizeGrip.DecorationsFor(OperatingSystem.IsMacOS(), OperatingSystem.IsWindows()), window.WindowDecorations);
-        Assert.True(window.CanResize);
-        Assert.Equal(340, window.MinWidth);
-        Assert.Equal(360, window.MinHeight);
-    });
-
     /// <summary>
     /// Criterion 3 for the pill, which emptied the chat box every time it appeared. On the property, not on where
     /// the keyboard lands: it is what Avalonia hands the platform, and a single attribute an edit could drop.

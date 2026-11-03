@@ -5,7 +5,6 @@ using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Secrets;
-using NSubstitute;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
@@ -16,53 +15,12 @@ namespace Cockpit.Core.Tests.ViewModels;
 public class SecurityOptionsViewModelTests
 {
     [Fact]
-    public async Task RefreshAsync_ShowsThePairingPortReasonUnlessTheMcpListenerAlreadyHasOne()
-    {
-        var pairing = Substitute.For<INodePairingEndpoint>();
-        pairing.Address.Returns((string?)null);
-        pairing.Error.Returns("Not listening for pairing: port 21288 is already in use.");
-        var settings = new FakeNodeEndpointSettingsStore(new NodeEndpointSettings { Enabled = true, SharedSecret = "" });
-
-        var vm = new SecurityOptionsViewModel(new FakeProtection(), nodeEndpointSettings: settings, nodePairingEndpoint: pairing);
-        await vm.RefreshAsync();
-
-        Assert.Contains("port 21288 is already in use", vm.NodePairingAddress, StringComparison.Ordinal);
-
-        var mcp = Substitute.For<ICockpitInternalMcpProvider>();
-        mcp.GetNodeAddresses().Returns([]);
-        mcp.NodeListenerError.Returns("Not listening on the network: port 21289 is already in use.");
-        vm = new SecurityOptionsViewModel(new FakeProtection(), nodeEndpointSettings: settings, mcpEndpointHosts: [mcp], nodePairingEndpoint: pairing);
-        await vm.RefreshAsync();
-
-        Assert.Equal("", vm.NodePairingAddress);
-    }
-
-    [Fact]
-    public async Task RefreshAsync_MapsTheServicesWarning_OntoTheBanner()
-    {
-        var vm = new SecurityOptionsViewModel(new FakeProtection { Warn = true });
-
-        await vm.RefreshAsync();
-
-        Assert.True(vm.ShowUnprotectedBanner);
-    }
-
-    [Fact]
-    public async Task RefreshAsync_LeavesTheBannerDown_WhenTheServiceDoesNotWarn()
-    {
-        var vm = new SecurityOptionsViewModel(new FakeProtection { Warn = false });
-
-        await vm.RefreshAsync();
-
-        Assert.False(vm.ShowUnprotectedBanner);
-    }
-
-    [Fact]
     public async Task DismissBanner_HidesItAtOnce_AndPersistsTheDismissal()
     {
         var protection = new FakeProtection { Warn = true };
         var vm = new SecurityOptionsViewModel(protection);
         await vm.RefreshAsync();
+        Assert.True(vm.ShowUnprotectedBanner, "the service's warning reaches the banner");
 
         await vm.DismissBannerCommand.ExecuteAsync(null);
 

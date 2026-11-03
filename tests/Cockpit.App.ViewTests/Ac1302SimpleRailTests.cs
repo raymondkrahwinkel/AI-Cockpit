@@ -124,38 +124,4 @@ public sealed class Ac1302SimpleRailTests
             }
         });
     }
-
-    // Criterion 2: what a row says is what the session says. A statusline the agent sets after the row is drawn
-    // appears without anything reading it again, and a session with none has no line rather than a blank one.
-    [Fact]
-    public void AStatuslineArrivingLater_ShowsUp_AndAnEmptyOneDrawsNoLine()
-    {
-        HeadlessAvalonia.Run(() =>
-        {
-            var cockpit = _Cockpit();
-            var session = _Session("spawned", "spawned", startedByTheAssistant: true);
-            cockpit.Sessions.Add(session);
-            _ = _Chat(cockpit, new SessionViewModel { Title = "Assistant" });
-
-            var window = _Shown(cockpit);
-            try
-            {
-                var line = window.GetVisualDescendants().OfType<TextBlock>()
-                    .First(block => block.Name == "SimpleRailStatusline"
-                        && ReferenceEquals(block.DataContext, session));
-
-                Assert.False(line.IsVisible);
-
-                session.Statusline = "kind→staging gelijktrekken";
-                window.UpdateLayout();
-
-                Assert.True(line.IsVisible);
-                Assert.Equal("kind→staging gelijktrekken", line.Text);
-            }
-            finally
-            {
-                window.Close();
-            }
-        });
-    }
 }

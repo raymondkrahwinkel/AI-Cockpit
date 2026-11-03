@@ -14,7 +14,7 @@ using Cockpit.Tests.Shared;
 namespace Cockpit.App.ViewTests;
 
 // AC-935: the reply affordance on a transcript row, verified against the actual markup — the same reason
-// AssistantChatWindowUserRowCopyButtonTests is (a wiring mistake passes a view-model-only test happily).
+// TranscriptUserRowCopyButtonViewTests is (a wiring mistake passes a view-model-only test happily).
 [Collection("avalonia")]
 public sealed class AssistantChatWindowReplyButtonTests
 {

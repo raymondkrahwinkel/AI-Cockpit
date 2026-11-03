@@ -27,7 +27,7 @@ public class AssistantOptionsViewModelTests
 
         await vm.RefreshAsync();
 
-        Assert.Contains(vm.ConsentBypassSources, row => row.Key == ConsentSourceCatalog.TerminalMcp);
+        Assert.False(Assert.Single(vm.ConsentBypassSources, row => row.Key == ConsentSourceCatalog.TerminalMcp).IsOrphan);
         Assert.Contains(vm.ConsentBypassSources, row => row.Key == ConsentSourceCatalog.Orchestrator);
 
         // Under the prefix the broker also builds its key with, so a plugin id and a host label are never one row.
@@ -73,17 +73,6 @@ public class AssistantOptionsViewModelTests
         // most often left behind by a source's own id changing underneath it — still gets a switchable row, but
         // marked as a leftover so it does not read as a second, live source next to the real one.
         Assert.True(row.IsOrphan);
-    }
-
-    [Fact]
-    public async Task ConsentBypassRows_ARecognisedSource_IsNeverMarkedAsALeftover()
-    {
-        var vm = new AssistantOptionsViewModel(new FakeSettingsStore(new AssistantSettings()));
-
-        await vm.RefreshAsync();
-
-        var terminal = vm.ConsentBypassSources.Single(row => row.Key == ConsentSourceCatalog.TerminalMcp);
-        Assert.False(terminal.IsOrphan);
     }
 
     [Fact]
@@ -144,7 +133,12 @@ public class AssistantOptionsViewModelTests
     [Fact]
     public async Task RefreshAsync_SeedsAllowAllFromDisk_WithoutSavingItBackOut()
     {
-        var store = new FakeSettingsStore(new AssistantSettings { ConsentBypassAll = false, ContextCompactionPercent = 30 });
+        var store = new FakeSettingsStore(new AssistantSettings
+        {
+            ConsentBypassAll = false,
+            ContextCompactionPercent = 30,
+            ConsentBypassSources = [ConsentSourceCatalog.TerminalMcp], // seeding the rows must not write them back either
+        });
         var vm = new AssistantOptionsViewModel(store);
 
         await vm.RefreshAsync();
@@ -167,18 +161,6 @@ public class AssistantOptionsViewModelTests
 
         Assert.Empty(store.Saved!.ConsentBypassSources);
         Assert.Equal(80, store.Saved.ContextCompactionPercent);
-    }
-
-    [Fact]
-    public async Task RefreshAsync_DoesNotSaveTheRowsBackOut()
-    {
-        // Seeding the checkboxes from disk must not read as the operator ticking them — the same guard the other
-        // switches on this page already have, and the one that would otherwise rewrite the file on every open.
-        var store = new FakeSettingsStore(new AssistantSettings { ConsentBypassSources = [ConsentSourceCatalog.TerminalMcp] });
-
-        await new AssistantOptionsViewModel(store).RefreshAsync();
-
-        Assert.Null(store.Saved);
     }
 
     private static ConsentAuditEntry Audit(string? pluginId, string label) =>

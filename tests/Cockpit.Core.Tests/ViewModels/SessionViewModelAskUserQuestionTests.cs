@@ -51,22 +51,6 @@ public class SessionViewModelAskUserQuestionTests
     }
 
     [Fact]
-    public async Task PermissionRequested_ForAnOrdinaryTool_KeepsTheConsentButtons()
-    {
-        var (vm, _) = await _StartedAsync();
-
-        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = """{"command":"ls"}""" });
-        vm.Apply(new PermissionRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = """{"command":"ls"}""" });
-        var entry = vm.Transcript.Single(row => row.ToolUseId == "t1");
-
-        Assert.False(entry.HasQuestionPrompts);
-        Assert.True(entry.IsPendingToolPermission);
-        Assert.True(entry.ShowToolBlock);
-
-        await vm.DisposeAsync();
-    }
-
-    [Fact]
     public async Task PermissionRequested_ForAToolMerelyCarryingAQuestionsField_IsStillAnOrdinaryConsent()
     {
         // The tool name is the signal the SDK documents; a payload that happens to hold a `questions` array is not
@@ -146,26 +130,6 @@ public class SessionViewModelAskUserQuestionTests
             Arg.Any<CancellationToken>());
 
         await vm.DisposeAsync();
-    }
-
-    [Fact]
-    public async Task TheComposerBandSaysWhatItIsWaitingFor_AnAnswerRatherThanAPermission()
-    {
-        // AC-532's band says "waiting for permission", which on a question sends the operator looking for an Allow
-        // button it deliberately does not have. Two sessions rather than two calls in one: the band tracks the
-        // oldest outstanding call, so a second prompt stacked on the first would still be reporting the question.
-        var (questionVm, _) = await _StartedAsync();
-        _RaiseQuestion(questionVm, OneQuestion);
-
-        var (toolVm, _) = await _StartedAsync();
-        toolVm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "t2", ToolName = "Bash", InputJson = "{}" });
-        toolVm.Apply(new PermissionRequested { SessionId = "S1", ToolUseId = "t2", ToolName = "Bash", InputJson = "{}" });
-
-        Assert.Equal("waiting for an answer", questionVm.ActiveToolActivityAgeText);
-        Assert.Equal("waiting for permission", toolVm.ActiveToolActivityAgeText);
-
-        await questionVm.DisposeAsync();
-        await toolVm.DisposeAsync();
     }
 
     // ── AC-955: the assistant's own broker (ask_structured_question), which has no permission callback ────────

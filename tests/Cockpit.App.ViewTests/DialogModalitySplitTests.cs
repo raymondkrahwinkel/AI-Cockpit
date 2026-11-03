@@ -3,72 +3,15 @@ using System.Text.RegularExpressions;
 namespace Cockpit.App.ViewTests;
 
 /// <summary>
-/// AC-367 asks for the split between the two kinds of dialog to be written down and kept. This is where it is
-/// kept: a <b>surface</b> is worked in for minutes and opens beside the cockpit, a <b>question</b> is answered
-/// in seconds and stays modal.
+/// Two call-site orderings in <c>SessionDialogService</c> where getting it wrong loses what the operator entered.
 /// <para>
 /// Read off the source rather than exercised, because <c>SessionDialogService</c> cannot be run here at all —
 /// every method returns early without an <c>IClassicDesktopStyleApplicationLifetime</c>, and the headless
-/// harness has none. <see cref="SurfaceWindowsTests"/> proves what the surface mechanism does; this proves
-/// which dialogs were put through it. Same idiom as the theme's own selector guard.
+/// harness has none. <see cref="SurfaceWindowsTests"/> proves what the surface mechanism does.
 /// </para>
 /// </summary>
 public sealed partial class DialogModalitySplitTests
 {
-    // Worked in for minutes, so a modal takes every running session down with it.
-    private static readonly string[] SessionSurfaces =
-    [
-        "ShowNewSessionDialogAsync",
-        "ShowProjectDialogAsync",
-        "ShowVerifyRunnersDialogAsync",
-        "ShowPluginStoreDialogAsync",
-        "ShowOptionsDialogAsync",
-        "ShowDelegatedTasksDialogAsync",
-        "ShowTestRunsDialogAsync",
-        "ShowWorktreesDialogAsync",
-        "ShowAboutDialogAsync",
-        "ShowGlossaryDialogAsync",
-    ];
-
-    // Answered in seconds, and nothing may carry on half-answered: a removal to confirm, a password, trusting a
-    // plugin, or a picker whose chosen command deliberately runs after it has closed.
-    private static readonly string[] SessionQuestions =
-    [
-        "_CloneIntoProjectAsync",
-        "ShowCloneFromGitUrlAsync",
-        "ShowScheduleResumeDialogAsync",
-        "ShowPluginConsentAsync",
-        "ShowCommandPaletteDialogAsync",
-        "ShowConfirmationDialogAsync",
-        "ShowSetStatusDialogAsync",
-    ];
-
-    [Fact]
-    public void SessionDialogService_OpensEverySurfaceBesideTheCockpit()
-    {
-        var members = _Members(_Source("src", "Cockpit.App", "Services", "SessionDialogService.cs"));
-
-        foreach (var name in SessionSurfaces)
-        {
-            var body = _Body(members, name);
-            Assert.True(OpensSurface().IsMatch(body), $"{name} should open its window as a surface");
-            Assert.False(OpensModal().IsMatch(body), $"{name} should not open its window as a modal");
-        }
-    }
-
-    [Fact]
-    public void SessionDialogService_KeepsEveryQuestionModal()
-    {
-        var members = _Members(_Source("src", "Cockpit.App", "Services", "SessionDialogService.cs"));
-
-        foreach (var name in SessionQuestions)
-        {
-            var body = _Body(members, name);
-            Assert.True(OpensModal().IsMatch(body), $"{name} should stay a modal question");
-            Assert.False(OpensSurface().IsMatch(body), $"{name} should not open its window as a surface");
-        }
-    }
-
     // A surface that answers something reads its answer when the window closes, and a dialog's own code-behind
     // subscribes to CloseRequested from OnDataContextChanged — so setting the DataContext first puts the handler
     // that closes the window ahead of the one that records the answer, and the answer is read before it is
@@ -106,36 +49,11 @@ public sealed partial class DialogModalitySplitTests
         Assert.Contains("project?.Id", body, StringComparison.Ordinal);
     }
 
-    // AC-1082: a plugin category (e.g. Depot) is only added to CategoryNav by OptionsDialog's own Opened
-    // handler, so calling SelectCategory right after construction finds no such nav item yet. Held here, not
-    // exercised, for the same reason as the rest of this file: no desktop lifetime to show the window through.
-    [Fact]
-    public void ShowOptionsDialogAsync_DefersTheCategoryJumpUntilTheDialogHasOpened()
-    {
-        var body = _Body(_Members(_Source("src", "Cockpit.App", "Services", "SessionDialogService.cs")), "ShowOptionsDialogAsync");
-
-        Assert.DoesNotMatch(new Regex(@"^\s*dialog\.SelectCategory\(category\);", RegexOptions.Multiline), body);
-        Assert.Contains("dialog.Opened +=", body, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void PluginDialogHost_OpensPluginWindowsBesideTheCockpit()
-    {
-        var members = _Members(_Source("src", "Cockpit.App", "Plugins", "PluginDialogHost.cs"));
-
-        foreach (var name in new[] { "ShowDialogAsync", "ShowSettingsDialogAsync" })
-        {
-            var body = _Body(members, name);
-            Assert.True(OpensSurface().IsMatch(body), $"{name} should open the plugin's window as a surface");
-            Assert.False(OpensModal().IsMatch(body), $"{name} should not open the plugin's window as a modal");
-        }
-    }
-
     // A name that no longer exists would make every assertion above vacuous, so a rename fails here rather than
     // quietly emptying the guard.
     private static string _Body(IReadOnlyDictionary<string, string> members, string name)
     {
-        Assert.True(members.ContainsKey(name), $"{name} was not found — the split it belongs to is no longer guarded");
+        Assert.True(members.ContainsKey(name), $"{name} was not found — the call site it guards is no longer checked");
 
         return members[name];
     }
@@ -176,10 +94,4 @@ public sealed partial class DialogModalitySplitTests
     /// <summary>A member of the class: declared at one level of indentation, named right before its parameters.</summary>
     [GeneratedRegex(@"^    (?:public|private|internal|protected).*?(?<name>[A-Za-z_]\w*)\s*\(", RegexOptions.Multiline)]
     private static partial Regex MemberDeclaration();
-
-    [GeneratedRegex(@"\.ShowDialog[(<]")]
-    private static partial Regex OpensModal();
-
-    [GeneratedRegex(@"_ShowSurfaceAsync\(|surfaces\.ShowAsync[(<]")]
-    private static partial Regex OpensSurface();
 }

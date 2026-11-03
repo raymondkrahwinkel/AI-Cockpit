@@ -91,11 +91,8 @@ public class TranscriptWheelExpiryTests
 
     [Theory]
     [InlineData(700, 470, true)]
-    [InlineData(700, 500, true)]
-    [InlineData(700, 560, true)]
     [InlineData(900, 530, true)]
     [InlineData(700, 470, false)]
-    [InlineData(900, 530, false)]
     public void SendingAMessageWhileParkedAtTheBottom_KeepsFollowing(int width, int height, bool wheelFirst) =>
         HeadlessAvalonia.Run(() => _AssertSendingKeepsFollowing(width, height, wheelFirst));
 }

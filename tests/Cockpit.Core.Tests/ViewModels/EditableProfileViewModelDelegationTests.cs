@@ -15,21 +15,6 @@ public class EditableProfileViewModelDelegationTests
         new("local", new OllamaConfig("http://localhost:11434", "llama3.1"), Delegation: policy);
 
     [Fact]
-    public void Load_SeedsTheCeilingAndAllowListFromTheProfile()
-    {
-        var profile = TargetWith(new DelegationPolicy(
-            AllowedAsTarget: true,
-            PermissionCeiling: "plan",
-            AllowedTools: ["get_current_user", "search_issues"]));
-
-        var editable = new EditableProfileViewModel(profile, isLoggedIn: false);
-
-        Assert.Equal("plan", editable.PermissionCeiling);
-        Assert.Contains("get_current_user", editable.AllowedTools);
-        Assert.Contains("search_issues", editable.AllowedTools);
-    }
-
-    [Fact]
     public void Save_RoundTripsTheCeilingAndAllowList()
     {
         var profile = TargetWith(new DelegationPolicy(

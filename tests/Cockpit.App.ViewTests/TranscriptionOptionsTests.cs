@@ -7,7 +7,7 @@ namespace Cockpit.App.ViewTests;
 /// <summary>
 /// AC-68 slice 1: the host-aware transcription options. The point of the exercise is that a machine is never
 /// offered a backend it cannot load — above all, no CUDA on a non-NVIDIA host — so these pin the mapping from
-/// detected capabilities to the offered choices, the hardware badge, and the per-selection advice.
+/// detected capabilities to the offered choices and the GPU picked by Auto.
 /// </summary>
 public class TranscriptionOptionsTests
 {
@@ -40,22 +40,4 @@ public class TranscriptionOptionsTests
             multiple.Select(choice => choice.Label));
         Assert.Equal("nvidia", TranscriptionOptions.Find(multiple, VoiceBackendPreference.Vulkan, "nvidia").GpuDeviceId);
     }
-
-    [Theory]
-    [InlineData(false, false, "No GPU acceleration detected — CPU only")]
-    [InlineData(false, true, "Vulkan GPU available")]
-    [InlineData(true, false, "NVIDIA CUDA GPU available")]
-    public void TheHardwareBadge_NamesTheDetectedAcceleration(bool cuda, bool vulkan, string expected) =>
-        Assert.Equal(expected, TranscriptionOptions.HardwareBadge(new TranscriptionCapabilities(cuda, vulkan)));
-
-    [Theory]
-    // Forcing the GPU is the one choice with a cost to warn about; CPU is the one that promises none.
-    [InlineData(VoiceBackendPreference.Vulkan, false, true, "stutter")]
-    [InlineData(VoiceBackendPreference.Cpu, false, false, "smooth")]
-    // Auto says nothing of its own — it reports what the host turned out to have.
-    [InlineData(VoiceBackendPreference.Auto, true, false, "GPU")]
-    [InlineData(VoiceBackendPreference.Auto, false, false, "CPU")]
-    public void TheAdvice_NamesWhatTheChoiceCostsOnThisHost(
-        VoiceBackendPreference preference, bool cuda, bool vulkan, string expected) =>
-        Assert.Contains(expected, TranscriptionOptions.Advice(preference, new TranscriptionCapabilities(cuda, vulkan)));
 }

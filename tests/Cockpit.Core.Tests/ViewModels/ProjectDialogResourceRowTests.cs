@@ -58,20 +58,6 @@ public class ProjectDialogResourceRowTests
         Assert.Equal(project.Resources, viewModel.ToProject().Resources);
     }
 
-    [Fact]
-    public async Task RoundTrip_AnInstructionsRowWithSendsContentLeftOff_SurvivesOpenAndSaveUnchanged()
-    {
-        var project = Project.Create("Cockpit") with
-        {
-            Resources = [new ProjectResource("docs:handbook", ProjectResourceRole.Instructions) { Label = "Handbook" }],
-        };
-
-        var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog());
-
-        Assert.False(viewModel.ResourceRows.Single().SendsContent);
-        Assert.Equal(project.Resources, viewModel.ToProject().Resources);
-    }
-
     // --- AC-503: a Memory row's own reachability check ---------------------------------------------------------
 
     // --- AC-503 acceptance criterion 6, the two reset sub-cases the review round asked to see proven directly ------

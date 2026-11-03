@@ -21,17 +21,6 @@ public class EditableProfileViewModelMcpAndFolderTests
         };
 
     [Fact]
-    public void Load_TicksEachAvailableServer_WhenTheProfileHasNoRestriction()
-    {
-        var editable = new EditableProfileViewModel(
-            ClaudeProfile(), isLoggedIn: true, availableMcpServerNames: ["youtrack", "docker"]);
-
-        Assert.False(editable.RestrictMcpServers);
-        Assert.True(editable.HasMcpServers);
-        Assert.All(editable.McpServers, server => Assert.True(server.IsEnabledForSession));
-    }
-
-    [Fact]
     public void Load_TicksOnlyTheSavedServers_WhenTheProfileRestricts()
     {
         var editable = new EditableProfileViewModel(
@@ -48,6 +37,8 @@ public class EditableProfileViewModelMcpAndFolderTests
         var editable = new EditableProfileViewModel(
             ClaudeProfile(), isLoggedIn: true, availableMcpServerNames: ["youtrack", "docker"]);
 
+        Assert.False(editable.RestrictMcpServers);
+        Assert.All(editable.McpServers, server => Assert.True(server.IsEnabledForSession));
         Assert.Null(editable.ToProfile().EnabledMcpServerNames);
     }
 

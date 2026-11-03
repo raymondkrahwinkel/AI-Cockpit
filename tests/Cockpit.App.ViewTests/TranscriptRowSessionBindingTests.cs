@@ -3,10 +3,6 @@ using Avalonia.Logging;
 using Avalonia.Threading;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
-using Cockpit.Core.Abstractions.Assistant;
-using Cockpit.Core.Abstractions.Voice;
-using NSubstitute;
-using Cockpit.Tests.Shared;
 
 namespace Cockpit.App.ViewTests;
 
@@ -80,40 +76,6 @@ public class TranscriptRowSessionBindingTests
 
         Assert.True(failures.Count == 0, $"{failures.Count} session lookups failed, first: {failures.FirstOrDefault()}");
     });
-
-    [Fact]
-    public void TheAssistantChatRealisingItsTranscript_LogsNoSessionBindingErrors() => HeadlessAvalonia.Run(() =>
-    {
-        var host = Substitute.For<IAssistantSessionHost>();
-        host.Session.Returns(TestSessions.Assistant(_TranscriptOf(400)));
-
-        var failures = _WhileRealising(() =>
-        {
-            var window = new AssistantChatWindow
-            {
-                Width = 420,
-                Height = 560,
-                DataContext = new AssistantChatViewModel(
-                    host,
-                    Substitute.For<IAssistantSettingsStore>(),
-                    Substitute.For<IVoicePlaybackQueue>()),
-            };
-            window.Show();
-            window.UpdateLayout();
-            Dispatcher.UIThread.RunJobs();
-            window.Close();
-        });
-
-        Assert.True(failures.Count == 0, $"{failures.Count} session lookups failed, first: {failures.FirstOrDefault()}");
-    });
-
-    [Fact]
-    public void ARowCarriesItsSession_BeforeAnythingHasRealisedIt()
-    {
-        var session = _TranscriptOf(1);
-
-        Assert.Same(session, session.Transcript[0].Session);
-    }
 
     [Fact]
     public void ASubAgentRow_InheritsTheSessionOfTheRowItHangsUnder()

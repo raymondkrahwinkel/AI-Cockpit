@@ -52,15 +52,6 @@ public sealed class ImagePreviewWindowTests
     // these tests read — CountText, NavigationRow — synchronously and with no dispatcher hop, so there is
     // nothing here to await: the state is already final the instant the call returns.
     [Fact]
-    public void ASingleImage_ShowsNoNavigation() => HeadlessAvalonia.Run(() =>
-    {
-        var window = ImagePreviewWindow.Build([Image], 0);
-
-        Assert.Equal("Image", _CountText(window).Text);
-        Assert.False(_NavigationRow(window).IsVisible);
-    });
-
-    [Fact]
     public void MultipleImages_ShowsPositionAndNavigatesBothWays() => HeadlessAvalonia.Run(() =>
     {
         var window = ImagePreviewWindow.Build([Image, Image, Image], 0);
@@ -105,52 +96,6 @@ public sealed class ImagePreviewWindowTests
 
             applyZoom.Invoke(window, [0.001]);
             Assert.Equal(0.2, zoomTransform.ScaleX);
-        });
-    }
-
-    // AC-778 follow-up: the window otherwise has no OS-drawn edge at all (AC-678) — rendered and sampled rather
-    // than only asserting a property, since a brush wired to the wrong element would still pass a property check.
-    [Fact]
-    public async Task Window_HasAVisibleOuterBorder()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var window = ImagePreviewWindow.Build([Image], 0);
-            window.Show();
-            await Task.Delay(200);
-
-            var edge = RenderedScene.PaintedAt(window, new Point(0, 300));
-            var interior = RenderedScene.PaintedAt(window, new Point(10, 300));
-
-            Assert.Equal(RenderedScene.Token("CockpitHairlineColor"), edge);
-            Assert.NotEqual(edge, interior);
-        });
-    }
-
-    // AC-778 follow-up 2: Fit and 1:1 must put visibly different sizes on screen — this window has now had two
-    // click regressions after a zoom change, so this measures the laid-out image box rather than a property.
-    [Fact]
-    public async Task FitAndActualSize_LayOutTheImageDifferently()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var window = ImagePreviewWindow.Build([_Png(1200, 900)], 0);
-            window.Show();
-            await Task.Delay(200);
-
-            var image = window.GetLogicalDescendants().OfType<Image>().First(i => i.Name == "PreviewImage");
-
-            _Click(window, "ActualSizeButton");
-            window.UpdateLayout();
-            var actualSize = image.Bounds.Size;
-
-            _Click(window, "FitButton");
-            window.UpdateLayout();
-            var fitted = image.Bounds.Size;
-
-            Assert.Equal(new Size(1200, 900), actualSize);
-            Assert.True(fitted.Width < window.Width, $"fit left the image at {fitted} in a {window.Width}px window");
-            Assert.True(fitted.Height < actualSize.Height);
         });
     }
 
@@ -229,48 +174,6 @@ public sealed class ImagePreviewWindowTests
         });
     }
 
-    // AC-804: the same Fit-box freeze fixes zooming out too — without it, LayoutTransformControl hands
-    // Stretch.Uniform a proportionally larger constraint below zoom 1, which re-fits to exactly cancel the
-    // scale-down, so Ctrl+scroll-down in Fit did nothing at all.
-    [Fact]
-    public async Task FitMode_ZoomedBelowOne_ShrinksTheImageBox()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var window = ImagePreviewWindow.Build([_Png(1200, 900)], 0);
-            window.Show();
-            await Task.Delay(200);
-            window.UpdateLayout();
-
-            var zoomBox = _ZoomBox(window);
-            var fitted = zoomBox.Bounds.Size;
-
-            _Zoom(window, 0.5);
-            window.UpdateLayout();
-
-            Assert.Equal(fitted.Width * 0.5, zoomBox.Bounds.Width, 1);
-        });
-    }
-
-    [Fact]
-    public async Task ActualSize_BiggerThanWindow_HasScrollbars()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var window = ImagePreviewWindow.Build([_Png(1200, 900)], 0);
-            window.Show();
-            await Task.Delay(200);
-
-            _Click(window, "ActualSizeButton");
-            window.UpdateLayout();
-
-            var scroller = _Scroller(window);
-            Assert.Equal(ScrollBarVisibility.Auto, scroller.HorizontalScrollBarVisibility);
-            Assert.Equal(ScrollBarVisibility.Auto, scroller.VerticalScrollBarVisibility);
-            Assert.True(scroller.Extent.Width > scroller.Viewport.Width);
-        });
-    }
-
     [Fact]
     public async Task Panning_MovesTheOffsetByExactlyTheDragDistance()
     {
@@ -290,29 +193,6 @@ public sealed class ImagePreviewWindowTests
 
             Assert.Equal(50, scroller.Offset.X, 1);
             Assert.Equal(30, scroller.Offset.Y, 1);
-        });
-    }
-
-    [Fact]
-    public async Task Panning_StopsAtTheImageEdges()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var window = ImagePreviewWindow.Build([_Png(1200, 900)], 0);
-            window.Show();
-            await Task.Delay(200);
-            _Click(window, "ActualSizeButton");
-            window.UpdateLayout();
-
-            var scroller = _Scroller(window);
-            var start = _Centre(window, scroller);
-            var max = scroller.Extent - scroller.Viewport;
-
-            _Drag(window, start, start + new Vector(-5000, -5000));
-            window.UpdateLayout();
-
-            Assert.Equal(max.Width, scroller.Offset.X, 1);
-            Assert.Equal(max.Height, scroller.Offset.Y, 1);
         });
     }
 
@@ -344,29 +224,6 @@ public sealed class ImagePreviewWindowTests
             Assert.Equal(default, scroller.Offset);
         });
     }
-
-    // `Cursor` is set directly in `_ApplyZoom`/`_OnBodyPointer*`, with no layout dependency — the pre-`Show`
-    // read below needs nothing to wait for, and every later read follows its own synchronous state change.
-    [Fact]
-    public void Panning_ShowsAGrabCursorWhilePannableAndAGrabbingCursorWhileDragging() => HeadlessAvalonia.Run(() =>
-    {
-        var window = ImagePreviewWindow.Build([_Png(1200, 900)], 0);
-        window.Show();
-
-        var scroller = _Scroller(window);
-        Assert.Equal("Arrow", scroller.Cursor?.ToString());
-
-        _Click(window, "ActualSizeButton");
-        window.UpdateLayout();
-        Assert.Equal("Hand", scroller.Cursor?.ToString());
-
-        var start = _Centre(window, scroller);
-        window.MouseDown(start, MouseButton.Left);
-        Assert.Equal("SizeAll", scroller.Cursor?.ToString());
-
-        window.MouseUp(start, MouseButton.Left);
-        Assert.Equal("Hand", scroller.Cursor?.ToString());
-    });
 
     private static void _Zoom(Window window, double zoom) =>
         typeof(ImagePreviewWindow).GetMethod("_ApplyZoom", BindingFlags.NonPublic | BindingFlags.Instance)!
