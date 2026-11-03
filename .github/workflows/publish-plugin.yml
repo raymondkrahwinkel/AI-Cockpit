@@ -69,7 +69,6 @@ on:
           - gemini-provider
           - github-actions
           - github-issues
-          - github-models-provider
           - github-pull-requests
           - git-status
           - kimi-provider

@@ -1915,9 +1915,9 @@ public PluginMetadata Metadata { get; } =
 
 Everything under `Cockpit.Plugins.Abstractions.Sessions`, used with `ICockpitHost.AddSessionProvider` (#45) to
 register a plugin as a **new selectable session provider** — the same picker slot as the built-in Claude
-CLI / Ollama / LM Studio providers. Three real plugins in [`plugins-dev/`](https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/plugins-dev) exercise this:
-**Gemini/OpenAI Provider** and **GitHub Models** (both a persistent `IChatClient` over an OpenAI-compatible
-endpoint) and **CLI Agent Provider** (a subprocess-per-turn driver around the `codex` CLI).
+CLI / Ollama / LM Studio providers. Plugins in [`plugins-dev/`](https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/plugins-dev) exercise this:
+**Gemini/OpenAI Provider** (a persistent `IChatClient` over an OpenAI-compatible endpoint) and
+**CLI Agent Provider** (a subprocess-per-turn driver around the `codex` CLI).
 
 This is a deliberately **narrow** contract — a trimmed mirror of the host's own internal `ISessionDriver` —
 covering only what a third-party HTTP or subprocess provider can realistically support. There is no

@@ -3191,10 +3191,6 @@ internal static partial class Screenshotter
         viewModel.Providers.Add(_ProviderRow(
             "kimi-provider", "Kimi Code Provider (ACP)", "Requires the kimi CLI installed and authenticated on this machine.",
             ViewModels.Onboarding.ProviderDetectionState.Found, installedVersion: "0.2.0"));
-        viewModel.Providers.Add(_ProviderRow(
-            "github-models-provider", "GitHub Models", "Configure a GitHub personal access token (models:read scope) and model per profile.",
-            ViewModels.Onboarding.ProviderDetectionState.NotApplicable, hostAbstractionsMajor: 999));
-
         return new Views.Onboarding.ProviderStepView { DataContext = viewModel };
     }
 

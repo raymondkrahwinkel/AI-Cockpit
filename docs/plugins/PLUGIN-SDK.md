@@ -483,7 +483,7 @@ A plugin can add a whole new **session provider** — the same picker slot as th
 / LM Studio choices — by implementing a small driver and handing it to `host.AddSessionProvider(...)`. Two
 shapes exist in [`plugins-dev/`](https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/plugins-dev):
 
-- **Persistent chat client** (Gemini/OpenAI Provider, GitHub Models): one long-lived `IChatClient` per
+- **Persistent chat client** (Gemini/OpenAI Provider): one long-lived `IChatClient` per
   session, talking an OpenAI-compatible endpoint via `Microsoft.Extensions.AI` — the same stack the host uses
   internally for Ollama/LM Studio.
 - **Subprocess-per-turn** (CLI Agent Provider): shells out to a CLI (`codex exec --json`, resumed for
@@ -1744,9 +1744,6 @@ they exercise the main contribution points:
   providers (Gemini and OpenAI) from one `Initialize`, both backed by the same persistent-`IChatClient` driver
   factory over an OpenAI-compatible chat-completions endpoint, differing only in default base URL. Chat-only
   capabilities (no tools/permissions). Experimental (0.x).
-- **[GitHub Models](https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/plugins-dev/Cockpit.Plugin.GitHubModelsProvider)** — the same OpenAI-compatible
-  driver against GitHub's own Models endpoint (`models.github.ai/inference`), configured with a GitHub PAT
-  (`models:read` scope) instead of a raw API key. Experimental (0.x).
 - **[OpenRouter](https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/plugins-dev/Cockpit.Plugin.OpenRouterProvider)** — the same OpenAI-compatible driver
   against OpenRouter's endpoint (`openrouter.ai/api/v1`), model id in OpenRouter's `vendor/model` notation
   (e.g. `anthropic/claude-sonnet-4.5`). Chat-only, same as the other two; declares no usage signals since the

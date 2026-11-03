@@ -105,11 +105,6 @@ inline	plugins-dev/Cockpit.Plugin.GitHubIssues/UI/GitHubIssuesSettingsControl.cs
 inline	plugins-dev/Cockpit.Plugin.GitHubIssues/UI/GitHubSessionHeaderControl.cs	1
 inline	plugins-dev/Cockpit.Plugin.GitHubIssues/UI/IssueSelection.cs	1
 inline	plugins-dev/Cockpit.Plugin.GitHubIssues/UI/LoadingBar.cs	2
-inline	plugins-dev/Cockpit.Plugin.GitHubModelsProvider.Tests/OpenAiCompatConfigTests.cs	1
-inline	plugins-dev/Cockpit.Plugin.GitHubModelsProvider/GitHubModelsProviderPlugin.cs	1
-inline	plugins-dev/Cockpit.Plugin.GitHubModelsProvider/OpenAiCompatConfig.cs	1
-inline	plugins-dev/Cockpit.Plugin.GitHubModelsProvider/OpenAiCompatPluginSessionDriverFactory.cs	1
-inline	plugins-dev/Cockpit.Plugin.GitHubModelsProvider/UI/OpenAiCompatProviderConfigView.cs	1
 inline	plugins-dev/Cockpit.Plugin.GitHubPullRequests.Tests/PullRequestRefreshSourceTests.cs	1
 inline	plugins-dev/Cockpit.Plugin.GitHubPullRequests/Contracts/GitHubPullRequest.cs	1
 inline	plugins-dev/Cockpit.Plugin.GitHubPullRequests/Contracts/GitHubPullRequestsSettings.cs	4
@@ -355,7 +350,6 @@ inline	tests/Cockpit.Core.Tests/Plugins/CockpitHostAddSideMenuButtonWithBadgeTes
 inline	tests/Cockpit.Core.Tests/Plugins/CockpitHostCallMcpToolFallbackScopingTests.cs	2
 inline	tests/Cockpit.Core.Tests/Plugins/CockpitHostProbeMcpToolTests.cs	2
 inline	tests/Cockpit.Core.Tests/Plugins/GeminiProviderPluginLoadTests.cs	1
-inline	tests/Cockpit.Core.Tests/Plugins/GitHubModelsProviderPluginLoadTests.cs	1
 inline	tests/Cockpit.Core.Tests/Plugins/PluginActivatorTests.cs	1
 inline	tests/Cockpit.Core.Tests/Plugins/PluginDiagnosticsTests.cs	1
 inline	tests/Cockpit.Core.Tests/Plugins/PluginHostVersionGateTests.cs	2
@@ -499,7 +493,6 @@ summary	tests/Cockpit.Core.Tests/Plugins/CockpitHostMcpAuthTests.cs	1
 summary	tests/Cockpit.Core.Tests/Plugins/CockpitHostPluginOAuthFallbackTests.cs	1
 summary	tests/Cockpit.Core.Tests/Plugins/CockpitHostProbeMcpToolFallbackScopingTests.cs	1
 summary	tests/Cockpit.Core.Tests/Plugins/CockpitHostProbeMcpToolTests.cs	1
-summary	tests/Cockpit.Core.Tests/Plugins/GitHubModelsProviderPluginLoadTests.cs	1
 summary	tests/Cockpit.Core.Tests/Plugins/GitHubPullRequestsPluginLoadTests.cs	1
 summary	tests/Cockpit.Core.Tests/Plugins/PluginDeferredChangesTests.cs	1
 summary	tests/Cockpit.Core.Tests/Plugins/PluginHostVersionGateTests.cs	1

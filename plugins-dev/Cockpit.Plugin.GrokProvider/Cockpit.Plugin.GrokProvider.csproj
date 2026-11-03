@@ -2,7 +2,7 @@
 
   <!-- Provider plugin (AC-724): registers Grok (xAI) as a selectable session provider, talking over its
        OpenAI-Chat-Completions-compatible HTTP endpoint (api.x.ai/v1) via Microsoft.Extensions.AI's
-       IChatClient — the same OpenAiCompat stack the Gemini/OpenAI (#45), GitHub Models (#63), and
+       IChatClient — the same OpenAiCompat stack the Gemini/OpenAI (#45) and
        OpenRouter (AC-806) provider plugins already run, just pointed at a different base URL with an xAI
        API key as the bearer key. Deliberately the legacy chat-completions path, not xAI's newer Responses
        API — see GrokProviderPlugin.cs. Built OUTSIDE the main solution (plugins-dev/) so the app build stays

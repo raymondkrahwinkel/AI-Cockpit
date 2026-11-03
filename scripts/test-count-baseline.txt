@@ -15,7 +15,6 @@ plugins-dev/Cockpit.Plugin.FanOut.Tests	1
 plugins-dev/Cockpit.Plugin.GeminiProvider.Tests	16
 plugins-dev/Cockpit.Plugin.GitHubActions.Tests	7
 plugins-dev/Cockpit.Plugin.GitHubIssues.Tests	4
-plugins-dev/Cockpit.Plugin.GitHubModelsProvider.Tests	11
 plugins-dev/Cockpit.Plugin.GitHubPullRequests.Tests	2
 plugins-dev/Cockpit.Plugin.GitStatus.Tests	1
 plugins-dev/Cockpit.Plugin.GrokProvider.Tests	11

@@ -15,7 +15,7 @@
         <vm:AboutInfo AppName="Wispslate Cockpit" VersionText="0.3.0"
                       BuildText="Plugin API 1 (SDK 1.4.0) · .NET 10.0.10"
                       Description="Run several AI coding sessions side by side — each in its own profile, with its own provider, permissions and transcript."
-                      Providers="Ollama · LM Studio · plus any provider a plugin adds (Claude, Codex, Gemini, OpenAI, GitHub Models)."
+                      Providers="Ollama · LM Studio · plus any provider a plugin adds (Claude, Codex, Gemini, OpenAI)."
                       LicenseText="Apache 2.0 with the Commons Clause · © 2026 Raymond Krahwinkel / Krahwinkel-IT"
                       GitHubUrl="https://github.com/raymondkrahwinkel/AI-Cockpit"
                       IssuesUrl="https://github.com/raymondkrahwinkel/AI-Cockpit/issues"

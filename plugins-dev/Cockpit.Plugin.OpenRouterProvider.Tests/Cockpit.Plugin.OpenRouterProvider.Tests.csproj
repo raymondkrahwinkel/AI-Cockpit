@@ -2,8 +2,7 @@
 
   <!-- Unit tests for the OpenRouter provider plugin's own driver logic (AC-806) — kept OUTSIDE Cockpit.slnx
        and outside Cockpit.Core.Tests, in its own project alongside the plugin under plugins-dev/, same as
-       the plugin itself is built outside the main solution (mirrors Cockpit.Plugin.GitHubModelsProvider.Tests,
-       #63). Unlike Cockpit.Core.Tests' plugin references (ReferenceOutputAssembly=false, loaded only through
+       the plugin itself is built outside the main solution. Unlike Cockpit.Core.Tests' plugin references (ReferenceOutputAssembly=false, loaded only through
        PluginActivator to prove type identity), this project references the plugin normally: it tests the
        plugin's own internal driver/config-view logic directly, which needs no type-identity proof. Run
        explicitly with `dotnet test` in this folder (or against this .csproj) — it is not picked up by

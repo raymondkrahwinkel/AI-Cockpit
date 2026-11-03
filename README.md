@@ -58,7 +58,6 @@ exactly the controls that provider supports — and no dead ones.
 | **Ollama** | built-in | SDK | Local models over the OpenAI-compatible `/v1` endpoint |
 | **LM Studio** | built-in | SDK | Local models over the OpenAI-compatible `/v1` endpoint |
 | **Gemini / OpenAI** | plugin | SDK | Both over an OpenAI-compatible chat-completions endpoint |
-| **GitHub Models** | plugin | SDK | GitHub's Models API (`models.github.ai/inference`), with a PAT |
 | **Codex CLI** | plugin | SDK | Driven as a subprocess per turn (`codex exec --json`, resumed for follow-ups) |
 
 Every provider — built-in or plugin — sits behind one internal session-driver seam and advertises its own
@@ -426,7 +425,7 @@ Signing uses the hardened runtime with `src/Cockpit.App/Cockpit.entitlements` �
 | **.NET SDK 10.0+** | always |
 | **Claude Code CLI** (`claude`), installed and logged in | only for Claude profiles |
 | **Ollama** or **LM Studio** running locally | only for those profiles |
-| An API key / PAT | only for the plugin providers that need one (Gemini, OpenAI, GitHub Models) |
+| An API key | only for the plugin providers that need one (Gemini, OpenAI) |
 
 You do **not** need a Claude subscription to use the cockpit — a local Ollama profile works on its own.
 
@@ -466,7 +465,7 @@ dotnet test
   [github.com/raymondkrahwinkel/AI-Cockpit-Plugins](https://github.com/raymondkrahwinkel/AI-Cockpit-Plugins) — the
   [`plugins-dev/`](plugins-dev) example plugins, published. UI plugins (GitHub Issues, GitHub Pull Requests,
   YouTrack, Git Status, GitHub Actions, Session Review, Prompt Library, Transcript Search), MCP plugins
-  (Docker, Kubernetes), widgets (Clock, System Monitor), providers (Gemini/OpenAI, GitHub Models,
+  (Docker, Kubernetes), widgets (Clock, System Monitor), providers (Gemini/OpenAI,
   CLI Agent/Codex), and **Workflows** — a canvas where flows are drawn and an engine that runs them, which
   other plugins contribute their own steps and triggers to. (Usage Trend is a bundled example widget under
   `plugins-dev/`, not yet published to the store; **Depot** — names a Depot project as a place a project's

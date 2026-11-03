@@ -2,8 +2,8 @@
 
   <!-- Provider plugin (AC-806): registers OpenRouter as a selectable session provider, talking over its
        OpenAI-Chat-Completions-compatible HTTP endpoint (openrouter.ai/api/v1) via Microsoft.Extensions.AI's
-       IChatClient — the same OpenAiCompat stack the Gemini/OpenAI provider plugin (#45) and the GitHub
-       Models provider plugin (#63) already run, just pointed at a different base URL with an OpenRouter API
+       IChatClient — the same OpenAiCompat stack the Gemini/OpenAI provider plugin (#45) runs,
+       pointed at a different base URL with an OpenRouter API
        key as the bearer key. Built OUTSIDE the main solution (plugins-dev/) so the app build stays clean;
        package its bin/<config>/net10.0 output into a .zip and install it via Options -> Plugins.
        EnableDynamicLoading emits the .deps.json the host's AssemblyDependencyResolver needs. The shared
@@ -66,7 +66,7 @@
 
   <ItemGroup>
     <!-- The chat/streaming/error-handling loop (OpenAiCompatPluginSessionDriver) is real logic worth its own
-         unit tests against a fake IChatClient, mirroring Cockpit.Plugin.GitHubModelsProvider.Tests. Its
+         unit tests against a fake IChatClient. Its
          dedicated test project (own solution, not part of Cockpit.slnx — see that project's own header
          comment) needs this grant since the driver/config types stay internal, matching this plugin's own
          style. -->
