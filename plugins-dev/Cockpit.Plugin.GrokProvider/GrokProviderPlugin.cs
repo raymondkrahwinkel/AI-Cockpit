@@ -40,6 +40,7 @@ public sealed class GrokProviderPlugin : ICockpitPlugin
             // AC-1484: a key on the profile, or the provider variable in session.env, is what signs a profile in.
             IsLoggedIn = configJson => OpenAiCompatConfig.CredentialKindOf(configJson, OpenAiCompatConfig.ApiKeyEnvVar, OpenAiCompatDefaultBaseUrls.Grok) != PluginCredentialKind.Unknown,
             CredentialKind = configJson => OpenAiCompatConfig.CredentialKindOf(configJson, OpenAiCompatConfig.ApiKeyEnvVar, OpenAiCompatDefaultBaseUrls.Grok),
+            ReadModelIntelligenceAsync = GrokModelIntelligence.ReadAsync,
         });
     }
 

@@ -36,6 +36,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- Grok image input is detected from the service's model metadata, including model aliases.
 - Kimi and OpenCode sessions can receive image attachments when the selected model supports them.
 - Per-profile image input selection (Auto, On or Off), with the effective capability and its source.
 
