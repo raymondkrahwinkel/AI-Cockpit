@@ -18,6 +18,7 @@ public class DepotNoteRouteTests
         new UiContracts.DepotInboxNote("note", "Sprint review", "Meetings/sprint.md", true, "https://work.example.com/n/tok", "cockpit", ["Sanne"]));
 
     // Layer 2, plugin logic: Depot's role decides the stand; an account without a right gets the bare "Shared note" tab.
+    // No leak: the message knows the note's title and path, but an account without a right gets neither on the tab.
     [Fact]
     public async Task Route_RoleOfTheAccount_DecidesTheStand()
     {
@@ -32,22 +33,12 @@ public class DepotNoteRouteTests
         Assert.Equal($"live:{Place}:Edit", editor.Live);
         Assert.Equal($"live:{Place}:ViewOnly", viewer.Live);
         Assert.Equal(string.Empty, none.Live);
-        Assert.Equal(UiRoute.DepotSharedNote.TabTitle, Assert.Single(none.Tabs).Title);
-    }
-
-    // Layer 2, no leak: the message knows the note's title and path, but an account without a right gets neither on the tab.
-    [Fact]
-    public async Task Route_WithoutARight_ShowsNeitherTitleNorPath()
-    {
-        var rig = new Rig("unavailable", null);
-
-        await rig.Route.JoinInvitationAsync(Work, Invitation);
-
-        var tab = Assert.Single(rig.Tabs);
+        var tab = Assert.Single(none.Tabs);
+        Assert.Equal(UiRoute.DepotSharedNote.TabTitle, tab.Title);
         var shown = $"{tab.Title}|{tab.InstanceKey}";
         Assert.DoesNotContain("Sprint", shown, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Meetings", shown, StringComparison.OrdinalIgnoreCase);
-        Assert.Equal("resolve:tok", rig.Seen);
+        Assert.Equal("resolve:tok", none.Seen);
     }
 
     private sealed class Rig

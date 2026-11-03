@@ -31,60 +31,40 @@ public class ArgoApiClientTests
     [Fact]
     public async Task GetAsync_ApiserverRefusesTheProxyCall_ReportsStatusOnly_NeverTheToken()
     {
-        var client = Substitute.For<IKubernetes>();
-        var coreV1 = Substitute.For<ICoreV1Operations>();
-        client.CoreV1.Returns(coreV1);
         var response = new HttpResponseMessage(HttpStatusCode.Forbidden);
-        coreV1.ConnectGetNamespacedServiceProxyWithPathWithHttpMessagesAsync(
-                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(),
-                Arg.Any<IReadOnlyDictionary<string, IReadOnlyList<string>>>(), Arg.Any<CancellationToken>())
-            .ThrowsAsync(new HttpOperationException($"Bearer {Token} rejected") { Response = new HttpResponseMessageWrapper(response, string.Empty) });
+        var client = _ClientThrowing(new HttpOperationException($"Bearer {Token} rejected") { Response = new HttpResponseMessageWrapper(response, string.Empty) });
 
         var (body, error) = await ArgoApiClient.GetAsync(client, Namespace, Token, "api/v1/applications", CancellationToken.None);
 
         Assert.Null(body);
         Assert.Contains("403", error);
         Assert.DoesNotContain(Token, error);
-    }
 
-    [Fact]
-    public async Task GetAsync_ApiserverRefusesTheProxyCall_NoResponseOnTheException_StillCleanAndNoToken()
-    {
-        var client = Substitute.For<IKubernetes>();
-        var coreV1 = Substitute.For<ICoreV1Operations>();
-        client.CoreV1.Returns(coreV1);
-        coreV1.ConnectGetNamespacedServiceProxyWithPathWithHttpMessagesAsync(
-                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(),
-                Arg.Any<IReadOnlyDictionary<string, IReadOnlyList<string>>>(), Arg.Any<CancellationToken>())
-            .ThrowsAsync(new HttpOperationException($"Bearer {Token} rejected"));
-
-        var (body, error) = await ArgoApiClient.GetAsync(client, Namespace, Token, "api/v1/applications", CancellationToken.None);
-
+        // The same refusal without a response attached still comes back clean.
+        var bare = _ClientThrowing(new HttpOperationException($"Bearer {Token} rejected"));
+        (body, error) = await ArgoApiClient.GetAsync(bare, Namespace, Token, "api/v1/applications", CancellationToken.None);
         Assert.Null(body);
         Assert.NotNull(error);
         Assert.DoesNotContain(Token, error);
     }
 
     [Fact]
-    public async Task GetAsync_TransportFailure_ReportsAGenericMessage_NeverTheTokenOrTheException()
+    public async Task GetAsync_TransportFailureOrCancellation_ReportsAGenericMessage_NeverTheTokenOrTheException()
     {
-        var client = Substitute.For<IKubernetes>();
-        var coreV1 = Substitute.For<ICoreV1Operations>();
-        client.CoreV1.Returns(coreV1);
-        coreV1.ConnectGetNamespacedServiceProxyWithPathWithHttpMessagesAsync(
-                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(),
-                Arg.Any<IReadOnlyDictionary<string, IReadOnlyList<string>>>(), Arg.Any<CancellationToken>())
-            .ThrowsAsync(new InvalidOperationException($"connect to https://argocd-server.internal with Bearer {Token} failed"));
+        var client = _ClientThrowing(new InvalidOperationException($"connect to https://argocd-server.internal with Bearer {Token} failed"));
 
         var (body, error) = await ArgoApiClient.GetAsync(client, Namespace, Token, "api/v1/applications", CancellationToken.None);
 
         Assert.Null(body);
         Assert.DoesNotContain(Token, error);
         Assert.DoesNotContain("argocd-server.internal", error);
+
+        (body, error) = await ArgoApiClient.GetAsync(_ClientThrowing(new OperationCanceledException()), Namespace, Token, "api/v1/applications", CancellationToken.None);
+        Assert.Null(body);
+        Assert.DoesNotContain(Token, error);
     }
 
-    [Fact]
-    public async Task GetAsync_Cancelled_ReportsCancellation_NeverTheToken()
+    private static IKubernetes _ClientThrowing(Exception exception)
     {
         var client = Substitute.For<IKubernetes>();
         var coreV1 = Substitute.For<ICoreV1Operations>();
@@ -92,12 +72,8 @@ public class ArgoApiClientTests
         coreV1.ConnectGetNamespacedServiceProxyWithPathWithHttpMessagesAsync(
                 Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(),
                 Arg.Any<IReadOnlyDictionary<string, IReadOnlyList<string>>>(), Arg.Any<CancellationToken>())
-            .ThrowsAsync(new OperationCanceledException());
-
-        var (body, error) = await ArgoApiClient.GetAsync(client, Namespace, Token, "api/v1/applications", CancellationToken.None);
-
-        Assert.Null(body);
-        Assert.DoesNotContain(Token, error);
+            .ThrowsAsync(exception);
+        return client;
     }
 
     private static IKubernetes _ClientReturning(HttpStatusCode statusCode, string content)

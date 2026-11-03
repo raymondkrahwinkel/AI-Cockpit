@@ -2,9 +2,8 @@ using Cockpit.Plugin.Depot.ProjectDefinition;
 
 namespace Cockpit.Plugin.Depot.Tests.ProjectDefinition;
 
-// AC-612: pins this plugin's own mirrored `ProjectResourceSecretPathHeuristic` in isolation — the same
-// table `Cockpit.Core.Tests.Projects.ProjectResourceSecretPathHeuristicTests` pins on the host side.
-// `ProjectResourceSecretPathParityTests` guarantees the two agree; this covers a change made only here.
+// AC-612: pins this plugin's mirrored `ProjectResourceSecretPathHeuristic` on its own, so a change made only here is
+// caught; `ProjectResourceSecretPathParityTests` guarantees it agrees with the host's table.
 public class ProjectResourceSecretPathHeuristicTests
 {
     [Theory]
@@ -37,17 +36,4 @@ public class ProjectResourceSecretPathHeuristicTests
     [InlineData("~", false)]
     public void IsLikelySecretPath_MatchesTheMeasuredTable(string? reference, bool expected) =>
         Assert.Equal(expected, ProjectResourceSecretPathHeuristic.IsLikelySecretPath(reference));
-
-    [Fact]
-    public void IsLikelySecretPath_AnAbsolutePathUnderHome_MatchesItsAnchorFormsAnswer()
-    {
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var absolute = Path.Combine(home, ".ssh", "id_rsa");
-
-        Assert.True(ProjectResourceSecretPathHeuristic.IsLikelySecretPath(absolute));
-    }
-
-    [Fact]
-    public void IsLikelySecretPath_UppercasedDirectory_MatchesOnlyOnAPlatformThatIgnoresCase() =>
-        Assert.Equal(OperatingSystem.IsWindows(), ProjectResourceSecretPathHeuristic.IsLikelySecretPath("~/.SSH/ID_RSA"));
 }

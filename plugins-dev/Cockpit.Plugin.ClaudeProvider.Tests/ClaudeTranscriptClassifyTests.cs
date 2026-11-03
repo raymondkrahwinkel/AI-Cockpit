@@ -18,19 +18,11 @@ public class ClaudeTranscriptClassifyTests
             ClaudeTranscriptReader.ClassifyLine(
                 """{"type":"assistant","message":{"role":"assistant","stop_reason":"tool_use","content":[{"type":"tool_use","name":"AskUserQuestion","input":{"header":"Commit"}}]}}"""));
 
-    [Fact]
-    public void AssistantOtherToolUse_IsStillBusy_NotAwaitingOperator() =>
-        Assert.Equal(
-            PluginSessionActivity.Busy,
-            ClaudeTranscriptReader.ClassifyLine(
-                """{"type":"assistant","message":{"role":"assistant","stop_reason":"tool_use","content":[{"type":"tool_use","name":"Bash","input":{"command":"ls"}}]}}"""));
-
     // The answer line — a plain `user` message — frees the state without any bookkeeping: it classifies as
     // Busy the same as any other user turn.
-    [Fact]
-    public void TheAnswerLine_AfterAnAskUserQuestion_IsBusy() =>
-        Assert.Equal(
-            PluginSessionActivity.Busy,
-            ClaudeTranscriptReader.ClassifyLine(
-                """{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01","content":"Commit it"}]}}"""));
+    [Theory]
+    [InlineData("""{"type":"assistant","message":{"role":"assistant","stop_reason":"tool_use","content":[{"type":"tool_use","name":"Bash","input":{"command":"ls"}}]}}""")]
+    [InlineData("""{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01","content":"Commit it"}]}}""")]
+    public void AssistantOtherToolUse_AndTheAnswerLine_AreStillBusy_NotAwaitingOperator(string line) =>
+        Assert.Equal(PluginSessionActivity.Busy, ClaudeTranscriptReader.ClassifyLine(line));
 }

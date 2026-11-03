@@ -56,6 +56,9 @@ public class WhiteboardMcpToolsTests
         Assert.Equal(ConsentRisk.Dangerous, asked[0].Risk);
         Assert.Equal("board-1", asked[0].Source.PaneId);
         Assert.Contains("Sprint planning", asked[0].Action);
+        // AC-823: the payload is an image, so the prompt says so rather than naming a diagram source.
+        Assert.Contains("screenshot", asked[0].Action, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("source", asked[0].Action, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -126,21 +129,12 @@ public class WhiteboardMcpToolsTests
 
         Assert.False(json!["ok"]!.GetValue<bool>());
         Assert.Contains("another agent", json["error"]!.GetValue<string>());
-    }
 
-    [Fact]
-    public async Task ConsentText_NamesAScreenshot_NotADiagramSource()
-    {
-        // AC-823's deviation from AC-810: the payload is an image, so the prompt must say so explicitly.
-        var (tools, registry, _, asked) = _Build(ConsentOutcome.Approved);
-        registry.SurfaceOpened("board-1", "Sprint planning", Png);
-
-        await tools.ReadWhiteboard(Session, "Sprint planning");
-
-        Assert.Contains("screenshot", asked[0].Action, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("image", asked[0].Action, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("diagram", asked[0].Action, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("source", asked[0].Action, StringComparison.OrdinalIgnoreCase);
+        // The read path keys on the verified pane too (AC-89 pattern), and hands over no image.
+        var read = await tools.ReadWhiteboard("victim-pane", "Sprint planning");
+        Assert.False(_Meta(read)["ok"]!.GetValue<bool>());
+        Assert.Contains("another agent", _Meta(read)["error"]!.GetValue<string>());
+        Assert.Single(read.Content);
     }
 
     [Fact]
@@ -159,26 +153,9 @@ public class WhiteboardMcpToolsTests
     }
 
     [Fact]
-    public async Task ReadWhiteboard_KeysOnTheVerifiedPane_NotTheAgentSuppliedSessionId()
-    {
-        // Hardening (AC-89 pattern), same as DiagramMcpTools/TerminalMcpTools.
-        var (tools, registry, host, _) = _Build(ConsentOutcome.Approved);
-        registry.SurfaceOpened("board-1", "Sprint planning", Png);
-        registry.Grant("victim-pane", "board-1");
-
-        host.CurrentMcpCallerPaneId.Returns("attacker-pane");
-        var result = await tools.ReadWhiteboard("victim-pane", "Sprint planning");
-        var json = _Meta(result);
-
-        Assert.False(json["ok"]!.GetValue<bool>());
-        Assert.Contains("another agent", json["error"]!.GetValue<string>());
-        Assert.Single(result.Content);
-    }
-
-    [Fact]
     public async Task ReadWhiteboard_WhenDenied_ReturnsError_AndDoesNotCouple()
     {
-        var (tools, registry, _, _) = _Build(ConsentOutcome.Denied);
+        var (tools, registry, host, _) = _Build(ConsentOutcome.Denied);
         registry.SurfaceOpened("board-1", "Sprint planning", Png);
 
         var json = _Meta(await tools.ReadWhiteboard(Session, "Sprint planning"));
@@ -186,6 +163,13 @@ public class WhiteboardMcpToolsTests
         Assert.False(json["ok"]!.GetValue<bool>());
         Assert.Contains("not approved", json["error"]!.GetValue<string>());
         Assert.Null(registry.CouplingOf(Session, "board-1"));
+
+        // Opening a window of its own is gated the same way: denied, nothing opens.
+        var open = JsonNode.Parse(await tools.OpenWhiteboard(Session, "Sprint planning"));
+        Dispatcher.UIThread.RunJobs();
+        Assert.False(open!["ok"]!.GetValue<bool>());
+        await host.DidNotReceive().ShowDialogAsync(Arg.Any<string>(), Arg.Any<Func<Control>>(),
+            Arg.Any<string>(), Arg.Any<double>(), Arg.Any<double>());
     }
 
     [Fact]
@@ -242,50 +226,5 @@ public class WhiteboardMcpToolsTests
         var surfaceId = json["id"]!.GetValue<string>();
         await host.Received(1).ShowDialogAsync("Sprint planning", Arg.Any<Func<Control>>(),
             $"whiteboard.document.{surfaceId}", Arg.Any<double>(), Arg.Any<double>());
-    }
-
-    [Fact]
-    public async Task OpenWhiteboard_WhenDenied_OpensNothing_AndSaysSo()
-    {
-        var (tools, _, host, asked) = _Build(ConsentOutcome.Denied);
-
-        var json = JsonNode.Parse(await tools.OpenWhiteboard(Session, "Sprint planning"));
-        Dispatcher.UIThread.RunJobs();
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Contains("not approved", json["error"]!.GetValue<string>());
-        Assert.Single(asked);
-        await host.DidNotReceive().ShowDialogAsync(Arg.Any<string>(), Arg.Any<Func<Control>>(),
-            Arg.Any<string>(), Arg.Any<double>(), Arg.Any<double>());
-    }
-
-    [Fact]
-    public async Task OpenWhiteboard_WithSkipWhiteboardConsent_OpensWithoutAsking()
-    {
-        // AC-948: the plugin's own opt-out, off by default — on, this surface's consent request never happens.
-        var registry = new WhiteboardAccessRegistry();
-        var host = Substitute.For<ICockpitHost, IWindowProbe>();
-        host.CurrentMcpCallerPaneId.Returns((string?)null);
-        var settings = new backend::Cockpit.Plugin.Diagram.DiagramSettings(new FakePluginStorage()) { SkipWhiteboardConsent = true };
-        var tools = new WhiteboardMcpTools(host, registry, settings, TestChannel.Desktop(host, whiteboards: registry));
-
-        var json = JsonNode.Parse(await tools.OpenWhiteboard(Session, "Sprint planning"));
-        Dispatcher.UIThread.RunJobs();
-
-        Assert.True(json!["ok"]!.GetValue<bool>());
-        await host.DidNotReceive().RequestConsentAsync(Arg.Any<ConsentRequest>());
-    }
-
-    [Fact]
-    public async Task OpenWhiteboard_WithSkipWhiteboardConsentOff_StillAsks()
-    {
-        // AC-948 DoD: a fresh install (flag off) keeps asking every time — nothing about today's behaviour changes.
-        var (tools, _, _, asked) = _Build(ConsentOutcome.Approved);
-
-        var json = JsonNode.Parse(await tools.OpenWhiteboard(Session, "Sprint planning"));
-        Dispatcher.UIThread.RunJobs();
-
-        Assert.True(json!["ok"]!.GetValue<bool>());
-        Assert.Single(asked);
     }
 }

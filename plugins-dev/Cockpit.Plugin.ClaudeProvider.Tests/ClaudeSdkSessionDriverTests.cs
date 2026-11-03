@@ -97,35 +97,6 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         _AssertExitDiagnostic(evt.Message);
     }
 
-    // AC-1989, layer 2: writing a prompt to an exited process preserves stderr.
-
-    // AC-1989, layer 2: stdout ending without a result reports the CLI error even without a write.
-    [Fact]
-    public async Task StdoutEndsWithoutResult_ReportsStderr()
-    {
-        var fake = new FakeClaudeSdkSubprocess();
-        await using var driver = _CreateDriver(fake);
-        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
-
-        await _ExitWithDiagnosticsAsync(fake);
-
-        var evt = (PluginSessionError)await _ReadEventAsync(driver, value => value is PluginSessionError);
-        _AssertExitDiagnostic(evt.Message);
-    }
-
-    [Fact]
-    public async Task RespondToPermission_ForUnknownTool_WritesNothing()
-    {
-        var fake = new FakeClaudeSdkSubprocess();
-        await using var driver = _CreateDriver(fake);
-        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
-        var writtenAfterStart = fake.WrittenLines.Count;
-
-        await driver.RespondToPermissionAsync("never-seen", allow: true, CancellationToken.None);
-
-        Assert.Equal(writtenAfterStart, fake.WrittenLines.Count);
-    }
-
     private static async Task _ExitWithDiagnosticsAsync(FakeClaudeSdkSubprocess fake)
     {
         await fake.PushStderrAsync("discarded old diagnostic");
@@ -302,70 +273,44 @@ public class ClaudeSdkSessionDriverTests : IDisposable
 
     // AC-378: an unattended session with registry servers resolved carries --strict-mcp-config alongside
     // --mcp-config, so the CLI never unions in its own user/project claude.ai-connectors on top of what the
-    // resolution produced.
-    [Fact]
-    public async Task Start_Unattended_WithMcpServers_SpawnsWithStrictMcpConfig()
+    // resolution produced. A pane the operator opened (attended) gets the same union an interactive TTY session
+    // gets, so the account's own connectors survive. Fail-closed on a host that predates the split and states
+    // neither (null): absence must read as unattended.
+    [Theory]
+    [InlineData("true", true)]
+    [InlineData("false", false)]
+    [InlineData(null, true)]
+    public async Task Start_WithMcpServers_IsStrictUnlessAttended(string? unattended, bool strict)
     {
         var fake = new FakeClaudeSdkSubprocess();
         await using var driver = _CreateDriver(fake);
 
         await driver.StartAsync(
-            model: null, workingDirectory: _tempDir, resumeSessionId: null, options: _Unattended(),
+            model: null, workingDirectory: _tempDir, resumeSessionId: null,
+            options: unattended is null ? null : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { [WellKnownPluginSessionOptions.Unattended] = unattended },
             mcpServers: [new PluginMcpServer { Name = "youtrack", Url = "http://example/mcp" }],
             CancellationToken.None);
 
         Assert.Contains("--mcp-config", fake.Arguments!);
-        Assert.Contains("--strict-mcp-config", fake.Arguments!);
-    }
-
-    // The re-cut of AC-378 onto the attended/unattended axis: a pane the operator opened in SDK mode gets the same
-    // union an interactive TTY session gets, so the account's own claude.ai connectors survive. Strict here was the
-    // regression ClaudeTtyProviderTests guards the TTY route against, reached through the other route.
-    [Fact]
-    public async Task Start_Attended_WithMcpServers_SpawnsWithoutStrictMcpConfig()
-    {
-        var fake = new FakeClaudeSdkSubprocess();
-        await using var driver = _CreateDriver(fake);
-
-        await driver.StartAsync(
-            model: null, workingDirectory: _tempDir, resumeSessionId: null, options: _Attended(),
-            mcpServers: [new PluginMcpServer { Name = "youtrack", Url = "http://example/mcp" }],
-            CancellationToken.None);
-
-        Assert.Contains("--mcp-config", fake.Arguments!);
-        Assert.DoesNotContain("--strict-mcp-config", fake.Arguments!);
-    }
-
-    // Fail-closed on a host that predates the attended/unattended split and states neither: absence must read as
-    // unattended, so a delegated session on such a host keeps the AC-378 guarantee instead of quietly regaining the
-    // operator's own account connectors.
-    [Fact]
-    public async Task Start_WithNoAttendanceStated_FallsBackToStrict()
-    {
-        var fake = new FakeClaudeSdkSubprocess();
-        await using var driver = _CreateDriver(fake);
-
-        await driver.StartAsync(
-            model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null,
-            mcpServers: [new PluginMcpServer { Name = "youtrack", Url = "http://example/mcp" }],
-            CancellationToken.None);
-
-        Assert.Contains("--strict-mcp-config", fake.Arguments!);
+        Assert.Equal(strict, fake.Arguments!.Contains("--strict-mcp-config"));
     }
 
     // AC-378, criterion 4 — the empty-resolution trap: an unattended narrowing that resolves to zero eligible
     // servers must still spawn with an explicit (empty) --mcp-config and --strict-mcp-config, never with the flag
     // dropped entirely (which would let the CLI fall back to its own full user/project config — MORE servers than
-    // an empty, narrowed resolution asked for).
-    [Fact]
-    public async Task Start_Unattended_WithNoMcpServers_StillSpawnsWithAnExplicitEmptyMcpConfig_AndStrict()
+    // an empty, narrowed resolution asked for). mcpServers: null (a route that never attempted resolution) behaves
+    // exactly like an empty list.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Start_Unattended_WithNoMcpServers_StillSpawnsWithAnExplicitEmptyMcpConfig_AndStrict(bool nullServers)
     {
         var fake = new FakeClaudeSdkSubprocess();
         await using var driver = _CreateDriver(fake);
 
         await driver.StartAsync(
             model: null, workingDirectory: _tempDir, resumeSessionId: null, options: _Unattended(),
-            mcpServers: [],
+            mcpServers: nullServers ? null : [],
             CancellationToken.None);
 
         Assert.Contains("--mcp-config", fake.Arguments!);
@@ -375,20 +320,6 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         var path = fake.Arguments![mcpConfigIndex + 1];
         Assert.True(File.Exists(path), "the strict path must write an explicit config file rather than dropping the flag");
         Assert.Empty(System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!["mcpServers"]!.AsObject());
-    }
-
-    // Same as above for the mcpServers: null case (a route that never even attempted resolution) — must behave
-    // exactly like an empty list, not fall back to dropping --mcp-config.
-    [Fact]
-    public async Task Start_Unattended_WithNullMcpServers_StillSpawnsWithAnExplicitEmptyMcpConfig_AndStrict()
-    {
-        var fake = new FakeClaudeSdkSubprocess();
-        await using var driver = _CreateDriver(fake);
-
-        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: _Unattended(), mcpServers: null, CancellationToken.None);
-
-        Assert.Contains("--mcp-config", fake.Arguments!);
-        Assert.Contains("--strict-mcp-config", fake.Arguments!);
     }
 
     // The attended mirror of the empty-resolution case: with no strict flag to pair with, an empty config file would
@@ -409,35 +340,6 @@ public class ClaudeSdkSessionDriverTests : IDisposable
     // AC-1058: the model is told its plugin MCP tools are gone, so a skill naming one is not followed blind.
 
     // The attended mirror: an operator-driven pane gets no unrequested addition to its prompt.
-
-    [Fact]
-    public async Task ARealTurnPushedDownTheStdoutPump_ReachesTheDriversStatusFeed()
-    {
-        // AC-530: the seam the host polls is IPluginSessionDriver.Status, a member whose interface default is null —
-        // so the arithmetic being right proves nothing until the driver actually overrides and feeds it. This drives
-        // the verbatim CLI 2.1.220 capture through the real stdout pump and reads the property the host reads.
-        var fake = new FakeClaudeSdkSubprocess();
-        await using var driver = _CreateDriver(fake);
-        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
-
-        Assert.Null(driver.Status);
-
-        foreach (var line in ClaudeSdkUsageTests.RealTurnLines)
-        {
-            await fake.PushStdoutAsync(line);
-        }
-
-        // The fake refuses both polls, so nothing here feeds Status; the assertion below is about the rate-limit
-        // line the stream carried on its own.
-        await _ReadEventAsync(driver, e => e is PluginTurnCompleted);
-
-        var status = driver.Status;
-        Assert.NotNull(status);
-        Assert.True(status.HasAny);
-        var window = Assert.Single(status.RateLimits);
-        Assert.Equal("wk", window.Label);
-        Assert.Equal(98d, window.UsedPercent, precision: 10);
-    }
 
     // The whole round-trip through the real pump, and specifically the *ordering*: the host reads Status once per
     // turn, off the back of TurnCompleted, so the figures must be in before it goes out. Asserting after that

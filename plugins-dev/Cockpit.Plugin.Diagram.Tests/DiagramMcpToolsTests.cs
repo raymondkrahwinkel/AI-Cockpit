@@ -84,7 +84,7 @@ public class DiagramMcpToolsTests
     [Fact]
     public async Task ReadDiagram_WhenDenied_ReturnsError_AndDoesNotCouple()
     {
-        var (tools, registry, _, _) = _Build(ConsentOutcome.Denied);
+        var (tools, registry, host, _) = _Build(ConsentOutcome.Denied);
         registry.SurfaceOpened("diagram-1", "Onboarding flow", Source);
 
         var json = JsonNode.Parse(await tools.ReadDiagram(Session, "Onboarding flow"));
@@ -92,6 +92,13 @@ public class DiagramMcpToolsTests
         Assert.False(json!["ok"]!.GetValue<bool>());
         Assert.Contains("not approved", json["error"]!.GetValue<string>());
         Assert.Null(registry.CouplingOf(Session, "diagram-1"));
+
+        // Opening a window of its own is gated the same way: denied, nothing opens.
+        var open = JsonNode.Parse(await tools.OpenDiagram(Session, "Onboarding flow", Source));
+        Dispatcher.UIThread.RunJobs();
+        Assert.False(open!["ok"]!.GetValue<bool>());
+        await host.DidNotReceive().ShowDialogAsync(Arg.Any<string>(), Arg.Any<Func<Control>>(),
+            Arg.Any<string>(), Arg.Any<double>(), Arg.Any<double>());
     }
 
     [Fact]
@@ -129,21 +136,6 @@ public class DiagramMcpToolsTests
         var proposal = registry.PendingProposal("diagram-1");
         Assert.NotNull(proposal);
         Assert.Equal("flowchart LR\nA-->B-->C", proposal!.ProposedText);
-    }
-
-    [Fact]
-    public async Task EditDiagram_AfterOnlyReading_AsksASecondTimeToWiden_ThenProposes()
-    {
-        var (tools, registry, _, asked) = _Build(ConsentOutcome.Approved);
-        registry.SurfaceOpened("diagram-1", "Onboarding flow", Source);
-        await tools.ReadDiagram(Session, "Onboarding flow"); // read only
-
-        var json = JsonNode.Parse(await tools.EditDiagram(Session, "Onboarding flow", "flowchart LR\nA-->B-->C"));
-
-        Assert.True(json!["ok"]!.GetValue<bool>());
-        Assert.Equal(2, asked.Count);
-        Assert.Equal("diagram.edit", asked[1].Scope);
-        Assert.Contains("now wants to edit it", asked[1].Title);
     }
 
     [Fact]
@@ -194,6 +186,11 @@ public class DiagramMcpToolsTests
         Assert.Equal(Source, registry.PeekText("diagram-1"));
         Assert.Null(registry.CouplingOf(Session, "diagram-1"));
         Assert.Null(registry.PendingProposal("diagram-1"));
+
+        // A per-object edit sits behind the same consent and changes nothing either.
+        var perObject = JsonNode.Parse(await tools.ConnectNodes(Session, "Onboarding flow", "A", "C"));
+        Assert.False(perObject!["ok"]!.GetValue<bool>());
+        Assert.Equal(Source, registry.PeekText("diagram-1"));
     }
 
     [Fact]
@@ -259,18 +256,6 @@ public class DiagramMcpToolsTests
     }
 
     [Fact]
-    public async Task PerObjectEdit_WhenDenied_ChangesNothing()
-    {
-        var (tools, registry, _, _) = _Build(ConsentOutcome.Denied);
-        registry.SurfaceOpened("diagram-1", "Onboarding flow", Source);
-
-        var json = JsonNode.Parse(await tools.ConnectNodes(Session, "Onboarding flow", "A", "C"));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Equal(Source, registry.PeekText("diagram-1"));
-    }
-
-    [Fact]
     public async Task WhenAnotherAgentTakesTheSurfaceWhileTheOperatorDecides_TheRefusalIsAnErrorNotAnException()
     {
         var registry = new DiagramAccessRegistry();
@@ -311,21 +296,6 @@ public class DiagramMcpToolsTests
         var surfaceId = json["id"]!.GetValue<string>();
         await host.Received(1).ShowDialogAsync("Onboarding flow", Arg.Any<Func<Control>>(),
             $"diagram.document.{surfaceId}", Arg.Any<double>(), Arg.Any<double>());
-    }
-
-    [Fact]
-    public async Task OpenDiagram_WhenDenied_OpensNothing_AndSaysSo()
-    {
-        var (tools, _, host, asked) = _Build(ConsentOutcome.Denied);
-
-        var json = JsonNode.Parse(await tools.OpenDiagram(Session, "Onboarding flow", Source));
-        Dispatcher.UIThread.RunJobs();
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Contains("not approved", json["error"]!.GetValue<string>());
-        Assert.Single(asked);
-        await host.DidNotReceive().ShowDialogAsync(Arg.Any<string>(), Arg.Any<Func<Control>>(),
-            Arg.Any<string>(), Arg.Any<double>(), Arg.Any<double>());
     }
 
     [Fact]

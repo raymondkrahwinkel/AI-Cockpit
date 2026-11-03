@@ -72,23 +72,13 @@ public class DepotMemorySourceTests
         Assert.Null(refused.Detail);
         Assert.Equal(ProjectMemorySourceReachability.CheckFailed, garbled.State);
         Assert.NotNull(garbled.Detail);
-    }
 
-    private static Task<ProjectMemorySourceReachabilityResult> _CheckAsync(ICockpitHost host, string slug) =>
-        (DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Acme")], host).Single().Registration.CheckReachability
-            ?? throw new InvalidOperationException("The registration has no reachability check."))(slug, CancellationToken.None);
-
-    [Fact]
-    public async Task CheckReachability_OnFailure_LeavesADiagnosticLogLine_WithoutAnyTokenMaterial()
-    {
-        // AC-499: what silently told Raymond he might not be signed in — a failed check leaving zero trace anywhere
-        // grep-able — resolved via ICockpitHost.Services, the same DI seam Cockpit.App.Plugins.CockpitHost's own
-        // internal logging already uses.
+        // AC-499: a failed check leaves a grep-able diagnostic line (via ICockpitHost.Services, the same DI seam the
+        // host's own logging uses) that carries no token material.
         var logger = Substitute.For<ILogger>();
         var loggerFactory = Substitute.For<ILoggerFactory>();
         loggerFactory.CreateLogger(Arg.Any<string>()).Returns(logger);
         var services = new ServiceCollection().AddSingleton(loggerFactory).BuildServiceProvider();
-
         var host = Substitute.For<ICockpitHost>();
         host.Services.Returns(services);
         host.Cache.Returns(new InMemoryPluginCache());
@@ -106,7 +96,9 @@ public class DepotMemorySourceTests
             Arg.Any<Func<object, Exception?, string>>());
     }
 
-    // --- AC-499: FamilyKey / InstanceTitle -------------------------------------------------------------------
+    private static Task<ProjectMemorySourceReachabilityResult> _CheckAsync(ICockpitHost host, string slug) =>
+        (DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Acme")], host).Single().Registration.CheckReachability
+            ?? throw new InvalidOperationException("The registration has no reachability check."))(slug, CancellationToken.None);
 
     [Fact]
     public async Task AppendNoteAsync_PostsToDepotsAtomicAppend_NeverCallsMcp()

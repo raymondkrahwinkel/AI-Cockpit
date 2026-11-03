@@ -10,10 +10,11 @@ using NSubstitute;
 
 namespace Cockpit.Plugin.Kubernetes.Tests;
 
-// The tools are the wiring between the agent and the gate — these prove that wiring holds: an unknown cluster is a
-// clean error, a denied consent stops before the cluster is ever reached, a capability that is off is a policy
-// block with a hint (no prompt), and an approved call does get as far as the connection. The cluster call itself
-// (against a live apiserver) is the operator's to verify.
+// The tools are the wiring between the agent and the gate — these prove that wiring holds: a denied consent stops
+// before the cluster is ever reached (for every tool family: resources, Argo, Helm), a capability that is off is a
+// policy block with a hint (no prompt), and credential material (a secret, a Helm release secret) and an Argo
+// refresh ask afresh as Dangerous, never remembered — while an Argo Application read is not credential material.
+// The cluster call itself (against a live apiserver) is the operator's to verify.
 public class KubernetesMcpToolsTests
 {
     private const string Session = "pane-1";
@@ -38,29 +39,88 @@ public class KubernetesMcpToolsTests
         return (new KubernetesMcpTools(settings, gate, connections, new PortForwardManager()), asked);
     }
 
-    private static ClusterRegistration _Cluster(bool exec = false, bool clusterScoped = false, bool portForward = false) =>
-        new("id-1", "prod", ContextName: "", ["default"], AllowClusterScoped: clusterScoped, AllowExec: exec, AllowPortForward: portForward);
+    // Exec and port-forward stay off: the capability-off rows depend on it.
+    private static ClusterRegistration _Cluster(bool clusterScoped = false) =>
+        new("id-1", "prod", ContextName: "", ["default", "argocd"], AllowClusterScoped: clusterScoped);
 
-    private static ConsentRequest? _WithScopePrefix(IEnumerable<ConsentRequest> asked, string prefix) =>
-        asked.FirstOrDefault(request => request.Scope.StartsWith(prefix, StringComparison.Ordinal));
+    private static Task<string> _Invoke(KubernetesMcpTools tools, string toolMethod) => toolMethod switch
+    {
+        "ListResources" => tools.ListResources("prod", Session, "v1", "pods", "kube-system"),
+        "GetSecret" => tools.GetResource("prod", Session, "v1", "secrets", "db-password", "default"),
+        "ArgoApps" => tools.ArgoApps("prod", Session, "argocd"),
+        "ArgoApp" => tools.ArgoApp("prod", Session, "argocd", "cert-manager"),
+        "ArgoHistory" => tools.ArgoHistory("prod", Session, "argocd", "cert-manager"),
+        "ArgoLastSync" => tools.ArgoLastSync("prod", Session, "argocd", "cert-manager"),
+        "ArgoRefresh" => tools.ArgoRefresh("prod", Session, "argocd", "cert-manager"),
+        "HelmList" => tools.HelmList("prod", Session, "default"),
+        "HelmStatus" => tools.HelmStatus("prod", Session, "default", "cert-manager"),
+        "HelmHistory" => tools.HelmHistory("prod", Session, "default", "cert-manager"),
+        "HelmValues" => tools.HelmValues("prod", Session, "default", "cert-manager"),
+        "HelmManifest" => tools.HelmManifest("prod", Session, "default", "cert-manager"),
+        "HelmRollback" => tools.HelmRollback("prod", Session, "default", "traefik", 6),
+        "Exec" => tools.Exec("prod", Session, "default", "nginx", "ls"),
+        "PortForward" => tools.PortForward("prod", Session, "default", "nginx", 80),
+        _ => throw new ArgumentOutOfRangeException(nameof(toolMethod)),
+    };
 
-    [Fact]
-    public async Task ListResources_WhenConsentDenied_StopsBeforeTheCluster()
+    [Theory]
+    [InlineData("ListResources")]
+    [InlineData("ArgoApps")]
+    [InlineData("ArgoApp")]
+    [InlineData("ArgoHistory")]
+    [InlineData("ArgoLastSync")]
+    [InlineData("ArgoRefresh")]
+    [InlineData("HelmList")]
+    [InlineData("HelmStatus")]
+    [InlineData("HelmHistory")]
+    [InlineData("HelmValues")]
+    [InlineData("HelmManifest")]
+    [InlineData("HelmRollback")]
+    public async Task Tool_WhenConsentDenied_StopsBeforeTheCluster(string toolMethod)
     {
         var (tools, _) = _Build(ConsentOutcome.Denied, _Cluster());
 
-        var json = JsonNode.Parse(await tools.ListResources("prod", Session, "v1", "pods", "kube-system"));
+        var json = JsonNode.Parse(await _Invoke(tools, toolMethod));
 
         Assert.False(json!["ok"]!.GetValue<bool>());
         Assert.Contains("did not approve", json["error"]!.GetValue<string>());
     }
 
-    [Fact]
-    public async Task Exec_WhenCapabilityOff_IsBlockedWithASettingsHint()
+    // A secret read in an allowed namespace (F2) and a Helm release secret (AC-1061) ask afresh as Dangerous, never
+    // remembered; an Argo refresh (AC-576 phase 4) does too, on its own scope rather than the generic mutation
+    // bucket. An Argo Application is not credential material, so argo_apps asks no Dangerous prompt at all.
+    [Theory]
+    [InlineData("GetSecret", "k8s.secret:", true)]
+    [InlineData("HelmList", "k8s.secret:", false)]
+    [InlineData("ArgoRefresh", "k8s.argo.refresh:", false)]
+    [InlineData("ArgoApps", null, false)]
+    public async Task Tool_WhenApproved_AsksDangerousNeverRemembered_OnlyForWhatNeedsIt(string toolMethod, string? dangerousScope, bool withKubeconfig)
     {
-        var (tools, asked) = _Build(ConsentOutcome.Approved, _Cluster(exec: false));
+        var (tools, asked) = _Build(ConsentOutcome.Approved, _Cluster(), withKubeconfig);
 
-        var json = JsonNode.Parse(await tools.Exec("prod", Session, "default", "nginx", "ls"));
+        await _Invoke(tools, toolMethod);
+
+        Assert.DoesNotContain(asked, request => request.Scope.StartsWith("k8s.mutate:", StringComparison.Ordinal));
+        if (dangerousScope is null)
+        {
+            Assert.DoesNotContain(asked, request => request.Risk == ConsentRisk.Dangerous);
+            return;
+        }
+
+        var ask = asked.FirstOrDefault(request => request.Scope.StartsWith(dangerousScope, StringComparison.Ordinal));
+        Assert.NotNull(ask);
+        Assert.Equal(ConsentRisk.Dangerous, ask!.Risk);
+        Assert.False(ask.AllowRemember);
+    }
+
+    [Theory]
+    [InlineData("Exec")]
+    [InlineData("PortForward")]
+    public async Task Capability_WhenOff_IsBlockedWithASettingsHint(string toolMethod)
+    {
+        var (tools, asked) = _Build(ConsentOutcome.Approved, _Cluster());
+
+        var json = JsonNode.Parse(await _Invoke(tools, toolMethod));
 
         Assert.False(json!["ok"]!.GetValue<bool>());
         Assert.Contains("settings", json["error"]!.GetValue<string>());
@@ -78,32 +138,6 @@ public class KubernetesMcpToolsTests
 
         Assert.False(json!["ok"]!.GetValue<bool>());
         Assert.Contains("namespace is required", json["error"]!.GetValue<string>());
-        Assert.Empty(asked);
-    }
-
-    [Fact]
-    public async Task GetResource_Secret_AsksAfresh_EvenInsideAnAllowedNamespace()
-    {
-        // F2: reading a secret's contents in an allowed namespace still asks, as a Dangerous, never-remembered consent.
-        var (tools, asked) = _Build(ConsentOutcome.Approved, _Cluster());
-
-        await tools.GetResource("prod", Session, "v1", "secrets", "db-password", "default");
-
-        var secretAsk = _WithScopePrefix(asked, "k8s.secret:");
-        Assert.NotNull(secretAsk);
-        Assert.Equal(ConsentRisk.Dangerous, secretAsk!.Risk);
-        Assert.False(secretAsk.AllowRemember);
-    }
-
-    [Fact]
-    public async Task PortForward_WhenCapabilityOff_IsBlockedWithASettingsHint()
-    {
-        var (tools, asked) = _Build(ConsentOutcome.Approved, _Cluster(portForward: false));
-
-        var json = JsonNode.Parse(await tools.PortForward("prod", Session, "default", "nginx", 80));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Contains("settings", json["error"]!.GetValue<string>());
         Assert.Empty(asked);
     }
 }

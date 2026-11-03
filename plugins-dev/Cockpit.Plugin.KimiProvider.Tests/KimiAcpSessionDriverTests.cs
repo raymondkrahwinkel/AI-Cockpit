@@ -12,37 +12,15 @@ public class KimiAcpSessionDriverTests
 {
     private static KimiConfig _DefaultConfig() => new(WorkingDirectory: Path.GetTempPath());
 
-    // P1-7: an ANTHROPIC_* credential the cockpit process itself inherited (from whatever shell launched it)
-    // must never reach the spawned kimi acp — Moonshot's own CLI has no business seeing an Anthropic key/token
-    // (ClaudeSdkSessionDriver applies the same rule for its own spawn).
-    [Fact]
-    public async Task Start_ScrubsAnInheritedAnthropicCredential_FromTheChildEnvironment()
-    {
-        Environment.SetEnvironmentVariable("ANTHROPIC_API_KEY", "sk-ant-leaked");
-        try
-        {
-            var fake = new FakeCliSubprocess();
-            await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
-            await _StartAsync(driver, fake);
-
-            var environmentVariables = fake.EnvironmentVariables;
-            Assert.NotNull(environmentVariables);
-            Assert.Null(environmentVariables["ANTHROPIC_API_KEY"]);
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable("ANTHROPIC_API_KEY", null);
-        }
-    }
-
-    // A Claude Code session exports these to mark itself, and CLAUDE_CODE_OAUTH_TOKEN among them is a live
-    // credential — a cockpit started from inside such a session inherits the lot, and Moonshot's CLI is the last
-    // process that should receive it.
+    // P1-7: an ANTHROPIC_* credential the cockpit process itself inherited must never reach the spawned kimi acp.
+    // A Claude Code session also exports markers, and CLAUDE_CODE_OAUTH_TOKEN among them is a live credential —
+    // a cockpit started from inside such a session inherits the lot, and Moonshot's CLI should receive none of it.
     [Theory]
+    [InlineData("ANTHROPIC_API_KEY")]
     [InlineData("CLAUDE_CODE_OAUTH_TOKEN")]
     [InlineData("CLAUDECODE")]
     [InlineData("CLAUDE_AGENT_ID")]
-    public async Task Start_ScrubsAnInheritedClaudeAgentMarker_FromTheChildEnvironment(string variable)
+    public async Task Start_ScrubsAnInheritedCredentialOrClaudeAgentMarker_FromTheChildEnvironment(string variable)
     {
         Environment.SetEnvironmentVariable(variable, "inherited");
         try
@@ -231,50 +209,20 @@ public class KimiAcpSessionDriverTests
         Assert.Contains("does not start", refused.Message);
     }
 
-    [Fact]
-    public async Task Start_WithPlanPermissionMode_SetsKimiModeToPlan()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
-
-        var options = new Dictionary<string, string> { [WellKnownPluginSessionOptions.PermissionMode] = "plan" };
-        var startTask = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: null, options, mcpServers: null, CancellationToken.None);
-        await _RespondAsync(fake, "initialize", "{}");
-        await _RespondAsync(fake, "session/new", """{"sessionId":"session_1","configOptions":[]}""");
-        var setConfig = await _RespondAsync(fake, "session/set_config_option", """{"configOptions":[]}""");
-        await startTask;
-
-        Assert.Equal("mode", setConfig.GetProperty("params").GetProperty("configId").GetString());
-        Assert.Equal("plan", setConfig.GetProperty("params").GetProperty("value").GetString());
-    }
-
-    [Fact]
-    public async Task Start_WithDefaultPermissionMode_SetsKimiModeToDefault()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
-
-        var options = new Dictionary<string, string> { [WellKnownPluginSessionOptions.PermissionMode] = "default" };
-        var startTask = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: null, options, mcpServers: null, CancellationToken.None);
-        await _RespondAsync(fake, "initialize", "{}");
-        await _RespondAsync(fake, "session/new", """{"sessionId":"session_1","configOptions":[]}""");
-        var setConfig = await _RespondAsync(fake, "session/set_config_option", """{"configOptions":[]}""");
-        await startTask;
-
-        Assert.Equal("mode", setConfig.GetProperty("params").GetProperty("configId").GetString());
-        Assert.Equal("default", setConfig.GetProperty("params").GetProperty("value").GetString());
-    }
-
     // P0-4, security: acceptEdits must fail closed to kimi's manual-approval "default" mode. Mapping it to
     // "yolo" would disable session/request_permission entirely — shell/deletes running with no prompt at all,
     // a silent privilege escalation past what a non-destructive-write ceiling is supposed to grant.
-    [Fact]
-    public async Task Start_WithAcceptEditsPermissionMode_FailsClosedToKimiDefaultMode_NotYolo()
+    [Theory]
+    [InlineData("plan", "plan")]
+    [InlineData("default", "default")]
+    [InlineData("acceptEdits", "default")]
+    [InlineData("bypassPermissions", "auto")]
+    public async Task Start_WithAPermissionMode_SetsTheKimiMode_AndAcceptEditsFailsClosedToDefault(string permissionMode, string expectedKimiMode)
     {
         var fake = new FakeCliSubprocess();
         await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
 
-        var options = new Dictionary<string, string> { [WellKnownPluginSessionOptions.PermissionMode] = "acceptEdits" };
+        var options = new Dictionary<string, string> { [WellKnownPluginSessionOptions.PermissionMode] = permissionMode };
         var startTask = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: null, options, mcpServers: null, CancellationToken.None);
         await _RespondAsync(fake, "initialize", "{}");
         await _RespondAsync(fake, "session/new", """{"sessionId":"session_1","configOptions":[]}""");
@@ -282,24 +230,7 @@ public class KimiAcpSessionDriverTests
         await startTask;
 
         Assert.Equal("mode", setConfig.GetProperty("params").GetProperty("configId").GetString());
-        Assert.Equal("default", setConfig.GetProperty("params").GetProperty("value").GetString());
-    }
-
-    [Fact]
-    public async Task Start_WithBypassPermissionsPermissionMode_SetsKimiModeToAuto()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
-
-        var options = new Dictionary<string, string> { [WellKnownPluginSessionOptions.PermissionMode] = "bypassPermissions" };
-        var startTask = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: null, options, mcpServers: null, CancellationToken.None);
-        await _RespondAsync(fake, "initialize", "{}");
-        await _RespondAsync(fake, "session/new", """{"sessionId":"session_1","configOptions":[]}""");
-        var setConfig = await _RespondAsync(fake, "session/set_config_option", """{"configOptions":[]}""");
-        await startTask;
-
-        Assert.Equal("mode", setConfig.GetProperty("params").GetProperty("configId").GetString());
-        Assert.Equal("auto", setConfig.GetProperty("params").GetProperty("value").GetString());
+        Assert.Equal(expectedKimiMode, setConfig.GetProperty("params").GetProperty("value").GetString());
     }
 
     // AC-273: Kimi has no way to receive the host's hidden briefing over ACP, so the operator is told once,
@@ -356,74 +287,33 @@ public class KimiAcpSessionDriverTests
 
     // --- permissions (AC-271) ------------------------------------------------------------------------------
 
-    [Fact]
-    public async Task PermissionRequest_CarriesTheToolCallIdVerbatim_EvenWithoutAPriorToolUse()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
-        await _StartAsync(driver, fake);
-
-        await fake.PushStdoutAsync("""{"id":10,"method":"session/request_permission","params":{"sessionId":"session_1","options":[{"optionId":"approve_once","name":"Approve once","kind":"allow_once"},{"optionId":"approve_always","name":"Approve for this session","kind":"allow_always"},{"optionId":"reject","name":"Reject","kind":"reject_once"}],"toolCall":{"toolCallId":"turn-1:tool-9","title":"shell","content":[]}}}""");
-
-        var permission = await _NextEventOfTypeAsync<PluginPermissionRequested>(driver);
-        Assert.Equal("turn-1:tool-9", permission.ToolUseId);
-        Assert.Equal("shell", permission.ToolName);
-    }
-
-    // P1-3, trigger (c), D3: a permission request for a toolCallId that never had a prior tool_call must still
-    // produce a PluginToolUseRequested — before the PluginPermissionRequested — or the host has no matching
-    // tool-use card to attach the approval buttons to.
-
-    [Fact]
-    public async Task RespondToPermission_Allow_SelectsTheOptionIdMatchingAllowOnceKind()
+    [Theory]
+    [InlineData("allow", "approve_once")]
+    [InlineData("deny", "reject")]
+    [InlineData("always", "approve_always")]
+    public async Task RespondToPermission_SelectsTheOptionIdMatchingTheAnswersKind(string answer, string expectedOptionId)
     {
         var fake = new FakeCliSubprocess();
         await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
         await _StartAsync(driver, fake);
 
         await fake.PushStdoutAsync("""{"id":11,"method":"session/request_permission","params":{"sessionId":"session_1","options":[{"optionId":"approve_once","name":"Approve once","kind":"allow_once"},{"optionId":"approve_always","name":"Approve for this session","kind":"allow_always"},{"optionId":"reject","name":"Reject","kind":"reject_once"}],"toolCall":{"toolCallId":"turn-1:tool-1","title":"shell","content":[]}}}""");
-        await _NextEventOfTypeAsync<PluginPermissionRequested>(driver);
+        var permission = await _NextEventOfTypeAsync<PluginPermissionRequested>(driver);
+        Assert.Equal("turn-1:tool-1", permission.ToolUseId);
 
-        await driver.RespondToPermissionAsync("turn-1:tool-1", allow: true);
+        if (answer == "always")
+        {
+            await driver.AllowPermissionAlwaysAsync("turn-1:tool-1");
+        }
+        else
+        {
+            await driver.RespondToPermissionAsync("turn-1:tool-1", allow: answer == "allow");
+        }
 
-        var answer = await _WaitForWrittenLineAsync(fake, "\"id\":11");
-        using var document = JsonDocument.Parse(answer);
+        var written = await _WaitForWrittenLineAsync(fake, "\"id\":11");
+        using var document = JsonDocument.Parse(written);
         Assert.Equal("selected", document.RootElement.GetProperty("result").GetProperty("outcome").GetProperty("outcome").GetString());
-        Assert.Equal("approve_once", document.RootElement.GetProperty("result").GetProperty("outcome").GetProperty("optionId").GetString());
-    }
-
-    [Fact]
-    public async Task RespondToPermission_Deny_SelectsTheOptionIdMatchingRejectOnceKind()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
-        await _StartAsync(driver, fake);
-
-        await fake.PushStdoutAsync("""{"id":12,"method":"session/request_permission","params":{"sessionId":"session_1","options":[{"optionId":"approve_once","name":"Approve once","kind":"allow_once"},{"optionId":"reject","name":"Reject","kind":"reject_once"}],"toolCall":{"toolCallId":"turn-1:tool-2","title":"shell","content":[]}}}""");
-        await _NextEventOfTypeAsync<PluginPermissionRequested>(driver);
-
-        await driver.RespondToPermissionAsync("turn-1:tool-2", allow: false);
-
-        var answer = await _WaitForWrittenLineAsync(fake, "\"id\":12");
-        using var document = JsonDocument.Parse(answer);
-        Assert.Equal("reject", document.RootElement.GetProperty("result").GetProperty("outcome").GetProperty("optionId").GetString());
-    }
-
-    [Fact]
-    public async Task AllowPermissionAlways_SelectsTheOptionIdMatchingAllowAlwaysKind()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
-        await _StartAsync(driver, fake);
-
-        await fake.PushStdoutAsync("""{"id":13,"method":"session/request_permission","params":{"sessionId":"session_1","options":[{"optionId":"approve_once","name":"Approve once","kind":"allow_once"},{"optionId":"approve_always","name":"Approve for this session","kind":"allow_always"}],"toolCall":{"toolCallId":"turn-1:tool-3","title":"shell","content":[]}}}""");
-        await _NextEventOfTypeAsync<PluginPermissionRequested>(driver);
-
-        await driver.AllowPermissionAlwaysAsync("turn-1:tool-3");
-
-        var answer = await _WaitForWrittenLineAsync(fake, "\"id\":13");
-        using var document = JsonDocument.Parse(answer);
-        Assert.Equal("approve_always", document.RootElement.GetProperty("result").GetProperty("outcome").GetProperty("optionId").GetString());
+        Assert.Equal(expectedOptionId, document.RootElement.GetProperty("result").GetProperty("outcome").GetProperty("optionId").GetString());
     }
 
     // D-permissions: the plan_review namespace uses plan_approve (not approve_once) for the "allow_once" kind —

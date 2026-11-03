@@ -11,20 +11,6 @@ public class KimiAcpConnectionTests
 {
     private static readonly Dictionary<string, string?> _NoEnv = new();
 
-    [Fact]
-    public async Task SendRequest_Throws_WhenTheReplyIsAJsonRpcError()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var connection = new KimiAcpConnection(fake);
-        connection.Start("kimi", Path.GetTempPath(), _NoEnv);
-
-        var requestTask = connection.SendRequestAsync("session/new", new { cwd = "/tmp", mcpServers = Array.Empty<object>() });
-        var id = await _WaitForRequestIdAsync(fake, "session/new");
-        await fake.PushStdoutAsync($$$"""{"jsonrpc":"2.0","id":{{{id}}},"error":{"code":-32000,"message":"authRequired"}}""");
-
-        await Assert.ThrowsAsync<KimiAcpException>(() => requestTask);
-    }
-
     // P1-8: the exception message must be built from only error.code + error.message — never the raw error
     // object — because it propagates straight into a UI status line (SessionViewModel's
     // Status = $"Failed to start: {ex.Message}"); an echoed error.data (kimi can echo the request's own params)

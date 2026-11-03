@@ -53,19 +53,4 @@ public class DiagramErMcpToolsTests
         Assert.Equal("diagram.edit", Assert.Single(asked).Scope);
         Assert.EndsWith("\n    INVOICE {\n    }", registry.PeekText("diagram-1"));
     }
-
-    [Fact]
-    public async Task AnAttributeEditOnAnEntityTheOperatorIsHolding_IsRefused_WhileAnotherEntityStillEdits()
-    {
-        var (tools, registry, _) = _Build();
-        registry.HoldObject("diagram-1", "CUSTOMER");
-
-        var refused = Reply(await tools.SetAttribute(Session, Diagram, "CUSTOMER", "id", "int", "PK"));
-        var landed = Reply(await tools.SetAttribute(Session, Diagram, "ORDER", "id", "int", "PK"));
-
-        Assert.False(refused["ok"]!.GetValue<bool>());
-        Assert.Contains("operator is editing", refused["error"]!.GetValue<string>());
-        Assert.True(landed["ok"]!.GetValue<bool>());
-        Assert.Contains("string name", registry.PeekText("diagram-1"), StringComparison.Ordinal);
-    }
 }

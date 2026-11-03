@@ -26,22 +26,18 @@ public class ClaudeLoginStatusTests
     [InlineData("""{"loggedIn":true,"authMethod":"something_new"}""", true, PluginCredentialKind.Unknown)]
     [InlineData("""{"loggedIn":true}""", true, PluginCredentialKind.Unknown)]
     [InlineData("""{"loggedIn":true,"authMethod":7}""", true, PluginCredentialKind.Unknown)]
-    public void ReadLoggedIn_ReadsTheCliesOwnPayloads(string json, bool loggedIn, PluginCredentialKind kind)
+    // Rubbish is not a logged-out account. The exit code cannot tell these apart either: 1 means logged out and
+    // also means the binary was missing.
+    [InlineData("", null, PluginCredentialKind.Unknown)]
+    [InlineData("not json", null, PluginCredentialKind.Unknown)]
+    [InlineData("{}", null, PluginCredentialKind.Unknown)]
+    [InlineData("[1,2,3]", null, PluginCredentialKind.Unknown)]
+    [InlineData("""{"loggedIn":"yes"}""", null, PluginCredentialKind.Unknown)]
+    public void ReadLoggedIn_ReadsTheCliesOwnPayloads(string json, bool? loggedIn, PluginCredentialKind kind)
     {
         Assert.Equal(loggedIn, ClaudeLoginStatus.ReadLoggedIn(json));
         Assert.Equal(kind, ClaudeLoginStatus.KindOf(ClaudeLoginStatus.ReadStatus(json)?.AuthMethod));
     }
-
-    [Theory]
-    // Not a logged-out account. The exit code cannot tell these apart either: 1 means logged out and also
-    // means the binary was missing.
-    [InlineData("")]
-    [InlineData("not json")]
-    [InlineData("{}")]
-    [InlineData("[1,2,3]")]
-    [InlineData("""{"loggedIn":"yes"}""")]
-    public void ReadLoggedIn_RubbishIsUnknown_NotLoggedOut(string json) =>
-        Assert.Null(ClaudeLoginStatus.ReadLoggedIn(json));
 
     // The Manage-profiles list binds this on first paint and never re-reads, so a wrong guess stays visible.
 

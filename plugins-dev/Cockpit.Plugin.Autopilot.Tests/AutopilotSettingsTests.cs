@@ -22,24 +22,16 @@ public class AutopilotSettingsTests
     }
 
     [Fact]
-    public void AutonomyMode_CoercesAStoredBypassPermissions_ToTheConfiningDefault()
+    public void AutonomyMode_CoercesAStoredBypassPermissions_ToTheConfiningDefault_AtEveryScope()
     {
         // AC-209: a legacy stored bypassPermissions (from the AC-152 era) would disable a Claude step's worktree
-        // confinement and get every Claude step of the run refused by the isolation gate — so it is coerced away.
-        var settings = new AutopilotSettings(new FakeStorage());
-
-        settings.SetAutonomyMode("bypassPermissions");
-
-        Assert.Equal(AutopilotSettings.DefaultAutonomyMode, settings.AutonomyMode());
-    }
-
-    [Fact]
-    public void AutonomyMode_CoercesABypassPermissions_ProjectOverrideToo()
-    {
-        // AC-209: the coercion holds for a per-project override, not just the global value — no persisted bypass, at any
-        // scope, can silently block a run.
+        // confinement and get every Claude step of the run refused by the isolation gate — so it is coerced away,
+        // for a per-project override as much as for the global value.
         var settings = new AutopilotSettings(new FakeStorage());
         const string project = "/home/me/repo";
+
+        settings.SetAutonomyMode("bypassPermissions");
+        Assert.Equal(AutopilotSettings.DefaultAutonomyMode, settings.AutonomyMode());
 
         settings.SetAutonomyMode("acceptEdits");
         settings.SetAutonomyMode("bypassPermissions", project);

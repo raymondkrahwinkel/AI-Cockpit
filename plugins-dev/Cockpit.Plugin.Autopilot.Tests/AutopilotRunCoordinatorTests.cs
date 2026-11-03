@@ -15,22 +15,23 @@ public class AutopilotRunCoordinatorTests
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
 
     [Fact]
-    public void ReportStepDone_FromAPaneThatIsNotAnActiveStep_IsRejected()
+    public async Task ReportsFromAPaneWithoutTheRole_AreRejected_AndDoNotTouchTheTracker()
     {
-        var coordinator = new AutopilotRunCoordinator(Substitute.For<ICockpitHost>(), new AutopilotPlanController());
+        Assert.False(new AutopilotRunCoordinator(Substitute.For<ICockpitHost>(), new AutopilotPlanController()).ReportStepDone("nobody", "done"));
 
-        Assert.False(coordinator.ReportStepDone("nobody", "done"));
-    }
-
-    [Fact]
-    public void ReportValidation_WithNoValidationPending_OrTheWrongPane_IsRejected()
-    {
         var plan = new AutopilotPlanController();
         plan.BindSession("ceo-pane");
         var coordinator = new AutopilotRunCoordinator(Substitute.For<ICockpitHost>(), plan);
-
         Assert.False(coordinator.ReportValidation("ceo-pane", passed: true, reason: null));
         Assert.False(coordinator.ReportValidation("intruder", passed: true, reason: null));
+
+        var runningPlan = _RunningPlanWithSource(new AutopilotPlanSource("youtrack", "AC-1", "t"), _HardStep("1"));
+        var provider = Substitute.For<ITrackerProvider>();
+        provider.TrackerId.Returns("youtrack");
+        var host = _Host();
+        host.TrackerProviders.Returns(new[] { provider });
+        Assert.False(await new AutopilotRunCoordinator(host, runningPlan).ReportTrackerStageAsync("intruder", "Review"));
+        await provider.DidNotReceive().SetStageAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     // AC-1337: an epic run's collection branch (environment.CollectionBranch) becomes the PR's base — unset opens
@@ -56,20 +57,6 @@ public class AutopilotRunCoordinatorTests
 
         public Task<AutopilotStrayCommits> RecoverStrayCommitsAsync(string runWorktreePath, string runBranch, string stepWorktreePath, CancellationToken cancellationToken = default) =>
             Task.FromResult(AutopilotStrayCommits.None);
-    }
-
-    [Fact]
-    public async Task ReportTrackerStageAsync_FromANonCeoPane_IsRejected_AndDoesNotTouchTheTracker()
-    {
-        var plan = _RunningPlanWithSource(new AutopilotPlanSource("youtrack", "AC-1", "t"), _HardStep("1"));
-        var provider = Substitute.For<ITrackerProvider>();
-        provider.TrackerId.Returns("youtrack");
-        var host = _Host();
-        host.TrackerProviders.Returns(new[] { provider });
-        var coordinator = new AutopilotRunCoordinator(host, plan);
-
-        Assert.False((await coordinator.ReportTrackerStageAsync("intruder", "Review")));
-        await provider.DidNotReceive().SetStageAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     // AC-202 automatic phase→stage mapping: the coordinator itself moves the source issue as the run crosses a lifecycle

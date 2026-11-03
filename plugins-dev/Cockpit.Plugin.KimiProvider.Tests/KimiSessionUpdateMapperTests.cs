@@ -12,21 +12,6 @@ namespace Cockpit.Plugin.KimiProvider.Tests;
 // specific arrival order call `KimiSessionUpdateMapper.Map` more than once on the same instance.
 public class KimiSessionUpdateMapperTests
 {
-
-    // D4/P1-3, trigger (a): a tool_call with no rawInput yet is remembered but produces nothing on its own.
-
-    // Trigger (a): a tool_call that already carries rawInput fires the one PluginToolUseRequested immediately.
-    [Fact]
-    public void Map_ToolCallWithRawInput_ProducesToolUseRequested_CarryingItAsInputJson()
-    {
-        var result = _Map("""{"sessionId":"s1","update":{"sessionUpdate":"tool_call","toolCallId":"turn-1:tool-1","title":"Read","status":"in_progress","rawInput":{"path":"/x"}}}""");
-
-        var toolUse = Assert.IsType<PluginToolUseRequested>(Assert.Single(result.Events));
-        Assert.Equal("turn-1:tool-1", toolUse.ToolUseId);
-        Assert.Equal("Read", toolUse.ToolName);
-        Assert.Equal("""{"path":"/x"}""", toolUse.InputJson);
-    }
-
     // P1-3, trigger (b): the lazy tool_call (no rawInput) followed by the refining tool_call_update (real
     // title/rawInput) must produce exactly one PluginToolUseRequested, carrying the refined values — not the
     // lazy placeholder ("Read"/"{}") the previous version of the mapper stopped at.

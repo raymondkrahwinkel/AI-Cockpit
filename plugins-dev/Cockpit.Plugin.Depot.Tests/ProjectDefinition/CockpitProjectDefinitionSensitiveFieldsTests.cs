@@ -25,9 +25,12 @@ public class CockpitProjectDefinitionSensitiveFieldsTests
         var json = CockpitProjectDefinitionJson.Serialize(definition);
 
         Assert.DoesNotContain(credential, json, StringComparison.Ordinal);
-        Assert.DoesNotContain("SensitiveFields", json, StringComparison.Ordinal);
+        // AC5: no secret row travelling means nothing new on the wire, exactly as before AC-607.
+        Assert.DoesNotContain("sensitiveFields", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("passwordEnvelope", json, StringComparison.OrdinalIgnoreCase);
         var dropped = Assert.Single(filterResult.Dropped);
         Assert.Equal("Deploy token", dropped.Label);
+        Assert.False(string.IsNullOrWhiteSpace(dropped.Reason));
     }
 
     // AC2: with a project password, the wire ciphertext is unreadable without it — not merely base64 or some
@@ -48,6 +51,8 @@ public class CockpitProjectDefinitionSensitiveFieldsTests
         var json = CockpitProjectDefinitionJson.Serialize(definition);
 
         Assert.DoesNotContain(credential, json, StringComparison.Ordinal);
+        Assert.StartsWith("enc:v1:", Assert.Single(filterResult.Encrypted).Value, StringComparison.Ordinal);
+        Assert.Empty(filterResult.Dropped);
 
         Assert.True(CockpitProjectDefinitionJson.TryDeserialize(json, out var roundTripped, out _));
         var entry = Assert.Single(roundTripped!.SensitiveFields!);
@@ -63,19 +68,9 @@ public class CockpitProjectDefinitionSensitiveFieldsTests
         Assert.NotNull(rightKey);
         var recovered = new ProjectSecretProtector(rightKey!).Unprotect($"SensitiveFields.{entry.Label}", entry.Value);
         Assert.Equal(credential, recovered);
-    }
 
-    // AC5: a project with no IsSecret rows behaves exactly as before this ticket — nothing new on the wire.
-    [Fact]
-    public void Serialize_NoSensitiveFieldsOrEnvelope_OmitsBothKeysEntirely()
-    {
-        var definition = new CockpitProjectDefinition { Name = "probe" };
-
-        var json = CockpitProjectDefinitionJson.Serialize(definition);
-
-        Assert.DoesNotContain("sensitiveFields", json, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("passwordEnvelope", json, StringComparison.OrdinalIgnoreCase);
-        Assert.Null(definition.SensitiveFields);
-        Assert.Null(definition.PasswordEnvelope);
+        // AC-607 review finding 9: the AAD binding. The right data key cannot decrypt it at a different field's path.
+        Assert.Throws<ProjectSecretProtectionException>(
+            () => new ProjectSecretProtector(rightKey).Unprotect("SensitiveFields.A different label", entry.Value));
     }
 }

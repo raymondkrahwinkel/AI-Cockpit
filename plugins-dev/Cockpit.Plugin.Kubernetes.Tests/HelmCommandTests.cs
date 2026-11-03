@@ -4,7 +4,8 @@ using Cockpit.Plugin.Kubernetes.Model;
 namespace Cockpit.Plugin.Kubernetes.Tests;
 
 // `HelmCommand.Build` (AC-1061 phase 5, AC 5 & 11): the cluster must always win over whatever the ambient process
-// environment says, and a pasted kubeconfig must be refused rather than staged to disk.
+// environment says. (A pasted kubeconfig being refused rather than staged to disk is pinned end to end in
+// HelmUpgradeTests.)
 public class HelmCommandTests
 {
     [Fact]
@@ -41,17 +42,5 @@ public class HelmCommandTests
             Environment.SetEnvironmentVariable("HELM_NAMESPACE", null);
             Environment.SetEnvironmentVariable("HELM_KUBETOKEN", null);
         }
-    }
-
-    [Fact]
-    public void Build_PastedKubeconfigCluster_ReturnsAnExplicitError_AndNoCommand()
-    {
-        var cluster = new ClusterRegistration("id-1", "prod", ContextName: "prod-ctx", ["default"], KubeconfigPath: "");
-
-        var (command, error) = HelmCommand.Build("helm", cluster, "default", "upgrade", ["web", "chart"]);
-
-        Assert.Null(command);
-        Assert.NotNull(error);
-        Assert.Contains("pasted kubeconfig", error);
     }
 }

@@ -16,19 +16,14 @@ public class CodexTtyProviderTests
 
         Assert.Contains("--sandbox", arguments);
         Assert.Contains("read-only", arguments);
-    }
 
-    [Fact]
-    public void BuildArguments_SandboxOptionChosenInTheDialog_OverridesTheConfiguredDefault()
-    {
+        // A sandbox chosen in the dialog overrides the configured default.
         var config = new CliAgentConfig(SandboxMode: "read-only");
         var options = new Dictionary<string, string> { [CodexTtyProvider.SandboxOptionKey] = "workspace-write" };
-
-        var arguments = CodexTtyProvider.BuildArguments(config, options, resume: null);
-
-        Assert.Contains("--sandbox", arguments);
-        Assert.Contains("workspace-write", arguments);
-        Assert.DoesNotContain("read-only", arguments);
+        var overridden = CodexTtyProvider.BuildArguments(config, options, resume: null);
+        Assert.Contains("--sandbox", overridden);
+        Assert.Contains("workspace-write", overridden);
+        Assert.DoesNotContain("read-only", overridden);
     }
 
     // AC-77: the interactive TUI must receive the session's Cockpit MCP servers as `-c mcp_servers.*`

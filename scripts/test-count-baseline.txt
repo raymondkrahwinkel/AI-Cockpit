@@ -3,12 +3,12 @@
 # Update with: scripts/check-test-count.py --update-baseline
 # format: <project>	<ceiling>
 unit	cases
-plugins-dev/Cockpit.Plugin.Autopilot.Tests	52
+plugins-dev/Cockpit.Plugin.Autopilot.Tests	42
 plugins-dev/Cockpit.Plugin.Browser.Tests	10
-plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests	85
-plugins-dev/Cockpit.Plugin.CliAgentProvider.Tests	65
-plugins-dev/Cockpit.Plugin.Depot.Tests	176
-plugins-dev/Cockpit.Plugin.Diagram.Tests	55
+plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests	70
+plugins-dev/Cockpit.Plugin.CliAgentProvider.Tests	56
+plugins-dev/Cockpit.Plugin.Depot.Tests	145
+plugins-dev/Cockpit.Plugin.Diagram.Tests	40
 plugins-dev/Cockpit.Plugin.Discord.Tests	41
 plugins-dev/Cockpit.Plugin.Docker.Tests	22
 plugins-dev/Cockpit.Plugin.FanOut.Tests	1
@@ -19,9 +19,9 @@ plugins-dev/Cockpit.Plugin.GitHubModelsProvider.Tests	11
 plugins-dev/Cockpit.Plugin.GitHubPullRequests.Tests	3
 plugins-dev/Cockpit.Plugin.GitStatus.Tests	1
 plugins-dev/Cockpit.Plugin.GrokProvider.Tests	11
-plugins-dev/Cockpit.Plugin.KimiProvider.Tests	36
+plugins-dev/Cockpit.Plugin.KimiProvider.Tests	33
 plugins-dev/Cockpit.Plugin.Kind.Tests	18
-plugins-dev/Cockpit.Plugin.Kubernetes.Tests	84
+plugins-dev/Cockpit.Plugin.Kubernetes.Tests	71
 plugins-dev/Cockpit.Plugin.LocalCi.Tests	25
 plugins-dev/Cockpit.Plugin.OpenRouterProvider.Tests	13
 plugins-dev/Cockpit.Plugin.OpencodeProvider.Tests	20
