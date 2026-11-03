@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugin.Shared;
 
 namespace Cockpit.Plugin.KimiProvider;
 
@@ -8,7 +9,7 @@ namespace Cockpit.Plugin.KimiProvider;
 // spawnable path via `KimiExecutableLocator`, and builds a `KimiAcpSessionDriver`
 // backed by the real `ProcessCliSubprocess` — mirrors
 // `Cockpit.Plugin.CliAgentProvider.CodexAppServerPluginSessionDriverFactory`.
-internal sealed class KimiAcpSessionDriverFactory(Func<string, string?>? managedResolver = null) : IPluginSessionDriverFactory
+internal sealed class KimiAcpSessionDriverFactory(Func<string, string?>? managedResolver = null, AcpImageFacts? imageFacts = null) : IPluginSessionDriverFactory
 {
     public IPluginSessionDriver Create(string configJson)
     {
@@ -17,6 +18,6 @@ internal sealed class KimiAcpSessionDriverFactory(Func<string, string?>? managed
 
         // A cockpit-managed install (sub [h]), if present, is preferred over PATH.
         var executablePath = KimiExecutableLocator.Resolve(config.Command, managedResolver);
-        return new KimiAcpSessionDriver(() => new ProcessCliSubprocess(), config, executablePath);
+        return new KimiAcpSessionDriver(() => new ProcessCliSubprocess(), config, executablePath, capabilities => imageFacts?.Record(configJson, capabilities));
     }
 }

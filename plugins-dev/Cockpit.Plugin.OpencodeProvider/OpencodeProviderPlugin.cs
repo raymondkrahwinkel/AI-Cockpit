@@ -9,6 +9,7 @@ namespace Cockpit.Plugin.OpencodeProvider;
 // agent next to Claude, gated through Cockpit's own consent card, not a chat-only window.
 public sealed class OpencodeProviderPlugin : ICockpitPlugin
 {
+    private readonly AcpImageFacts _imageFacts = new();
     public PluginMetadata Metadata { get; } = new(
         Id: "opencode-provider",
         DisplayName: "opencode Provider (ACP)",
@@ -26,11 +27,12 @@ public sealed class OpencodeProviderPlugin : ICockpitPlugin
         host.AddSessionProvider(new SessionProviderRegistration(
             ProviderId: "opencode-provider.acp",
             DisplayName: "opencode (ACP)",
-            CreateDriverFactory: _ => new OpencodeAcpSessionDriverFactory(host.ResolveManagedCliPath),
+            CreateDriverFactory: _ => new OpencodeAcpSessionDriverFactory(host.ResolveManagedCliPath, _imageFacts),
             // The host builds the adapter from registration.Capabilities, not the driver's own property —
             // SupportsLiveModelSwitch must be declared here too. Same trap KimiProviderPlugin warns about.
-            Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true) { SupportsEnvVars = true, SupportsLiveModelSwitch = true })
+            Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true) { SupportsEnvVars = true, SupportsLiveModelSwitch = true, SupportsVision = true })
         {
+            ReadModelIntelligenceAsync = (config, _) => Task.FromResult(_imageFacts.Read(config)),
             TermsNotice = new TermsNotice("opencode: use is governed by opencode's terms and your agreement with the selected model provider.", new Uri("https://opencode.ai/legal/terms-of-service"), "Subscription login: personal and individual; do not share it. For shared use, use an API-key profile under an appropriate business agreement.", "API-key use is billed to the key owner; the selected API provider's terms apply."),
         });
     }
