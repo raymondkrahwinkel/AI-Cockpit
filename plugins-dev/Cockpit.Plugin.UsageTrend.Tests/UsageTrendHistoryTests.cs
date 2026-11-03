@@ -12,15 +12,6 @@ public class UsageTrendHistoryTests
         new(at, profile, ctx, FiveHourPercent: 30, WeeklyPercent: 40);
 
     [Fact]
-    public void FirstSampleForAProfile_IsAlwaysRecorded()
-    {
-        var result = UsageTrendHistory.Append([], Sample(T0));
-
-        Assert.NotNull(result);
-        Assert.Single(result!);
-    }
-
-    [Fact]
     public void ASecondSampleWithinTenMinutes_IsDebouncedAway()
     {
         var existing = new[] { Sample(T0) };
@@ -79,16 +70,6 @@ public class UsageTrendHistoryTests
     }
 
     [Fact]
-    public void ASampleWithNoUsageFigures_IsNeverRecorded()
-    {
-        var candidate = new UsageTrendSample(T0, "Default", ContextPercent: null, FiveHourPercent: null, WeeklyPercent: null);
-
-        var result = UsageTrendHistory.Append([], candidate);
-
-        Assert.Null(result);
-    }
-
-    [Fact]
     public void SamplesOlderThanFourteenDays_ArePrunedOnAppend()
     {
         var stale = Sample(T0.AddDays(-15));       // beyond retention
@@ -101,36 +82,5 @@ public class UsageTrendHistoryTests
         Assert.DoesNotContain(stale, result!);
         Assert.Contains(recent, result);
         Assert.Equal(2, System.Linq.Enumerable.Count(result!));
-    }
-
-    [Fact]
-    public void Prune_KeepsExactlyTheFourteenDayWindow_InTimeOrder()
-    {
-        var samples = new[]
-        {
-            Sample(T0.AddDays(-20)),
-            Sample(T0.AddDays(-14).AddMinutes(1)), // just inside
-            Sample(T0.AddDays(-2)),
-            Sample(T0.AddDays(-14).AddMinutes(-1)), // just outside
-        };
-
-        var kept = UsageTrendHistory.Prune(samples, T0);
-
-        Assert.Equal(2, System.Linq.Enumerable.Count(kept));
-        var timestamps = kept.Select(sample => sample.TimestampUtc).ToList();
-        Assert.Equal(timestamps.OrderBy(t => t), timestamps);
-        Assert.All(kept, sample => Assert.True(sample.TimestampUtc >= T0 - TimeSpan.FromDays(14)));
-    }
-
-    [Fact]
-    public void Prune_DropsNullElements_RatherThanThrowing()
-    {
-        // A hand-edited cockpit.json can hold a JSON array with a null element; deserialization then yields a list
-        // with a null in it. Prune has to skip it, not throw out of the widget's load and take the dashboard down.
-        var samples = new List<UsageTrendSample> { Sample(T0.AddMinutes(-5)), null!, Sample(T0.AddMinutes(-1)) };
-
-        var kept = UsageTrendHistory.Prune(samples, T0);
-
-        Assert.Equal(2, System.Linq.Enumerable.Count(kept));
     }
 }

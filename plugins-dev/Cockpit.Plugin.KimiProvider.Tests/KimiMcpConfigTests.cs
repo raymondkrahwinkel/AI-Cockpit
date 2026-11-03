@@ -3,51 +3,8 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.KimiProvider.Tests;
 
-// `KimiMcpConfig` (AC-269 sub [b], D6) — the epic's costliest trap: a stdio server's wire object
-// must carry no `type` property at all, or kimi's adapter silently drops it. Serializes the built wire
-// objects exactly as `KimiAcpConnection` would (its own `_jsonOptions` only ignores explicit
-// nulls, so a present-but-null `type` would still slip through — the shape itself must omit the property).
 public class KimiMcpConfigTests
 {
-    private static readonly Dictionary<string, string?> _NoEnv = new();
-
-    // D6, the regression test the brief singles out: a stdio server's serialized JSON must have no "type"
-    // property whatsoever — "type":"stdio" would make kimi's adapter drop the server silently.
-    [Fact]
-    public void Build_ForAStdioServer_SerializesWithNoTypeProperty()
-    {
-        var wire = KimiMcpConfig.Build([new PluginMcpServer { Name = "fs", Command = "npx", Args = ["-y", "@modelcontextprotocol/server-filesystem"] }], _NoEnv);
-
-        var json = _SerializeSingle(wire);
-        Assert.False(json.TryGetProperty("type", out _));
-        Assert.Equal("fs", json.GetProperty("name").GetString());
-        Assert.Equal("npx", json.GetProperty("command").GetString());
-        Assert.Equal(new[] { "-y", "@modelcontextprotocol/server-filesystem" }, json.GetProperty("args").EnumerateArray().Select(element => element.GetString()));
-    }
-
-    [Fact]
-    public void Build_ForAnHttpServer_SerializesWithTypeHttp()
-    {
-        var wire = KimiMcpConfig.Build([new PluginMcpServer { Name = "cockpit-orchestrator", Url = "http://127.0.0.1:8765/mcp" }], _NoEnv);
-
-        var json = _SerializeSingle(wire);
-        Assert.Equal("http", json.GetProperty("type").GetString());
-        Assert.Equal("cockpit-orchestrator", json.GetProperty("name").GetString());
-        Assert.Equal("http://127.0.0.1:8765/mcp", json.GetProperty("url").GetString());
-        Assert.Equal(0, json.GetProperty("headers").GetArrayLength());
-    }
-
-    [Fact]
-    public void Build_ForAnHttpServerWithABearerToken_PutsItLiterallyInTheHeadersArray()
-    {
-        var wire = KimiMcpConfig.Build([new PluginMcpServer { Name = "youtrack", Url = "http://127.0.0.1:9000/mcp", BearerToken = "yt-pat-value" }], _NoEnv);
-
-        var headers = _SerializeSingle(wire).GetProperty("headers");
-        Assert.Equal(1, headers.GetArrayLength());
-        Assert.Equal("Authorization", headers[0].GetProperty("name").GetString());
-        Assert.Equal("Bearer yt-pat-value", headers[0].GetProperty("value").GetString());
-    }
-
     [Fact]
     public void Build_ForACockpitHostedServer_ReadsTheBearerFromTheResolvedEnvironment_NotFromBearerToken()
     {

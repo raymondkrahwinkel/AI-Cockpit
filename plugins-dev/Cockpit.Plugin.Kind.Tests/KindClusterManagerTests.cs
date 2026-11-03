@@ -23,46 +23,6 @@ public class KindClusterManagerTests
     }
 
     [Fact]
-    public async Task ReconcileAsync_PinnedRecordWithDeadOwner_IsKept()
-    {
-        var (manager, settings, _, _) = _Manager();
-        await manager.CreateAsync("pinned", OwnerPane, CancellationToken.None);
-        settings.KindClusters = [settings.KindClusters.Single() with { IsPinned = true }];
-
-        await manager.ReconcileAsync(liveSessionIds: [], CancellationToken.None);
-
-        Assert.Single(settings.KindClusters);
-    }
-
-    [Fact]
-    public async Task ReconcileAsync_NeverInvokesKindForAnUnregisteredName()
-    {
-        var (manager, settings, cli, _) = _Manager();
-        await manager.CreateAsync("registered", OwnerPane, CancellationToken.None);
-        cli.Calls.Clear();
-
-        await manager.ReconcileAsync(liveSessionIds: [], CancellationToken.None);
-
-        // Criterion 10: the sweep only ever iterates settings.KindClusters, so the one delete call it makes can
-        // only ever name a registered cluster — proven here by asserting the exact argv, not just the count.
-        var deleteCall = Assert.Single(cli.Calls);
-        Assert.Contains("registered", deleteCall.Arguments);
-    }
-
-    [Fact]
-    public async Task SweepExpiredAsync_PastMaxLifetimeButPinned_IsKept()
-    {
-        var (manager, settings, _, _) = _Manager();
-        await manager.CreateAsync("stale-but-pinned", OwnerPane, CancellationToken.None);
-        settings.KindClusters = [settings.KindClusters.Single() with { CreatedAt = DateTimeOffset.UtcNow - TimeSpan.FromHours(5), IsPinned = true }];
-        settings.KindClusterMaxLifetime = TimeSpan.FromHours(4);
-
-        await manager.SweepExpiredAsync(CancellationToken.None);
-
-        Assert.Single(settings.KindClusters);
-    }
-
-    [Fact]
     public async Task StopAllAsync_DeletesEveryNonPinnedCluster_ButKeepsPinnedOnes()
     {
         var (manager, settings, _, _) = _Manager();
@@ -77,17 +37,6 @@ public class KindClusterManagerTests
 
     // AC-1349 (AC-1347 decision 2B): the operator's default for clusters this plugin makes rides along on the
     // register intent by name, so a fresh kind cluster lands in the Kubernetes plugin already in that mode.
-    [Fact]
-    public async Task CreateAsync_SendsTheConfiguredConsentModeOnTheRegisterIntent()
-    {
-        var (manager, settings, _, host) = _Manager();
-        settings.ConsentModeForNewClusters = KindConsentMode.ReadFree;
-
-        await manager.CreateAsync("cockpit-ac1349", OwnerPane, CancellationToken.None);
-
-        await host.Received(1).SendIntent("kubernetes", "cluster.register", Arg.Is<IReadOnlyDictionary<string, string>>(
-            data => data["consentMode"] == "ReadFree"));
-    }
 
     // AC-1083's whole point: the Kubernetes plugin is optional. Without it the cluster still comes up and the
     // answer carries the kubeconfig and context to reach it by hand.

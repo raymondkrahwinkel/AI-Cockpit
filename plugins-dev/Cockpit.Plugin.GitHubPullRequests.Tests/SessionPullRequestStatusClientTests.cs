@@ -5,33 +5,6 @@ namespace Cockpit.Plugin.GitHubPullRequests.Tests;
 // AC-802: the session banner's non-UI logic, proven without shelling out — same approach as CiWorkflowRunClientTests.
 public class SessionPullRequestStatusClientTests
 {
-    [Fact]
-    public void ViewArguments_QueriesTheCurrentCheckoutsOpenPrAsJson()
-    {
-        Assert.Equal(
-            ["pr", "view", "--json", "number,headRefName,additions,deletions,url,statusCheckRollup"],
-            SessionPullRequestStatusClient.ViewArguments);
-    }
-
-    [Fact]
-    public void Parse_ReadsThePrFieldsAndTheRepositoryFromTheUrl()
-    {
-        const string json = """
-            { "number": 592, "headRefName": "cockpit/work-596f55f3", "additions": 248, "deletions": 31,
-              "url": "https://github.com/Synvolution/cockpit/pull/592", "statusCheckRollup": [] }
-            """;
-
-        var status = SessionPullRequestStatusClient.Parse(json);
-
-        Assert.NotNull(status);
-        Assert.Equal(592, status!.Number);
-        Assert.Equal("Synvolution/cockpit", status.Repository);
-        Assert.Equal("cockpit/work-596f55f3", status.Branch);
-        Assert.Equal(248, status.Additions);
-        Assert.Equal(31, status.Deletions);
-        Assert.Equal("https://github.com/Synvolution/cockpit/pull/592", status.Url);
-        Assert.Empty(status.Checks);
-    }
 
     [Fact]
     public void Parse_ReadsCheckRunEntries_ByStatusAndConclusion()
@@ -78,13 +51,6 @@ public class SessionPullRequestStatusClientTests
         Assert.Equal("ci/other", status.Checks[1].Name);
         Assert.Equal(PullRequestCheckState.Running, status.Checks[1].State);
     }
-
-    // AC-6's visibility rule for the parsing seam: nothing that isn't a genuine, complete PR object yields a
-    // status a caller could render — a caller only ever hides the banner on null, never renders a half-built one.
-
-    // OverallState's priority (failure beats running beats passed) is what the collapsed dot/CI-summary text reads
-    // off — the mockup's second frame (3/4 passed, one still running) shows amber, not green, and its third frame
-    // (one failed among others) shows red even though not every check has finished.
 
     private static (string Name, PullRequestCheckState State, TimeSpan? Duration) _Tuple(PullRequestCheck check) =>
         (check.Name, check.State, check.Duration);

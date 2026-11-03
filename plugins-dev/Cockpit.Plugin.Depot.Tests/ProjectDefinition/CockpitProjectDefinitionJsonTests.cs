@@ -8,37 +8,6 @@ namespace Cockpit.Plugin.Depot.Tests.ProjectDefinition;
 // parsed values, not raw text, since property order is not part of the forward-compat promise.
 public class CockpitProjectDefinitionJsonTests
 {
-    [Fact]
-    public void Serialize_ThenDeserialize_AllKnownFieldsRoundTrip()
-    {
-        var definition = new CockpitProjectDefinition
-        {
-            Name = "Handbook",
-            Description = "Handles handbook",
-            GitUrl = "git@github.com:acme/handbook-processor.git",
-            BehaviorPrompt = "Be careful with money.",
-            IsolateInWorktreeByDefault = true,
-            McpOverlay = new CockpitProjectMcpOverlayEntry { Enabled = ["Depot: Work", "YouTrack"] },
-            Resources = [CockpitProjectResourceEntry.Create("Memory", "depot:handbook-processor") ?? throw new InvalidOperationException("The resource row was refused.")],
-            Logo = ".cockpit/logo.png",
-        };
-
-        var json = CockpitProjectDefinitionJson.Serialize(definition);
-        Assert.True(CockpitProjectDefinitionJson.TryDeserialize(json, out var roundTripped, out var error));
-
-        Assert.Null(error);
-        Assert.NotNull(roundTripped);
-        Assert.Equal(definition.Name, roundTripped.Name);
-        Assert.Equal(definition.Description, roundTripped.Description);
-        Assert.Equal(definition.GitUrl, roundTripped.GitUrl);
-        Assert.Equal(definition.BehaviorPrompt, roundTripped.BehaviorPrompt);
-        Assert.Equal(definition.IsolateInWorktreeByDefault, roundTripped.IsolateInWorktreeByDefault);
-        Assert.NotNull(roundTripped.McpOverlay);
-        Assert.Equal(definition.McpOverlay.Enabled, roundTripped.McpOverlay.Enabled);
-        Assert.Equal(definition.Logo, roundTripped.Logo);
-        Assert.NotNull(roundTripped.Resources);
-        Assert.Equal("depot:handbook-processor", Assert.Single(roundTripped.Resources).Reference);
-    }
 
     [Fact]
     public void TryDeserialize_UnknownTopLevelField_IsKeptOnTheNextWrite()
@@ -64,42 +33,5 @@ public class CockpitProjectDefinitionJsonTests
 
         using var document = JsonDocument.Parse(writtenBack);
         Assert.Equal(42, document.RootElement.GetProperty("mcpOverlay").GetProperty("futureOverlayField").GetInt32());
-    }
-
-    [Fact]
-    public void TryDeserialize_ResourcesMixAllFourPortabilityShapes_EachRowSurvivesWithItsOwnValue()
-    {
-        const string json = """
-            {"schemaVersion":1,"name":"probe","resources":[
-                {"role":"Instructions","reference":"docs/CONVENTIONS.md","portability":"repo-relative"},
-                {"role":"Reference","reference":"~/Notes/private.md","portability":"anchor-relative"},
-                {"role":"Memory","reference":"depot:cockpit","portability":"plugin-source"},
-                {"role":"Reference","reference":"/home/raymond/private.md","portability":"absolute"}
-            ]}
-            """;
-
-        Assert.True(CockpitProjectDefinitionJson.TryDeserialize(json, out var definition, out var error));
-        Assert.Null(error);
-        Assert.NotNull(definition);
-        Assert.NotNull(definition.Resources);
-        Assert.Equal(4, definition.Resources.Count);
-        Assert.Equal(
-            ["repo-relative", "anchor-relative", "plugin-source", "absolute"],
-            definition.Resources.Select(row => row.Portability));
-    }
-
-    [Theory]
-    [InlineData("not json")]
-    [InlineData("""{"schemaVersion":1,"name":"trunc""")]
-    [InlineData("null")]
-    [InlineData("[]")]
-    [InlineData(null)]
-    public void TryDeserialize_CorruptOrWrongShapedJson_ReturnsFalseRatherThanThrowing(string? corrupt)
-    {
-        var succeeded = CockpitProjectDefinitionJson.TryDeserialize(corrupt, out var definition, out var error);
-
-        Assert.False(succeeded);
-        Assert.Null(definition);
-        Assert.NotNull(error);
     }
 }

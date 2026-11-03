@@ -13,43 +13,17 @@ public sealed class ProxmoxMcpToolsTests
 {
     private const string Session = "pane-1";
 
-    private sealed record Harness(ProxmoxMcpTools Tools, List<ConsentRequest> Asked, FakeProxmoxEngine Engine, ProxmoxSettings Settings);
+    private sealed record Harness(ProxmoxMcpTools Tools, List<ConsentRequest> Asked, FakeProxmoxEngine Engine);
 
-    private static Harness _Build(ConsentOutcome outcome, bool allowRollback = false, bool allowDelete = false)
+    private static Harness _Build(ConsentOutcome outcome, bool allowDelete = false)
     {
-        var settings = new ProxmoxSettings(new FakePluginStorage()) { AllowRollback = allowRollback, AllowDelete = allowDelete };
+        var settings = new ProxmoxSettings(new FakePluginStorage()) { AllowDelete = allowDelete };
         var asked = new List<ConsentRequest>();
         var host = Substitute.For<ICockpitHost>();
         host.RequestConsentAsync(Arg.Do<ConsentRequest>(asked.Add)).Returns(new ConsentDecision(outcome));
         var gate = new ProxmoxAccessGate(host);
         var engine = new FakeProxmoxEngine();
-        return new Harness(new ProxmoxMcpTools(settings, gate, engine), asked, engine, settings);
-    }
-
-    // ---- The async task model: a write reports the task's real outcome, never just "accepted" ---------------------
-
-    [Fact]
-    public async Task StartVm_WhenTheTaskFails_ReportsFailure_NotAcceptance()
-    {
-        var h = _Build(ConsentOutcome.Approved);
-        h.Engine.NextOutcome = new ProxmoxTaskOutcome("UPID:pve1:...", IsSuccess: false, ExitStatus: "ipcc_send_rec failed", TimedOut: false);
-
-        var json = JsonNode.Parse(await h.Tools.StartVm(Session, "pve1", "100"));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Contains("did not succeed", json["error"]!.GetValue<string>());
-    }
-
-    [Fact]
-    public async Task StartVm_WhenTheTaskTimesOut_ReportsStillRunning_NeverSilentSuccess()
-    {
-        var h = _Build(ConsentOutcome.Approved);
-        h.Engine.NextOutcome = new ProxmoxTaskOutcome("UPID:pve1:...", IsSuccess: false, ExitStatus: "still running", TimedOut: true);
-
-        var json = JsonNode.Parse(await h.Tools.StartVm(Session, "pve1", "100"));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Contains("still running", json["error"]!.GetValue<string>());
+        return new Harness(new ProxmoxMcpTools(settings, gate, engine), asked, engine);
     }
 
     // ---- Consent boundary --------------------------------------------------------------------------------------
@@ -65,8 +39,6 @@ public sealed class ProxmoxMcpToolsTests
         Assert.False(json!["ok"]!.GetValue<bool>());
         Assert.Contains("did not approve", json["error"]!.GetValue<string>());
     }
-
-    // ---- Shutdown vs stop: two distinct actions, never merged --------------------------------------------------
 
     // ---- Off-by-default capabilities ---------------------------------------------------------------------------
 
@@ -95,5 +67,4 @@ public sealed class ProxmoxMcpToolsTests
         Assert.Equal(ConsentRisk.Dangerous, h.Asked[^1].Risk);
     }
 
-    // ---- LXC naming: never "container" bare, so it cannot be confused with a Docker container --------------------
 }

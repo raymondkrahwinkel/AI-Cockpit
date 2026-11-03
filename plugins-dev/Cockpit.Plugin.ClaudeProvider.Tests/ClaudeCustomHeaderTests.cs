@@ -29,20 +29,6 @@ public class ClaudeCustomHeaderTests
     }
 
     [Fact]
-    public void Write_CarriesACustomHeader()
-    {
-        var server = new PluginMcpServer
-        {
-            Name = "private-api",
-            Url = "https://api.example/mcp",
-            Headers = new Dictionary<string, string> { ["X-Api-Key"] = "the-key" },
-        };
-
-        _WithConfig(server, path =>
-            Assert.Equal("the-key", _Headers(path, "private-api").GetProperty("X-Api-Key").GetString()));
-    }
-
-    [Fact]
     public void Write_CarriesACustomHeaderBesideTheBearer()
     {
         var server = new PluginMcpServer

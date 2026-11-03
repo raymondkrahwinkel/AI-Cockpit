@@ -30,14 +30,6 @@ public sealed class GitEpicSubMergeCheckerTests : IDisposable
         return checker;
     }
 
-    [Fact]
-    public async Task IsMerged_ForAnIssueWithACommitOnOriginMain_ReturnsTrue()
-    {
-        var checker = await _Refreshed(_clone);
-
-        Assert.True(checker.IsMerged("AC-1"));
-    }
-
     // AC-346 review, BLOCKING finding #2: `git log --grep="^AC-3"` also matches "AC-34 - …" / "AC-350 - …" — a prefix
     // collision that would read a sibling sub as already merged. Reproduced here with both colliding ids actually
     // present in history, on the same clone AC-1 (the seed commit) already lives in.

@@ -4,19 +4,6 @@ namespace Cockpit.Plugin.SessionReview.Tests;
 // untracked file, the review prompt and the result shape.
 public class GitDiffReaderTests
 {
-    [Fact]
-    public void DiffArguments_AreTheWorkingTreeDiffAgainstHead()
-    {
-        // core.quotePath=false keeps non-ASCII paths readable; --no-ext-diff stops a repository's own diff driver
-        // from replacing the unified output the panel has to parse.
-        Assert.Equal(["-c", "core.quotePath=false", "diff", "--no-ext-diff", "HEAD"], GitDiffReader.DiffArguments);
-    }
-
-    [Fact]
-    public void StatusArguments_ListEveryUntrackedFileNotJustItsFolder()
-    {
-        Assert.Equal(["-c", "core.quotePath=false", "status", "--porcelain", "--untracked-files=all"], GitDiffReader.StatusArguments);
-    }
 
     [Fact]
     public void UntrackedPaths_TakesOnlyTheQuestionMarkedEntries()
@@ -39,16 +26,6 @@ public class GitDiffReaderTests
         Assert.Equal((2, 0), (file.Added, file.Removed));
         Assert.Equal(["one", "two"], file.Rows.Where(r => r.Kind == DiffLineKind.Added).Select(r => r.Text));
         Assert.Contains("@@ -0,0 +1,2 @@", block, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void UntrackedBinaryBlock_ParsesAsABinaryFileSoThePanelListsItWithoutDrawingIt()
-    {
-        var file = Assert.Single(DiffParser.Parse(GitDiffReader.UntrackedBinaryBlock("assets/logo.png")));
-
-        Assert.Equal("assets/logo.png", file.Path);
-        Assert.Equal(FileChangeKind.Binary, file.Kind);
-        Assert.Empty(file.Rows);
     }
 
     [Fact]

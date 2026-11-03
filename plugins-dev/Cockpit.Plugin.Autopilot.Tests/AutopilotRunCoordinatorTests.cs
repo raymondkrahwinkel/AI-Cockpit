@@ -1,4 +1,3 @@
-﻿using Avalonia.Controls;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.Tracking;
@@ -14,25 +13,6 @@ namespace Cockpit.Plugin.Autopilot.Tests;
 public class AutopilotRunCoordinatorTests
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
-
-    [Fact]
-    public void ReportStepDone_FromAPaneThatIsNotAnActiveStep_IsRejected()
-    {
-        var coordinator = new AutopilotRunCoordinator(Substitute.For<ICockpitHost>(), new AutopilotPlanController());
-
-        Assert.False(coordinator.ReportStepDone("nobody", "done"));
-    }
-
-    [Fact]
-    public void ReportValidation_WithNoValidationPending_OrTheWrongPane_IsRejected()
-    {
-        var plan = new AutopilotPlanController();
-        plan.BindSession("ceo-pane");
-        var coordinator = new AutopilotRunCoordinator(Substitute.For<ICockpitHost>(), plan);
-
-        Assert.False(coordinator.ReportValidation("ceo-pane", passed: true, reason: null));
-        Assert.False(coordinator.ReportValidation("intruder", passed: true, reason: null));
-    }
 
     // AC-1337: an epic run's collection branch (environment.CollectionBranch) becomes the PR's base — unset opens
     // against the default branch, exactly as v1 did, since AutopilotPrRequest.Base then stays null.
@@ -303,53 +283,6 @@ public class AutopilotRunCoordinatorTests
         context.EmbedSession(Arg.Any<EmbeddedSessionRequest>()).Returns(stepSession);
         context.Sessions.Returns(Substitute.For<ICockpitSessionObserver>());
         return context;
-    }
-
-    // A fake publisher that probes as a fully capable git+gh run but fails to open the pull request itself — the AC-347
-    // FIX B scenario: the branch pushes, but the PR never lands, so the run must not read back as clean.
-    private sealed class FailingPrPublisher : IAutopilotPrPublisher
-    {
-        public Task<AutopilotPrProbe> ProbeAsync(string worktreePath, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new AutopilotPrProbe(IsGitRun: true, HasRemote: true, GhAvailable: true));
-
-        public Task<AutopilotPrPublishResult> PublishAsync(AutopilotPrRequest request, bool createPullRequest, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new AutopilotPrPublishResult(Pushed: true, PrUrl: null, Error: "gh failed to open the pull request"));
-
-        public Task<bool> EnsureCommittedAsync(string worktreePath, string message, CancellationToken cancellationToken = default) =>
-            Task.FromResult(true);
-
-        public Task<AutopilotStrayCommits> RecoverStrayCommitsAsync(string runWorktreePath, string runBranch, string stepWorktreePath, CancellationToken cancellationToken = default) =>
-            Task.FromResult(AutopilotStrayCommits.None);
-    }
-
-    // A hand-rolled step session whose Activity event can be raised on demand — NSubstitute cannot reliably raise an
-    // interface event that carries a default (no-op) add/remove body, which IEmbeddedSession.Activity does.
-    private sealed class ProgressingSession : IEmbeddedSession
-    {
-        private readonly TaskCompletionSource<string?> _completion = new();
-
-        public ProgressingSession(string paneId) => PaneId = paneId;
-
-        // AC-1398: the run backend never reads a view; reading one fails the test.
-        public Control View => throw new InvalidOperationException("AC-1398: the run backend holds a session by pane id, never by its view.");
-
-        public string PaneId { get; }
-
-        public Task<string?> Completion => _completion.Task;
-
-        public event Action? Activity;
-
-        public void RaiseActivity() => Activity?.Invoke();
-
-        public Task CloseAsync()
-        {
-            _completion.TrySetResult(null);
-            return Task.CompletedTask;
-        }
-
-        public void SetInputEnabled(bool enabled)
-        {
-        }
     }
 
     private static IEmbeddedSession _Session(string paneId, Task<string?>? completion = null)

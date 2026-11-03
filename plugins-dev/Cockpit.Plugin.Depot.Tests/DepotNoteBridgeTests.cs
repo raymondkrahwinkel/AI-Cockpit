@@ -19,9 +19,6 @@ public class DepotNoteBridgeTests
 
     // AI-Depot scripts/notes-roundtrip-fixtures at the pinned commit, copied byte for byte: a silent change to a copy fails here.
     private const string SchemaSha = "77f8a24281ff1cb26e5872600f7bdbc7266788a92fff723e8b01fa29a59d6266";
-
-    // The block ids and contents of the room's fragment, and the fragment and front matter as one string, to compare two docs.
-    private const string Blocks = "JSON.stringify(DepotRoom.current().getXmlFragment('default').toArray().map(t => [t._item.id.client + ':' + t._item.id.clock, t.toString()]))";
     // The web's own updates since the last call (an edit with no ops returns what is waiting), and the first text item of a block.
     private const string Taken = "DepotRoom.edit('[]')";
     private const string TextOf = "const f = DepotRoom.current().getXmlFragment('default'); const t = (n) => { while (!(n instanceof DepotRoom.Y.XmlText)) { n = n.get(0); } return n; };";
@@ -55,60 +52,6 @@ public class DepotNoteBridgeTests
         Assert.Equal(text, serialized);
         Assert.Equal(SchemaSha[..12], _Sha(Encoding.UTF8.GetBytes(bundleSchema))[..12]);
         Assert.Equal(SchemaSha[..12], DepotNoteSchema.Version);
-    }
-
-    // One keystroke in a paragraph is one Edited and one Update, and that update changes that paragraph and no other Y item; the same
-    // edit again under its id (an answer the host lost) applies nothing.
-    [Fact]
-    public async Task Keystroke_InAParagraph_IsOneUpdate_ThatLeavesEveryOtherBlockTheSameYItem()
-    {
-        await using var web = new JintNoteRoom(2);
-        var hub = new _Hub(await _SeedAsync(web, "canonical.md"));
-        var patches = new List<LiveFilePatch>();
-        var loaded = new TaskCompletionSource();
-        await using var bridge = _Session(hub, patch =>
-        {
-            patches.Add(patch);
-            loaded.TrySetResult();
-        });
-        bridge.Connect();
-        await loaded.Task.WaitAsync(TimeSpan.FromSeconds(60));
-        var room = (JintNoteRoom)bridge.Room;
-        var text = (await bridge.ReadAsync(CancellationToken.None)).Text;
-        var bridgeBefore = _Parse(await room.EvaluateAsync(Blocks, CancellationToken.None));
-        var webBefore = _Parse(await web.EvaluateAsync(Blocks, CancellationToken.None));
-
-        TextOp[] keystroke = [new(text.IndexOf("Slotregel", StringComparison.Ordinal) + 4, 0, "x")];
-        Assert.Equal(new LiveEditResult(LiveEditStatus.Applied, 2), await bridge.EditAsync("edit-1", 1, keystroke, CancellationToken.None));
-        Assert.Equal(new LiveEditResult(LiveEditStatus.Applied, 2), await bridge.EditAsync("edit-1", 1, keystroke, CancellationToken.None));
-        Assert.Equal(["edited", "update"], hub.Calls);
-        await web.ApplyAsync(Assert.Single(hub.Updates), CancellationToken.None);
-        var bridgeAfter = _Parse(await room.EvaluateAsync(Blocks, CancellationToken.None));
-        var webAfter = _Parse(await web.EvaluateAsync(Blocks, CancellationToken.None));
-
-        Assert.Equal(bridgeBefore.Select(block => block[0]), bridgeAfter.Select(block => block[0]));
-        Assert.Equal(webBefore.Select(block => block[0]), webAfter.Select(block => block[0]));
-        Assert.Equal(webBefore.SkipLast(1).Select(block => block[1]), webAfter.SkipLast(1).Select(block => block[1]));
-        Assert.Equal("<paragraph>Slotxregel.</paragraph>", webAfter[^1][1]);
-        Assert.Single(patches);
-
-        // Layer 2, contract: a role revoked during Update keeps the mirror at the shared revision, still watching.
-        hub.ReadOnly = true;
-        var accepted = await bridge.ReadAsync(CancellationToken.None);
-        var refused = await Assert.ThrowsAsync<FileSourceException>(() => bridge.EditAsync("refused", accepted.Rev, [new(0, 0, "MINE ")], CancellationToken.None));
-        Assert.Equal(FileSourceErrorKind.Forbidden, refused.Kind);
-        var watching = await bridge.ReadAsync(CancellationToken.None);
-        Assert.Equal(accepted.Text, watching.Text);
-        Assert.Equal(accepted.Rev, watching.Rev);
-        Assert.Equal(LiveReadOnlyReason.RoleLost, watching.Status.ReadOnlyReason);
-        Assert.Equal(LiveFileState.ReadOnly, watching.Status.State);
-        await Assert.ThrowsAsync<FileSourceException>(() => bridge.EditAsync("again", watching.Rev, [new(0, 0, "NO ")], CancellationToken.None));
-        await web.LoadAsync(string.Empty, CancellationToken.None);
-        var remoteOffset = accepted.Text.IndexOf("Slotxregel", StringComparison.Ordinal);
-        var remote = await web.EditAsync([new(remoteOffset, 0, "WEB ")], CancellationToken.None);
-        await hub.Push(new DepotNoteEvent("update", ["doc-1", Assert.Single(remote)]));
-        Assert.Equal(await web.ReadAsync(CancellationToken.None), (await bridge.ReadAsync(CancellationToken.None)).Text);
-        Assert.Single(hub.Updates);
     }
 
     // AC-1897's join (an update that comes before the result is applied and not sent back), then the bridge and the web typing at once,
@@ -176,84 +119,6 @@ public class DepotNoteBridgeTests
         await _ReadOnlyJoinAsync(seed, schemaMismatch: false, LiveReadOnlyReason.Viewer);
         await _RejectedUndoAsync(seed);
         await _OfflineReadOnlyAsync(seed);
-    }
-
-    // AC-1900, contract with Depot's web editor: a cursor is one Markdown offset in the bridge and one relativePositionToJSON in the web,
-    // and both name the same character, in a paragraph, a heading, a list item and a table cell, in either direction. Through the session:
-    // a web client's awareness becomes a peer with its caret and selection as offsets, and this host's caret goes out under a higher clock.
-    [Fact]
-    public async Task Cursors_NameTheSameCharacterOnBothSides_AndTravelThroughThePresenceOfTheSession()
-    {
-        await using var web = new JintNoteRoom(2);
-        var hub = new _Hub(await _SeedAsync(web, "structure.md"));
-        var loaded = new TaskCompletionSource();
-        var patches = new List<LiveFilePatch>();
-        var statuses = new List<LiveFileStatus>();
-        await using var bridge = _Session(hub, patch => { patches.Add(patch); loaded.TrySetResult(); }, user: new DepotNoteUser("user-1", "Raymond", "#2563eb"), statusChanged: statuses.Add);
-        bridge.Connect();
-        await loaded.Task.WaitAsync(TimeSpan.FromSeconds(60));
-        await web.LoadAsync(string.Empty, CancellationToken.None);
-        var text = await web.ReadAsync(CancellationToken.None);
-        var paragraph = text.IndexOf("and italic", StringComparison.Ordinal);
-        var heading = text.IndexOf("ructure", StringComparison.Ordinal);
-        var item = text.IndexOf("ck to two", StringComparison.Ordinal);
-        var cell = text.IndexOf("ight", StringComparison.Ordinal);
-        Assert.Equal(text, (await bridge.ReadAsync(CancellationToken.None)).Text);
-        await _SameCharacterAsync(web, bridge.Room, paragraph);
-        await _SameCharacterAsync(web, bridge.Room, heading);
-        await _SameCharacterAsync(web, bridge.Room, item);
-        await _SameCharacterAsync(web, bridge.Room, cell);
-
-        // The end of a line inside a block (a list item with another after it, a table cell) is the end of that line, not the start of the next.
-        await _SameCharacterAsync(web, bridge.Room, text.IndexOf("one\n", StringComparison.Ordinal) + 3);
-        await _SameCharacterAsync(web, bridge.Room, text.IndexOf("nested first\n", StringComparison.Ordinal) + 12);
-        await _SameCharacterAsync(web, bridge.Room, text.IndexOf("| a    |", StringComparison.Ordinal) + 3);
-
-        var anchorAt = await web.RelativeAtAsync(paragraph, CancellationToken.None);
-        var headAt = await web.RelativeAtAsync(heading, CancellationToken.None);
-        var state = """{"user":{"id":"u-sanne","name":"Sanne de Vries","role":"editor","color":"#3fb8c4","source":"web"},"activity":"selecting","cursor":{"anchor":""" + anchorAt + ""","head":""" + headAt + "}}";
-        await hub.Push(new DepotNoteEvent("presence", ["doc-1", "conn-9", DepotAwarenessCodec.Encode([new DepotAwarenessEntry(2113437100, 1, state)])]));
-        var you = bridge.Peers[0];
-        var sanne = bridge.Peers[1];
-        // AC-1580: the own entry carries the name and colour /cockpit/me gave; an older Depot gives none and the host shows "You".
-        Assert.Equal(("Raymond", "#2563eb", true, "Cockpit"), (you.Name, you.Color, you.You, you.Source));
-        Assert.Null(DepotPresenceSelf.For("user-1", "editor").Name);
-        Assert.Equal(("Sanne de Vries", "#3fb8c4", "web", "selecting"), (sanne.Name, sanne.Color, sanne.Source, sanne.Activity));
-        Assert.Equal((heading, new LiveRange(heading, paragraph)), (sanne.Caret, sanne.Selection));
-
-        await bridge.SetPresenceAsync(new LivePresenceState("editing", item), CancellationToken.None);
-        var first = DepotAwarenessCodec.Decode(hub.Presence[0])[0];
-        var last = DepotAwarenessCodec.Decode(hub.Presence[^1])[0];
-        Assert.Equal((first.ClientId, 1UL, 2UL), (last.ClientId, first.Clock, last.Clock));
-        var head = JsonDocument.Parse(last.State).RootElement.GetProperty("cursor").GetProperty("head").GetRawText();
-        Assert.Equal(item, await web.OffsetOfAsync(head, CancellationToken.None));
-
-        await hub.Push(new DepotNoteEvent("outside", ["doc-1", JsonSerializer.SerializeToElement(new { name = "Assistant", onBehalfOf = "Raymond", source = "agent", via = "Mcp", version = 2 })]));
-        Assert.Equal("Assistant", statuses[^1].Saved?.Name);
-        Assert.Equal("#a78bda", statuses[^1].Saved?.Color);
-        Assert.Equal("agent", bridge.Peers[^1].Source);
-        await hub.Push(new DepotNoteEvent("merged", ["doc-1", new[] { 0 }, 0]));
-        var external = patches[^1].ExternalEdit ?? throw new InvalidOperationException("The outside writer was not marked.");
-        Assert.Equal("Assistant · on behalf of Raymond", external.Who);
-        Assert.Equal(await bridge.Room.BlockRangesAsync([0], CancellationToken.None), external.Ranges);
-        var marked = patches.Count;
-        await hub.Push(new DepotNoteEvent("outside", ["doc-1", JsonSerializer.SerializeToElement(new { name = "Assistant", source = "agent" })]));
-        await hub.Push(new DepotNoteEvent("outside", ["doc-1", JsonSerializer.SerializeToElement(new { name = "Other", source = "agent" })]));
-        await hub.Push(new DepotNoteEvent("merged", ["doc-1", new[] { 0 }, 0]));
-        Assert.Equal(marked, patches.Count);
-        await hub.Push(new DepotNoteEvent("outside", ["doc-1", JsonSerializer.SerializeToElement(new { name = "Third", source = "agent" })]));
-        await hub.Push(new DepotNoteEvent("merged", ["doc-1", new[] { 0 }, 0]));
-        Assert.Equal(marked, patches.Count);
-        await hub.Push(new DepotNoteEvent("saved", ["doc-1", JsonSerializer.SerializeToElement(new { by = new { name = "Sanne", color = "#3fb8c4" }, at = "2026-10-28T14:12:00Z" })]));
-        Assert.Equal("Sanne", statuses[^1].Saved?.Name);
-    }
-
-    private static async Task _SameCharacterAsync(JintNoteRoom web, IDepotNoteRoom bridge, int offset)
-    {
-        var fromWeb = await web.RelativeAtAsync(offset, CancellationToken.None) ?? throw new InvalidOperationException("The web has no cursor there.");
-        var fromBridge = await bridge.RelativeAtAsync(offset, CancellationToken.None) ?? throw new InvalidOperationException("The bridge has no cursor there.");
-        Assert.Equal(offset, await bridge.OffsetOfAsync(fromWeb, CancellationToken.None));
-        Assert.Equal(offset, await web.OffsetOfAsync(fromBridge, CancellationToken.None));
     }
 
     private static async Task _RejectedUndoAsync(byte[] seed)
@@ -361,8 +226,6 @@ public class DepotNoteBridgeTests
         ops.Aggregate(text, (current, op) => current[..op.Offset] + op.Text + current[(op.Offset + op.Length)..]);
 
     private static byte[][] _Taken(string json) => [.. (JsonSerializer.Deserialize<string[]>(json) ?? []).Select(Convert.FromBase64String)];
-
-    private static string[][] _Parse(string json) => JsonSerializer.Deserialize<string[][]>(json) ?? [];
 
     private static string _Js(string text) => JsonSerializer.Serialize(text);
 

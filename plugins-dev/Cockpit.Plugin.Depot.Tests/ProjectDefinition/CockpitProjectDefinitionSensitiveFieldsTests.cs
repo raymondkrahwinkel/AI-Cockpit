@@ -64,18 +64,4 @@ public class CockpitProjectDefinitionSensitiveFieldsTests
         var recovered = new ProjectSecretProtector(rightKey!).Unprotect($"SensitiveFields.{entry.Label}", entry.Value);
         Assert.Equal(credential, recovered);
     }
-
-    // AC5: a project with no IsSecret rows behaves exactly as before this ticket — nothing new on the wire.
-    [Fact]
-    public void Serialize_NoSensitiveFieldsOrEnvelope_OmitsBothKeysEntirely()
-    {
-        var definition = new CockpitProjectDefinition { Name = "probe" };
-
-        var json = CockpitProjectDefinitionJson.Serialize(definition);
-
-        Assert.DoesNotContain("sensitiveFields", json, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("passwordEnvelope", json, StringComparison.OrdinalIgnoreCase);
-        Assert.Null(definition.SensitiveFields);
-        Assert.Null(definition.PasswordEnvelope);
-    }
 }

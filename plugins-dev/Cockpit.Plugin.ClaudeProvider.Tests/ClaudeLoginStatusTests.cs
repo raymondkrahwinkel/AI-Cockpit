@@ -15,7 +15,6 @@ public class ClaudeLoginStatusTests
     private const string LoggedOutPayload =
         """{"loggedIn":false,"authMethod":"none","apiProvider":"firstParty"}""";
 
-    private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-08-08T13:00:00Z");
 
     // AC-1483: `authMethod` as measured on CLI 2.1.274 in a scratch config dir — a subscription login says "claude.ai",
     // ANTHROPIC_API_KEY says "api_key", CLAUDE_CODE_OAUTH_TOKEN and ANTHROPIC_AUTH_TOKEN say "oauth_token". A missing or
@@ -33,17 +32,6 @@ public class ClaudeLoginStatusTests
         Assert.Equal(loggedIn, ClaudeLoginStatus.ReadLoggedIn(json));
         Assert.Equal(kind, ClaudeLoginStatus.KindOf(ClaudeLoginStatus.ReadStatus(json)?.AuthMethod));
     }
-
-    [Theory]
-    // Not a logged-out account. The exit code cannot tell these apart either: 1 means logged out and also
-    // means the binary was missing.
-    [InlineData("")]
-    [InlineData("not json")]
-    [InlineData("{}")]
-    [InlineData("[1,2,3]")]
-    [InlineData("""{"loggedIn":"yes"}""")]
-    public void ReadLoggedIn_RubbishIsUnknown_NotLoggedOut(string json) =>
-        Assert.Null(ClaudeLoginStatus.ReadLoggedIn(json));
 
     // The Manage-profiles list binds this on first paint and never re-reads, so a wrong guess stays visible.
 

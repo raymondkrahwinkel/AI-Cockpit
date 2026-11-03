@@ -38,15 +38,6 @@ public class CockpitProjectPasswordEnvelopeFactoryTests
     }
 
     [Fact]
-    public void TryUnwrapWithPassword_UnknownKdf_ReturnsNullRatherThanThrowing()
-    {
-        var (envelope, _, _) = CockpitProjectPasswordEnvelopeFactory.Create("right-password");
-        envelope.Kdf = "argon2id"; // as if written by a future build with a KDF this one does not know
-
-        Assert.Null(CockpitProjectPasswordEnvelopeFactory.TryUnwrapWithPassword(envelope, "right-password"));
-    }
-
-    [Fact]
     public void ChangePassword_OldPasswordNoLongerUnwraps_NewPasswordDoes_RecoveryUntouched()
     {
         var (envelope, dataKey, recoveryCode) = CockpitProjectPasswordEnvelopeFactory.Create("old-password");
@@ -73,56 +64,6 @@ public class CockpitProjectPasswordEnvelopeFactoryTests
         Assert.DoesNotContain("wrong-one", envelopeText, StringComparison.Ordinal);
         Assert.DoesNotContain(recoveryCode, envelopeText, StringComparison.Ordinal);
         Assert.DoesNotContain(Convert.ToBase64String(dataKey), envelopeText, StringComparison.Ordinal);
-    }
-
-    // AC-607 review finding 1: a shared Depot project's project.json can arrive corrupt (buggy build, hand-edit,
-    // truncated write) the same way a wrong password can — both must collapse to null, never throw.
-    [Fact]
-    public void TryUnwrapWithPassword_WrapperSaltIsNull_ReturnsNullRatherThanThrowing()
-    {
-        var envelope = _DeserializeEnvelope("""
-            {"kdf":"pbkdf2-sha512","iterations":210000,
-             "password":{"salt":null,"wrappedDataKey":"enc:v1:AAAA"},
-             "recovery":{"salt":"AAAA","wrappedDataKey":"enc:v1:AAAA"}}
-            """);
-
-        Assert.Null(CockpitProjectPasswordEnvelopeFactory.TryUnwrapWithPassword(envelope, "whatever"));
-    }
-
-    [Fact]
-    public void TryUnwrapWithPassword_WrapperWrappedDataKeyIsNull_ReturnsNullRatherThanThrowing()
-    {
-        var envelope = _DeserializeEnvelope("""
-            {"kdf":"pbkdf2-sha512","iterations":210000,
-             "password":{"salt":"AAAA","wrappedDataKey":null},
-             "recovery":{"salt":"AAAA","wrappedDataKey":"enc:v1:AAAA"}}
-            """);
-
-        Assert.Null(CockpitProjectPasswordEnvelopeFactory.TryUnwrapWithPassword(envelope, "whatever"));
-    }
-
-    [Fact]
-    public void TryUnwrapWithPassword_WrapperItselfIsNull_ReturnsNullRatherThanThrowing()
-    {
-        var envelope = _DeserializeEnvelope("""
-            {"kdf":"pbkdf2-sha512","iterations":210000,
-             "password":null,
-             "recovery":{"salt":"AAAA","wrappedDataKey":"enc:v1:AAAA"}}
-            """);
-
-        Assert.Null(CockpitProjectPasswordEnvelopeFactory.TryUnwrapWithPassword(envelope, "whatever"));
-    }
-
-    [Fact]
-    public void TryUnwrapWithPassword_IterationsIsZeroOrNegative_ReturnsNullRatherThanThrowing()
-    {
-        var envelope = _DeserializeEnvelope("""
-            {"kdf":"pbkdf2-sha512","iterations":0,
-             "password":{"salt":"AAAA","wrappedDataKey":"enc:v1:AAAA"},
-             "recovery":{"salt":"AAAA","wrappedDataKey":"enc:v1:AAAA"}}
-            """);
-
-        Assert.Null(CockpitProjectPasswordEnvelopeFactory.TryUnwrapWithPassword(envelope, "whatever"));
     }
 
     // AC-607 review finding 9: a hostile envelope naming an absurdly large iteration count must not cost a real

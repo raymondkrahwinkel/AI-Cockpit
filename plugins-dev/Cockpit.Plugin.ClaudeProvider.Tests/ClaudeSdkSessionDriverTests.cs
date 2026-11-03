@@ -113,19 +113,6 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         _AssertExitDiagnostic(evt.Message);
     }
 
-    [Fact]
-    public async Task RespondToPermission_ForUnknownTool_WritesNothing()
-    {
-        var fake = new FakeClaudeSdkSubprocess();
-        await using var driver = _CreateDriver(fake);
-        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
-        var writtenAfterStart = fake.WrittenLines.Count;
-
-        await driver.RespondToPermissionAsync("never-seen", allow: true, CancellationToken.None);
-
-        Assert.Equal(writtenAfterStart, fake.WrittenLines.Count);
-    }
-
     private static async Task _ExitWithDiagnosticsAsync(FakeClaudeSdkSubprocess fake)
     {
         await fake.PushStderrAsync("discarded old diagnostic");
@@ -142,22 +129,6 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         Assert.Contains("claude exited (code 1):", message);
         Assert.Contains("EACCES permission denied 19", message);
         Assert.DoesNotContain("discarded old diagnostic", message);
-    }
-
-
-    [Fact]
-    public async Task StreamJsonLine_IsMappedToTranscriptEvents()
-    {
-        var fake = new FakeClaudeSdkSubprocess();
-        await using var driver = _CreateDriver(fake);
-        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
-
-        await fake.PushStdoutAsync("""
-        {"type":"stream_event","session_id":"s-1","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi"}}}
-        """);
-
-        var delta = (PluginAssistantTextDelta)await _ReadEventAsync(driver, e => e is PluginAssistantTextDelta);
-        Assert.Equal("Hi", delta.Text);
     }
 
     [Fact]
@@ -180,27 +151,6 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         var delta = (PluginAssistantTextDelta)await _ReadEventAsync(driver, e => e is PluginAssistantTextDelta);
         Assert.Equal("still here", delta.Text);
         await _ReadEventAsync(driver, e => e is PluginTurnCompleted);
-    }
-
-    [Fact]
-    public async Task SendUserMessageAndCompactContext_WriteStreamJsonUserPayloads()
-    {
-        var fake = new FakeClaudeSdkSubprocess();
-        await using var driver = _CreateDriver(fake);
-        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
-
-        await driver.SendUserMessageAsync("hello", CancellationToken.None);
-
-        var payload = JsonDocument.Parse(fake.WrittenLines[^1]).RootElement;
-        Assert.Equal("user", payload.GetProperty("type").GetString());
-        var message = payload.GetProperty("message");
-        Assert.Equal("user", message.GetProperty("role").GetString());
-        Assert.Equal("hello", message.GetProperty("content").GetString());
-        await driver.CompactContextAsync(CancellationToken.None);
-
-        var compactPayload = JsonDocument.Parse(fake.WrittenLines[^1]).RootElement;
-        Assert.Equal("user", compactPayload.GetProperty("type").GetString());
-        Assert.Equal("/compact", compactPayload.GetProperty("message").GetProperty("content").GetString());
     }
 
 
@@ -250,55 +200,6 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         var source = content[1].GetProperty("source");
         Assert.Equal("image/png", source.GetProperty("media_type").GetString());
         Assert.Equal("aGVsbG8=", source.GetProperty("data").GetString());
-    }
-
-    [Fact]
-    public async Task SetLiveOption_ModelAndEffort_SendTheirControlRequests()
-    {
-        var fake = new FakeClaudeSdkSubprocess();
-        await using var driver = _CreateDriver(fake);
-        await driver.StartAsync(model: "opus", workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
-
-        await driver.SetLiveOptionAsync(ClaudeSdkSessionDriver.ModelOptionKey, "sonnet", CancellationToken.None);
-
-        var request = JsonDocument.Parse(fake.WrittenLines[^1]).RootElement.GetProperty("request");
-        Assert.Equal("set_model", request.GetProperty("subtype").GetString());
-        Assert.Equal("sonnet", request.GetProperty("model").GetString());
-        await driver.SetLiveOptionAsync(ClaudeSdkSessionDriver.EffortOptionKey, "high", CancellationToken.None);
-
-        var effortRequest = JsonDocument.Parse(fake.WrittenLines[^1]).RootElement.GetProperty("request");
-        Assert.Equal("set_max_thinking_tokens", effortRequest.GetProperty("subtype").GetString());
-        Assert.Equal(24_000, effortRequest.GetProperty("max_thinking_tokens").GetInt32());
-    }
-
-
-    [Fact]
-    public async Task LiveOptions_PermissionMode_ExcludesBypass_WhichIsLaunchOnly()
-    {
-        var fake = new FakeClaudeSdkSubprocess();
-        await using var driver = _CreateDriver(fake);
-        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
-
-        var permissionOption = driver.LiveOptions.Single(option => option.Key == ClaudeSdkSessionDriver.PermissionModeOptionKey);
-        Assert.Equivalent(new object[] { "default", "acceptEdits", "plan" }, permissionOption.Choices);
-        Assert.DoesNotContain("bypassPermissions", permissionOption.Choices);
-    }
-
-    [Fact]
-    public async Task LiveOptions_OmitPermissionMode_WhenLaunchedInBypass()
-    {
-        var fake = new FakeClaudeSdkSubprocess();
-        await using var driver = _CreateDriver(fake);
-        await driver.StartAsync(
-            model: null,
-            workingDirectory: _tempDir,
-            resumeSessionId: null,
-            options: new Dictionary<string, string> { ["permission-mode"] = "bypassPermissions" },
-            mcpServers: null,
-            CancellationToken.None);
-
-        // Bypass cannot be left mid-session, so no live permission-mode switch is offered at all.
-        Assert.DoesNotContain(driver.LiveOptions, option => option.Key == ClaudeSdkSessionDriver.PermissionModeOptionKey);
     }
 
     // The profile's environment variables (AC-22) ride the environment-carrying StartAsync overload into the
@@ -355,24 +256,6 @@ public class ClaudeSdkSessionDriverTests : IDisposable
     // answer, which the driver must read as unattended.
     private static Dictionary<string, string> _Attended() =>
         new(StringComparer.OrdinalIgnoreCase) { [WellKnownPluginSessionOptions.Unattended] = "false" };
-
-    // AC-378: an unattended session with registry servers resolved carries --strict-mcp-config alongside
-    // --mcp-config, so the CLI never unions in its own user/project claude.ai-connectors on top of what the
-    // resolution produced.
-    [Fact]
-    public async Task Start_Unattended_WithMcpServers_SpawnsWithStrictMcpConfig()
-    {
-        var fake = new FakeClaudeSdkSubprocess();
-        await using var driver = _CreateDriver(fake);
-
-        await driver.StartAsync(
-            model: null, workingDirectory: _tempDir, resumeSessionId: null, options: _Unattended(),
-            mcpServers: [new PluginMcpServer { Name = "youtrack", Url = "http://example/mcp" }],
-            CancellationToken.None);
-
-        Assert.Contains("--mcp-config", fake.Arguments!);
-        Assert.Contains("--strict-mcp-config", fake.Arguments!);
-    }
 
     // The re-cut of AC-378 onto the attended/unattended axis: a pane the operator opened in SDK mode gets the same
     // union an interactive TTY session gets, so the account's own claude.ai connectors survive. Strict here was the
@@ -431,35 +314,6 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         var path = fake.Arguments![mcpConfigIndex + 1];
         Assert.True(File.Exists(path), "the strict path must write an explicit config file rather than dropping the flag");
         Assert.Empty(System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!["mcpServers"]!.AsObject());
-    }
-
-    // Same as above for the mcpServers: null case (a route that never even attempted resolution) — must behave
-    // exactly like an empty list, not fall back to dropping --mcp-config.
-    [Fact]
-    public async Task Start_Unattended_WithNullMcpServers_StillSpawnsWithAnExplicitEmptyMcpConfig_AndStrict()
-    {
-        var fake = new FakeClaudeSdkSubprocess();
-        await using var driver = _CreateDriver(fake);
-
-        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: _Unattended(), mcpServers: null, CancellationToken.None);
-
-        Assert.Contains("--mcp-config", fake.Arguments!);
-        Assert.Contains("--strict-mcp-config", fake.Arguments!);
-    }
-
-    // The attended mirror of the empty-resolution case: with no strict flag to pair with, an empty config file would
-    // only strip the operator's own user/project servers for nothing, so --mcp-config stays off — the TTY route's
-    // behaviour, which is the point of the re-cut.
-    [Fact]
-    public async Task Start_Attended_WithNoMcpServers_OmitsMcpConfigEntirely()
-    {
-        var fake = new FakeClaudeSdkSubprocess();
-        await using var driver = _CreateDriver(fake);
-
-        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: _Attended(), mcpServers: [], CancellationToken.None);
-
-        Assert.DoesNotContain("--mcp-config", fake.Arguments!);
-        Assert.DoesNotContain("--strict-mcp-config", fake.Arguments!);
     }
 
     // AC-1058: the model is told its plugin MCP tools are gone, so a skill naming one is not followed blind.

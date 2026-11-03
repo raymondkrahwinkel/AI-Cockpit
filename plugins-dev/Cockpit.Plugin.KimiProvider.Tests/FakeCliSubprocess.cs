@@ -22,12 +22,6 @@ internal sealed class FakeCliSubprocess : ICliSubprocess
         _stderr = stderrCapacity > 0 ? Channel.CreateBounded<string>(stderrCapacity) : Channel.CreateUnbounded<string>();
     }
 
-    public string? ExecutablePath { get; private set; }
-
-    public IReadOnlyList<string>? Arguments { get; private set; }
-
-    public string? WorkingDirectory { get; private set; }
-
     public IReadOnlyDictionary<string, string?>? EnvironmentVariables { get; private set; }
 
     // P1-13: a plain List<string> here throws an intermittent InvalidOperationException ("Collection was
@@ -47,9 +41,6 @@ internal sealed class FakeCliSubprocess : ICliSubprocess
 
     public void Start(string executablePath, IReadOnlyList<string> arguments, string workingDirectory, IReadOnlyDictionary<string, string?> environmentVariables)
     {
-        ExecutablePath = executablePath;
-        Arguments = arguments;
-        WorkingDirectory = workingDirectory;
         EnvironmentVariables = environmentVariables;
     }
 
@@ -67,16 +58,6 @@ internal sealed class FakeCliSubprocess : ICliSubprocess
 
     public Task PushStdoutAsync(string line) => _stdout.Writer.WriteAsync(line).AsTask();
 
-    public Task PushStderrAsync(string line) => _stderr.Writer.WriteAsync(line).AsTask();
-
-    // Simulates the child process exiting cleanly — both pipes close together, as they would for a real process.
-    public void CompleteStdout(int exitCode = 0)
-    {
-        ExitCode = exitCode;
-        HasExited = true;
-        _stdout.Writer.TryComplete();
-        _stderr.Writer.TryComplete();
-    }
 
     public ValueTask DisposeAsync()
     {

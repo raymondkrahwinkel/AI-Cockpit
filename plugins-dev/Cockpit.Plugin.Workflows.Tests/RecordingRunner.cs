@@ -21,21 +21,3 @@ internal sealed class RecordingRunner(string typeId) : IStepRunner
         return Task.FromResult(new StepOutcome([WorkflowItem.Of("from", context.Node.Name)], $"ran {context.Node.Name}"));
     }
 }
-
-// A runner that fails the way a real one does: with a sentence the operator can act on.
-internal sealed class ThrowingRunner(string typeId) : IStepRunner
-{
-    public string TypeId => typeId;
-
-    public Task<StepOutcome> RunAsync(StepContext context, CancellationToken cancellationToken) =>
-        throw new InvalidOperationException("This step has no message to send.");
-}
-
-// A decision that always takes the branch it was told to.
-internal sealed class BranchingRunner(string typeId, string branch) : IStepRunner
-{
-    public string TypeId => typeId;
-
-    public Task<StepOutcome> RunAsync(StepContext context, CancellationToken cancellationToken) =>
-        Task.FromResult(new StepOutcome(context.Input, branch));
-}

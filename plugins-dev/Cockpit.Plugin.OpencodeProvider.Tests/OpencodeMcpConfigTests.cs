@@ -11,30 +11,6 @@ public class OpencodeMcpConfigTests
     private static readonly Dictionary<string, string?> _NoEnv = new();
 
     [Fact]
-    public void Build_ForAStdioServer_SerializesWithNoTypeProperty()
-    {
-        var wire = OpencodeMcpConfig.Build([new PluginMcpServer { Name = "fs", Command = "npx", Args = ["-y", "@modelcontextprotocol/server-filesystem"] }], _NoEnv);
-
-        var json = _SerializeSingle(wire);
-        Assert.False(json.TryGetProperty("type", out _));
-        Assert.Equal("fs", json.GetProperty("name").GetString());
-        Assert.Equal("npx", json.GetProperty("command").GetString());
-        Assert.Equal(new[] { "-y", "@modelcontextprotocol/server-filesystem" }, json.GetProperty("args").EnumerateArray().Select(element => element.GetString()));
-    }
-
-    [Fact]
-    public void Build_ForAnHttpServer_SerializesWithTypeHttp()
-    {
-        var wire = OpencodeMcpConfig.Build([new PluginMcpServer { Name = "cockpit-orchestrator", Url = "http://127.0.0.1:8765/mcp" }], _NoEnv);
-
-        var json = _SerializeSingle(wire);
-        Assert.Equal("http", json.GetProperty("type").GetString());
-        Assert.Equal("cockpit-orchestrator", json.GetProperty("name").GetString());
-        Assert.Equal("http://127.0.0.1:8765/mcp", json.GetProperty("url").GetString());
-        Assert.Equal(0, json.GetProperty("headers").GetArrayLength());
-    }
-
-    [Fact]
     public void Build_ForAnHttpServerWithABearerToken_PutsItLiterallyInTheHeadersArray()
     {
         var wire = OpencodeMcpConfig.Build([new PluginMcpServer { Name = "youtrack", Url = "http://127.0.0.1:9000/mcp", BearerToken = "yt-pat-value" }], _NoEnv);

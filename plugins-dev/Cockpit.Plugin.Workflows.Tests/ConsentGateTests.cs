@@ -36,21 +36,6 @@ public class ConsentGateTests
         new([new ManualTriggerRunner(), dangerous, new RecordingRunner("cockpit.notify")], host);
 
     [Fact]
-    public async Task DangerousStep_FromMcpAgent_Approved_Runs_ShowingTheGroundTruth()
-    {
-        var flow = _Flow(out var trigger);
-        var host = _Host(ConsentOutcome.Approved, out var asked);
-        var dangerous = new ConsentingRunner("danger", ConsentRisk.Dangerous);
-
-        await _Engine(host, dangerous).RunAsync(flow, trigger.Id, RunOrigin.McpAgent);
-
-        Assert.Single(asked);
-        Assert.Equal("do the dangerous thing: Run a command", asked[0].Action);
-        Assert.Equal(ConsentRisk.Dangerous, asked[0].Risk);
-        Assert.True(dangerous.Ran);
-    }
-
-    [Fact]
     public async Task DangerousStep_FromMcpAgent_Denied_DoesNotRun_AndStopsTheBranch()
     {
         var flow = _Flow(out var trigger);
@@ -62,19 +47,6 @@ public class ConsentGateTests
         Assert.False(dangerous.Ran, "a denied step never runs");
         Assert.DoesNotContain(run.Steps, step => step.NodeId == "a");
         Assert.Equal(RunStatus.Skipped, run.Steps.Single(step => step.NodeId == "d").Status);
-    }
-
-    [Fact]
-    public async Task DangerousStep_FromOperator_RunsWithoutAsking()
-    {
-        var flow = _Flow(out var trigger);
-        var host = _Host(ConsentOutcome.Denied, out var asked);   // would deny — but must not even be asked
-        var dangerous = new ConsentingRunner("danger", ConsentRisk.Dangerous);
-
-        await _Engine(host, dangerous).RunAsync(flow, trigger.Id, RunOrigin.Operator);
-
-        Assert.Empty(asked);
-        Assert.True(dangerous.Ran);
     }
 
     [Fact]

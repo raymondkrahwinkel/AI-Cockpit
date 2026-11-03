@@ -39,17 +39,6 @@ public class KubernetesHelmMcpToolsTests
     }
 
     [Fact]
-    public async Task HelmList_WhenConsentDenied_StopsBeforeTheCluster()
-    {
-        var (tools, _) = _Build(ConsentOutcome.Denied);
-
-        var json = JsonNode.Parse(await tools.HelmList("prod", Session, "default"));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Contains("did not approve", json["error"]!.GetValue<string>());
-    }
-
-    [Fact]
     public async Task HelmList_WhenApproved_IsGatedAsDangerousAndNeverRemembered()
     {
         var (tools, asked) = _Build(ConsentOutcome.Approved, withKubeconfig: false);

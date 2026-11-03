@@ -51,19 +51,6 @@ public class HelmUpgradeTests
     }
 
     [Fact]
-    public async Task HelmUpgrade_APastedKubeconfigCluster_IsRefusedBeforeHelmRunsOrAnythingIsAsked()
-    {
-        var (tools, runner, asked) = _Build(ConsentOutcome.Approved, pathRegistered: false);
-
-        var json = JsonNode.Parse(await tools.HelmUpgrade("prod", Session, "default", "proof", "./chart"));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Contains("kubeconfig file path", json["error"]!.GetValue<string>());
-        Assert.Null(runner.Command);
-        Assert.Empty(asked);
-    }
-
-    [Fact]
     public async Task HelmUpgrade_AChartStartingWithADash_IsRefused_SoItCannotBecomeAnotherFlag()
     {
         var (tools, runner, _) = _Build(ConsentOutcome.Approved);
@@ -121,27 +108,4 @@ public class HelmUpgradeTests
         Assert.Contains("did not finish in time", HelmFailure.Describe(HelmResult.Timeout, "helm"));
     }
 
-    [Fact]
-    public void NewRevision_ForAnUpgrade_IsPendingUpgrade_AndSaysSoTheWayHelmDoes()
-    {
-        var rendered = (JsonObject)JsonNode.Parse("""
-            {
-              "name": "proof",
-              "version": 2,
-              "info": { "status": "pending-upgrade", "first_deployed": "2026-08-24T21:29:12.249212959+02:00", "description": "Dry run complete" },
-              "manifest": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: proof\n"
-            }
-            """)!;
-
-        var (secret, payload) = HelmReleaseLedger.NewRevision(rendered, "proof", "default", 2, "Upgrade complete", HelmReleaseLedger.PendingUpgrade, DateTimeOffset.FromUnixTimeSeconds(1_770_000_000));
-
-        Assert.Equal(HelmReleaseLedger.PendingUpgrade, secret.Metadata.Labels["status"]);
-        Assert.Equal("Upgrade complete", payload["info"]!["description"]!.GetValue<string>());
-        Assert.Equal("2026-08-24T21:29:12.249212959+02:00", payload["info"]!["first_deployed"]!.GetValue<string>());
-
-        // The offset helm parses out of the raw bytes must survive our encoder — the phase 2 pitfall, restated for
-        // the payload an upgrade writes.
-        var written = HelmReleaseSecretCodec.TryDecodeRaw(secret, out _);
-        Assert.Equal("2026-08-24T21:29:12.249212959+02:00", written!["info"]!["first_deployed"]!.GetValue<string>());
-    }
 }

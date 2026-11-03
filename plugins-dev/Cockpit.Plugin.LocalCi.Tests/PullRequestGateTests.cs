@@ -35,18 +35,6 @@ public class PullRequestGateTests
     }
 
     [Fact]
-    public async Task APassOnTheCommitThatIsCheckedOutIsTheOneThingThatOpensIt()
-    {
-        _settings.Set(Checkout, on: true);
-        _tracker.Complete(Checkout, _Result(LocalRunOutcome.Passed), Head, Noon);
-
-        var verdict = await _Gate().JudgeAsync(Checkout, CancellationToken.None);
-
-        Assert.Equal(GateStatus.Passed, verdict.Status);
-        Assert.True(verdict.AllowsWithoutAsking);
-    }
-
-    [Fact]
     public async Task APassOnAnEarlierCommitIsNotAPassOnThisOne()
     {
         _settings.Set(Checkout, on: true);

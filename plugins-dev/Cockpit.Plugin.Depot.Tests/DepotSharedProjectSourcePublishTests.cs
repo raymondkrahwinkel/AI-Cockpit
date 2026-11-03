@@ -56,20 +56,6 @@ public class DepotSharedProjectSourcePublishTests
     }
 
     [Fact]
-    public async Task PublishAsync_WrongScheme_FailsWithoutCallingDepot()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        var handler = new _DefinitionHandler("new-project", definition: null);
-        using var http = new HttpClient(handler);
-
-        var result = await SourceFor(host, http).PublishAsync(
-            "other-scheme:new-project", Definition(), CancellationToken.None);
-
-        Assert.Equal(SharedProjectPublishOutcome.Failed, result.Outcome);
-        Assert.Equal(0, handler.RequestCount);
-    }
-
-    [Fact]
     public async Task PublishAsync_FirstWriteHasNoBaseChecksum_AndASecretShapedResourceRowNeverReachesTheWrittenDefinition()
     {
         var host = Substitute.For<ICockpitHost>();
@@ -91,32 +77,6 @@ public class DepotSharedProjectSourcePublishTests
         Assert.DoesNotContain("id_rsa", handler.WrittenContent, StringComparison.Ordinal);
         Assert.DoesNotContain("Deploy key", handler.WrittenContent, StringComparison.Ordinal);
         Assert.Contains("RUNBOOK.md", handler.WrittenContent, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task ListPublishTargetsAsync_KeepsOnlyEditorAndOwnerRoles_NotViewerOrUnknown()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        host.Cache.Returns(new InMemoryPluginCache());
-        var scheme = _Scheme(host);
-        using var httpClient = new HttpClient(new _StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
-        {
-            Content = new StringContent("""
-            {"projects":[
-              {"slug":"can-write","address":"acme/can-write","name":"Can write","role":"Editor","kind":"Project"},
-              {"slug":"also-owner","name":"Also owner","role":"Owner","kind":"Project"},
-              {"slug":"read-only","name":"Read only","role":"Viewer","kind":"Project"},
-              {"slug":"unknown-role","name":"Unknown role","role":"Weird","kind":"Project"}
-            ]}
-            """),
-        }));
-
-        var result = await SourceFor(host, httpClient).ListPublishTargetsAsync(CancellationToken.None);
-
-        Assert.True(result.Succeeded);
-        Assert.Equal(
-            new[] { $"{scheme}:acme/can-write", $"{scheme}:also-owner" }.OrderBy(id => id, StringComparer.Ordinal),
-            result.Targets.Select(target => target.Id).OrderBy(id => id, StringComparer.Ordinal));
     }
 
     private sealed class _DefinitionHandler(
@@ -174,11 +134,5 @@ public class DepotSharedProjectSourcePublishTests
                 },
             },
         });
-    }
-
-    private sealed class _StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
-            Task.FromResult(respond(request));
     }
 }

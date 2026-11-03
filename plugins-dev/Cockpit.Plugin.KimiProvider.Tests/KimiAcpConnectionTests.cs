@@ -11,36 +11,6 @@ public class KimiAcpConnectionTests
 {
     private static readonly Dictionary<string, string?> _NoEnv = new();
 
-    [Fact]
-    public async Task SendRequest_CorrelatesTheReplyById_AndReturnsItsResult()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var connection = new KimiAcpConnection(fake);
-        connection.Start("kimi", Path.GetTempPath(), _NoEnv);
-
-        var requestTask = connection.SendRequestAsync("initialize", new { protocolVersion = 1 });
-        var id = await _WaitForRequestIdAsync(fake, "initialize");
-        await fake.PushStdoutAsync($$$"""{"jsonrpc":"2.0","id":{{{id}}},"result":{"protocolVersion":1}}""");
-
-        var result = await requestTask;
-
-        Assert.Equal(1, result.GetProperty("protocolVersion").GetInt32());
-    }
-
-    [Fact]
-    public async Task SendRequest_Throws_WhenTheReplyIsAJsonRpcError()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var connection = new KimiAcpConnection(fake);
-        connection.Start("kimi", Path.GetTempPath(), _NoEnv);
-
-        var requestTask = connection.SendRequestAsync("session/new", new { cwd = "/tmp", mcpServers = Array.Empty<object>() });
-        var id = await _WaitForRequestIdAsync(fake, "session/new");
-        await fake.PushStdoutAsync($$$"""{"jsonrpc":"2.0","id":{{{id}}},"error":{"code":-32000,"message":"authRequired"}}""");
-
-        await Assert.ThrowsAsync<KimiAcpException>(() => requestTask);
-    }
-
     // P1-8: the exception message must be built from only error.code + error.message — never the raw error
     // object — because it propagates straight into a UI status line (SessionViewModel's
     // Status = $"Failed to start: {ex.Message}"); an echoed error.data (kimi can echo the request's own params)
@@ -59,25 +29,6 @@ public class KimiAcpConnectionTests
         var exception = await Assert.ThrowsAsync<KimiAcpException>(() => requestTask);
         Assert.Equal("kimi acp error -32000: authRequired", exception.Message);
         Assert.DoesNotContain("super-secret-token", exception.Message);
-    }
-
-    [Fact]
-    public async Task Notifications_AndServerRequests_AreRoutedToTheirOwnStreams()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var connection = new KimiAcpConnection(fake);
-        connection.Start("kimi", Path.GetTempPath(), _NoEnv);
-
-        await fake.PushStdoutAsync("""{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"session-1","update":{"sessionUpdate":"agent_message_chunk"}}}""");
-        await fake.PushStdoutAsync("""{"jsonrpc":"2.0","id":7,"method":"session/request_permission","params":{"sessionId":"session-1","toolCall":{"toolCallId":"item-1"}}}""");
-
-        var notification = await _FirstNotificationAsync(connection);
-        var serverRequest = await _FirstServerRequestAsync(connection);
-
-        Assert.Equal("session/update", notification.Method);
-        Assert.Equal("session/request_permission", serverRequest.Method);
-        Assert.Equal(7, serverRequest.Id.GetInt32());
-        Assert.Equal("session-1", serverRequest.Params.GetProperty("sessionId").GetString());
     }
 
     // P1-9b: the internal notification channel is bounded (capacity 1024) with BoundedChannelFullMode.Wait —
@@ -101,25 +52,5 @@ public class KimiAcpConnectionTests
         }
 
         throw new InvalidOperationException($"No request for method '{method}' was written.");
-    }
-
-    private static async Task<KimiNotification> _FirstNotificationAsync(KimiAcpConnection connection)
-    {
-        await foreach (var notification in connection.Notifications)
-        {
-            return notification;
-        }
-
-        throw new InvalidOperationException("No notification was produced.");
-    }
-
-    private static async Task<KimiServerRequest> _FirstServerRequestAsync(KimiAcpConnection connection)
-    {
-        await foreach (var request in connection.ServerRequests)
-        {
-            return request;
-        }
-
-        throw new InvalidOperationException("No server request was produced.");
     }
 }

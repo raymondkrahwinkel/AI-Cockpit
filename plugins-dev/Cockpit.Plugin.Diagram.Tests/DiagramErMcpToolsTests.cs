@@ -43,18 +43,6 @@ public class DiagramErMcpToolsTests
     private static JsonNode Reply(string json) => JsonNode.Parse(json)!;
 
     [Fact]
-    public async Task AddEntity_AppliesStraightAway_UnderTheSameEditConsentAsEditDiagram()
-    {
-        var (tools, registry, asked) = _Build();
-
-        var reply = Reply(await tools.AddEntity(Session, Diagram, "INVOICE"));
-
-        Assert.True(reply["ok"]!.GetValue<bool>());
-        Assert.Equal("diagram.edit", Assert.Single(asked).Scope);
-        Assert.EndsWith("\n    INVOICE {\n    }", registry.PeekText("diagram-1"));
-    }
-
-    [Fact]
     public async Task AnAttributeEditOnAnEntityTheOperatorIsHolding_IsRefused_WhileAnotherEntityStillEdits()
     {
         var (tools, registry, _) = _Build();

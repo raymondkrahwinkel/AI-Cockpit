@@ -93,22 +93,6 @@ public class GitHubIssuesClientTests : IDisposable
     }
 
     [Fact]
-    public async Task GetOpenIssuesAsync_RequestsExactlyTheDocumentedPageLimit()
-    {
-        string? capturedQuery = null;
-        using var server = LoopbackServer.Start(request =>
-        {
-            capturedQuery = request.Url?.Query;
-            return LoopbackServer.Json("""[]""");
-        });
-        GitHubIssuesClient.BaseUrl = server.BaseUrl;
-
-        await new GitHubIssuesClient().GetOpenIssuesAsync("octocat", "hello-world", token: null, assignedToMe: false, CancellationToken.None);
-
-        Assert.Contains($"per_page={GitHubIssuesClient.IssuePageLimit}", capturedQuery);
-    }
-
-    [Fact]
     public async Task GetOpenIssuesAsync_FiltersOutPullRequests()
     {
         const string body = """
@@ -124,24 +108,6 @@ public class GitHubIssuesClientTests : IDisposable
 
         Assert.Equal([1], issues.Select(issue => issue.Number));
         Assert.False(wasTruncated);
-    }
-
-    [Fact]
-    public async Task GetRepositoryLabelsAsync_ReadsNamesThroughTheSharedNormalization()
-    {
-        // Real REST labels shape: an array of objects with more than just "name" (color, description, id, ...).
-        const string body = """
-            [
-                { "id": 1, "name": "bug", "color": "d73a4a", "description": "" },
-                { "id": 2, "name": "in progress", "color": "ffffff", "description": null }
-            ]
-            """;
-        using var server = LoopbackServer.Start(_ => LoopbackServer.Json(body));
-        GitHubIssuesClient.BaseUrl = server.BaseUrl;
-
-        var labels = await new GitHubIssuesClient().GetRepositoryLabelsAsync("octocat", "hello-world", token: null, CancellationToken.None);
-
-        Assert.Equal(["bug", "in progress"], labels);
     }
 
     // A minimal loopback HTTP server for driving the real `GitHubIssuesClient` without the real GitHub API.

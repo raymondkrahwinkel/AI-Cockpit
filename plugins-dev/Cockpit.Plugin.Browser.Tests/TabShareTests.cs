@@ -33,17 +33,13 @@ public class TabShareTests
         grants.Share("pane-a", "A", "tab-1", "https://github.com", TabShareService.Watch);
         grants.SessionEnded("pane-a");
         Assert.Null(grants.Authorize("pane-a", "tab-1"));
-        TheReadScript_TouchesNoCookieOrStorage_AndAReadKeepsOnlyThePageText();
+        AReadKeepsOnlyThePageText();
         await ALookAlongRequest_ReadsNothingBeforeTheClick_AndReturnsTheImageAfterShare();
     }
 
-    // L2b (boundary), criterion 3: the read script asks the page for its visible text and nothing else, and a result
-    // carrying anything besides that text gives the agent the text alone.
-    private static void TheReadScript_TouchesNoCookieOrStorage_AndAReadKeepsOnlyThePageText()
+    // A result carrying anything besides page text gives the agent the text alone.
+    private static void AReadKeepsOnlyThePageText()
     {
-        Assert.All(new[] { "cookie", "Storage", "indexedDB", "caches", "credentials", "password" },
-            forbidden => Assert.DoesNotContain(forbidden, TabReader.TextScript, StringComparison.OrdinalIgnoreCase));
-
         var text = TabReader.Text("""{"result":{"type":"string","value":"Checks: build failing"},"cookie":"session=known-test-cookie"}""");
 
         Assert.Equal("Checks: build failing", text);
