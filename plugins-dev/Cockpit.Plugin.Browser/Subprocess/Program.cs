@@ -4,15 +4,15 @@ using Xilium.CefGlue;
 namespace Cockpit.Plugin.Browser.Subprocess;
 
 // CEF's renderer, GPU and utility processes. libcef lives in the runtime directory the browser process hands on
-// through the environment, outside the plugin folder. The 8 MiB stack V8 needs comes from a thread, not editbin.
+// through the child command line, outside the plugin folder. The 8 MiB stack V8 needs comes from a thread, not editbin.
 internal static class Program
 {
-    public const string RuntimeDirVariable = "COCKPIT_CEF_RUNTIME_DIR";
+    private const string RuntimeDirArgument = "--cockpit-cef-runtime-dir=";
 
     [STAThread]
     private static int Main(string[] args)
     {
-        var runtimeDir = Environment.GetEnvironmentVariable(RuntimeDirVariable);
+        var runtimeDir = args.FirstOrDefault(argument => argument.StartsWith(RuntimeDirArgument, StringComparison.Ordinal))?[RuntimeDirArgument.Length..];
         if (string.IsNullOrEmpty(runtimeDir))
         {
             return 1;

@@ -278,6 +278,18 @@ Your API keys, MCP bearer tokens and the plugins' tokens live in `cockpit.json`.
 dotnet run --project src/Cockpit.App
 ```
 
+Debug startup and the dev-plugin watcher refresh approved, installed plugins from
+`plugins-dev/<plugin>/bin/Debug/net10.0/`, including subdirectories such as `Subprocess/` and `runtimes/`.
+The same files are copied and hashed, so a changed child executable is refreshed and re-pinned too.
+The host's shared contract assemblies are excluded at the plugin root; a child process keeps its own dependencies.
+
+For a browser check without clicking, use the existing workspace restore: keep a `browser.tab` workspace in
+`workspaces.workspaces` in the isolated state's `cockpit.json` and set `workspaces.activeWorkspaceId` to its id.
+With the Browser plugin already approved and enabled, startup restores that active workspace and starts CEF.
+Its existing plugin data can select a fixed page: `plugins.browser.data.startupMode` is the JSON string `"2"`
+(Start page), and `plugins.browser.data.startPage` is a JSON-encoded URL string. For example, the stored value
+`"\"https://example.com\""` opens that page. Edit an isolated config only while its dev-app is stopped.
+
 Or build and launch the produced executable directly — the app is designed to run **detached**, with no attached
 console: all logging goes to a file logger rather than stdout.
 

@@ -6,7 +6,12 @@ A web browser inside Cockpit on CEF (Chromium Embedded Framework). This README c
 ## The browser
 
 - **One CEF per Cockpit process**, started on the first opening, shut down on the UI thread after every browser
-  closed. Offscreen rendering into `CefBrowserView`, GPU on. Any start failure is shown on the panel with the reason.
+  closed. Offscreen rendering into `CefBrowserView`. Any managed start failure is shown on the panel with the reason.
+- **Hardware acceleration** is off by default on Linux (`disable-gpu` and `disable-gpu-compositing`), on by default
+  on Windows. Change it in the Browser plugin settings and restart Cockpit to apply it. Enabling it omits both
+  switches; disabling it uses software rendering. A native CEF fatal can still terminate Cockpit.
+- **The runtime path** is passed explicitly to every CEF child process. Managed environment changes are not
+  inherited by CEF's native child launcher on Linux; without the path, GPU, renderer and utility processes exit.
 - **The subprocess** is `Subprocess/Cockpit.Plugin.Browser.Subprocess(.exe)` in the plugin folder, with an
   `app.manifest` carrying `supportedOS` (without it, offscreen rendering freezes after the first frames of a heavy
   page). The SDK only embeds that manifest when building on Windows, so a Windows zip has to be built on Windows.

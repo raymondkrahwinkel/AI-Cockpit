@@ -19,16 +19,20 @@ internal static class PluginClosureHash
         _ComputeAsync(folder, _EnumerateInstalledFiles(folder), reuseUnchanged: true, cancellationToken);
 
     // The closure of a source folder as it *would be* installed — mirroring
-    // `PluginSourceInstaller`'s copy selection (root files only, minus the shared abstractions
+    // `PluginSourceInstaller`'s copy selection (minus the root shared abstractions
     // assembly a plugin must not carry) so it can be compared against an installed folder's closure.
-    public static Task<string> OfSourceFolderAsync(string folder, CancellationToken cancellationToken = default) =>
-        _ComputeAsync(folder, _EnumerateSourceFiles(folder), reuseUnchanged: false, cancellationToken);
+    public static Task<string> OfSourceFolderAsync(
+        string folder,
+        CancellationToken cancellationToken = default,
+        SearchOption searchOption = SearchOption.TopDirectoryOnly) =>
+        _ComputeAsync(folder, SourceFiles(folder, searchOption), reuseUnchanged: false, cancellationToken);
 
     // Whether a source file is copied into the install (and so counts towards the closure). Kept here so
     // `PluginSourceInstaller`'s copy and this hash cannot drift apart.
-    public static bool IsCopiedSourceFile(string fileName) =>
-        !fileName.StartsWith('.')
-        && !fileName.StartsWith("Cockpit.Plugins.Abstractions.", StringComparison.OrdinalIgnoreCase);
+    private static bool _IsCopiedSourceFile(string relativePath) =>
+        !Path.GetFileName(relativePath).StartsWith('.')
+        && (Path.GetDirectoryName(relativePath) is { Length: > 0 }
+            || !relativePath.StartsWith("Cockpit.Plugins.Abstractions.", StringComparison.OrdinalIgnoreCase));
 
     // Every file under the folder, at any depth (dependency DLLs, native libs under runtimes/, the manifest),
     // except reserved dot-prefixed markers (.remove) — discovery skips dot-prefixed folders for the same reason,
@@ -37,9 +41,10 @@ internal static class PluginClosureHash
         Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories)
             .Where(path => !Path.GetFileName(path).StartsWith('.'));
 
-    private static IEnumerable<string> _EnumerateSourceFiles(string folder) =>
-        Directory.EnumerateFiles(folder)
-            .Where(path => IsCopiedSourceFile(Path.GetFileName(path)));
+    // Child processes keep their own runtime closure, including any contract assemblies below the plugin root.
+    public static IEnumerable<string> SourceFiles(string folder, SearchOption searchOption) =>
+        Directory.EnumerateFiles(folder, "*", searchOption)
+            .Where(path => _IsCopiedSourceFile(Path.GetRelativePath(folder, path)));
 
     // AC-2018: each rediscovery re-read ~260 MB of plugin bytes (0.4 s warm, 4–9 s once evicted from the file cache).
     // Filled by every full read, read only by `OfInstalledFolderForDisplayAsync`.
