@@ -58,10 +58,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
 
     public void ConfigureServices(IServiceCollection services)
     {
-        // Register this plugin as the source of its own MCP servers (AC-504): the host's McpServerCatalog
-        // asks each IPluginMcpProvider when assembling a session, rather than this plugin pushing servers
-        // into the shared registry. Same instance the host initializes, so GetMcpServers sees Initialize's settings.
-        services.AddSingleton<IPluginMcpProvider>(this);
+
     }
 
     public void Initialize(ICockpitHost host)

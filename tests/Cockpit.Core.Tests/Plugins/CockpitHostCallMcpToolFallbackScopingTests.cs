@@ -86,10 +86,7 @@ public class CockpitHostCallMcpToolFallbackScopingTests
     private static DesktopBackendHost _BuildHost(IMcpToolInvoker invoker, IReadOnlyList<IPluginMcpProvider> providers, Type? ownPluginType)
     {
         var collection = new ServiceCollection().AddSingleton(invoker);
-        foreach (var provider in providers)
-        {
-            collection.AddSingleton(provider);
-        }
+        collection.AddSingleton(new PluginMcpProviderRegistry([.. providers]));
 
         var store = Substitute.For<IMcpServerStore>();
         store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>());
@@ -107,9 +104,7 @@ public class CockpitHostCallMcpToolFallbackScopingTests
             ownPluginType: ownPluginType);
     }
 
-    // Two distinct concrete types standing in for "this plugin's own IPluginMcpProvider" and "some other plugin's" —
-    // the exact shape the real Depot plugin uses (services.AddSingleton<IPluginMcpProvider>(this)), which is why
-    // DesktopBackendHost's own scoping matches by the provider's concrete runtime type.
+    // Distinct provider types let the host scope fallback servers to the calling plugin.
     private sealed class _FakeMcpProviderA(IReadOnlyList<McpServerContribution> servers) : IPluginMcpProvider
     {
         public IReadOnlyList<McpServerContribution> GetMcpServers() => servers;

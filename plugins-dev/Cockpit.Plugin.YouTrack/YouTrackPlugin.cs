@@ -30,11 +30,7 @@ public sealed class YouTrackPlugin : ICockpitPlugin, IPluginMcpProvider
 
     public void ConfigureServices(IServiceCollection services)
     {
-        // Register this plugin as the source of its own MCP servers (AC-11): the host's McpServerCatalog injects
-        // every IPluginMcpProvider and asks each when it assembles a session, so the plugin owns its MCP config
-        // rather than pushing it into the shared registry. Same instance the host initializes, so GetMcpServers
-        // reads the settings this plugin later loads in Initialize.
-        services.AddSingleton<IPluginMcpProvider>(this);
+
     }
 
     public void Initialize(ICockpitHost host)

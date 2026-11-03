@@ -15,7 +15,7 @@ namespace Cockpit.Infrastructure.Plugins;
 public sealed class McpOAuthTokenAdoption(
     IMcpOAuthTokenStore tokenStore,
     IMcpServerStore serverStore,
-    IEnumerable<IPluginMcpProvider> pluginProviders,
+    PluginMcpProviderRegistry pluginProviders,
     ILogger<McpOAuthTokenAdoption> logger) : ISingletonService
 {
     public async Task RunAsync(CancellationToken cancellationToken = default)
@@ -27,7 +27,7 @@ public sealed class McpOAuthTokenAdoption(
             // The registry first and the plugins after, so a registry entry wins a name two of them claim — the same
             // precedence the host's own sign-in resolution applies to that clash.
             var idsByServerName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var server in registry.Concat(pluginProviders.SelectMany(_ContributionsOf).Select(PluginMcpMapping.ToServerConfig)))
+            foreach (var server in registry.Concat(pluginProviders.Providers.SelectMany(_ContributionsOf).Select(PluginMcpMapping.ToServerConfig)))
             {
                 var name = server.Name.Trim();
 
