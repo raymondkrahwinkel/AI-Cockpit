@@ -216,12 +216,17 @@ public sealed class DockerStorageMaintenanceTests
     private sealed class FakeInbox : IAgentMessageInbox
     {
         private readonly IAgentMessageInbox _unused = Substitute.For<IAgentMessageInbox>();
-        public readonly List<(string PaneId, string Kind, string Body)> Deliveries = [];
+        private readonly List<(string PaneId, string Kind, string Body)> _deliveries = [];
         public readonly TaskCompletionSource PauseSent = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        // Snapshot under lock; PauseSent fires only once all 5 pause messages are delivered.
+        public (string PaneId, string Kind, string Body)[] Deliveries { get { lock (_deliveries) { return [.. _deliveries]; } } }
         public AgentMessageDelivery Deliver(string fromPaneId, string toPaneId, string kind, string body, string? senderProfile = null, string? senderProjectId = null, bool profileWide = false, string? subjectPaneId = null)
         {
-            Deliveries.Add((toPaneId, kind, body));
-            if (kind == "storage pause") { PauseSent.TrySetResult(); }
+            lock (_deliveries)
+            {
+                _deliveries.Add((toPaneId, kind, body));
+                if (_deliveries.Count(d => d.Kind == "storage pause") == 5) { PauseSent.TrySetResult(); }
+            }
             return new AgentMessageDelivery(AgentMessageDeliveryOutcome.Delivered, null);
         }
         public AgentInboxBatch? ReadFor(string paneId, string? afterMessageId, Func<Cockpit.Core.Mcp.ActiveController?, bool> isReader, Func<AgentMessage, bool> mayRead, int limit) => throw new NotSupportedException();
