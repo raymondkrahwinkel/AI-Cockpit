@@ -135,9 +135,12 @@ public class CodexAppServerSessionDriverTests
         await _RespondAsync(fake, "thread/start", """{"threadId":"thread-1"}""");
         await startTask;
 
-        await driver.SendUserMessageAsync("go");
+        await driver.SendUserMessageAsync("go", [new PluginImageAttachment("image/png", "aGk=")], CancellationToken.None);
 
         var turn = await _WaitForRequestAsync(fake, "turn/start");
+        var image = turn.GetProperty("params").GetProperty("input")[1];
+        Assert.Equal("image", image.GetProperty("type").GetString());
+        Assert.Equal("data:image/png;base64,aGk=", image.GetProperty("url").GetString());
         Assert.Equal("high", turn.GetProperty("params").GetProperty("effort").GetString());
         Assert.Equal("never", turn.GetProperty("params").GetProperty("approvalPolicy").GetString());
     }

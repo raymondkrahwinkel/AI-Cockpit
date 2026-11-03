@@ -108,7 +108,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         _model = config.Model;
     }
 
-    public PluginSessionCapabilities Capabilities { get; } = new(SupportsTools: true, SupportsPermissions: true)
+    public PluginSessionCapabilities Capabilities { get; } = new(SupportsTools: true, SupportsPermissions: true, SupportsVision: true)
     {
         SupportsEnvVars = true,
         // Codex spawns its app-server in the session's working directory and edits within that cwd, so an isolated
@@ -269,7 +269,10 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         _events.Publish(new PluginSessionInitialized { SessionId = threadId, Tools = [], Cwd = _workingDirectory });
     }
 
-    public Task SendUserMessageAsync(string text, CancellationToken cancellationToken = default)
+    public Task SendUserMessageAsync(string text, CancellationToken cancellationToken = default) =>
+        SendUserMessageAsync(text, images: null, cancellationToken);
+
+    public Task SendUserMessageAsync(string text, IReadOnlyList<PluginImageAttachment>? images, CancellationToken cancellationToken)
     {
         if (_threadId is not { Length: > 0 } threadId)
         {
@@ -279,12 +282,25 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         // Fire-and-forget: turn/start's reply lands only when the turn ends, so awaiting it would block the
         // caller; output streams via the notification pump instead, closed by turn/completed. Live model/
         // effort/approval/sandbox (#45 D4) are captured on the caller's thread so same-thread switches are picked up next turn.
-        var input = new object[] { new { type = "text", text } };
+        var input = new List<object> { new { type = "text", text } };
+        if (images is { Count: > 0 })
+        {
+            // The text-only spark model rejects image input, so say so and let the text through.
+            if (_model?.Contains("spark", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                _events.Publish(new PluginSessionError { SessionId = threadId, Message = $"{_model} cannot read images; sending the text only." });
+            }
+            else
+            {
+                input.AddRange(images.Select(image => new { type = "image", url = $"data:{image.MediaType};base64,{image.Base64Data}" }));
+            }
+        }
+
         _ = _SendTurnAsync(threadId, input, _model, _effort, _approval, _sandbox, cancellationToken);
         return Task.CompletedTask;
     }
 
-    private async Task _SendTurnAsync(string threadId, object[] input, string? model, string? effort, string? approval, string? sandbox, CancellationToken cancellationToken)
+    private async Task _SendTurnAsync(string threadId, IReadOnlyList<object> input, string? model, string? effort, string? approval, string? sandbox, CancellationToken cancellationToken)
     {
         try
         {
