@@ -252,6 +252,7 @@ internal sealed class SessionRuntime : ISessionRuntime
         _driver = _driverFactory.Create(profile);
         var clampedTo = _ClampStart(ref permissionMode, ref launchOptions);
         await _driver.StartAsync(profile, permissionMode, model, enabledMcpServerNames, workingDirectory, resume, launchOptions, projectId, _lifetime.Token);
+        if (profile is not null) LocalModelImageFacts.Invalidate(profile);
         _RefreshVision(model ?? (profile is null ? null : ProfileModel.Of(profile) ?? profile.Defaults?.OptionDefaults?.GetValueOrDefault(WellKnownPluginSessionOptions.Model)));
         if (clampedTo is not null && _policy is not null)
         {
