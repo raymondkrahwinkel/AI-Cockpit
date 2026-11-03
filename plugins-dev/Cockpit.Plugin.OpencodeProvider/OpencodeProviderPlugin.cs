@@ -1,7 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
-using Cockpit.Plugin.Shared;
 
 namespace Cockpit.Plugin.OpencodeProvider;
 

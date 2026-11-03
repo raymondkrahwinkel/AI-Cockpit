@@ -1,6 +1,5 @@
 using System.Text.Json;
 using Cockpit.Plugins.Abstractions.Sessions;
-using Cockpit.Plugin.Shared;
 
 namespace Cockpit.Plugin.OpencodeProvider;
 
