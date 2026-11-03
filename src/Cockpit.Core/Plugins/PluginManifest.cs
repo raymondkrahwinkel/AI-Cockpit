@@ -20,7 +20,8 @@ public sealed record PluginManifest(
     string? UiEntryType = null,
     string? ExpectedMinVersion = null,
     IReadOnlyList<PluginManifestSessionProvider>? SessionProviders = null,
-    IReadOnlyList<string>? Capabilities = null)
+    IReadOnlyList<string>? Capabilities = null,
+    bool RequiresRestart = false)
 {
     // AC-1013: storage keys the host can't guess as credentials (beyond token/apiKey/secret/password/
     // webhook); read before load so matching values decrypt on the way in instead of reaching the plugin
@@ -108,7 +109,8 @@ public sealed record PluginManifest(
                 uiEntryType,
                 GetOptionalString(root, "expectedMinVersion"),
                 GetSessionProviders(root),
-                GetOptionalStrings(root, "capabilities"));
+                GetOptionalStrings(root, "capabilities"),
+                root.TryGetProperty("requiresRestart", out var restart) && restart.ValueKind == JsonValueKind.True);
             return true;
         }
     }

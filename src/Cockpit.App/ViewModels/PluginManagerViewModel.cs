@@ -367,9 +367,15 @@ public partial class PluginManagerViewModel : ViewModelBase
             return;
         }
 
-        await _administration.SetEnabledAsync(row.FolderId, enabled: true, row.Discovered.Sha256);
+        var state = await _administration.SetEnabledAsync(row.FolderId, enabled: true, row.Discovered.Sha256);
         await LoadAsync();
-        StatusMessage = $"'{row.DisplayName}' enabled{_On}. {_Restart} to load it.";
+        if (state is { IsLive: true })
+        {
+            StatusMessage = $"'{row.DisplayName}' is active{_On}. Running sessions get its new MCP tools when they next start.";
+            return;
+        }
+
+        StatusMessage = $"'{row.DisplayName}' enabled{_On}. Restart needed: {(state?.RestartReason ?? "the plugin cannot be activated while running").TrimEnd('.')}. {_Restart} to load it.";
         NeedsRestart = true;
     }
 

@@ -51,6 +51,7 @@ built from the .NET "app with plugins" pattern:
   `IServiceCollection`, etc. a **single type identity** across the plugin/host boundary. If a plugin shipped
   its own copy of one of these assemblies, the types it implements would be a *different* `ICockpitPlugin`
   from the host's point of view, and the host would silently fail to find a plugin in it.
+- Enabling a plugin activates it **without a restart** (host 0.159.0+) unless it sets `requiresRestart` or its `ConfigureServices` registers services; sessions that are already running get its new MCP tools at their next start.
 - Loading is **non-collectible**: disabling a plugin removes its UI and calls `Dispose()`, but the assembly
   itself is only actually freed when the process restarts (a loaded assembly cannot be truly unloaded from a
   non-collectible context). The plugin manager says as much when you disable one.
@@ -1072,6 +1073,7 @@ version-mismatched manifest is rejected with a message rather than crashing mid-
 | `name` | yes | Display name in the Plugins manager. Non-empty string. |
 | `version` | yes | Your plugin's version. Non-empty string (no particular format enforced). |
 | `entryAssembly` | yes, unless `uiAssembly` is set | The DLL carrying your `ICockpitPlugin`, relative to the plugin folder. The installer refuses the zip if this file is missing. Leave it out for a plugin that is only a UI part (host 0.39.0+). |
+| `requiresRestart` | no | `true` when the plugin cannot start while the cockpit runs (a process-wide native runtime, say). Enabling it then shows "Restart needed" instead of activating it live. Default `false`, host 0.159.0+. A plugin whose `ConfigureServices` registers services needs a restart too, flag or not. |
 | `uiAssembly` | no | The DLL carrying your `ICockpitPluginUi`, relative to the plugin folder — see [the UI part](API-REFERENCE.md#the-ui-part). Checked like `entryAssembly`. A manifest with neither is refused. Host 0.39.0+. |
 | `uiEntryType` | no | Fully-qualified UI entry type; omit to let the host find the single `ICockpitPluginUi` in the UI assembly. |
 | `abstractionsVersion` | yes | The SDK **major** you built against (an integer) — must equal the host's (`AbstractionsContract.Version`), or the host refuses to load the plugin with a clear message. |
@@ -1651,7 +1653,8 @@ youtrack/youtrack-1.1.0.zip
 youtrack/youtrack-1.2.0.zip
 ```
 
-Note that the catalogue is advertising only: the zip's own `plugin.json` remains the source of truth at
+Note that the catalogue is advertising only (so `requiresRestart` has no index field: it is read from `plugin.json` at
+enable time): the zip's own `plugin.json` remains the source of truth at
 install time, and consent + hash pinning still apply exactly as for a manual zip install. The cockpit's
 plugin-store dialog (categories sidebar, cards, detail panel, search/sort), the pre-seeded default store, and
 the periodic update check all read this same file — see the [README](https://github.com/raymondkrahwinkel/AI-Cockpit/blob/main/README.md#plugins--plugin-store)

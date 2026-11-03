@@ -36,6 +36,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- Enabling a plugin in Options → Plugins, or on a server, now activates it at once. It says "Restart needed" with the reason when the plugin asks for it (`requiresRestart` in `plugin.json`) or cannot start live. Running sessions get new MCP tools at their next start.
 - Live plugin activation prepares encrypted settings, runs startup tasks and makes contributed workflow steps available without a restart.
 - Backend support for activating individual plugins while running, with a restart reason when their services need a new host container.
 - Plugin MCP providers can join the running catalog without rebuilding the host container.

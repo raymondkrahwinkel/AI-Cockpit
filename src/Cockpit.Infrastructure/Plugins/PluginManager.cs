@@ -334,6 +334,11 @@ public sealed class PluginManager(
                 return new(PluginActivationStatus.NeedsRestart, reason);
             }
 
+            if (discovered.Manifest.RequiresRestart)
+            {
+                return new(PluginActivationStatus.NeedsRestart, "The plugin asks for a restart to activate.");
+            }
+
             if (_activating.Contains(discovered.FolderId))
             {
                 return new(PluginActivationStatus.Busy, "The plugin is being activated.");

@@ -39,12 +39,13 @@ internal sealed class RemotePluginAdministration(BackendApiClient client, ILogge
     public async Task<PluginProvisionResult> InstallFromStoreAsync(PluginProvisionRequest request, CancellationToken cancellationToken = default)
     {
         var response = await client.SendAsync<RemotePluginInstall>(HttpMethod.Post, "api/v1/plugins", new { storeId = request.Store.Location, pluginId = request.Id, version = request.Version.Version }, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false);
-        return new PluginProvisionResult(response.Outcome, response.Id, response.Name, response.Error, null, response.FolderId, response.Sha256);
+        return new PluginProvisionResult(response.Outcome, response.Id, response.Name, response.Error, null, response.FolderId, response.Sha256, Live: response.RestartReason is { } reason ? PluginLiveState.Restart(reason) : null);
     }
 
-    public async Task SetEnabledAsync(string folderId, bool enabled, string pinnedSha256, CancellationToken cancellationToken = default)
+    public async Task<PluginLiveState> SetEnabledAsync(string folderId, bool enabled, string pinnedSha256, CancellationToken cancellationToken = default)
     {
-        await client.SendAsync<JsonObject>(HttpMethod.Put, $"api/v1/plugins/{Uri.EscapeDataString(folderId)}/enabled", new { enabled, sha256 = pinnedSha256 }, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false);
+        var response = await client.SendAsync<RemotePluginEnabled>(HttpMethod.Put, $"api/v1/plugins/{Uri.EscapeDataString(folderId)}/enabled", new { enabled, sha256 = pinnedSha256 }, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false);
+        return response.Live ? PluginLiveState.Active : PluginLiveState.Restart(response.RestartReason ?? "The server applies this when it restarts.");
     }
 
     public async Task RemoveAsync(string folderId, CancellationToken cancellationToken = default)
@@ -290,7 +291,9 @@ internal sealed class RemotePluginAdministration(BackendApiClient client, ILogge
         await client.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/server/restart", null, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false);
     }
 
-    private sealed record RemotePluginInstall(PluginProvisionOutcome Outcome, string Id, string Name, string Version, string? Error, string? FolderId, string? Sha256);
+    private sealed record RemotePluginInstall(PluginProvisionOutcome Outcome, string Id, string Name, string Version, string? Error, string? FolderId, string? Sha256, string? RestartReason = null);
+
+    private sealed record RemotePluginEnabled(bool Live, string? RestartReason);
 
     // AC-1525: the server's decision and its hash of the bytes, so enabling walks the same consent as a local plugin. The
     // folder's path stays on the server.

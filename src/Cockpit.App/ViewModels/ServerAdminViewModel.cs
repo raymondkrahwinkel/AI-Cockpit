@@ -368,10 +368,10 @@ public sealed partial class ServerAdminViewModel : ObservableObject
             return;
         }
 
-        await _plugins.SetEnabledAsync(row.FolderId, !row.Enabled, row.Sha256);
+        var state = await _plugins.SetEnabledAsync(row.FolderId, !row.Enabled, row.Sha256);
         row.Enabled = !row.Enabled;
         row.Refresh();
-        _ChangedPlugins();
+        _ChangedPlugins(state);
     });
 
     // AC-1525: the server stops as on a SIGTERM and its supervisor starts it again; its running sessions stop with it,
@@ -574,10 +574,18 @@ public sealed partial class ServerAdminViewModel : ObservableObject
         }
     }
 
-    private void _ChangedPlugins()
+    private void _ChangedPlugins(PluginLiveState? state = null)
     {
+        if (state is { IsLive: true })
+        {
+            Status = "Active on the server. Running sessions get its new MCP tools when they next start.";
+            return;
+        }
+
         NeedsRestart = _plugins is IServerRestart;
-        Status = "This change takes effect after the server restarts.";
+        Status = state?.RestartReason is { } reason
+            ? $"Restart needed: {reason.TrimEnd('.')}."
+            : "This change takes effect after the server restarts.";
     }
 
     // False when the operator kept the sessions running.

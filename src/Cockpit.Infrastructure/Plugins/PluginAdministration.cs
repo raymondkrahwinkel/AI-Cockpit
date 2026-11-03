@@ -12,7 +12,8 @@ internal sealed class PluginAdministration(
     IPluginInstaller installer,
     IPluginProvisioningService provisioning,
     IPluginStoreClient storeClient,
-    PluginDiagnostics? diagnostics = null) : IPluginAdministration
+    PluginDiagnostics? diagnostics = null,
+    PluginManager? manager = null) : IPluginAdministration
 {
     public async Task<IReadOnlyList<InstalledPlugin>> GetInstalledAsync(CancellationToken cancellationToken = default)
     {
@@ -45,13 +46,47 @@ internal sealed class PluginAdministration(
         if (result.Outcome == PluginProvisionOutcome.Staged)
         {
             await _RepinAsync(result.FolderId, result.Sha256, cancellationToken).ConfigureAwait(false);
+            return result with { Live = PluginLiveState.Restart("An update is applied when the host restarts.") };
         }
 
         return result;
     }
 
-    public Task SetEnabledAsync(string folderId, bool enabled, string pinnedSha256, CancellationToken cancellationToken = default) =>
-        registrations.SaveAsync(folderId, new PluginRegistration(Enabled: enabled, PinnedSha256: pinnedSha256), cancellationToken);
+    public async Task<PluginLiveState> SetEnabledAsync(string folderId, bool enabled, string pinnedSha256, CancellationToken cancellationToken = default)
+    {
+        await registrations.SaveAsync(folderId, new PluginRegistration(Enabled: enabled, PinnedSha256: pinnedSha256), cancellationToken).ConfigureAwait(false);
+        return enabled
+            ? await _ActivateAsync(folderId, cancellationToken).ConfigureAwait(false)
+            : PluginLiveState.Restart("Disabling takes effect when the host restarts.");
+    }
+
+    // Any failure falls back to a restart, which loads the plugin the ordinary way.
+    private async Task<PluginLiveState> _ActivateAsync(string folderId, CancellationToken cancellationToken)
+    {
+        if (manager is null)
+        {
+            return PluginLiveState.Restart("This host cannot activate a plugin while it runs.");
+        }
+
+        try
+        {
+            var discovered = (await bootstrap.DiscoverForDisplayAsync(AbstractionsContract.Version, cancellationToken).ConfigureAwait(false))
+                .FirstOrDefault(plugin => plugin.FolderId == folderId);
+            if (discovered is null)
+            {
+                return PluginLiveState.Restart("The plugin is no longer on disk.");
+            }
+
+            var result = await Task.Run(() => manager.ActivateOne(discovered), cancellationToken).ConfigureAwait(false);
+            return result.Status is PluginActivationStatus.Activated or PluginActivationStatus.AlreadyActive
+                ? PluginLiveState.Active
+                : PluginLiveState.Restart(result.Reason ?? "The plugin could not be activated.");
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return PluginLiveState.Restart(exception.Message);
+        }
+    }
 
     public async Task RemoveAsync(string folderId, CancellationToken cancellationToken = default)
     {

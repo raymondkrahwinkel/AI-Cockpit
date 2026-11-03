@@ -319,7 +319,7 @@ internal static class ServerGroupScene
 
         public Task<Cockpit.Core.Plugins.PluginProvisionResult> InstallFromStoreAsync(Cockpit.Core.Plugins.PluginProvisionRequest request, CancellationToken cancellationToken = default) => Task.FromResult(new Cockpit.Core.Plugins.PluginProvisionResult(Cockpit.Core.Plugins.PluginProvisionOutcome.Failed, request.Id, request.Name, null, null, null, null));
 
-        public Task SetEnabledAsync(string folderId, bool enabled, string pinnedSha256, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task<Cockpit.Core.Plugins.PluginLiveState> SetEnabledAsync(string folderId, bool enabled, string pinnedSha256, CancellationToken cancellationToken = default) => Task.FromResult(Cockpit.Core.Plugins.PluginLiveState.Active);
 
         public Task RemoveAsync(string folderId, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
