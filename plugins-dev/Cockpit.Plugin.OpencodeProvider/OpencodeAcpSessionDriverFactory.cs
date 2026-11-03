@@ -5,7 +5,7 @@ namespace Cockpit.Plugin.OpencodeProvider;
 
 // AC-783: deserializes the config JSON, resolves the command to a spawnable path, and builds a driver
 // backed by the real ProcessCliSubprocess — mirrors KimiAcpSessionDriverFactory.
-internal sealed class OpencodeAcpSessionDriverFactory(Func<string, string?>? managedResolver = null) : IPluginSessionDriverFactory
+internal sealed class OpencodeAcpSessionDriverFactory(Func<string, string?>? managedResolver = null, AcpImageFacts? imageFacts = null) : IPluginSessionDriverFactory
 {
     public IPluginSessionDriver Create(string configJson)
     {
@@ -14,6 +14,6 @@ internal sealed class OpencodeAcpSessionDriverFactory(Func<string, string?>? man
 
         // A cockpit-managed install, if present, is preferred over PATH.
         var executablePath = OpencodeExecutableLocator.Resolve(config.Command, managedResolver);
-        return new OpencodeAcpSessionDriver(() => new ProcessCliSubprocess(), config, executablePath);
+        return new OpencodeAcpSessionDriver(() => new ProcessCliSubprocess(), config, executablePath, capabilities => imageFacts?.Record(configJson, capabilities));
     }
 }
