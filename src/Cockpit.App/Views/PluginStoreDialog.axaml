@@ -139,7 +139,7 @@
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <Button Content="Install from zip…" Command="{Binding InstallFromZipCommand}"/>
                         </StackPanel>
-                        <TextBlock Text="Install a plugin from a .zip, or configure, enable, disable or remove an installed one. Enabling, disabling or removing takes effect after you restart the cockpit."
+                        <TextBlock Text="Install a plugin from a .zip, or configure, enable, disable or remove an installed one. Enabling takes effect at once unless the plugin asks for a restart; disabling and removing after you restart the cockpit."
                                    Foreground="{DynamicResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                         <TextBlock Text="No plugins installed yet."
                                    IsVisible="{Binding !HasPlugins}"

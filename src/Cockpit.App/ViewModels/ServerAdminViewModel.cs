@@ -584,7 +584,7 @@ public sealed partial class ServerAdminViewModel : ObservableObject
 
         NeedsRestart = _plugins is IServerRestart;
         Status = state?.RestartReason is { } reason
-            ? $"Restart needed: {reason}"
+            ? $"Restart needed: {reason.TrimEnd('.')}."
             : "This change takes effect after the server restarts.";
     }
 

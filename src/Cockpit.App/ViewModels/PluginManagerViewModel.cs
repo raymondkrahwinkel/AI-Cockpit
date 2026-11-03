@@ -375,7 +375,7 @@ public partial class PluginManagerViewModel : ViewModelBase
             return;
         }
 
-        StatusMessage = $"'{row.DisplayName}' enabled{_On}. Restart needed: {state?.RestartReason ?? "the plugin cannot be activated while running"}. {_Restart} to load it.";
+        StatusMessage = $"'{row.DisplayName}' enabled{_On}. Restart needed: {(state?.RestartReason ?? "the plugin cannot be activated while running").TrimEnd('.')}. {_Restart} to load it.";
         NeedsRestart = true;
     }
 
