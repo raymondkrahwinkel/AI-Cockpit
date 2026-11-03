@@ -2885,6 +2885,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // AC-1437: the host's fold, drawn. Status last, as it always came after what it weighs.
     private void _OnLiveStateChanged(SessionLiveState state)
     {
+        if (state.Capabilities is { } capabilities)
+        {
+            Capabilities = capabilities;
+            OnPropertyChanged(nameof(CanPasteImages));
+        }
         UpdateChildAgents(state.Children);
         _cliSessionId = state.CliSessionId;
         if (state.Connection is { } connection && !ReferenceEquals(connection, _shownConnection))

@@ -208,6 +208,12 @@
                         </DockPanel>
                     </StackPanel>
 
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Supports images" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        <ComboBox ItemsSource="{Binding ImageInputModes}" SelectedItem="{Binding ImageInputMode}" HorizontalAlignment="Stretch"/>
+                        <TextBlock Text="{Binding ImageInputStatus}" FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                    </StackPanel>
+
                     <!-- Local (Ollama / LM Studio) provider fields. -->
                     <StackPanel Spacing="11" IsVisible="{Binding IsLocalProvider}">
                         <TextBlock Text="LOCAL PROVIDER (OLLAMA / LM STUDIO)" FontSize="11" Margin="0,4,0,0"

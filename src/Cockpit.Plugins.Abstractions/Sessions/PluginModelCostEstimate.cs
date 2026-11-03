@@ -13,6 +13,12 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// </param>
 public sealed record PluginModelCostEstimate(string Model)
 {
+    /// <summary>The service's image-input fact; null means unknown.</summary>
+    public bool? SupportsImageInput { get; init; }
+
+    /// <summary>Origin and lifetime of the image-input fact, independently of pricing.</summary>
+    public PluginFactSource? ImageInputSource { get; init; }
+
     /// <summary>
     /// Estimated price per million input tokens in USD, or <see langword="null"/> when the provider offers no figure
     /// — most cannot. Null means "unknown", never "free": a provider that genuinely runs free says so with 0.
