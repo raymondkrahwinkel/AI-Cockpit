@@ -11,7 +11,7 @@ public sealed partial class ServerStorageViewModel(IServerStorageSettings storag
     private bool _applying;
 
     [ObservableProperty]
-    private bool _automaticDockerCleanup = true;
+    private bool _automaticDockerCleanup = false;
 
     [ObservableProperty]
     private string _status = "";

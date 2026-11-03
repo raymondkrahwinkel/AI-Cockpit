@@ -2181,7 +2181,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // AC-2035: whether Docker's build cache and old images are pruned by the cockpit itself. Read afresh by the storage
     // maintenance on every tick, so a saved change applies without a restart.
     [ObservableProperty]
-    private bool _automaticDockerCleanup = true;
+    private bool _automaticDockerCleanup = false;
 
     [ObservableProperty]
     private string _sessionBehaviorSettingsStatus = string.Empty;

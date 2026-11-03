@@ -24,5 +24,5 @@ public sealed record SessionBehaviorSettings
 
     // AC-2035: whether the cockpit prunes Docker's build cache and old images by itself. Off keeps the disk monitoring
     // and warns when space runs short instead; manual clean-up and compaction stay available. Per machine, not carried.
-    public bool AutomaticDockerCleanup { get; init; } = true;
+    public bool AutomaticDockerCleanup { get; init; } = false;
 }
