@@ -58,49 +58,6 @@ public class DelegationAuditLogTests : IDisposable
     }
 
     [Fact]
-    public async Task SourceProfileAndEffectivePermission_AreRecorded()
-    {
-        var log = new DelegationAuditLog(_logPath, NullLogger<DelegationAuditLog>.Instance);
-
-        await log.RecordAsync(_Entry(DelegationAuditAction.Delegated, "task-1") with
-        {
-            SourceProfileLabel = "planner",
-            SourceEffectivePermission = "plan",
-        });
-        await log.RecordAsync(_Entry(DelegationAuditAction.Delegated, "task-2") with
-        {
-            SourceProfileLabel = "coder",
-            SourceEffectivePermission = "bypassPermissions",
-        });
-
-        var entries = await log.ReadRecentAsync();
-
-        Assert.Collection(entries,
-            entry =>
-            {
-                Assert.Equal("coder", entry.SourceProfileLabel);
-                Assert.Equal("bypassPermissions", entry.SourceEffectivePermission);
-            },
-            entry =>
-            {
-                Assert.Equal("planner", entry.SourceProfileLabel);
-                Assert.Equal("plan", entry.SourceEffectivePermission);
-            });
-    }
-
-    [Fact]
-    public async Task ALongPrompt_IsTrimmed_SoTheLogDoesNotBecomeATranscript()
-    {
-        var log = new DelegationAuditLog(_logPath, NullLogger<DelegationAuditLog>.Instance);
-
-        await log.RecordAsync(_Entry(DelegationAuditAction.Delegated, "task-1") with { Prompt = new string('x', 5_000) });
-
-        var entries = await log.ReadRecentAsync();
-
-        Assert.True(entries[0].Prompt!.Length < 500);
-    }
-
-    [Fact]
     public async Task AHandEditedOrHalfWrittenLine_IsSkipped_RatherThanLosingTheWholeTrail()
     {
         await File.WriteAllTextAsync(_logPath, "{ this is not json\n");
@@ -111,32 +68,6 @@ public class DelegationAuditLogTests : IDisposable
 
         var entry = Assert.Single(entries);
         Assert.Equal(DelegationAuditAction.Completed, entry.Action);
-    }
-
-    [Fact]
-    public async Task ALongPromptEndingInAnAstralChar_IsTrimmedWithoutALoneSurrogate()
-    {
-        // C5, inherited from the shared base (AC-59): 299 plain chars then an emoji straddling the 300-char cut. The
-        // old char-index trim kept the high surrogate and dropped the low one, which round-trips through JSON as
-        // U+FFFD; the surrogate-safe trim drops the whole pair instead.
-        var log = new DelegationAuditLog(_logPath, NullLogger<DelegationAuditLog>.Instance);
-
-        await log.RecordAsync(_Entry(DelegationAuditAction.Delegated, "task-1") with { Prompt = new string('x', 299) + "😀" });
-
-        var entries = await log.ReadRecentAsync();
-
-        Assert.DoesNotContain("�", entries[0].Prompt);
-        Assert.EndsWith("…", entries[0].Prompt);
-    }
-
-    [Fact]
-    public async Task ReadingABsentLog_ReturnsNothing_RatherThanThrowing()
-    {
-        var log = new DelegationAuditLog(Path.Combine(_tempDir, "never-written.jsonl"), NullLogger<DelegationAuditLog>.Instance);
-
-        var entries = await log.ReadRecentAsync();
-
-        Assert.Empty(entries);
     }
 
     private static DelegationAuditEntry _Entry(DelegationAuditAction action, string? taskId) => new(

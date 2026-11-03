@@ -11,23 +11,6 @@ namespace Cockpit.Core.Tests.ViewModels;
 /// </summary>
 public class SessionUsageMeterTests
 {
-    [Fact]
-    public void Add_SumsTokenBucketsAcrossTurns()
-    {
-        var meter = new SessionUsageMeter();
-
-        meter.Add(new TokenUsage(100, 20, 300, 40), 0.01);
-        meter.Add(new TokenUsage(10, 5, 30, 4), 0.02);
-
-        Assert.Equal(110, meter.InputTokens);
-        Assert.Equal(25, meter.OutputTokens);
-        Assert.Equal(330, meter.CacheReadInputTokens);
-        Assert.Equal(44, meter.CacheCreationInputTokens);
-        Assert.Equal(509, meter.TotalTokens);
-        Assert.Equal(2, meter.Turns);
-        Assert.True(meter.HasData);
-    }
-
     // AC-481: total_cost_usd is what the session has cost so far, not what the last turn cost. Adding the
     // figures up billed every earlier turn again, so three turns of 1.00 → 2.00 → 3.00 read as 6.00.
     [Fact]

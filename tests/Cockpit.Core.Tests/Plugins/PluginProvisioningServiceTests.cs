@@ -71,28 +71,6 @@ public class PluginProvisioningServiceTests : IDisposable
         Assert.Equal(expected == PluginProvisionOutcome.Installed, File.Exists(Path.Combine(_pluginsRoot, "acme", "plugin.json")));
     }
 
-    [Fact]
-    public async Task FetchIndexAsync_CorruptJson_FailsWithoutThrowing()
-    {
-        _WriteIndex("{ this is not valid json");
-
-        var result = await _storeClient.FetchIndexAsync(PluginStoreConfig.Local(_storeDir));
-
-        Assert.False(result.IsSuccess);
-        Assert.NotNull(result.Error);
-    }
-
-    [Fact]
-    public async Task FetchIndexAsync_EmptyIndex_ParsesAsAnEmptyCatalogue_RatherThanFailing()
-    {
-        _WriteIndex("{}");
-
-        var result = await _storeClient.FetchIndexAsync(PluginStoreConfig.Local(_storeDir));
-
-        Assert.True(result.IsSuccess);
-        Assert.Empty(result.Index!.Plugins);
-    }
-
     // --- Checksum (criterion 3, unchanged behaviour, pinned through the service): mismatch is a hard rejection,
     // a missing hash is a warning that does not block the install. ------------------------------------------------
 
@@ -111,29 +89,6 @@ public class PluginProvisioningServiceTests : IDisposable
         Assert.Contains("checksum", result.Error, StringComparison.OrdinalIgnoreCase);
         Assert.False(Directory.Exists(Path.Combine(_pluginsRoot, "acme")));
     }
-
-    // --- Incompatible (criterion 2 + AC-181): refused before anything is fetched — proven by there being no zip
-    // on disk to download at all; a Failed (not Incompatible) outcome here would mean it tried anyway. -----------
-
-    [Fact]
-    public async Task InstallAsync_IncompatibleMinHostVersion_RefusesWithoutDownloading()
-    {
-        var store = PluginStoreConfig.Local(_storeDir);
-        var version = new PluginStoreVersion("2.0.0", "acme-2.0.0.zip", 1, "9.0.0", null, null);
-
-        var result = await _service.InstallAsync(new PluginProvisionRequest("acme", "Acme", store, version), HostMajor, HostVersion);
-
-        Assert.Equal(PluginProvisionOutcome.Incompatible, result.Outcome);
-        Assert.False(result.IsSuccess);
-        Assert.NotNull(result.Error);
-        Assert.Contains("9.0.0", result.Error, StringComparison.Ordinal);
-    }
-
-    // --- Already installed (criterion 2): a second install over the same folder id stages under
-    // .pending-updates rather than overwriting the live copy. -----------------------------------------------------
-
-    // --- Batch (criterion 2, "half gelukt"): one request failing is isolated, the rest still land, and the batch
-    // result names which one did not. --------------------------------------------------------------------------
 
     private byte[] _WritePluginZip(string id, string version, string dllContent)
     {

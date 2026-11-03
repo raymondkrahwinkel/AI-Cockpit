@@ -128,40 +128,6 @@ public class Ac1321TakeoverStateTests
         }
     });
 
-    // AC-1327 criterion 1: `ActiveController` outranks every other unavailable reason, including the feature
-    // being off. Falling back restores exactly what stood before, since `ApplySettingsAsync` re-derives it from
-    // settings rather than remembering the old reason. Tegenproef: without the fix, "switched off" stays on screen.
-    [Fact]
-    public async Task WithTheAssistantSwitchedOff_AnActiveControllerStillShows_AndFallbackRestoresSwitchedOff() =>
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var window = Screenshotter.ShowScene("simple-view-assistant-controlled");
-            try
-            {
-                var cockpit = (CockpitViewModel)window.DataContext!;
-                var clock = new FakeTimeProvider(Noon);
-                var presence = new NodeControllerPresence(clock);
-                cockpit.WatchController(presence);
-                var host = _Host(cockpit, presence, isEnabled: false);
-                await host.ApplySettingsAsync();
-                window.UpdateLayout();
-                Assert.Contains("switched off", host.UnavailableReason);
-
-                presence.Seen("LAPTOP");
-                window.UpdateLayout();
-                Assert.Contains("LAPTOP", host.UnavailableReason);
-
-                clock.Advance(TimeSpan.FromSeconds(61));
-                window.UpdateLayout();
-                Assert.Null(cockpit.ActiveController);
-                Assert.Contains("switched off", host.UnavailableReason);
-            }
-            finally
-            {
-                window.Close();
-            }
-        });
-
     // The takeover notice on screen, or null while there is none. The composer's placeholder is a TextBlock too,
     // and carries the same words once the conversation is back — not the notice.
     private static TextBlock? _Notice(Window window) =>

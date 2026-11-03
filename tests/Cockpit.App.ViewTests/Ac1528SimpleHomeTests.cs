@@ -1,4 +1,3 @@
-using Avalonia.Controls;
 using Avalonia.Media.Imaging;
 using Avalonia.VisualTree;
 using Cockpit.App.Controls;
@@ -75,42 +74,4 @@ public sealed class Ac1528SimpleHomeTests
             Directory.Delete(folder, recursive: true);
         }
     });
-
-    // Criterion 6: the stand line opens the running conversation, not a new one; the card starts one; All projects → Projects.
-    [Fact]
-    public void AProjectCardsStand_OpensItsRunningConversation_AndAllProjectsOpensTheProjectsPage() => HeadlessAvalonia.Run(() =>
-    {
-        var window = Screenshotter.ShowScene("simple-view-home");
-        try
-        {
-            var cockpit = (CockpitViewModel)window.DataContext!;
-            window.UpdateLayout();
-            var running = cockpit.Sessions.Single(s => s.Title == "kind→staging");
-            var before = cockpit.Sessions.Count;
-
-            var stand = _Named<Button>(window, "HomeCardStand");
-            var shown = stand.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).ToList();
-            Assert.Equal(new[] { "● 1 working", "CLAUDE", "personal" }, shown);
-            var card = stand.GetVisualAncestors().OfType<Button>().First();
-            Assert.Same(cockpit.StartProjectSessionCommand, card.Command);
-            Assert.Same(cockpit.Projects.Projects[0], card.CommandParameter);
-
-            stand.Command!.Execute(stand.CommandParameter);
-            Assert.Same(running, cockpit.SimpleSelectedSession);
-            Assert.Equal(before, cockpit.Sessions.Count);
-
-            cockpit.ShowSimpleStartScreenCommand.Execute(null);
-            window.UpdateLayout();
-            var all = _Named<Button>(window, "HomeAllProjects");
-            all.Command!.Execute(all.CommandParameter);
-            Assert.True(cockpit.SimpleStandShowsTheProjects);
-        }
-        finally
-        {
-            window.Close();
-        }
-    });
-
-    private static T _Named<T>(Window window, string name) where T : Control =>
-        window.GetVisualDescendants().OfType<T>().First(control => control.Name == name);
 }

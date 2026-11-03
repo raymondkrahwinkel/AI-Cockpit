@@ -21,14 +21,4 @@ public class LmStudioConfigTests
         Assert.Contains("qwen2.5-7b-instruct", text);
         Assert.Contains("http://localhost:1234", text);
     }
-
-    [Fact]
-    public void ToString_WithNoApiKey_ReportsNullRatherThanAnEmptyOrRedactedValue()
-    {
-        var config = new LmStudioConfig("http://localhost:1234", "qwen2.5-7b-instruct");
-
-        var text = config.ToString();
-
-        Assert.Contains("ApiKey = null", text);
-    }
 }

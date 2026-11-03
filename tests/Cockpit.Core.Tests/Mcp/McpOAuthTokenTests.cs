@@ -9,8 +9,6 @@ namespace Cockpit.Core.Tests.Mcp;
 /// </summary>
 public class McpOAuthTokenTests
 {
-    private static readonly DateTimeOffset Now = new(2026, 7, 27, 12, 0, 0, TimeSpan.Zero);
-
     private static McpOAuthToken _TokenIssuedFor(string? url) =>
         new() { AccessToken = "access", ResourceUrl = url };
 
@@ -29,18 +27,14 @@ public class McpOAuthTokenTests
     }
 
     [Fact]
-    public void IsForResource_WithNoRecordedOrigin_IsNeverUsed()
-    {
-        Assert.False(_TokenIssuedFor(null).IsForResource("https://depot.example/mcp"));
-    }
-
-    [Fact]
     public void ToString_DoesNotPrintEitherToken()
     {
         var token = new McpOAuthToken
         {
             AccessToken = "the-access-token",
             RefreshToken = "the-refresh-token",
+            ClientId = "the-client-id",
+            ClientSecret = "the-client-secret",
             ResourceUrl = "https://depot.example/mcp",
         };
 
@@ -49,23 +43,8 @@ public class McpOAuthTokenTests
         var text = token.ToString();
         Assert.DoesNotContain("the-access-token", text);
         Assert.DoesNotContain("the-refresh-token", text);
-        Assert.Contains("https://depot.example/mcp", text);
-    }
-
-    [Fact]
-    public void ToString_DoesNotPrintTheClientSecret()
-    {
-        // AC-505: a dynamic-client-registration secret is a credential exactly like AccessToken/RefreshToken —
-        // ClientId itself is not secret and stays visible, same treatment Scope/ResourceUrl already get.
-        var token = new McpOAuthToken
-        {
-            AccessToken = "access",
-            ClientId = "the-client-id",
-            ClientSecret = "the-client-secret",
-        };
-
-        var text = token.ToString();
         Assert.DoesNotContain("the-client-secret", text);
         Assert.Contains("the-client-id", text);
+        Assert.Contains("https://depot.example/mcp", text);
     }
 }

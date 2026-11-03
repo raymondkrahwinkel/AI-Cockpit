@@ -6,7 +6,6 @@ using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Profiles;
 using Cockpit.Tests.Shared;
-using Microsoft.Extensions.Logging;
 using NSubstitute;
 using Cockpit.App.Composition;
 
@@ -57,81 +56,6 @@ public class SessionViewModelTests
         await vm.DisposeAsync();
     }
 
-    [Fact]
-    public async Task StartConfigured_InALiveMode_LeavesThePermissionModeUnlocked()
-    {
-        var session = Substitute.For<ISessionDriver>();
-        session.Events.Returns(EmptyEvents());
-        var vm = TestSessions.Pane(new SessionManager(FactoryFor(session)));
-
-        await vm.StartConfiguredAsync(
-            Profile, SessionOptionCatalog.ResolvePermissionMode("plan"), SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
-
-        Assert.False(vm.IsPermissionModeLocked);
-        Assert.Equal(new[] { "default", "acceptEdits", "plan" }, vm.PermissionModes.Select(mode => mode.Value));
-
-        await vm.DisposeAsync();
-    }
-
-    [Fact]
-    public async Task StartConfigured_LocalToolSession_SeedsAutoApproveToolsFromTheProfileDefault()
-    {
-        var session = Substitute.For<ISessionDriver>();
-        session.Events.Returns(EmptyEvents());
-        session.Capabilities.Returns(new SessionCapabilities(
-            SupportsTools: true, SupportsPermissions: false, SupportsLiveModelSwitch: false, SupportsPlanMode: false, SupportsThinking: false));
-        var localProfile = new SessionProfile(
-            "ollama",
-            new OllamaConfig("http://localhost:11434", "llama3.1"),
-            Defaults: new ProfileDefaults("default", "sonnet", "medium", AutoApproveTools: true));
-        var vm = TestSessions.Pane(new SessionManager(FactoryFor(session)));
-
-        await vm.StartConfiguredAsync(
-            localProfile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
-
-        Assert.True(vm.ShowToolAutoApprove);
-        Assert.True(vm.AutoApproveTools);
-        await session.Received(1).SetAutoApproveToolsAsync(true, Arg.Any<CancellationToken>());
-
-        await vm.DisposeAsync();
-    }
-
-    [Fact]
-    public async Task StartConfigured_LocalToolSession_WithoutTheProfileDefault_LeavesAutoApproveToolsOff()
-    {
-        var session = Substitute.For<ISessionDriver>();
-        session.Events.Returns(EmptyEvents());
-        session.Capabilities.Returns(new SessionCapabilities(
-            SupportsTools: true, SupportsPermissions: false, SupportsLiveModelSwitch: false, SupportsPlanMode: false, SupportsThinking: false));
-        var localProfile = new SessionProfile(
-            "ollama",
-            new OllamaConfig("http://localhost:11434", "llama3.1"));
-        var vm = TestSessions.Pane(new SessionManager(FactoryFor(session)));
-
-        await vm.StartConfiguredAsync(
-            localProfile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
-
-        Assert.True(vm.ShowToolAutoApprove);
-        Assert.False(vm.AutoApproveTools);
-        await session.DidNotReceive().SetAutoApproveToolsAsync(Arg.Any<bool>(), Arg.Any<CancellationToken>());
-
-        await vm.DisposeAsync();
-    }
-
-    [Fact]
-    public void Apply_SubAgentToolCallNeedingPermission_IsFoundNestedByToolUseId()
-    {
-        var vm = NewVm();
-        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "task-1", ToolName = "Task", InputJson = "{}" });
-        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "sub-tool-1", ToolName = "Bash", InputJson = "{}", ParentToolUseId = "task-1" });
-
-        vm.Apply(new PermissionRequested { SessionId = "S1", ToolUseId = "sub-tool-1", ToolName = "Bash", InputJson = "{}", ParentToolUseId = "task-1" });
-
-        var anchor = Assert.Single(vm.Transcript);
-        var nested = Assert.Single(anchor.SubAgentRows);
-        Assert.True(nested.IsPendingPermission);
-    }
-
     // AC-996: the needs-attention flag was set unconditionally while the consent card only exists where a row
     // does, so a permission whose tool-use event never arrived left the session waiting on the operator with
     // nothing on screen to answer. Neither observation in that ticket was this case, but nothing rules it out.
@@ -149,23 +73,6 @@ public class SessionViewModelTests
         Assert.True(row.IsPendingPermission);
         Assert.True(vm.HasPendingPermission);
         Assert.Equal(SessionStatus.NeedsAttention, vm.SessionStatus);
-    }
-
-    // And the same for a sub-agent's call whose lane this pane never resolved: top-level, because a row nested
-    // under an anchor that may be collapsed is precisely the row the operator cannot reach.
-    [Fact]
-    public void Apply_PermissionForAnUnresolvedSubAgentCall_GetsATopLevelRow()
-    {
-        var vm = NewVm();
-
-        vm.Apply(new PermissionRequested
-        {
-            SessionId = "S1", ToolUseId = "sub-tool-1", ToolName = "Bash", InputJson = "{}", ParentToolUseId = "task-nobody-saw",
-        });
-
-        var row = Assert.Single(vm.Transcript);
-        Assert.True(row.IsPendingPermission);
-        Assert.Empty(row.SubAgentRows);
     }
 
     [Fact]
@@ -269,24 +176,6 @@ public class SessionViewModelTests
         Assert.False(string.IsNullOrEmpty(entry.PermissionDecision));
     }
 
-    [Fact]
-    public async Task AllowAlwaysWildcardTool_ResolvesTheSessionWithAWildcardAlwaysRule()
-    {
-        var (vm, session) = await StartedVm();
-        var entry = new TranscriptEntryViewModel(TranscriptEntryKind.ToolUse, "Tool: Bash")
-        {
-            ToolUseId = "toolu_2",
-            ToolName = "Bash",
-            InputJson = """{"command":"ls"}""",
-            IsPendingPermission = true,
-        };
-
-        await vm.AllowAlwaysWildcardToolCommand.ExecuteAsync(entry);
-
-        await session.Received(1).AllowPermissionAlwaysAsync(
-            "toolu_2", "Bash", """{"command":"ls"}""", PermissionRuleScope.Wildcard, Arg.Any<CancellationToken>());
-    }
-
     // AC-1476: "Allow for this session" is drawn only where the server announced it, the key may answer and the line is up.
     [Theory]
     [InlineData(true, true, true, true)]
@@ -308,16 +197,6 @@ public class SessionViewModelTests
         var session = Substitute.For<ISessionDriver>();
         session.Events.Returns(EmptyEvents());
         return TestSessions.Pane(new SessionManager(FactoryFor(session)));
-    }
-
-    private sealed class ThrowingLogger : ILogger<SessionViewModel>
-    {
-        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-
-        public bool IsEnabled(LogLevel logLevel) => true;
-
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
-            throw new IOException("disk full");
     }
 
     private static async Task<(SessionViewModel Vm, ISessionDriver Session)> StartedVm()

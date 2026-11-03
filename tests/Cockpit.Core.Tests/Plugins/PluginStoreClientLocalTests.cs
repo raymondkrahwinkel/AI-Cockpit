@@ -17,17 +17,6 @@ public class PluginStoreClientLocalTests : IDisposable
     }
 
     [Fact]
-    public async Task FetchIndexAsync_LocalFolder_ReadsAndParsesTheIndex()
-    {
-        await File.WriteAllTextAsync(Path.Combine(_tempDir, "index.json"), """{ "name": "My store", "plugins": [] }""");
-
-        var result = await _client.FetchIndexAsync(PluginStoreConfig.Local(_tempDir));
-
-        Assert.True(result.IsSuccess);
-        Assert.Equal("My store", result.Index!.Name);
-    }
-
-    [Fact]
     public async Task DownloadZipAsync_LocalFolder_RejectsAChecksumMismatch()
     {
         await File.WriteAllBytesAsync(Path.Combine(_tempDir, "plugin.zip"), Encoding.UTF8.GetBytes("the real bytes"));

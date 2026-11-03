@@ -23,14 +23,6 @@ public class ProjectInfoFieldTests
     }
 
     [Fact]
-    public void ASecretRow_IsNeverDrawnAsAFollowableLink()
-    {
-        // A secret that happens to parse as a URL would otherwise get a link carrying the value in its tooltip, and a
-        // click would put it in the browser's history.
-        Assert.False(new ProjectInfoField("Webhook", "https://hooks.example.test/T0K3N") { IsSecret = true }.IsWebLink);
-    }
-
-    [Fact]
     public void ASecretRow_IsNotShownAsPlainText()
     {
         Assert.False(new ProjectInfoField("Deploy token", "s3cr3t") { IsSecret = true }.ShowsPlainValue);

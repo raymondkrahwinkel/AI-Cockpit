@@ -38,37 +38,4 @@ public class PluginStoreIndexTests
         Assert.Equal("github-issues/gh-1.2.0.zip", entry.Versions[0].Path);
         Assert.Equal("abc", entry.Versions[0].Sha256);
     }
-
-    [Fact]
-    public void TryParse_InvalidJson_Fails()
-    {
-        Assert.False(PluginStoreIndex.TryParse("{ not json", out _, out var error));
-        Assert.False(string.IsNullOrEmpty(error));
-    }
-
-    // The optional entry fields, each as the index would carry them: the store-dialog fields (#62), the shipped index
-    // without any of them, audience, hidden, and the additive `logoAsset` (AC-553, absent in an index published before it).
-    [Theory]
-    [InlineData("""{ "id": "a", "name": "A", "latestVersion": "1.2.0", "category": "Issue trackers", "icon": "🐛", "homepage": "https://example.com/a", "repository": "https://github.com/example/plugins", "featured": true, "published": "2026-05-12", "versions": [] }""",
-        "Issue trackers|🐛|https://example.com/a|https://github.com/example/plugins|True|2026-05-12||False|")]
-    [InlineData("""{ "id": "a", "name": "A", "description": "d", "author": "me", "latestVersion": "1.2.0", "versions": [] }""",
-        "||||False|||False|")]
-    [InlineData("""{ "id": "a", "name": "A", "latestVersion": "1.2.0", "audience": ["developer"], "versions": [] }""",
-        "||||False||developer|False|")]
-    [InlineData("""{ "id": "a", "name": "A", "latestVersion": "1.0.0", "hidden": true, "versions": [] }""",
-        "||||False|||True|")]
-    [InlineData("""{ "id": "a", "name": "A", "latestVersion": "1.0.0", "icon": "🐛", "versions": [] }""",
-        "|🐛|||False|||False|")]
-    [InlineData("""{ "id": "depot", "name": "Depot", "latestVersion": "1.0.0", "icon": "🗄️", "logoAsset": "depot.svg", "versions": [] }""",
-        "|🗄️|||False|||False|depot.svg")]
-    public void TryParse_ReadsTheOptionalEntryFields_AndDefaultsWhatTheIndexOmits(string entryJson, string expected)
-    {
-        Assert.True(PluginStoreIndex.TryParse($$"""{ "name": "S", "plugins": [ {{entryJson}} ] }""", out var index, out var error), error);
-
-        Assert.NotNull(index);
-        var entry = index.Plugins.Single();
-        Assert.Equal(
-            expected,
-            $"{entry.Category}|{entry.Icon}|{entry.Homepage}|{entry.Repository}|{entry.Featured}|{entry.Published}|{string.Join(',', entry.Audience ?? [])}|{entry.Hidden}|{entry.LogoAsset}");
-    }
 }

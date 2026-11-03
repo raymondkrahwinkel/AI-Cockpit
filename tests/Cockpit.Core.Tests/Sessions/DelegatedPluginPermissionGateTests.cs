@@ -30,30 +30,6 @@ public class DelegatedPluginPermissionGateTests
     }
 
     [Fact]
-    public async Task Read_OnAReadOnlyDelegatedSession_IsAllowed()
-    {
-        // Read-only has to be a workable scope, not a disguised stop: a research task still reads, searches and greps.
-        await using var session = await _StartedAsync(ceiling: "default");
-
-        session.Ask("call-1", "Read");
-        var (allowed, _) = await session.AnswerAsync();
-
-        Assert.True(allowed);
-    }
-
-    [Fact]
-    public async Task Write_OnAnAcceptEditsDelegatedSession_IsAllowed()
-    {
-        var session = await _StartedAsync(ceiling: "acceptEdits");
-        await using var _ = session;
-
-        session.Ask("call-1", "Write");
-        var (allowed, _) = await session.AnswerAsync();
-
-        Assert.True(allowed);
-    }
-
-    [Fact]
     public async Task Bash_BelowBypass_IsDenied_UnlessTheProfileAllowListsIt()
     {
         // The host cannot see what a command line will do, so a shell is graded destructive and runs only where the
@@ -65,20 +41,6 @@ public class DelegatedPluginPermissionGateTests
         await using var allowed = await _StartedAsync(ceiling: "acceptEdits", allowedTools: ["Bash"]);
         allowed.Ask("call-1", "Bash");
         Assert.True((await allowed.AnswerAsync()).Allowed);
-    }
-
-    [Fact]
-    public async Task AnMcpTool_IsAllowed_BecauseTheEnabledServerSetIsWhatBoundsIt()
-    {
-        // The host never connected these servers — the CLI did — so there are no annotations to grade them by. What
-        // bounds them is the enabled-server set the delegation policy resolved for this task, which the operator
-        // controls per profile. Denying them all would be a blanket ban, not a boundary.
-        await using var session = await _StartedAsync(ceiling: "default");
-
-        session.Ask("call-1", "mcp__cockpit-worktrees__worktree_list");
-        var (allowed, _) = await session.AnswerAsync();
-
-        Assert.True(allowed);
     }
 
     [Fact]

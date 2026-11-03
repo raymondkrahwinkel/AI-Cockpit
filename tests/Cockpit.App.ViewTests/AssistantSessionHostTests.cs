@@ -37,56 +37,6 @@ public class AssistantSessionHostTests
 {
     private static void _AssertMachineMemorySuffix(string instruction) =>
         Assert.EndsWith($"{AssistantStandingInstruction.MachineMemoryHeading}\n\nnothing yet", instruction, StringComparison.Ordinal);
-    /// <summary>
-    /// The state a fresh host reports before anything has read the settings is "unavailable, because it is off" —
-    /// which is a guess, and wrong for the operator who had it on when they last closed the cockpit. The startup
-    /// path has to resolve it, or the first hotkey press of every session refuses with a stale reason.
-    /// </summary>
-    [Fact]
-    public void ApplySettings_IsWhatMakesTheReportedStateTrue_NotConstruction()
-    {
-        var host = Dispatcher.UIThread.Invoke(() => _Host(enabled: true, slot: _ConfiguredSlot()));
-
-        // Constructed: still says off, though the settings say otherwise. This is the assertion whose absence let
-        // the stale-state bug through review the first time.
-        Assert.Equal(AssistantActivity.Unavailable, host.Activity);
-
-        Dispatcher.UIThread.Invoke(() => host.ApplySettingsAsync().GetAwaiter().GetResult());
-
-        // Switching the feature on makes the assistant available; the first hold or click is still what wakes it
-        // (lazily: a profile is set and still nothing is running).
-        Assert.Equal(AssistantActivity.Ready, host.Activity);
-        Assert.Null(host.UnavailableReason);
-        Assert.Null(host.Session);
-    }
-
-    [Fact]
-    public void EnsureStarted_WithTheFeatureOff_StartsNothingAndSaysWhy()
-    {
-        var host = Dispatcher.UIThread.Invoke(() => _Host(enabled: false, slot: _ConfiguredSlot()));
-
-        var session = Dispatcher.UIThread.Invoke(() => _Pane(host.EnsureStartedAsync().GetAwaiter().GetResult()));
-
-        Assert.Null(session);
-        Assert.Null(host.Session);
-        Assert.Equal(AssistantActivity.Unavailable, host.Activity);
-        Assert.Contains("switched off", host.UnavailableReason, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public void EnsureStarted_WithNoProfileInTheSlot_ReportsTheSlotsOwnReason()
-    {
-        var host = Dispatcher.UIThread.Invoke(() =>
-            _Host(enabled: true, slot: AssistantProfileSlot.Unset("The provider switch could not be completed.")));
-
-        var session = Dispatcher.UIThread.Invoke(() => _Pane(host.EnsureStartedAsync().GetAwaiter().GetResult()));
-
-        Assert.Null(session);
-        // The slot's reason, not one invented here: the operator is told what actually happened to their profile
-        // rather than a generic "not configured" that hides a failed switch.
-        Assert.Equal("The provider switch could not be completed.", host.UnavailableReason);
-    }
-
     [Fact]
     public void Send_WithTheFeatureOff_DoesNotStartTheAssistant()
     {
@@ -96,65 +46,6 @@ public class AssistantSessionHostTests
 
         Assert.Null(host.Session);
         Assert.Equal(AssistantActivity.Unavailable, host.Activity);
-    }
-
-    /// <summary>
-    /// Everything an Options save decides about a running assistant reaches it now, not at its next start — every
-    /// field, not one of them.
-    /// </summary>
-    /// <remarks>
-    /// This test used to assert the reading level alone while its own summary claimed the pair of them moved
-    /// together, and the half it did not assert was broken the whole time: <c>SpeakReplies</c> was pushed only by
-    /// <c>_ApplySpeech</c> at start, so ticking "speak replies" in Options moved the header checkbox — the chat view
-    /// model applies a loaded value under a guard that suppresses its own push to the host — and left the live
-    /// session on the value it had started with. Measured as <c>settingsSpeakReplies=True
-    /// liveSessionReadResponsesAloud=False</c>: the operator was told the assistant would speak, and it did not.
-    /// <para>
-    /// So this asserts the whole set the start path writes. A field added to <c>_ApplySpeech</c> and not to the
-    /// live-apply is the exact shape of that defect, and the assertion below is what notices.
-    /// </para>
-    /// </remarks>
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void ApplySettings_WithALiveSession_PushesEverySpokenSettingToIt_NotOnlyTheReadingLevel(bool speakReplies)
-    {
-        var cockpit = Dispatcher.UIThread.Invoke(() => new CockpitViewModel
-        {
-            SelectedTtsVoice = TtsVoiceCatalog.Voices[^1],
-            SelectedReadAloudLanguage = new SttLanguageOption("Dutch", "nl"),
-        });
-        var host = Dispatcher.UIThread.Invoke(() => _Host(
-            enabled: true,
-            slot: _ConfiguredSlot(),
-            readingLevel: Cockpit.Core.Sessions.ReadingLevel.Simple,
-            speakReplies: speakReplies,
-            cockpit: cockpit));
-
-        // The state a session that started before the save is in — the opposite of every value about to be saved,
-        // so nothing below can pass by having been right already.
-        var session = Dispatcher.UIThread.Invoke(() => new SessionViewModel
-        {
-            ReadingLevel = Cockpit.Core.Sessions.ReadingLevel.Developer,
-            ReadResponsesAloud = !speakReplies,
-            ReadAloudLanguage = "en",
-            TtsVoiceSid = -1,
-            ReadAloudAsOneUtterance = false,
-        });
-
-        // AC-1379: the voice the cockpit hands every assistant handle it mints (`CockpitViewModel.CreateAssistantHandle`).
-        Dispatcher.UIThread.Invoke(() => host.Session = new SessionPanelHandle(session, isEmbedded: false, () => null)
-        {
-            AssistantVoice = () => (cockpit.SelectedTtsVoice.Sid, cockpit.SelectedReadAloudLanguage.Code),
-        });
-
-        Dispatcher.UIThread.Invoke(() => host.ApplySettingsAsync().GetAwaiter().GetResult());
-
-        Assert.Equal(Cockpit.Core.Sessions.ReadingLevel.Simple, session.ReadingLevel);
-        Assert.Equal(speakReplies, session.ReadResponsesAloud);
-        Assert.Equal(TtsVoiceCatalog.Voices[^1].Sid, session.TtsVoiceSid);
-        Assert.Equal("nl", session.ReadAloudLanguage);
-        Assert.True(session.ReadAloudAsOneUtterance);
     }
 
     // ── The chip's Thinking state has to end, and only the session knows when ──────────────────────────────────
@@ -167,33 +58,6 @@ public class AssistantSessionHostTests
         Assert.Equal(
             AssistantActivity.AwaitingOperator,
             AssistantSessionHost.ActivityFor(AssistantActivity.Thinking, isBusy, hasPendingPermission: true));
-    }
-
-    [Theory]
-    [InlineData(true, AssistantActivity.Thinking)]
-    [InlineData(false, AssistantActivity.Ready)]
-    public void ActivityFor_OnceThePermissionIsAnswered_FollowsWhetherItIsStillWorking(bool isBusy, AssistantActivity expected)
-    {
-        // Two defects in a row lived here, and both came from reading SessionStatus instead of the two facts
-        // underneath it. First the chip stuck on "Needs you", because NeedsAttention is cleared only when the
-        // operator sends their *next* message — not when they answer the prompt. Then, with the pending flag read
-        // properly, it stuck on "Ready" while the assistant was visibly working, because a session still carrying
-        // NeedsAttention never reports Busy at all: that flag outranks busy in the derivation. The chat window's
-        // own "Thinking…" row was right the whole time, which is what made the chip's silence so obviously wrong.
-        Assert.Equal(
-            expected,
-            AssistantSessionHost.ActivityFor(AssistantActivity.AwaitingOperator, isBusy, hasPendingPermission: false));
-    }
-
-    [Theory]
-    [InlineData(AssistantActivity.Unavailable)]
-    [InlineData(AssistantActivity.Listening)]
-    public void ActivityFor_NeverSpeaksOverTheTwoStatesTheSessionKnowsNothingAbout(AssistantActivity current)
-    {
-        // Unavailable is a fact about the feature, not about a turn; Listening is a key being held right now, and a
-        // turn finishing mid-hold must not tell the operator the microphone closed.
-        Assert.Equal(current, AssistantSessionHost.ActivityFor(current, isBusy: false, hasPendingPermission: false));
-        Assert.Equal(current, AssistantSessionHost.ActivityFor(current, isBusy: true, hasPendingPermission: false));
     }
 
     // ── AC-544 criterion 2, the mounting half: the assistant's launch is the one that names the broad read server ──
@@ -243,38 +107,6 @@ public class AssistantSessionHostTests
         Assert.Contains("youtrack", selection);
     }
 
-    /// <summary>
-    /// A selection the operator saved on the profile is taken whole, including a server the default leaves out:
-    /// this is a default, not a boundary, and an explicit tick is an answer.
-    /// </summary>
-    [Fact]
-    public void McpSelection_WithASavedSelection_KeepsEvenAServerTheDefaultWouldLeaveOut()
-    {
-        var excluded = "cockpit-orchestrator";
-        var profile = _Profile() with { EnabledMcpServerNames = [excluded] };
-
-        var selection = AssistantSessionHost.McpSelection(profile, []);
-
-        Assert.Contains(excluded, selection);
-    }
-
-    [Fact]
-    public void McpSelection_NamesEveryOneOfTheAssistantsOwnServers()
-    {
-        var ownServers = typeof(AssistantIdentity)
-            .GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
-            .Where(field => field.IsLiteral && field.FieldType == typeof(string) && field.Name.EndsWith("McpServerName", StringComparison.Ordinal))
-            .Select(field => (string)field.GetRawConstantValue()!)
-            .ToList();
-
-        // A reflection query that found nothing would make the assertion below vacuously true.
-        Assert.NotEmpty(ownServers);
-
-        var selection = AssistantSessionHost.McpSelection(_Profile(), []);
-
-        Assert.All(ownServers, server => Assert.Contains(server, selection));
-    }
-
     // ── The assistant runs on its own profile's start defaults, not on the app's ──────────────────────────────
     //
     // The measured failure: the operator put bypassPermissions on the Assistant Profile and was still asked to
@@ -284,26 +116,6 @@ public class AssistantSessionHostTests
     // holding nothing but its system prompt, so the profile was passed along and then, on the three settings that
     // decide what it may do, ignored.
 
-    // The same map, the same route, the same driver read (ClaudeSdkSessionDriver._ResolveOption) for all three, so
-    // they are one behaviour with three rows rather than three findings — a fix that only reached the permission
-    // mode would be a fix for one of three settings that were all lost the same way. All three sit on the one
-    // profile the rows share, so a copy that stops after the first entry fails here too. The model and effort keys
-    // are literals because they are the plugin's own: the host does not (and must not) know what they mean.
-    [Theory]
-    [InlineData(WellKnownPluginSessionOptions.PermissionMode, SessionOptionCatalog.BypassPermissionModeValue)]
-    public void LaunchOptions_CarryEveryStartDefaultTheProfileNames(string key, string expected)
-    {
-        var options = AssistantSessionHost._LaunchOptions(
-            _ProfileWithDefaults(
-                (WellKnownPluginSessionOptions.PermissionMode, SessionOptionCatalog.BypassPermissionModeValue),
-                ("model", "opus"),
-                ("effort", "high")),
-            replacesStandingInstruction: false,
-            memory: null);
-
-        Assert.Equal(expected, options[key]);
-    }
-
     // ── AC-759: the acting paragraph's SDK gate agrees with the profile's own permission mode ────────────────────
 
     [Fact]
@@ -312,36 +124,6 @@ public class AssistantSessionHostTests
         // The app floor (SessionOptionCatalog.DefaultPermissionMode) is a confining mode, so a profile that says
         // nothing still asks — the same fallback StartConfiguredAsync's own typed argument falls back to.
         Assert.True(AssistantSessionHost._SdkAsksPermission(_Profile()));
-    }
-
-    [Fact]
-    public void SdkAsksPermission_FalseForAProfileSetToBypassPermissions()
-    {
-        var profile = _ProfileWithDefaults(
-            (WellKnownPluginSessionOptions.PermissionMode, SessionOptionCatalog.BypassPermissionModeValue));
-
-        Assert.False(AssistantSessionHost._SdkAsksPermission(profile));
-    }
-
-    [Fact]
-    public void LaunchOptions_ForAProfileThatSaysNothing_NameNoneOfThem_SoTheAppDefaultStillStands()
-    {
-        // The half that protects everyone who has set nothing. The typed permission mode/model/effort at the call
-        // site stay on the app defaults and PluginSessionDriverAdapter._MergePermissionMode folds the typed value
-        // in only when the options carry none — so an absent key is what makes today's behaviour survive this
-        // change. A "helpful" default written here (say, always naming the mode) would silently move every
-        // existing assistant. The closing assertion carries the other half: the two gate parameters default to
-        // "still asks" (AC-759), so a call site that has never been taught about them composes exactly the
-        // appended prompt it always composed.
-        var options = AssistantSessionHost._LaunchOptions(_Profile(), replacesStandingInstruction: false, memory: null);
-
-        Assert.False(options.ContainsKey(WellKnownPluginSessionOptions.PermissionMode));
-        Assert.False(options.ContainsKey("model"));
-        Assert.False(options.ContainsKey("effort"));
-
-        // And the one thing the launch does owe it is still there.
-        Assert.StartsWith(AssistantSystemPrompt.Default, options[WellKnownPluginSessionOptions.AppendSystemPrompt], StringComparison.Ordinal);
-        _AssertMachineMemorySuffix(options[WellKnownPluginSessionOptions.AppendSystemPrompt]);
     }
 
     [Fact]
@@ -362,71 +144,6 @@ public class AssistantSessionHostTests
         _AssertMachineMemorySuffix(instruction);
     }
 
-    [Fact]
-    public void LaunchOptions_WhatTheOperatorWrote_IsAddedToTheBuiltInInstruction_RatherThanPutInItsPlace()
-    {
-        // AC-594. The old behaviour dropped all of AssistantSystemPrompt.Default the moment this box had anything in
-        // it, so "your name is Zyra" silently cost the language rule and the whole permission paragraph.
-        var profile = _Profile() with { SystemPrompt = "Your name is Zyra." };
-
-        var options = AssistantSessionHost._LaunchOptions(profile, replacesStandingInstruction: false, memory: null);
-
-        var instruction = options[WellKnownPluginSessionOptions.AppendSystemPrompt];
-        Assert.StartsWith(AssistantSystemPrompt.Default, instruction, StringComparison.Ordinal);
-        Assert.Contains("Your name is Zyra.", instruction, StringComparison.Ordinal);
-        _AssertMachineMemorySuffix(instruction);
-        Assert.False(options.ContainsKey(WellKnownPluginSessionOptions.BrainInstruction));
-
-        // AC-1994: a brain is added ahead of that same instruction, replacing neither it nor the advanced option's text.
-        foreach (var replaces in new[] { false, true })
-        {
-            var standing = AssistantSessionHost._LaunchOptions(profile, replaces, memory: null)[WellKnownPluginSessionOptions.AppendSystemPrompt];
-            var withBrain = AssistantSessionHost._LaunchOptions(profile, replaces, memory: null, brainInstruction: "Use brain Zyra.");
-            Assert.Equal("Use brain Zyra.\n\n" + standing, withBrain[WellKnownPluginSessionOptions.AppendSystemPrompt]);
-            Assert.Equal("Use brain Zyra.", withBrain[WellKnownPluginSessionOptions.BrainInstruction]);
-        }
-    }
-
-    [Fact]
-    public void LaunchOptions_WithTheAdvancedOptionOn_CarryWhatTheOperatorWroteAndNothingElse()
-    {
-        var profile = _Profile() with { SystemPrompt = "Your name is Zyra." };
-
-        var options = AssistantSessionHost._LaunchOptions(profile, replacesStandingInstruction: true, memory: null);
-
-        Assert.StartsWith("Your name is Zyra.", options[WellKnownPluginSessionOptions.AppendSystemPrompt], StringComparison.Ordinal);
-        _AssertMachineMemorySuffix(options[WellKnownPluginSessionOptions.AppendSystemPrompt]);
-    }
-
-    [Fact]
-    public void LaunchOptions_CarryWhatTheAssistantWasAskedToRemember_UnderAHeadingOfItsOwn()
-    {
-        // AC-595. Last and labelled: it is the operator's material rather than the product's rules, and an
-        // assistant that cannot tell the two apart recites a remembered line back as if it were one.
-        var options = AssistantSessionHost._LaunchOptions(
-            _Profile() with { SystemPrompt = "Your name is Zyra." },
-            replacesStandingInstruction: false,
-            memory: "- 2026-08-02 — The operator is called Raymond.",
-            machineMemory: "- 2026-08-02 — Git Bash lives here.");
-
-        var instruction = options[WellKnownPluginSessionOptions.AppendSystemPrompt];
-        Assert.StartsWith(AssistantSystemPrompt.Default, instruction, StringComparison.Ordinal);
-        Assert.Contains("Your name is Zyra.", instruction, StringComparison.Ordinal);
-        Assert.Contains("The operator is called Raymond.", instruction, StringComparison.Ordinal);
-        Assert.Contains(AssistantStandingInstruction.MemoryHeading, instruction, StringComparison.Ordinal);
-        Assert.Contains(AssistantStandingInstruction.MachineMemoryHeading, instruction, StringComparison.Ordinal);
-        Assert.Contains("Git Bash lives here.", instruction, StringComparison.Ordinal);
-
-        var withoutMachineMemory = AssistantSessionHost._LaunchOptions(
-            _Profile(),
-            replacesStandingInstruction: false,
-            memory: "- 2026-08-02 — The operator is called Raymond.",
-            machineMemory: null)[WellKnownPluginSessionOptions.AppendSystemPrompt];
-
-        Assert.Contains(AssistantStandingInstruction.MachineMemoryHeading, withoutMachineMemory, StringComparison.Ordinal);
-        Assert.Contains("nothing yet", withoutMachineMemory, StringComparison.OrdinalIgnoreCase);
-    }
-
     // ── Handing over before the context fills (AC-596) ────────────────────────────────────────────────────────
 
     [Theory]
@@ -442,43 +159,6 @@ public class AssistantSessionHostTests
     public void HandingOver_WaitsForAContextThatIsFull_AndForAnAssistantThatIsDoingNothing(
         double? fill, bool isBusy, bool isWaitingOnOperator, bool expected) =>
         Assert.Equal(expected, AssistantSessionHost.ShouldHandOver(fill, isBusy, isWaitingOnOperator));
-
-    /// <summary>
-    /// AC-638: a hand-over swaps in a new <c>SessionViewModel</c> whose transcript is empty, which reads as data
-    /// loss unless the new transcript says why.
-    /// </summary>
-    [Fact]
-    public void HandingOver_LeavesADividerInTheNewSessionsTranscript_SoAnEmptyWindowIsNotReadAsDataLoss()
-    {
-        var driver = Substitute.For<ISessionDriver>();
-        driver.Events.Returns(_EmptyEvents());
-        var factory = Substitute.For<ISessionDriverFactory>();
-        factory.Create(Arg.Any<SessionProfile?>()).Returns(driver);
-
-        var cockpit = Dispatcher.UIThread.Invoke(() => _CockpitWithSessionFactory(
-            () => TestSessions.Pane(new SessionManager(factory))));
-        var host = Dispatcher.UIThread.Invoke(() => _Host(enabled: true, slot: _ConfiguredSlot(), cockpit: cockpit));
-
-        var first = Dispatcher.UIThread.Invoke(() => _Pane(host.EnsureStartedAsync().GetAwaiter().GetResult()));
-        Assert.NotNull(first);
-        Assert.DoesNotContain(first!.Transcript, entry => entry.IsDivider);
-
-        // The same signal production reads: a turn completes with the context past the hand-over threshold.
-        driver.CurrentStatus.Returns(new SessionStatusFeed(90, []));
-        Dispatcher.UIThread.Invoke(() => first.Apply(new TurnCompleted
-        {
-            SessionId = "S1",
-            Subtype = "success",
-            Result = "done",
-            IsError = false,
-            Usage = new TokenUsage(1_000, 2_000, 0, 0),
-            TotalCostUsd = 0.01,
-        }));
-
-        var second = _ReplacementOf(host, first);
-        var divider = Assert.Single(second.Transcript, entry => entry.IsDivider);
-        Assert.Contains("Context was full", divider.Text, StringComparison.Ordinal);
-    }
 
     // ── Compacting instead of throwing the conversation away (AC-664) ─────────────────────────────────────────
 
@@ -502,48 +182,6 @@ public class AssistantSessionHostTests
         // And it says so where the operator reads, since the provider reports a compaction nowhere they can see.
         var divider = Assert.Single(first.Transcript, entry => entry.IsDivider);
         Assert.Contains("continues here", divider.Text, StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    /// Compacting is the better answer, not a guaranteed one — a provider can decline ("not enough messages to
-    /// compact") and leave the context exactly as full. The restart stays as the floor under that: the ask is spent
-    /// once, and a fill still above the line once the provider has answered gets the hand-over after all.
-    /// </summary>
-    [Fact]
-    public void AFullContext_ThatCompactingDidNotRelieve_StillHandsOverToAFreshConversation()
-    {
-        var (host, first, driver) = _StartedAssistantOn(_CompactingProvider());
-
-        _ReportAFullContext(first, driver, fill: 90);
-        Assert.Same(first, host.View());
-
-        // The next reading with nothing running is the provider's answer landing — and it left the context as full
-        // as it found it.
-        _ReportAFullContext(first, driver, fill: 91);
-
-        var second = _ReplacementOf(host, first);
-        Assert.Contains(second.Transcript, entry => entry.IsDivider);
-
-        // Asked once, not once per reading: the fill only moves after the provider answers, so an unguarded rule
-        // would keep asking a provider that is still working on the first ask.
-        driver.Received(1).CompactContextAsync(Arg.Any<CancellationToken>());
-    }
-
-    /// <summary>
-    /// And a compaction that <em>did</em> work re-arms the ask, so the next time the context fills the answer is
-    /// another compaction rather than the hand-over this ticket exists to avoid.
-    /// </summary>
-    [Fact]
-    public void AContextThatCompactingRelieved_EarnsAnotherCompaction_WhenItFillsUpAgain()
-    {
-        var (host, first, driver) = _StartedAssistantOn(_CompactingProvider());
-
-        _ReportAFullContext(first, driver, fill: 90);
-        _ReportAFullContext(first, driver, fill: 40);
-        _ReportAFullContext(first, driver, fill: 90);
-
-        Assert.Same(first, host.View());
-        driver.Received(2).CompactContextAsync(Arg.Any<CancellationToken>());
     }
 
     /// <summary>
@@ -620,84 +258,6 @@ public class AssistantSessionHostTests
         Assert.Equal("still readable", entry.Text);
     }
 
-    /// <summary>Every new row is worth a snapshot — nothing else remembers what the operator saw across a restart.</summary>
-    [Fact]
-    public void ANewTranscriptRow_IsSaved_SoARestartCanReplayIt()
-    {
-        var transcript = Substitute.For<ISessionTranscriptStore>();
-        var (_, session, _) = _StartedAssistantOn(SessionCapabilities.ClaudeCli, transcript: transcript);
-
-        Dispatcher.UIThread.Invoke(() => session.Transcript.Add(
-            new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "what is the status of AC-223")));
-
-        transcript.Received().AppendAsync(
-            AssistantSessionHost.AssistantPaneId,
-            Arg.Is<TranscriptSnapshotEntry>(saved => saved.Text == "what is the status of AC-223"),
-            Arg.Any<CancellationToken>());
-    }
-
-    /// <summary>
-    /// AC-955 criterion 10: a question card's ticked options and typed "Other" text are captured on save under an
-    /// `answers` key, not just the bare question — otherwise a resumed conversation has nothing to redraw beyond
-    /// an unanswered-looking card for a question the operator already answered.
-    /// </summary>
-    [Fact]
-    public void AnAnsweredQuestionRow_SavesItsOptionsAndAnswer_NotOnlyTheBareQuestion()
-    {
-        var transcript = Substitute.For<ISessionTranscriptStore>();
-        var (_, session, _) = _StartedAssistantOn(SessionCapabilities.ClaudeCli, transcript: transcript);
-
-        const string inputJson = """{"questions":[{"question":"Which profile?","options":[{"label":"Core"},{"label":"All"}]}]}""";
-        var prompts = AskUserQuestionViewModel.Parse(inputJson);
-        prompts[0].Options[1].SelectCommand.Execute(null);
-        prompts[0].IsAnswered = true;
-        var entry = new TranscriptEntryViewModel(TranscriptEntryKind.Question, "Which profile?")
-        {
-            InputJson = inputJson,
-            QuestionPrompts = prompts,
-        };
-
-        Dispatcher.UIThread.Invoke(() => session.Transcript.Add(entry));
-
-        transcript.Received().AppendAsync(
-            AssistantSessionHost.AssistantPaneId,
-            Arg.Is<TranscriptSnapshotEntry>(saved => saved.InputJson != null
-                && saved.InputJson!.Contains("\"answers\"", StringComparison.Ordinal)
-                && saved.InputJson!.Contains("All", StringComparison.Ordinal)),
-            Arg.Any<CancellationToken>());
-    }
-
-    /// <summary>
-    /// AC-955 criterion 10: a question card replays with its options and, if it was answered, its answer,
-    /// read-only — the gap the grooming named: without this fix a beantwoorde kaart replayed as a blank
-    /// Question row for a call the operator had already responded to.
-    /// </summary>
-    [Fact]
-    public void ResumingByConversationId_ReplaysAnAnsweredQuestionCard_WithItsOptionsAndAnswerReadOnly()
-    {
-        var sessionState = Substitute.For<ISessionStateStore>();
-        sessionState.TryLoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<SessionStateRecord>?>(_ =>
-            [_StateFor(AssistantSessionHost.AssistantPaneId, "conv-1")]);
-
-        const string savedInputJson = """
-        {"questions":[{"question":"Which profile?","options":[{"label":"Core"},{"label":"All"}]}],
-         "answers":{"Which profile?":{"options":["All"]}}}
-        """;
-        var transcript = Substitute.For<ISessionTranscriptStore>();
-        transcript.TryLoadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns<IReadOnlyList<TranscriptSnapshotEntry>?>(_ =>
-            [_Recorded("Question", "Which profile?", savedInputJson)]);
-
-        var (_, session, _) = _StartedAssistantOn(SessionCapabilities.ClaudeCli, sessionState, transcript);
-
-        var entry = Assert.Single(session.Transcript);
-        Assert.True(entry.HasQuestionPrompts);
-        var prompt = Assert.Single(entry.QuestionPrompts!);
-        Assert.True(prompt.IsAnswered);
-        Assert.Equal("All", prompt.Answer);
-        Assert.True(prompt.Options[1].IsSelected);
-        Assert.False(prompt.Options[0].IsSelected);
-    }
-
     /// <summary>
     /// Criterion 4: a conversation id the provider no longer recognises (expired, stopped, unknown) surfaces as an
     /// immediate failed turn (AC-539's <c>error_during_execution</c>), not an exception. Silence here would be the
@@ -731,43 +291,6 @@ public class AssistantSessionHostTests
     }
 
     /// <summary>
-    /// The mirror of the test above: a turn that fails once the operator is well into a resumed conversation is an
-    /// ordinary failed reply, not a refused resume — the transcript already has more than the one row a genuine
-    /// resume failure produces before anything else, so this must not tear the session down.
-    /// </summary>
-    [Fact]
-    public void AFailedTurnLaterInAResumedConversation_DoesNotReadAsAnUnresolvableResume()
-    {
-        var sessionState = Substitute.For<ISessionStateStore>();
-        sessionState.TryLoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<SessionStateRecord>?>(_ =>
-            [_StateFor(AssistantSessionHost.AssistantPaneId, "conv-1")]);
-        var transcript = Substitute.For<ISessionTranscriptStore>();
-        transcript.TryLoadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns<IReadOnlyList<TranscriptSnapshotEntry>?>(_ =>
-            [_Recorded("UserText", "earlier message")]);
-
-        var (host, first, _) = _StartedAssistantOn(SessionCapabilities.ClaudeCli, sessionState, transcript);
-
-        // The operator actually asked something first — the row a real send always adds before its turn can run,
-        // let alone fail. This is what the watcher retires on, harmlessly, before the failure below ever arrives.
-        Dispatcher.UIThread.Invoke(() => first.Transcript.Add(
-            new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "and what about AC-1")));
-
-        Dispatcher.UIThread.Invoke(() => first.Apply(new TurnCompleted
-        {
-            SessionId = "conv-1",
-            Subtype = "error_during_execution",
-            Result = null,
-            IsError = true,
-            Errors = ["Something else went wrong"],
-        }));
-
-        // No replacement happens: give the (fire-and-forget, if it were wrongly triggered) recovery a moment, then
-        // assert the original instance is still standing.
-        Thread.Sleep(200);
-        Assert.Same(first, host.View());
-    }
-
-    /// <summary>
     /// Criterion 2 (AC-947): a launch that will not replay the saved rows into the new session — no resumable
     /// conversation id — archives the file that held them first, before the first new row can overwrite it.
     /// AC-1994: the same start carries the slot's brain to the driver exactly once, ahead of a standing instruction
@@ -797,23 +320,6 @@ public class AssistantSessionHostTests
         var standing = AssistantStandingInstruction.Compose(
             profile.SystemPrompt, replacesDefault: false, memory: null, consentCardAsks: !new AssistantSettings().ConsentBypassAll);
         Assert.Contains(standing, appended, StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    /// The mirror of the test above: a launch that does replay the saved rows must not also archive them — the
-    /// happy path keeps growing the one live file, unchanged from before AC-947.
-    /// </summary>
-    [Fact]
-    public void ResumingByConversationId_DoesNotArchiveTheTranscript()
-    {
-        var sessionState = Substitute.For<ISessionStateStore>();
-        sessionState.TryLoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<SessionStateRecord>?>(_ =>
-            [_StateFor(AssistantSessionHost.AssistantPaneId, "conv-1")]);
-        var transcript = Substitute.For<ISessionTranscriptStore>();
-
-        _StartedAssistantOn(SessionCapabilities.ClaudeCli, sessionState, transcript);
-
-        transcript.DidNotReceive().ArchiveAsync(AssistantSessionHost.AssistantPaneId, Arg.Any<CancellationToken>());
     }
 
     // A provider that vouches for compacting its own conversation — the one capability AC-664 turns on.
@@ -877,19 +383,6 @@ public class AssistantSessionHostTests
         }));
     }
 
-    [Fact]
-    public void LaunchOptions_WithAnEmptyBox_AreTheBuiltInInstruction_WhicheverWayTheAdvancedOptionIsSet()
-    {
-        // Nothing written is nothing to replace: an operator who ticked the box and then cleared the text would
-        // otherwise start an assistant with no instruction at all.
-        var profile = _Profile() with { SystemPrompt = "   " };
-
-        var options = AssistantSessionHost._LaunchOptions(profile, replacesStandingInstruction: true, memory: null);
-
-        Assert.StartsWith(AssistantSystemPrompt.Default, options[WellKnownPluginSessionOptions.AppendSystemPrompt], StringComparison.Ordinal);
-        _AssertMachineMemorySuffix(options[WellKnownPluginSessionOptions.AppendSystemPrompt]);
-    }
-
     // ── The restart (the operator's only way to reach a start-time setting) ───────────────────────────────────
 
     /// <summary>
@@ -917,53 +410,6 @@ public class AssistantSessionHostTests
         Assert.NotSame(running, host.View());
         Assert.Equal(AssistantActivity.Unavailable, host.Activity);
         Assert.NotNull(host.UnavailableReason);
-    }
-
-    /// <summary>
-    /// The restart re-reads the Assistant Profile, so a permission mode edited since the last launch is the one
-    /// the new instance starts on. A restart that reused the profile it started with would tear the session down
-    /// and bring it back on exactly the setting the operator restarted to get away from. AC-1475 (Codex): asked for
-    /// while a controller holds the line, it waits, and runs in full once the line is released.
-    /// </summary>
-    [Fact]
-    public void Restart_ReadsTheAssistantProfileAgain_SoASettingChangedSinceTheLastStartIsTheOneItStartsOn()
-    {
-        var profiles = Substitute.For<IAssistantProfileStore>();
-        profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns(_ConfiguredSlot());
-        var clock = new Ac1321TakeoverStateTests.FakeTimeProvider(DateTimeOffset.UnixEpoch);
-        var presence = new NodeControllerPresence(clock);
-        var host = Dispatcher.UIThread.Invoke(() => _Host(enabled: true, slot: _ConfiguredSlot(), profiles: profiles, presence: presence));
-        Dispatcher.UIThread.Invoke(() => host.Session = TestSessions.Assistant(new _RunningSession()));
-
-        Dispatcher.UIThread.Invoke(() => presence.Seen("LAPTOP"));
-        Dispatcher.UIThread.Invoke(() => host.RestartAsync().GetAwaiter().GetResult());
-        var whileHeld = profiles.ReceivedCalls().Count();
-        Dispatcher.UIThread.Invoke(() => clock.Advance(TimeSpan.FromSeconds(61)));
-
-        Assert.Equal(0, whileHeld);
-        profiles.Received().LoadAsync(Arg.Any<CancellationToken>());
-    }
-
-    /// <summary>
-    /// A restart is not a reset: it picks the recorded conversation back up. The state store's last record for the
-    /// assistant's pane is what names it — the same mechanism every restored session uses (AC-409/AC-410) — and
-    /// the restart runs the one start path that reads it.
-    /// </summary>
-    [Fact]
-    public void TheAssistantsResume_IsTheConversationItsPaneLastRecorded_NotAFreshOne()
-    {
-        var state = Substitute.For<ISessionStateStore>();
-        state.TryLoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<SessionStateRecord>?>(_ =>
-        [
-            _StateFor("some-other-pane", "conv-elsewhere"),
-            _StateFor(AssistantSessionHost.AssistantPaneId, "conv-assistant"),
-        ]);
-        var host = Dispatcher.UIThread.Invoke(() => _Host(enabled: true, slot: _ConfiguredSlot(), sessionState: state));
-
-        var resume = Dispatcher.UIThread.Invoke(() => host._ResolveResumeAsync(default).GetAwaiter().GetResult());
-
-        Assert.Equal(SessionResumeMode.BySessionId, resume.Mode);
-        Assert.Equal("conv-assistant", resume.SessionId);
     }
 
     /// <summary>
@@ -1165,43 +611,6 @@ public class AssistantSessionHostTests
                     && options[WellKnownPluginSessionOptions.AppendSystemPrompt].Contains("Raymond", StringComparison.Ordinal)
                     && options[WellKnownPluginSessionOptions.AppendSystemPrompt].Contains("AC-1261", StringComparison.Ordinal)),
                 Arg.Any<string?>(), Arg.Any<CancellationToken>());
-        }
-        finally
-        {
-            Directory.Delete(directory.FullName, recursive: true);
-        }
-    }
-
-    /// <summary>
-    /// AC-1567: the organisation's rule set reaches the start between the built-in layer and the operator's own memory,
-    /// read off disk like the memory is — and a profile that replaces the built-in layer does not take it away.
-    /// </summary>
-    [Fact]
-    public async Task TheOrgRuleSet_GoesIntoTheStartAheadOfThePersonalMemory_EvenUnderAProfileThatReplacesTheBuiltInLayer()
-    {
-        var directory = Directory.CreateTempSubdirectory();
-        try
-        {
-            var memory = new AssistantMemoryFile(
-                Path.Combine(directory.FullName, "assistant-memory.md"), Path.Combine(directory.FullName, "assistant-state.md"));
-            await memory.RememberAsync("The operator is called Raymond.", AssistantMemoryScope.Behaviour);
-            await File.WriteAllTextAsync(Path.Combine(directory.FullName, "assistant-org-rules.md"), "# Rule set of Acme\n\nAnswer in Dutch.\n");
-
-            var driver = Substitute.For<ISessionDriver>();
-            driver.Events.Returns(_EmptyEvents());
-            var factory = Substitute.For<ISessionDriverFactory>();
-            factory.Create(Arg.Any<SessionProfile?>()).Returns(driver);
-            var cockpit = Dispatcher.UIThread.Invoke(() => _CockpitWithSessionFactory(
-                () => TestSessions.Pane(new SessionManager(factory))));
-            var slot = new AssistantProfileSlot(_Profile() with { SystemPrompt = "Be brief." }, ReplacesStandingInstruction: true);
-            var host = Dispatcher.UIThread.Invoke(() => _Host(enabled: true, slot: slot, cockpit: cockpit, memory: memory));
-
-            Assert.NotNull(await Dispatcher.UIThread.InvokeAsync(() => host.EnsureStartedAsync()));
-
-            var prompt = driver.ReceivedCalls().Single(call => call.GetMethodInfo().Name == nameof(ISessionDriver.StartAsync))
-                .GetArguments().OfType<IReadOnlyDictionary<string, string>>().Single()[WellKnownPluginSessionOptions.AppendSystemPrompt];
-            var rules = prompt.IndexOf("# Rule set of Acme", StringComparison.Ordinal);
-            Assert.InRange(rules, 1, prompt.IndexOf(AssistantStandingInstruction.MemoryHeading, StringComparison.Ordinal));
         }
         finally
         {

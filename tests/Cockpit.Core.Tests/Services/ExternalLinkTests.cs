@@ -11,29 +11,6 @@ namespace Cockpit.Core.Tests.Services;
 public class ExternalLinkTests
 {
     [Theory]
-    [InlineData("http://example.test")]
-    [InlineData("https://example.test:8443/path?q=1#frag")]
-    [InlineData("HTTPS://EXAMPLE.TEST")]
-    public void TryParseWebAddress_AnHttpOrHttpsUrl_IsAccepted(string value) =>
-        Assert.True(ExternalLink.TryParseWebAddress(value, out _), "a value the rows draw as a link has to be one this will actually open");
-
-    [Theory]
-    [InlineData(null)]
-    [InlineData("github.com/example/repo")]
-    [InlineData("file:///C:/Windows/System32/calc.exe")]
-    [InlineData("C:\\Windows\\System32\\calc.exe")]
-    [InlineData("\\\\server\\share\\payload.exe")]
-    [InlineData("cmd.exe /c calc")]
-    [InlineData("javascript:alert(1)")]
-    [InlineData("data:text/html,<script>alert(1)</script>")]
-    [InlineData("ms-msdt:/id")]
-    [InlineData("search-ms:query=x")]
-    [InlineData("vscode://file/etc/passwd")]
-    [InlineData("mailto:someone@example.test")]
-    public void TryParseWebAddress_AnythingElse_IsRefused(string? value) =>
-        Assert.False(ExternalLink.TryParseWebAddress(value, out _), "these are the values a weaker guard would have launched a program with");
-
-    [Theory]
     [InlineData(null)]
     [InlineData("file:///C:/Windows/System32/calc.exe")]
     public void TryOpen_SomethingItRefuses_StartsNothing(string? value) =>

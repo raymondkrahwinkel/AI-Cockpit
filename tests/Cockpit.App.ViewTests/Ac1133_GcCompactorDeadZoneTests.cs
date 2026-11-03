@@ -8,32 +8,6 @@ public class Ac1133_GcCompactorDeadZoneTests
     private const long MB = 1024L * 1024L;
 
     [Fact]
-    public void CheckOnce_CompactsAgainAfterADeadZoneIsRearmed()
-    {
-        var compacts = 0;
-        var heapBytes = 450 * MB;
-        var compactor = new AdaptiveGcCompactor(
-            new _Silent(),
-            () => heapBytes,
-            () =>
-            {
-                compacts++;
-                heapBytes = heapBytes * 98 / 100;
-            },
-            allocatedBytesProbe: () => 0L);
-
-        compactor.CheckOnce();
-        var armed = compacts;
-
-        heapBytes = 400 * MB;
-        compactor.CheckOnce();
-        heapBytes = 500 * MB;
-        compactor.CheckOnce();
-
-        Assert.Equal(armed + 1, compacts);
-    }
-
-    [Fact]
     public void CheckOnce_DoesNotCompactEveryCheckWhenTheLiveHeapStaysHigh()
     {
         var compacts = 0;

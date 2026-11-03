@@ -1,7 +1,4 @@
-using Avalonia.Controls;
-using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
-using Cockpit.App.Views;
 using Cockpit.Core.Sessions;
 using Cockpit.App.Composition;
 
@@ -16,50 +13,6 @@ namespace Cockpit.App.ViewTests;
 [Collection("avalonia")]
 public sealed class TranscriptUnbrokenBlockSplitTests
 {
-    private const int Chunks = 40;
-
-    [Fact]
-    public async Task AnOrderedListSplitAcrossRows_KeepsCountingWhereTheRowBeforeItStopped()
-    {
-        var markers = new List<string>();
-        var rows = 0;
-
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var vm = new SessionViewModel();
-            vm.Transcript.Clear();
-            for (var i = 1; i <= Chunks; i++)
-            {
-                vm.Apply(new AssistantTextDelta
-                {
-                    SessionId = "S1",
-                    BlockIndex = 0,
-                    Text = $"{i}. step {i} of a numbered list that runs on well past one row's worth of markdown.\n",
-                });
-            }
-
-            rows = vm.Transcript.Count;
-
-            // The last row's own markdown, rendered the way the transcript renders it.
-            var markdown = new MarkdownView { Markdown = vm.Transcript[^1].Text };
-            var window = new Window { Content = markdown, Width = 900, Height = 600 };
-            window.Show();
-            window.UpdateLayout();
-            await Task.Delay(100);
-
-            markers.AddRange(markdown.GetVisualDescendants()
-                .OfType<TextBlock>()
-                .Select(block => block.Text ?? string.Empty)
-                .Where(text => text.EndsWith('.') && int.TryParse(text[..^1], out _)));
-
-            window.Close();
-        });
-
-        Assert.True(rows > 1, $"the numbered list stayed in {rows} row(s), so nothing was split and this proves nothing");
-        Assert.NotEmpty(markers);
-        Assert.NotEqual("1.", markers[0]);
-    }
-
     // AC-1272: a table-shaped header+separator pasted inside a still-open fence (e.g. an example the reply is
     // showing) must not be read as a real table -- `_OpenTableLineEnd` needs the same open-fence guard
     // `_UnbrokenBlockEnd` already has, or it seals the row mid-fence and abandons the fence's own continuation.

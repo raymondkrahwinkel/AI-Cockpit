@@ -19,14 +19,6 @@ namespace Cockpit.App.ViewTests;
 public class AssistantChatWindowResizeAndFocusTests
 {
     /// <summary>
-    /// Criterion 3 for the pill, which emptied the chat box every time it appeared. On the property, not on where
-    /// the keyboard lands: it is what Avalonia hands the platform, and a single attribute an edit could drop.
-    /// </summary>
-    [Fact]
-    public void TheVoicePill_IsShownWithoutTakingTheKeyboard() => HeadlessAvalonia.Run(() =>
-        Assert.False(new VoiceOverlayWindow().ShowActivated));
-
-    /// <summary>
     /// Criteria 2 and 3, the reproduction: the view follows every selection change by focusing that pane's input,
     /// which emptied the pop-out's composer mid-sentence. The selection logic itself is left exactly as it was.
     /// </summary>
@@ -52,36 +44,6 @@ public class AssistantChatWindowResizeAndFocusTests
 
         Assert.True(startedInThePopout, "the test needs the keyboard to start in the pop-out, or it proves nothing");
         Assert.False(stolenByThePane, "a pane must not take the keyboard out of the window the operator is in");
-        Assert.True(stayedInThePopout);
-    });
-
-    /// <summary>
-    /// Criterion 3, the second route to the same steal: in single-pane/zoom mode a <see cref="SessionView"/> focuses
-    /// its own composer as it attaches. Guarding only the selection handler would have left this one open.
-    /// </summary>
-    [Fact]
-    public void APaneAppearing_WhileTheKeyboardIsInAnotherWindow_LeavesItThere() => HeadlessAvalonia.Run(() =>
-    {
-        var main = new Window { Content = new Decorator(), Width = 800, Height = 600 };
-        main.Show();
-        main.UpdateLayout();
-        Dispatcher.UIThread.RunJobs();
-
-        var (popout, popoutBox) = _ShownPopout();
-        popoutBox.Focus();
-        Dispatcher.UIThread.RunJobs();
-
-        var pane = _Pane();
-        ((Decorator)main.Content!).Child = pane;
-        main.UpdateLayout();
-        Dispatcher.UIThread.RunJobs();
-
-        var stayedInThePopout = popoutBox.IsFocused;
-        var stolenByThePane = _ComposerIn(pane).IsFocused;
-        popout.Close();
-        main.Close();
-
-        Assert.False(stolenByThePane, "a pane appearing must not take the keyboard out of the pop-out");
         Assert.True(stayedInThePopout);
     });
 

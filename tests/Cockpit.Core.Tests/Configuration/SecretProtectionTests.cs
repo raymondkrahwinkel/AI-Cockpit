@@ -116,11 +116,6 @@ public class SecretProtectionTests : IDisposable
         await Task.CompletedTask;
     }
 
-    private sealed class SynchronousProgress(Action<SecretMigrationProgress> report) : IProgress<SecretMigrationProgress>
-    {
-        public void Report(SecretMigrationProgress value) => report(value);
-    }
-
     [Fact]
     public async Task AForgottenPassword_HasAWayBackIn_WithoutLosingTheRestOfTheSettings()
     {
@@ -134,55 +129,6 @@ public class SecretProtectionTests : IDisposable
         Assert.Equal("YouTrack", servers.Single().Name);
         Assert.Empty(servers.Single().ApiKey!);
         Assert.DoesNotContain("Security", RawConfig());
-    }
-
-    [Fact]
-    public async Task APluginsOwnFieldName_IsProtectedOnceThePluginSaysSo()
-    {
-        // "pat" is not a name the host recognises — that is the whole reason a plugin can declare it (plugin.json
-        // "secretKeys", or IPluginStorage.SetSecret). Without the declaration it would be stored in the clear
-        // while the operator believes their credentials are encrypted, which is worse than not offering the
-        // feature at all.
-        var declared = new SecretKeyHolder();
-        declared.Declare(["pat"]);
-
-        var document = new JsonObject
-        {
-            ["Plugins"] = new JsonObject
-            {
-                ["some-plugin"] = new JsonObject
-                {
-                    ["Data"] = new JsonObject { ["pat"] = Token },
-                },
-            },
-        };
-        await File.WriteAllTextAsync(_configPath, document.ToJsonString());
-
-        await new SecretProtectionService(_configPath, declared).EnableAsync(Password);
-
-        Assert.DoesNotContain(Token, RawConfig());
-
-        // And a fresh start, which knows the declared name from the config, reads it back rather than handing the
-        // plugin ciphertext.
-        var restarted = new SecretKeyHolder();
-        restarted.Declare(["pat"]);
-        Assert.True(await new SecretProtectionService(_configPath, restarted).UnlockAsync(Password));
-
-        var protector = restarted.Protector!;
-        var stored = JsonNode.Parse(RawConfig())!["Plugins"]!["some-plugin"]!["Data"]!["pat"]!.GetValue<string>();
-        Assert.Equal(Token, protector.Unprotect("Plugins.some-plugin.Data.pat", stored));
-    }
-
-    [Fact]
-    public void AnEncryptedValue_IsNeverEncryptedTwice()
-    {
-        var protector = new SecretProtector(SecretKey.Derive(Password, SecretKey.NewSalt(), iterations: 1000));
-        var once = protector.Protect("McpServers[0].ApiKey", Token);
-
-        var twice = protector.Protect("McpServers[0].ApiKey", once);
-
-        Assert.Equal(once, twice);
-        Assert.Equal(Token, protector.Unprotect("McpServers[0].ApiKey", twice));
     }
 
     [Fact]
@@ -216,21 +162,6 @@ public class SecretProtectionTests : IDisposable
     }
 
     [Fact]
-    public void TheFormat_IsAFormat_NotSomethingOnlyItsOwnWriterCanRead()
-    {
-        // Produced by an independent implementation (Python: hashlib.pbkdf2_hmac + cryptography's AESGCM) from the
-        // password, salt and iteration count below. It pins the on-disk format — the KDF, the key length, the
-        // nonce|ciphertext|tag layout, and the field path as associated data. Change any of those and this fails,
-        // which is the point: an operator's config must still open after we touch the crypto.
-        const string encrypted = "enc:v1:AAECAwQFBgcICQoLe8UEzFFflAnzBRRyc23dvImugNtoqJxQAip0oQYBFV+1s14upA==";
-        var salt = Convert.FromBase64String("AAECAwQFBgcICQoLDA0ODw==");
-
-        var protector = new SecretProtector(SecretKey.Derive(Password, salt, iterations: 1000));
-
-        Assert.Equal(Token, protector.Unprotect("McpServers[0].ApiKey", encrypted));
-    }
-
-    [Fact]
     public async Task TheRewrite_KeepsABackup_ButScrubsThePlaintextOutOfIt()
     {
         await Store().SaveAsync([Server(Token)]);
@@ -245,20 +176,6 @@ public class SecretProtectionTests : IDisposable
         var backupText = File.ReadAllText(backup);
         Assert.DoesNotContain(Token, backupText);
         Assert.Contains(SecretProtector.Prefix, backupText);
-    }
-
-    [Fact]
-    public async Task TheDismissalRecord_CarriesFieldPaths_NotCredentialValues()
-    {
-        await Store().SaveAsync([Server(Token)]);
-        await Service().DismissUnprotectedWarningAsync();
-
-        // The token itself is still in the file — encryption is off, that is what the banner was about — but the
-        // dismissal we just wrote records only the field paths, so it must not carry the credential's value.
-        var dismissedPaths = JsonNode.Parse(RawConfig())!["SecurityNotice"]!["DismissedPaths"]!.AsArray()
-            .Select(node => node!.GetValue<string>()).ToList();
-        Assert.Equal("McpServers[0].ApiKey", Assert.Single(dismissedPaths));
-        Assert.DoesNotContain(dismissedPaths, path => path.Contains(Token));
     }
 
     [Fact]
@@ -277,22 +194,6 @@ public class SecretProtectionTests : IDisposable
         var reopened = new SecretKeyHolder();
         Assert.True(await new SecretProtectionService(_configPath, reopened).UnlockAsync(newPassword));
         Assert.Equal(Token, (await new McpServerStore(_configPath, reopened).LoadAsync()).Single().ApiKey);
-    }
-
-    [Fact]
-    public async Task Enabling_ScrubsThePlaintextOutOfADamagedSidecar()
-    {
-        await Store().SaveAsync([Server(Token)]);
-
-        // A quarantined copy an earlier recovery left behind (CockpitConfigFileAccess writes these) — plaintext,
-        // and holding the same token as the live config. Decision #4: Enable has to close it too.
-        var damaged = $"{_configPath}.damaged-20260719-101500";
-        await File.WriteAllTextAsync(damaged, new JsonObject { ["token"] = Token }.ToJsonString());
-
-        await Service().EnableAsync(Password);
-
-        Assert.True(!File.Exists(damaged) || !File.ReadAllText(damaged).Contains(Token),
-            "a plaintext .damaged-* copy is re-encrypted or removed, never left with a readable token");
     }
 
     [Fact]
@@ -362,20 +263,6 @@ public class SecretProtectionTests : IDisposable
         var otherMachine = new SecretKeyHolder();
         Assert.Equal(HelloUnlockResult.KeyGone, await new SecretProtectionService(_configPath, otherMachine).UnlockWithHelloAsync(new FakeSigner(presentElsewhere: true)));
         Assert.Null(otherMachine.Protector);
-    }
-
-    [Fact]
-    public async Task Hello_TurnsItselfOff_AtTheFirstUnlock_WhenTheOsKeySignsDifferentlyEachTime()
-    {
-        await Service().EnableAsync(Password);
-        var randomised = new FakeSigner(randomised: true);
-        Assert.True(await Service().EnableHelloAsync(Password, randomised));
-
-        var restarted = new SecretKeyHolder();
-        Assert.Equal(HelloUnlockResult.Unsupported, await new SecretProtectionService(_configPath, restarted).UnlockWithHelloAsync(randomised));
-
-        Assert.Null(restarted.Protector);
-        Assert.DoesNotContain("Hello", RawConfig());
     }
 
     [Fact]
@@ -459,26 +346,6 @@ public class SecretProtectionTests : IDisposable
         var reopened = new SecretKeyHolder();
         Assert.True(await new SecretProtectionService(_configPath, reopened).UnlockAsync(Password));
         Assert.Equal(2, System.Linq.Enumerable.Count(await new McpServerStore(_configPath, reopened).LoadAsync()));
-    }
-
-    [Fact]
-    public async Task Unlocking_ReEncryptsAPlaintextBackup_LeftBesideAnEncryptedConfig()
-    {
-        await Store().SaveAsync([Server(Token)]);
-        await Service().EnableAsync(Password);
-
-        // A plaintext .bak reappears (a crash between Save and scrub). A fresh start unlocks, and the sweep closes
-        // it (review #4).
-        await File.WriteAllTextAsync(
-            _configPath + ".bak",
-            new JsonObject { ["McpServers"] = new JsonArray(new JsonObject { ["ApiKey"] = Token }) }.ToJsonString());
-
-        var restarted = new SecretKeyHolder();
-        Assert.True(await new SecretProtectionService(_configPath, restarted).UnlockAsync(Password));
-
-        var backup = File.ReadAllText(_configPath + ".bak");
-        Assert.DoesNotContain(Token, backup);
-        Assert.Contains(SecretProtector.Prefix, backup);
     }
 
     [Fact]

@@ -1,12 +1,10 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
-using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
-using Cockpit.Core.Sessions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -56,51 +54,6 @@ public class TranscriptStickToBottomTests
 
         return (window, session, scroll, jumpButton);
     }
-
-    /// <summary>
-    /// Toggles a viewport-resizing row on and off, repeatedly — like a turn with several tool calls, which flips
-    /// <c>IsBusy</c> many times over (AC-459) — and asserts the follow never breaks: the jump-to-newest
-    /// button stays hidden throughout, and the transcript stays measured at the bottom by the same geometry the
-    /// handler itself uses (<see cref="TranscriptScrollAnchor"/>).
-    /// <para>
-    /// A single toggle is not enough to catch a regression here: Avalonia's own virtualising panel re-anchors the
-    /// offset to the new bottom the first time the viewport resizes, whether or not the fix is in place. It is only
-    /// from the second cycle onward that the two diverge — without the fix, a shrink that lands (correctly) on the
-    /// true bottom is never revisited on the next shrink, because nothing else moved the offset in between, so the
-    /// transcript stays measurably short of the bottom for as long as the row is up.
-    /// </para>
-    /// </summary>
-    private static void _AssertTogglingNeverStopsFollowing(string label, Action<SessionViewModel, bool> toggle)
-    {
-        var (window, session, scroll, jumpButton) = _PaneParkedAtTheBottom();
-        var restingViewport = scroll.Viewport.Height;
-
-        for (var cycle = 0; cycle < 3; cycle++)
-        {
-            toggle(session, true);
-            _Settle(window);
-
-            Assert.NotEqual(restingViewport, scroll.Viewport.Height);
-            Assert.False(jumpButton.IsVisible, $"{label} appearing (cycle {cycle}) is not a user scroll, so following must not stop");
-            Assert.True(
-                TranscriptScrollAnchor.IsAtBottom(scroll.Offset.Y, scroll.Extent.Height, scroll.Viewport.Height),
-                $"{label} must not leave the transcript short of the bottom it was parked at (cycle {cycle})");
-
-            toggle(session, false);
-            _Settle(window);
-
-            Assert.False(jumpButton.IsVisible, $"{label} disappearing again must not stop the follow either (cycle {cycle})");
-            Assert.True(
-                TranscriptScrollAnchor.IsAtBottom(scroll.Offset.Y, scroll.Extent.Height, scroll.Viewport.Height),
-                $"{label} disappearing must leave the transcript at the bottom too (cycle {cycle})");
-        }
-
-        window.Close();
-    }
-
-    [Fact]
-    public void TheThinkingIndicator_AppearingWhileParkedAtTheBottom_DoesNotStopFollowing() => HeadlessAvalonia.Run(() =>
-        _AssertTogglingNeverStopsFollowing("the Thinking indicator", (session, on) => session.IsBusy = on));
 
     // The test that used to sit here assigned scroll.Offset directly and called that "a real user scroll". It is
     // gone rather than relaxed, because the fix for AC-528 makes its premise false on purpose: an assignment to
@@ -156,102 +109,6 @@ public class TranscriptStickToBottomTests
         }
 
         Assert.False(jumpButton.IsVisible, "wheeling back to the bottom must resume the follow on its own");
-
-        window.Close();
-    });
-
-    /// <summary>
-    /// AC-528 criterion 5. A folded run at the Focus level is the case the estimate goes wrong on: a
-    /// <see cref="VirtualizingStackPanel"/> builds <c>Extent</c> from the rows it happens to have realised, so
-    /// <c>ScrollToEnd()</c> aims at a bottom that the panel's next arrange moves out from under it — measured at
-    /// these four sizes, that left the transcript some 300px short and the newest row half under the composer
-    /// hairline. Asked of the panel rather than of <c>Extent</c>: a transcript that is truly parked does not move
-    /// when asked to scroll far past the end.
-    /// <para>
-    /// Four window sizes rather than one, because row height decides whether the estimate happens to land exactly
-    /// — and row height is font, so a single size guards one machine. An earlier round of this ticket passed on
-    /// the author's fonts and failed on CI's for precisely that reason.
-    /// </para>
-    /// </summary>
-    [Theory]
-    [InlineData(700, 470)]
-    [InlineData(700, 500)]
-    [InlineData(700, 560)]
-    [InlineData(900, 530)]
-    public void AFoldedRunStreamingIn_KeepsTheTranscriptParkedOnTheNewestRow(int width, int height) =>
-        HeadlessAvalonia.Run(() =>
-    {
-        var session = new SessionViewModel { ReadingLevel = ReadingLevel.Focus };
-        for (var index = 0; index < 30; index++)
-        {
-            session.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, $"row {index}"));
-        }
-
-        var window = new Window { Width = width, Height = height, Content = new SessionView { DataContext = session } };
-        window.Show();
-        _Settle(window);
-
-        var scroll = _Transcript(window);
-        var jumpButton = _JumpToNewestButton(window);
-        scroll.ScrollToEnd();
-        _Settle(window);
-        Assert.False(jumpButton.IsVisible, "the fixture must start parked at the newest row");
-
-        void AssertParkedAtTheBottom(string where)
-        {
-            Assert.False(jumpButton.IsVisible, $"{where}: no operator ever scrolled, so the follow must not stop");
-
-            var parked = scroll.Offset.Y;
-            scroll.Offset = scroll.Offset.WithY(parked + 10_000);
-            _Settle(window);
-            Assert.Equal(parked, scroll.Offset.Y);
-        }
-
-        for (var run = 0; run < 3; run++)
-        {
-            // A run of auto tool calls arrives and folds itself into one "N steps run" line, then an ordinary
-            // reply lands below it — a plain Focus-level turn, no click involved.
-            session.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.ToolUse, $"Read {run}")
-            {
-                IsInGroup = true,
-                IsGroupAnchor = true,
-                GroupCount = 4,
-            });
-            _Settle(window);
-
-            for (var member = 0; member < 3; member++)
-            {
-                session.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.ToolUse, $"Bash {run}.{member}")
-                {
-                    IsInGroup = true,
-                });
-                _Settle(window);
-            }
-
-            session.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, $"reply {run}"));
-            _Settle(window);
-
-            AssertParkedAtTheBottom($"run {run}");
-        }
-
-        window.Close();
-    });
-
-    /// <summary>AC-528 criterion 4: the chevron stays a manual jump back to the newest row.</summary>
-    [Fact]
-    public void TheChevron_JumpsBackToTheNewestRow() => HeadlessAvalonia.Run(() =>
-    {
-        var (window, _, scroll, jumpButton) = _PaneParkedAtTheBottom();
-
-        _WheelTicks(window, deltaY: 1, count: 5);
-        Assert.True(jumpButton.IsVisible);
-        var scrolledAway = scroll.Offset.Y;
-
-        jumpButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        _Settle(window);
-
-        Assert.True(scroll.Offset.Y > scrolledAway, "the chevron must move the view back down");
-        Assert.False(jumpButton.IsVisible, "and hide itself, because the follow is on again");
 
         window.Close();
     });

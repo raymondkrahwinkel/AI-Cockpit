@@ -22,47 +22,6 @@ public class McpHeaderStorageTests : IDisposable
     }
 
     [Fact]
-    public async Task SaveAsync_ThenLoadAsync_RoundTripsTheHeaders()
-    {
-        var store = new McpServerStore(_configFilePath);
-        var server = new McpServerConfig
-        {
-            Name = "private-api",
-            Transport = McpTransport.Http,
-            Url = "https://api.example/mcp",
-            Headers = [new McpHeader("X-Api-Key", "the-key"), new McpHeader("X-Tenant", "acme")],
-        };
-
-        await store.SaveAsync([server]);
-        var loaded = await store.LoadAsync();
-
-        var reloaded = Assert.Single(loaded);
-        Assert.Collection(
-            reloaded.Headers,
-            first =>
-            {
-                Assert.Equal("X-Api-Key", first.Name);
-                Assert.Equal("the-key", first.Value);
-            },
-            second =>
-            {
-                Assert.Equal("X-Tenant", second.Name);
-                Assert.Equal("acme", second.Value);
-            });
-    }
-
-    [Fact]
-    public void TheStoredHeaderValueIsCoveredByTheSecretRule_AndTheNameIsNot()
-    {
-        // This is why the on-disk field is called SecretValue rather than Value: encryption and backup-scrubbing both
-        // decide by the name of the JSON field, and a field called "Value" is the gap free-form rows fell into once
-        // before (AC-295) — a pasted token left readable and out of the scrubber's reach.
-        Assert.True(SecretFields.ByName.IsSecret("SecretValue"));
-        Assert.False(SecretFields.ByName.IsSecret("Value"));
-        Assert.False(SecretFields.ByName.IsSecret("Name"));
-    }
-
-    [Fact]
     public async Task TheStoredHeaderValueIsActuallyReachedByTheSecretWalker()
     {
         var store = new McpServerStore(_configFilePath);

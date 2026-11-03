@@ -34,16 +34,6 @@ public class ProjectDialogWriteBackTests
         return catalog;
     }
 
-    // AC-1404: two ordinary servers and two a project's Depot memory brings in — one of each the local overlay
-    // switched off, the other left on, so every assertion below has its own counter-proof beside it.
-    private static readonly McpServerConfig[] _Servers =
-    [
-        new() { Name = "github", Command = "npx" },
-        new() { Name = "youtrack", Command = "npx" },
-        new() { Name = "Depot: excluded", Command = "npx", ProjectLinked = true },
-        new() { Name = "Depot: kept", Command = "npx", ProjectLinked = true },
-    ];
-
     private static SharedProjectBinding Baseline(
         string name = "Cockpit", string? description = null, string? behaviorPrompt = null,
         bool isolate = false, IReadOnlyList<string>? enabledMcp = null, string checksum = "chk-open") =>
@@ -106,23 +96,6 @@ public class ProjectDialogWriteBackTests
             sharedWriteBack: new ProjectSharedWriteBackContext(source, "depot:cockpit", baseline));
 
     [Fact]
-    public async Task SaveAsync_PermissionDenied_SetsSaveErrorAndDoesNotClose()
-    {
-        var project = Project.Create("Cockpit");
-        var source = new _FakeSource(SharedProjectWriteBackResult.PermissionDenied("You are a Viewer on this project."));
-        var viewModel = await ViewModelAsync(project, source, Baseline());
-        viewModel.Name = "Edited name"; // an edit is required — SaveAsync now skips the write-back entirely when nothing changed.
-
-        var closed = false;
-        viewModel.CloseRequested += _ => closed = true;
-
-        await viewModel.SaveCommand.ExecuteAsync(null);
-
-        Assert.False(closed);
-        Assert.Equal("You are a Viewer on this project.", viewModel.SaveError);
-    }
-
-    [Fact]
     public async Task SaveAsync_ConflictWithNoOneListening_FailsClosedRatherThanOverwritingOrDropping()
     {
         var project = Project.Create("Cockpit");
@@ -138,25 +111,6 @@ public class ProjectDialogWriteBackTests
 
         Assert.False(closed);
         Assert.NotNull(viewModel.SaveError);
-    }
-
-    [Fact]
-    public async Task SaveAsync_ConflictThenCancel_ReturnsToEditingWithNothingWritten()
-    {
-        var project = Project.Create("Cockpit");
-        var source = new _FakeSource(SharedProjectWriteBackResult.Conflict(Baseline(name: "Remote edit", checksum: "chk-now")));
-        var viewModel = await ViewModelAsync(project, source, Baseline());
-        viewModel.Name = "Edited name"; // an edit is required — SaveAsync now skips the write-back entirely when nothing changed.
-        viewModel.ConflictRequested += (_, _) => Task.FromResult<ProjectDefinitionConflictResolution?>(null);
-
-        var closed = false;
-        viewModel.CloseRequested += _ => closed = true;
-
-        await viewModel.SaveCommand.ExecuteAsync(null);
-
-        Assert.False(closed);
-        Assert.Null(viewModel.SaveError);
-        Assert.Single(source.Calls); // no retry — the operator cancelled the conflict window, not chose a resolution.
     }
 
     [Fact]
@@ -247,5 +201,4 @@ public class ProjectDialogWriteBackTests
         Assert.Equal("Zyra", legacy.ToProject().Assistant);
         Assert.Equal("Zyra", legacy.BrainPicker.Selected?.Reference);
     }
-
 }

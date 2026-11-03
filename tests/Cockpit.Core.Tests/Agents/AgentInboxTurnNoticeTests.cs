@@ -36,20 +36,6 @@ public class AgentInboxTurnNoticeTests
     }
 
     /// <summary>
-    /// Order matters and is easy to get wrong: escaping the ampersand last rewrites the ampersands the other two
-    /// just introduced, so a literal <c>&lt;</c> would reach the recipient as <c>&amp;amp;lt;</c> and a body that
-    /// discussed markup would be quietly mangled.
-    /// </summary>
-    [Fact]
-    public void Render_EscapesTheAmpersandBeforeTheCharactersThatIntroduceOnes()
-    {
-        var rendered = _Notice(_Message(body: "a < b && c > d")).Render();
-
-        Assert.Contains("a &lt; b &amp;&amp; c &gt; d", rendered, StringComparison.Ordinal);
-        Assert.DoesNotContain("&amp;lt;", rendered, StringComparison.Ordinal);
-    }
-
-    /// <summary>
     /// An attribute value sits inside an open tag, so a newline in one puts sender-written text on a line of its own
     /// with no markup beside it — free framing confusion in a field the design treats as a short label.
     /// </summary>

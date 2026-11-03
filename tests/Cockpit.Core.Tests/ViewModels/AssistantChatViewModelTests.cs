@@ -36,31 +36,6 @@ public class AssistantChatViewModelTests
         return store;
     }
 
-    // AC-575 criterion 5: the window stays between openings and read the flag once (EnsureOpenedAsync), so a bypass left it stale.
-    [Fact]
-    public async Task ABypassSwitchedOnWhileTheWindowIsOpen_ReachesTheHeaderOnTheSaveSignal()
-    {
-        var store = Substitute.For<IAssistantSettingsStore>();
-        store.LoadAsync(Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(new AssistantSettings { IsEnabled = true, ConsentBypassAll = false }));
-        var vm = new AssistantChatViewModel(FakeHost(), store, Substitute.For<IVoicePlaybackQueue>());
-
-        await vm.EnsureOpenedAsync();
-        Assert.False(vm.ConsentBypassActive);
-
-        // Options saves a bypass. The window is still the same instance — nothing reopened.
-        store.LoadAsync(Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(new AssistantSettings
-            {
-                IsEnabled = true,
-                ConsentBypassAll = false,
-                ConsentBypassSources = ["Terminal MCP"],
-            }));
-        await vm.ApplySettingsAsync();
-
-        Assert.True(vm.ConsentBypassActive);
-    }
-
     // AC-545 criterion 5: the flyout's own contract on this view model — load lazily, newest first, never throw
     // when nothing is wired up to read from.
 

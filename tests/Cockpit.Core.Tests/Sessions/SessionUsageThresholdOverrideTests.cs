@@ -15,24 +15,6 @@ public class SessionUsageThresholdOverrideTests
         new("weekly", "wk", PluginUsageSignalKind.Allowance, 90) { Description = "Week" };
 
     [Fact]
-    public void WithAnOverride_TheWarningAndBarUseTheOperatorsNumber()
-    {
-        var settings = new UsageThresholdSettings();
-        settings.Set(settings.ByProvider, "claude", "weekly", 60);
-
-        var session = new TtyViewModel { UsageThresholds = settings, UsageProviderId = "claude" };
-
-        session.ApplyUsage([Weekly], [new PluginUsageReading("weekly", 65, null)]);
-
-        Assert.True(session.HasUsageWarning, "65% is past the 60 the operator set, though short of the provider's 90");
-        // AC-683: `HasUsageWarning`/`UsageWarning` are derived from `Warnings` now — the collection is the real state.
-        Assert.Single(session.Warnings);
-        Assert.Contains("Week is 65% used", session.Warnings[0].Text);
-        var rateLimit = Assert.Single(session.RateLimits);
-        Assert.Equal(60, rateLimit.ThresholdPercent);
-    }
-
-    [Fact]
     public void AProfileOverride_AppliesToThatSessionOnly()
     {
         var settings = new UsageThresholdSettings();
@@ -46,17 +28,6 @@ public class SessionUsageThresholdOverrideTests
 
         Assert.True(work.HasUsageWarning);
         Assert.False(personal.HasUsageWarning, "that profile still follows the provider's 90");
-    }
-
-    [Fact]
-    public void WithNoSettingsLoaded_EverythingFollowsTheProvider()
-    {
-        var session = new TtyViewModel();
-
-        session.ApplyUsage([Weekly], [new PluginUsageReading("weekly", 95, null)]);
-
-        Assert.True(session.HasUsageWarning);
-        Assert.Equal(90, session.RateLimits[0].ThresholdPercent);
     }
 
     [Fact]

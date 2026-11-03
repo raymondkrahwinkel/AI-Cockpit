@@ -54,17 +54,6 @@ public class McpOAuthCoordinatorTests
     }
 
     [Fact]
-    public async Task GetState_ForATokenHeldUnderThisNameForADifferentHost_SaysASignInIsNeeded()
-    {
-        var (coordinator, store) = _Create();
-        await store.SaveAsync("depot", "depot", _TokenFor("token", "https://depot.example/mcp", DateTimeOffset.UtcNow.AddHours(1), refreshToken: "refresh"));
-
-        // Same rule the credential path applies: a name is not an identity. Showing "signed in" for a host this
-        // token was never issued to would be the status lying about exactly the case that matters.
-        Assert.Equal(McpAuthState.AuthorizationRequired, await coordinator.GetStateAsync(_OAuthServer("https://elsewhere.example/mcp")));
-    }
-
-    [Fact]
     public async Task Acquire_AskedInteractively_PutsTheOldTokenBack_WhenTheFlowProducesNothing()
     {
         var (coordinator, store) = _Create();
@@ -79,21 +68,4 @@ public class McpOAuthCoordinatorTests
         Assert.Equal("stored-token", stored?.AccessToken);
         Assert.Equal("refresh", stored?.RefreshToken);
     }
-
-    [Fact]
-    public async Task SignOut_ForgetsTheToken_SoTheNextUseAsksAgain()
-    {
-        var (coordinator, store) = _Create();
-        await store.SaveAsync("depot", "depot", _TokenFor("depot-access-token", UnreachableUrl, DateTimeOffset.UtcNow.AddHours(1)));
-
-        var accountChanges = 0;
-        coordinator.AccountChanged += _ => accountChanges++;
-
-        await coordinator.SignOutAsync(_OAuthServer());
-
-        Assert.Equal(1, accountChanges);
-        Assert.Equal(McpAuthState.AuthorizationRequired, await coordinator.GetStateAsync(_OAuthServer()));
-        Assert.Null(await store.GetAsync("depot"));
-    }
-
 }

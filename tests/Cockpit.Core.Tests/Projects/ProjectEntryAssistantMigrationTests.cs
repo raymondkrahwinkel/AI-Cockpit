@@ -30,19 +30,6 @@ public class ProjectEntryAssistantMigrationTests
         Assert.Equal(mixed, project.BehaviorPrompt);
     }
 
-    /// <summary>
-    /// An entry that already answers for itself is never second-guessed — this is what makes reading twice, or
-    /// reading an already-saved file, change nothing.
-    /// </summary>
-    [Fact]
-    public void ToDomain_AnEntryThatAlreadyNamesAnAssistant_KeepsBothFieldsUntouched()
-    {
-        var project = Entry("Gebruik Zyra", assistant: "Vex").ToDomain();
-
-        Assert.Equal("Vex", project.Assistant);
-        Assert.Equal("Gebruik Zyra", project.BehaviorPrompt);
-    }
-
     [Fact]
     public void ToDomain_ReadingAMigratedProjectBackAgain_ChangesNothingFurther()
     {

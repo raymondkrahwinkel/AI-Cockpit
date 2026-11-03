@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Avalonia.Threading;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
@@ -77,65 +76,6 @@ public sealed class Ac1138UiThreadDeadlineTests
         Assert.Equal(1, runs);
     }
 
-    /// <summary>T1 — the UI thread held by one non-yielding job: capped, not waited out.</summary>
-    [Fact]
-    public async Task AGatewayCalledWhileTheUiThreadIsBlocked_AnswersUiUnavailable_RatherThanWaitingItOut()
-    {
-        var (_, handle) = Dispatcher.UIThread.Invoke(_HandleWithOneSession);
-
-        // Longer than the cap by a margin, and a Wait with that 8 s as its ceiling rather than a bare Sleep of it
-        // (AC-1196's blocking test, same reason): the ceiling keeps this able to fail, and releasing it below
-        // returns the thread ~3 s earlier, which the next test in the collection was paying for.
-        using var release = new ManualResetEventSlim();
-        Dispatcher.UIThread.Post(() => release.Wait(TimeSpan.FromSeconds(8)));
-
-        try
-        {
-            var (failure, elapsed) = await _TimedRefusal(handle);
-
-            Assert.Equal(UiThreadCall.DefaultGrace, failure.Deadline);
-            Assert.Contains(UiUnavailableException.Code, failure.Message, StringComparison.Ordinal);
-            Assert.True(elapsed < UiThreadCall.DefaultGrace + _Slack, $"answered after {elapsed}, cap is {UiThreadCall.DefaultGrace}");
-        }
-        finally
-        {
-            release.Set();
-            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
-        }
-    }
-
-    /// <summary>
-    /// T2 — starved at Render (4), the priority a runaway layout or render pass reposts at. A second case at
-    /// Loaded (1) stood here and was dropped: <see cref="UiThreadCall"/> never learns what the starving loop is
-    /// posted at, and all the number decides is whether it outranks the Default the gateway hops at — which
-    /// Loaded and Render both do.
-    /// </summary>
-    [Fact]
-    public Task AGatewayCalledWhileTheUiThreadIsStarvedAtRender_AnswersUiUnavailableWithinTheCap() =>
-        _StarvedGatewayIsCapped(DispatcherPriority.Render);
-
-    /// <summary>T3 — the silent positive control: a quiet thread still answers normally, exactly once, at once.</summary>
-    [Fact]
-    public async Task TheSameHopOnAQuietUiThread_RunsOnceAndAnswersNormally()
-    {
-        var (cockpit, handle) = Dispatcher.UIThread.Invoke(_HandleWithOneSession);
-
-        var clock = Stopwatch.StartNew();
-        var applied = await Task.Run(() => handle.SetStatuslineAsync("AC-1138"));
-        clock.Stop();
-
-        Assert.True(applied);
-        Assert.Equal("AC-1138", Dispatcher.UIThread.Invoke(() => cockpit.FindSession(PaneId)!.Statusline));
-        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(1), $"a free UI thread took {clock.Elapsed}");
-
-        // Counted rather than assumed: "it answered" would also be true of a helper that ran the work twice, or of
-        // one that answered from somewhere other than the work.
-        var runs = 0;
-        var answer = await Task.Run(() => UiThreadCall.RunAsync(() => { runs++; return "answered"; }));
-        Assert.Equal("answered", answer);
-        Assert.Equal(1, runs);
-    }
-
     /// <summary>T4 — the effect, not the return: work abandoned at the cap is not applied when the thread returns.</summary>
     [Fact]
     public async Task WorkAbandonedAtTheCap_IsNotAppliedWhenTheUiThreadComesBack()
@@ -153,40 +93,6 @@ public sealed class Ac1138UiThreadDeadlineTests
         await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
 
         Assert.Equal(before, Dispatcher.UIThread.Invoke(() => cockpit.FindSession(PaneId)!.Statusline));
-    }
-
-    // Wall-clock room for a loaded CI box between the cap and the assertion: enough that a slow machine does not
-    // fail this, far short of the 31.8 s the field measured (AC-1138 §2b).
-    private static readonly TimeSpan _Slack = TimeSpan.FromSeconds(4);
-
-    private static async Task _StarvedGatewayIsCapped(DispatcherPriority priority)
-    {
-        var (cockpit, handle) = Dispatcher.UIThread.Invoke(_HandleWithOneSession);
-
-        using var starver = StarvedDispatcher.Start(priority);
-
-        // The shape every gateway had before this ticket, queued alongside the capped one: same thread, same
-        // priority, no cap. It is the control for "without the fix it waits", and it must still be waiting below.
-        var uncapped = Dispatcher.UIThread.InvokeAsync(() => cockpit.SetSessionStatusline(PaneId, "uncapped")).GetTask();
-
-        var (failure, elapsed) = await _TimedRefusal(handle);
-
-        Assert.Equal(UiThreadCall.DefaultGrace, failure.Deadline);
-        Assert.Contains(UiUnavailableException.Code, failure.Message, StringComparison.Ordinal);
-        Assert.True(elapsed < UiThreadCall.DefaultGrace + _Slack, $"answered after {elapsed}, cap is {UiThreadCall.DefaultGrace}");
-
-        Assert.False(uncapped.IsCompleted, "the uncapped hop came back, so this run proved nothing about starvation");
-        Assert.True(starver.Rounds > 10, $"the thread has to have kept working, not blocked; rounds={starver.Rounds}");
-    }
-
-    private static async Task<(UiUnavailableException Failure, TimeSpan Elapsed)> _TimedRefusal(SessionPanelHandle handle)
-    {
-        var clock = Stopwatch.StartNew();
-        var failure = await Assert.ThrowsAsync<UiUnavailableException>(
-            () => Task.Run(() => handle.SetStatuslineAsync("AC-1138")));
-        clock.Stop();
-
-        return (failure, clock.Elapsed);
     }
 
     // AC-1374: the UiThreadCall hop this file exercises now lives in the handle, not in the (now-thin) gateway

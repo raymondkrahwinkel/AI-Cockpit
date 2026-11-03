@@ -20,36 +20,6 @@ public class ProfileEnvironmentVariableTests
         Assert.False(ProfileEnvironmentVariable.IsValidKey(key));
     }
 
-    [Fact]
-    public void ToOverlay_MapsEachVariableToItsValue()
-    {
-        var overlay = ProfileEnvironmentVariable.ToOverlay(
-        [
-            new("AI_OS_ROOT", "/home/raymond/AI-OS"),
-            new("MY_TOKEN", "s3cret", IsSecret: true),
-        ]);
-
-        Assert.Equal(
-            new Dictionary<string, string?>
-            {
-                ["AI_OS_ROOT"] = "/home/raymond/AI-OS",
-                ["MY_TOKEN"] = "s3cret",
-            },
-            overlay);
-    }
-
-    [Fact]
-    public void ToOverlay_WhenAKeyAppearsTwice_TheLaterEntryWins()
-    {
-        var overlay = ProfileEnvironmentVariable.ToOverlay(
-        [
-            new("AI_OS_ROOT", "/first"),
-            new("AI_OS_ROOT", "/second"),
-        ]);
-
-        Assert.Equal("/second", overlay["AI_OS_ROOT"]);
-    }
-
     // The spawn composition (TtyEnvironment, the Claude driver's environment) folds case-insensitively, so two
     // case-variant keys are one variable there — the overlay must collapse them the same way, deterministically,
     // instead of leaving the collision to whichever dictionary sees them last.

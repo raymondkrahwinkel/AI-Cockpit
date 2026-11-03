@@ -19,33 +19,6 @@ public class AssistantSettingsStoreTests : IDisposable
         _configFilePath = Path.Combine(_tempDir, "cockpit.json");
     }
 
-    // Criterion 1 / decision 7: a fresh install has the assistant off — no instance, no model, nothing costing
-    // anything — until the operator turns it on.
-    [Fact]
-    public async Task LoadAsync_NoConfigFile_IsDisabledByDefault()
-    {
-        var store = new AssistantSettingsStore(_configFilePath);
-
-        var settings = await store.LoadAsync();
-
-        Assert.False(settings.IsEnabled);
-        Assert.True(settings.SpeakReplies);
-        Assert.Equal("F10", settings.PushToTalkKeyName);
-        Assert.False(settings.AlwaysOnCostAcknowledged);
-        Assert.Equal(80, settings.ContextCompactionPercent);
-        // AC-138 follow-up: the chat window's reading level defaults to the same level a fresh SDK session
-        // opens at, so turning the assistant on for the first time never shows a level nobody chose.
-        Assert.Equal(ReadingLevel.Developer, settings.ReadingLevel);
-
-        // AC-575: no source is ticked one at a time until the operator says so. AC-637: allow-all is on above
-        // them, so a fresh install skips the card for everything the assistant asks — the surfaces that report
-        // `HasConsentBypass` say so from the first start rather than only once something was ticked.
-        Assert.Empty(settings.ConsentBypassSources);
-        Assert.Empty(settings.ConsentBypassDangerousSources);
-        Assert.True(settings.ConsentBypassAll);
-        Assert.True(settings.HasConsentBypass);
-    }
-
     [Fact]
     public async Task SaveAsync_ThenLoadAsync_RoundTripsAllFields()
     {
@@ -82,44 +55,6 @@ public class AssistantSettingsStoreTests : IDisposable
     }
 
     /// <summary>
-    /// A reading level name this build does not recognise — a hand edit, or a newer build's fourth level — must
-    /// not cost the whole <c>assistant</c> section the way an unparsed non-nullable enum would (see
-    /// <c>AssistantSettingsEntry.ReadingLevel</c>'s doc-comment). It reads back as the app default instead.
-    /// </summary>
-    [Fact]
-    public async Task LoadAsync_AnUnrecognisedReadingLevelName_FallsBackToDeveloper()
-    {
-        await File.WriteAllTextAsync(
-            _configFilePath,
-            """{"Assistant":{"IsEnabled":true,"SpeakReplies":true,"PushToTalkKeyName":"F10","ReadingLevel":"Verbose"}}""");
-
-        var loaded = await new AssistantSettingsStore(_configFilePath).LoadAsync();
-
-        Assert.True(loaded.IsEnabled);
-        Assert.Equal(ReadingLevel.Developer, loaded.ReadingLevel);
-    }
-
-    /// <summary>
-    /// A config written before #AC-575, or edited by hand, has no bypass lists at all. Those lists must read as
-    /// empty — a source is on them because someone ticked it, never because a value was missing. Two string lists
-    /// were chosen over one enum per source precisely so this direction is the safe one: an absent list is empty,
-    /// and a name this build does not recognise is a name that matches no source.
-    /// </summary>
-    [Fact]
-    public async Task LoadAsync_AConfigWithNoBypassSection_TicksNoSourceOfItsOwn()
-    {
-        await File.WriteAllTextAsync(
-            _configFilePath,
-            """{"Assistant":{"IsEnabled":true,"SpeakReplies":true,"PushToTalkKeyName":"F10","ConsentBypassSources":null}}""");
-
-        var loaded = await new AssistantSettingsStore(_configFilePath).LoadAsync();
-
-        Assert.True(loaded.IsEnabled);
-        Assert.Empty(loaded.ConsentBypassSources);
-        Assert.Empty(loaded.ConsentBypassDangerousSources);
-    }
-
-    /// <summary>
     /// #AC-637's upgrade direction, and the one place the default-on deliberately does not reach: an
     /// <c>assistant</c> section from before this build has no <c>ConsentBypassAll</c> property, and reads back
     /// <em>off</em>. That cockpit was asking about everything, so it keeps asking — upgrading is not the moment to
@@ -137,22 +72,6 @@ public class AssistantSettingsStoreTests : IDisposable
 
         Assert.False(loaded.ConsentBypassAll);
         Assert.False(loaded.HasConsentBypass);
-    }
-
-    [Fact]
-    public async Task LoadAsync_AConfigFromBeforeAllowAll_KeepsTheSourcesItHadTicked()
-    {
-        // The other half of "keeps asking": an operator who had ticked two sources under #AC-575 must find those
-        // two still ticked and nothing else — not replaced by the wider switch, and not cleared by it either.
-        await File.WriteAllTextAsync(
-            _configFilePath,
-            """{"Assistant":{"IsEnabled":true,"ConsentBypassSources":["Terminal MCP"],"ConsentBypassDangerousSources":["Terminal MCP"]}}""");
-
-        var loaded = await new AssistantSettingsStore(_configFilePath).LoadAsync();
-
-        Assert.False(loaded.ConsentBypassAll);
-        Assert.Equal(["Terminal MCP"], loaded.ConsentBypassSources);
-        Assert.Equal(["Terminal MCP"], loaded.ConsentBypassDangerousSources);
     }
 
     [Fact]

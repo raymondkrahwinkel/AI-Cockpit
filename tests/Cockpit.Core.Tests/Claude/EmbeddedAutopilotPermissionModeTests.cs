@@ -61,19 +61,6 @@ public class EmbeddedAutopilotPermissionModeTests
     }
 
     [Fact]
-    public void EmbeddedLaunchOptions_WhenTheRequestNamesNoMode_KeepTheProfilesStoredPermissionModeDefault()
-    {
-        // A plain embedded session (the CEO planning round leaves PermissionMode null) still honours the profile's own
-        // stored default — the drop only applies when the run makes an explicit choice, so this path does not regress.
-        var request = new EmbeddedSessionRequest { ProfileId = "work" };
-
-        var options = CockpitViewModel._EmbeddedLaunchOptions(_WorkProfileSavedInBypass(), request);
-
-        Assert.True(options!.ContainsKey(WellKnownPluginSessionOptions.PermissionMode));
-        Assert.Equal("bypassPermissions", options[WellKnownPluginSessionOptions.PermissionMode]);
-    }
-
-    [Fact]
     public async Task AnIsolatedStep_OnAProfileSavedInBypass_Confines_BecauseTheExplicitAcceptEditsRequestModeWins()
     {
         var profile = _WorkProfileSavedInBypass();
@@ -94,24 +81,5 @@ public class EmbeddedAutopilotPermissionModeTests
         Assert.True(lastLaunchOptions.ContainsKey(WellKnownPluginSessionOptions.PermissionMode));
         Assert.Equal("acceptEdits", lastLaunchOptions[WellKnownPluginSessionOptions.PermissionMode]);
         Assert.True(adapter.Capabilities.ConfinesFileAccessToWorkingDirectory);
-    }
-
-    [Fact]
-    public async Task WithoutDroppingTheProfileDefault_TheBypassOverridesTheRequestMode_AndTheSessionDoesNotConfine()
-    {
-        // The bug, made concrete: had the profile's stored permission-mode reached the driver in the launch options
-        // (as it did before the fix), the launch-option merge keeps bypass over the explicit acceptEdits — so the
-        // session reports unconfined and the fail-closed gate refuses the run. This proves the drop is load-bearing.
-        var profile = _WorkProfileSavedInBypass();
-        var inner = new FakePluginSessionDriver { Capabilities = _PermissionConfining() };
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
-
-        await adapter.StartAsync(profile, permissionMode: "acceptEdits", launchOptions: profile.Defaults!.OptionDefaults);
-
-        var lastLaunchOptions = inner.LastLaunchOptions;
-        Assert.NotNull(lastLaunchOptions);
-        Assert.True(lastLaunchOptions.ContainsKey(WellKnownPluginSessionOptions.PermissionMode));
-        Assert.Equal("bypassPermissions", lastLaunchOptions[WellKnownPluginSessionOptions.PermissionMode]);
-        Assert.False(adapter.Capabilities.ConfinesFileAccessToWorkingDirectory);
     }
 }

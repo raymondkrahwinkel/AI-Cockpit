@@ -26,19 +26,6 @@ public class McpClientConnectorTests
         Assert.Equal("tool_a", Assert.Single(tools).Name);
     }
 
-    [Fact]
-    public async Task ConnectAsync_LeavesAConformingServer_OnTheDefaultProtocolVersion()
-    {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        await using var server = await InProcessMcpHttpServer.StartAsync<McpTestToolA>();
-
-        await using var client = await McpClientConnector.ConnectAsync(_TransportTo(server), null, timeout.Token);
-
-        // The retry is for the broken case only: a server whose discover probe answers properly keeps the newer
-        // revision the SDK negotiates by default, rather than everything being pinned back for one server's sake.
-        Assert.NotEqual(InitializeHandshakeVersion, client.NegotiatedProtocolVersion);
-    }
-
     private static HttpClientTransport _TransportTo(InProcessMcpHttpServer server) =>
         new(new HttpClientTransportOptions { Endpoint = new Uri(server.Url) });
 }

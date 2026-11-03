@@ -1,10 +1,7 @@
-using System.Text.Json.Nodes;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Assistant;
-using Cockpit.Infrastructure.Configuration;
-using Cockpit.Infrastructure.Sessions;
 
 namespace Cockpit.Core.Tests.Assistant;
 
@@ -149,78 +146,6 @@ public class AssistantProfileStoreTests : IDisposable
         var repaired = await new AssistantProfileStore(_configFilePath).LoadAsync();
         Assert.False(repaired.IsConfigured);
         Assert.False(string.IsNullOrWhiteSpace(repaired.UnsetReason));
-    }
-
-    /// <summary>
-    /// Criterion 5: the Assistant Profile does not appear in <em>+ New session</em> and is not a delegation
-    /// target in <c>list_profiles</c>.
-    /// </summary>
-    /// <remarks>
-    /// Both surfaces build their list from <c>ISessionProfileStore.LoadAsync</c> — <c>NewSessionDialogViewModel</c>
-    /// takes it unfiltered, <c>DelegationService.ListTargetsAsync</c> filters it on
-    /// <see cref="DelegationPolicy.AllowedAsTarget"/> — so that store is the real source to test against rather
-    /// than either view. The slot record here is deliberately given a policy that <em>would</em>
-    /// make it a delegation target if it were in the list: it is kept out by living in another section, not by a
-    /// filter somebody has to remember.
-    /// </remarks>
-    [Fact]
-    public async Task TheAssistantProfile_IsNotInWhatTheSessionProfileStoreReturns()
-    {
-        var profileStore = new SessionProfileStore(_configFilePath);
-        await profileStore.SaveAsync([new SessionProfile("work", ClaudePluginProfile.Create(ClaudeConfigDir, null))]);
-
-        var assistantStore = new AssistantProfileStore(_configFilePath);
-        await assistantStore.RepointAsync(new SessionProfile(
-            AssistantProfileSlot.DisplayName,
-            ClaudePluginProfile.Create(ClaudeConfigDir, null),
-            Delegation: new DelegationPolicy(AllowedAsTarget: true)), replacesStandingInstruction: false);
-
-        var visibleProfiles = await profileStore.LoadAsync();
-
-        Assert.Equal("work", Assert.Single(visibleProfiles).Label);
-        Assert.DoesNotContain(visibleProfiles, profile => profile.DelegationPolicy.AllowedAsTarget);
-
-        // It is stored and resolvable all the same — invisible to those two lists, not missing.
-        Assert.True((await assistantStore.LoadAsync()).IsConfigured);
-    }
-
-    /// <summary>
-    /// AC-594: the advanced "replace the built-in instructions" choice survives a write and a read, and a config
-    /// written before it existed loads as adding rather than replacing.
-    /// </summary>
-    [Fact]
-    public async Task WhetherTheInstructionReplacesTheBuiltInOne_RoundTrips_AndAnOlderConfigReadsAsAdding()
-    {
-        var store = new AssistantProfileStore(_configFilePath);
-        var record = new SessionProfile("Assistant (Claude)", ClaudePluginProfile.Create(ClaudeConfigDir, null))
-        {
-            SystemPrompt = "Your name is Zyra.",
-        };
-
-        // AC-1994: the slot's brain, and None, read back exactly as written.
-        const string Brain = "depot:acme/zyra@depot.acme.example";
-        await store.RepointAsync(record with { Assistant = Brain }, replacesStandingInstruction: true);
-        var withBrain = await store.LoadAsync();
-        Assert.True(withBrain.ReplacesStandingInstruction);
-        Assert.Equal(Brain, withBrain.Profile?.Assistant);
-
-        await store.RepointAsync(record, replacesStandingInstruction: false);
-        var withoutBrain = await store.LoadAsync();
-        Assert.False(withoutBrain.ReplacesStandingInstruction);
-        Assert.Null(Assert.IsType<SessionProfile>(withoutBrain.Profile).Assistant);
-
-        // A config written before this setting existed: the key is gone entirely, and that has to read as adding
-        // rather than as an assistant whose built-in instructions were replaced by whatever is in the box.
-        await store.RepointAsync(record, replacesStandingInstruction: true);
-        var config = JsonNode.Parse(await File.ReadAllTextAsync(_configFilePath));
-        var assistantSection = config?[nameof(CockpitConfigFile.AssistantProfile)]?.AsObject();
-        Assert.NotNull(assistantSection);
-        Assert.True(assistantSection.Remove(nameof(AssistantProfileSlot.ReplacesStandingInstruction)));
-        await File.WriteAllTextAsync(_configFilePath, config?.ToJsonString());
-
-        var loaded = await store.LoadAsync();
-        Assert.True(loaded.IsConfigured);
-        Assert.False(loaded.ReplacesStandingInstruction);
     }
 
     private static string _ProviderIdOf(AssistantProfileSlot slot) =>

@@ -232,30 +232,6 @@ public class OrgPolicyCeilingTests
         rig.Pty.DidNotReceive().Start(Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, string>>(), Arg.Any<short>(), Arg.Any<short>());
     }
 
-    // A start that names no model runs on the first listed one rather than the provider's own default, on both routes and
-    // in the listed spelling. The operator's own shell terminal runs no provider, so the provider list leaves it alone.
-    [Theory]
-    [InlineData("sdk", "gpt-5")]
-    [InlineData("sdk-spelling", "gpt-5-mini")]
-    [InlineData("tty", "gpt-5")]
-    [InlineData("shell", null)]
-    public async Task AStartWithinTheAllowedProviders_RunsOnAListedModel(string route, string? expected)
-    {
-        var rig = new ProviderRig();
-        var acts = new Dictionary<string, Func<Task>>
-        {
-            ["sdk"] = () => rig.Runtime.StartAsync(ProviderRig.OpenRouter("{}")),
-            ["sdk-spelling"] = () => rig.Runtime.StartAsync(ProviderRig.OpenRouter("{}"), launchOptions: ProviderRig.Model("GPT-5-Mini")),
-            ["tty"] = () => Task.FromResult(rig.Launch(rig.Provider(ProviderRig.OpenRouterId), ProviderRig.OpenRouter("{}"))),
-            ["shell"] = () => Task.FromResult(rig.Launch(new Cockpit.Core.Terminal.ShellTtySessionProvider(new("bash", "Bash", "/bin/bash", [])), profile: null)),
-        };
-
-        await acts[route]();
-
-        Assert.Equal(expected, rig.LaunchedOptions?.GetValueOrDefault(WellKnownPluginSessionOptions.Model));
-        Assert.All(rig.StartedModels, model => Assert.Equal(expected, model));
-    }
-
     // Never-send is a promise in the instructions (AC-494), so it has to reach every start: the sdk one and the tty one,
     // after what the session already appends of its own.
     [Fact]

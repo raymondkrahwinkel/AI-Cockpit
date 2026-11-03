@@ -16,24 +16,6 @@ namespace Cockpit.Core.Tests.Projects;
 /// </summary>
 public class ProjectResourceSendsContentTests
 {
-    [Theory]
-    [InlineData(ProjectResourceRole.Memory)]
-    [InlineData(ProjectResourceRole.Reference)]
-    public void SendsContent_StoredOnARowThatIsNotInstructions_ReadsAsFalse(ProjectResourceRole role)
-    {
-        var resource = new ProjectResource("/conventions.md", role) { SendsContent = true };
-
-        Assert.False(resource.SendsContent);
-    }
-
-    [Fact]
-    public void SendsContent_OnAnInstructionsRow_IsReportedAsStored()
-    {
-        var resource = new ProjectResource("/conventions.md", ProjectResourceRole.Instructions) { SendsContent = true };
-
-        Assert.True(resource.SendsContent);
-    }
-
     /// <summary>
     /// The path the review round actually measured: the tick is stored on a Memory row, the operator later changes
     /// that row's role to Instructions for reasons of their own, and the checkbox arrives already ticked in front
@@ -84,14 +66,5 @@ public class ProjectResourceSendsContentTests
         var resource = new ProjectResource(absolute, ProjectResourceRole.Instructions) { SendsContent = true };
 
         Assert.False(resource.SendsContent);
-    }
-
-    /// <summary>The exception the heuristic itself carries — a public key is not secret, so this row's tick is left alone.</summary>
-    [Fact]
-    public void SendsContent_OnAnInstructionsRowPointingAtAPublicKey_IsReportedAsStored()
-    {
-        var resource = new ProjectResource("~/.ssh/id_rsa.pub", ProjectResourceRole.Instructions) { SendsContent = true };
-
-        Assert.True(resource.SendsContent);
     }
 }

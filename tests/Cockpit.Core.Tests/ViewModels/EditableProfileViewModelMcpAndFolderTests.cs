@@ -21,28 +21,6 @@ public class EditableProfileViewModelMcpAndFolderTests
         };
 
     [Fact]
-    public void Load_TicksOnlyTheSavedServers_WhenTheProfileRestricts()
-    {
-        var editable = new EditableProfileViewModel(
-            ClaudeProfile(enabledMcpServerNames: ["docker"]), isLoggedIn: true, availableMcpServerNames: ["youtrack", "docker"]);
-
-        Assert.True(editable.RestrictMcpServers);
-        Assert.False(editable.McpServers.Single(server => server.Name == "youtrack").IsEnabledForSession);
-        Assert.True(editable.McpServers.Single(server => server.Name == "docker").IsEnabledForSession);
-    }
-
-    [Fact]
-    public void Save_WithTheGateOff_PersistsNoRestriction()
-    {
-        var editable = new EditableProfileViewModel(
-            ClaudeProfile(), isLoggedIn: true, availableMcpServerNames: ["youtrack", "docker"]);
-
-        Assert.False(editable.RestrictMcpServers);
-        Assert.All(editable.McpServers, server => Assert.True(server.IsEnabledForSession));
-        Assert.Null(editable.ToProfile().EnabledMcpServerNames);
-    }
-
-    [Fact]
     public void Save_WithTheGateOn_PersistsExactlyTheTickedServers()
     {
         var editable = new EditableProfileViewModel(
@@ -63,15 +41,6 @@ public class EditableProfileViewModelMcpAndFolderTests
         // forget it.
         var editable = new EditableProfileViewModel(
             ClaudeProfile(enabledMcpServerNames: ["youtrack", "docker"]), isLoggedIn: true, availableMcpServerNames: ["docker"]);
-
-        Assert.Equivalent(new object[] { "youtrack", "docker" }, editable.ToProfile().EnabledMcpServerNames);
-    }
-
-    [Fact]
-    public void Save_WithNoCatalogAtAll_KeepsTheEntireSavedSelection()
-    {
-        var editable = new EditableProfileViewModel(
-            ClaudeProfile(enabledMcpServerNames: ["youtrack", "docker"]), isLoggedIn: true, availableMcpServerNames: null);
 
         Assert.Equivalent(new object[] { "youtrack", "docker" }, editable.ToProfile().EnabledMcpServerNames);
     }

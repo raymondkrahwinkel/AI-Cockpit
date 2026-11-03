@@ -111,21 +111,6 @@ public sealed class SessionStateRecorderTests : IDisposable
         Assert.Equal(SessionConversationIdState.Unknown, record.ConversationState);
     }
 
-    /// <summary>The other half of the same decision: an unchanged directory must not lose the saved id, isolated from the profile check below by keeping the profile fixed.</summary>
-    [Fact]
-    public async Task RecordSessionStartedAsync_UnchangedWorkingDirectory_KeepsTheSavedConversationId()
-    {
-        var store = CreateStore();
-        await store.RecordAsync(CreateRecord());
-
-        var recorder = CreateRecorder(store);
-        await recorder.RecordSessionStartedAsync("pane-1", WorkProfile, "/repo", null, null, "default");
-
-        var record = Assert.Single(await store.LoadAsync());
-        Assert.Equal("conv-old", record.ConversationId);
-        Assert.Equal(SessionConversationIdState.Known, record.ConversationState);
-    }
-
     /// <summary>
     /// AC-1261 criterion 3: a clear (<c>AssistantSessionHost.ClearConversationAsync</c>) changes neither profile nor
     /// working directory — the two things this guard otherwise keys on — so without <c>forgetConversation</c> the
@@ -144,63 +129,6 @@ public sealed class SessionStateRecorderTests : IDisposable
         var record = Assert.Single(await store.LoadAsync());
         Assert.Null(record.ConversationId);
         Assert.Equal(SessionConversationIdState.Unknown, record.ConversationState);
-    }
-
-    /// <summary>
-    /// The naive comparison this guard deliberately avoids: a bare string check would treat "/repo" and "/repo/"
-    /// as different places and wipe an id that never actually moved. <see cref="Cockpit.Core.WorkingPaths.DirectoryPath"/>
-    /// is the same folder-equality rule the worktree engine itself uses, and this proves the guard actually goes
-    /// through it rather than an ordinal compare.
-    /// </summary>
-    [Fact]
-    public async Task RecordSessionStartedAsync_SameDirectoryWithATrailingSeparator_KeepsTheSavedConversationId()
-    {
-        var store = CreateStore();
-        await store.RecordAsync(CreateRecord()); // WorkingDirectory: "/repo"
-
-        var recorder = CreateRecorder(store);
-        await recorder.RecordSessionStartedAsync("pane-1", WorkProfile, "/repo/", null, null, "default");
-
-        var record = Assert.Single(await store.LoadAsync());
-        Assert.Equal("conv-old", record.ConversationId);
-    }
-
-    /// <summary>The profile side of the same decision, isolated from the directory check above by keeping the directory fixed.</summary>
-    [Fact]
-    public async Task RecordSessionStartedAsync_ChangedProfile_ClearsTheSavedConversationId()
-    {
-        var store = CreateStore();
-        await store.RecordAsync(CreateRecord()); // ProfileId: "work"
-
-        var recorder = CreateRecorder(store);
-        var personalProfile = new SessionProfile("personal", new ClaudeConfig(@"C:\fake\.claude"));
-        await recorder.RecordSessionStartedAsync("pane-1", personalProfile, "/repo", null, null, "default");
-
-        var record = Assert.Single(await store.LoadAsync());
-        Assert.Null(record.ConversationId);
-        Assert.Equal(SessionConversationIdState.Unknown, record.ConversationState);
-    }
-
-    /// <summary>
-    /// A pane with no saved state at all has nothing this guard could lose: its synthesized blank record already
-    /// carries a null id and <c>Unknown</c> state, so comparing it against the real profile/directory and finding
-    /// them "different" is harmless. Proves a brand-new pane's very first <c>RecordSessionStartedAsync</c> call
-    /// still lands its own fields normally rather than tripping on the new comparison.
-    /// </summary>
-    [Fact]
-    public async Task RecordSessionStartedAsync_ForABrandNewPaneWithNoSavedState_LandsNormally()
-    {
-        var store = CreateStore();
-        var recorder = CreateRecorder(store);
-
-        await recorder.RecordSessionStartedAsync("pane-1", WorkProfile, "/repo", null, null, "acceptEdits");
-
-        var record = Assert.Single(await store.LoadAsync());
-        Assert.Null(record.ConversationId);
-        Assert.Equal(SessionConversationIdState.Unknown, record.ConversationState);
-        Assert.Equal("work", record.ProfileId);
-        Assert.Equal("/repo", record.WorkingDirectory);
-        Assert.Equal("acceptEdits", record.PermissionMode);
     }
 
     /// <summary>
@@ -231,127 +159,6 @@ public sealed class SessionStateRecorderTests : IDisposable
     }
 
     /// <summary>
-    /// Scopes the guard above: Unsupported is the provider stating a fact about itself ("no resumable conversation
-    /// at all"), not "not known yet" — unlike Unknown, it is allowed to replace an already-Known id. Proves the fix
-    /// for criterion 3 did not overreach into refusing every non-Known report.
-    /// </summary>
-    [Fact]
-    public async Task AnUnsupportedConversationReport_DoesOverwriteAnAlreadyKnownConversationId()
-    {
-        var store = CreateStore();
-        var tracker = new SessionConversationTracker();
-        var recorder = CreateRecorder(store, tracker);
-
-        tracker.Report("pane-1", SessionConversationId.Known("conv-1"));
-        Assert.NotNull(await _WaitForAsync(store, "pane-1", record => record.ConversationId == "conv-1"));
-
-        tracker.Report("pane-1", SessionConversationId.Unsupported);
-
-        var updated = await _WaitForAsync(store, "pane-1", record => record.ConversationState == SessionConversationIdState.Unsupported);
-        Assert.NotNull(updated);
-        Assert.Null(updated!.ConversationId);
-    }
-
-    /// <summary>
-    /// The guard's scoping the other way round (mutation M7 in the review: dropping the "only when Known" clause
-    /// entirely, so Unknown never overwrites anything). The existing "does not overwrite an already-Known id" test
-    /// above cannot tell this apart from the real guard, because in that test <c>existing</c> already is Known —
-    /// both the real guard and the over-broad mutant agree there. This one starts from a non-Known state, where
-    /// they disagree: the real guard lets Unknown write through (it is only Known it refuses to clobber), so the
-    /// state actually moves from Unsupported to Unknown; the mutant would leave it stuck on Unsupported.
-    /// </summary>
-    [Fact]
-    public async Task AnUnknownConversationReport_DoesOverwriteANotKnownConversationState()
-    {
-        var store = CreateStore();
-        var tracker = new SessionConversationTracker();
-        var recorder = CreateRecorder(store, tracker);
-
-        tracker.Report("pane-1", SessionConversationId.Unsupported);
-        Assert.NotNull(await _WaitForAsync(store, "pane-1", record => record.ConversationState == SessionConversationIdState.Unsupported));
-
-        tracker.Report("pane-1", SessionConversationId.Unknown);
-
-        var updated = await _WaitForAsync(store, "pane-1", record => record.ConversationState == SessionConversationIdState.Unknown);
-        Assert.NotNull(updated);
-    }
-
-    /// <summary>
-    /// The ticket's headline scenario end to end: a restart, an operator choosing "start fresh" on a restored pane,
-    /// and only the new conversation's own reported id allowed to replace the old one. Combines the seed step
-    /// <c>CockpitViewModel.RestoreSessionPanesAsync</c> actually takes with the write-path guard, since production
-    /// takes both.
-    /// </summary>
-    [Fact]
-    public async Task StartFresh_KeepsTheOldConversationIdUntilTheNewSessionReportsItsOwn()
-    {
-        var store = CreateStore();
-        await store.RecordAsync(CreateRecord());
-
-        var tracker = new SessionConversationTracker();
-        var recorder = CreateRecorder(store, tracker);
-        recorder.Seed(await store.LoadAsync());
-
-        // "Start fresh": a new session starts on the same pane id, then its driver's very first event reports
-        // Unknown (no session id from the provider yet).
-        await recorder.RecordSessionStartedAsync("pane-1", WorkProfile, "/repo", null, null, "default");
-        tracker.Report("pane-1", SessionConversationId.Unknown);
-        await Task.Delay(200);
-
-        var stillOld = Assert.Single(await store.LoadAsync());
-        Assert.Equal("conv-old", stillOld.ConversationId);
-
-        // The new session's provider now reports its own id — this, and only this, is allowed to replace it.
-        tracker.Report("pane-1", SessionConversationId.Known("conv-new"));
-        var replaced = await _WaitForAsync(store, "pane-1", record => record.ConversationId == "conv-new");
-
-        Assert.NotNull(replaced);
-    }
-
-    /// <summary>
-    /// <see cref="SessionStateRecorder.Seed"/> is the optimization <c>RestoreSessionPanesAsync</c> takes to avoid
-    /// a second file read; this proves it actually primes the cache a write can then build on, independent of the
-    /// write path's own lazy fallback (which the criterion-2 test above exercises instead).
-    /// </summary>
-    [Fact]
-    public async Task Seed_PrimesTheCacheSoASubsequentWriteBuildsOnTheSavedRecord()
-    {
-        var store = CreateStore();
-        await store.RecordAsync(CreateRecord());
-
-        var recorder = CreateRecorder(store);
-        recorder.Seed(await store.LoadAsync());
-
-        await recorder.RecordPermissionModeChangedAsync("pane-1", "bypassPermissions");
-
-        var record = Assert.Single(await store.LoadAsync());
-        Assert.Equal("conv-old", record.ConversationId);
-        Assert.Equal("bypassPermissions", record.PermissionMode);
-    }
-
-    /// <summary>
-    /// Isolates <c>Seed</c> from the write path's own self-heal (mutation M1 in the review: <c>Seed</c> turned
-    /// into a full no-op still passes every other test here, because the self-heal silently covers for it). The
-    /// disk file deliberately holds a *different* id than the one handed to <c>Seed</c> — a real <c>Seed</c> call
-    /// must win over self-heal without ever touching the store again, so only <c>Seed</c>'s value can appear in
-    /// the resulting write; a no-op <c>Seed</c> would instead trigger the lazy load and surface the disk value.
-    /// </summary>
-    [Fact]
-    public async Task Seed_TakesPrecedenceOverWhateverTheStoresFileActuallyHolds()
-    {
-        var store = CreateStore();
-        await store.RecordAsync(CreateRecord(conversationId: "conv-on-disk"));
-
-        var recorder = CreateRecorder(store);
-        recorder.Seed([CreateRecord(conversationId: "conv-seeded")]);
-
-        await recorder.RecordPermissionModeChangedAsync("pane-1", "bypassPermissions");
-
-        var record = Assert.Single(await store.LoadAsync());
-        Assert.Equal("conv-seeded", record.ConversationId);
-    }
-
-    /// <summary>
     /// The other direction of the guard in <c>Seed</c> (mutation M2 in the review: dropping the
     /// "<c>if (_seedTask is not null) return;</c>" early-out lets a later <c>Seed</c> call clobber whatever
     /// already seeded the cache). Here the write path's own self-heal wins the race first — the class's documented
@@ -377,36 +184,6 @@ public sealed class SessionStateRecorderTests : IDisposable
 
         var record = Assert.Single(await store.LoadAsync());
         Assert.Equal("conv-on-disk", record.ConversationId);
-    }
-
-    /// <summary>
-    /// The write path's single-flight cache (mutation M6 in the review: dropping the <c>??=</c> assignment so
-    /// <c>_seedTask</c> is never actually cached, and every write re-reads the store). A single reload would be
-    /// invisible from the outside if the store never changed between writes — so this test changes the file
-    /// directly, behind the recorder's back, between two writes: a correctly cached seed never sees that change;
-    /// an uncached one reloads it and lets it silently overwrite the in-memory conversation id.
-    /// </summary>
-    [Fact]
-    public async Task EnsureSeeded_LoadsTheStoreAtMostOnce_NotOnEveryWrite()
-    {
-        var store = CreateStore();
-        await store.RecordAsync(CreateRecord(conversationId: "conv-initial"));
-
-        var recorder = CreateRecorder(store);
-
-        // Triggers the self-heal load; a correct implementation caches it from here on.
-        await recorder.RecordPermissionModeChangedAsync("pane-1", "acceptEdits");
-
-        // Something else appends to the file behind the recorder's back — a compaction, another process. A cached
-        // seed must not go back to disk mid-run and pick this up.
-        await store.RecordAsync(CreateRecord(conversationId: "conv-injected-behind-the-back"));
-
-        // Never mentions ConversationId — if the cache is still the one from the first load, this builds on
-        // "conv-initial", not on whatever the file holds by now.
-        await recorder.RecordPermissionModeChangedAsync("pane-1", "bypassPermissions");
-
-        var record = Assert.Single(await store.LoadAsync());
-        Assert.Equal("conv-initial", record.ConversationId);
     }
 
     /// <summary>

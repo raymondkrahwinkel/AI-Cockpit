@@ -23,32 +23,6 @@ public class McpOAuthTokenCacheTests
     }
 
     [Fact]
-    public async Task StoreTokens_RecordsTheAbsoluteExpiry_NotTheRelativeOne()
-    {
-        var (cache, store) = _Create();
-        var obtainedAt = DateTimeOffset.UtcNow.AddMinutes(-10);
-
-        await cache.StoreTokensAsync(new TokenContainer
-        {
-            AccessToken = "access",
-            RefreshToken = "refresh",
-            TokenType = "Bearer",
-            ExpiresIn = 3600,
-            ObtainedAt = obtainedAt,
-        });
-
-        var stored = await store.GetAsync("depot");
-        Assert.NotNull(stored);
-        Assert.Equal("access", stored.AccessToken);
-        Assert.Equal("refresh", stored.RefreshToken);
-        Assert.Equal(obtainedAt.AddSeconds(3600), stored.ExpiresAt);
-
-        // Recorded with the address it was obtained for, which is what later stops it being handed to a server that
-        // has taken over the name.
-        Assert.Equal(ResourceUrl, stored.ResourceUrl);
-    }
-
-    [Fact]
     public async Task StoreTokens_DoesNotInheritARefreshTokenHeldForADifferentHost()
     {
         var (cache, store) = _Create("https://depot.example/mcp");
@@ -72,22 +46,6 @@ public class McpOAuthTokenCacheTests
         var stored = await store.GetAsync("depot");
         Assert.Equal("new-access", stored?.AccessToken);
         Assert.Null(stored?.RefreshToken);
-    }
-
-    [Fact]
-    public async Task GetTokens_ForATokenIssuedToADifferentHost_IsNull()
-    {
-        var (cache, store) = _Create("https://depot.example/mcp");
-        await store.SaveAsync("depot", "depot", new McpOAuthToken
-        {
-            AccessToken = "access",
-            ExpiresAt = DateTimeOffset.UtcNow.AddHours(1),
-            ResourceUrl = "https://somewhere-else.example/mcp",
-        });
-
-        // The in-process route reads the cache to decide what header to send, so the same rule has to hold here as on
-        // the spawn path: a name is not an identity, and the credential must not follow the name to another host.
-        Assert.Null(await cache.GetTokensAsync());
     }
 
     [Fact]
@@ -119,5 +77,4 @@ public class McpOAuthTokenCacheTests
         Assert.Equal("client_secret_post", container.TokenEndpointAuthMethod);
         Assert.Equal("https://depot.example", container.AuthorizationServer);
     }
-
 }

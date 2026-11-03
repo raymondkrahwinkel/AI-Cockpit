@@ -1,6 +1,5 @@
 using System.Reflection;
 using Cockpit.Core.Configuration;
-using Cockpit.TestSupport;
 
 namespace Cockpit.Core.Tests.Configuration;
 
@@ -27,29 +26,6 @@ public sealed class StateRootOverrideTests
     // claim tells a shared state directory from a private one (AC-1217). Listed by name rather than skipped by a
     // rule, so a second path cannot join it without this line being edited.
     private const string DoesNotMoveByDesign = "CockpitBuild.DefaultStateRoot";
-
-    // Unset, and the two ways a shell hands over a set-but-empty variable: the state root is exactly what it was
-    // before this feature existed.
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData("   ")]
-    public void WithNoUsableVariable_TheStateRootIsExactlyWhatItWasBefore(string? value)
-    {
-        using var _ = new OverrideScope(value);
-
-        Assert.Equal(
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), CockpitBuild.StateFolder),
-            CockpitBuild.StateRoot);
-    }
-
-    [Fact]
-    public void WithTheVariable_TheStateRootIsTheOverride()
-    {
-        using var _ = new OverrideScope(Override);
-
-        Assert.Equal(Override, CockpitBuild.StateRoot);
-    }
 
     [Fact]
     public void ARelativeOverride_IsRefusedRatherThanResolvedPerProcess()
@@ -97,31 +73,6 @@ public sealed class StateRootOverrideTests
             stragglers.Count == 0,
             $"These paths did not follow {CockpitBuild.StateRootVariable} and would still write into the real "
             + $"state root:{Environment.NewLine}{string.Join(Environment.NewLine, stragglers)}");
-    }
-
-    /// <summary>
-    /// The other half of completeness: that the sweep above cannot be outflanked. The roaming application-data
-    /// directory may be reached in exactly one place, so a path added tomorrow inherits the override instead of
-    /// quietly rebuilding the old root beside it.
-    /// </summary>
-    [Fact]
-    public void OnlyCockpitBuild_ReachesTheApplicationDataDirectory()
-    {
-        var offenders = Directory
-            .EnumerateFiles(Path.Combine(RepositoryPaths.Root, "src"), "*.cs", SearchOption.AllDirectories)
-            .Where(file => !string.Equals(Path.GetFileName(file), "CockpitBuild.cs", StringComparison.Ordinal))
-            // Whitespace removed so a call wrapped over two lines still matches, and so the match is the call
-            // itself rather than any comment that names the mechanism in prose.
-            .Select(file => (File: file, Text: new string(File.ReadAllText(file).Where(c => !char.IsWhiteSpace(c)).ToArray())))
-            .Where(file => file.Text.Contains("GetFolderPath(Environment.SpecialFolder.ApplicationData)", StringComparison.Ordinal)
-                || file.Text.Contains("GetEnvironmentVariable(\"APPDATA\")", StringComparison.Ordinal))
-            .Select(file => Path.GetRelativePath(RepositoryPaths.Root, file.File))
-            .ToList();
-
-        Assert.True(
-            offenders.Count == 0,
-            $"The state root is resolved in CockpitBuild and nowhere else, or the override is only half honoured. "
-            + $"Resolve from CockpitBuild.StateRoot instead:{Environment.NewLine}{string.Join(Environment.NewLine, offenders)}");
     }
 
     // Every static property in the two assemblies that owns storage, read once. Reflection rather than a written

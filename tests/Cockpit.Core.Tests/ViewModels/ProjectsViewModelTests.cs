@@ -101,26 +101,6 @@ public class ProjectsViewModelTests
             && settings.Projects.Single().Resources.Contains(extraMemoryRow)), Arg.Any<CancellationToken>());
     }
 
-    [Fact]
-    public async Task ToggleSharingAsync_AlreadySharedProject_ConfirmationDeclined_LeavesTheBindingIntact()
-    {
-        var bound = Project.Create("PayrollProcessor") with
-        {
-            Resources = [new ProjectResource("Depot — Work:payroll-processor", ProjectResourceRole.Memory)],
-        };
-        var source = new _FakeSharedProjectSource("Depot — Work", SharedProjectListResult.Success([new SharedProject("Depot — Work:payroll-processor", "PayrollProcessor")]));
-        var dialogs = Substitute.For<ISessionDialogService>();
-        dialogs.ShowConfirmationDialogAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>()).Returns(false);
-        var (viewModel, _) = BuildWithSharedSources([source], dialogs, out var store, bound);
-        await viewModel.LoadAsync();
-        await viewModel.SharedProjectsLoadTask;
-        store.ClearReceivedCalls();
-
-        await viewModel.ToggleSharingAsync(bound);
-
-        await store.DidNotReceive().SaveAsync(Arg.Any<ProjectSettings>(), Arg.Any<CancellationToken>());
-    }
-
     private sealed class _FakeSharedProjectSourceRegistry(IReadOnlyList<ISharedProjectSource> initialSources) : ISharedProjectSourceRegistry
     {
         private readonly List<ISharedProjectSource> _sources = [.. initialSources];

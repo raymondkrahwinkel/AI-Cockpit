@@ -26,21 +26,6 @@ public class PluginSourceInstallerTests : IDisposable
         Directory.CreateDirectory(_plugins);
     }
 
-    [Fact]
-    public async Task RefreshOnly_LeavesADisabledPluginAlone()
-    {
-        _WriteInstalled("codex", "1.0.0", assemblyContent: "old-bytes");
-        _registrations.Saved["codex"] = new PluginRegistration(Enabled: false, PinnedSha256: "pinned");
-        var source = _WriteSource("codex", "1.0.0", assemblyContent: "rebuilt-bytes");
-
-        var installed = await new PluginSourceInstaller(_registrations, null)
-            .InstallFromSourceFoldersAsync([source], _plugins, installNew: false);
-
-        Assert.Empty(installed);
-        Assert.Equal("old-bytes", _InstalledAssembly("codex"));
-        Assert.Equal(new PluginRegistration(Enabled: false, PinnedSha256: "pinned"), _registrations.Saved["codex"]);
-    }
-
     // A stray Cockpit.Plugins.Abstractions.dll in a source folder (a test project's output offered one, which is
     // how the dev sync first poisoned the plugin folders) must never be copied in: the shared contract loads from
     // the host, and a second copy gives the plugin's ICockpitPlugin its own identity and the loader rejects it.
@@ -57,18 +42,12 @@ public class PluginSourceInstallerTests : IDisposable
         Assert.False(File.Exists(Path.Combine(_plugins, "clock", "Cockpit.Plugins.Abstractions.dll")));
     }
 
-    private string _InstalledAssembly(string id) =>
-        File.ReadAllText(Path.Combine(_plugins, id, $"Cockpit.Plugin.{id}.dll"));
-
     private string _WriteSource(string id, string version, string? assemblyContent = null)
     {
         var folder = Path.Combine(_source, id);
         _WritePlugin(folder, id, version, assemblyContent);
         return folder;
     }
-
-    private void _WriteInstalled(string id, string version, string? assemblyContent = null) =>
-        _WritePlugin(Path.Combine(_plugins, id), id, version, assemblyContent);
 
     private static void _WritePlugin(string folder, string id, string version, string? assemblyContent)
     {

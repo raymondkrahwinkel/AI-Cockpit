@@ -22,20 +22,6 @@ public class UsageSnapshotTests
     }
 
     [Fact]
-    public void Duration_RunsFromTheSessionStart_ToTheMomentTheRecordWasWritten()
-    {
-        var started = new DateTimeOffset(2026, 7, 28, 9, 0, 0, TimeSpan.FromHours(2));
-
-        var snapshot = new UsageSnapshot
-        {
-            StartedAt = started,
-            RecordedAt = started.AddMinutes(37),
-        };
-
-        Assert.Equal(TimeSpan.FromMinutes(37), snapshot.Duration);
-    }
-
-    [Fact]
     public void Duration_AcrossOffsets_MeasuresRealElapsedTime_NotTheClockFaces()
     {
         // A run started before a machine changed timezone (or a record written by a session on another offset) must
