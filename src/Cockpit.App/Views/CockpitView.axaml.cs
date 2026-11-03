@@ -258,6 +258,11 @@ public partial class CockpitView : UserControl
                 _RebuildViewModeHosts();
             }
         }
+        else if (e.PropertyName == nameof(CockpitViewModel.AgentsPaletteHeaderShortcutLabel))
+        {
+            // A rebind in Options lands here rather than in a panel rebuild.
+            _ApplyDockPanelHeaderShortcut();
+        }
         else if (e.PropertyName == nameof(CockpitViewModel.DockPanels))
         {
             // AC-953: the Assistant registers with its coordinator after this view attaches (and
@@ -453,6 +458,21 @@ public partial class CockpitView : UserControl
             cockpit.ReportToolbarActionFailure(open?.Id.Split('.')[0] ?? string.Empty, action.Title, exception.Message));
         DockPanelHeader.IsVisible = offersUndock || cockpit.ShowBackToAssistant || headerActions.Count > 0;
         DockPanelHeaderTitle.Text = open?.Title;
+        _ApplyDockPanelHeaderShortcut();
+    }
+
+    // AC-1933: beside the Agents panel's name, the key it is bound to now — blank while none is, and hidden for
+    // every other panel.
+    private void _ApplyDockPanelHeaderShortcut()
+    {
+        var label = string.Empty;
+        if (DataContext is CockpitViewModel cockpit && cockpit.EffectiveOpenDockPanelId == AgentsOverviewViewModel.DockPanelId)
+        {
+            label = cockpit.AgentsPaletteHeaderShortcutLabel;
+        }
+
+        DockPanelHeaderShortcut.Text = label;
+        DockPanelHeaderShortcut.IsVisible = !string.IsNullOrEmpty(label);
     }
 
     // AC-1303: building a host asks the coordinator for the chat view model, and constructing that one sets

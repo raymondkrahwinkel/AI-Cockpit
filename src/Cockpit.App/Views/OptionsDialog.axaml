@@ -1073,14 +1073,12 @@
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <CheckBox Content="Agents palette" IsChecked="{Binding AgentsPaletteEnabled}"/>
                             <materialIcons:MaterialIcon Classes="hint"
-                                ToolTip.Tip="A compact board of all your agents that opens over the window. Switched off, its shortcut, button and icon do nothing."/>
+                                ToolTip.Tip="A compact board of all your agents that opens over the window. Switched off, its shortcut and icon do nothing."/>
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" IsEnabled="{Binding AgentsPaletteEnabled}">
                             <TextBlock Text="Shortcut" Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11" VerticalAlignment="Center"/>
                             <controls:ShortcutCaptureControl Gesture="{Binding AgentsPaletteShortcut.Gesture, Mode=TwoWay}" MinWidth="200"/>
                         </StackPanel>
-                        <CheckBox Content="Show a button in the title bar" IsChecked="{Binding AgentsPaletteTitleButton}"
-                                  IsEnabled="{Binding AgentsPaletteEnabled}"/>
                         <CheckBox Content="Show an icon in the dock rail" IsChecked="{Binding AgentsPaletteRailIcon}"
                                   IsEnabled="{Binding AgentsPaletteEnabled}"/>
                     </StackPanel>

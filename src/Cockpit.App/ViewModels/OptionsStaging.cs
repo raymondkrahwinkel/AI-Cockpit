@@ -17,7 +17,6 @@ internal static class OptionsStaging
     [
         "AgentsPaletteEnabled",
         "AgentsPaletteRailIcon",
-        "AgentsPaletteTitleButton",
         "AutoCloseOnExit",
         "AutomaticDockerCleanup",
         "CheckForUpdatesOnStartup",
