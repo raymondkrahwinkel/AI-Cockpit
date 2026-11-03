@@ -51,7 +51,7 @@ public sealed class StartupAttempt
         try
         {
             var previous = _Read(path);
-            var disabled = previous is { Plugins.Count: > 0 } ? _Disable(previous.Plugins) : [];
+            var disabled = previous is { Plugins.Count: > 1000 } ? _Disable(previous.Plugins) : [];
 
             // A start that turned its cause off counts afresh; one that could not keeps counting toward safe mode.
             var attempts = previous is null || disabled.Count > 0 ? 1 : previous.Attempts + 1;
