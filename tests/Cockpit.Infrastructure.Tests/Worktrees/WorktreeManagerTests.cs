@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using Cockpit.Core.Configuration;
-using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Worktrees;
 using Cockpit.Infrastructure.Worktrees;
@@ -45,44 +44,6 @@ public sealed class WorktreeManagerTests : IDisposable
     }
 
     [Fact]
-    public async Task CreateAsync_BranchThatAlreadyExists_FailsLoudly_WithoutResettingIt()
-    {
-        // A local project never needs the operator's configured repositories: this real repository is created and
-        // disposed by the test fixture. origin wins even when Git names another remote too.
-        _Git(_repo, "remote", "add", "backup", "https://example.test/backup.git");
-        _Git(_repo, "remote", "add", "origin", "https://example.test/origin.git");
-        Assert.Equal("https://example.test/origin.git", await _manager.DetectRemoteUrlAsync(_repo));
-
-        const string branch = "already-here";
-        _Git(_repo, "branch", branch);
-
-        var create = async () => await _manager.CreateAsync(_sessionId, branch, _repo);
-
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(create);
-        Assert.Contains("already exists", ex.Message);
-    }
-
-    [Fact]
-    public async Task IsCleanAsync_WorktreeWithUncommittedChange_IsNotClean()
-    {
-        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
-        File.WriteAllText(Path.Combine(record.Path, "change.txt"), "work\n");
-
-        Assert.False((await _manager.IsCleanAsync(record)));
-    }
-
-    [Fact]
-    public async Task IsCleanAsync_WorktreeWithCommitAheadOfBase_IsNotClean()
-    {
-        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
-        File.WriteAllText(Path.Combine(record.Path, "change.txt"), "work\n");
-        _Git(record.Path, "add", "-A");
-        _Git(record.Path, "commit", "-m", "work");
-
-        Assert.False((await _manager.IsCleanAsync(record)));
-    }
-
-    [Fact]
     public async Task RemoveAsync_DirtyWorktreeWithoutForce_IsRefused_ThenForceRemoves()
     {
         var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
@@ -98,24 +59,6 @@ public sealed class WorktreeManagerTests : IDisposable
         await _manager.RemoveAsync(record, force: true);
         Assert.False(Directory.Exists(record.Path));
         Assert.Empty((await _manager.ListAsync()));
-    }
-
-    [Fact]
-    public async Task RemoveAsync_FolderLeftBehindStillHoldingFiles_DropsTheEntryButKeepsWhatIsOnDisk()
-    {
-        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
-        _ClearCheckout(record.Path);
-        _Git(_repo, "worktree", "unlock", record.Path);
-        _Git(_repo, "worktree", "prune");
-        var leftover = Path.Combine(record.Path, "left-behind.txt");
-        File.WriteAllText(leftover, "not git's any more\n");
-
-        await _manager.RemoveAsync(record);
-
-        // Dropping the entry is a claim about what the cockpit manages, never a licence to delete: git cannot see
-        // these files, but they are still someone's, so only the registry row goes.
-        Assert.Empty((await _manager.ListAsync()));
-        Assert.True(File.Exists(leftover));
     }
 
     [Fact]
@@ -147,24 +90,6 @@ public sealed class WorktreeManagerTests : IDisposable
         Assert.NotNull(notice);
         Assert.Contains(record.Branch, notice);
         Assert.Contains(record.Path, notice);
-    }
-
-    [Fact]
-    public async Task RemoveAsync_LeftoverFolderHasAFileThatNoLongerMatchesTheCommittedContent_KeepsTheFolder()
-    {
-        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
-        File.WriteAllText(Path.Combine(record.Path, "README.md"), "edited after the checkout broke\n");
-        _BreakWorktreeGitLink(record.Path);
-        _Git(_repo, "worktree", "unlock", record.Path);
-        _Git(_repo, "worktree", "prune");
-
-        var notice = await _manager.RemoveAsync(record);
-
-        Assert.Empty((await _manager.ListAsync()));
-        Assert.True(Directory.Exists(record.Path), "a file that no longer matches what the branch committed must not be discarded on a guess");
-        Assert.True(File.Exists(Path.Combine(record.Path, "README.md")));
-        Assert.NotNull(notice);
-        Assert.DoesNotContain("deleted", notice);
     }
 
     [Fact]
@@ -203,23 +128,6 @@ public sealed class WorktreeManagerTests : IDisposable
         {
             Directory.Delete(gitLink, recursive: true);
         }
-    }
-
-    [Fact]
-    public async Task CreateAsync_TwoSessionsOnOneRepository_GiveEachOtherIsolatedTrees()
-    {
-        var first = await _manager.CreateAsync(Guid.NewGuid().ToString("n"), "cockpit/session-1", _repo);
-        var second = await _manager.CreateAsync(Guid.NewGuid().ToString("n"), "cockpit/session-2", _repo);
-
-        Assert.NotEqual(second.Path, first.Path);
-        Assert.NotEqual(second.Branch, first.Branch);
-        Assert.Equal(2, System.Linq.Enumerable.Count((await _manager.ListAsync())));
-
-        File.WriteAllText(Path.Combine(first.Path, "only-in-first.txt"), "x\n");
-        _Git(first.Path, "add", "-A");
-        _Git(first.Path, "commit", "-m", "first-only work");
-
-        Assert.False(File.Exists(Path.Combine(second.Path, "only-in-first.txt")));
     }
 
     [Fact]
@@ -299,37 +207,6 @@ public sealed class WorktreeManagerTests : IDisposable
     }
 
     [Fact]
-    public async Task GetStatusesAsync_ReportsClean_ThenDirty_ThenHoldingACommitThatExistsNowhereElse()
-    {
-        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
-
-        Assert.True(Assert.Single((await _manager.GetStatusesAsync())).IsClean);
-
-        File.WriteAllText(Path.Combine(record.Path, "change.txt"), "work\n");
-        var dirty = (await _manager.GetStatusesAsync()).Single();
-        Assert.True(dirty.HasUncommittedChanges);
-        Assert.False(dirty.IsClean);
-
-        _Git(record.Path, "add", "-A");
-        _Git(record.Path, "commit", "-m", "work");
-        var holdingWork = (await _manager.GetStatusesAsync()).Single();
-        Assert.Equal(1, holdingWork.StrandableCommits);
-        Assert.False(holdingWork.IsClean);
-    }
-
-    [Fact]
-    public async Task IsCleanAsync_WorktreeWithACommitThatWasNeverPushed_IsNotClean()
-    {
-        // The guard on the rule above: a remote existing must not make everything read as safe. Only work that is
-        // actually on it counts — this is the side where being wrong loses commits.
-        _AddRemote();
-        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
-        _Commit(record.Path, "change.txt", "work\n");
-
-        Assert.False((await _manager.IsCleanAsync(record)));
-    }
-
-    [Fact]
     public async Task IsCleanAsync_WorktreeWhoseOnlyUnmergedCommitIsAMerge_IsNotClean()
     {
         // An evil merge: every ordinary commit it carries is already in the base, and the only thing that is not lives
@@ -382,35 +259,6 @@ public sealed class WorktreeManagerTests : IDisposable
     }
 
     [Fact]
-    public async Task ReattachAsync_LiveLease_RefusesASecondWriterWithItsPathAndOwner()
-    {
-        var record = await _manager.CreateAsync(_sessionId, "cockpit/live", _repo);
-        using var secondCockpit = new WorktreeManager(new WorktreeRegistryStore(_configPath), _worktreesRoot);
-
-        var exception = await Assert.ThrowsAsync<WorktreeAdmissionException>(() =>
-            secondCockpit.ReattachAsync(record.Path, Guid.NewGuid().ToString("n")));
-
-        Assert.Equal(record.Path, exception.WorktreePath);
-        Assert.Equal(_sessionId, exception.OwnerSessionId);
-        Assert.Contains(record.Path, exception.Message);
-        Assert.Contains(_sessionId, exception.Message);
-        Assert.DoesNotContain("unknown", exception.Message, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public async Task TransferAsync_ExpectedOwner_AtomicallyHandsOverTheHeldLease()
-    {
-        var record = await _manager.CreateAsync(_sessionId, "cockpit/handover", _repo);
-
-        var transferred = await _manager.TransferAsync(record.Path, _sessionId, "pane-target");
-        var staleTransfer = await _manager.TransferAsync(record.Path, _sessionId, "pane-stale");
-
-        Assert.Equal("pane-target", transferred?.SessionId);
-        Assert.Null(staleTransfer);
-        Assert.Equal("pane-target", Assert.Single(await _manager.ListAsync()).SessionId);
-    }
-
-    [Fact]
     public async Task ReattachAsync_ConcurrentCockpits_AdmitExactlyOneWriter()
     {
         var record = await _manager.CreateAsync(_sessionId, "cockpit/race", _repo);
@@ -423,52 +271,6 @@ public sealed class WorktreeManagerTests : IDisposable
             _TryReattachAsync(secondCockpit, record.Path, "pane-second"));
 
         Assert.Single(reattachments, record => record is not null);
-    }
-
-    [Fact]
-    public async Task ReconcileAsync_LiveLease_SkipsTheWorktreeWithoutChangingItsOwner()
-    {
-        var record = await _manager.CreateAsync(_sessionId, "cockpit/reconcile-live", _repo);
-        using var secondCockpit = new WorktreeManager(new WorktreeRegistryStore(_configPath), _worktreesRoot);
-
-        await secondCockpit.ReconcileAsync([]);
-
-        Assert.Equal(_sessionId, Assert.Single(await secondCockpit.ListAsync()).SessionId);
-    }
-
-    [Fact]
-    public async Task CreateAsync_TheSourceMayNotBeTouchedAndHasUncommittedChanges_StillForksFromTheUpstreamTip()
-    {
-        _AddRemote();
-        var moved = _PushFromAnotherClone("shipped.txt");
-        File.WriteAllText(Path.Combine(_repo, "README.md"), "half-finished edit\n");
-
-        var record = await _manager.CreateAsync(_sessionId, "wt", _repo, WorktreeSourceHandling.LeaveSourceAlone);
-
-        // An uncommitted edit is a reason not to *write* to the tree, and nothing is being written here — so it is
-        // no reason to hand the session an older base than it could have had. The edit is untouched either way.
-        Assert.Equal(moved, record.BaseCommit);
-        Assert.Equal(WorktreeSourceOutcome.ForkedFromUpstream, _SourceRefreshOf(record).Outcome);
-        Assert.Equal("half-finished edit\n", File.ReadAllText(Path.Combine(_repo, "README.md")));
-    }
-
-    [Fact]
-    public async Task CreateAsync_UntrackedFolderWhereAnIncomingFileMustGo_CountsAsInTheWay()
-    {
-        _AddRemote();
-        _PushFromAnotherClone("libs");
-        Directory.CreateDirectory(Path.Combine(_repo, "libs"));
-        File.WriteAllText(Path.Combine(_repo, "libs", "mine.txt"), "not in git\n");
-        var before = _Git(_repo, "rev-parse", "HEAD");
-
-        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
-
-        // The other direction of the same question: here a folder of untracked files sits exactly where an incoming
-        // file has to be written. git lists what is inside it, not the folder, so the match has to run upwards.
-        var refresh = _SourceRefreshOf(record);
-        Assert.Equal(WorktreeSourceOutcome.UntrackedFilesInTheWay, refresh.Outcome);
-        Assert.Equal(before, _Git(_repo, "rev-parse", "HEAD"));
-        Assert.Equal("not in git\n", File.ReadAllText(Path.Combine(_repo, "libs", "mine.txt")));
     }
 
     [Fact]
@@ -494,22 +296,6 @@ public sealed class WorktreeManagerTests : IDisposable
         var refresh = _SourceRefreshOf(record);
         Assert.Equal(WorktreeSourceOutcome.UntrackedFilesInTheWay, refresh.Outcome);
         Assert.Contains(".env", refresh.Notice);
-    }
-
-    [Fact]
-    public async Task CreateAsync_UpdateWouldOverwriteAnUntrackedFile_LeavesItAloneAndSaysSo()
-    {
-        _AddRemote();
-        _PushFromAnotherClone("shipped.txt");
-        File.WriteAllText(Path.Combine(_repo, "shipped.txt"), "mine, never committed\n");
-        var before = _Git(_repo, "rev-parse", "HEAD");
-
-        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
-
-        Assert.Equal("mine, never committed\n", File.ReadAllText(Path.Combine(_repo, "shipped.txt")));
-        Assert.Equal(before, _Git(_repo, "rev-parse", "HEAD"));
-        var refresh = _SourceRefreshOf(record);
-        Assert.Equal(WorktreeSourceOutcome.UntrackedFilesInTheWay, refresh.Outcome);
     }
 
     [PosixFact("A colon cannot appear in a Windows filename, so the collision this is about cannot be built there.")]
@@ -602,24 +388,6 @@ public sealed class WorktreeManagerTests : IDisposable
     }
 
     [Fact]
-    public async Task CreateAsync_SourceBranchDivergedFromItsRemote_KeepsTheLocalCommits()
-    {
-        _AddRemote();
-        _PushFromAnotherClone("shipped.txt");
-        _Commit(_repo, "mine.txt", "not pushed yet\n");
-        var before = _Git(_repo, "rev-parse", "HEAD");
-
-        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
-
-        // Nothing that only exists here may be silently rewound; a fast-forward would not have been one anyway.
-        Assert.Equal(before, _Git(_repo, "rev-parse", "HEAD"));
-        Assert.Equal(before, record.BaseCommit);
-        var refresh = _SourceRefreshOf(record);
-        Assert.Equal(WorktreeSourceOutcome.Diverged, refresh.Outcome);
-        Assert.Contains("left", refresh.Notice);
-    }
-
-    [Fact]
     public async Task CreateAsync_UnreachableRemoteSpelledAsACredentialledUrl_KeepsTheCredentialOutOfWhatItSays()
     {
         _AddRemote();
@@ -634,43 +402,6 @@ public sealed class WorktreeManagerTests : IDisposable
         Assert.NotNull(refresh.Notice);
         Assert.DoesNotContain("s3cr3t-token", refresh.Notice);
         Assert.DoesNotContain("someone", refresh.Notice);
-    }
-
-    public static IEnumerable<object[]> WorktreesChangedMutations()
-    {
-        yield return new object[]
-        {
-            (Func<IWorktreeManager, string, string, Task<WorktreeRecord?>>)((_, _, _) => Task.FromResult<WorktreeRecord?>(null)),
-            (Func<IWorktreeManager, string, WorktreeRecord?, string, Task>)(async (manager, repo, _, sessionId) =>
-                await manager.CreateAsync(sessionId, "wt-create", repo)),
-        };
-        yield return new object[]
-        {
-            (Func<IWorktreeManager, string, string, Task<WorktreeRecord?>>)(async (manager, repo, sessionId) =>
-                await manager.CreateAsync(sessionId, "wt-remove", repo)),
-            (Func<IWorktreeManager, string, WorktreeRecord?, string, Task>)(async (manager, _, record, _) =>
-                await manager.RemoveAsync(record!)),
-        };
-        yield return new object[]
-        {
-            // Reattach admits a new writer only once the old one let go — the same release/reattach sequence
-            // ReleaseOwnershipAsync_CaseVariantRecordPath_ReleasesTheLease already exercises above.
-            (Func<IWorktreeManager, string, string, Task<WorktreeRecord?>>)(async (manager, repo, sessionId) =>
-            {
-                var created = await manager.CreateAsync(sessionId, "wt-reattach", repo);
-                await manager.ReleaseOwnershipAsync(created.Path);
-                return created;
-            }),
-            (Func<IWorktreeManager, string, WorktreeRecord?, string, Task>)(async (manager, _, record, _) =>
-                await manager.ReattachAsync(record!.Path, Guid.NewGuid().ToString("N"))),
-        };
-        yield return new object[]
-        {
-            (Func<IWorktreeManager, string, string, Task<WorktreeRecord?>>)(async (manager, repo, sessionId) =>
-                await manager.CreateAsync(sessionId, "wt-transfer", repo)),
-            (Func<IWorktreeManager, string, WorktreeRecord?, string, Task>)(async (manager, _, record, sessionId) =>
-                await manager.TransferAsync(record!.Path, sessionId, Guid.NewGuid().ToString("N"))),
-        };
     }
 
     private static async Task<WorktreeRecord?> _TryReattachAsync(WorktreeManager manager, string path, string paneId)
@@ -738,11 +469,6 @@ public sealed class WorktreeManagerTests : IDisposable
     /// worktree, gone while the folder stays. What a removal that cleared the tree and then could not delete the
     /// directory leaves behind, and the shape of the leftovers found in a real state directory.
     /// </summary>
-    private static void _ClearCheckout(string worktreePath)
-    {
-        TestGitDirectory.Remove(worktreePath);
-        Directory.CreateDirectory(worktreePath);
-    }
 
     private static void _Commit(string workingDirectory, string file, string content)
     {

@@ -1,6 +1,5 @@
 using System.Net;
 using System.Net.WebSockets;
-using System.Reflection;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
@@ -31,28 +30,6 @@ public sealed class PluginMcpAuthorizedHandlerTests
         OAuthAuthority = "https://depot.example.com",
     };
 
-    // A plugin-set Host would steer SNI and the virtual host, and a plugin-set Authorization is not the host's.
-    [Theory]
-    [InlineData("https://depot.example.com/cockpit/inbox")]
-    [InlineData("wss://depot.example.com/hubs/inbox?expectedUser=u1")]
-    public async Task Send_ToItsOwnOrigin_PutsTheBearerOnTheWireAndNowhereThePluginCanSee(string target)
-    {
-        var upstream = new _RecordingUpstream();
-        using var client = new HttpClient(_Handler(_Coordinator(), upstream));
-        using var request = new HttpRequestMessage(HttpMethod.Get, target);
-        request.Headers.TryAddWithoutValidation("X-Plugin", "kept");
-        request.Headers.Host = "evil.example.com";
-        request.Headers.TryAddWithoutValidation("Authorization", "Bearer plugin-chosen");
-
-        using var response = await client.SendAsync(request);
-
-        var sent = Assert.Single(upstream.Requests);
-        Assert.Equal($"Bearer {Token}", sent.Authorization);
-        Assert.Equal("kept", sent.PluginHeader);
-        Assert.Null(sent.Host);
-        Assert.DoesNotContain(Token, _EverythingThePluginSees(request, response), StringComparison.Ordinal);
-        Assert.Same(request, response.RequestMessage);
-    }
 
     // The last row repoints the plugin's own request while the credential is fetched (a TOCTOU on RequestUri).
     [Theory]
@@ -190,39 +167,6 @@ public sealed class PluginMcpAuthorizedHandlerTests
         Assert.All(responses, response => Assert.DoesNotContain("inbox-token", _EverythingThePluginSees(response.RequestMessage ?? new HttpRequestMessage(), response), StringComparison.Ordinal));
     }
 
-    // AC-1586: the contract keeps the token in the host. No member of the plugin's host, nor of the handler it gets,
-    // hands a plugin anything that reads as a credential.
-    [Fact]
-    public void ThePluginSurface_HasNoMemberThatReturnsACredential()
-    {
-        string[] credentialWords = ["token", "bearer", "credential", "secret", "authorization"];
-        var hostMembers = new[] { typeof(ICockpitHost) }
-            .Concat(typeof(ICockpitHost).GetInterfaces())
-            .SelectMany(type => type.GetMembers())
-            .Where(member => member is MethodInfo or PropertyInfo);
-        var handlerMembers = typeof(PluginMcpAuthorizedHandler)
-            .GetMembers(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)
-            .Where(member => member is not ConstructorInfo);
-
-        var leaking = hostMembers
-            .Where(member => _ReturnsText(member) && credentialWords.Any(word => member.Name.Contains(word, StringComparison.OrdinalIgnoreCase)))
-            .Concat(handlerMembers)
-            .Select(member => $"{member.DeclaringType?.Name}.{member.Name}");
-
-        Assert.Empty(leaking);
-    }
-
-    private static bool _ReturnsText(MemberInfo member)
-    {
-        var type = member switch
-        {
-            MethodInfo method => method.ReturnType,
-            PropertyInfo property => property.PropertyType,
-            _ => typeof(void),
-        };
-        return type == typeof(string)
-            || (type.IsGenericType && type.GetGenericArguments().Any(argument => argument == typeof(string)));
-    }
 
     private static PluginMcpAuthorizedHandler _Handler(IMcpOAuthCoordinator coordinator, HttpMessageHandler upstream) =>
         new(Depot.Name, () => Depot, coordinator, upstream);

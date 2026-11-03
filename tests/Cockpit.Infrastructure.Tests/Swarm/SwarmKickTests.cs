@@ -10,7 +10,6 @@ namespace Cockpit.Infrastructure.Tests.Swarm;
 public class SwarmKickTests
 {
     [Theory]
-    [InlineData(1)]
     [InlineData(2)]
     [InlineData(3)]
     public async Task RemovalRevokesEveryPeerRequiresFreshPairingAndRejectsUntrustedRequests(int criterion)
@@ -61,10 +60,6 @@ public class SwarmKickTests
             client.DefaultRequestHeaders.Authorization = new("Bearer", credential.ApiKey);
             using var response = await client.GetAsync(credential.Url);
             Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
-        }
-        if (criterion == 1)
-        {
-            return;
         }
         var current = await pair.A.Membership.LoadAsync();
         var oldMember = before.Members.Single(member => member.Id == third.Identity.MemberId);

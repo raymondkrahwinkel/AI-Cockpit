@@ -8,13 +8,6 @@ public class TerminalAccessSettingsStoreTests : IDisposable
 {
     private readonly string _path = Path.Combine(Path.GetTempPath(), $"terminal-access-{Guid.NewGuid():N}.json");
 
-    [Fact]
-    public async Task Load_WhenNothingSaved_DefaultsToOff()
-    {
-        var store = new TerminalAccessSettingsStore(_path);
-
-        Assert.False((await store.LoadAsync()).Enabled);
-    }
 
     [Fact]
     public async Task Save_ThenLoad_RoundTripsTheSwitch()

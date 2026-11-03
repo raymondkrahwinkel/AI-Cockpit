@@ -35,9 +35,6 @@ public class SpawnOptionOverridesTests
         ["effort"] = "high",
     };
 
-    public static TheoryData<IReadOnlyDictionary<string, string>?> NoOverrides() =>
-        [null, new Dictionary<string, string>()];
-
     [Theory]
     [InlineData("permission-mode")]
     [InlineData("Permission-Mode")]

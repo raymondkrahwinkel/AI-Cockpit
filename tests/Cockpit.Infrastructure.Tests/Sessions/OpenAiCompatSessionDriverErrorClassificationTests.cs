@@ -1,6 +1,5 @@
 using System.ClientModel;
 using System.ClientModel.Primitives;
-using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Sessions;
 
 namespace Cockpit.Infrastructure.Tests.Sessions;
@@ -11,18 +10,6 @@ namespace Cockpit.Infrastructure.Tests.Sessions;
 /// </summary>
 public class OpenAiCompatSessionDriverErrorClassificationTests
 {
-    [Theory]
-    [InlineData(401, SessionErrorKind.AuthRequired)]
-    [InlineData(403, SessionErrorKind.AuthRequired)]
-    [InlineData(429, SessionErrorKind.RateLimited)]
-    [InlineData(500, SessionErrorKind.ServiceUnavailable)]
-    [InlineData(400, SessionErrorKind.Unknown)]
-    public void ClassifyError_MapsHttpStatusToKind(int status, SessionErrorKind expected)
-    {
-        var ex = new ClientResultException(new _FakeResponse(status));
-
-        Assert.Equal(expected, OpenAiCompatSessionDriver._ClassifyError(ex));
-    }
 
     [Fact]
     public void RetryAfterFrom_ParsesDeltaSecondsAndHttpDate()

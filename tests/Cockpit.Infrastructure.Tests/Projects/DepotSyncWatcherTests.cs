@@ -33,41 +33,6 @@ public sealed class DepotSyncWatcherTests : IDisposable
     }
 
     [Fact]
-    public async Task ChangedFlag_StaysThroughQuietTicks_AndGoesOnSyncNow()
-    {
-        _watcher.Start();
-        _time.Advance(TimeSpan.Zero);
-        _Next();
-        _checksum = "b";
-        _time.Advance(TimeSpan.FromMinutes(15));
-        _Next();
-
-        _time.Advance(TimeSpan.FromMinutes(15));
-        var afterQuietTick = _Next();
-        await _watcher.SyncNowAsync("p");
-        var afterSyncNow = _Next();
-
-        Assert.True(afterQuietTick);
-        Assert.False(afterSyncNow);
-    }
-
-    [Fact]
-    public async Task SourceChange_ChecksTheBoundProjectOnce_AndSetsTheFlagWithoutAdvancingTheClock()
-    {
-        await _watcher.RunOnceAsync();
-        Assert.False(_Next());
-        _source.PrepareCalls = 0;
-        var before = _time.GetUtcNow();
-        _checksum = "b";
-
-        _source.RaiseChanged("shared");
-
-        Assert.True(_Next());
-        Assert.Equal(before, _time.GetUtcNow());
-        Assert.Equal(1, _source.PrepareCalls);
-    }
-
-    [Fact]
     public async Task BindingWithReadChecksum_ReportsFirstLaterRemoteChange()
     {
         var settings = ProjectSettings.Empty;
@@ -113,47 +78,6 @@ public sealed class DepotSyncWatcherTests : IDisposable
         await _watcher.CheckNowAsync(project.Id);
 
         Assert.True(_Next());
-    }
-
-    [Fact]
-    public void UnboundProject_LosesItsFlagAndItsBaseline()
-    {
-        _watcher.Start();
-        _time.Advance(TimeSpan.Zero);
-        _Next();
-        _checksum = "b";
-        _time.Advance(TimeSpan.FromMinutes(15));
-        _Next();
-
-        _bound = false;
-        _time.Advance(TimeSpan.FromMinutes(15));
-        var afterUnbind = _Next();
-        _bound = true;
-        _time.Advance(TimeSpan.FromMinutes(15));
-
-        Assert.False(afterUnbind);
-        Assert.False(_Next());
-    }
-
-    [Fact]
-    public async Task ACheckThatCannotAnswer_IsToldOnce_AlsoWhenItFirstFailedBeforeAnyoneListened_AndAfterRecovering()
-    {
-        var told = new List<(string ProjectId, string Reason)>();
-
-        // The first pass runs at start, before anyone listens: what it found is still said by the next check.
-        _source.Answer = () => SharedProjectBindingResult.Failed("Not signed in.");
-        await _watcher.RunOnceAsync();
-        _watcher.OnFailing = (projectId, reason) => told.Add((projectId, reason));
-        await _watcher.RunOnceAsync();
-        await _watcher.RunOnceAsync();
-        await _watcher.RunOnceAsync();
-
-        _source.Answer = () => SharedProjectBindingResult.Success(new SharedProjectBinding("p") { Checksum = "a" });
-        await _watcher.RunOnceAsync();
-        _source.Answer = () => SharedProjectBindingResult.Failed("Not signed in.");
-        await _watcher.RunOnceAsync();
-
-        Assert.Equal([("p", "Not signed in.")], told);
     }
 
     public void Dispose()

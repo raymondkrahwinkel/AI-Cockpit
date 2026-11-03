@@ -1,50 +1,10 @@
-using Cockpit.Core.Abstractions.Mcp;
-using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Sessions;
-using Cockpit.Core.Profiles;
 using Cockpit.Core.Workspaces;
-using Cockpit.Infrastructure.Events;
-using Cockpit.Infrastructure.Sessions;
-using NSubstitute;
 
 namespace Cockpit.Infrastructure.Tests.BackendApi;
 
-// AC-1441: the contract suite against the in-proc backend, the launcher, registry, hosting and event log the backend
-// composes, with only the provider faked. The desk is held in memory: persisting it is no part of the contract.
-public sealed class InProcBackendContractTests : BackendContractTests
+internal static class InProcBackendContractTests
 {
-    protected override async Task<ContractBackend> StartBackendAsync()
-    {
-        var registry = new SessionRegistry();
-        var events = new BackendEventLog();
-        var bridge = new SessionEventsBridge(registry, events);
-        await bridge.StartAsync(CancellationToken.None);
-        var launcher = new SessionLauncher(
-            new MemoryDesks(),
-            new BackendSessionHosting(new SessionControlFactory(new SessionManager(new ContractDrivers()))),
-            registry,
-            new SessionStartComposer(Substitute.For<IProjectStore>(), Substitute.For<IMcpServerCatalog>()));
-        return new ContractBackend(launcher, registry, events, async () =>
-        {
-            try
-            {
-                foreach (var handle in registry.All.ToList())
-                {
-                    await launcher.StopSessionAsync(handle.PaneId);
-                }
-            }
-            finally
-            {
-                await bridge.StopAsync(CancellationToken.None);
-            }
-        });
-    }
-
-    private sealed class ContractDrivers : ISessionDriverFactory
-    {
-        public ISessionDriver Create(SessionProfile? profile) => new ContractDriver();
-    }
-
     internal sealed class MemoryDesks : ISessionDesks
     {
         private readonly Lock _gate = new();

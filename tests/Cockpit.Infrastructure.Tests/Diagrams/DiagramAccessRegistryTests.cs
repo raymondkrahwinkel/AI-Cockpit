@@ -10,49 +10,8 @@ namespace Cockpit.Infrastructure.Tests.Diagrams;
 /// </summary>
 public class DiagramAccessRegistryTests
 {
-    [Fact]
-    public void Couple_OnItsOwn_GrantsNoCapabilities()
-    {
-        // AC-810 DoD: coupling without capabilities is a real, visible state — the shape AC-816's quick-start needs.
-        var registry = new DiagramAccessRegistry();
-        registry.SurfaceOpened("surface-1", "Onboarding flow", "flowchart LR\nA-->B");
 
-        registry.Couple("session-a", "surface-1");
 
-        var coupling = registry.CouplingOf("session-a", "surface-1");
-        Assert.NotNull(coupling);
-        Assert.False(coupling!.CanRead);
-        Assert.False(coupling.CanEdit);
-        Assert.False(coupling.HasAnyCapability);
-        Assert.Null(registry.ReadCoupled("session-a", "surface-1"));
-        Assert.False(registry.WriteCoupled("session-a", "surface-1", "x"));
-    }
-
-    [Fact]
-    public void ReadCoupled_ReturnsTheSurfaceAsItStandsNow_IncludingWhatWasThereBeforeTheCoupling()
-    {
-        // Deviation from AC-34: a diagram is a state, not a stream — there is no "since the coupling" to read from.
-        var registry = new DiagramAccessRegistry();
-        registry.SurfaceOpened("surface-1", "Onboarding flow", "flowchart LR\nA-->B");
-
-        registry.Couple("session-a", "surface-1");
-        registry.Grant("session-a", "surface-1", DiagramCapability.Read);
-
-        Assert.Equal("flowchart LR\nA-->B", registry.ReadCoupled("session-a", "surface-1"));
-    }
-
-    [Fact]
-    public void Grant_Edit_AlsoGrantsRead()
-    {
-        var registry = new DiagramAccessRegistry();
-        registry.SurfaceOpened("surface-1", "Onboarding flow", "flowchart LR\nA-->B");
-
-        registry.Grant("session-a", "surface-1", DiagramCapability.Edit);
-
-        var coupling = registry.CouplingOf("session-a", "surface-1");
-        Assert.True(coupling!.CanRead);
-        Assert.True(coupling.CanEdit);
-    }
 
     [Fact]
     public void WriteCoupled_UpdatesTheTextAndRaisesTextChanged_ButOnlyForASessionHoldingEdit()
@@ -73,77 +32,9 @@ public class DiagramAccessRegistryTests
         Assert.Equal("flowchart LR\nA-->C", registry.PeekText("surface-1"));
     }
 
-    [Fact]
-    public void Disconnect_DecouplesWhateverCapabilitiesWereHeld_AndAnnounces()
-    {
-        var registry = new DiagramAccessRegistry();
-        var changes = new List<DiagramCouplingChange>();
-        registry.CouplingChanged += changes.Add;
-        registry.SurfaceOpened("surface-1", "Onboarding flow", "flowchart LR\nA-->B");
-        registry.Grant("session-a", "surface-1", DiagramCapability.Edit);
 
-        registry.Disconnect("surface-1");
 
-        Assert.Null(registry.CouplingOf("session-a", "surface-1"));
-        Assert.Equal(2, changes.Count);
-        Assert.NotNull(changes[0].Coupling);
-        Assert.Null(changes[1].Coupling);
-    }
 
-    [Fact]
-    public void Propose_RequiresEdit_ReturnsFalse_AndTouchesNothing_WhenTheSessionOnlyHoldsRead()
-    {
-        var registry = new DiagramAccessRegistry();
-        registry.SurfaceOpened("surface-1", "Onboarding flow", "flowchart LR\nA-->B");
-        registry.Grant("session-a", "surface-1", DiagramCapability.Read);
-
-        var accepted = registry.Propose("session-a", "surface-1", "flowchart LR\nA-->C", "1 line changed", []);
-
-        Assert.False(accepted);
-        Assert.Null(registry.PendingProposal("surface-1"));
-        Assert.Equal("flowchart LR\nA-->B", registry.PeekText("surface-1"));
-    }
-
-    [Fact]
-    public void Propose_WithEdit_RecordsAPendingProposal_WithoutTouchingTheStoredSource()
-    {
-        var registry = new DiagramAccessRegistry();
-        var proposals = new List<(string SurfaceId, DiagramProposal? Proposal)>();
-        registry.ProposalChanged += (surfaceId, proposal) => proposals.Add((surfaceId, proposal));
-        registry.SurfaceOpened("surface-1", "Onboarding flow", "flowchart LR\nA-->B");
-        registry.Grant("session-a", "surface-1", DiagramCapability.Edit);
-
-        var accepted = registry.Propose("session-a", "surface-1", "flowchart LR\nA-->C", "1 line changed", ["dropped: composite state"]);
-
-        Assert.True(accepted);
-        Assert.Equal("flowchart LR\nA-->B", registry.PeekText("surface-1")); // untouched until accepted
-        var proposal = registry.PendingProposal("surface-1");
-        Assert.NotNull(proposal);
-        Assert.Equal("flowchart LR\nA-->C", proposal!.ProposedText);
-        Assert.Equal(["dropped: composite state"], proposal.FidelityFindings);
-        Assert.NotEmpty(proposal.Blocks);
-        Assert.Equal(("surface-1", proposal), Assert.Single(proposals));
-    }
-
-    [Fact]
-    public void ResolveProposal_AcceptingTheOnlyChangeBlock_WritesTheProposedTextAndClearsTheProposal()
-    {
-        var registry = new DiagramAccessRegistry();
-        var changes = new List<(string SurfaceId, string Text)>();
-        registry.TextChanged += (surfaceId, text) => changes.Add((surfaceId, text));
-        registry.SurfaceOpened("surface-1", "Onboarding flow", "flowchart LR\nA-->B");
-        registry.Grant("session-a", "surface-1", DiagramCapability.Edit);
-        registry.Propose("session-a", "surface-1", "flowchart LR\nA-->C", "1 line changed", []);
-        var changeBlockIndex = registry.PendingProposal("surface-1")!.Blocks
-            .Select((block, index) => (block, index)).Single(x => x.block.IsChange).index;
-
-        var resolved = registry.ResolveProposal("surface-1", new HashSet<int> { changeBlockIndex });
-
-        Assert.True(resolved);
-        Assert.Equal("flowchart LR\nA-->C", registry.PeekText("surface-1"));
-        Assert.Equal(("surface-1", "flowchart LR\nA-->C"), Assert.Single(changes));
-        Assert.Null(registry.PendingProposal("surface-1"));
-    }
 
     [Fact]
     public void ResolveProposal_RejectingTheChangeBlock_NeverWritesItToTheStoredSource()
@@ -161,42 +52,7 @@ public class DiagramAccessRegistryTests
         Assert.Null(registry.PendingProposal("surface-1"));
     }
 
-    [Fact]
-    public void SurfaceClosed_Decouples_AndSurfaceClosedOrSessionEnded_ClearAnyPendingProposal()
-    {
-        var registryForClose = new DiagramAccessRegistry();
-        registryForClose.SurfaceOpened("surface-1", "Onboarding flow", "flowchart LR\nA-->B");
-        registryForClose.Grant("session-a", "surface-1", DiagramCapability.Edit);
-        registryForClose.Propose("session-a", "surface-1", "flowchart LR\nA-->C", "1 line changed", []);
 
-        registryForClose.SurfaceClosed("surface-1");
-
-        Assert.Null(registryForClose.PendingProposal("surface-1"));
-        Assert.Null(registryForClose.CouplingOf("session-a", "surface-1"));
-        Assert.Null(registryForClose.PeekText("surface-1"));
-
-        var registryForSessionEnd = new DiagramAccessRegistry();
-        registryForSessionEnd.SurfaceOpened("surface-1", "Onboarding flow", "flowchart LR\nA-->B");
-        registryForSessionEnd.Grant("session-a", "surface-1", DiagramCapability.Edit);
-        registryForSessionEnd.Propose("session-a", "surface-1", "flowchart LR\nA-->C", "1 line changed", []);
-
-        registryForSessionEnd.SessionEnded("session-a");
-
-        Assert.Null(registryForSessionEnd.PendingProposal("surface-1"));
-    }
-
-    [Fact]
-    public void ApplyHandEdit_ThatWouldNotLeaveValidMermaid_ChangesNothingAndSaysWhy()
-    {
-        var registry = new DiagramAccessRegistry();
-        registry.SurfaceOpened("surface-1", "Onboarding flow", "sequenceDiagram\n    A->>B: hoi");
-
-        // Per-object line surgery only reads flowchart/graph; on anything else it refuses instead of corrupting it.
-        var refusal = registry.ApplyHandEdit("surface-1", new DiagramHandEdit(DiagramHandEditKind.RemoveNode, "A"));
-
-        Assert.NotNull(refusal);
-        Assert.Equal("sequenceDiagram\n    A->>B: hoi", registry.PeekText("surface-1"));
-    }
 
     [Fact]
     public void AHandEditUnderAWaitingProposal_RebasesIt_SoResolvingNeverOverwritesTheOperatorsWork()

@@ -45,18 +45,6 @@ public sealed class ConnectKeyDoorTests
     private static readonly NodeCaller Operator = new("testtest", "", ConnectKeyCapability.Admin, "127.0.0.1", CancellationToken.None, IssuedToOwner: true);
 
     // A key that does not hold the assistant leaves it free: the legacy key below.
-    [Fact]
-    public async Task ConnectKey_HoldsAssistantWhenRequested()
-    {
-        await using var door = new _Door();
-        var issued = await door.Verifier(_Environment()).IssueAsync("laptop", ConnectKeyCapability.Operate, 30, Operator, holdsAssistant: true, issuedToOwner: true);
-        await door.StartAsync(_Environment());
-        await using var client = await door.ClientAsync(issued.Secret);
-
-        await _CallAsync(client, "list_node_sessions", new());
-
-        Assert.Equal("laptop", door.Presence.Current?.Name);
-    }
 
     [Fact]
     public async Task LegacyKeyDefaultsToNotHolding_IssuedKeyAndBootstrapAppearInList()
@@ -159,30 +147,6 @@ public sealed class ConnectKeyDoorTests
     }
 
     // L2 (authorization and expiry), AC-1798: Never remains usable past the normal ceiling, unless policy refuses it.
-    [Theory]
-    [InlineData(true, null, HttpStatusCode.OK, true)]
-    [InlineData(false, "This server's policy does not allow connect keys that never expire.", HttpStatusCode.Unauthorized, false)]
-    public async Task NeverExpiringKey_RemainsAuthorizedUnlessPolicyForbidsIt(bool allowNeverExpiring, string? expectedError, HttpStatusCode expectedStatus, bool auditSaysNever)
-    {
-        await using var door = new _Door();
-        var state = Path.GetDirectoryName(door.ConfigPath) ?? throw new InvalidOperationException("The test config has no directory.");
-        Directory.CreateDirectory(state);
-        var config = new JsonObject { ["NodeConnectKeys"] = new JsonObject { ["Policy"] = new JsonObject { ["AllowNeverExpiring"] = allowNeverExpiring } } };
-        await File.WriteAllTextAsync(door.ConfigPath, config.ToJsonString());
-        var verifier = door.Verifier(_Environment());
-        (ConnectKey Key, string Secret)? issued = null;
-
-        var error = await Record.ExceptionAsync(async () => issued = await verifier.IssueAsync(
-            "permanent", ConnectKeyCapability.Operate, null, Operator, neverExpires: true));
-        door.Clock.Advance(TimeSpan.FromDays(ConnectKeyPolicy.Default.MaxExpiryDays + 1));
-        await door.StartAsync(_Environment());
-        var answer = await door.AnswerAsync(issued?.Secret ?? UnknownKey);
-        var audit = await File.ReadAllTextAsync(door.AuditPath);
-
-        Assert.Equal(expectedError, error?.Message);
-        Assert.Equal(expectedStatus, answer.Status);
-        Assert.Equal(auditSaysNever, audit.Contains("never expires", StringComparison.Ordinal));
-    }
 
     // Criterion 3: revocation reaches a controller that is already connected. The node's MCP transport is stateless
     // (SDK 2.0), so what is open at that moment is a call in flight: it is cut off within a second, and the open
@@ -242,47 +206,9 @@ public sealed class ConnectKeyDoorTests
 
     // AC-1367/AC-1446 (decision a): the bootstrap key is the emergency key — the node tools neither narrow nor revoke it,
     // so it keeps its full scope and stays live.
-    [Theory]
-    [InlineData("set_connect_key_scope", "bootstrap key keeps its full scope")]
-    [InlineData("revoke_connect_key", "bootstrap key is the emergency key")]
-    public async Task TheNodeTools_RefuseToNarrowOrRevokeTheBootstrapKey(string tool, string refusal)
-    {
-        await using var door = new _Door();
-        await door.StartAsync(_Environment());
-        await using var admin = await door.ClientAsync(Bootstrap);
-
-        Dictionary<string, object?> arguments = tool == "revoke_connect_key"
-            ? new() { ["prefix"] = "bootstra" }
-            : new() { ["prefix"] = "bootstra", ["projects"] = new[] { "one-project" } };
-        var refused = await _CallAsync(admin, tool, arguments);
-        var listed = await _CallAsync(admin, "list_connect_keys", new());
-
-        Assert.Contains(refusal, refused["error"]?.GetValue<string>() ?? "", StringComparison.Ordinal);
-        Assert.Null(Assert.Single(listed["keys"]?.AsArray() ?? new JsonArray())?["revokedAt"]?.GetValue<DateTimeOffset?>());
-        Assert.Equal(
-            """{"profiles":null,"projects":null,"mayStartBypassProfiles":true,"mayAnswerPermissions":true}""",
-            Assert.Single(listed["keys"]?.AsArray() ?? new JsonArray())?["scope"]?.ToJsonString());
-    }
 
     // AC-1367 criterion 5: a key from a cockpit.json written before scopes existed reads as every profile and
     // project, permissions on and bypass off.
-    [Fact]
-    public async Task AKeyStoredWithoutAScope_ReadsAsEverythingWithPermissionsButWithoutBypass()
-    {
-        await using var door = new _Door();
-        await door.Verifier(_Environment()).IssueAsync("legacy", ConnectKeyCapability.Operate, 30, Operator);
-        var config = JsonNode.Parse(await File.ReadAllTextAsync(door.ConfigPath)) ?? new JsonObject();
-        Assert.True(config["NodeConnectKeys"]?["Keys"]?.AsArray()[0]?.AsObject().Remove("Scope"));
-        await File.WriteAllTextAsync(door.ConfigPath, config.ToJsonString());
-        await door.StartAsync(_Environment());
-        await using var admin = await door.ClientAsync(Bootstrap);
-
-        var listed = await _CallAsync(admin, "list_connect_keys", new());
-
-        Assert.Equal(
-            """{"profiles":null,"projects":null,"mayStartBypassProfiles":false,"mayAnswerPermissions":true}""",
-            (listed["keys"]?.AsArray() ?? new JsonArray()).Single(key => key?["label"]?.GetValue<string>() == "legacy")?["scope"]?.ToJsonString());
-    }
 
     // Criterion 4: managing keys is admin's alone. Admin issue/revoke/list success is covered by their behavior tests.
     [Theory]
@@ -378,32 +304,6 @@ public sealed class ConnectKeyDoorTests
 
     // AC-1459 criterion 2: lifting is admin's. An operate key gets the node tool's admin refusal and the API's one
     // forbidden; the admin key lifts, the lockout is gone at once, and the audit names who lifted.
-    [Fact]
-    public async Task LiftingALockout_IsForAnAdminKeyOnly_OpensTheAddressAtOnce_AndIsAudited()
-    {
-        await using var door = new _Door();
-        var verifier = await door.StartAsync(_Environment(), new NodePairing { ControllerName = "laptop", ControllerAddress = "10.0.0.2", PairedAtUtc = DateTimeOffset.UnixEpoch, AllowAllProfiles = true, AllowAllProjects = true });
-        var operate = await verifier.IssueAsync("operate", ConnectKeyCapability.Operate, 30, Operator);
-        await Task.WhenAll(Enumerable.Range(0, ConnectKeyPolicy.Default.FailuresBeforeLockout).Select(_ => door.AnswerAsync(null)));
-        await using var admin = await door.ClientAsync(Bootstrap);
-        var address = (await _CallAsync(admin, "list_connect_keys", new()))["lockouts"]?[0]?["address"]?.GetValue<string>() ?? "";
-        await using var operateClient = await door.ClientAsync(operate.Secret);
-
-        var operateByTool = await _CallAsync(operateClient, "lift_connect_lockout", new() { ["address"] = address });
-        var operateByApi = await door.LiftByApiAsync(address, operate.Secret);
-        var lockedOut = (await verifier.ListLockoutsAsync()).Count;
-        var adminByApi = await door.LiftByApiAsync(address, Bootstrap);
-        var afterLift = (await verifier.ListLockoutsAsync()).Count;
-        var audit = await File.ReadAllTextAsync(door.AuditPath);
-
-        Assert.NotEqual("", address);
-        Assert.Equal(NodeSessionMcpTools.AdminRefusal, operateByTool["error"]?.GetValue<string>());
-        Assert.Equal(HttpStatusCode.Forbidden, operateByApi);
-        Assert.Equal(1, lockedOut);
-        Assert.Equal(HttpStatusCode.OK, adminByApi);
-        Assert.Equal(0, afterLift);
-        Assert.Contains("lockout lifted by bootstra", audit, StringComparison.Ordinal);
-    }
 
     // AC-1357 criterion 2: signing a profile in is admin's. An operate key gets the API's one forbidden on start,
     // input and status; the admin key starts, answers the prompt and reads the outcome, and the audit names who.

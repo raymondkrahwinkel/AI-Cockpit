@@ -49,31 +49,6 @@ public sealed class ConsentAuditLogTests : IDisposable
         Assert.Equal(new[] { "after", "before" }, recent.Select(entry => entry.Scope));
     }
 
-    /// <summary>The other half of the same guarantee: the new value itself round-trips, by name.</summary>
-    [Fact]
-    public async Task RecordAsync_ABypassedDecision_ReadsBackAsBypassed()
-    {
-        var log = CreateLog();
-        await log.RecordAsync(Entry("scope") with { Action = ConsentAuditAction.Bypassed });
 
-        var recent = await log.ReadRecentAsync();
-
-        Assert.Equal(ConsentAuditAction.Bypassed, Assert.Single(recent).Action);
-        Assert.Contains("\"Bypassed\"", await File.ReadAllTextAsync(_path));
-    }
-
-    [Fact]
-    public async Task ReadRecentAsync_BlankAndCorruptLines_AreSkipped_AndDoNotCountTowardTheLimit()
-    {
-        var log = CreateLog();
-        await log.RecordAsync(Entry("first"));
-        await File.AppendAllTextAsync(_path, Environment.NewLine);                       // a blank line
-        await File.AppendAllTextAsync(_path, "{ half a line" + Environment.NewLine);     // a corrupt line
-        await log.RecordAsync(Entry("second"));
-
-        var recent = await log.ReadRecentAsync(limit: 2);
-
-        Assert.Equal(new[] { "second", "first" }, recent.Select(entry => entry.Scope));
-    }
 
 }

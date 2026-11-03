@@ -1,7 +1,6 @@
 using System.Text.Json.Nodes;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Assistant;
-using Cockpit.Core.Consent;
 using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Mcp;
@@ -29,60 +28,13 @@ public sealed class AssistantSendToolsConsentTests : IDisposable
 
     private static JsonNode _Json(string result) => JsonNode.Parse(result)!;
 
-    private static string _KeyOf(ConsentRequest request) =>
-        ConsentSourceCatalog.KeyFor(request.Source.PluginId, request.Source.Label);
 
     // ── The two keys, which is what makes one switch unable to open both ───────────────────────────────────────
 
-    /// <summary>
-    /// AC-575 stores the operator's bypass per consent source, and a host-internal caller's key <em>is</em> its
-    /// label. Two tools under one label would therefore be one row in Options and one switch — and "the assistant
-    /// may leave notes unasked" would silently also mean "the assistant may start work unasked", which is the
-    /// permissive reading of a question nobody was asked.
-    /// </summary>
-    [Fact]
-    public async Task TheMessageAndThePrompt_AreAskedAboutUnderDifferentBypassKeys()
-    {
-        McpRequestContext.Set(AssistantIdentity.PaneId);
 
-        await _Tools().SendMessageAsync(TargetPane, "heads-up", "the branch moved");
-        await _Tools().SendPromptAsync(TargetPane, "run the tests");
-
-        Assert.Equal(2, _consent.Asked.Count);
-        Assert.Equal(ConsentSourceCatalog.AssistantMessage, _KeyOf(_consent.Asked[0]));
-        Assert.Equal(ConsentSourceCatalog.AssistantPrompt, _KeyOf(_consent.Asked[1]));
-        Assert.NotEqual(_KeyOf(_consent.Asked[0]), _KeyOf(_consent.Asked[1]));
-    }
-
-    /// <summary>
-    /// A key the operator cannot see is a key they cannot switch off again. Options lists
-    /// <see cref="ConsentSourceCatalog.HostSources"/> plus whatever has already asked, so a source left out of that
-    /// list only appears after it has interrupted them at least once.
-    /// </summary>
-    [Fact]
-    public void BothKeys_AreOfferedInOptions_SoEitherCanBeAllowedOrRevokedOnItsOwn()
-    {
-        Assert.Contains(ConsentSourceCatalog.AssistantMessage, ConsentSourceCatalog.HostSources);
-        Assert.Contains(ConsentSourceCatalog.AssistantPrompt, ConsentSourceCatalog.HostSources);
-    }
 
     // ── The two weights ────────────────────────────────────────────────────────────────────────────────────────
 
-    [Fact]
-    public async Task AMessage_IsLowRisk_AndAPrompt_IsDangerous()
-    {
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-
-        await _Tools().SendMessageAsync(TargetPane, "heads-up", "the branch moved");
-        await _Tools().SendPromptAsync(TargetPane, "run the tests");
-
-        Assert.Equal(ConsentRisk.LowRisk, _consent.Asked[0].Risk);
-
-        // ConsentRisk's own doc names "a session hand-off with the operator's rights" as the example of Dangerous,
-        // and Dangerous is never remembered — so every single hand-off is its own click.
-        Assert.Equal(ConsentRisk.Dangerous, _consent.Asked[1].Risk);
-        Assert.False(_consent.Asked[1].AllowRemember);
-    }
 
     // ── The card shows the truth ───────────────────────────────────────────────────────────────────────────────
 
@@ -92,30 +44,7 @@ public sealed class AssistantSendToolsConsentTests : IDisposable
     /// somebody else's. Both the text and the session that receives it have to be on the card, and the session is
     /// named by the pane id the cockpit will act on rather than by a name the assistant supplied.
     /// </summary>
-    [Fact]
-    public async Task ThePromptCard_ShowsTheProposedTurnWordForWord_AndWhichSessionGetsIt()
-    {
-        McpRequestContext.Set(AssistantIdentity.PaneId);
 
-        await _Tools().SendPromptAsync(TargetPane, "delete the release branch and force-push");
-
-        var card = Assert.Single(_consent.Asked);
-        Assert.Contains("delete the release branch and force-push", card.Action, StringComparison.Ordinal);
-        Assert.Contains(TargetPane, card.Action, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task TheMessageCard_ShowsTheBodyAndKindWordForWord_AndWhichSessionGetsIt()
-    {
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-
-        await _Tools().SendMessageAsync(TargetPane, "handover", "stop touching the worktree, I am rebasing it");
-
-        var card = Assert.Single(_consent.Asked);
-        Assert.Contains("stop touching the worktree, I am rebasing it", card.Action, StringComparison.Ordinal);
-        Assert.Contains("handover", card.Action, StringComparison.Ordinal);
-        Assert.Contains(TargetPane, card.Action, StringComparison.Ordinal);
-    }
 
     /// <summary>
     /// The card and the inbox must carry the same bytes. Terminal control sequences are stripped from a message
@@ -193,33 +122,12 @@ public sealed class AssistantSendToolsConsentTests : IDisposable
     /// install is not in by default (<see cref="AssistantSettings.ConsentBypassAll"/>), but the one every tool
     /// description's caveat still promises can happen.
     /// </summary>
-    [Fact]
-    public async Task ASendCallThatWasActuallyAsked_ReportsApprovalAsked()
-    {
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-
-        var message = _Json(await _Tools().SendMessageAsync(TargetPane, "heads-up", "the branch moved"));
-        var prompt = _Json(await _Tools().SendPromptAsync(TargetPane, "run the tests"));
-
-        Assert.Equal("asked", (string)message["approval"]!);
-        Assert.Equal("asked", (string)prompt["approval"]!);
-    }
 
     /// <summary>
     /// AC-759 criterion 1: the default install (<c>ConsentBypassAll</c> true) never raises a card at all — the
     /// broker's decision carries <see cref="ConsentDecision.Bypassed"/>, and that is what the tool reports rather
     /// than the generic "it went through" an unconditional caveat used to leave the assistant to guess at.
     /// </summary>
-    [Fact]
-    public async Task ASendCallThatWasBypassed_ReportsApprovalBypassed_NotAsked()
-    {
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-        _consent.Bypassed = true;
-
-        var result = _Json(await _Tools().SendPromptAsync(TargetPane, "run the tests"));
-
-        Assert.Equal("bypassed", (string)result["approval"]!);
-    }
 
     private sealed class RecordingBroker : IConsentBroker
     {

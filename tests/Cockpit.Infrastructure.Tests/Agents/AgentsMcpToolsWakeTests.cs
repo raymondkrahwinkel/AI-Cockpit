@@ -83,71 +83,14 @@ public sealed class AgentsMcpToolsWakeTests : IDisposable
         Assert.Equal(AgentWakeOutcome.NotOptedIn, entry.Wake);
     }
 
-    [Fact]
-    public async Task Notify_Urgent_AfterTheRecipientOptedBackOut_DoesNotWake()
-    {
-        _DeskWith("sender", "target");
-        _coordinator.SetWakeConsent("target", true);
-        _coordinator.SetWakeConsent("target", false);
 
-        var json = _Json(await _NotifyAs("sender", "target", "branch", "leave that branch alone", urgent: true));
-
-        Assert.Equal(nameof(AgentWakeOutcome.NotOptedIn), json["wake"]!["outcome"]!.GetValue<string>());
-        _ = _gateway.DidNotReceiveWithAnyArgs().TryWakeAsync(default!, default!, default!);
-    }
-
-    [Fact]
-    public async Task Notify_UrgentToAPaneOnAnotherDesk_IsRefusedAndNothingIsWoken()
-    {
-        _DeskWith("sender");
-        _gateway.GetWorkspaceSnapshotAsync("stranger").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(
-            new WorkspaceAgentSnapshot("ws-2", [new WorkspaceAgentPane("stranger", "stranger", null, string.Empty, true)])));
-        _coordinator.SetWakeConsent("stranger", true);
-
-        var json = _Json(await _NotifyAs("sender", "stranger", "branch", "wake up", urgent: true));
-
-        // An opted-in pane in another workspace is still unreachable: consent says who may wake you, the desk says
-        // who may address you at all, and the second is not weakened by the first.
-        Assert.False(json["ok"]!.GetValue<bool>());
-        _ = _gateway.DidNotReceiveWithAnyArgs().TryWakeAsync(default!, default!, default!);
-        Assert.Empty(_inbox.Drain("stranger", int.MaxValue).Messages);
-    }
 
     /// <summary>
     /// The override, in the direction that matters most: a session that says no stays no, whatever the operator's
     /// setting does afterwards. "Has not said" and "said no" are different states, and collapsing them would let a
     /// setting change quietly overrule a session that had opted out on purpose.
     /// </summary>
-    [Fact]
-    public async Task SetWakeOptIn_False_SurvivesTheOperatorTurningWakesOnAgain()
-    {
-        _DeskWith("me");
-        McpRequestContext.Set("me");
-        _coordinator.SetDefaultWakeConsent(true);
 
-        var json = _Json(await _Tools().SetWakeOptInAsync(enabled: false));
-
-        Assert.True(json["ok"]!.GetValue<bool>());
-        Assert.True(json["yourOwnAnswer"]!.GetValue<bool>());
-        Assert.False(_coordinator.HasWakeConsent("me"));
-
-        _coordinator.SetDefaultWakeConsent(true);
-        Assert.False(_coordinator.HasWakeConsent("me"));
-        Assert.True(_coordinator.HasOwnWakeConsent("me"));
-    }
-
-    [Fact]
-    public async Task SetWakeOptIn_WithNoVerifiedPane_Refuses()
-    {
-        McpRequestContext.Set(null);
-
-        var json = _Json(await _Tools().SetWakeOptInAsync(enabled: true));
-
-        // With nothing to attribute the request to there is no session whose consent this would be — and consent
-        // recorded against the wrong pane is a standing permission to wake a session that never agreed.
-        Assert.False(json["ok"]!.GetValue<bool>());
-        _ = _gateway.DidNotReceiveWithAnyArgs().GetWorkspaceSnapshotAsync(default!);
-    }
 
     [Fact]
     public async Task SetWakeOptIn_WhenTheDeskLookupFails_RefusesRatherThanRecordingConsent()

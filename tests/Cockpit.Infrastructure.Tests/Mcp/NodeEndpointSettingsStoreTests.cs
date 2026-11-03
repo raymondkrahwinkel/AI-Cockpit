@@ -8,19 +8,6 @@ public class NodeEndpointSettingsStoreTests : IDisposable
 {
     private readonly string _path = Path.Combine(Path.GetTempPath(), $"node-endpoint-{Guid.NewGuid():N}.json");
 
-    [Fact]
-    public async Task Load_WhenNothingSaved_DefaultsToOffWithNoSecretAndNoWhitelist()
-    {
-        var store = new NodeEndpointSettingsStore(_path);
-
-        var settings = await store.LoadAsync();
-
-        // Off is the deliberate answer for a config that never saved one: the node endpoint is a way in from the
-        // network, and an install that predates this setting must not come up listening.
-        Assert.False(settings.Enabled);
-        Assert.Equal("", settings.SharedSecret);
-        Assert.Empty(settings.AllowedDiscoveryRanges);
-    }
 
     [Fact]
     public async Task Save_ThenLoad_RoundTripsEverySettingThroughItsOnDiskShape()

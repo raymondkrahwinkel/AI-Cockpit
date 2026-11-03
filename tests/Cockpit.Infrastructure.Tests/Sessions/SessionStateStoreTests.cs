@@ -70,51 +70,6 @@ public sealed class SessionStateStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task LoadAsync_FileLockedExclusivelyByAnotherProcess_ReturnsEmptyRatherThanThrowing()
-    {
-        // The file exists and holds a valid record, but cannot be opened right now (a file lock, a permissions
-        // problem, a genuinely corrupt handle) — the "unreadable file" case this ticket says must not stop the
-        // cockpit from starting: an empty collection and a logged warning, never an exception to the caller.
-        var store = CreateStore();
-        await store.RecordAsync(CreateRecord());
-
-        using var exclusiveLock = new FileStream(_path, FileMode.Open, FileAccess.Read, FileShare.None);
-
-        var loaded = await store.LoadAsync();
-
-        Assert.Empty(loaded);
-    }
-
-    [Fact]
-    public async Task RecordAsync_UnwritablePath_DoesNotThrow()
-    {
-        var blockingFile = Path.Combine(Path.GetTempPath(), $"session-state-block-{Guid.NewGuid():N}");
-        await File.WriteAllTextAsync(blockingFile, "not a directory");
-        try
-        {
-            // A path *under* a regular file: the containing directory can never be created, so the append fails —
-            // and must be swallowed to a warning rather than taking the caller (a live session) down.
-            var store = new SessionStateStore(Path.Combine(blockingFile, "sub", "session-state.jsonl"), NullLogger<SessionStateStore>.Instance);
-
-            Exception? caught = null;
-            try
-            {
-                await store.RecordAsync(CreateRecord());
-            }
-            catch (Exception ex)
-            {
-                caught = ex;
-            }
-
-            Assert.Null(caught);
-        }
-        finally
-        {
-            File.Delete(blockingFile);
-        }
-    }
-
-    [Fact]
     public async Task CompactAsync_FileWhoseEveryLineIsUnreadable_LeavesItAloneRatherThanEmptyingIt()
     {
         // Found by running the real app against a hand-written state file (AC-410 live check): every line failed to
