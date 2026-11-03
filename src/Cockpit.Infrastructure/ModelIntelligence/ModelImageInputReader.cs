@@ -10,8 +10,8 @@ internal sealed class ModelImageInputReader(
     IProviderModelIntelligence providers,
     IPluginProviderRegistry registry) : IModelImageInput, ISingletonService
 {
-    public bool HasTransport(SessionProfile profile) => profile.ProviderConfig is PluginProviderConfig plugin
-        && registry.Resolve(plugin.ProviderId)?.Capabilities.SupportsVision == true;
+    public bool HasTransport(SessionProfile profile) => profile.Provider is SessionProvider.Ollama or SessionProvider.LmStudio
+        || profile.ProviderConfig is PluginProviderConfig plugin && registry.Resolve(plugin.ProviderId)?.Capabilities.SupportsVision == true;
 
     public async Task<(ImageInputFact? Service, ImageInputFact? OpenRouter)> ReadAsync(SessionProfile profile, string? model, CancellationToken cancellationToken = default)
     {
