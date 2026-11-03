@@ -82,7 +82,7 @@ public partial class SessionView : UserControl
 
         _composerInput = new TranscriptComposerInput(
             InputBox,
-            ComposerBorder,
+            DropOverlay,
             tryGetPastedBitmap: () => TopLevel.GetTopLevel(this)?.Clipboard?.TryGetBitmapAsync() ?? Task.FromResult<Bitmap?>(null),
             tryGetPastedText: () => TopLevel.GetTopLevel(this)?.Clipboard?.TryGetTextAsync() ?? Task.FromResult<string?>(null),
             hasComposer: () => DataContext is SessionViewModel { IsReadingChild: false },
@@ -90,7 +90,8 @@ public partial class SessionView : UserControl
             recallLastQueuedMessage: () => DataContext is SessionViewModel recallVm && recallVm.RecallLastQueuedMessage(),
             resolveStopIfBusy: () => DataContext is SessionViewModel { IsBusy: true } busyVm ? busyVm.StopCommand : null,
             sendCommand: () => (DataContext as SessionViewModel)?.SendCommand,
-            resolvePastedImageSink: () => DataContext is SessionViewModel vm ? vm.AddPastedImage : null);
+            resolvePastedImageSink: () => DataContext is SessionViewModel vm ? vm.AddPastedImage : null,
+            canPasteImages: () => DataContext is SessionViewModel { CanPasteImages: true });
 
         // Enter sends the message; Shift+Enter inserts a newline. Tunnel so we pre-empt the
         // TextBox's own Enter handling (which would otherwise insert a newline).
@@ -104,13 +105,14 @@ public partial class SessionView : UserControl
         // pane, not just the box, so the drop works wherever the operator lets go — and a drag carrying no
         // files is left entirely unhandled, so nothing here claims a gesture it has no answer for.
         DragDrop.SetAllowDrop(this, true);
+        // Bubble, not Tunnel: the drag events are Bubble-only, so a Tunnel handler never fired (AC-2059).
         // DragEnter as well as DragOver: AllowDrop inherits, so the target changes at every inner control
         // boundary and Avalonia answers that with DragLeave + DragEnter — without the enter the highlight
         // would blink off on each crossing.
-        AddHandler(DragDrop.DragEnterEvent, _composerInput.OnDragOver, RoutingStrategies.Tunnel);
-        AddHandler(DragDrop.DragOverEvent, _composerInput.OnDragOver, RoutingStrategies.Tunnel);
-        AddHandler(DragDrop.DragLeaveEvent, _composerInput.OnDragLeave, RoutingStrategies.Tunnel);
-        AddHandler(DragDrop.DropEvent, _composerInput.OnDrop, RoutingStrategies.Tunnel);
+        AddHandler(DragDrop.DragEnterEvent, _composerInput.OnDragOver, RoutingStrategies.Bubble, handledEventsToo: true);
+        AddHandler(DragDrop.DragOverEvent, _composerInput.OnDragOver, RoutingStrategies.Bubble, handledEventsToo: true);
+        AddHandler(DragDrop.DragLeaveEvent, _composerInput.OnDragLeave, RoutingStrategies.Bubble, handledEventsToo: true);
+        AddHandler(DragDrop.DropEvent, _composerInput.OnDrop, RoutingStrategies.Bubble, handledEventsToo: true);
 
         // Push-to-talk (F9 by default): tunnel on the whole panel, not just the input box, so it fires
         // regardless of which control inside the panel has focus — the operator should not have to

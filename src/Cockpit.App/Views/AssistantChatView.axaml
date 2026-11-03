@@ -1319,5 +1319,6 @@
         <controls:ConsentBannerHost DataContext="{Binding Session}"/>
         <Border BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1" CornerRadius="10"
                 IsHitTestVisible="False" IsVisible="{Binding DrawsOwnFrame}"/>
+        <Border x:Name="DropOverlay" Classes="fileDropTarget" IsHitTestVisible="False" IsVisible="False"/>
         </Grid>
 </UserControl>

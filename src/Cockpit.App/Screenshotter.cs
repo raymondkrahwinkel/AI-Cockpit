@@ -791,6 +791,8 @@ internal static partial class Screenshotter
         // AC-543 (strand 4): the pop-out chat window (AssistantChatWindow.axaml), criterion 11's other half — the
         // indicator is a badge, this is where the conversation actually reads.
         ["assistant-chat"] = (_, _) => _AssistantChat(withConversation: true),
+        ["assistant-chat-file-drop"] = (_, _) => _AssistantChat(withConversation: true),
+        ["session-file-drop"] = (width, height) => new Window { Width = width, Height = height, Content = new SessionView { DataContext = new SessionViewModel { Title = "Session" } } },
         ["assistant-chat-empty"] = (_, _) => _AssistantChat(withConversation: false),
         ["assistant-chat-speak-off"] = (_, _) => _AssistantChat(withConversation: true, speakReplies: false),
         ["assistant-chat-always-on"] = (_, _) => _AssistantChat(withConversation: true, alwaysOn: true),
@@ -1417,6 +1419,8 @@ internal static partial class Screenshotter
     // they are opened here rather than built into the scene.
     private static readonly Dictionary<string, Action<Window>> Hovers = new(StringComparer.Ordinal)
     {
+        ["session-file-drop"] = _LightFileDropOverlay,
+        ["assistant-chat-file-drop"] = _LightFileDropOverlay,
         ["workspace-menu-preview"] = window => _OpenWorkspaceTabMenu(window, true),
         ["workspace-menu-projects"] = window => _OpenWorkspaceTabMenu(window, false),
         ["workspace-tab-interactions"] = _ExerciseWorkspaceTabScrolling,
@@ -3583,6 +3587,14 @@ internal static partial class Screenshotter
     }
 
     // Use the established assistant-host seam so the chat scene needs no live CockpitViewModel (AC-543).
+    // AC-2059: the drag-over state is transient, so the scene lights the overlay the way DragOver would.
+    private static void _LightFileDropOverlay(Window window)
+    {
+        window.UpdateLayout();
+        window.GetVisualDescendants().OfType<Border>().First(border => border.Name == "DropOverlay").IsVisible = true;
+        Dispatcher.UIThread.RunJobs();
+    }
+
     private static AssistantChatWindow _AssistantChat(bool withConversation, bool speakReplies = true, bool alwaysOn = false)
     {
         var viewModel = _AssistantChatViewModel(

@@ -649,5 +649,6 @@
          is waiting on this session, so it plainly takes over rather than a banner that shifted the
          transcript and was easy to miss. Collapsed and hit-transparent while idle. -->
     <controls:ConsentBannerHost IsVisible="{Binding !IsReadingChild}"/>
+        <Border x:Name="DropOverlay" Classes="fileDropTarget" IsHitTestVisible="False" IsVisible="False"/>
     </Grid>
 </UserControl>
