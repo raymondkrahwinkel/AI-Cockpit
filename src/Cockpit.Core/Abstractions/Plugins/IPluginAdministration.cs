@@ -2,8 +2,8 @@ using Cockpit.Core.Plugins;
 
 namespace Cockpit.Core.Abstractions.Plugins;
 
-// AC-1434: what the plugin screens do to the installed plugins, and nothing more. Every change takes effect at the
-// next start; the host's plugin contract version is the implementation's to know, not the caller's.
+// AC-1434: what the plugin screens do to the installed plugins, and nothing more. Enabling takes effect at once when
+// the plugin allows it, every other change at the next start; the host's plugin contract version is the implementation's to know, not the caller's.
 public interface IPluginAdministration
 {
     /// <summary>
@@ -27,9 +27,10 @@ public interface IPluginAdministration
     Task<PluginProvisionResult> InstallFromStoreAsync(PluginProvisionRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Enables or disables a plugin; enabling trusts exactly the bytes <paramref name="pinnedSha256"/> names.
+    /// Enables or disables a plugin; enabling trusts exactly the bytes <paramref name="pinnedSha256"/> names. Enabling
+    /// activates the plugin in the running host when it can, and says otherwise why a restart is needed.
     /// </summary>
-    Task SetEnabledAsync(string folderId, bool enabled, string pinnedSha256, CancellationToken cancellationToken = default);
+    Task<PluginLiveState> SetEnabledAsync(string folderId, bool enabled, string pinnedSha256, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Uninstalls a plugin at the next start and forgets its registration.
