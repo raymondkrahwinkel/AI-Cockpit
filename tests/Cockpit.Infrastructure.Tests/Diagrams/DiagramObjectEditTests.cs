@@ -15,7 +15,6 @@ public class DiagramObjectEditTests
             A --> B
         """;
 
-
     // One refusal, two reasons an id can be unusable: it is already in the diagram, or it is not one word and would
     // otherwise be written into the source as its own arrow. Neither may produce text.
     [Theory]
@@ -29,18 +28,6 @@ public class DiagramObjectEditTests
         Assert.Contains(expected, edit.Refusal);
     }
 
-    public static TheoryData<string, string, string> RenameNodeCases => new()
-    {
-        { Source, "Pick one", """
-            flowchart LR
-                A["Start"]
-                B{"Pick one"}
-                A --> B
-            """.ReplaceLineEndings("\n") },
-        { "flowchart LR\n    A[\"B is next\"]\n    B[\"Stop\"]", "Halt", "flowchart LR\n    A[\"B is next\"]\n    B[\"Halt\"]" },
-    };
-
-
     [Fact]
     public void RemoveNode_TakesItsOwnConnectionsWithIt_AndNothingElse()
     {
@@ -52,9 +39,6 @@ public class DiagramObjectEditTests
         Assert.Contains("2 connections", edit.Summary);
     }
 
-
-
-
     [Fact]
     public void AChainLine_IsRefused_RatherThanSplitInHalf()
     {
@@ -63,5 +47,4 @@ public class DiagramObjectEditTests
         Assert.Contains("chain", DiagramObjectEdit.Disconnect(chain, "A", "C").Refusal);
         Assert.Contains("chain", DiagramObjectEdit.RemoveNode(chain, "B").Refusal);
     }
-
 }
