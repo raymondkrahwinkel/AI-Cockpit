@@ -277,9 +277,9 @@ public sealed class RemoteAdminJourney
             Assert.True(admin.Plugins.Any(plugin => plugin.Id == StorePlugin), admin.Status);
             var installed = await setup.GetAsync<JsonArray>("api/v1/plugins");
             var serverEntry = installed.Single(plugin => plugin?["id"]?.GetValue<string>() == StorePlugin);
-            Assert.Equal($"'Echo provider' enabled on {Server}. Restart the server to load it.", installStatus);
+            Assert.Equal($"'Echo provider' is active on {Server}. Running sessions get its new MCP tools when they next start.", installStatus);
             Assert.Equal(serverEntry?["sha256"]?.GetValue<string>(), consent.Sha256);
-            Assert.Equal((true, true), (serverEntry?["takesEffectAfterServerRestarts"]?.GetValue<bool>(), HeadlessAvalonia.Run(() => admin.NeedsRestart)));
+            Assert.Equal((false, false), (serverEntry?["takesEffectAfterServerRestarts"]?.GetValue<bool>(), HeadlessAvalonia.Run(() => admin.NeedsRestart)));
             Assert.Equal(localPluginIds, view.Plugins.Plugins.Select(plugin => plugin.FolderId));
 
             // Restart now: the server stops as on a SIGTERM; the journey is its supervisor and starts it on the same state.
