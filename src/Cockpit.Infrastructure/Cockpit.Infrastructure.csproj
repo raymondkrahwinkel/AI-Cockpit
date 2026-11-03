@@ -80,6 +80,7 @@
     <!-- AC-1441: one source file each, shared with App: the SVG rasterizer and a turn's image attachment names. -->
     <Compile Include="..\_shared\SvgRasterizer.cs" Link="Svg\SvgRasterizer.cs" />
     <Compile Include="..\_shared\SessionImageAttachments.cs" Link="Plugins\SessionImageAttachments.cs" />
+    <Compile Include="..\_shared\ImageInputLimits.cs" Link="Sessions\ImageInputLimits.cs" />
   </ItemGroup>
 
   <ItemGroup>

@@ -738,7 +738,8 @@ public partial class App : Application
             Program.Services.GetService<ITtySessionProviderResolver>(),
             Program.Services.GetService<ISessionLoginFlows>(),
             Program.Services.GetService<IPluginProviderConfigViews>(),
-            Program.Services.GetService<IOrgPolicy>());
+            Program.Services.GetService<IOrgPolicy>(),
+            imageInput: Program.Services.GetService<Cockpit.Core.ModelIntelligence.IModelImageInput>());
 
         // AC-1002: Options → MCP Servers, built the same way SessionDialogService builds the standalone dialog it
         // replaces — same services, same view model type, just handed to the cockpit instead of a window.

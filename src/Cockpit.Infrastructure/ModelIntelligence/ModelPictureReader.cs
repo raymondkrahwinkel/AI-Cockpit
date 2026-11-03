@@ -16,7 +16,8 @@ internal sealed class ModelPictureReader(
     ISessionProfileStore profiles,
     TimeProvider? clock = null,
     IModelObservationStore? observations = null,
-    TimeZoneInfo? zone = null) : ISingletonService
+    TimeZoneInfo? zone = null,
+    IModelImageInput? imageInput = null) : ISingletonService
 {
     // Quota moves minute by minute, and the assistant asks before every spawn: one provider read per minute is enough.
     internal static readonly TimeSpan ProviderCacheFor = TimeSpan.FromSeconds(60);
@@ -66,7 +67,7 @@ internal sealed class ModelPictureReader(
     private static string?[] _ModelsOf(SessionProfile profile, PluginModelIntelligence? reading) =>
         ProfileModel.Of(profile) is { } pinned ? [pinned] : reading?.Models.Count > 0 ? [.. reading.Models.Select(estimate => estimate.Model)] : [null];
 
-    private static ModelPictureRow _Row(
+    private ModelPictureRow _Row(
         SessionProfile profile,
         string? model,
         PluginModelIntelligence? reading,
@@ -148,7 +149,15 @@ internal sealed class ModelPictureReader(
             publicSource,
             own,
             reading?.IsSelfHosted == true || profile.ProviderConfig is LmStudioConfig or OllamaConfig,
-            unmatched);
+            unmatched)
+        {
+            ImageInputMode = profile.ImageInputMode,
+            HasImageTransport = imageInput?.HasTransport(profile) == true,
+            ServiceImageInput = (estimate?.ImageInputSource ?? reading?.ImageInputSource) is { } imageSource
+                ? new ImageInputFact(estimate?.SupportsImageInput ?? reading?.SupportsImageInput, imageSource.Name, imageSource.AsOf, imageSource.ValidFor) : null,
+            OpenRouterImageInput = reference is not null && snapshots.TryGetValue(reference, out var exactSnapshot)
+                ? new ImageInputFact(exactSnapshot.SupportsImageInput, exactSnapshot.Source, exactSnapshot.FetchedAt, exactSnapshot.TimeToLive) : null,
+        };
     }
 
     private static ModelMatch _Match(string? reference, IReadOnlyDictionary<string, ModelSnapshot> snapshots)
@@ -273,6 +282,12 @@ internal sealed record ModelPictureRow(
     Sourced? PublicSource,
     IReadOnlyList<ModelDerivedFact> Derived,
     bool SelfHosted,
-    string? Unmatched = null);
+    string? Unmatched = null)
+{
+    public ImageInputMode ImageInputMode { get; init; }
+    public bool HasImageTransport { get; init; }
+    public ImageInputFact? ServiceImageInput { get; init; }
+    public ImageInputFact? OpenRouterImageInput { get; init; }
+}
 
 internal sealed record ModelDerivedFact(DerivedPattern Pattern, Sourced Source);

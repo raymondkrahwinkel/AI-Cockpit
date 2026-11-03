@@ -13,6 +13,8 @@ public sealed record ModelSnapshot(
     DateTimeOffset FetchedAt,
     TimeSpan TimeToLive)
 {
+    public bool? SupportsImageInput { get; init; }
+
     public string? CanonicalSlug { get; init; }
 
     public string? AliasTarget { get; init; }

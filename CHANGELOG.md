@@ -36,6 +36,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- Grok image input is detected from the service's model metadata, including model aliases.
+- Kimi and OpenCode sessions can receive image attachments when the selected model supports them.
+- Per-profile image input selection (Auto, On or Off), with the effective capability and its source.
+
 - Automatic Docker clean-up is now an option, on by default: Options → Sessions → "Automatically clean up Docker", and a Storage page in a server's admin dialog. Off, the cockpit prunes nothing by itself but keeps watching the disks and warns when space runs short; cleaning up and compacting by hand still work. A change applies without a restart.
 - Each profile now has a "Maximum parallel sessions" setting (0 = unlimited, the default). A session or delegated task that would go over it is refused with the reason, whether it comes from the New-session dialog, the assistant, a plugin, a swarm node or the API; the New-session dialog shows the reason and disables Start. Open sessions and delegated tasks count together, and a restored session waits for a free place. The assistant sees the limit and the current count per profile.
 - A new Agents palette opens the Agents board as a compact overlay with Ctrl+Shift+A (rebindable in Options → Shortcuts). Search and the Waiting-for-you filter are shared with the panel; arrows and Tab move, Enter opens the session, Ctrl+Enter opens it beside the others, Esc closes. It is on by default; Options → Agents overview switches the palette off (shortcut and icon then do nothing) and can add an icon to the dock rail. The key it is bound to now stands in the Agents panel's head and under the name in the panel's floating window, instead of a button in the title bar.

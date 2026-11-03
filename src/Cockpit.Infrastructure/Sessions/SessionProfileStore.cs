@@ -38,10 +38,16 @@ internal sealed class SessionProfileStore : ISessionProfileStore, ISingletonServ
         return configFile.Profiles.Select(entry => entry.ToDomain()).ToList();
     }
 
-    public Task SaveAsync(IReadOnlyList<SessionProfile> profiles, CancellationToken cancellationToken = default) =>
-        _configFile.UpdateAsync(
+    public event Func<IReadOnlyList<SessionProfile>, Task>? Saved;
+
+    public async Task SaveAsync(IReadOnlyList<SessionProfile> profiles, CancellationToken cancellationToken = default)
+    {
+        await _configFile.UpdateAsync(
             file => file.Profiles = profiles.Select(SessionProfileEntry.FromDomain).ToList(),
             cancellationToken);
+        await Task.WhenAll((Saved?.GetInvocationList() ?? [])
+            .Select(handler => ((Func<IReadOnlyList<SessionProfile>, Task>)handler)(profiles)));
+    }
 
     // Asks every registered TTY provider plugin for the profiles it self-detected and mints a `SessionProfile` per
     // report, tagged with that provider's own opaque config JSON — so a fresh install adopts existing logins

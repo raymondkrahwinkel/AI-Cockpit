@@ -112,18 +112,20 @@ public class DelegatedToolPermissionPolicyTests
 
     // --- ClassifyAgentBuiltIn / AllowsChanges: the tools a CLI runs itself (AC-971) ---
 
-    [Theory]
-    [InlineData("Read", ToolPermissionClass.ReadOnly)]
-    [InlineData("Grep", ToolPermissionClass.ReadOnly)]
-    [InlineData("WebFetch", ToolPermissionClass.ReadOnly)]
-    [InlineData("Write", ToolPermissionClass.Write)]
-    [InlineData("Edit", ToolPermissionClass.Write)]
-    [InlineData("NotebookEdit", ToolPermissionClass.Write)]
-    [InlineData("Bash", ToolPermissionClass.Destructive)]
-    [InlineData("shell", ToolPermissionClass.Destructive)]              // Codex's name for the same thing
-    [InlineData("apply_patch", ToolPermissionClass.Write)]
-    public void ClassifyAgentBuiltIn_GradesTheToolsAnAgentCliRunsItself(string toolName, ToolPermissionClass expected)
+    [Fact]
+    public void ClassifyAgentBuiltIn_GradesTheToolsAnAgentCliRunsItself()
     {
-        Assert.Equal(expected, DelegatedToolPermissionPolicy.ClassifyAgentBuiltIn(toolName));
+        (string Name, ToolPermissionClass Expected)[] tools =
+        [
+            ("Read", ToolPermissionClass.ReadOnly), ("Grep", ToolPermissionClass.ReadOnly),
+            ("WebFetch", ToolPermissionClass.ReadOnly), ("Write", ToolPermissionClass.Write),
+            ("Edit", ToolPermissionClass.Write), ("NotebookEdit", ToolPermissionClass.Write),
+            ("Bash", ToolPermissionClass.Destructive), ("shell", ToolPermissionClass.Destructive),
+            ("apply_patch", ToolPermissionClass.Write),
+        ];
+        foreach (var (name, expected) in tools)
+        {
+            Assert.Equal(expected, DelegatedToolPermissionPolicy.ClassifyAgentBuiltIn(name));
+        }
     }
 }

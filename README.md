@@ -1,5 +1,12 @@
 # AI-Cockpit
 
+Profiles expose **Supports images: Auto / On / Off** near the model selector. `Profiles[].ImageInputMode`
+in `cockpit.json` defaults to `Auto` when absent. `On` and `Off` override model facts across model changes;
+`Auto` uses the service API, then an exact OpenRouter model reference, then off. Expired facts are unknown.
+Images require a driver with image transport. The dialog and `model_options` show the effective result and source;
+saving the profile refreshes its running sessions. This profile preference travels through the settings carrier;
+projects remain excluded. Options stages it as part of the profile, so Cancel discards edits.
+
 CI draait alleen op PR naar staging en bij een release; de poort voor main is scripts/local-gate.sh
 
 [![License: Apache 2.0 + Commons Clause](https://img.shields.io/badge/License-Apache_2.0_%2B_Commons_Clause-blue.svg)](LICENSE)

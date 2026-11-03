@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Cockpit.Core.ModelIntelligence;
 
 namespace Cockpit.Infrastructure.ModelIntelligence;
 
@@ -60,6 +61,7 @@ internal static class ModelOptions
             var models = rows.Select(row =>
             {
                 var index = Index(row);
+                var images = ImageInput.Resolve(row.ImageInputMode, row.HasImageTransport, row.ServiceImageInput?.At(picture.At), row.OpenRouterImageInput?.At(picture.At));
                 return new
                 {
                     profile = row.Profile,
@@ -67,6 +69,11 @@ internal static class ModelOptions
                     model = row.Model,
                     sessions = sessions?.GetValueOrDefault(row.Profile),
                     publicModelRef = row.PublicModelRef,
+                    supportsImageInput = images.SupportsVision,
+                    imageInputMode = row.ImageInputMode.ToString(),
+                    imageInputSource = images.Source,
+                    serviceImageInput = row.ServiceImageInput,
+                    openRouterImageInput = row.OpenRouterImageInput,
                     price = row.SelfHosted ? (object)"self-hosted / own endpoint" : row.Price is null ? Unknown(row.Unmatched ?? $"OpenRouter lists no price for {row.PublicModelRef}") : new { inputPerMTokens = row.Price.Input, outputPerMTokens = row.Price.Output, fact = Fact(row.Price.Source) },
                     priceNow = row.SelfHosted ? "self-hosted / own endpoint" : row.PriceNow is null ? (object)"unknown" : new { inputPerMTokens = row.PriceNow.Input, outputPerMTokens = row.PriceNow.Output, applied = row.PriceNow.Applied },
                     modifiers = row.Modifiers.Select(modifier => new { modifier.Condition, modifier.Factor, modifier.ActiveNow }),

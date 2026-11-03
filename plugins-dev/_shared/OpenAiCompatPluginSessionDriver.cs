@@ -108,18 +108,22 @@ internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, st
         return StartAsync(model, workingDirectory, resumeSessionId, options, mcpServers, cancellationToken);
     }
 
-    public Task SendUserMessageAsync(string text, CancellationToken cancellationToken = default)
+    public Task SendUserMessageAsync(string text, CancellationToken cancellationToken = default) =>
+        SendUserMessageAsync(text, null, cancellationToken);
+
+    public Task SendUserMessageAsync(string text, IReadOnlyList<PluginImageAttachment>? images, CancellationToken cancellationToken)
     {
         // Run the turn in the background so the caller returns immediately and consumes the reply through
         // Events, mirroring the host's own OpenAiCompatSessionDriver.
+        ChatMessage message = ChatTurnLoop.UserMessage(text, images?.Select(image => (image.MediaType, image.Base64Data)));
         _turnCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        _ = _RunTurnAsync(text, _turnCancellation.Token);
+        _ = _RunTurnAsync(message, _turnCancellation.Token);
         return Task.CompletedTask;
     }
 
-    private async Task _RunTurnAsync(string text, CancellationToken cancellationToken)
+    private async Task _RunTurnAsync(ChatMessage message, CancellationToken cancellationToken)
     {
-        _history.Add(new ChatMessage(ChatRole.User, text));
+        _history.Add(message);
         var options = new ChatOptions { ModelId = _model, Tools = _tools.Count > 0 ? [.. _tools] : null };
         var assistant = new StringBuilder();
 

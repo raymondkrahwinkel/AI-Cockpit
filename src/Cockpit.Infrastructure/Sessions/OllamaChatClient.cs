@@ -109,14 +109,10 @@ internal sealed class OllamaChatClient(OllamaConfig config) : IChatClient
         effort = effort switch { "minimal" => "low", "xhigh" or "ultra" => "high", _ => effort };
         if (!_thinkingLevels.TryGetValue(model, out var levels))
         {
-            using var content = new ByteArrayContent(JsonSerializer.SerializeToUtf8Bytes(new { model }));
-            content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
-            using var response = await _http.PostAsync(new Uri($"{config.BaseUrl.TrimEnd('/')}/api/show"), content, cancellationToken).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode) return JsonValue.Create(true);
-            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-            using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
+            var metadata = await OllamaModelMetadata.ReadAsync(_http, config.BaseUrl, model, cancellationToken).ConfigureAwait(false);
+            if (metadata is null) return JsonValue.Create(true);
             levels = [];
-            if (document.RootElement.TryGetProperty("thinking", out var thinking)
+            if (metadata.Value.Data.TryGetProperty("thinking", out var thinking)
                 && thinking.TryGetProperty("values", out var values) && values.ValueKind == JsonValueKind.Array)
             {
                 foreach (var value in values.EnumerateArray())
