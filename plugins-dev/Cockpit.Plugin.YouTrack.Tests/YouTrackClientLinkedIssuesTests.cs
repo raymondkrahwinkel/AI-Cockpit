@@ -25,10 +25,11 @@ public class YouTrackClientLinkedIssuesTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task GetLinkedIssuesAsync_ResolvesTheOutwardName_ForAnEpicsChildren()
+    public async Task GetLinkedIssuesAsync_ResolvesTheNamePerDirection()
     {
-        // An epic reading its own "parent for" children: it is the link's source, so YouTrack reports "OUTWARD" and
-        // the name to use is linkType.sourceToTarget.
+        // OUTWARD: an epic reading its own "parent for" children is the link's source, so the name to use is
+        // linkType.sourceToTarget. INWARD: a "depends on" link where this issue is the target from the other
+        // issue's perspective, so the name to use is linkType.targetToSource.
         _responseBody = """
         [
             {
@@ -38,6 +39,11 @@ public class YouTrackClientLinkedIssuesTests : IAsyncLifetime
                     { "idReadable": "AC-1", "summary": "First sub", "customFields": [{ "name": "State", "value": { "name": "Ready" } }] },
                     { "idReadable": "AC-2", "summary": "Second sub", "customFields": [] }
                 ]
+            },
+            {
+                "direction": "INWARD",
+                "linkType": { "name": "Depend", "sourceToTarget": "is required for", "targetToSource": "depends on" },
+                "issues": [ { "idReadable": "AC-3", "summary": "The blocker", "customFields": [] } ]
             }
         ]
         """;
@@ -45,33 +51,10 @@ public class YouTrackClientLinkedIssuesTests : IAsyncLifetime
         var client = new YouTrackClient();
         var links = await client.GetLinkedIssuesAsync($"{_prefix}api", "token", "AC-EPIC", CancellationToken.None);
 
-        Assert.Equal(2, links.Count);
+        Assert.Equal(3, links.Count);
         Assert.Equal(new TrackerLinkedIssue("parent for", TrackerLinkDirection.Outward, "AC-1", "First sub", "Ready"), links[0]);
         Assert.Equal(new TrackerLinkedIssue("parent for", TrackerLinkDirection.Outward, "AC-2", "Second sub", null), links[1]);
-    }
-
-    [Fact]
-    public async Task GetLinkedIssuesAsync_ResolvesTheInwardName_ForASubsDependency()
-    {
-        // A sub reading its own "depends on" link: it is the link's target from the other issue's perspective, so
-        // YouTrack reports "INWARD" here and the name to use is linkType.targetToSource.
-        _responseBody = """
-        [
-            {
-                "direction": "INWARD",
-                "linkType": { "name": "Depend", "sourceToTarget": "is required for", "targetToSource": "depends on" },
-                "issues": [ { "idReadable": "AC-1", "summary": "The blocker", "customFields": [] } ]
-            }
-        ]
-        """;
-
-        var client = new YouTrackClient();
-        var links = await client.GetLinkedIssuesAsync($"{_prefix}api", "token", "AC-2", CancellationToken.None);
-
-        var link = Assert.Single(links);
-        Assert.Equal("depends on", link.LinkType);
-        Assert.Equal(TrackerLinkDirection.Inward, link.Direction);
-        Assert.Equal("AC-1", link.IssueId);
+        Assert.Equal(new TrackerLinkedIssue("depends on", TrackerLinkDirection.Inward, "AC-3", "The blocker", null), links[2]);
     }
 
     public async Task DisposeAsync()

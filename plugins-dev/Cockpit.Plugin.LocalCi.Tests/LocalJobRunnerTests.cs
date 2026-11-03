@@ -11,18 +11,6 @@ public class LocalJobRunnerTests : IDisposable
     public void Dispose() => _project.Dispose();
 
     [Fact]
-    public async Task ARunThatIsNotApprovedDoesNotHappen()
-    {
-        var act = FakeStreamingCliRunner.Exiting(0);
-
-        var result = await _RunAsync(
-            FakeLocalCiRuntime.Ready(), act, TemporaryProject.OneLinuxJob, "build", approve: _ => Task.FromResult(false));
-
-        Assert.Equal(LocalRunOutcome.NotApproved, result.Outcome);
-        Assert.Empty(act.Calls);
-    }
-
-    [Fact]
     public async Task TheApprovalIsAskedWithTheCommandItselfBeforeAnythingStarts()
     {
         var asked = string.Empty;

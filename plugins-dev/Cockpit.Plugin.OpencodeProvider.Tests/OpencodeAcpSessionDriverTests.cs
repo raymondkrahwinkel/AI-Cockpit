@@ -25,14 +25,16 @@ public class OpencodeAcpSessionDriverTests
         Assert.Equal("""{"permission":{"*":"ask"}}""", fake.EnvironmentVariables!["OPENCODE_CONFIG_CONTENT"]);
     }
 
-    // The one host-side mode that means "run fully autonomously" must actually stop asking, not silently keep
-    // the forced-ask policy the default path uses — that would defeat the operator's own explicit choice.
-    [Fact]
-    public async Task Start_WithBypassPermissionsMode_ForcesAllowEverythingInstead()
+    // Bypass must really stop asking rather than keep the default forced-ask policy; plan maps to opencode's plan mode
+    // and still asks, since whatever it allows (e.g. reads) still goes through Cockpit's consent card.
+    [Theory]
+    [InlineData("bypassPermissions", "build", "allow")]
+    [InlineData("plan", "plan", "ask")]
+    public async Task Start_WithAPermissionMode_SetsOpencodesModeAndPolicy(string permissionMode, string opencodeMode, string policy)
     {
         var fake = new FakeCliSubprocess();
         await using var driver = new OpencodeAcpSessionDriver(() => fake, _DefaultConfig(), "opencode");
-        var options = new Dictionary<string, string> { [WellKnownPluginSessionOptions.PermissionMode] = "bypassPermissions" };
+        var options = new Dictionary<string, string> { [WellKnownPluginSessionOptions.PermissionMode] = permissionMode };
 
         var startTask = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: null, options, mcpServers: null, CancellationToken.None);
         await _RespondAsync(fake, "initialize", "{}");
@@ -40,28 +42,9 @@ public class OpencodeAcpSessionDriverTests
         var setMode = await _RespondAsync(fake, "session/set_config_option", """{"configOptions":[]}""");
         await startTask;
 
-        Assert.Equal("""{"permission":{"*":"allow"}}""", fake.EnvironmentVariables!["OPENCODE_CONFIG_CONTENT"]);
         Assert.Equal("mode", setMode.GetProperty("params").GetProperty("configId").GetString());
-        Assert.Equal("build", setMode.GetProperty("params").GetProperty("value").GetString());
-    }
-
-    [Fact]
-    public async Task Start_WithPlanPermissionMode_TranslatesToOpencodesOwnPlanMode()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new OpencodeAcpSessionDriver(() => fake, _DefaultConfig(), "opencode");
-        var options = new Dictionary<string, string> { [WellKnownPluginSessionOptions.PermissionMode] = "plan" };
-
-        var startTask = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: null, options, mcpServers: null, CancellationToken.None);
-        await _RespondAsync(fake, "initialize", "{}");
-        await _RespondAsync(fake, "session/new", """{"sessionId":"ses_1","configOptions":[{"id":"mode","name":"Session Mode","category":"mode","type":"select","currentValue":"build","options":[{"value":"build","name":"build"},{"value":"plan","name":"plan"}]}]}""");
-        var setMode = await _RespondAsync(fake, "session/set_config_option", """{"configOptions":[]}""");
-        await startTask;
-
-        Assert.Equal("plan", setMode.GetProperty("params").GetProperty("value").GetString());
-        // Still asks — plan mode disallows edits at the model level, but whatever it does allow (e.g. reads) is
-        // still gated through Cockpit's own consent card.
-        Assert.Equal("""{"permission":{"*":"ask"}}""", fake.EnvironmentVariables!["OPENCODE_CONFIG_CONTENT"]);
+        Assert.Equal(opencodeMode, setMode.GetProperty("params").GetProperty("value").GetString());
+        Assert.Equal($$$"""{"permission":{"*":"{{{policy}}}"}}""", fake.EnvironmentVariables!["OPENCODE_CONFIG_CONTENT"]);
     }
 
     // Layer 2, provider protocol contract (AC-1992): the brain is opencode's first visible turn, alone and exactly
