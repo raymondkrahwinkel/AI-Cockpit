@@ -35,8 +35,6 @@
     <Project Path="plugins-dev/Cockpit.Plugin.GitHubActions.Tests/Cockpit.Plugin.GitHubActions.Tests.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.GitHubIssues/Cockpit.Plugin.GitHubIssues.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.GitHubIssues.Tests/Cockpit.Plugin.GitHubIssues.Tests.csproj" />
-    <Project Path="plugins-dev/Cockpit.Plugin.GitHubModelsProvider/Cockpit.Plugin.GitHubModelsProvider.csproj" />
-    <Project Path="plugins-dev/Cockpit.Plugin.GitHubModelsProvider.Tests/Cockpit.Plugin.GitHubModelsProvider.Tests.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.GitHubPullRequests/Cockpit.Plugin.GitHubPullRequests.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.GitHubPullRequests.Tests/Cockpit.Plugin.GitHubPullRequests.Tests.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.GitStatus/Cockpit.Plugin.GitStatus.csproj" />

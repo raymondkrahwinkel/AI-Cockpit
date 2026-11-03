@@ -30,6 +30,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ## [Unreleased]
 
+### Removed
+
+- The GitHub Models provider plugin, because the service has been discontinued.
+
 ### Added
 
 - Automatic Docker clean-up is now an option, on by default: Options → Sessions → "Automatically clean up Docker", and a Storage page in a server's admin dialog. Off, the cockpit prunes nothing by itself but keeps watching the disks and warns when space runs short; cleaning up and compacting by hand still work. A change applies without a restart.

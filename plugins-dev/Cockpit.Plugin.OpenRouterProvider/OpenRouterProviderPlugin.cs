@@ -6,7 +6,7 @@ using Cockpit.Plugins.Abstractions.Sessions;
 namespace Cockpit.Plugin.OpenRouterProvider;
 
 // AC-806: registers "OpenRouter" as a selectable session provider on the same OpenAiCompat driver the
-// Gemini/GitHub Models plugins use — with the host's tool loop (AC-964), and declares no usage signals since OpenRouter's
+// Gemini plugin uses — with the host's tool loop (AC-964), and declares no usage signals since OpenRouter's
 // chat-completions response carries no rolling allowance/context figure to read.
 public sealed class OpenRouterProviderPlugin : ICockpitPlugin
 {

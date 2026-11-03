@@ -6,7 +6,7 @@ using NSubstitute;
 namespace Cockpit.Plugin.GeminiProvider.Tests;
 
 // The tool loop the shared OpenAiCompat driver runs over a host-mounted toolset (AC-964). One copy of that
-// driver serves this whole provider family, so this covers the Grok, OpenRouter and GitHub Models plugins too.
+// driver serves this whole provider family, so this covers the Grok and OpenRouter plugins too.
 public class OpenAiCompatPluginSessionDriverToolLoopTests
 {
     [Fact]

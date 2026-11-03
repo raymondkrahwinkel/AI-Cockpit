@@ -80,7 +80,7 @@ public static class OrgProviderPolicy
         _ => [profile?.Defaults?.OptionDefaults?.GetValueOrDefault("model")],
     };
 
-    // OpenRouter, Gemini, Grok, GitHub Models and Codex keep `model`, Kimi and opencode `defaultModel`; a CLI's
+    // OpenRouter, Gemini, Grok and Codex keep `model`, Kimi and opencode `defaultModel`; a CLI's
     // `extraArgs` come after the host's own flags and win, so a model or profile named there counts too.
     private static IEnumerable<string?> _ConfigModelsOf(string configJson)
     {
