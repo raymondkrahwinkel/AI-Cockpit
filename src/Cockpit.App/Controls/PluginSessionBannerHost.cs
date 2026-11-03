@@ -1,3 +1,4 @@
+using System.Collections.Specialized;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
@@ -13,6 +14,7 @@ namespace Cockpit.App.Controls;
 internal sealed class PluginSessionBannerHost : StackPanel
 {
     private readonly List<PluginSessionContext> _contexts = [];
+    private CockpitViewModel? _cockpit;
     private readonly List<(Control View, EventHandler<AvaloniaPropertyChangedEventArgs> Handler)> _visibilityWatchers = [];
 
     public PluginSessionBannerHost()
@@ -22,10 +24,28 @@ internal sealed class PluginSessionBannerHost : StackPanel
         HorizontalAlignment = HorizontalAlignment.Stretch;
         IsVisible = false;
 
-        AttachedToVisualTree += (_, _) => _Build();
-        DetachedFromVisualTree += (_, _) => _Clear();
+        AttachedToVisualTree += (_, _) =>
+        {
+            _cockpit = Program.Services?.GetService<CockpitViewModel>();
+            if (_cockpit is not null)
+            {
+                _cockpit.PluginSessionBanners.CollectionChanged += _OnContributionsChanged;
+            }
+            _Build();
+        };
+        DetachedFromVisualTree += (_, _) =>
+        {
+            if (_cockpit is not null)
+            {
+                _cockpit.PluginSessionBanners.CollectionChanged -= _OnContributionsChanged;
+                _cockpit = null;
+            }
+            _Clear();
+        };
         DataContextChanged += (_, _) => _Build();
     }
+
+    private void _OnContributionsChanged(object? sender, NotifyCollectionChangedEventArgs e) => _Build();
 
     private void _Build()
     {
