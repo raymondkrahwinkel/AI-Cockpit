@@ -966,6 +966,7 @@ public partial class App : Application
                     PluginStorage.ForPlugin(discovered, registrationStore, secretFieldStore),
                     sessionObserver,
                     diagnostics,
+                    // AC-499: distinguish the plugin's own MCP provider registration from other plugins'.
                     pluginType,
                     pluginCache.CreateFor(discovered.FolderId),
                     discovered.Manifest.Capabilities);
@@ -992,7 +993,7 @@ public partial class App : Application
                 // a declared secret has to be honoured.
                 discovered.Manifest.SecretKeys ?? []);
         uiParts.InitializeUi(PluginUiManager.ActivateUi, UiHostFor);
-        Program.Services.GetRequiredService<PluginManager>().Activated += (discovered, plugin) => Dispatcher.UIThread.Invoke(() =>
+        Program.Services.GetRequiredService<PluginManager>().Activated += (discovered, plugin) => Dispatcher.UIThread.Post(() =>
         {
             uiParts.InitializeUiOne(discovered, plugin, PluginUiManager.ActivateUi, UiHostFor);
             Program.Services.GetRequiredService<HelpService>().Invalidate();

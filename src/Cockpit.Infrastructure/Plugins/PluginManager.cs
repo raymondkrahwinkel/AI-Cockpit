@@ -451,7 +451,14 @@ public sealed class PluginManager(
 
         if (result.Status == PluginActivationStatus.Activated)
         {
-            Activated?.Invoke(discovered, plugin);
+            try
+            {
+                Activated?.Invoke(discovered, plugin);
+            }
+            catch (Exception exception)
+            {
+                logger.LogWarning(exception, "Plugin {PluginId}'s activation subscriber failed.", discovered.FolderId);
+            }
             return result;
         }
 
