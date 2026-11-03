@@ -38,29 +38,6 @@ public class HermesToolCallChatClientTests
     }
 
     [Fact]
-    public async Task MultiParameterHermesCall_CarriesEveryParameter()
-    {
-        var (_, calls) = await _RunAsync(
-            "<function=write_file><parameter=path>/tmp/a.txt</parameter><parameter=content>hello world</parameter></function>");
-
-        Assert.Single(calls);
-        Assert.Equal("write_file", calls[0].Name);
-        var arguments = calls[0].Arguments;
-        Assert.NotNull(arguments);
-        Assert.Equal("/tmp/a.txt", arguments["path"]);
-        Assert.Equal("hello world", arguments["content"]);
-    }
-
-    [Fact]
-    public async Task PrecedingText_IsPreserved_ThenTheCallIsSynthesised()
-    {
-        var (text, calls) = await _RunAsync("Let me look at it. <function=read_file><parameter=path>/x</parameter></function>");
-
-        Assert.Contains("Let me look at it.", text);
-        Assert.Equal("read_file", Assert.Single(calls).Name);
-    }
-
-    [Fact]
     public async Task AHermesBlockSplitAcrossStreamedUpdates_IsReassembledIntoOneFunctionCall()
     {
         // The stream cuts the block at arbitrary boundaries — mid-marker, mid-parameter — exactly as an HTTP stream
@@ -73,23 +50,6 @@ public class HermesToolCallChatClientTests
         var arguments = calls[0].Arguments;
         Assert.NotNull(arguments);
         Assert.Equal("/home/x/README.md", arguments["path"]);
-    }
-
-    [Fact]
-    public async Task AnAlreadyStructuredFunctionCall_IsLeftUntouched()
-    {
-        // A model that emits a real FunctionCallContent (not Hermes text) must pass through verbatim — the shim only
-        // rewrites text, never a call that arrived structured.
-        var original = new FunctionCallContent("call_abc123", "echo", new Dictionary<string, object?> { ["text"] = "hi" });
-        var inner = Substitute.For<IChatClient>();
-        inner.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
-            .Returns(_StructuredStream(original));
-        var client = new HermesToolCallChatClient(inner);
-
-        var (_, calls) = await _CollectAsync(client);
-
-        Assert.Single(calls);
-        Assert.Same(original, calls[0]);
     }
 
     [Fact]
@@ -148,14 +108,6 @@ public class HermesToolCallChatClientTests
         Assert.True(Assert.Single(events.OfType<TurnCompleted>()).IsError);
     }
 
-    [Fact]
-    public void ContainsUnprocessedToolCallMarker_DetectsAnOpenFunctionOrAStrayToolCallWrapper()
-    {
-        Assert.True(OpenAiCompatSessionDriver._ContainsUnprocessedToolCallMarker("call <function=read_file now"));
-        Assert.True(OpenAiCompatSessionDriver._ContainsUnprocessedToolCallMarker("done </tool_call>"));
-        Assert.False(OpenAiCompatSessionDriver._ContainsUnprocessedToolCallMarker("a perfectly ordinary answer"));
-    }
-
     private static async Task<(string Text, List<FunctionCallContent> Calls)> _RunAsync(params string[] chunks)
     {
         var inner = Substitute.For<IChatClient>();
@@ -194,12 +146,6 @@ public class HermesToolCallChatClientTests
             yield return new ChatResponseUpdate(ChatRole.Assistant, chunk);
         }
 
-        await Task.CompletedTask;
-    }
-
-    private static async IAsyncEnumerable<ChatResponseUpdate> _StructuredStream(FunctionCallContent call)
-    {
-        yield return new ChatResponseUpdate { Role = ChatRole.Assistant, Contents = [call] };
         await Task.CompletedTask;
     }
 

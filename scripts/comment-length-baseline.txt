@@ -403,7 +403,6 @@ inline	tests/Cockpit.App.ViewTests/WorkspaceAgentGatewayDeliveryTests.cs	1
 inline	tests/Cockpit.App.ViewTests/WorkspaceAgentGatewayTests.cs	2
 inline	tests/Cockpit.App.ViewTests/WorkspaceAgentGatewayWakeTests.cs	1
 inline	tests/Cockpit.Backend.Tests/Plugins/ProjectMemorySourceRegistrationEqualityTests.cs	1
-inline	tests/Cockpit.Backend.Tests/Plugins/ProjectMemorySourceRegistryTests.cs	1
 inline	tests/Cockpit.Core.Tests/Agents/AgentInboxTurnNoticeTests.cs	1
 inline	tests/Cockpit.Core.Tests/Claude/PluginSessionDriverAdapterTests.cs	2
 inline	tests/Cockpit.Core.Tests/Configuration/SessionProfileEntryTests.cs	1
@@ -484,7 +483,6 @@ inline	tests/Cockpit.Infrastructure.Tests/Agents/PhysicalResourceIdentityTests.c
 inline	tests/Cockpit.Infrastructure.Tests/Assistant/AssistantActMountRuleTests.cs	2
 inline	tests/Cockpit.Infrastructure.Tests/Assistant/AssistantCreateProjectConsentTests.cs	1
 inline	tests/Cockpit.Infrastructure.Tests/Assistant/AssistantEndpointRegistrationTests.cs	1
-inline	tests/Cockpit.Infrastructure.Tests/Assistant/AssistantSettingsWritersTests.cs	1
 inline	tests/Cockpit.Infrastructure.Tests/Auditing/AuditTrailPermissionTests.cs	1
 inline	tests/Cockpit.Infrastructure.Tests/Auditing/SharedAuditTrailsDoNotRotateTests.cs	1
 inline	tests/Cockpit.Infrastructure.Tests/Brand/BrandIconAssetTests.cs	4
@@ -550,7 +548,6 @@ summary	tests/Cockpit.App.ViewTests/WorkspaceAgentGatewayWakeTests.cs	1
 summary	tests/Cockpit.Backend.Tests/Plugins/McpOAuthTokenAdoptionTests.cs	1
 summary	tests/Cockpit.Backend.Tests/Plugins/PluginStorageTests.cs	1
 summary	tests/Cockpit.Backend.Tests/Plugins/ProjectMemorySourceRegistrationEqualityTests.cs	1
-summary	tests/Cockpit.Backend.Tests/Plugins/ProjectMemorySourceRegistryTests.cs	1
 summary	tests/Cockpit.Core.Tests/Claude/ConPtyProcessExitTests.cs	1
 summary	tests/Cockpit.Core.Tests/Claude/EmbeddedAutopilotPermissionModeTests.cs	1
 summary	tests/Cockpit.Core.Tests/Claude/PtyHostFactoryDependencyInjectionTests.cs	1
@@ -644,7 +641,6 @@ summary	tests/Cockpit.Infrastructure.Tests/Configuration/CockpitConfigFileAccess
 summary	tests/Cockpit.Infrastructure.Tests/Hotkeys/MutexHotkeyExclusivityGuardTests.cs	1
 summary	tests/Cockpit.Infrastructure.Tests/Mcp/AgentCanary.cs	1
 summary	tests/Cockpit.Infrastructure.Tests/Mcp/AgentCanaryTests.cs	1
-summary	tests/Cockpit.Infrastructure.Tests/Mcp/HostEndpointToolAnnotationsTests.cs	1
 summary	tests/Cockpit.Infrastructure.Tests/Mcp/McpInboxPiggybackTests.cs	1
 summary	tests/Cockpit.Infrastructure.Tests/Mcp/NodeSessionsClientRealNetworkTests.cs	1
 summary	tests/Cockpit.Infrastructure.Tests/Projects/ProjectInstructionContentReaderTests.cs	4

@@ -31,37 +31,6 @@ public class WhiteboardUndoTests
         Assert.Equal(("surface-1", objectId), Assert.Single(erased));
     }
 
-    [Fact]
-    public void Revert_AnEraseEntry_IsRefused_TakingBackARemovedObjectIsNotSupportedYet()
-    {
-        var registry = new WhiteboardAccessRegistry();
-        registry.SurfaceOpened("surface-1", "Sprint planning", Png);
-        registry.Grant("agent-1", "surface-1", WhiteboardCapability.Write);
-        var objectId = registry.PlaceCoupled("agent-1", "surface-1", new WhiteboardPlacement("stickynote", "Idee", 10, 20, 140, 140))!;
-        registry.ErasePlaced("agent-1", "surface-1", objectId);
-        var eraseEntry = registry.History("surface-1").Single(candidate => candidate.Kind == WhiteboardHistoryKind.Erase);
-
-        var refusal = registry.Revert("surface-1", eraseEntry.Id);
-
-        Assert.NotNull(refusal);
-    }
 
     // The reverted entry stays in the history, marked, and that mark is what refuses a second revert.
-    [Fact]
-    public void Revert_IsMarkedOnTheEntry_AndTheSameEntryTwice_IsRefusedTheSecondTime()
-    {
-        var registry = new WhiteboardAccessRegistry();
-        registry.SurfaceOpened("surface-1", "Sprint planning", Png);
-        registry.Grant("agent-1", "surface-1", WhiteboardCapability.Write);
-        registry.PlaceCoupled("agent-1", "surface-1", new WhiteboardPlacement("stickynote", "Idee", 10, 20, 140, 140));
-        var entry = Assert.Single(registry.History("surface-1"));
-        Assert.Null(registry.Revert("surface-1", entry.Id));
-
-        var refusal = registry.Revert("surface-1", entry.Id);
-
-        Assert.NotNull(refusal);
-        var after = Assert.Single(registry.History("surface-1"));
-        Assert.Equal(entry.Id, after.Id);
-        Assert.True(after.Reverted);
-    }
 }

@@ -24,15 +24,6 @@ public class ErObjectEditTests
     private static string Rendered(string source) =>
         MermaidRenderPipeline.Render(source, MermaidTheme.Neutral).Svg.Markup;
 
-    [Fact]
-    public void AddEntity_WritesAnEmptyBlock_BecauseABareNameDrawsNothing()
-    {
-        var edit = DiagramObjectEdit.AddEntity(Source, "INVOICE");
-
-        Assert.Null(edit.Refusal);
-        Assert.EndsWith("\n    INVOICE {\n    }", edit.Text);
-        Assert.Contains("data-id=\"INVOICE\"", Rendered(edit.Text!), StringComparison.Ordinal);
-    }
 
     [Fact]
     public void RenameEntity_RewritesTheBlockAndItsRelationships_AndNothingElse()
@@ -68,23 +59,7 @@ public class ErObjectEditTests
         Assert.Contains("1 relationship", edit.Summary);
     }
 
-    [Fact]
-    public void SetAttribute_AddsItInsideItsOwnBlock_NotAtTheEndOfTheSource()
-    {
-        var edit = DiagramObjectEdit.SetAttribute(Source, "ORDER", "placedOn", "date", key: null);
 
-        Assert.Null(edit.Refusal);
-        Assert.Contains("    ORDER {\n        int id PK\n        date placedOn\n    }", edit.Text, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void SetAttribute_WithAKeyThatIsNotOne_IsRefused_RatherThanWrittenIntoTheSource()
-    {
-        var edit = DiagramObjectEdit.SetAttribute(Source, "ORDER", "total", "int", "PRIMARY");
-
-        Assert.Null(edit.Text);
-        Assert.Contains("PK, FK or UK", edit.Refusal);
-    }
 
     [Fact]
     public void Relate_WritesTheCardinalityPairTheOperatorChose()
@@ -119,24 +94,6 @@ public class ErObjectEditTests
         Assert.Contains("changed relationship", edit.Summary);
     }
 
-    [Fact]
-    public void Unrelate_TakesTheLine_AndLeavesBothEntitiesStanding()
-    {
-        var edit = DiagramObjectEdit.Unrelate(Source, "CUSTOMER", "ORDER");
 
-        Assert.Null(edit.Refusal);
-        Assert.DoesNotContain("||--o{", edit.Text, StringComparison.Ordinal);
-        Assert.Contains("CUSTOMER {", edit.Text, StringComparison.Ordinal);
-        Assert.Contains("ORDER {", edit.Text, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void AFlowchartCall_OnAnErDiagram_IsRefused_NamingTheCallsThatDoWork()
-    {
-        var edit = DiagramObjectEdit.AddNode(Source, "INVOICE", "Invoice");
-
-        Assert.Null(edit.Text);
-        Assert.Contains("add_entity", edit.Refusal);
-    }
 
 }

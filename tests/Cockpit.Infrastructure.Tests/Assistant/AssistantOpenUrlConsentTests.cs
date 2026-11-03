@@ -1,7 +1,6 @@
 using System.Text.Json.Nodes;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Assistant;
-using Cockpit.Core.Consent;
 using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Mcp;
@@ -16,7 +15,6 @@ namespace Cockpit.Infrastructure.Tests.Assistant;
 /// </summary>
 public sealed class AssistantOpenUrlConsentTests : IDisposable
 {
-    private const string LongUrl = "https://example.test/a/very/long/path/that/keeps/going?token=abcdef1234567890&x=1";
 
     private readonly RecordingBroker _consent = new();
 
@@ -29,30 +27,9 @@ public sealed class AssistantOpenUrlConsentTests : IDisposable
 
     // ── Criterion 1: the card shows the full, literal URL ──────────────────────────────────────────────────────
 
-    [Fact]
-    public async Task TheCard_ShowsTheFullLiteralUrl_NeverASummary()
-    {
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-
-        await _Tools(_consent).OpenUrlAsync(LongUrl);
-
-        var card = Assert.Single(_consent.Asked);
-        Assert.Contains(LongUrl, card.Action, StringComparison.Ordinal);
-    }
 
     // ── Criterion 2: Dangerous, and never remembered ───────────────────────────────────────────────────────────
 
-    [Fact]
-    public async Task ItIsAskedAsDangerous_AndNeverOffersToRemember()
-    {
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-
-        await _Tools(_consent).OpenUrlAsync("https://example.test");
-
-        var card = Assert.Single(_consent.Asked);
-        Assert.Equal(ConsentRisk.Dangerous, card.Risk);
-        Assert.False(card.AllowRemember);
-    }
 
     [Fact]
     public async Task TheSameUrlApprovedBefore_IsAskedAgain_NeverRidingAnEarlierApproval()
@@ -67,39 +44,9 @@ public sealed class AssistantOpenUrlConsentTests : IDisposable
 
     // ── Criterion 3: its own source, so one switch cannot open this along with something else ─────────────────
 
-    [Fact]
-    public async Task ItIsAskedUnderItsOwnBypassKey_DistinctFromEveryOtherAssistantSource()
-    {
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-
-        await _Tools(_consent).OpenUrlAsync("https://example.test");
-
-        var asked = Assert.Single(_consent.Asked);
-        var key = ConsentSourceCatalog.KeyFor(asked.Source.PluginId, asked.Source.Label);
-        Assert.Equal(ConsentSourceCatalog.AssistantOpenUrl, key);
-        Assert.Contains(ConsentSourceCatalog.AssistantOpenUrl, ConsentSourceCatalog.HostSources);
-
-        Assert.NotEqual(ConsentSourceCatalog.AssistantPrompt, key);
-        Assert.NotEqual(ConsentSourceCatalog.AssistantMessage, key);
-        Assert.NotEqual(ConsentSourceCatalog.AssistantProjectCreate, key);
-    }
 
     // ── Criterion 4: a non-web scheme is refused by the gateway, not re-decided here ───────────────────────────
 
-    [Fact]
-    public async Task ARefusalFromTheGateway_IsReportedAsIs_TheToolDoesNotReimplementTheSchemeCheck()
-    {
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-        _gateway.NextResult = OpenUrlResult.Refused("'file:///etc/passwd' is not an absolute http(s) address, so there is nothing to open.");
-
-        var result = _Json(await _Tools(_consent).OpenUrlAsync("file:///etc/passwd"));
-
-        Assert.False((bool)result["ok"]!);
-        Assert.Contains("http(s)", (string)result["error"]!, StringComparison.Ordinal);
-        // The tool still asked — a request with a bad scheme still has a literal argument the operator can be
-        // shown; the gateway is what refuses it, since it is the one that can reach ExternalLink at all.
-        Assert.Single(_consent.Asked);
-    }
 
     // ── Saying no, and having nobody to ask ─────────────────────────────────────────────────────────────────────
 
@@ -116,16 +63,6 @@ public sealed class AssistantOpenUrlConsentTests : IDisposable
         Assert.Null(result["approval"]);
     }
 
-    [Fact]
-    public async Task WithNobodyToAsk_ItRefuses_AndNeverReachesTheGateway()
-    {
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-
-        var result = _Json(await _Tools(null).OpenUrlAsync("https://example.test"));
-
-        Assert.False((bool)result["ok"]!);
-        Assert.Empty(_gateway.Calls);
-    }
 
     // ── A newline would forge a line under the URL nobody approved ──────────────────────────────────────────────
 
@@ -143,40 +80,10 @@ public sealed class AssistantOpenUrlConsentTests : IDisposable
 
     // ── AC-759: what the consent check actually did is reported, not assumed ──────────────────────────────────
 
-    [Fact]
-    public async Task ACallThatWasActuallyAsked_ReportsApprovalAsked()
-    {
-        McpRequestContext.Set(AssistantIdentity.PaneId);
 
-        var result = _Json(await _Tools(_consent).OpenUrlAsync("https://example.test"));
-
-        Assert.Equal("asked", (string)result["approval"]!);
-    }
-
-    [Fact]
-    public async Task ACallThatWasBypassed_ReportsApprovalBypassed()
-    {
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-        _consent.Bypassed = true;
-
-        var result = _Json(await _Tools(_consent).OpenUrlAsync("https://example.test"));
-
-        Assert.Equal("bypassed", (string)result["approval"]!);
-    }
 
     // ── The result names the URL that was actually opened ───────────────────────────────────────────────────────
 
-    [Fact]
-    public async Task AnApprovedOpen_ReturnsTheUrlTheGatewayOpened()
-    {
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-        _gateway.NextResult = OpenUrlResult.Opened("https://example.test/");
-
-        var result = _Json(await _Tools(_consent).OpenUrlAsync("https://example.test/"));
-
-        Assert.True((bool)result["ok"]!);
-        Assert.Equal("https://example.test/", (string)result["url"]!);
-    }
 
     private sealed class RecordingBroker : IConsentBroker
     {

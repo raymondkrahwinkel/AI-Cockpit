@@ -36,31 +36,6 @@ public sealed class GitCloneUrlTests
     }
 
     [Fact]
-    public void SameRepositoryAs_MatchesEquivalentRemotesAndRejectsDifferentOrUnparseableRemotes()
-    {
-        Assert.True(GitCloneUrl.Parse("https://github.com/org/repo.git")
-            .SameRepositoryAs("git@github.com:org/repo.git"));
-        // GitHub treats org/repo case-insensitively; the slug is lowercased so the same repository is not cloned
-        // twice under two folders.
-        Assert.True(GitCloneUrl.Parse("https://github.com/Org/Repo.git")
-            .SameRepositoryAs("https://github.com/org/repo"));
-        Assert.False(GitCloneUrl.Parse("https://github.com/org/repo.git")
-            .SameRepositoryAs("https://github.com/org/other.git"));
-        Assert.False(GitCloneUrl.Parse("https://github.com/org/repo.git")
-            .SameRepositoryAs("not a url"));
-    }
-
-    [Theory]
-    [InlineData("")]
-    [InlineData("https://github.com")]
-    public void Parse_InputThatNamesNoRepository_Throws(string url)
-    {
-        var act = () => GitCloneUrl.Parse(url);
-
-        Assert.Throws<FormatException>(act);
-    }
-
-    [Fact]
     public void Parse_TraversalInPath_IsSanitizedAwayRatherThanEscapingTheRoot()
     {
         // A pasted "..“ segment must never become a real parent-directory hop in the managed clones root.

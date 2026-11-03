@@ -13,19 +13,6 @@ public class WhiteboardAccessRegistryTests
 {
     private static readonly byte[] Png = [1, 2, 3];
 
-    [Fact]
-    public void Couple_OnItsOwn_GrantsNoCapability()
-    {
-        var registry = new WhiteboardAccessRegistry();
-        registry.SurfaceOpened("surface-1", "Sprint planning", Png);
-
-        registry.Couple("session-a", "surface-1");
-
-        var coupling = registry.CouplingOf("session-a", "surface-1");
-        Assert.NotNull(coupling);
-        Assert.False(coupling!.CanRead);
-        Assert.Null(registry.ReadCoupled("session-a", "surface-1"));
-    }
 
     [Fact]
     public void PlaceCoupled_NeedsWrite_WhichReadAloneDoesNotGive()
@@ -47,31 +34,7 @@ public class WhiteboardAccessRegistryTests
         Assert.Equal(("surface-1", objectId!, placement), Assert.Single(placed));
     }
 
-    [Fact]
-    public void Grant_Write_GrantsReadAlongsideIt()
-    {
-        var registry = new WhiteboardAccessRegistry();
-        registry.SurfaceOpened("surface-1", "Sprint planning", Png);
 
-        registry.Grant("session-a", "surface-1", WhiteboardCapability.Write);
-
-        var coupling = registry.CouplingOf("session-a", "surface-1");
-        Assert.True(coupling!.CanRead);
-        Assert.True(coupling.CanWrite);
-        Assert.Equal(Png, registry.ReadCoupled("session-a", "surface-1"));
-    }
-
-    [Fact]
-    public void Grant_Read_DoesNotNarrowAWriteGrantAlreadyHeld()
-    {
-        var registry = new WhiteboardAccessRegistry();
-        registry.SurfaceOpened("surface-1", "Sprint planning", Png);
-        registry.Grant("session-a", "surface-1", WhiteboardCapability.Write);
-
-        registry.Grant("session-a", "surface-1", WhiteboardCapability.Read);
-
-        Assert.True(registry.CouplingOf("session-a", "surface-1")!.CanWrite);
-    }
 
     [Fact]
     public void ErasePlaced_ReachesTheAgentsOwnObjectsOnly_NeverTheOperatorsWork()

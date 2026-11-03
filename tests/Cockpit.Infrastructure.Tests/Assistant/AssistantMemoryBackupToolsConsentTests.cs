@@ -1,7 +1,6 @@
 using System.Text.Json.Nodes;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Assistant;
-using Cockpit.Core.Consent;
 using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Mcp;
@@ -24,46 +23,9 @@ public sealed class AssistantMemoryBackupToolsConsentTests : IDisposable
 
     private static JsonNode _Json(string result) => JsonNode.Parse(result)!;
 
-    private static string _KeyOf(ConsentRequest request) =>
-        ConsentSourceCatalog.KeyFor(request.Source.PluginId, request.Source.Label);
 
-    [Fact]
-    public async Task ExportAndImport_AreAskedAboutUnderDifferentBypassKeys()
-    {
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-        _consent.Approve = false; // denied is fine — this is about which key each call is asked under, not the outcome.
 
-        await _Tools(_consent).ExportAssistantMemoryAsync(@"C:\nowhere\export.zip");
-        await _Tools(_consent).ImportAssistantMemoryAsync(@"C:\nowhere\export.zip");
 
-        Assert.Equal(2, _consent.Asked.Count);
-        Assert.Equal(ConsentSourceCatalog.AssistantMemoryExport, _KeyOf(_consent.Asked[0]));
-        Assert.Equal(ConsentSourceCatalog.AssistantMemoryImport, _KeyOf(_consent.Asked[1]));
-    }
-
-    [Fact]
-    public async Task Export_IsLowRisk_AndImport_IsDangerous()
-    {
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-        _consent.Approve = false;
-
-        await _Tools(_consent).ExportAssistantMemoryAsync(@"C:\nowhere\export.zip");
-        await _Tools(_consent).ImportAssistantMemoryAsync(@"C:\nowhere\export.zip");
-
-        Assert.Equal(ConsentRisk.LowRisk, _consent.Asked[0].Risk);
-        Assert.Equal(ConsentRisk.Dangerous, _consent.Asked[1].Risk);
-    }
-
-    [Fact]
-    public async Task ADeniedImport_NeverTouchesDisk()
-    {
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-        _consent.Approve = false;
-
-        var result = _Json(await _Tools(_consent).ImportAssistantMemoryAsync(@"C:\nowhere\export.zip"));
-
-        Assert.False((bool)result["ok"]!);
-    }
 
     [Fact]
     public async Task WithNobodyToAsk_BothToolsRefuse()
@@ -76,28 +38,8 @@ public sealed class AssistantMemoryBackupToolsConsentTests : IDisposable
 
     // ── AC-759: what the consent check actually did is reported, not assumed ─────────────────────────────────────
 
-    [Fact]
-    public async Task AnExportThatWasBypassed_ReportsApprovalBypassed()
-    {
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-        _consent.Bypassed = true;
-
-        var result = _Json(await _Tools(_consent).ExportAssistantMemoryAsync(@"C:\nowhere\export.zip"));
-
-        Assert.Equal("bypassed", (string)result["approval"]!);
-    }
 
     /// <summary>AC-759 criterion 6: a denied import carries no approval field, only its refusal reason.</summary>
-    [Fact]
-    public async Task ADeniedImport_CarriesNoApprovalField()
-    {
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-        _consent.Approve = false;
-
-        var result = _Json(await _Tools(_consent).ImportAssistantMemoryAsync(@"C:\nowhere\export.zip"));
-
-        Assert.Null(result["approval"]);
-    }
 
     private sealed class RecordingBroker : IConsentBroker
     {

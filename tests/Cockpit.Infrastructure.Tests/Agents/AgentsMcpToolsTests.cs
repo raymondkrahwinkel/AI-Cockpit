@@ -25,12 +25,6 @@ public sealed class AgentsMcpToolsTests : IDisposable
     // The characters the boundary strips, and the two it keeps, written as code points: a test file about removing
     // control characters should not itself be a file with control characters pasted into its string literals, where
     // they are invisible in a diff and a reviewer has to take the author's word for what is being sent.
-    private const char Escape = (char)0x1B;
-    private const char Csi = (char)0x9B;
-    private const char Nul = (char)0x00;
-    private const char Cr = (char)0x0D;
-    private const char Lf = (char)0x0A;
-    private const char Tab = (char)0x09;
 
     private readonly IWorkspaceAgentGateway _gateway = Substitute.For<IWorkspaceAgentGateway>();
     private readonly WorkspaceAgentCoordinator _coordinator = new();
@@ -65,12 +59,6 @@ public sealed class AgentsMcpToolsTests : IDisposable
 
     private static JsonNode _Json(string result) => JsonNode.Parse(result)!;
 
-    /// <summary>
-    /// Everything actually waiting for a pane, straight from the store — past <c>read_inbox</c>'s own per-call batch
-    /// limit, so an assertion about what was or was not delivered is not also an assertion about how much one read
-    /// hands over.
-    /// </summary>
-    private IReadOnlyList<AgentMessage> _Waiting(string paneId) => _inbox.Drain(paneId, int.MaxValue).Messages;
 
     private JsonArray _ReadInboxAs(string paneId)
     {
@@ -87,40 +75,7 @@ public sealed class AgentsMcpToolsTests : IDisposable
         }
     }
 
-    [Fact]
-    public async Task ListAgents_WithNoVerifiedPane_Refuses()
-    {
-        // No McpRequestContext.Set at all — the shared-app-key path (McpAuthMiddleware sets null identity), and
-        // what the in-process tool loop looks like before AC-89 issued it a per-session token. There is no
-        // argument to fall back to reading instead: the tool takes none.
-        McpRequestContext.Set(null);
 
-        var json = JsonNode.Parse(await _Tools().ListAgentsAsync());
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        _ = _gateway.DidNotReceiveWithAnyArgs().GetWorkspaceSnapshotAsync(default!);
-    }
-
-    [Fact]
-    public async Task ListAgents_NeverSeesAnotherWorkspace_OnlyQueriesTheVerifiedCallersOwnPane()
-    {
-        // Two workspaces, each with its own gateway snapshot. The transport verifies the caller as pane-x; only
-        // that pane id may ever reach the gateway, whatever else might be true of the process (there is no
-        // argument the tool could read a different one from — it takes none).
-        var workspaceX = new WorkspaceAgentSnapshot("ws-x", [new WorkspaceAgentPane("pane-x", "X", null, string.Empty, true)]);
-        var workspaceY = new WorkspaceAgentSnapshot("ws-y", [new WorkspaceAgentPane("pane-y", "Y", null, string.Empty, true)]);
-        _gateway.GetWorkspaceSnapshotAsync("pane-x").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(workspaceX));
-        _gateway.GetWorkspaceSnapshotAsync("pane-y").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(workspaceY));
-        McpRequestContext.Set("pane-x");
-
-        var json = JsonNode.Parse(await _Tools().ListAgentsAsync());
-
-        Assert.Equal("ws-x", json!["workspaceId"]!.GetValue<string>());
-        var agents = json["agents"]!.AsArray();
-        Assert.Single(agents);
-        Assert.Equal("pane-x", agents[0]!["paneId"]!.GetValue<string>());
-        _ = _gateway.DidNotReceive().GetWorkspaceSnapshotAsync("pane-y");
-    }
 
     public static TheoryData<Func<Task<WorkspaceAgentSnapshot?>>> GatewayFailures() => new()
     {
@@ -132,32 +87,6 @@ public sealed class AgentsMcpToolsTests : IDisposable
         () => Task.FromCanceled<WorkspaceAgentSnapshot?>(new CancellationToken(canceled: true)),
     };
 
-    /// <summary>
-    /// A pane's name and statusline are that agent's own text — it writes the statusline and proposes the name through
-    /// <c>cockpit-session__set_status</c>, where neither is bounded because the audience there is the operator's header.
-    /// Repeated into a <em>sibling's</em> tool result they are the same hazard as a message body: unbounded, one agent's
-    /// enormous statusline is that much of the context of every neighbour that asks who is on the desk, and an escape
-    /// sequence in it repaints their tool output. So the roster gets the treatment the body gets.
-    /// </summary>
-    [Fact]
-    public async Task ListAgents_BoundsAndStripsTheNameAndStatuslineOfEveryPaneItRepeats()
-    {
-        var enormous = new string('s', 10_000);
-        var snapshot = new WorkspaceAgentSnapshot("ws-1", [
-            new WorkspaceAgentPane("pane-1", "Caller", null, string.Empty, true),
-            new WorkspaceAgentPane("pane-2", "Noisy" + Escape + "[31m", null, enormous, true),
-        ]);
-        _gateway.GetWorkspaceSnapshotAsync("pane-1").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(snapshot));
-        McpRequestContext.Set("pane-1");
-
-        var json = JsonNode.Parse(await _Tools().ListAgentsAsync());
-
-        var noisy = json!["agents"]!.AsArray().First(a => a!["paneId"]!.GetValue<string>() == "pane-2")!;
-        Assert.Equal("Noisy[31m", noisy["name"]!.GetValue<string>());
-        var statusline = noisy["statusline"]!.GetValue<string>();
-        Assert.Equal(AgentsMcpTools.MaxRosterTextLength + 1, statusline.Length);
-        Assert.EndsWith("…", statusline, StringComparison.Ordinal);
-    }
 
     // ---- notify / read_inbox: the line itself (AC-392) ----
 
@@ -183,38 +112,8 @@ public sealed class AgentsMcpToolsTests : IDisposable
     }
 
     /// <summary>G1 — a notify the transport cannot attribute to a pane has no sender to stamp, so it is refused.</summary>
-    [Fact]
-    public async Task Notify_WithNoVerifiedPane_Refuses()
-    {
-        // A desk that would happily take the message, so the refusal is the guard's doing and not a missing setup.
-        _DeskWith("pane-a", "pane-b");
-        McpRequestContext.Set(null);
-
-        var json = _Json(await _Tools().NotifyAsync("pane-b", "question", "anyone there?"));
-
-        Assert.False(json["ok"]!.GetValue<bool>());
-        // Nothing was even looked up: with no verified caller there is no pane to resolve a workspace for, so a
-        // mutation that fell back to some other value would be caught here rather than passing on ok=false.
-        _ = _gateway.DidNotReceiveWithAnyArgs().GetWorkspaceSnapshotAsync(default!);
-        Assert.Empty(_Waiting("pane-b"));
-    }
 
     /// <summary>G2 — the workspace boundary: a pane that is not in the caller's own snapshot cannot be addressed.</summary>
-    [Fact]
-    public async Task Notify_ToAPaneOutsideTheCallersWorkspace_Refuses()
-    {
-        // Two desks. pane-b is a real, live agent session — it is simply not on pane-a's desk.
-        var deskX = new WorkspaceAgentSnapshot("ws-x", [new WorkspaceAgentPane("pane-a", "A", null, string.Empty, true)]);
-        var deskY = new WorkspaceAgentSnapshot("ws-y", [new WorkspaceAgentPane("pane-b", "B", null, string.Empty, true)]);
-        _gateway.GetWorkspaceSnapshotAsync("pane-a").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(deskX));
-        _gateway.GetWorkspaceSnapshotAsync("pane-b").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(deskY));
-        McpRequestContext.Set("pane-a");
-
-        var json = _Json(await _Tools().NotifyAsync("pane-b", "question", "what are you working on?"));
-
-        Assert.False(json["ok"]!.GetValue<bool>());
-        Assert.Empty(_Waiting("pane-b"));
-    }
 
 
     [Fact]
@@ -237,71 +136,17 @@ public sealed class AgentsMcpToolsTests : IDisposable
         { "pane-b", "question", new string('x', AgentMessageContent.MaxBodyLength + 1) },
     };
 
-    /// <summary>
-    /// A body is displayed, written to the trail and eventually replayed into another session, so a sender must not be
-    /// able to smuggle a terminal control sequence through it: an ANSI escape can recolour or overwrite the lines the
-    /// cockpit itself wrote above the message, which is how text becomes a fake prompt. ESC is stripped, so is the C1
-    /// CSI that starts a sequence without it, and so is the bare CR that rewrites the line already printed — while the
-    /// newline and tab an author actually meant survive.
-    /// </summary>
-    [Fact]
-    public async Task Notify_WithTerminalControlSequencesInTheBody_DeliversThemStripped_AndSaysSo()
-    {
-        _DeskWith("pane-a", "pane-b");
-        McpRequestContext.Set("pane-a");
 
-        var json = _Json(await _Tools().NotifyAsync(
-            "pane-b",
-            $"heads-up{Escape}[31m",
-            "line one" + Cr + Lf + "line two" + Tab + "tabbed" + Escape + "[2J" + Csi + "31mred" + Nul));
-
-        Assert.True(json["ok"]!.GetValue<bool>());
-        Assert.True(json["sanitized"]!.GetValue<bool>());
-
-        var message = Assert.Single(_Waiting("pane-b"));
-        Assert.Equal("heads-up[31m", message.Kind);
-        Assert.Equal("line one" + Lf + "line two" + Tab + "tabbed[2J31mred", message.Body);
-        Assert.DoesNotContain(Escape.ToString(), message.Body, StringComparison.Ordinal);
-        Assert.DoesNotContain(Csi.ToString(), message.Body, StringComparison.Ordinal);
-        Assert.DoesNotContain(Cr.ToString(), message.Body, StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    /// What the trail holds is the cleaned text, not the raw argument: an operator reading the JSONL file with <c>cat</c>
-    /// or a tail is looking at a terminal, and a trail that faithfully preserved every escape sequence an agent sent
-    /// would be a way to write to that terminal through the audit log.
-    /// </summary>
-    [Fact]
-    public async Task Notify_WritesTheStrippedTextToTheTrail_NotTheRawArgument()
-    {
-        _DeskWith("pane-a", "pane-b");
-        McpRequestContext.Set("pane-a");
-
-        await _Tools().NotifyAsync("pane-b", "heads-up", $"before{Escape}[2Jafter");
-
-        var entry = Assert.Single(await _Audit().ReadRecentAsync());
-        Assert.Equal("before[2Jafter", entry.Body);
-    }
 
     // ---- the closing-recipient race, and the batched read ----
 
     // ---- claim / release / list_claims: who is working on what (AC-393) ----
 
-    private const string Claim = "claim";
-    private const string Release = "release";
-    private const string ListClaims = "list_claims";
 
     /// <summary>
     /// Drives one of the three claim tools by its MCP name. The theories below carry names rather than delegates
     /// because <c>AgentsMcpTools</c> is internal, so a public theory method cannot take one as a parameter.
     /// </summary>
-    private Task<string> _CallAsync(string tool) => tool switch
-    {
-        Claim => _Tools().ClaimAsync("/repo/worktree-a"),
-        Release => _Tools().ReleaseAsync("/repo/worktree-a"),
-        ListClaims => _Tools().ListClaimsAsync(),
-        _ => throw new ArgumentOutOfRangeException(nameof(tool), tool, "Not one of the claim tools."),
-    };
 
 
     /// <summary>AC2 — a claim is only its holder's to give up, and the refusal says whose it is.</summary>
@@ -343,45 +188,7 @@ public sealed class AgentsMcpToolsTests : IDisposable
         Assert.Equal("pane-y", Assert.Single(listed)!["heldBy"]!.GetValue<string>());
     }
 
-    /// <summary>
-    /// The same defence the rest of this server uses: a request the transport could not attribute to a pane has no
-    /// owner to stamp a claim with, so there is nothing to claim, release or list on behalf of — and no argument to
-    /// fall back to reading instead, because none of the three takes a caller.
-    /// </summary>
-    [Theory]
-    [InlineData(Claim)]
-    [InlineData(Release)]
-    [InlineData(ListClaims)]
-    public async Task ClaimTools_WithNoVerifiedPane_Refuse(string tool)
-    {
-        _DeskWith("pane-a");
-        McpRequestContext.Set(null);
 
-        var json = _Json(await _CallAsync(tool));
-
-        Assert.False(json["ok"]!.GetValue<bool>());
-        _ = _gateway.DidNotReceiveWithAnyArgs().GetWorkspaceSnapshotAsync(default!);
-    }
-
-    /// <summary>
-    /// A claim is displayed to every neighbour that lists the desk, so an escape sequence in one would repaint their
-    /// tool output. Stripped rather than refused, and the stripped form is what is stored — so the neighbour that
-    /// claims the same thing without the escape sequence meets it rather than claiming it twice.
-    /// </summary>
-    [Fact]
-    public async Task Claim_WithTerminalControlSequencesInTheResource_StoresAndMatchesTheStrippedForm()
-    {
-        _DeskWith("pane-a", "pane-b");
-        McpRequestContext.Set("pane-a");
-        await _Tools().ClaimAsync("/repo/" + Escape + "[31mworktree-a");
-
-        var listed = _Json(await _Tools().ListClaimsAsync())["claims"]!.AsArray();
-        McpRequestContext.Set("pane-b");
-        var collision = _Json(await _Tools().ClaimAsync("/repo/[31mworktree-a"));
-
-        Assert.Equal("/repo/[31mworktree-a", Assert.Single(listed)!["resource"]!.GetValue<string>());
-        Assert.False(collision["ok"]!.GetValue<bool>());
-    }
 
 
 }

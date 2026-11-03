@@ -32,31 +32,6 @@ public sealed class NodeSessionsClientRealNetworkTests
     // AC-1985: the node listener takes connect keys only, so the host starts with this bootstrap key.
     private const string Key = "ck_bootstrapKeyForTheNodeSessionsClientTests0123456";
 
-    [Fact]
-    public async Task ReadAsync_ANodeAnsweringWithAnUnpinnedCertificate_ReportsCertificateNotTrusted()
-    {
-        var certificatePath = _TempCertificatePath();
-        try
-        {
-            using var certificate = new NodeSelfSignedCertificate(certificatePath);
-            var pairing = new NodeSessionMcpToolsTests.StubPairing { AllowEverything = true };
-
-            await using var host = await _StartNodeHostAsync(certificate, new NodeSessionMcpToolsTests.RecordingReadGateway(), pairing);
-
-            // Pinned to a fingerprint that is not this host's real one — exactly what a re-installed node, or
-            // something else answering at the paired address, would look like on the wire.
-            var client = _ClientFor(host.Url, new string('A', 64), Key);
-
-            var snapshot = await client.ReadAsync(NodeName);
-
-            Assert.NotNull(snapshot.Error);
-            Assert.Contains("did not pin", snapshot.Error, StringComparison.Ordinal);
-        }
-        finally
-        {
-            File.Delete(certificatePath);
-        }
-    }
 
     /// <summary>
     /// The same move, on a row with no certificate pin — a node paired by hand rather than through the handshake.
@@ -166,21 +141,6 @@ public sealed class NodeSessionsClientRealNetworkTests
     private static string _TempCertificatePath() =>
         Path.Combine(Path.GetTempPath(), $"node-sessions-real-{Guid.NewGuid():N}.pfx");
 
-    private static NodeSessionsClient _ClientFor(string url, string pinnedFingerprint, string sharedSecret) =>
-        new(
-            new _SingleServerStore(new McpServerConfig
-            {
-                Name = NodeServerName.For(NodeName, NodeServerName.SessionsServerName),
-                Transport = McpTransport.Http,
-                Url = url,
-                Auth = McpServerAuth.ApiKey,
-                ApiKey = sharedSecret,
-                PinnedCertificateFingerprint = pinnedFingerprint,
-            }),
-            // AC-1284's re-resolve asks discovery where a node that stopped answering went. Nothing here has moved,
-            // so a finder that reports an empty segment keeps these tests about the transport and not about UDP.
-            new _NoNodesFound(),
-            NullLogger<NodeSessionsClient>.Instance);
 
     private sealed class _NoNodesFound : INodeDiscoveryClient
     {

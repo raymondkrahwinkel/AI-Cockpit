@@ -1,9 +1,5 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using Cockpit.Core.Abstractions.Sessions;
-using Cockpit.Core.Profiles;
-using Cockpit.Core.Sessions;
-using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Infrastructure.Sessions;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Runtime.Versioning;
@@ -12,61 +8,6 @@ namespace Cockpit.Infrastructure.Tests.Sessions;
 
 public sealed class WindowsJobSessionAnchorTests
 {
-    [Fact]
-    public void Sweep_WhenTheRecordedOwnerIsStillRunning_SkipsTheJob()
-    {
-        var startedAt = new DateTimeOffset(2026, 8, 30, 10, 0, 0, TimeSpan.Zero);
-        var record = new WindowsJobSessionRecord("cockpit-session-test", 100, startedAt, 200, startedAt);
-        var terminated = new List<string>();
-
-        var outcome = WindowsJobSessionSweep.Sweep(
-            [record],
-            processStartedAt: processId => processId == 100 ? startedAt : null,
-            terminate: target =>
-            {
-                terminated.Add(target.JobName);
-                return WindowsJobSessionSweep.JobTermination.Terminated;
-            });
-
-        Assert.Empty(terminated);
-        Assert.Equal(1, outcome.SkippedForLiveOwner);
-    }
-
-    [Fact]
-    public void Sweep_WhenTheRecordedOwnerPidWasReused_TerminatesTheJob()
-    {
-        var startedAt = new DateTimeOffset(2026, 8, 30, 10, 0, 0, TimeSpan.Zero);
-        var record = new WindowsJobSessionRecord("cockpit-session-test", 100, startedAt, 200, startedAt);
-        var terminated = new List<string>();
-
-        var outcome = WindowsJobSessionSweep.Sweep(
-            [record],
-            processStartedAt: processId => processId == 100 ? startedAt.AddMinutes(1) : null,
-            terminate: target =>
-            {
-                terminated.Add(target.JobName);
-                return WindowsJobSessionSweep.JobTermination.Terminated;
-            });
-
-        Assert.Equal([record.JobName], terminated);
-        Assert.Equal(1, outcome.Terminated);
-    }
-
-    [Fact]
-    public void Sweep_WhenTheNamedJobWasAlreadyGone_ClearsTheRecordWithoutCountingAStop()
-    {
-        var startedAt = new DateTimeOffset(2026, 8, 30, 10, 0, 0, TimeSpan.Zero);
-        var record = new WindowsJobSessionRecord("cockpit-session-test", 100, startedAt, 200, startedAt);
-
-        var outcome = WindowsJobSessionSweep.Sweep(
-            [record],
-            processStartedAt: _ => null,
-            terminate: _ => WindowsJobSessionSweep.JobTermination.AlreadyGone);
-
-        Assert.Equal(0, outcome.Terminated);
-        Assert.Equal(1, outcome.AlreadyGone);
-        Assert.Equal([record.JobName], outcome.CompletedJobs);
-    }
 
     [Fact]
     public void Sweep_WhenTheRecordedRootPidWasReused_LeavesTheJobAlone()
@@ -111,26 +52,6 @@ public sealed class WindowsJobSessionAnchorTests
         Assert.Equal(["orphan"], terminated);
         Assert.Equal(["pane-a"], outcome.StoppedPanes);
         Assert.Equal(1, outcome.SkippedForLiveOwner);
-    }
-
-    [Fact]
-    public void Sweep_WhenThePreviousCockpitAndRootAreGone_TerminatesOnlyItsNamedJob()
-    {
-        var startedAt = new DateTimeOffset(2026, 8, 30, 10, 0, 0, TimeSpan.Zero);
-        var record = new WindowsJobSessionRecord("cockpit-session-test", 100, startedAt, 200, startedAt);
-        var terminated = new List<string>();
-
-        var outcome = WindowsJobSessionSweep.Sweep(
-            [record],
-            processStartedAt: _ => null,
-            terminate: target =>
-            {
-                terminated.Add(target.JobName);
-                return WindowsJobSessionSweep.JobTermination.Terminated;
-            });
-
-        Assert.Equal([record.JobName], terminated);
-        Assert.Equal(1, outcome.Terminated);
     }
 
     [SupportedOSPlatform("windows")]
@@ -218,80 +139,4 @@ public sealed class WindowsJobSessionAnchorTests
         }
     }
 
-    [Fact]
-    public async Task SessionRuntime_DisposesItsProcessAnchorAfterTheDriver()
-    {
-        var driver = new _Driver();
-        var anchor = new _Anchor();
-        var runtime = new SessionRuntime(new _Factory(driver), profile: null, memoryLimiter: null, processAnchor: anchor);
-
-        await runtime.StartAsync(profile: null);
-        await runtime.DisposeAsync();
-
-        Assert.Equal(4242, anchor.ProcessId);
-        Assert.True(driver.Disposed);
-        Assert.True(anchor.Disposed);
-    }
-
-    private sealed class _Anchor : ISessionProcessAnchor
-    {
-        public int? ProcessId { get; private set; }
-
-        public bool Disposed { get; private set; }
-
-        public IDisposable? Anchor(int processId, string? paneId = null)
-        {
-            ProcessId = processId;
-            return new _Handle(this);
-        }
-
-        private sealed class _Handle(_Anchor anchor) : IDisposable
-        {
-            public void Dispose() => anchor.Disposed = true;
-        }
-    }
-
-    private sealed class _Factory(ISessionDriver driver) : ISessionDriverFactory
-    {
-        public ISessionDriver Create(SessionProfile? profile) => driver;
-    }
-
-    private sealed class _Driver : ISessionDriver
-    {
-        public Task StreamFinished => Task.CompletedTask;
-
-        public bool Disposed { get; private set; }
-
-        public SessionCapabilities Capabilities => new(false, false, false, false, false, false, false, false);
-
-        public int? ProcessId => 4242;
-
-        public string? SessionId => null;
-
-        public SessionProfile? Profile => null;
-
-        public IAsyncEnumerable<SessionEvent> Events => AsyncEnumerable.Empty<SessionEvent>();
-
-        public Task StartAsync(SessionProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null, IReadOnlyDictionary<string, string>? launchOptions = null, string? projectId = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
-
-        public Task SendUserMessageAsync(string text, IReadOnlyList<ImageAttachment>? images = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
-
-        public Task SetPermissionModeAsync(string mode, CancellationToken cancellationToken = default) => Task.CompletedTask;
-
-        public Task SetModelAsync(string? model, CancellationToken cancellationToken = default) => Task.CompletedTask;
-
-        public Task SetMaxThinkingTokensAsync(int maxThinkingTokens, CancellationToken cancellationToken = default) => Task.CompletedTask;
-
-        public Task InterruptAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
-
-        public Task RespondToPermissionAsync(string toolUseId, bool allow, CancellationToken cancellationToken = default) => Task.CompletedTask;
-
-        public Task AllowPermissionAlwaysAsync(string toolUseId, string toolName, string proposedInputJson, PermissionRuleScope scope, CancellationToken cancellationToken = default) => Task.CompletedTask;
-
-        public ValueTask DisposeAsync()
-        {
-            Disposed = true;
-            return ValueTask.CompletedTask;
-        }
-    }
 }

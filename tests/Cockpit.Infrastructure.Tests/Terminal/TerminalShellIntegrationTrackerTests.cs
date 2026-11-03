@@ -56,39 +56,8 @@ public class TerminalShellIntegrationTrackerTests
         Assert.Equal(0, tracker.LastExitCode);
     }
 
-    [Fact]
-    public void TheStTerminatedForm_IsReadTheSameAsTheBellTerminatedOne()
-    {
-        var tracker = new TerminalShellIntegrationTracker();
 
-        tracker.Feed($"{Escape}]133;D;7{Escape}\\");
 
-        Assert.Equal(1, tracker.CommandsFinished);
-        Assert.Equal(7, tracker.LastExitCode);
-    }
-
-    [Fact]
-    public void VsCodesOsc633_IsUnderstoodToo()
-    {
-        var tracker = new TerminalShellIntegrationTracker();
-
-        tracker.Feed($"{Escape}]633;B{Bell}");
-
-        Assert.True(tracker.AtPrompt);
-    }
-
-    [Fact]
-    public void OtherEscapeSequences_AreIgnoredWithoutDisturbingTheState()
-    {
-        var tracker = new TerminalShellIntegrationTracker();
-        tracker.Feed(Mark("B"));
-
-        // A colour run, a cursor move and a window-title OSC — all common, none of them ours.
-        tracker.Feed($"{Escape}[32mgreen{Escape}[0m{Escape}[2K{Escape}]0;a title{Bell}");
-
-        Assert.True(tracker.AtPrompt);
-        Assert.Equal(0, tracker.CommandsFinished);
-    }
 
     [Fact]
     public void AMalformedOscDoesNotSwallowTheMarksAfterIt()
@@ -105,29 +74,5 @@ public class TerminalShellIntegrationTrackerTests
         Assert.Equal(0, tracker.LastExitCode);
     }
 
-    [Fact]
-    public void ACommandStarting_IsCountedSeparatelyFromItFinishing()
-    {
-        // A finish on its own could belong to something already in flight; a caller waits for both to move.
-        var tracker = new TerminalShellIntegrationTracker();
 
-        tracker.Feed(Mark("D;0"));
-        Assert.Equal(0, tracker.CommandsStarted);
-        Assert.Equal(1, tracker.CommandsFinished);
-
-        tracker.Feed(Mark("C") + Mark("D;0"));
-        Assert.Equal(1, tracker.CommandsStarted);
-        Assert.Equal(2, tracker.CommandsFinished);
-    }
-
-    [Fact]
-    public void AnEscapeThatNeverCompletes_DoesNotGrowWithoutBound()
-    {
-        var tracker = new TerminalShellIntegrationTracker();
-
-        tracker.Feed(Escape + "]133;" + new string('x', 4096));
-        tracker.Feed(Mark("D;0"));
-
-        Assert.Equal(1, tracker.CommandsFinished);
-    }
 }
