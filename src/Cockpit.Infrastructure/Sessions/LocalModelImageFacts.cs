@@ -93,7 +93,7 @@ internal sealed class LocalModelImageFacts
             }
             var id = key.GetString();
             if (id is null) continue;
-            facts.Add(new(id) { SupportsImageInput = !vision.GetBoolean(), ImageInputSource = source });
+            facts.Add(new(id) { SupportsImageInput = vision.GetBoolean(), ImageInputSource = source });
             if (item.TryGetProperty("loaded_instances", out var instances) && instances.ValueKind == JsonValueKind.Array)
             {
                 foreach (var instance in instances.EnumerateArray())
