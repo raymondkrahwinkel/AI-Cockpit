@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Media;
 using Microsoft.Extensions.DependencyInjection;
@@ -188,6 +189,23 @@ sealed class Program
             exceptionEvent.Handled = true;
         };
 
+        // The Kestrel hosts' ConsoleLifetime swallows SIGTERM (AC-2057); only the first signal, once the UI is up, is routed into the quit route.
+        var quitRequested = 0;
+        var signals = OperatingSystem.IsWindows()
+            ? []
+            : new[] { PosixSignal.SIGTERM, PosixSignal.SIGINT, PosixSignal.SIGQUIT }.Select(signal =>
+                PosixSignalRegistration.Create(signal, context =>
+                {
+                    if (Application.Current is not App app || Interlocked.Exchange(ref quitRequested, 1) == 1)
+                    {
+                        return;
+                    }
+
+                    context.Cancel = true;
+                    Cockpit.App.Logging.LifecycleLog.Write($"{signal} received; requesting a quit.");
+                    Avalonia.Threading.Dispatcher.UIThread.Post(app.RequestQuit);
+                })).ToList();
+
         try
         {
             BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
@@ -207,6 +225,7 @@ sealed class Program
             // and SoundFlow native disposal can hang. The OS reclaims the loopback socket anyway.
             DisposeCockpit();
             fileLogger.Flush();
+            GC.KeepAlive(signals);
             Environment.Exit(0);
         }
     }
