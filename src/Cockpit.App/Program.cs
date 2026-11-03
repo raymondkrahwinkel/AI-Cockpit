@@ -130,11 +130,17 @@ sealed class Program
         Startup.AddCore("Loading plugins…", _ => _OnStaThread(() =>
         {
             // Plugins are discovered before the container is built so they can register services (#14). Safe mode is a
-            // UI-independent command-line escape hatch that still discovers them but loads none (AC-478).
+            // UI-independent command-line escape hatch that still discovers them but loads none (AC-478). AC-2039: a
+            // start the last one did not finish turns off what it named, or goes to safe mode by itself.
+            var attempt = StartupAttempt.Begin(loggerFactory.CreateLogger<StartupAttempt>());
             var backend = CockpitBackend.Build(
                 loggerFactory,
-                services => AddDesktop(services, loggerFactory),
-                args.Contains(PluginManager.SafeModeArgument) ? PluginStartup.SafeMode : PluginStartup.Load,
+                services =>
+                {
+                    AddDesktop(services, loggerFactory);
+                    services.AddSingleton(attempt);
+                },
+                args.Contains(PluginManager.SafeModeArgument) || attempt.SafeMode ? PluginStartup.SafeMode : PluginStartup.Load,
                 applyIncomingSettings: false,
                 enableStorageMaintenance: true);
             Services = backend.Services;
@@ -415,6 +421,9 @@ sealed class Program
         {
             return;
         }
+
+        // AC-2039: a quit or restart the operator asked for is not a crash, whatever the teardown below does next.
+        Services?.GetService<StartupAttempt>()?.Complete();
 
         // Started here and not only in Main's finally: while the shutdown is held open for this, nothing else bounds
         // the process, and a wedged teardown must never hold the exit up (bug #32).

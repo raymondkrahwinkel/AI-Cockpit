@@ -1394,9 +1394,43 @@ public partial class App : Application
             await cockpit.ToastHost.RestoreNotificationsAsync(keptNotificationsPath);
         }
 
+        var attempt = Program.Services.GetService<StartupAttempt>();
+        if (attempt is { Disabled.Count: > 0 })
+        {
+            _SayWhatTheLastStartTurnedOff(attempt.Disabled);
+        }
+
         await thresholdsLoaded;
         await cockpit.Workspaces.InitializeAsync();
         await cockpit.RestoreSessionPanesAsync();
+
+        // AC-2039: restored and still up a while later, so this start did not keep the operator out.
+        _ = attempt?.CompleteAfterAsync(StartupAttempt.StableAfter);
+    }
+
+    // AC-2039: the last start crashed while it restored these plugins' panels or desks, so this one turned them off.
+    private static void _SayWhatTheLastStartTurnedOff(IReadOnlyList<DisabledPlugin> disabled)
+    {
+        var names = string.Join(", ", disabled.Select(plugin => plugin.Name));
+        var toasts = Program.Services.GetRequiredService<IToastService>();
+        var administration = Program.Services.GetRequiredService<IPluginAdministration>();
+        toasts.Show(
+            $"Cockpit stopped during its last start while it was opening {names}, so {(disabled.Count == 1 ? "it is" : "they are")} turned off for now.",
+            ToastSeverity.Warning,
+            [new ToastAction("Turn back on", () => _ = _TurnBackOnAsync(disabled, administration, toasts))],
+            sticky: true,
+            source: null,
+            key: StartupAttempt.FileName);
+    }
+
+    private static async Task _TurnBackOnAsync(IReadOnlyList<DisabledPlugin> disabled, IPluginAdministration administration, IToastService toasts)
+    {
+        foreach (var plugin in disabled)
+        {
+            await administration.SetEnabledAsync(plugin.Id, enabled: true, plugin.PinnedSha256);
+        }
+
+        toasts.Show($"{string.Join(", ", disabled.Select(plugin => plugin.Name))} will load again at the next start.", ToastSeverity.Information);
     }
 
     // Starts the scheduled resumes (AC-234) and, unlike the bare fire-and-forget this replaces, watches how that
