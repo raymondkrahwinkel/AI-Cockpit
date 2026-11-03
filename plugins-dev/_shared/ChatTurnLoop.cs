@@ -35,7 +35,7 @@ internal static class ChatTurnLoop
             {
                 throw new ArgumentException("Image attachments must be non-empty and at most 20 MB total.");
             }
-            contents.Add(new DataContent(new byte[] { 0 }, mediaType));
+            contents.Add(new DataContent(bytes, mediaType));
         }
 
         return new ChatMessage(ChatRole.User, contents);
