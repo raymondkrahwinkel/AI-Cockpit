@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Plugins;
+using Cockpit.Core.Secrets;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Capabilities;
 using Cockpit.Plugins.Abstractions.Mcp;
@@ -272,11 +273,17 @@ public sealed class PluginManager(
     private string? _InitializeOne(
         DiscoveredPlugin discovered,
         ICockpitPlugin plugin,
-        Func<DiscoveredPlugin, ICockpitPlugin, ICockpitHost> hostFor)
+        Func<DiscoveredPlugin, ICockpitPlugin, ICockpitHost> hostFor,
+        bool liveActivation = false)
     {
         try
         {
+            SecretKeyHolder.Shared.Declare(discovered.Manifest.SecretKeys);
             var host = hostFor(discovered, plugin);
+            if (host is PluginBackendHost backendHost)
+            {
+                backendHost.IsLiveActivation = liveActivation;
+            }
             if (plugin is IPluginMcpProvider provider)
             {
                 McpProviders.Register(provider);
@@ -391,7 +398,7 @@ public sealed class PluginManager(
                         else
                         {
                             _WarnIfBuiltAgainstNewerHost(discovered, plugin);
-                            var failure = _InitializeOne(discovered, plugin, hostFor);
+                            var failure = _InitializeOne(discovered, plugin, hostFor, liveActivation: true);
                             result = failure is null
                                 ? new(PluginActivationStatus.Activated)
                                 : new(PluginActivationStatus.NeedsRestart, failure);

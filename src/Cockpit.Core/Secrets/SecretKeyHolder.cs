@@ -36,8 +36,9 @@ public sealed class SecretKeyHolder : ISecretKeyHolder
     public static SecretKeyHolder Shared { get; } = new();
 
     private readonly HashSet<string> _declared = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Lock _gate = new();
 
-    private SecretFields _fields = SecretFields.ByName;
+    private volatile SecretFields _fields = SecretFields.ByName;
 
     public ISecretProtector? Protector { get; private set; }
 
@@ -57,7 +58,10 @@ public sealed class SecretKeyHolder : ISecretKeyHolder
     // each plugin declares its own, and the second one to load must not erase the first one's.
     public void Declare(IEnumerable<string> keys)
     {
-        _declared.UnionWith(keys);
-        _fields = new SecretFields(_declared);
+        lock (_gate)
+        {
+            _declared.UnionWith(keys);
+            _fields = new SecretFields(_declared);
+        }
     }
 }

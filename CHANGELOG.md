@@ -36,6 +36,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- Live plugin activation prepares encrypted settings, runs startup tasks and makes contributed workflow steps available without a restart.
 - Backend support for activating individual plugins while running, with a restart reason when their services need a new host container.
 - Plugin MCP providers can join the running catalog without rebuilding the host container.
 - Grok image input is detected from the service's model metadata, including model aliases.

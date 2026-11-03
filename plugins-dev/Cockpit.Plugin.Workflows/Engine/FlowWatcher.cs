@@ -35,6 +35,7 @@ internal sealed class FlowWatcher : IDisposable
     // engine built at startup would not have YouTrack's steps in it — a flow that moves a ticket would then be
     // "skipped, this cockpit cannot run youtrack.start", which is a lie about what this build can do.
     private WorkflowEngine? _engine;
+    private readonly Lock _engineLock = new();
 
     // A trigger already running, guarded by `_runningLock` now that the clock's own tick can land on a threadpool
     // thread too. A flow that watches for text and then *sends* text to a session feeds its own trigger, and the
@@ -62,6 +63,7 @@ internal sealed class FlowWatcher : IDisposable
 
         _host.Sessions.OutputProduced += _OnOutput;
         _host.WorkflowTriggerRaised += _OnPluginTrigger;
+        _host.WorkflowStepsChanged += _OnWorkflowStepsChanged;
 
         Health = new SchedulerHealth(_time, Tick);
         _timer = _time.CreateTimer(_ => _OnClock(_time.GetUtcNow()), null, TimeSpan.Zero, Tick);
@@ -99,7 +101,16 @@ internal sealed class FlowWatcher : IDisposable
         _disposed = true;
         _host.Sessions.OutputProduced -= _OnOutput;
         _host.WorkflowTriggerRaised -= _OnPluginTrigger;
+        _host.WorkflowStepsChanged -= _OnWorkflowStepsChanged;
         _timer.Dispose();
+    }
+
+    private void _OnWorkflowStepsChanged(object? sender, EventArgs args)
+    {
+        lock (_engineLock)
+        {
+            _engine = null;
+        }
     }
 
     // A plugin fired one of its own triggers: a ticket was picked for a session, a review was requested. Every active
@@ -268,8 +279,12 @@ internal sealed class FlowWatcher : IDisposable
         WorkflowRun run;
         try
         {
-            _engine ??= EngineFactory.Create(_host, _host.WorkflowSteps);
-            run = await _engine.RunAsync(
+            WorkflowEngine engine;
+            lock (_engineLock)
+            {
+                engine = _engine ??= EngineFactory.Create(_host, _host.WorkflowSteps);
+            }
+            run = await engine.RunAsync(
                 workflow,
                 trigger.Id,
                 origin,

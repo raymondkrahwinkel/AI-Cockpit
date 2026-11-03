@@ -1777,3 +1777,7 @@ they exercise the main contribution points:
 They all ship their `plugin.json`, use `ConfigureServices` as an empty no-op (their state lives in
 `host.Storage` or is minted fresh per session instead of living in the DI container), and the UI-contribution
 plugins fall back to `SetClipboardTextAsync` when `HasActiveSession` is false.
+
+## Live workflow contributions
+
+SDK 3.67.0 adds `ICockpitHost.WorkflowStepsChanged` (host 0.158.0): subscribe to invalidate a cached workflow engine when a plugin contributes a step, and unsubscribe when disposing. An existing run keeps its engine; subsequent runs read `WorkflowSteps` again.
