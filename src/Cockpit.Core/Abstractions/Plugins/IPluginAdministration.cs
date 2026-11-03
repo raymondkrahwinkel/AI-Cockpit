@@ -2,8 +2,7 @@ using Cockpit.Core.Plugins;
 
 namespace Cockpit.Core.Abstractions.Plugins;
 
-// AC-1434: what the plugin screens do to the installed plugins, and nothing more. Enabling takes effect at once when
-// the plugin allows it, every other change at the next start; the host's plugin contract version is the implementation's to know, not the caller's.
+// AC-1434: what the plugin screens do to the installed plugins; enabling can be live, every other change waits for the next start.
 public interface IPluginAdministration
 {
     /// <summary>
