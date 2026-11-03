@@ -464,9 +464,15 @@
                      it can be sent with a sentence of your own. ShowOnDisabled because the disabled state is the
                      interesting one — the tooltip is where a session that cannot take an image says why — and
                      Avalonia hides tooltips on disabled controls unless told otherwise. -->
-                <Button x:Name="ScreenshotButton" DockPanel.Dock="Right" Command="{Binding CaptureScreenshotCommand}" IsVisible="{Binding !IsShownInSimpleStand}"
+                <Button x:Name="ScreenshotButton" DockPanel.Dock="Right" Command="{Binding CaptureScreenshotCommand}"
                         Classes="Compact composerAction" VerticalAlignment="Bottom" Margin="8,0,0,0" Padding="8,6"
                         ToolTip.Tip="{Binding ScreenshotTooltip}" ToolTip.ShowOnDisabled="True">
+                    <Button.IsVisible>
+                        <MultiBinding Converter="{x:Static BoolConverters.And}">
+                            <Binding Path="!IsShownInSimpleStand"/>
+                            <Binding Path="CanPasteImages"/>
+                        </MultiBinding>
+                    </Button.IsVisible>
                     <materialIcons:MaterialIcon Kind="Monitor" Width="15" Height="15"/>
                 </Button>
                 <!-- Background work (AC-531): a persistent button next to Send that says how much sub-agent/shell

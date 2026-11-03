@@ -965,7 +965,7 @@
                              button would be live but dead (AC-1316). -->
                         <Button x:Name="ScreenshotButton" Grid.Column="1" Margin="6,0,0,0" Command="{Binding Session.CaptureScreenshotCommand}"
                                 Classes="Compact composerAction" VerticalAlignment="Bottom" Padding="8,6"
-                                IsVisible="{Binding Session, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                IsVisible="{Binding Session.CanPasteImages, FallbackValue=False}"
                                 ToolTip.Tip="{Binding Session.ScreenshotTooltip}" ToolTip.ShowOnDisabled="True">
                             <materialIcons:MaterialIcon Kind="Monitor" Width="14" Height="14" VerticalAlignment="Center"/>
                         </Button>

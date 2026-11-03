@@ -494,8 +494,12 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     private bool _isInputEnabled = true;
 
     // AC-1456: what the composer says while it is empty; a remote pane says why it cannot send yet.
-    [ObservableProperty]
-    private string _composerPlaceholder = "Send a message...  (Enter = send, Shift+Enter = new line, Ctrl+V = paste text or image)";
+    private string? _composerPlaceholder;
+    public string ComposerPlaceholder
+    {
+        get => _composerPlaceholder ?? $"Send a message...  (Enter = send, Shift+Enter = new line, Ctrl+V = paste text{(CanPasteImages ? " or image" : "")})";
+        set => SetProperty(ref _composerPlaceholder, value);
+    }
 
     // AC-1469: false while the line to this pane's server is down, so Send and the permission buttons are off with it.
     [ObservableProperty]
@@ -2003,6 +2007,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             _PopulateLiveControls(launched.LiveOptions);
 
             OnPropertyChanged(nameof(CanPasteImages));
+            OnPropertyChanged(nameof(ComposerPlaceholder));
             // A local tool session gates via the per-call approval prompt (not Claude's permission modes), so it
             // gets the "Allow all tools" convenience toggle; Claude uses its own permission mode dropdown.
             var isLocalToolSession = Capabilities is { SupportsTools: true, SupportsPermissions: false };
@@ -2924,6 +2929,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         {
             Capabilities = capabilities;
             OnPropertyChanged(nameof(CanPasteImages));
+            OnPropertyChanged(nameof(ComposerPlaceholder));
         }
         UpdateChildAgents(state.Children);
         _cliSessionId = state.CliSessionId;
