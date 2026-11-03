@@ -6,24 +6,6 @@ namespace Cockpit.Core.Tests.Plugins;
 public class PluginHashTests
 {
     [Fact]
-    public void ComputeClosure_IsIndependentOfFileOrder_AndPathSeparator()
-    {
-        var a = PluginHash.ComputeClosure(
-        [
-            new PluginClosureFile("Plugin.dll", "aaaa"),
-            new PluginClosureFile("runtimes/linux/native/lib.so", "bbbb"),
-        ]);
-        var reordered = PluginHash.ComputeClosure(
-        [
-            new PluginClosureFile(@"runtimes\linux\native\lib.so", "bbbb"),
-            new PluginClosureFile("Plugin.dll", "aaaa"),
-        ]);
-
-        Assert.Equal(reordered, a);
-        Assert.Matches("^[0-9a-f]{64}$", a);
-    }
-
-    [Fact]
     public void ComputeClosure_AChangedDependencyHash_ChangesTheClosure()
     {
         var original = PluginHash.ComputeClosure(

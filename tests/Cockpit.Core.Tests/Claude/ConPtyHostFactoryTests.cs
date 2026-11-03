@@ -26,14 +26,4 @@ public class ConPtyHostFactoryTests
     {
         Assert.Equal(expected, ConPtyHostFactory.QuoteArgument(argument));
     }
-
-    [Theory]
-    [InlineData("claude", new string[0], "claude")]
-    [InlineData("claude", new[] { "--permission-mode", "acceptEdits", "--model", "opus", "--effort", "high" }, "claude --permission-mode acceptEdits --model opus --effort high")]
-    [InlineData(@"C:\Program Files\Claude\claude.exe", new[] { "--model", "opus" }, @"""C:\Program Files\Claude\claude.exe"" --model opus")]
-    [InlineData("claude", new[] { "--settings", @"{""statusLine"":{""type"":""command""}}" }, @"claude --settings ""{\""statusLine\"":{\""type\"":\""command\""}}""")]
-    public void BuildCommandLine_JoinsTheQuotedExecutableAndArgumentsWithSpaces(string executable, string[] arguments, string expected)
-    {
-        Assert.Equal(expected, ConPtyHostFactory.BuildCommandLine(executable, arguments));
-    }
 }

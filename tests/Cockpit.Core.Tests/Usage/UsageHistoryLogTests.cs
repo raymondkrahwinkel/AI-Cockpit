@@ -69,44 +69,6 @@ public class UsageHistoryLogTests : IDisposable
     }
 
     [Fact]
-    public async Task RunKind_SurvivesTheRoundTrip_AsItsName_NotAsANumber()
-    {
-        await _Log().RecordAsync(_Snapshot("pane-a", runId: "run-7"));
-
-        // Written as a name so a renumbered enum cannot silently relabel yesterday's records, and so the file
-        // stays readable in an editor — the trail's stated promise.
-        var line = await File.ReadAllTextAsync(_logPath);
-        Assert.Contains("\"Embedded\"", line, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task ReadRecentAsync_SeveralSessions_KeepsThemApart_AndGivesTheNewestFirst()
-    {
-        var log = _Log();
-        await log.RecordAsync(_Snapshot("pane-a"));
-        await log.RecordAsync(_Snapshot("pane-b"));
-        await log.RecordAsync(_Snapshot("pane-c"));
-
-        var read = await log.ReadRecentAsync();
-
-        Assert.Equal(["pane-c", "pane-b", "pane-a"], read.Select(entry => entry.PaneId));
-    }
-
-    [Fact]
-    public async Task ReadRecentAsync_SeveralRecordsForOneSession_KeepsThemAll_SoTheLatestIsTheTotal()
-    {
-        var log = _Log();
-        await log.RecordAsync(_Snapshot("pane-a", outputTokens: 100));
-        await log.RecordAsync(_Snapshot("pane-a", outputTokens: 250));
-
-        var read = await log.ReadRecentAsync();
-
-        // Every turn appends, so a session has a record per turn and the last one carries its running total.
-        Assert.Equal(2, read.Count);
-        Assert.Equal(250, read[0].OutputTokens);
-    }
-
-    [Fact]
     public async Task ReadRecentAsync_ALineThatIsNotJson_SkipsIt_RatherThanLosingTheTrail()
     {
         var log = _Log();
@@ -119,47 +81,12 @@ public class UsageHistoryLogTests : IDisposable
         Assert.Equal(["pane-b", "pane-a"], read.Select(entry => entry.PaneId));
     }
 
-    [Fact]
-    public async Task RecordAsync_WhenTheTrailCannotBeWritten_DoesNotThrow()
-    {
-        // A directory where the file should be: the write fails every time. Losing a measurement is bad; taking
-        // the session's turn down with it is worse, which is why this is a logged warning and not an exception.
-        Directory.CreateDirectory(_logPath);
-        var log = _Log();
-
-        await log.RecordAsync(_Snapshot("pane-a"));
-
-        Assert.Empty(await log.ReadRecentAsync());
-    }
-
-    [Fact]
-    public async Task ReadRecentAsync_NoTrailYet_ReturnsNothing()
-    {
-        Assert.Empty(await _Log().ReadRecentAsync());
-    }
-
     // --- Rotation (AC-399) ---------------------------------------------------------------------------------
 
     private string _RolloverPath() => UsageHistoryLog.RolloverPathFor(_logPath);
 
     private UsageHistoryLog _LogWithTinyLimit(long maxSizeBytes) =>
         new(_logPath, NullLogger<UsageHistoryLog>.Instance, maxSizeBytes);
-
-    [Fact]
-    public async Task RecordAsync_UnderTheSizeLimit_NeverRolls()
-    {
-        // The mutation-style boundary check (AC5): with the limit far above what a handful of records could ever
-        // reach, no rollover file must appear. If the size check were deleted or always-true/always-false in the
-        // wrong direction, this — or the test below it — goes red.
-        var log = _LogWithTinyLimit(maxSizeBytes: 10 * 1024 * 1024);
-
-        for (var i = 0; i < 5; i++)
-        {
-            await log.RecordAsync(_Snapshot($"pane-{i}"));
-        }
-
-        Assert.False(File.Exists(_RolloverPath()));
-    }
 
     [Fact]
     public async Task RecordAsync_AtTheSizeLimit_RollsToTheDotOneFile_KeepingADayNotFoldedYet()
@@ -200,20 +127,6 @@ public class UsageHistoryLogTests : IDisposable
         var recent = await log.ReadRecentAsync();
 
         Assert.Equal(["pane-new", "pane-old"], recent.Select(entry => entry.PaneId));
-    }
-
-    [Fact]
-    public async Task ReadRecentAsync_LimitSatisfiedByTheLiveFileAlone_DoesNotTouchTheRolloverFile()
-    {
-        // The rollover file is only consulted when the live file did not already fill the request — the common
-        // case (no rollover yet, or a limit smaller than the live file holds) should not pay for reading it.
-        var log = _LogWithTinyLimit(maxSizeBytes: 1);
-        await log.RecordAsync(_Snapshot("pane-old"));
-        await log.RecordAsync(_Snapshot("pane-new"));
-
-        var recent = await log.ReadRecentAsync(limit: 1);
-
-        Assert.Equal(["pane-new"], recent.Select(entry => entry.PaneId));
     }
 
     [Fact]

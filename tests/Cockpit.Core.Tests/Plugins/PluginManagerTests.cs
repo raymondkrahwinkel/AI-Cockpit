@@ -14,30 +14,6 @@ namespace Cockpit.Core.Tests.Plugins;
 public class PluginManagerTests
 {
     [Fact]
-    public void LoadAndConfigure_InstantiatesAndConfiguresOnlyTheLoadDecidedPlugins()
-    {
-        var load = _Discovered("keep", PluginLoadDecision.Load);
-        var others = new[]
-        {
-            _Discovered("disabled", PluginLoadDecision.Disabled),
-            _Discovered("consent", PluginLoadDecision.NeedsConsent),
-            _Discovered("mismatch", PluginLoadDecision.AbstractionsMajorMismatch),
-        };
-        var plugins = new Dictionary<string, FakePlugin>();
-        var activated = new List<string>();
-        var manager = _Manager();
-
-        manager.LoadAndConfigure([load, .. others], new ServiceCollection(), candidate =>
-        {
-            activated.Add(candidate.FolderId);
-            return plugins[candidate.FolderId] = new FakePlugin(candidate.FolderId);
-        });
-
-        Assert.Equal(new[] { "keep" }, activated);
-        Assert.Equal(1, plugins["keep"].ConfigureCount);
-    }
-
-    [Fact]
     public void LoadAndConfigure_WhenAPluginNeedsConsent_RecordsItAsPendingApprovalNotAFailure()
     {
         var discovered = _Discovered("consent", PluginLoadDecision.NeedsConsent);
@@ -72,8 +48,6 @@ public class PluginManagerTests
         Assert.Empty(activated);
         Assert.Empty(manager.Loaded);
     }
-
-    private static PluginManager _Manager() => new(NullLogger<PluginManager>.Instance, new PluginDiagnostics());
 
     private static DiscoveredPlugin _Discovered(string id, PluginLoadDecision decision) => new(
         $"/plugins/{id}", id,

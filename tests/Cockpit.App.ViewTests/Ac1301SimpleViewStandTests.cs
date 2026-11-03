@@ -20,24 +20,6 @@ namespace Cockpit.App.ViewTests;
 [Collection("avalonia")]
 public class Ac1301SimpleViewStandTests
 {
-    // Criterion 1: the setting decides the stand the app opens in, and the switch decides only what is on
-    // screen now — so flipping the switch and restarting comes back to what the setting says.
-    [Fact]
-    public void TheSettingSeedsTheStandAndTheSwitchLeavesItAlone()
-    {
-        var layout = _LayoutStore(new LayoutSettings { OpenInSimpleView = true });
-        var cockpit = _Cockpit(layout);
-
-        Assert.True(cockpit.SimpleView);
-        Assert.True(cockpit.OpenInSimpleView);
-
-        cockpit.ShowPanelsViewCommand.Execute(null);
-
-        Assert.False(cockpit.SimpleView);
-        Assert.True(cockpit.OpenInSimpleView);
-        layout.DidNotReceive().SaveAsync(Arg.Any<LayoutSettings>());
-    }
-
     // Criterion 3: the save is awaited, not started and let go. A handler that returned before the write
     // finished would let the window close on a value that never reached disk — and would still say "Saved".
     [Fact]

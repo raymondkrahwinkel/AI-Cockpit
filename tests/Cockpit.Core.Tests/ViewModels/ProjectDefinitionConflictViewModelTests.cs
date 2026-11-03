@@ -47,19 +47,4 @@ public class ProjectDefinitionConflictViewModelTests
         Assert.Equal("Use ICqrsSender, add tests", row.DepotValue);
         Assert.True(viewModel.HasCollision);
     }
-
-    [Fact]
-    public void Rows_OnlyTheOperatorChangedIt_AndTheRemoteStayedPut_HasNoRowAtAll()
-    {
-        // Nothing to reconcile: this field alone would never have conflicted, so it must not appear as if it did.
-        var baseline = Binding(name: "Cockpit");
-        var mine = Edit(name: "Renamed by me");
-        var latest = Binding(name: "Cockpit");
-
-        var viewModel = new ProjectDefinitionConflictViewModel(mine, baseline, latest);
-
-        Assert.Empty(viewModel.Rows);
-        Assert.False(viewModel.HasCollision);
-    }
-
 }

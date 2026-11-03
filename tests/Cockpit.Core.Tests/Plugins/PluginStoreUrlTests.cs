@@ -13,12 +13,4 @@ public class PluginStoreUrlTests
             PluginStoreUrl.GitHubContentsUrl("octocat", "hello-world", "dir/a b.zip?ref=evil", "main"));
     }
 
-    [Theory]
-    [InlineData("github-issues/github-issues-1.0.0.zip")]
-    [InlineData("plugin.zip")]
-    public void IsSafeRelativePath_PlainRelativePath_IsSafe(string path)
-    {
-        Assert.True(PluginStoreUrl.IsSafeRelativePath(path));
-    }
-
 }

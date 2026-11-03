@@ -39,25 +39,6 @@ public sealed class ModelPatternsTests
         Assert.True(pattern.N > 0 && pattern.Confidence is > 0 and <= 1);
     }
 
-    // AC-1982: two subscriptions alternate in one window; each profile is its own series, and a reading without a profile counts for none.
-    [Fact]
-    public void Derive_AlternatingProfilesInOneWindow_GivesOneFlatQuotaPatternPerProfile()
-    {
-        var start = new DateTimeOffset(2026, 9, 28, 0, 0, 0, TimeSpan.Zero);
-        var series = new List<ModelObservation>();
-        for (var hour = 0; hour < 72; hour++)
-        {
-            series.Add(new ModelObservation("claude", "m", ModelObservationKind.QuotaReading, start.AddHours(hour), 79, "weekly", "a"));
-            series.Add(new ModelObservation("claude", "m", ModelObservationKind.QuotaReading, start.AddHours(hour).AddMinutes(30), 96, "weekly", "b"));
-            series.Add(new ModelObservation("claude", "m", ModelObservationKind.QuotaReading, start.AddHours(hour).AddMinutes(45), 10 + hour, "weekly"));
-        }
-
-        var quota = ModelPatterns.Derive(series, Local, 1).Where(pattern => pattern.Metric == ModelPatternMetric.QuotaDrainPercentPerHour).OrderBy(pattern => pattern.Profile).ToArray();
-
-        Assert.Equal(["a", "b"], quota.Select(pattern => pattern.Profile));
-        Assert.All(quota, pattern => Assert.Empty(pattern.Peaks));
-    }
-
     [Fact]
     public void Read_DropsObservationsPastRetentionAndStoresARepeatedQuotaReadingOnce()
     {

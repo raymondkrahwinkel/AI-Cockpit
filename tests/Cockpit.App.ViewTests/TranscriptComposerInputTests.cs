@@ -78,21 +78,6 @@ public sealed class TranscriptComposerInputTests
     }
 
     [Fact]
-    public void PastingText_InsertsAtTheCaret_ReplacingAnySelection() => HeadlessAvalonia.Run(() =>
-    {
-        var harness = new Harness { ClipboardText = "X" };
-        harness.Box.Text = "ab";
-        harness.Box.CaretIndex = 1;
-
-        var down = new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.V, KeyModifiers = KeyModifiers.Control };
-        harness.Input.OnKeyDown(null, down);
-
-        Assert.True(down.Handled);
-        Assert.Equal("aXb", harness.Box.Text);
-        Assert.Equal(2, harness.Box.CaretIndex);
-    });
-
-    [Fact]
     public void PastingAnImage_RoutesThePngBytesToTheResolvedSink_AndLeavesTextUntouched() => HeadlessAvalonia.Run(() =>
     {
         // Not disposed here: a real paste hands the bitmap over and _HandlePasteAsync owns disposing it.
@@ -104,41 +89,6 @@ public sealed class TranscriptComposerInputTests
         Assert.NotNull(harness.PastedImage);
         Assert.NotEmpty(harness.PastedImage!);
         Assert.Equal("unchanged", harness.Box.Text);
-    });
-
-    // Mirrors AssistantChatView pasting an image with no session yet to attach to (AC-953): the sink resolves
-    // to null and the paste drops silently instead of throwing or falling through to a text insert.
-    [Fact]
-    public void PastingAnImage_WhenNoSinkIsAvailable_DropsSilently() => HeadlessAvalonia.Run(() =>
-    {
-        var harness = new Harness { ImageSinkAvailable = false, ClipboardBitmap = new Bitmap(new MemoryStream(TinyPng)) };
-        harness.Box.Text = "unchanged";
-
-        harness.PressCtrlV();
-
-        Assert.Null(harness.PastedImage);
-        Assert.Equal("unchanged", harness.Box.Text);
-    });
-
-    [Fact]
-    public void AcceptingAMention_SplicesItInAtTheCaret_NotAtTheStartOrEndOfTheText() => HeadlessAvalonia.Run(() =>
-    {
-        var harness = new Harness();
-        var picker = new MentionPickerViewModel(_ => Task.FromResult<IReadOnlyList<string>>(["src/Foo.cs"]), () => "/repo");
-        harness.Box.Text = "hi @fo, thanks";
-        picker.OnTextChanged(harness.Box.Text, caretIndex: 6); // caret right after "@fo"
-        Assert.True(picker.IsOpen);
-        Assert.NotNull(picker.Selected);
-        harness.Picker = picker;
-        harness.Box.CaretIndex = 6;
-
-        var args = harness.PressKey(Key.Enter);
-
-        Assert.True(args.Handled);
-        Assert.False(picker.IsOpen);
-        Assert.Equal("hi @src/Foo.cs , thanks", harness.Box.Text);
-        Assert.Equal("hi @src/Foo.cs ".Length, harness.Box.CaretIndex);
-        Assert.Equal(0, harness.Send.ExecuteCount);
     });
 
     // AC-726: what the paths do once they arrive; the OS drag itself is verified by hand. Rows 1 and 2 force

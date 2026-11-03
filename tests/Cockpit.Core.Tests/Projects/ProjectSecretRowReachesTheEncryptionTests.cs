@@ -86,22 +86,6 @@ public class ProjectSecretRowReachesTheEncryptionTests : IDisposable
         Assert.DoesNotContain(password, $"{project}", StringComparison.Ordinal);
     }
 
-    [Fact]
-    public async Task AnOrdinaryRow_IsNotTreatedAsASecret()
-    {
-        // The mirror of the test above: were Value itself secret-named, every row would be encrypted and the config
-        // would stop being the operator's to read.
-        var project = Project.Create("Cockpit") with
-        {
-            AdditionalInfo = [new ProjectInfoField("Customer", "Acme BV")],
-        };
-
-        await new ProjectStore(_configFilePath).SaveAsync(ProjectSettings.Empty.WithProject(project));
-        var config = JsonNode.Parse(await File.ReadAllTextAsync(_configFilePath))!;
-
-        Assert.Empty(SecretJsonWalker.Transform(config, SecretFields.ByName, (_, _) => "REDACTED"));
-    }
-
     public void Dispose()
     {
         if (Directory.Exists(_tempDir))

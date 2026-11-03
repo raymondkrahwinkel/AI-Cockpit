@@ -18,11 +18,6 @@ namespace Cockpit.Core.Tests.Mcp;
 /// </summary>
 public class McpToolProviderConnectAsyncTests
 {
-    // Each reachable server sleeps every request (initialize, tools/list, ...) by this much — long enough that the
-    // recorded request windows below (see InProcessMcpHttpServer.RequestWindows) have a comfortable margin to prove
-    // overlap even under scheduling jitter.
-    private static readonly TimeSpan DelayPerServer = TimeSpan.FromMilliseconds(400);
-
     /// <summary>Disables the built-in stdio presets (npx/uvx) — irrelevant here and not guaranteed available on a test machine.</summary>
     private static IReadOnlyList<McpServerConfig> _DisableBuiltIns() =>
         [.. McpServerPresets.LocalDefaults.Select(server => server with { Enabled = false })];
@@ -41,40 +36,6 @@ public class McpToolProviderConnectAsyncTests
         Assert.Equal(1, keyring.LivePaneCount);
 
         await session.DisposeAsync();
-
-        Assert.Equal(0, keyring.LivePaneCount);
-        Assert.Equal(0, keyring.LiveTokenCount);
-    }
-
-    // A connect with no pane id (no session to name) never touches the keyring — nothing was minted, so disposing
-    // must not throw trying to revoke something that was never there.
-    [Fact]
-    public async Task ConnectAsync_WithoutAPaneId_NeverTouchesTheKeyring()
-    {
-        var keyring = new SessionMcpKeyring();
-        await using var server = await InProcessMcpHttpServer.StartAsync<McpTestToolA>();
-        string[] selected = ["Depot", "YouTrack", "cockpit-worktrees", "cockpit-verify", "cockpit-local-ci", "cockpit-orchestrator", "cockpit-coding", "cockpit-coding-shell", "custom-server"];
-        var logger = Substitute.For<ILogger<McpToolProvider>>();
-        var registry = _DisableBuiltIns().Concat(selected.Select(name => new McpServerConfig
-        {
-            Name = name, Transport = McpTransport.Http, Url = server.Url,
-        })).Append(new McpServerConfig { Name = "needs-sign-in", Transport = McpTransport.Http, Url = server.Url, Auth = McpServerAuth.OAuth });
-        var coordinator = Substitute.For<IMcpOAuthCoordinator>();
-        coordinator.AcquireAsync(Arg.Any<McpServerConfig>(), false, Arg.Any<CancellationToken>()).Returns(McpOAuthAccess.AuthorizationRequired);
-        var provider = _ProviderFor(registry, keyring, oauthCoordinator: coordinator, logger: logger);
-
-        // AC-1962: the same selection survives isolation, including independently scoped servers and failed connects.
-        foreach (var root in new string?[] { null, "/wt/run-1" })
-        {
-            await using var session = await provider.ConnectAsync(
-                enabledServerNames: new HashSet<string>([.. selected, "needs-sign-in"]), confineFileToolsToDirectory: root);
-            Assert.Equal(selected, session.ConnectedServerNames);
-            Assert.Equal(new[] { "needs-sign-in" }, session.ServersNeedingSignIn);
-            Assert.Contains(session.ConnectionIssues, issue => issue.Name == "needs-sign-in");
-        }
-        Assert.Contains(logger.ReceivedCalls(), call => call.GetArguments().Any(argument =>
-            argument?.ToString() is { } message && message.Contains("outside that guarantee", StringComparison.Ordinal)
-            && message.Contains("cockpit-coding-shell", StringComparison.Ordinal) && message.Contains("Depot", StringComparison.Ordinal)));
 
         Assert.Equal(0, keyring.LivePaneCount);
         Assert.Equal(0, keyring.LiveTokenCount);

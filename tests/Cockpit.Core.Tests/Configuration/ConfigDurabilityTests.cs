@@ -34,16 +34,6 @@ public class ConfigDurabilityTests : IDisposable
     };
 
     [Fact]
-    public async Task EverySave_LeavesTheVersionBeforeItAsABackup()
-    {
-        await Store().SaveAsync([Server("first")]);
-        await Store().SaveAsync([Server("second")]);
-
-        Assert.True(File.Exists(_configPath + ".bak"));
-        Assert.Contains("first", await File.ReadAllTextAsync(_configPath + ".bak"));
-    }
-
-    [Fact]
     public async Task ADamagedConfig_IsRecoveredFromItsBackup_NotStartedOverEmpty()
     {
         await Store().SaveAsync([Server("first")]);

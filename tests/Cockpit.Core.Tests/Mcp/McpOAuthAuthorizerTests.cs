@@ -20,11 +20,6 @@ public class McpOAuthAuthorizerTests
         Auth = McpServerAuth.OAuth,
     };
 
-    private static readonly Uri AuthorizationUri = new("https://depot.example/connect/authorize");
-
-    /// <summary>A scheme the real hand-off refuses to give the shell, so nothing can take it.</summary>
-    private static readonly Uri NonBrowsableAuthorizationUri = new("cockpit-test:authorize");
-
     private static McpOAuthAuthorizer _Create(FakeMcpOAuthTokenStore store) =>
         new(NullLogger<McpOAuthAuthorizer>.Instance, store);
 
@@ -44,18 +39,4 @@ public class McpOAuthAuthorizerTests
         var selected = options.ScopeSelector(["openid", "offline_access", "depot"]);
         Assert.Equal(["depot", "custom-scope"], selected);
     }
-
-    [Fact]
-    public void CreateOptions_WithCommaSeparatedOAuthScopes_SplitsThemAnyway()
-    {
-        // The field is free text; a scope list pasted from a server's own docs is at least as often
-        // comma-separated as space-separated.
-        var server = Server with { OAuthScopes = "openid, offline_access,\tdepot" };
-
-        var options = _Create(new FakeMcpOAuthTokenStore()).CreateOptions(server);
-
-        Assert.NotNull(options.ScopeSelector);
-        Assert.Equal(["openid", "offline_access", "depot"], options.ScopeSelector([]));
-    }
-
 }

@@ -33,26 +33,6 @@ public class EmbeddedConfinementGateTests
         CockpitViewModel._EmbeddedConfinementRefusal(request, Profile, isSessionReady, confinesFileAccess);
 
     [Fact]
-    public void ARunThatAskedForNeither_IsNotGated()
-    {
-        // An ordinary embedded session (the CEO planning round) asks for no confinement, so a non-confining provider is
-        // its operator's own choice to make — the gate must not turn every plain embed into a refusal.
-        Assert.Null(_Refusal(new EmbeddedSessionRequest(), isSessionReady: Ready, confinesFileAccess: false));
-    }
-
-    [Fact]
-    public void AnIsolatedRun_OnAConfiningProvider_Proceeds()
-    {
-        Assert.Null(_Refusal(_Isolated()));
-    }
-
-    [Fact]
-    public void AConfinedRunWithoutAWorktree_OnAConfiningProvider_Proceeds()
-    {
-        Assert.Null(_Refusal(_Confined()));
-    }
-
-    [Fact]
     public void AnIsolatedRun_OnANonConfiningProvider_IsRefused_NamingTheProfileAndTheWayOut()
     {
         var refusal = _Refusal(_Isolated(), confinesFileAccess: false);

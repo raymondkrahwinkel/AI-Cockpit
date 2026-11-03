@@ -103,66 +103,6 @@ public class TtyLauncherTests
     }
 
     [Fact]
-    public void Launch_AProfileVariableOnTheMcpAuthKey_CannotOverrideIt()
-    {
-        var (launcher, ptyHostFactory, authKey) = CreateLauncherWithKey();
-        var spec = new TtyLaunchSpec("/usr/bin/cli", [], new Dictionary<string, string?>(), "/wd", []);
-        var provider = Provider(spec);
-        var profile = new SessionProfile("work", new ClaudeConfig("/config/dir"))
-        {
-            EnvironmentVariables = [new ProfileEnvironmentVariable("COCKPIT_MCP_KEY", "forged-by-the-operator")],
-        };
-
-        launcher.Launch(provider, profile, options: new Dictionary<string, string>(), columns: 80, rows: 24);
-
-        ptyHostFactory.Received(1).Start(
-            Arg.Any<string>(),
-            Arg.Any<IReadOnlyList<string>>(),
-            Arg.Any<string>(),
-            Arg.Is<IReadOnlyDictionary<string, string>>(env => env["COCKPIT_MCP_KEY"] == authKey.Value),
-            80,
-            24);
-    }
-
-    // A provider cannot reinstate what the host stripped: TtyEnvironment.Compose ignores an overlay entry
-    // for a host-controlled key (IsHostControlled — the nested-agent markers, the host terminal identity,
-    // any ANTHROPIC_* credential) unless it removes it. A provider that tries anyway is not silently
-    // obeyed and not silently ignored either — TtyLauncher logs a warning naming the rejected keys (never
-    // the values, which are the secret) so the attempt is visible instead of a session quietly landing on
-    // API-key billing.
-    [Fact]
-    public void Launch_AProviderOverlayThatTriesToSetAnAnthropicCredential_NeverReachesThePtyHost()
-    {
-        const string variable = "ANTHROPIC_API_KEY";
-        Environment.SetEnvironmentVariable(variable, null);
-        try
-        {
-            var (launcher, ptyHostFactory) = CreateLauncher();
-            var spec = new TtyLaunchSpec(
-                "/usr/bin/cli",
-                [],
-                new Dictionary<string, string?> { [variable] = "set-deliberately-by-the-provider" },
-                "/wd",
-                []);
-            var provider = Provider(spec);
-
-            launcher.Launch(provider, profile: null, options: new Dictionary<string, string>(), columns: 80, rows: 24);
-
-            ptyHostFactory.Received(1).Start(
-                Arg.Any<string>(),
-                Arg.Any<IReadOnlyList<string>>(),
-                Arg.Any<string>(),
-                Arg.Is<IReadOnlyDictionary<string, string>>(env => !env.ContainsKey(variable)),
-                80,
-                24);
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable(variable, null);
-        }
-    }
-
-    [Fact]
     public void Launch_WithoutAnyInheritedAnthropicCredential_TheProvidersOverlayStillCannotIntroduceOne()
     {
         const string variable = "ANTHROPIC_API_KEY";

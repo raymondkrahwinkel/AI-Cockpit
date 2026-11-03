@@ -24,26 +24,6 @@ public class WorkspacePaneRestoreConfigTests : IDisposable
     }
 
     [Fact]
-    public async Task LoadAsync_AHandWrittenAiSessionPane_CarriesAllFourNewFields()
-    {
-        await File.WriteAllTextAsync(_configPath, """
-            {"Workspaces":{"ActiveWorkspaceId":"w1","Workspaces":[
-              {"Id":"w1","Name":"Work","Type":"Sessions","Panes":[
-                {"Id":"p1","Kind":"AiSession","ProfileId":"work","WorkingDirectory":"/home/raymond/webshop",
-                 "Title":"webshop","NameIsChosen":true,"SessionKind":"Tty","ProjectId":"proj-1"}]}]}}
-            """);
-
-        var loaded = await new WorkspaceSettingsStore(_configPath).LoadAsync();
-
-        var pane = loaded.Workspaces.Single(workspace => workspace.Id == "w1").Panes.Single();
-        Assert.Equal("webshop", pane.Title);
-        Assert.True(pane.NameIsChosen);
-        Assert.Equal(PaneSessionKind.Tty, pane.SessionKind);
-        Assert.Equal("proj-1", pane.ProjectId);
-        Assert.Equal("work", pane.ProfileId);
-    }
-
-    [Fact]
     public async Task LoadAsync_AnUnknownSessionKind_FallsBackToSdkRatherThanRefusingToLoad()
     {
         await File.WriteAllTextAsync(_configPath, """

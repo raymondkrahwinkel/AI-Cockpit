@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Sessions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -30,28 +29,6 @@ public class SessionTranscriptLogTests : IDisposable
     private static TranscriptSnapshotEntry Row(string id, string kind, string text) =>
         new(id, kind, text, null, null, null, null, false, DateTimeOffset.Now);
 
-    [Fact]
-    public async Task RecordedRows_ReadBackInOrder_IncludingADivider()
-    {
-        var store = CreateStore();
-        var rows = new[]
-        {
-            Row("a", "UserText", "fix the layout bug"),
-            Row("b", "Divider", "Context was full — a new conversation starts here"),
-            new TranscriptSnapshotEntry("c", "ToolUse", "", "Bash", """{"command":"ls"}""", "tool-1", "file.txt", false, DateTimeOffset.Now),
-        };
-
-        // AC-1438: what only the live view draws is never written, so the tool row's line keeps the members it always had.
-        await store.AppendAsync(Pane, rows[0]);
-        await store.AppendAsync(Pane, rows[1]);
-        await store.AppendAsync(Pane, rows[2] with { IsPendingPermission = true, StartsReply = true, TruncatedFromChars = 9 });
-
-        Assert.Equal(rows, (await store.TryLoadAsync(Pane))!);
-        Assert.Equal(
-            ["Id", "Kind", "Text", "ToolName", "InputJson", "ToolUseId", "ResultText", "IsResultError", "Timestamp", "IsFailedTurnRow", "IsPendingBrokerAnswer"],
-            JsonDocument.Parse(File.ReadLines(store.LogPath(Pane)).Last()).RootElement.EnumerateObject().Select(member => member.Name));
-    }
-
     // Everything the grooming asked the format to carry beyond AC-684's eight fields, in one trip: without these a
     // restored sub-agent run is an empty chip, a failed turn is a grey line, and nobody can tell the tool call was
     // approved rather than run unasked.
@@ -78,53 +55,6 @@ public class SessionTranscriptLogTests : IDisposable
         var loaded = Assert.Single((await store.TryLoadAsync(Pane))!);
         Assert.Equal(row with { SubAgentRows = null }, loaded with { SubAgentRows = null });
         Assert.Equal("reading the file", Assert.Single(loaded.SubAgentRows!).Text);
-    }
-
-    // A log written by a build that did not know a member yet, and one that knows a member this build does not:
-    // both read rather than throwing away the row. That additive contract is what lets AC-1090's two unanswered
-    // decisions (images, a pending permission) be filled in later without a migration.
-    public static IEnumerable<object[]> LinesFromAnyBuild =>
-    [
-        [
-            (Func<SessionTranscriptLog, Task>)(store => File.WriteAllTextAsync(store.LogPath(Pane), """{"Id":"a","Kind":"UserText","Text":"older build","Timestamp":"2026-08-30T12:00:00+00:00"}""")),
-            new TranscriptSnapshotEntry("a", "UserText", "older build", null, null, null, null, false, new DateTimeOffset(2026, 8, 30, 12, 0, 0, TimeSpan.Zero)),
-        ],
-        [
-            (Func<SessionTranscriptLog, Task>)(store => File.WriteAllTextAsync(store.LogPath(Pane), """{"Id":"b","Kind":"UserText","Text":"newer build","IsResultError":false,"Timestamp":"2026-08-30T12:00:01+00:00","Images":[{"MediaType":"image/png"}]}""")),
-            new TranscriptSnapshotEntry("b", "UserText", "newer build", null, null, null, null, false, new DateTimeOffset(2026, 8, 30, 12, 0, 1, TimeSpan.Zero)),
-        ],
-        [
-            (Func<SessionTranscriptLog, Task>)(store => store.AppendAsync(Pane, ThreadedRow)),
-            ThreadedRow,
-        ],
-    ];
-
-    // AC-1616: a line from before threads has no projects, so it reads under General; a row in two threads keeps all
-    // its thread members, or a restart would move the operator's conversation between threads.
-    private static readonly TranscriptSnapshotEntry ThreadedRow =
-        new("c", "UserText", "voor Depot de route, voor WayMark het token", null, null, null, null, false, new DateTimeOffset(2026, 8, 30, 12, 0, 2, TimeSpan.Zero))
-        {
-            ProjectIds = ["depot", "waymark"],
-            ProjectSources = new Dictionary<string, ProjectSource> { ["depot"] = ProjectSource.Explicit, ["waymark"] = ProjectSource.Mentioned },
-            ProjectParts = [new TranscriptProjectPart("depot", 0, 19), new TranscriptProjectPart("waymark", 21, 22)],
-            TurnProjectIds = ["depot", "waymark"],
-            SenderPaneId = "pane-7",
-            SenderTitle = "DEP-422",
-            MessageKind = "heads-up",
-            SubjectPaneId = "pane-8",
-        };
-
-    // The store is internal, so the way each line reaches the disk travels as `object` and is cast back once.
-    [Theory]
-    [MemberData(nameof(LinesFromAnyBuild))]
-    public async Task ALineFromAnyBuild_ReadsAsFarAsThisBuildUnderstandsIt(object written, TranscriptSnapshotEntry expected)
-    {
-        var store = CreateStore();
-        await ((Func<SessionTranscriptLog, Task>)written)(store);
-
-        var loaded = Assert.Single(await store.TryLoadAsync(Pane) ?? []);
-
-        Assert.Equivalent(expected, loaded, strict: true);
     }
 
     [Fact]

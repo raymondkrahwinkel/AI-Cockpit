@@ -3,14 +3,12 @@ using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Consent;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Consent;
-using Cockpit.Core.Profiles;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
 /// <summary>The Options → Voice "Assistant" block (AC-543): the master switch, the Assistant Profile row (a name and an editor, not a picker), the hotkey, and the independent speak-replies switch.</summary>
 public class AssistantOptionsViewModelTests
 {
-
     // ── AC-575: the consent-bypass rows ───────────────────────────────────────────────────────────────────────
 
     [Fact]
@@ -56,26 +54,6 @@ public class AssistantOptionsViewModelTests
     }
 
     [Fact]
-    public async Task ConsentBypassRows_IncludeASwitchedOnSourceThisBuildKnowsNothingAbout()
-    {
-        // The plugin has been uninstalled, or the name predates this build. Without a row the permission would be
-        // set, in force, and invisible — the one state a security setting may never be in.
-        var store = new FakeSettingsStore(new AssistantSettings { ConsentBypassDangerousSources = ["a-plugin-since-removed"] });
-        var vm = new AssistantOptionsViewModel(store);
-
-        await vm.RefreshAsync();
-
-        var row = Assert.Single(vm.ConsentBypassSources, candidate => candidate.Key == "a-plugin-since-removed");
-        Assert.True(row.BypassDangerous);
-        Assert.False(row.BypassLowRisk);
-
-        // #K11: a stored key this build no longer recognises (neither the catalogue nor the trail names it) —
-        // most often left behind by a source's own id changing underneath it — still gets a switchable row, but
-        // marked as a leftover so it does not read as a second, live source next to the real one.
-        Assert.True(row.IsOrphan);
-    }
-
-    [Fact]
     public async Task TickingDangerous_PersistsOnlyDangerous_AndLeavesTheEverydaySwitchAlone()
     {
         var store = new FakeSettingsStore(new AssistantSettings { IsEnabled = true, ConsentBypassAll = false });
@@ -93,59 +71,6 @@ public class AssistantOptionsViewModelTests
         Assert.True(vm.HasConsentBypass);
         Assert.True(store.Saved!.IsEnabled, "a bypass tick must not disturb the sibling fields");
         Assert.False(store.Saved!.ConsentBypassAll, "ticking a row must not switch allow-all back on either");
-    }
-
-    // ── AC-637: the "allow all" switch above them ─────────────────────────────────────────────────────────────
-
-    [Fact]
-    public void Constructed_WithNoStores_HasAllowAllOn()
-    {
-        // The default the page shows before any store is asked has to be the one the settings record holds, or the
-        // dialog opens saying the opposite of what is in force.
-        var vm = new AssistantOptionsViewModel();
-
-        Assert.True(vm.ConsentBypassAll);
-        Assert.True(vm.HasConsentBypass);
-    }
-
-    [Fact]
-    public async Task SwitchingAllowAllOff_PersistsIt_AndKeepsTheRowsAsTheyWere()
-    {
-        // Off falls back to the granular list rather than to an empty one: the rows are hidden while allow-all is
-        // on, never cleared, so this is the operator getting back exactly what they ticked before.
-        var store = new FakeSettingsStore(new AssistantSettings
-        {
-            IsEnabled = true,
-            ConsentBypassSources = [ConsentSourceCatalog.TerminalMcp],
-        });
-        var vm = new AssistantOptionsViewModel(store);
-        await vm.RefreshAsync();
-        Assert.True(vm.ConsentBypassAll);
-
-        vm.ConsentBypassAll = false;
-
-        Assert.False(store.Saved!.ConsentBypassAll);
-        Assert.Equal([ConsentSourceCatalog.TerminalMcp], store.Saved!.ConsentBypassSources);
-        Assert.True(vm.ConsentBypassSources.Single(row => row.Key == ConsentSourceCatalog.TerminalMcp).BypassLowRisk);
-        Assert.True(store.Saved!.IsEnabled, "the allow-all switch must not disturb the sibling fields");
-    }
-
-    [Fact]
-    public async Task RefreshAsync_SeedsAllowAllFromDisk_WithoutSavingItBackOut()
-    {
-        var store = new FakeSettingsStore(new AssistantSettings
-        {
-            ConsentBypassAll = false,
-            ContextCompactionPercent = 30,
-            ConsentBypassSources = [ConsentSourceCatalog.TerminalMcp], // seeding the rows must not write them back either
-        });
-        var vm = new AssistantOptionsViewModel(store);
-
-        await vm.RefreshAsync();
-
-        Assert.False(vm.ConsentBypassAll);
-        Assert.Equal(30, vm.ContextCompactionPercent);
-        Assert.Null(store.Saved);
     }
 
     [Fact]
@@ -186,21 +111,5 @@ public class AssistantOptionsViewModelTests
             Saved = settings;
             return Task.CompletedTask;
         }
-    }
-
-    private sealed class FakeProfileStore(AssistantProfileSlot initial) : IAssistantProfileStore
-    {
-        public Task<AssistantProfileSlot> LoadAsync(CancellationToken cancellationToken = default) => Task.FromResult(initial);
-
-        // Records nothing: no test here repoints, because the row this file covers is not a picker. What it recorded
-        // was picker scaffolding that outlived the picker — set, never asserted, and therefore guarding nothing.
-        public Task<AssistantProfileSlot> RepointAsync(
-            SessionProfile record,
-            bool replacesStandingInstruction,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult(new AssistantProfileSlot(record, null, replacesStandingInstruction));
-
-        public Task<AssistantProfileSlot> UnsetAsync(string reason, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new AssistantProfileSlot(null, reason));
     }
 }

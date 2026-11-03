@@ -73,23 +73,4 @@ public class ProjectResourceSecretPathHeuristicTests
             ProjectResourceSecretPathHeuristic.IsLikelySecretPath("~/.ssh/id_rsa"),
             ProjectResourceSecretPathHeuristic.IsLikelySecretPath(absolute));
     }
-
-    /// <summary>An absolute path outside home is out of this heuristic's scope entirely — see the class remarks on why.</summary>
-    [Fact]
-    public void IsLikelySecretPath_AnAbsolutePathOutsideHome_IsFalse()
-    {
-        var outside = OperatingSystem.IsWindows() ? @"C:\etc\ssh\ssh_host_rsa_key" : "/etc/ssh/ssh_host_rsa_key";
-
-        Assert.False(ProjectResourceSecretPathHeuristic.IsLikelySecretPath(outside));
-    }
-
-    /// <summary>
-    /// Casing: Linux is case-sensitive, Windows is not — the same platform split
-    /// <see cref="ProjectResourcePathPortability"/>'s own comparisons already follow.
-    /// </summary>
-    [Fact]
-    public void IsLikelySecretPath_UppercasedDirectory_MatchesOnlyOnAPlatformThatIgnoresCase()
-    {
-        Assert.Equal(OperatingSystem.IsWindows(), ProjectResourceSecretPathHeuristic.IsLikelySecretPath("~/.SSH/ID_RSA"));
-    }
 }

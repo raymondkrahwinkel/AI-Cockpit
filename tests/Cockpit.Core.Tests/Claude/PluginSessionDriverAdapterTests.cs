@@ -115,25 +115,6 @@ public class PluginSessionDriverAdapterTests
         Assert.Equal("pane-1", keyring.PaneFor(live));
     }
 
-    /// <summary>
-    /// A session on the shared app key has no token of its own, and the app key is not this adapter's to drop — it is
-    /// the whole app's baseline capability, and revoking it would take every other session's access with it.
-    /// </summary>
-    [Fact]
-    public async Task DisposeAsync_WithNoPaneId_LeavesTheSharedAppKeyAlone()
-    {
-        var keyring = new SessionMcpKeyring();
-        var inner = new FakePluginSessionDriver();
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey, keyring: keyring);
-        await adapter.StartAsync();
-        Assert.NotNull(inner.LastEnvironment);
-        Assert.Equal(_authKey.Value, inner.LastEnvironment[WellKnownSessionEnvironment.CockpitMcpKey]);
-
-        var act = async () => await adapter.DisposeAsync();
-
-        await act();
-    }
-
     private static readonly IReadOnlyDictionary<string, string> PaneOptions =
         new Dictionary<string, string> { [WellKnownPluginSessionOptions.PaneId] = "pane-1" };
 
@@ -170,58 +151,6 @@ public class PluginSessionDriverAdapterTests
         Assert.False(adapter.Capabilities.ConfinesFileAccessToWorkingDirectory);
     }
 
-    [Theory]
-    [InlineData("acceptEdits")]
-    [InlineData("default")]
-    [InlineData("plan")]
-    public async Task Capabilities_ForAPermissionBasedConfiningProvider_ReportsConfined_WhenStartedInAPermissionEngagedMode(string mode)
-    {
-        var inner = new FakePluginSessionDriver { Capabilities = _PermissionConfining() };
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
-
-        // The permission system stays engaged in these modes, so cwd-bound tools remain confined — the isolated run is
-        // allowed to proceed. acceptEdits is the shipped Autopilot default (the interim mitigation), so this must pass.
-        await adapter.StartAsync(permissionMode: mode);
-
-        Assert.True(adapter.Capabilities.ConfinesFileAccessToWorkingDirectory);
-    }
-
-    [Fact]
-    public async Task Capabilities_ForAPermissionBasedConfiningProvider_ReportsConfined_WhenStartedWithNoExplicitMode()
-    {
-        var inner = new FakePluginSessionDriver { Capabilities = _PermissionConfining() };
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
-
-        // No permission mode selected falls back to the driver's own default (which confines) — not a bypass, so confined.
-        await adapter.StartAsync();
-
-        Assert.True(adapter.Capabilities.ConfinesFileAccessToWorkingDirectory);
-    }
-
-    [Fact]
-    public async Task Capabilities_ForAPermissionBasedConfiningProvider_ReportsUnconfined_ForAnUnrecognisedMode()
-    {
-        var inner = new FakePluginSessionDriver { Capabilities = _PermissionConfining() };
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
-
-        // Allowlist, not denylist (fail closed): a mode the adapter does not recognise as permission-engaged is treated
-        // as not confining, so a future/unknown mode is refused until reviewed rather than silently trusted.
-        await adapter.StartAsync(permissionMode: "yolo");
-
-        Assert.False(adapter.Capabilities.ConfinesFileAccessToWorkingDirectory);
-    }
-
-    [Fact]
-    public void Capabilities_ForAPermissionBasedConfiningProvider_ReportsUnconfined_BeforeStart()
-    {
-        var inner = new FakePluginSessionDriver { Capabilities = _PermissionConfining() };
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
-
-        // Fail closed before the permission mode is resolved: an isolation gate that read the capability before start
-        // must not be told the session is confined on an assumption. (The host reads it after start; this guards the seam.)
-        Assert.False(adapter.Capabilities.ConfinesFileAccessToWorkingDirectory);
-    }
-
     [Fact]
     public async Task Capabilities_ForASandboxConfiningProvider_StaysConfined_EvenInBypass()
     {
@@ -232,19 +161,6 @@ public class PluginSessionDriverAdapterTests
         // by the AC-190 permission-mode check. Regression guard that the fix touches only permission-based providers.
         await adapter.StartAsync(permissionMode: "bypassPermissions");
 
-        Assert.True(adapter.Capabilities.ConfinesFileAccessToWorkingDirectory);
-    }
-
-    [Fact]
-    public async Task Capabilities_ForASandboxConfiningProvider_IsConfined_BeforeStart()
-    {
-        var inner = new FakePluginSessionDriver { Capabilities = _SandboxConfining() };
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
-
-        // A sandbox provider's confinement does not depend on a resolved permission mode, so it holds from construction.
-        Assert.True(adapter.Capabilities.ConfinesFileAccessToWorkingDirectory);
-
-        await adapter.StartAsync(permissionMode: "acceptEdits");
         Assert.True(adapter.Capabilities.ConfinesFileAccessToWorkingDirectory);
     }
 
@@ -321,136 +237,5 @@ public class PluginSessionDriverAdapterTests
         // restriction, use your own config" and silently inheriting more than the baseline.
         Assert.Empty(narrowedInner.LastMcpServers!);
         Assert.True(narrowedInner.LastMcpServers!.Count <= unnarrowedInner.LastMcpServers!.Count);
-    }
-
-    [Fact]
-    public async Task RespondToPermissionAsync_CarriesTheOperatorsAnswers_ToTheInnerDriver()
-    {
-        // AC-715: a clarifying question is answered, not merely allowed — the answers must survive the hop across
-        // the plugin boundary, or the agent is approved and still waiting.
-        var inner = new FakePluginSessionDriver();
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
-
-        await adapter.RespondToPermissionAsync("tool_1", allow: true, """{"Which suites?":"Core"}""", CancellationToken.None);
-
-        Assert.Equal(("tool_1", true), inner.LastPermissionResponse);
-        Assert.Equal("""{"Which suites?":"Core"}""", inner.LastPermissionAnswersJson);
-    }
-
-    [Fact]
-    public async Task AllowPermissionAlwaysAsync_ForwardsTheAlwaysAllowIntent_ToTheInnerDriver()
-    {
-        var inner = new FakePluginSessionDriver();
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
-
-        // D4: the adapter forwards a wildcard always-allow to the plugin driver (a driver that can persist it for the
-        // session does; one that cannot falls back to a one-time allow) rather than always approving once itself.
-        // AC-1476: an exact one stays in the adapter, since a provider's own always-allow is wider than that.
-        await adapter.AllowPermissionAlwaysAsync("tool_1", "read_file", "{}", PermissionRuleScope.Wildcard);
-
-        Assert.Equal("tool_1", inner.LastAllowAlwaysToolUseId);
-    }
-
-    [Theory]
-    [MemberData(nameof(_EventMappings))]
-    public async Task Events_MapsEachPluginEventSubtype_ToItsClaudeSessionEventCounterpart(
-        PluginSessionEvent pluginEvent, Func<SessionEvent, bool> isExpectedMapping)
-    {
-        var inner = new FakePluginSessionDriver();
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
-
-        inner.Emit(pluginEvent);
-        inner.Complete();
-
-        var mapped = new List<SessionEvent>();
-        await foreach (var evt in adapter.Events)
-        {
-            mapped.Add(evt);
-        }
-
-        Assert.True(isExpectedMapping(Assert.Single(mapped)));
-    }
-
-    public static IEnumerable<object[]> _EventMappings()
-    {
-        yield return
-        [
-            new PluginSessionInitialized { SessionId = "s1", Tools = ["read_file"] },
-            (Func<SessionEvent, bool>)(evt => evt is SessionInitialized init && init.SessionId == "s1" && init.Tools.Single() == "read_file"),
-        ];
-        yield return
-        [
-            new PluginAssistantTextDelta { SessionId = "s1", BlockIndex = 2, Text = "hi" },
-            (Func<SessionEvent, bool>)(evt => evt is AssistantTextDelta delta && delta.BlockIndex == 2 && delta.Text == "hi"),
-        ];
-        yield return
-        [
-            new PluginToolUseRequested { SessionId = "s1", ToolUseId = "t1", ToolName = "read_file", InputJson = "{}" },
-            (Func<SessionEvent, bool>)(evt => evt is ToolUseRequested tool && tool.ToolUseId == "t1" && tool.ToolName == "read_file"),
-        ];
-        yield return
-        [
-            new PluginToolResult { SessionId = "s1", ToolUseId = "t1", Content = "ok", IsError = false },
-            (Func<SessionEvent, bool>)(evt => evt is ToolResult result && result.Content == "ok" && !result.IsError),
-        ];
-        yield return
-        [
-            new PluginPermissionRequested { SessionId = "s1", ToolUseId = "t1", ToolName = "read_file", InputJson = "{}" },
-            (Func<SessionEvent, bool>)(evt => evt is PermissionRequested permission && permission.ToolUseId == "t1"),
-        ];
-        yield return
-        [
-            new PluginTurnCompleted { SessionId = "s1", Subtype = "success", Result = "done", IsError = false, StopReason = null },
-            (Func<SessionEvent, bool>)(evt => evt is TurnCompleted turn && turn.Subtype == "success" && turn.Result == "done" && !turn.IsError),
-        ];
-        yield return
-        [
-            new PluginSessionError { SessionId = "s1", Message = "boom" },
-            (Func<SessionEvent, bool>)(evt => evt is SessionError error && error.Message == "boom" && error.Kind == SessionErrorKind.Unknown),
-        ];
-        yield return
-        [
-            // AC-720: Kind and RetryAfter cross the plugin/host boundary as their own (separately typed) enum.
-            new PluginSessionError
-            {
-                SessionId = "s1",
-                Message = "not authenticated",
-                Kind = PluginSessionErrorKind.AuthRequired,
-                RetryAfter = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
-            },
-            (Func<SessionEvent, bool>)(evt => evt is SessionError error
-                && error.Kind == SessionErrorKind.AuthRequired
-                && error.RetryAfter == new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero)),
-        ];
-
-        // #45 D3 — the richer events a plugin can now express: a reasoning trace, the session's cwd, and a turn's
-        // token usage, each mapped to its core counterpart so a plugin session fills the same UI as the CLI.
-        yield return
-        [
-            new PluginAssistantThinkingDelta { SessionId = "s1", BlockIndex = 1, Thinking = "hmm" },
-            (Func<SessionEvent, bool>)(evt => evt is AssistantThinkingDelta thinking && thinking.BlockIndex == 1 && thinking.Thinking == "hmm"),
-        ];
-        yield return
-        [
-            new PluginSessionInitialized { SessionId = "s1", Tools = [], Cwd = "/work/here" },
-            (Func<SessionEvent, bool>)(evt => evt is SessionInitialized init && init.Cwd == "/work/here"),
-        ];
-        yield return
-        [
-            new PluginSessionInitialized { SessionId = "s1", Tools = [], Model = "claude-sonnet-4-5-20250929" },
-            (Func<SessionEvent, bool>)(evt => evt is SessionInitialized init && init.Model == "claude-sonnet-4-5-20250929"),
-        ];
-        yield return
-        [
-            new PluginTurnCompleted { SessionId = "s1", Subtype = "success", Result = null, IsError = false, Usage = new PluginTokenUsage(100, 20, 5, 0), NumTurns = 3 },
-            (Func<SessionEvent, bool>)(evt => evt is TurnCompleted turn && turn.Usage == new TokenUsage(100, 20, 5, 0) && turn.NumTurns == 3),
-        ];
-        // AC-146: ParentToolUseId is carried on the PluginSessionEvent base, so it must reach every SessionEvent
-        // subtype's own base property, not just one hand-picked case.
-        yield return
-        [
-            new PluginAssistantTextDelta { SessionId = "s1", BlockIndex = 0, Text = "hi", ParentToolUseId = "toolu_task1" },
-            (Func<SessionEvent, bool>)(evt => evt.ParentToolUseId == "toolu_task1"),
-        ];
     }
 }

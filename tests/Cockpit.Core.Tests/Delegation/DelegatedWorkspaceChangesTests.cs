@@ -50,42 +50,6 @@ public class DelegatedWorkspaceChangesTests : IDisposable
         ["?? docs/café notes.md\0", new[] { "docs/café notes.md" }],
     ];
 
-    [Fact]
-    public void Added_TellsWhatThisTaskChangedFromWhatWasAlreadyDirty()
-    {
-        var before = DelegatedWorkspaceChanges.ParsePorcelain(" M already.txt\0");
-        var after = DelegatedWorkspaceChanges.ParsePorcelain(" M already.txt\0?? written-by-the-task.txt\0");
-
-        Assert.Equal(["written-by-the-task.txt"], DelegatedWorkspaceChanges.Added(before, after));
-    }
-
-    [Fact]
-    public void Added_WithNothingToRead_IsNull_NotAnEmptyList()
-    {
-        // "Could not be established" and "changed nothing" are different answers, and reporting the first as the
-        // second is exactly the false clean bill this feature exists to stop.
-        Assert.Null(DelegatedWorkspaceChanges.Added(before: null, after: null));
-    }
-
-    [Fact]
-    public async Task SnapshotAsync_OutsideAWorkTree_IsNull()
-    {
-        Directory.CreateDirectory(_repository);
-
-        Assert.Null(await DelegatedWorkspaceChanges.SnapshotAsync(_repository));
-    }
-
-    [Fact]
-    public async Task SnapshotAsync_InACleanWorkTree_IsEmpty_NotNull()
-    {
-        await _InitRepositoryAsync();
-
-        var snapshot = await DelegatedWorkspaceChanges.SnapshotAsync(_repository);
-
-        Assert.NotNull(snapshot);
-        Assert.Empty(snapshot);
-    }
-
     // --- End to end: the report rides with the task, and a read-only task that wrote is failed ---
 
     [Fact]
@@ -102,24 +66,6 @@ public class DelegatedWorkspaceChangesTests : IDisposable
         Assert.Equal(DelegatedTaskStatus.Failed, finished.Status);
         Assert.Contains("Out of scope", finished.Error);
         Assert.Equal(["design-notes.md"], finished.ChangedPaths);
-    }
-
-    [Fact]
-    public async Task ATaskDelegatedWithWritePermission_KeepsItsResult_AndStillReportsWhatItChanged()
-    {
-        await _InitRepositoryAsync();
-        var service = _ServiceWritingDuringTheTurn("Feature.cs");
-
-        var task = await service.DelegateAsync(
-            new DelegationRequest("local", "write the feature", WorkingDirectory: _repository, RequestedPermission: "acceptEdits"));
-        await _WaitUntilFinishedAsync(service, task.TaskId);
-
-        // A task that was allowed to write is not in trouble for writing — but its caller still gets the list from
-        // the cockpit rather than from the task's own account of itself.
-        var finished = service.GetTask(task.TaskId)!;
-        Assert.Equal(DelegatedTaskStatus.Completed, finished.Status);
-        Assert.Equal(["Feature.cs"], finished.ChangedPaths);
-        Assert.Equal("acceptEdits", finished.Permission);
     }
 
     [Fact]

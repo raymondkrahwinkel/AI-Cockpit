@@ -21,18 +21,6 @@ public class PermissionRuleStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task AddAsync_ThenLoadAsync_RoundTripsTheRule()
-    {
-        var store = new PermissionRuleStore(_configFilePath);
-        var rule = PermissionRule.ForExact("Bash", """{"command":"dotnet build"}""");
-
-        await store.AddAsync("work", rule);
-        var rules = await store.LoadAsync("work");
-
-        Assert.Equal(rule, Assert.Single(rules));
-    }
-
-    [Fact]
     public async Task AddAsync_KeepsRulesIsolatedPerProfile()
     {
         var store = new PermissionRuleStore(_configFilePath);

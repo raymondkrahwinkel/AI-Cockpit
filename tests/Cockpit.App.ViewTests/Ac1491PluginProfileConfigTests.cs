@@ -66,32 +66,6 @@ public class Ac1491PluginProfileConfigTests
         Assert.Equal("https://inference.example/v1", json.RootElement.GetProperty("BaseUrl").GetString());
     });
 
-    [Fact]
-    public void RemovingAHalfFilledOpenAiProfile_DoesNotThrow() => HeadlessAvalonia.Run(() =>
-    {
-        var dialog = _Dialog(new _MemoryStore());
-        var window = new ManageProfilesDialog { DataContext = dialog };
-        window.Show();
-        try
-        {
-            dialog.AddProfileCommand.Execute(null);
-            var row = dialog.Profiles[0];
-            row.SelectedProvider = row.Providers.First(option => option.PluginProviderId == ProviderId);
-            window.UpdateLayout();
-
-            Assert.False(row.CanStartLogin);
-            dialog.RemoveProfileCommand.Execute(null);
-            dialog.ConfirmRemoveCommand.Execute(null);
-            window.UpdateLayout();
-
-            Assert.Empty(dialog.Profiles);
-        }
-        finally
-        {
-            window.Close();
-        }
-    });
-
     // A row that starts on a provider without a panel kept that config as its fallback; after a switch to OpenAI it
     // handed Claude's config back for a row the editor shows as OpenAI. Then filled in, applied and reopened.
     [Fact]

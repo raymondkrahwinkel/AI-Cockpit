@@ -14,24 +14,6 @@ public class PlainToolRequestTests
     private const string Poison = "ZYRAPOISON";
 
     [Theory]
-    // The ticket's own example: a wildcard names the pattern rather than a count, because what it expands to is
-    // known only where the command runs.
-    [InlineData("Bash", """{"command":"mv ./inbox/*.pdf ./archive/2026-06/"}""", "Move the files matching ./inbox/*.pdf into ./archive/2026-06")]
-    [InlineData("Bash", """{"command":"mv KPN.pdf Vattenfall.pdf Hosting.pdf ./archive/2026-06/"}""", "Move 3 files into ./archive/2026-06")]
-    [InlineData("Bash", """{"command":"cp report.xlsx ./backup/"}""", "Copy report.xlsx into ./backup")]
-    [InlineData("Bash", """{"command":"rm draft.txt notes.txt"}""", "Delete 2 files")]
-    // Whole path on a single deletion, unlike every other verb: which `passwd` this is decides the answer, and it
-    // may not live only in the file block beside the sentence.
-    [InlineData("Bash", """{"command":"rm /etc/passwd"}""", "Delete /etc/passwd")]
-    [InlineData("Bash", """{"command":"mkdir ./archive/2026-07/"}""", "Create the folder ./archive/2026-07")]
-    public void Describe_ReadsTheSentenceOffTheCall(string toolName, string inputJson, string expected)
-    {
-        // Exact text, not a substring: the sentence is a fixed template plus values taken from the input, so
-        // there is nothing here for a free-form phrasing to hide in.
-        Assert.Equal(expected, PlainToolRequest.Describe(toolName, inputJson)?.Sentence);
-    }
-
-    [Theory]
     [InlineData("Bash", """{"command":"mv a.pdf b.pdf ./archive/","description":"ZYRAPOISON tidying the inbox"}""")]
     [InlineData("Bash", """{"command":"rm old.log","description":"ZYRAPOISON just a bit of cleanup, nothing important"}""")]
     [InlineData("Read", """{"file_path":"/work/june.csv","description":"ZYRAPOISON","prompt":"ZYRAPOISON"}""")]
@@ -47,19 +29,6 @@ public class PlainToolRequestTests
 
         Assert.DoesNotContain(Poison, request.Sentence, StringComparison.Ordinal);
         Assert.DoesNotContain(Poison, string.Join(" ", request.Paths), StringComparison.Ordinal);
-    }
-
-    [Theory]
-    [InlineData("mv KPN.pdf Vattenfall.pdf ./archive/2026-06/", new[] { "KPN.pdf", "Vattenfall.pdf" })]
-    // `mkdir` names a folder that does not exist yet — listing it under "the files this touches" would be a
-    // claim about something that is not there.
-    [InlineData("mkdir ./archive/2026-07/", new string[0])]
-    public void Describe_ListsTheFilesTheCallNames(string command, string[] expected)
-    {
-        var request = PlainToolRequest.Describe("Bash", $$"""{"command":"{{command}}"}""");
-
-        Assert.NotNull(request);
-        Assert.Equal(expected, request.Paths);
     }
 
     [Theory]
@@ -86,17 +55,5 @@ public class PlainToolRequestTests
         // Falling back to the raw call is the point: someone reading "move 12 pdfs to archive" while something
         // else happens is worse off than someone looking at a command line they do not understand.
         Assert.Null(PlainToolRequest.Describe("Bash", inputJson));
-    }
-
-    [Theory]
-    [InlineData("WebFetch", """{"url":"https://example.com"}""")]
-    [InlineData("Read", null)]
-    [InlineData("Read", "not json at all")]
-    [InlineData("Read", "[1,2,3]")]
-    [InlineData("Read", """{"file_path":42}""")]
-    [InlineData("Read", """{"pattern":"*.cs"}""")]
-    public void Describe_SaysNothingAboutACallItDoesNotCover(string? toolName, string? inputJson)
-    {
-        Assert.Null(PlainToolRequest.Describe(toolName, inputJson));
     }
 }

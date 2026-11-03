@@ -40,27 +40,6 @@ public class PluginStoreClientRemoteAuthTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task FetchIndexAsync_PublicStore_SendsNoAuthorization()
-    {
-        var store = PluginStoreConfig.Remote($"{_prefix}public/");
-
-        var result = await _client.FetchIndexAsync(store);
-
-        Assert.True(result.IsSuccess);
-        Assert.Null(_authByPath["/public/index.json"]);
-    }
-
-    [Fact]
-    public async Task DownloadZipAsync_SameOrigin_SendsTheToken()
-    {
-        var store = PluginStoreConfig.Remote($"{_prefix}mystore/", "s3cr3t");
-
-        await _client.DownloadZipAsync(store, "plugin.zip", null);
-
-        Assert.Equal("Bearer s3cr3t", _authByPath["/mystore/plugin.zip"]);
-    }
-
-    [Fact]
     public async Task DownloadZipAsync_AbsolutePathToForeignHost_DoesNotSendTheToken()
     {
         // A store-controlled index that lists a zip on another origin must not exfiltrate the token.

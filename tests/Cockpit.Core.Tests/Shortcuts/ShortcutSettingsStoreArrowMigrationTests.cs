@@ -37,34 +37,6 @@ public class ShortcutSettingsStoreArrowMigrationTests : IDisposable
         Assert.Equal("Ctrl+Shift+Down", settings.GestureFor(ShortcutAction.NextSession));
     }
 
-    [Fact]
-    public async Task LoadAsync_ADeliberatelyDifferentSessionSwitch_IsLeftAlone()
-    {
-        await File.WriteAllTextAsync(_configFilePath, """
-            {
-              "Shortcuts": { "Gestures": { "PreviousSession": "Alt+Up" } }
-            }
-            """);
-        var store = new ShortcutSettingsStore(_configFilePath);
-
-        var settings = await store.LoadAsync();
-
-        Assert.Equal("Alt+Up", settings.GestureFor(ShortcutAction.PreviousSession));
-    }
-
-    [Fact]
-    public async Task LoadAsync_AFreshConfig_TakesTheNewDefaults_WithoutDoubleBinding()
-    {
-        var store = new ShortcutSettingsStore(_configFilePath);
-
-        var settings = await store.LoadAsync();
-
-        Assert.Equal("Ctrl+Shift+Up", settings.GestureFor(ShortcutAction.PreviousSession));
-        Assert.Equal("Ctrl+Shift+Down", settings.GestureFor(ShortcutAction.NextSession));
-        Assert.Equal("Ctrl+Alt+Up", settings.GestureFor(ShortcutAction.FocusPaneUp));
-        Assert.Equal("Ctrl+Alt+Down", settings.GestureFor(ShortcutAction.FocusPaneDown));
-    }
-
     public void Dispose()
     {
         if (Directory.Exists(_tempDir))

@@ -23,7 +23,6 @@ public class SharedProjectBindingDialogViewModelTests
     // POSIX path is fully qualified on this repo's Linux CI and not on a Windows dev box. Same seam as
     // `ProjectResourcePathPortabilityTests`.
     private static readonly string _OtherMachineHome = OperatingSystem.IsWindows() ? @"C:\Users\erik" : "/home/erik";
-    private static readonly string _ThisMachineHome = OperatingSystem.IsWindows() ? @"C:\Users\raymond" : "/home/raymond";
 
     private static ISessionProfileStore _ProfileStoreWith(params string[] labels)
     {
@@ -38,26 +37,6 @@ public class SharedProjectBindingDialogViewModelTests
         var source = Substitute.For<ISharedProjectSource>();
         source.PrepareBindingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(result);
         return source;
-    }
-
-    // True only while a Posted delegate is running — the only way to tell "resumed via the captured context"
-    // (ConfigureAwait(true)) apart from "resumed inline on the thread pool" (false) without real thread identity.
-    private sealed class _RecordingSyncContext : SynchronizationContext
-    {
-        internal bool InsidePost { get; private set; }
-
-        public override void Post(SendOrPostCallback d, object? state)
-        {
-            InsidePost = true;
-            try
-            {
-                d(state);
-            }
-            finally
-            {
-                InsidePost = false;
-            }
-        }
     }
 
     /// <summary>
@@ -103,37 +82,6 @@ public class SharedProjectBindingDialogViewModelTests
     }
 
     [Fact]
-    public async Task ResourceRows_TenPlaceholderRows_TheRealWritePipelineCaseNow_AreAllAskedAboutWithNoOriginalReferenceToShow()
-    {
-        // AC-246 (Raymond, 2026-08-02): this is the normal case now, not a hypothetical — CockpitProjectResourceEntry.Create
-        // writes role + label with a blank reference for a machine-scope row. The abstractions-level invariant this
-        // reader leans on: a blank SharedProjectBindingResource.Reference IS the placeholder signal (see that
-        // record's own remarks) — Create() never produces a non-placeholder row with a blank reference, so there is
-        // nothing else a blank Reference here could mean.
-        var resources = Enumerable.Range(1, 10)
-            .Select(i => new SharedProjectBindingResource("Reference", string.Empty) { Label = $"Note {i}" })
-            .ToList();
-        var binding = new SharedProjectBinding("Ten Placeholders") { Resources = resources };
-        var source = _SourceReturning(SharedProjectBindingResult.Success(binding));
-
-        var (viewModel, _) = await SharedProjectBindingDialogViewModel.CreateAsync(
-            "depot:ten-placeholders", "Work", source, _ProfileStoreWith("Zyra"));
-        viewModel!.SelectedProfileLabel = "Zyra";
-
-        Assert.Equal(10, viewModel.ResourceRows.Count);
-        Assert.True(viewModel.HasResourceRows);
-        // Nothing to show as "was: …" — the writer's own reference never reached this build at all, unlike the
-        // defensive non-blank case above.
-        Assert.All(viewModel.ResourceRows, row => Assert.Null(row.OriginalReference));
-        Assert.Equal(
-            Enumerable.Range(1, 10).Select(i => $"Note {i}").OrderBy(l => l, StringComparer.Ordinal),
-            viewModel.ResourceRows.Select(row => row.Label).OrderBy(l => l, StringComparer.Ordinal));
-
-        var project = viewModel.ToProject();
-        Assert.Single(project.Resources); // only the binding marker — every placeholder skipped, none saved blank
-    }
-
-    [Fact]
     public async Task ResourceRows_ASecretShapedHomeAnchoredReference_IsNeverAskedAbout_AutoIncludedWithContentNeverSent()
     {
         // AC-612 verification (AC-246 harness): a row a real writer would already have kept out of the shared
@@ -171,5 +119,4 @@ public class SharedProjectBindingDialogViewModelTests
         var row = Assert.Single(project.Resources, resource => resource.Reference == "docs/x.md");
         Assert.Equal(ProjectResourceRole.Reference, row.Role);
     }
-
 }

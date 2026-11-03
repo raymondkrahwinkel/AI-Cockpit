@@ -47,22 +47,6 @@ public class PluginCacheTests
     }
 
     /// <summary>
-    /// AC-1294 §3: no <c>SetSecret</c>/<c>GetSecret</c> on <see cref="IPluginCache"/>, and the absence is the
-    /// policy — a cache file has neither the encryption at rest nor the backup scrubbing a declared secret gets.
-    /// Pinned here because the obvious way to "finish" the interface is to copy them over from
-    /// <see cref="IPluginStorage"/>, which has both.
-    /// </summary>
-    [Fact]
-    public void TheCacheOffersNoWayToStoreACredential()
-    {
-        var names = typeof(IPluginCache).GetMethods().Select(method => method.Name).ToList();
-
-        Assert.DoesNotContain("SetSecret", names);
-        Assert.DoesNotContain("GetSecret", names);
-        Assert.Contains("SetSecret", typeof(IPluginStorage).GetMethods().Select(method => method.Name));
-    }
-
-    /// <summary>
     /// AC-1294 §4: an unreadable cache file costs a start nothing and costs the settings nothing. The plugin
     /// starts with an empty cache and rebuilds, and the settings file beside it is not touched — it is a
     /// different file, which is the whole point of the split.

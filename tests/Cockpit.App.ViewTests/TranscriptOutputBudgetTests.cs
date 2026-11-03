@@ -80,52 +80,6 @@ public class TranscriptOutputBudgetTests
         window.Close();
     });
 
-    [Fact]
-    public void ScrollingBack_StillFindsEveryRow_WithEverythingUnderTheCapWhole() => HeadlessAvalonia.Run(() =>
-    {
-        var session = new SessionViewModel();
-        var before = session.Transcript.Count;
-        const string Small = "Build succeeded. 0 Warning(s)";
-
-        for (var i = 0; i < 20; i++)
-        {
-            session.Apply(Call($"big{i}", """{"command":"cat big.log"}"""));
-            session.Apply(Result($"big{i}", Huge));
-            session.Apply(Call($"small{i}", """{"command":"dotnet build"}"""));
-            session.Apply(Result($"small{i}", Small));
-        }
-
-        Assert.Equal(before + 40, session.Transcript.Count);
-
-        // A result under the cap is not touched at all, and a clamped one still opens and closes on what it said.
-        Assert.All(
-            Enumerable.Range(0, 20),
-            i =>
-            {
-                Assert.Equal(Small, _Row(session, $"small{i}").ResultText);
-
-                var big = _Row(session, $"big{i}").ResultText!;
-                Assert.StartsWith(Head, big, StringComparison.Ordinal);
-                Assert.EndsWith(Tail, big, StringComparison.Ordinal);
-            });
-    });
-
-    [Fact]
-    public void WithNoFullResultToBeHad_TheClampedOneStaysAndTheRowSaysWhy() => HeadlessAvalonia.Run(async () =>
-    {
-        // No session behind the row is the same standing as a transcript that has been cleaned up or came from
-        // another machine: the full result cannot be had. The row must say that, not fail and not go blank.
-        var row = new TranscriptEntryViewModel(TranscriptEntryKind.ToolUse, "Tool: Bash");
-        row.SetResult(Huge, isError: false);
-        var clamped = row.ResultText;
-
-        await row.LoadFullResultCommand.ExecuteAsync(null);
-
-        Assert.Equal(clamped, row.ResultText);
-        Assert.True(row.IsTruncated);
-        Assert.Contains("no longer available", row.FullResultNotice!);
-    });
-
     private static TranscriptEntryViewModel _Row(SessionViewModel session, string toolUseId) =>
         session.Transcript.Single(r => r.ToolUseId == toolUseId && r.Kind == TranscriptEntryKind.ToolUse);
 

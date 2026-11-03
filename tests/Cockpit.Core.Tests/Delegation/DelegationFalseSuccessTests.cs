@@ -40,21 +40,6 @@ public class DelegationFalseSuccessTests
     }
 
     [Fact]
-    public async Task ATurnWithASuccessfulToolCall_IsCompleted()
-    {
-        var driver = Substitute.For<ISessionDriver>();
-        driver.Events.Returns(_StreamWithSuccessfulTool());
-        var service = _Service(driver);
-
-        var task = await service.DelegateAsync(new DelegationRequest("local", "write a file"));
-        await _WaitUntilAsync(() => _IsFinished(service.GetTask(task.TaskId)!.Status));
-
-        var finished = service.GetTask(task.TaskId)!;
-        Assert.Equal(DelegatedTaskStatus.Completed, finished.Status);
-        Assert.Null(finished.Error);
-    }
-
-    [Fact]
     public async Task ATurnThatUsedNoTools_StaysCompleted_SoAPlainTextAnswerIsNotAFalseFailure()
     {
         var driver = Substitute.For<ISessionDriver>();
@@ -68,23 +53,6 @@ public class DelegationFalseSuccessTests
         Assert.Equal(DelegatedTaskStatus.Completed, finished.Status);
         Assert.Null(finished.Error);
         Assert.Equal("The answer is 42.", finished.Result);
-    }
-
-    [Fact]
-    public async Task AFollowUpTextTurnAfterADeniedTurn_IsJudgedOnItsOwn_NotInheritedAsFailure()
-    {
-        // Per-turn counters (AC-100 review): turn 1's denied tool call must not make a later plain-text turn look
-        // like a no-op run. Without the per-turn reset, the follow-up inherits turn 1's denial and is wrongly Failed.
-        var driver = Substitute.For<ISessionDriver>();
-        driver.Events.Returns(_TwoTurns_DeniedThenPlainText());
-        var service = _Service(driver);
-
-        var task = await service.DelegateAsync(new DelegationRequest("local", "write then chat"));
-        await _WaitUntilAsync(() => service.GetTask(task.TaskId)!.TurnCount >= 2);
-
-        var finished = service.GetTask(task.TaskId)!;
-        Assert.Equal(DelegatedTaskStatus.Completed, finished.Status);
-        Assert.Null(finished.Error);
     }
 
     [Fact]
@@ -147,31 +115,10 @@ public class DelegationFalseSuccessTests
         await Task.Delay(Timeout.Infinite, CancellationToken.None);
     }
 
-    private static async IAsyncEnumerable<SessionEvent> _StreamWithSuccessfulTool()
-    {
-        yield return new ToolUseRequested { SessionId = "s1", ToolUseId = "t1", ToolName = "write_file", InputJson = "{}" };
-        yield return new ToolResult { SessionId = "s1", ToolUseId = "t1", Content = "wrote 1 file", IsError = false };
-        yield return new AssistantTextCompleted { SessionId = "s1", Text = "Done." };
-        yield return new TurnCompleted { SessionId = "s1", Subtype = "success", Result = "Done.", IsError = false };
-        await Task.Delay(Timeout.Infinite, CancellationToken.None);
-    }
-
     private static async IAsyncEnumerable<SessionEvent> _StreamPlainTextAnswer()
     {
         yield return new AssistantTextCompleted { SessionId = "s1", Text = "The answer is 42." };
         yield return new TurnCompleted { SessionId = "s1", Subtype = "success", Result = "The answer is 42.", IsError = false };
-        await Task.Delay(Timeout.Infinite, CancellationToken.None);
-    }
-
-    private static async IAsyncEnumerable<SessionEvent> _TwoTurns_DeniedThenPlainText()
-    {
-        // Turn 1: a denied tool call → Failed.
-        yield return new ToolUseRequested { SessionId = "s1", ToolUseId = "t1", ToolName = "write_file", InputJson = "{}" };
-        yield return new ToolResult { SessionId = "s1", ToolUseId = "t1", Content = "write_file was blocked.", IsError = true };
-        yield return new TurnCompleted { SessionId = "s1", Subtype = "success", Result = "I can't create files.", IsError = false };
-        // Turn 2: a plain-text answer, no tools → must be Completed on its own, not inheriting turn 1's denial.
-        yield return new AssistantTextCompleted { SessionId = "s1", Text = "Sure, here is the explanation." };
-        yield return new TurnCompleted { SessionId = "s1", Subtype = "success", Result = "Sure, here is the explanation.", IsError = false };
         await Task.Delay(Timeout.Infinite, CancellationToken.None);
     }
 

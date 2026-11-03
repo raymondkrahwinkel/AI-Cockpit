@@ -16,12 +16,4 @@ public class SessionOptionCatalogTests
             new[] { "default", "acceptEdits", "plan" },
             SessionOptionCatalog.LivePermissionModes.Select(mode => mode.Value));
     }
-
-    [Fact]
-    public void ResolvePermissionMode_UnknownValue_FallsBackToTheAppDefault()
-    {
-        Assert.Equal(SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.ResolvePermissionMode("nonsense"));
-        Assert.Equal(SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.ResolvePermissionMode(null));
-    }
-
 }

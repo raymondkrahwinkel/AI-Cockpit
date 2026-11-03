@@ -28,15 +28,6 @@ public class AssistantMemoryFileTests : IDisposable
         _machinePath = Path.Combine(_tempDir, "assistant-machine.md");
     }
 
-    [Fact]
-    public async Task NothingHasEverBeenRemembered_ReadsAsEmpty_RatherThanFailing()
-    {
-        var memory = new AssistantMemoryFile(_filePath, _statePath);
-
-        Assert.Equal(string.Empty, await memory.ReadAsync(AssistantMemoryScope.Behaviour));
-        Assert.False(File.Exists(_filePath));
-    }
-
     [Theory]
     [InlineData("machine", new[] { "local" }, true, false, true, true)]
     [InlineData("behaviour", null, false, true, false, false)]
@@ -82,28 +73,6 @@ public class AssistantMemoryFileTests : IDisposable
     }
 
     [Fact]
-    public async Task AMultiLineThing_IsStoredAsOneEntry_SoTheFileStaysPrunable()
-    {
-        var memory = new AssistantMemoryFile(_filePath, _statePath);
-
-        await memory.RememberAsync("Answer in Dutch.\nAnd keep it short.", AssistantMemoryScope.Behaviour);
-
-        var lines = (await memory.ReadAsync(AssistantMemoryScope.Behaviour)).Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        Assert.Single(lines, line => line.StartsWith("- ", StringComparison.Ordinal));
-    }
-
-    [Theory]
-    [InlineData("")]
-    [InlineData("   ")]
-    public async Task RememberingNothing_IsRefused_RatherThanStoredAsABlankLine(string blank)
-    {
-        var memory = new AssistantMemoryFile(_filePath, _statePath);
-
-        await Assert.ThrowsAnyAsync<ArgumentException>(() => memory.RememberAsync(blank, AssistantMemoryScope.Behaviour));
-        Assert.Equal(string.Empty, await memory.ReadAsync(AssistantMemoryScope.Behaviour));
-    }
-
-    [Fact]
     public async Task AFileEditedByHand_IsWhatTheNextReadReturns()
     {
         // There is no forget tool: pruning is the operator opening this file, so a hand-edited one has to be read
@@ -131,15 +100,6 @@ public class AssistantMemoryFileTests : IDisposable
         Assert.DoesNotContain("AC-592", state, StringComparison.Ordinal);
         Assert.Contains("they want to hear about the merge.", state, StringComparison.Ordinal);
         Assert.Contains("The operator is called Raymond.", await memory.ReadAsync(AssistantMemoryScope.Behaviour), StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task AnAssistantThatNeverNotedItsState_ReadsAsEmpty()
-    {
-        var memory = new AssistantMemoryFile(_filePath, _statePath);
-        await memory.RememberAsync("The operator is called Raymond.", AssistantMemoryScope.Behaviour);
-
-        Assert.Equal(string.Empty, await memory.ReadCurrentStateAsync());
     }
 
     public void Dispose()

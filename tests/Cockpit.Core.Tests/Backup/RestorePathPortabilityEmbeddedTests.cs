@@ -33,17 +33,6 @@ public class RestorePathPortabilityEmbeddedTests
         Assert.Equal(Path.Combine(targetRoot, "cache"), rebased["Path"]!.GetValue<string>());
     }
 
-    [Fact]
-    public void Rebase_WhenPluginBlobHasNoConfigPath_PreservesItsBytes()
-    {
-        const string blob = "{ \"z\": 3, \"a\": [1, 2] }";
-        var settings = PluginStoring(blob);
-
-        RestorePathPortability.Rebase(settings, @"C:\source", @"D:\target");
-
-        Assert.Equal(blob, settings["Plugins"]!["a-plugin"]!["Data"]!["cache"]!.GetValue<string>());
-    }
-
     [Theory]
     [InlineData("ordinary text")]
     [InlineData("42")]

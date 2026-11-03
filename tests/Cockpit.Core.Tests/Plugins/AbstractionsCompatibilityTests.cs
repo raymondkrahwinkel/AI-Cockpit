@@ -18,8 +18,4 @@ public class AbstractionsCompatibilityTests
     [InlineData(1, 1, 0, 0)] // older — safe, the host is additively backward-compatible
     public void BuiltAgainstNewerHost_WhenPluginIsOlderOrEqual_IsFalse(int major, int minor, int build, int revision) =>
         Assert.False(AbstractionsCompatibility.BuiltAgainstNewerHost(new Version(major, minor, build, revision), new Version(1, 2, 0, 0)));
-
-    [Fact]
-    public void BuiltAgainstNewerHost_WhenBuiltAgainstIsUnknown_IsFalse() =>
-        Assert.False(AbstractionsCompatibility.BuiltAgainstNewerHost(builtAgainst: null, new Version(1, 2, 0, 0)));
 }

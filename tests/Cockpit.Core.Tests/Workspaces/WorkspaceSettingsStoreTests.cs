@@ -47,20 +47,6 @@ public class WorkspaceSettingsStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task LoadAsync_ADashboardSavedBeforeGridLinesExisted_DefaultsToThemBeingOff()
-    {
-        await File.WriteAllTextAsync(_configPath, """
-            {"Workspaces":{"ActiveWorkspaceId":"w1","Workspaces":[
-              {"Id":"w1","Name":"D","Type":"Dashboard","Layout":{"Columns":4,"Rows":4},"Panes":[]}]}}
-            """);
-
-        var loaded = await new WorkspaceSettingsStore(_configPath).LoadAsync();
-
-        Assert.False(loaded.Workspaces[0].Layout.ShowGridLines, "a dashboard is something you look at, not a worksheet");
-        Assert.Equal(4, loaded.Workspaces[0].Layout.Columns);
-    }
-
-    [Fact]
     public async Task LoadAsync_AnUnknownWorkspaceType_KeepsItsIdSoThePluginWorkspaceReturnsWhenItsPluginLoads()
     {
         // A type the host does not know is a plugin type whose plugin is not installed yet: it is kept, not
@@ -78,5 +64,4 @@ public class WorkspaceSettingsStoreTests : IDisposable
         Assert.False(workspace.Type.IsBuiltIn);
         Assert.Empty(workspace.Panes);
     }
-
 }

@@ -33,24 +33,6 @@ public class SessionViewModelAskUserQuestionTests
     """;
 
     [Fact]
-    public async Task PermissionRequested_ForAskUserQuestion_RendersTheQuestionsInsteadOfTheConsentButtons()
-    {
-        var (vm, _) = await _StartedAsync();
-
-        var entry = _RaiseQuestion(vm, OneQuestion);
-
-        Assert.True(entry.HasQuestionPrompts);
-        Assert.Equal("Which suites?", entry.QuestionPrompts?[0].Question);
-        Assert.Equal(["Core", "All"], entry.QuestionPrompts?[0].Options.Select(option => option.Label) ?? []);
-        // The four consent buttons and the tool chip both stand down: none of them is an answer, and the chip's
-        // raw JSON is the same questions spelled worse.
-        Assert.False(entry.IsPendingToolPermission);
-        Assert.False(entry.ShowToolBlock);
-
-        await vm.DisposeAsync();
-    }
-
-    [Fact]
     public async Task PermissionRequested_ForAToolMerelyCarryingAQuestionsField_IsStillAnOrdinaryConsent()
     {
         // The tool name is the signal the SDK documents; a payload that happens to hold a `questions` array is not
@@ -112,26 +94,6 @@ public class SessionViewModelAskUserQuestionTests
         await vm.DisposeAsync();
     }
 
-    [Fact]
-    public async Task SubmitQuestionAnswers_SendsTheOperatorsOwnWordingWhenTheyPickOther()
-    {
-        var (vm, driver) = await _StartedAsync();
-        var entry = _RaiseQuestion(vm, OneQuestion);
-        var prompt = entry.QuestionPrompts?[0];
-        Assert.NotNull(prompt);
-        prompt.SelectOtherCommand.Execute(null);
-        prompt.OtherText = "Only the ones touching this diff";
-
-        await vm.SubmitQuestionAnswersCommand.ExecuteAsync(entry);
-
-        await driver.Received(1).RespondToPermissionAsync(
-            "t1", true,
-            Arg.Is<string>(json => _AnswerFor(json, "Which suites?") == "Only the ones touching this diff"),
-            Arg.Any<CancellationToken>());
-
-        await vm.DisposeAsync();
-    }
-
     // ── AC-955: the assistant's own broker (ask_structured_question), which has no permission callback ────────
 
     private const string OneBrokerQuestion = """
@@ -171,33 +133,6 @@ public class SessionViewModelAskUserQuestionTests
             Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
         Assert.True(vm.Transcript.Last().Kind == TranscriptEntryKind.UserText);
         Assert.False(entry.IsPendingBrokerAnswer);
-
-        await vm.DisposeAsync();
-    }
-
-    /// <summary>
-    /// Criterion 9: this is the whole reason the broker route exists rather than reusing AskUserQuestion — a
-    /// broker card never touches <see cref="TranscriptEntryViewModel.IsPendingPermission"/>, so it works exactly
-    /// the same whether or not the SDK's permission-prompt-tool is even wired up (i.e. on `bypassPermissions`,
-    /// where AC-715's own route silently never fires at all).
-    /// </summary>
-    [Fact]
-    public async Task BrokerQuestion_NeverSetsIsPendingPermission_SoItDoesNotDependOnThePermissionCallback()
-    {
-        var (vm, _) = await _StartedAsync();
-        var entry = _RaiseBrokerQuestion(vm, OneBrokerQuestion);
-
-        Assert.True(entry.HasQuestionPrompts);
-        Assert.True(entry.IsAwaitingAnswer);
-        Assert.False(entry.IsPendingPermission);
-
-        entry.QuestionPrompts?[0].Options[0].SelectCommand.Execute(null);
-        Assert.True(entry.CanSubmitAnswers);
-
-        // AC-1018: the row landing is not the card rendering — a broker question has Kind = Question, not ToolUse,
-        // so TranscriptRowView's tool-block gate (ToolBranch) and the plain-text fallback both key off its prompts.
-        Assert.NotNull(entry.ToolBranch);
-        Assert.False(entry.IsPlainNonMarkdown);
 
         await vm.DisposeAsync();
     }

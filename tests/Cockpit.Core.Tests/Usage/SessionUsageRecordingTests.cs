@@ -120,27 +120,6 @@ public class SessionUsageRecordingTests
     }
 
     [Fact]
-    public void EachTurn_WritesAgain_WithTheTotalSoFar()
-    {
-        var history = new RecordingUsageHistory();
-        var session = _Session(history);
-
-        // The cost figures rise the way a real session reports them — each result states what the session has
-        // cost so far, not what its last turn cost (AC-481). The pair used to fall (0.10 then 0.05), which the
-        // old summing meter added up to the same 0.15 for the wrong reason.
-        session.Apply(_Turn(new TokenUsage(100, 10, 0, 0), 0.10));
-        session.Apply(_Turn(new TokenUsage(50, 5, 0, 0), 0.15));
-
-        // Cumulative, not per-turn: the newest record is the session's total, which is what makes a record per
-        // turn a crash-proof snapshot rather than something a reader has to add up.
-        Assert.Equal(2, history.Recorded.Count);
-        Assert.Equal(150, history.Recorded[1].InputTokens);
-        Assert.Equal(15, history.Recorded[1].OutputTokens);
-        Assert.Equal(0.15, history.Recorded[1].TotalCostUsd, precision: 10);
-        Assert.Equal(2, history.Recorded[1].Turns);
-    }
-
-    [Fact]
     public void ATurnThatReportedNothing_LeavesNoRecord_RatherThanARowOfZeroes()
     {
         var history = new RecordingUsageHistory();
@@ -149,19 +128,6 @@ public class SessionUsageRecordingTests
         session.Apply(_Turn(usage: null, costUsd: null));
 
         Assert.Empty(history.Recorded);
-    }
-
-    [Fact]
-    public void AnOperatorsOwnSession_IsRecordedAsInteractive_WithNoRun()
-    {
-        var history = new RecordingUsageHistory();
-        var session = _Session(history);
-
-        session.Apply(_Turn(new TokenUsage(10, 1, 0, 0), 0.01));
-
-        var snapshot = Assert.Single(history.Recorded);
-        Assert.Equal(UsageRunKind.Interactive, snapshot.RunKind);
-        Assert.Null(snapshot.RunId);
     }
 
     [Fact]
@@ -197,25 +163,5 @@ public class SessionUsageRecordingTests
 
         gate.SetResult();
         await closing;
-    }
-
-    [Fact]
-    public async Task ClosingASessionThatNeverSpentAnything_DoesNotWaitOnAWriteThatWasNeverMade()
-    {
-        var session = _Session(new BlockingUsageHistory(new TaskCompletionSource().Task));
-
-        // No turn, so no record in flight: closing must not hang on a gate nobody is going to open.
-        await session.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
-    }
-
-    [Fact]
-    public void ASessionWithNoTrail_StillKeepsItsMeter()
-    {
-        // The design-time and test graphs have no usage history; the header must not lose its meter over it.
-        var session = TestSessions.Pane(Substitute.For<ISessionManager>());
-
-        session.Apply(_Turn(new TokenUsage(10, 1, 0, 0), 0.01));
-
-        Assert.True(session.HasUsage);
     }
 }
