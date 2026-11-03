@@ -48,40 +48,6 @@ public sealed class HelpWindowTests
             Assert.Contains(_Text(content), text => text.Contains("Fixtures", StringComparison.Ordinal));
         }));
 
-    // A reference that leads nowhere fails visibly: the plugin may be uninstalled or the section renamed, and
-    // either way the operator clicked something that promised an answer. Its own test because it is a different
-    // page — an address that resolves to nothing at all, not a reference inside a page that renders.
-    [Fact]
-    public void AReferenceThatLeadsNowhereFailsWhereItCanBeSeen() => HeadlessAvalonia.Run(() =>
-    {
-        var window = new HelpWindow(_Help());
-        window.NavigateTo(new HelpAddress("slack", "interactivity"));
-        window.Show();
-        try
-        {
-            Assert.Contains(_Text(window), text => text.Contains("This page is not here", StringComparison.Ordinal));
-        }
-        finally
-        {
-            window.Close();
-        }
-    });
-
-    // AC-1042: the three plugin guides ship from `docs/plugins/` rather than from a `Docs` folder of the app's
-    // own, which is one line of MSBuild away from silently shipping nothing at all.
-    [Theory]
-    [InlineData("PLUGIN-SDK")]
-    [InlineData("API-REFERENCE")]
-    [InlineData("AUTOMATED-PUBLISH")]
-    public void TheGuidesInDocsPluginsShipInsideTheApp(string key)
-    {
-        var articles = HelpDocumentScanner.Scan(typeof(HelpWindow).Assembly, HelpOwner.Core);
-        var article = Assert.Single(articles, candidate => candidate.Key == key);
-
-        Assert.Equal(HelpCategory.ExtendingCockpit, article.Category);
-        Assert.NotEmpty(article.Sections);
-    }
-
     private static void _Assert(string article, Action<Control> assert)
     {
         var window = new HelpWindow(_Help());

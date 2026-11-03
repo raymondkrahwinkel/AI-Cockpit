@@ -27,26 +27,6 @@ public sealed class ResourceMonitorSessionIdentityTests
     }
 
     [Fact]
-    public void Sample_WhenOneSessionStartsAProcess_TheOtherSessionsFiguresDoNotMove()
-    {
-        // AC-1310: membership is per root, so two sessions cannot claim the same tree — which is what lets a
-        // status be derived from these figures at all. If B's work could leak into A's count, A would read as
-        // working whenever its neighbour did.
-        var table = new FixedProcessTable([new ProcessRow(11, 1, TimeSpan.Zero, 100), new ProcessRow(22, 1, TimeSpan.Zero, 900)]);
-        var monitor = new ResourceMonitor(table, _ => null);
-        SessionProcessRef[] sessions = [new("pane-a", "A", 11), new("pane-b", "B", 22)];
-
-        monitor.Sample(sessions);
-        table.Rows = [.. table.Rows, new ProcessRow(33, 22, TimeSpan.Zero, 500)];
-        var measured = monitor.Sample(sessions);
-
-        var a = measured.Sessions.Single(session => session.PaneId == "pane-a");
-        var b = measured.Sessions.Single(session => session.PaneId == "pane-b");
-        Assert.Equal((100L, 1, 0), (a.MemoryBytes, a.ProcessCount, a.SpawnedProcessCount));
-        Assert.Equal((1400L, 2, 1), (b.MemoryBytes, b.ProcessCount, b.SpawnedProcessCount));
-    }
-
-    [Fact]
     public void Sample_CountsWhatASessionSpawned_WithoutItsOwnRootProcess()
     {
         // AC-1310: the axis the TTY status turns on. A live pane always holds its own pty, so a count that

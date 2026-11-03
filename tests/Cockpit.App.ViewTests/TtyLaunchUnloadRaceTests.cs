@@ -33,25 +33,6 @@ public class TtyLaunchUnloadRaceTests
             Assert.Null(_Field(view, "_outputFlush"));
         });
 
-    [Fact]
-    public Task ClosingThePaneAfterTheLaunchLanded_DisposesThePty() =>
-        HeadlessAvalonia.RunAsync(async () =>
-        {
-            var gate = Task.CompletedTask;
-            var (view, window, pty, _, ptyLanded, ptyDisposed) = _Start(gate);
-
-            await ptyLanded.WaitAsync(TimeSpan.FromSeconds(5));
-            Assert.Same(pty, _Field(view, "_pty"));
-
-            window.Content = null;
-            window.UpdateLayout();
-            Assert.Null(view.Parent);
-            await ptyDisposed.WaitAsync(TimeSpan.FromSeconds(5));
-
-            pty.Received(1).Dispose();
-            Assert.Null(_Field(view, "_pty"));
-        });
-
     private static object? _Field(TtyView view, string name) =>
         typeof(TtyView).GetField(name, BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(view);
 

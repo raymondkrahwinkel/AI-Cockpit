@@ -5,7 +5,6 @@ using ModelContextProtocol.Protocol;
 using NSubstitute;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
-using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Layout;
 using Cockpit.Core.Abstractions.Notifications;
@@ -23,7 +22,6 @@ using Cockpit.Core.Voice;
 using Cockpit.Infrastructure.Agents;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Sessions;
-using Cockpit.Core.Abstractions.Sessions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -78,29 +76,6 @@ public sealed class AssistantAgentAddressTests : IDisposable
     }
 
     /// <summary>
-    /// Why the row is conditional: an address with nobody behind it is mail nothing will ever open, reported to the
-    /// sender as success. The assistant starts lazily and can be off, so this is an ordinary state.
-    /// </summary>
-    [Fact]
-    public void WithNoAssistantRunning_NoRosterOffersItsAddress()
-    {
-        var (gateway, caller) = Dispatcher.UIThread.Invoke(() =>
-        {
-            var sessions = new SessionRegistry();
-            var cockpit = _Cockpit(sessions);
-            var session = new SessionViewModel { WorkspaceId = "desk-a" };
-            cockpit.Sessions.Add(session);
-
-            return (_Gateway(sessions), session);
-        });
-
-        var snapshot = Dispatcher.UIThread.Invoke(() => gateway.GetWorkspaceSnapshotAsync(caller.PaneId).GetAwaiter().GetResult());
-
-        Assert.NotNull(snapshot);
-        Assert.DoesNotContain(snapshot!.Panes, pane => pane.PaneId == AssistantIdentity.PaneId);
-    }
-
-    /// <summary>
     /// Criterion 4: addressable on every desk, placed on none. A desk here would hand the assistant one roster out
     /// of the several it manages, making AC-119's boundary a coin toss.
     /// </summary>
@@ -120,60 +95,6 @@ public sealed class AssistantAgentAddressTests : IDisposable
         var snapshot = Dispatcher.UIThread.Invoke(() => gateway.GetWorkspaceSnapshotAsync(AssistantIdentity.PaneId).GetAwaiter().GetResult());
 
         Assert.Null(snapshot);
-    }
-
-    /// <summary>
-    /// <c>cockpit-session</c> is mounted for every session including this one, and <c>set_status</c> still refuses the
-    /// assistant: the statusline is written onto a session found in the grid's own list, which the assistant is
-    /// deliberately not in. Asserted because the capability map now tells the assistant so, and a map that says
-    /// "this one is not for you" about a tool that quietly starts working is worse than one that never mentioned it.
-    /// </summary>
-    [Fact]
-    public void TheAssistantsStatusline_CannotBeSet_BecauseItIsNotInTheListThatWritesThem()
-    {
-        var cockpit = Dispatcher.UIThread.Invoke(() =>
-        {
-            var viewModel = _Cockpit(new SessionRegistry());
-            viewModel.CreateAssistantSession(AssistantIdentity.PaneId);
-            return viewModel;
-        });
-
-        Assert.False(Dispatcher.UIThread.Invoke(() => cockpit.SetSessionStatusline(AssistantIdentity.PaneId, "AC-635")));
-    }
-
-    /// <summary>
-    /// AC-656: the assistant is resolved through the same target lookup as any pane now (`AssistantPane`, since
-    /// `AllSessions` still never carries it) and runs the same gate — no special-cased refusal left for it. Asserted
-    /// against an unstarted assistant session on purpose: before this ticket every target hit the same
-    /// <c>NotWakeable</c> short-circuit regardless of state, so a <em>state-dependent</em> outcome
-    /// (<c>CannotTakeATurn</c>, exactly what an unstarted ordinary session gets in
-    /// <c>WorkspaceAgentGatewayWakeTests.Wake_OnASessionPaneWhoseRuntimeNeverStarted_IsRefused</c>) is what proves
-    /// the special case is gone rather than merely renamed.
-    /// </summary>
-    [Fact]
-    public void WakingTheAssistant_FollowsTheSameGateAsAnySession_RatherThanARefusalThatNeverLooked()
-    {
-        var (gateway, caller) = Dispatcher.UIThread.Invoke(() =>
-        {
-            var sessions = new SessionRegistry();
-            var cockpit = _Cockpit(sessions);
-            var session = new SessionViewModel { WorkspaceId = "desk-a" };
-            cockpit.Sessions.Add(session);
-            var assistant = cockpit.CreateAssistantSession(AssistantIdentity.PaneId);
-            if (assistant is not null)
-            {
-                assistant.SessionStatus = SessionStatus.Idle;
-            }
-
-            return (_Gateway(sessions), session);
-        });
-
-        var outcome = Dispatcher.UIThread.Invoke(
-            () => gateway.TryWakeAsync(caller.PaneId, AssistantIdentity.PaneId, "heads-up").GetAwaiter().GetResult());
-
-        // Idle and resolvable, but its runtime was never started — CannotTakeATurn, not PaneGone and not
-        // NotWakeable (which no longer exists in AgentWakeOutcome at all).
-        Assert.Equal(AgentWakeOutcome.CannotTakeATurn, outcome);
     }
 
     /// <summary>

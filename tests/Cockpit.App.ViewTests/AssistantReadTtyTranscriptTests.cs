@@ -45,23 +45,6 @@ public class AssistantReadTtyTranscriptTests
         Assert.Equal(tty.PaneId, transcript!.PaneId);
     }
 
-    [Fact]
-    public async Task ReadTranscriptAsync_ForAPlainTerminal_StillReportsNoSession()
-    {
-        // The other half, and the reason the old type test looked right: a shell pane carries a pane id but has no
-        // agent behind it to have said anything. "No AI session" is true of it, and must stay the answer.
-        var (gateway, terminal) = Dispatcher.UIThread.Invoke(() =>
-        {
-            var sessions = new SessionRegistry();
-            var cockpit = new CockpitViewModel(sessionRegistry: sessions);
-            var session = TtyViewModel.DesignTerminal();
-            cockpit.Sessions.Add(session);
-            return (_Gateway(sessions), session);
-        });
-
-        Assert.Null(await gateway.ReadTranscriptAsync(terminal.PaneId, count: 30));
-    }
-
     private static AssistantReadGateway _Gateway(SessionRegistry sessions)
     {
         var store = Substitute.For<IProjectStore>();

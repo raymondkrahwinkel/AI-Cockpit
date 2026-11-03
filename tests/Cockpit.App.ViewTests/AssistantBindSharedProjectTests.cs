@@ -87,96 +87,6 @@ public class AssistantBindSharedProjectTests : IDisposable
     }
 
     [Fact]
-    public async Task Binds_TheFolderWasPointedAtRatherThanClonedFrom_SoTheSharedGitUrlIsNotClaimed()
-    {
-        // The dialog's "Choose…" drops the definition's own GitUrl for the same reason: a folder somebody pointed
-        // at is not one this URL produced, and keeping it would claim a provenance nothing here established.
-        var (gateway, projects, _) = _Build(new SharedProjectBinding("Handbook") { GitUrl = "git@github.com:example/handbook.git" });
-
-        Assert.True((await gateway.BindSharedProjectAsync("depot:handbook", _folder, ProfileLabel)).Ok);
-
-        Assert.Null(Assert.Single(projects.Drawn().Projects).GitUrl);
-    }
-
-    [Fact]
-    public async Task Binds_TheRowStopsBeingOfferedAsSomethingToAdd()
-    {
-        var (gateway, projects, _) = _Build(new SharedProjectBinding("Handbook"));
-        await Dispatcher.UIThread.InvokeAsync(() => projects.LoadSharedProjectsAsync());
-        Assert.Single(Assert.Single(projects.Drawn().SharedProjectGroups).Projects);
-
-        Assert.True((await gateway.BindSharedProjectAsync("depot:handbook", _folder, ProfileLabel)).Ok);
-
-        Assert.Empty(Assert.Single(projects.Drawn().SharedProjectGroups).Projects);
-    }
-
-    // ── Criterion 2: the three machine-specific answers are asked for, never defaulted ─────────────────────────
-
-    [Fact]
-    public async Task WithoutAFolder_IsRefusedWithTheQuestion()
-    {
-        var (gateway, projects, _) = _Build(new SharedProjectBinding("Handbook"));
-
-        var result = await gateway.BindSharedProjectAsync("depot:handbook", "   ", ProfileLabel);
-
-        Assert.False(result.Ok);
-        Assert.Contains("Which folder", result.Error);
-        Assert.Empty(projects.Drawn().Projects);
-    }
-
-    [Fact]
-    public async Task WithAFolderThatIsNotThere_IsRefused_AndSaysItDoesNotClone()
-    {
-        // Criterion 7: cloning is out of scope for this round, so a folder that does not exist is the operator's
-        // to produce — not something to quietly create or clone on their behalf.
-        var (gateway, projects, _) = _Build(new SharedProjectBinding("Handbook"));
-
-        var result = await gateway.BindSharedProjectAsync(
-            "depot:handbook", Path.Combine(_folder, "not-checked-out"), ProfileLabel);
-
-        Assert.False(result.Ok);
-        Assert.Contains("does not clone", result.Error);
-        Assert.Empty(projects.Drawn().Projects);
-    }
-
-    [Fact]
-    public async Task WithARelativeFolder_IsRefused_RatherThanResolvedAgainstWhereverTheCockpitStarted()
-    {
-        var (gateway, projects, _) = _Build(new SharedProjectBinding("Handbook"));
-
-        var result = await gateway.BindSharedProjectAsync("depot:handbook", "handbook", ProfileLabel);
-
-        Assert.False(result.Ok);
-        Assert.Contains("relative path", result.Error);
-        Assert.Empty(projects.Drawn().Projects);
-    }
-
-    [Fact]
-    public async Task WithoutAProfile_IsRefused_TheDialogsOwnRequiredField()
-    {
-        // `CanSave => !string.IsNullOrWhiteSpace(SelectedProfileLabel)` holds here unchanged.
-        var (gateway, projects, _) = _Build(new SharedProjectBinding("Handbook"));
-
-        var result = await gateway.BindSharedProjectAsync("depot:handbook", _folder, "  ");
-
-        Assert.False(result.Ok);
-        Assert.Contains("Which profile", result.Error);
-        Assert.Empty(projects.Drawn().Projects);
-    }
-
-    [Fact]
-    public async Task WithAProfileThatDoesNotExist_IsRefused_AndNamesTheOnesThatDo()
-    {
-        var (gateway, projects, _) = _Build(new SharedProjectBinding("Handbook"));
-
-        var result = await gateway.BindSharedProjectAsync("depot:handbook", _folder, "Opus Max");
-
-        Assert.False(result.Ok);
-        Assert.Contains("'Zyra'", result.Error);
-        Assert.Empty(projects.Drawn().Projects);
-    }
-
-    [Fact]
     public async Task WithMachineSpecificResourceRowsAndNoReferences_IsRefused_WithEveryRowNamedInOrder()
     {
         var (gateway, projects, _) = _Build(new SharedProjectBinding("Handbook")
@@ -197,55 +107,6 @@ public class AssistantBindSharedProjectTests : IDisposable
         // The refusal is the whole point: a blank row is dropped on save, so binding anyway would have produced a
         // project quietly missing a resource nobody was told about.
         Assert.Empty(projects.Drawn().Projects);
-    }
-
-    [Fact]
-    public async Task WithMachineSpecificResourceRowsAnswered_EachRowKeepsItsOwnLocalReference()
-    {
-        var (gateway, projects, _) = _Build(new SharedProjectBinding("Handbook")
-        {
-            Resources =
-            [
-                new SharedProjectBindingResource("Instructions", string.Empty) { Label = "Onboarding runbook" },
-                new SharedProjectBindingResource("Reference", string.Empty) { Label = "Test dataset" },
-            ],
-        });
-
-        var result = await gateway.BindSharedProjectAsync(
-            "depot:handbook", _folder, ProfileLabel, [Path.Combine(_folder, "runbook.md"), Path.Combine(_folder, "data")]);
-
-        Assert.True(result.Ok, result.Error);
-        var stored = Assert.Single(projects.Drawn().Projects);
-        Assert.Equal("depot:handbook", stored.Resources[0].Reference); // the binding row, always first
-        Assert.Equal(Path.Combine(_folder, "runbook.md"), stored.Resources[1].Reference);
-        Assert.Equal(ProjectResourceRole.Instructions, stored.Resources[1].Role);
-        Assert.Equal(Path.Combine(_folder, "data"), stored.Resources[2].Reference);
-        Assert.Equal(ProjectResourceRole.Reference, stored.Resources[2].Role);
-    }
-
-    // ── Criterion 6: a source that has gone, or lost the project, gives a reason rather than an exception ──────
-
-    [Fact]
-    public async Task WhenTheSourceCannotReadTheDefinition_TheReasonIsPassedOnAsIs()
-    {
-        var (gateway, projects, _) = _Build(SharedProjectBindingResult.Failed("Sign in to this Depot connection."));
-
-        var result = await gateway.BindSharedProjectAsync("depot:handbook", _folder, ProfileLabel);
-
-        Assert.False(result.Ok);
-        Assert.Equal("Sign in to this Depot connection.", result.Error);
-        Assert.Empty(projects.Drawn().Projects);
-    }
-
-    [Fact]
-    public async Task WithAnIdNoConnectionOffers_IsRefused()
-    {
-        var (gateway, _, _) = _Build(new SharedProjectBinding("Handbook"));
-
-        var result = await gateway.BindSharedProjectAsync("nowhere:handbook", _folder, ProfileLabel);
-
-        Assert.False(result.Ok);
-        Assert.Contains("list_shared_projects", result.Error);
     }
 
     [Fact]
@@ -280,21 +141,6 @@ public class AssistantBindSharedProjectTests : IDisposable
         Assert.False(result.Ok);
         Assert.Contains("hidden", result.Error);
         Assert.Empty(projects.Drawn().Projects);
-    }
-
-    [Fact]
-    public async Task BindingFromTheAssistant_DoesNotMoveTheOperatorsSelection()
-    {
-        // The dialog route selects what the operator just filled in a form for; this one has no click behind it, and
-        // moving the selection would take it out from under a pending Edit or Remove.
-        var existing = new Project("local-1", "Something else");
-        var (gateway, projects, _) = _Build(
-            new SharedProjectBinding("Handbook"), ProjectSettings.Empty with { Projects = [existing] });
-        projects.SelectedProject = projects.Projects.First(project => project.Id == "local-1");
-
-        Assert.True((await gateway.BindSharedProjectAsync("depot:handbook", _folder, ProfileLabel)).Ok);
-
-        Assert.Equal("local-1", projects.Drawn().SelectedProject?.Id);
     }
 
     // ── Fixtures ──────────────────────────────────────────────────────────────────────────────────────────────

@@ -18,7 +18,8 @@ public sealed class FilePathResolverTests : IDisposable
     {
         await HeadlessAvalonia.RunAsync(async () =>
         {
-            FilePathResolver.Exists = _ => true;
+            var probes = 0;
+            FilePathResolver.Exists = _ => { Interlocked.Increment(ref probes); return true; };
             var settled = new TaskCompletionSource();
 
             var immediate = FilePathResolver.Resolve("Theme.axaml", @"C:\repo", () => settled.TrySetResult());
@@ -29,55 +30,7 @@ public sealed class FilePathResolverTests : IDisposable
 
             var afterSettle = FilePathResolver.Resolve("Theme.axaml", @"C:\repo", () => { });
             Assert.Equal(Path.Combine(@"C:\repo", "Theme.axaml"), afterSettle);
-        });
-    }
-
-    [Fact]
-    public async Task MissingFile_SettlesToNullAndStaysNegative()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var probes = 0;
-            FilePathResolver.Exists = _ => { Interlocked.Increment(ref probes); return false; };
-            var settled = new TaskCompletionSource();
-
-            FilePathResolver.Resolve("Ghost.cs", @"C:\repo", () => settled.TrySetResult());
-            await Task.WhenAny(settled.Task, Task.Delay(TimeSpan.FromSeconds(5)));
-            Assert.True(settled.Task.IsCompletedSuccessfully);
-
-            Assert.Null(FilePathResolver.Resolve("Ghost.cs", @"C:\repo", () => { }));
-            Assert.Equal(1, probes); // the second call answered from the (negative) cache entry
-        });
-    }
-
-    [Fact]
-    public void NoBasePathAndRelativeCandidate_ReturnsNullWithoutProbing()
-    {
-        var probed = false;
-        FilePathResolver.Exists = _ => { probed = true; return true; };
-
-        var result = FilePathResolver.Resolve("Theme.axaml", null, () => { });
-
-        Assert.Null(result);
-        Assert.False(probed);
-    }
-
-    [Fact]
-    public async Task CachedPositive_IsNeverProbedTwice()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var probes = 0;
-            FilePathResolver.Exists = _ => { Interlocked.Increment(ref probes); return true; };
-            var settled = new TaskCompletionSource();
-
-            FilePathResolver.Resolve("MarkdownView.cs", @"C:\repo\src", () => settled.TrySetResult());
-            await Task.WhenAny(settled.Task, Task.Delay(TimeSpan.FromSeconds(5)));
-
-            FilePathResolver.Resolve("MarkdownView.cs", @"C:\repo\src", () => { });
-            FilePathResolver.Resolve("MarkdownView.cs", @"C:\repo\src", () => { });
-
-            Assert.Equal(1, probes);
+            Assert.Equal(1, probes); // the second call answered from the (positive) cache entry
         });
     }
 

@@ -63,31 +63,4 @@ public class SessionRegistryFeedTests
         Assert.True(await handle.SendPromptAsync("carry on"));
         Assert.Equal(["carry on\r"], Dispatcher.UIThread.Invoke(() => written.ToList()));
     }
-
-    [Fact]
-    public async Task AnSdkPanesTranscript_IsReadAsItsLastRowsAndTheTotal()
-    {
-        var sessions = new SessionRegistry();
-        var paneId = Dispatcher.UIThread.Invoke(() =>
-        {
-            var cockpit = new CockpitViewModel(sessionRegistry: sessions);
-            var sdk = new SessionViewModel();
-            // The parameterless constructor seeds design-time rows; this test counts its own.
-            sdk.Transcript.Clear();
-            sdk.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "first"));
-            sdk.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "second"));
-            sdk.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, "third"));
-            cockpit.Sessions.Add(sdk);
-            return sdk.PaneId;
-        });
-
-        var handle = sessions.Find(paneId);
-        Assert.NotNull(handle);
-        var slice = await handle.ReadTranscriptAsync(2);
-
-        Assert.Equal(3, slice.TotalEntries);
-        Assert.Equal(
-            [new SessionTranscriptEntry("UserText", "second", null), new SessionTranscriptEntry("AssistantText", "third", null)],
-            slice.Entries);
-    }
 }

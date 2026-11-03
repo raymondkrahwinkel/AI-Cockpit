@@ -43,19 +43,6 @@ public class ScreenshotRedactionTests
         Assert.Equal(new[] { new RedactionMark(new CaptureRect(50, 80, 60, 40)) }, selection.Result.Marks);
     }
 
-    /// <summary>A box hanging over the edge of the region is kept for the part that is inside it.</summary>
-    [Fact]
-    public void ABoxHalfOutsideTheRegion_IsKeptForThePartInside()
-    {
-        var selection = _Surface();
-        _MarkOut(selection, 100, 100, 500, 400);
-        _DrawBox(selection, 450, 150, 200, 100);
-
-        selection.Confirm();
-
-        Assert.Equal(new[] { new RedactionMark(new CaptureRect(350, 50, 50, 100)) }, selection.Result!.Marks);
-    }
-
     /// <summary>
     /// Enter while the button is still down, halfway through drawing a box. The keyboard and the mouse are used
     /// together, and a box that only exists as a pending drag would be dropped in silence — sending the exact

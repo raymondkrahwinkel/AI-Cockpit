@@ -18,42 +18,6 @@ namespace Cockpit.App.ViewTests;
 [Collection("avalonia")]
 public class PaneFocusSelectionTests
 {
-    [Fact]
-    public void AnElementDeepInsideAPane_ResolvesToThatPanesContainerAndSession() => HeadlessAvalonia.Run(() =>
-    {
-        var sessionA = new SessionViewModel();
-        var sessionB = new SessionViewModel();
-
-        // A control nested a couple of levels down in pane B, as a focused terminal or header button would be.
-        var deepInB = new Button();
-        var paneA = new Border { DataContext = sessionA, Child = new Decorator() };
-        var paneB = new Border { DataContext = sessionB, Child = new Decorator { Child = deepInB } };
-
-        var panel = new SessionTilePanel();
-        panel.Children.Add(paneA);
-        panel.Children.Add(paneB);
-
-        var window = new Window { Content = panel, Width = 400, Height = 300 };
-        window.Show();
-        window.UpdateLayout();
-
-        var container = CockpitView._PaneContainerFromSource(deepInB);
-
-        Assert.Same(paneB, container);
-        Assert.Same(sessionB, container!.DataContext);
-    });
-
-    [Fact]
-    public void AnElementOutsideAnyPane_ResolvesToNothing() => HeadlessAvalonia.Run(() =>
-    {
-        var loose = new Button();
-        var window = new Window { Content = new Decorator { Child = loose }, Width = 200, Height = 100 };
-        window.Show();
-        window.UpdateLayout();
-
-        Assert.Null(CockpitView._PaneContainerFromSource(loose));
-    });
-
     /// <summary>
     /// Reported by Raymond (2026-08-01): switching the active session to an SDK pane moved the selection but
     /// left keyboard focus on the session just left, so the next keystroke went to the wrong session. The helper

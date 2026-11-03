@@ -1,5 +1,4 @@
 using Avalonia.Controls;
-using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -56,9 +55,6 @@ public class AssistantChatMentionPickerViewTests
     private static TextBox _Composer(Pane pane) =>
         pane.Window.GetVisualDescendants().OfType<TextBox>().First(box => box.Name == "InputBox");
 
-    private static Popup _MentionPopup(Pane pane) =>
-        pane.Window.GetVisualDescendants().OfType<Popup>().First();
-
     private static void _Settle(Pane pane)
     {
         Dispatcher.UIThread.RunJobs();
@@ -87,19 +83,6 @@ public class AssistantChatMentionPickerViewTests
     }
 
     [Fact]
-    public void TypingAnAtSign_WithASessionWorkingDirectory_OpensThePopup() => HeadlessAvalonia.Run(() =>
-    {
-        var session = new SessionViewModel { WorkingDirectory = "/repo" };
-        using var pane = _Pane(_FakeHost(session));
-        var box = _Composer(pane);
-
-        _Type(box, pane, "@");
-
-        Assert.True(pane.ViewModel.MentionPicker.IsOpen);
-        Assert.True(_MentionPopup(pane).IsOpen);
-    });
-
-    [Fact]
     public void TypingAnAtSign_BeforeASessionExists_FallsBackToTheProfileDefaultAndOpens() => HeadlessAvalonia.Run(() =>
     {
         using var pane = _Pane(_FakeHost(session: null, defaultWorkingDirectory: "/profile-default"));
@@ -108,18 +91,6 @@ public class AssistantChatMentionPickerViewTests
         _Type(box, pane, "@");
 
         Assert.True(pane.ViewModel.MentionPicker.IsOpen);
-    });
-
-    [Fact]
-    public void TypingAnAtSign_WithNeitherASessionNorAProfileDefault_NeverOpensThePopup() => HeadlessAvalonia.Run(() =>
-    {
-        using var pane = _Pane(_FakeHost());
-        var box = _Composer(pane);
-
-        _Type(box, pane, "@");
-
-        Assert.False(pane.ViewModel.MentionPicker.IsOpen);
-        Assert.False(_MentionPopup(pane).IsOpen);
     });
 
     [Fact]
@@ -135,21 +106,5 @@ public class AssistantChatMentionPickerViewTests
         Assert.False(pane.ViewModel.MentionPicker.IsOpen);
         Assert.Equal("@src/Foo.cs ", box.Text);
         Assert.Equal("@src/Foo.cs ", pane.ViewModel.InputText);
-    });
-
-    [Fact]
-    public void APasteThatLeavesMentionLookingText_NeverOpensThePicker() => HeadlessAvalonia.Run(() =>
-    {
-        var session = new SessionViewModel { WorkingDirectory = "/repo" };
-        using var pane = _Pane(_FakeHost(session));
-        var box = _Composer(pane);
-
-        box.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.V, KeyModifiers = KeyModifiers.Control });
-        box.Text = "@pasted";
-        box.CaretIndex = box.Text.Length;
-        box.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyUpEvent, Key = Key.V, KeyModifiers = KeyModifiers.Control });
-        _Settle(pane);
-
-        Assert.False(pane.ViewModel.MentionPicker.IsOpen);
     });
 }

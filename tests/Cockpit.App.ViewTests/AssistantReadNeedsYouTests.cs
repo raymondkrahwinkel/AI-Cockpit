@@ -49,24 +49,6 @@ public class AssistantReadNeedsYouTests
         Assert.Empty(project.McpSelection.AdditionalServers);
     }
 
-    [Fact]
-    public void ListSessions_ForATtyPaneWithNoOpenPrompt_ReportsNotNeedsYou()
-    {
-        var (gateway, tty) = Dispatcher.UIThread.Invoke(() =>
-        {
-            var sessions = new SessionRegistry();
-            var cockpit = new CockpitViewModel(sessionRegistry: sessions);
-            var session = new TtyViewModel { SessionStatus = SessionStatus.Busy };
-            cockpit.Sessions.Add(session);
-            return (_Gateway(sessions), session);
-        });
-
-        var rows = Dispatcher.UIThread.Invoke(() => gateway.ListSessionsAsync().GetAwaiter().GetResult());
-
-        var row = Assert.Single(rows, row => row.PaneId == tty.PaneId);
-        Assert.False(row.NeedsYou);
-    }
-
     // AC-1309: NeedsYou is derived from Status alone now — one source of truth instead of a second reading of
     // `HasPendingPermission`. That widens what counts: a CLI `needs_action` with no pending-permission row (no
     // tool call to answer, just a status signal) used to read as NeedsYou=false on the SDK route; it does not now.

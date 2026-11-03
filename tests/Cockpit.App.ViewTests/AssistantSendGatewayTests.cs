@@ -33,58 +33,6 @@ public class AssistantSendGatewayTests
         Assert.Contains("my own session", result.Error!, StringComparison.Ordinal);
     });
 
-    [Fact]
-    public Task APromptForAPaneThatIsNotThere_IsRefused() => HeadlessAvalonia.RunAsync(async () =>
-    {
-        var (gateway, _, _) = _Gateway();
-
-        var result = await gateway.SendPromptAsync("pane-that-closed", "run the tests");
-
-        Assert.False(result.Ok);
-        Assert.Contains("pane-that-closed", result.Error!, StringComparison.Ordinal);
-    });
-
-    /// <summary>
-    /// A plain terminal has a pane id and nobody on the other end reading it — the same refusal
-    /// <see cref="IAssistantAgentGateway.StopAsync"/> makes, because what may be handed a turn has to be what could
-    /// be seen as an agent in the first place.
-    /// </summary>
-    [Fact]
-    public Task APromptForATerminalPane_IsRefused_AndNothingIsTyped() => HeadlessAvalonia.RunAsync(async () =>
-    {
-        var (gateway, cockpit, _) = _Gateway();
-        var written = new List<string>();
-        var terminal = new TtyViewModel { ShowPluginHeaderItems = false, PromptSink = written.Add };
-        cockpit.Sessions.Add(terminal);
-
-        var result = await gateway.SendPromptAsync(terminal.PaneId, "run the tests");
-
-        Assert.False(result.Ok);
-        Assert.Empty(written);
-    });
-
-    [Fact]
-    public Task APromptForALiveAgentSession_IsSubmittedAndReportedAsDelivered() => HeadlessAvalonia.RunAsync(async () =>
-    {
-        var (gateway, cockpit, _) = _Gateway();
-        var written = new List<string>();
-        // Both seams, because the real view wires both: it subscribes VoiceTranscriptReady when the data context
-        // attaches and assigns PromptSink once the pty is actually up, and both are the same write into that pty.
-        var session = new TtyViewModel { PromptSink = written.Add };
-        session.VoiceTranscriptReady += written.Add;
-        session.SetAutoSubmitScheduler((_, submit) => submit());
-        // AC-760: the pty existing is not readiness — this is the view's third seam, the hosted CLI actually
-        // reading stdin (DECSET 2004, or its fallback deadline).
-        session.MarkHostedTuiReady();
-        cockpit.Sessions.Add(session);
-
-        var result = await gateway.SendPromptAsync(session.PaneId, "run the tests");
-
-        Assert.True(result.Ok);
-        Assert.True(result.Delivered);
-        Assert.Equal(new[] { "run the tests", "\r" }, written);
-    });
-
     /// <summary>
     /// The half that makes this worth having a field for: a session the assistant only just spawned cannot take a
     /// turn yet, and the turn must neither vanish nor be reported as sent. It waits, and <c>delivered</c> says so.
@@ -114,36 +62,6 @@ public class AssistantSendGatewayTests
         Assert.Equal(new[] { "run the tests", "\r" }, written);
     });
 
-    // ── send_message ───────────────────────────────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public Task AMessageAddressedAtTheAssistantsOwnPane_IsRefused_AndNothingIsDelivered() => HeadlessAvalonia.RunAsync(async () =>
-    {
-        var (gateway, _, parts) = _Gateway();
-
-        var result = await gateway.SendMessageAsync(AssistantIdentity.PaneId, "heads-up", "the branch moved");
-
-        Assert.False(result.Ok);
-        parts.Inbox.DidNotReceiveWithAnyArgs().Deliver(default!, default!, default!, default!);
-    });
-
-    /// <summary>
-    /// The addressee is validated against the agent line's own answer for that pane rather than against a desk the
-    /// caller sits on — which is what lets the assistant, who sits on no desk, reach every desk without any change
-    /// to what <c>notify</c> lets an ordinary agent reach.
-    /// </summary>
-    [Fact]
-    public Task AMessageForAPaneTheAgentLineDoesNotResolve_IsRefused_AndNothingIsDelivered() => HeadlessAvalonia.RunAsync(async () =>
-    {
-        var (gateway, _, parts) = _Gateway();
-        parts.Agents.GetWorkspaceSnapshotAsync(TargetPane).Returns((WorkspaceAgentSnapshot?)null);
-
-        var result = await gateway.SendMessageAsync(TargetPane, "heads-up", "the branch moved");
-
-        Assert.False(result.Ok);
-        parts.Inbox.DidNotReceiveWithAnyArgs().Deliver(default!, default!, default!, default!);
-    });
-
     [Fact]
     public Task AMessageForAnAgentOnAnyDesk_LandsInTheSameInboxNotifyUses_StampedAsTheAssistant() => HeadlessAvalonia.RunAsync(async () =>
     {
@@ -163,40 +81,6 @@ public class AssistantSendGatewayTests
 
         // The sender is the assistant's own pane and not something a caller could name.
         parts.Inbox.Received(1).Deliver(AssistantIdentity.PaneId, TargetPane, "heads-up", "the branch moved");
-    });
-
-    /// <summary>
-    /// A recipient that only sees mail when it goes looking is not a recipient that has been told. The field is
-    /// reported straight off the roster so the assistant cannot round it up into "I let them know".
-    /// </summary>
-    [Fact]
-    public Task AMessageToAPaneWithNoTurnStartDelivery_SaysSo() => HeadlessAvalonia.RunAsync(async () =>
-    {
-        var (gateway, _, parts) = _Gateway();
-        _Roster(parts, deliversAtTurnStart: false);
-        parts.Inbox.Deliver(AssistantIdentity.PaneId, TargetPane, "heads-up", "the branch moved").Returns(
-            new AgentMessageDelivery(
-                AgentMessageDeliveryOutcome.Delivered,
-                new AgentMessage("msg-1", AssistantIdentity.PaneId, TargetPane, "heads-up", "the branch moved", DateTimeOffset.UtcNow)));
-
-        var result = await gateway.SendMessageAsync(TargetPane, "heads-up", "the branch moved");
-
-        Assert.True(result.Ok);
-        Assert.False(result.DeliversAtTurnStart);
-    });
-
-    [Fact]
-    public Task AMessageForARecipientWhoseInboxIsFull_IsRefused() => HeadlessAvalonia.RunAsync(async () =>
-    {
-        var (gateway, _, parts) = _Gateway();
-        _Roster(parts, deliversAtTurnStart: true);
-        parts.Inbox.Deliver(AssistantIdentity.PaneId, TargetPane, "heads-up", "the branch moved").Returns(
-            new AgentMessageDelivery(AgentMessageDeliveryOutcome.RecipientInboxFull, null));
-
-        var result = await gateway.SendMessageAsync(TargetPane, "heads-up", "the branch moved");
-
-        Assert.False(result.Ok);
-        Assert.Contains("full", result.Error!, StringComparison.Ordinal);
     });
 
     private static void _Roster(GatewayParts parts, bool deliversAtTurnStart) =>

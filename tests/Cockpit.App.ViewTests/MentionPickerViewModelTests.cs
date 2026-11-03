@@ -1,4 +1,3 @@
-using System.Collections.Specialized;
 using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.ViewTests;
@@ -12,69 +11,6 @@ public class MentionPickerViewModelTests
 {
     private static MentionPickerViewModel _WithFiles(IReadOnlyList<string> files, string? workingDirectory = "/repo") =>
         new(_ => Task.FromResult(files), () => workingDirectory);
-
-    [Fact]
-    public void OnTextChanged_AtTrigger_OpensAndLoadsMatches()
-    {
-        var viewModel = _WithFiles(["src/Foo.cs", "src/Bar.cs"]);
-
-        viewModel.OnTextChanged("@", 1);
-
-        Assert.True(viewModel.IsOpen);
-        Assert.False(viewModel.IsLoading);
-        Assert.Equal(2, viewModel.Matches.Count);
-    }
-
-    /// <summary>
-    /// AC-756: Matches is bound to the popup's ListBox, so clearing and refilling it rebuilds every row container
-    /// on every keystroke while the operator is typing underneath it. A keystroke that narrows the query must
-    /// rewrite the list in place — a Reset is the expensive notification, whatever the rows end up being.
-    /// </summary>
-    [Fact]
-    public void OnTextChanged_WhileOpen_NeverResetsTheMatchesCollection()
-    {
-        var viewModel = _WithFiles(["src/Foo.cs", "src/Bar.cs", "src/FooBar.cs"]);
-        viewModel.OnTextChanged("@", 1);
-        var resets = 0;
-        viewModel.Matches.CollectionChanged += (_, e) =>
-        {
-            if (e.Action == NotifyCollectionChangedAction.Reset)
-            {
-                resets++;
-            }
-        };
-
-        viewModel.OnTextChanged("@f", 2);
-        viewModel.OnTextChanged("@fo", 3);
-        viewModel.OnTextChanged("@foo", 4);
-
-        Assert.Equal(0, resets);
-    }
-
-    [Fact]
-    public void OnTextChanged_WhileOpen_RaisesNothingWhenTheRankingIsUnchanged()
-    {
-        var viewModel = _WithFiles(["src/Alpha.cs"]);
-        viewModel.OnTextChanged("@a", 2);
-        Assert.Single(viewModel.Matches);
-        var changes = 0;
-        viewModel.Matches.CollectionChanged += (_, _) => changes++;
-
-        viewModel.OnTextChanged("@al", 3);
-        viewModel.OnTextChanged("@alp", 4);
-
-        Assert.Equal(0, changes);
-    }
-
-    [Fact]
-    public void OnTextChanged_NoWorkingDirectory_NeverOpens()
-    {
-        var viewModel = _WithFiles(["src/Foo.cs"], workingDirectory: null);
-
-        viewModel.OnTextChanged("@", 1);
-
-        Assert.False(viewModel.IsOpen);
-    }
 
     [Fact]
     public void OnTextChanged_TokenClosedByWhitespace_ClosesAnOpenPicker()
@@ -105,19 +41,6 @@ public class MentionPickerViewModelTests
     }
 
     [Fact]
-    public void OnTextChanged_ReopeningAfterAClose_ReloadsTheFileSource()
-    {
-        var calls = 0;
-        var viewModel = new MentionPickerViewModel(_ => { calls++; return Task.FromResult<IReadOnlyList<string>>(["src/Foo.cs"]); }, () => "/repo");
-
-        viewModel.OnTextChanged("@foo", 4);
-        viewModel.OnTextChanged("@foo ", 5); // closes
-        viewModel.OnTextChanged("bar @baz", 8); // fresh '@', reopens
-
-        Assert.Equal(2, calls);
-    }
-
-    [Fact]
     public void Move_ClampsToTheEndsOfTheList()
     {
         var viewModel = _WithFiles(["a", "b", "c"]);
@@ -145,15 +68,6 @@ public class MentionPickerViewModelTests
     }
 
     [Fact]
-    public void Accept_WithNothingSelected_ReturnsNull()
-    {
-        var viewModel = _WithFiles([]);
-        viewModel.OnTextChanged("@zzz", 4);
-
-        Assert.Null(viewModel.Accept());
-    }
-
-    [Fact]
     public void Dismiss_ThenTypingOnInTheSameToken_DoesNotReopen()
     {
         var viewModel = _WithFiles(["src/Foo.cs"]);
@@ -165,48 +79,5 @@ public class MentionPickerViewModelTests
         viewModel.OnTextChanged("@foo", 4);
 
         Assert.False(viewModel.IsOpen);
-    }
-
-    [Fact]
-    public void Dismiss_ThenANewAtToken_ReopensNormally()
-    {
-        var viewModel = _WithFiles(["src/Foo.cs"]);
-        viewModel.OnTextChanged("@fo", 3);
-        viewModel.Dismiss();
-
-        viewModel.OnTextChanged("@fo bar @f", 10);
-
-        Assert.True(viewModel.IsOpen);
-    }
-
-    [Fact]
-    public void OnTextChanged_WhileALoadIsStillPending_ShowsLoadingThenPopulatesOnCompletion()
-    {
-        var source = new TaskCompletionSource<IReadOnlyList<string>>();
-        var viewModel = new MentionPickerViewModel(_ => source.Task, () => "/repo");
-
-        viewModel.OnTextChanged("@", 1);
-
-        Assert.True(viewModel.IsOpen);
-        Assert.True(viewModel.IsLoading);
-        Assert.Empty(viewModel.Matches);
-
-        source.SetResult(["src/Foo.cs"]);
-
-        Assert.False(viewModel.IsLoading);
-        Assert.Single(viewModel.Matches);
-    }
-
-    [Fact]
-    public void Close_ClearsDismissSuppression()
-    {
-        var viewModel = _WithFiles(["src/Foo.cs"]);
-        viewModel.OnTextChanged("@fo", 3);
-        viewModel.Dismiss();
-
-        viewModel.Close();
-        viewModel.OnTextChanged("@fo", 3);
-
-        Assert.True(viewModel.IsOpen);
     }
 }

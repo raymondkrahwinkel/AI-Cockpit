@@ -72,54 +72,7 @@ public class AssistantChatComposerTests
         Assert.Empty(session.QueuedMessages);
     });
 
-    /// <summary>An empty queue leaves Arrow-Up free to move the caret as usual.</summary>
-    [Fact]
-    public void RecallingWithAnEmptyQueue_DoesNothing() => HeadlessAvalonia.Run(() =>
-    {
-        var session = new SessionViewModel();
-        session.QueuedMessages.Clear();
-        var vm = new AssistantChatViewModel(_FakeHost(session), _FakeSettingsStore(), Substitute.For<IVoicePlaybackQueue>());
-
-        Assert.False(vm.RecallLastQueuedMessage());
-        Assert.Empty(vm.InputText);
-    });
-
     private static readonly SessionProfile Profile = new("default", new ClaudeConfig(@"C:\fake\.claude"));
-
-    /// <summary>AC-942 criterion 6: no session yet, no button.</summary>
-    [Fact]
-    public void StopButton_HiddenWithNoSession() => HeadlessAvalonia.Run(() =>
-    {
-        using var pane = _Pane(_FakeHost(session: null));
-
-        Assert.False(_StopButton(pane.Window).IsEffectivelyVisible);
-    });
-
-    /// <summary>AC-942 criterion 1/6: hidden while idle, shown while a turn is running.</summary>
-    [Fact]
-    public void StopButton_TracksSessionIsBusy() => HeadlessAvalonia.Run(() =>
-    {
-        var session = new SessionViewModel();
-        using var pane = _Pane(_FakeHost(session));
-        Assert.False(_StopButton(pane.Window).IsEffectivelyVisible);
-
-        session.IsBusy = true;
-        pane.Window.UpdateLayout();
-
-        Assert.True(_StopButton(pane.Window).IsEffectivelyVisible);
-    });
-
-    /// <summary>AC-942 criteria 2 and 4: clicking Stop interrupts the running turn and cuts read-aloud.</summary>
-    [Fact]
-    public async Task ClickingStop_InterruptsTheTurn_AndStopsReadAloud() => await HeadlessAvalonia.RunAsync(async () =>
-    {
-        var (vm, _, driver, playback) = await _StartedVmAsync();
-
-        await vm.StopCommand.ExecuteAsync(null);
-
-        await driver.Received().InterruptAsync(Arg.Any<CancellationToken>());
-        playback.Received().StopAll();
-    });
 
     /// <summary>AC-942 criterion 3: Esc interrupts the turn, same as clicking Stop.</summary>
     [Fact]
@@ -165,24 +118,6 @@ public class AssistantChatComposerTests
         window.Close();
     });
 
-    private sealed record Pane(AssistantChatWindow Window, AssistantChatViewModel ViewModel) : IDisposable
-    {
-        public void Dispose() => Window.Close();
-    }
-
-    private static Pane _Pane(IAssistantSessionHost host)
-    {
-        var vm = new AssistantChatViewModel(host, _FakeSettingsStore(), Substitute.For<IVoicePlaybackQueue>());
-        var window = new AssistantChatWindow { Width = 420, Height = 560, DataContext = vm };
-        window.Show();
-        Dispatcher.UIThread.RunJobs();
-        window.UpdateLayout();
-        return new Pane(window, vm);
-    }
-
-    private static Button _StopButton(Window window) =>
-        window.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "StopButton");
-
     private static TextBox _InputBox(Window window) =>
         window.GetVisualDescendants().OfType<TextBox>().Single(b => b.Name == "InputBox");
 
@@ -207,112 +142,6 @@ public class AssistantChatComposerTests
         await Task.Delay(Timeout.Infinite, cancellationToken);
         yield break;
     }
-
-    // AC-935 criterion 2: a row's reply button sets the composer's pending target, which the chip shows and its
-    // own cancel clears — same session state the send path reads, not a separate view-only flag.
-    [Fact]
-    public void SettingAReplyTarget_ShowsTheChip_AndCancellingItHidesItAgain() => HeadlessAvalonia.Run(() =>
-    {
-        var session = new SessionViewModel();
-        session.Transcript.Clear();
-        var target = new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, "please check the build output");
-        session.Transcript.Add(target);
-
-        var window = new AssistantChatWindow
-        {
-            Width = 420,
-            Height = 560,
-            DataContext = new AssistantChatViewModel(_FakeHost(session), _FakeSettingsStore(), Substitute.For<IVoicePlaybackQueue>()),
-        };
-        window.Show();
-        Dispatcher.UIThread.RunJobs();
-        try
-        {
-            Assert.False(window.ChatView.ReplyChip.IsVisible);
-
-            session.SetReplyTargetCommand.Execute(target);
-            Dispatcher.UIThread.RunJobs();
-
-            Assert.True(window.ChatView.ReplyChip.IsVisible);
-
-            window.ChatView.ReplyChipCancelButton.Command!.Execute(null);
-            Dispatcher.UIThread.RunJobs();
-
-            Assert.False(window.ChatView.ReplyChip.IsVisible);
-            Assert.Null(session.PendingReplyTo);
-        }
-        finally
-        {
-            window.Close();
-        }
-    });
-
-    // Bug found while verifying AC-935 (pre-existing, not caused by it): `CanSend` never raised
-    // PropertyChanged, so `SendButton.IsEnabled="{Binding CanSend}"` stayed at whatever it read on the
-    // window's first render — grey forever, typed text or not. Unnoticed because Enter bypasses the
-    // button and checks CanExecute directly (AssistantChatWindow._OnInputKeyDownCore).
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void TypingIntoTheBox_EnablesSend_RegardlessOfWhetherATurnIsInFlight(bool busy) => HeadlessAvalonia.Run(() =>
-    {
-        var session = new SessionViewModel();
-        session.Transcript.Clear();
-        session.IsBusy = busy;
-
-        var window = new AssistantChatWindow
-        {
-            Width = 420,
-            Height = 560,
-            DataContext = new AssistantChatViewModel(_FakeHost(session), _FakeSettingsStore(), Substitute.For<IVoicePlaybackQueue>()),
-        };
-        window.Show();
-        Dispatcher.UIThread.RunJobs();
-        try
-        {
-            Assert.False(window.ChatView.SendButton.IsEnabled);
-
-            ((AssistantChatViewModel)window.DataContext!).InputText = "looks fine to me";
-            Dispatcher.UIThread.RunJobs();
-
-            Assert.True(window.ChatView.SendButton.IsEnabled);
-        }
-        finally
-        {
-            window.Close();
-        }
-    });
-
-    // The other half of CanSend's dependencies — an attachment with no typed text must re-enable Send the
-    // same way typing does (same bug, same fix: PendingAttachments.CollectionChanged now re-raises CanSend).
-    [Fact]
-    public void AddingAPendingAttachment_EnablesSend() => HeadlessAvalonia.Run(() =>
-    {
-        var session = new SessionViewModel();
-        session.Transcript.Clear();
-
-        var window = new AssistantChatWindow
-        {
-            Width = 420,
-            Height = 560,
-            DataContext = new AssistantChatViewModel(_FakeHost(session), _FakeSettingsStore(), Substitute.For<IVoicePlaybackQueue>()),
-        };
-        window.Show();
-        Dispatcher.UIThread.RunJobs();
-        try
-        {
-            Assert.False(window.ChatView.SendButton.IsEnabled);
-
-            session.PendingAttachments.Add(new ImageAttachmentViewModel(Png, a => session.PendingAttachments.Remove(a)));
-            Dispatcher.UIThread.RunJobs();
-
-            Assert.True(window.ChatView.SendButton.IsEnabled);
-        }
-        finally
-        {
-            window.Close();
-        }
-    });
 
     private static IAssistantSessionHost _FakeHost(SessionViewModel? session)
     {

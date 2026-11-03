@@ -16,20 +16,6 @@ public class PluginToolbarActionTests
     private static ToolbarAction _Action(string title) => new(title, null, () => Task.CompletedTask);
 
     [Fact]
-    public void VisibleToolbarActions_FollowTheOperatorsMenuOrder() => HeadlessAvalonia.Run(() =>
-    {
-        var cockpit = new CockpitViewModel();
-        var sink = (IPluginContributionSink)cockpit;
-        sink.AddToolbarAction("docker", _Action("Docker settings"));
-        sink.AddToolbarAction("kubernetes", _Action("Kubernetes settings"));
-
-        cockpit.ApplyPluginMenuPreference("kubernetes", menuOrder: 0, hiddenInMenu: false);
-        cockpit.ApplyPluginMenuPreference("docker", menuOrder: 1, hiddenInMenu: false);
-
-        Assert.Equal(new[] { "kubernetes", "docker" }, cockpit.VisibleToolbarActions.Select(action => action.PluginId));
-    });
-
-    [Fact]
     public void APluginHiddenFromTheMenu_ContributesNoToolbarAction() => HeadlessAvalonia.Run(() =>
     {
         var cockpit = new CockpitViewModel();

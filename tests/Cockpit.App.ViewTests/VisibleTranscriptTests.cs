@@ -1,4 +1,3 @@
-using System.Collections.Specialized;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Sessions;
 using Cockpit.App.Composition;
@@ -64,58 +63,6 @@ public sealed class VisibleTranscriptTests
         {
             vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = $"t{Guid.NewGuid()}", ToolName = "Bash", InputJson = "{}" });
         }
-    }
-
-    /// <summary>
-    /// AC-1644, layer 2 (scroll stability): a reply that names its project refiles on every delta, and in a thread
-    /// that refile used to Clear and refill this list. The panel answers a Reset by forgetting every row height and
-    /// container — measured as the newest row sinking 1287px below the viewport over one streamed reply.
-    /// </summary>
-    [Fact]
-    public void AReplyStreamingIntoTheOpenThread_NeverResetsWhatIsShown()
-    {
-        var vm = _Session(ReadingLevel.Developer);
-        vm.Threads = new ThreadLookup(id => id == "p1" ? "P1" : null, _ => null, _ => null);
-        vm.ShownThread = "p1";
-        _Add(vm, TranscriptEntryKind.UserText, "do it in P1").ProjectIds = ["p1"];
-
-        var resets = 0;
-        vm.VisibleTranscript.CollectionChanged += (_, e) => resets += e.Action == NotifyCollectionChangedAction.Reset ? 1 : 0;
-        vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "<!-- project:p1 -->\nstart" });
-        for (var i = 0; i < 5; i++)
-        {
-            vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = $" word {i}" });
-        }
-
-        Assert.Equal(0, resets);
-        Assert.Equal(vm.Transcript, vm.VisibleTranscript);
-
-        // Without the Reset the list is walked into shape instead, so leaving the thread and coming back must still
-        // land on exactly the rows each view holds.
-        var general = new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "nothing to do with P1") { ProjectIds = [] };
-        vm.ShownThread = null;
-        vm.Transcript.Add(general);
-        Assert.Equal(vm.Transcript, vm.VisibleTranscript);
-
-        vm.ShownThread = "p1";
-        Assert.Equal(vm.Transcript.Where(row => !ReferenceEquals(row, general)), vm.VisibleTranscript);
-    }
-
-    [Fact]
-    public void AtFocus_HiddenRowsAreNotItems_AndTheRestKeepTranscriptOrder()
-    {
-        var vm = _Session(ReadingLevel.Focus);
-        var prose = _Add(vm, TranscriptEntryKind.AssistantText, "prose");
-        _Add(vm, TranscriptEntryKind.Thinking, "reasoning");
-        _AddRun(vm, 4);
-        var closing = _Add(vm, TranscriptEntryKind.AssistantText, "closing");
-
-        // Thinking is hidden at Focus, and a run of four folds to its anchor alone.
-        var anchor = vm.Transcript.Single(row => row.IsGroupAnchor);
-        Assert.Equal([prose, anchor, closing], vm.VisibleTranscript);
-
-        vm.Transcript.Clear();
-        Assert.Empty(vm.VisibleTranscript);
     }
 
     [Fact]

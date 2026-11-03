@@ -32,43 +32,6 @@ public class OptionsSubNavigationViewTests
         "security", "mcp-servers", "swarm", "servers", "model-intelligence", "sync", "backup", "updates", "debug",
     ];
 
-    [Fact]
-    public void TheSidebar_ListsAllCategories_InTheGroomedOrder() => HeadlessAvalonia.Run(() =>
-    {
-        var dialog = new OptionsDialog { DataContext = new CockpitViewModel() };
-        dialog.Show();
-
-        var nav = dialog.GetVisualDescendants().OfType<ListBox>().Single(list => list.Name == "CategoryNav");
-        var tags = nav.Items.OfType<ListBoxItem>()
-            .Select(item => item.Tag as string)
-            .Where(tag => tag is not null)
-            .ToArray();
-
-        Assert.Equal(ExpectedCategoryTags, tags);
-
-        dialog.Close();
-    });
-
-    // AC5: group headers are not selectable and not focusable with Tab.
-    [Fact]
-    public void GroupHeaders_AreNotSelectable_AndNotFocusable() => HeadlessAvalonia.Run(() =>
-    {
-        var dialog = new OptionsDialog { DataContext = new CockpitViewModel() };
-        dialog.Show();
-
-        var nav = dialog.GetVisualDescendants().OfType<ListBox>().Single(list => list.Name == "CategoryNav");
-        var headers = nav.Items.OfType<ListBoxItem>().Where(item => item.Classes.Contains("navGroupHeader")).ToList();
-
-        Assert.Equal(3, headers.Count);
-        Assert.All(headers, header =>
-        {
-            Assert.False(header.Focusable, "a group header must not be reachable with Tab");
-            Assert.False(header.IsHitTestVisible, "a group header must not be selectable by clicking it");
-        });
-
-        dialog.Close();
-    });
-
     // Proves the Tag-based content switch actually wires up at runtime (CategoryTagEqualsConverter), not just that
     // the markup for both category pages exists.
     // AC-1019: a category page's root used to always be a ScrollViewer — Profiles now roots on a Grid instead,

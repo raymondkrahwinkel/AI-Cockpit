@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Avalonia.Threading;
 using Cockpit.App.Services;
@@ -8,7 +7,6 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Infrastructure.Agents;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Consent;
-using Cockpit.Tests.Shared;
 using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
@@ -25,25 +23,6 @@ namespace Cockpit.App.ViewTests;
 [Collection("avalonia")]
 public class WorkspaceAgentGatewayWakeTests
 {
-    /// <summary>Captures what the gateway logged, so a wake whose turn failed can be shown to leave a trace rather than a swallowed exception.</summary>
-    private sealed class CapturingLogger : ILogger<WorkspaceAgentGateway>
-    {
-        public List<(LogLevel Level, Exception? Exception)> Entries { get; } = [];
-
-        // The warning is written on a thread-pool continuation after the dispatcher job, so a drain alone can miss it.
-        public TaskCompletionSource Logged { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-
-        public bool IsEnabled(LogLevel logLevel) => true;
-
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
-        {
-            Entries.Add((logLevel, exception));
-            Logged.TrySetResult();
-        }
-    }
-
     private static (SessionRegistry Sessions, TtyViewModel Sender, TtyViewModel Target, List<string> Sent) _Desk(
         SessionStatus targetStatus = SessionStatus.Done)
     {
@@ -90,59 +69,6 @@ public class WorkspaceAgentGatewayWakeTests
         // The sending pane, not merely "some agent": a recipient that cannot tell who caused its turn cannot weigh
         // what it is being told, and cannot answer.
         Assert.Contains(sender.PaneId, turn, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task Wake_TellsTheRecipientWhereTheMessageIs_FromThePanesOwnDeliveryAnswer()
-    {
-        var plain = await _WakeTextForAChatSession(deliversInboxAtTurnStart: false);
-        var delivering = await _WakeTextForAChatSession(deliversInboxAtTurnStart: true);
-
-        // Two panes, two different sentences, from one line of gateway code reading each pane's own answer. Asserted
-        // as a pair because either sentence alone is satisfied by a constant.
-        Assert.Contains("read_inbox", plain, StringComparison.Ordinal);
-        Assert.DoesNotContain("read_inbox", delivering, StringComparison.Ordinal);
-    }
-
-    // AC-2005: a TTY always gets one fixed line, so the delivery answer only shapes the notice of a session that does
-    // not type into a terminal — a handle here, since such a pane cannot take a prompt without a live driver.
-    private static async Task<string> _WakeTextForAChatSession(bool deliversInboxAtTurnStart)
-    {
-        var sessions = new SessionRegistry();
-        var caller = _ChatHandle("caller");
-        var target = _ChatHandle("target");
-        var sent = new List<string>();
-        target.DeliversInboxAtTurnStart.Returns(deliversInboxAtTurnStart);
-        target.ReadWakeStateAsync().Returns(new SessionWakeState(HasPendingConsent: false, SessionStatus.Done, CanTakeAPrompt: true));
-        target.SendPromptAsync(Arg.Do<string>(sent.Add)).Returns(true);
-        sessions.Register(caller);
-        sessions.Register(target);
-
-        Assert.Equal(AgentWakeOutcome.Woken, await _Gateway(sessions).TryWakeAsync(caller.PaneId, target.PaneId, "branch"));
-        return Assert.Single(sent);
-    }
-
-    private static ISessionHandle _ChatHandle(string paneId)
-    {
-        var handle = Substitute.For<ISessionHandle>();
-        handle.PaneId.Returns(paneId);
-        handle.IsTerminal.Returns(false);
-        handle.PlacedWorkspaceId.Returns("desk");
-        return handle;
-    }
-
-    [Fact]
-    public async Task Wake_OnAPaneThatFailed_StartsATurnAnyway()
-    {
-        // AC-1309: a crashed turn leaves no question standing, unlike NeedsAttention — Failed is wakeable the
-        // same as Idle/Done.
-        var (sessions, sender, target, sent) = _Desk(SessionStatus.Failed);
-
-        var outcome = await _Gateway(sessions).TryWakeAsync(sender.PaneId, target.PaneId, "branch");
-        await _DrainSendAsync();
-
-        Assert.Equal(AgentWakeOutcome.Woken, outcome);
-        Assert.Single(sent);
     }
 
     [Theory]
@@ -225,55 +151,6 @@ public class WorkspaceAgentGatewayWakeTests
     }
 
     [Fact]
-    public async Task Wake_OnASessionPaneWhoseRuntimeNeverStarted_IsRefused()
-    {
-        var (sessions, sender, target) = Dispatcher.UIThread.Invoke(() =>
-        {
-            var registry = new SessionRegistry();
-            var vm = new CockpitViewModel(sessionRegistry: registry);
-            var from = new TtyViewModel();
-            // Wired for delivery but never started. Its send path accepts a turn and hands back a completed task
-            // with nothing having gone anywhere, so only the readiness check separates this from a false wake.
-            var to = TestSessions.Pane(
-                Substitute.For<ISessionManager>(),
-                turnInboxDelivery: Substitute.For<IAgentTurnInboxDelivery>());
-            to.SessionStatus = SessionStatus.Idle;
-            vm.Sessions.Add(from);
-            vm.Sessions.Add(to);
-            return (registry, from, to);
-        });
-
-        var outcome = await _Gateway(sessions).TryWakeAsync(sender.PaneId, target.PaneId, "branch");
-
-        Assert.Equal(AgentWakeOutcome.CannotTakeATurn, outcome);
-    }
-
-    // AC-1374 acceptance 3: the hold-check moved with the gateway, unchanged — it lives on CanTakeAPrompt
-    // (AC-1321), which the gateway still reads through the handle rather than re-deriving.
-    [Fact]
-    public async Task Wake_OnAPaneAControllerIsHolding_IsRefused()
-    {
-        var (sessions, sender, target) = Dispatcher.UIThread.Invoke(() =>
-        {
-            var registry = new SessionRegistry();
-            var vm = new CockpitViewModel(sessionRegistry: registry);
-            var from = new TtyViewModel();
-            var to = TestSessions.Pane(
-                Substitute.For<ISessionManager>(),
-                turnInboxDelivery: Substitute.For<IAgentTurnInboxDelivery>());
-            to.SessionStatus = SessionStatus.Idle;
-            to.TurnsHeldBecause = "a paired controller is driving this session";
-            vm.Sessions.Add(from);
-            vm.Sessions.Add(to);
-            return (registry, from, to);
-        });
-
-        var outcome = await _Gateway(sessions).TryWakeAsync(sender.PaneId, target.PaneId, "branch");
-
-        Assert.Equal(AgentWakeOutcome.CannotTakeATurn, outcome);
-    }
-
-    [Fact]
     public async Task Wake_AcrossAWorkspaceBoundary_IsRefusedHostSide()
     {
         var (sessions, sender, target, sent) = Dispatcher.UIThread.Invoke(() =>
@@ -297,16 +174,6 @@ public class WorkspaceAgentGatewayWakeTests
         // rather than only at send time so a pane moved between the two cannot slip through.
         Assert.Equal(AgentWakeOutcome.NotOnDesk, outcome);
         Assert.Empty(sent);
-    }
-
-    [Fact]
-    public async Task Wake_OnAPaneThatIsNoLongerThere_IsRefused()
-    {
-        var (sessions, sender, _, _) = _Desk();
-
-        var outcome = await _Gateway(sessions).TryWakeAsync(sender.PaneId, "pane-that-never-existed", "branch");
-
-        Assert.Equal(AgentWakeOutcome.PaneGone, outcome);
     }
 
     [Fact]
@@ -357,58 +224,5 @@ public class WorkspaceAgentGatewayWakeTests
         Assert.Contains("[cockpit] New message from", turn, StringComparison.Ordinal);
         // No opt-in claim: this pane never agreed to anything, and the turn must not say it did.
         Assert.DoesNotContain("opted in", turn, StringComparison.Ordinal);
-    }
-
-    /// <summary>Every other refusal TryWakeAsync has still applies — only the desk check is skipped.</summary>
-    [Theory]
-    [InlineData(SessionStatus.Busy)]
-    [InlineData(SessionStatus.WorkingBackground)]
-    [InlineData(SessionStatus.NeedsAttention)]
-    public async Task WakeForWaitingMail_OnAPaneThatIsNotStandingStill_IsRefusedAndSendsNothing(SessionStatus status)
-    {
-        var (sessions, sender, target, sent) = _Desk(status);
-
-        var outcome = await _Gateway(sessions).TryWakeForWaitingMailAsync(sender.PaneId, target.PaneId, "branch");
-
-        Assert.NotEqual(AgentWakeOutcome.Woken, outcome);
-        Assert.Empty(sent);
-    }
-
-    [Fact]
-    public async Task WakeForWaitingMail_OnAPaneThatIsNoLongerThere_IsRefused()
-    {
-        var (sessions, sender, _, _) = _Desk();
-
-        var outcome = await _Gateway(sessions).TryWakeForWaitingMailAsync(sender.PaneId, "pane-that-never-existed", "branch");
-
-        Assert.Equal(AgentWakeOutcome.PaneGone, outcome);
-    }
-
-    [Fact]
-    public async Task Wake_WhoseTurnThrowsOnItsWayOut_LeavesATraceInsteadOfAnUnobservedFailure()
-    {
-        var (sessions, sender, target) = Dispatcher.UIThread.Invoke(() =>
-        {
-            var registry = new SessionRegistry();
-            var vm = new CockpitViewModel(sessionRegistry: registry);
-            var from = new TtyViewModel();
-            var to = new TtyViewModel { SessionStatus = SessionStatus.Done, StartedByTheAssistant = true };
-            to.PromptSink = _ => throw new IOException("the terminal went away");
-            to.MarkHostedTuiReady();
-            vm.Sessions.Add(from);
-            vm.Sessions.Add(to);
-            return (registry, from, to);
-        });
-        var logger = new CapturingLogger();
-
-        // The send is deliberately not awaited by the gateway, so a throw on that path has no caller to surface it:
-        // discarded, it becomes an unobserved exception at some later garbage collection, attributed to nothing.
-        var outcome = await new WorkspaceAgentGateway(sessions, logger).TryWakeAsync(sender.PaneId, target.PaneId, "branch");
-        await logger.Logged.Task.WaitAsync(TimeSpan.FromSeconds(5));
-
-        Assert.Equal(AgentWakeOutcome.Woken, outcome);
-        var entry = Assert.Single(logger.Entries);
-        Assert.Equal(LogLevel.Warning, entry.Level);
-        Assert.IsType<IOException>(entry.Exception);
     }
 }

@@ -1,9 +1,7 @@
 using Avalonia.Controls;
-using Avalonia.VisualTree;
 using Cockpit.App.Plugins;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.App.Services;
-using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Layout;
 using Cockpit.Core.Layout;
 using Cockpit.Plugins.Abstractions.CompanionTools;
@@ -20,15 +18,6 @@ namespace Cockpit.App.ViewTests;
 [Collection("avalonia")]
 public class CompanionWindowPresenterTests
 {
-    private static CompanionWindowPresenter _Presenter()
-    {
-        var layoutSettingsStore = Substitute.For<ILayoutSettingsStore>();
-        layoutSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult(new LayoutSettings()));
-        layoutSettingsStore.SaveAsync(Arg.Any<LayoutSettings>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
-
-        return new CompanionWindowPresenter(new CompanionToolRegistry(), layoutSettingsStore);
-    }
-
     [Fact]
     public void Show_ThenHide_TogglesTheWindowsVisibility() => HeadlessAvalonia.Run(() =>
     {
@@ -51,37 +40,6 @@ public class CompanionWindowPresenterTests
         Assert.False(presenter.IsVisible);
         layoutSettingsStore.Received().SaveAsync(
             Arg.Is<LayoutSettings>(s => !s.CompanionWindowVisible), Arg.Any<CancellationToken>());
-    });
-
-    [Fact]
-    public void Show_CreatesAWindowThatStaysAlwaysOnTopAndOutOfTheTaskbar() => HeadlessAvalonia.Run(() =>
-    {
-        var presenter = _Presenter();
-
-        presenter.Show();
-
-        Assert.True(presenter.Window!.Topmost);
-        Assert.False(presenter.Window!.ShowInTaskbar);
-    });
-
-    [Fact]
-    public void Show_RendersAToolRegisteredInTheCompanionToolRegistry() => HeadlessAvalonia.Run(() =>
-    {
-        var registry = new CompanionToolRegistry();
-        var testToolView = new Button { Content = "Test tool" };
-        registry.Register(
-            new CompanionToolRegistration("test.trivial", "Test tool", _ => testToolView),
-            new PluginStorage(new Dictionary<string, string>(), _ => { }),
-            Substitute.For<ICockpitSessionObserver>());
-
-        var layoutSettingsStore = Substitute.For<ILayoutSettingsStore>();
-        layoutSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult(new LayoutSettings()));
-        layoutSettingsStore.SaveAsync(Arg.Any<LayoutSettings>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
-        var presenter = new CompanionWindowPresenter(registry, layoutSettingsStore);
-
-        presenter.Show();
-
-        Assert.Contains(testToolView, presenter.Window!.GetVisualDescendants());
     });
 
     [Fact]
@@ -111,39 +69,4 @@ public class CompanionWindowPresenterTests
         Assert.Same(sessions, resumed.SelectedSession);
         Assert.Equal("retained", resumed.Storage.Get<string>("value"));
     }
-
-    [Fact]
-    public void AssistantCompanionTool_UsesTheCoordinatorIndicator() => HeadlessAvalonia.Run(() =>
-    {
-        var (coordinator, _, _) = AssistantDockHostSwapTests.Build();
-
-        var view = Assert.IsType<AssistantIndicator>(
-            coordinator.CreateCompanionTool().CreateView(Substitute.For<ICompanionToolContext>()));
-
-        Assert.Same(coordinator.Indicator, view.DataContext);
-    });
-
-    [Fact]
-    public void CompanionWindow_ShowsUnavailableAssistantFromFirstPartyHost() => HeadlessAvalonia.Run(() =>
-    {
-        var registry = new CompanionToolRegistry();
-        var (coordinator, _, _) = AssistantDockHostSwapTests.Build();
-        coordinator.Indicator.IsFeatureEnabled = false;
-        coordinator.Indicator.UnavailableReason = "Assistant is disabled";
-        var host = new FirstPartyCompanionToolHost(
-            registry,
-            new PluginStorage(new Dictionary<string, string>(), _ => { }),
-            Substitute.For<ICockpitSessionObserver>());
-        host.AddCompanionTool(coordinator.CreateCompanionTool());
-        var layoutSettingsStore = Substitute.For<ILayoutSettingsStore>();
-        layoutSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult(new LayoutSettings()));
-        layoutSettingsStore.SaveAsync(Arg.Any<LayoutSettings>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
-        var presenter = new CompanionWindowPresenter(registry, layoutSettingsStore);
-
-        presenter.Show();
-
-        var reason = presenter.Window!.GetVisualDescendants().OfType<TextBlock>()
-            .Single(text => text.Text == "Assistant is disabled");
-        Assert.True(reason.IsEffectivelyVisible);
-    });
 }

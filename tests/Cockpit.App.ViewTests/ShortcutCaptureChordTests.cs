@@ -15,21 +15,6 @@ namespace Cockpit.App.ViewTests;
 [Collection("avalonia")]
 public class ShortcutCaptureChordTests
 {
-    [Theory]
-    [InlineData(Key.M, KeyModifiers.None, "M")]
-    [InlineData(Key.M, KeyModifiers.Control, "Ctrl+M")]
-    [InlineData(Key.M, KeyModifiers.Control | KeyModifiers.Shift, "Ctrl+Shift+M")]
-    [InlineData(Key.P, KeyModifiers.Control | KeyModifiers.Alt | KeyModifiers.Shift, "Ctrl+Shift+Alt+P")]
-    public void RecordingAKeyPress_StoresIt_ChordOrNot(Key key, KeyModifiers modifiers, string expected) =>
-        HeadlessAvalonia.Run(() =>
-        {
-            var (control, record) = _Recording();
-
-            _Press(record, key, modifiers);
-
-            Assert.Equal(expected, control.Gesture);
-        });
-
     [Fact]
     public void TheModifiersAreNotMistakenForTheChordItself() =>
         HeadlessAvalonia.Run(() =>

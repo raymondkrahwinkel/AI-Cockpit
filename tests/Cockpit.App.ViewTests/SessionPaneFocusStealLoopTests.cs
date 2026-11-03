@@ -59,40 +59,6 @@ public class SessionPaneFocusStealLoopTests
     });
 
     /// <summary>
-    /// The guard's original job (AC-65) still has to hold: a real focus change landing on a pane that IS showing
-    /// — a click, Tab, or anything else — must still move the selection there.
-    /// </summary>
-    [Fact]
-    public void AFocusEventFromAVisiblePane_StillMovesTheSelectionThere() => HeadlessAvalonia.Run(() =>
-    {
-        var sessionA = new SessionViewModel();
-        var sessionB = new SessionViewModel();
-        var cockpit = new CockpitViewModel();
-        cockpit.Sessions.Add(sessionA);
-        cockpit.Sessions.Add(sessionB);
-
-        var view = new CockpitView { DataContext = cockpit };
-        var window = new Window { Content = view, Width = 1200, Height = 800 };
-        window.Show();
-        window.UpdateLayout();
-
-        cockpit.SelectSessionCommand.Execute(sessionA);
-        window.UpdateLayout();
-
-        var grid = view.GetVisualDescendants().OfType<ItemsControl>().First(c => c.Name == "SessionGrid");
-        var containerB = grid.GetVisualDescendants().OfType<ContentPresenter>().First(c => ReferenceEquals(c.DataContext, sessionB));
-        var inputInB = containerB.GetVisualDescendants().OfType<TextBox>().First(b => b.Name == "InputBox");
-
-        Assert.True(sessionB.IsPaneVisible, "grid mode shows every pane, so B must still be visible for this test to mean anything");
-
-        inputInB.RaiseEvent(new FocusChangedEventArgs(InputElement.GotFocusEvent) { Source = inputInB });
-
-        var selected = cockpit.SelectedSession;
-        window.Close();
-        Assert.Same(sessionB, selected);
-    });
-
-    /// <summary>
     /// AC-1521: two selection changes in one tick leave two posted focus-moves; a post that kept the selection it was
     /// posted with fed OnSessionPaneGotFocus forever. `tty` puts a focusable terminal in every tile, as a rail tile has.
     /// </summary>

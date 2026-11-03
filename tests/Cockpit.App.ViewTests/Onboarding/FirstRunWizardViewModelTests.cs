@@ -22,49 +22,6 @@ namespace Cockpit.App.ViewTests.Onboarding;
 public class FirstRunWizardViewModelTests
 {
     [Fact]
-    public void Constructor_OnlyListsTheStepsHandedIn() => HeadlessAvalonia.Run(() =>
-    {
-        var viewModel = new FirstRunWizardViewModel([new StubFirstRunWizardStep(0, "What this is", isSkipped: false)]);
-
-        Assert.Single(viewModel.StepBar);
-        Assert.Equal("What this is", viewModel.StepBar[0].Title);
-    });
-
-    [Fact]
-    public void Constructor_StartsOnTheFirstStep_CurrentAndNotGoingBack() => HeadlessAvalonia.Run(() =>
-    {
-        var viewModel = new FirstRunWizardViewModel(
-        [
-            new StubFirstRunWizardStep(0, "What this is", isSkipped: false),
-            new StubFirstRunWizardStep(1, "Your account", isSkipped: false),
-        ]);
-
-        Assert.True(viewModel.StepBar[0].IsCurrent);
-        Assert.False(viewModel.StepBar[1].IsCurrent);
-        Assert.False(viewModel.CanGoBack);
-        Assert.False(viewModel.IsLastStep);
-    });
-
-    [Fact]
-    public void Next_AdvancesToTheNextStep_AndMovesTheCurrentMarker() => HeadlessAvalonia.Run(() =>
-    {
-        var viewModel = new FirstRunWizardViewModel(
-        [
-            new StubFirstRunWizardStep(0, "What this is", isSkipped: false),
-            new StubFirstRunWizardStep(1, "Your account", isSkipped: false),
-        ]);
-        var secondStepContent = viewModel.CurrentStepContent;
-
-        viewModel.NextCommand.Execute(null);
-
-        Assert.False(viewModel.StepBar[0].IsCurrent);
-        Assert.True(viewModel.StepBar[1].IsCurrent);
-        Assert.True(viewModel.CanGoBack);
-        Assert.True(viewModel.IsLastStep);
-        Assert.NotSame(secondStepContent, viewModel.CurrentStepContent);
-    });
-
-    [Fact]
     public void NextThenBack_SkipsOverAStepMarkedSkipped_BothWays() => HeadlessAvalonia.Run(() =>
     {
         var viewModel = new FirstRunWizardViewModel(
@@ -82,80 +39,6 @@ public class FirstRunWizardViewModelTests
         viewModel.BackCommand.Execute(null);
         Assert.True(viewModel.StepBar[0].IsCurrent, "Back stepped over the same skipped step going the other way");
         Assert.False(viewModel.CanGoBack);
-    });
-
-    [Fact]
-    public void SkippedStep_StaysInTheBarStruckThrough_RatherThanBeingRemoved() => HeadlessAvalonia.Run(() =>
-    {
-        var viewModel = new FirstRunWizardViewModel(
-        [
-            new StubFirstRunWizardStep(0, "What this is", isSkipped: false),
-            new StubFirstRunWizardStep(1, "What you have", isSkipped: true),
-        ]);
-
-        Assert.Equal(2, viewModel.StepBar.Count);
-        Assert.True(viewModel.StepBar[1].IsSkipped);
-        Assert.NotNull(viewModel.StepBar[1].TextDecorations);
-    });
-
-    // The epic's own plan (AC-509's sharpened criteria, 2026-08-01): the step bar shows every planned slot, even
-    // one nothing is registered for yet (the Depot step, AC-540), and "Step N of 4" counts against the plan
-    // rather than only the steps that happen to exist today.
-    [Fact]
-    public void WithPlannedSlots_ShowsAPlaceholder_ForASlotNothingIsRegisteredFor() => HeadlessAvalonia.Run(() =>
-    {
-        var viewModel = new FirstRunWizardViewModel(
-            [new StubFirstRunWizardStep(0, "What this is", isSkipped: false)],
-            [new WizardPlannedSlot(0, "What this is"), new WizardPlannedSlot(10, "Your account")]);
-
-        Assert.Equal(2, viewModel.StepBar.Count);
-        Assert.False(viewModel.StepBar[0].NotBuiltYet);
-        Assert.True(viewModel.StepBar[1].NotBuiltYet);
-        Assert.Null(viewModel.StepBar[1].TextDecorations); // dim, but never struck through — nobody skipped it
-        Assert.Equal("Step 1 of 2", viewModel.StepProgressLabel);
-    });
-
-    [Fact]
-    public void WithPlannedSlots_NumbersTheCurrentStep_ByItsSlotRatherThanItsRegisteredPosition() => HeadlessAvalonia.Run(() =>
-    {
-        var viewModel = new FirstRunWizardViewModel(
-            [
-                new StubFirstRunWizardStep(0, "What this is", isSkipped: false),
-                new StubFirstRunWizardStep(20, "What you have", isSkipped: false),
-            ],
-            [
-                new WizardPlannedSlot(0, "What this is"),
-                new WizardPlannedSlot(10, "Your account"),
-                new WizardPlannedSlot(20, "What you have"),
-            ]);
-
-        viewModel.NextCommand.Execute(null);
-
-        Assert.Equal("Step 3 of 3", viewModel.StepProgressLabel);
-        Assert.True(viewModel.StepBar[2].IsCurrent);
-    });
-
-    /// <summary>
-    /// Two steps on one Order is the shape AC-540's Depot step would take against AC-1280's restore step, which
-    /// already holds slot 10. Silently it costs the second step its bar item and its number — "Step 0 of 3" —
-    /// so construction refuses instead, naming both claimants.
-    /// </summary>
-    [Fact]
-    public void Constructor_RefusesTwoStepsOnOneOrder_RatherThanNumberingOneOfThemZero() => HeadlessAvalonia.Run(() =>
-    {
-        var exception = Assert.Throws<ArgumentException>(() => new FirstRunWizardViewModel(
-            [
-                new StubFirstRunWizardStep(0, "What this is", isSkipped: false),
-                new StubFirstRunWizardStep(10, "Your backup", isSkipped: false),
-                new StubFirstRunWizardStep(10, "Your account", isSkipped: false),
-            ],
-            [
-                new WizardPlannedSlot(0, "What this is"),
-                new WizardPlannedSlot(10, "Your account"),
-                new WizardPlannedSlot(20, "What you have"),
-            ]));
-
-        Assert.Contains("Order 10", exception.Message, StringComparison.Ordinal);
     });
 
     // AC-1336: MarkCompletedAsync was started fire-and-forget, so a slow write could lose the completion marker

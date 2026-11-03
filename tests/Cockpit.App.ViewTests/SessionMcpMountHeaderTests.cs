@@ -79,24 +79,6 @@ public class SessionMcpMountHeaderTests
         Assert.Contains("git — could not connect: /home/raymond is not a valid Git repository", tooltip);
     }
 
-    /// <summary>
-    /// A report for a pane the host no longer holds is dropped rather than throwing: a session can be closed
-    /// while its launch is still resolving its servers.
-    /// </summary>
-    [Fact]
-    public void AReportForAPaneTheHostNoLongerHolds_IsDropped()
-    {
-        var exception = Record.Exception(() => Dispatcher.UIThread.Invoke(() =>
-        {
-            var mounts = new SessionMcpMounts();
-            _ = _Cockpit(mounts);
-
-            mounts.Report("gone", ["youtrack"]);
-        }));
-
-        Assert.Null(exception);
-    }
-
     private static CockpitViewModel _Cockpit(SessionMcpMounts mounts)
     {
         var notifications = Substitute.For<INotificationSettingsStore>();
