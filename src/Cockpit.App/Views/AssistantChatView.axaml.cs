@@ -105,10 +105,8 @@ public partial class AssistantChatView : UserControl
         // AC-726: a dropped file lands as its absolute path at the caret — wired on the view, so it reaches the
         // floating window and the docked rail alike (AC-952/AC-953). Same shape as SessionView's.
         DragDrop.SetAllowDrop(this, true);
-        // Bubble, not Tunnel: the drag events are Bubble-only, so a Tunnel handler never fired (AC-2059).
-        // DragEnter as well as DragOver: AllowDrop inherits, so the target changes at every inner control
-        // boundary and Avalonia answers that with DragLeave + DragEnter — without the enter the highlight
-        // would blink off on each crossing.
+        // AC-2059: Bubble, as the drag events are Bubble-only. DragEnter too: AllowDrop inherits, so every inner
+        // control boundary is a DragLeave + DragEnter, and without the enter the highlight blinks off.
         AddHandler(DragDrop.DragEnterEvent, _composerInput.OnDragOver, RoutingStrategies.Bubble, handledEventsToo: true);
         AddHandler(DragDrop.DragOverEvent, _composerInput.OnDragOver, RoutingStrategies.Bubble, handledEventsToo: true);
         AddHandler(DragDrop.DragLeaveEvent, _composerInput.OnDragLeave, RoutingStrategies.Bubble, handledEventsToo: true);

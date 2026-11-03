@@ -40,7 +40,7 @@ internal sealed class TranscriptComposerInput
         Func<ICommand?> resolveStopIfBusy,
         Func<ICommand?> sendCommand,
         Func<Action<byte[]>?> resolvePastedImageSink,
-        Func<bool> canPasteImages)
+        Func<bool>? canPasteImages = null)
     {
         _inputBox = inputBox;
         _dropOverlay = dropOverlay;
@@ -52,7 +52,7 @@ internal sealed class TranscriptComposerInput
         _resolveStopIfBusy = resolveStopIfBusy;
         _sendCommand = sendCommand;
         _resolvePastedImageSink = resolvePastedImageSink;
-        _canPasteImages = canPasteImages;
+        _canPasteImages = canPasteImages ?? (() => false);
     }
 
     internal void OnKeyDown(object? sender, KeyEventArgs e)

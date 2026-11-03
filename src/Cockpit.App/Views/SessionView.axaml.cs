@@ -105,10 +105,8 @@ public partial class SessionView : UserControl
         // pane, not just the box, so the drop works wherever the operator lets go — and a drag carrying no
         // files is left entirely unhandled, so nothing here claims a gesture it has no answer for.
         DragDrop.SetAllowDrop(this, true);
-        // Bubble, not Tunnel: the drag events are Bubble-only, so a Tunnel handler never fired (AC-2059).
-        // DragEnter as well as DragOver: AllowDrop inherits, so the target changes at every inner control
-        // boundary and Avalonia answers that with DragLeave + DragEnter — without the enter the highlight
-        // would blink off on each crossing.
+        // AC-2059: Bubble, as the drag events are Bubble-only. DragEnter too: AllowDrop inherits, so every inner
+        // control boundary is a DragLeave + DragEnter, and without the enter the highlight blinks off.
         AddHandler(DragDrop.DragEnterEvent, _composerInput.OnDragOver, RoutingStrategies.Bubble, handledEventsToo: true);
         AddHandler(DragDrop.DragOverEvent, _composerInput.OnDragOver, RoutingStrategies.Bubble, handledEventsToo: true);
         AddHandler(DragDrop.DragLeaveEvent, _composerInput.OnDragLeave, RoutingStrategies.Bubble, handledEventsToo: true);
