@@ -19,18 +19,11 @@ public class SessionPanelRailOrderingTests
     [InlineData(SessionStatus.Failed, true)]
     public void RequestsAttention_FollowsSessionStatus(SessionStatus status, bool expected) => HeadlessAvalonia.Run(() =>
     {
-        var session = new SessionViewModel { SessionStatus = status };
+        var session = new SessionViewModel { SessionStatus = status, SidebarIndex = 99 };
+        var quiet = new SessionViewModel { SessionStatus = SessionStatus.Idle, SidebarIndex = 0 };
 
         Assert.Equal(expected, session.RequestsAttention);
-    });
-
-    [Fact]
-    public void RailSortKey_PutsEveryAttentionNeedingSessionBeforeEveryQuietOne_RegardlessOfSidebarIndex() => HeadlessAvalonia.Run(() =>
-    {
-        var quiet = new SessionViewModel { SessionStatus = SessionStatus.Idle, SidebarIndex = 0 };
-        var attention = new SessionViewModel { SessionStatus = SessionStatus.NeedsAttention, SidebarIndex = 99 };
-
-        Assert.True(attention.RailSortKey < quiet.RailSortKey,
-            "a session needing attention must sort first no matter how far down the sidebar it sits");
+        // The rail sorts every attention-needing session before every quiet one, however far down the sidebar it sits.
+        Assert.Equal(expected, session.RailSortKey < quiet.RailSortKey);
     });
 }

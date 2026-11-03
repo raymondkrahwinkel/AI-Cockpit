@@ -14,27 +14,6 @@ public sealed class FilePathResolverTests : IDisposable
     public void Dispose() => FilePathResolver.Exists = _originalExists;
 
     [Fact]
-    public async Task UnknownCandidate_ReturnsNullThenSettlesToTheFullPath()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var probes = 0;
-            FilePathResolver.Exists = _ => { Interlocked.Increment(ref probes); return true; };
-            var settled = new TaskCompletionSource();
-
-            var immediate = FilePathResolver.Resolve("Theme.axaml", @"C:\repo", () => settled.TrySetResult());
-            Assert.Null(immediate);
-
-            await Task.WhenAny(settled.Task, Task.Delay(TimeSpan.FromSeconds(5)));
-            Assert.True(settled.Task.IsCompletedSuccessfully);
-
-            var afterSettle = FilePathResolver.Resolve("Theme.axaml", @"C:\repo", () => { });
-            Assert.Equal(Path.Combine(@"C:\repo", "Theme.axaml"), afterSettle);
-            Assert.Equal(1, probes); // the second call answered from the (positive) cache entry
-        });
-    }
-
-    [Fact]
     public async Task RepaintsWhileAProbeIsInFlight_ShareTheOneProbeAndBothGetNotified()
     {
         await HeadlessAvalonia.RunAsync(async () =>

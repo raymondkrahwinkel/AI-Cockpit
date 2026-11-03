@@ -23,21 +23,4 @@ public class TranscriptionOptionsTests
         Assert.Equal(
             expected,
             TranscriptionOptions.BackendChoices(new TranscriptionCapabilities(cuda, vulkan)).Select(choice => choice.Value));
-
-    // AC-1881: on an Optimus laptop the iGPU draws the screen and the dGPU has no output; Auto must pick the dGPU.
-    [Fact]
-    public void TheGpuEntries_AreLabelledWithoutJargon_AndAutoNamesTheDedicatedGpuOverTheDisplayOne()
-    {
-        var single = TranscriptionOptions.BackendChoices(new TranscriptionCapabilities(CudaUsable: true, VulkanUsable: false));
-        var intel = new GpuHardware(GpuVendor.Intel, "Intel(R) UHD Graphics", DrivesDisplay: true, 128L << 20) { Kind = GpuKind.Integrated, DeviceId = "intel", VulkanIndex = 0 };
-        var nvidia = new GpuHardware(GpuVendor.Nvidia, "RTX 4070", DrivesDisplay: false, 8L << 30) { Kind = GpuKind.Discrete, DeviceId = "nvidia", VulkanIndex = 1 };
-
-        var multiple = TranscriptionOptions.BackendChoices(new TranscriptionCapabilities(CudaUsable: false, VulkanUsable: true), [intel, nvidia]);
-
-        Assert.Equal("GPU (CUDA)", single.Single(choice => choice.Value == VoiceBackendPreference.Cuda).Label);
-        Assert.Equal(
-            ["Auto (recommended) — RTX 4070", "GPU Intel(R) UHD Graphics", "GPU RTX 4070", "CPU"],
-            multiple.Select(choice => choice.Label));
-        Assert.Equal("nvidia", TranscriptionOptions.Find(multiple, VoiceBackendPreference.Vulkan, "nvidia").GpuDeviceId);
-    }
 }

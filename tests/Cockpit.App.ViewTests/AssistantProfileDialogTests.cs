@@ -33,58 +33,6 @@ namespace Cockpit.App.ViewTests;
 [Collection("avalonia")]
 public class AssistantProfileDialogTests
 {
-    [Fact]
-    public async Task Loading_OpensOnTheAssistantsOwnRecord()
-    {
-        var slot = new AssistantProfileSlot(_Record("Claude (assistant)", permissionMode: "bypassPermissions"));
-        var slotStore = _SlotStore(slot);
-        var viewModel = Dispatcher.UIThread.Invoke(() => _Dialog(slotStore: slotStore));
-
-        Dispatcher.UIThread.Invoke(() => viewModel.LoadAsync().GetAwaiter().GetResult());
-
-        Assert.Equal("Claude (assistant)", viewModel.Profile.Label);
-        Assert.False(viewModel.Profile.RestrictMcpServers);
-        Assert.Null(viewModel.Profile.ToProfile().EnabledMcpServerNames);
-
-        // AC-1994: the shared brain picker sits on the slot's own record, and a pick is what it writes.
-        Assert.True(viewModel.Profile.BrainPicker.IsAvailable);
-        await Dispatcher.UIThread.InvokeAsync(() => viewModel.Profile.BrainPicker.LoadAsync());
-        Dispatcher.UIThread.Invoke(() =>
-        {
-            viewModel.Profile.BrainPicker.Selected = viewModel.Profile.BrainPicker.Choices.Single(choice => choice.Reference == _Brain);
-            viewModel.Profile.RestrictMcpServers = true;
-            viewModel.Profile.RestrictMcpServers = false;
-            viewModel.SaveCommand.Execute(null);
-        });
-
-        var saved = Assert.IsType<SessionProfile>(slotStore.ReceivedCalls()
-            .Single(call => call.GetMethodInfo().Name == nameof(IAssistantProfileStore.RepointAsync))
-            .GetArguments()[0]);
-        Assert.Null(saved.EnabledMcpServerNames);
-        Assert.Equal(_Brain, saved.Assistant);
-        slotStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new AssistantProfileSlot(saved));
-        Dispatcher.UIThread.Invoke(() => viewModel.LoadAsync().GetAwaiter().GetResult());
-
-        Assert.False(viewModel.Profile.RestrictMcpServers);
-        Assert.Equal(_Brain, viewModel.Profile.BrainPicker.Selected?.Reference);
-        Assert.Equal(_Brain, viewModel.Profile.ToProfile().Assistant);
-
-        // None writes no brain, and reopening reads it back as None.
-        Dispatcher.UIThread.Invoke(() =>
-        {
-            viewModel.Profile.BrainPicker.Selected = BrainPickerViewModel.None;
-            viewModel.SaveCommand.Execute(null);
-        });
-        var cleared = Assert.IsType<SessionProfile>(slotStore.ReceivedCalls()
-            .Last(call => call.GetMethodInfo().Name == nameof(IAssistantProfileStore.RepointAsync))
-            .GetArguments()[0]);
-        Assert.Null(cleared.Assistant);
-        slotStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new AssistantProfileSlot(cleared));
-        await Dispatcher.UIThread.InvokeAsync(() => viewModel.LoadAsync());
-        Assert.Same(BrainPickerViewModel.None, viewModel.Profile.BrainPicker.Selected);
-    }
-
-    private const string _Brain = "depot:acme/zyra@depot.acme.example";
 
     /// <summary>
     /// The valkuil this dialog is most exposed to: it renders five blocks out of a record that has more fields

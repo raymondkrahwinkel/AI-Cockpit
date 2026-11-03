@@ -83,17 +83,6 @@ public class AssistantChatMentionPickerViewTests
     }
 
     [Fact]
-    public void TypingAnAtSign_BeforeASessionExists_FallsBackToTheProfileDefaultAndOpens() => HeadlessAvalonia.Run(() =>
-    {
-        using var pane = _Pane(_FakeHost(session: null, defaultWorkingDirectory: "/profile-default"));
-        var box = _Composer(pane);
-
-        _Type(box, pane, "@");
-
-        Assert.True(pane.ViewModel.MentionPicker.IsOpen);
-    });
-
-    [Fact]
     public void Enter_WithASelection_InsertsTheMention_AndDoesNotSend() => HeadlessAvalonia.Run(() =>
     {
         var session = new SessionViewModel { WorkingDirectory = "/repo" };

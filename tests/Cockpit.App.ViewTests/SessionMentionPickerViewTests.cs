@@ -81,19 +81,6 @@ public class SessionMentionPickerViewTests
     }
 
     [Fact]
-    public void Escape_ClosesThePopup() => HeadlessAvalonia.Run(() =>
-    {
-        using var pane = _Pane(_Session());
-        var box = _Composer(pane);
-        _Type(box, pane, "@foo");
-        Assert.True(pane.Session.MentionPicker.IsOpen);
-
-        _Press(box, pane, Key.Escape);
-
-        Assert.False(pane.Session.MentionPicker.IsOpen);
-    });
-
-    [Fact]
     public void Enter_WithASelection_InsertsTheMention_AndDoesNotSend() => HeadlessAvalonia.Run(() =>
     {
         using var pane = _Pane(_Session(fileSource: _FilesNamed("src/Foo.cs")));

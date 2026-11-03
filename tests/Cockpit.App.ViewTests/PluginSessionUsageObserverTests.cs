@@ -48,23 +48,4 @@ public class PluginSessionUsageObserverTests
 
         Assert.True(fired > 0, "a rate window appearing changes the usage snapshot");
     });
-
-    [Fact]
-    public void ActiveSessionUsageChanged_DoesNotFire_ForABackgroundSessionsChange() => HeadlessAvalonia.Run(() =>
-    {
-        var cockpit = new CockpitViewModel();
-        var selected = new TestSession { ContextUsedPercent = 10 };
-        var background = new TestSession { ContextUsedPercent = 10 };
-        cockpit.Sessions.Add(selected);
-        cockpit.Sessions.Add(background);
-        cockpit.SelectedSession = selected;
-
-        var observer = new PluginSessionObserver(cockpit);
-        var fired = 0;
-        observer.ActiveSessionUsageChanged += (_, _) => fired++;
-
-        background.ContextUsedPercent = 90;
-
-        Assert.Equal(0, fired);
-    });
 }

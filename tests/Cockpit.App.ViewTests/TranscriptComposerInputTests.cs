@@ -111,27 +111,18 @@ public sealed class TranscriptComposerInputTests
         Assert.Equal(expectedCaret, harness.Box.CaretIndex);
     });
 
-    [Fact]
-    public void Enter_WithoutShift_SendsAndMarksTheEventHandled() => HeadlessAvalonia.Run(() =>
+    // Enter sends and swallows the key; Shift+Enter never sends and leaves the event for the TextBox's own newline.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Enter_SendsUnlessShiftIsHeld(bool shift) => HeadlessAvalonia.Run(() =>
     {
         var harness = new Harness();
         harness.Box.Text = "hello";
 
-        var args = harness.PressKey(Key.Enter);
+        var args = shift ? harness.PressKey(Key.Enter, KeyModifiers.Shift) : harness.PressKey(Key.Enter);
 
-        Assert.True(args.Handled);
-        Assert.Equal(1, harness.Send.ExecuteCount);
-    });
-
-    [Fact]
-    public void ShiftEnter_NeverSends_AndLeavesTheEventUnhandledForTheTextBoxsOwnNewline() => HeadlessAvalonia.Run(() =>
-    {
-        var harness = new Harness();
-        harness.Box.Text = "hello";
-
-        var args = harness.PressKey(Key.Enter, KeyModifiers.Shift);
-
-        Assert.False(args.Handled);
-        Assert.Equal(0, harness.Send.ExecuteCount);
+        Assert.Equal(!shift, args.Handled);
+        Assert.Equal(shift ? 0 : 1, harness.Send.ExecuteCount);
     });
 }

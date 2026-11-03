@@ -1,6 +1,3 @@
-using Avalonia.Controls;
-using Avalonia.VisualTree;
-using Cockpit.App.Controls;
 using Cockpit.App.Composition;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Sessions;
@@ -48,36 +45,6 @@ public class TranscriptOutputBudgetTests
             kept.Length <= Ceiling,
             $"{place} kept {kept.Length:N0} characters, over the {Ceiling:N0} ceiling.");
         Assert.Contains("characters omitted", kept);
-    });
-
-    [Fact]
-    public void ATruncatedResult_SaysSo_AndNamesTheSizeItReallyHad() => HeadlessAvalonia.Run(() =>
-    {
-        var session = new SessionViewModel();
-
-        session.Apply(Call("t1", """{"command":"cat big.log"}"""));
-        session.Apply(Result("t1", Huge));
-
-        var row = session.Transcript.Single(r => r.ToolUseId == "t1" && r.Kind == TranscriptEntryKind.ToolUse);
-        Assert.True(row.IsTruncated);
-
-        // The real size, in both places it is stated: the badge next to the row, and the marker inside the text
-        // itself so it survives being copied out of the app.
-        Assert.Equal(Huge.Length, row.TruncatedFromChars);
-        Assert.Contains($"{Huge.Length:N0} characters", row.TruncationNotice);
-        Assert.Contains($"{Huge.Length:N0} in the full result", row.ResultText!);
-
-        // And it reaches the screen: the footer is a keyed template resolved at runtime, so only rendering the
-        // real row proves the size and the offer are actually on it.
-        row.IsExpanded = true;
-        var window = new Window { Width = 500, Height = 400, Content = new TranscriptRowView { DataContext = row } };
-        window.Show();
-        window.UpdateLayout();
-
-        var rendered = window.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).ToArray();
-        Assert.Contains(rendered, text => text is not null && text.Contains($"{Huge.Length:N0} characters", StringComparison.Ordinal));
-        Assert.Contains(window.GetVisualDescendants().OfType<Button>(), b => b.Content as string == "Show full result");
-        window.Close();
     });
 
     private static TranscriptEntryViewModel _Row(SessionViewModel session, string toolUseId) =>

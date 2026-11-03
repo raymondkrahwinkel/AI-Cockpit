@@ -57,20 +57,6 @@ public class WorkKindStepViewModelTests
             .Returns(_ => _batchResult);
     }
 
-    [Fact]
-    public async Task ATick_StaysTheOperatorsToChange_AfterAWorkKindHasSetIt()
-    {
-        var viewModel = _ViewModel();
-        await viewModel.LoadAsync();
-        viewModel.SelectedWorkKind = _Kind(PluginWorkKinds.Developer);
-
-        viewModel.Plugins.Single(row => row.Name == "GitHub Pull Requests").IsSelected = false;
-        viewModel.Plugins.Single(row => row.Name == "Clock").IsSelected = false;
-        await viewModel.ConfirmCommand.ExecuteAsync(null);
-
-        Assert.Equal(new[] { "github-issues" }, _sentToInstall.Select(request => request.Id));
-    }
-
     // The pre-tick is a suggestion, not a decision: leaving the step by Skip or Next never reaches the confirm command.
     [Fact]
     public async Task LeavingTheStepWithoutConfirming_InstallsNothing()

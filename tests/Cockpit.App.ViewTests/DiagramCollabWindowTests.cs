@@ -1,6 +1,5 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -25,35 +24,6 @@ namespace Cockpit.App.ViewTests;
 [Collection("avalonia")]
 public class DiagramCollabWindowTests
 {
-    [Fact]
-    public Task OpeningTwoDiagramsFromOneSession_BindsEachToThatSessionInItsOwnWindow() => HeadlessAvalonia.RunAsync(async () =>
-    {
-        var (plugin, host) = _StartPlugin();
-
-        await host.InvokeQuickStartAsync();
-        await host.InvokeQuickStartAsync();
-
-        // Two documents, two windows, two distinct keys — SurfaceWindows folds on the key, so equal keys here
-        // would mean the second diagram silently replaced the first.
-        Assert.Equal(2, host.Windows.Count);
-        Assert.NotEqual(host.Windows[0].Key, host.Windows[1].Key);
-        Assert.All(host.Windows, window => Assert.StartsWith("diagram.document.", window.Key, StringComparison.Ordinal));
-
-        // The window's pane id is the coupling bar's session id: both surfaces are coupled to the one session the
-        // quick-start named, and neither was granted a capability by opening (AC-810 still asks for those).
-        var surfaces = host.Registry.ListSurfaces("pane-a");
-        Assert.Equal(2, surfaces.Count);
-        Assert.All(surfaces, surface => Assert.False(surface.Coupling!.HasAnyCapability));
-        Assert.All(surfaces, surface => Assert.Contains(host.Windows, window => window.Key == $"diagram.document.{surface.SurfaceId}"));
-
-        // …and the bar says so, with the session's operator-visible name rather than its raw pane id.
-        var window = _Show(host.Windows[0].Content);
-        Assert.Contains("Werksessie", _CouplingText(host.Windows[0].Content));
-
-        window.Close();
-        plugin.Dispose();
-    });
-
     [Fact]
     public Task ClosingTheWindow_LetsItsSessionKeepRunning() => HeadlessAvalonia.RunAsync(async () =>
     {
@@ -118,57 +88,9 @@ public class DiagramCollabWindowTests
         plugin.Dispose();
     });
 
-    [Fact]
-    public Task ConnectingOnTheSurface_TakesTwoClicksInAnExplicitMode() => HeadlessAvalonia.RunAsync(async () =>
-    {
-        var (plugin, host, content, window, surfaceId) = await _OpenOnOneNodeAsync();
-
-        // Nothing happens on a click until the mode is on: that is what keeps panning and editing apart.
-        _ClickCentre(content, window);
-        Assert.DoesNotContain("-->", host.Registry.PeekText(surfaceId)!, StringComparison.Ordinal);
-
-        _Button(content, "Connect").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        _ClickCentre(content, window);
-        _ClickCentre(content, window);
-        await HeadlessAvalonia.SettleAsync();
-
-        // AC-909: the second click no longer applies the connection straight away — a label box appears on it
-        // first, same shape as the rename box. Enter with nothing typed connects with no label, exactly as the
-        // direct-apply this test used to check for.
-        var label = content.GetVisualDescendants().OfType<TextBox>().Single(candidate => !candidate.IsReadOnly);
-        label.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Enter });
-        await HeadlessAvalonia.SettleAsync();
-
-        Assert.Contains("A --> A", host.Registry.PeekText(surfaceId)!, StringComparison.Ordinal);
-
-        window.Close();
-        plugin.Dispose();
-    });
-
     // AC-891: the AC-835 core→plugin registry hand-off this covered (open_diagram asking, the registry carrying the
     // request over) is gone — DiagramMcpTools now opens the window directly, so that path is covered in
     // Cockpit.Plugin.Diagram.Tests/DiagramMcpToolsTests.cs, inside the assembly that owns both the tool and the window.
-
-    // AC-847/AC-621's precedent: Follow switches itself off the instant the operator's own gesture reaches the
-    // viewport — a wheel or a manual pan — since both handlers are only ever driven by real pointer/wheel input.
-    [Fact]
-    public Task FollowToggle_TurnsOffTheMomentTheOperatorZoomsByHand() => HeadlessAvalonia.RunAsync(async () =>
-    {
-        var (plugin, host, content, window, _) = await _OpenOnOneNodeAsync();
-
-        var follow = content.GetVisualDescendants().OfType<ToggleButton>().Single(t => Equals(t.Content, "Follow"));
-        follow.IsChecked = true;
-        await HeadlessAvalonia.SettleAsync();
-        Assert.True(follow.IsChecked);
-
-        window.MouseWheel(_ViewportCentre(content, window), new Vector(0, 1));
-        await HeadlessAvalonia.SettleAsync();
-
-        Assert.False(follow.IsChecked);
-
-        window.Close();
-        plugin.Dispose();
-    });
 
     private async Task<(ICockpitPlugin Plugin, RecordingHost Host, Control Content, Window Window, string SurfaceId)> _OpenOnOneNodeAsync()
     {

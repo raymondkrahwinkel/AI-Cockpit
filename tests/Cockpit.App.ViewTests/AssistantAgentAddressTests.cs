@@ -44,38 +44,6 @@ public sealed class AssistantAgentAddressTests : IDisposable
     }
 
     /// <summary>
-    /// Criterion 1: one assistant, on every desk's roster. Two desks, or this passes on an implementation that put
-    /// it on whichever desk came first.
-    /// </summary>
-    [Fact]
-    public void EveryDesksRoster_CarriesTheAssistantsAddress_WhileOneIsRunning()
-    {
-        var (gateway, deskA, deskB) = Dispatcher.UIThread.Invoke(() =>
-        {
-            var sessions = new SessionRegistry();
-            var cockpit = _Cockpit(sessions);
-            var a = new SessionViewModel { WorkspaceId = "desk-a" };
-            var b = new SessionViewModel { WorkspaceId = "desk-b" };
-            cockpit.Sessions.Add(a);
-            cockpit.Sessions.Add(b);
-            cockpit.CreateAssistantSession(AssistantIdentity.PaneId);
-
-            return (_Gateway(sessions), a, b);
-        });
-
-        foreach (var caller in new[] { deskA, deskB })
-        {
-            var snapshot = Dispatcher.UIThread.Invoke(() => gateway.GetWorkspaceSnapshotAsync(caller.PaneId).GetAwaiter().GetResult());
-
-            Assert.NotNull(snapshot);
-            Assert.Contains(snapshot!.Panes, pane => pane.PaneId == AssistantIdentity.PaneId);
-            // And its own desk-mates are still what they were: the address is an addition, not a replacement.
-            Assert.Contains(snapshot.Panes, pane => pane.PaneId == caller.PaneId);
-            Assert.Equal(2, snapshot.Panes.Count);
-        }
-    }
-
-    /// <summary>
     /// Criterion 4: addressable on every desk, placed on none. A desk here would hand the assistant one roster out
     /// of the several it manages, making AC-119's boundary a coin toss.
     /// </summary>

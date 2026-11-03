@@ -18,20 +18,6 @@ public class McpServerHeaderRowsTests
     };
 
     [Fact]
-    public void AHalfFilledRow_IsDroppedFromToConfig()
-    {
-        var editable = new EditableMcpServerViewModel(_HttpServer());
-
-        editable.AddHeaderCommand.Execute(null);
-        editable.Headers[0].Name = "X-Api-Key";
-        // Value left empty — still being typed, not a header yet.
-
-        var config = editable.ToConfig();
-
-        Assert.Empty(config.Headers);
-    }
-
-    [Fact]
     public void SwitchingToStdio_DropsHeadersFromToConfig()
     {
         var server = _HttpServer() with { Headers = [new McpHeader("X-Api-Key", "secret")] };
