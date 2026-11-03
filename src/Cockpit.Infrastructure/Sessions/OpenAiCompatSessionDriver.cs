@@ -79,15 +79,14 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
     }
 
     // Tool support flips true once MCP servers connect; permission mode/model switch/thinking stay off since the
-    // local model is fixed by its profile. SupportsVision stays false too — SendUserMessageAsync ignores images
-    // entirely, so advertising vision here would be the dead promise #64 exists to prevent (fase 2 adds it for real).
+    // local model is fixed by its profile.
     public SessionCapabilities Capabilities { get; private set; } = new(
         SupportsTools: false,
         SupportsPermissions: false,
         SupportsLiveModelSwitch: false,
         SupportsPlanMode: false,
         SupportsThinking: false,
-        SupportsVision: false);
+        SupportsVision: true);
 
     public string? SessionId => _sessionId;
 
@@ -275,14 +274,15 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
 
         // Run the turn in the background so the caller returns immediately and consumes the reply through
         // Events, mirroring how the Claude-CLI driver's send returns before the response streams back.
+        ChatMessage message = ChatTurnLoop.UserMessage(text, images?.Select(image => (image.MediaType, image.Base64Data)));
         _turnCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        _turnTask = _RunTurnAsync(text, _turnCancellation.Token);
+        _turnTask = _RunTurnAsync(message, _turnCancellation.Token);
         return Task.CompletedTask;
     }
 
-    private async Task _RunTurnAsync(string text, CancellationToken cancellationToken)
+    private async Task _RunTurnAsync(ChatMessage userMessage, CancellationToken cancellationToken)
     {
-        _history.Add(new ChatMessage(ChatRole.User, text));
+        _history.Add(userMessage);
         var toolsAvailable = _turnTools.Count > 0;
         _turnHadToolActivity = false;
 

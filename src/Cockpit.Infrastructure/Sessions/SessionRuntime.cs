@@ -273,8 +273,15 @@ internal sealed class SessionRuntime : ISessionRuntime
         _pump = _PumpEventsAsync(_lifetime.Token);
     }
 
-    public Task SendUserMessageAsync(string text, IReadOnlyList<ImageAttachment>? images = null, CancellationToken cancellationToken = default) =>
-        _driver?.SendUserMessageAsync(text, images, cancellationToken) ?? Task.CompletedTask;
+    public Task SendUserMessageAsync(string text, IReadOnlyList<ImageAttachment>? images = null, CancellationToken cancellationToken = default)
+    {
+        if (images is { Count: > 0 } && Capabilities?.SupportsVision != true)
+        {
+            throw new InvalidOperationException("This model does not support image input.");
+        }
+
+        return _driver?.SendUserMessageAsync(text, images, cancellationToken) ?? Task.CompletedTask;
+    }
 
     public Task InterruptAsync(CancellationToken cancellationToken = default) =>
         _driver?.InterruptAsync(cancellationToken) ?? Task.CompletedTask;

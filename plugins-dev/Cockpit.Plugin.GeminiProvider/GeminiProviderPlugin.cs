@@ -28,7 +28,7 @@ public sealed class GeminiProviderPlugin : ICockpitPlugin
             ProviderId: "gemini-provider.gemini",
             DisplayName: "Gemini (OpenAI-compatible)",
             CreateDriverFactory: _ => new OpenAiCompatPluginSessionDriverFactory(host, OpenAiCompatConfig.ApiKeyEnvVar),
-            Capabilities: new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false)
+            Capabilities: new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false, SupportsVision: true)
             {
                 // AC-964: this endpoint is plain chat completions — it brings no tool search of its own, so the
                 // host's may ride along without ever giving the model two ways to find the same tool. The driver
@@ -48,7 +48,7 @@ public sealed class GeminiProviderPlugin : ICockpitPlugin
             ProviderId: "gemini-provider.openai",
             DisplayName: "OpenAI",
             CreateDriverFactory: _ => new OpenAiCompatPluginSessionDriverFactory(host, null),
-            Capabilities: new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false)
+            Capabilities: new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false, SupportsVision: true)
             {
                 // AC-964: this endpoint is plain chat completions — it brings no tool search of its own, so the
                 // host's may ride along without ever giving the model two ways to find the same tool. The driver

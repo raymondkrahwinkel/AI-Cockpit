@@ -65,7 +65,6 @@ version_gt() {
 offenders=''
 
 changed_files="$(git_or_fail diff --name-only "$base" "$head" -- plugins-dev ':!*.md')" || exit 2
-case $'\n'"$changed_files"$'\n' in *$'\nplugins-dev/_shared/'*) shared_changed=1;; *) shared_changed=0;; esac
 
 for dir in plugins-dev/Cockpit.Plugin.*/; do
   dir="${dir%/}"
@@ -86,9 +85,17 @@ for dir in plugins-dev/Cockpit.Plugin.*/; do
   # A plugin that links shared source (plugins-dev/_shared, AC-964) ships that code inside its own dll, so a
   # change there changes what it publishes just as surely as a change in its own folder — and the pathspec above
   # cannot see it. Only the plugins whose project actually names the file are affected.
-  if [ "$shared_changed" -eq 1 ] && grep -q '_shared' "$dir"/*.csproj 2>/dev/null; then
-    changed=1
-  fi
+  while IFS= read -r path; do
+    case "$path" in
+      plugins-dev/_shared/*)
+        name="${path##*/}"
+        if grep -Fq -e "_shared\\$name" -e "_shared/$name" "$dir"/*.csproj 2>/dev/null; then
+          changed=1
+          break
+        fi
+        ;;
+    esac
+  done <<<"$changed_files"
 
   [ -n "$changed" ] || continue
 
