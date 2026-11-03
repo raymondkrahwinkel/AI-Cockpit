@@ -224,7 +224,8 @@ See the [design note](docs/workspaces-widgets-terminals.md) and the
 - **Keyboard:** every app action — new session, zoom, transcript search, the command palette (Ctrl+K), the Agents palette (Ctrl+Shift+A), switching
   sessions (Ctrl+Up / Ctrl+Down) — is a **rebindable shortcut** in Options → Shortcuts, as are the ones plugins
   contribute. Clearing a gesture unbinds it. The Agents palette, a compact board of all your agents, can be switched
-  off, and its title-bar button and dock-rail icon chosen, in Options → Agents overview.
+  off, and its dock-rail icon chosen, in Options → Agents overview; the key it is bound to now stands in the
+  Agents panel's head, and the panel's floating window shows it under the name.
 - **Notifications:** an OS toast when you're at the machine, or a **Discord webhook** when you're away (presence from
   idle time + lock state) — fired when a session starts needing attention. A session that has been finished and
   quiet for a while can announce that too, though it is off by default: the interesting moment is usually the

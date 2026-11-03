@@ -24,13 +24,14 @@ internal sealed class DockPanelWindow : Window
 
     public event EventHandler? DockBackRequested;
 
-    internal DockPanelWindow(DockPanelRegistration panel, Control view, IWindowBoundsStore? boundsStore)
-        : this(panel.Id, panel.Title, view, boundsStore, "Put this panel back in the dock rail")
+    internal DockPanelWindow(DockPanelRegistration panel, Control view, IWindowBoundsStore? boundsStore, string? subtitle = null)
+        : this(panel.Id, panel.Title, view, boundsStore, "Put this panel back in the dock rail", subtitle)
     {
     }
 
-    // AC-1751: also the window a floating workspace stands in, its bounds under the workspace id.
-    internal DockPanelWindow(string boundsKey, string title, Control view, IWindowBoundsStore? boundsStore, string dockBackTip)
+    // AC-1751: also the window a floating workspace stands in, its bounds under the workspace id. `subtitle`
+    // stands under the name in the bar, for a panel that has one (the Agents panel's bound key).
+    internal DockPanelWindow(string boundsKey, string title, Control view, IWindowBoundsStore? boundsStore, string dockBackTip, string? subtitle = null)
     {
         _boundsStore = boundsStore;
         _boundsKey = boundsKey;
@@ -48,7 +49,7 @@ internal sealed class DockPanelWindow : Window
         ToolTip.SetTip(dockBack, dockBackTip);
         dockBack.Click += (_, _) => DockBackRequested?.Invoke(this, EventArgs.Empty);
 
-        CockpitWindowChrome.Apply(this, Title, includeMinimize: true, includeMaximize: true, closeOnEscape: false, captionAction: dockBack);
+        CockpitWindowChrome.Apply(this, Title, subtitle: subtitle, includeMinimize: true, includeMaximize: true, closeOnEscape: false, captionAction: dockBack);
         _RestoreBounds();
 
         // A move without a resize; read here rather than in OnClosed, where the closed window reports (0,0).

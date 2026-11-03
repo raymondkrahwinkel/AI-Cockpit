@@ -62,23 +62,23 @@ internal static partial class Screenshotter
     private static MainWindow _AgentsSwarm(int width, int height, bool asleep) =>
         new() { DataContext = _AgentsSwarmCockpit(asleep), Width = width, Height = height };
 
-    // AC-1933: the same board as an overlay, with the title-bar button and the rail icon switched on to show both.
+    // AC-1933: the same board as an overlay, with the rail icon switched on.
     private static Window _AgentsPalette(bool filtered)
     {
         var cockpit = _AgentsSwarmCockpit(asleep: false);
         cockpit.AgentsPaletteRailIcon = true;
         cockpit.AgentsOverview.ShowDelegatedTasks = true;
         cockpit.AgentsOverview.ShowOnlyWaiting = filtered;
-        if (cockpit.AgentsPaletteShortcut?.Gesture != "Ctrl+Shift+A" || !cockpit.ShowAgentsPaletteButton)
+        if (cockpit.AgentsPaletteShortcut?.Gesture != "Ctrl+Shift+A")
         {
-            throw new InvalidOperationException("The palette must default to Ctrl+Shift+A with its title-bar button on.");
+            throw new InvalidOperationException("The palette must default to Ctrl+Shift+A.");
         }
         var palette = new AgentsPaletteViewModel(cockpit.AgentsOverview);
         palette.MoveColumn(1);
         return new AgentsPaletteDialog { DataContext = palette };
     }
 
-    // AC-1933: where the palette is reached from — title-bar button and the rail icon switched on — and its Options page.
+    // AC-1933: where the palette is reached from — the rail icon switched on — and its Options page.
     private static MainWindow _AgentsPaletteEntries(int width, int height)
     {
         var cockpit = _AgentsSwarmCockpit(asleep: false);

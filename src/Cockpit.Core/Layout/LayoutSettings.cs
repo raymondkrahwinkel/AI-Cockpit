@@ -64,10 +64,9 @@ public sealed record LayoutSettings
     // switch at the bottom of the left column changes what is on screen now and leaves this alone.
     public bool OpenInSimpleView { get; init; }
 
-    // The Agents palette (AC-1933): on by default, with its title-bar button shown and its rail icon hidden. With the
-    // palette off, the shortcut, the button and the icon all do nothing.
+    // The Agents palette (AC-1933): on by default, with its rail icon hidden. With the palette off, the shortcut
+    // and the icon do nothing.
     public bool AgentsPaletteEnabled { get; init; } = true;
-    public bool AgentsPaletteTitleButton { get; init; } = true;
     public bool AgentsPaletteRailIcon { get; init; }
 
     // Which stand the theme follows (AC-860). Dark by default, so an existing install keeps its palette until the

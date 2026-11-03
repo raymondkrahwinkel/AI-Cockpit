@@ -137,7 +137,11 @@ public sealed class DockPanelHost
             return;
         }
 
-        var window = new DockPanelWindow(registration, _registry.ViewFor(registration), _boundsStore());
+        var window = new DockPanelWindow(
+            registration,
+            _registry.ViewFor(registration),
+            _boundsStore(),
+            subtitle: registration.Id == AgentsOverviewViewModel.DockPanelId ? _cockpit.AgentsPaletteHeaderShortcutLabel : null);
         window.DockBackRequested += async (_, _) =>
             await _LoggedAsync(() => ShowInAsync(panelId, floating: false), "Docking a panel back from its window failed.").ConfigureAwait(true);
         window.Closed += async (_, _) =>

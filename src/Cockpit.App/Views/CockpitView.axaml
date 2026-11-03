@@ -2447,7 +2447,12 @@
                                 <TextBlock Text="Assistant"/>
                             </StackPanel>
                         </Button>
-                        <TextBlock x:Name="DockPanelHeaderTitle" VerticalAlignment="Center" FontSize="12.5"/>
+                        <!-- AC-1933: the key the Agents panel is bound to stands beside its name; blank while none is. -->
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock x:Name="DockPanelHeaderTitle" VerticalAlignment="Center" FontSize="12.5"/>
+                            <TextBlock x:Name="DockPanelHeaderShortcut" IsVisible="False" Margin="8,0,0,0"
+                                       VerticalAlignment="Center" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        </StackPanel>
                     </DockPanel>
                 </Border>
 

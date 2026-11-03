@@ -1105,29 +1105,24 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // every pane then carries the drag-reorder grip, and the column/row gutters between them are resizable (AC-696).
     public bool StackSessionsInStack => !ShowSinglePane && !ShowFocusRail && VisibleSessions.Count() >= 2;
 
-    // The Agents palette (AC-1933) and its two entry points. Switched off, the shortcut, the title-bar button and the
-    // rail icon do nothing and the button and icon are hidden, whatever their own switches say.
+    // The Agents palette (AC-1933) and its rail entry point. Switched off, the shortcut and the rail icon do nothing
+    // and the icon is hidden, whatever its own switch says.
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ShowAgentsPaletteButton), nameof(ShowAgentsPaletteRailIcon))]
+    [NotifyPropertyChangedFor(nameof(ShowAgentsPaletteRailIcon))]
     private bool _agentsPaletteEnabled = true;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ShowAgentsPaletteButton))]
-    private bool _agentsPaletteTitleButton = true;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowAgentsPaletteRailIcon))]
     private bool _agentsPaletteRailIcon;
 
-    // "Agents · Ctrl + Shift + A": the title-bar button names the key that is bound now, and only "Agents" when none is.
-    public string AgentsPaletteButtonLabel => _shortcutSettings.GestureFor(ShortcutAction.AgentsPalette) is { Length: > 0 } gesture
-        ? $"Agents · {_PrettifyGesture(gesture)}"
-        : "Agents";
+    // The key the palette is bound to now, "Ctrl + Shift + A" in the Agents panel's head, blank while none is.
+    public string AgentsPaletteHeaderShortcutLabel => _shortcutSettings.GestureFor(ShortcutAction.AgentsPalette) is { Length: > 0 } gesture
+        ? _PrettifyGesture(gesture)
+        : string.Empty;
 
     // The palette's own row in the shortcut list, so Options › Agents overview can rebind it without a second store.
     public ShortcutRowViewModel? AgentsPaletteShortcut => ShortcutRows.FirstOrDefault(row => row.Action == ShortcutAction.AgentsPalette);
 
-    public bool ShowAgentsPaletteButton => AgentsPaletteEnabled && AgentsPaletteTitleButton;
     public bool ShowAgentsPaletteRailIcon => AgentsPaletteEnabled && AgentsPaletteRailIcon;
 
     // When true, closing the window hides it to the system tray and keeps the app running (#33).
@@ -4209,7 +4204,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // every plugin shortcut, each paired with the action to run.
     private void _RebuildActiveShortcuts()
     {
-        OnPropertyChanged(nameof(AgentsPaletteButtonLabel));
+        OnPropertyChanged(nameof(AgentsPaletteHeaderShortcutLabel));
         var bindings = new List<ShortcutBinding>();
         foreach (var descriptor in ShortcutCatalog.All)
         {
@@ -5714,7 +5709,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _dockHost?.RestoreIfStarted();
         OpenInSimpleView = settings.OpenInSimpleView;
         AgentsPaletteEnabled = settings.AgentsPaletteEnabled;
-        AgentsPaletteTitleButton = settings.AgentsPaletteTitleButton;
         AgentsPaletteRailIcon = settings.AgentsPaletteRailIcon;
         ThemeMode = settings.ThemeMode;
         AssistantThreadRailWindow = settings.AssistantThreadRailWindow;
@@ -5748,7 +5742,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         FloatingDockPanelIds = [.. _floatingDockPanelIds.Order(StringComparer.Ordinal)],
         OpenInSimpleView = OpenInSimpleView,
         AgentsPaletteEnabled = AgentsPaletteEnabled,
-        AgentsPaletteTitleButton = AgentsPaletteTitleButton,
         AgentsPaletteRailIcon = AgentsPaletteRailIcon,
         ThemeMode = ThemeMode,
         AssistantThreadRailWindow = AssistantThreadRailWindow,
@@ -8012,7 +8005,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         MinimizeToTrayOnClose = layout.MinimizeToTrayOnClose;
         OpenInSimpleView = layout.OpenInSimpleView;
         AgentsPaletteEnabled = layout.AgentsPaletteEnabled;
-        AgentsPaletteTitleButton = layout.AgentsPaletteTitleButton;
         AgentsPaletteRailIcon = layout.AgentsPaletteRailIcon;
         ThemeMode = layout.ThemeMode;
 
