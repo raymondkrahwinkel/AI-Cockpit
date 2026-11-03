@@ -28,16 +28,12 @@ public class ProjectEntryAssistantMigrationTests
 
         Assert.Null(project.Assistant);
         Assert.Equal(mixed, project.BehaviorPrompt);
-    }
 
-    [Fact]
-    public void ToDomain_ReadingAMigratedProjectBackAgain_ChangesNothingFurther()
-    {
+        // And reading a migrated project back again changes nothing further.
         var once = Entry("Gebruik Zyra").ToDomain();
         var twice = ProjectEntry.FromDomain(once).ToDomain();
 
         Assert.Equal("Zyra", twice.Assistant);
         Assert.Null(twice.BehaviorPrompt);
     }
-
 }

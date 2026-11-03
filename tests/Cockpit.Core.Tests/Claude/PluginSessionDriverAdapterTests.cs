@@ -39,38 +39,25 @@ public class PluginSessionDriverAdapterTests
 
     // The same rule the profile's variables meet, applied where the value is put in the driver's environment rather
     // than trusted to have been applied upstream — the resolver and the merge both scrub too, and this is what still
-    // holds if either of them ever stops.
+    // holds if either of them ever stops. A contribution must not be able to rename the session it is running in
+    // either: the pane id is the identity the consent broker and the session-status tool attribute by, so one a
+    // plugin chose would let it act as another pane.
     [Fact]
-    public async Task StartAsync_AContributedVariableOnAHostControlledKey_NeverCrossesThePluginBoundary()
+    public async Task StartAsync_AContributedVariableOnAHostControlledKeyOrPaneId_NeverCrossesThePluginBoundary()
     {
         var inner = new FakePluginSessionDriver();
         var adapter = new PluginSessionDriverAdapter(
             inner, inner.Capabilities, _authKey,
-            sessionResources: StubResources(("ANTHROPIC_API_KEY", "smuggled"), ("GH_REPO", "owner/repo")));
+            sessionResources: StubResources(
+                ("ANTHROPIC_API_KEY", "smuggled"), ("COCKPIT_PANE_ID", "someone-elses-pane"), ("GH_REPO", "owner/repo")));
 
         await adapter.StartAsync(new SessionProfile("work", new ClaudeConfig("/config/dir")), launchOptions: PaneOptions);
 
         Assert.False(inner.LastEnvironment!.ContainsKey("ANTHROPIC_API_KEY"));
+        Assert.False(inner.LastEnvironment!.ContainsKey("COCKPIT_PANE_ID"));
         Assert.Contains("GH_REPO", inner.LastEnvironment!);
     }
 
-    // A contribution must not be able to rename the session it is running in: the pane id is the identity the consent
-    // broker and the session-status tool attribute by, so one a plugin chose would let it act as another pane.
-    [Fact]
-    public async Task StartAsync_AContributedPaneId_NeverReachesTheDriver()
-    {
-        var inner = new FakePluginSessionDriver();
-        var adapter = new PluginSessionDriverAdapter(
-            inner, inner.Capabilities, _authKey,
-            sessionResources: StubResources(("COCKPIT_PANE_ID", "someone-elses-pane")));
-
-        await adapter.StartAsync(new SessionProfile("work", new ClaudeConfig("/config/dir")), launchOptions: PaneOptions);
-
-        Assert.False(inner.LastEnvironment!.ContainsKey("COCKPIT_PANE_ID"));
-    }
-
-    // With no resolver in the graph (every other test here, and any host built before AC-165) the launch is exactly
-    // what it was: the parameter is optional precisely so an existing composition keeps working untouched.
     /// <summary>
     /// AC-89: the session's MCP identity dies with the session. Without this the token stays a valid bearer for every
     /// cockpit-hosted endpoint until the app restarts, still naming a pane that is gone — and the consent broker keys
@@ -138,7 +125,7 @@ public class PluginSessionDriverAdapterTests
         new(SupportsTools: true, SupportsPermissions: true) { ConfinesFileAccessToWorkingDirectory = true, ConfinesViaPermissionsOnly = true };
 
     [Fact]
-    public async Task Capabilities_ForAPermissionBasedConfiningProvider_ReportsUnconfined_WhenStartedInBypass()
+    public async Task Capabilities_StartedInBypass_UnconfinesAPermissionBasedProvider_ButNotASandboxedOne()
     {
         var inner = new FakePluginSessionDriver { Capabilities = _PermissionConfining() };
         var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
@@ -149,19 +136,14 @@ public class PluginSessionDriverAdapterTests
         await adapter.StartAsync(permissionMode: "bypassPermissions");
 
         Assert.False(adapter.Capabilities.ConfinesFileAccessToWorkingDirectory);
-    }
-
-    [Fact]
-    public async Task Capabilities_ForASandboxConfiningProvider_StaysConfined_EvenInBypass()
-    {
-        var inner = new FakePluginSessionDriver { Capabilities = _SandboxConfining() };
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
 
         // Codex confines via a real OS sandbox, independent of its permission/approval mode — it must NOT be downgraded
         // by the AC-190 permission-mode check. Regression guard that the fix touches only permission-based providers.
-        await adapter.StartAsync(permissionMode: "bypassPermissions");
+        var sandboxed = new FakePluginSessionDriver { Capabilities = _SandboxConfining() };
+        var sandboxedAdapter = new PluginSessionDriverAdapter(sandboxed, sandboxed.Capabilities, _authKey);
+        await sandboxedAdapter.StartAsync(permissionMode: "bypassPermissions");
 
-        Assert.True(adapter.Capabilities.ConfinesFileAccessToWorkingDirectory);
+        Assert.True(sandboxedAdapter.Capabilities.ConfinesFileAccessToWorkingDirectory);
     }
 
     [Fact]
@@ -231,10 +213,8 @@ public class PluginSessionDriverAdapterTests
         var narrowedAdapter = new PluginSessionDriverAdapter(narrowedInner, narrowedInner.Capabilities, _authKey, catalog);
         await narrowedAdapter.StartAsync(enabledMcpServerNames: new HashSet<string> { "SQL Explorer" });
 
-        // Narrowing to only the unmountable server resolves to nothing at this layer — never to more than the
-        // unnarrowed baseline's one real server, and the strict headless wiring (ClaudeSdkArguments/
-        // ClaudeSdkSessionDriver) is what keeps an empty resolution from then being read by the CLI as "no
-        // restriction, use your own config" and silently inheriting more than the baseline.
+        // Narrowing to only the unmountable server resolves to nothing here, never to more than the unnarrowed baseline;
+        // the strict headless wiring keeps an empty resolution from being read by the CLI as "no restriction".
         Assert.Empty(narrowedInner.LastMcpServers!);
         Assert.True(narrowedInner.LastMcpServers!.Count <= unnarrowedInner.LastMcpServers!.Count);
     }

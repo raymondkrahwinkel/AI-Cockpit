@@ -25,11 +25,9 @@ public class ProjectResourcePathPortabilityTests
         // AC-485 review (FIX 5): "docs/handbook.md", not Path.Combine("docs", "handbook.md") — the stored value must
         // read the same on every platform, the same way git itself always stores "/" in a tree entry.
         Assert.Equal("docs/handbook.md", ProjectResourcePathPortability.ToStoredReference(_Root, picked));
-    }
-
-    [Fact]
-    public void ToStoredReference_APathOutsideSourceDirectory_StaysAbsolute() =>
+        Assert.Equal("docs/handbook.md", ProjectResourcePathPortability.SuggestRepoRelativeFix(_Root, picked));
         Assert.Equal(_Outside, ProjectResourcePathPortability.ToStoredReference(_Root, _Outside));
+    }
 
     /// <summary>
     /// AC-485 review (FIX 7): <c>Path.GetFullPath</c> throws <see cref="ArgumentException"/> for a path containing a
@@ -66,13 +64,4 @@ public class ProjectResourcePathPortabilityTests
 
         Assert.Equal(ProjectResourceScope.Repo, ProjectResourcePathPortability.ClassifyScope(otherPlatformPath));
     }
-
-    // --- SuggestRepoRelativeFix (AC-605 criterion 5) ----------------------------------------------------------
-
-    [Fact]
-    public void SuggestRepoRelativeFix_AnAbsolutePathInsideSourceDirectory_SuggestsItsRepoRelativeForm() =>
-        Assert.Equal("docs/handbook.md",
-            ProjectResourcePathPortability.SuggestRepoRelativeFix(_Root, _Under("docs", "handbook.md")));
-
-    // --- IsHomeAnchored / ResolveHomeAnchor (AC-605 criterion 1) ------------------------------------------------
 }

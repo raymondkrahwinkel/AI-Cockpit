@@ -20,22 +20,15 @@ public class SessionUsageMeterTests
 
         meter.Add(new TokenUsage(10, 1, 0, 0), 1.00);
         meter.Add(new TokenUsage(10, 1, 0, 0), 2.00);
+
+        // A costless turn between reports leaves the running cost alone.
+        meter.Add(usage: null, costUsd: null);
+        Assert.Equal(2.00, meter.TotalCostUsd, 9);
+
         meter.Add(new TokenUsage(10, 1, 0, 0), 3.00);
 
         Assert.Equal(3.00, meter.TotalCostUsd, 9);
-    }
-
-    [Fact]
-    public void Add_CostlessTurnBetweenReports_LeavesTheRunningCostAlone()
-    {
-        var meter = new SessionUsageMeter();
-
-        meter.Add(new TokenUsage(10, 1, 0, 0), 1.00);
-        meter.Add(usage: null, costUsd: null);
-        meter.Add(new TokenUsage(10, 1, 0, 0), 2.00);
-
-        Assert.Equal(2.00, meter.TotalCostUsd, 9);
-        Assert.Equal(3, meter.Turns);
-        Assert.Equal(22, meter.TotalTokens); // the usage-less turn counts as a turn but adds no tokens
+        Assert.Equal(4, meter.Turns);
+        Assert.Equal(33, meter.TotalTokens); // the usage-less turn counts as a turn but adds no tokens
     }
 }

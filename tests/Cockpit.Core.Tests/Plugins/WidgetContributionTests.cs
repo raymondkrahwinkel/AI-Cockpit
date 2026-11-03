@@ -1,8 +1,12 @@
 using Avalonia.Controls;
 using Cockpit.App.Plugins;
+using Cockpit.Infrastructure.Plugins;
+using Cockpit.Plugins.Abstractions.CompanionTools;
+using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.Plugins.Abstractions.Widgets;
 using Microsoft.Extensions.DependencyInjection;
+using NSubstitute;
 
 namespace Cockpit.Core.Tests.Plugins;
 
@@ -21,7 +25,7 @@ public class WidgetContributionTests
     /// first, which is not something an operator can see, let alone fix.
     /// </summary>
     [Fact]
-    public void ASecondPluginClaimingTheSameWidgetType_IsRefusedRatherThanListedTwice()
+    public void ASecondPluginClaimingTheSameWidgetTypeOrCompanionToolId_IsRefusedRatherThanListedTwice()
     {
         var registry = new WidgetRegistry();
 
@@ -29,6 +33,21 @@ public class WidgetContributionTests
         NewHost(registry).AddWidget(new WidgetRegistration("widgets.clock", "Clock (the other one)", _ => new Border()));
 
         Assert.Equal("Clock", Assert.Single(registry.Widgets).Title);
+
+        // The companion-tool contribution point has the same shape and the same first-wins rule.
+        var tools = new CompanionToolRegistry();
+        tools.Register(
+            new CompanionToolRegistration("tools.clock", "Clock", _ => new Border()),
+            new PluginStorage(new Dictionary<string, string>(), _ => { }),
+            Substitute.For<ICockpitSessionObserver>());
+
+        var registeredAgain = tools.Register(
+            new CompanionToolRegistration("tools.clock", "Clock (the other one)", _ => new Border()),
+            new PluginStorage(new Dictionary<string, string>(), _ => { }),
+            Substitute.For<ICockpitSessionObserver>());
+
+        Assert.False(registeredAgain);
+        Assert.Equal("Clock", Assert.Single(tools.Tools).Title);
     }
 
     private static ICockpitUiHost NewHost(IWidgetRegistry registry) =>

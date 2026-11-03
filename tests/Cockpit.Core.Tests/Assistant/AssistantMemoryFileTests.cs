@@ -58,21 +58,6 @@ public class AssistantMemoryFileTests : IDisposable
     }
 
     [Fact]
-    public async Task TwoThingsToldAnHourApart_BothSurvive()
-    {
-        // The half that is easy to ship broken: a memory that rewrote itself would look right in the conversation
-        // that set it and quietly lose everything said before.
-        var memory = new AssistantMemoryFile(_filePath, _statePath);
-
-        await memory.RememberAsync("The operator is called Raymond.", AssistantMemoryScope.Behaviour);
-        await memory.RememberAsync("\"Prod\" means the release desk.", AssistantMemoryScope.Behaviour);
-
-        var contents = await memory.ReadAsync(AssistantMemoryScope.Behaviour);
-        Assert.Contains("The operator is called Raymond.", contents, StringComparison.Ordinal);
-        Assert.Contains("\"Prod\" means the release desk.", contents, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public async Task AFileEditedByHand_IsWhatTheNextReadReturns()
     {
         // There is no forget tool: pruning is the operator opening this file, so a hand-edited one has to be read
@@ -86,12 +71,13 @@ public class AssistantMemoryFileTests : IDisposable
     }
 
     [Fact]
-    public async Task TheCurrentState_IsReplacedByEachNote_AndLeavesTheRememberedLinesAlone()
+    public async Task TheCurrentState_IsReplacedByEachNote_WhileEveryRememberedLineSurvives()
     {
-        // AC-596. The two writes have opposite jobs — one accumulates, one is the latest picture — which is why
-        // they are separate files: a state that appended would be the transcript the restart exists to shed.
+        // AC-596: memory accumulates and the state is the latest picture, so they are separate files; a memory that
+        // rewrote itself would look right in the conversation that set it and silently lose everything said before.
         var memory = new AssistantMemoryFile(_filePath, _statePath);
         await memory.RememberAsync("The operator is called Raymond.", AssistantMemoryScope.Behaviour);
+        await memory.RememberAsync("\"Prod\" means the release desk.", AssistantMemoryScope.Behaviour);
 
         await memory.NoteCurrentStateAsync("We are on AC-592.");
         await memory.NoteCurrentStateAsync("The tests went green; they want to hear about the merge.");
@@ -99,7 +85,9 @@ public class AssistantMemoryFileTests : IDisposable
         var state = await memory.ReadCurrentStateAsync();
         Assert.DoesNotContain("AC-592", state, StringComparison.Ordinal);
         Assert.Contains("they want to hear about the merge.", state, StringComparison.Ordinal);
-        Assert.Contains("The operator is called Raymond.", await memory.ReadAsync(AssistantMemoryScope.Behaviour), StringComparison.Ordinal);
+        var remembered = await memory.ReadAsync(AssistantMemoryScope.Behaviour);
+        Assert.Contains("The operator is called Raymond.", remembered, StringComparison.Ordinal);
+        Assert.Contains("\"Prod\" means the release desk.", remembered, StringComparison.Ordinal);
     }
 
     public void Dispose()

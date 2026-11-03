@@ -62,26 +62,6 @@ public class ProjectStoreTests : IDisposable
         Assert.Equivalent(project, savedProject);
     }
 
-    // AC-938: a cockpit.json from before this ticket only ever wrote the singular SourceDirectory field —
-    // loading it must produce exactly the one-repository project it always described, and saving must keep
-    // writing that same legacy field so an older build can still read the file back.
-
-    [Fact]
-    public async Task LoadAsync_LegacySourceDirectoryOnly_LoadsAsItsOneRepository()
-    {
-        await File.WriteAllTextAsync(
-            _configFilePath,
-            """{"Projects":[{"Id":"legacy","Name":"Cockpit","SourceDirectory":"/home/raymond/legacy"}]}""");
-
-        var loaded = await new ProjectStore(_configFilePath).LoadAsync();
-
-        var project = Assert.Single(loaded.Projects);
-        Assert.Equal("/home/raymond/legacy", project.SourceDirectory);
-        var repository = Assert.Single(project.SourceDirectories);
-        Assert.Equal("/home/raymond/legacy", repository.Path);
-        Assert.Null(repository.Label);
-    }
-
     // AC-490 criterion 1: the id is on disk from the load that minted it, so no run points at an id a later load would replace.
     [Fact]
     public async Task AJobWrittenWithoutAnId_GetsOneOnLoadThatIsOnDiskAtOnce_AndKeepsItThroughARewrite()

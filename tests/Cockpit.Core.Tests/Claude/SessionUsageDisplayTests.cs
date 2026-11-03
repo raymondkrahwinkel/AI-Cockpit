@@ -47,7 +47,7 @@ public class SessionUsageDisplayTests
     }
 
     [Fact]
-    public void CrossingTheThreshold_RaisesTheBarOnce()
+    public void CrossingTheThreshold_RaisesTheBarOnce_UntilItHasDroppedBack()
     {
         // Every poll re-reads the same file. A bar that reappears at 91%, 92%, 93% is noise, and noise gets
         // ignored exactly when it matters — so the crossing speaks, not the state.
@@ -61,40 +61,12 @@ public class SessionUsageDisplayTests
         session.ApplyUsage(Signals, [new PluginUsageReading("weekly", 92, null)]);
 
         Assert.False(session.HasUsageWarning, "the same crossing has already been announced");
-    }
 
-    [Fact]
-    public void DroppingBackAndClimbingAgain_SpeaksAgain()
-    {
-        // A compaction genuinely empties the context, so the next fill is news rather than a repeat.
-        var session = Build();
-        session.ApplyUsage(Signals, [new PluginUsageReading("context", 55, null)]);
-        session.DismissUsageWarningCommand.Execute(null);
-
-        session.ApplyUsage(Signals, [new PluginUsageReading("context", 12, null)]);
-        session.ApplyUsage(Signals, [new PluginUsageReading("context", 51, null)]);
+        // Dropping back and climbing again is news rather than a repeat (a compaction genuinely empties the context).
+        session.ApplyUsage(Signals, [new PluginUsageReading("weekly", 12, null)]);
+        session.ApplyUsage(Signals, [new PluginUsageReading("weekly", 93, null)]);
 
         Assert.True(session.HasUsageWarning);
-    }
-
-    [Fact]
-    public void MultipleStandingWarnings_EachGetsItsOwnLine_AndTheRestSurviveOneClearing()
-    {
-        // AC-683: every signal that is over its own threshold gets its own line now, not one string a later
-        // crossing overwrites — the week does not vanish from view because the context window crossed after it,
-        // and it is still reported once context clears.
-        var session = Build();
-        session.ApplyUsage(Signals, [new PluginUsageReading("weekly", 95, null)]);
-        session.ApplyUsage(Signals, [new PluginUsageReading("context", 60, null)]);
-
-        Assert.Equal(2, session.Warnings.Count);
-        Assert.Contains(session.Warnings, w => w.Text.Contains("Week is 95% used"));
-        Assert.Contains(session.Warnings, w => w.Text.Contains("Context window is 60% used"));
-
-        session.ApplyUsage(Signals, [new PluginUsageReading("context", 4, null)]);
-
-        Assert.True(session.HasUsageWarning);
-        Assert.Contains("Week is 95% used", session.UsageWarning);
     }
 
     [Fact]

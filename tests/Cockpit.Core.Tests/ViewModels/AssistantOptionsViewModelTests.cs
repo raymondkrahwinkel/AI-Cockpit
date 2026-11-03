@@ -12,7 +12,7 @@ public class AssistantOptionsViewModelTests
     // ── AC-575: the consent-bypass rows ───────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task ConsentBypassRows_ComeFromTheHostsOwnSources_AndFromWhatHasActuallyAsked()
+    public async Task ConsentBypassRows_ComeFromTheHostsOwnSources_AndFromWhatHasActuallyAsked_KeyedOnTheStampedId()
     {
         // Never free text. The cockpit's own callers come from the catalogue the gates themselves build their
         // ConsentSource from; a plugin has no compile-time entry anywhere, so it appears because it asked — keyed
@@ -21,7 +21,8 @@ public class AssistantOptionsViewModelTests
             new FakeSettingsStore(new AssistantSettings()),
             consentAuditLog: new FakeConsentAuditLog(
                 Audit(pluginId: "cockpit-kubernetes", label: "Kubernetes"),
-                Audit(pluginId: null, label: ConsentSourceCatalog.TerminalMcp)));
+                Audit(pluginId: null, label: ConsentSourceCatalog.TerminalMcp),
+                Audit(pluginId: ConsentSourceCatalog.TerminalMcp, label: ConsentSourceCatalog.TerminalMcp)));
 
         await vm.RefreshAsync();
 
@@ -32,25 +33,11 @@ public class AssistantOptionsViewModelTests
         var plugin = Assert.Single(vm.ConsentBypassSources, row => row.Key == ConsentSourceCatalog.KeyFor("cockpit-kubernetes", "Kubernetes"));
         Assert.Equal("Kubernetes", plugin.Label);
         Assert.Equal("plugin:cockpit-kubernetes/Kubernetes", plugin.KeyDetail);
-    }
 
-    [Fact]
-    public async Task ConsentBypassRows_KeyOnTheStampedId_SoAPluginCannotBorrowACockpitSourcesRow()
-    {
-        // The label is the plugin's own text; the key is the host's. The sharp case is a plugin whose stamped
-        // *manifest id* is itself a host label — the host stamps it faithfully, so on a flat key space it lands on
-        // the row the operator ticked for the cockpit's own terminal gate. Prefixing the plugin half keeps them two
-        // rows and two switches.
-        var vm = new AssistantOptionsViewModel(
-            new FakeSettingsStore(new AssistantSettings()),
-            consentAuditLog: new FakeConsentAuditLog(
-                Audit(pluginId: ConsentSourceCatalog.TerminalMcp, label: ConsentSourceCatalog.TerminalMcp)));
-
-        await vm.RefreshAsync();
-
+        // The sharp case: a plugin whose stamped *manifest id* is itself a host label. On a flat key space it would
+        // land on the row the operator ticked for the cockpit's own terminal gate; the prefix keeps two rows.
         Assert.Equal(2, vm.ConsentBypassSources.Count(row => row.Label == ConsentSourceCatalog.TerminalMcp));
         Assert.Contains(vm.ConsentBypassSources, row => row.Key == "plugin:Terminal MCP/Terminal MCP");
-        Assert.Contains(vm.ConsentBypassSources, row => row.Key == ConsentSourceCatalog.TerminalMcp);
     }
 
     [Fact]

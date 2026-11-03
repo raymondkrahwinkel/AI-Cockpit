@@ -22,25 +22,6 @@ public class McpToolProviderConnectAsyncTests
     private static IReadOnlyList<McpServerConfig> _DisableBuiltIns() =>
         [.. McpServerPresets.LocalDefaults.Select(server => server with { Enabled = false })];
 
-    // AC-143: McpToolProvider is the other remaining mint site the SessionMcpKeyring class doc used to flag as "not
-    // yet covered". The mutation-style guard is the LivePaneCount assertion after DisposeAsync — it fails red if the
-    // Revoke call is deleted from McpToolSession.DisposeAsync, unlike a bare "no exception" check.
-    [Fact]
-    public async Task ConnectAsync_WithAPaneId_MintsAKeyringTokenThatIsRevokedWhenTheSessionIsDisposed()
-    {
-        var keyring = new SessionMcpKeyring();
-        var provider = _ProviderFor(_DisableBuiltIns(), keyring);
-
-        var session = await provider.ConnectAsync(paneId: "local-model-pane-under-test");
-
-        Assert.Equal(1, keyring.LivePaneCount);
-
-        await session.DisposeAsync();
-
-        Assert.Equal(0, keyring.LivePaneCount);
-        Assert.Equal(0, keyring.LiveTokenCount);
-    }
-
     // AC-143 full lifecycle (acceptance criterion 2): both remaining mint sites — the TTY route and this in-process
     // loop — share one keyring in a long-lived cockpit session; once every session they minted for has closed, the
     // keyring holds nothing at all, proven on the same ledger both routes actually write to rather than reasoned

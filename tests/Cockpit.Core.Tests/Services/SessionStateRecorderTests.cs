@@ -91,40 +91,21 @@ public sealed class SessionStateRecorderTests : IDisposable
     }
 
     /// <summary>
-    /// Raymond's follow-up decision on AC-513: a saved id is only safe to keep once "start fresh" resumes the
-    /// exact place it was saved in — a different working directory means the provider on the other end of that id
-    /// has no reason to recognise this pane's new context, so <c>RecordSessionStartedAsync</c> must clear it back
-    /// to <see cref="SessionConversationIdState.Unknown"/> rather than let it ride until a new report happens to
-    /// replace it (which might never come, e.g. an <c>Unsupported</c> provider).
+    /// AC-513 follow-up: a saved id is only safe to keep when "start fresh" resumes the exact place it was saved in —
+    /// a different working directory clears it back to <see cref="SessionConversationIdState.Unknown"/>. AC-1261: a
+    /// clear changes neither profile nor directory, so without <c>forgetConversation</c> a cockpit closed before any
+    /// new id arrives would resume the very conversation the operator just cleared.
     /// </summary>
-    [Fact]
-    public async Task RecordSessionStartedAsync_ChangedWorkingDirectory_ClearsTheSavedConversationId()
+    [Theory]
+    [InlineData("/repo-two", false)]
+    [InlineData("/repo", true)]
+    public async Task RecordSessionStartedAsync_ChangedWorkingDirectoryOrForgetConversation_ClearsTheSavedConversationId(string directory, bool forget)
     {
         var store = CreateStore();
-        await store.RecordAsync(CreateRecord()); // WorkingDirectory: "/repo"
+        await store.RecordAsync(CreateRecord()); // profile "work", WorkingDirectory "/repo"
 
         var recorder = CreateRecorder(store);
-        await recorder.RecordSessionStartedAsync("pane-1", WorkProfile, "/repo-two", null, null, "default");
-
-        var record = Assert.Single(await store.LoadAsync());
-        Assert.Null(record.ConversationId);
-        Assert.Equal(SessionConversationIdState.Unknown, record.ConversationState);
-    }
-
-    /// <summary>
-    /// AC-1261 criterion 3: a clear (<c>AssistantSessionHost.ClearConversationAsync</c>) changes neither profile nor
-    /// working directory — the two things this guard otherwise keys on — so without <c>forgetConversation</c> the
-    /// saved id would ride along unchanged, and a cockpit closed before any new id arrives would resume the very
-    /// conversation the operator just cleared (V1).
-    /// </summary>
-    [Fact]
-    public async Task RecordSessionStartedAsync_WithForgetConversation_ClearsTheSavedConversationId_EvenWithNoOtherContextChange()
-    {
-        var store = CreateStore();
-        await store.RecordAsync(CreateRecord()); // same profile ("work") and directory ("/repo") as below
-
-        var recorder = CreateRecorder(store);
-        await recorder.RecordSessionStartedAsync("pane-1", WorkProfile, "/repo", null, null, "default", forgetConversation: true);
+        await recorder.RecordSessionStartedAsync("pane-1", WorkProfile, directory, null, null, "default", forgetConversation: forget);
 
         var record = Assert.Single(await store.LoadAsync());
         Assert.Null(record.ConversationId);
@@ -227,13 +208,15 @@ public sealed class SessionStateRecorderTests : IDisposable
     }
 
     /// <summary>
-    /// Bevinding 2/3: a seed attempt that cannot read the store must not be read as "this pane has no saved
-    /// state" — that would compose the write against a blank record and bury the real id the same way the
-    /// ordering bug does. The write must be skipped instead, and a later write must retry the read rather than
-    /// staying unseeded for the rest of the process.
+    /// Bevinding 2/3: a seed attempt that cannot read the store — a null, or a throw where the contract says null (a
+    /// file gone between the existence check and the read) — must not compose the write against a blank record and
+    /// bury the real id. It is skipped, the failure is not cached (the seed task is shared and awaited on a
+    /// fire-and-forget path, so a cached fault would silently end all recording), and a later write retries the read.
     /// </summary>
-    [Fact]
-    public async Task AWriteThatCannotSeedTheCache_IsSkippedAndALaterWriteRetriesTheRead()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AWriteThatCannotSeedTheCache_IsSkippedAndALaterWriteRetriesTheRead(bool readThrows)
     {
         var realStore = CreateStore();
         await realStore.RecordAsync(CreateRecord(permissionMode: "resumed"));
@@ -244,70 +227,33 @@ public sealed class SessionStateRecorderTests : IDisposable
             TryLoadOverride = async cancellationToken =>
             {
                 loadAttempts++;
-                return loadAttempts == 1 ? null : await realStore.TryLoadAsync(cancellationToken);
+                if (loadAttempts > 1)
+                {
+                    return await realStore.TryLoadAsync(cancellationToken);
+                }
+
+                if (readThrows)
+                {
+                    throw new IOException("the state file went away between the check and the read");
+                }
+
+                return null;
             },
         };
 
         var recorder = CreateRecorder(store);
 
-        // The first write's seed attempt fails (simulated unreadable file). Composing against a blank cache here
-        // would bury "conv-old" under a fresh record carrying only this write's permission mode.
         await recorder.RecordPermissionModeChangedAsync("pane-1", "acceptEdits");
 
         var afterFailedSeed = Assert.Single(await realStore.LoadAsync());
         Assert.Equal("conv-old", afterFailedSeed.ConversationId);
         Assert.Equal("resumed", afterFailedSeed.PermissionMode);
 
-        // A later write must retry rather than being stuck unseeded — this one succeeds (loadAttempts reaches 2),
-        // so it must build on the saved id.
         await recorder.RecordPermissionModeChangedAsync("pane-1", "bypassPermissions");
 
         var afterRetry = Assert.Single(await realStore.LoadAsync());
         Assert.Equal("conv-old", afterRetry.ConversationId);
         Assert.Equal("bypassPermissions", afterRetry.PermissionMode);
-        Assert.Equal(2, loadAttempts);
-    }
-
-    // The sibling of the test above, for the way a read can fail that the store's contract does not describe.
-    // TryLoadAsync answers null when it cannot tell — but it reads a file, and a file can go away between the
-    // File.Exists check and the read. A throw there must land in the same place a null does: the seed task is
-    // shared by every write queued behind the write gate and is awaited on a fire-and-forget path, so a faulted
-    // task would be cached, rethrown by every later write into `_ = recorder.RecordXAsync(...)`, and silently end
-    // all session-state recording for the rest of the process.
-    [Fact]
-    public async Task AStoreThatThrowsWhereItsContractSaysNull_DoesNotSilentlyEndAllRecording()
-    {
-        var realStore = CreateStore();
-        await realStore.RecordAsync(CreateRecord(permissionMode: "resumed"));
-
-        var loadAttempts = 0;
-        var store = new InstrumentedSessionStateStore(realStore)
-        {
-            TryLoadOverride = async cancellationToken =>
-            {
-                loadAttempts++;
-                return loadAttempts == 1
-                    ? throw new IOException("the state file went away between the existence check and the read")
-                    : await realStore.TryLoadAsync(cancellationToken);
-            },
-        };
-
-        var recorder = CreateRecorder(store);
-
-        // Skipped, not thrown out of: both production call sites discard the returned task, so an exception here
-        // would surface nowhere at all.
-        await recorder.RecordPermissionModeChangedAsync("pane-1", "acceptEdits");
-
-        var afterThrow = Assert.Single(await realStore.LoadAsync());
-        Assert.Equal("conv-old", afterThrow.ConversationId);
-        Assert.Equal("resumed", afterThrow.PermissionMode);
-
-        // And the failure must not have been cached: this write reads successfully and builds on the saved id.
-        await recorder.RecordPermissionModeChangedAsync("pane-1", "bypassPermissions");
-
-        var afterRetryFromThrow = Assert.Single(await realStore.LoadAsync());
-        Assert.Equal("conv-old", afterRetryFromThrow.ConversationId);
-        Assert.Equal("bypassPermissions", afterRetryFromThrow.PermissionMode);
         Assert.Equal(2, loadAttempts);
     }
 }

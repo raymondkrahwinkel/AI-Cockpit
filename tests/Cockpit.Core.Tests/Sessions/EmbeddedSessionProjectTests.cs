@@ -18,37 +18,27 @@ public class EmbeddedSessionProjectTests
         new("pane", repository, path, "autopilot/run", "abc1234", DateTimeOffset.UnixEpoch);
 
     [Fact]
-    public void Resolve_ARunPointedStraightAtItsWorktree_IsTheRepositorysProject()
+    public void Resolve_ARunInAWorktree_OrAWorktreeCutFromOne_IsTheRepositorysProject_AndACycleAnswersRatherThanSpins()
     {
         // The validating CEO's shape: it is pointed at the run's worktree so it can read the accumulated work.
-        var project = EmbeddedSessionProject.Resolve(
+        Assert.Equal("Cockpit", EmbeddedSessionProject.Resolve(
                 [_At("Cockpit", "/repos/cockpit")],
                 [_Worktree("/worktrees/run-1", "/repos/cockpit")],
-                "/worktrees/run-1");
-        Assert.NotNull(project);
-        Assert.Equal("Cockpit", project.Name);
-    }
+                "/worktrees/run-1")?.Name);
 
-    [Fact]
-    public void Resolve_AWorktreeCutFromAWorktree_StillReachesTheProject()
-    {
         // A run started from a session that is itself isolated: git inside a linked worktree reports that worktree as
         // the repository, so the record chains. One hop would land on a folder no project claims.
-        var project = EmbeddedSessionProject.Resolve(
+        Assert.Equal("Cockpit", EmbeddedSessionProject.Resolve(
                 [_At("Cockpit", "/repos/cockpit")],
                 [_Worktree("/worktrees/session-1", "/repos/cockpit"), _Worktree("/worktrees/run-1", "/worktrees/session-1")],
-                "/worktrees/run-1");
-        Assert.NotNull(project);
-        Assert.Equal("Cockpit", project.Name);
-    }
+                "/worktrees/run-1")?.Name);
 
-    [Fact]
-    public void Resolve_ARegistryThatPointsAtItself_AnswersRatherThanSpins() =>
         // A cycle costs the answer, never the session: the walk must not loop.
         Assert.Null(EmbeddedSessionProject.Resolve(
                 [_At("Cockpit", "/repos/cockpit")],
                 [_Worktree("/worktrees/a", "/worktrees/b"), _Worktree("/worktrees/b", "/worktrees/a")],
                 "/worktrees/a"));
+    }
 
     [Fact]
     public void Resolve_AProjectScopedWideEnoughToContainTheWorktrees_DoesNotClaimTheRun()

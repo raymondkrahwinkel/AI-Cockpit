@@ -41,44 +41,24 @@ public class VelopackUpdateServiceTests : IDisposable
         Assert.Equal($"{UpdateChannelName.Platform()}-{stream}", feed.AskedFor);
     }
 
-    /// <summary>A build higher than the installed one is what the operator is told about, with the notes the feed carried.</summary>
-    [Fact]
-    public async Task ANewerBuildOnTheChannel_IsOffered()
-    {
-        var result = await Check(UpdateChannel.Stable, new Feed(Package("0.9.0", "what changed")));
-
-        Assert.Null(result.Failure);
-        Assert.Equal("0.9.0", result.Release?.Version);
-        Assert.Equal("what changed", result.Release?.Notes);
-    }
-
     /// <summary>
-    /// The nightly workflow deletes its release and its tag and makes them again every run, so the feed after a
-    /// retag carries one nightly, not a history — and the tag it hangs on is the same string it was yesterday. What
-    /// tells last night's install from tonight's build is therefore the version and nothing else, which is exactly
-    /// what the rolling tag cannot do. Modelled the way the workflow leaves it: one asset, a higher run number.
-    /// </summary>
-    [Fact]
-    public async Task AfterTheNightlyTagIsRemade_TheRebuiltNightlyIsStillSeenAsNewer()
-    {
-        var result = await Check(UpdateChannel.Nightly, new Feed(Package("0.8.0-nightly.9")), installed: "0.8.0-nightly.5");
-
-        Assert.Equal("0.8.0-nightly.9", result.Release?.Version);
-    }
-
-    /// <summary>
-    /// Nothing newer on the channel is an "up to date", and that is the only thing that may report one. The last
-    /// row is a nightly retag offering the build that is already installed: republishing the tag is not an update.
+    /// A higher build is offered with the feed's notes; nothing newer is the only thing that may report "up to date".
+    /// The nightly workflow remakes its release and tag every run, so the tag is the same string as yesterday and
+    /// only the version tells last night's install from tonight's build (third row) — and a retag offering the
+    /// installed build is not an update (last row).
     /// </summary>
     [Theory]
-    [InlineData(UpdateChannel.Nightly, "0.8.0-nightly.4", "0.8.0-nightly.5")]
-    [InlineData(UpdateChannel.Nightly, "0.8.0-nightly.9", "0.8.0-nightly.9")]
-    public async Task NothingNewerOnTheChannel_IsUpToDate(UpdateChannel channel, string offered, string installed)
+    [InlineData(UpdateChannel.Stable, "0.9.0", "0.8.0", true)]
+    [InlineData(UpdateChannel.Nightly, "0.8.0-nightly.4", "0.8.0-nightly.5", false)]
+    [InlineData(UpdateChannel.Nightly, "0.8.0-nightly.9", "0.8.0-nightly.5", true)]
+    [InlineData(UpdateChannel.Nightly, "0.8.0-nightly.9", "0.8.0-nightly.9", false)]
+    public async Task OnlyANewerBuildOnTheChannel_IsOffered(UpdateChannel channel, string offered, string installed, bool isOffered)
     {
-        var result = await Check(channel, new Feed(Package(offered)), installed);
+        var result = await Check(channel, new Feed(Package(offered, "what changed")), installed);
 
-        Assert.Null(result.Release);
         Assert.Null(result.Failure);
+        Assert.Equal(isOffered ? offered : null, result.Release?.Version);
+        Assert.Equal(isOffered ? "what changed" : null, result.Release?.Notes);
     }
 
     /// <summary>
@@ -96,24 +76,18 @@ public class VelopackUpdateServiceTests : IDisposable
 
     /// <summary>
     /// The nightly is published as a GitHub pre-release, so a source that does not ask for pre-releases cannot see
-    /// it. This is the half of "a stable install is never offered a nightly" that the channel name does not cover.
+    /// it. And the feed is read anonymously, which is the whole of what keeps drafts out (AC-462): GitHub lists them
+    /// only to callers with push access, and Velopack's release model carries no draft field to filter on — so a
+    /// token added for the rate limit would quietly start offering drafts.
     /// </summary>
     [Theory]
     [InlineData(UpdateChannel.Stable, false)]
     [InlineData(UpdateChannel.Nightly, true)]
-    public void TheSource_AsksForPreReleasesOnlyOnTheNightlyChannel(UpdateChannel channel, bool expected) =>
+    public void TheSource_AsksForPreReleasesOnlyOnTheNightlyChannel_AndReadsAnonymously(UpdateChannel channel, bool expected)
+    {
         Assert.Equal(expected, Assert.IsType<GithubSource>(VelopackUpdateService.Source(channel)).Prerelease);
-
-    /// <summary>
-    /// The feed is read anonymously, and that is what keeps drafts out of it (AC-462): GitHub lists draft releases
-    /// only to callers with push access. The cockpit used to drop drafts itself and cannot any more — the release
-    /// model Velopack reads into carries no draft field — so this is the whole of the protection, and it is one
-    /// argument away from being gone. Pinned here because the reason someone would add a token is the rate limit,
-    /// which gives no hint that drafts are riding on the answer.
-    /// </summary>
-    [Fact]
-    public void TheFeedIsReadAnonymously_WhichIsWhatKeepsDraftReleasesOutOfIt() =>
         Assert.Null(VelopackUpdateService.AccessToken);
+    }
 
     /// <summary>
     /// A transfer that breaks partway leaves the app exactly as it found it: a failure with a reason, and — this is

@@ -47,23 +47,7 @@ public class CockpitHostMcpAuthTests
     }
 
     [Fact]
-    public async Task SignInMcpServerAsync_AsksTheCoordinatorInteractively_NeverSilently()
-    {
-        var coordinator = Substitute.For<IMcpOAuthCoordinator>();
-        coordinator.AcquireAsync(Arg.Any<McpServerConfig>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
-            .Returns(new McpOAuthAccess(McpAuthState.Authorized, "token-abc", McpSignInStage.NoBrowserLaunched));
-        var host = _BuildHost(new List<McpServerConfig> { OAuthServer }, coordinator);
-
-        await host.SignInMcpServerAsync("Depot: Work");
-
-        await coordinator.Received(1).AcquireAsync(
-            Arg.Is<McpServerConfig>(server => server.Name == "Depot: Work"),
-            interactive: true,
-            Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task SignInMcpServerAsync_CoordinatorReturnsAnythingElse_AnswersDeclined_NeverACredentialOrDetail()
+    public async Task SignInMcpServerAsync_AsksTheCoordinatorInteractively_AndAnythingButAuthorizedIsDeclined_NeverACredentialOrDetail()
     {
         var coordinator = Substitute.For<IMcpOAuthCoordinator>();
         coordinator.AcquireAsync(Arg.Any<McpServerConfig>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
@@ -72,6 +56,10 @@ public class CockpitHostMcpAuthTests
 
         var outcome = await host.SignInMcpServerAsync("Depot: Work");
 
+        await coordinator.Received(1).AcquireAsync(
+            Arg.Is<McpServerConfig>(server => server.Name == "Depot: Work"),
+            interactive: true,
+            Arg.Any<CancellationToken>());
         Assert.Equal(PluginMcpSignInOutcome.Declined, outcome);
     }
 

@@ -62,7 +62,7 @@ public class ProjectResourceTests : IDisposable
     /// important half of the fix: proving the bad row costs only itself, not the rest of the config.
     /// </summary>
     [Fact]
-    public async Task LoadAsync_ARowWithAnUnrecognisedRole_LoadsAsReferenceAndTheRestOfTheFileLoadsToo()
+    public async Task LoadAsync_OlderOrForeignShapes_LoadWithoutCostingTheRestOfTheFile()
     {
         await File.WriteAllTextAsync(
             _configFilePath,
@@ -70,42 +70,33 @@ public class ProjectResourceTests : IDisposable
             {
               "Projects":[
                 {"Id":"p","Name":"Cockpit","Resources":[{"Reference":"D:\\handbook","Role":"Instruction"}]},
-                {"Id":"q","Name":"Second project"}
+                {"Id":"q","Name":"Second project"},
+                {"Id":"r","Name":"Both","MemoryRef":"depot:stale","Resources":[{"Reference":"depot:current","Role":"Memory"}]},
+                {"Id":"s","Name":"Legacy","SourceDirectory":"/home/raymond/legacy"}
               ]
             }
             """);
 
         var loaded = await new ProjectStore(_configFilePath).LoadAsync();
 
-        Assert.Equal(2, System.Linq.Enumerable.Count(loaded.Projects));
+        Assert.Equal(4, System.Linq.Enumerable.Count(loaded.Projects));
         Assert.Equal(
             ProjectResourceRole.Reference,
             Assert.Single(loaded.Projects.Single(project => project.Id == "p").Resources).Role);
         Assert.Equal("Second project", loaded.Projects.Single(project => project.Id == "q").Name);
-    }
 
-    // --- FIX 7: cases the review found missing ------------------------------------------------------------------------
+        // FIX 7: a file carrying both the legacy MemoryRef and the list trusts Resources, the fuller answer.
+        var both = loaded.Projects.Single(project => project.Id == "r");
+        Assert.Equal(new ProjectResource("depot:current", ProjectResourceRole.Memory), Assert.Single(both.Resources));
+        Assert.Equal("depot:current", both.MemoryRef);
 
-    /// <summary>
-    /// A file written by a build in between (or hand-edited) carries both the legacy field and the list. The
-    /// documented precedence — <c>Resources</c> is the fuller, more current answer — was asserted in prose
-    /// (<c>ProjectEntry.ToDomain</c>'s doc comment) but never actually exercised until now.
-    /// </summary>
-    [Fact]
-    public async Task LoadAsync_BothMemoryRefAndResourcesPresent_TrustsResources()
-    {
-        await File.WriteAllTextAsync(
-            _configFilePath,
-            """
-            {"Projects":[{"Id":"p","Name":"Cockpit","MemoryRef":"depot:stale",
-              "Resources":[{"Reference":"depot:current","Role":"Memory"}]}]}
-            """);
-
-        var loaded = await new ProjectStore(_configFilePath).LoadAsync();
-
-        var project = Assert.Single(loaded.Projects);
-        Assert.Equal(new ProjectResource("depot:current", ProjectResourceRole.Memory), Assert.Single(project.Resources));
-        Assert.Equal("depot:current", project.MemoryRef);
+        // AC-938: a project from before multi-repository only wrote the singular SourceDirectory — it loads as
+        // exactly the one repository it always described.
+        var legacy = loaded.Projects.Single(project => project.Id == "s");
+        Assert.Equal("/home/raymond/legacy", legacy.SourceDirectory);
+        var repository = Assert.Single(legacy.SourceDirectories);
+        Assert.Equal("/home/raymond/legacy", repository.Path);
+        Assert.Null(repository.Label);
     }
 
     public void Dispose()

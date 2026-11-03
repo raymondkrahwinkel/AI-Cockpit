@@ -42,7 +42,7 @@ public class Ac1090_TranscriptRecordingWiringTests : IDisposable
     // writes nothing), green with it. The store is the real one, pointed at a temp folder rather than the
     // operator's state root — the registration is replaced, not the wiring being tested.
     [Fact]
-    public async Task APaneTakenFromTheContainer_RecordsItsRowsToDisk()
+    public async Task APaneTakenFromTheContainer_RecordsItsRowsToDisk_AndDoesNotRecordReplayedRowsAgain()
     {
         var services = _ProductionServices();
         var store = new SessionTranscriptLog(_tempDir, NullLogger<SessionTranscriptLog>.Instance, TimeSpan.Zero);
@@ -56,32 +56,16 @@ public class Ac1090_TranscriptRecordingWiringTests : IDisposable
 
         var recorded = (await store.TryLoadAsync(pane.PaneId))!;
         Assert.Equal("what is the status of AC-1090", Assert.Single(recorded).Text);
-    }
 
-    // A replayed row must not be recorded straight back: it is already in the log, and appending it again on every
-    // restart is how an append-only log quietly turns into the amplification it replaced.
-    [Fact]
-    public async Task ReplayedRows_AreNotRecordedAgain()
-    {
-        var services = _ProductionServices();
-        var store = new SessionTranscriptLog(_tempDir, NullLogger<SessionTranscriptLog>.Instance, TimeSpan.Zero);
-        services.AddSingleton<ISessionTranscriptStore>(store);
-
-        await using var provider = services.BuildServiceProvider();
-        var factory = provider.GetRequiredService<Func<SessionViewModel>>();
-
-        var first = factory();
-        first.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "one"));
-        first.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "two"));
-        await store.FlushAsync(CancellationToken.None);
-        var afterRecording = new FileInfo(store.LogPath(first.PaneId)).Length;
-
-        var restarted = factory();
-        restarted.AdoptPaneId(first.PaneId);
+        // A replayed row must not be recorded straight back: appending it again on every restart is how an
+        // append-only log quietly turns into the amplification it replaced.
+        var afterRecording = new FileInfo(store.LogPath(pane.PaneId)).Length;
+        var restarted = provider.GetRequiredService<Func<SessionViewModel>>()();
+        restarted.AdoptPaneId(pane.PaneId);
         await restarted.ReplayRecordedTranscriptAsync();
         await store.FlushAsync(CancellationToken.None);
 
-        Assert.Equal(afterRecording, new FileInfo(store.LogPath(first.PaneId)).Length);
+        Assert.Equal(afterRecording, new FileInfo(store.LogPath(pane.PaneId)).Length);
     }
 
     public void Dispose()

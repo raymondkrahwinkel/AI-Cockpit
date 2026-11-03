@@ -55,17 +55,12 @@ public class SessionTranscriptLogTests : IDisposable
         var loaded = Assert.Single((await store.TryLoadAsync(Pane))!);
         Assert.Equal(row with { SubAgentRows = null }, loaded with { SubAgentRows = null });
         Assert.Equal("reading the file", Assert.Single(loaded.SubAgentRows!).Text);
-    }
 
-    [Fact]
-    public async Task ALineThatCannotBeParsed_IsSkipped_RatherThanLosingTheRowsAroundIt()
-    {
-        var store = CreateStore();
-        await store.AppendAsync(Pane, Row("a", "UserText", "before"));
+        // A line that cannot be parsed is skipped, rather than losing the rows around it.
         await File.AppendAllTextAsync(store.LogPath(Pane), "not json" + Environment.NewLine);
         await store.AppendAsync(Pane, Row("b", "UserText", "after"));
 
-        Assert.Equal(["before", "after"], (await store.TryLoadAsync(Pane))!.Select(entry => entry.Text));
+        Assert.Equal(["a", "b"], (await store.TryLoadAsync(Pane))!.Select(entry => entry.Id));
     }
 
     // ── Rolling a log aside (AC-947, kept by AC-1090) ───────────────────────────────────────────────────────────

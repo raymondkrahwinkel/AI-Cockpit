@@ -107,26 +107,15 @@ public class UsageHistoryLogTests : IDisposable
         Assert.Contains("pane-b", await File.ReadAllTextAsync(_logPath));
         Assert.DoesNotContain("pane-a", await File.ReadAllTextAsync(_logPath));
 
+        // AC3: a tail-read that exhausts the live file reads on across the rollover rather than dropping to nothing.
+        Assert.Equal(["pane-b", "pane-a"], (await log.ReadRecentAsync()).Select(entry => entry.PaneId));
+
         // Rolling again keeps one generation, but every line here is from one day that is not folded yet (AC-1719),
         // so the old generation's lines move along instead of being dropped.
         await log.RecordAsync(_Snapshot("pane-c"));
         Assert.Contains("pane-b", await File.ReadAllTextAsync(_RolloverPath()));
         Assert.Contains("pane-a", await File.ReadAllTextAsync(_RolloverPath()));
         Assert.DoesNotContain("pane-a", await File.ReadAllTextAsync(_logPath));
-    }
-
-    [Fact]
-    public async Task ReadRecentAsync_AfterARollover_ContinuesIntoTheRolloverFile()
-    {
-        // AC3: a tail-read that exhausts the live file must not stop right where the rollover happened — "recent
-        // usage history" should read across the boundary rather than appearing to drop to nothing.
-        var log = _LogWithTinyLimit(maxSizeBytes: 1);
-        await log.RecordAsync(_Snapshot("pane-old")); // rolls to .1.jsonl on the next write
-        await log.RecordAsync(_Snapshot("pane-new")); // lives in the current file
-
-        var recent = await log.ReadRecentAsync();
-
-        Assert.Equal(["pane-new", "pane-old"], recent.Select(entry => entry.PaneId));
     }
 
     [Fact]

@@ -49,18 +49,6 @@ public class EmbeddedAutopilotPermissionModeTests
         new() { ProfileId = "work", PermissionMode = "acceptEdits", IsolateInWorktree = true };
 
     [Fact]
-    public void EmbeddedLaunchOptions_WhenTheRequestNamesItsOwnMode_DropTheProfilesStoredPermissionModeDefault()
-    {
-        var options = CockpitViewModel._EmbeddedLaunchOptions(_WorkProfileSavedInBypass(), _IsolatedStepRequestingAcceptEdits());
-
-        // The profile's stored bypass must not survive into the launch options, or the driver's launch-option merge
-        // would keep it over the explicit typed request mode. Its other defaults (model) are left untouched.
-        Assert.False(options!.ContainsKey(WellKnownPluginSessionOptions.PermissionMode));
-        Assert.True(options.ContainsKey("model"));
-        Assert.Equal("sonnet", options["model"]);
-    }
-
-    [Fact]
     public async Task AnIsolatedStep_OnAProfileSavedInBypass_Confines_BecauseTheExplicitAcceptEditsRequestModeWins()
     {
         var profile = _WorkProfileSavedInBypass();
@@ -69,6 +57,12 @@ public class EmbeddedAutopilotPermissionModeTests
         // The host assembles the launch options (the fix), then the driver adapter resolves the effective mode — the
         // same two steps the real embedded start runs. The typed permissionMode is the request's resolved mode.
         var launchOptions = CockpitViewModel._EmbeddedLaunchOptions(profile, request);
+
+        // The profile's stored bypass must not survive into the launch options, or the driver's launch-option merge
+        // would keep it over the explicit typed request mode. Its other defaults (model) are left untouched.
+        Assert.False(launchOptions!.ContainsKey(WellKnownPluginSessionOptions.PermissionMode));
+        Assert.Equal("sonnet", launchOptions["model"]);
+
         var inner = new FakePluginSessionDriver { Capabilities = _PermissionConfining() };
         var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
 

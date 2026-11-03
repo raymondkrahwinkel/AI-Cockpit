@@ -6,7 +6,7 @@ namespace Cockpit.Core.Tests.Usage;
 public class UsageSnapshotTests
 {
     [Fact]
-    public void TotalTokens_CountsEveryBucket_IncludingTheCacheOnes()
+    public void TotalTokens_CountsEveryBucket_AndDurationAcrossOffsetsMeasuresRealElapsedTime()
     {
         var snapshot = new UsageSnapshot
         {
@@ -19,18 +19,14 @@ public class UsageSnapshotTests
         // The cache buckets are the bulk of a long session's spend — leaving either out understates it by an order
         // of magnitude, which is the opposite of what a baseline is for.
         Assert.Equal(44_200, snapshot.TotalTokens);
-    }
 
-    [Fact]
-    public void Duration_AcrossOffsets_MeasuresRealElapsedTime_NotTheClockFaces()
-    {
         // A run started before a machine changed timezone (or a record written by a session on another offset) must
         // not read as an hour longer than it was: DateTimeOffset subtraction is absolute, and this pins that.
         var started = new DateTimeOffset(2026, 7, 28, 9, 0, 0, TimeSpan.FromHours(2));
         var recorded = new DateTimeOffset(2026, 7, 28, 8, 30, 0, TimeSpan.FromHours(1));
 
-        var snapshot = new UsageSnapshot { StartedAt = started, RecordedAt = recorded };
+        var timed = new UsageSnapshot { StartedAt = started, RecordedAt = recorded };
 
-        Assert.Equal(TimeSpan.FromMinutes(30), snapshot.Duration);
+        Assert.Equal(TimeSpan.FromMinutes(30), timed.Duration);
     }
 }

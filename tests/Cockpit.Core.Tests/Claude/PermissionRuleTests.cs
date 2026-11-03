@@ -18,19 +18,11 @@ public class PermissionRuleTests
     }
 
     [Fact]
-    public void Exact_MatchesRegardlessOfPropertyOrderOrWhitespace()
+    public void Exact_MatchesRegardlessOfPropertyOrderOrWhitespace_ButNotADifferentInput()
     {
         var rule = PermissionRule.ForExact("Edit", """{"file_path":"a.txt","old_string":"x"}""");
 
         Assert.True(rule.Matches("Edit", """{ "old_string": "x",  "file_path": "a.txt" }"""));
+        Assert.False(rule.Matches("Edit", """{"file_path":"a.txt","old_string":"y"}"""));
     }
-
-    [Fact]
-    public void Exact_DoesNotMatchADifferentInput()
-    {
-        var rule = PermissionRule.ForExact("Bash", """{"command":"dotnet build"}""");
-
-        Assert.False(rule.Matches("Bash", """{"command":"dotnet test"}"""));
-    }
-
 }

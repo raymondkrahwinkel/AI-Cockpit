@@ -47,10 +47,21 @@ public class EmbeddedConfinementGateTests
         // An isolated run is refused in terms of the worktree it would have had, and the checkout it would have hit.
         Assert.Contains("to the worktree", refusal);
         Assert.Contains("edit your real checkout", refusal);
+
+        // Both flags together is what an isolate-in-worktree run reaching a driver looks like from the options map's
+        // side; the worktree is the story the operator set up, so the wording must settle on it.
+        var both = new EmbeddedSessionRequest
+        {
+            IsolateInWorktree = true,
+            ConfineFileToolsToWorkingDirectory = true,
+            WorkingDirectory = Folder,
+        };
+
+        Assert.Contains("to the worktree", _Refusal(both, confinesFileAccess: false));
     }
 
     [Fact]
-    public void AConfinedRunWithoutAWorktree_OnANonConfiningProvider_IsRefused()
+    public void AConfinedRunWithoutAWorktree_OnANonConfiningProvider_OrWithNoFolderAtAll_IsRefused()
     {
         // The AC-191 gap. The non-git Autopilot path sets ConfineFileToolsToWorkingDirectory without IsolateInWorktree;
         // a provider that neither confines natively nor vouches the capability must be refused here, exactly as the
@@ -64,18 +75,10 @@ public class EmbeddedConfinementGateTests
         Assert.Contains("outside the folder it was given", refusal);
         Assert.DoesNotContain("real checkout", refusal);
         Assert.DoesNotContain("worktree", refusal);
-    }
 
-    [Fact]
-    public void AConfinedRunWithNoWorkingDirectory_IsRefused_EvenOnAConfiningProvider()
-    {
-        // Confinement to nothing is not confinement: an empty directory starts the session wherever the cockpit itself
-        // is, and a natively confining provider would vouch honestly for that folder — so the capability check alone
-        // would wave through a run roaming the operator's disk. Refused before the capability is even consulted.
-        var refusal = _Refusal(new EmbeddedSessionRequest { ConfineFileToolsToWorkingDirectory = true });
-
-        Assert.NotNull(refusal);
-        Assert.Contains("was given none", refusal);
+        // Confinement to nothing is not confinement: an empty directory starts the session wherever the cockpit
+        // itself is, and a natively confining provider would vouch honestly for that folder. Refused even there.
+        Assert.Contains("was given none", _Refusal(new EmbeddedSessionRequest { ConfineFileToolsToWorkingDirectory = true }));
     }
 
     [Theory]
@@ -97,21 +100,5 @@ public class EmbeddedConfinementGateTests
 
         Assert.NotNull(refusal);
         Assert.Contains("its session did not start", refusal);
-    }
-
-    [Fact]
-    public void ARunThatBothIsolatesAndConfines_IsRefusedInTermsOfItsWorktree()
-    {
-        // Both flags together is what an isolate-in-worktree run reaching a driver looks like from the options map's
-        // side. The wording has to settle on one story, and the worktree is the one the operator set up — pinned so a
-        // later edit to the tuple cannot quietly start telling them about a folder instead.
-        var request = new EmbeddedSessionRequest
-        {
-            IsolateInWorktree = true,
-            ConfineFileToolsToWorkingDirectory = true,
-            WorkingDirectory = Folder,
-        };
-
-        Assert.Contains("to the worktree", _Refusal(request, confinesFileAccess: false));
     }
 }

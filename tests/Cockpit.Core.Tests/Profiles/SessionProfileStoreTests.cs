@@ -21,23 +21,7 @@ public class SessionProfileStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task SaveAsync_ThenLoadAsync_RoundTripsProfiles()
-    {
-        var store = new SessionProfileStore(_configFilePath);
-        var profiles = new List<SessionProfile>
-        {
-            new("personal", ClaudePluginProfile.Create(@"C:\Users\raymo\.claude-personal", null), Purpose: "Personal Zyra profile"),
-            new("work", ClaudePluginProfile.Create(@"C:\Users\raymo\.claude-work", @"C:\tools\claude-work.exe")),
-        };
-
-        await store.SaveAsync(profiles);
-        var loaded = await store.LoadAsync();
-
-        Assert.Equivalent(profiles, loaded);
-    }
-
-    [Fact]
-    public async Task LoadAsync_ConfigWrittenByAnEarlierVersion_StillLoads()
+    public async Task LoadAsync_ConfigWrittenByAnEarlierVersion_StillLoads_AndRoundTrips()
     {
         // Verbatim profiles section as written before the Claude* -> Session* rename: the on-disk
         // contract is the property names, not the C# type names, so a config from an older build
@@ -80,6 +64,11 @@ public class SessionProfileStoreTests : IDisposable
         Assert.NotNull(profiles[0].Defaults);
         Assert.Equal(SessionProvider.Ollama, profiles[1].Provider);
         Assert.Equal("llama3.1", Assert.IsType<OllamaConfig>(profiles[1].ProviderConfig).Model);
+
+        // And what was loaded saves and loads back unchanged, plugin-provider and built-in provider alike.
+        await store.SaveAsync(profiles);
+
+        Assert.Equivalent(profiles, await store.LoadAsync());
     }
 
     public void Dispose()

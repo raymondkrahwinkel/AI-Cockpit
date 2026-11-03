@@ -45,56 +45,30 @@ public class OpenAiCompatSessionDriverTests
         Assert.Contains("read x", completed.OfType<ToolResult>().Single().Content);
     }
 
-    [Fact]
-    public async Task DelegatedGate_DeniesAToolAboveTheCeiling_WithReasonAndNoPrompt()
+    // Never a prompt (nobody answers it): a denial goes back as the tool result. Destructive is denied under acceptEdits,
+    // unclassifiable even at bypassPermissions unless allow-listed, and an allow-listed tool runs under any ceiling.
+    [Theory]
+    [InlineData(ToolPermissionClass.Destructive, "acceptEdits", false)]
+    [InlineData(ToolPermissionClass.Unknown, "bypassPermissions", false)]
+    [InlineData(ToolPermissionClass.Unknown, "plan", true)]
+    public async Task DelegatedGate_DeniesAboveTheCeilingOrUnknown_UnlessAllowListed_WithoutAPrompt(
+        ToolPermissionClass toolClass, string ceiling, bool allowListed)
     {
-        // A destructive tool is denied under acceptEdits: no prompt (nobody to answer), and the denial is fed back
-        // as the tool result so the model can adapt rather than hang.
         var chatClient = Substitute.For<IChatClient>();
         chatClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
             .Returns(_ToolCall("echo", ("text", "hi")), _Stream("done"));
         var echo = AIFunctionFactory.Create((string text) => $"echoed:{text}", "echo");
-        var driver = _CreateDriver(chatClient, new Dictionary<string, ToolPermissionClass> { ["echo"] = ToolPermissionClass.Destructive }, echo);
+        var driver = _CreateDriver(chatClient, new Dictionary<string, ToolPermissionClass> { ["echo"] = toolClass }, echo);
 
         await driver.StartAsync(LocalProfile);
-        await driver.SetDelegatedToolGateAsync("acceptEdits", []);
+        await driver.SetDelegatedToolGateAsync(ceiling, allowListed ? ["echo"] : []);
         await driver.SendUserMessageAsync("go");
         var events = await _CollectUntilTurnCompletedAsync(driver);
 
         Assert.Empty(events.OfType<PermissionRequested>());
         var result = Assert.Single(events.OfType<ToolResult>());
-        Assert.True(result.IsError);
-        Assert.DoesNotContain("echoed:hi", result.Content);
-    }
-
-    [Fact]
-    public async Task DelegatedGate_DeniesAnUnknownTool_UnlessOnTheAllowList()
-    {
-        // An unclassifiable tool is denied even at bypassPermissions when not allow-listed...
-        var deniedClient = Substitute.For<IChatClient>();
-        deniedClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
-            .Returns(_ToolCall("echo", ("text", "hi")), _Stream("done"));
-        var denied = _CreateDriver(deniedClient, new Dictionary<string, ToolPermissionClass> { ["echo"] = ToolPermissionClass.Unknown }, AIFunctionFactory.Create((string text) => $"echoed:{text}", "echo"));
-        await denied.StartAsync(LocalProfile);
-        await denied.SetDelegatedToolGateAsync("bypassPermissions", []);
-        await denied.SendUserMessageAsync("go");
-        var deniedEvents = await _CollectUntilTurnCompletedAsync(denied);
-
-        Assert.Empty(deniedEvents.OfType<PermissionRequested>());
-        Assert.True(Assert.Single(deniedEvents.OfType<ToolResult>()).IsError);
-
-        // ...but runs when the operator listed it, even under the most restrictive ceiling.
-        var allowedClient = Substitute.For<IChatClient>();
-        allowedClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
-            .Returns(_ToolCall("echo", ("text", "hi")), _Stream("done"));
-        var allowed = _CreateDriver(allowedClient, new Dictionary<string, ToolPermissionClass> { ["echo"] = ToolPermissionClass.Unknown }, AIFunctionFactory.Create((string text) => $"echoed:{text}", "echo"));
-        await allowed.StartAsync(LocalProfile);
-        await allowed.SetDelegatedToolGateAsync("plan", ["echo"]);
-        await allowed.SendUserMessageAsync("go");
-        var allowedEvents = await _CollectUntilTurnCompletedAsync(allowed);
-
-        Assert.Empty(allowedEvents.OfType<PermissionRequested>());
-        Assert.Contains("echoed:hi", Assert.Single(allowedEvents.OfType<ToolResult>()).Content);
+        Assert.Equal(!allowListed, result.IsError);
+        Assert.Equal(allowListed, result.Content.Contains("echoed:hi", StringComparison.Ordinal));
     }
 
     private static OpenAiCompatSessionDriver _CreateDriver(IChatClient chatClient, params AIFunction[] tools) =>

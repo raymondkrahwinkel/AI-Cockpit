@@ -20,11 +20,7 @@ public class ProjectInfoFieldTests
         Assert.True(
             new ProjectInfoField("Repository", "https://example.test") { IsSharedWithSessions = true }.ReachesSessions,
             "an ordinary shared row still is");
-    }
 
-    [Fact]
-    public void ASecretRow_IsNotShownAsPlainText()
-    {
         Assert.False(new ProjectInfoField("Deploy token", "s3cr3t") { IsSecret = true }.ShowsPlainValue);
         Assert.True(new ProjectInfoField("Customer", "Acme BV").ShowsPlainValue);
         Assert.False(

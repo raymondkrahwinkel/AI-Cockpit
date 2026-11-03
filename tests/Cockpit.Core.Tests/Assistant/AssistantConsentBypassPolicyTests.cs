@@ -38,23 +38,17 @@ public sealed class AssistantConsentBypassPolicyTests
         };
 
     [Fact]
-    public async Task AnOrdinaryPane_IsNeverBypassed_EvenForASwitchedOnSource()
+    public async Task AnOrdinaryOrUnverifiedPane_IsNeverBypassed_EvenForASwitchedOnSource()
     {
         // Condition 1. The switch belongs to the assistant, not to the source: an ordinary agent session asking the
         // same thing of the same source is asked about exactly as it was before this feature existed.
         var policy = await PolicyAsync(Enabled(lowRisk: [Terminal]));
 
         Assert.False(policy.ShouldBypass("pane-ordinary", Terminal, dangerous: false));
-    }
 
-    [Fact]
-    public async Task ARequestWithNoVerifiedPane_IsNeverBypassed()
-    {
         // The in-process tool loop and the app's own UI-side consent arrive with no verified session at all. "I
         // cannot tell who this is" is not an identity, so it can never be the assistant's — and this is also where
         // a forged Source.PaneId lands, because the broker only ever hands the transport-stamped id to this method.
-        var policy = await PolicyAsync(Enabled(lowRisk: [Terminal]));
-
         Assert.False(policy.ShouldBypass(null, Terminal, dangerous: false));
     }
 

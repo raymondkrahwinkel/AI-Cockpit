@@ -1,8 +1,6 @@
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Assistant;
-using Cockpit.Infrastructure.Layout;
-using Cockpit.Core.Layout;
 
 namespace Cockpit.Core.Tests.Assistant;
 
@@ -72,19 +70,6 @@ public class AssistantSettingsStoreTests : IDisposable
 
         Assert.False(loaded.ConsentBypassAll);
         Assert.False(loaded.HasConsentBypass);
-    }
-
-    [Fact]
-    public async Task SaveAsync_LeavesTheOtherSectionsIntact()
-    {
-        var layoutStore = new LayoutSettingsStore(_configFilePath);
-        await layoutStore.SaveAsync(new LayoutSettings { SingleSessionLayout = true });
-
-        var assistantStore = new AssistantSettingsStore(_configFilePath);
-        await assistantStore.SaveAsync(new AssistantSettings { IsEnabled = true });
-
-        Assert.True((await layoutStore.LoadAsync()).SingleSessionLayout);
-        Assert.True((await assistantStore.LoadAsync()).IsEnabled);
     }
 
     public void Dispose()

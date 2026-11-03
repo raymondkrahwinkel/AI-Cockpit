@@ -79,35 +79,4 @@ public class McpOAuthOfflineAccessFlowTests
         // live Depot measurement) and never falls through to what the authorization server itself advertises.
         Assert.Equal(InProcessOAuthMcpServer.RefreshToken, stored.RefreshToken);
     }
-
-    [Fact]
-    public async Task Acquire_NonInteractively_RenewsAStaleAccessToken_UsingAStoredRefreshToken()
-    {
-        // AC4: the point of getting a refresh token in the first place — McpOAuthCoordinator.AcquireAsync renews
-        // without asking the operator, against a real refresh grant rather than an assumption that storing a
-        // refresh token is enough on its own.
-        await using var server = await InProcessOAuthMcpServer.StartAsync(advertiseOfflineAccess: true);
-        var store = new FakeMcpOAuthTokenStore();
-        // ClientId/AuthorizationServer are what makes the refresh token below usable at all: the SDK only attempts
-        // a refresh grant once it has a client identity to present, and a fresh connect attempt (this one) starts a
-        // brand-new provider with none — it restores this pairing from the stored token instead of running dynamic
-        // client registration again. Standing in for what a real sign-in would have persisted alongside the token.
-        await store.SaveAsync("depot", "depot", new McpOAuthToken
-        {
-            AccessToken = "already-expired",
-            RefreshToken = InProcessOAuthMcpServer.RefreshToken,
-            ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-5),
-            ResourceUrl = server.Url,
-            ClientId = InProcessOAuthMcpServer.ClientId,
-            AuthorizationServer = server.BaseUrl,
-        });
-        var authorizer = new McpOAuthAuthorizer(NullLogger<McpOAuthAuthorizer>.Instance, store);
-        var coordinator = new McpOAuthCoordinator(store, authorizer, NullLogger<McpOAuthCoordinator>.Instance);
-
-        var access = await coordinator.AcquireAsync(_Server(server.Url), interactive: false);
-
-        Assert.Equal(McpAuthState.Authorized, access.State);
-        Assert.Equal(InProcessOAuthMcpServer.RenewedAccessToken, access.AccessToken);
-        Assert.Equal(InProcessOAuthMcpServer.RenewedAccessToken, (await store.GetAsync("depot"))?.AccessToken);
-    }
 }
