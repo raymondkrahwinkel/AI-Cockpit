@@ -8,10 +8,8 @@ using Cockpit.Infrastructure.Workspaces;
 
 namespace Cockpit.Infrastructure.Hosting;
 
-// AC-2039: a start that crashes, even natively (a CEF fatal, AC-2038), leaves `startup-attempt.json` in the state root,
-// and the next start reads it. A start that names a plugin whose surface it was restoring turns that plugin off, and
-// two starts in a row that crashed without naming one go to safe mode (AC-478). The file goes away once the start is
-// stable or the cockpit quits; nothing in the crashed process itself can be relied on to say it crashed.
+// AC-2039: a crashed start, even a native crash (AC-2038), leaves `startup-attempt.json` for the next start to read. A
+// named plugin is turned off; two unnamed crashes in a row mean safe mode (AC-478). Removed once stable or on quit.
 public sealed class StartupAttempt
 {
     public const string FileName = "startup-attempt.json";

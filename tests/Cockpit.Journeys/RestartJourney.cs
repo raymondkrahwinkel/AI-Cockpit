@@ -16,8 +16,6 @@ namespace Cockpit.Journeys;
 
 // J7, the nightly update's restart: the cockpit closed and built again on the same state root brings back the
 // session that was open and the desk that was active. Two hosts one after the other; no timer between them.
-// AC-2039: the start between them crashed while it opened the Depot's panel, as a native crash leaves it: the marker
-// alone. The next start turns the Depot off instead of crashing again, and says so with a way to turn it back on.
 [Collection(JourneyCollection.Alone)]
 public sealed class RestartJourney
 {
@@ -83,6 +81,7 @@ public sealed class RestartJourney
                 }
             });
 
+            // AC-2039: a start in between crashed natively while opening the Depot's panel; only its marker says so.
             File.WriteAllText(Path.Combine(stateRoot, StartupAttempt.FileName), """{"Attempts":1,"Plugins":[{"Id":"depot","Name":"Depot"}]}""");
             await using var after = JourneyHost.Desktop(stateRoot: stateRoot, configure: _TwoGpus);
             // AC-1804: a plugin notification nobody answered is asked again at the restart: live if it stands, else resolved.
