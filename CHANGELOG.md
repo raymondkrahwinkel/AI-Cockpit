@@ -42,6 +42,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- Linux nightly browser checks now accept the rebinding fixture's hostname while preserving the single-resolution DNS-pinning assertions.
+
 - The browser's share card only offers sessions with the browser tools and explains when none are available.
 
 - Session run indicators now use the frontend contract boundary; settings migration checks follow the seven supported sync categories.

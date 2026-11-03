@@ -13,7 +13,7 @@ internal static class AgentNetworkBoundaryScenario
     public static async Task RunAsync()
     {
         await using var pageFixture = new OwnedTabFixture();
-        await using var destination = new OwnedTabFixture();
+        await using var destination = new OwnedTabFixture(acceptAnyHost: true);
         var settings = new BackendBrowserSettings(new Storage());
         settings.SaveAgentNetworkAllowlist([new Uri(pageFixture.Url).Authority]);
         var policy = new AddressPolicy(() => settings.AgentNetworkAllowlist);

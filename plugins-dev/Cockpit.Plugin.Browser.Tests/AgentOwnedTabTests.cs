@@ -426,14 +426,15 @@ internal sealed class OwnedTabFixture : IAsyncDisposable
     public TaskCompletionSource SlowRequested { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public TaskCompletionSource ReleaseSlow { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    public OwnedTabFixture()
+    public OwnedTabFixture(bool acceptAnyHost = false)
     {
         Directory.CreateDirectory(Downloads);
         using var port = new TcpListener(IPAddress.Loopback, 0);
         port.Start();
         Url = $"http://127.0.0.1:{((IPEndPoint)port.LocalEndpoint).Port}/";
         port.Stop();
-        _listener.Prefixes.Add(Url);
+        // Linux matches the Host header, whereas HTTP.sys accepts aliases on the IP prefix without a wildcard URL ACL.
+        _listener.Prefixes.Add(acceptAnyHost && !OperatingSystem.IsWindows() ? $"http://*:{new Uri(Url).Port}/" : Url);
         _listener.Start();
         _server = ServeAsync();
     }
