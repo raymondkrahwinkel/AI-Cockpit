@@ -278,7 +278,6 @@ public sealed class PluginManager(
     {
         try
         {
-            SecretKeyHolder.Shared.Declare(discovered.Manifest.SecretKeys);
             var host = hostFor(discovered, plugin);
             if (host is PluginBackendHost backendHost)
             {
@@ -289,6 +288,7 @@ public sealed class PluginManager(
                 McpProviders.Register(provider);
             }
             plugin.Initialize(host);
+            SecretKeyHolder.Shared.Declare(discovered.Manifest.SecretKeys);
             lock (_lifecycleLock)
             {
                 if (!_disposed)
