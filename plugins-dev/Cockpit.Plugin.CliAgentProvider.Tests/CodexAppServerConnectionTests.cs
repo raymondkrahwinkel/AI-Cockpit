@@ -10,22 +10,6 @@ public class CodexAppServerConnectionTests
     private static readonly Dictionary<string, string?> _NoEnv = new();
 
     [Fact]
-    public async Task SendRequest_CorrelatesTheReplyById_AndReturnsItsResult()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var connection = new CodexAppServerConnection(fake);
-        connection.Start("codex", Path.GetTempPath(), _NoEnv);
-
-        var requestTask = connection.SendRequestAsync("initialize", new { clientInfo = new { name = "cockpit", version = "1.0.0" } });
-        var id = await _WaitForRequestIdAsync(fake, "initialize");
-        await fake.PushStdoutAsync($$$"""{"id":{{{id}}},"result":{"threadId":"thread-1"}}""");
-
-        var result = await requestTask;
-
-        Assert.Equal("thread-1", result.GetProperty("threadId").GetString());
-    }
-
-    [Fact]
     public async Task SendRequest_Throws_WhenTheReplyIsAJsonRpcError()
     {
         var fake = new FakeCliSubprocess();

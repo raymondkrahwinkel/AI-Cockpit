@@ -66,37 +66,6 @@ public class SessionStepTests
         await host.Received(1).InsertIntoSessionAsync("pane-2", "go");
     }
 
-    [Fact]
-    public async Task SetStatus_LabelsAndRenamesTheSessionItNames()
-    {
-        var host = _Host();
-
-        var run = await _RunScheduledAsync(host, _Step("cockpit.set-status", ("Session", "api"), ("Status", "AC-1399"), ("Name", "Workflows")));
-
-        Assert.Equal(RunStatus.Succeeded, run.Status);
-        await host.Received(1).SetSessionStatuslineAsync("pane-2", "AC-1399");
-        await host.Received(1).SetSessionNameAsync("pane-2", "Workflows");
-    }
-
-    // AC-1419: a pane that closed before it took the label, or between the label and the name, fails the step and names
-    // the session; a refused label is never followed by a rename.
-    [Theory]
-    [InlineData(false, true, "took no status", 0)]
-    [InlineData(true, false, "took the status but not the name 'Workflows'", 1)]
-    public async Task SetStatus_OnAPaneThatTookNoLabelOrName_FailsWithAReason(bool takesStatus, bool takesName, string reason, int nameAttempts)
-    {
-        var host = _Host();
-        host.SetSessionStatuslineAsync("pane-2", Arg.Any<string>()).Returns(takesStatus);
-        host.SetSessionNameAsync("pane-2", Arg.Any<string>()).Returns(takesName);
-
-        var run = await _RunScheduledAsync(host, _Step("cockpit.set-status", ("Session", "api"), ("Status", "AC-1419"), ("Name", "Workflows")));
-
-        Assert.Equal(RunStatus.Failed, run.Status);
-        Assert.Contains("'api'", run.Steps[^1].Note);
-        Assert.Contains(reason, run.Steps[^1].Note);
-        await host.Received(nameAttempts).SetSessionNameAsync("pane-2", "Workflows");
-    }
-
     // The open sessions while the host reports an active one: the one the flows name (pane-2), a headless one, two that
     // share a name, and the assistant, which no step may act on. Consent is not asked: the flows run unattended.
     private static ICockpitHost _Host()

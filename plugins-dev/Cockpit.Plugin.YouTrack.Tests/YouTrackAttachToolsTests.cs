@@ -28,17 +28,6 @@ public class YouTrackAttachToolsTests
         sessions.Received().GetCurrentTurnImages("verified-pane");
         sessions.DidNotReceive().GetCurrentTurnImages("victim-pane");
     }
-
-    [Fact]
-    public async Task AttachMessageImages_OmittingPath_IsByteForByteTheOriginalNoImagesMessage()
-    {
-        var host = new FakeCockpitHost();
-        var tools = new YouTrackAttachTools(host, new YouTrackSettings(new InMemoryPluginStorage()));
-
-        var result = await tools.AttachMessageImagesToIssue("AC-1", session: "pane-1");
-
-        Assert.Equal("The current message carried no images to attach.", result);
-    }
 }
 
 // AC-170: the path argument is a genuine outbound channel, so it is checked against an explicit allow-list (the

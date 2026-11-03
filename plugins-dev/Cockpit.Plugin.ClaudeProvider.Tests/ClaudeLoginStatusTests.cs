@@ -15,8 +15,6 @@ public class ClaudeLoginStatusTests
     private const string LoggedOutPayload =
         """{"loggedIn":false,"authMethod":"none","apiProvider":"firstParty"}""";
 
-    private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-08-08T13:00:00Z");
-
     // AC-1483: `authMethod` as measured on CLI 2.1.274 in a scratch config dir — a subscription login says "claude.ai",
     // ANTHROPIC_API_KEY says "api_key", CLAUDE_CODE_OAUTH_TOKEN and ANTHROPIC_AUTH_TOKEN say "oauth_token". A missing or
     // unmeasured value claims nothing; "loggedIn" alone never means the login renews itself.

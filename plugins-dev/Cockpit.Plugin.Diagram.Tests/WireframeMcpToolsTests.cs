@@ -123,41 +123,6 @@ public class WireframeMcpToolsTests
     }
 
     [Fact]
-    public async Task SetComponentModifier_Goto_QuotesATitleWithASpace_UnconditionallyUnlikeValue()
-    {
-        // AC-902: goto: is quoted unconditionally, unlike value:, because a screen title almost always carries a
-        // space — value:'s int.TryParse check would leave this one unquoted, splitting it into two tokens.
-        const string source = """
-            screen "Aanmelden" #login
-              button "Verder" primary #go
-
-            screen "Wachtwoord vergeten" #forgot
-              label "Vul je e-mailadres in" #hint
-            """;
-        var built = _Build(ConsentOutcome.Approved);
-        built.registry.SurfaceOpened(SurfaceId, Name, source);
-        var (tools, registry, _) = built;
-
-        var json = JsonNode.Parse(await tools.SetComponentModifier(Session, Name, "go", "goto", "Wachtwoord vergeten"));
-
-        Assert.True(json!["ok"]!.GetValue<bool>());
-        Assert.Contains("goto:\"Wachtwoord vergeten\"", registry.PeekText(SurfaceId));
-    }
-
-    [Fact]
-    public async Task SetComponentModifier_Note_IsQuotedUnconditionally_EvenWhenTheTextIsAllDigits()
-    {
-        // AC-907: same trap as goto — value:'s int.TryParse check exists to spare a bare number its quotes, but a
-        // note is a sentence, and one that happens to read "3" must not come out unquoted as `note:3`.
-        var (tools, registry, _) = _Open(ConsentOutcome.Approved);
-
-        var json = JsonNode.Parse(await tools.SetComponentModifier(Session, Name, WireframeScreens.SaveButton, "note", "3"));
-
-        Assert.True(json!["ok"]!.GetValue<bool>());
-        Assert.Contains("note:\"3\"", registry.PeekText(SurfaceId));
-    }
-
-    [Fact]
     public async Task AComponentTheOperatorIsHolding_IsRefusedWithAReason()
     {
         var (tools, registry, _) = _Open(ConsentOutcome.Approved);

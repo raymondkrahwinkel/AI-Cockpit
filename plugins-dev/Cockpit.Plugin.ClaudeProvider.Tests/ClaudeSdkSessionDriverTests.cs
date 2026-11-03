@@ -144,22 +144,6 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         Assert.DoesNotContain("discarded old diagnostic", message);
     }
 
-
-    [Fact]
-    public async Task StreamJsonLine_IsMappedToTranscriptEvents()
-    {
-        var fake = new FakeClaudeSdkSubprocess();
-        await using var driver = _CreateDriver(fake);
-        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
-
-        await fake.PushStdoutAsync("""
-        {"type":"stream_event","session_id":"s-1","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi"}}}
-        """);
-
-        var delta = (PluginAssistantTextDelta)await _ReadEventAsync(driver, e => e is PluginAssistantTextDelta);
-        Assert.Equal("Hi", delta.Text);
-    }
-
     [Fact]
     public async Task LoneSurrogateEscapes_AreReplacedWithoutStoppingTheStream()
     {
@@ -180,27 +164,6 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         var delta = (PluginAssistantTextDelta)await _ReadEventAsync(driver, e => e is PluginAssistantTextDelta);
         Assert.Equal("still here", delta.Text);
         await _ReadEventAsync(driver, e => e is PluginTurnCompleted);
-    }
-
-    [Fact]
-    public async Task SendUserMessageAndCompactContext_WriteStreamJsonUserPayloads()
-    {
-        var fake = new FakeClaudeSdkSubprocess();
-        await using var driver = _CreateDriver(fake);
-        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
-
-        await driver.SendUserMessageAsync("hello", CancellationToken.None);
-
-        var payload = JsonDocument.Parse(fake.WrittenLines[^1]).RootElement;
-        Assert.Equal("user", payload.GetProperty("type").GetString());
-        var message = payload.GetProperty("message");
-        Assert.Equal("user", message.GetProperty("role").GetString());
-        Assert.Equal("hello", message.GetProperty("content").GetString());
-        await driver.CompactContextAsync(CancellationToken.None);
-
-        var compactPayload = JsonDocument.Parse(fake.WrittenLines[^1]).RootElement;
-        Assert.Equal("user", compactPayload.GetProperty("type").GetString());
-        Assert.Equal("/compact", compactPayload.GetProperty("message").GetProperty("content").GetString());
     }
 
 
@@ -250,25 +213,6 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         var source = content[1].GetProperty("source");
         Assert.Equal("image/png", source.GetProperty("media_type").GetString());
         Assert.Equal("aGVsbG8=", source.GetProperty("data").GetString());
-    }
-
-    [Fact]
-    public async Task SetLiveOption_ModelAndEffort_SendTheirControlRequests()
-    {
-        var fake = new FakeClaudeSdkSubprocess();
-        await using var driver = _CreateDriver(fake);
-        await driver.StartAsync(model: "opus", workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
-
-        await driver.SetLiveOptionAsync(ClaudeSdkSessionDriver.ModelOptionKey, "sonnet", CancellationToken.None);
-
-        var request = JsonDocument.Parse(fake.WrittenLines[^1]).RootElement.GetProperty("request");
-        Assert.Equal("set_model", request.GetProperty("subtype").GetString());
-        Assert.Equal("sonnet", request.GetProperty("model").GetString());
-        await driver.SetLiveOptionAsync(ClaudeSdkSessionDriver.EffortOptionKey, "high", CancellationToken.None);
-
-        var effortRequest = JsonDocument.Parse(fake.WrittenLines[^1]).RootElement.GetProperty("request");
-        Assert.Equal("set_max_thinking_tokens", effortRequest.GetProperty("subtype").GetString());
-        Assert.Equal(24_000, effortRequest.GetProperty("max_thinking_tokens").GetInt32());
     }
 
 

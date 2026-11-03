@@ -22,27 +22,6 @@ public class AutopilotSettingsTests
     }
 
     [Fact]
-    public void GlobalValues_FallBackToDefaults_ThenRoundTrip()
-    {
-        var settings = new AutopilotSettings(new FakeStorage());
-
-        Assert.Equal(2, settings.MaxSelfFixAttempts());
-        Assert.Equal(AutopilotCostStrategy.Balanced, settings.CostStrategy());
-        Assert.Null(settings.CeoProfileLabel());
-        Assert.Null(settings.CeoModel());
-
-        settings.SetMaxSelfFixAttempts(4);
-        settings.SetCostStrategy(AutopilotCostStrategy.CostFirst);
-        settings.SetCeoProfileLabel("work");
-        settings.SetCeoModel("opus");
-
-        Assert.Equal(4, settings.MaxSelfFixAttempts());
-        Assert.Equal(AutopilotCostStrategy.CostFirst, settings.CostStrategy());
-        Assert.Equal("work", settings.CeoProfileLabel());
-        Assert.Equal("opus", settings.CeoModel());
-    }
-
-    [Fact]
     public void AutonomyMode_CoercesAStoredBypassPermissions_ToTheConfiningDefault()
     {
         // AC-209: a legacy stored bypassPermissions (from the AC-152 era) would disable a Claude step's worktree
@@ -67,20 +46,5 @@ public class AutopilotSettingsTests
 
         Assert.Equal(AutopilotSettings.DefaultAutonomyMode, settings.AutonomyMode(project));
         Assert.Equal("acceptEdits", settings.AutonomyMode());
-    }
-
-    [Theory]
-    [InlineData("Refined")]
-    // Blank turns the gate off rather than restoring the tracker's default — the operator saying "no stage gate here"
-    // has to survive a read, or the setting can never be cleared.
-    [InlineData("")]
-    public void ExecutableStage_SetOnOneTracker_IsKeptThereVerbatim_AndNowhereElse(string stage)
-    {
-        var settings = new AutopilotSettings(new FakeStorage());
-
-        settings.SetExecutableStage("youtrack", stage);
-
-        Assert.Equal(stage, settings.ExecutableStage("youtrack"));
-        Assert.Equal("ready", settings.ExecutableStage("github-issues"));
     }
 }

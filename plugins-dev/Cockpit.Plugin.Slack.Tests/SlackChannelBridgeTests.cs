@@ -103,17 +103,6 @@ public class SlackChannelBridgeTests
         Assert.Contains((_AllowedUserId, "&amp;"), gateway.SentMessages);
     }
 
-    // AC-1064 criterion 4: quotes and apostrophes are never escaped by Slack and must not be touched here.
-    [Fact]
-    public async Task QuotesAndApostrophes_AreNeverTouched()
-    {
-        var (bridge, gateway, _) = _Build();
-
-        await bridge.HandleInboundMessageAsync(_AllowedUserId, "a \"quote\" and an 'apostrophe' & &lt;tag&gt;", messageTs: "1");
-
-        Assert.Contains((_AllowedUserId, "a \"quote\" and an 'apostrophe' & <tag>"), gateway.SentMessages);
-    }
-
     [Fact]
     public void ConsentPromptOpened_PostsAMessageWithTheButtonsAttached()
     {

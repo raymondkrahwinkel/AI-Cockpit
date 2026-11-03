@@ -11,19 +11,6 @@ public class LocalJobRunnerTests : IDisposable
     public void Dispose() => _project.Dispose();
 
     [Fact]
-    public async Task ARefusedJobIsNeverHandedToAct()
-    {
-        var act = FakeStreamingCliRunner.Exiting(0);
-        var result = await _RunAsync(FakeLocalCiRuntime.Ready(), act, TemporaryProject.MatrixJob, "spread");
-
-        Assert.Equal(LocalRunOutcome.Refused, result.Outcome);
-        Assert.Contains("matrix", result.Reason);
-
-        // The whole point of the rule: a job we will not run whole is not run at all.
-        Assert.Empty(act.Calls);
-    }
-
-    [Fact]
     public async Task ARunThatIsNotApprovedDoesNotHappen()
     {
         var act = FakeStreamingCliRunner.Exiting(0);

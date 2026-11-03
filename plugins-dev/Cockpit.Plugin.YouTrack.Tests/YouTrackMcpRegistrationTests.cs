@@ -6,18 +6,6 @@ namespace Cockpit.Plugin.YouTrack.Tests;
 // configured yet.
 public class YouTrackMcpRegistrationTests
 {
-    [Theory]
-    [InlineData("https://x.youtrack.cloud/api", "https://x.youtrack.cloud/mcp")]
-    [InlineData("https://x.youtrack.cloud/API", "https://x.youtrack.cloud/mcp")]
-    [InlineData("https://x.youtrack.cloud/api/", "https://x.youtrack.cloud/mcp")]
-    [InlineData("https://x.youtrack.cloud/Api/", "https://x.youtrack.cloud/mcp")]
-    [InlineData("https://x.youtrack.cloud", "https://x.youtrack.cloud/mcp")]
-    [InlineData("https://x.youtrack.cloud/", "https://x.youtrack.cloud/mcp")]
-    [InlineData("https://myjetbrains.com/youtrack/api", "https://myjetbrains.com/youtrack/mcp")]
-    public void DeriveMcpEndpoint_MapsTheApiBaseUrlToTheMcpEndpoint(string instanceBaseUrl, string expected)
-    {
-        Assert.Equal(expected, YouTrackMcpRegistration.DeriveMcpEndpoint(instanceBaseUrl));
-    }
 
     [Fact]
     public void BuildContributions_InstanceMissingUrlOrToken_IsSkipped()

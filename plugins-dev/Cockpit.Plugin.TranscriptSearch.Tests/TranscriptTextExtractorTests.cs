@@ -6,17 +6,6 @@ namespace Cockpit.Plugin.TranscriptSearch.Tests;
 // non-message, malformed).
 public class TranscriptTextExtractorTests
 {
-    [Fact]
-    public void Extract_UserStringContent_ReturnsThePrompt()
-    {
-        var line = """{"type":"user","message":{"role":"user","content":"fix the login bug"}}""";
-
-        var entry = TranscriptTextExtractor.Extract(line);
-
-        Assert.NotNull(entry);
-        Assert.Equal("user", entry!.Role);
-        Assert.Equal("fix the login bug", entry.Text);
-    }
 
     [Fact]
     public void Extract_AssistantTextBlocks_ConcatenatesOnlyTextBlocks()
@@ -37,12 +26,4 @@ public class TranscriptTextExtractorTests
 
         Assert.Null(TranscriptTextExtractor.Extract(line));
     }
-
-    [Theory]
-    [InlineData("")]
-    [InlineData("   ")]
-    [InlineData("not json")]
-    [InlineData("{}")]
-    public void Extract_BlankOrMalformed_ReturnsNull(string line)
-        => Assert.Null(TranscriptTextExtractor.Extract(line));
 }

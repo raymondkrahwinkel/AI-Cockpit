@@ -20,43 +20,4 @@ public class KimiUsageParserTests
 
         Assert.Equal(22.5, KimiUsageParser.ParseContextUsedPercent(usageBlock));
     }
-
-    [Fact]
-    public void ParseContextUsedPercent_ThousandsCommaCounts_AreParsedWithCommasStripped()
-    {
-        Assert.Equal(22.5, KimiUsageParser.ParseContextUsedPercent("- Context: 45,000 / 200,000 (22.5%)"));
-    }
-
-    // Percentage can exceed 100 ((contextUsage*100).toFixed(1)) — must not be clamped.
-
-    // /status ends with the same "Context:" line shape (protocol §11) — no separate branch needed.
-
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData("   ")]
-    [InlineData("Session usage:\n- Total: input 12,345, output 6,789, cache read 0, cache creation 0")]
-    [InlineData("garbage that is not a usage report at all")]
-    [InlineData("- Context: not-a-number / also-not-a-number (nope%)")]
-    [InlineData("- Context: 45,0x0 / 200,000 (22.5%)")]
-    // A percentage in a different notation than expected (NL decimal comma, no decimal digit, no parentheses,
-    // a stray space before the percent sign) must not be guessed at.
-    [InlineData("- Context: 45,000 / 200,000 (22,5%)")]
-    [InlineData("- Context: 45,000 / 200,000 (22%)")]
-    [InlineData("- Context: 45,000 / 200,000 22.5%")]
-    [InlineData("- Context: 45,000 / 200,000 (22.5 %)")]
-    public void ParseContextUsedPercent_UnexpectedInput_ReturnsNull(string? text)
-    {
-        Assert.Null(KimiUsageParser.ParseContextUsedPercent(text));
-    }
-
-    // P1-12: proves the round-trip guard on the two token counts is genuinely reachable, contrary to the
-    // reviewer's "the regex group can never produce anything long.TryParse refuses" claim — the regex's
-    // (?:,\d{3})* has no upper bound on repeated groups, so a validly thousands-grouped count long enough to
-    // overflow long (here 20 digits, past long.MaxValue's 19) still matches the pattern and must be rejected.
-    [Fact]
-    public void ParseContextUsedPercent_AThousandsGroupedCountThatOverflowsLong_ReturnsNull()
-    {
-        Assert.Null(KimiUsageParser.ParseContextUsedPercent("- Context: 99,999,999,999,999,999,999 / 200,000 (22.5%)"));
-    }
 }

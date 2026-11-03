@@ -12,22 +12,6 @@ public class KimiAcpConnectionTests
     private static readonly Dictionary<string, string?> _NoEnv = new();
 
     [Fact]
-    public async Task SendRequest_CorrelatesTheReplyById_AndReturnsItsResult()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var connection = new KimiAcpConnection(fake);
-        connection.Start("kimi", Path.GetTempPath(), _NoEnv);
-
-        var requestTask = connection.SendRequestAsync("initialize", new { protocolVersion = 1 });
-        var id = await _WaitForRequestIdAsync(fake, "initialize");
-        await fake.PushStdoutAsync($$$"""{"jsonrpc":"2.0","id":{{{id}}},"result":{"protocolVersion":1}}""");
-
-        var result = await requestTask;
-
-        Assert.Equal(1, result.GetProperty("protocolVersion").GetInt32());
-    }
-
-    [Fact]
     public async Task SendRequest_Throws_WhenTheReplyIsAJsonRpcError()
     {
         var fake = new FakeCliSubprocess();

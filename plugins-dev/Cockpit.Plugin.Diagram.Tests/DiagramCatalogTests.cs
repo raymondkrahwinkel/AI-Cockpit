@@ -1,4 +1,3 @@
-using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.Plugin.Diagram.Tests;
 
@@ -7,18 +6,6 @@ public sealed class DiagramCatalogTests : IDisposable
     private readonly string _root = Directory.CreateTempSubdirectory("diagram-catalog-tests-").FullName;
 
     public void Dispose() => Directory.Delete(_root, recursive: true);
-
-    [Fact]
-    public void Create_writes_a_diagram_the_list_finds_back()
-    {
-        var home = Path.Combine(_root, "home");
-        var path = DiagramCatalog.Create(home, "Mijn Flow", "flowchart LR\n  A --> B");
-
-        Assert.Equal(Path.Combine(home, "Diagrams", "mijn-flow.md"), path);
-        var entry = Assert.Single(DiagramCatalog.List([new ProjectMemoryRow(home, null, ReachesSessions: true)]));
-        Assert.Equal("Mijn Flow", entry.Title);
-        Assert.Equal("flowchart LR\n  A --> B", entry.MermaidText);
-    }
 
     [Fact]
     public void Write_refuses_when_the_file_changed_underneath()

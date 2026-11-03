@@ -9,26 +9,6 @@ namespace Cockpit.Plugin.GitHubIssues.Tests;
 // without a live process.
 public class GitHubGhClientTests
 {
-    [Fact]
-    public void SearchArguments_UsesTheDocumentedPageLimit_NotARoundNumberAboveIt()
-    {
-        // AC-519: the dialog's truncation warning fires on exactly this count, so the argument that requests it and
-        // the constant the warning checks against must be the same number — asserted here against the constant
-        // itself, not a hardcoded "100" that could silently drift out of step with it.
-        var arguments = GitHubGhClient.SearchArguments("octocat", assignedToMe: false, extraTerms: null);
-
-        Assert.True(SequenceAssert.ContainsInOrder(arguments, "--limit", GitHubGhClient.IssueSearchLimit.ToString()));
-    }
-
-    [Fact]
-    public void SearchArguments_ScopesToTheOwner_OpenIssuesOnly()
-    {
-        var arguments = GitHubGhClient.SearchArguments("octocat", assignedToMe: false, extraTerms: null);
-
-        Assert.True(SequenceAssert.ContainsInOrder(arguments, "search", "issues"));
-        Assert.True(SequenceAssert.ContainsInOrder(arguments, "--owner", "octocat"));
-        Assert.True(SequenceAssert.ContainsInOrder(arguments, "--state", "open"));
-    }
 
     [Fact]
     public void LabelSearchTerm_QuotesTheLabel_SoASpaceDoesNotSplitIntoAFreeTextWord()

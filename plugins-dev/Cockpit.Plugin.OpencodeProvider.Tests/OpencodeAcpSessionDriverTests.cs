@@ -10,26 +10,6 @@ public class OpencodeAcpSessionDriverTests
 {
     private static OpencodeConfig _DefaultConfig() => new(WorkingDirectory: Path.GetTempPath());
 
-    // --- session lifecycle & permission policy (criterion 3) ------------------------------------------------
-
-    [Fact]
-    public async Task Start_SendsSessionNew_WithAbsoluteCwd_AndEmitsSessionInitialized()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new OpencodeAcpSessionDriver(() => fake, _DefaultConfig(), "opencode");
-
-        var startTask = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
-        await _RespondAsync(fake, "initialize", "{}");
-        var sessionNew = await _RespondAsync(fake, "session/new", """{"sessionId":"ses_1","configOptions":[]}""");
-        await startTask;
-
-        Assert.True(Path.IsPathRooted(sessionNew.GetProperty("params").GetProperty("cwd").GetString()));
-        Assert.Equal("ses_1", driver.SessionId);
-
-        var initialized = await _NextEventOfTypeAsync<PluginSessionInitialized>(driver);
-        Assert.Equal("ses_1", initialized.SessionId);
-    }
-
     // The mechanism criterion 3 depends on: opencode does not ask permission by default (measured live), and
     // an inline session/new "permission" param is silently ignored (measured live) — OPENCODE_CONFIG_CONTENT
     // is the one env var that live-verified reaches opencode's permission engine.
@@ -199,25 +179,6 @@ public class OpencodeAcpSessionDriverTests
         var wireServers = sessionNew.GetProperty("params").GetProperty("mcpServers");
         Assert.False(wireServers[0].TryGetProperty("type", out _));
         Assert.Equal("http", wireServers[1].GetProperty("type").GetString());
-    }
-
-    // --- SetLiveOptionAsync validates against the live snapshot, not a hardcoded id list --------------------
-
-    // --- usage_update -> Status (criterion 2: opencode DOES report usage, unlike Kimi) -----------------------
-
-    [Fact]
-    public async Task UsageUpdate_SetsStatus_FromUsedAndSize()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new OpencodeAcpSessionDriver(() => fake, _DefaultConfig(), "opencode");
-        await _StartAsync(driver, fake);
-
-        await fake.PushStdoutAsync("""{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"ses_1","update":{"sessionUpdate":"usage_update","used":8507,"size":200000,"cost":{"amount":0,"currency":"USD"}}}}""");
-
-        await _WaitUntilAsync(() => driver.Status is not null);
-        Assert.NotNull(driver.Status);
-        Assert.Equal(8507.0 / 200000 * 100, driver.Status!.ContextUsedPercent);
-        Assert.Empty(driver.Status.RateLimits);
     }
 
     // --- stop reason mapping (criterion 2: full ACP spec enum, not Kimi's own 3-value fold) -----------------

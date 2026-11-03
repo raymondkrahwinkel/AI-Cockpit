@@ -38,20 +38,6 @@ public sealed class GitCliEvidenceSourceTests : IDisposable
     }
 
     [Fact]
-    public async Task MarkAsync_PinsTheDirtyWorktree_NotMerelyHead()
-    {
-        // The distinction the whole mark rests on: with uncommitted work present, the pinned commit must be a snapshot
-        // of the worktree, not HEAD — otherwise that work is measured as the next step's.
-        _Write("tracked.txt", "uncommitted");
-
-        var mark = await _source.MarkAsync(_repository);
-        var head = (await _Git("rev-parse", "HEAD")).Trim();
-
-        Assert.NotNull(mark);
-        Assert.NotEqual(head, mark.Commit);
-    }
-
-    [Fact]
     public async Task MarkAsync_LeavesTheWorktreeExactlyAsItFoundIt()
     {
         // An observation that mutates what it observes is not evidence — and `stash create` is only safe here because

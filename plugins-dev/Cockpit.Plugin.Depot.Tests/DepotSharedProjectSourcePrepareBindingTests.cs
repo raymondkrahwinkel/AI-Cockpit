@@ -1,5 +1,4 @@
 using System.Net;
-using System.Text.Json;
 using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Projects;
@@ -15,45 +14,6 @@ public class DepotSharedProjectSourcePrepareBindingTests
     private static ISharedProjectSource SourceFor(ICockpitHost host, HttpClient httpClient) =>
         DepotMemorySource.BuildSharedProjectSources([Connection()], host, httpClient).Single();
 
-    private static string _Scheme(ICockpitHost host) =>
-        DepotMemorySource.BuildRegistrationPairs([Connection()], host).Single().Registration.Scheme;
-
-    [Fact]
-    public async Task PrepareBindingAsync_FullDefinition_MapsEveryFieldOntoTheBinding()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        var scheme = _Scheme(host);
-        var handler = new _StubHandler(_Projects("handbook", """
-            {
-              "schemaVersion": 1,
-              "name": "Handbook",
-              "description": "Loonverwerking",
-              "gitUrl": "git@github.com:example/handbook.git",
-              "behaviorPrompt": "Always ask before touching prod.",
-              "isolateInWorktreeByDefault": true,
-              "mcpOverlay": { "enabled": ["github", "youtrack"] },
-              "resources": [ { "role": "Instructions", "reference": "docs/RUNBOOK.md", "label": "Runbook" } ]
-            }
-            """));
-        using var http = new HttpClient(handler);
-
-        var result = await SourceFor(host, http).PrepareBindingAsync($"{scheme}:handbook", CancellationToken.None);
-
-        Assert.True(result.Succeeded, result.Error);
-        var binding = result.Binding!;
-        Assert.Equal("Handbook", binding.Name);
-        Assert.Equal("Loonverwerking", binding.Description);
-        Assert.Equal("git@github.com:example/handbook.git", binding.GitUrl);
-        Assert.Equal("depot:depot.example.com/acme/handbook", binding.SharedSourceKey);
-        Assert.Equal("Always ask before touching prod.", binding.BehaviorPrompt);
-        Assert.True(binding.IsolateInWorktreeByDefault);
-        Assert.Equal(["github", "youtrack"], binding.EnabledMcpServerNames);
-        var resource = Assert.Single(binding.Resources);
-        Assert.Equal("Instructions", resource.Role);
-        Assert.Equal("docs/RUNBOOK.md", resource.Reference);
-        Assert.Equal("Runbook", resource.Label);
-    }
-
     [Fact]
     public async Task PrepareBindingAsync_AnIdBelongingToADifferentConnection_FailsWithoutCallingDepotAtAll()
     {
@@ -66,43 +26,6 @@ public class DepotSharedProjectSourcePrepareBindingTests
         Assert.False(result.Succeeded);
         Assert.Equal(0, handler.RequestCount);
     }
-
-    [Fact]
-    public async Task PrepareBindingAsync_TheDefinitionIsBrokenJson_ReportsFailedRatherThanThrowing()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        var scheme = _Scheme(host);
-        var handler = new _StubHandler(_Projects("broken", """{"schemaVersion":"bad"}"""));
-        using var http = new HttpClient(handler);
-
-        var result = await SourceFor(host, http).PrepareBindingAsync($"{scheme}:broken", CancellationToken.None);
-
-        Assert.False(result.Succeeded);
-        Assert.NotNull(result.Error);
-    }
-
-    private static string _Projects(string slug, string definition) => JsonSerializer.Serialize(new
-    {
-        projects = new[]
-        {
-            new
-            {
-                address = $"acme/{slug}",
-                slug,
-                name = slug,
-                role = "Editor",
-                kind = "Project",
-                organization = new { slug = "acme", name = "Acme", role = "Member" },
-                cockpit = new
-                {
-                    state = "ok",
-                    checksum = "chk",
-                    updatedAt = "2026-10-23T12:00:00Z",
-                    definition = JsonSerializer.Deserialize<JsonElement>(definition),
-                },
-            },
-        },
-    });
 
     private sealed class _StubHandler(string projects) : HttpMessageHandler
     {

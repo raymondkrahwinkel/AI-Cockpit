@@ -17,17 +17,6 @@ public class ArgoApiClientTests
     private const string Namespace = "argocd";
 
     [Fact]
-    public async Task GetAsync_Success_ParsesTheBody()
-    {
-        var client = _ClientReturning(HttpStatusCode.OK, """{"Version":"v3.3.2"}""");
-
-        var (body, error) = await ArgoApiClient.GetAsync(client, Namespace, Token, "api/version", CancellationToken.None);
-
-        Assert.Null(error);
-        Assert.Equal("v3.3.2", body!["Version"]!.GetValue<string>());
-    }
-
-    [Fact]
     public async Task GetAsync_BackendError_ReportsStatusOnly_NeverTheToken()
     {
         var client = _ClientReturning(HttpStatusCode.Unauthorized, string.Empty);

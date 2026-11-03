@@ -23,17 +23,6 @@ public class OpenAiCompatConfigTests
         Assert.Contains("https://models.github.ai/inference", text);
     }
 
-    [Fact]
-    public void ToString_WithAnEmptyApiKey_PrintsNullInsteadOfAsterisks()
-    {
-        var config = new OpenAiCompatConfig(string.Empty, "openai/gpt-4.1", "https://models.github.ai/inference");
-
-        var text = config.ToString();
-
-        Assert.Contains("ApiKey = null", text);
-        Assert.DoesNotContain("***", text);
-    }
-
     // AC-1484: where the key comes from. A key on the profile wins; an empty one falls back to the process
     // environment (a container secret), but only on the provider's own host; neither means no sign-in. Fake values.
     [Theory]

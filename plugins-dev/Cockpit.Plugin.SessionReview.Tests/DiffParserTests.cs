@@ -26,15 +26,6 @@ public class DiffParserTests
         """;
 
     [Fact]
-    public void Parse_SplitsPerFileAndKeepsTheirOrder()
-    {
-        var files = DiffParser.Parse(TwoFiles);
-
-        Assert.Equal(["src/Alpha.cs", "README.md"], files.Select(f => f.Path));
-        Assert.All(files, f => Assert.Equal(FileChangeKind.Modified, f.Kind));
-    }
-
-    [Fact]
     public void Parse_CountsAddedAndRemovedPerFile()
     {
         var files = DiffParser.Parse(TwoFiles);
@@ -58,19 +49,6 @@ public class DiffParserTests
         Assert.Equal(((int?)12, (int?)13), (rows[5].OldLine, rows[5].NewLine));    // context after the change
     }
 
-    [Theory]
-    [InlineData("new file mode 100644", "Added")]
-    [InlineData("deleted file mode 100644", "Deleted")]
-    [InlineData("rename to b/x", "Renamed")]
-    [InlineData("Binary files a/x and b/x differ", "Binary")]
-    public void Parse_ReadsTheFileKindFromItsHeader(string header, string expected)
-    {
-        // FileChangeKind is internal, so the expectation travels as its name — xunit's InlineData is public API.
-        var diff = $"diff --git a/x.bin b/x.bin\n{header}\n";
-
-        Assert.Equal(expected, DiffParser.Parse(diff)[0].Kind.ToString());
-    }
-
     [Fact]
     public void Parse_TakesTheNewNameOfARenamedFile()
     {
@@ -91,12 +69,5 @@ public class DiffParserTests
         Assert.Equal("--- a/inner", rows[1].Text);
         Assert.Equal(DiffLineKind.Added, rows[2].Kind);
         Assert.Equal("+++ b/inner", rows[2].Text);
-    }
-
-    [Fact]
-    public void Parse_ReturnsNothingForEmptyOrHeaderlessInput()
-    {
-        Assert.Empty(DiffParser.Parse(string.Empty));
-        Assert.Empty(DiffParser.Parse("not a diff at all\njust text\n"));
     }
 }

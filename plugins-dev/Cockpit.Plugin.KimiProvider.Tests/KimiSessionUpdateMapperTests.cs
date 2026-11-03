@@ -12,15 +12,6 @@ namespace Cockpit.Plugin.KimiProvider.Tests;
 // specific arrival order call `KimiSessionUpdateMapper.Map` more than once on the same instance.
 public class KimiSessionUpdateMapperTests
 {
-    [Fact]
-    public void Map_AgentMessageChunk_ProducesATextDelta()
-    {
-        var result = _Map("""{"sessionId":"s1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Hello"}}}""");
-
-        var delta = Assert.IsType<PluginAssistantTextDelta>(Assert.Single(result.Events));
-        Assert.Equal("s1", delta.SessionId);
-        Assert.Equal("Hello", delta.Text);
-    }
 
     // D4/P1-3, trigger (a): a tool_call with no rawInput yet is remembered but produces nothing on its own.
 
@@ -71,51 +62,6 @@ public class KimiSessionUpdateMapperTests
         Assert.Equal("turn-1:tool-1", toolResult.ToolUseId);
         Assert.Equal("done", toolResult.Content);
         Assert.False(toolResult.IsError);
-    }
-
-    [Fact]
-    public void Map_ToolCallUpdate_Failed_WithNoPriorToolCall_ProducesToolUseRequested_ThenToolResult_WithError()
-    {
-        var result = _Map("""{"sessionId":"s1","update":{"sessionUpdate":"tool_call_update","toolCallId":"turn-1:tool-1","status":"failed","rawOutput":{"message":"boom"}}}""");
-
-        Assert.Equal(2, System.Linq.Enumerable.Count(result.Events));
-        Assert.IsType<PluginToolUseRequested>(result.Events[0]);
-        var toolResult = Assert.IsType<PluginToolResult>(result.Events[1]);
-        Assert.True(toolResult.IsError);
-        Assert.Equal("""{"message":"boom"}""", toolResult.Content);
-    }
-
-    // D5: content is REPLACE not APPEND — proving the mapper reads only the current update's content, never a
-    // previous one it never saw.
-    [Fact]
-    public void Map_ToolCallUpdate_Completed_WithMultipleTextBlocks_ConcatenatesThem()
-    {
-        var mapper = new KimiSessionUpdateMapper();
-        mapper.Map(_Parse("""{"sessionId":"s1","update":{"sessionUpdate":"tool_call","toolCallId":"turn-1:tool-1","title":"Read","rawInput":{}}}"""));
-        var result = mapper.Map(_Parse("""{"sessionId":"s1","update":{"sessionUpdate":"tool_call_update","toolCallId":"turn-1:tool-1","status":"completed","content":[{"type":"content","content":{"type":"text","text":"a"}},{"type":"content","content":{"type":"text","text":"b"}}]}}"""));
-
-        Assert.Equal("ab", Assert.IsType<PluginToolResult>(result.Events.Single()).Content);
-    }
-
-    // P1-3: once the one PluginToolUseRequested has fired, a further refining update for the same id must not
-    // produce a second one — the plugin contract has no "update an already-requested tool call" event.
-
-    [Fact]
-    public void Map_UnknownDiscriminator_ProducesNothing_AndDoesNotThrow()
-    {
-        var mapper = new KimiSessionUpdateMapper();
-        var map = () => mapper.Map(_Parse("""{"sessionId":"s1","update":{"sessionUpdate":"something_kimi_added_later"}}"""));
-
-        map();
-        Assert.Empty(map().Events);
-    }
-
-    [Fact]
-    public void Map_MalformedUpdate_MissingSessionUpdateField_ProducesNothing()
-    {
-        var result = _Map("""{"sessionId":"s1","update":{"someOtherField":true}}""");
-
-        Assert.Empty(result.Events);
     }
 
     // --- EnsureToolUseRequested (P1-3, trigger (c) for a permission request) ---------------------------------

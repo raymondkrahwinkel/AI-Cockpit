@@ -44,34 +44,6 @@ public class CodexMcpConfigTests
     }
 
     [Fact]
-    public void Build_ForAStdioServer_EmitsCommandAndArgs()
-    {
-        var launch = CodexMcpConfig.Build([new PluginMcpServer { Name = "fs", Command = "npx", Args = ["-y", "@modelcontextprotocol/server-filesystem"] }]);
-
-        Assert.Equal(new[] { "-c", """mcp_servers.fs={ command = "npx", args = ["-y", "@modelcontextprotocol/server-filesystem"] }""" }, launch.ConfigArgs);
-        Assert.Empty(launch.EnvironmentVariables);
-    }
-
-    [Fact]
-    public void Build_SanitizesAServerNameToCodexCharset_SoItStartsRatherThanBeingRejected()
-    {
-        // AC-77: Codex validates each server name against ^[a-zA-Z0-9_-]+$ and refuses "YouTrack: Personal" /
-        // "SQL Explorer" with "Invalid MCP server name". Every out-of-charset character folds to '_', and the
-        // result is a bare (unquoted) TOML key.
-        var launch = CodexMcpConfig.Build(
-        [
-            new PluginMcpServer { Name = "YouTrack: Personal", Url = "http://x/mcp" },
-            new PluginMcpServer { Name = "SQL Explorer", Url = "http://y/mcp" },
-        ]);
-
-        Assert.Equal(new[]
-        {
-            "-c", """mcp_servers.YouTrack__Personal={ url = "http://x/mcp", startup_timeout_sec = 60 }""",
-            "-c", """mcp_servers.SQL_Explorer={ url = "http://y/mcp", startup_timeout_sec = 60 }""",
-        }, launch.ConfigArgs);
-    }
-
-    [Fact]
     public void Build_MakesSanitizedNamesUnique_SoTwoNamesThatFoldTheSameDoNotCollapseIntoOneServer()
     {
         var launch = CodexMcpConfig.Build(

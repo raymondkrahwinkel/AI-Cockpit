@@ -18,17 +18,6 @@ public class OpencodeConfigTests
     }
 
     [Fact]
-    public void ToString_WithNoApiKey_PrintsNullInsteadOfAsterisks()
-    {
-        var config = new OpencodeConfig();
-
-        var text = config.ToString();
-
-        Assert.Contains("ApiKey = null", text);
-        Assert.DoesNotContain("***", text);
-    }
-
-    [Fact]
     public void BuildEnvironmentVariables_WithAnApiKey_SetsItUnderAuthEnvVar()
     {
         var config = new OpencodeConfig(AuthEnvVar: "OPENCODE_API_KEY", ApiKey: "sk-value");

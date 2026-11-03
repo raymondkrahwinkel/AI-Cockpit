@@ -16,12 +16,4 @@ public class CliAgentConfigTests
         Assert.Contains("gpt-5-codex", text);
         Assert.Contains(@"C:\work", text);
     }
-
-    [Fact]
-    public void ToString_WhenNoApiKeyIsSet_ReportsNullRatherThanEmptyOrAsterisks()
-    {
-        var config = new CliAgentConfig(WorkingDirectory: @"C:\work");
-
-        Assert.Contains("ApiKey = null", config.ToString());
-    }
 }

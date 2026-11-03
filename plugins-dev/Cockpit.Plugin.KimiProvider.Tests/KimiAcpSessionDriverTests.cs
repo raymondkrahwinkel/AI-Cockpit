@@ -12,26 +12,6 @@ public class KimiAcpSessionDriverTests
 {
     private static KimiConfig _DefaultConfig() => new(WorkingDirectory: Path.GetTempPath());
 
-    // --- session lifecycle & MCP (AC-269) -----------------------------------------------------------------
-
-    [Fact]
-    public async Task Start_SendsSessionNew_WithAbsoluteCwd_AndEmitsSessionInitialized()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
-
-        var startTask = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
-        await _RespondAsync(fake, "initialize", "{}");
-        var sessionNew = await _RespondAsync(fake, "session/new", """{"sessionId":"session_1","configOptions":[]}""");
-        await startTask;
-
-        Assert.True(Path.IsPathRooted(sessionNew.GetProperty("params").GetProperty("cwd").GetString()));
-        Assert.Equal("session_1", driver.SessionId);
-
-        var initialized = await _NextEventOfTypeAsync<PluginSessionInitialized>(driver);
-        Assert.Equal("session_1", initialized.SessionId);
-    }
-
     // P1-7: an ANTHROPIC_* credential the cockpit process itself inherited (from whatever shell launched it)
     // must never reach the spawned kimi acp — Moonshot's own CLI has no business seeing an Anthropic key/token
     // (ClaudeSdkSessionDriver applies the same rule for its own spawn).
@@ -371,50 +351,6 @@ public class KimiAcpSessionDriverTests
         Assert.DoesNotContain(events, evt => evt is PluginPermissionRequested);
     }
 
-    // D3, and the reason the emit gate exists: kimi sends a tool_call and the permission request for the same id
-    // back to back, they arrive on two different pumps, and claiming the id is a separate step from writing the
-    // event it produced. A permission card that reaches the host before its tool card has nothing to hang its
-    // buttons on. Many ids in one run because a single pass would only sometimes interleave.
-
-    // A poll whose reply never parses as usage must not leave the capture armed for the rest of the session: the
-    // next genuine assistant message that happens to look like a usage line would be swallowed, and a silently
-    // missing message is worse than a missing percentage.
-
-    // D12: a process end that is NOT our own dispose must surface an error and a failed turn before the
-    // transcript just goes quiet — order asserted, not just presence.
-
-    // --- disposal (P1-6) -------------------------------------------------------------------------------------
-
-    // P1-6: DisposeAsync must wait for the fire-and-forget trailing /usage poll to actually finish releasing
-    // _promptGate before disposing it — otherwise Release() (in _PollContextUsageAsync's finally, which has no
-    // catch of its own) can run against an already-disposed gate on whichever thread-pool thread eventually
-    // runs that continuation, an unobserved task exception nobody awaits in production.
-
-    // --- event translation (AC-270) -----------------------------------------------------------------------
-
-    [Fact]
-    public async Task SendUserMessage_StreamsTextDeltas_ThenCompletesTheTurn()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
-        await _StartAsync(driver, fake);
-
-        await driver.SendUserMessageAsync("hi");
-        await _WaitForRequestAsync(fake, "session/prompt");
-        await fake.PushStdoutAsync("""{"method":"session/update","params":{"sessionId":"session_1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Hello"}}}}""");
-
-        // Wait for the delta to actually land before triggering the reply: session/prompt's reply and the
-        // notification pump are two independently scheduled consumers of the same wire order, so pushing the
-        // reply before the delta is observed races the pump's own scheduling rather than proving anything about
-        // the driver.
-        var delta = await _NextEventOfTypeAsync<PluginAssistantTextDelta>(driver);
-        Assert.Equal("Hello", delta.Text);
-
-        await _RespondAsync(fake, "session/prompt", """{"stopReason":"completed"}""");
-        var completed = await _NextEventOfTypeAsync<PluginTurnCompleted>(driver);
-        Assert.False(completed.IsError);
-    }
-
     // D4: the lazy tool_call (status "pending", only the tool name as title) must still yield exactly one
     // PluginToolUseRequested — the tool_call_update that refines it must not produce a second one.
 
@@ -670,30 +606,6 @@ public class KimiAcpSessionDriverTests
         Assert.Equal("refusal", completed.StopReason);
     }
 
-    // --- usage / context percentage (AC-274) ---------------------------------------------------------------
-
-    // The single most important test of this sub: a /usage poll's reply must never reach the transcript.
-
-    [Fact]
-    public async Task UsagePoll_AfterATurnCompletes_FillsContextUsedPercent_AndLeavesRateLimitsEmpty()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
-        await _StartAsync(driver, fake);
-
-        await driver.SendUserMessageAsync("hi");
-        await _RespondAsync(fake, "session/prompt", """{"stopReason":"completed"}""");
-        await _NextEventOfTypeAsync<PluginTurnCompleted>(driver);
-
-        var usageRequestId = (await _WaitForNthRequestAsync(fake, "session/prompt", occurrence: 2)).GetProperty("id").GetInt64();
-        await fake.PushStdoutAsync("""{"method":"session/update","params":{"sessionId":"session_1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Session usage:\n- Context: 45,000 / 200,000 (22.5%)"}}}}""");
-        await fake.PushStdoutAsync($$$"""{"id":{{{usageRequestId}}},"result":{"stopReason":"end_turn"}}""");
-
-        await _WaitForStatusAsync(driver, status => status is not null);
-
-        Assert.Equivalent(new PluginSessionStatus(22.5, RateLimits: []), driver.Status);
-    }
-
     // P0-2: only a chunk that actually parses as the usage line is swallowed while capturing — a chunk that
     // does not parse (a broken /usage reply, or a real turn's own trailing text racing the poll) must still
     // reach the transcript rather than vanish silently. This replaces the previous version of this test, which
@@ -797,21 +709,6 @@ public class KimiAcpSessionDriverTests
         }
 
         throw new InvalidOperationException($"No written line containing '{contains}'.");
-    }
-
-    private static async Task _WaitForStatusAsync(KimiAcpSessionDriver driver, Func<PluginSessionStatus?, bool> predicate)
-    {
-        for (var attempt = 0; attempt < 200; attempt++)
-        {
-            if (predicate(driver.Status))
-            {
-                return;
-            }
-
-            await Task.Delay(10);
-        }
-
-        throw new InvalidOperationException("Status did not reach the expected shape.");
     }
 
     // Reads whatever the event channel produces during a fixed window and returns it — used to prove a

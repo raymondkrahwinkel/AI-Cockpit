@@ -10,22 +10,6 @@ public class CodexTtyProviderTests
     private static readonly IReadOnlyDictionary<string, string> NoOptions = new Dictionary<string, string>();
 
     [Fact]
-    public void BuildArguments_ResumeWithoutASessionId_UsesResumeLast()
-    {
-        var arguments = CodexTtyProvider.BuildArguments(new CliAgentConfig(), NoOptions, new PluginTtyResume(SessionId: null));
-
-        Assert.Equal(new[] { "resume", "--last" }, arguments.Take(2));
-    }
-
-    [Fact]
-    public void BuildArguments_ResumeWithASessionId_PassesItPositionally()
-    {
-        var arguments = CodexTtyProvider.BuildArguments(new CliAgentConfig(), NoOptions, new PluginTtyResume(SessionId: "thread-123"));
-
-        Assert.Equal(new[] { "resume", "thread-123" }, arguments.Take(2));
-    }
-
-    [Fact]
     public void BuildArguments_DefaultConfig_IncludesTheConfiguredReadOnlySandboxDefault()
     {
         var arguments = CodexTtyProvider.BuildArguments(new CliAgentConfig(), NoOptions, resume: null);

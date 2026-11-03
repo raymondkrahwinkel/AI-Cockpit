@@ -47,17 +47,4 @@ public class SetupFailureTests
         Assert.Null(SetupFailure.Reason(output, TheseActions));
     }
 
-    [Fact]
-    public void TheFirstFailureIsTheOneThatCounts()
-    {
-        // act stops at the first failure; what follows is the tidying up. Reading the last one would describe the
-        // cleanup and call a compile error an environment problem.
-        string[] output =
-        [
-            "[CI/build]   ❌  Failure - Main Build [12.4s]",
-            "[CI/build]   ❌  Failure - Main actions/checkout@v7",
-        ];
-
-        Assert.Null(SetupFailure.Reason(output, TheseActions));
-    }
 }

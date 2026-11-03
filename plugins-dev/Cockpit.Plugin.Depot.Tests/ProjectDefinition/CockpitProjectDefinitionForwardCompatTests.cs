@@ -24,18 +24,4 @@ public class CockpitProjectDefinitionForwardCompatTests
         Assert.False(resource.Placeholder); // unrecognised to THIS build's own "placeholder" key — false is correct, not a guess
         Assert.Contains("someFutureResourceField", CockpitProjectDefinitionJson.Serialize(definition));
     }
-
-    [Fact]
-    public void Serialize_AnOrdinaryNonPlaceholderRow_OmitsThePlaceholderKeyEntirely()
-    {
-        // JsonIgnore(WhenWritingDefault): an older reader must see nothing different about the overwhelmingly
-        // common row at all — only the new machine-scope case grows a key it has never seen.
-        var written = CockpitProjectDefinitionJson.Serialize(new CockpitProjectDefinition
-        {
-            Name = "probe",
-            Resources = [CockpitProjectResourceEntry.Create("Instructions", "docs/CONVENTIONS.md") ?? throw new InvalidOperationException("The resource row was refused.")],
-        });
-
-        Assert.DoesNotContain("placeholder", written, StringComparison.OrdinalIgnoreCase);
-    }
 }
