@@ -53,7 +53,7 @@ public sealed partial class SyncOptionsViewModel(ISyncOptions? source = null, Ti
     public bool HasOffers => Offers.Count > 0;
 
     // Empty while the choices are as saved; what the Options footer's pending-changes indicator compares.
-    public string Fingerprint => _Fingerprint() == _savedFingerprint ? string.Empty : "changed:" + _Fingerprint();
+    public string Fingerprint => _loaded is null || _Fingerprint() == _savedFingerprint ? string.Empty : "changed:" + _Fingerprint();
 
     partial void OnBannerServersChanged(string value) => OnPropertyChanged(nameof(ShowBanner));
 
