@@ -915,11 +915,11 @@
                              the other way round instead: picking one walks to its tab first (see SelectSession).
                              Drag-reorder (AC-115) sits on the per-node ItemsControl, so a drag reorders inside
                              one node and never carries a session across to another tab. -->
-                        <!-- AC-1487: this laptop's desks, which a remote window does not have. -->
+                        <!-- AC-1487: this machine's desks, which a remote window does not have. -->
                         <StackPanel Spacing="2" IsVisible="{Binding !IsRemoteWindow}">
-                            <!-- AC-1456: once a server group stands below, this laptop's desks get their own heading. -->
+                            <!-- AC-1456: once a server group stands below, this machine's desks get their own heading. -->
                             <Grid ColumnDefinitions="*,Auto,Auto" Margin="2,0,4,2" IsVisible="{Binding ShowLocalMachineHeading}">
-                                <TextBlock Text="This laptop" FontSize="11" FontWeight="SemiBold"
+                                <TextBlock Text="{Binding LocalMachineName}" FontSize="11" FontWeight="SemiBold"
                                            Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                 <Border Grid.Column="1" Classes="tag" Margin="4,0" IsVisible="{Binding LocalLeads}">
                                     <TextBlock Text="leads" FontSize="10" Foreground="{DynamicResource CockpitStatusDoneBrush}"/>

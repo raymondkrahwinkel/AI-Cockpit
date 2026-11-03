@@ -12,6 +12,7 @@ using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Notifications;
 using Avalonia;
 using Avalonia.Threading;
+using Cockpit.Infrastructure.Hosting;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions;
@@ -150,6 +151,8 @@ internal sealed partial class CockpitUiHost(
     // host.Sessions already give it.
     public void AddDockPanel(DockPanelRegistration registration)
     {
+        // AC-2039: before the rail can show it, in case showing it is what crashes this start.
+        services.GetService<StartupAttempt>()?.NoteSurface(registration.Id, pluginId, pluginName);
         if (!services.GetRequiredService<IDockPanelRegistry>().Register(registration))
         {
             _Logger()?.LogWarning("Dock panel '{DockPanelId}' is already contributed by another plugin; this registration is ignored", registration.Id);
@@ -199,6 +202,7 @@ internal sealed partial class CockpitUiHost(
     // clash is logged rather than thrown.
     public void AddWorkspaceType(WorkspaceTypeRegistration registration)
     {
+        services.GetService<StartupAttempt>()?.NoteSurface(registration.Id, pluginId, pluginName);
         if (!services.GetRequiredService<IWorkspaceTypeRegistry>().Register(registration, host.Storage, host.Sessions))
         {
             _Logger()?.LogWarning("Workspace type '{WorkspaceTypeId}' is already contributed by another plugin; this registration is ignored", registration.Id);

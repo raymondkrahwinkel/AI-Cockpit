@@ -401,7 +401,7 @@ internal static partial class Screenshotter
         ["options-servers-disconnected"] = (_, _) => _OptionsServers(connected: false),
         ["options-nodes-status"] = (width, height) => _NodesConnectionStatus(width, height),
         // AC-1456: a connect server as a group in the session list, by an admin key and by a scoped operate key.
-        // AC-1762: the sidebar's foldable sections, open and with This laptop and the server folded, beside mockup v8.
+        // AC-1762: the sidebar's foldable sections, open and with This machine and the server folded, beside mockup v8.
         ["sidebar"] = (width, height) => ServerGroupScene.Sidebar(width, height, collapsed: false),
         ["sidebar-collapsed"] = (width, height) => ServerGroupScene.Sidebar(width, height, collapsed: true),
         ["sidebar-waiting"] = ServerGroupScene.SidebarWaiting,
