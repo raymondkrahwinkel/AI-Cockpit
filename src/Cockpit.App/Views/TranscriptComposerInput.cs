@@ -13,7 +13,7 @@ namespace Cockpit.App.Views;
 internal sealed class TranscriptComposerInput
 {
     private readonly TextBox _inputBox;
-    private readonly Border _composerBorder;
+    private readonly Border _dropOverlay;
     private readonly Func<Task<Bitmap?>> _tryGetPastedBitmap;
     private readonly Func<Task<string?>> _tryGetPastedText;
     private readonly Func<bool> _hasComposer;
@@ -22,6 +22,7 @@ internal sealed class TranscriptComposerInput
     private readonly Func<ICommand?> _resolveStopIfBusy;
     private readonly Func<ICommand?> _sendCommand;
     private readonly Func<Action<byte[]>?> _resolvePastedImageSink;
+    private readonly Func<bool> _canPasteImages;
 
     // Whether the matching KeyDown already handled this keystroke — a tunnelled KeyDown's own `e.Handled`
     // cannot be read back from the later KeyUp, so this is how OnKeyUp tells caret-driven typing (unhandled,
@@ -30,7 +31,7 @@ internal sealed class TranscriptComposerInput
 
     internal TranscriptComposerInput(
         TextBox inputBox,
-        Border composerBorder,
+        Border dropOverlay,
         Func<Task<Bitmap?>> tryGetPastedBitmap,
         Func<Task<string?>> tryGetPastedText,
         Func<bool> hasComposer,
@@ -38,10 +39,11 @@ internal sealed class TranscriptComposerInput
         Func<bool> recallLastQueuedMessage,
         Func<ICommand?> resolveStopIfBusy,
         Func<ICommand?> sendCommand,
-        Func<Action<byte[]>?> resolvePastedImageSink)
+        Func<Action<byte[]>?> resolvePastedImageSink,
+        Func<bool>? canPasteImages = null)
     {
         _inputBox = inputBox;
-        _composerBorder = composerBorder;
+        _dropOverlay = dropOverlay;
         _tryGetPastedBitmap = tryGetPastedBitmap;
         _tryGetPastedText = tryGetPastedText;
         _hasComposer = hasComposer;
@@ -50,6 +52,7 @@ internal sealed class TranscriptComposerInput
         _resolveStopIfBusy = resolveStopIfBusy;
         _sendCommand = sendCommand;
         _resolvePastedImageSink = resolvePastedImageSink;
+        _canPasteImages = canPasteImages ?? (() => false);
     }
 
     internal void OnKeyDown(object? sender, KeyEventArgs e)
@@ -207,9 +210,34 @@ internal sealed class TranscriptComposerInput
         }
 
         e.Handled = true;
-        InsertDroppedPaths(paths);
+        var addImage = _canPasteImages() ? _resolvePastedImageSink() : null;
+        InsertDroppedPaths(addImage is null ? paths : paths.Where(path => !_TryAttachImage(path, addImage)).ToArray());
         _inputBox.Focus();
     }
+
+    // An undecodable image falls back to its path rather than failing silently.
+    private static bool _TryAttachImage(string path, Action<byte[]> addImage)
+    {
+        if (!_ImageExtensions.Contains(Path.GetExtension(path)))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var bitmap = new Bitmap(path);
+            using var stream = new MemoryStream();
+            bitmap.Save(stream, PngBitmapEncoderOptions.Default);
+            addImage(stream.ToArray());
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    private static readonly HashSet<string> _ImageExtensions = new(StringComparer.OrdinalIgnoreCase) { ".png", ".jpg", ".jpeg", ".gif", ".webp" };
 
     // Space-separated, and a path containing a space wrapped in double quotes — what a shell and most agents
     // expect of a path list. Padded with a space on whichever side already carries a word, so dropping onto
@@ -234,7 +262,7 @@ internal sealed class TranscriptComposerInput
             ? $"\"{path.Replace("\"", "\\\"", StringComparison.Ordinal)}\""
             : path;
 
-    private void _SetDropTarget(bool active) => _composerBorder.Classes.Set("fileDropTarget", active);
+    private void _SetDropTarget(bool active) => _dropOverlay.IsVisible = active;
 
     // Inserts text at the caret, replacing any current selection — mirrors a normal paste.
     private void _InsertText(string text)
