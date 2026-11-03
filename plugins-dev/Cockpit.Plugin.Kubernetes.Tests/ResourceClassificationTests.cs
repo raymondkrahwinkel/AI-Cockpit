@@ -8,23 +8,19 @@ namespace Cockpit.Plugin.Kubernetes.Tests;
 public class ResourceClassificationTests
 {
     [Theory]
-    [InlineData("", "nodes")]
-    [InlineData("", "namespaces")]
-    [InlineData("", "persistentvolumes")]
-    [InlineData("rbac.authorization.k8s.io", "clusterroles")]
-    [InlineData("storage.k8s.io", "storageclasses")]
+    [InlineData("", "nodes", true)]
+    [InlineData("", "namespaces", true)]
+    [InlineData("", "persistentvolumes", true)]
+    [InlineData("rbac.authorization.k8s.io", "clusterroles", true)]
+    [InlineData("storage.k8s.io", "storageclasses", true)]
     // A kind the caller spelled with a capital is the same kind — the jail must not be walked around by casing.
-    [InlineData("", "Nodes")]
-    public void ResourceScope_ClusterScopedKinds_AreClusterScoped(string group, string plural) =>
-        Assert.True(ResourceScope.IsClusterScoped(group, plural));
-
-    [Theory]
-    [InlineData("", "pods")]
-    [InlineData("", "secrets")]
-    [InlineData("", "configmaps")]
-    [InlineData("apps", "deployments")]
-    public void ResourceScope_NamespacedKinds_AreNotClusterScoped(string group, string plural) =>
-        Assert.False(ResourceScope.IsClusterScoped(group, plural));
+    [InlineData("", "Nodes", true)]
+    [InlineData("", "pods", false)]
+    [InlineData("", "secrets", false)]
+    [InlineData("", "configmaps", false)]
+    [InlineData("apps", "deployments", false)]
+    public void ResourceScope_IsClusterScoped_OnlyForClusterScopedKinds(string group, string plural, bool clusterScoped) =>
+        Assert.Equal(clusterScoped, ResourceScope.IsClusterScoped(group, plural));
 
     [Theory]
     [InlineData("", "secrets", true)]

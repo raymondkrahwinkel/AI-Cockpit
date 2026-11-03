@@ -28,19 +28,15 @@ public class CodexMcpConfigTests
         Assert.Equal(new[] { "-c", """mcp_servers.youtrack={ url = "http://127.0.0.1:9000/mcp", startup_timeout_sec = 60, bearer_token_env_var = "COCKPIT_MCP_TOKEN_0" }""" }, launch.ConfigArgs);
         Assert.DoesNotContain(launch.ConfigArgs, arg => arg.Contains(token));
         Assert.Contains(new KeyValuePair<string, string?>("COCKPIT_MCP_TOKEN_0", token), launch.EnvironmentVariables);
-    }
 
-    [Fact]
-    public void Build_IndexesTheTokenEnvVarPerServer_SoTwoTokensNeverCollide()
-    {
-        var launch = CodexMcpConfig.Build(
+        // The env var is indexed per server, so two tokens never collide.
+        var two = CodexMcpConfig.Build(
         [
             new PluginMcpServer { Name = "a", Url = "http://a/mcp", BearerToken = "token-a" },
             new PluginMcpServer { Name = "b", Url = "http://b/mcp", BearerToken = "token-b" },
         ]);
-
-        Assert.Contains(new KeyValuePair<string, string?>("COCKPIT_MCP_TOKEN_0", "token-a"), launch.EnvironmentVariables);
-        Assert.Contains(new KeyValuePair<string, string?>("COCKPIT_MCP_TOKEN_1", "token-b"), launch.EnvironmentVariables);
+        Assert.Contains(new KeyValuePair<string, string?>("COCKPIT_MCP_TOKEN_0", "token-a"), two.EnvironmentVariables);
+        Assert.Contains(new KeyValuePair<string, string?>("COCKPIT_MCP_TOKEN_1", "token-b"), two.EnvironmentVariables);
     }
 
     [Fact]

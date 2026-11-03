@@ -3,21 +3,15 @@ namespace Cockpit.Plugin.Slack.Tests;
 public class SlackConsentButtonIdTests
 {
     [Fact]
-    public void ApproveRoundTrips()
+    public void ApproveAndDenyRoundTrip()
     {
         var promptId = Guid.NewGuid();
 
         Assert.True(SlackConsentButtonId.TryParse(SlackConsentButtonId.Approve(promptId), out var parsedId, out var approve));
         Assert.Equal(promptId, parsedId);
         Assert.True(approve);
-    }
 
-    [Fact]
-    public void DenyRoundTrips()
-    {
-        var promptId = Guid.NewGuid();
-
-        Assert.True(SlackConsentButtonId.TryParse(SlackConsentButtonId.Deny(promptId), out var parsedId, out var approve));
+        Assert.True(SlackConsentButtonId.TryParse(SlackConsentButtonId.Deny(promptId), out parsedId, out approve));
         Assert.Equal(promptId, parsedId);
         Assert.False(approve);
     }

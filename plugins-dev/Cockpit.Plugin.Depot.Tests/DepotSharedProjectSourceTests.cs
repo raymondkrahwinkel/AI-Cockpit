@@ -34,35 +34,29 @@ public class DepotSharedProjectSourceTests
             Arg.Any<string?>(), Arg.Any<CancellationToken>());
     }
 
+    // An admin's project Depot marks canWrite:false is read-only and shows its role; a viewer's project without a
+    // readable definition is reported as visible but unreadable rather than silently missing.
     [Fact]
-    public async Task ListAsync_AnAdminsProject_WithCanWriteFalse_IsReadOnlyAndShowsItsRole()
+    public async Task ListAsync_CanWriteFalseIsReadOnly_AndAViewersAbsentDefinitionIsVisibleButUnreadable()
     {
         var host = Substitute.For<ICockpitHost>();
-        using var http = _Client("""{"projects":[{"address":"acme/cockpit","slug":"cockpit","name":"Cockpit","role":"Admin","kind":"Project","organization":{"slug":"acme","name":"Acme","role":"Member"},"cockpit":{"state":"ok","checksum":"chk","updatedAt":"2026-10-20T10:00:00Z","definition":{"schemaVersion":1,"name":"Cockpit"},"canWrite":false}}]}""");
+        using var http = _Client("""
+            {"projects":[
+              {"address":"acme/cockpit","slug":"cockpit","name":"Cockpit","role":"Admin","kind":"Project","organization":{"slug":"acme","name":"Acme","role":"Member"},"cockpit":{"state":"ok","checksum":"chk","updatedAt":"2026-10-20T10:00:00Z","definition":{"schemaVersion":1,"name":"Cockpit"},"canWrite":false}},
+              {"address":"acme/viewer-only","slug":"viewer-only","name":"Viewer Only","role":"Viewer","kind":"Project","organization":{"slug":"acme","name":"Acme","role":"Member"},"cockpit":{"state":"absent","checksum":null,"updatedAt":null}}
+            ]}
+            """);
 
         var result = await SourceFor(host, http).ListAsync(CancellationToken.None);
 
         var project = Assert.Single(result.Projects);
         Assert.Equal("Admin", project.Role);
         Assert.False(project.CanWriteBack);
-    }
-
-    [Fact]
-    public async Task ListAsync_AViewersAbsentDefinition_IsReportedAsVisibleButUnreadable()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        using var http = _Client("""{"projects":[{"address":"acme/viewer-only","slug":"viewer-only","name":"Viewer Only","role":"Viewer","kind":"Project","organization":{"slug":"acme","name":"Acme","role":"Member"},"cockpit":{"state":"absent","checksum":null,"updatedAt":null}}]}""");
-
-        var result = await SourceFor(host, http).ListAsync(CancellationToken.None);
-
-        Assert.Empty(result.Projects);
         var unreadable = Assert.Single(result.VisibleButUnreadable);
         Assert.Equal("Viewer Only", unreadable.Name);
         Assert.Equal("Viewer", unreadable.Role);
     }
 
-    // AC-1665, layer 2 (plugin contract / cache): the list is cached per connection, so a sign-in as someone else must
-    // take the previous account's list away, or an unreachable Depot shows it as the "last known list".
     [Fact]
     public async Task ListAsync_AfterTheAccountChanged_TheLastKnownListOfThePreviousAccountIsGone()
     {

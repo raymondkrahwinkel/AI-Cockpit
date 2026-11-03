@@ -8,36 +8,21 @@ namespace Cockpit.Plugin.Kubernetes.Tests;
 public class KubernetesSettingsTests
 {
     [Fact]
-    public void SetArgoToken_RoundTrips_ThroughTheSecretLayer()
+    public void SetArgoToken_RoundTrips_ThroughTheSecretLayer_KeyedPerCluster_AndClears()
     {
         var storage = new FakePluginStorage();
         var settings = new KubernetesSettings(storage);
 
         settings.SetArgoToken("cluster-1", "argocd-token-value");
+        settings.SetArgoToken("cluster-2", "token-for-2");
 
         Assert.Equal("argocd-token-value", settings.GetArgoToken("cluster-1"));
+        Assert.Equal("token-for-2", settings.GetArgoToken("cluster-2"));
         Assert.Contains("cluster.cluster-1.argoToken", storage.SecretKeys);
-    }
-
-    [Fact]
-    public void ClearArgoToken_RemovesIt()
-    {
-        var settings = new KubernetesSettings(new FakePluginStorage());
-        settings.SetArgoToken("cluster-1", "argocd-token-value");
 
         settings.ClearArgoToken("cluster-1");
 
         Assert.Null(settings.GetArgoToken("cluster-1"));
-    }
-
-    [Fact]
-    public void SetArgoToken_IsKeyedPerCluster()
-    {
-        var settings = new KubernetesSettings(new FakePluginStorage());
-        settings.SetArgoToken("cluster-1", "token-for-1");
-        settings.SetArgoToken("cluster-2", "token-for-2");
-
-        Assert.Equal("token-for-1", settings.GetArgoToken("cluster-1"));
         Assert.Equal("token-for-2", settings.GetArgoToken("cluster-2"));
     }
 

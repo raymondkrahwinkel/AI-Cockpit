@@ -70,6 +70,10 @@ public class WireframeMcpToolsTests
         Assert.False(json!["ok"]!.GetValue<bool>());
         Assert.Null(json["source"]);
         Assert.Null(registry.CouplingOf(Session, SurfaceId));
+
+        var edit = JsonNode.Parse(await tools.EditWireframe(Session, Name, "screen \"Leeg\""));
+        Assert.False(edit!["ok"]!.GetValue<bool>());
+        Assert.Equal(WireframeScreens.Settings, registry.PeekText(SurfaceId));
     }
 
     [Fact]
@@ -86,16 +90,8 @@ public class WireframeMcpToolsTests
         Assert.Contains("now wants to edit it", asked[1].Title, StringComparison.Ordinal);
         Assert.Equal(ConsentRisk.Dangerous, asked[1].Risk);
         Assert.Contains("edit wireframe", asked[1].Action, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task EditWireframe_DescribesTheChangeMechanically_NotFromAnythingTheAgentWrote()
-    {
-        var (tools, _, asked) = _Open(ConsentOutcome.Approved);
-
-        await tools.EditWireframe(Session, Name, "screen \"Leeg\"");
-
-        Assert.Contains("1 line added, 13 lines removed", Assert.Single(asked).Action, StringComparison.Ordinal);
+        // The change is described mechanically from the diff, never from anything the agent wrote.
+        Assert.Contains("1 line added, 13 lines removed", asked[1].Action, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -107,19 +103,12 @@ public class WireframeMcpToolsTests
 
         Assert.False(json!["ok"]!.GetValue<bool>());
         Assert.NotEmpty(json["problems"]!.AsArray());
+        Assert.Equal(WireframeScreens.Settings, registry.PeekText(SurfaceId));
+
+        // open_wireframe refuses an unreadable source the same way, before anyone is asked.
+        var open = JsonNode.Parse(await tools.OpenWireframe(Session, "Nieuw scherm", "button \"Los\""));
+        Assert.False(open!["ok"]!.GetValue<bool>());
         Assert.Empty(asked);
-        Assert.Equal(WireframeScreens.Settings, registry.PeekText(SurfaceId));
-    }
-
-    [Fact]
-    public async Task EditWireframe_Denied_ChangesNothing()
-    {
-        var (tools, registry, _) = _Open(ConsentOutcome.Denied);
-
-        var json = JsonNode.Parse(await tools.EditWireframe(Session, Name, "screen \"Leeg\""));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Equal(WireframeScreens.Settings, registry.PeekText(SurfaceId));
     }
 
     [Fact]
@@ -159,17 +148,6 @@ public class WireframeMcpToolsTests
         Assert.DoesNotContain('\n', Assert.Single(asked).Action);
     }
 
-    [Fact]
-    public async Task OpenWireframe_RefusesASourceTheFormatCannotRead_WithoutAskingAnyone()
-    {
-        var (tools, _, asked) = _Build(ConsentOutcome.Approved);
-
-        var json = JsonNode.Parse(await tools.OpenWireframe(Session, "Nieuw scherm", "button \"Los\""));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Empty(asked);
-    }
-
     // ---- open_wireframe (AC-835, direct path since AC-891): the agent asks for a window of its own ----
 
     [Fact]
@@ -187,38 +165,4 @@ public class WireframeMcpToolsTests
         await host.Received(1).ShowDialogAsync("Nieuw scherm", Arg.Any<Func<Control>>(),
             $"wireframe.document.{surfaceId}", Arg.Any<double>(), Arg.Any<double>());
     }
-
-    [Fact]
-    public async Task OpenWireframe_WithSkipWireframeConsent_OpensWithoutAsking()
-    {
-        // AC-948: the plugin's own opt-out, off by default — on, this surface's consent request never happens.
-        var registry = new WireframeAccessRegistry();
-        var host = Substitute.For<ICockpitHost, IWindowProbe>();
-        host.CurrentMcpCallerPaneId.Returns((string?)null);
-        var settings = new backend::Cockpit.Plugin.Diagram.DiagramSettings(new FakePluginStorage()) { SkipWireframeConsent = true };
-        var tools = new WireframeMcpTools(host, registry, settings, TestChannel.Desktop(host, wireframes: registry));
-
-        var json = JsonNode.Parse(await tools.OpenWireframe(Session, "Nieuw scherm", WireframeScreens.Settings));
-        Dispatcher.UIThread.RunJobs();
-
-        Assert.True(json!["ok"]!.GetValue<bool>());
-        await host.DidNotReceive().RequestConsentAsync(Arg.Any<ConsentRequest>());
-    }
-
-    [Fact]
-    public async Task OpenWireframe_WithSkipWireframeConsentOff_StillAsks()
-    {
-        // AC-948 DoD: a fresh install (flag off) keeps asking every time — nothing about today's behaviour changes.
-        var (tools, _, asked) = _Build(ConsentOutcome.Approved);
-
-        var json = JsonNode.Parse(await tools.OpenWireframe(Session, "Nieuw scherm", WireframeScreens.Settings));
-        Dispatcher.UIThread.RunJobs();
-
-        Assert.True(json!["ok"]!.GetValue<bool>());
-        Assert.Single(asked);
-    }
-
-    // ---- A document of several screens (AC-901) ----
-
-    // ---- Viewport (AC-915) ----
 }

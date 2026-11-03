@@ -4,24 +4,17 @@ namespace Cockpit.Plugin.Slack.Tests;
 
 public class SlackConsentReplyParserTests
 {
-    [Fact]
-    public void ParsesJaAsApproved()
-    {
-        foreach (var text in new[] { "ja", "JA", "  ja  " })
-        {
-            Assert.True(SlackConsentReplyParser.TryParse(text, out var outcome));
-            Assert.Equal(ConsentOutcome.Approved, outcome);
-        }
-    }
-
     [Theory]
-    [InlineData("nee")]
-    [InlineData("NEE")]
-    [InlineData(" nee ")]
-    public void ParsesNeeAsDenied(string text)
+    [InlineData("ja", ConsentOutcome.Approved)]
+    [InlineData("JA", ConsentOutcome.Approved)]
+    [InlineData("  ja  ", ConsentOutcome.Approved)]
+    [InlineData("nee", ConsentOutcome.Denied)]
+    [InlineData("NEE", ConsentOutcome.Denied)]
+    [InlineData(" nee ", ConsentOutcome.Denied)]
+    public void ParsesJaAndNee(string text, ConsentOutcome expected)
     {
         Assert.True(SlackConsentReplyParser.TryParse(text, out var outcome));
-        Assert.Equal(ConsentOutcome.Denied, outcome);
+        Assert.Equal(expected, outcome);
     }
 
     [Theory]

@@ -35,14 +35,8 @@ public class CockpitProjectPasswordEnvelopeFactoryTests
 
         Assert.Null(CockpitProjectPasswordEnvelopeFactory.TryUnwrapWithPassword(envelope, "wrong-password"));
         Assert.Null(CockpitProjectPasswordEnvelopeFactory.TryUnwrapWithRecoveryCode(envelope, "WRONGWRONGWRONGWRONGWRON"));
-    }
 
-    [Fact]
-    public void TryUnwrapWithPassword_UnknownKdf_ReturnsNullRatherThanThrowing()
-    {
-        var (envelope, _, _) = CockpitProjectPasswordEnvelopeFactory.Create("right-password");
         envelope.Kdf = "argon2id"; // as if written by a future build with a KDF this one does not know
-
         Assert.Null(CockpitProjectPasswordEnvelopeFactory.TryUnwrapWithPassword(envelope, "right-password"));
     }
 
@@ -75,81 +69,20 @@ public class CockpitProjectPasswordEnvelopeFactoryTests
         Assert.DoesNotContain(Convert.ToBase64String(dataKey), envelopeText, StringComparison.Ordinal);
     }
 
-    // AC-607 review finding 1: a shared Depot project's project.json can arrive corrupt (buggy build, hand-edit,
-    // truncated write) the same way a wrong password can — both must collapse to null, never throw.
-    [Fact]
-    public void TryUnwrapWithPassword_WrapperSaltIsNull_ReturnsNullRatherThanThrowing()
+    // AC-607 review findings 1 and 9, PR #473: a shared Depot project's project.json can arrive corrupt (buggy build,
+    // hand-edit, truncated write) or hostile; every shape collapses to null, never throws, never runs a huge PBKDF2,
+    // and never hands back an unprefixed wrappedDataKey as "the data key".
+    [Theory]
+    [InlineData(210000, """{"salt":null,"wrappedDataKey":"enc:v1:AAAA"}""")]
+    [InlineData(210000, """{"salt":"AAAA","wrappedDataKey":null}""")]
+    [InlineData(210000, "null")]
+    [InlineData(0, """{"salt":"AAAA","wrappedDataKey":"enc:v1:AAAA"}""")]
+    [InlineData(2000000000, """{"salt":"AAAA","wrappedDataKey":"enc:v1:AAAA"}""")]
+    [InlineData(210000, """{"salt":"AAAA","wrappedDataKey":"AAAA"}""")]
+    public void TryUnwrapWithPassword_CorruptOrHostileEnvelope_ReturnsNullRatherThanThrowing(int iterations, string passwordWrapper)
     {
-        var envelope = _DeserializeEnvelope("""
-            {"kdf":"pbkdf2-sha512","iterations":210000,
-             "password":{"salt":null,"wrappedDataKey":"enc:v1:AAAA"},
-             "recovery":{"salt":"AAAA","wrappedDataKey":"enc:v1:AAAA"}}
-            """);
-
-        Assert.Null(CockpitProjectPasswordEnvelopeFactory.TryUnwrapWithPassword(envelope, "whatever"));
-    }
-
-    [Fact]
-    public void TryUnwrapWithPassword_WrapperWrappedDataKeyIsNull_ReturnsNullRatherThanThrowing()
-    {
-        var envelope = _DeserializeEnvelope("""
-            {"kdf":"pbkdf2-sha512","iterations":210000,
-             "password":{"salt":"AAAA","wrappedDataKey":null},
-             "recovery":{"salt":"AAAA","wrappedDataKey":"enc:v1:AAAA"}}
-            """);
-
-        Assert.Null(CockpitProjectPasswordEnvelopeFactory.TryUnwrapWithPassword(envelope, "whatever"));
-    }
-
-    [Fact]
-    public void TryUnwrapWithPassword_WrapperItselfIsNull_ReturnsNullRatherThanThrowing()
-    {
-        var envelope = _DeserializeEnvelope("""
-            {"kdf":"pbkdf2-sha512","iterations":210000,
-             "password":null,
-             "recovery":{"salt":"AAAA","wrappedDataKey":"enc:v1:AAAA"}}
-            """);
-
-        Assert.Null(CockpitProjectPasswordEnvelopeFactory.TryUnwrapWithPassword(envelope, "whatever"));
-    }
-
-    [Fact]
-    public void TryUnwrapWithPassword_IterationsIsZeroOrNegative_ReturnsNullRatherThanThrowing()
-    {
-        var envelope = _DeserializeEnvelope("""
-            {"kdf":"pbkdf2-sha512","iterations":0,
-             "password":{"salt":"AAAA","wrappedDataKey":"enc:v1:AAAA"},
-             "recovery":{"salt":"AAAA","wrappedDataKey":"enc:v1:AAAA"}}
-            """);
-
-        Assert.Null(CockpitProjectPasswordEnvelopeFactory.TryUnwrapWithPassword(envelope, "whatever"));
-    }
-
-    // AC-607 review finding 9: a hostile envelope naming an absurdly large iteration count must not cost a real
-    // PBKDF2 call (DoS via CPU) — rejected the same null-shaped way as every other corrupt-input case.
-    [Fact]
-    public void TryUnwrapWithPassword_IterationsIsAbsurdlyLarge_ReturnsNullRatherThanRunningPbkdf2()
-    {
-        var envelope = _DeserializeEnvelope("""
-            {"kdf":"pbkdf2-sha512","iterations":2000000000,
-             "password":{"salt":"AAAA","wrappedDataKey":"enc:v1:AAAA"},
-             "recovery":{"salt":"AAAA","wrappedDataKey":"enc:v1:AAAA"}}
-            """);
-
-        Assert.Null(CockpitProjectPasswordEnvelopeFactory.TryUnwrapWithPassword(envelope, "whatever"));
-    }
-
-    // Second review pass, PR #473: WrappedDataKey without the enc:v1: prefix is valid base64 but was never
-    // produced by _Wrap — ProjectSecretProtector.Unprotect's idempotency rule (return an unprefixed value as-is)
-    // would otherwise hand back those raw bytes as "the data key", independent of whatever password was supplied.
-    [Fact]
-    public void TryUnwrapWithPassword_WrappedDataKeyMissingTheEncV1Prefix_ReturnsNullRatherThanThePlainBytes()
-    {
-        var envelope = _DeserializeEnvelope("""
-            {"kdf":"pbkdf2-sha512","iterations":210000,
-             "password":{"salt":"AAAA","wrappedDataKey":"AAAA"},
-             "recovery":{"salt":"AAAA","wrappedDataKey":"enc:v1:AAAA"}}
-            """);
+        var envelope = _DeserializeEnvelope(
+            $$$"""{"kdf":"pbkdf2-sha512","iterations":{{{iterations}}},"password":{{{passwordWrapper}}},"recovery":{"salt":"AAAA","wrappedDataKey":"enc:v1:AAAA"}}""");
 
         Assert.Null(CockpitProjectPasswordEnvelopeFactory.TryUnwrapWithPassword(envelope, "whatever"));
     }

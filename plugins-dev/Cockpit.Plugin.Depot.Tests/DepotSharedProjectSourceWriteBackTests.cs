@@ -25,27 +25,9 @@ public class DepotSharedProjectSourceWriteBackTests
         new(name, description, BehaviorPrompt: "Edited behaviour", IsolateInWorktreeByDefault: true,
             EnabledMcpServerNames: ["github"], LogoEdit: logoEdit, GitUrl: gitUrl);
 
+    // The edit lands on top of what Depot holds: a placeholder resource row there survives the round trip rather than being dropped.
     [Fact]
     public async Task WriteBackAsync_Success_ReturnsTheChecksumTheWriteConfirmed_AndSendsTheOperatorsBaseChecksumRatherThanTheFreshReadsOwn()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        var scheme = _Scheme(host);
-        var handler = new _DefinitionHandler(
-            """{"schemaVersion":1,"name":"Cockpit"}""", currentChecksum: "chk-fresh-read", writtenChecksum: "chk-after");
-        using var http = new HttpClient(handler);
-
-        var result = await SourceFor(host, http).WriteBackAsync(
-            $"{scheme}:cockpit", Edit(), "chk-operator-opened-with", CancellationToken.None);
-
-        Assert.Equal(SharedProjectWriteBackOutcome.Success, result.Outcome);
-        Assert.Equal("chk-after", result.Checksum);
-        Assert.True(CockpitProjectDefinitionJson.TryDeserialize(handler.WrittenContent, out var sent, out var error), error);
-        Assert.Equal("https://example.com/edited.git", sent!.GitUrl);
-        Assert.Equal("\"chk-operator-opened-with\"", handler.IfMatch);
-    }
-
-    [Fact]
-    public async Task WriteBackAsync_APlaceholderResourceRow_SurvivesTheRoundTripRatherThanBeingDropped()
     {
         var host = Substitute.For<ICockpitHost>();
         var scheme = _Scheme(host);
@@ -54,14 +36,18 @@ public class DepotSharedProjectSourceWriteBackTests
         Assert.True(placeholder.Placeholder);
         var current = CockpitProjectDefinitionJson.Serialize(
             new CockpitProjectDefinition { Name = "Cockpit", Resources = [placeholder] });
-        var handler = new _DefinitionHandler(current);
+        var handler = new _DefinitionHandler(current, currentChecksum: "chk-fresh-read", writtenChecksum: "chk-after");
         using var http = new HttpClient(handler);
 
-        await SourceFor(host, http).WriteBackAsync(
-            $"{scheme}:cockpit", Edit(), "chk-before", CancellationToken.None);
+        var result = await SourceFor(host, http).WriteBackAsync(
+            $"{scheme}:cockpit", Edit(), "chk-operator-opened-with", CancellationToken.None);
 
+        Assert.Equal(SharedProjectWriteBackOutcome.Success, result.Outcome);
+        Assert.Equal("chk-after", result.Checksum);
         Assert.True(CockpitProjectDefinitionJson.TryDeserialize(handler.WrittenContent, out var sent, out var error), error);
         Assert.NotNull(sent);
+        Assert.Equal("https://example.com/edited.git", sent.GitUrl);
+        Assert.Equal("\"chk-operator-opened-with\"", handler.IfMatch);
         Assert.NotNull(sent.Resources);
         var resource = Assert.Single(sent.Resources);
         Assert.True(resource.Placeholder);
