@@ -21,7 +21,7 @@ public sealed class DevPluginInstaller(ILogger? logger = null)
             return [];
         }
 
-        return await new PluginSourceInstaller(_registrations, logger)
+        return await new PluginSourceInstaller(_registrations, logger, SearchOption.AllDirectories)
             .InstallFromSourceFoldersAsync(sourceFolders, pluginsRoot, installNew: false, cancellationToken)
             .ConfigureAwait(false);
     }

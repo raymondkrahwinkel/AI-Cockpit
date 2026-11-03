@@ -8,7 +8,10 @@ namespace Cockpit.Infrastructure.Plugins;
 // Shared "bring a plugins directory into line with a set of source folders" routine used by both
 // `BundledPluginInstaller` and `DevPluginInstaller`, since both must honor the same rule — an operator-disabled
 // or store-updated-past-source plugin is left alone, and only a newer or rebuilt source replaces + re-pins it.
-internal sealed class PluginSourceInstaller(IPluginRegistrationStore registrations, ILogger? logger)
+internal sealed class PluginSourceInstaller(
+    IPluginRegistrationStore registrations,
+    ILogger? logger,
+    SearchOption sourceSearch = SearchOption.TopDirectoryOnly)
 {
     // Installs/refreshes each source folder into `pluginsRoot` under the rule above. `installNew`: true to
     // install a not-yet-present plugin (bundled ships as present); false to only refresh already-installed
@@ -121,10 +124,10 @@ internal sealed class PluginSourceInstaller(IPluginRegistrationStore registratio
         return !await _IsSameClosureAsync(source, target, cancellationToken).ConfigureAwait(false);
     }
 
-    private static async Task<bool> _IsSameClosureAsync(string source, string target, CancellationToken cancellationToken)
+    private async Task<bool> _IsSameClosureAsync(string source, string target, CancellationToken cancellationToken)
     {
         // The source hashed as it would be installed (same file selection as _CopyPlugin), against what is on disk.
-        var incoming = await PluginClosureHash.OfSourceFolderAsync(source, cancellationToken).ConfigureAwait(false);
+        var incoming = await PluginClosureHash.OfSourceFolderAsync(source, cancellationToken, sourceSearch).ConfigureAwait(false);
         var installed = await PluginClosureHash.OfInstalledFolderAsync(target, cancellationToken).ConfigureAwait(false);
 
         return string.Equals(incoming, installed, StringComparison.OrdinalIgnoreCase);
@@ -144,7 +147,7 @@ internal sealed class PluginSourceInstaller(IPluginRegistrationStore registratio
 
     // Replaces the plugin's files wholesale rather than merging: a leftover assembly from an older version is
     // exactly the kind of thing that loads and then fails halfway.
-    private static void _CopyPlugin(string source, string target)
+    private void _CopyPlugin(string source, string target)
     {
         if (Directory.Exists(target))
         {
@@ -152,19 +155,11 @@ internal sealed class PluginSourceInstaller(IPluginRegistrationStore registratio
         }
 
         Directory.CreateDirectory(target);
-        foreach (var file in Directory.EnumerateFiles(source))
+        foreach (var file in PluginClosureHash.SourceFiles(source, sourceSearch))
         {
-            var name = Path.GetFileName(file);
-
-            // One predicate decides what counts as a copied plugin file, shared with the closure hash (AC-43) so
-            // the two cannot drift. Excludes the shared abstractions assembly — a copy would give the plugin's
-            // ICockpitPlugin a second identity and the loader would reject it — and dot-prefixed markers.
-            if (!PluginClosureHash.IsCopiedSourceFile(name))
-            {
-                continue;
-            }
-
-            File.Copy(file, Path.Combine(target, name), overwrite: true);
+            var destination = Path.Combine(target, Path.GetRelativePath(source, file));
+            Directory.CreateDirectory(Path.GetDirectoryName(destination) ?? target);
+            File.Copy(file, destination, overwrite: true);
         }
     }
 }
