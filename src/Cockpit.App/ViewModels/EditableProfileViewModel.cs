@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.ModelIntelligence;
 using Cockpit.Core.Provisioning;
 using Cockpit.Plugins.Abstractions.Sessions;
 
@@ -17,6 +18,44 @@ namespace Cockpit.App.ViewModels;
 // credentials/config never go inconsistent (#26).
 public partial class EditableProfileViewModel : ViewModelBase
 {
+    private IModelImageInput? _imageInput;
+    private int _imageRevision;
+    public IReadOnlyList<ImageInputMode> ImageInputModes { get; } = Enum.GetValues<ImageInputMode>();
+    [ObservableProperty]
+    private ImageInputMode _imageInputMode;
+    [ObservableProperty]
+    private string _imageInputStatus = "Images: off — unknown";
+
+    partial void OnImageInputModeChanged(ImageInputMode value) => _ = RefreshImageInputAsync();
+
+    public async Task RefreshImageInputAsync()
+    {
+        var revision = ++_imageRevision;
+        try
+        {
+            var profile = ToProfile();
+            var transport = _imageInput?.HasTransport(profile) == true;
+            var decision = ImageInput.Resolve(ImageInputMode, transport, null, null);
+            ImageInputStatus = $"Images: {(decision.SupportsVision ? "on" : "off")} — {decision.Source}";
+            if (_imageInput is not null)
+            {
+                var model = ProfileModel.Of(profile) ?? profile.Defaults?.OptionDefaults?.GetValueOrDefault(WellKnownPluginSessionOptions.Model);
+                var facts = await _imageInput.ReadAsync(profile, model);
+                decision = ImageInput.Resolve(ImageInputMode, transport, facts.Service?.At(DateTimeOffset.UtcNow), facts.OpenRouter?.At(DateTimeOffset.UtcNow));
+                if (revision == _imageRevision)
+                {
+                    ImageInputStatus = $"Images: {(decision.SupportsVision ? "on" : "off")} — {decision.Source}";
+                }
+            }
+        }
+        catch (Exception)
+        {
+            if (revision == _imageRevision)
+            {
+                ImageInputStatus = "Images: off — lookup unavailable";
+            }
+        }
+    }
     public TermsNotice? TermsNotice => SelectedProvider.PluginProviderId is { } providerId
         ? _pluginProviderRegistry?.SessionProvider(providerId)?.TermsNotice
         : null;
@@ -558,7 +597,12 @@ public partial class EditableProfileViewModel : ViewModelBase
                 // AC-1102: a key the profile does not store stays blank, never borrowing the option's declared
                 // default — Apply would persist that as the operator's own choice and pin a value nobody picked.
                 var value = storedDefaults?.GetValueOrDefault(option.Key);
-                PluginOptionDefaults.Add(new PluginTtyOptionSelectionViewModel(option.Key, option.Label, option.Choices, value, option.ChoiceLabels, _orgPolicy));
+                var editor = new PluginTtyOptionSelectionViewModel(option.Key, option.Label, option.Choices, value, option.ChoiceLabels, _orgPolicy);
+                if (option.Key == WellKnownPluginSessionOptions.Model)
+                {
+                    editor.PropertyChanged += (_, _) => _ = RefreshImageInputAsync();
+                }
+                PluginOptionDefaults.Add(editor);
             }
         }
 
@@ -569,7 +613,11 @@ public partial class EditableProfileViewModel : ViewModelBase
 
     partial void OnLabelChanged(string value) => OnPropertyChanged(nameof(DisplayLabel));
 
-    partial void OnModelChanged(string value) => OnPropertyChanged(nameof(DisplayLabel));
+    partial void OnModelChanged(string value)
+    {
+        OnPropertyChanged(nameof(DisplayLabel));
+        _ = RefreshImageInputAsync();
+    }
 
     private static bool _IsAKnownDefaultUrl(string url) =>
         url == SessionProviderCatalog.DefaultBaseUrl(SessionProvider.Ollama)
@@ -609,9 +657,12 @@ public partial class EditableProfileViewModel : ViewModelBase
         IPluginProviderConfigViews? pluginConfigViews = null,
         ProvisionPolicy? orgPolicy = null,
         bool hostRunsTty = true,
-        string? brainHint = null)
+        string? brainHint = null,
+        IModelImageInput? imageInput = null)
     {
         _orgPolicy = orgPolicy;
+        _imageInput = imageInput;
+        _imageInputMode = profile.ImageInputMode;
         _storedProfile = profile;
         _pluginConfigViews = pluginConfigViews;
         _tokenEstimator = tokenEstimator;
@@ -730,6 +781,7 @@ public partial class EditableProfileViewModel : ViewModelBase
         {
             EnvironmentVariables.Add(new ProfileEnvironmentVariableViewModel(variable.Key, variable.Value, variable.IsSecret));
         }
+        _ = RefreshImageInputAsync();
     }
 
     // Rebuilds an immutable profile from the current edits, for persisting on save.
@@ -764,6 +816,7 @@ public partial class EditableProfileViewModel : ViewModelBase
             DefaultWorkingDirectory = string.IsNullOrWhiteSpace(DefaultWorkingDirectory) ? null : DefaultWorkingDirectory.Trim(),
             SystemPrompt = string.IsNullOrWhiteSpace(ProfileSystemPrompt) ? null : ProfileSystemPrompt.Trim(),
             Assistant = string.IsNullOrWhiteSpace(Assistant) ? null : Assistant.Trim(),
+            ImageInputMode = ImageInputMode,
             MemoryCapMegabytes = MemoryCapMegabytes is > 0 ? MemoryCapMegabytes : null,
             MaxParallelSessions = Math.Max(0, MaxParallelSessions ?? 0),
             // A host without terminals persists SDK. Locally, a provider without a TTY route keeps the existing null.

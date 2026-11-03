@@ -191,6 +191,7 @@ internal static class OptionsStaging
     }
 
     private static string _ProfileFingerprint(Cockpit.Core.Profiles.SessionProfile profile) =>
+        // ImageInputMode is staged with the complete profile, so Cancel also discards that choice.
         JsonSerializer.Serialize(profile) + Separator + JsonSerializer.Serialize(profile.ProviderConfig, profile.ProviderConfig.GetType());
 
     private static object? _Read(object? root, string path)

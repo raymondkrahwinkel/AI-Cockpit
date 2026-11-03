@@ -9,6 +9,9 @@ namespace Cockpit.Core.Abstractions.Profiles;
 /// </summary>
 public interface ISessionProfileStore
 {
+    /// <summary>Refreshes live profile decisions after a successful save.</summary>
+    event Func<IReadOnlyList<SessionProfile>, Task>? Saved { add { } remove { } }
+
     /// <summary>
     /// Returns the persisted profiles, or an auto-detected default set if none were ever saved.
     /// </summary>

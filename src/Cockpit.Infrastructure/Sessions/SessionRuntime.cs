@@ -1,6 +1,8 @@
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Provisioning;
+using Cockpit.Core.ModelIntelligence;
+using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Plugins.Abstractions.Sessions;
@@ -35,6 +37,13 @@ internal sealed class SessionRuntime : ISessionRuntime
     private readonly Lock _eventsLock = new();
 
     private ISessionDriver? _driver;
+    private readonly IModelImageInput? _imageInput;
+    private readonly ISessionProfileStore? _profiles;
+    private string? _model;
+    private int _visionRevision;
+    private readonly Lock _visionLock = new();
+    private ImageInputFact? _serviceVision;
+    private ImageInputFact? _publicVision;
     private volatile bool _readOnlyTurn;
 
     public bool SupportsReadOnlyTurns => _driver?.SupportsReadOnlyTurns == true;
@@ -89,20 +98,106 @@ internal sealed class SessionRuntime : ISessionRuntime
         SessionProfile? profile,
         ISessionMemoryLimiter? memoryLimiter = null,
         ISessionProcessAnchor? processAnchor = null,
-        IOrgPolicy? orgPolicy = null)
+        IOrgPolicy? orgPolicy = null,
+        IModelImageInput? imageInput = null,
+        ISessionProfileStore? profiles = null)
     {
         _driverFactory = driverFactory;
         Profile = profile;
         _memoryLimiter = memoryLimiter;
         _processAnchorFactory = processAnchor;
         _orgPolicy = orgPolicy;
+        _imageInput = imageInput;
+        _profiles = profiles;
+        if (_profiles is not null)
+        {
+            _profiles.Saved += _ProfileSavedAsync;
+        }
     }
 
     public string Id { get; } = Guid.NewGuid().ToString("N");
 
     public SessionProfile? Profile { get; private set; }
 
-    public SessionCapabilities? Capabilities => _driver?.Capabilities;
+    public SessionCapabilities? Capabilities
+    {
+        get
+        {
+            lock (_visionLock)
+            {
+                return _driver?.Capabilities is { } transport
+                    ? transport with { SupportsVision = ImageInput.Resolve(Profile?.ImageInputMode ?? ImageInputMode.Auto, transport.SupportsVision,
+                        _serviceVision?.At(DateTimeOffset.UtcNow), _publicVision?.At(DateTimeOffset.UtcNow)).SupportsVision } : null;
+            }
+        }
+    }
+
+    private Task _ProfileSavedAsync(IReadOnlyList<SessionProfile> profiles)
+    {
+        if (Profile is { } current && profiles.FirstOrDefault(value => value.Label == current.Label) is { } updated)
+        {
+            Profile = current with { ImageInputMode = updated.ImageInputMode };
+            _RefreshVision(_model);
+        }
+        return Task.CompletedTask;
+    }
+
+    private void _RefreshVision(string? model)
+    {
+        int revision;
+        lock (_visionLock)
+        {
+            revision = ++_visionRevision;
+            _model = model;
+            _serviceVision = null;
+            _publicVision = null;
+        }
+        _PublishVision();
+        if (_imageInput is not null && Profile is { ImageInputMode: ImageInputMode.Auto } profile
+            && _lifetime is { IsCancellationRequested: false } lifetime)
+        {
+            var cancellationToken = lifetime.Token;
+            _ = Task.Run(() => _ReadVisionAsync(profile, model, revision, cancellationToken));
+        }
+    }
+
+    private async Task _ReadVisionAsync(SessionProfile profile, string? model, int revision, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (_imageInput is null)
+            {
+                return;
+            }
+            var facts = await _imageInput.ReadAsync(profile, model, cancellationToken);
+            lock (_visionLock)
+            {
+                if (revision != _visionRevision || cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+                _serviceVision = facts.Service;
+                _publicVision = facts.OpenRouter;
+            }
+            _PublishVision();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+        catch (Exception)
+        {
+            // A failed capability lookup leaves images unknown without interrupting text chat.
+        }
+    }
+
+    private void _PublishVision()
+    {
+        if (Capabilities is { } capabilities)
+        {
+            _Publish(new SessionCapabilitiesChanged { SessionId = _lastSessionId, Capabilities = capabilities });
+        }
+    }
 
     // The process this session runs in, once its driver started one (#78) — null for a provider that is an HTTP call rather than a process.
     public int? ProcessId => _driver?.ProcessId;
@@ -157,6 +252,7 @@ internal sealed class SessionRuntime : ISessionRuntime
         _driver = _driverFactory.Create(profile);
         var clampedTo = _ClampStart(ref permissionMode, ref launchOptions);
         await _driver.StartAsync(profile, permissionMode, model, enabledMcpServerNames, workingDirectory, resume, launchOptions, projectId, _lifetime.Token);
+        _RefreshVision(model ?? (profile is null ? null : ProfileModel.Of(profile) ?? profile.Defaults?.OptionDefaults?.GetValueOrDefault(WellKnownPluginSessionOptions.Model)));
         if (clampedTo is not null && _policy is not null)
         {
             _Publish(new SessionError { SessionId = _lastSessionId, Message = OrgPolicyCeilings.StartedClamped(_policy, permissionMode ?? clampedTo, clampedTo) });
@@ -202,6 +298,7 @@ internal sealed class SessionRuntime : ISessionRuntime
         {
             await _EnsureModelAllowedAsync(model, cancellationToken);
             await _driver.SetModelAsync(model, cancellationToken);
+            _RefreshVision(model);
         }
     }
 
@@ -228,6 +325,10 @@ internal sealed class SessionRuntime : ISessionRuntime
         }
 
         await _driver.SetLiveOptionAsync(key, value, cancellationToken);
+        if (string.Equals(key, WellKnownPluginSessionOptions.Model, StringComparison.OrdinalIgnoreCase))
+        {
+            _RefreshVision(value);
+        }
     }
 
     public async Task SetAutoApproveToolsAsync(bool autoApprove, CancellationToken cancellationToken = default)
@@ -276,6 +377,14 @@ internal sealed class SessionRuntime : ISessionRuntime
 
     public async ValueTask DisposeAsync()
     {
+        lock (_visionLock)
+        {
+            ++_visionRevision;
+        }
+        if (_profiles is not null)
+        {
+            _profiles.Saved -= _ProfileSavedAsync;
+        }
         // Interrupt first so a running turn is told to stop rather than having its process pulled from under
         // it; then cancel the pump, then let the driver tear its process down. Bounded by InterruptGrace: a CLI
         // that stopped answering its control protocol must not hold up the process-tree teardown that follows.
@@ -423,6 +532,10 @@ internal sealed class SessionRuntime : ISessionRuntime
         {
             await foreach (var evt in _driver.Events.WithCancellation(cancellationToken))
             {
+                if (evt is SessionInitialized { Model: { } confirmed } && evt.ParentToolUseId is null)
+                {
+                    _RefreshVision(confirmed);
+                }
                 _Publish(evt);
             }
         }

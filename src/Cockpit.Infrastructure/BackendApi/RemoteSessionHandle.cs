@@ -220,7 +220,7 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl
         {
             lock (_gate)
             {
-                return _capabilities;
+                return _liveState?.Capabilities ?? _capabilities;
             }
         }
 
