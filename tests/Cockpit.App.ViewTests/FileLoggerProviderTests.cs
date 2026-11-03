@@ -88,9 +88,9 @@ public class FileLoggerProviderTests
             Assert.Contains("latest critical", retained);
 
             var crashPath = Path.Combine(dir.FullName, "crash.log");
-            var probe = LogPidPositiveControlTests._LocateProbeOutput();
+            var probe = _LocateProbeOutput();
             Assert.NotNull(probe);
-            using var crash = LogPidPositiveControlTests._StartProbe(probe, crashPath, "crash");
+            using var crash = _StartProbe(probe, crashPath, "crash");
             Assert.True(crash.WaitForExit(10_000));
             Assert.NotEqual(0, crash.ExitCode);
             Assert.Contains("lifecycle before managed crash", File.ReadAllText(crashPath));
@@ -100,6 +100,37 @@ public class FileLoggerProviderTests
         {
             dir.Delete(recursive: true);
         }
+    }
+
+    private static Process _StartProbe(string probeDll, string logPath, string label)
+    {
+        var startInfo = new ProcessStartInfo("dotnet") { UseShellExecute = false };
+        startInfo.ArgumentList.Add("exec");
+        startInfo.ArgumentList.Add(probeDll);
+        startInfo.ArgumentList.Add(logPath);
+        startInfo.ArgumentList.Add(label);
+        return Process.Start(startInfo) ?? throw new InvalidOperationException("dotnet exec did not start a process");
+    }
+
+    // Walks up from the test output to the repo root and finds the probe's build output, the same technique
+    // DiagramPluginLoadTests uses for its build-only ProjectReference.
+    private static string? _LocateProbeOutput()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            var candidateRoot = Path.Combine(directory.FullName, "tests", "Cockpit.LogPidProbe", "bin");
+            if (Directory.Exists(candidateRoot))
+            {
+                return Directory
+                    .EnumerateFiles(candidateRoot, "Cockpit.LogPidProbe.dll", SearchOption.AllDirectories)
+                    .FirstOrDefault();
+            }
+
+            directory = directory.Parent;
+        }
+
+        return null;
     }
 
     private sealed class SlowSink : MemoryStream

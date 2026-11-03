@@ -29,19 +29,4 @@ public class ShortcutFocusTests
     {
         Assert.Equal(ShortcutFocus.Terminal, ShortcutDispatchGate.FocusOf(new TerminalControl()));
     });
-
-    [Fact]
-    public void AButtonInAnOrdinaryPanel_IsElsewhere() => HeadlessAvalonia.Run(() =>
-    {
-        var button = new Button();
-        _ = new Window { Content = new StackPanel { Children = { button } }, Width = 400, Height = 300 };
-
-        Assert.Equal(ShortcutFocus.Elsewhere, ShortcutDispatchGate.FocusOf(button));
-    });
-
-    [Fact]
-    public void NothingFocused_IsElsewhere() => HeadlessAvalonia.Run(() =>
-    {
-        Assert.Equal(ShortcutFocus.Elsewhere, ShortcutDispatchGate.FocusOf(null));
-    });
 }

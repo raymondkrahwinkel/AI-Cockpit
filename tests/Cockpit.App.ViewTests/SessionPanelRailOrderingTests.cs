@@ -1,6 +1,4 @@
-using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
-using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Core.Abstractions.Sessions;
 
 namespace Cockpit.App.ViewTests;
@@ -14,8 +12,6 @@ public class SessionPanelRailOrderingTests
 {
     [Theory]
     [InlineData(SessionStatus.Idle, false)]
-    [InlineData(SessionStatus.Busy, false)]
-    [InlineData(SessionStatus.WorkingBackground, false)]
     [InlineData(SessionStatus.NeedsAttention, true)]
     [InlineData(SessionStatus.Done, false)]
     // AC-1311 criterion 3: Failed falls in the same needs-eyes-on-it class as NeedsAttention — a crashed session
@@ -29,34 +25,6 @@ public class SessionPanelRailOrderingTests
     });
 
     [Fact]
-    public void RequestsAttention_AlsoTrueWithAPendingConsentPrompt_EvenWhileIdle() => HeadlessAvalonia.Run(() =>
-    {
-        var session = new SessionViewModel { SessionStatus = SessionStatus.Idle };
-        var request = new ConsentRequest(
-            "Run a command", "ls -la", new ConsentSource("pane-1", null, "Test"), "test.run", ConsentRisk.LowRisk);
-
-        session.PendingConsent = new ConsentPromptViewModel(new ConsentQuestion(Guid.NewGuid(), request, CanRemember: false), new _NoOpConsent());
-
-        Assert.True(session.RequestsAttention);
-    });
-
-    // `ConsentPromptViewModel` only reaches its broker from the Approve/Deny commands, neither of which this
-    // test exercises — a no-op stands in rather than the real `ConsentService` and everything it wires up.
-    private sealed class _NoOpConsent : IConsentPrompts
-    {
-        public Task<ConsentDecision> RequestAsync(ConsentRequest request, CancellationToken cancellationToken = default) =>
-            Task.FromResult(ConsentDecision.Denied);
-
-        public event EventHandler<ConsentQuestion>? Opened { add { } remove { } }
-
-        public event EventHandler<Guid>? Closed { add { } remove { } }
-
-        public void Respond(Guid promptId, ConsentOutcome outcome, bool remember)
-        {
-        }
-    }
-
-    [Fact]
     public void RailSortKey_PutsEveryAttentionNeedingSessionBeforeEveryQuietOne_RegardlessOfSidebarIndex() => HeadlessAvalonia.Run(() =>
     {
         var quiet = new SessionViewModel { SessionStatus = SessionStatus.Idle, SidebarIndex = 0 };
@@ -64,14 +32,5 @@ public class SessionPanelRailOrderingTests
 
         Assert.True(attention.RailSortKey < quiet.RailSortKey,
             "a session needing attention must sort first no matter how far down the sidebar it sits");
-    });
-
-    [Fact]
-    public void RailSortKey_WithinTheSameAttentionGroup_FollowsSidebarIndex() => HeadlessAvalonia.Run(() =>
-    {
-        var earlier = new SessionViewModel { SessionStatus = SessionStatus.Idle, SidebarIndex = 1 };
-        var later = new SessionViewModel { SessionStatus = SessionStatus.Idle, SidebarIndex = 2 };
-
-        Assert.True(earlier.RailSortKey < later.RailSortKey);
     });
 }

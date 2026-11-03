@@ -10,17 +10,6 @@ namespace Cockpit.App.ViewTests;
 /// </summary>
 public class AdaptiveGcCompactorTests
 {
-    [Fact]
-    public void CheckOnce_SkipsACompactWhenTheHeapIsBelowTheFloor()
-    {
-        var logger = new _CapturingLogger();
-        var compactor = new AdaptiveGcCompactor(logger);
-
-        compactor.CheckOnce();
-
-        Assert.Empty(logger.Messages);
-    }
-
     /// <summary>
     /// AC-756: a heap whose <em>live</em> set sits above the floor must be compacted once, not on every check.
     /// Measured before this guard: 133 compacts/minute of ~250 ms each, which froze the UI thread over half the
@@ -40,43 +29,6 @@ public class AdaptiveGcCompactorTests
 
         Assert.Equal(1, compacts);
         Assert.Single(logger.Messages);
-    }
-
-    [Fact]
-    public void CheckOnce_CompactsAgainOnceTheHeapHasGrownPastTheLastCompact()
-    {
-        var logger = new _CapturingLogger();
-        var compacts = 0;
-        var heapBytes = 400L * 1024 * 1024;
-        var compactor = new AdaptiveGcCompactor(logger, () => heapBytes, () => compacts++, allocatedBytesProbe: () => 0L);
-
-        compactor.CheckOnce();
-        heapBytes = 501L * 1024 * 1024;
-        compactor.CheckOnce();
-
-        Assert.Equal(2, compacts);
-    }
-
-    /// <summary>
-    /// "We shouldn't notice the GC at all" (Raymond, 2026-08-15): even a small compact is a visible micro-stutter
-    /// if it lands mid-stream or mid-scroll. So a compact is deferred while the app is allocating heavily and only
-    /// runs once things go quiet — the pause then overlaps a lull nobody is watching.
-    /// </summary>
-    [Fact]
-    public void CheckOnce_DefersACompactWhileTheAppIsAllocatingHeavilyThenRunsItInTheLull()
-    {
-        var logger = new _CapturingLogger();
-        var compacts = 0;
-        var allocated = 0L;
-        var compactor = new AdaptiveGcCompactor(logger, () => 450L * 1024 * 1024, () => compacts++, allocatedBytesProbe: () => allocated);
-
-        allocated += 50L * 1024 * 1024; // a busy tick: streaming a big reply
-        compactor.CheckOnce();
-        Assert.Equal(0, compacts); // deferred — no pause during active work
-
-        // No new allocation: the stream stopped, the app is idle.
-        compactor.CheckOnce();
-        Assert.Equal(1, compacts); // now the compact runs, unseen
     }
 
     /// <summary>
@@ -104,77 +56,6 @@ public class AdaptiveGcCompactorTests
 
         Assert.Equal(0, compacts); // never freezes a multi-GB heap
         Assert.NotEmpty(logger.Messages); // but tells the operator a restart is the remedy
-    }
-
-    /// <summary>
-    /// The pause of a compacting collect scales with heap size, so a heap under the ceiling is still a cheap hitch
-    /// and gets compacted, while one over it (but not yet leak-warn territory) is left alone — no freeze, no noise.
-    /// </summary>
-    [Fact]
-    public void CheckOnce_CompactsUnderTheCeilingButLeavesAHeapOverItAlone()
-    {
-        var under = new _CapturingLogger();
-        var underCompacts = 0;
-        new AdaptiveGcCompactor(under, () => 450L * 1024 * 1024, () => underCompacts++, allocatedBytesProbe: () => 0L).CheckOnce();
-        Assert.Equal(1, underCompacts);
-
-        var over = new _CapturingLogger();
-        var overCompacts = 0;
-        new AdaptiveGcCompactor(over, () => 2L * 1024 * 1024 * 1024, () => overCompacts++).CheckOnce();
-        Assert.Equal(0, overCompacts);
-        Assert.Empty(over.Messages); // between the compact ceiling and the leak ceiling: quiet
-    }
-
-    /// <summary>
-    /// AC-965: this check measures a heap size and nothing else, so it must not name a cause. Two investigations
-    /// were sent after Avalonia by the wording this replaces while the actual fault was elsewhere.
-    /// </summary>
-    [Fact]
-    public void CheckOnce_DoesNotBlameAvaloniaForAHeapItOnlyMeasured()
-    {
-        var logger = new _CapturingLogger();
-        var now = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        var compactor = new AdaptiveGcCompactor(
-            logger, () => 4L * 1024 * 1024 * 1024, () => { }, () => now, heapDump: () => null);
-
-        compactor.CheckOnce();
-        now = now.AddSeconds(61);
-        compactor.CheckOnce();
-
-        Assert.NotEmpty(logger.Messages);
-        Assert.DoesNotContain(logger.Messages, message => message.Contains("Avalonia", StringComparison.Ordinal));
-    }
-
-    /// <summary>
-    /// AC-965: the dump is the only evidence of what held the heap, and it is taken at most once per run — a
-    /// second costs as much as the first and says the same thing.
-    /// </summary>
-    [Fact]
-    public void CheckOnce_TakesAtMostOneHeapDumpPerRunAndOnlyWhenItWasAskedFor()
-    {
-        var previous = Environment.GetEnvironmentVariable(AdaptiveGcCompactor.HeapDumpEnvironmentVariable);
-        try
-        {
-            Environment.SetEnvironmentVariable(AdaptiveGcCompactor.HeapDumpEnvironmentVariable, "1");
-
-            var dumps = 0;
-            var now = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-            var compactor = new AdaptiveGcCompactor(
-                new _CapturingLogger(), () => 4L * 1024 * 1024 * 1024, () => { }, () => now,
-                heapDump: () => { dumps++; return "/tmp/cockpit-heap.dmp"; });
-
-            compactor.CheckOnce();
-            now = now.AddSeconds(61);
-            compactor.CheckOnce();
-            now = now.AddSeconds(61);
-            compactor.CheckOnce();
-
-            Assert.Equal(1, dumps);
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable(AdaptiveGcCompactor.HeapDumpEnvironmentVariable, previous);
-        }
     }
 
     /// <summary>

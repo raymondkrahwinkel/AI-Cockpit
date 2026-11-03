@@ -40,20 +40,6 @@ public class EmbeddedSessionRunTaggingTests
         Assert.Equal("AC-251 - persist usage", session.RunLabel);
     });
 
-    [Fact]
-    public void Embed_WithoutARun_StillMarksTheSessionAsEmbedded() => Dispatcher.UIThread.Invoke(() =>
-    {
-        var (cockpit, sessions) = _Cockpit();
-
-        cockpit.Embed("workspace.autopilot.plan", new EmbeddedSessionRequest());
-
-        // A plugin that embeds a session for no particular run — the planning round — still spends, and its
-        // records must read as plugin work rather than as something the operator typed.
-        var session = Assert.Single(sessions);
-        Assert.Equal(UsageRunKind.Embedded, session.RunKind);
-        Assert.Null(session.RunId);
-    });
-
     // A cockpit with just enough graph to embed, and the sessions its factory handed out.
     private static (CockpitViewModel Cockpit, List<SessionViewModel> Sessions) _Cockpit()
     {

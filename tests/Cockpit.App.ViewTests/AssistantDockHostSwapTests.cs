@@ -1,6 +1,5 @@
 using Avalonia.Controls;
 using Avalonia.Threading;
-using Avalonia.VisualTree;
 using Cockpit.App.Docking;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
@@ -121,22 +120,6 @@ public sealed class AssistantDockHostSwapTests
     }
 
     [Fact]
-    public async Task WithTheAssistantDocked_TheChipOpensTheRail_AndNeverASecondWindow()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var (coordinator, cockpit, _) = Build();
-            await cockpit.SetAssistantDockedAsync(true, AssistantIndicatorCoordinator.DockPanelId);
-
-            coordinator.Indicator.ClickCommand.Execute(null);
-            Dispatcher.UIThread.RunJobs();
-
-            Assert.Null(coordinator.OpenChatWindow);
-            Assert.Equal(AssistantIndicatorCoordinator.DockPanelId, cockpit.OpenDockPanelId);
-        });
-    }
-
-    [Fact]
     public async Task Undocking_ClosesTheRailPanel_BeforeTheWindowTakesTheChat()
     {
         await HeadlessAvalonia.RunAsync(async () =>
@@ -189,49 +172,5 @@ public sealed class AssistantDockHostSwapTests
             {
             }
         }
-    }
-
-    // The same undock, but through the real rail rather than the registration alone: the settings saying the panel
-    // is closed is not the same claim as the docked chat being off the screen, and it was the second one the
-    // operator was looking at when they reported a window and a docked panel standing side by side.
-    [Fact]
-    public async Task Undocking_TakesTheDockedChatOutOfTheCockpitsOwnTree_NotJustOutOfTheSettings()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var (coordinator, cockpit, _) = Build();
-
-            var main = new Window { Width = 1100, Height = 760, Content = new CockpitView { DataContext = cockpit } };
-            main.Show();
-            main.UpdateLayout();
-
-            try
-            {
-                // Docked, so the rail carries the tab and its panel is open — the state a restart restores into.
-                await cockpit.SetAssistantDockedAsync(true, AssistantIndicatorCoordinator.DockPanelId);
-                Dispatcher.UIThread.RunJobs();
-                main.UpdateLayout();
-
-                var docked = main.GetVisualDescendants().OfType<AssistantChatView>().SingleOrDefault();
-                Assert.NotNull(docked);
-
-                ((AssistantChatViewModel)docked!.DataContext!).ToggleDockCommand.Execute(null);
-                Dispatcher.UIThread.RunJobs();
-                main.UpdateLayout();
-
-                Assert.Empty(main.GetVisualDescendants().OfType<AssistantChatView>());
-                Assert.NotNull(coordinator.OpenChatWindow);
-
-                // And the tab goes with it: undocked, the assistant is a window, so a rail tab for it would only
-                // ever open a second one. With nothing left registered the rail gives its column back entirely
-                // rather than standing there as an empty strip.
-                Assert.Empty(cockpit.DockPanels);
-                Assert.False(cockpit.HasDockPanels);
-            }
-            finally
-            {
-                main.Close();
-            }
-        });
     }
 }

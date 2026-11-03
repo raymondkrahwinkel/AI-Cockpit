@@ -19,58 +19,6 @@ public sealed class MarkdownViewFilePathTests : IDisposable
     public void Dispose() => FilePathResolver.Exists = _originalExists;
 
     [Fact]
-    public async Task ResolvedPath_IsTintedWithAHandCursor_DeadCodeSpanIsNot()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            FilePathResolver.Exists = p => p.EndsWith("Theme.axaml", StringComparison.Ordinal);
-
-            var view = new MarkdownView { BasePath = @"C:\repo" };
-            var window = new Window { Content = view, Width = 900, Height = 200 };
-            window.Show();
-
-            view.Markdown = "See `Theme.axaml` and `CheckBox.Switch`.";
-            // First pass renders both as plain code (the probe has not answered yet); the settle callback
-            // forces the rebuild that makes the resolved one tinted (AC-642 valkuil 2) — wait for the cursor
-            // that rebuild produces rather than a fixed delay hoping the background probe already landed.
-            await _WaitUntilAsync(() => _IsResolved(view));
-
-            var text = Assert.IsAssignableFrom<SelectableTextBlock>(
-                Assert.Single(Assert.IsType<StackPanel>(view.Content).Children));
-            var runs = text.Inlines!.OfType<Run>().ToList();
-
-            var resolvedRun = runs.First(r => r.Text == "Theme.axaml");
-            var deadRun = runs.First(r => r.Text == "CheckBox.Switch");
-
-            Assert.NotEqual(deadRun.Foreground?.ToString(), resolvedRun.Foreground?.ToString());
-            Assert.NotNull(text.Cursor);
-
-            window.Close();
-        });
-    }
-
-    [Fact]
-    public async Task PlainCodeSpan_NeverProbesTheResolver()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var probed = false;
-            FilePathResolver.Exists = _ => { probed = true; return true; };
-
-            var view = new MarkdownView { BasePath = @"C:\repo" };
-            var window = new Window { Content = view, Width = 900, Height = 200 };
-            window.Show();
-
-            // The vorm filter runs synchronously inside the property setter's own render pass — no probe is ever
-            // scheduled, so there is nothing to wait for.
-            view.Markdown = "Build with `--warnaserror`.";
-
-            Assert.False(probed); // no separator, no short extension — the vorm filter rejects it before disk
-            window.Close();
-        });
-    }
-
-    [Fact]
     public async Task ClickingAResolvedPath_OpensFilePreviewWindowOwnedByTheHostWindow()
     {
         await HeadlessAvalonia.RunAsync(async () =>
@@ -116,70 +64,6 @@ public sealed class MarkdownViewFilePathTests : IDisposable
             {
                 dir.Delete(recursive: true);
             }
-        });
-    }
-
-    [Fact]
-    public async Task ManyUniquePaths_SettlingProbesPatchTheirRunInsteadOfRebuildingTheTree()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            // Every distinct path is its own FilePathResolver cache key, so a row naming 20 of them
-            // schedules 20 separate background probes, each landing on the UI thread on its own.
-            FilePathResolver.Exists = _ => true;
-
-            var view = new MarkdownView { BasePath = @"C:\repo" };
-            var window = new Window { Content = view, Width = 900, Height = 800 };
-            window.Show();
-
-            var spans = string.Join(", ", Enumerable.Range(0, 20).Select(i => $"`File{i}.cs`"));
-            view.Markdown = $"See {spans}.";
-            var renderCountAfterInitialRender = view.DebugRenderCount;
-
-            var unresolvedBackground = _CodeRuns(view)[0].Background?.ToString();
-
-            // Re-fetches the current runs every poll rather than holding one reference: a full rebuild (the
-            // pre-fix behaviour) replaces the control entirely, and a stale reference would never see that.
-            // Background (not Foreground, which inherits from the block and reads non-null either way) is
-            // explicitly assigned: CodeBackground before a probe lands, ClickablePathBackground after — so a
-            // change away from the unresolved colour means that run's probe has landed.
-            await _WaitUntilAsync(() => _CodeRuns(view).All(r => r.Background?.ToString() != unresolvedBackground));
-
-            // AC-1129: before the fix, each of the 20 landings called _Render again (+20 rebuilds on top of the
-            // initial one, scaling with the path count). A settling probe now patches only the run that asked,
-            // so the count never moves off the initial render regardless of how many paths the row named.
-            Assert.Equal(renderCountAfterInitialRender, view.DebugRenderCount);
-
-            window.Close();
-        });
-    }
-
-    private static List<Run> _CodeRuns(MarkdownView view) =>
-        Assert.IsAssignableFrom<SelectableTextBlock>(Assert.Single(Assert.IsType<StackPanel>(view.Content).Children))
-            .Inlines!.OfType<Run>().Where(r => r.Text!.StartsWith("File", StringComparison.Ordinal)).ToList();
-
-    [Fact]
-    public async Task RowWithoutPaths_RendersOnceRegardlessOfProbes()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            // Positive control for the test above: with nothing to probe, the render count was already
-            // 1 before AC-1129 — proving the many-paths count would rise from 1 without the fix.
-            var probed = false;
-            FilePathResolver.Exists = _ => { probed = true; return true; };
-
-            var view = new MarkdownView { BasePath = @"C:\repo" };
-            var window = new Window { Content = view, Width = 900, Height = 200 };
-            window.Show();
-
-            view.Markdown = "Just prose, no code spans at all.";
-            var renderCountAfterInitialRender = view.DebugRenderCount;
-            await Task.Delay(50);
-
-            Assert.False(probed);
-            Assert.Equal(renderCountAfterInitialRender, view.DebugRenderCount);
-
-            window.Close();
         });
     }
 

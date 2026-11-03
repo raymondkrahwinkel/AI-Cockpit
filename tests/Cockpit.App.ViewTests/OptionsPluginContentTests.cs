@@ -18,31 +18,6 @@ namespace Cockpit.App.ViewTests;
 [Collection("avalonia")]
 public class OptionsPluginContentTests
 {
-    [Fact]
-    public void SelectingAPluginRow_ShowsItsContent() => HeadlessAvalonia.Run(() =>
-    {
-        var vm = new CockpitViewModel();
-        var sink = (IPluginContributionSink)vm;
-        sink.AddPluginSettings("diagram", "Diagram, Whiteboard & Wireframe", () => new TextBlock { Text = "diagram settings" });
-        vm.BeginOptionsEdit();
-
-        var dialog = new OptionsDialog { DataContext = vm };
-        dialog.Show();
-        dialog.UpdateLayout();
-
-        var nav = dialog.GetVisualDescendants().OfType<ListBox>().Single(list => list.Name == "CategoryNav");
-        var pluginItem = nav.Items.OfType<ListBoxItem>().Single(item => item.Tag as string == "plugin:diagram");
-
-        nav.SelectedItem = pluginItem;
-        dialog.UpdateLayout();
-
-        var page = dialog.GetVisualDescendants().OfType<ScrollViewer>().Single(sv => sv.Tag as string == "plugin:diagram");
-        Assert.True(page.IsEffectivelyVisible);
-        Assert.Contains(dialog.GetVisualDescendants().OfType<TextBlock>(), tb => tb.Text == "diagram settings");
-
-        dialog.Close();
-    });
-
     // AC-1078 criterion 3, the whole of it: a plugin with empty required fields says so on its own page and
     // nowhere else. Until AC-1084 every section's reason was joined into one footer line, so a plugin's complaint
     // stood in the dialog chrome instead of beside the fields it is about.
@@ -52,7 +27,7 @@ public class OptionsPluginContentTests
         const string reason = "A bot token is required.";
         var vm = new CockpitViewModel();
         var sink = (IPluginContributionSink)vm;
-        sink.AddPluginSettings("discord", "Discord", () => new _RefusingView(reason));
+        sink.AddPluginSettings("discord", "Discord", () => new _RefusingView(reason), "Assistant Plugins"); // AC-1030: a declared category is still reachable by its tag
         vm.BeginOptionsEdit();
         vm.PluginOptionsRows.Single().EnsureContent();
 

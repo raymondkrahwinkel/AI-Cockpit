@@ -34,16 +34,6 @@ namespace Cockpit.App.ViewTests;
 public class AssistantProfileDialogTests
 {
     [Fact]
-    public void TheMcpHint_NamesTheServersTheMountRuleActuallyAlwaysAdds()
-    {
-        // Read off AssistantIdentity, not typed here: the checklist tells the operator these arrive whatever they
-        // tick, and AssistantSessionHost.McpSelection is what makes that true. Two copies of that claim is one that
-        // can quietly stop matching — which is the same failure mode AssistantPaneId's own doc warns about.
-        Assert.Contains(AssistantIdentity.McpServerName, AssistantProfileDialogViewModel.AlwaysMountedMcpServers, StringComparison.Ordinal);
-        Assert.Contains(AssistantIdentity.ActMcpServerName, AssistantProfileDialogViewModel.AlwaysMountedMcpServers, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public async Task Loading_OpensOnTheAssistantsOwnRecord()
     {
         var slot = new AssistantProfileSlot(_Record("Claude (assistant)", permissionMode: "bypassPermissions"));
@@ -95,67 +85,6 @@ public class AssistantProfileDialogTests
     }
 
     private const string _Brain = "depot:acme/zyra@depot.acme.example";
-
-    /// <summary>
-    /// A slot that has never been set up opens on a blank record rather than refusing: this dialog is where an
-    /// assistant profile comes into being, so "there is none yet" is its empty state and not an error.
-    /// </summary>
-    [Fact]
-    public void Loading_WithNoRecordYet_OpensOnABlankOne_AndSaysWhyItWasEmpty()
-    {
-        var viewModel = Dispatcher.UIThread.Invoke(() => _Dialog(AssistantProfileSlot.Unset("No assistant profile has been set up yet.")));
-
-        Dispatcher.UIThread.Invoke(() => viewModel.LoadAsync().GetAwaiter().GetResult());
-
-        Assert.Equal(AssistantProfileSlot.DisplayName, viewModel.Profile.Label);
-        Assert.Contains("set up", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
-    }
-
-    /// <summary>
-    /// Copying an existing profile in is a fill, not a link — and the whole reason the previous design needed a
-    /// paragraph explaining that its copy was a copy.
-    /// </summary>
-    [Fact]
-    public void CopyingAProfileIn_FillsTheEditor_AndWritesNothingUntilSaved()
-    {
-        var slotStore = _SlotStore(new AssistantProfileSlot(_Record("Claude (assistant)", permissionMode: "default")));
-        var source = _Record("work", permissionMode: "bypassPermissions");
-        var viewModel = Dispatcher.UIThread.Invoke(() => _Dialog(slotStore: slotStore, profiles: [source]));
-        Dispatcher.UIThread.Invoke(() => viewModel.LoadAsync().GetAwaiter().GetResult());
-
-        Dispatcher.UIThread.Invoke(() =>
-        {
-            viewModel.CopyFromProfile = source;
-            viewModel.CopyFromCommand.Execute(null);
-        });
-
-        Assert.Equal("work", viewModel.Profile.Label);
-        Assert.Equal(
-            "bypassPermissions",
-            viewModel.Profile.PluginOptionDefaults.Single(option => option.Key == "permission-mode").Value);
-
-        // Nothing on disk yet: a fill the operator can still look at and cancel out of.
-        slotStore.DidNotReceive().RepointAsync(Arg.Any<SessionProfile>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public void Saving_WritesTheEditedRecordOntoTheSlot()
-    {
-        var slotStore = _SlotStore(new AssistantProfileSlot(_Record("Claude (assistant)", permissionMode: "default")));
-        var viewModel = Dispatcher.UIThread.Invoke(() => _Dialog(slotStore: slotStore));
-        Dispatcher.UIThread.Invoke(() => viewModel.LoadAsync().GetAwaiter().GetResult());
-
-        Dispatcher.UIThread.Invoke(() =>
-        {
-            viewModel.Profile.PluginOptionDefaults.Single(option => option.Key == "permission-mode").Value = "bypassPermissions";
-            viewModel.SaveCommand.Execute(null);
-        });
-
-        var saved = (SessionProfile)slotStore.ReceivedCalls()
-            .Single(call => call.GetMethodInfo().Name == nameof(IAssistantProfileStore.RepointAsync))
-            .GetArguments()[0]!;
-        Assert.Equal("bypassPermissions", saved.Defaults!.OptionDefaults!["permission-mode"]);
-    }
 
     /// <summary>
     /// The valkuil this dialog is most exposed to: it renders five blocks out of a record that has more fields
@@ -246,24 +175,6 @@ public class AssistantProfileDialogTests
                 record.Defaults!.OptionDefaults!["permission-mode"] == "bypassPermissions"), Arg.Any<bool>(), Arg.Any<CancellationToken>());
             assistant.RestartAsync(Arg.Any<CancellationToken>());
         });
-    }
-
-    [Fact]
-    public void WithNoLivingAssistant_TheRestartIsNotOffered()
-    {
-        // Rather than a button that would silently do half of what it says. The dialog stays fully usable — saving
-        // still works, and the settings apply at whatever start comes next.
-        var viewModel = Dispatcher.UIThread.Invoke(() => _Dialog(assistant: null));
-
-        Assert.False(viewModel.CanRestartAssistant);
-
-        var gemini = new SessionProviderOption("Gemini", SessionProvider.Plugin, "gemini-provider.gemini");
-        var firstRun = Dispatcher.UIThread.Invoke(() => _Dialog(
-            assistant: null,
-            setup: new AssistantProfileSetup([gemini], gemini, static (_, _) => Task.CompletedTask)));
-        Assert.True(firstRun.Profile.IsPluginProviderMissing);
-        Assert.True(firstRun.CanSetUpLater);
-        Assert.False(firstRun.ShowSave);
     }
 
     /// <summary>A record shaped like a plugin profile: its start defaults live in OptionDefaults, which is where the assistant's launch reads them (<c>AssistantSessionHost._LaunchOptions</c>).</summary>

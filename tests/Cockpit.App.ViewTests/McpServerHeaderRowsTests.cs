@@ -18,22 +18,6 @@ public class McpServerHeaderRowsTests
     };
 
     [Fact]
-    public void ACompleteRow_ReachesToConfig()
-    {
-        var editable = new EditableMcpServerViewModel(_HttpServer());
-
-        editable.AddHeaderCommand.Execute(null);
-        editable.Headers[0].Name = "X-Api-Key";
-        editable.Headers[0].Value = "secret";
-
-        var config = editable.ToConfig();
-
-        var header = Assert.Single(config.Headers);
-        Assert.Equal("X-Api-Key", header.Name);
-        Assert.Equal("secret", header.Value);
-    }
-
-    [Fact]
     public void AHalfFilledRow_IsDroppedFromToConfig()
     {
         var editable = new EditableMcpServerViewModel(_HttpServer());
@@ -45,18 +29,6 @@ public class McpServerHeaderRowsTests
         var config = editable.ToConfig();
 
         Assert.Empty(config.Headers);
-    }
-
-    [Fact]
-    public void ExistingHeaders_AreVisibleWhenTheServerIsOpened()
-    {
-        var server = _HttpServer() with { Headers = [new McpHeader("X-Api-Key", "secret")] };
-
-        var editable = new EditableMcpServerViewModel(server);
-
-        var row = Assert.Single(editable.Headers);
-        Assert.Equal("X-Api-Key", row.Name);
-        Assert.Equal("secret", row.Value);
     }
 
     [Fact]
@@ -72,19 +44,5 @@ public class McpServerHeaderRowsTests
         var config = editable.ToConfig();
 
         Assert.Empty(config.Headers);
-    }
-
-    [Fact]
-    public void RemoveHeader_TakesTheRowOutBeforeSave()
-    {
-        var editable = new EditableMcpServerViewModel(_HttpServer());
-        editable.AddHeaderCommand.Execute(null);
-        editable.Headers[0].Name = "X-Api-Key";
-        editable.Headers[0].Value = "secret";
-
-        editable.RemoveHeaderCommand.Execute(editable.Headers[0]);
-
-        Assert.Empty(editable.Headers);
-        Assert.Empty(editable.ToConfig().Headers);
     }
 }

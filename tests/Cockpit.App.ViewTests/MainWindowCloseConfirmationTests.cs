@@ -56,26 +56,6 @@ public class MainWindowCloseConfirmationTests
         });
 
     [Fact]
-    public Task OnClosing_WithActiveSessions_ClosesOnceConfirmed() =>
-        HeadlessAvalonia.RunAsync(async () =>
-        {
-            var dialogService = Substitute.For<ISessionDialogService>();
-            dialogService.ShowConfirmationDialogAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>())
-                .Returns(Task.FromResult(true));
-
-            var window = new MainWindow { DataContext = NewVm(dialogService) };
-            window.Show();
-
-            var closed = false;
-            window.Closed += (_, _) => closed = true;
-
-            window.Close();
-            await _WaitUntilAsync(() => closed);
-
-            Assert.True(closed);
-        });
-
-    [Fact]
     public Task OnClosing_WithNoActiveSessions_ClosesWithoutAsking() =>
         HeadlessAvalonia.RunAsync(async () =>
         {

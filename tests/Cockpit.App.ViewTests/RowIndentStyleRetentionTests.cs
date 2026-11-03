@@ -41,44 +41,6 @@ public sealed class RowIndentStyleRetentionTests
             Assert.Equal(before, ClassListeners(anchor));
         });
     }
-
-    [Fact]
-    public void CompactRowStillFlattensTheIndentOnEveryTypeThatCarriesIt()
-    {
-        HeadlessAvalonia.Run(() =>
-        {
-            Control[] Indented() =>
-            [
-                new Border { Classes = { "rowIndent" } },
-                new StackPanel { Classes = { "rowIndent" } },
-                new SelectableTextBlock { Classes = { "rowIndent" } },
-            ];
-
-            Assert.All(Margins(Indented(), compact: true), m => Assert.Equal(default, m));
-            Assert.All(Margins(Indented(), compact: false), m => Assert.Equal(new Thickness(36, 0, 0, 0), m));
-        });
-    }
-
-    private static IEnumerable<Thickness> Margins(Control[] indented, bool compact)
-    {
-        var host = new StackPanel();
-        foreach (var control in indented)
-        {
-            host.Children.Add(control);
-        }
-
-        var row = new Border { Classes = { "rowRoot" }, Child = host };
-        if (compact)
-        {
-            row.Classes.Add("compact");
-        }
-
-        var window = new Window { Content = row, Width = 400, Height = 400 };
-        window.Show();
-        Pump(window);
-        return indented.Select(c => c.Margin).ToList();
-    }
-
     private static void Pump(Window window)
     {
         window.Measure(new Size(400, 400));

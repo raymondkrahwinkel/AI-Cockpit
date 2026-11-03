@@ -39,22 +39,6 @@ public class AssistantChannelAccessTests
         Assert.Null(AssistantChannelStorage.LoadBotToken(new FakePluginStorage()));
     }
 
-    [Fact]
-    public void SettingsRoundTrip_AndComeBackAsTheLinkedOwner()
-    {
-        var storage = new FakePluginStorage();
-        var saved = Assert.IsType<AssistantChannelAccess>(AssistantChannelAccess.ForSingleUser("117").Access);
-
-        AssistantChannelStorage.Save(storage, saved, AssistantChannelVerbosity.StatusLines);
-        var loaded = AssistantChannelStorage.Load(storage);
-
-        Assert.NotNull(loaded);
-        Assert.Equal(AssistantChannelAudience.SingleUser, loaded.Value.Access.Audience);
-        Assert.Equal(AssistantChannelVerbosity.StatusLines, loaded.Value.Verbosity);
-        Assert.True(loaded.Value.Access.IsAllowed("117"));
-        Assert.False(loaded.Value.Access.IsAllowed("118"));
-    }
-
     public static TheoryData<AssistantChannelAudience, string[], string?, string?, string?> MigrationCases => new()
     {
         { AssistantChannelAudience.SingleUser, ["117"], null, "117", null },

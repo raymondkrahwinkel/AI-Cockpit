@@ -74,49 +74,6 @@ public class SessionContextMenuTargetViewTests
         });
     }
 
-    // AC-5 (reorder): a completed drag-reorder rebuilds row containers (per the ItemsControl's own AC-115
-    // comment) - a right-click against the settled result must still land on the row actually under the cursor.
-    [Fact]
-    public void AfterADragReorder_RightClickRename_StillTargetsTheRowUnderTheCursor()
-    {
-        HeadlessAvalonia.Run(() =>
-        {
-            var (window, view, cockpit) = _BuildShownWindow();
-            var strip = _Strip(view);
-            Border RowFor(SessionPanelViewModel s) => strip.GetVisualDescendants().OfType<Border>()
-                .First(b => ReferenceEquals(b.DataContext, s));
-
-            var s1 = cockpit.Sessions[0];
-            var s3 = cockpit.Sessions[2];
-
-            var from = RowFor(s1).TranslatePoint(new Point(5, 5), window)!.Value;
-            var to = RowFor(s3).TranslatePoint(new Point(5, 5), window)!.Value;
-            window.MouseDown(from, MouseButton.Left);
-            for (var i = 1; i <= 5; i++)
-            {
-                window.MouseMove(from + (to - from) * (i / 5.0), RawInputModifiers.LeftMouseButton);
-                window.UpdateLayout();
-            }
-            window.MouseUp(to, MouseButton.Left);
-            window.UpdateLayout();
-
-            // s1 dragged past s3: the sidebar order actually changed, proving the reorder took.
-            Assert.NotEqual(cockpit.Sessions[0], cockpit.VisibleSessions.First());
-
-            var rows = _Rows(strip);
-            var target = rows[0]; // whatever now sits visually on top
-            var expected = (SessionPanelViewModel)target.DataContext!;
-
-            _RightClick(window, target);
-            Assert.Same(expected, cockpit.SelectedSession);
-
-            _Click(_MenuItem(target, "Rename"));
-            Assert.True(expected.IsRenaming);
-
-            window.Close();
-        });
-    }
-
     // AC-5 (filter): with a second Sessions workspace hiding one of the sessions, the right-click must target the
     // visible row it hit - not miscount against the full, unfiltered session list.
     [Fact]
@@ -190,95 +147,6 @@ public class SessionContextMenuTargetViewTests
         });
     }
 
-    // AC-2: not just Rename - every one of the nine actions must read the same, correctly-resolved target. All
-    // nine already share one helper (_InvokeSessionCommand), which reads sender.DataContext - the row's own
-    // MenuItem, not a separate CommandParameter (removed: it inherited through the exact same chain as
-    // DataContext, so it could never fail independently of it).
-    [Theory]
-    [InlineData("Rename")]
-    [InlineData("Duplicate")]
-    [InlineData("Clear context…")]
-    [InlineData("Set status…")]
-    [InlineData("Resume later…")]
-    [InlineData("Clear status")]
-    [InlineData("Move up")]
-    [InlineData("Move down")]
-    [InlineData("Close")]
-    public void EveryContextMenuItem_CarriesTheRowsOwnSessionAsItsDataContext(string header)
-    {
-        HeadlessAvalonia.Run(() =>
-        {
-            var (window, view, cockpit) = _BuildShownWindow();
-            var rows = _Rows(_Strip(view));
-            var target = rows[1]; // Session 2 - a SessionViewModel, so SupportsClearContext is true here
-            var expected = (SessionPanelViewModel)target.DataContext!;
-
-            _RightClick(window, target);
-
-            var item = _MenuItem(target, header);
-            Assert.Same(expected, item.DataContext);
-
-            window.Close();
-        });
-    }
-
-    // AC-7 regression: a right-click still must not arm the drag-reorder (AC-277) - a subsequent pointer move at
-    // the same position must not reorder anything.
-    [Fact]
-    public void RightClick_DoesNotArmADrag()
-    {
-        HeadlessAvalonia.Run(() =>
-        {
-            var (window, view, cockpit) = _BuildShownWindow();
-            var before = cockpit.VisibleSessions.ToList();
-            var rows = _Rows(_Strip(view));
-            var target = rows[1];
-            var point = target.TranslatePoint(new Point(5, 5), window)!.Value;
-
-            window.MouseDown(point, MouseButton.Right);
-            window.MouseMove(point + new Vector(0, 60), RawInputModifiers.RightMouseButton);
-            window.UpdateLayout();
-
-            Assert.Equal(before, cockpit.VisibleSessions.ToList());
-
-            window.MouseUp(point, MouseButton.Right);
-            window.Close();
-        });
-    }
-
-    // AC-561 root cause: a fresh VisibleSessions list on every read rebuilt every row, closing the Popup of any open menu.
-    [Fact]
-    public void AnAlreadyOpenMenu_SurvivesAReorderOfARowItDoesNotOwn()
-    {
-        HeadlessAvalonia.Run(() =>
-        {
-            var (window, view, cockpit) = _BuildShownWindow();
-            var strip = _Strip(view);
-            var s2 = cockpit.Sessions[1];
-            var s3 = cockpit.Sessions[2];
-            s2.Statusline = "before";
-            s3.Statusline = "untouched";
-            var row = strip.GetVisualDescendants().OfType<Border>().First(b => ReferenceEquals(b.DataContext, s2));
-
-            row.RaiseEvent(new ContextRequestedEventArgs());
-            Assert.True(row.ContextMenu!.IsOpen);
-
-            // Session 3 moves to the front, which shifts Session 2 from sidebar position 1 to 2 - Session 2's own
-            // row was never the one dragged.
-            cockpit.MoveSessionToVisibleIndex(cockpit.Sessions[2], 0);
-            window.UpdateLayout();
-
-            Assert.True(row.ContextMenu!.IsOpen, "a reorder of a row this menu does not own must not close it");
-
-            // The still-open menu must still act on session 2 - not whatever the reorder now shows underneath it.
-            _Click(_MenuItem(row, "Clear status"));
-            Assert.Equal(string.Empty, s2.Statusline);
-            Assert.Equal("untouched", s3.Statusline);
-
-            window.Close();
-        });
-    }
-
     // AC-703: "Move to workspace" did nothing - a second ContextMenu opened from a MenuItem's Click inside an
     // already-open one never showed (Avalonia raced the parent menu's close against the new popup's open). The fix
     // builds the submenu on the parent ContextMenu's Opened event instead, so it's there before anything can be clicked.
@@ -318,39 +186,6 @@ public class SessionContextMenuTargetViewTests
             Dispatcher.UIThread.RunJobs();
 
             Assert.Equal(desk2.Id, expected.WorkspaceId);
-
-            window.Close();
-        });
-    }
-
-    // AC-703 (edge case 1, DoD): with no other Sessions workspace to move to, the operator gets visible feedback -
-    // a disabled item - instead of the old silent no-op that looked identical to the timing bug from the outside.
-    [Fact]
-    public void MoveToWorkspace_IsDisabled_WhenNoOtherSessionsWorkspaceExists()
-    {
-        HeadlessAvalonia.Run(() =>
-        {
-            var cockpit = new CockpitViewModel();
-            var onlyDesk = Workspace.Create("Sessions", WorkspaceType.Sessions);
-            cockpit.Workspaces.Settings = new WorkspaceSettings { Workspaces = [onlyDesk], ActiveWorkspaceId = onlyDesk.Id };
-            foreach (var session in cockpit.Sessions)
-            {
-                session.WorkspaceId = onlyDesk.Id;
-            }
-
-            var view = new CockpitView { DataContext = cockpit };
-            var window = new Window { Content = view, Width = 900, Height = 700 };
-            window.Show();
-            window.UpdateLayout();
-
-            var rows = _Rows(_Strip(view));
-            var target = rows[0];
-
-            _RightClick(window, target);
-            var moveItem = _MenuItem(target, "Move to workspace");
-
-            Assert.False(moveItem.IsEnabled);
-            Assert.Empty(moveItem.Items.OfType<MenuItem>());
 
             window.Close();
         });

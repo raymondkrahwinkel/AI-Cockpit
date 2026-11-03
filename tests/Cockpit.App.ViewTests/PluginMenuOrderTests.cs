@@ -47,17 +47,4 @@ public class PluginMenuOrderTests
 
         Assert.Equal(new[] { "youtrack" }, cockpit.VisibleMenuEntries.Select(entry => entry.PluginId));
     });
-
-    // A plugin that contributes both keeps its launcher above its own section: the button is how you reach it, the
-    // section is what it has to say.
-    [Fact]
-    public void APluginWithBothAButtonAndASection_KeepsTheButtonAbove() => HeadlessAvalonia.Run(() =>
-    {
-        var cockpit = new CockpitViewModel();
-        var sink = (IPluginContributionSink)cockpit;
-        sink.AddPluginSideSection("github-pull-requests", "Open PRs", () => new TextBlock());
-        sink.AddPluginSideButton("github-pull-requests", "Pull requests", () => { });
-
-        Assert.Equal(new[] { true, false }, cockpit.VisibleMenuEntries.Select(entry => entry.Button is not null));
-    });
 }

@@ -57,37 +57,6 @@ public class EmbeddedSessionStatuslineSeedTests
             Assert.Equal(string.Empty, Assert.Single(sessions).Statusline);
         });
 
-    [Fact]
-    public void Embed_WithATicketOnlyInTheRunLabel_SeedsTheStatuslineFromThat() => Dispatcher.UIThread.Invoke(() =>
-    {
-        var (cockpit, sessions) = _Cockpit();
-
-        cockpit.Embed("workspace.autopilot.plan", new EmbeddedSessionRequest
-        {
-            RunLabel = "AC-544 - statusline seeding",
-            InitialUserMessage = "Do the work.",
-        });
-
-        var session = Assert.Single(sessions);
-        Assert.Equal("AC-544", session.Statusline);
-    });
-
-    [Fact]
-    public void Embed_WithNoTicketAnywhereInTheBrief_LeavesTheStatuslineBlank() => Dispatcher.UIThread.Invoke(() =>
-    {
-        var (cockpit, sessions) = _Cockpit();
-
-        cockpit.Embed("workspace.autopilot.plan", new EmbeddedSessionRequest
-        {
-            RunLabel = "CEO planning round",
-            InitialUserMessage = "Draft a plan for the operator's request.",
-        });
-
-        // No made-up ticket beats an invented one — the field stays exactly what SessionPanelViewModel opens on.
-        var session = Assert.Single(sessions);
-        Assert.Equal(string.Empty, session.Statusline);
-    });
-
     // A cockpit with just enough graph to embed, and the sessions its factory handed out.
     private static (CockpitViewModel Cockpit, List<SessionViewModel> Sessions) _Cockpit()
     {

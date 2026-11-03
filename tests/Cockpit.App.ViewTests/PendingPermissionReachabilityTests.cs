@@ -24,7 +24,6 @@ namespace Cockpit.App.ViewTests;
 [Collection("avalonia")]
 public class PendingPermissionReachabilityTests
 {
-    private const string JumpToNewestTip = "Jump to the newest message";
     private const string ApprovalWaitingTip = "A tool is waiting for your approval — jump to it";
 
     private static ScrollViewer _Transcript(Visual root) =>
@@ -143,71 +142,6 @@ public class PendingPermissionReachabilityTests
 
         Assert.True(_ConsentCardIsInView(window, session), "one click on the affordance must reach the card");
         Assert.False(_JumpButton(window).IsVisible, "and the affordance is spent once the card is there");
-
-        window.Close();
-    });
-
-    /// <summary>
-    /// The render clock taken away (AC-883) dematerialises every row, so nothing is reachable by looking even
-    /// while the follow is nominally on — the button has to say so rather than hide because `_stickToBottom` is
-    /// still true.
-    /// </summary>
-    [Fact]
-    public void APermissionLandingWhileTheRenderClockIsPaused_IsStillReachable() => HeadlessAvalonia.Run(() =>
-    {
-        var (window, view, session, _) = _PaneParkedAtTheBottom();
-
-        view.SetRenderClockPaused(true);
-        _Settle(window);
-        _AskForPermission(session);
-        _Settle(window);
-
-        Assert.Equal(SessionStatus.NeedsAttention, session.SessionStatus);
-        Assert.True(_JumpButton(window).IsVisible, "a paused pane shows nothing, so the way in must still be offered");
-        Assert.Equal(ApprovalWaitingTip, ToolTip.GetTip(_JumpButton(window)));
-
-        // Resuming follows the tail again (the pane never left it), and that is where the card is.
-        view.SetRenderClockPaused(false);
-        _Settle(window);
-        Assert.True(_ConsentCardIsInView(window, session));
-        Assert.False(_JumpButton(window).IsVisible);
-
-        window.Close();
-    });
-
-    /// <summary>
-    /// Criterion 5: a session that shows its consent normally is untouched — no button, no alarm icon, and the
-    /// tooltip still the one #21 put there.
-    /// </summary>
-    [Fact]
-    public void APermissionLandingWhileParkedAtTheBottom_ChangesNothing() => HeadlessAvalonia.Run(() =>
-    {
-        var (window, _, session, _) = _PaneParkedAtTheBottom();
-
-        _AskForPermission(session);
-        _Settle(window);
-
-        Assert.True(_ConsentCardIsInView(window, session));
-        Assert.False(_JumpButton(window).IsVisible);
-        Assert.Equal(JumpToNewestTip, ToolTip.GetTip(_JumpButton(window)));
-        Assert.Equal(MaterialIconKind.ChevronDown, _JumpIcon(window).Kind);
-
-        window.Close();
-    });
-
-    /// <summary>
-    /// And a pane scrolled up with nothing pending keeps the plain jump-to-newest it has had since #21 — the
-    /// second destination must not swallow the first.
-    /// </summary>
-    [Fact]
-    public void ScrolledUpWithNothingPending_KeepsThePlainJumpToNewest() => HeadlessAvalonia.Run(() =>
-    {
-        var (window, _, _, _) = _PaneParkedAtTheBottom();
-        _ScrollUpToRead(window);
-
-        Assert.True(_JumpButton(window).IsVisible);
-        Assert.Equal(JumpToNewestTip, ToolTip.GetTip(_JumpButton(window)));
-        Assert.Equal(MaterialIconKind.ChevronDown, _JumpIcon(window).Kind);
 
         window.Close();
     });

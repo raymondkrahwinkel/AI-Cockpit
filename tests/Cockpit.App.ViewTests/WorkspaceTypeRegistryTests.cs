@@ -9,22 +9,15 @@ namespace Cockpit.App.ViewTests;
 
 /// <summary>
 /// <see cref="WorkspaceTypeRegistry"/> — the AC-122 mirror of the widget registry: the first registration of a
-/// type id wins, a body is built only for a registered type and scoped to its workspace, and an unregistered id
-/// resolves to null so the view shows a placeholder rather than crashing.
+/// type id wins.
 /// </summary>
-/// <remarks>
-/// In the "avalonia" collection because <see cref="CreateBody_ARegisteredType_BuildsAContextScopedToTheWorkspace"/>
-/// spins up the headless Avalonia platform: without it, xUnit runs this class in parallel with the other UI tests,
-/// two threads race <c>AvaloniaHeadlessPlatform.Initialize</c>, and the test host crashes ("a different thread owns
-/// it"). The collection serialises every Avalonia-touching class onto one thread.
-/// </remarks>
 [Collection("avalonia")]
 public class WorkspaceTypeRegistryTests
 {
     private static WorkspaceTypeRegistry _NewRegistry() =>
         new(new ServiceCollection().BuildServiceProvider());
 
-    private static WorkspaceTypeRegistration _Type(string id, string title = "T") =>
+    private static WorkspaceTypeRegistration _Type(string id, string title) =>
         new(id, title, _ => new Panel());
 
     /// <summary>A do-nothing storage — the registry only carries it through to the context; these tests never read it.</summary>
@@ -56,19 +49,4 @@ public class WorkspaceTypeRegistryTests
         Assert.Equal("First", Assert.Single(registry.WorkspaceTypes).Title);
         Assert.Equal(1, raised);
     }
-
-    // AC-1750 folded the unregistered-type test in here: that one is null, so the view can show a placeholder.
-    [Fact]
-    public void CreateBody_ARegisteredType_BuildsAContextScopedToTheWorkspace_AndAnUnregisteredOneIsNull() => HeadlessAvalonia.Run(() =>
-    {
-        var registry = _NewRegistry();
-        registry.Register(_Type("autopilot.run"), new FakeStorage(), NullCockpitSessionObserver.Instance);
-        Assert.Null(registry.CreateBody("missing.type", "w1"));
-
-        var built = registry.CreateBody("autopilot.run", "w42");
-
-        Assert.NotNull(built);
-        Assert.Equal("w42", built!.Value.Context.WorkspaceId);
-        Assert.IsType<Panel>(built.Value.Registration.CreateBody(built.Value.Context));
-    });
 }

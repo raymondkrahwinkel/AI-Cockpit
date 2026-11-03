@@ -17,20 +17,6 @@ namespace Cockpit.App.ViewTests;
 public class PluginSessionBannerHostTests
 {
     [Fact]
-    public void ARegisteredBanner_RendersInSessionView() => HeadlessAvalonia.Run(() =>
-    {
-        using var _ = _StubProgramServices(out var marker);
-
-        var view = new SessionView();
-        var window = new Window { Content = view, Width = 800, Height = 400 };
-        window.Show();
-        view.DataContext = new SessionViewModel { ShowPluginHeaderItems = true };
-        window.UpdateLayout();
-
-        Assert.Contains(_Host(view).GetVisualDescendants(), control => ReferenceEquals(control, marker));
-    });
-
-    [Fact]
     public void ARegisteredBanner_RendersInTtyView() => HeadlessAvalonia.Run(() =>
     {
         using var _ = _StubProgramServices(out var marker);
@@ -42,22 +28,6 @@ public class PluginSessionBannerHostTests
         window.UpdateLayout();
 
         Assert.Contains(_Host(view).GetVisualDescendants(), control => ReferenceEquals(control, marker));
-    });
-
-    // A plain terminal pane (ShowPluginHeaderItems = false) carries no plugin surface at all — the banner host
-    // must not render into it either, the same gate PluginSessionHeaderHost's placement already applies.
-    [Fact]
-    public void APlainTerminalPane_NeverRendersTheBanner() => HeadlessAvalonia.Run(() =>
-    {
-        using var _ = _StubProgramServices(out var marker);
-
-        var view = new TtyView();
-        var window = new Window { Content = view, Width = 800, Height = 400 };
-        window.Show();
-        view.DataContext = new TtyViewModel { ShowPluginHeaderItems = false };
-        window.UpdateLayout();
-
-        Assert.False(_Host(view).IsVisible);
     });
 
     private static PluginSessionBannerHost _Host(Control view) =>

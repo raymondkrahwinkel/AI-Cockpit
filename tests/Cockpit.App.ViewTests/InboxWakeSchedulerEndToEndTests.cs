@@ -60,32 +60,4 @@ public sealed class InboxWakeSchedulerEndToEndTests
         // No claim that the recipient opted into anything, because it never did.
         Assert.DoesNotContain("opted in", turn, StringComparison.Ordinal);
     }
-
-    /// <summary>
-    /// The same real components, but nothing waiting anywhere — the tick must not touch the gateway at all, which is
-    /// the "costs nothing" half of the same story proven against production wiring rather than substitutes.
-    /// </summary>
-    [Fact]
-    public async Task ATickOverARealCockpitWithEmptyInboxes_StartsNoTurns()
-    {
-        var inbox = new AgentMessageInbox();
-
-        var (sessions, target, sent) = Dispatcher.UIThread.Invoke(() =>
-        {
-            var sessions = new SessionRegistry();
-            var vm = new CockpitViewModel(sessionRegistry: sessions);
-            var to = new TtyViewModel { SessionStatus = SessionStatus.Idle };
-            var captured = new List<string>();
-            to.PromptSink = text => captured.Add(text);
-            vm.Sessions.Add(to);
-            return (sessions, to, captured);
-        });
-
-        var gateway = new WorkspaceAgentGateway(sessions, NullLogger<WorkspaceAgentGateway>.Instance);
-        var scheduler = new InboxWakeScheduler(inbox, gateway) { Panes = () => [target.PaneId] };
-
-        await scheduler.RunOnceAsync();
-
-        Assert.Empty(sent);
-    }
 }

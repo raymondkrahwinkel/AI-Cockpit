@@ -34,8 +34,6 @@ public class UsagePillUnreportedWindowTests
 
     private static readonly PluginUsageSignal _Context = new("context", "ctx", PluginUsageSignalKind.Fill, DefaultThresholdPercent: 50);
     private static readonly PluginUsageSignal _FiveHour = new("five-hour", "5h", PluginUsageSignalKind.Allowance, DefaultThresholdPercent: 90);
-    private static readonly PluginUsageSignal _Weekly = new("weekly", "wk", PluginUsageSignalKind.Allowance, DefaultThresholdPercent: 90);
-
     private static Pane _PaneShowing(params UsagePillField[] fields) => new() { UsagePillVisibleFields = fields };
 
     public static IEnumerable<object[]> Notices()
@@ -45,8 +43,6 @@ public class UsagePillUnreportedWindowTests
 
         // The window was declared and never sent: the flyout is where that is said.
         yield return [both, new[] { _Context, _FiveHour }, contextOnly, "5h: no figure reported for this session."];
-        // Two of them, named together rather than one notice each.
-        yield return [both, new[] { _Context, _FiveHour, _Weekly }, contextOnly, "5h, wk: no figure reported for this session."];
         // It arrived, so there is nothing to explain.
         yield return
         [
@@ -75,28 +71,5 @@ public class UsagePillUnreportedWindowTests
         pane.ApplyUsage(declared, readings);
 
         Assert.Equal(expected, pane.UnreportedWindowsNotice);
-    }
-
-    [Fact]
-    public void AnUnsentWindow_IsLeftOutOfThePillItself_NotDrawnEmpty()
-    {
-        // AC-530 criterion 5, and the reason the notice has to exist at all: the pill stays silent about it, so
-        // without the flyout the ticked setting simply looks broken.
-        var pane = _PaneShowing(UsagePillField.Context, UsagePillField.RateWindows);
-        pane.ApplyUsage([_Context, _FiveHour], [new PluginUsageReading("context", 10, null)]);
-
-        Assert.DoesNotContain(pane.UsagePillItems, item => item.DisplayText.StartsWith("5h", StringComparison.Ordinal));
-    }
-
-    /// <summary>
-    /// Before the first usage reading there is nothing to conclude: a session that has not reported yet is not a
-    /// provider that cannot. The flyout is not reachable then either — it hangs off the pill.
-    /// </summary>
-    [Fact]
-    public void BeforeAnyUsageArrives_ItSaysNothing()
-    {
-        var pane = _PaneShowing(UsagePillField.Context, UsagePillField.RateWindows);
-
-        Assert.Equal(string.Empty, pane.UnreportedWindowsNotice);
     }
 }

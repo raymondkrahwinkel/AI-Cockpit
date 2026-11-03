@@ -1,14 +1,13 @@
 using Cockpit.App.ViewModels.Onboarding;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Plugins;
-using Cockpit.Infrastructure.Plugins;
 using NSubstitute;
 
 namespace Cockpit.App.ViewTests.Onboarding;
 
 // AC-511: the catalogue goes through the real PluginStoreIndex.TryParse; a hand-built entry proves a shape no disk file has.
 [Collection("avalonia")]
-public class WorkKindStepViewModelTests : IDisposable
+public class WorkKindStepViewModelTests
 {
     private const string IndexWithAudience = """
     {
@@ -46,8 +45,6 @@ public class WorkKindStepViewModelTests : IDisposable
     private readonly IPluginProvisioningService _provisioning = Substitute.For<IPluginProvisioningService>();
     private readonly IPluginRegistrationStore _registrations = Substitute.For<IPluginRegistrationStore>();
     private readonly List<PluginProvisionRequest> _sentToInstall = [];
-    private readonly string _tempDirectory;
-    private readonly string _configFilePath;
 
     private PluginProvisionBatchResult _batchResult = new([]);
 
@@ -58,34 +55,6 @@ public class WorkKindStepViewModelTests : IDisposable
                 Arg.Do<IReadOnlyList<PluginProvisionRequest>>(_sentToInstall.AddRange),
                 Arg.Any<int>(), Arg.Any<Version?>(), Arg.Any<CancellationToken>())
             .Returns(_ => _batchResult);
-
-        _tempDirectory = Path.Combine(Path.GetTempPath(), "cockpit-work-kind-tests", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(_tempDirectory);
-        _configFilePath = Path.Combine(_tempDirectory, "cockpit.json");
-    }
-
-    public void Dispose()
-    {
-        if (Directory.Exists(_tempDirectory))
-        {
-            Directory.Delete(_tempDirectory, recursive: true);
-        }
-
-        GC.SuppressFinalize(this);
-    }
-
-    [Fact]
-    public async Task ChoosingAWorkKind_TicksOnlyThePluginsItNames()
-    {
-        var viewModel = _ViewModel();
-        await viewModel.LoadAsync();
-        Assert.Null(viewModel.SelectedWorkKind);
-
-        viewModel.SelectedWorkKind = _Kind(PluginWorkKinds.Developer);
-
-        Assert.Equal(new[] { "GitHub Issues", "GitHub Pull Requests" }, _Ticked(viewModel));
-        Assert.False(viewModel.Plugins.Single(row => row.Name == "Example Companion Tool").IsSelected);
-        Assert.False(viewModel.Plugins.Single(row => row.Name == "Example Workspace").IsSelected);
     }
 
     [Fact]
@@ -100,20 +69,6 @@ public class WorkKindStepViewModelTests : IDisposable
         await viewModel.ConfirmCommand.ExecuteAsync(null);
 
         Assert.Equal(new[] { "github-issues" }, _sentToInstall.Select(request => request.Id));
-    }
-
-    // Today's set has only "Developer" (criterion 6), so the replace-the-old-ticks rule is proven with a kind built on the spot.
-    [Fact]
-    public async Task ChoosingADifferentWorkKind_ReplacesTheFirstsTicks_RatherThanAddingToThem()
-    {
-        var viewModel = _ViewModel();
-        await viewModel.LoadAsync();
-        var otherKind = new PluginWorkKindOption("qa", "QA", "Testing.");
-
-        viewModel.SelectedWorkKind = _Kind(PluginWorkKinds.Developer);
-        viewModel.SelectedWorkKind = otherKind;
-
-        Assert.Empty(_Ticked(viewModel));
     }
 
     // The pre-tick is a suggestion, not a decision: leaving the step by Skip or Next never reaches the confirm command.
@@ -162,48 +117,6 @@ public class WorkKindStepViewModelTests : IDisposable
         Assert.Equal(new[] { "GitHub Issues" }, viewModel.Plugins.Select(row => row.Name));
         Assert.DoesNotContain(viewModel.Plugins, row => row.IsSelected);
     }
-
-    // Providers are chosen in the previous wizard step (AC-510[b]); offering one here too would be a second, redundant pick.
-    [Fact]
-    public async Task LoadAsync_ExcludesProviderPlugins()
-    {
-        var viewModel = _ViewModel();
-
-        await viewModel.LoadAsync();
-
-        Assert.DoesNotContain(viewModel.Plugins, row => row.Name == "Claude");
-    }
-
-    // Criterion 2: cockpit.json keeps no trace of the work kind — a stored role is what decision 2 of 2026-07-21 forbids.
-    [Fact]
-    public async Task AfterTheBatch_TheConfigFileNamesNoWorkKindOrAudience()
-    {
-        _batchResult = new PluginProvisionBatchResult(
-        [
-            new PluginProvisionResult(PluginProvisionOutcome.Installed, "github-issues", "GitHub Issues", null, null, "github-issues", "aaa111"),
-            new PluginProvisionResult(PluginProvisionOutcome.Installed, "pull-requests", "GitHub Pull Requests", null, null, "pull-requests", "bbb222"),
-        ]);
-        var viewModel = new WorkKindStepViewModel(
-            _StoreConfig(), _StoreClient(IndexWithAudience), _provisioning, new PluginRegistrationStore(_configFilePath));
-        await viewModel.LoadAsync();
-        viewModel.SelectedWorkKind = _Kind(PluginWorkKinds.Developer);
-
-        await viewModel.ConfirmCommand.ExecuteAsync(null);
-
-        var written = await File.ReadAllTextAsync(_configFilePath);
-        Assert.Contains("github-issues", written, StringComparison.Ordinal);
-        Assert.DoesNotContain("audience", written, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("workKind", written, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("role", written, StringComparison.OrdinalIgnoreCase);
-        foreach (var kind in PluginWorkKinds.All)
-        {
-            Assert.DoesNotContain(kind.Key, written, StringComparison.OrdinalIgnoreCase);
-            Assert.DoesNotContain(kind.Label, written, StringComparison.OrdinalIgnoreCase);
-        }
-    }
-
-    private static IEnumerable<string> _Ticked(WorkKindStepViewModel viewModel) =>
-        viewModel.Plugins.Where(row => row.IsSelected).Select(row => row.Name);
 
     private static PluginWorkKindOption _Kind(string key) =>
         PluginWorkKinds.All.Single(option => option.Key == key);

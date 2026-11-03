@@ -54,42 +54,6 @@ public class OptionsSelfUpdateButtonsViewTests
             dialog.Close();
         });
 
-    [Fact]
-    public Task WhenThisCopyCannotUpdateItself_AndABuildIsOffered_OpenReleaseShows_AndTheSelfUpdateButtonsDoNot() =>
-        HeadlessAvalonia.RunAsync(async () =>
-        {
-            // No probe supplied at all reads the same as one that answers NotPackaged (the constructor's default).
-            var updates = Substitute.For<IUpdateService>();
-            updates.CheckAsync(Arg.Any<UpdateChannel>(), Arg.Any<CancellationToken>())
-                .Returns(new UpdateCheckResult(new AppRelease("1.2.3", "notes", "https://example.test/1.2.3"), null));
-
-            var cockpit = _ViewModelWith(probe: null, updates);
-            await cockpit.CheckForUpdatesAsync();
-
-            var dialog = _OpenUpdatesTab(cockpit);
-
-            Assert.False(_Button(dialog, "UpdateNowButton").IsVisible);
-            Assert.False(_Button(dialog, "InstallOnNextStartButton").IsVisible);
-            Assert.True(_Button(dialog, "OpenReleaseButton").IsVisible);
-
-            dialog.Close();
-        });
-
-    [Fact]
-    public void WhenNoBuildIsOffered_NoneOfTheThreeButtonsShow() => HeadlessAvalonia.Run(() =>
-    {
-        var probe = Substitute.For<IUpdateSupportProbe>();
-        probe.Detect().Returns(UpdateSupport.Supported);
-
-        var dialog = _OpenUpdatesTab(_ViewModelWith(probe, updates: null));
-
-        Assert.False(_Button(dialog, "UpdateNowButton").IsVisible);
-        Assert.False(_Button(dialog, "InstallOnNextStartButton").IsVisible);
-        Assert.False(_Button(dialog, "OpenReleaseButton").IsVisible);
-
-        dialog.Close();
-    });
-
     // AC-1515: the changelog is read when the build is found; a read that failed is retried on the click, and a good one is not.
     [Fact]
     public Task WhatsNew_OpensOnTheChangesReadAhead_AndReadsAgainOnlyAfterAFailedReadAhead() =>

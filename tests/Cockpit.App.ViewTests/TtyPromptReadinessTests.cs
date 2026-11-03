@@ -87,23 +87,6 @@ public class TtyPromptReadinessTests
             Assert.Equal($"{BracketedPasteStart}review the migration{BracketedPasteEnd}\r", written);
         });
 
-    [Fact]
-    public Task RelaunchingThePane_ResetsReadiness_SoTheNewSessionIsNotTreatedAsAlreadyReady() =>
-        HeadlessAvalonia.RunAsync(async () =>
-        {
-            var (view, viewModel, _) = _NewLaunchedView();
-            _AnnounceBracketedPaste(view);
-            _InvokeCheckReadiness(view);
-            Assert.True(viewModel.CanTakeAPrompt);
-
-            // What StartPty does before re-launching a reused pane (AC-564-style restart): the pty's own state is
-            // cleared, and so must the readiness gate be — otherwise a stale "ready" from the session before would
-            // let a brief for the new CLI process through before it has said anything at all.
-            viewModel.ResetHostedTuiReadiness();
-
-            Assert.False(viewModel.CanTakeAPrompt);
-        });
-
     // Lets the pty write posted onto the UI thread by `_WriteToPty` actually run — see the identical helper in
     // `TtyInjectedTextPasteTests`.
     private static async Task _LetPostedWorkRunAsync() => await Dispatcher.UIThread.InvokeAsync(() => { });

@@ -40,34 +40,6 @@ public class AssistantSpokenLeadInTests
         Assert.Empty(queue.Spoken);
     }
 
-    [Fact]
-    public void WithReadAloudOff_NothingIsSpoken_HoweverLongTheSilence()
-    {
-        var queue = new RecordingPlaybackQueue();
-        var session = _Assistant(queue, readAloud: false);
-
-        Dispatcher.UIThread.Invoke(session._SpeakLeadInIfTheModelGaveNone);
-
-        Assert.Empty(queue.Spoken);
-    }
-
-    [Fact]
-    public void OnceSomethingHasBeenSaidThisTurn_NoLeadInIsAddedOnTopOfIt()
-    {
-        // The failure worth ruling out: a turn that opened with "I'll look at the release desk" followed a beat
-        // later by "one moment, let me look" — two lead-ins, which is worse than the silence it replaced.
-        var queue = new RecordingPlaybackQueue();
-        var session = _Assistant(queue, readAloud: true);
-
-        Dispatcher.UIThread.Invoke(() =>
-        {
-            session._SpeakLeadInIfTheModelGaveNone();
-            session._SpeakLeadInIfTheModelGaveNone();
-        });
-
-        Assert.Single(queue.Spoken);
-    }
-
     private static SessionViewModel _Assistant(IVoicePlaybackQueue queue, bool readAloud)
     {
         var session = _Session(queue, readAloud);

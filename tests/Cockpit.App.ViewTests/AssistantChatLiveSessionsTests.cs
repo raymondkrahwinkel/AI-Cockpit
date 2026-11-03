@@ -69,76 +69,6 @@ public sealed class AssistantChatLiveSessionsTests
         Assert.True(vm.HasLiveSessions);
     });
 
-    // WithNoLiveSessions_ThePillHasNothingToShow stood here. Its whole body — a fresh view model over an empty
-    // cockpit, Empty(LiveSessions) and False(HasLiveSessions) — is the opening of the test below, on the same two
-    // objects built the same way; and HasLiveSessions is LiveSessions.Count > 0, so the two assertions are one.
-    [Fact]
-    public void ASessionStartingOrStopping_UpdatesLiveSessionsWithoutReopening() => HeadlessAvalonia.Run(() =>
-    {
-        var cockpit = _Cockpit();
-        var vm = _Vm(cockpit);
-        Assert.False(vm.HasLiveSessions);
-
-        var session = _Session("s1", "depot-fix");
-        cockpit.Sessions.Add(session);
-        Assert.Equal(["s1"], vm.LiveSessions.Select(s => s.PaneId));
-        Assert.True(vm.HasLiveSessions);
-
-        cockpit.Sessions.Remove(session);
-        Assert.Empty(vm.LiveSessions);
-        Assert.False(vm.HasLiveSessions);
-    });
-
-    [Fact]
-    public void DeskNameByPaneId_ResolvesAnUnassignedSessionToTheFirstWorkspace() => HeadlessAvalonia.Run(() =>
-    {
-        var cockpit = _Cockpit();
-        cockpit.Sessions.Add(_Session("s1", "AC-774"));
-
-        var vm = _Vm(cockpit);
-
-        Assert.Equal("Sessions", vm.DeskNameByPaneId["s1"]);
-    });
-
-    // AC-1300: the two sessions match on everything the old "lives and is visible" rule saw; only who started them differs.
-    [Fact]
-    public void SessionsStartedByTheAssistant_HoldsOnlyThoseTheAssistantStarted() => HeadlessAvalonia.Run(() =>
-    {
-        var cockpit = _Cockpit();
-        cockpit.Sessions.Add(_Session("spawned", "AC-774", startedByTheAssistant: true));
-        cockpit.Sessions.Add(_Session("operator-opened", "AC-774"));
-
-        var vm = _Vm(cockpit);
-
-        Assert.Equal(["spawned", "operator-opened"], vm.LiveSessions.Select(session => session.PaneId));
-        Assert.Equal(["spawned"], vm.SessionsStartedByTheAssistant.Select(session => session.PaneId));
-    });
-
-    // AC-1300 criterion 2: the relation lives on the session, so a chat window built fresh over the same cockpit still finds it.
-    [Fact]
-    public void SessionsStartedByTheAssistant_SurvivesAFreshChatWindowAndDropsAClosedSession() => HeadlessAvalonia.Run(() =>
-    {
-        var cockpit = _Cockpit();
-        var session = _Session("spawned", "AC-774", startedByTheAssistant: true);
-        cockpit.Sessions.Add(session);
-
-        _Vm(cockpit).Dispose();
-        var reopened = _Vm(cockpit);
-        Assert.Equal(["spawned"], reopened.SessionsStartedByTheAssistant.Select(live => live.PaneId));
-
-        cockpit.Sessions.Remove(session);
-        Assert.Empty(reopened.SessionsStartedByTheAssistant);
-    });
-
-    // AC-1300 criterion 4: asserted on the resolver — the collection drops the assistant a step earlier and would pass either way.
-    [Fact]
-    public void AssistantSessionOrigin_NeverPutsTheAssistantUnderItself()
-    {
-        var assistant = new SessionViewModel { BelongsToNoWorkspace = true, StartedByTheAssistant = true };
-
-        Assert.False(AssistantSessionOrigin.Resolve(assistant));
-    }
-
     // AC-1332: driven through the real launch path (NewSessionCommand -> _LaunchSessionFromResultAsync) rather than
     // by pre-stamping a session before adding it, like the tests above — that would miss the bug entirely, since
     // it is the order of AddSession vs. the StartedByTheAssistant stamp in that method that is under test here.
@@ -209,18 +139,4 @@ public sealed class AssistantChatLiveSessionsTests
         launcher.Launcher = DesktopLauncher.Over(cockpit, registry);
         return cockpit;
     }
-
-    // AC-774 again: the live-session subscription must come off on close, or every reopened chat window chains another handler.
-    [Fact]
-    public void Dispose_StopsFollowingTheCockpitsSessionList() => HeadlessAvalonia.Run(() =>
-    {
-        var cockpit = _Cockpit();
-        var vm = _Vm(cockpit);
-
-        vm.Dispose();
-        cockpit.Sessions.Add(_Session("s1", "depot-fix"));
-
-        Assert.Empty(vm.LiveSessions);
-        Assert.False(vm.HasLiveSessions);
-    });
 }

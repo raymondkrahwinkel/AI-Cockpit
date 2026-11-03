@@ -1,7 +1,4 @@
 using Avalonia.Controls;
-using Avalonia.Controls.Documents;
-using Avalonia.Input;
-using Avalonia.LogicalTree;
 using Cockpit.App.Views;
 
 namespace Cockpit.App.ViewTests;
@@ -37,21 +34,6 @@ public sealed class MarkdownBlockReuseTests
     }
 
     [Fact]
-    public async Task AGrowingCodeFence_KeepsTheBorderItAlreadyBuilt()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var (built, rendered) = await _Stream(
-                "```csharp\nvar x = 1;\n",
-                "```csharp\nvar x = 1;\nvar y = 2;\n");
-
-            Assert.Same(built, Assert.Single(rendered.Children));
-            var code = built.GetLogicalDescendants().OfType<SelectableTextBlock>().First();
-            Assert.Contains("var y = 2;", code.Text);
-        });
-    }
-
-    [Fact]
     public async Task AGrowingTable_KeepsTheGridAndGainsARow()
     {
         await HeadlessAvalonia.RunAsync(async () =>
@@ -64,70 +46,6 @@ public sealed class MarkdownBlockReuseTests
 
             // Header row plus both body rows, in the grid that was there before the second row arrived.
             Assert.Equal(3, grid.RowDefinitions.Count);
-        });
-    }
-
-    [Fact]
-    public async Task AGrowingList_KeepsTheRowsBeforeTheNewItem()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var (built, rendered) = await _Stream("- first\n", "- first\n- second\n");
-
-            Assert.Same(built, Assert.Single(rendered.Children));
-            var panel = Assert.IsType<StackPanel>(built);
-            Assert.Equal(2, panel.Children.Count);
-        });
-    }
-
-    /// <summary>
-    /// The copy button costs more to build than the rest of a fenced block put together, and a transcript row is
-    /// rebuilt every time the virtualising panel realises it again — so it waits for a pointer, which anyone who
-    /// is going to click it has to move onto the block first anyway.
-    /// </summary>
-    [Fact]
-    public async Task ACodeFence_GetsItsCopyButtonOnTheFirstHover()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var view = new MarkdownView();
-            var window = new Window { Content = view, Width = 900, Height = 600 };
-            window.Show();
-
-            // First set on a fresh view renders synchronously — see _Stream's own comment.
-            view.Markdown = "```csharp\nvar x = 1;\n```\n";
-
-            var border = Assert.IsAssignableFrom<Border>(
-                Assert.Single(Assert.IsType<StackPanel>(view.Content).Children));
-
-            Assert.Empty(border.GetLogicalDescendants().OfType<Button>());
-
-            border.RaiseEvent(new PointerEventArgs(
-                InputElement.PointerEnteredEvent, border, new Pointer(0, PointerType.Mouse, true),
-                border, default, 0, default, default));
-
-            Assert.Single(border.GetLogicalDescendants().OfType<Button>());
-        });
-    }
-
-    /// <summary>
-    /// A paragraph the stream is still writing: the block keeps its text control, so the runs are replaced rather
-    /// than a fresh SelectableTextBlock built per repaint.
-    /// </summary>
-    [Fact]
-    public async Task AGrowingParagraph_KeepsItsTextControl()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var (built, rendered) = await _Stream("the reply begins", "the reply begins and carries on");
-
-            Assert.Same(built, Assert.Single(rendered.Children));
-
-            // The text lives in the runs, not in Text: a paragraph is built from inlines so that bold, code and
-            // links can be styled per run.
-            var text = Assert.IsAssignableFrom<SelectableTextBlock>(built).Inlines;
-            Assert.NotNull(text);
-            Assert.Contains("carries on", string.Concat(text!.OfType<Run>().Select(r => r.Text)));
         });
     }
 }

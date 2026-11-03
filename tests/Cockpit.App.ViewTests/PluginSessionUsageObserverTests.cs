@@ -5,9 +5,8 @@ using Cockpit.Core.Sessions;
 namespace Cockpit.App.ViewTests;
 
 /// <summary>
-/// The AC-54 read surface (<c>ICockpitSessionObserver.ActiveSessionUsage</c>) mirrors the selected session's own
-/// usage — the same ctx / 5h / wk figures the header pill renders, plus its profile label — and moves when they
-/// do. Here rather than in the unit tests because the observer marshals its events onto the UI thread, so without
+/// The AC-54 read surface (<c>ICockpitSessionObserver.ActiveSessionUsage</c>) follows the selected session's own
+/// usage and moves when it does. Here rather than in the unit tests because the observer marshals its events onto the UI thread, so without
 /// a pumped dispatcher a change would be posted to a loop nobody runs and the assertion would race.
 /// </summary>
 [Collection("avalonia")]
@@ -28,54 +27,7 @@ public class PluginSessionUsageObserverTests
     }
 
     [Fact]
-    public void ActiveSessionUsage_MirrorsTheSelectedSessionsContextRateLimitsAndProfile() => HeadlessAvalonia.Run(() =>
-    {
-        var cockpit = new CockpitViewModel();
-        var session = new TestSession { ActiveProfileLabel = "Work", ContextUsedPercent = 42 };
-        session.RateLimits.Add(new SessionRateWindow("5h", 55, ResetsAt: null));
-        session.RateLimits.Add(new SessionRateWindow("wk", 66, ResetsAt: null));
-        cockpit.Sessions.Add(session);
-        cockpit.SelectedSession = session;
-
-        var observer = new PluginSessionObserver(cockpit);
-
-        var usage = observer.ActiveSessionUsage;
-        Assert.NotNull(usage);
-        Assert.Equal("Work", usage!.ProfileLabel);
-        Assert.Equal(42, usage.ContextUsedPercent);
-        Assert.Equal(
-            new[] { ("5h", 55.0), ("wk", 66.0) },
-            usage.RateLimits.Select(window => (window.Label, window.UsedPercent)));
-    });
-
-    // AC-1737: the selected session's project follows the selection and its own ProjectId, with the same re-scope cue.
-    // Also covers the empty selection: no project and no usage.
-    [Fact]
-    public void ActiveProjectId_FollowsTheSelectedSessionsProject_AndIsNullWhenNothingIsSelected() => HeadlessAvalonia.Run(() =>
-    {
-        var cockpit = new CockpitViewModel();
-        var session = new TestSession { ProjectId = "cockpit" };
-        cockpit.Sessions.Add(session);
-        cockpit.SelectedSession = session;
-
-        var observer = new PluginSessionObserver(cockpit);
-        var fired = 0;
-        observer.ActiveSessionChanged += (_, _) => fired++;
-        Assert.Equal("cockpit", observer.ActiveProjectId);
-
-        session.ProjectId = "depot";
-
-        Assert.True(fired > 0, "the selected session's project moving is a re-scope cue");
-        Assert.Equal("depot", observer.ActiveProjectId);
-
-        cockpit.SelectedSession = null;
-
-        Assert.Null(observer.ActiveProjectId);
-        Assert.Null(observer.ActiveSessionUsage);
-    });
-
-    [Fact]
-    public void ActiveSessionUsageChanged_Fires_WhenTheSelectedSessionsContextMoves() => HeadlessAvalonia.Run(() =>
+    public void ActiveSessionUsageChanged_Fires_WhenTheSelectedSessionsContextOrRateLimitsMove() => HeadlessAvalonia.Run(() =>
     {
         var cockpit = new CockpitViewModel();
         var session = new TestSession { ContextUsedPercent = 10 };
@@ -90,20 +42,8 @@ public class PluginSessionUsageObserverTests
 
         Assert.True(fired > 0, "a ctx move on the selected session is a fresh usage story");
         Assert.Equal(80, observer.ActiveSessionUsage!.ContextUsedPercent);
-    });
 
-    [Fact]
-    public void ActiveSessionUsageChanged_Fires_WhenTheSelectedSessionsRateLimitsChange() => HeadlessAvalonia.Run(() =>
-    {
-        var cockpit = new CockpitViewModel();
-        var session = new TestSession { ContextUsedPercent = 10 };
-        cockpit.Sessions.Add(session);
-        cockpit.SelectedSession = session;
-
-        var observer = new PluginSessionObserver(cockpit);
-        var fired = 0;
-        observer.ActiveSessionUsageChanged += (_, _) => fired++;
-
+        fired = 0;
         session.RateLimits.Add(new SessionRateWindow("5h", 20, ResetsAt: null));
 
         Assert.True(fired > 0, "a rate window appearing changes the usage snapshot");

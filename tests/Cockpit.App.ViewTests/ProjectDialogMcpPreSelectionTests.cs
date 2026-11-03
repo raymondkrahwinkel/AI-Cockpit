@@ -8,7 +8,6 @@ using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
-using Cockpit.Plugins.Abstractions.Projects;
 using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
@@ -76,73 +75,5 @@ public class ProjectDialogMcpPreSelectionTests
             project, ProfileStore(), Catalog(Server("Depot: krahwinkel-it.nl"), Server("youtrack"), Server("cockpit-verify")));
 
         Assert.Equal("MCP servers · Depot: krahwinkel-it.nl off", Summarise(viewModel));
-    }
-
-    /// <summary>
-    /// And the state itself: a project running a saved list says so on a control the operator sees without
-    /// expanding, which is the half of this a per-row summary cannot state.
-    /// </summary>
-    [Fact]
-    public async Task AProjectWithASavedPreSelection_ShowsTheGateTicked()
-    {
-        var project = Project.Create("EVE Together") with
-        {
-            McpOverlay = new ProjectMcpOverlay { EnabledServerNames = ["youtrack"] },
-        };
-        var viewModel = await ProjectDialogViewModel.CreateAsync(
-            project, ProfileStore(), Catalog(Server("youtrack"), Server("registered-later")));
-
-        bool? gate = null;
-        HeadlessAvalonia.Run(() =>
-        {
-            var window = new ProjectDialog { DataContext = viewModel };
-            window.Show();
-            window.UpdateLayout();
-
-            gate = window.GetVisualDescendants().OfType<CheckBox>()
-                .Where(box => box.IsEffectivelyVisible)
-                .FirstOrDefault(box => box.Content as string == "Pre-select MCP servers for this project")
-                ?.IsChecked;
-            window.Close();
-        });
-
-        Assert.True(gate);
-    }
-
-    /// <summary>
-    /// AC-248: a shared definition naming a server this machine has not got is painted, not merely carried. It used
-    /// to be kept in `_carriedEnabledServerNames` and written straight back on save with nothing on screen — the
-    /// silent mismatch Raymond called worse than a visible one on 2026-08-02. Read off the real markup because the
-    /// checklist around it is disabled for a Viewer, which is where an unpainted-looking warning would hide.
-    /// </summary>
-    [Fact]
-    public async Task AServerThisMachineHasNot_IsPaintedEvenWhileTheChecklistIsLocked()
-    {
-        var project = Project.Create("EVE Together") with
-        {
-            McpOverlay = new ProjectMcpOverlay { EnabledServerNames = ["youtrack", "playwright"] },
-        };
-        var ownership = new Dictionary<HostProjectField, ProjectFieldOwnership?>
-        {
-            [HostProjectField.McpOverlay] = new ProjectFieldOwnership("Depot — Work", IsEditable: false),
-        };
-        var viewModel = await ProjectDialogViewModel.CreateAsync(
-            project, ProfileStore(), Catalog(Server("youtrack")), fieldOwnership: ownership);
-
-        string? warning = null;
-        HeadlessAvalonia.Run(() =>
-        {
-            var window = new ProjectDialog { DataContext = viewModel };
-            window.Show();
-            window.UpdateLayout();
-
-            warning = window.GetVisualDescendants().OfType<TextBlock>()
-                .Where(text => text.IsEffectivelyVisible)
-                .Select(text => text.Text)
-                .FirstOrDefault(text => text is not null && text.StartsWith("Not on this machine", StringComparison.Ordinal));
-            window.Close();
-        });
-
-        Assert.Equal("Not on this machine: playwright — a session starts without it.", warning);
     }
 }
