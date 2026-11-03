@@ -72,30 +72,19 @@ public class WorkspaceAgentGatewayWakeTests
     }
 
     [Theory]
-    [InlineData(SessionStatus.Busy)]
-    [InlineData(SessionStatus.WorkingBackground)]
-    public async Task Wake_OnAPaneThatIsWorking_IsRefusedAndSendsNothing(SessionStatus status)
+    [InlineData(SessionStatus.Busy, AgentWakeOutcome.Busy)]
+    [InlineData(SessionStatus.WorkingBackground, AgentWakeOutcome.Busy)]
+    [InlineData(SessionStatus.NeedsAttention, AgentWakeOutcome.AwaitingOperator)]
+    public async Task Wake_OnAPaneThatIsWorkingOrAwaitingItsOperator_IsRefusedAndSendsNothing(SessionStatus status, AgentWakeOutcome expected)
     {
         // WorkingBackground looks quiet from outside and is not: a sub-agent is still running, and a turn dropped on
-        // top of it is an interruption of real work.
+        // top of it is an interruption of real work. NeedsAttention is reported as awaiting its operator rather than
+        // as busy: a session with a permission decision outstanding is standing still.
         var (sessions, sender, target, sent) = _Desk(status);
 
         var outcome = await _Gateway(sessions).TryWakeAsync(sender.PaneId, target.PaneId, "branch");
 
-        Assert.Equal(AgentWakeOutcome.Busy, outcome);
-        Assert.Empty(sent);
-    }
-
-    [Fact]
-    public async Task Wake_OnAPaneNeedingAttention_IsRefusedAsAwaitingItsOperator()
-    {
-        var (sessions, sender, target, sent) = _Desk(SessionStatus.NeedsAttention);
-
-        var outcome = await _Gateway(sessions).TryWakeAsync(sender.PaneId, target.PaneId, "branch");
-
-        // Reported as awaiting its operator rather than as busy, because that is what it is — a session with a
-        // permission decision outstanding is standing still, and telling the sender "it was working" would be untrue.
-        Assert.Equal(AgentWakeOutcome.AwaitingOperator, outcome);
+        Assert.Equal(expected, outcome);
         Assert.Empty(sent);
     }
 

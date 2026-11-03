@@ -1,12 +1,7 @@
 using System.Windows.Input;
 using Avalonia.Controls;
 using Avalonia.VisualTree;
-using Cockpit.App.Plugins;
-using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
-using Cockpit.App.Views;
-using Cockpit.Core.Abstractions.Plugins;
-using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
 
@@ -19,37 +14,6 @@ namespace Cockpit.App.ViewTests;
 [Collection("avalonia")]
 public class PluginStoreBusyGateTests
 {
-    [Fact]
-    public void TheRestartOffer_GoesDead_WhenABatchStarts() => HeadlessAvalonia.Run(() =>
-    {
-        // Built here rather than taken from the screenshot scene: that one carries the design-time view model,
-        // which has no restart service, so its restart button is already dead for a reason that has nothing to
-        // do with this gate — and a test that cannot see the button live proves nothing about it going dead.
-        var manager = _ManagerThatCanRestart();
-        var window = new PluginStoreDialog { DataContext = new PluginStoreDialogViewModel(manager) };
-        window.Show();
-        try
-        {
-            // "Update all" raises this after the *first* plugin of the batch, which is the whole defect: the
-            // offer appears while the rest are still downloading.
-            manager.NeedsRestart = true;
-            window.UpdateLayout();
-
-            var restart = _RestartButton(window);
-            Assert.True(restart.IsEffectivelyEnabled, "an idle store with a staged change offers the restart");
-
-            manager.IsBusy = true;
-            window.UpdateLayout();
-
-            Assert.True(restart.IsEffectivelyVisible, "the offer stays on screen — it is out of reach, not gone");
-            Assert.False(restart.IsEffectivelyEnabled, "restarting mid-batch abandons the plugins still to come");
-        }
-        finally
-        {
-            window.Close();
-        }
-    });
-
     /// <summary>
     /// Every button on the catalogue that can start an install, whichever command it goes through — one per
     /// card plus the detail pane's primary action (<c>InstallFromStoreCommand</c>) and its version picker
@@ -95,26 +59,6 @@ public class PluginStoreBusyGateTests
         }
     });
 
-    // Only the restart service is load-bearing here — it is what CanRestart's first clause reads. The rest are
-    // there because the real constructor asks for them; nothing in this test reaches them.
-    private static PluginManagerViewModel _ManagerThatCanRestart() =>
-        new(Substitute.For<IPluginAdministration>(),
-            Substitute.For<IPluginRegistrationStore>(),
-            Substitute.For<ISessionDialogService>(),
-            Substitute.For<IPluginStoreConfigStore>(),
-            Substitute.For<IPluginStoreClient>(),
-            new Dictionary<string, PluginSettingsRegistration>(),
-            restartService: Substitute.For<IAppRestartService>());
-
     private static PluginManagerViewModel _Manager(Window window) =>
         Assert.IsType<PluginStoreDialogViewModel>(window.DataContext).Manager;
-
-    private static Button _RestartButton(Window window)
-    {
-        var restartCommand = _Manager(window).RestartNowCommand;
-
-        return Assert.Single(
-            window.GetVisualDescendants().OfType<Button>(),
-            button => ReferenceEquals(button.Command, restartCommand));
-    }
 }

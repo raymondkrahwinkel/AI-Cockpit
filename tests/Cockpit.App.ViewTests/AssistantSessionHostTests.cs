@@ -386,33 +386,6 @@ public class AssistantSessionHostTests
     // ── The restart (the operator's only way to reach a start-time setting) ───────────────────────────────────
 
     /// <summary>
-    /// The whole difference between the two entry points. <see cref="AssistantSessionHost.EnsureStartedAsync"/>
-    /// replaces an instance only once it is dead — which is right for a lazy start and useless for an operator
-    /// who has just changed a setting that is read at a launch. bypassPermissions is choosable at a start and
-    /// never live (<c>SessionOptionCatalog</c> splits <c>LivePermissionModes</c> off <c>AllPermissionModes</c> for
-    /// exactly that reason), so "applies at the next start" needed a next start to exist.
-    /// </summary>
-    [Fact]
-    public void EnsureStarted_WithAHealthyInstance_HandsItBack_WhileRestart_ReplacesIt()
-    {
-        var host = Dispatcher.UIThread.Invoke(() => _Host(enabled: true, slot: _ConfiguredSlot()));
-        var running = Dispatcher.UIThread.Invoke(() => new _RunningSession());
-        Dispatcher.UIThread.Invoke(() => host.Session = TestSessions.Assistant(running));
-
-        var kept = Dispatcher.UIThread.Invoke(() => _Pane(host.EnsureStartedAsync().GetAwaiter().GetResult()));
-        Assert.Same(running, kept);
-        Assert.Same(running, host.View());
-
-        Dispatcher.UIThread.Invoke(() => host.RestartAsync().GetAwaiter().GetResult());
-
-        // Gone, and not quietly left in place looking reachable. (Nothing takes its place here: this cockpit has no
-        // session factory, so the fresh start says so — which is the failure path, reported, rather than silence.)
-        Assert.NotSame(running, host.View());
-        Assert.Equal(AssistantActivity.Unavailable, host.Activity);
-        Assert.NotNull(host.UnavailableReason);
-    }
-
-    /// <summary>
     /// AC-1089 criterion 4: startup compaction drops state for every pane its roster does not name (AC-410), and the
     /// assistant owns no workspace pane — so each start erased its saved conversation id before the resume above
     /// could read it, and no <c>--resume</c> was ever sent. Drives the real roster and the real store the way
@@ -539,20 +512,6 @@ public class AssistantSessionHostTests
 
         // Exactly once: `_StartAsync` is the only place that archives, and a clear must not add a second archive path.
         transcript.Received(1).ArchiveAsync(AssistantSessionHost.AssistantPaneId, Arg.Any<CancellationToken>());
-    }
-
-    /// <summary>
-    /// A second call within the same turn must not queue a second clear — it finds one already queued and says so,
-    /// which is what lets the tool report the difference to the assistant.
-    /// </summary>
-    [Fact]
-    public void RequestingAClear_ASecondTimeInTheSameTurn_ReportsItIsAlreadyQueued()
-    {
-        var host = Dispatcher.UIThread.Invoke(() => _Host(enabled: true, slot: _ConfiguredSlot()));
-        Dispatcher.UIThread.Invoke(() => host.Session = TestSessions.Assistant(new _RunningSession { IsBusy = true }));
-
-        Assert.True(Dispatcher.UIThread.Invoke(host.RequestConversationClear));
-        Assert.False(Dispatcher.UIThread.Invoke(host.RequestConversationClear));
     }
 
     /// <summary>

@@ -314,10 +314,8 @@ inline	tests/Cockpit.App.ViewTests/AssistantCreateProjectTests.cs	1
 inline	tests/Cockpit.App.ViewTests/AssistantSessionHostTests.cs	1
 inline	tests/Cockpit.App.ViewTests/AssistantWorkspacePlacementTests.cs	1
 inline	tests/Cockpit.App.ViewTests/DiagnosticsBackgroundServiceTests.cs	1
-inline	tests/Cockpit.App.ViewTests/EmbeddedSessionStatuslineSeedTests.cs	1
 inline	tests/Cockpit.App.ViewTests/HeadlessAvalonia.cs	1
 inline	tests/Cockpit.App.ViewTests/McpAuthStatusRegressionTests.cs	1
-inline	tests/Cockpit.App.ViewTests/OptionsSubNavigationViewTests.cs	1
 inline	tests/Cockpit.App.ViewTests/PluginSettingsStagingTests.cs	1
 inline	tests/Cockpit.App.ViewTests/RenderClockRecoveryTests.cs	1
 inline	tests/Cockpit.App.ViewTests/Services/FilePathResolverTests.cs	1
@@ -448,8 +446,6 @@ summary	tests/Cockpit.App.ViewTests/HeadlessAvalonia.cs	1
 summary	tests/Cockpit.App.ViewTests/InboxWakeSchedulerEndToEndTests.cs	1
 summary	tests/Cockpit.App.ViewTests/McpAuthStatusRegressionTests.cs	1
 summary	tests/Cockpit.App.ViewTests/McpServerRenameIdentityTests.cs	1
-summary	tests/Cockpit.App.ViewTests/OptionsPluginContentTests.cs	1
-summary	tests/Cockpit.App.ViewTests/OptionsSubNavigationViewTests.cs	1
 summary	tests/Cockpit.App.ViewTests/PaneFocusSelectionTests.cs	2
 summary	tests/Cockpit.App.ViewTests/PluginActionsSessionNameTests.cs	1
 summary	tests/Cockpit.App.ViewTests/PluginLauncherButtonTests.cs	1
@@ -463,10 +459,8 @@ summary	tests/Cockpit.App.ViewTests/ScreenshotLabelTests.cs	1
 summary	tests/Cockpit.App.ViewTests/SecurityOptionsViewTests.cs	1
 summary	tests/Cockpit.App.ViewTests/SessionOutstandingWorkStatusTests.cs	1
 summary	tests/Cockpit.App.ViewTests/SessionRestoreWorktreeReconcileTests.cs	1
-summary	tests/Cockpit.App.ViewTests/ShortcutFocusTests.cs	1
 summary	tests/Cockpit.App.ViewTests/SurfaceWindowsTests.cs	1
 summary	tests/Cockpit.App.ViewTests/TranscriptStickToBottomTests.cs	1
-summary	tests/Cockpit.App.ViewTests/UsagePillUnreportedWindowTests.cs	1
 summary	tests/Cockpit.App.ViewTests/WhiteboardAccessIntegrationTests.cs	1
 summary	tests/Cockpit.App.ViewTests/WorkspaceAgentGatewayDeliveryTests.cs	1
 summary	tests/Cockpit.App.ViewTests/WorkspaceAgentGatewayTests.cs	2

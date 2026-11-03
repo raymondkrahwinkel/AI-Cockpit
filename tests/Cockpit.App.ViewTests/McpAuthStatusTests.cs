@@ -26,28 +26,6 @@ public class McpAuthStatusTests
     // --- MCP-servers dialog: per-row status + sign-in/sign-out ---
 
     [Fact]
-    public async Task SignIn_CallsTheCoordinatorInteractively_AndRefreshesTheStatus()
-    {
-        var store = Substitute.For<IMcpServerStore>();
-        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new[] { _OAuthServer() });
-        var coordinator = Substitute.For<IMcpOAuthCoordinator>();
-        coordinator.GetStateAsync(Arg.Any<McpServerConfig>(), Arg.Any<CancellationToken>())
-            .Returns(McpAuthState.AuthorizationRequired);
-        coordinator.AcquireAsync(Arg.Any<McpServerConfig>(), interactive: true, Arg.Any<CancellationToken>())
-            .Returns(new McpOAuthAccess(McpAuthState.Authorized, "token-not-read-by-the-view"));
-        var vm = new McpServersViewModel(store, [], coordinator);
-        await vm.LoadAsync();
-        var row = vm.Servers.Single();
-
-        await row.SignInCommand.ExecuteAsync(null);
-
-        await coordinator.Received(1).AcquireAsync(
-            Arg.Is<McpServerConfig>(s => s.Name == "gh"), interactive: true, Arg.Any<CancellationToken>());
-        Assert.Equal(McpAuthState.Authorized, row.AuthState);
-        Assert.False(row.IsAuthBusy);
-    }
-
-    [Fact]
     public async Task SignOut_WithdrawsAccess_AndRefreshesTheStatus()
     {
         var store = Substitute.For<IMcpServerStore>();

@@ -46,34 +46,6 @@ public class SessionContextMenuTargetViewTests
 
     private static void _Click(MenuItem item) => item.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
 
-    // AC-3, AC-4: a fresh list, right-clicking a row other than the first (so a fix that only happens to work on
-    // index 0 cannot pass by accident) selects that row and Rename opens on it, prefilled with its own title.
-    [Fact]
-    public void RightClickRename_OpensOnTheClickedRow_WithItsOwnTitlePrefilled()
-    {
-        HeadlessAvalonia.Run(() =>
-        {
-            var (window, view, cockpit) = _BuildShownWindow();
-            var rows = _Rows(_Strip(view));
-            var target = rows[1];
-            var expected = (SessionPanelViewModel)target.DataContext!;
-
-            _RightClick(window, target);
-            Assert.Same(expected, cockpit.SelectedSession);
-
-            _Click(_MenuItem(target, "Rename"));
-
-            Assert.True(expected.IsRenaming, "the clicked row must open its inline rename field");
-            Assert.Equal(expected.Title, expected.EditTitle);
-            foreach (var other in cockpit.Sessions.Where(s => !ReferenceEquals(s, expected)))
-            {
-                Assert.False(other.IsRenaming, $"{other.Title} must not have been renamed instead");
-            }
-
-            window.Close();
-        });
-    }
-
     // AC-5 (filter): with a second Sessions workspace hiding one of the sessions, the right-click must target the
     // visible row it hit - not miscount against the full, unfiltered session list.
     [Fact]

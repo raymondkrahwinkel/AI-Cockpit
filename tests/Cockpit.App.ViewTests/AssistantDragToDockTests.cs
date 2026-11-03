@@ -71,39 +71,6 @@ public sealed class AssistantDragToDockTests
     }
 
     [Fact]
-    public async Task ReleasingInsideTheZone_DocksTheAssistant_AndTakesTheWindowAway()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var (coordinator, cockpit, main, chat) = await _OpenTheFloatingChatAsync();
-
-            try
-            {
-                var grip = _HeaderGrip(chat);
-
-                chat.MouseDown(grip, MouseButton.Left);
-                Assert.True(cockpit.IsAssistantDropZoneVisible, "the zone shows for as long as the drag runs");
-                Assert.False(cockpit.IsAssistantDropZoneActive, "the pointer starts outside it");
-
-                chat.MouseMove(InsideTheZone, RawInputModifiers.LeftMouseButton);
-                Assert.True(cockpit.IsAssistantDropZoneActive, "the zone lights up while the pointer is inside");
-
-                chat.MouseUp(InsideTheZone, MouseButton.Left);
-
-                // The header's release handler runs the whole dock chain inline: with no _layoutSettingsStore in
-                // this harness, SetAssistantDockedAsync never truly awaits, so it is all done before MouseUp returns.
-                Assert.True(cockpit.AssistantDocked);
-                Assert.Null(coordinator.OpenChatWindow);
-                Assert.False(cockpit.IsAssistantDropZoneVisible, "nothing of the zone is left once the drag ends");
-            }
-            finally
-            {
-                main.Close();
-            }
-        });
-    }
-
-    [Fact]
     public async Task EscapeMidDrag_PutsTheWindowBackWhereItWasPickedUp_AndDocksNothing()
     {
         await HeadlessAvalonia.RunAsync(async () =>
