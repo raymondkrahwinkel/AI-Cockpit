@@ -112,7 +112,7 @@ public sealed class MachineResources : IMachineResources, ISingletonService, IDi
         {
             try
             {
-                if (drive.DriveType != DriveType.Fixed || !drive.IsReady || FreeDiskBytes(drive.Name) is not { } freeBytes)
+                if (drive.DriveType != DriveType.Fixed || !drive.IsReady || drive.TotalSize <= 0 || FreeDiskBytes(drive.Name) is not { } freeBytes)
                 {
                     continue;
                 }
