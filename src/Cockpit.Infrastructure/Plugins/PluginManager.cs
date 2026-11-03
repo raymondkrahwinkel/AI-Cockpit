@@ -25,6 +25,13 @@ public sealed class PluginManager(
 
     // AC-1389: Plugin is null for a plugin that is only a UI part, which the desktop's PluginUiManager activates.
     private readonly List<(DiscoveredPlugin Discovered, ICockpitPlugin? Plugin)> _loaded = [];
+    private readonly object _lifecycleLock = new();
+    private Func<DiscoveredPlugin, ICockpitPlugin?>? _activate;
+    private Func<DiscoveredPlugin, ICockpitPlugin, ICockpitHost>? _hostFor;
+    private bool _disposed;
+    private readonly HashSet<string> _activating = new(StringComparer.Ordinal);
+    // AC-2023: the activator's non-collectible ALC survives a refusal, so retrying requires a restart.
+    private readonly Dictionary<string, string> _restartReasons = new(StringComparer.Ordinal);
 
     // AC-1389: a plugin whose backend part threw in Initialize gets no UI part, which would only meet unknown actions.
     private readonly HashSet<DiscoveredPlugin> _initializeFailed = [];
@@ -41,20 +48,54 @@ public sealed class PluginManager(
     private readonly Func<ICockpitPlugin, Version?> _builtAgainst = builtAgainstResolver ?? _ReadBuiltAgainstAbstractions;
 
     // The plugins that actually loaded — their manifests, for the host to read what they declared (e.g. which storage keys hold a credential).
-    public IReadOnlyList<DiscoveredPlugin> Loaded => [.. _loaded.Select(entry => entry.Discovered)];
+    public IReadOnlyList<DiscoveredPlugin> Loaded => [.. LoadedParts.Select(entry => entry.Discovered)];
 
     // Every loaded plugin with its backend part, null for a plugin that is only a UI part.
-    public IReadOnlyList<(DiscoveredPlugin Discovered, ICockpitPlugin? Plugin)> LoadedParts => [.. _loaded];
+    public IReadOnlyList<(DiscoveredPlugin Discovered, ICockpitPlugin? Plugin)> LoadedParts
+    {
+        get
+        {
+            lock (_lifecycleLock)
+            {
+                return [.. _loaded];
+            }
+        }
+    }
 
     // AC-1389: a plugin whose Initialize threw gets no UI part.
-    public bool InitializeFailed(DiscoveredPlugin discovered) => _initializeFailed.Contains(discovered);
+    public bool InitializeFailed(DiscoveredPlugin discovered)
+    {
+        lock (_lifecycleLock)
+        {
+            return _initializeFailed.Contains(discovered);
+        }
+    }
 
     // AC-1571: the host of a plugin whose backend part initialized, or null.
-    public ICockpitHost? HostOf(string folderId) => _hosts.GetValueOrDefault(folderId);
+    public ICockpitHost? HostOf(string folderId)
+    {
+        lock (_lifecycleLock)
+        {
+            return _hosts.GetValueOrDefault(folderId);
+        }
+    }
 
     // Phase 1, before `BuildServiceProvider`: instantiate each `Load`-decided plugin and run its
     // `ConfigureServices` against the still-open `services`; failures are skipped (and disposed if created).
     public void LoadAndConfigure(
+        IReadOnlyList<DiscoveredPlugin> discovered,
+        IServiceCollection services,
+        Func<DiscoveredPlugin, ICockpitPlugin?> activate)
+    {
+        lock (_lifecycleLock)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            _activate = activate;
+            _LoadAndConfigure(discovered, services, activate);
+        }
+    }
+
+    private void _LoadAndConfigure(
         IReadOnlyList<DiscoveredPlugin> discovered,
         IServiceCollection services,
         Func<DiscoveredPlugin, ICockpitPlugin?> activate)
@@ -111,7 +152,7 @@ public sealed class PluginManager(
             {
                 logger.LogWarning(exception, "Plugin {PluginId} threw during ConfigureServices; skipping it.", candidate.FolderId);
                 diagnostics.Record(candidate.FolderId, candidate.Manifest.Name, "configure", _Reason(exception));
-                plugin.Dispose();
+                _DisposeQuietly(candidate, plugin);
                 continue;
             }
 
@@ -208,41 +249,204 @@ public sealed class PluginManager(
     // loaded `ICockpitPlugin` (AC-499), which MCP tool-call resolution scopes a fallback to.
     public void Initialize(Func<DiscoveredPlugin, ICockpitPlugin, ICockpitHost> hostFor)
     {
-        foreach (var (discovered, plugin) in _loaded)
+        IReadOnlyList<(DiscoveredPlugin Discovered, ICockpitPlugin? Plugin)> parts;
+        lock (_lifecycleLock)
         {
-            if (plugin is null)
-            {
-                continue;
-            }
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            _hostFor = hostFor;
+            parts = [.. _loaded];
+        }
 
-            try
+        foreach (var (discovered, plugin) in parts)
+        {
+            if (plugin is not null)
             {
-                var host = hostFor(discovered, plugin);
-                _hosts[discovered.FolderId] = host;
-                plugin.Initialize(host);
-            }
-            catch (Exception exception)
-            {
-                logger.LogWarning(exception, "Plugin {PluginId} threw during Initialize; its contributions are skipped.", discovered.FolderId);
-                _initializeFailed.Add(discovered);
-                _hosts.Remove(discovered.FolderId);
-                diagnostics.Record(discovered.FolderId, discovered.Manifest.Name, "initialize", _Reason(exception));
+                _InitializeOne(discovered, plugin, hostFor);
             }
         }
     }
 
-    public void Dispose()
+    private string? _InitializeOne(
+        DiscoveredPlugin discovered,
+        ICockpitPlugin plugin,
+        Func<DiscoveredPlugin, ICockpitPlugin, ICockpitHost> hostFor)
     {
-        foreach (var (discovered, plugin) in _loaded)
+        try
+        {
+            var host = hostFor(discovered, plugin);
+            plugin.Initialize(host);
+            lock (_lifecycleLock)
+            {
+                if (!_disposed)
+                {
+                    _hosts[discovered.FolderId] = host;
+                }
+            }
+            return null;
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Plugin {PluginId} threw during Initialize; its contributions are skipped.", discovered.FolderId);
+            lock (_lifecycleLock)
+            {
+                _initializeFailed.Add(discovered);
+                _hosts.Remove(discovered.FolderId);
+            }
+            var reason = _Reason(exception);
+            diagnostics.Record(discovered.FolderId, discovered.Manifest.Name, "initialize", reason);
+            return reason;
+        }
+    }
+
+    public PluginActivationResult ActivateOne(DiscoveredPlugin discovered)
+    {
+        Func<DiscoveredPlugin, ICockpitPlugin?> activate;
+        Func<DiscoveredPlugin, ICockpitPlugin, ICockpitHost> hostFor;
+        lock (_lifecycleLock)
+        {
+            if (_disposed || SafeMode || _activate is null || _hostFor is null)
+            {
+                return new(PluginActivationStatus.NeedsRestart, "The plugin lifecycle is not available for live activation.");
+            }
+
+            if (_restartReasons.TryGetValue(discovered.FolderId, out var reason))
+            {
+                return new(PluginActivationStatus.NeedsRestart, reason);
+            }
+
+            if (_activating.Contains(discovered.FolderId))
+            {
+                return new(PluginActivationStatus.Busy, "The plugin is being activated.");
+            }
+
+            var existing = _loaded.FirstOrDefault(entry => entry.Discovered.FolderId == discovered.FolderId);
+            if (existing.Discovered is not null)
+            {
+                return _initializeFailed.Contains(existing.Discovered)
+                    ? new(PluginActivationStatus.NeedsRestart, "The plugin previously failed to initialize.")
+                    : new(PluginActivationStatus.AlreadyActive);
+            }
+
+            _activating.Add(discovered.FolderId);
+            activate = _activate;
+            hostFor = _hostFor;
+        }
+
+        ICockpitPlugin? plugin = null;
+        PluginActivationResult result;
+        var phase = "load";
+        try
+        {
+            if (discovered.Decision != PluginLoadDecision.Load)
+            {
+                _NoteSkipped(discovered);
+                result = new(PluginActivationStatus.Refused, $"The plugin load decision is {discovered.Decision}.");
+            }
+            else
+            {
+                // AC-2023: display discovery may reuse file hashes; loading must read every byte again.
+                var sha256 = PluginClosureHash.OfInstalledFolderAsync(discovered.FolderPath).GetAwaiter().GetResult();
+                if (!string.Equals(sha256, discovered.Sha256, StringComparison.OrdinalIgnoreCase))
+                {
+                    const string reason = "The plugin files changed; discover and approve them again before loading.";
+                    logger.LogWarning("Plugin {PluginId} failed to load; skipping it. {Reason}", discovered.FolderId, reason);
+                    diagnostics.Record(discovered.FolderId, discovered.Manifest.Name, "load", reason);
+                    result = new(PluginActivationStatus.Refused, reason);
+                }
+                else if (discovered.Manifest.EntryAssembly is null)
+                {
+                    result = new(PluginActivationStatus.Activated);
+                }
+                else
+                {
+                    plugin = activate(discovered);
+                    if (plugin is null)
+                    {
+                        logger.LogWarning("Plugin {PluginId} did not yield an ICockpitPlugin; skipping it.", discovered.FolderId);
+                        diagnostics.Record(discovered.FolderId, discovered.Manifest.Name, "load", "The plugin did not yield an ICockpitPlugin.");
+                        result = new(PluginActivationStatus.NeedsRestart, "The plugin did not yield an ICockpitPlugin.");
+                    }
+                    else
+                    {
+                        phase = "configure";
+                        var services = new ServiceCollection();
+                        plugin.ConfigureServices(services);
+                        if (services.Count > 0)
+                        {
+                            _DisposeQuietly(discovered, plugin);
+                            plugin = null;
+                            result = new(PluginActivationStatus.NeedsRestart, "ConfigureServices registered services that require rebuilding the host container.");
+                        }
+                        else
+                        {
+                            _WarnIfBuiltAgainstNewerHost(discovered, plugin);
+                            var failure = _InitializeOne(discovered, plugin, hostFor);
+                            result = failure is null
+                                ? new(PluginActivationStatus.Activated)
+                                : new(PluginActivationStatus.NeedsRestart, failure);
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception exception)
         {
             if (plugin is not null)
             {
                 _DisposeQuietly(discovered, plugin);
+                plugin = null;
+            }
+
+            var reason = _Reason(exception);
+            logger.LogWarning(exception, "Plugin {PluginId} failed to load; skipping it.", discovered.FolderId);
+            diagnostics.Record(discovered.FolderId, discovered.Manifest.Name, phase, reason);
+            result = new(PluginActivationStatus.NeedsRestart, reason);
+        }
+
+        lock (_lifecycleLock)
+        {
+            _activating.Remove(discovered.FolderId);
+            if (result.Status == PluginActivationStatus.NeedsRestart && result.Reason is { } reason)
+            {
+                _restartReasons[discovered.FolderId] = reason;
+            }
+
+            if (!_disposed)
+            {
+                if (result.Status == PluginActivationStatus.Activated || plugin is not null)
+                {
+                    _loaded.Add((discovered, plugin));
+                }
+
+                return result;
             }
         }
 
-        _loaded.Clear();
-        _hosts.Clear();
+        if (plugin is not null)
+        {
+            _DisposeQuietly(discovered, plugin);
+        }
+
+        return new(PluginActivationStatus.NeedsRestart, "The plugin manager was disposed during activation.");
+    }
+
+    public void Dispose()
+    {
+        lock (_lifecycleLock)
+        {
+            _disposed = true;
+            foreach (var (discovered, plugin) in LoadedParts)
+            {
+                if (plugin is not null)
+                {
+                    _DisposeQuietly(discovered, plugin);
+                }
+            }
+
+            _loaded.Clear();
+            _hosts.Clear();
+            _initializeFailed.Clear();
+        }
     }
 
     private void _DisposeQuietly(DiscoveredPlugin discovered, ICockpitPlugin part)
