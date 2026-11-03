@@ -37,7 +37,7 @@ public class McpOAuthTokenAdoptionTests
         IMcpServerStore registry, params IPluginMcpProvider[] plugins)
     {
         var tokens = Substitute.For<IMcpOAuthTokenStore>();
-        return (new McpOAuthTokenAdoption(tokens, registry, plugins, NullLogger<McpOAuthTokenAdoption>.Instance), tokens);
+        return (new McpOAuthTokenAdoption(tokens, registry, new PluginMcpProviderRegistry(plugins), NullLogger<McpOAuthTokenAdoption>.Instance), tokens);
     }
 
     [Fact]

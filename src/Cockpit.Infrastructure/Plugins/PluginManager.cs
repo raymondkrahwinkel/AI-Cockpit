@@ -4,6 +4,7 @@ using Cockpit.Core.Configuration;
 using Cockpit.Core.Plugins;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Capabilities;
+using Cockpit.Plugins.Abstractions.Mcp;
 
 namespace Cockpit.Infrastructure.Plugins;
 
@@ -22,6 +23,8 @@ public sealed class PluginManager(
 
     // Whether this run skips the load phase entirely (AC-478) — read by the host to show the safe-mode marker.
     public bool SafeMode { get; } = safeMode;
+
+    public PluginMcpProviderRegistry McpProviders { get; } = new();
 
     // AC-1389: Plugin is null for a plugin that is only a UI part, which the desktop's PluginUiManager activates.
     private readonly List<(DiscoveredPlugin Discovered, ICockpitPlugin? Plugin)> _loaded = [];
@@ -274,6 +277,10 @@ public sealed class PluginManager(
         try
         {
             var host = hostFor(discovered, plugin);
+            if (plugin is IPluginMcpProvider provider)
+            {
+                McpProviders.Register(provider);
+            }
             plugin.Initialize(host);
             lock (_lifecycleLock)
             {
@@ -287,6 +294,10 @@ public sealed class PluginManager(
         catch (Exception exception)
         {
             logger.LogWarning(exception, "Plugin {PluginId} threw during Initialize; its contributions are skipped.", discovered.FolderId);
+            if (plugin is IPluginMcpProvider provider)
+            {
+                McpProviders.Remove(provider);
+            }
             lock (_lifecycleLock)
             {
                 _initializeFailed.Add(discovered);
@@ -451,6 +462,10 @@ public sealed class PluginManager(
 
     private void _DisposeQuietly(DiscoveredPlugin discovered, ICockpitPlugin part)
     {
+        if (part is IPluginMcpProvider provider)
+        {
+            McpProviders.Remove(provider);
+        }
         try
         {
             part.Dispose();

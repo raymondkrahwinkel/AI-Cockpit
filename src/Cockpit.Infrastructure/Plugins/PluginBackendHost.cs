@@ -859,7 +859,7 @@ public class PluginBackendHost(
             return fromRegistry;
         }
 
-        return services.GetServices<IPluginMcpProvider>()
+        return (services.GetService<PluginMcpProviderRegistry>()?.Providers ?? [])
             .SelectMany(_SafeContributionsOf)
             .Select(PluginMcpMapping.ToServerConfig)
             .FirstOrDefault(candidate => string.Equals(candidate.Name, name, StringComparison.Ordinal) && candidate.Auth == McpServerAuth.OAuth);
@@ -879,7 +879,7 @@ public class PluginBackendHost(
             return true;
         }
 
-        return services.GetServices<IPluginMcpProvider>()
+        return (services.GetService<PluginMcpProviderRegistry>()?.Providers ?? [])
             .SelectMany(_SafeContributionsOf)
             .Any(candidate => string.Equals(candidate.Name, name, StringComparison.Ordinal));
     }
@@ -907,7 +907,7 @@ public class PluginBackendHost(
             return [];
         }
 
-        return services.GetServices<IPluginMcpProvider>()
+        return (services.GetService<PluginMcpProviderRegistry>()?.Providers ?? [])
             .Where(provider => provider.GetType() == ownPluginType)
             .SelectMany(_SafeContributionsOf)
             .Select(PluginMcpMapping.ToServerConfig)

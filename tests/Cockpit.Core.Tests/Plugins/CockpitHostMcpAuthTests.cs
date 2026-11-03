@@ -107,7 +107,7 @@ public class CockpitHostMcpAuthTests
 
         if (own is not null)
         {
-            collection.AddSingleton(own);
+            collection.AddSingleton(new PluginMcpProviderRegistry(own));
         }
 
         var services = collection.BuildServiceProvider();

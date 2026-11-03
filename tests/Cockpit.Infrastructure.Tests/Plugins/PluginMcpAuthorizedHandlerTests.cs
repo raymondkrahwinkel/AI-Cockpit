@@ -184,8 +184,7 @@ public sealed class PluginMcpAuthorizedHandlerTests
             "Depot",
             new ServiceCollection()
                 .AddSingleton(coordinator)
-                .AddSingleton<IPluginMcpProvider>(own)
-                .AddSingleton(other)
+                .AddSingleton(new PluginMcpProviderRegistry(own, other))
                 .BuildServiceProvider(),
             Substitute.For<IPluginStorage>(),
             NullCockpitSessionObserver.Instance,

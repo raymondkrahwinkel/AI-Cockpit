@@ -578,6 +578,7 @@ public sealed class CockpitBackend
         }
 
         services.AddSingleton(manager);
+        services.AddSingleton(manager.McpProviders);
     }
 
     private static void _InstallBundledPlugins(ILoggerFactory loggerFactory)
