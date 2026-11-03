@@ -577,6 +577,13 @@
                                 ToolTip.Tip="One budget over everything the cockpit runs, rather than a separate cap per session — several sessions each staying under their own cap could still promise more memory than the machine has, and then the system picks which one to end. The figure it is measured against is this app plus every process the sessions now open have spawned, including ones whose parent has since gone; what a session left behind after being closed is not in it. Crossing the budget warns you and names the heaviest session; nothing is closed and no session is refused."/>
                         </StackPanel>
 
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <CheckBox x:Name="AutomaticDockerCleanupBox" Content="Automatically clean up Docker"
+                                      IsChecked="{Binding AutomaticDockerCleanup}"/>
+                            <materialIcons:MaterialIcon Classes="hint"
+                                ToolTip.Tip="Lets the cockpit prune Docker's build cache and old images by itself: daily, and every 15 minutes while a disk is running low. Turn it off to keep Docker as it is; the cockpit still watches the disk and warns when space runs short, and you can still clean up or compact by hand from the storage status in the status bar. A change applies without a restart."/>
+                        </StackPanel>
+
                         <StackPanel x:Name="WhereWorkLandsHelp" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Classes="optionsSectionHeader" Text="3. WHERE WORK LANDS"/>
                         </StackPanel>

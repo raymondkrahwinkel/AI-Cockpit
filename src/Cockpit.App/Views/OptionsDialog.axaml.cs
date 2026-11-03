@@ -198,6 +198,12 @@ public partial class OptionsDialog : Window
             assistant.OpenHealthRequested += dialog.Close;
         }
 
+        if (admin.Storage is { } storage)
+        {
+            dialog._AddServerPage("server-storage", "Storage", MaterialIconKind.Harddisk, new ServerStoragePage { DataContext = storage });
+            dialog.Opened += (_, _) => storage.LoadCommand.Execute(null);
+        }
+
         dialog._AddServerPage("server-plugins", "Plugins", MaterialIconKind.Puzzle, new ServerPluginsPage { DataContext = admin });
         dialog._AddServerPage("server-keys", "Connect keys", MaterialIconKind.KeyChainVariant, new ServerConnectKeysPage { DataContext = admin });
         dialog._AddServerPage("server-audit", "Audit log", MaterialIconKind.History, new ServerAuditLogPage { DataContext = admin });

@@ -68,6 +68,9 @@ public sealed partial class ServerAdminViewModel : ObservableObject
     // AC-1475: the Assistant page, when this dialog was given the server's assistant.
     public ServerAssistantViewModel? Assistant { get; init; }
 
+    // AC-2035: the Storage page, when this server can offer the setting.
+    public ServerStorageViewModel? Storage { get; init; }
+
     // AC-1511: whether a plugin offers its own view for this server, and what opens it. That view comes from the
     // plugin installed here, in this window, and reaches the plugin's backend part on the server.
     public Func<ServerPluginRowViewModel, bool> HasPluginSettings { get; init; } = _ => false;

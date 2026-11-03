@@ -2178,6 +2178,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private int _memoryBudgetPercent = MemoryPressure.DefaultBudgetPercent;
 
+    // AC-2035: whether Docker's build cache and old images are pruned by the cockpit itself. Read afresh by the storage
+    // maintenance on every tick, so a saved change applies without a restart.
+    [ObservableProperty]
+    private bool _automaticDockerCleanup = true;
+
     [ObservableProperty]
     private string _sessionBehaviorSettingsStatus = string.Empty;
 
@@ -4379,6 +4384,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         CombineQueuedMessages = settings.CombineQueuedMessages;
         WakeAgentsByDefault = settings.WakeAgentsByDefault;
         MemoryBudgetPercent = settings.MemoryBudgetPercent;
+        AutomaticDockerCleanup = settings.AutomaticDockerCleanup;
         // Pushed explicitly as well as through the property's own change handler: the saved value can equal the
         // property's initial one, and then nothing changed and the handler never ran — leaving the coordinator on
         // its own default rather than on the operator's, which happen to agree today and need not tomorrow.
@@ -4400,6 +4406,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             CombineQueuedMessages = CombineQueuedMessages,
             WakeAgentsByDefault = WakeAgentsByDefault,
             MemoryBudgetPercent = MemoryBudgetPercent,
+            AutomaticDockerCleanup = AutomaticDockerCleanup,
         });
         SessionBehaviorSettingsStatus = "Saved";
     }
@@ -7987,6 +7994,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         CombineQueuedMessages = behavior.CombineQueuedMessages;
         WakeAgentsByDefault = behavior.WakeAgentsByDefault;
         MemoryBudgetPercent = behavior.MemoryBudgetPercent;
+        AutomaticDockerCleanup = behavior.AutomaticDockerCleanup;
 
         var screenshot = new ScreenshotSettings();
         ScreenshotGlobalHotkeyEnabled = screenshot.GlobalHotkeyEnabled;

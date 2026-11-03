@@ -418,6 +418,8 @@ internal static partial class Screenshotter
         // and its Audit log.
         ["server-admin-keys"] = ServerAdminScene.Keys,
         ["server-admin-audit"] = ServerAdminScene.Audit,
+        // AC-2035: its Storage page.
+        ["server-admin-storage"] = ServerAdminScene.Storage,
         // AC-1472: its Projects page after a clone.
         ["server-admin-projects"] = ServerAdminScene.Projects,
         // AC-1473: its Profiles, the sign-in column reading and the editor open on a profile whose key is a secret.
