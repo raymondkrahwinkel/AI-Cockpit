@@ -21,4 +21,8 @@ public sealed record SessionBehaviorSettings
     // AC-1086: the shared memory budget over all sessions together, as a share of the machine. Sessions each had a
     // cap and nothing added them up, so six could promise more than the machine has and the system picked a victim.
     public int MemoryBudgetPercent { get; init; } = MemoryPressure.DefaultBudgetPercent;
+
+    // AC-2035: whether the cockpit prunes Docker's build cache and old images by itself. Off keeps the disk monitoring
+    // and warns when space runs short instead; manual clean-up and compaction stay available. Per machine, not carried.
+    public bool AutomaticDockerCleanup { get; init; } = true;
 }

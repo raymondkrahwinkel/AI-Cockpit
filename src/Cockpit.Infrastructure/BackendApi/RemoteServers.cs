@@ -207,6 +207,7 @@ internal sealed class RemoteServer : IRemoteServer, IRemoteServerSignIn, IRemote
         Administration = new RemoteConnectKeyAdministration(_client);
         Profiles = new RemoteServerProfiles(_client);
         AssistantAdministration = new RemoteAssistantAdministration(_client);
+        StorageSettings = new RemoteServerStorageSettings(_client);
             _health = new RemoteServerHealthReader(_client, name, settingsStore, logger);
         _plugins = new RemotePluginAdministration(_client, logger);
         Plugins = _plugins;
@@ -251,6 +252,8 @@ internal sealed class RemoteServer : IRemoteServer, IRemoteServerSignIn, IRemote
     public IServerProfiles Profiles { get; }
 
     public IAssistantAdministration AssistantAdministration { get; }
+
+    public IServerStorageSettings StorageSettings { get; }
 
     public RemoteServerState State
     {

@@ -1,6 +1,7 @@
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Abstractions.SessionBehavior;
 using Cockpit.Core.Abstractions.Shell;
 using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Assistant;
@@ -22,7 +23,8 @@ internal sealed class DockerStorageMaintenance(
     IAgentMessageInbox inbox,
     ILiveSessionRegistry live,
     ILogger<DockerStorageMaintenance> logger,
-    IToastService? toasts = null) : IDockerStorageMaintenance, ISingletonService, IAsyncDisposable
+    IToastService? toasts = null,
+    ISessionBehaviorSettingsStore? settings = null) : IDockerStorageMaintenance, ISingletonService, IAsyncDisposable
 {
     private readonly SemaphoreSlim _operation = new(1, 1);
     private readonly CancellationTokenSource _stopping = new();
@@ -33,6 +35,7 @@ internal sealed class DockerStorageMaintenance(
     private Task _tick = Task.CompletedTask;
     private DateTimeOffset _lastCleanup;
     private DateTimeOffset _lastOffer;
+    private DateTimeOffset _lastSuggestion;
     private string? _pauseId;
     private DockerDataDisk? _disk;
     private DockerStorageUsage? _usage;
@@ -305,7 +308,9 @@ internal sealed class DockerStorageMaintenance(
         {
             var pressure = resources.Disks.Select(drive => drive.Pressure).DefaultIfEmpty().Max();
             var now = DateTimeOffset.UtcNow;
-            if (now - _lastCleanup >= (pressure >= DiskPressure.Elevated ? TimeSpan.FromMinutes(15) : TimeSpan.FromDays(1)))
+            // AC-2035: read afresh each tick, so switching it in Options or on the server needs no restart.
+            var automatic = settings is null || (await settings.LoadAsync(_stopping.Token).ConfigureAwait(false)).AutomaticDockerCleanup;
+            if (automatic && now - _lastCleanup >= (pressure >= DiskPressure.Elevated ? TimeSpan.FromMinutes(15) : TimeSpan.FromDays(1)))
             {
                 await CleanupAsync(_stopping.Token).ConfigureAwait(false);
             }
@@ -313,6 +318,13 @@ internal sealed class DockerStorageMaintenance(
             {
                 try { await SampleAsync(_stopping.Token).ConfigureAwait(false); }
                 finally { _operation.Release(); }
+            }
+
+            if (!automatic && pressure >= DiskPressure.Elevated && now - _lastSuggestion >= TimeSpan.FromHours(6))
+            {
+                _lastSuggestion = now;
+                var worst = resources.Disks.MaxBy(drive => drive.Pressure)!;
+                _Report($"Disk space on {worst.Name} is {(pressure == DiskPressure.Critical ? "critically low" : "running low")} and automatic Docker clean-up is off. Clean up Docker by hand from the storage status in the status bar.", ToastSeverity.Warning);
             }
 
             if (CanCompact && now - _lastOffer >= TimeSpan.FromDays(1))

@@ -168,6 +168,24 @@ internal static class ServerAdminScene
         return dialog;
     }
 
+    // AC-2035: Options › Storage on a server, automatic Docker clean-up switched off.
+    public static OptionsDialog Storage(int width, int height)
+    {
+        var storage = new ServerStorageViewModel(new SceneStorage()) { AutomaticDockerCleanup = false };
+        var dialog = OptionsDialog.ForServer(new ServerAdminViewModel("huis-cockpit", "laptop-raymond", new SceneKeys(), [], [], new ScenePlugins()) { Storage = storage });
+        dialog.Width = width;
+        dialog.Height = height;
+        dialog.SelectCategory("server-storage");
+        return dialog;
+    }
+
+    private sealed class SceneStorage : IServerStorageSettings
+    {
+        public Task<bool> GetAutomaticDockerCleanupAsync(CancellationToken cancellationToken = default) => Task.FromResult(false);
+
+        public Task SetAutomaticDockerCleanupAsync(bool enabled, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
     // AC-1472: Projects after a clone, the form still holding what was cloned and the result under it.
     public static OptionsDialog Projects(int width, int height)
     {

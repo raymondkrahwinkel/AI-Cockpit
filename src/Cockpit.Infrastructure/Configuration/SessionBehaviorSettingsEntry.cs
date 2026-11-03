@@ -20,8 +20,12 @@ internal sealed class SessionBehaviorSettingsEntry
     // which warns on an idle cockpit for every install that predates this setting.
     public int MemoryBudgetPercent { get; set; } = MemoryPressure.DefaultBudgetPercent;
 
+    // AC-2035: true on absence, like the two above — a file written before this setting must keep cleaning up.
+    public bool AutomaticDockerCleanup { get; set; } = true;
+
     public static SessionBehaviorSettingsEntry FromDomain(SessionBehaviorSettings settings) => new()
     {
+        AutomaticDockerCleanup = settings.AutomaticDockerCleanup,
         AutoCloseOnExit = settings.AutoCloseOnExit,
         CombineQueuedMessages = settings.CombineQueuedMessages,
         WakeAgentsByDefault = settings.WakeAgentsByDefault,
@@ -30,6 +34,7 @@ internal sealed class SessionBehaviorSettingsEntry
 
     public SessionBehaviorSettings ToDomain() => new()
     {
+        AutomaticDockerCleanup = AutomaticDockerCleanup,
         AutoCloseOnExit = AutoCloseOnExit,
         CombineQueuedMessages = CombineQueuedMessages,
         WakeAgentsByDefault = WakeAgentsByDefault,

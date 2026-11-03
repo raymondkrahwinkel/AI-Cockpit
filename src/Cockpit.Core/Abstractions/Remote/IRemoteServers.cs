@@ -78,6 +78,11 @@ public interface IRemoteServer
     IAssistantAdministration AssistantAdministration { get; }
 
     /// <summary>
+    /// The server's Docker storage setting, which only an admin key may read or change (AC-2035); null when this server cannot offer it.
+    /// </summary>
+    IServerStorageSettings? StorageSettings => null;
+
+    /// <summary>
     /// The server's health as its health route answers it (AC-1457).
     /// </summary>
     IRemoteServerHealth Health { get; }

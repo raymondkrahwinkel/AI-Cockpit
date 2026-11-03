@@ -466,6 +466,7 @@ public partial class CockpitViewModel
             GitHubCredentials = Composition.RemoteServerGitHubCredentials.For(group.Server),
             Profiles = new ServerProfilesViewModel(new ServerProfileServices(group.Name, group.Server.Profiles, _serverSignIns, plugins, LocalPluginUiPart)),
             Assistant = assistant,
+            Storage = group.Server.StorageSettings is { } storage ? new ServerStorageViewModel(storage) : null,
             HasPluginSettings = row => plugins is IPluginChannelRelay && (_ServerSettingsFor(row) is not null || _LocalSettingsPartFor(row) is not null),
             OpenPluginSettings = row => _OpenServerPluginSettingsAsync(group.Name, plugins, group.Server.Profiles, group.Server.Projects, row),
             IsPluginOnDesktop = row => Plugins.Plugins.Any(local => local.FolderId == PluginFolderName.Normalize(row.Id)),
