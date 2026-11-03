@@ -70,15 +70,23 @@ internal sealed class DockerStorageMaintenance(
     {
         _usage = null;
         _disk = null;
-        var result = await docker.RunAsync(["system", "df", "--format", "json"], cancellationToken).ConfigureAwait(false);
-        if (result.ExitCode != 0)
+        DockerCliResult? result;
+        try
+        {
+            result = await docker.RunAsync(["system", "df", "--format", "json"], cancellationToken).ConfigureAwait(false);
+        }
+        catch (DockerUnavailableException)
+        {
+            result = null;
+        }
+        if (result is null || result.Value.ExitCode != 0)
         {
             Volatile.Write(ref _summary, "Docker is unavailable; disk monitoring continues.");
             Changed?.Invoke();
             return;
         }
 
-        var usage = DockerStorageUsage.Parse(result.StandardOutput);
+        var usage = DockerStorageUsage.Parse(result.Value.StandardOutput);
         DockerDataDisk? disk = null;
         try
         {
@@ -320,7 +328,7 @@ internal sealed class DockerStorageMaintenance(
                 finally { _operation.Release(); }
             }
 
-            if (!automatic && pressure >= DiskPressure.Elevated && now - _lastSuggestion >= TimeSpan.FromHours(6))
+            if (!automatic && pressure >= DiskPressure.Elevated && now - _lastSuggestion >= TimeSpan.FromHours(6) && _usage is not null)
             {
                 _lastSuggestion = now;
                 var worst = resources.Disks.MaxBy(drive => drive.Pressure)!;
