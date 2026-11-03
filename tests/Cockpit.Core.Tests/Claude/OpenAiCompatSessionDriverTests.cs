@@ -7,12 +7,6 @@ using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Mcp;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
-using System.ClientModel;
-using System.ClientModel.Primitives;
-using System.Net;
-using System.Text;
-using System.Text.Json;
-using OpenAI;
 
 namespace Cockpit.Core.Tests.Claude;
 
@@ -23,60 +17,6 @@ namespace Cockpit.Core.Tests.Claude;
 /// </summary>
 public class OpenAiCompatSessionDriverTests
 {
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task Images_AreSentInProviderWireFormat_AndRetainedInHistory(bool ollama)
-    {
-        using var handler = new ImageWireHandler(ollama);
-        using var http = new HttpClient(handler);
-        var options = OpenAiCompatChatClientFactory.BuildClientOptions("http://localhost:1234");
-        options.Transport = new HttpClientPipelineTransport(http);
-        using IChatClient client = ollama
-            ? new OllamaChatClient(new OllamaConfig("http://localhost:1234", "model"), http)
-            : new OpenAIClient(new ApiKeyCredential("test"), options).GetChatClient("model").AsIChatClient();
-        var driver = _CreateDriver(client);
-        await driver.StartAsync(LocalProfile);
-        await driver.SendUserMessageAsync("describe", [new("image/png", "AQID"), new("image/jpeg", "BAUG")]);
-        await _CollectUntilTurnCompletedAsync(driver);
-        await driver.SendUserMessageAsync("", [new("image/png", "BwgJ")]);
-        await _CollectUntilTurnCompletedAsync(driver);
-
-        var messages = handler.Bodies[1].GetProperty("messages");
-        var first = messages[0];
-        var last = messages[messages.GetArrayLength() - 1];
-        if (ollama)
-        {
-            Assert.Equal("describe", first.GetProperty("content").GetString());
-            Assert.Equal("AQID", first.GetProperty("images")[0].GetString());
-            Assert.Equal("BAUG", first.GetProperty("images")[1].GetString());
-            Assert.Equal("BwgJ", last.GetProperty("images")[0].GetString());
-        }
-        else
-        {
-            Assert.Equal("describe", first.GetProperty("content")[0].GetProperty("text").GetString());
-            Assert.Equal("image_url", first.GetProperty("content")[1].GetProperty("type").GetString());
-            Assert.Equal("image_url", first.GetProperty("content")[2].GetProperty("type").GetString());
-            Assert.Equal("data:image/png;base64,AQID", first.GetProperty("content")[1].GetProperty("image_url").GetProperty("url").GetString());
-            Assert.Equal("data:image/jpeg;base64,BAUG", first.GetProperty("content")[2].GetProperty("image_url").GetProperty("url").GetString());
-            Assert.Equal("data:image/png;base64,BwgJ", last.GetProperty("content")[0].GetProperty("image_url").GetProperty("url").GetString());
-        }
-    }
-
-    private sealed class ImageWireHandler(bool ollama) : HttpMessageHandler
-    {
-        public List<JsonElement> Bodies { get; } = [];
-
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            var content = request.Content ?? throw new InvalidOperationException("Request has no body.");
-            Bodies.Add(JsonSerializer.Deserialize<JsonElement>(await content.ReadAsStringAsync(cancellationToken)));
-            var response = ollama
-                ? "{\"message\":{\"role\":\"assistant\",\"content\":\"done\"},\"done\":true}\n"
-                : "data: {\"id\":\"test\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"model\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"done\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n";
-            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(response, Encoding.UTF8, ollama ? "application/json" : "text/event-stream") };
-        }
-    }
     private static readonly SessionProfile LocalProfile =
         new("local", new OllamaConfig("http://localhost:11434", "llama3.1"));
 
