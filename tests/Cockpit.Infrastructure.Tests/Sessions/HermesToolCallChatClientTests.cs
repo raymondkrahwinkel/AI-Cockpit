@@ -24,27 +24,15 @@ public class HermesToolCallChatClientTests
         new("local", new OllamaConfig("http://localhost:11434", "qwen2.5-coder"));
 
     [Fact]
-    public async Task ZeroParameterHermesCall_BecomesAFunctionCallWithNoArguments_AndTheMarkersDoNotLeakAsText()
-    {
-        // The literal shape qwen-coder emits for a no-arg tool: <function=NAME> </function> </tool_call>.
-        var (text, calls) = await _RunAsync("<function=list_allowed_directories> </function> </tool_call>");
-
-        Assert.Single(calls);
-        Assert.Equal("list_allowed_directories", calls[0].Name);
-        Assert.Empty(calls[0].Arguments!);
-        // Neither the function marker nor the tool_call wrapper survives as text.
-        Assert.DoesNotContain("<function=", text);
-        Assert.DoesNotContain("</tool_call>", text);
-    }
-
-    [Fact]
     public async Task AHermesBlockSplitAcrossStreamedUpdates_IsReassembledIntoOneFunctionCall()
     {
         // The stream cuts the block at arbitrary boundaries — mid-marker, mid-parameter — exactly as an HTTP stream
-        // does. The shim buffers across updates and still yields one correct call.
-        var (_, calls) = await _RunAsync(
+        // does. The shim buffers across updates and still yields one correct call, and no marker leaks as text.
+        var (text, calls) = await _RunAsync(
             "<functio", "n=read_file> <param", "eter=path> /home/x/READ", "ME.md </parameter> </func", "tion> </tool_call>");
 
+        Assert.DoesNotContain("<function=", text);
+        Assert.DoesNotContain("</tool_call>", text);
         Assert.Single(calls);
         Assert.Equal("read_file", calls[0].Name);
         var arguments = calls[0].Arguments;

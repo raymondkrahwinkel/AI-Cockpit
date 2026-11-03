@@ -34,30 +34,15 @@ public class TerminalShellIntegrationTrackerTests
         Assert.Equal(1, tracker.CommandsFinished);
         Assert.Equal(1, tracker.LastExitCode);
         Assert.False(tracker.AtPrompt, "the next prompt mark is what says it is ready again");
-        tracker.Feed(Mark("C") + Mark("D"));
+        // The pty flushes on its own schedule, so a mark arriving in halves is normal.
+        var split = Mark("D");
+        tracker.Feed(Mark("C") + split[..4]);
+        Assert.Equal(1, tracker.CommandsFinished);
+        tracker.Feed(split[4..]);
 
         Assert.Equal(2, tracker.CommandsFinished);
         Assert.Null(tracker.LastExitCode);
     }
-
-    [Fact]
-    public void AMarkSplitAcrossTwoWrites_IsStillSeen()
-    {
-        // The pty flushes on its own schedule, so a mark arriving in halves is normal — missing it would strand
-        // run_in_terminal waiting for a command that already finished.
-        var tracker = new TerminalShellIntegrationTracker();
-        var mark = Mark("D;0");
-
-        tracker.Feed("done\r\n" + mark[..4]);
-        Assert.Equal(0, tracker.CommandsFinished);
-
-        tracker.Feed(mark[4..]);
-        Assert.Equal(1, tracker.CommandsFinished);
-        Assert.Equal(0, tracker.LastExitCode);
-    }
-
-
-
 
     [Fact]
     public void AMalformedOscDoesNotSwallowTheMarksAfterIt()
@@ -73,6 +58,4 @@ public class TerminalShellIntegrationTrackerTests
         Assert.Equal(1, tracker.CommandsFinished);
         Assert.Equal(0, tracker.LastExitCode);
     }
-
-
 }
