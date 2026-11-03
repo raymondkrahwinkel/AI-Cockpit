@@ -59,22 +59,31 @@ public sealed class PluginUiManager(ILogger<PluginUiManager> logger, PluginDiagn
     {
         foreach (var (discovered, plugin) in backend.LoadedParts.Where(entry => !backend.InitializeFailed(entry.Discovered)))
         {
-            try
-            {
-                if (_Activate(discovered, plugin, activateUi) is not { } ui)
-                {
-                    continue;
-                }
+            InitializeUiOne(discovered, plugin, activateUi, hostFor);
+        }
+    }
 
-                var host = hostFor(discovered, ui);
-                _hosts[discovered] = host;
-                ui.InitializeUi(host);
-            }
-            catch (Exception exception)
+    public void InitializeUiOne(
+        DiscoveredPlugin discovered,
+        ICockpitPlugin? plugin,
+        Func<DiscoveredPlugin, ICockpitPlugin?, ICockpitPluginUi?> activateUi,
+        Func<DiscoveredPlugin, ICockpitPluginUi, ICockpitUiHost> hostFor)
+    {
+        try
+        {
+            if (_Activate(discovered, plugin, activateUi) is not { } ui)
             {
-                logger.LogWarning(exception, "Plugin {PluginId}'s UI part failed; its UI contributions are skipped.", discovered.FolderId);
-                diagnostics.Record(discovered.FolderId, discovered.Manifest.Name, "initialize-ui", exception.Message);
+                return;
             }
+
+            var host = hostFor(discovered, ui);
+            _hosts[discovered] = host;
+            ui.InitializeUi(host);
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Plugin {PluginId}'s UI part failed; its UI contributions are skipped.", discovered.FolderId);
+            diagnostics.Record(discovered.FolderId, discovered.Manifest.Name, "initialize-ui", exception.Message);
         }
     }
 

@@ -27,6 +27,8 @@ public sealed class PluginManager(
 
     public PluginMcpProviderRegistry McpProviders { get; } = new();
 
+    public event Action<DiscoveredPlugin, ICockpitPlugin?>? Activated;
+
     // AC-1389: Plugin is null for a plugin that is only a UI part, which the desktop's PluginUiManager activates.
     private readonly List<(DiscoveredPlugin Discovered, ICockpitPlugin? Plugin)> _loaded = [];
     private readonly object _lifecycleLock = new();
@@ -436,8 +438,21 @@ public sealed class PluginManager(
                     _loaded.Add((discovered, plugin));
                 }
 
-                return result;
+                if (result.Status != PluginActivationStatus.Activated)
+                {
+                    return result;
+                }
             }
+            else
+            {
+                result = new(PluginActivationStatus.NeedsRestart, "The plugin manager was disposed during activation.");
+            }
+        }
+
+        if (result.Status == PluginActivationStatus.Activated)
+        {
+            Activated?.Invoke(discovered, plugin);
+            return result;
         }
 
         if (plugin is not null)
@@ -445,7 +460,7 @@ public sealed class PluginManager(
             _DisposeQuietly(discovered, plugin);
         }
 
-        return new(PluginActivationStatus.NeedsRestart, "The plugin manager was disposed during activation.");
+        return result;
     }
 
     public void Dispose()

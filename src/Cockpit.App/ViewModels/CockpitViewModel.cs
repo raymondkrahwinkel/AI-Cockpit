@@ -7638,6 +7638,31 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // One row per plugin that has ever registered a settings view (`PluginRowViewModel.HasSettings`, backed by the
     // persisted settings registry — true even for a plugin disabled this session, which never called `AddSettings` at
     // all) (AC-1005).
+    public void RefreshLivePlugin(string pluginId)
+    {
+        var index = Plugins.Plugins.ToList().FindIndex(row => row.FolderId == pluginId);
+        if (index >= 0 && PluginSettings.ContainsKey(pluginId))
+        {
+            Plugins.Plugins[index] = Plugins.Plugins[index].WithSettings();
+        }
+
+        if (!_optionsStaged || !PluginSettings.TryGetValue(pluginId, out var registration))
+        {
+            return;
+        }
+
+        var row = new PluginOptionsRowViewModel(pluginId, registration.PluginName, registration.CreateView, null, registration.Category, _logger);
+        var rowIndex = PluginOptionsRows.ToList().FindIndex(existing => existing.PluginId == pluginId);
+        if (rowIndex >= 0)
+        {
+            PluginOptionsRows[rowIndex] = row;
+        }
+        else
+        {
+            PluginOptionsRows.Add(row);
+        }
+    }
+
     private void _RebuildPluginOptionsRows()
     {
         // `ShowOptionsDialogAsync` calls `BeginOptionsEdit` unconditionally even when the dialog is merely activated
