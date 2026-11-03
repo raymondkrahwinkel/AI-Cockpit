@@ -8,7 +8,7 @@ internal sealed class RemoteServerStorageSettings(BackendApiClient client) : ISe
     private const string Route = "api/v1/storage/settings";
 
     public async Task<bool> GetAutomaticDockerCleanupAsync(CancellationToken cancellationToken = default) =>
-        (await client.SendAsync<StorageSettingsBody>(HttpMethod.Get, Route, null, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false)).AutomaticDockerCleanup ?? true;
+        (await client.SendAsync<StorageSettingsBody>(HttpMethod.Get, Route, null, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false)).AutomaticDockerCleanup ?? false;
 
     public Task SetAutomaticDockerCleanupAsync(bool enabled, CancellationToken cancellationToken = default) =>
         client.SendAsync<StorageSettingsBody>(HttpMethod.Put, Route, new StorageSettingsBody(enabled), ConnectKeyEndpoints.Json, cancellationToken);

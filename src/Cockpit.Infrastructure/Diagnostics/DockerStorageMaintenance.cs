@@ -309,7 +309,7 @@ internal sealed class DockerStorageMaintenance(
             var pressure = resources.Disks.Select(drive => drive.Pressure).DefaultIfEmpty().Max();
             var now = DateTimeOffset.UtcNow;
             // AC-2035: read afresh each tick, so switching it in Options or on the server needs no restart.
-            var automatic = settings is null || (await settings.LoadAsync(_stopping.Token).ConfigureAwait(false)).AutomaticDockerCleanup;
+            var automatic = settings is not null && (await settings.LoadAsync(_stopping.Token).ConfigureAwait(false)).AutomaticDockerCleanup;
             if (automatic && now - _lastCleanup >= (pressure >= DiskPressure.Elevated ? TimeSpan.FromMinutes(15) : TimeSpan.FromDays(1)))
             {
                 await CleanupAsync(_stopping.Token).ConfigureAwait(false);

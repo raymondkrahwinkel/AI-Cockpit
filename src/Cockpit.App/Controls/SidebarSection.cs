@@ -13,7 +13,7 @@ using Material.Icons.Avalonia;
 
 namespace Cockpit.App.Controls;
 
-// AC-1762: the mockups' foldable `.sec` card (Company v8). Projects, This laptop and every server stand in one, so the
+// AC-1762: the mockups' foldable `.sec` card (Company v8). Projects, This machine and every server stand in one, so the
 // three group headings look the same; the whole header folds it, and where that is remembered is the caller's business.
 internal sealed class SidebarSection : ContentControl
 {

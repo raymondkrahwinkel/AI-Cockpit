@@ -43,6 +43,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- Swarm takeover keeps the assistant's recent conversation within a bounded prompt, so long histories no longer prevent it from responding.
+- A plugin that crashes the cockpit while it starts no longer locks you out. When the previous start did not finish while a plugin's panel or tab was being reopened, the next start turns that plugin off, leaves its panel and tab closed, and says so with a "Turn back on" button. Two unfinished starts in a row with no plugin to blame start the cockpit in safe mode by itself; the start after a good one is normal again.
 - Linux nightly browser checks now accept the rebinding fixture's hostname while preserving the single-resolution DNS-pinning assertions.
 
 - The browser's share card only offers sessions with the browser tools and explains when none are available.
