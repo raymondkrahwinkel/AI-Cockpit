@@ -20,7 +20,7 @@ internal sealed class SessionBehaviorSettingsEntry
     // which warns on an idle cockpit for every install that predates this setting.
     public int MemoryBudgetPercent { get; set; } = MemoryPressure.DefaultBudgetPercent;
 
-    // AC-2035: true on absence, like the two above — a file written before this setting must keep cleaning up.
+    // AC-2044: off on absence — the cockpit prunes Docker only when the user turns this on.
     public bool AutomaticDockerCleanup { get; set; } = false;
 
     public static SessionBehaviorSettingsEntry FromDomain(SessionBehaviorSettings settings) => new()
