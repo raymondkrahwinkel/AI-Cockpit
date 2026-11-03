@@ -1,5 +1,6 @@
 using Cockpit.Plugin.Workflows.Engine;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Workflows;
 using NSubstitute;
 
@@ -11,6 +12,14 @@ namespace Cockpit.Plugin.Workflows.Tests;
 // LowRisk one stays agent-buildable and is gated at run time instead.
 public class ContributedStepConsentTests
 {
+    [Theory]
+    [InlineData(WorkflowStepConsent.None, null)]
+    [InlineData(WorkflowStepConsent.LowRisk, ConsentRisk.LowRisk)]
+    [InlineData(WorkflowStepConsent.Dangerous, ConsentRisk.Dangerous)]
+    public void DeclaredRisk_MapsStraightThroughToTheGate(WorkflowStepConsent declared, ConsentRisk? expected)
+    {
+        Assert.Equal(expected, new ContributedStep(new FakeStep("x", declared)).RequiredConsent);
+    }
 
     [Fact]
     public void OnlyADangerousStep_IsKeptFromAnAgent_ALowRiskOneStaysBuildableButGatedAtRuntime()

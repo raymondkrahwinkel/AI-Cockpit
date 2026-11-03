@@ -7,6 +7,14 @@ namespace Cockpit.Plugin.Workflows.Tests;
 // instead of a second command.
 public class ShellQuotingTests
 {
+    [Theory]
+    [InlineData("plain", "'plain'")]
+    [InlineData("a; rm -rf ~", "'a; rm -rf ~'")]
+    [InlineData("$(whoami)", "'$(whoami)'")]
+    [InlineData("back`tick`", "'back`tick`'")]
+    [InlineData("a | b > c", "'a | b > c'")]
+    public void QuotePosix_WrapsTheValueSoTheShellReadsItAsOneLiteralArgument(string value, string expected) =>
+        Assert.Equal(expected, ShellQuoting.QuotePosix(value));
 
     [Fact]
     public void QuotePosix_ClosesAndReopensAroundAnEmbeddedSingleQuote_TheOneCharacterItCannotHold() =>

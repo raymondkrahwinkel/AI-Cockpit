@@ -33,6 +33,39 @@ public class SlackChannelBridgeTests
         return (bridge, gateway, sink, files);
     }
 
+    // AC-1025 criterion 2, the plugin-testable half of it: the host's gateway already reports a stranger's
+    // message as "ignored" (AC-1023 §3) — this proves the plugin does nothing further with that: no reaction,
+    // no post, nothing that would confirm to the stranger that a bot is even listening.
+    [Fact]
+    public async Task IgnoredSender_ProducesNoSlackActivityAtAll()
+    {
+        var refusals = new List<string>();
+        var (bridge, gateway, sink) = _Build(reportRefusal: refusals.Add);
+        gateway.NextResult = AssistantChannelSendResult.IgnoredSender();
+
+        await bridge.HandleInboundMessageAsync(_StrangerUserId, "hello?", messageTs: "1");
+
+        Assert.Empty(sink.Reactions);
+        Assert.Empty(sink.Posted);
+        Assert.Empty(sink.Edited);
+        var refusal = Assert.Single(refusals);
+        Assert.Contains(_StrangerUserId, refusal);
+        Assert.Contains(_ChannelId, refusal);
+        Assert.DoesNotContain("hello?", refusal);
+    }
+
+    [Fact]
+    public async Task AllowedSender_IsForwardedToTheGateway()
+    {
+        var (bridge, gateway, sink) = _Build();
+        gateway.NextResult = AssistantChannelSendResult.Sent();
+
+        await bridge.HandleInboundMessageAsync(_AllowedUserId, "hi there", messageTs: "1");
+
+        Assert.Contains((_AllowedUserId, "hi there"), gateway.SentMessages);
+        Assert.Empty(sink.Reactions);
+    }
+
     // AC-1064 criterion 1: Slack escapes only &, < and > in the text field — this proves all three come out
     // of the bridge decoded, the same way they went in.
     [Fact]
@@ -68,6 +101,19 @@ public class SlackChannelBridgeTests
         await bridge.HandleInboundMessageAsync(_AllowedUserId, "&amp;amp;", messageTs: "1");
 
         Assert.Contains((_AllowedUserId, "&amp;"), gateway.SentMessages);
+    }
+
+    [Fact]
+    public void ConsentPromptOpened_PostsAMessageWithTheButtonsAttached()
+    {
+        var (_, gateway, sink) = _Build();
+        var prompt = _ConsentPrompt("rm -rf /tmp/whatever");
+
+        gateway.RaisePromptOpened(prompt);
+
+        var posted = Assert.Single(sink.Posted);
+        Assert.Equal("rm -rf /tmp/whatever", posted.Text);
+        Assert.Equal(prompt.Id, posted.ConsentPromptId);
     }
 
     [Fact]
@@ -146,6 +192,10 @@ public class SlackChannelBridgeTests
         Assert.Empty(gateway.Responses);
         Assert.Contains((_AllowedUserId, "JA"), gateway.SentMessages);
     }
+
+    // RowChanged/ConsentPromptOpened/ConsentPromptClosed arrive on the gateway's own thread while
+    // HandleInboundMessageAsync/HandleButtonAsync arrive from SlackNet's own socket threads — this hammers the
+    // shared row/prompt tracking from both sides at once and only asserts that nothing throws.
 
     private static AssistantChannelConsentPrompt _ConsentPrompt(string action) => new(
         Guid.NewGuid(),

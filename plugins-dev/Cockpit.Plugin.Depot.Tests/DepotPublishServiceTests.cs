@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
@@ -246,6 +247,64 @@ public sealed class DepotPublishServiceTests : IDisposable
     private static string Sha(byte[] bytes) => Convert.ToHexStringLower(SHA256.HashData(bytes));
 
     private const string Local = "line one\r\nline two\r\n";
+
+    // A directory link without needing the privilege a symbolic link wants on Windows.
+    private static void _Link(string link, string target)
+    {
+        try
+        {
+            Directory.CreateSymbolicLink(link, target);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException && OperatingSystem.IsWindows())
+        {
+            using var process = Process.Start(new ProcessStartInfo("cmd", $"/c mklink /J \"{link}\" \"{target}\"") { CreateNoWindow = true, RedirectStandardOutput = true })
+                ?? throw new InvalidOperationException("mklink did not start.");
+            process.WaitForExit();
+            Assert.True(Directory.Exists(link), "The test could not create a directory link.");
+        }
+    }
+
+    // What the plan makes of a local file the Run tests below never meet: a first publication over a document Depot
+    // already holds with other content is a conflict, a file without an extension is skipped, and dot entries and
+    // links are not in the plan at all. `depot` is what Depot holds at docs/a.md, null for nothing.
+    [Theory]
+    [InlineData("a.md", "alpha\r\n", "conflict")]
+    [InlineData("README", null, "skipped")]
+    [InlineData(".hidden.md", null, "absent")]
+    [InlineData("linked", null, "absent")]
+    public async Task Plan_ClassifiesEachPath_AndLeavesDotEntriesAndLinksOut(string file, string? depot, string expected)
+    {
+        var rig = _NewRig();
+        if (file == "linked")
+        {
+            var outside = Path.Combine(rig.Root, "outside");
+            Directory.CreateDirectory(outside);
+            File.WriteAllText(Path.Combine(outside, "secret.md"), "secret");
+            _Link(Path.Combine(rig.Source, "linked"), outside);
+        }
+        else
+        {
+            rig.Local(file, Local);
+        }
+
+        if (depot is not null)
+        {
+            rig.Documents["docs/a.md"] = depot;
+        }
+
+        var answer = await rig.Service.PlanAsync(rig.PlanRequest, default);
+
+        var items = _Required(answer.Data).Items;
+        if (expected == "absent")
+        {
+            Assert.Empty(items);
+            return;
+        }
+
+        var item = Assert.Single(items);
+        Assert.Equal((file, expected), (item.Path, item.Action));
+        Assert.Equal(0, rig.Count("write") + rig.Count("request_upload") + rig.Count("delete"));
+    }
 
     // A first run adopts what Depot already holds byte for byte, writes the rest, and never touches an unchanged file again;
     // a conflict is written only after the second yes, against the checksum the plan saw, and a PUT that fails leaves no trace.

@@ -9,6 +9,20 @@ namespace Cockpit.Plugin.OpencodeProvider.Tests;
 public class OpencodeSessionUpdateMapperTests
 {
 
+    // Measured live: opencode's first tool_call for a file write carries an empty rawInput ({}), not a missing
+    // one — the mapper must treat that the same as "not known yet", not as a real (empty) argument set.
+
+    [Fact]
+    public void Map_ToolCallWithRawInput_ProducesToolUseRequested_CarryingItAsInputJson()
+    {
+        var result = _Map("""{"sessionId":"s1","update":{"sessionUpdate":"tool_call","toolCallId":"call_1","title":"write","status":"in_progress","rawInput":{"filepath":"hello.txt"}}}""");
+
+        var toolUse = Assert.IsType<PluginToolUseRequested>(Assert.Single(result.Events));
+        Assert.Equal("call_1", toolUse.ToolUseId);
+        Assert.Equal("write", toolUse.ToolName);
+        Assert.Equal("""{"filepath":"hello.txt"}""", toolUse.InputJson);
+    }
+
     // Measured live sequence for a file write: tool_call (title="write", no rawInput) -> tool_call_update
     // (in_progress, refined title/rawInput/diff) -> tool_call_update (completed, content="Wrote file successfully.").
     [Fact]
@@ -36,4 +50,6 @@ public class OpencodeSessionUpdateMapperTests
         using var document = JsonDocument.Parse(paramsJson);
         return document.RootElement.Clone();
     }
+
+    private static OpencodeSessionUpdateMapResult _Map(string paramsJson) => new OpencodeSessionUpdateMapper().Map(_Parse(paramsJson));
 }

@@ -181,6 +181,28 @@ public class OpencodeAcpSessionDriverTests
         Assert.Equal("http", wireServers[1].GetProperty("type").GetString());
     }
 
+    // --- stop reason mapping (criterion 2: full ACP spec enum, not Kimi's own 3-value fold) -----------------
+
+    [Theory]
+    [InlineData("end_turn", false)]
+    [InlineData("cancelled", false)]
+    [InlineData("max_tokens", false)]
+    [InlineData("max_turn_requests", false)]
+    [InlineData("refusal", true)]
+    public async Task SendUserMessage_MapsEveryAcpStopReason(string wireStopReason, bool expectIsError)
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new OpencodeAcpSessionDriver(() => fake, _DefaultConfig(), "opencode");
+        await _StartAsync(driver, fake);
+
+        await driver.SendUserMessageAsync("hi");
+        await _RespondAsync(fake, "session/prompt", $$"""{"stopReason":"{{wireStopReason}}"}""");
+
+        var completed = await _NextEventOfTypeAsync<PluginTurnCompleted>(driver);
+        Assert.Equal(wireStopReason, completed.StopReason);
+        Assert.Equal(expectIsError, completed.IsError);
+    }
+
     // --- permission flow (criterion 3: end to end through Cockpit's own consent card) ------------------------
 
     [Fact]

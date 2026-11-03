@@ -28,6 +28,17 @@ public class KindMcpToolsTests
     }
 
     [Fact]
+    public async Task KindCreate_Denied_CreatesNothing()
+    {
+        var (tools, settings, _) = _Tools(ConsentOutcome.Denied);
+
+        var response = await tools.KindCreate(AgentSuppliedSession, "cockpit-ac179");
+
+        Assert.Contains("\"ok\":false", response);
+        Assert.Empty(settings.KindClusters);
+    }
+
+    [Fact]
     public async Task KindDelete_Denied_LeavesTheClusterRegistered()
     {
         var (approveTools, settings, host) = _Tools(ConsentOutcome.Approved);
@@ -38,6 +49,19 @@ public class KindMcpToolsTests
 
         Assert.Contains("\"ok\":false", response);
         Assert.Single(settings.KindClusters);
+    }
+
+    [Fact]
+    public async Task KindDelete_UnregisteredName_RefusesWithoutAskingTheOperator()
+    {
+        var (tools, _, host) = _Tools(ConsentOutcome.Approved);
+
+        var response = await tools.KindDelete(AgentSuppliedSession, "not-registered");
+
+        Assert.Contains("\"ok\":false", response);
+        // The gate still asks (consent is per-attempt, not per-existing-cluster) — what matters is the manager
+        // itself refuses to run kind against a name it never registered (KindClusterManagerTests covers that path).
+        await host.Received(1).RequestConsentAsync(Arg.Any<ConsentRequest>());
     }
 
     private static (KindMcpTools Tools, KindSettings Settings, ICockpitHost Host) _Tools(ConsentOutcome outcome)

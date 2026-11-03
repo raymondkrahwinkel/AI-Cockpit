@@ -77,6 +77,47 @@ public class CodexAppServerSessionDriverTests
         Assert.IsType<PluginToolResult>(Assert.Single(completed.Events));
     }
 
+    private static async Task _AssertPerSessionSandboxAndModelOptionsAsync()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
+
+        // _DefaultConfig has sandbox "read-only"; the dialog's per-session choice must win.
+        var options = new Dictionary<string, string> { ["sandbox"] = "workspace-write", ["model"] = "o3" };
+        var startTask = driver.StartAsync(null, "/work", resumeSessionId: null, options, mcpServers: null, CancellationToken.None);
+        await _RespondAsync(fake, "initialize", "{}");
+        await _RespondAsync(fake, "model/list", """{"data":[]}""");
+        var threadStart = await _RespondAsync(fake, "thread/start", """{"threadId":"thread-1"}""");
+        await startTask;
+
+        Assert.Equal("workspace-write", threadStart.GetProperty("params").GetProperty("sandbox").GetString());
+        Assert.Equal("o3", threadStart.GetProperty("params").GetProperty("model").GetString());
+    }
+
+    // AC-1101: a spawned session's very first turn must already carry the profile's effort/approval choice — there
+    // is no live-panel switch before it, so unlike sandbox/model (which ride thread/start), these have to be picked
+    // up from the start options and re-asserted on the first turn/start.
+    [Fact]
+    public async Task Start_UsesThePerSessionEffortAndApprovalOptions_OnTheFirstTurn()
+    {
+        await _AssertPerSessionSandboxAndModelOptionsAsync();
+        var fake = new FakeCliSubprocess();
+        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
+
+        var options = new Dictionary<string, string> { ["effort"] = "high", ["approvalPolicy"] = "never" };
+        var startTask = driver.StartAsync(null, "/work", resumeSessionId: null, options, mcpServers: null, CancellationToken.None);
+        await _RespondAsync(fake, "initialize", "{}");
+        await _RespondAsync(fake, "model/list", """{"data":[]}""");
+        await _RespondAsync(fake, "thread/start", """{"threadId":"thread-1"}""");
+        await startTask;
+
+        await driver.SendUserMessageAsync("go");
+
+        var turn = await _WaitForRequestAsync(fake, "turn/start");
+        Assert.Equal("high", turn.GetProperty("params").GetProperty("effort").GetString());
+        Assert.Equal("never", turn.GetProperty("params").GetProperty("approvalPolicy").GetString());
+    }
+
     // AC-1102: an absent `sandbox` is what reaches `CodexSandbox.ForCeiling` and lets a delegated task write
     // (AC-100/AC-112) — unreachable while the profile editor wrote "read-only" over it, so this is the guard that
     // catches that mapping falling silent again. An explicitly stored choice still wins over the ceiling.
@@ -347,6 +388,41 @@ public class CodexAppServerSessionDriverTests
 
         var events = await _CollectUntilTurnCompletedAsync(driver);
         Assert.Null(Assert.Single(events.OfType<PluginTurnCompleted>()).Usage);
+    }
+
+    // AC-1101: a Codex build too old to report `supportedReasoningEfforts`, or a listing the driver could not read
+    // at all, must not fall back to a guessed set — better no effort control than one offering values this model
+    // might silently ignore.
+
+    [Fact]
+    public async Task TurnStart_CarriesTheApprovalPolicy_AfterASwitch()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
+        await _StartAsync(driver, fake);
+
+        // D4 inc2: switching the approval policy rides the next turn/start as a per-turn override, like model/effort.
+        await driver.SetLiveOptionAsync("approvalPolicy", "never");
+        await driver.SendUserMessageAsync("go");
+
+        var turn = await _WaitForRequestAsync(fake, "turn/start");
+        Assert.Equal("never", turn.GetProperty("params").GetProperty("approvalPolicy").GetString());
+    }
+
+    [Fact]
+    public async Task TurnStart_CarriesTheSandboxPolicyObject_WithItsCamelCaseType_AfterASwitch()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
+        await _StartAsync(driver, fake);
+
+        // D4 inc2b: the sandbox override rides turn/start as the tagged-union SandboxPolicy object, keyed by its
+        // camelCase type — the kebab choice "danger-full-access" becomes { "type": "dangerFullAccess" }.
+        await driver.SetLiveOptionAsync("sandbox", "danger-full-access");
+        await driver.SendUserMessageAsync("go");
+
+        var turn = await _WaitForRequestAsync(fake, "turn/start");
+        Assert.Equal("dangerFullAccess", turn.GetProperty("params").GetProperty("sandboxPolicy").GetProperty("type").GetString());
     }
 
     [Fact]

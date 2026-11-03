@@ -1,0 +1,21 @@
+
+namespace Cockpit.Plugin.Autopilot.Tests;
+
+// The PR-delivery signal path (AC-216): `DeliversPullRequest` rides through `AutopilotTemplate.ForPlugin` and is
+// stamped on the approved plan, so the finalizer knows a code run must end with a PR while an admin run does not.
+// Also pins the autopilot-own tools pre-authorized for a run's sessions (AC-215).
+public class AutopilotPullRequestSignalTests
+{
+    [Fact]
+    public void PreApprovedRunTools_AreOnlyAutopilotsOwnControlTools_NeverFileOrShell()
+    {
+        Assert.Contains("mcp__cockpit-autopilot-run__autopilot_step_done", AutopilotRunToolNames.ForStepWorker);
+        Assert.Contains("mcp__cockpit-autopilot-run__autopilot_blocked", AutopilotRunToolNames.ForStepWorker);
+        Assert.Contains("mcp__cockpit-autopilot-ceo__autopilot_validate", AutopilotRunToolNames.ForValidatorCeo);
+
+        // Every pre-approved name is an autopilot endpoint tool — nothing else is pre-authorized.
+        Assert.All(
+            AutopilotRunToolNames.ForStepWorker.Concat(AutopilotRunToolNames.ForValidatorCeo),
+            tool => Assert.StartsWith("mcp__cockpit-autopilot-", tool));
+    }
+}

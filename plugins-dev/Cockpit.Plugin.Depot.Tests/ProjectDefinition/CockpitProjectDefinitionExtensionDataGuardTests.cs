@@ -7,6 +7,20 @@ namespace Cockpit.Plugin.Depot.Tests.ProjectDefinition;
 // A secret two levels deep, inside an array, in an array of objects or as JSON embedded in a string still travels.
 public class CockpitProjectDefinitionExtensionDataGuardTests
 {
+    [Fact]
+    public void Apply_NonSecretShapedKey_PassesThroughUntouched()
+    {
+        var extensionData = new Dictionary<string, JsonElement>
+        {
+            ["someFutureField"] = JsonSerializer.SerializeToElement("forwarded as-is"),
+        };
+
+        var (kept, droppedKeys) = CockpitProjectDefinitionExtensionDataGuard.Apply(extensionData);
+
+        Assert.Empty(droppedKeys);
+        Assert.NotNull(kept);
+        Assert.Equal("forwarded as-is", kept["someFutureField"].GetString());
+    }
 
     [Fact]
     public void Apply_NestedObjectOneLevelDeep_SecretShapedChildIsDroppedAndReportedWithDottedPath()

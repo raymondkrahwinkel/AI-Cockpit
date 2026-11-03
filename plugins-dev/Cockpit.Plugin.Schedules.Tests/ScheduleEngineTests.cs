@@ -234,4 +234,41 @@ public class ScheduleEngineTests
 
         Assert.Equal((2, 3), (startedTogether, rig.Executed.Count));
     }
+
+    [Fact]
+    public async Task DisabledAndUnreadableTasks_DoNotFire_AndHealthIsRedForThem_ForAnUnreadableList_AndPastTwoMissedTicks()
+    {
+        var rig = new EngineRig(Utc(10, 14, 0, 30));
+        rig.Add(
+            EngineRig.NewTask("0 * * * *", id: "off") with { IsEnabled = false },
+            EngineRig.NewTask("0 * * * *", id: "no-zone", zone: ""),
+            EngineRig.NewTask("61 * * * *", id: "bad-cron"));
+        using var engine = rig.Start();
+
+        await engine.TickAsync();
+        await rig.WalkAsync(engine, Utc(10, 14, 1, 30));
+
+        Assert.Empty(rig.Executed);
+        var health = engine.Health.Read();
+        Assert.False(health.Healthy);
+        Assert.Contains(health.Rows, row => row.Label == "2 enabled task(s) with an unreadable schedule or time zone");
+
+        // A stored list that cannot be read is no list of tasks, and says so.
+        rig.Storage.Set("tasks", "[{\"Id\": 1}]");
+        await engine.TickAsync();
+        health = engine.Health.Read();
+        Assert.False(health.Healthy);
+        Assert.Contains(health.Rows, row => row.Label == "The stored task list cannot be read; no task fires");
+
+        // A readable, empty list is healthy while it ticks: unhealthy past two missed ticks, healthy on the next.
+        rig.Replace();
+        await engine.TickAsync();
+        rig.Clock.Now += TimeSpan.FromSeconds(60);
+        var twoMissed = engine.Health.Read().Healthy;
+        rig.Clock.Now += TimeSpan.FromSeconds(1);
+        var pastTwo = engine.Health.Read().Healthy;
+        await engine.TickAsync();
+
+        Assert.Equal((true, false, true), (twoMissed, pastTwo, engine.Health.Read().Healthy));
+    }
 }

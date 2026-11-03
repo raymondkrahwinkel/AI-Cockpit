@@ -1,6 +1,7 @@
 using System.Net;
 using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Projects;
 using NSubstitute;
 
 namespace Cockpit.Plugin.Depot.Tests;
@@ -9,6 +10,56 @@ namespace Cockpit.Plugin.Depot.Tests;
 public class DepotSharedProjectSourceTests
 {
     private static DepotConnectionRegistration Connection() => new("c1", "Work", "https://depot.example.com");
+
+    private static ISharedProjectSource SourceFor(ICockpitHost host, HttpClient httpClient)
+    {
+        host.Cache.Returns(new InMemoryPluginCache());
+        return new DepotSharedProjectSource(Connection(), DepotMemorySource.Scheme, host, httpClient);
+    }
+
+    [Fact]
+    public async Task ListAsync_A404FailsAsTooOldWithoutFallingBackToMcp()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        var handler = new _StubHandler(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
+        using var http = new HttpClient(handler);
+
+        var result = await SourceFor(host, http).ListAsync(CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(1, handler.RequestCount);
+        Assert.Contains("too old", result.Error, StringComparison.Ordinal);
+        await host.DidNotReceive().CallMcpToolAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>?>(),
+            Arg.Any<string?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ListAsync_AnAdminsProject_WithCanWriteFalse_IsReadOnlyAndShowsItsRole()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        using var http = _Client("""{"projects":[{"address":"acme/cockpit","slug":"cockpit","name":"Cockpit","role":"Admin","kind":"Project","organization":{"slug":"acme","name":"Acme","role":"Member"},"cockpit":{"state":"ok","checksum":"chk","updatedAt":"2026-10-20T10:00:00Z","definition":{"schemaVersion":1,"name":"Cockpit"},"canWrite":false}}]}""");
+
+        var result = await SourceFor(host, http).ListAsync(CancellationToken.None);
+
+        var project = Assert.Single(result.Projects);
+        Assert.Equal("Admin", project.Role);
+        Assert.False(project.CanWriteBack);
+    }
+
+    [Fact]
+    public async Task ListAsync_AViewersAbsentDefinition_IsReportedAsVisibleButUnreadable()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        using var http = _Client("""{"projects":[{"address":"acme/viewer-only","slug":"viewer-only","name":"Viewer Only","role":"Viewer","kind":"Project","organization":{"slug":"acme","name":"Acme","role":"Member"},"cockpit":{"state":"absent","checksum":null,"updatedAt":null}}]}""");
+
+        var result = await SourceFor(host, http).ListAsync(CancellationToken.None);
+
+        Assert.Empty(result.Projects);
+        var unreadable = Assert.Single(result.VisibleButUnreadable);
+        Assert.Equal("Viewer Only", unreadable.Name);
+        Assert.Equal("Viewer", unreadable.Role);
+    }
 
     // AC-1665, layer 2 (plugin contract / cache): the list is cached per connection, so a sign-in as someone else must
     // take the previous account's list away, or an unreachable Depot shows it as the "last known list".

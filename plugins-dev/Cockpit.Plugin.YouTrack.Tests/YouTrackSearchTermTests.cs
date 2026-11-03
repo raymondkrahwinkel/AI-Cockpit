@@ -31,6 +31,14 @@ public class YouTrackSearchTermTests
     }
 
     [Fact]
+    public void BuildSearchTerm_WithBracesInTheQuery_StaysInsideTheOuterQuotesUnescaped()
+    {
+        var term = YouTrackDialogControl.BuildSearchTerm(null, null, "{weird} value");
+
+        Assert.Equal("#Unresolved \"{weird} value\"", term);
+    }
+
+    [Fact]
     public void BuildSearchTerm_WithADoubleQuoteInTheQuery_EscapesIt()
     {
         var term = YouTrackDialogControl.BuildSearchTerm(null, null, "say \"hello\"");

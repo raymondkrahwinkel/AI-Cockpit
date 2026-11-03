@@ -16,4 +16,14 @@ public class OpencodeConfigTests
         Assert.DoesNotContain("sk-super-secret-key", text);
         Assert.Contains("***", text);
     }
+
+    [Fact]
+    public void BuildEnvironmentVariables_WithAnApiKey_SetsItUnderAuthEnvVar()
+    {
+        var config = new OpencodeConfig(AuthEnvVar: "OPENCODE_API_KEY", ApiKey: "sk-value");
+
+        var env = config.BuildEnvironmentVariables();
+
+        Assert.Equal("sk-value", env["OPENCODE_API_KEY"]);
+    }
 }

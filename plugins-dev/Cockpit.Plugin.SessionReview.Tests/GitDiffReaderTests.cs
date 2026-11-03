@@ -4,6 +4,13 @@ namespace Cockpit.Plugin.SessionReview.Tests;
 // untracked file, the review prompt and the result shape.
 public class GitDiffReaderTests
 {
+    [Fact]
+    public void DiffArguments_AreTheWorkingTreeDiffAgainstHead()
+    {
+        // core.quotePath=false keeps non-ASCII paths readable; --no-ext-diff stops a repository's own diff driver
+        // from replacing the unified output the panel has to parse.
+        Assert.Equal(["-c", "core.quotePath=false", "diff", "--no-ext-diff", "HEAD"], GitDiffReader.DiffArguments);
+    }
 
     [Fact]
     public void UntrackedPaths_TakesOnlyTheQuestionMarkedEntries()

@@ -19,6 +19,9 @@ public class DepotNoteBridgeTests
 
     // AI-Depot scripts/notes-roundtrip-fixtures at the pinned commit, copied byte for byte: a silent change to a copy fails here.
     private const string SchemaSha = "77f8a24281ff1cb26e5872600f7bdbc7266788a92fff723e8b01fa29a59d6266";
+
+    // The block ids and contents of the room's fragment, and the fragment and front matter as one string, to compare two docs.
+    private const string Blocks = "JSON.stringify(DepotRoom.current().getXmlFragment('default').toArray().map(t => [t._item.id.client + ':' + t._item.id.clock, t.toString()]))";
     // The web's own updates since the last call (an edit with no ops returns what is waiting), and the first text item of a block.
     private const string Taken = "DepotRoom.edit('[]')";
     private const string TextOf = "const f = DepotRoom.current().getXmlFragment('default'); const t = (n) => { while (!(n instanceof DepotRoom.Y.XmlText)) { n = n.get(0); } return n; };";
@@ -52,6 +55,60 @@ public class DepotNoteBridgeTests
         Assert.Equal(text, serialized);
         Assert.Equal(SchemaSha[..12], _Sha(Encoding.UTF8.GetBytes(bundleSchema))[..12]);
         Assert.Equal(SchemaSha[..12], DepotNoteSchema.Version);
+    }
+
+    // One keystroke in a paragraph is one Edited and one Update, and that update changes that paragraph and no other Y item; the same
+    // edit again under its id (an answer the host lost) applies nothing.
+    [Fact]
+    public async Task Keystroke_InAParagraph_IsOneUpdate_ThatLeavesEveryOtherBlockTheSameYItem()
+    {
+        await using var web = new JintNoteRoom(2);
+        var hub = new _Hub(await _SeedAsync(web, "canonical.md"));
+        var patches = new List<LiveFilePatch>();
+        var loaded = new TaskCompletionSource();
+        await using var bridge = _Session(hub, patch =>
+        {
+            patches.Add(patch);
+            loaded.TrySetResult();
+        });
+        bridge.Connect();
+        await loaded.Task.WaitAsync(TimeSpan.FromSeconds(60));
+        var room = (JintNoteRoom)bridge.Room;
+        var text = (await bridge.ReadAsync(CancellationToken.None)).Text;
+        var bridgeBefore = _Parse(await room.EvaluateAsync(Blocks, CancellationToken.None));
+        var webBefore = _Parse(await web.EvaluateAsync(Blocks, CancellationToken.None));
+
+        TextOp[] keystroke = [new(text.IndexOf("Slotregel", StringComparison.Ordinal) + 4, 0, "x")];
+        Assert.Equal(new LiveEditResult(LiveEditStatus.Applied, 2), await bridge.EditAsync("edit-1", 1, keystroke, CancellationToken.None));
+        Assert.Equal(new LiveEditResult(LiveEditStatus.Applied, 2), await bridge.EditAsync("edit-1", 1, keystroke, CancellationToken.None));
+        Assert.Equal(["edited", "update"], hub.Calls);
+        await web.ApplyAsync(Assert.Single(hub.Updates), CancellationToken.None);
+        var bridgeAfter = _Parse(await room.EvaluateAsync(Blocks, CancellationToken.None));
+        var webAfter = _Parse(await web.EvaluateAsync(Blocks, CancellationToken.None));
+
+        Assert.Equal(bridgeBefore.Select(block => block[0]), bridgeAfter.Select(block => block[0]));
+        Assert.Equal(webBefore.Select(block => block[0]), webAfter.Select(block => block[0]));
+        Assert.Equal(webBefore.SkipLast(1).Select(block => block[1]), webAfter.SkipLast(1).Select(block => block[1]));
+        Assert.Equal("<paragraph>Slotxregel.</paragraph>", webAfter[^1][1]);
+        Assert.Single(patches);
+
+        // Layer 2, contract: a role revoked during Update keeps the mirror at the shared revision, still watching.
+        hub.ReadOnly = true;
+        var accepted = await bridge.ReadAsync(CancellationToken.None);
+        var refused = await Assert.ThrowsAsync<FileSourceException>(() => bridge.EditAsync("refused", accepted.Rev, [new(0, 0, "MINE ")], CancellationToken.None));
+        Assert.Equal(FileSourceErrorKind.Forbidden, refused.Kind);
+        var watching = await bridge.ReadAsync(CancellationToken.None);
+        Assert.Equal(accepted.Text, watching.Text);
+        Assert.Equal(accepted.Rev, watching.Rev);
+        Assert.Equal(LiveReadOnlyReason.RoleLost, watching.Status.ReadOnlyReason);
+        Assert.Equal(LiveFileState.ReadOnly, watching.Status.State);
+        await Assert.ThrowsAsync<FileSourceException>(() => bridge.EditAsync("again", watching.Rev, [new(0, 0, "NO ")], CancellationToken.None));
+        await web.LoadAsync(string.Empty, CancellationToken.None);
+        var remoteOffset = accepted.Text.IndexOf("Slotxregel", StringComparison.Ordinal);
+        var remote = await web.EditAsync([new(remoteOffset, 0, "WEB ")], CancellationToken.None);
+        await hub.Push(new DepotNoteEvent("update", ["doc-1", Assert.Single(remote)]));
+        Assert.Equal(await web.ReadAsync(CancellationToken.None), (await bridge.ReadAsync(CancellationToken.None)).Text);
+        Assert.Single(hub.Updates);
     }
 
     // AC-1897's join (an update that comes before the result is applied and not sent back), then the bridge and the web typing at once,
@@ -226,6 +283,8 @@ public class DepotNoteBridgeTests
         ops.Aggregate(text, (current, op) => current[..op.Offset] + op.Text + current[(op.Offset + op.Length)..]);
 
     private static byte[][] _Taken(string json) => [.. (JsonSerializer.Deserialize<string[]>(json) ?? []).Select(Convert.FromBase64String)];
+
+    private static string[][] _Parse(string json) => JsonSerializer.Deserialize<string[][]>(json) ?? [];
 
     private static string _Js(string text) => JsonSerializer.Serialize(text);
 

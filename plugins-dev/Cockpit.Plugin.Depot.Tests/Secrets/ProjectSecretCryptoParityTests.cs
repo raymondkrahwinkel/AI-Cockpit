@@ -6,6 +6,7 @@ using HostSecretKey = Cockpit.Core.Secrets.SecretKey;
 using PluginHeuristic = Cockpit.Plugin.Depot.Secrets.SensitiveFieldNameHeuristic;
 using PluginProtectionException = Cockpit.Plugin.Depot.Secrets.ProjectSecretProtectionException;
 using PluginProtector = Cockpit.Plugin.Depot.Secrets.ProjectSecretProtector;
+using PluginSecretKey = Cockpit.Plugin.Depot.Secrets.ProjectSecretKey;
 
 namespace Cockpit.Plugin.Depot.Tests.Secrets;
 
@@ -14,6 +15,16 @@ namespace Cockpit.Plugin.Depot.Tests.Secrets;
 // around. Change either copy and this goes red, whichever side changed.
 public class ProjectSecretCryptoParityTests
 {
+    [Fact]
+    public void Derive_SamePasswordSaltIterations_YieldsByteIdenticalKeyOnBothSides()
+    {
+        var salt = HostSecretKey.NewSalt();
+
+        var hostKey = HostSecretKey.Derive("correct horse battery staple", salt, HostSecretKey.DefaultIterations);
+        var pluginKey = PluginSecretKey.Derive("correct horse battery staple", salt, PluginSecretKey.DefaultIterations);
+
+        Assert.Equal(hostKey, pluginKey);
+    }
 
     [Fact]
     public void Protect_HostSide_UnprotectsCorrectlyOnThePluginSide()

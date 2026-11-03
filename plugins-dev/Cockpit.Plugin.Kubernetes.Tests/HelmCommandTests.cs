@@ -43,4 +43,15 @@ public class HelmCommandTests
         }
     }
 
+    [Fact]
+    public void Build_PastedKubeconfigCluster_ReturnsAnExplicitError_AndNoCommand()
+    {
+        var cluster = new ClusterRegistration("id-1", "prod", ContextName: "prod-ctx", ["default"], KubeconfigPath: "");
+
+        var (command, error) = HelmCommand.Build("helm", cluster, "default", "upgrade", ["web", "chart"]);
+
+        Assert.Null(command);
+        Assert.NotNull(error);
+        Assert.Contains("pasted kubeconfig", error);
+    }
 }

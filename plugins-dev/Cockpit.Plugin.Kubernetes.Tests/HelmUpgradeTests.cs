@@ -51,6 +51,19 @@ public class HelmUpgradeTests
     }
 
     [Fact]
+    public async Task HelmUpgrade_APastedKubeconfigCluster_IsRefusedBeforeHelmRunsOrAnythingIsAsked()
+    {
+        var (tools, runner, asked) = _Build(ConsentOutcome.Approved, pathRegistered: false);
+
+        var json = JsonNode.Parse(await tools.HelmUpgrade("prod", Session, "default", "proof", "./chart"));
+
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("kubeconfig file path", json["error"]!.GetValue<string>());
+        Assert.Null(runner.Command);
+        Assert.Empty(asked);
+    }
+
+    [Fact]
     public async Task HelmUpgrade_AChartStartingWithADash_IsRefused_SoItCannotBecomeAnotherFlag()
     {
         var (tools, runner, _) = _Build(ConsentOutcome.Approved);
@@ -107,5 +120,4 @@ public class HelmUpgradeTests
         Assert.Contains("failed to render", HelmFailure.Describe(HelmResult.Exited(1, "", "Error: UPGRADE FAILED: parse error at (proof/templates/x.yaml:1)"), "helm"));
         Assert.Contains("did not finish in time", HelmFailure.Describe(HelmResult.Timeout, "helm"));
     }
-
 }

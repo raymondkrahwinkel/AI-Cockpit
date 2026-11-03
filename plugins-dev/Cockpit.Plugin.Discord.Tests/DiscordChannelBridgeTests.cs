@@ -30,6 +30,52 @@ public class DiscordChannelBridgeTests
         return (bridge, gateway, sink, files);
     }
 
+    // AC-1024 criterion 2, the plugin-testable half of it: the host's gateway already reports a stranger's
+    // message as "ignored" (AC-1023 §3) — this proves the plugin does nothing further with that: no reaction,
+    // no post, nothing that would confirm to the stranger that a bot is even listening.
+    [Fact]
+    public async Task IgnoredSender_ProducesNoDiscordActivityAtAll()
+    {
+        var refusals = new List<string>();
+        var (bridge, gateway, sink) = _Build(logRefusal: refusals.Add);
+        gateway.NextResult = AssistantChannelSendResult.IgnoredSender();
+
+        await bridge.HandleInboundMessageAsync(_StrangerUserId, "hello?", messageId: 1);
+
+        Assert.Empty(sink.Reactions);
+        Assert.Empty(sink.Posted);
+        Assert.Empty(sink.Edited);
+        var refusal = Assert.Single(refusals);
+        Assert.Contains(_StrangerUserId, refusal, StringComparison.Ordinal);
+        Assert.DoesNotContain("hello?", refusal, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AllowedSender_IsForwardedToTheGateway()
+    {
+        var (bridge, gateway, sink) = _Build();
+        gateway.NextResult = AssistantChannelSendResult.Sent();
+
+        await bridge.HandleInboundMessageAsync(_AllowedUserId, "hi there", messageId: 1);
+
+        Assert.Contains((_AllowedUserId, "hi there"), gateway.SentMessages);
+        Assert.Empty(sink.Reactions);
+        DiscordHealthStateTests.Verify();
+    }
+
+    [Fact]
+    public void ConsentPromptOpened_PostsAMessageWithTheButtonsAttached()
+    {
+        var (_, gateway, sink) = _Build();
+        var prompt = _ConsentPrompt("rm -rf /tmp/whatever");
+
+        gateway.RaisePromptOpened(prompt);
+
+        var posted = Assert.Single(sink.Posted);
+        Assert.Equal("rm -rf /tmp/whatever", posted.Text);
+        Assert.Equal(prompt.Id, posted.ConsentPromptId);
+    }
+
     // A stranger's click is not covered by the host's own SendAsync identity check (AC-1023 §3), since
     // RespondToConsent takes no identity at all, so the plugin closes that gap: the prompt stays open, and the
     // refused click is logged with who made it (AC-1360). The allowed account's click then answers and edits.
@@ -120,6 +166,9 @@ public class DiscordChannelBridgeTests
         Assert.Empty(gateway.SentMessages);
     }
 
+    // AC-1360 review: a prompt closed while its post was still on its way used to be registered afterwards, dead at
+    // the head of the JA/NEE queue — so every later "JA" answered nothing, not even the prompt that was really open.
+
     // Review point 2: a failed post must not register the prompt as open — otherwise a "JA" typed for an
     // unrelated reason later would answer a prompt nobody in the channel ever actually saw.
     [Fact]
@@ -135,6 +184,10 @@ public class DiscordChannelBridgeTests
         Assert.Empty(gateway.Responses);
         Assert.Contains((_AllowedUserId, "JA"), gateway.SentMessages);
     }
+
+    // Review point 1: RowChanged/ConsentPromptOpened/ConsentPromptClosed arrive on the gateway's own thread
+    // while HandleInboundMessageAsync/HandleButtonAsync arrive from Discord.NET's socket threads — this hammers
+    // the shared row/prompt tracking from both sides at once and only asserts that nothing throws.
 
     private static AssistantChannelConsentPrompt _ConsentPrompt(string action) => new(
         Guid.NewGuid(),

@@ -38,6 +38,27 @@ public class KubernetesArgoMcpToolsTests
         return (new KubernetesMcpTools(settings, gate, connections, new PortForwardManager()), asked);
     }
 
+    [Fact]
+    public async Task ArgoApps_WhenConsentDenied_StopsBeforeTheCluster()
+    {
+        var (tools, _) = _Build(ConsentOutcome.Denied);
+
+        var json = JsonNode.Parse(await tools.ArgoApps("prod", Session, "argocd"));
+
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("did not approve", json["error"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task ArgoApps_WhenApproved_IsNotGatedAsDangerous_UnlikeHelm()
+    {
+        var (tools, asked) = _Build(ConsentOutcome.Approved, withKubeconfig: false);
+
+        await tools.ArgoApps("prod", Session, "argocd");
+
+        Assert.DoesNotContain(asked, request => request.Risk == ConsentRisk.Dangerous);
+    }
+
     [Theory]
     [InlineData("ArgoApp")]
     [InlineData("ArgoHistory")]

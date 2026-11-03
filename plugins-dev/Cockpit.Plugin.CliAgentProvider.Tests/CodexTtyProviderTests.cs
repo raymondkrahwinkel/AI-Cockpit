@@ -9,6 +9,28 @@ public class CodexTtyProviderTests
 {
     private static readonly IReadOnlyDictionary<string, string> NoOptions = new Dictionary<string, string>();
 
+    [Fact]
+    public void BuildArguments_DefaultConfig_IncludesTheConfiguredReadOnlySandboxDefault()
+    {
+        var arguments = CodexTtyProvider.BuildArguments(new CliAgentConfig(), NoOptions, resume: null);
+
+        Assert.Contains("--sandbox", arguments);
+        Assert.Contains("read-only", arguments);
+    }
+
+    [Fact]
+    public void BuildArguments_SandboxOptionChosenInTheDialog_OverridesTheConfiguredDefault()
+    {
+        var config = new CliAgentConfig(SandboxMode: "read-only");
+        var options = new Dictionary<string, string> { [CodexTtyProvider.SandboxOptionKey] = "workspace-write" };
+
+        var arguments = CodexTtyProvider.BuildArguments(config, options, resume: null);
+
+        Assert.Contains("--sandbox", arguments);
+        Assert.Contains("workspace-write", arguments);
+        Assert.DoesNotContain("read-only", arguments);
+    }
+
     // AC-77: the interactive TUI must receive the session's Cockpit MCP servers as `-c mcp_servers.*`
     // overrides, the same route the headless app-server takes — without this the Codex TUI only ever
     // sees its own ~/.codex servers.

@@ -22,6 +22,15 @@ public class ClaudeWorkspaceTrustTests : IDisposable
     }
 
     [Fact]
+    public void MarksTheDirectoryTrusted_CreatingTheFile_WhenAbsent()
+    {
+        ClaudeWorkspaceTrust.MarkWorkingDirectoryTrusted(_configDir, @"D:\Projects\Cockpit");
+
+        var root = JsonNode.Parse(File.ReadAllText(ClaudeJson))!.AsObject();
+        Assert.True(root["projects"]![@"D:\Projects\Cockpit"]!["hasTrustDialogAccepted"]!.GetValue<bool>());
+    }
+
+    [Fact]
     public void PreservesEveryOtherKeyAndProject()
     {
         Directory.CreateDirectory(_configDir);

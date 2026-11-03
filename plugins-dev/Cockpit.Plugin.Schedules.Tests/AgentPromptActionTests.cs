@@ -100,13 +100,39 @@ public class AgentPromptActionTests
     [InlineData(RunTrigger.Mcp, true, Answer.Bypassed, true, AgentPromptAction.NotApproved)]
     public async Task AWriteRun_AsksForConsentOnlyWhenNobodyStartedItByHand(RunTrigger trigger, bool unattended, Answer answer, bool asked, string? refusal)
     {
-        var host = _Host(answer);
+        var host = _Host(answer, "OK");
         var task = _Task(AgentPermission.Write, "/work") with { RunUnattended = unattended };
 
         var result = await new AgentPromptAction(host, new TaskDelivery(host), _ConsentWait(answer)).AdmitAsync(task, trigger, CancellationToken.None);
 
         Assert.Equal(refusal, result);
         Assert.Equal(asked ? 1 : 0, host.ReceivedCalls().Count(call => call.GetMethodInfo().Name == nameof(ICockpitHost.RequestConsentAsync)));
+    }
+
+    // Criteria 3 and 4: an empty answer is nothing to deliver and an answer is delivered; a working directory the
+    // profile does not allow fails with the host's reason, refused before a task exists. $VAR is expanded first.
+    [Theory]
+    [InlineData(" \n ", AgentPermission.ReadOnly, null, null, RunOutcome.NothingToDeliver, "task-1", 0)]
+    [InlineData("OK", AgentPermission.Write, "acceptEdits", null, RunOutcome.Succeeded, "task-1", 1)]
+    [InlineData(null, AgentPermission.ReadOnly, null, "Profile 'Local' does not allow a task to run in '/work/notes'.", RunOutcome.Failed, null, 0)]
+    public async Task TheAnswer_IsDeliveredUnlessEmpty_AndARefusedDirectoryFails(
+        string? answer, AgentPermission permission, string? sentPermission, string? refusal, RunOutcome outcome, string? taskId, int toasts)
+    {
+        var host = _Host(Answer.None, answer, refusal);
+        Environment.SetEnvironmentVariable("SCHEDULES_TEST_ROOT", "/work");
+        try
+        {
+            var result = await new AgentPromptAction(host, new TaskDelivery(host), TimeSpan.FromMinutes(1)).RunAsync(_Task(permission, "$SCHEDULES_TEST_ROOT/notes"), CancellationToken.None);
+
+            Assert.Equal((outcome, refusal, taskId), (result.Outcome, result.Reason, result.DelegatedTaskId));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("SCHEDULES_TEST_ROOT", null);
+        }
+
+        Assert.Equal(toasts, host.ReceivedCalls().Count(call => call.GetMethodInfo().Name == nameof(ICockpitHost.ShowToast)));
+        await host.Actions.Received(1).DelegateAsync("Local", "Summarise the notes.", "/work/notes", null, sentPermission, Arg.Any<Action<string>>());
     }
 
     // Only the unanswered card may run into the wait: a short one on a card the fake answers at once would let a slow
@@ -118,7 +144,8 @@ public class AgentPromptActionTests
         Action = new TaskAction(TaskActionKind.AgentPrompt, "Summarise the notes.") { Profile = "Local", WorkingDirectory = directory, Permission = permission },
     };
 
-    private static ICockpitHost _Host(Answer answer)
+    // As the host's delegation: a refusal throws before a task exists, otherwise the task id comes before the answer.
+    private static ICockpitHost _Host(Answer answer, string? reply, string? refusal = null)
     {
         var host = Substitute.For<ICockpitHost>();
         host.RequestConsentAsync(Arg.Any<ConsentRequest>(), Arg.Any<CancellationToken>()).Returns(async call => answer switch
@@ -128,6 +155,17 @@ public class AgentPromptActionTests
             Answer.NoAnswer => await _NeverAnswered(call.Arg<CancellationToken>()),
             _ => ConsentDecision.Denied,
         });
+        host.Actions.DelegateAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<TimeSpan?>(), Arg.Any<string?>(), Arg.Any<Action<string>>())
+            .Returns(call =>
+            {
+                if (refusal is not null)
+                {
+                    return Task.FromException<string>(new InvalidOperationException(refusal));
+                }
+
+                call.Arg<Action<string>>()("task-1");
+                return Task.FromResult(reply ?? string.Empty);
+            });
         return host;
     }
 

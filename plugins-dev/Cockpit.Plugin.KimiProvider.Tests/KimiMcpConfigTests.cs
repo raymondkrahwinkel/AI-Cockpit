@@ -3,8 +3,25 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.KimiProvider.Tests;
 
+// `KimiMcpConfig` (AC-269 sub [b], D6) — the epic's costliest trap: a stdio server's wire object
+// must carry no `type` property at all, or kimi's adapter silently drops it. Serializes the built wire
+// objects exactly as `KimiAcpConnection` would (its own `_jsonOptions` only ignores explicit
+// nulls, so a present-but-null `type` would still slip through — the shape itself must omit the property).
 public class KimiMcpConfigTests
 {
+    private static readonly Dictionary<string, string?> _NoEnv = new();
+
+    [Fact]
+    public void Build_ForAnHttpServerWithABearerToken_PutsItLiterallyInTheHeadersArray()
+    {
+        var wire = KimiMcpConfig.Build([new PluginMcpServer { Name = "youtrack", Url = "http://127.0.0.1:9000/mcp", BearerToken = "yt-pat-value" }], _NoEnv);
+
+        var headers = _SerializeSingle(wire).GetProperty("headers");
+        Assert.Equal(1, headers.GetArrayLength());
+        Assert.Equal("Authorization", headers[0].GetProperty("name").GetString());
+        Assert.Equal("Bearer yt-pat-value", headers[0].GetProperty("value").GetString());
+    }
+
     [Fact]
     public void Build_ForACockpitHostedServer_ReadsTheBearerFromTheResolvedEnvironment_NotFromBearerToken()
     {

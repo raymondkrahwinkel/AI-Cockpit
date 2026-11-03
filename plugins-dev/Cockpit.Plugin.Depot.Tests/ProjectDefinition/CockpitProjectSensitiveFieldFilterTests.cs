@@ -4,6 +4,17 @@ namespace Cockpit.Plugin.Depot.Tests.ProjectDefinition;
 
 public class CockpitProjectSensitiveFieldFilterTests
 {
+    [Fact]
+    public void Apply_NoDataKey_EverySecretRowIsDroppedWithAReason()
+    {
+        var result = CockpitProjectSensitiveFieldFilter.Apply(
+            [("Deploy token", "s3cr3t", true), ("Repository", "https://example.com", false)], dataKey: null);
+
+        Assert.Empty(result.Encrypted);
+        var dropped = Assert.Single(result.Dropped);
+        Assert.Equal("Deploy token", dropped.Label);
+        Assert.False(string.IsNullOrWhiteSpace(dropped.Reason));
+    }
 
     // AC-607 review finding 9 at the end: the AAD binding the ciphertext relies on. Encrypted at one field's path, the same data key
     // cannot decrypt it back at a different field's path.

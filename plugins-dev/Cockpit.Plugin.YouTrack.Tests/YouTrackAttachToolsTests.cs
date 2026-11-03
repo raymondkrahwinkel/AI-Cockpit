@@ -82,6 +82,27 @@ public class YouTrackAttachToolsPathTests : IAsyncLifetime
         }
     }
 
+    [Fact]
+    public async Task Path_UnderTheSessionWorkingDirectory_Attaches()
+    {
+        var workingDirectory = Directory.CreateTempSubdirectory("ac170-workdir-").FullName;
+        var (host, tools) = _MakeTools(workingDirectory);
+        var file = Path.Combine(workingDirectory, "screenshot.png");
+        await File.WriteAllBytesAsync(file, PngBytes);
+        try
+        {
+            var result = await tools.AttachMessageImagesToIssue("AC-1", session: "pane-1", path: file);
+
+            Assert.Equal("Attached 1 image to AC-1.", result);
+            Assert.Equal(1, _requests);
+            Assert.Empty(host.Toasts);
+        }
+        finally
+        {
+            Directory.Delete(workingDirectory, recursive: true);
+        }
+    }
+
     // AC-1397: the path is checked against the calling session's own directory, never the window's active session's —
     // pane-1 calls while pane-2 is selected, so its own folder is allowed and pane-2's is not.
     [Theory]
@@ -106,6 +127,28 @@ public class YouTrackAttachToolsPathTests : IAsyncLifetime
         {
             Directory.Delete(callerDirectory, recursive: true);
             Directory.Delete(activeDirectory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Path_OutsideBothAllowedRoots_IsRejected()
+    {
+        var workingDirectory = Directory.CreateTempSubdirectory("ac170-workdir-").FullName;
+        var (_, tools) = _MakeTools(workingDirectory);
+        var outsideDir = Directory.CreateTempSubdirectory("ac170-outside-").FullName;
+        var file = Path.Combine(outsideDir, "screenshot.png");
+        await File.WriteAllBytesAsync(file, PngBytes);
+        try
+        {
+            var result = await tools.AttachMessageImagesToIssue("AC-1", session: "pane-1", path: file);
+
+            Assert.Contains("outside the folders this tool may attach from", result);
+            Assert.Equal(0, _requests);
+        }
+        finally
+        {
+            Directory.Delete(workingDirectory, recursive: true);
+            Directory.Delete(outsideDir, recursive: true);
         }
     }
 

@@ -84,6 +84,18 @@ public class ManifestDiffTests
     }
 
     [Fact]
+    public void ToConsentText_ABudgetSmallerThanTheDiff_SaysWhatItLeftOut()
+    {
+        var current = string.Join("\n---\n", Enumerable.Range(0, 40).Select(index => $"apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: c{index}\ndata:\n  value: old"));
+        var target = string.Join("\n---\n", Enumerable.Range(0, 40).Select(index => $"apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: c{index}\ndata:\n  value: new"));
+
+        var text = ManifestDiff.Compute(current, target).ToConsentText(400);
+
+        Assert.True(text.Length < 600, $"the consent line must stay bounded, got {text.Length} characters");
+        Assert.Contains("more resource(s)", text);
+    }
+
+    [Fact]
     public void ToConsentText_NamesEveryDeletionEvenWhenNothingElseChanges()
     {
         var current = TraefikRevision6 + "\n---\napiVersion: v1\nkind: PersistentVolumeClaim\nmetadata:\n  name: traefik-data\n";

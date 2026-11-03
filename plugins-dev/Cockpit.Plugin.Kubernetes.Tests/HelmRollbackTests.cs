@@ -50,6 +50,17 @@ public class HelmRollbackTests
     }
 
     [Fact]
+    public async Task HelmRollback_WhenConsentDenied_StopsBeforeTheCluster()
+    {
+        var (tools, _) = _Build(ConsentOutcome.Denied);
+
+        var json = JsonNode.Parse(await tools.HelmRollback("prod", Session, "system-ingress", "traefik", 6));
+
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("did not approve", json["error"]!.GetValue<string>());
+    }
+
+    [Fact]
     public async Task HelmRollback_ReadingTheRevisions_IsGatedAsCredentialMaterial()
     {
         var (tools, asked) = _Build(ConsentOutcome.Approved);

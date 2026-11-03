@@ -4,6 +4,27 @@ namespace Cockpit.Plugin.Depot.Tests.ProjectDefinition;
 
 public class CockpitProjectResourceFilterTests
 {
+    [Fact]
+    public void Apply_MixOfAllFourShapes_AllFourLandInPortableNowNoneAreDropped()
+    {
+        var absoluteReference = OperatingSystem.IsWindows() ? @"C:\Users\raymond\private-notes.md" : "/home/raymond/private-notes.md";
+        var result = CockpitProjectResourceFilter.Apply(
+        [
+            ("Memory", "depot:cockpit", null),
+            ("Instructions", "docs/CONVENTIONS.md", "Conventies"),
+            ("Reference", "~/Notes/private.md", null),
+            ("Reference", absoluteReference, null),
+        ]);
+
+        // AC-605: AnchorRelative is portable now — resolved against whoever opens the project, so it joins
+        // the other portable rows. AC-246: the absolute row also lands here now, as a placeholder
+        // (role + label, no reference) rather than in Dropped.
+        Assert.Equal(4, result.Portable.Count);
+        Assert.Empty(result.Dropped);
+        var placeholder = Assert.Single(result.Portable, entry => entry.Placeholder);
+        Assert.Equal("Reference", placeholder.Role);
+        Assert.Equal(string.Empty, placeholder.Reference);
+    }
 
     // AC-605: reverses the AC-244-era divergence this test used to pin — the host editor and this filter now agree that a "~/..." reference travels, so it is carried, not dropped.
 

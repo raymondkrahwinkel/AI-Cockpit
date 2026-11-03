@@ -1,3 +1,4 @@
+using Cockpit.Plugin.Kubernetes.Model;
 using Cockpit.Plugin.Kubernetes.Settings;
 
 namespace Cockpit.Plugin.Kubernetes.Tests;
@@ -18,7 +19,36 @@ public class KubernetesSettingsTests
         Assert.Contains("cluster.cluster-1.argoToken", storage.SecretKeys);
     }
 
+    [Fact]
+    public void ClearArgoToken_RemovesIt()
+    {
+        var settings = new KubernetesSettings(new FakePluginStorage());
+        settings.SetArgoToken("cluster-1", "argocd-token-value");
+
+        settings.ClearArgoToken("cluster-1");
+
+        Assert.Null(settings.GetArgoToken("cluster-1"));
+    }
+
+    [Fact]
+    public void SetArgoToken_IsKeyedPerCluster()
+    {
+        var settings = new KubernetesSettings(new FakePluginStorage());
+        settings.SetArgoToken("cluster-1", "token-for-1");
+        settings.SetArgoToken("cluster-2", "token-for-2");
+
+        Assert.Equal("token-for-1", settings.GetArgoToken("cluster-1"));
+        Assert.Equal("token-for-2", settings.GetArgoToken("cluster-2"));
+    }
+
     // AC-576 phase 3, AC 8: `Clusters` is what `KubernetesSettings.Clusters` serializes into cockpit.json — a
     // token field on `ClusterRegistration` would put it there. There is none, structurally, not by convention.
+    [Fact]
+    public void ClusterRegistration_HasNoTokenField()
+    {
+        var tokenLikeProperties = typeof(ClusterRegistration).GetProperties()
+            .Where(property => property.Name.Contains("Token", StringComparison.OrdinalIgnoreCase));
 
+        Assert.Empty(tokenLikeProperties);
+    }
 }

@@ -165,6 +165,26 @@ public class DepotBrowserServiceTests
         Assert.Empty(viewer.RestCalls);
     }
 
+    // AC-1573: a binary file asks for a ticket without a share (the default would leave one behind on a failed PUT);
+    // a text file is a document, which the artifact store refuses.
+    [Theory]
+    [InlineData("img/a.png", "uploads", "\"share\":\"none\"", "https://d/blob/upload/abc")]
+    [InlineData("docs/a.md", "write", "\"content\":\"# hi\"", null)]
+    public async Task Upload_RoutesByKind_AndAskedForNoShare(
+        string path, string operation, string requestFragment, string? uploadUrl)
+    {
+        var rig = new _Rig();
+
+        var answer = await rig.Service.UploadAsync(_Request(path) with { Content = "# hi", ContentType = "image/png", Size = 3 }, default);
+
+        Assert.Equal(DepotBrowserStatus.Ok, answer.Status);
+        var request = Assert.Single(rig.RestCalls);
+        Assert.Contains($"/{operation}", request.Path, StringComparison.Ordinal);
+        Assert.Contains(requestFragment, request.Body, StringComparison.Ordinal);
+        Assert.NotNull(answer.Data);
+        Assert.Equal(uploadUrl, answer.Data.UploadUrl);
+    }
+
     [Fact]
     public async Task Read_RefusesATruncatedAnswer_InsteadOfShowingPartialContent()
     {
@@ -316,5 +336,18 @@ public class DepotBrowserServiceTests
             Files[target] = entry.GetProperty("content").GetString() ?? throw new InvalidOperationException("The write request had no content.");
             return JsonSerializer.Serialize(new { results = new[] { new { path = target, status = "written", checksum = _Checksum(Files[target]) } } });
         }
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.Unauthorized, DepotBrowserStatus.SignIn, "Sign in to Work")]
+    [InlineData(HttpStatusCode.Forbidden, DepotBrowserStatus.Error, "Depot did not accept the file operation.")]
+    public async Task Tree_NotSignedInOrRefused_SaysSoWithoutSigningIn(HttpStatusCode response, string status, string message)
+    {
+        var rig = new _Rig { FileStatus = response };
+
+        var answer = await rig.Service.TreeAsync(_Request(), default);
+
+        Assert.Equal((status, message), (answer.Status, answer.Message));
+        await rig.Host.DidNotReceive().SignInMcpServerAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 }

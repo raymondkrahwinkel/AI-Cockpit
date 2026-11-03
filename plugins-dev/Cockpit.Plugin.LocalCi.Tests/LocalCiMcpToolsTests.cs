@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text.Json;
 using Cockpit.Core.Worktrees;
 using Cockpit.Plugin.LocalCi.Execution;
@@ -28,6 +29,23 @@ public class LocalCiMcpToolsTests : IDisposable
     {
         _caller.Dispose();
         _neighbour.Dispose();
+    }
+
+    [Fact]
+    public void NeitherToolTakesAProjectOrAPathFromItsCaller()
+    {
+        // The point of the whole design: a session cannot ask for a run in another session's tree, and a
+        // prompt-injected one cannot be talked into naming somewhere else. Pinned on the signature, because that is
+        // where such a parameter would quietly reappear.
+        foreach (var tool in typeof(LocalCiMcpTools).GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+        {
+            var names = tool.GetParameters().Select(parameter => parameter.Name!).ToList();
+
+            Assert.DoesNotContain(names, name => name.Contains("path", StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain(names, name => name.Contains("project", StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain(names, name => name.Contains("directory", StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain(names, name => name.Contains("session", StringComparison.OrdinalIgnoreCase));
+        }
     }
 
     [Fact]
@@ -103,6 +121,39 @@ public class LocalCiMcpToolsTests : IDisposable
     }
 
     [Fact]
+    public async Task AnEmptyCallerIsNoCallerAtAll()
+    {
+        _host.CallerPaneId = string.Empty;
+        var act = FakeStreamingCliRunner.Exiting(0);
+
+        var answer = await _Tools(act).RunLocalChecks();
+
+        // The blank is the interesting one: a host that has no answer and a host that answers with nothing look
+        // alike here, and treating the second as a real caller is how a lookup starts being done on an id nobody
+        // vouched for.
+        Assert.False(_Read(answer).GetProperty("ok").GetBoolean());
+        Assert.Empty(act.Calls);
+    }
+
+    [Fact]
+    public async Task UnknownAndDirectorylessCallersGetDifferentErrors()
+    {
+        _host.CallerPaneId = "pane-that-never-registered";
+        var act = FakeStreamingCliRunner.Exiting(0);
+
+        var unknown = await _Tools(act).RunLocalChecks();
+        _host.CallerPaneId = "pane-without-checkout";
+        _host.SessionObserver.Open.Add(new OpenCockpitSession("pane-without-checkout", "No checkout"));
+        _host.SessionObserver.WorkingDirectories["pane-without-checkout"] = string.Empty;
+        _checkouts.Remember(new FakeSession("pane-without-checkout", _neighbour.Root));
+        var directoryless = await _Tools(act).RunLocalChecks();
+
+        Assert.Contains("does not know the pane", _Read(unknown).GetProperty("error").GetString());
+        Assert.Contains("has no working directory or checkout", _Read(directoryless).GetProperty("error").GetString());
+        Assert.Empty(act.Calls);
+    }
+
+    [Fact]
     public async Task TheOperatorIsAskedWithTheLiteralCommandAndDenyingItStopsTheRun()
     {
         _host.CallerPaneId = "pane-caller";
@@ -118,6 +169,36 @@ public class LocalCiMcpToolsTests : IDisposable
         Assert.Equal(ConsentRisk.Dangerous, asked.Risk);
         Assert.Empty(act.Calls);
         Assert.Equal(nameof(LocalRunOutcome.NotApproved), _Read(verdict).GetProperty("verdict").GetString());
+    }
+
+    [Fact]
+    public async Task DefaultSettingsStillAskEveryRun()
+    {
+        // AC-710: the setting exists, but a fresh install must keep asking every time — nothing about today's
+        // behaviour changes until the operator opts in.
+        _host.CallerPaneId = "pane-caller";
+        var act = FakeStreamingCliRunner.Exiting(0);
+
+        await _Tools(act, skipConsent: false).RunLocalChecks();
+        await _host.Delivered;
+
+        Assert.Single(_host.Asked);
+        Assert.Single(act.Calls);
+    }
+
+    [Fact]
+    public async Task SkipConsentRunsWithoutAskingTheOperator()
+    {
+        // AC-710: with the operator's opt-out on, the run goes straight through — no RequestConsentAsync round-trip.
+        _host.CallerPaneId = "pane-caller";
+        var act = FakeStreamingCliRunner.Exiting(0);
+
+        await _Tools(act, skipConsent: true).RunLocalChecks();
+        var verdict = _Read(await _host.Delivered);
+
+        Assert.Empty(_host.Asked);
+        Assert.Single(act.Calls);
+        Assert.True(verdict.GetProperty("ok").GetBoolean());
     }
 
     private LocalCiMcpTools _Tools(IStreamingCliRunner act, bool skipConsent = false, FakeWorktreeManager? worktrees = null)

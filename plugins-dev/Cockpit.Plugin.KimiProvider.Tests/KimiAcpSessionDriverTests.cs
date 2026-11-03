@@ -61,6 +61,26 @@ public class KimiAcpSessionDriverTests
         }
     }
 
+    // The bearer for the cockpit's own MCP endpoints is the one host-controlled variable this driver passes on:
+    // the servers it hands kimi authenticate with exactly that key, so scrubbing it would lock the session out
+    // of the tools it was just given.
+    [Fact]
+    public async Task Start_KeepsTheCockpitMcpKey_ForTheServersItHandsTheChild()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
+        var environment = new Dictionary<string, string> { ["COCKPIT_MCP_KEY"] = "mcp-key" };
+
+        var startTask = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: null, options: null, mcpServers: null, environment, CancellationToken.None);
+        await _RespondAsync(fake, "initialize", "{}");
+        await _RespondAsync(fake, "session/new", """{"sessionId":"session_1","configOptions":[]}""");
+        await startTask;
+
+        var environmentVariables = fake.EnvironmentVariables;
+        Assert.NotNull(environmentVariables);
+        Assert.Equal("mcp-key", environmentVariables["COCKPIT_MCP_KEY"]);
+    }
+
     // Layer 2, provider protocol contract (AC-1992): the brain is Kimi's first visible turn, alone and exactly once,
     // ahead of the task; a resume (never session/load) or a start without a brain sends the task first.
     // AC-2000: a Stop during the brain turn also ends the task queued behind it, before that task goes out.
@@ -211,6 +231,40 @@ public class KimiAcpSessionDriverTests
         Assert.Contains("does not start", refused.Message);
     }
 
+    [Fact]
+    public async Task Start_WithPlanPermissionMode_SetsKimiModeToPlan()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
+
+        var options = new Dictionary<string, string> { [WellKnownPluginSessionOptions.PermissionMode] = "plan" };
+        var startTask = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: null, options, mcpServers: null, CancellationToken.None);
+        await _RespondAsync(fake, "initialize", "{}");
+        await _RespondAsync(fake, "session/new", """{"sessionId":"session_1","configOptions":[]}""");
+        var setConfig = await _RespondAsync(fake, "session/set_config_option", """{"configOptions":[]}""");
+        await startTask;
+
+        Assert.Equal("mode", setConfig.GetProperty("params").GetProperty("configId").GetString());
+        Assert.Equal("plan", setConfig.GetProperty("params").GetProperty("value").GetString());
+    }
+
+    [Fact]
+    public async Task Start_WithDefaultPermissionMode_SetsKimiModeToDefault()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
+
+        var options = new Dictionary<string, string> { [WellKnownPluginSessionOptions.PermissionMode] = "default" };
+        var startTask = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: null, options, mcpServers: null, CancellationToken.None);
+        await _RespondAsync(fake, "initialize", "{}");
+        await _RespondAsync(fake, "session/new", """{"sessionId":"session_1","configOptions":[]}""");
+        var setConfig = await _RespondAsync(fake, "session/set_config_option", """{"configOptions":[]}""");
+        await startTask;
+
+        Assert.Equal("mode", setConfig.GetProperty("params").GetProperty("configId").GetString());
+        Assert.Equal("default", setConfig.GetProperty("params").GetProperty("value").GetString());
+    }
+
     // P0-4, security: acceptEdits must fail closed to kimi's manual-approval "default" mode. Mapping it to
     // "yolo" would disable session/request_permission entirely — shell/deletes running with no prompt at all,
     // a silent privilege escalation past what a non-destructive-write ceiling is supposed to grant.
@@ -229,6 +283,23 @@ public class KimiAcpSessionDriverTests
 
         Assert.Equal("mode", setConfig.GetProperty("params").GetProperty("configId").GetString());
         Assert.Equal("default", setConfig.GetProperty("params").GetProperty("value").GetString());
+    }
+
+    [Fact]
+    public async Task Start_WithBypassPermissionsPermissionMode_SetsKimiModeToAuto()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
+
+        var options = new Dictionary<string, string> { [WellKnownPluginSessionOptions.PermissionMode] = "bypassPermissions" };
+        var startTask = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: null, options, mcpServers: null, CancellationToken.None);
+        await _RespondAsync(fake, "initialize", "{}");
+        await _RespondAsync(fake, "session/new", """{"sessionId":"session_1","configOptions":[]}""");
+        var setConfig = await _RespondAsync(fake, "session/set_config_option", """{"configOptions":[]}""");
+        await startTask;
+
+        Assert.Equal("mode", setConfig.GetProperty("params").GetProperty("configId").GetString());
+        Assert.Equal("auto", setConfig.GetProperty("params").GetProperty("value").GetString());
     }
 
     // AC-273: Kimi has no way to receive the host's hidden briefing over ACP, so the operator is told once,
@@ -278,6 +349,47 @@ public class KimiAcpSessionDriverTests
 
         var events = await _CollectForAsync(driver, TimeSpan.FromMilliseconds(150));
         Assert.DoesNotContain(events, evt => evt is PluginPermissionRequested);
+    }
+
+    // D4: the lazy tool_call (status "pending", only the tool name as title) must still yield exactly one
+    // PluginToolUseRequested — the tool_call_update that refines it must not produce a second one.
+
+    // --- permissions (AC-271) ------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task PermissionRequest_CarriesTheToolCallIdVerbatim_EvenWithoutAPriorToolUse()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
+        await _StartAsync(driver, fake);
+
+        await fake.PushStdoutAsync("""{"id":10,"method":"session/request_permission","params":{"sessionId":"session_1","options":[{"optionId":"approve_once","name":"Approve once","kind":"allow_once"},{"optionId":"approve_always","name":"Approve for this session","kind":"allow_always"},{"optionId":"reject","name":"Reject","kind":"reject_once"}],"toolCall":{"toolCallId":"turn-1:tool-9","title":"shell","content":[]}}}""");
+
+        var permission = await _NextEventOfTypeAsync<PluginPermissionRequested>(driver);
+        Assert.Equal("turn-1:tool-9", permission.ToolUseId);
+        Assert.Equal("shell", permission.ToolName);
+    }
+
+    // P1-3, trigger (c), D3: a permission request for a toolCallId that never had a prior tool_call must still
+    // produce a PluginToolUseRequested — before the PluginPermissionRequested — or the host has no matching
+    // tool-use card to attach the approval buttons to.
+
+    [Fact]
+    public async Task RespondToPermission_Allow_SelectsTheOptionIdMatchingAllowOnceKind()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
+        await _StartAsync(driver, fake);
+
+        await fake.PushStdoutAsync("""{"id":11,"method":"session/request_permission","params":{"sessionId":"session_1","options":[{"optionId":"approve_once","name":"Approve once","kind":"allow_once"},{"optionId":"approve_always","name":"Approve for this session","kind":"allow_always"},{"optionId":"reject","name":"Reject","kind":"reject_once"}],"toolCall":{"toolCallId":"turn-1:tool-1","title":"shell","content":[]}}}""");
+        await _NextEventOfTypeAsync<PluginPermissionRequested>(driver);
+
+        await driver.RespondToPermissionAsync("turn-1:tool-1", allow: true);
+
+        var answer = await _WaitForWrittenLineAsync(fake, "\"id\":11");
+        using var document = JsonDocument.Parse(answer);
+        Assert.Equal("selected", document.RootElement.GetProperty("result").GetProperty("outcome").GetProperty("outcome").GetString());
+        Assert.Equal("approve_once", document.RootElement.GetProperty("result").GetProperty("outcome").GetProperty("optionId").GetString());
     }
 
     [Fact]
@@ -331,6 +443,19 @@ public class KimiAcpSessionDriverTests
         var answer = await _WaitForWrittenLineAsync(fake, "\"id\":14");
         using var document = JsonDocument.Parse(answer);
         Assert.Equal("plan_approve", document.RootElement.GetProperty("result").GetProperty("outcome").GetProperty("optionId").GetString());
+    }
+
+    [Fact]
+    public async Task TunneledAskUserQuestion_IsSurfacedWithItsTitle_NotAsAToolPermission()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
+        await _StartAsync(driver, fake);
+
+        await fake.PushStdoutAsync("""{"id":15,"method":"session/request_permission","params":{"sessionId":"session_1","options":[{"optionId":"q0_a","name":"Option A","kind":"allow_once"}],"toolCall":{"toolCallId":"turn-1:q-1","title":"AskUserQuestion","content":[]}}}""");
+
+        var permission = await _NextEventOfTypeAsync<PluginPermissionRequested>(driver);
+        Assert.Equal("AskUserQuestion", permission.ToolName);
     }
 
     // P0-5: a child process reusing a toolCallId that already has an outstanding approval must not overwrite
@@ -438,6 +563,47 @@ public class KimiAcpSessionDriverTests
         await fake.PushStdoutAsync("""{"method":"session/update","params":{"sessionId":"session_1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"still alive"}}}}""");
         var delta = await _NextEventOfTypeAsync<PluginAssistantTextDelta>(driver);
         Assert.Equal("still alive", delta.Text);
+    }
+
+    // --- live config options (AC-272) ---------------------------------------------------------------------
+
+    [Fact]
+    public async Task SetLiveOptionAsync_WithAnInvalidConfigId_NeverReachesTheAgent()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
+        await _StartAsync(driver, fake);
+
+        await driver.SetLiveOptionAsync("not-a-real-config-id", "whatever");
+
+        Assert.DoesNotContain(fake.WrittenLines, line => line.Contains("\"method\":\"session/set_config_option\""));
+    }
+
+    // --- stopReason mapping (D7, protocol §3/§12) -----------------------------------------------------------
+    // The wire carries only end_turn | cancelled | refusal — never Kimi's internal SDK TurnEndReason names
+    // (completed/blocked/failed). These four tests replace an earlier version that sent those internal names
+    // over the fake wire (a wire form Kimi never actually produces) and never exercised "refusal" at all.
+
+    // D7: end_turn also covers a turn that genuinely failed underneath — Kimi maps that case onto the same
+    // end_turn value a successful turn gets, so this single mapping stands for both; there is no wire signal
+    // that tells them apart. This locks the honest limitation in so nobody "fixes" it later without a real
+    // wire signal to base the fix on.
+
+    // P0-3: refusal is the one wire value that must actually surface as an error — a refused/filtered turn
+    // reported as a success is exactly what D7 wants to avoid.
+    [Fact]
+    public async Task StopReason_Refusal_IsMappedToRefusal_WithIsErrorTrue()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
+        await _StartAsync(driver, fake);
+
+        await driver.SendUserMessageAsync("hi");
+        await _RespondAsync(fake, "session/prompt", """{"stopReason":"refusal"}""");
+
+        var completed = await _NextEventOfTypeAsync<PluginTurnCompleted>(driver);
+        Assert.True(completed.IsError);
+        Assert.Equal("refusal", completed.StopReason);
     }
 
     // P0-2: only a chunk that actually parses as the usage line is swallowed while capturing — a chunk that

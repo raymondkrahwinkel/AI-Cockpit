@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using Cockpit.Plugin.Docker.Engine;
 using Cockpit.Plugin.Docker.Mcp;
 using Cockpit.Plugin.Docker.Security;
 using Cockpit.Plugin.Docker.Settings;
@@ -49,7 +50,33 @@ public sealed class DockerMcpToolsTests
         Assert.Contains("did not approve", json["error"]!.GetValue<string>());
     }
 
+    [Fact]
+    public async Task DaemonInfo_WhenTheDaemonIsUnreachable_ReturnsASanitizedError()
+    {
+        var h = _Build(ConsentOutcome.Approved);
+        h.Engine.Throw = new TimeoutException("connect ECONNREFUSED /var/run/docker.sock");
+
+        var json = JsonNode.Parse(await h.Tools.DaemonInfo(Session));
+
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("could not be reached", json["error"]!.GetValue<string>());
+        Assert.DoesNotContain("docker.sock", json["error"]!.GetValue<string>());
+    }
+
     // ---- Mutations ---------------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task StopContainer_WhenApproved_CallsTheEngine_AndAsksAfreshAsDangerous()
+    {
+        var h = _Build(ConsentOutcome.Approved);
+
+        var json = JsonNode.Parse(await h.Tools.StopContainer(Session, "web"));
+
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Equal("web", Assert.Single(h.Engine.Stopped));
+        Assert.Equal(ConsentRisk.Dangerous, h.Asked.Last().Risk);
+        Assert.False(h.Asked.Last().AllowRemember);
+    }
 
     [Fact]
     public async Task RemoveContainer_WhenDeclined_DoesNotTouchTheEngine()
@@ -118,7 +145,76 @@ public sealed class DockerMcpToolsTests
 
     // ---- AC-93: logs, images, pull ----------------------------------------------------------------------------
 
+    [Fact]
+    public async Task PullImage_WhenApproved_PullsAndAsksMutationConsentEachTime()
+    {
+        var h = _Build(ConsentOutcome.Approved);
+
+        var json = JsonNode.Parse(await h.Tools.PullImage(Session, "nginx:1.27"));
+
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Equal("nginx:1.27", Assert.Single(h.Engine.Pulled));
+        // A mutation first clears the one-time connection consent, then asks for the change itself.
+        Assert.Equal(ConsentRisk.Dangerous, h.Asked.Last().Risk);
+        Assert.False(h.Asked.Last().AllowRemember);
+        Assert.Contains("nginx:1.27", h.Asked.Last().Action);
+    }
+
     // ---- AC-93 remaining tiers: consent levels ----------------------------------------------------------------
+
+    [Fact]
+    public async Task Tag_IsAMutation_Dangerous_NeverRemembered_ShowingBothReferences()
+    {
+        var h = _Build(ConsentOutcome.Approved);
+
+        var json = JsonNode.Parse(await h.Tools.Tag(Session, "myapp:latest", "reg/myapp:1.2"));
+
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Equal(("myapp:latest", "reg/myapp:1.2"), Assert.Single(h.Engine.Tagged));
+        Assert.Equal(ConsentRisk.Dangerous, h.Asked.Last().Risk);
+        Assert.False(h.Asked.Last().AllowRemember);
+        Assert.Contains("reg/myapp:1.2", h.Asked.Last().Action);
+    }
+
+    [Fact]
+    public async Task RemoveVolume_IsDestructive_Dangerous_ShowingTheVolume()
+    {
+        var h = _Build(ConsentOutcome.Approved);
+
+        var json = JsonNode.Parse(await h.Tools.RemoveVolume(Session, "pgdata", force: true));
+
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Equal(("pgdata", true), Assert.Single(h.Engine.RemovedVolumes));
+        Assert.Equal(ConsentRisk.Dangerous, h.Asked.Last().Risk);
+        Assert.Contains("pgdata", h.Asked.Last().Action);
+    }
+
+    [Fact]
+    public async Task Prune_AsksDangerousShowingTheTarget_AndReportsReclaimed()
+    {
+        var h = _Build(ConsentOutcome.Approved);
+
+        var json = JsonNode.Parse(await h.Tools.Prune(Session, "volumes"));
+
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Equal(4096, json["spaceReclaimedBytes"]!.GetValue<long>());
+        Assert.Equal(PruneTarget.Volumes, Assert.Single(h.Engine.Pruned));
+        Assert.Equal(ConsentRisk.Dangerous, h.Asked.Last().Risk);
+        Assert.Contains("volumes", h.Asked.Last().Action);
+    }
+
+    [Fact]
+    public async Task Push_IsDangerous_NeverRemembered_AndRunsTheDockerCli()
+    {
+        var h = _Build(ConsentOutcome.Approved);
+
+        var json = JsonNode.Parse(await h.Tools.Push(Session, "reg/myapp:1.2"));
+
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Equal(new[] { "push", "reg/myapp:1.2" }, Assert.Single(h.Docker.Calls));
+        Assert.Equal(ConsentRisk.Dangerous, h.Asked.Last().Risk);
+        Assert.False(h.Asked.Last().AllowRemember);
+    }
 
     [Fact]
     public async Task BuildImage_And_Cp_AreBlockedWhenExecIsOff()

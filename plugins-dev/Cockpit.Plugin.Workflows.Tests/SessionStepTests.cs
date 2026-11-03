@@ -32,6 +32,24 @@ public class SessionStepTests
 
     // The counter-proof: a step that names no live session fails with the reason, and no session is touched — apart
     // from the headless one, which was asked and took nothing.
+    [Theory]
+    [InlineData("cockpit.inject", "", "This step names no session")]
+    [InlineData("cockpit.set-status", "", "This step names no session")]
+    [InlineData("cockpit.inject", "nowhere", "No open session is called 'nowhere'")]
+    [InlineData("cockpit.set-status", "twin", "2 open sessions are called 'twin'")]
+    [InlineData("cockpit.inject", "headless", "'headless' took no text")]
+    [InlineData("cockpit.set-status", "cockpit-assistant", "No open session is called 'cockpit-assistant'")]
+    public async Task AStepThatNamesNoLiveSession_FailsWithItsReason_AndTouchesNoSession(string typeId, string session, string reason)
+    {
+        var host = _Host();
+
+        var run = await _RunScheduledAsync(host, _Step(typeId, ("Session", session), ("Text", "hello"), ("Status", "AC-1399")));
+
+        Assert.Equal(RunStatus.Failed, run.Status);
+        Assert.Contains(reason, run.Steps[^1].Note);
+        await host.DidNotReceive().InsertIntoSessionAsync(Arg.Is<string>(pane => pane != "pane-3"), Arg.Any<string>());
+        await host.DidNotReceive().SetSessionStatuslineAsync(Arg.Any<string>(), Arg.Any<string>());
+    }
 
     // Acceptance 3: a flow that starts a session and then injects into it reaches the session it started.
     [Fact]
@@ -47,9 +65,6 @@ public class SessionStepTests
         Assert.Equal(RunStatus.Succeeded, run.Status);
         await host.Received(1).InsertIntoSessionAsync("pane-2", "go");
     }
-
-    // AC-1419: a pane that closed before it took the label, or between the label and the name, fails the step and names
-    // the session; a refused label is never followed by a rename.
 
     // The open sessions while the host reports an active one: the one the flows name (pane-2), a headless one, two that
     // share a name, and the assistant, which no step may act on. Consent is not asked: the flows run unattended.

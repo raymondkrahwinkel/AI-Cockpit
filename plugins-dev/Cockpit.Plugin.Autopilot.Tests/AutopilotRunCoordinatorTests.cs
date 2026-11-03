@@ -14,6 +14,25 @@ public class AutopilotRunCoordinatorTests
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
 
+    [Fact]
+    public void ReportStepDone_FromAPaneThatIsNotAnActiveStep_IsRejected()
+    {
+        var coordinator = new AutopilotRunCoordinator(Substitute.For<ICockpitHost>(), new AutopilotPlanController());
+
+        Assert.False(coordinator.ReportStepDone("nobody", "done"));
+    }
+
+    [Fact]
+    public void ReportValidation_WithNoValidationPending_OrTheWrongPane_IsRejected()
+    {
+        var plan = new AutopilotPlanController();
+        plan.BindSession("ceo-pane");
+        var coordinator = new AutopilotRunCoordinator(Substitute.For<ICockpitHost>(), plan);
+
+        Assert.False(coordinator.ReportValidation("ceo-pane", passed: true, reason: null));
+        Assert.False(coordinator.ReportValidation("intruder", passed: true, reason: null));
+    }
+
     // AC-1337: an epic run's collection branch (environment.CollectionBranch) becomes the PR's base — unset opens
     // against the default branch, exactly as v1 did, since AutopilotPrRequest.Base then stays null.
 
@@ -285,6 +304,8 @@ public class AutopilotRunCoordinatorTests
         return context;
     }
 
+    // A hand-rolled step session whose Activity event can be raised on demand — NSubstitute cannot reliably raise an
+    // interface event that carries a default (no-op) add/remove body, which IEmbeddedSession.Activity does.
     private static IEmbeddedSession _Session(string paneId, Task<string?>? completion = null)
     {
         var session = Substitute.For<IEmbeddedSession>();

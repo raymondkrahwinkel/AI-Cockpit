@@ -11,10 +11,12 @@ public class CiRunLinksTests
 {
     [Theory]
     [InlineData("https://github.com/owner/repo/actions/runs/1", true)]
+    [InlineData("https://api.github.com/x", true)]
     [InlineData("http://github.com/owner/repo", false)]      // not https
     [InlineData("https://github.com.evil.com/x", false)]     // look-alike host
     [InlineData("https://evil.com/github.com", false)]
     [InlineData("file:///etc/passwd", false)]
+    [InlineData("", false)]
     public void IsGitHubRunUrl_AcceptsOnlyHttpsGitHub(string url, bool expected)
     {
         Assert.Equal(expected, CiRunLinks.IsGitHubRunUrl(url));

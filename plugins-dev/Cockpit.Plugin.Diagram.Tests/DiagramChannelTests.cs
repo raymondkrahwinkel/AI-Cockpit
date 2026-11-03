@@ -4,6 +4,7 @@ using System.Text.Json;
 using NSubstitute;
 using Cockpit.Core.Abstractions.Diagrams;
 using Cockpit.Core.Abstractions.Whiteboard;
+using Cockpit.Infrastructure.Diagrams;
 using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.UI;
 
@@ -15,6 +16,7 @@ namespace Cockpit.Plugin.Diagram.Tests;
 [Collection("avalonia")]
 public class DiagramChannelTests
 {
+    private const string Flow = "flowchart LR\n  A-->B";
 
     [Fact]
     public void AnObjectPlacedOutOfOrder_IsStillDelivered_SinceSkippingItWouldLoseTheObject()
@@ -29,6 +31,21 @@ public class DiagramChannelTests
         deliver(new PluginChannelEvent("whiteboard.ObjectPlaced", 4, _Payload("b1", "o-4", placement)));
 
         Assert.Equal(["o-5", "o-4"], placed);
+    }
+
+    [Fact]
+    public async Task CouplingASurfaceAnotherAgentHolds_IsRefusedInTheWindow_AndTheHolderKeepsIt()
+    {
+        var registry = new DiagramAccessRegistry();
+        registry.SurfaceOpened("d1", "Flow", Flow);
+        registry.Couple("pane-a", "d1");
+        var client = new DiagramChannelClient(TestChannel.For(diagrams: registry));
+
+        var refusal = await Assert.ThrowsAsync<InvalidOperationException>(() => client.CoupleAsync("pane-b", "d1"));
+
+        Assert.False(string.IsNullOrWhiteSpace(refusal.Message));
+        Assert.NotNull(registry.CouplingOf("pane-a", "d1"));
+        Assert.Null(registry.CouplingOf("pane-b", "d1"));
     }
 
     // AC-1891 (layer 2, plugin channel): the hub runs each call on its own pool thread, so two quick sends from a

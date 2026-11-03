@@ -25,6 +25,21 @@ public class ClaudeMcpConfigTests
     }
 
     [Fact]
+    public void Write_ForAUserApiKeyServer_WritesItsOwnBearerLiteral()
+    {
+        var path = ClaudeMcpConfig.Write([new PluginMcpServer { Name = "youtrack", Url = "http://example/mcp", BearerToken = "yt-key" }]);
+
+        try
+        {
+            Assert.Equal("Bearer yt-key", _Authorization(path!, "youtrack"));
+        }
+        finally
+        {
+            File.Delete(path!);
+        }
+    }
+
+    [Fact]
     public void Write_ForAUserApiKeyServer_WritesTheTokenFileOwnerOnly()
     {
         // The file carries a literal third-party bearer token; it must not sit world-readable in a shared temp
@@ -49,6 +64,28 @@ public class ClaudeMcpConfigTests
         finally
         {
             File.Delete(path!);
+        }
+    }
+
+    [Fact]
+    public void Write_WithNoServers_WriteEmptyExplicit_WritesAnActualEmptyConfig_InsteadOfNull()
+    {
+        // AC-378, criterion 4 — the empty-resolution trap: the headless/strict route must be able to say "zero
+        // servers" as an explicit, on-disk {"mcpServers":{}}, not as a dropped flag that lets the CLI fall back to
+        // its own user/project config.
+        var path = ClaudeMcpConfig.Write([], writeEmptyExplicit: true);
+
+        try
+        {
+            Assert.NotNull(path);
+            Assert.Empty(JsonNode.Parse(File.ReadAllText(path!))!["mcpServers"]!.AsObject());
+        }
+        finally
+        {
+            if (path is not null)
+            {
+                File.Delete(path);
+            }
         }
     }
 

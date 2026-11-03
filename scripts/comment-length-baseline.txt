@@ -3,10 +3,9 @@
 # format: <check>\t<path>\t<violation count>
 inline	plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests/ClaudeControlProtocolTests.cs	1
 inline	plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests/ClaudeMcpConfigTests.cs	1
-inline	plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests/ClaudeSdkArgumentsTests.cs	3
-inline	plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests/ClaudeSdkSessionDriverTests.cs	5
-inline	plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests/ClaudeSdkUsageTests.cs	1
-inline	plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests/ClaudeStreamJsonTests.cs	3
+inline	plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests/ClaudeSdkArgumentsTests.cs	2
+inline	plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests/ClaudeSdkSessionDriverTests.cs	4
+inline	plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests/ClaudeStreamJsonTests.cs	1
 inline	plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests/ClaudeTranscriptIdentityTests.cs	1
 inline	plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests/ClaudeTranscriptReaderTests.cs	5
 inline	plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests/ClaudeUsageSignalsTests.cs	1
@@ -83,8 +82,8 @@ inline	plugins-dev/Cockpit.Plugin.GitHubActions/GitHubActionsPlugin.cs	1
 inline	plugins-dev/Cockpit.Plugin.GitHubActions/UI/CiStatusHeaderControl.cs	1
 inline	plugins-dev/Cockpit.Plugin.GitHubActions/UI/CiWorkflowRunsDockPanelRegistrar.cs	1
 inline	plugins-dev/Cockpit.Plugin.GitHubActions/UI/CiWorkflowRunsWidget.cs	1
-inline	plugins-dev/Cockpit.Plugin.GitHubIssues.Tests/GitHubGhClientTests.cs	2
-inline	plugins-dev/Cockpit.Plugin.GitHubIssues.Tests/GitHubIssuesClientTests.cs	3
+inline	plugins-dev/Cockpit.Plugin.GitHubIssues.Tests/GitHubGhClientTests.cs	1
+inline	plugins-dev/Cockpit.Plugin.GitHubIssues.Tests/GitHubIssuesClientTests.cs	2
 inline	plugins-dev/Cockpit.Plugin.GitHubIssues/Contracts/GitHubBranchName.cs	1
 inline	plugins-dev/Cockpit.Plugin.GitHubIssues/Contracts/GitHubIssuesSettings.cs	1
 inline	plugins-dev/Cockpit.Plugin.GitHubIssues/Contracts/SessionLabel.cs	1
@@ -111,7 +110,7 @@ inline	plugins-dev/Cockpit.Plugin.GitHubModelsProvider/GitHubModelsProviderPlugi
 inline	plugins-dev/Cockpit.Plugin.GitHubModelsProvider/OpenAiCompatConfig.cs	1
 inline	plugins-dev/Cockpit.Plugin.GitHubModelsProvider/OpenAiCompatPluginSessionDriverFactory.cs	1
 inline	plugins-dev/Cockpit.Plugin.GitHubModelsProvider/UI/OpenAiCompatProviderConfigView.cs	1
-inline	plugins-dev/Cockpit.Plugin.GitHubPullRequests.Tests/PullRequestRefreshSourceTests.cs	6
+inline	plugins-dev/Cockpit.Plugin.GitHubPullRequests.Tests/PullRequestRefreshSourceTests.cs	1
 inline	plugins-dev/Cockpit.Plugin.GitHubPullRequests/Contracts/GitHubPullRequest.cs	1
 inline	plugins-dev/Cockpit.Plugin.GitHubPullRequests/Contracts/GitHubPullRequestsSettings.cs	4
 inline	plugins-dev/Cockpit.Plugin.GitHubPullRequests/Contracts/PromptTemplate.cs	1
@@ -147,10 +146,10 @@ inline	plugins-dev/Cockpit.Plugin.GitStatus/GitWorkflowSteps.cs	1
 inline	plugins-dev/Cockpit.Plugin.KimiProvider.Tests/AssemblyInfo.cs	1
 inline	plugins-dev/Cockpit.Plugin.KimiProvider.Tests/FakeCliSubprocess.cs	3
 inline	plugins-dev/Cockpit.Plugin.KimiProvider.Tests/KimiAcpConnectionTests.cs	3
-inline	plugins-dev/Cockpit.Plugin.KimiProvider.Tests/KimiAcpSessionDriverTests.cs	12
+inline	plugins-dev/Cockpit.Plugin.KimiProvider.Tests/KimiAcpSessionDriverTests.cs	8
 inline	plugins-dev/Cockpit.Plugin.KimiProvider.Tests/KimiMcpConfigTests.cs	1
 inline	plugins-dev/Cockpit.Plugin.KimiProvider.Tests/KimiSessionUpdateMapperTests.cs	2
-inline	plugins-dev/Cockpit.Plugin.KimiProvider.Tests/KimiUsageParserTests.cs	2
+inline	plugins-dev/Cockpit.Plugin.KimiProvider.Tests/KimiUsageParserTests.cs	1
 inline	plugins-dev/Cockpit.Plugin.KimiProvider/KimiAcpConnection.cs	4
 inline	plugins-dev/Cockpit.Plugin.KimiProvider/KimiAcpSessionDriver.cs	21
 inline	plugins-dev/Cockpit.Plugin.KimiProvider/KimiAcpSessionDriverFactory.cs	1
@@ -230,7 +229,6 @@ inline	plugins-dev/Cockpit.Plugin.TranscriptSearch/TranscriptSearchService.cs	2
 inline	plugins-dev/Cockpit.Plugin.TranscriptSearch/TranscriptTextExtractor.cs	1
 inline	plugins-dev/Cockpit.Plugin.UsageTrend/UsageTrendHistory.cs	1
 inline	plugins-dev/Cockpit.Plugin.UsageTrend/UsageTrendSample.cs	2
-inline	plugins-dev/Cockpit.Plugin.Workflows.Tests/CommandRunnerTests.cs	2
 inline	plugins-dev/Cockpit.Plugin.Workflows.Tests/ConsentGateTests.cs	1
 inline	plugins-dev/Cockpit.Plugin.Workflows.Tests/ContributedStepConsentTests.cs	1
 inline	plugins-dev/Cockpit.Plugin.Workflows.Tests/WorkflowJsonRoundTripTests.cs	1
@@ -270,7 +268,6 @@ inline	plugins-dev/Cockpit.Plugin.Workflows/UI/WorkflowManagerControl.cs	1
 inline	plugins-dev/Cockpit.Plugin.Workflows/WorkflowMcpTools.cs	3
 inline	plugins-dev/Cockpit.Plugin.Workflows/WorkflowsPlugin.cs	2
 inline	plugins-dev/Cockpit.Plugin.Workflows/Contracts/WorkflowsSettings.cs	1
-inline	plugins-dev/Cockpit.Plugin.YouTrack.Tests/Fakes.cs	1
 inline	plugins-dev/Cockpit.Plugin.YouTrack.Tests/YouTrackClientLinkedIssuesTests.cs	1
 inline	plugins-dev/Cockpit.Plugin.YouTrack.Tests/YouTrackQueryTests.cs	1
 inline	plugins-dev/Cockpit.Plugin.YouTrack.Tests/YouTrackSearchTermTests.cs	1
@@ -575,3 +572,6 @@ summary	tests/Cockpit.Infrastructure.Tests/Mcp/NodeSessionsClientRealNetworkTest
 summary	tests/Cockpit.Infrastructure.Tests/Projects/ProjectInstructionContentReaderTests.cs	4
 summary	tests/Cockpit.Infrastructure.Tests/Projects/ProjectResourceProbeTests.cs	1
 summary	tests/Cockpit.Infrastructure.Tests/Sessions/HermesToolCallChatClientTests.cs	1
+inline	plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests/ClaudeTranscriptClassifyTests.cs	1
+inline	plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests/ClaudeTtyProviderTests.cs	1
+inline	plugins-dev/Cockpit.Plugin.YouTrack.Tests/YouTrackMcpRegistrationTests.cs	1

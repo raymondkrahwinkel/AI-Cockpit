@@ -46,4 +46,8 @@ public class ProjectResourceSecretPathHeuristicTests
 
         Assert.True(ProjectResourceSecretPathHeuristic.IsLikelySecretPath(absolute));
     }
+
+    [Fact]
+    public void IsLikelySecretPath_UppercasedDirectory_MatchesOnlyOnAPlatformThatIgnoresCase() =>
+        Assert.Equal(OperatingSystem.IsWindows(), ProjectResourceSecretPathHeuristic.IsLikelySecretPath("~/.SSH/ID_RSA"));
 }
