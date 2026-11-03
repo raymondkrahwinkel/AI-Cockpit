@@ -51,6 +51,7 @@ public sealed class ProxmoxMcpToolsTests
         var json = JsonNode.Parse(await h.Tools.DeleteVm(Session, "pve1", "100"));
 
         Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("settings", json["error"]!.GetValue<string>());
         Assert.Empty(h.Asked);
     }
 

@@ -7,7 +7,7 @@ public class SessionPullRequestStatusClientTests
 {
 
     [Fact]
-    public void Parse_ReadsCheckRunEntries_ByStatusAndConclusion()
+    public void Parse_ReadsCheckRunsByStatusAndConclusion_AndStatusContextsByStateAlone()
     {
         const string json = """
             { "number": 592, "headRefName": "main", "additions": 0, "deletions": 0,
@@ -17,26 +17,7 @@ public class SessionPullRequestStatusClientTests
                   "startedAt": "2026-08-15T10:00:00Z", "completedAt": "2026-08-15T10:01:42Z" },
                 { "__typename": "CheckRun", "name": "tests", "status": "COMPLETED", "conclusion": "FAILURE",
                   "startedAt": "2026-08-15T10:00:00Z", "completedAt": "2026-08-15T10:03:08Z" },
-                { "__typename": "CheckRun", "name": "plugins", "status": "IN_PROGRESS", "conclusion": null }
-              ]
-            }
-            """;
-
-        var status = SessionPullRequestStatusClient.Parse(json);
-
-        Assert.NotNull(status);
-        Assert.Equal(3, status!.Checks.Count);
-        Assert.Equal(("build", PullRequestCheckState.Passed, TimeSpan.FromSeconds(102)), _Tuple(status.Checks[0]));
-        Assert.Equal(("tests", PullRequestCheckState.Failed, TimeSpan.FromSeconds(188)), _Tuple(status.Checks[1]));
-        Assert.Equal(("plugins", PullRequestCheckState.Running, (TimeSpan?)null), _Tuple(status.Checks[2]));
-    }
-
-    [Fact]
-    public void Parse_ReadsStatusContextEntries_ByStateAlone()
-    {
-        const string json = """
-            { "number": 1, "headRefName": "main", "additions": 0, "deletions": 0, "url": "https://github.com/o/r/pull/1",
-              "statusCheckRollup": [
+                { "__typename": "CheckRun", "name": "plugins", "status": "IN_PROGRESS", "conclusion": null },
                 { "__typename": "StatusContext", "context": "ci/external", "state": "SUCCESS" },
                 { "__typename": "StatusContext", "context": "ci/other", "state": "PENDING" }
               ]
@@ -46,10 +27,14 @@ public class SessionPullRequestStatusClientTests
         var status = SessionPullRequestStatusClient.Parse(json);
 
         Assert.NotNull(status);
-        Assert.Equal("ci/external", status!.Checks[0].Name);
-        Assert.Equal(PullRequestCheckState.Passed, status.Checks[0].State);
-        Assert.Equal("ci/other", status.Checks[1].Name);
-        Assert.Equal(PullRequestCheckState.Running, status.Checks[1].State);
+        Assert.Equal(5, status!.Checks.Count);
+        Assert.Equal(("build", PullRequestCheckState.Passed, TimeSpan.FromSeconds(102)), _Tuple(status.Checks[0]));
+        Assert.Equal(("tests", PullRequestCheckState.Failed, TimeSpan.FromSeconds(188)), _Tuple(status.Checks[1]));
+        Assert.Equal(("plugins", PullRequestCheckState.Running, (TimeSpan?)null), _Tuple(status.Checks[2]));
+
+        // A StatusContext entry carries no status/conclusion pair: its state alone decides.
+        Assert.Equal(("ci/external", PullRequestCheckState.Passed), (status.Checks[3].Name, status.Checks[3].State));
+        Assert.Equal(("ci/other", PullRequestCheckState.Running), (status.Checks[4].Name, status.Checks[4].State));
     }
 
     private static (string Name, PullRequestCheckState State, TimeSpan? Duration) _Tuple(PullRequestCheck check) =>

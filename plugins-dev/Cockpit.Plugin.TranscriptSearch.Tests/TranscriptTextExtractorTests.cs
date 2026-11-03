@@ -17,13 +17,8 @@ public class TranscriptTextExtractorTests
         Assert.NotNull(entry);
         Assert.Equal("assistant", entry!.Role);
         Assert.Equal("Here is the fix", entry.Text);
-    }
 
-    [Fact]
-    public void Extract_ToolResultUserRecord_ReturnsNull()
-    {
-        var line = """{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"x","content":"ok"}]}}""";
-
-        Assert.Null(TranscriptTextExtractor.Extract(line));
+        // A tool-result user record is no prose at all.
+        Assert.Null(TranscriptTextExtractor.Extract("""{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"x","content":"ok"}]}}"""));
     }
 }

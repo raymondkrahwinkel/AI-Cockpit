@@ -11,62 +11,22 @@ public class UsageTrendHistoryTests
     private static UsageTrendSample Sample(DateTimeOffset at, double? ctx = 20, string? profile = "Default") =>
         new(at, profile, ctx, FiveHourPercent: 30, WeeklyPercent: 40);
 
-    [Fact]
-    public void ASecondSampleWithinTenMinutes_IsDebouncedAway()
+    // Same figures within the window are not worth a rewrite; a sharp jump (20 -> 80) or a /compact to "not reported" is,
+    // and the window is per profile, so another profile's first point is not held back by Work's.
+    [Theory]
+    [InlineData(20.0, "Default", 5, 21.0, "Default", false)]
+    [InlineData(20.0, "Default", 11, 21.0, "Default", true)]
+    [InlineData(20.0, "Default", 2, 80.0, "Default", true)]
+    [InlineData(60.0, "Default", 1, null, "Default", true)]
+    [InlineData(20.0, "Work", 1, 20.0, "Personal", true)]
+    public void ASampleInsideTheTenMinuteWindow_IsDebouncedAway_UnlessItJumpsOrIsAnotherProfile(
+        double existingCtx, string existingProfile, int minutesLater, double? ctx, string profile, bool recorded)
     {
-        var existing = new[] { Sample(T0) };
+        var existing = new[] { Sample(T0, existingCtx, existingProfile) };
 
-        // Five minutes later, essentially the same figures: not worth a whole-file rewrite.
-        var result = UsageTrendHistory.Append(existing, Sample(T0.AddMinutes(5), ctx: 21));
+        var result = UsageTrendHistory.Append(existing, Sample(T0.AddMinutes(minutesLater), ctx, profile));
 
-        Assert.Null(result);
-    }
-
-    [Fact]
-    public void ASamplePastTheDebounceWindow_IsRecorded()
-    {
-        var existing = new[] { Sample(T0) };
-
-        var result = UsageTrendHistory.Append(existing, Sample(T0.AddMinutes(11), ctx: 21));
-
-        Assert.NotNull(result);
-        Assert.Equal(2, System.Linq.Enumerable.Count(result!));
-    }
-
-    [Fact]
-    public void ASharpJumpInsideTheWindow_IsRecordedAnyway()
-    {
-        var existing = new[] { Sample(T0, ctx: 20) };
-
-        // Two minutes later but the context jumped 20 -> 80: a scarp the 10-minute grid must not skip.
-        var result = UsageTrendHistory.Append(existing, Sample(T0.AddMinutes(2), ctx: 80));
-
-        Assert.NotNull(result);
-        Assert.Equal(2, System.Linq.Enumerable.Count(result!));
-    }
-
-    [Fact]
-    public void AContextResetToNull_CountsAsAJump()
-    {
-        var existing = new[] { Sample(T0, ctx: 60) };
-
-        // A /compact drops the context to "not reported": presence changing is itself a jump worth a point.
-        var result = UsageTrendHistory.Append(existing, Sample(T0.AddMinutes(1), ctx: null));
-
-        Assert.NotNull(result);
-        Assert.Equal(2, System.Linq.Enumerable.Count(result!));
-    }
-
-    [Fact]
-    public void DebounceIsPerProfile_ASecondProfilesFirstPointIsNotGated()
-    {
-        var existing = new[] { Sample(T0, profile: "Work") };
-
-        // A different profile, one minute later: its first point must not be held back by Work's debounce window.
-        var result = UsageTrendHistory.Append(existing, Sample(T0.AddMinutes(1), profile: "Personal"));
-
-        Assert.NotNull(result);
-        Assert.Equal(2, System.Linq.Enumerable.Count(result!));
+        Assert.Equal(recorded ? 2 : (int?)null, result?.Count);
     }
 
     [Fact]

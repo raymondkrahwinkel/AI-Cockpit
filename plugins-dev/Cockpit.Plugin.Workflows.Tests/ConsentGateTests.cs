@@ -35,64 +35,38 @@ public class ConsentGateTests
     private static WorkflowEngine _Engine(ICockpitHost host, ConsentingRunner dangerous) =>
         new([new ManualTriggerRunner(), dangerous, new RecordingRunner("cockpit.notify")], host);
 
-    [Fact]
-    public async Task DangerousStep_FromMcpAgent_Approved_Runs_ShowingTheGroundTruth()
+    // An agent's run asks, showing the literal action; approved it runs, denied it never runs and the branch stops
+    // (the step is Skipped). The operator's own run is not asked even by a host that would deny. A trigger's run
+    // asks, unless the flow is set to run unattended.
+    [Theory]
+    [InlineData(RunOrigin.McpAgent, false, ConsentOutcome.Approved, true, true)]
+    [InlineData(RunOrigin.McpAgent, false, ConsentOutcome.Denied, true, false)]
+    [InlineData(RunOrigin.Operator, false, ConsentOutcome.Denied, false, true)]
+    [InlineData(RunOrigin.Trigger, false, ConsentOutcome.Approved, true, true)]
+    [InlineData(RunOrigin.Trigger, true, ConsentOutcome.Denied, false, true)]
+    public async Task DangerousStep_AsksUnlessTheOperatorStartedItOrItRunsUnattended_AndDenyingStopsTheBranch(
+        RunOrigin origin, bool unattended, ConsentOutcome answer, bool asks, bool runs)
     {
         var flow = _Flow(out var trigger);
-        var host = _Host(ConsentOutcome.Approved, out var asked);
+        flow.RunUnattended = unattended;
+        var host = _Host(answer, out var asked);
         var dangerous = new ConsentingRunner("danger", ConsentRisk.Dangerous);
 
-        await _Engine(host, dangerous).RunAsync(flow, trigger.Id, RunOrigin.McpAgent);
+        var run = await _Engine(host, dangerous).RunAsync(flow, trigger.Id, origin);
 
-        Assert.Single(asked);
-        Assert.Equal("do the dangerous thing: Run a command", asked[0].Action);
-        Assert.Equal(ConsentRisk.Dangerous, asked[0].Risk);
-        Assert.True(dangerous.Ran);
-    }
+        Assert.Equal(asks ? 1 : 0, asked.Count);
+        if (asks)
+        {
+            Assert.Equal("do the dangerous thing: Run a command", asked[0].Action);
+            Assert.Equal(ConsentRisk.Dangerous, asked[0].Risk);
+        }
 
-    [Fact]
-    public async Task DangerousStep_FromMcpAgent_Denied_DoesNotRun_AndStopsTheBranch()
-    {
-        var flow = _Flow(out var trigger);
-        var host = _Host(ConsentOutcome.Denied, out _);
-        var dangerous = new ConsentingRunner("danger", ConsentRisk.Dangerous);
-
-        var run = await _Engine(host, dangerous).RunAsync(flow, trigger.Id, RunOrigin.McpAgent);
-
-        Assert.False(dangerous.Ran, "a denied step never runs");
-        Assert.DoesNotContain(run.Steps, step => step.NodeId == "a");
-        Assert.Equal(RunStatus.Skipped, run.Steps.Single(step => step.NodeId == "d").Status);
-    }
-
-    [Fact]
-    public async Task DangerousStep_FromOperator_RunsWithoutAsking()
-    {
-        var flow = _Flow(out var trigger);
-        var host = _Host(ConsentOutcome.Denied, out var asked);   // would deny — but must not even be asked
-        var dangerous = new ConsentingRunner("danger", ConsentRisk.Dangerous);
-
-        await _Engine(host, dangerous).RunAsync(flow, trigger.Id, RunOrigin.Operator);
-
-        Assert.Empty(asked);
-        Assert.True(dangerous.Ran);
-    }
-
-    [Fact]
-    public async Task DangerousStep_FromTrigger_Asks_UnlessTheFlowIsRunUnattended()
-    {
-        var flow = _Flow(out var trigger);
-        var host = _Host(ConsentOutcome.Approved, out var asked);
-
-        await _Engine(host, new ConsentingRunner("danger", ConsentRisk.Dangerous)).RunAsync(flow, trigger.Id, RunOrigin.Trigger);
-        Assert.Single(asked);
-
-        flow.RunUnattended = true;
-        asked.Clear();
-        var unattended = new ConsentingRunner("danger", ConsentRisk.Dangerous);
-
-        await _Engine(host, unattended).RunAsync(flow, trigger.Id, RunOrigin.Trigger);
-        Assert.Empty(asked);
-        Assert.True(unattended.Ran);
+        Assert.Equal(runs, dangerous.Ran);
+        Assert.Equal(runs, run.Steps.Any(step => step.NodeId == "a"));
+        if (!runs)
+        {
+            Assert.Equal(RunStatus.Skipped, run.Steps.Single(step => step.NodeId == "d").Status);
+        }
     }
 
     // AC-1360: "Ask me first" goes through the broker, so a chat channel can answer it too. A yes goes on, a no is

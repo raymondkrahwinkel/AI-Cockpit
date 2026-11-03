@@ -26,20 +26,15 @@ public class DiffParserTests
         """;
 
     [Fact]
-    public void Parse_CountsAddedAndRemovedPerFile()
-    {
-        var files = DiffParser.Parse(TwoFiles);
-
-        Assert.Equal((2, 1), (files[0].Added, files[0].Removed));
-        Assert.Equal((1, 1), (files[1].Added, files[1].Removed));
-    }
-
-    [Fact]
-    public void Parse_NumbersRowsFromTheHunkHeader()
+    public void Parse_CountsPerFile_AndNumbersRowsFromTheHunkHeader()
     {
         // The gutter is the whole point of parsing: a context line carries both numbers, an added line only the new
         // one, a removed line only the old one, and both counters advance independently from the @@ header.
-        var rows = DiffParser.Parse(TwoFiles)[0].Rows;
+        var files = DiffParser.Parse(TwoFiles);
+        var rows = files[0].Rows;
+
+        Assert.Equal((2, 1), (files[0].Added, files[0].Removed));
+        Assert.Equal((1, 1), (files[1].Added, files[1].Removed));
 
         Assert.Equal((null, (int?)null), (rows[0].OldLine, rows[0].NewLine));      // the @@ header itself
         Assert.Equal(((int?)10, (int?)10), (rows[1].OldLine, rows[1].NewLine));    // context

@@ -9,26 +9,19 @@ namespace Cockpit.Plugin.Workflows.Tests;
 // that fails — an exit code nobody looks at is how a flow ends up reporting green while nothing happened.
 public class CommandRunnerTests
 {
-    [Fact]
-    public async Task AnUpstreamValueThatLooksLikeAnInjection_IsRunAsText_NotAsASecondCommand()
+    // The classic shell-injection: a prior step's value carries "; echo PWNED" or a backtick substitution. It must
+    // reach echo as one argument and be printed, never chain a second command (AC-39). Without the fix the first
+    // printed "hi\nPWNED".
+    [Theory]
+    [InlineData("hi; echo PWNED")]
+    [InlineData("a`whoami`b")]
+    public async Task AnUpstreamValueThatLooksLikeAnInjection_IsRunAsText_NotAsASecondCommand(string upstream)
     {
-        // The classic shell-injection: a prior step's value carries "; echo PWNED". It must reach echo as one
-        // argument and be printed, never chain a second command (AC-39). Without the fix this printed "hi\nPWNED".
-        var context = _Context(_Command("echo {output}"), _Items(("output", "hi; echo PWNED")));
+        var context = _Context(_Command("echo {output}"), _Items(("output", upstream)));
 
         var outcome = await new CommandRunner().RunAsync(context, CancellationToken.None);
 
-        Assert.Equal("hi; echo PWNED", outcome.Output);
-    }
-
-    [Fact]
-    public async Task ABacktickInAnUpstreamValue_IsNotExecuted_AsACommandSubstitution()
-    {
-        var context = _Context(_Command("echo {output}"), _Items(("output", "a`whoami`b")));
-
-        var outcome = await new CommandRunner().RunAsync(context, CancellationToken.None);
-
-        Assert.Equal("a`whoami`b", outcome.Output);
+        Assert.Equal(upstream, outcome.Output);
     }
 
     private static WorkflowNode _Command(string command) => new()

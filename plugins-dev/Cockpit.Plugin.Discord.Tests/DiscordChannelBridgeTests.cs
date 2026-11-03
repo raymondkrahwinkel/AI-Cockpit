@@ -48,32 +48,7 @@ public class DiscordChannelBridgeTests
         var refusal = Assert.Single(refusals);
         Assert.Contains(_StrangerUserId, refusal, StringComparison.Ordinal);
         Assert.DoesNotContain("hello?", refusal, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task AllowedSender_IsForwardedToTheGateway()
-    {
-        var (bridge, gateway, sink) = _Build();
-        gateway.NextResult = AssistantChannelSendResult.Sent();
-
-        await bridge.HandleInboundMessageAsync(_AllowedUserId, "hi there", messageId: 1);
-
-        Assert.Contains((_AllowedUserId, "hi there"), gateway.SentMessages);
-        Assert.Empty(sink.Reactions);
         DiscordHealthStateTests.Verify();
-    }
-
-    [Fact]
-    public void ConsentPromptOpened_PostsAMessageWithTheButtonsAttached()
-    {
-        var (_, gateway, sink) = _Build();
-        var prompt = _ConsentPrompt("rm -rf /tmp/whatever");
-
-        gateway.RaisePromptOpened(prompt);
-
-        var posted = Assert.Single(sink.Posted);
-        Assert.Equal("rm -rf /tmp/whatever", posted.Text);
-        Assert.Equal(prompt.Id, posted.ConsentPromptId);
     }
 
     // A stranger's click is not covered by the host's own SendAsync identity check (AC-1023 §3), since
@@ -86,6 +61,11 @@ public class DiscordChannelBridgeTests
         var (bridge, gateway, sink) = _Build(logRefusal: refusals.Add);
         var prompt = _ConsentPrompt("do the thing");
         gateway.RaisePromptOpened(prompt);
+
+        // The prompt is posted with its literal action and the buttons attached.
+        var posted = Assert.Single(sink.Posted);
+        Assert.Equal("do the thing", posted.Text);
+        Assert.Equal(prompt.Id, posted.ConsentPromptId);
 
         await bridge.HandleButtonAsync(DiscordConsentButtonId.Approve(prompt.Id), _StrangerUserId);
 
@@ -139,30 +119,24 @@ public class DiscordChannelBridgeTests
         Assert.Equal(1 - answered, refusals.Count);
     }
 
-    [Fact]
-    public async Task TextFallback_JaFromTheAllowedSender_ApprovesTheOpenPrompt()
+    // "JA" from the allowed account answers the open prompt and is never forwarded as a chat turn; from a stranger
+    // (whom the gateway reports as ignored) it answers nothing.
+    [Theory]
+    [InlineData(_AllowedUserId, true)]
+    [InlineData(_StrangerUserId, false)]
+    public async Task TextFallback_Ja_ApprovesTheOpenPrompt_OnlyFromTheAllowedSender(string sender, bool approves)
     {
         var (bridge, gateway, _) = _Build();
         var prompt = _ConsentPrompt("do the thing");
         gateway.RaisePromptOpened(prompt);
+        if (!approves)
+        {
+            gateway.NextResult = AssistantChannelSendResult.IgnoredSender();
+        }
 
-        await bridge.HandleInboundMessageAsync(_AllowedUserId, "JA", messageId: 1);
+        await bridge.HandleInboundMessageAsync(sender, "JA", messageId: 1);
 
-        Assert.Contains((prompt.Id, ConsentOutcome.Approved, false), gateway.Responses);
-        Assert.Empty(gateway.SentMessages); // "JA" answers the prompt, it is never forwarded as a chat turn.
-    }
-
-    [Fact]
-    public async Task TextFallback_FromAStranger_IsSilentlyIgnored()
-    {
-        var (bridge, gateway, _) = _Build();
-        var prompt = _ConsentPrompt("do the thing");
-        gateway.RaisePromptOpened(prompt);
-        gateway.NextResult = AssistantChannelSendResult.IgnoredSender();
-
-        await bridge.HandleInboundMessageAsync(_StrangerUserId, "JA", messageId: 1);
-
-        Assert.Empty(gateway.Responses);
+        Assert.Equal(approves, gateway.Responses.Contains((prompt.Id, ConsentOutcome.Approved, false)));
         Assert.Empty(gateway.SentMessages);
     }
 

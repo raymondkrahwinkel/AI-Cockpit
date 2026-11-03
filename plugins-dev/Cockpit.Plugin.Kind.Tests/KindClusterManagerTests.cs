@@ -22,16 +22,32 @@ public class KindClusterManagerTests
         Assert.Empty(cli.Calls);
     }
 
-    [Fact]
-    public async Task ReconcileAsync_PinnedRecordWithDeadOwner_IsKept()
+    // Every sweep — a dead owner, past the max lifetime, the operator's stop-all — deletes the non-pinned cluster
+    // and keeps the pinned one.
+    [Theory]
+    [InlineData("reconcile")]
+    [InlineData("sweep-expired")]
+    [InlineData("stop-all")]
+    public async Task EverySweep_DeletesANonPinnedCluster_ButKeepsAPinnedOne(string sweep)
     {
         var (manager, settings, _, _) = _Manager();
+        await manager.CreateAsync("to-stop", OwnerPane, CancellationToken.None);
         await manager.CreateAsync("pinned", OwnerPane, CancellationToken.None);
-        settings.KindClusters = [settings.KindClusters.Single() with { IsPinned = true }];
+        settings.KindClusters = [.. settings.KindClusters.Select(record => record with
+        {
+            CreatedAt = DateTimeOffset.UtcNow - TimeSpan.FromHours(5),
+            IsPinned = record.Name == "pinned",
+        })];
+        settings.KindClusterMaxLifetime = TimeSpan.FromHours(4);
 
-        await manager.ReconcileAsync(liveSessionIds: [], CancellationToken.None);
+        await (sweep switch
+        {
+            "reconcile" => manager.ReconcileAsync(liveSessionIds: [], CancellationToken.None),
+            "sweep-expired" => manager.SweepExpiredAsync(CancellationToken.None),
+            _ => manager.StopAllAsync(CancellationToken.None),
+        });
 
-        Assert.Single(settings.KindClusters);
+        Assert.Equal("pinned", Assert.Single(settings.KindClusters).Name);
     }
 
     [Fact]
@@ -47,32 +63,6 @@ public class KindClusterManagerTests
         // only ever name a registered cluster — proven here by asserting the exact argv, not just the count.
         var deleteCall = Assert.Single(cli.Calls);
         Assert.Contains("registered", deleteCall.Arguments);
-    }
-
-    [Fact]
-    public async Task SweepExpiredAsync_PastMaxLifetimeButPinned_IsKept()
-    {
-        var (manager, settings, _, _) = _Manager();
-        await manager.CreateAsync("stale-but-pinned", OwnerPane, CancellationToken.None);
-        settings.KindClusters = [settings.KindClusters.Single() with { CreatedAt = DateTimeOffset.UtcNow - TimeSpan.FromHours(5), IsPinned = true }];
-        settings.KindClusterMaxLifetime = TimeSpan.FromHours(4);
-
-        await manager.SweepExpiredAsync(CancellationToken.None);
-
-        Assert.Single(settings.KindClusters);
-    }
-
-    [Fact]
-    public async Task StopAllAsync_DeletesEveryNonPinnedCluster_ButKeepsPinnedOnes()
-    {
-        var (manager, settings, _, _) = _Manager();
-        await manager.CreateAsync("to-stop", OwnerPane, CancellationToken.None);
-        await manager.CreateAsync("pinned", OwnerPane, CancellationToken.None);
-        settings.KindClusters = [.. settings.KindClusters.Select(record => record.Name == "pinned" ? record with { IsPinned = true } : record)];
-
-        await manager.StopAllAsync(CancellationToken.None);
-
-        Assert.Equal("pinned", Assert.Single(settings.KindClusters).Name);
     }
 
     // AC-1349 (AC-1347 decision 2B): the operator's default for clusters this plugin makes rides along on the
