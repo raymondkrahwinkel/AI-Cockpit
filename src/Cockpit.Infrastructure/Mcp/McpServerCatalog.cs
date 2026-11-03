@@ -20,7 +20,6 @@ internal sealed class McpServerCatalog(
     ILogger<McpServerCatalog> logger)
     : IMcpServerCatalog, ISingletonService
 {
-    private readonly IReadOnlyList<IPluginMcpProvider> _capturedProviders = pluginProviders.Providers;
     public async Task<IReadOnlyList<McpServerConfig>> GetServersForProjectAsync(string? projectId, CancellationToken cancellationToken = default)
     {
         var registry = await store.LoadAsync(cancellationToken).ConfigureAwait(false);
@@ -49,7 +48,7 @@ internal sealed class McpServerCatalog(
         // AC-500/AC-504: projectId and memory schemes reach each provider directly, so a plugin can contribute
         // a project-only server. AC-736/AC-766: `schemeless` is the same answer without those schemes, so
         // scheme-gated servers can be told apart; an unscoped query has no project, so nothing is marked linked.
-        var providers = _capturedProviders;
+        var providers = pluginProviders.Providers;
         var schemeless = project is null || projectMemorySchemes.Count == 0
             ? null
             : providers
