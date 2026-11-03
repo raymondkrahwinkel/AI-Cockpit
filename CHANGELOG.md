@@ -43,6 +43,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- Docker storage compaction no longer waits for the assistant or idle sessions without background work. If active sessions do not acknowledge the pause within five minutes, the warning names them.
 - Swarm takeover keeps the assistant's recent conversation within a bounded prompt, so long histories no longer prevent it from responding.
 - Development plugin refresh now preserves child executables and other files in subdirectories, so opening the Browser no longer fails because its subprocess was dropped during a refresh.
 - A plugin that crashes the cockpit while it starts no longer locks you out. When the previous start did not finish while a plugin's panel or tab was being reopened, the next start turns that plugin off, leaves its panel and tab closed, and says so with a "Turn back on" button. Two unfinished starts in a row with no plugin to blame start the cockpit in safe mode by itself; the start after a good one is normal again.
