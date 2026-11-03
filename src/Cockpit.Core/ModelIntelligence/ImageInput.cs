@@ -16,7 +16,7 @@ public static class ImageInput
     public static ImageInputDecision Resolve(ImageInputMode mode, bool hasTransport, bool? service, bool? openRouter) =>
         !hasTransport ? new(false, "driver has no image transport") : mode switch
         {
-            ImageInputMode.On => new(false, "manual On"),
+            ImageInputMode.On => new(true, "manual On"),
             ImageInputMode.Off => new(false, "manual Off"),
             _ when service is { } supported => new(supported, "service API"),
             _ when openRouter is { } supported => new(supported, "OpenRouter"),
