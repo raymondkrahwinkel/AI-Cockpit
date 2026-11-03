@@ -1394,7 +1394,8 @@ public partial class App : Application
             await cockpit.ToastHost.RestoreNotificationsAsync(keptNotificationsPath);
         }
 
-        var attempt = Program.Services.GetService<StartupAttempt>();
+        // No host (a test driving the restore on its own) means no startup attempt to report on or complete.
+        var attempt = Program.Services?.GetService<StartupAttempt>();
         if (attempt is { Disabled.Count: > 0 })
         {
             _SayWhatTheLastStartTurnedOff(attempt.Disabled);
