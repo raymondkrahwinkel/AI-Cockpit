@@ -21,7 +21,7 @@ internal sealed class SessionBehaviorSettingsEntry
     public int MemoryBudgetPercent { get; set; } = MemoryPressure.DefaultBudgetPercent;
 
     // AC-2035: true on absence, like the two above — a file written before this setting must keep cleaning up.
-    public bool AutomaticDockerCleanup { get; set; } = true;
+    public bool AutomaticDockerCleanup { get; set; } = false;
 
     public static SessionBehaviorSettingsEntry FromDomain(SessionBehaviorSettings settings) => new()
     {
