@@ -13,32 +13,24 @@ namespace Cockpit.Core.Tests.Secrets;
 public class SecretJsonWalkerEmbeddedTests
 {
     [Fact]
-    public void Transform_WhenACredentialSitsInsideAPluginsOwnJson_RewritesIt()
-    {
-        var config = PluginStoring("""{"host":"example.test","token":"in-the-clear"}""");
-
-        var rewritten = SecretJsonWalker.Transform(config, SecretFields.ByName, (_, _) => "REDACTED");
-
-        Assert.Single(rewritten);
-        Assert.DoesNotContain("in-the-clear", config.ToJsonString(), StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void Transform_WhenACredentialSitsAJsonStringDeeperStill_RewritesIt()
+    public void Transform_WhenACredentialSitsInsideAPluginsOwnJson_OrAJsonStringDeeperStill_RewritesIt()
     {
         // JSON inside JSON inside JSON: the scan reads only the outermost level's property names, so what saves
-        // this one is that a string value opening with a brace is treated as another document to look into.
-        var inner = JsonSerializer.Serialize(new Dictionary<string, string>
+        // the deeper one is that a string value opening with a brace is treated as another document to look into.
+        var deeper = JsonSerializer.Serialize(new Dictionary<string, string>
         {
             ["profile"] = """{"token":"in-the-clear"}""",
         });
 
-        var config = PluginStoring(inner);
+        foreach (var data in new[] { """{"host":"example.test","token":"in-the-clear"}""", deeper })
+        {
+            var config = PluginStoring(data);
 
-        var rewritten = SecretJsonWalker.Transform(config, SecretFields.ByName, (_, _) => "REDACTED");
+            var rewritten = SecretJsonWalker.Transform(config, SecretFields.ByName, (_, _) => "REDACTED");
 
-        Assert.Single(rewritten);
-        Assert.DoesNotContain("in-the-clear", config.ToJsonString(), StringComparison.Ordinal);
+            Assert.Single(rewritten);
+            Assert.DoesNotContain("in-the-clear", config.ToJsonString(), StringComparison.Ordinal);
+        }
     }
 
     // The shape `cockpit.json` keeps a plugin's settings in: its own JSON, serialised into one string value.

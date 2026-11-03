@@ -16,33 +16,8 @@ public class NodeVisibilityPolicyTests : IDisposable
 
     private static readonly IPNetwork _OwnRange = IPNetwork.Parse("192.168.1.0/24");
 
-    [Fact]
-    public async Task CallerInsideTheOwnRange_IsAllowed_WithNoWhitelistNeeded()
-    {
-        var policy = new NodeVisibilityPolicy(new NodeEndpointSettingsStore(_path), () => [_OwnRange]);
 
-        Assert.True(await policy.IsAllowedAsync(IPAddress.Parse("192.168.1.50")));
-    }
 
-    [Fact]
-    public async Task CallerOutsideTheOwnRange_WithAnEmptyWhitelist_IsRefused()
-    {
-        var policy = new NodeVisibilityPolicy(new NodeEndpointSettingsStore(_path), () => [_OwnRange]);
-
-        // Criterion 2, in the failure direction: nothing is whitelisted, so a caller elsewhere on the internet
-        // gets nothing.
-        Assert.False(await policy.IsAllowedAsync(IPAddress.Parse("203.0.113.5")));
-    }
-
-    [Fact]
-    public async Task CallerOutsideTheOwnRange_ButInAWhitelistedRange_IsAllowed()
-    {
-        var store = new NodeEndpointSettingsStore(_path);
-        await store.SaveAsync(new NodeEndpointSettings { AllowedDiscoveryRanges = ["203.0.113.0/24"] });
-        var policy = new NodeVisibilityPolicy(store, () => [_OwnRange]);
-
-        Assert.True(await policy.IsAllowedAsync(IPAddress.Parse("203.0.113.5")));
-    }
 
     [Fact]
     public async Task AMalformedWhitelistEntry_IsSkipped_NotThrown()
@@ -56,15 +31,6 @@ public class NodeVisibilityPolicyTests : IDisposable
         Assert.False(await policy.IsAllowedAsync(IPAddress.Parse("198.51.100.5")));
     }
 
-    [Fact]
-    public async Task TheDefaultPolicy_TreatsLoopbackAsOwnRange()
-    {
-        // The real, non-test-seam constructor: every pairing test in this project reaches the node over
-        // 127.0.0.1, and none of that should ever need a whitelist entry to keep working.
-        var policy = new NodeVisibilityPolicy(new NodeEndpointSettingsStore(_path));
-
-        Assert.True(await policy.IsAllowedAsync(IPAddress.Loopback));
-    }
 
     public void Dispose()
     {

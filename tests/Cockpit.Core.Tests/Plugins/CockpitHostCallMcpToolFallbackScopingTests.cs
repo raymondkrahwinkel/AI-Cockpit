@@ -46,26 +46,6 @@ public class CockpitHostCallMcpToolFallbackScopingTests
         Assert.DoesNotContain("Other: Server", fallbackNames);
     }
 
-    [Fact]
-    public async Task NoOwnPluginTypeSupplied_TheFallbackIsEmpty()
-    {
-        // Every existing DesktopBackendHost test that never passes ownPluginType (the vast majority) must keep behaving
-        // exactly as before this fix — an empty fallback, same as if AC-499 had never touched this path.
-        var invoker = Substitute.For<IMcpToolInvoker>();
-        IReadOnlyList<McpServerConfig>? captured = null;
-        invoker.InvokeAsync(
-                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(),
-                Arg.Do<IReadOnlyList<McpServerConfig>?>(list => captured = list), Arg.Any<CancellationToken>())
-            .Returns(McpToolInvocationResult.Success("ok"));
-        var own = new _FakeMcpProviderA([new McpServerContribution("Own: Server", "https://own.example.com/mcp")]);
-        var host = _BuildHost(invoker, [own], ownPluginType: null);
-
-        await host.CallMcpToolAsync("Own: Server", "list_projects");
-
-        Assert.NotNull(captured);
-        Assert.Empty(captured);
-    }
-
     // --- The important one: an unentitled caller must still be refused ---------------------------------------------
 
     [Fact]

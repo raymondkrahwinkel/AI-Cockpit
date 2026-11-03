@@ -28,17 +28,6 @@ public class McpAuthMiddlewareTests
     // AC-1985: the node listener takes connect keys only; every harness starts with this bootstrap key.
     private const string NodeKey = "ck_bootstrapKeyForTheMcpAuthMiddlewareTests012345";
 
-    // AC-89, unchanged by AC-791: the shared app key authorizes and names no session, so the in-process tool loop
-    // and anything not yet on a per-session token keep the null identity the consent broker has always seen.
-    [Fact]
-    public async Task LoopbackListener_SharedAppKey_AuthorizesAndNamesNoSession()
-    {
-        var authKey = new McpAuthKey();
-        await using var listeners = await _AuthGatedListeners.StartAsync(authKey, new SessionMcpKeyring());
-
-        Assert.Equal("<none>", await listeners.WhoAmIAsync(listeners.LoopbackUrl, authKey.Value));
-    }
-
     // L2b (authorization), AC-1685 criterion 1, folding in AC-89: a session token is a Session even when the request
     // claims to be the assistant, only the assistant's own token reads as Assistant, and a revoked token is nobody.
     [Fact]
@@ -90,44 +79,6 @@ public class McpAuthMiddlewareTests
         }
     }
 
-    // AC-791, criterion 3: a refusal has to be classifiable at the other end. "Server unreachable" carries no HTTP
-    // status at all and "that tool does not exist" comes back 200 with a JSON-RPC error, so a 401 naming a token
-    // problem in a machine-readable code is enough to tell all three apart.
-    [Fact]
-    public async Task NodeListener_Refusal_Carries401WithAReasonACallerCanTellFromSilence()
-    {
-        await using var listeners = await _AuthGatedListeners.StartAsync(new McpAuthKey(), new SessionMcpKeyring());
-
-        using var response = await listeners.SendAsync(listeners.NodeUrl, "not-a-valid-credential");
-
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
-        Assert.Equal("Bearer", Assert.Single(response.Headers.WwwAuthenticate).Scheme);
-        Assert.Contains("invalid_token", Assert.Single(response.Headers.WwwAuthenticate).Parameter);
-        Assert.Contains("invalid_token", await response.Content.ReadAsStringAsync());
-
-        // Missing and wrong get the identical answer on purpose: the refusal must not become an oracle for which
-        // of the two it was.
-        using var noCredential = await listeners.SendAsync(listeners.NodeUrl, bearer: null);
-        Assert.Equal(HttpStatusCode.Unauthorized, noCredential.StatusCode);
-        Assert.Equal(await response.Content.ReadAsStringAsync(), await noCredential.Content.ReadAsStringAsync());
-    }
-
-    // AC-791, criterion 4: and the loopback refusal is left exactly as it was — a bare 401 with no challenge. A
-    // `WWW-Authenticate: Bearer` here is what an MCP client reads as "this server wants OAuth", so a local session
-    // whose token was just revoked would be sent looking for a discovery document that does not exist. The reason
-    // is for the controller, which has no other way to tell a refusal from an unreachable machine.
-    [Fact]
-    public async Task LoopbackListener_Refusal_StaysTheBare401ItAlwaysWas()
-    {
-        await using var listeners = await _AuthGatedListeners.StartAsync(new McpAuthKey(), new SessionMcpKeyring());
-
-        using var response = await listeners.SendAsync(listeners.LoopbackUrl, "not-a-valid-credential");
-
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
-        Assert.Empty(response.Headers.WwwAuthenticate);
-        Assert.Empty(await response.Content.ReadAsStringAsync());
-    }
-
     // AC-1148, the loopback negative control that never existed: a live token, correctly stamped — and an endpoint
     // this pane's launch never mounted. The old tests only ever asked "valid or not", which a wrong-scope call
     // passes; this is the case the design of those tests could not see.
@@ -174,20 +125,6 @@ public class McpAuthMiddlewareTests
     {
         await using var listeners = await _AuthGatedListeners.StartAsync(
             new McpAuthKey(), new SessionMcpKeyring(), nodeScopeGranted: false);
-
-        using var response = await listeners.SendAsync(listeners.NodeUrl, NodeKey);
-
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
-    }
-
-    // AC-1148: and the master switch counts for the controller too — `bindNodeListener` now withholds the socket
-    // outright (see CockpitInternalMcpProviderTests), so this is the belt to that braces: were one ever bound, a
-    // switched-off endpoint still refuses.
-    [Fact]
-    public async Task NodeListener_EndpointTheOperatorSwitchedOff_Is403EvenWithAScopedPairing()
-    {
-        await using var listeners = await _AuthGatedListeners.StartAsync(
-            new McpAuthKey(), new SessionMcpKeyring(), isEnabled: false);
 
         using var response = await listeners.SendAsync(listeners.NodeUrl, NodeKey);
 

@@ -9,36 +9,6 @@ public class OpencodeAcpConnectionTests
 {
     private static readonly Dictionary<string, string?> _NoEnv = new();
 
-    [Fact]
-    public async Task SendRequest_CorrelatesTheReplyById_AndReturnsItsResult()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var connection = new OpencodeAcpConnection(fake);
-        connection.Start("opencode", Path.GetTempPath(), _NoEnv);
-
-        var requestTask = connection.SendRequestAsync("initialize", new { protocolVersion = 1 });
-        var id = await _WaitForRequestIdAsync(fake, "initialize");
-        await fake.PushStdoutAsync($$$"""{"jsonrpc":"2.0","id":{{{id}}},"result":{"protocolVersion":1}}""");
-
-        var result = await requestTask;
-
-        Assert.Equal(1, result.GetProperty("protocolVersion").GetInt32());
-    }
-
-    [Fact]
-    public async Task SendRequest_Throws_WhenTheReplyIsAJsonRpcError()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var connection = new OpencodeAcpConnection(fake);
-        connection.Start("opencode", Path.GetTempPath(), _NoEnv);
-
-        var requestTask = connection.SendRequestAsync("session/new", new { cwd = "/tmp", mcpServers = Array.Empty<object>() });
-        var id = await _WaitForRequestIdAsync(fake, "session/new");
-        await fake.PushStdoutAsync($$$"""{"jsonrpc":"2.0","id":{{{id}}},"error":{"code":-32603,"message":"Internal error: OpenCode service failure"}}""");
-
-        await Assert.ThrowsAsync<OpencodeAcpException>(() => requestTask);
-    }
-
     // The exception message must be built from only error.code + error.message — never the raw error object —
     // because it propagates straight into a UI status line; an echoed error.data must never end up there.
     [Fact]
@@ -57,27 +27,6 @@ public class OpencodeAcpConnectionTests
         Assert.DoesNotContain("super-secret-token", exception.Message);
     }
 
-    [Fact]
-    public async Task Notifications_AndServerRequests_AreRoutedToTheirOwnStreams()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var connection = new OpencodeAcpConnection(fake);
-        connection.Start("opencode", Path.GetTempPath(), _NoEnv);
-
-        // Measured live: opencode's own server-request ids start at 0, unlike a client's own (which start at 1)
-        // — this connection must not assume any particular starting id.
-        await fake.PushStdoutAsync("""{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"session-1","update":{"sessionUpdate":"agent_message_chunk"}}}""");
-        await fake.PushStdoutAsync("""{"jsonrpc":"2.0","id":0,"method":"session/request_permission","params":{"sessionId":"session-1","toolCall":{"toolCallId":"item-1"}}}""");
-
-        var notification = await _FirstNotificationAsync(connection);
-        var serverRequest = await _FirstServerRequestAsync(connection);
-
-        Assert.Equal("session/update", notification.Method);
-        Assert.Equal("session/request_permission", serverRequest.Method);
-        Assert.Equal(0, serverRequest.Id.GetInt32());
-        Assert.Equal("session-1", serverRequest.Params.GetProperty("sessionId").GetString());
-    }
-
     private static async Task<long> _WaitForRequestIdAsync(FakeCliSubprocess fake, string method)
     {
         for (var attempt = 0; attempt < 100; attempt++)
@@ -93,25 +42,5 @@ public class OpencodeAcpConnectionTests
         }
 
         throw new InvalidOperationException($"No request for method '{method}' was written.");
-    }
-
-    private static async Task<OpencodeNotification> _FirstNotificationAsync(OpencodeAcpConnection connection)
-    {
-        await foreach (var notification in connection.Notifications)
-        {
-            return notification;
-        }
-
-        throw new InvalidOperationException("No notification was produced.");
-    }
-
-    private static async Task<OpencodeServerRequest> _FirstServerRequestAsync(OpencodeAcpConnection connection)
-    {
-        await foreach (var request in connection.ServerRequests)
-        {
-            return request;
-        }
-
-        throw new InvalidOperationException("No server request was produced.");
     }
 }

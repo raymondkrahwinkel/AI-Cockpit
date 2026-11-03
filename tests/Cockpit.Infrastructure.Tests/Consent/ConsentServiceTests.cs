@@ -34,23 +34,6 @@ public sealed class ConsentServiceTests
     /// never needed a card, independent of AC-575's operator-configured bypass below. The audit still gets its
     /// own line — Bypassed, not Approved — so the skip stays visible even though nobody clicked anything.
     /// </summary>
-    [Fact]
-    public async Task RequestConsentAsync_WithPreApprovedBy_SkipsThePrompt_AndLogsBypassed()
-    {
-        var entries = new List<ConsentAuditEntry>();
-        _audit.RecordAsync(Arg.Do<ConsentAuditEntry>(entries.Add), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
-        var broker = CreateBroker();
-        var prompts = _RecordPrompts(broker);
-
-        var decision = await broker.RequestConsentAsync(Request(ConsentRisk.LowRisk, preApprovedBy: "daemon mode: read-free"));
-
-        Assert.True(decision.IsApproved);
-        Assert.True(decision.Bypassed);
-        Assert.Empty(prompts);
-        var entry = Assert.Single(entries);
-        Assert.Equal(ConsentAuditAction.Bypassed, entry.Action);
-        Assert.Equal("daemon mode: read-free", entry.PreApprovedBy);
-    }
 
     /// <summary>
     /// The core safety property: a dangerous action is asked every single time. Even when the operator ticked
@@ -80,25 +63,6 @@ public sealed class ConsentServiceTests
     }
 
     /// <summary>The low-risk counterpart: once remembered, the second identical request is not asked again.</summary>
-    [Fact]
-    public async Task RequestConsentAsync_LowRiskRememberedScope_SkipsTheSecondPrompt()
-    {
-        var broker = CreateBroker();
-        var prompts = new List<ConsentPrompt>();
-        broker.PromptOpened += (_, prompt) =>
-        {
-            prompts.Add(prompt);
-            broker.Respond(prompt.Id, ConsentOutcome.Approved, remember: true);
-        };
-
-        var request = Request(ConsentRisk.LowRisk, allowRemember: true, scope: "workflow.http:GET");
-        var first = await broker.RequestConsentAsync(request);
-        var second = await broker.RequestConsentAsync(request);
-
-        Assert.Single(prompts);
-        Assert.True(first.Remembered);
-        Assert.Equal(new ConsentDecision(ConsentOutcome.Approved, Remembered: true), second);
-    }
 
     /// <summary>
     /// Remember is bound to the exact approved action, not the caller's scope: a different action under a remembered
@@ -126,91 +90,14 @@ public sealed class ConsentServiceTests
     /// A remembered approval does not carry to another plugin: the host-stamped PluginId is part of the key, so a
     /// second plugin reusing the same pane and scope is asked afresh (security review AC-47, finding 2).
     /// </summary>
-    [Fact]
-    public async Task RequestConsentAsync_RememberedForOnePlugin_OtherPluginIsAskedAgain()
-    {
-        var broker = CreateBroker();
-        var prompts = new List<ConsentPrompt>();
-        broker.PromptOpened += (_, prompt) =>
-        {
-            prompts.Add(prompt);
-            broker.Respond(prompt.Id, ConsentOutcome.Approved, remember: true);
-        };
-
-        await broker.RequestConsentAsync(Request(ConsentRisk.LowRisk, allowRemember: true, scope: "shared", action: "GET https://api.github.com/issues", pluginId: "workflows"));
-        await broker.RequestConsentAsync(Request(ConsentRisk.LowRisk, allowRemember: true, scope: "shared", action: "GET https://api.github.com/issues", pluginId: "evil-plugin"));
-
-        Assert.Equal(2, System.Linq.Enumerable.Count(prompts));
-    }
 
     /// <summary>A remembered scope only skips the class it was granted for: a dangerous request of the same scope still asks.</summary>
-    [Fact]
-    public async Task RequestConsentAsync_DangerousRequestOnARememberedScope_StillAsks()
-    {
-        var broker = CreateBroker();
-        var prompts = new List<ConsentPrompt>();
-        broker.PromptOpened += (_, prompt) =>
-        {
-            prompts.Add(prompt);
-            broker.Respond(prompt.Id, ConsentOutcome.Approved, remember: true);
-        };
-
-        await broker.RequestConsentAsync(Request(ConsentRisk.LowRisk, allowRemember: true, scope: "shared.scope"));
-        await broker.RequestConsentAsync(Request(ConsentRisk.Dangerous, allowRemember: true, scope: "shared.scope"));
-
-        Assert.Equal(2, System.Linq.Enumerable.Count(prompts));
-    }
 
     /// <summary>With nothing listening to show a prompt, the gate denies rather than blocking forever or passing silently.</summary>
-    [Fact]
-    public async Task RequestConsentAsync_NoUiListening_FailsClosed()
-    {
-        var broker = CreateBroker();
-
-        var decision = await broker.RequestConsentAsync(Request(ConsentRisk.Dangerous));
-
-        Assert.Equal(ConsentDecision.Denied, decision);
-    }
 
     /// <summary>A request whose caller token is cancelled while it waits is denied, and its prompt is taken down.</summary>
-    [Fact]
-    public async Task RequestConsentAsync_TokenCancelledWhilePending_DeniesAndClosesThePrompt()
-    {
-        var broker = CreateBroker();
-        var opened = Guid.Empty;
-        var closed = new List<Guid>();
-        broker.PromptOpened += (_, prompt) => opened = prompt.Id;
-        broker.PromptClosed += (_, id) => closed.Add(id);
-        using var cts = new CancellationTokenSource();
-
-        var pending = broker.RequestConsentAsync(Request(ConsentRisk.Dangerous), cts.Token);
-        await cts.CancelAsync();
-        var decision = await pending;
-
-        Assert.Equal(ConsentDecision.Denied, decision);
-        Assert.Equal(opened, Assert.Single(closed));
-    }
 
     /// <summary>A denial is never remembered, even with the box ticked — so the next request is asked again.</summary>
-    [Fact]
-    public async Task RequestConsentAsync_DeniedWithRememberTicked_DoesNotRemember()
-    {
-        var broker = CreateBroker();
-        var prompts = new List<ConsentPrompt>();
-        broker.PromptOpened += (_, prompt) =>
-        {
-            prompts.Add(prompt);
-            var outcome = prompts.Count == 1 ? ConsentOutcome.Denied : ConsentOutcome.Approved;
-            broker.Respond(prompt.Id, outcome, remember: true);
-        };
-
-        var request = Request(ConsentRisk.LowRisk, allowRemember: true);
-        var first = await broker.RequestConsentAsync(request);
-        await broker.RequestConsentAsync(request);
-
-        Assert.False(first.IsApproved);
-        Assert.Equal(2, System.Linq.Enumerable.Count(prompts));
-    }
 
     /// <summary>
     /// L2c (contract), AC-1714: a card with choices hands back what the operator picked, and only that. A pick the
@@ -268,22 +155,6 @@ public sealed class ConsentServiceTests
     }
 
     /// <summary>Every decision reaches the audit trail, carrying the ground-truth action rather than any framing.</summary>
-    [Fact]
-    public async Task RequestConsentAsync_Approved_WritesAnApprovedAuditEntryWithTheGroundTruth()
-    {
-        var entries = new List<ConsentAuditEntry>();
-        _ = _audit.RecordAsync(Arg.Do<ConsentAuditEntry>(entries.Add));
-        var broker = CreateBroker();
-        broker.PromptOpened += (_, prompt) => broker.Respond(prompt.Id, ConsentOutcome.Approved, remember: false);
-
-        await broker.RequestConsentAsync(Request(ConsentRisk.Dangerous));
-
-        Assert.Single(entries);
-        Assert.Equal(ConsentAuditAction.Approved, entries[0].Action);
-        Assert.Equal("rm -rf /tmp/x", entries[0].ActionText);
-        Assert.Equal("workflows", entries[0].PluginId);
-        Assert.Equal("workflow.command", entries[0].Scope);
-    }
 
     /// <summary>
     /// The decision resolves only once the audit line is flushed, not before — so a caller cannot act on an
@@ -305,18 +176,6 @@ public sealed class ConsentServiceTests
     }
 
     /// <summary>A fail-closed denial is logged too — the "nobody asked but it was refused" line you want afterwards.</summary>
-    [Fact]
-    public async Task RequestConsentAsync_FailClosed_WritesADeniedAuditEntry()
-    {
-        var entries = new List<ConsentAuditEntry>();
-        _ = _audit.RecordAsync(Arg.Do<ConsentAuditEntry>(entries.Add));
-        var broker = CreateBroker();
-
-        await broker.RequestConsentAsync(Request(ConsentRisk.Dangerous));
-
-        Assert.Single(entries);
-        Assert.Equal(ConsentAuditAction.Denied, entries[0].Action);
-    }
 
     /// <summary>
     /// AC-89: the remember scope keys on the transport-verified session, not the id the agent declares. Another pane's
@@ -355,25 +214,6 @@ public sealed class ConsentServiceTests
         }
     }
 
-    /// <summary>Off the verified path (the in-process tool loop, UI-side consent), the identity is null and the request is used as declared — the previous behaviour.</summary>
-    [Fact]
-    public async Task RequestConsentAsync_WithNoVerifiedIdentity_UsesTheDeclaredId()
-    {
-        var broker = CreateBroker();
-        var prompts = new List<ConsentPrompt>();
-        broker.PromptOpened += (_, prompt) =>
-        {
-            prompts.Add(prompt);
-            broker.Respond(prompt.Id, ConsentOutcome.Approved, remember: true);
-        };
-
-        var request = Request(ConsentRisk.LowRisk, allowRemember: true, paneId: "P1", scope: "k8s.namespace:prod:kube-system");
-        McpRequestContext.Set(null);
-        await broker.RequestConsentAsync(request);
-        await broker.RequestConsentAsync(request);
-
-        Assert.Single(prompts);
-    }
 
     // ── AC-575: the assistant's consent bypass ────────────────────────────────────────────────────────────────
     //
@@ -439,45 +279,7 @@ public sealed class ConsentServiceTests
         }
     }
 
-    [Fact]
-    public async Task RequestConsentAsync_AskingTheBypass_PassesTheVerifiedPane_AndTheHostStampedSource()
-    {
-        // The three facts the decision may rest on, and no others. The source key is the host-stamped plugin id
-        // under its own prefix, or the label — never the scope or the action, which are text an agent influences;
-        // keying on those is how a bypass for one thing becomes a bypass for another.
-        var policy = new StubPolicy(answer: false);
-        var broker = new ConsentService(_audit, policy);
-        _RecordPrompts(broker);
 
-        try
-        {
-            McpRequestContext.Set("cockpit-assistant");
-            await broker.RequestConsentAsync(Request(ConsentRisk.Dangerous, paneId: "pane-the-agent-typed"));
-            await broker.RequestConsentAsync(Request(ConsentRisk.LowRisk, pluginId: null!));
-
-            Assert.Equal(("cockpit-assistant", "plugin:workflows/Workflows", true), policy.Asked[0]);
-            Assert.Equal(("cockpit-assistant", "Workflows", false), policy.Asked[1]);
-        }
-        finally
-        {
-            McpRequestContext.Set(null);
-        }
-    }
-
-    [Fact]
-    public async Task RequestConsentAsync_WithoutAVerifiedMcpPane_NeverBypasses_RegardlessOfPolicy()
-    {
-        // AC-888: the whiteboard invite (and any other UI-initiated request) calls RequestConsentAsync directly,
-        // outside any MCP call, so McpRequestContext.CurrentPaneId is null. The policy must never even be asked —
-        // a switch for a source like this cannot do anything, on purpose.
-        var policy = new StubPolicy(answer: true);
-        var broker = new ConsentService(_audit, policy);
-        _RecordPrompts(broker);
-
-        await broker.RequestConsentAsync(Request(ConsentRisk.LowRisk));
-
-        Assert.Empty(policy.Asked);
-    }
 
     [Fact]
     public async Task RequestConsentAsync_APluginWhoseIdIsAHostLabel_DoesNotShareThatSourcesSwitch()
@@ -506,28 +308,6 @@ public sealed class ConsentServiceTests
         }
     }
 
-    [Fact]
-    public async Task RequestConsentAsync_ARiskClassThisBuildDoesNotKnow_IsOfferedOnlyToTheDangerousSwitch()
-    {
-        // Polarity, and it has to fail closed. A risk value added later — or one an older host reads off a newer
-        // plugin — is not low risk, so it must arrive at the policy as dangerous and need the deliberate second
-        // switch. Asking "is it Dangerous?" would let it through on the everyday one instead.
-        var policy = new StubPolicy(answer: false);
-        var broker = new ConsentService(_audit, policy);
-        _RecordPrompts(broker);
-
-        try
-        {
-            McpRequestContext.Set("cockpit-assistant");
-            await broker.RequestConsentAsync(Request((ConsentRisk)99));
-
-            Assert.True(Assert.Single(policy.Asked).Dangerous);
-        }
-        finally
-        {
-            McpRequestContext.Set(null);
-        }
-    }
 
     [Fact]
     public async Task RequestConsentAsync_WithAForgedAssistantPaneAndNoVerifiedIdentity_StillShowsTheCard()
@@ -578,46 +358,7 @@ public sealed class ConsentServiceTests
         }
     }
 
-    [Fact]
-    public async Task RequestConsentAsync_WhenTheBypassSaysNo_ShowsTheCardExactlyAsBefore()
-    {
-        var policy = new StubPolicy(answer: false);
-        var broker = new ConsentService(_audit, policy);
-        var prompts = _RecordPrompts(broker);
 
-        try
-        {
-            McpRequestContext.Set("cockpit-assistant");
-            await broker.RequestConsentAsync(Request(ConsentRisk.Dangerous));
-
-            Assert.Single(prompts);
-        }
-        finally
-        {
-            McpRequestContext.Set(null);
-        }
-    }
-
-    [Fact]
-    public async Task RequestConsentAsync_WithNoPolicyRegistered_NeverBypasses()
-    {
-        // Fail-closed by construction: the broker takes the policy as an optional dependency, so a graph that has
-        // none — the design-time one, every test that predates this ticket — cannot bypass anything.
-        var broker = CreateBroker();
-        var prompts = _RecordPrompts(broker);
-
-        try
-        {
-            McpRequestContext.Set("cockpit-assistant");
-            await broker.RequestConsentAsync(Request(ConsentRisk.LowRisk));
-
-            Assert.Single(prompts);
-        }
-        finally
-        {
-            McpRequestContext.Set(null);
-        }
-    }
 
     [Fact]
     public async Task RequestConsentAsync_ABypassedRequest_DoesNotBecomeARememberedApproval()

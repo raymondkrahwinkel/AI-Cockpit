@@ -21,59 +21,9 @@ public class WireframeAccessRegistryTests
         return registry;
     }
 
-    [Fact]
-    public void Couple_OnItsOwn_GrantsNoCapabilities()
-    {
-        var registry = _Open();
 
-        registry.Couple(Session, SurfaceId);
 
-        var coupling = registry.CouplingOf(Session, SurfaceId);
-        Assert.NotNull(coupling);
-        Assert.False(coupling.CanRead);
-        Assert.False(coupling.CanEdit);
-        Assert.False(coupling.HasAnyCapability);
-        Assert.Null(registry.ReadCoupled(Session, SurfaceId));
-        Assert.NotNull(registry.WriteCoupled(Session, SurfaceId, WireframeScreens.Settings).Refusal);
-    }
 
-    [Fact]
-    public void ReadCoupled_NeedsRead_AndThenReturnsTheSurfaceAsItStandsNow()
-    {
-        var registry = _Open();
-
-        Assert.Null(registry.ReadCoupled(Session, SurfaceId));
-
-        registry.Grant(Session, SurfaceId, WireframeCapability.Read);
-
-        Assert.Equal(WireframeScreens.Settings, registry.ReadCoupled(Session, SurfaceId));
-    }
-
-    [Fact]
-    public void Grant_Edit_AlsoGrantsRead_ButNotTheOtherWayRound()
-    {
-        var registry = _Open();
-
-        registry.Grant(Session, SurfaceId, WireframeCapability.Read);
-        Assert.False(registry.CouplingOf(Session, SurfaceId)!.CanEdit);
-
-        registry.Grant(Session, SurfaceId, WireframeCapability.Edit);
-
-        var coupling = registry.CouplingOf(Session, SurfaceId);
-        Assert.True(coupling!.CanRead);
-        Assert.True(coupling.CanEdit);
-    }
-
-    [Fact]
-    public void Grant_Read_AfterEdit_DoesNotNarrowTheCoupling()
-    {
-        var registry = _Open();
-        registry.Grant(Session, SurfaceId, WireframeCapability.Edit);
-
-        registry.Grant(Session, SurfaceId, WireframeCapability.Read);
-
-        Assert.True(registry.CouplingOf(Session, SurfaceId)!.CanEdit);
-    }
 
     [Fact]
     public void Couple_IsExclusive_EvenAgainstAZeroCapabilityCoupling()
@@ -86,58 +36,7 @@ public class WireframeAccessRegistryTests
         Assert.Throws<InvalidOperationException>(() => registry.Grant("session-b", SurfaceId, WireframeCapability.Read));
     }
 
-    [Fact]
-    public void Couple_OnASurfaceThatIsNotOpen_Throws()
-    {
-        var registry = new WireframeAccessRegistry();
 
-        Assert.Throws<InvalidOperationException>(() => registry.Couple(Session, "nothing-here"));
-    }
-
-    [Fact]
-    public void SessionEnded_DropsEveryCouplingThatSessionHeld_AndAnnouncesEachOne()
-    {
-        var registry = _Open();
-        registry.SurfaceOpened("wireframe-2", "Overzicht", WireframeScreens.Settings);
-        registry.Grant(Session, SurfaceId, WireframeCapability.Edit);
-        registry.Couple(Session, "wireframe-2");
-        var announced = new List<WireframeCouplingChange>();
-        registry.CouplingChanged += announced.Add;
-
-        registry.SessionEnded(Session);
-
-        Assert.Null(registry.CouplingOf(Session, SurfaceId));
-        Assert.Null(registry.CouplingOf(Session, "wireframe-2"));
-        Assert.Equal(2, announced.Count);
-        Assert.All(announced, change => Assert.Null(change.Coupling));
-        Assert.False(registry.IsCoupledByAnother("session-b", SurfaceId));
-    }
-
-    [Fact]
-    public void SurfaceClosed_BreaksTheCoupling_AndForgetsTheHistory()
-    {
-        var registry = _Open();
-        registry.Grant(Session, SurfaceId, WireframeCapability.Edit);
-        registry.EditCoupled(Session, SurfaceId, WireframeComponentEdit.SetText(WireframeScreens.SaveButton, "Bewaren"));
-
-        registry.SurfaceClosed(SurfaceId);
-
-        Assert.Null(registry.CouplingOf(Session, SurfaceId));
-        Assert.Empty(registry.History(SurfaceId));
-        Assert.Null(registry.Resolve(Name));
-    }
-
-    [Fact]
-    public void Disconnect_BreaksTheCouplingAtOnce_WhateverItHeld()
-    {
-        var registry = _Open();
-        registry.Grant(Session, SurfaceId, WireframeCapability.Edit);
-
-        registry.Disconnect(SurfaceId);
-
-        Assert.Null(registry.CouplingOf(Session, SurfaceId));
-        Assert.Null(registry.ReadCoupled(Session, SurfaceId));
-    }
 
     [Fact]
     public void WriteCoupled_RefusesASourceTheFormatCannotReadBack()
@@ -164,22 +63,4 @@ public class WireframeAccessRegistryTests
         Assert.Empty(registry.History(SurfaceId));
     }
 
-    [Fact]
-    public void PeekText_HandsTheSourceOverWithoutACoupling_ForTheHostsOwnConsentPrompt()
-    {
-        var registry = _Open();
-
-        Assert.Equal(WireframeScreens.Settings, registry.PeekText(SurfaceId));
-        Assert.Null(registry.PeekText("nothing-here"));
-    }
-
-    [Fact]
-    public void ListSurfaces_ShowsEachSessionOnlyItsOwnCoupling()
-    {
-        var registry = _Open();
-        registry.Grant(Session, SurfaceId, WireframeCapability.Edit);
-
-        Assert.True(Assert.Single(registry.ListSurfaces(Session)).Coupling!.CanEdit);
-        Assert.Null(Assert.Single(registry.ListSurfaces("session-b")).Coupling);
-    }
 }

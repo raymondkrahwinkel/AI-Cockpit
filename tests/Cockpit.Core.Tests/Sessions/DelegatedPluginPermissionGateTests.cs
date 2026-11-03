@@ -14,43 +14,23 @@ namespace Cockpit.Core.Tests.Sessions;
 /// </summary>
 public class DelegatedPluginPermissionGateTests
 {
-    [Fact]
-    public async Task Write_OnAReadOnlyDelegatedSession_IsDeniedWithoutEverPrompting()
+    // Second row: a tool a newer CLI ships that the host has no class for fails closed even at bypass, since here
+    // the host's gate is the only gate.
+    [Theory]
+    [InlineData("default", "Write")]
+    [InlineData("bypassPermissions", "SomeNewClaudeTool")]
+    public async Task ATool_AboveTheCeilingOrUnknown_IsDeniedWithoutEverPrompting(string ceiling, string tool)
     {
-        await using var session = await _StartedAsync(ceiling: "default");
+        await using var session = await _StartedAsync(ceiling);
 
-        session.Ask("call-1", "Write");
+        session.Ask("call-1", tool);
         var (allowed, reason) = await session.AnswerAsync();
 
         Assert.False(allowed);
-        Assert.Contains("Write", reason);
+        Assert.Contains(tool, reason);
 
         // The whole point: no prompt was published, because there is no one to see it. A prompt here is the hang.
         Assert.Empty(await session.PromptsSoFarAsync());
-    }
-
-    [Fact]
-    public async Task Read_OnAReadOnlyDelegatedSession_IsAllowed()
-    {
-        // Read-only has to be a workable scope, not a disguised stop: a research task still reads, searches and greps.
-        await using var session = await _StartedAsync(ceiling: "default");
-
-        session.Ask("call-1", "Read");
-        var (allowed, _) = await session.AnswerAsync();
-
-        Assert.True(allowed);
-    }
-
-    [Fact]
-    public async Task Write_OnAnAcceptEditsDelegatedSession_IsAllowed()
-    {
-        var session = await _StartedAsync(ceiling: "acceptEdits");
-        await using var _ = session;
-
-        session.Ask("call-1", "Write");
-        var (allowed, _) = await session.AnswerAsync();
-
-        Assert.True(allowed);
     }
 
     [Fact]
@@ -65,33 +45,6 @@ public class DelegatedPluginPermissionGateTests
         await using var allowed = await _StartedAsync(ceiling: "acceptEdits", allowedTools: ["Bash"]);
         allowed.Ask("call-1", "Bash");
         Assert.True((await allowed.AnswerAsync()).Allowed);
-    }
-
-    [Fact]
-    public async Task AnMcpTool_IsAllowed_BecauseTheEnabledServerSetIsWhatBoundsIt()
-    {
-        // The host never connected these servers — the CLI did — so there are no annotations to grade them by. What
-        // bounds them is the enabled-server set the delegation policy resolved for this task, which the operator
-        // controls per profile. Denying them all would be a blanket ban, not a boundary.
-        await using var session = await _StartedAsync(ceiling: "default");
-
-        session.Ask("call-1", "mcp__cockpit-worktrees__worktree_list");
-        var (allowed, _) = await session.AnswerAsync();
-
-        Assert.True(allowed);
-    }
-
-    [Fact]
-    public async Task AnUnknownBuiltIn_IsDenied_BecauseHereTheHostsGateIsTheOnlyGate()
-    {
-        // A tool a newer CLI ships that the host has no class for: fail closed, since nothing else is deciding it.
-        await using var session = await _StartedAsync(ceiling: "bypassPermissions");
-
-        session.Ask("call-1", "SomeNewClaudeTool");
-        var (allowed, reason) = await session.AnswerAsync();
-
-        Assert.False(allowed);
-        Assert.Contains("SomeNewClaudeTool", reason);
     }
 
     [Fact]

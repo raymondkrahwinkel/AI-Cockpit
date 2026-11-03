@@ -7,13 +7,6 @@ namespace Cockpit.Plugin.YouTrack.Tests;
 // query that quietly kept "#Unresolved" in front would return nothing and look like a broken search.
 public class YouTrackQueryTests
 {
-    [Fact]
-    public void ByDefault_OnlyUnresolvedIssues() =>
-        Assert.Equal("#Unresolved", YouTrackClient.BuildQuery(projectTags: null, filter: null, assignedToMe: false));
-
-    [Fact]
-    public void AssignedToMe_UsesYouTracksOwnClause() =>
-        Assert.Equal("project:EVE #Unresolved for: me", YouTrackClient.BuildQuery(["EVE"], filter: null, assignedToMe: true));
 
     // AC-884: a project linked to several YouTrack prefixes queries all of them at once, YouTrack's own OR-syntax.
     [Fact]

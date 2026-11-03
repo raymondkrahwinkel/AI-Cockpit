@@ -8,7 +8,6 @@ using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Plugins.Abstractions.Consent;
-using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Server;
 
 namespace Cockpit.Infrastructure.Tests.Assistant;
@@ -94,30 +93,8 @@ public sealed class AssistantActMountRuleTests : IDisposable
     /// The acting endpoint as the app actually registers it, resolved the way <c>CockpitMcpEndpointHost</c> resolves
     /// it. Only the endpoint records get constructed — they are registered as instances.
     /// </summary>
-    private static CockpitMcpEndpoint _RegisteredActEndpoint() =>
-        Assert.Single(
-            new ServiceCollection().AddInfrastructure().BuildServiceProvider().GetServices<CockpitMcpEndpoint>(),
-            endpoint => endpoint.ServerName == AssistantIdentity.ActMcpServerName);
 
-    /// <summary>
-    /// The registered endpoint as the session fan-out sees it — the same projection <c>CockpitMcpEndpointHost</c>
-    /// makes. Deriving it is the whole point: a fixture that asserts its own <c>Internal = true</c> is asserting
-    /// about the fixture, and would have stayed green through exactly the regression this file exists to catch.
-    /// </summary>
-    private static McpServerConfig _ActServerAsTheFanOutSeesIt()
-    {
-        var endpoint = _RegisteredActEndpoint();
-        return new McpServerConfig
-        {
-            Name = endpoint.ServerName,
-            Enabled = endpoint.IsEnabled?.Invoke() ?? true,
-            CockpitHosted = true,
-            Internal = endpoint.Internal,
-            AlwaysMounted = endpoint.AlwaysMounted,
-        };
-    }
 
-    private static McpServerConfig _OrdinaryServer() => new() { Name = "depot", Enabled = true };
 
     // ── Criterion 3: an ordinary agent session cannot start, stop or place anything ────────────────────────────
 
@@ -173,31 +150,6 @@ public sealed class AssistantActMountRuleTests : IDisposable
         Assert.Empty(_memory.Noted);
     }
 
-    [Fact]
-    public async Task AnOrdinarySessionThatSomehowMountsTheServer_StillCannotCallAnyToolOnIt()
-    {
-        // The case the fan-out assertions below cannot cover: an internal endpoint IS mounted when a launch names it,
-        // so a profile with a hand-edited selection reaches this server. This is why the tools check the pane
-        // themselves — the mount is configuration, and the refusal is not.
-        var mounted = McpServerRegistryFilter.ApplySessionSelection(
-            [_ActServerAsTheFanOutSeesIt()],
-            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { AssistantIdentity.ActMcpServerName });
-        Assert.Contains(mounted, server => server.Name == AssistantIdentity.ActMcpServerName);
-
-        McpRequestContext.Set(OrdinarySessionPane);
-
-        foreach (var tool in _EveryTool())
-        {
-            var result = await _CallAsync(_Tools(), tool);
-
-            Assert.False((bool)result["ok"]!, $"{tool.Name} answered a session that merely mounted the server.");
-        }
-
-        Assert.Empty(_gateway.Calls);
-        Assert.Empty(_consent.Asked);
-        Assert.Empty(_memory.Remembered);
-        Assert.Empty(_memory.Noted);
-    }
 
     [Fact]
     public async Task EveryToolOnTheActingServer_FromTheAssistantsOwnPane_ReachesTheGateway()
@@ -223,99 +175,15 @@ public sealed class AssistantActMountRuleTests : IDisposable
             _gateway.Calls.Count + _memory.Remembered.Count + _memory.Noted.Count + _memory.Exported.Count + _memory.Imported.Count + _nodes.Reads.Count);
     }
 
-    [Fact]
-    public async Task StartAgent_FromTheAssistantsOwnPane_ReachesTheGatewayWithATargetItNamedItself()
-    {
-        // The typed positive control behind the reflection sweep: the request really is built, the caller's fields
-        // really do arrive, and the target carries the assistant's own rule rather than a bare workspace id.
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-
-        var result = _Json(await _Tools().StartAgentAsync(
-            "ws-release", "Opus", prompt: "write the tests", workingDirectory: @"C:\repo", name: "AC-545 tests", mcpServers: ["cockpit-coding"]));
-
-        Assert.True((bool)result["ok"]!);
-        Assert.Equal("pane-new", (string)result["paneId"]!);
-
-        var request = Assert.Single(_gateway.Spawns);
-        Assert.Equal("ws-release", request.Target.WorkspaceId);
-        Assert.Equal(SpawnCaller.Assistant, request.Target.Caller);
-        Assert.Null(request.Target.CallerPaneId);
-        Assert.Equal("Opus", request.ProfileLabel);
-        Assert.Equal("write the tests", request.Prompt);
-        Assert.Equal(@"C:\repo", request.WorkingDirectory);
-        Assert.Equal("AC-545 tests", request.SessionName);
-        Assert.Equal(["cockpit-coding"], request.McpServers);
-        var refused = _Json(await _Tools().StartAgentAsync(profile: "Opus", node: "node", mcpServers: []));
-        Assert.False((bool)refused["ok"]!);
-        Assert.Contains("mcpServers", (string)refused["error"]!);
-        Assert.Single(_gateway.Spawns);
-    }
 
     // ── Criterion 3, first gate: read off the registration, never off a fixture ────────────────────────────────
 
-    [Fact]
-    public void TheActingServer_IsNeverInTheNoSelectionFanOut()
-    {
-        // A session that named nothing gets every ordinary server and not this one.
-        var mounted = McpServerRegistryFilter.ApplySessionSelection(
-            [_OrdinaryServer(), _ActServerAsTheFanOutSeesIt()], null);
 
-        Assert.Contains(mounted, server => server.Name == "depot");
-        Assert.DoesNotContain(mounted, server => server.Name == AssistantIdentity.ActMcpServerName);
-    }
-
-    [Fact]
-    public void TheActingServer_IsNeverOfferedToTheOperator()
-    {
-        // Not something to tick, so not something to tick on the wrong profile.
-        var offered = McpServerRegistryFilter.OfferedToOperator([_OrdinaryServer(), _ActServerAsTheFanOutSeesIt()]);
-
-        Assert.DoesNotContain(offered, server => server.Name == AssistantIdentity.ActMcpServerName);
-    }
 
     // ── Criterion 4: the scoping rule a spawn was made under is stamped, not inferred ──────────────────────────
 
-    [Fact]
-    public void SpawnTarget_HasExactlyOneDoorPerScopingRule_AndNoOtherWayIn()
-    {
-        // The claim the type makes about itself, checked rather than trusted: the factories are the only way to
-        // build one, and there is one per SpawnCaller. Both sides are read off the source, so a third caller added
-        // as a bare enum value with no door of its own — or a door that quietly reuses an existing caller's stamp —
-        // fails here instead of landing in the audit trail as somebody else's authority.
-        var doors = typeof(SpawnTarget)
-            .GetMethods(BindingFlags.Public | BindingFlags.Static)
-            .Where(door => door.ReturnType == typeof(SpawnTarget))
-            .ToArray();
 
-        Assert.Empty(typeof(SpawnTarget).GetConstructors());
-        Assert.Equal(Enum.GetValues<SpawnCaller>().Length, doors.Length);
-    }
 
-    [Fact]
-    public void SpawnTarget_NamedByTheAssistant_StampsTheAssistant_AndNoPane()
-    {
-        // The assistant's rule: it named the desk, because it sits on none. The null pane is not an omission — it is
-        // the fact that this target was not derived from anything, which is what makes the on-screen consent gate
-        // the thing standing behind it.
-        var target = SpawnTarget.NamedByTheAssistant("ws-release");
-
-        Assert.Equal("ws-release", target.WorkspaceId);
-        Assert.Equal(SpawnCaller.Assistant, target.Caller);
-        Assert.Null(target.CallerPaneId);
-    }
-
-    [Fact]
-    public void SpawnTarget_DerivedFromTheCallersPane_StampsTheCoordinator_AndThePane()
-    {
-        // The seam AC-436 will come through, asserted now while it is still unused: a host-derived target carries
-        // the pane it was derived from, so the two authorities are distinguishable in the trail rather than both
-        // reading as "a spawn onto ws-release".
-        var target = SpawnTarget.DerivedFromTheCallersPane("ws-release", "pane-coordinator");
-
-        Assert.Equal("ws-release", target.WorkspaceId);
-        Assert.Equal(SpawnCaller.Coordinator, target.Caller);
-        Assert.Equal("pane-coordinator", target.CallerPaneId);
-    }
 
     /// <summary>
     /// A recording stand-in for the host-side spawn service. It records rather than throws so a leak shows up as

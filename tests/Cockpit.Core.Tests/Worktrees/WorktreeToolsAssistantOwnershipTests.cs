@@ -15,7 +15,7 @@ namespace Cockpit.Core.Tests.Worktrees;
 public class WorktreeToolsAssistantOwnershipTests
 {
     [Fact]
-    public async Task List_AssistantOwnedWorktree_ReportsOwnerLiveTrue_EvenWithNoPanesOrSourcesWired()
+    public async Task AnAssistantOwnedWorktree_IsListedLive_AndRefusedToAnotherSession_EvenWithNoPanesOrSourcesWired()
     {
         // AC-719 ronde B: worktree_list's `ownerLive` must read true for an assistant-owned worktree from the same
         // always-live construction WorktreeToolsAssistantOwnershipTests pins for RemoveAsync above — a real
@@ -31,28 +31,15 @@ public class WorktreeToolsAssistantOwnershipTests
 
         var entry = result.RootElement.GetProperty("worktrees").EnumerateArray().Single();
         Assert.True(entry.GetProperty("ownerLive").GetBoolean());
-    }
 
-    [Fact]
-    public async Task Remove_AssistantOwnedWorktree_RefusedByAnotherSession_EvenWithNoPanesOrSourcesWired()
-    {
-        var manager = Substitute.For<IWorktreeManager>();
-        var record = new WorktreeRecord(AssistantIdentity.PaneId, "/repo", "/wt/assistant", "cockpit/x", "abc", DateTimeOffset.UtcNow);
+        // The registry has no panes and no headless sources — the assistant is never in either, by construction.
+        // If liveness relied on those alone, a different session's worktree_remove could delete it out from under
+        // the assistant actually working in it.
         manager.ListAsync(Arg.Any<CancellationToken>()).Returns(new List<WorktreeRecord> { record });
-
-        // The registry the assistant's own worktree would be checked against: no panes, no headless sources — the
-        // assistant is never in either, by construction. If liveness relied on those alone this worktree would
-        // read as ownerless and a different session's worktree_remove would be allowed to delete it out from
-        // under the assistant actually working in it.
-        var registry = new LiveSessionRegistry(new SessionRegistry(), []);
-        var tools = new WorktreeTools(manager, registry);
-
         McpRequestContext.Set("some-other-session");
         try
         {
-            var result = await tools.RemoveAsync("/wt/assistant");
-
-            Assert.Contains("\"ok\":false", result);
+            Assert.Contains("\"ok\":false", await tools.RemoveAsync("/wt/assistant"));
             await manager.DidNotReceive().RemoveAsync(Arg.Any<WorktreeRecord>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
         }
         finally

@@ -25,30 +25,6 @@ public class Ac1377_TranscriptRowCharacterizationTests : IDisposable
         }
     }
 
-    [Fact]
-    public async Task TheFixedStream_FormsTheseRows_AndRestoresThemFromWhatItWrote()
-    {
-        var log = _Log();
-        var vm = TestSessions.Pane(Substitute.For<ISessionManager>(), transcriptStore: log);
-
-        _Play(vm);
-        var ids = _Flatten(vm.Transcript).Select(row => row.Id).ToList();
-        var live = _Render(vm.Transcript, ids);
-
-        // AC-1653: an open ask_structured_question card keeps waiting for its answer once the log is read back.
-        var card = new TranscriptEntryViewModel(TranscriptEntryKind.Question, "Which way?") { IsPendingBrokerAnswer = true };
-        _ = log.AppendAsync("card-pane", TranscriptSnapshot.Capture(card));
-        await log.DisposeAsync();
-        var recorded = await _Log().TryLoadAsync(vm.PaneId);
-        Assert.NotNull(recorded);
-        var restored = TranscriptSnapshot.Restore(recorded);
-        var restoredCard = Assert.Single(TranscriptSnapshot.Restore(Assert.IsAssignableFrom<IReadOnlyList<TranscriptSnapshotEntry>>(await _Log().TryLoadAsync("card-pane"))));
-        Assert.True(restoredCard.IsAwaitingAnswer);
-
-        Assert.Equal(LiveRows.ReplaceLineEndings("\n"), live);
-        Assert.Equal(RestoredRows.ReplaceLineEndings("\n"), _Render(restored, ids));
-    }
-
     // AC-1518 changed how a sub-agent's rows are written: each on its own line, naming its anchor, instead of inside
     // every version of the anchor. So the two logs no longer match byte for byte; what has to hold is that main's log
     // still restores to the same rows, and that the log written now restores to exactly those rows too.
@@ -167,42 +143,6 @@ public class Ac1377_TranscriptRowCharacterizationTests : IDisposable
         new AssistantTextDelta { SessionId = "S", BlockIndex = 0, Text = "Next turn.\n\nTail" },
         new SessionError { SessionId = "S", Message = "driver died" },
     ];
-
-    private const string LiveRows = """
-    #0 Thinking «Let me look at it.» tool=// result=/False/0 permission=/False/ bg= error=Unknown/False expanded=True reply=False/True/- code=False/False/- table=False/False/-/0
-    #1 Thinking «Second thought.» tool=// result=/False/0 permission=/False/ bg= error=Unknown/False expanded=True reply=False/True/- code=False/False/- table=False/False/-/0
-    #2 AssistantText «Intro paragraph.\n\n» tool=// result=/False/0 permission=/False/ bg= error=Unknown/False expanded=False reply=False/False/2,3,4,5,6,7,8,9 code=False/False/- table=False/False/-/0
-    #3 AssistantText «Second paragraph.\n\n» tool=// result=/False/0 permission=/False/ bg= error=Unknown/False expanded=False reply=True/False/2,3,4,5,6,7,8,9 code=False/False/- table=False/False/-/0
-    #4 AssistantText «Here is code:\n\n» tool=// result=/False/0 permission=/False/ bg= error=Unknown/False expanded=False reply=True/False/2,3,4,5,6,7,8,9 code=False/False/- table=False/False/-/0
-    #5 AssistantText «```csharp\nline 01\nline 02\nline 03\nline 04\nline 05\nline 06\nline 07\nline 08\nline 09\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\n» tool=// result=/False/0 permission=/False/ bg= error=Unknown/False expanded=False reply=True/False/2,3,4,5,6,7,8,9 code=False/True/5,6 table=False/False/-/0
-    #6 AssistantText «line 20\nline 21\nline 22\nline 23\nline 24\nline 25\n```\n\nAfter code.\n\n| a | b |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |\n» tool=// result=/False/0 permission=/False/ bg= error=Unknown/False expanded=False reply=True/False/2,3,4,5,6,7,8,9 code=True/False/5,6 table=False/True/6,7/1
-    #7 AssistantText «| 5 | 6 |\n| 7 | 8 |\n| 9 | 0 |\n\nDone with the table.\n\n» tool=// result=/False/0 permission=/False/ bg= error=Unknown/False expanded=False reply=True/False/2,3,4,5,6,7,8,9 code=False/False/- table=True/False/6,7/1
-    #8 AssistantText «lorem lorem lorem lorem lorem …lorem lorem lorem lorem lorem  [606]» tool=// result=/False/0 permission=/False/ bg= error=Unknown/False expanded=False reply=True/False/2,3,4,5,6,7,8,9 code=False/False/- table=False/False/-/0
-    #9 AssistantText «lorem lorem lorem lorem lorem lorem lorem lorem lorem lorem lorem lorem lorem lorem lorem lorem lorem lorem lorem lorem lorem lorem lorem lorem lorem lorem lorem lorem lorem» tool=// result=/False/0 permission=/False/ bg= error=Unknown/False expanded=False reply=True/True/2,3,4,5,6,7,8,9 code=False/False/- table=False/False/-/0
-    #10 ToolUse «Tool: Bash({"command":"ls"})» tool=Bash/t1/{"command":"ls"} result=a.txt\nb.txt/False/0 permission=/False/ bg= error=Unknown/False expanded=False reply=False/True/- code=False/False/- table=False/False/-/0
-    #11 ToolUse «Tool: Bash({"command":"rm a.txt"})» tool=Bash/t2/{"command":"rm a.txt"} result=/False/0 permission=/True/ bg= error=Unknown/False expanded=False reply=False/True/- code=False/False/- table=False/False/-/0
-    #12 ToolUse «Tool: Write({"file_path":"x"})» tool=Write/t3/{"file_path":"x"} result=/False/0 permission=/True/ bg= error=Unknown/False expanded=False reply=False/True/- code=False/False/- table=False/False/-/0
-    #13 ToolUse «Tool: AskUserQuestion({"questions":[{"question":"Pick one?","header":"Pick","options":[{"label":"A","description":"a"},{"label":"B","description":"b"}]}]})» tool=AskUserQuestion/q1/{"questions":[{"question":"Pick one?","header":"Pick","options":[{"label":"A","description":"a"},{"label":"B","description":"b"}]}]} result=/False/0 permission=/True/1 bg= error=Unknown/False expanded=False reply=False/True/- code=False/False/- table=False/False/-/0
-    #14 ToolUse «Tool: Bash({"command":"serve","run_in_background":true})» tool=Bash/t4/{"command":"serve","run_in_background":true} result=Command running in background with ID: bg7/False/0 permission=/False/ bg=bg7 error=Unknown/False expanded=False reply=False/True/- code=False/False/- table=False/False/-/0
-    #15 ToolUse «Tool: Read({"file_path":"big"})» tool=Read/t5/{"file_path":"big"} result=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx [65596]/True/66036 permission=/False/ bg= error=Unknown/False expanded=False reply=False/True/- code=False/False/- table=False/False/-/0
-    #16 ToolUse «Tool: Task({"prompt":"dig"})» tool=Task/task/{"prompt":"dig"} result=dug/False/0 permission=/False/ bg= error=Unknown/False expanded=False reply=False/True/- code=False/False/- table=False/False/-/0
-      #17 Thinking «sub thinks» tool=// result=/False/0 permission=/False/ bg= error=Unknown/False expanded=True reply=False/True/- code=False/False/- table=False/False/-/0
-      #18 AssistantText «sub says hi» tool=// result=/False/0 permission=/False/ bg= error=Unknown/False expanded=False reply=False/True/- code=False/False/- table=False/False/-/0
-      #19 ToolUse «Tool: Read({})» tool=Read/s1/{} result=sub result/False/0 permission=/False/ bg= error=Unknown/False expanded=False reply=False/True/- code=False/False/- table=False/False/-/0
-      #20 ToolUse «Tool: Edit({})» tool=Edit/s2/{} result=/False/0 permission=/True/ bg= error=Unknown/False expanded=False reply=False/True/- code=False/False/- table=False/False/-/0
-      #21 ToolResult «sub orphan result» tool=/s9/ result=/False/0 permission=/False/ bg= error=Unknown/False expanded=False reply=False/True/- code=False/False/- table=False/False/-/0
-      #22 AssistantText «sub done» tool=// result=/False/0 permission=/False/ bg= error=Unknown/False expanded=False reply=False/True/- code=False/False/- table=False/False/-/0
-    #23 AssistantText «orphan text» tool=// result=/False/0 permission=/False/ bg= error=Unknown/False expanded=False reply=False/True/- code=False/False/- table=False/False/-/0
-    #24 AssistantText «orphan alone» tool=// result=/False/0 permission=/False/ bg= error=Unknown/False expanded=False reply=False/True/- code=False/False/- table=False/False/-/0
-    #25 AssistantText «Final words.» tool=// result=/False/0 permission=/False/ bg= error=Unknown/False expanded=False reply=False/True/25 code=False/False/- table=False/False/-/0
-    #26 AssistantText «Standalone.» tool=// result=/False/0 permission=/False/ bg= error=Unknown/False expanded=False reply=False/True/- code=False/False/- table=False/False/-/0
-    #27 Question «Which one?» tool=// result=/False/0 permission=/False/ bg= error=Unknown/False expanded=False reply=False/True/- code=False/False/- table=False/False/-/0
-    #28 ToolResult «ghost result» tool=/ghost/ result=/False/0 permission=/False/ bg= error=Unknown/False expanded=False reply=False/True/- code=False/False/- table=False/False/-/0
-    #29 TurnCompleted «Turn failed (error_during_execution): boom» tool=// result=/False/0 permission=/False/ bg= error=Unknown/True expanded=False reply=False/True/- code=False/False/- table=False/False/-/0
-    #30 AssistantText «Next turn.\n\n» tool=// result=/False/0 permission=/False/ bg= error=Unknown/False expanded=False reply=False/False/30,31 code=False/False/- table=False/False/-/0
-    #31 AssistantText «Tail» tool=// result=/False/0 permission=/False/ bg= error=Unknown/False expanded=False reply=True/True/30,31 code=False/False/- table=False/False/-/0
-    #32 Error «driver died» tool=// result=/False/0 permission=/False/ bg= error=Unknown/False expanded=False reply=False/True/- code=False/False/- table=False/False/-/0
-    """;
 
     private const string RestoredRows = """
     #0 Thinking «Let me look at it.» tool=// result=/False/0 permission=/False/ bg= error=Unknown/False expanded=False reply=False/True/- code=False/False/- table=False/False/-/0

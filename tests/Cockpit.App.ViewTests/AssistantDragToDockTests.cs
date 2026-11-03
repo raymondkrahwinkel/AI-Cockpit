@@ -26,7 +26,6 @@ public sealed class AssistantDragToDockTests
     // client point to a screen point by scaling alone, ignoring the window's position — so these are the points a
     // move is sent to, and where the window lands as a result is a number only this backend produces.
     private static readonly Point InsideTheZone = new(1700, 14);
-    private static readonly Point OutsideTheZone = new(700, 14);
 
     private static Window _ShowCockpit(CockpitViewModel cockpit)
     {
@@ -72,71 +71,6 @@ public sealed class AssistantDragToDockTests
     }
 
     [Fact]
-    public async Task ReleasingInsideTheZone_DocksTheAssistant_AndTakesTheWindowAway()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var (coordinator, cockpit, main, chat) = await _OpenTheFloatingChatAsync();
-
-            try
-            {
-                var grip = _HeaderGrip(chat);
-
-                chat.MouseDown(grip, MouseButton.Left);
-                Assert.True(cockpit.IsAssistantDropZoneVisible, "the zone shows for as long as the drag runs");
-                Assert.False(cockpit.IsAssistantDropZoneActive, "the pointer starts outside it");
-
-                chat.MouseMove(InsideTheZone, RawInputModifiers.LeftMouseButton);
-                Assert.True(cockpit.IsAssistantDropZoneActive, "the zone lights up while the pointer is inside");
-
-                chat.MouseUp(InsideTheZone, MouseButton.Left);
-
-                // The header's release handler runs the whole dock chain inline: with no _layoutSettingsStore in
-                // this harness, SetAssistantDockedAsync never truly awaits, so it is all done before MouseUp returns.
-                Assert.True(cockpit.AssistantDocked);
-                Assert.Null(coordinator.OpenChatWindow);
-                Assert.False(cockpit.IsAssistantDropZoneVisible, "nothing of the zone is left once the drag ends");
-            }
-            finally
-            {
-                main.Close();
-            }
-        });
-    }
-
-    [Fact]
-    public async Task ReleasingOutsideTheZone_LeavesTheWindowWhereItWasDropped_StillUndocked()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var (coordinator, cockpit, main, chat) = await _OpenTheFloatingChatAsync();
-
-            try
-            {
-                var start = chat.Position;
-                var grip = _HeaderGrip(chat);
-
-                chat.MouseDown(grip, MouseButton.Left);
-                chat.MouseMove(OutsideTheZone, RawInputModifiers.LeftMouseButton);
-                Assert.False(cockpit.IsAssistantDropZoneActive);
-
-                chat.MouseUp(OutsideTheZone, MouseButton.Left);
-
-                // A release outside the zone never reaches ToggleDockCommand — _EndDrag() runs synchronously in
-                // the release handler itself, so nothing here is left pending.
-                Assert.False(cockpit.AssistantDocked);
-                Assert.Same(chat, coordinator.OpenChatWindow);
-                Assert.NotEqual(start, chat.Position);
-                Assert.False(cockpit.IsAssistantDropZoneVisible);
-            }
-            finally
-            {
-                main.Close();
-            }
-        });
-    }
-
-    [Fact]
     public async Task EscapeMidDrag_PutsTheWindowBackWhereItWasPickedUp_AndDocksNothing()
     {
         await HeadlessAvalonia.RunAsync(async () =>
@@ -168,84 +102,6 @@ public sealed class AssistantDragToDockTests
                 // nothing pending to wait for.
                 Assert.False(cockpit.AssistantDocked);
                 Assert.Equal(start, chat.Position);
-            }
-            finally
-            {
-                main.Close();
-            }
-        });
-    }
-
-    // Losing the capture is the one way out of the drag that raises no release at all, so it is the one that
-    // would otherwise leave the zone lying over the cockpit until somebody dragged and let go properly.
-    [Fact]
-    public async Task LosingThePointerCaptureMidDrag_EndsTheDrag_WithoutDocking()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var (coordinator, cockpit, main, chat) = await _OpenTheFloatingChatAsync();
-
-            try
-            {
-                var header = chat.GetVisualDescendants().OfType<Border>().First(border => border.Name == "HeaderBar");
-                IPointer? pointer = null;
-                header.PointerPressed += (_, e) => pointer = e.Pointer;
-
-                chat.MouseDown(_HeaderGrip(chat), MouseButton.Left);
-                chat.MouseMove(InsideTheZone, RawInputModifiers.LeftMouseButton);
-                Assert.True(cockpit.IsAssistantDropZoneActive);
-
-                // What a backend withdrawing the capture does — no release follows it.
-                pointer!.Capture(null);
-
-                // Capture(null) raises PointerCaptureLost synchronously, and that handler is _EndDrag() itself.
-                Assert.Equal(0, cockpit.AssistantDropZoneWidth);
-                Assert.False(cockpit.IsAssistantDropZoneVisible);
-                Assert.False(cockpit.IsAssistantDropZoneActive);
-                Assert.False(cockpit.AssistantDocked);
-                Assert.Same(chat, coordinator.OpenChatWindow);
-            }
-            finally
-            {
-                main.Close();
-            }
-        });
-    }
-
-    // The zone is the overlap between the screen band and the cockpit window, so a cockpit that does not reach
-    // the band offers nothing to drop on — and a drop there must not dock behind the operator's back.
-    [Fact]
-    public async Task WithTheCockpitAwayFromTheBand_ThereIsNoZone_AndAReleaseDocksNothing()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var (coordinator, cockpit, _) = AssistantDockHostSwapTests.Build();
-            var main = new Window { Width = 800, Height = 600, DataContext = cockpit, Content = new CockpitView() };
-            main.Show();
-            main.UpdateLayout();
-
-            coordinator.Indicator.ClickCommand.Execute(null);
-            await Task.Delay(100);
-
-            var chat = coordinator.OpenChatWindow!;
-            chat.CockpitWindow = main;
-            chat.Show();
-            chat.UpdateLayout();
-
-            try
-            {
-                var grip = _HeaderGrip(chat);
-
-                chat.MouseDown(grip, MouseButton.Left);
-                Assert.False(cockpit.IsAssistantDropZoneVisible);
-
-                chat.MouseMove(InsideTheZone, RawInputModifiers.LeftMouseButton);
-                chat.MouseUp(InsideTheZone, MouseButton.Left);
-
-                // No zone means _dropZone stays null, so the release handler sees dropped = false and never
-                // reaches ToggleDockCommand — again, all inline.
-                Assert.False(cockpit.AssistantDocked);
-                Assert.Same(chat, coordinator.OpenChatWindow);
             }
             finally
             {

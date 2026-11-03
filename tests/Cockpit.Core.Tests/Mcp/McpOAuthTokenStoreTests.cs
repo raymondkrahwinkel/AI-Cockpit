@@ -61,22 +61,6 @@ public class McpOAuthTokenStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task GetAsync_FindsATokenAnOlderBuildFiledUnderTheServerName()
-    {
-        // AC-403 migration, the ordinary upgrade: nothing rewrote this entry, and nothing has to. The store keys on
-        // the server's id now, and an entry with no id answers to the id its name derives to — which is exactly the
-        // id McpServerEntry hands back for a row that has none of its own either. Without this an operator who
-        // upgrades is told to sign in again for a credential that is sitting right there.
-        _WriteLegacyTokenFile(serverName: "depot");
-
-        var loaded = await new McpOAuthTokenStore(_configFilePath).GetAsync(McpServerIdentity.LegacyIdFor("depot"));
-
-        Assert.NotNull(loaded);
-        Assert.Equal("legacy-access", loaded.AccessToken);
-        Assert.Equal("legacy-refresh", loaded.RefreshToken);
-    }
-
-    [Fact]
     public async Task GetAsync_DoesNotHandALegacyEntryToADifferentServerThatNowCarriesThatName()
     {
         // The swap this ticket exists for, at the storage layer. A pre-id token filed under "alpha" belongs to

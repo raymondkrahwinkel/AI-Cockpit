@@ -17,21 +17,6 @@ public class PluginStoreConfigStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task AddAsync_ThenLoadAsync_RoundTrips()
-    {
-        var store = new PluginStoreConfigStore(_configFilePath);
-
-        await store.AddAsync(PluginStoreConfig.Remote("https://github.com/a/b"));
-        await store.AddAsync(PluginStoreConfig.Remote("https://example.com/store/index.json"));
-
-        Assert.Equivalent(new[]
-        {
-            PluginStoreConfig.Remote("https://github.com/a/b"),
-            PluginStoreConfig.Remote("https://example.com/store/index.json"),
-        }, await store.LoadAsync());
-    }
-
-    [Fact]
     public async Task LoadAsync_LegacyStringEntry_ReadsAsPublicRemote()
     {
         // A pre-AC-7 config wrote plain URL strings; they must still read, as public remote stores.

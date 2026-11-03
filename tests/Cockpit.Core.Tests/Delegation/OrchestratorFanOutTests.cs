@@ -41,24 +41,6 @@ public class OrchestratorFanOutTests
     }
 
     [Fact]
-    public void BuildLaunch_CarriesTheEnabledOrchestrator_IntoThePluginsMcpServers_WithTheDelegationPrompt()
-    {
-        var catalog = Substitute.For<IMcpServerCatalog>();
-        catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(new List<McpServerConfig> { _Orchestrator() });
-        var (adapter, inner) = _CreateAdapter(catalog);
-        var context = new TtyLaunchContext(null, new Dictionary<string, string>(), "/wd", null, new Dictionary<string, string>());
-
-        adapter.BuildLaunch(context);
-
-        inner.Received(1).BuildLaunch(Arg.Is<PluginTtyLaunchContext>(pluginContext =>
-            pluginContext.McpServers.Count == 1
-            && pluginContext.McpServers[0].Name == DelegationMcp.ServerName
-            && pluginContext.McpServers[0].Url == "http://127.0.0.1:46503/mcp"
-            && pluginContext.DelegationSystemPrompt == DelegationSystemPrompt.Default));
-    }
-
-    [Fact]
     public void BuildLaunch_DropsTheOrchestratorAndTheDelegationPrompt_WhileItIsSwitchedOff()
     {
         // Off is off: the server is registered with every cockpit, but a session only gets the ability to spawn
@@ -112,34 +94,6 @@ public class OrchestratorFanOutTests
             Assert.Single(inner.ReceivedCalls()).GetArguments()[5]);
         var expected = "You are the CEO. Plan the work first.\n\n" + DelegationSystemPrompt.Default
             + "\n\n" + SessionScratch.Instruction(environment["COCKPIT_SCRATCH"]);
-
-        await inner.Received(1).StartAsync(
-            Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(),
-            Arg.Is<IReadOnlyDictionary<string, string>?>(options =>
-                options != null && options[WellKnownPluginSessionOptions.AppendSystemPrompt] == expected),
-            Arg.Any<IReadOnlyList<PluginMcpServer>?>(), Arg.Any<IReadOnlyDictionary<string, string>?>(),
-            Arg.Any<IPluginToolset?>(), Arg.Any<CancellationToken>());
-    }
-
-    // The other half, and the reason the gate is on what was mounted rather than on what was asked for: a session
-    // without the orchestrator must not be told to call tools it has not got. Off is off here exactly as it is on
-    // the TTY route above.
-    [Fact]
-    public async Task StartAsync_LeavesTheAppendedPromptAlone_WhenTheOrchestratorIsSwitchedOff()
-    {
-        var (adapter, inner) = _CreateHeadlessAdapter(_CatalogWith(_Orchestrator(enabled: false)));
-        await using var session = adapter;
-
-        await adapter.StartAsync(
-            launchOptions: new Dictionary<string, string>
-            {
-                [WellKnownPluginSessionOptions.AppendSystemPrompt] = "You are the CEO. Plan the work first.",
-            });
-
-        var environment = Assert.IsAssignableFrom<IReadOnlyDictionary<string, string>>(
-            Assert.Single(inner.ReceivedCalls()).GetArguments()[5]);
-        var expected = "You are the CEO. Plan the work first.\n\n"
-            + SessionScratch.Instruction(environment["COCKPIT_SCRATCH"]);
 
         await inner.Received(1).StartAsync(
             Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(),

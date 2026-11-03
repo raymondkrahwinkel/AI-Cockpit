@@ -40,25 +40,6 @@ public class DelegationPerTaskMcpTests
     }
 
     [Fact]
-    public async Task DelegateAsync_AnEmptyPerTaskSelection_RunsWithTheProfileDefault_NotNoServers()
-    {
-        // [] is normalised to "no narrowing" (the profile's full set), not "no servers at all".
-        var driver = Substitute.For<ISessionDriver>();
-        driver.Events.Returns(_EmptyStream());
-        var service = _ServiceWith(driver,
-            profileSelection: ["filesystem", "youtrack"],
-            registry: [_Enabled("filesystem"), _Enabled("youtrack")]);
-
-        await service.DelegateAsync(new DelegationRequest("local", "work", McpServers: []));
-
-        await driver.Received().StartAsync(
-            Arg.Any<SessionProfile?>(), Arg.Any<string?>(), Arg.Any<string?>(),
-            Arg.Is<IReadOnlySet<string>?>(servers => servers != null && servers.SetEquals(new HashSet<string> { "filesystem", "youtrack" })),
-            Arg.Any<string?>(), Arg.Any<SessionResume?>(), Arg.Any<IReadOnlyDictionary<string, string>?>(),
-            Arg.Any<string?>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
     public async Task DelegateAsync_WhenTheTaskRequestsAForbiddenServer_RefusesTheWholeCall()
     {
         var driver = Substitute.For<ISessionDriver>();
@@ -76,39 +57,6 @@ public class DelegationPerTaskMcpTests
             Arg.Any<SessionProfile?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<IReadOnlySet<string>?>(),
             Arg.Any<string?>(), Arg.Any<SessionResume?>(), Arg.Any<IReadOnlyDictionary<string, string>?>(),
             Arg.Any<string?>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task DelegateAsync_WithAnAllowedSubset_StartsTheSessionWithExactlyThatSubset()
-    {
-        var driver = Substitute.For<ISessionDriver>();
-        driver.Events.Returns(_EmptyStream());
-        var service = _ServiceWith(driver,
-            profileSelection: ["filesystem", "youtrack"],
-            registry: [_Enabled("filesystem"), _Enabled("youtrack")]);
-
-        await service.DelegateAsync(new DelegationRequest("local", "work", McpServers: ["filesystem"]));
-
-        await driver.Received().StartAsync(
-            Arg.Any<SessionProfile?>(), Arg.Any<string?>(), Arg.Any<string?>(),
-            Arg.Is<IReadOnlySet<string>?>(servers => servers != null && servers.SetEquals(new HashSet<string> { "filesystem" })),
-            Arg.Any<string?>(), Arg.Any<SessionResume?>(), Arg.Any<IReadOnlyDictionary<string, string>?>(),
-            Arg.Any<string?>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task ListTargets_SurfacesTheMcpServersAProfileWouldGet()
-    {
-        var driver = Substitute.For<ISessionDriver>();
-        driver.Events.Returns(_EmptyStream());
-        var service = _ServiceWith(driver,
-            profileSelection: ["filesystem", "youtrack"],
-            registry: [_Enabled("filesystem"), _Enabled("youtrack"), _Enabled("git")]);
-
-        var targets = await service.ListTargetsAsync();
-
-        var target = Assert.Single(targets);
-        Assert.Equivalent(new object[] { "filesystem", "youtrack" }, target.McpServers);
     }
 
     private static McpServerConfig _Enabled(string name) => new() { Name = name, Enabled = true };

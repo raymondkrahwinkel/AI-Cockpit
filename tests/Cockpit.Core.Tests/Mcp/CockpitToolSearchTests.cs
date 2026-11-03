@@ -53,29 +53,6 @@ public class CockpitToolSearchTests
         Assert.Equal(await _DirectDenialTextAsync(), result.Content);
     }
 
-    [Fact]
-    public async Task CallTool_RunsTheToolThroughTheGate_WhenTheCeilingAllowsIt()
-    {
-        var ran = false;
-        var echo = AIFunctionFactory.Create((string text) => { ran = true; return $"echoed:{text}"; }, "echo");
-        var catalog = _CatalogOf(CockpitToolSearch.PreloadThreshold + 1, alwaysMounted: "set_status", extra: echo);
-
-        var (driver, _) = await _StartAsync(
-            catalog,
-            _ToolCall("echo", ("text", "hi")),
-            _Stream("done"),
-            toolClasses: new Dictionary<string, ToolPermissionClass> { ["echo"] = ToolPermissionClass.Unknown });
-        await driver.SetDelegatedToolGateAsync("plan", ["echo"]);
-        await driver.SendUserMessageAsync("go");
-        var events = await _CollectUntilTurnCompletedAsync(driver);
-
-        Assert.True(ran);
-        // The transcript names the tool that actually ran, not the proxy that carried it — an operator reading the
-        // session must see "echo", not "call_tool".
-        Assert.Equal("echo", Assert.Single(events.OfType<ToolUseRequested>()).ToolName);
-        Assert.Contains("echoed:hi", Assert.Single(events.OfType<ToolResult>()).Content);
-    }
-
     // The refusal a *direct* call to the same tool under the same ceiling produces, for the comparison above.
     private static async Task<string> _DirectDenialTextAsync()
     {

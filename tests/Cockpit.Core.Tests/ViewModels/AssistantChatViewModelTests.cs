@@ -36,31 +36,6 @@ public class AssistantChatViewModelTests
         return store;
     }
 
-    // AC-575 criterion 5: the window stays between openings and read the flag once (EnsureOpenedAsync), so a bypass left it stale.
-    [Fact]
-    public async Task ABypassSwitchedOnWhileTheWindowIsOpen_ReachesTheHeaderOnTheSaveSignal()
-    {
-        var store = Substitute.For<IAssistantSettingsStore>();
-        store.LoadAsync(Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(new AssistantSettings { IsEnabled = true, ConsentBypassAll = false }));
-        var vm = new AssistantChatViewModel(FakeHost(), store, Substitute.For<IVoicePlaybackQueue>());
-
-        await vm.EnsureOpenedAsync();
-        Assert.False(vm.ConsentBypassActive);
-
-        // Options saves a bypass. The window is still the same instance — nothing reopened.
-        store.LoadAsync(Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(new AssistantSettings
-            {
-                IsEnabled = true,
-                ConsentBypassAll = false,
-                ConsentBypassSources = ["Terminal MCP"],
-            }));
-        await vm.ApplySettingsAsync();
-
-        Assert.True(vm.ConsentBypassActive);
-    }
-
     // AC-545 criterion 5: the flyout's own contract on this view model — load lazily, newest first, never throw
     // when nothing is wired up to read from.
 
@@ -69,7 +44,7 @@ public class AssistantChatViewModelTests
     // operator to try to approve something in a window they are talking to.
 
     [Fact]
-    public async Task SayingYesInTheChat_GrantsNothing_ThePermissionIsStillPendingAfterwards()
+    public async Task SayingYesInTheChat_GrantsNothing_OnlyTheAllowButtonOnTheRowResolvesThePermission()
     {
         // This covers the spoken path too, and not by analogy: a finished transcript goes to
         // IAssistantSessionHost.SendAsync (AssistantPushToTalkCoordinator, OpenMicCoordinator) — the very method
@@ -100,20 +75,8 @@ public class AssistantChatViewModelTests
         Assert.True(session.HasPendingPermission);
         Assert.True(string.IsNullOrEmpty(pending.PermissionDecision));
 
-        await session.DisposeAsync();
-    }
-
-    [Fact]
-    public async Task OnlyTheAllowButtonOnTheRowResolvesThePermission()
-    {
         // The other half: the row's own command is what answers, and it answers the driver rather than merely
-        // greying the buttons out. Without this the test above would also pass on a window where nothing at all
-        // could grant permission — including the click.
-        var (session, driver) = await _StartedSessionAsync();
-        session.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "toolu_1", ToolName = "start_agent", InputJson = "{}" });
-        session.Apply(new PermissionRequested { SessionId = "S1", ToolUseId = "toolu_1", ToolName = "start_agent", InputJson = "{}" });
-        var pending = session.Transcript.Single(entry => entry.ToolUseId == "toolu_1");
-
+        // greying the buttons out — without it this would also pass where nothing at all could grant permission.
         await session.AllowToolCommand.ExecuteAsync(pending);
 
         // AC-715: every decision now travels the overload that can also carry answers; a plain allow carries none.

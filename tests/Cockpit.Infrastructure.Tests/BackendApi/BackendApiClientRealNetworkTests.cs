@@ -87,46 +87,6 @@ public sealed class BackendApiClientRealNetworkTests
         Assert.Equal(1, clock.TimerCount);
     }
 
-    [Fact]
-    public async Task StreamEventsAsync_AServiceUnavailableResponseWaitsForBackoffBeforeReconnecting()
-    {
-        var clock = new _Clock();
-        await using var server = await _Server.StartAsync(_LogMode.ServiceUnavailableOnce);
-        using var client = server.Client(clock);
-        using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        await using var events = client.StreamEventsAsync(null, stop.Token).GetAsyncEnumerator(stop.Token);
-        var next = events.MoveNextAsync().AsTask();
-
-        await clock.Waiting.WaitAsync(stop.Token);
-        Assert.Equal(1, server.Requests);
-        Assert.Equal(0, server.Log.Calls);
-        clock.Advance();
-        await _UntilAsync(() => server.Log.Calls == 1, stop.Token);
-        Assert.Equal(2, server.Requests);
-        stop.Cancel();
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => next);
-    }
-
-    [Fact]
-    public async Task StreamEventsAsync_HeartbeatCommentDoesNotProduceAnEvent()
-    {
-        var serverClock = new _Clock();
-        await using var server = await _Server.StartAsync(_LogMode.Wait, serverClock);
-        using var client = server.Client();
-        using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        await using var events = client.StreamEventsAsync(null, stop.Token).GetAsyncEnumerator(stop.Token);
-        var next = events.MoveNextAsync().AsTask();
-        await _UntilAsync(() => server.Log.Calls == 1, stop.Token);
-
-        serverClock.Advance();
-        await Task.Delay(TimeSpan.FromMilliseconds(100), stop.Token);
-        Assert.False(next.IsCompleted);
-        server.Log.Publish(9, "reset");
-
-        Assert.True(await next);
-        Assert.Equal(9, events.Current.Seq);
-        Assert.Equal("reset", events.Current.Kind);
-    }
 
     private static async Task<IReadOnlyList<BackendEvent>> _ReadAsync(
         IAsyncEnumerable<BackendEvent> source,

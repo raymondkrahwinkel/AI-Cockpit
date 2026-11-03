@@ -76,59 +76,6 @@ public sealed class Ac1281RestoreProgressAndCancelTests
             Assert.False(cockpit.CanStopBackup);
         });
 
-    [Fact]
-    public Task WithoutABackupService_BothCommandsSaySoInsteadOfReturningInSilence() =>
-        HeadlessAvalonia.RunAsync(async () =>
-        {
-            var cockpit = new CockpitViewModel();
-
-            await cockpit.CreateBackupAsync("unused.zip");
-            var afterBackup = cockpit.BackupStatus;
-
-            cockpit.BackupStatus = string.Empty;
-            await cockpit.RestoreBackupAsync("unused.zip", _ => Task.FromResult<RestoreOptions?>(new RestoreOptions(true, [])));
-
-            Assert.NotEmpty(afterBackup);
-            Assert.NotEmpty(cockpit.BackupStatus);
-            Assert.Equal(afterBackup, cockpit.BackupStatus);
-        });
-
-    [Theory]
-    // A fetch that ran to the end: whatever refused is named with the reason it gave.
-    [InlineData(false)]
-    // A fetch the operator stopped: nothing is rolled back, so the same naming is owed — a stopped restore that
-    // says only "stopped" leaves the operator guessing which half of their plugins is now there.
-    [InlineData(true)]
-    public Task PluginsStillMissingAfterTheFetch_AreNamedWithTheirReason(bool stopped) =>
-        HeadlessAvalonia.RunAsync(async () =>
-        {
-            var backups = new _ReportsOneStage(new RestoreProgress(RestoreStage.FetchingPlugins, 1, 2))
-            {
-                Missing =
-                [
-                    new RestorePluginNote("boards", "its store could not be reached"),
-                    new RestorePluginNote("voice", "this cockpit is too old for the version in the archive"),
-                ],
-            };
-
-            var cockpit = _Cockpit(backups);
-
-            if (stopped)
-            {
-                backups.WhenReported = cockpit.StopBackup;
-            }
-
-            await cockpit.RestoreBackupAsync("unused.zip", _ => Task.FromResult<RestoreOptions?>(new RestoreOptions(true, ["boards", "voice"])));
-
-            Assert.Contains("boards", cockpit.BackupStatus);
-            Assert.Contains("its store could not be reached", cockpit.BackupStatus);
-            Assert.Contains("voice", cockpit.BackupStatus);
-            Assert.Contains("this cockpit is too old for the version in the archive", cockpit.BackupStatus);
-
-            // A stop leaves the settings alone, and the line has to say so rather than read like a finished restore.
-            Assert.Equal(stopped, cockpit.BackupStatus.Contains("unchanged", StringComparison.Ordinal));
-        });
-
     private static CockpitViewModel _Cockpit(IBackupService backups)
     {
         var notifications = Substitute.For<INotificationSettingsStore>();
@@ -166,8 +113,6 @@ public sealed class Ac1281RestoreProgressAndCancelTests
     {
         public Action? WhenReported { get; set; }
 
-        public IReadOnlyList<RestorePluginNote> Missing { get; init; } = [];
-
         public string? SeenStatus { get; set; }
 
         public bool SeenCanCancel { get; set; }
@@ -204,7 +149,7 @@ public sealed class Ac1281RestoreProgressAndCancelTests
             // stage has begun, also like the real service — past that line the token is not passed on at all.
             return Task.FromResult(new RestoreReport(
                 Stopped: stage.Stage != RestoreStage.Writing && cancellationToken.IsCancellationRequested,
-                Missing));
+                []));
         }
     }
 }

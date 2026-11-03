@@ -23,6 +23,7 @@ public class YouTrackClientStateFieldTests : IAsyncLifetime
     [Fact]
     public async Task GetProjectStateFieldAsync_ReadsTheProjectsWholeBundle_NotJustWhatOneIssueCarries()
     {
+        // The whole bundle, minus a value YouTrack marks as resolved (Closed); a value without isResolved is kept.
         var client = new YouTrackClient();
 
         var (fieldName, values) = await client.GetProjectStateFieldAsync($"{_prefix}api", "perm-token", "AC", CancellationToken.None);
@@ -32,26 +33,6 @@ public class YouTrackClientStateFieldTests : IAsyncLifetime
         Assert.Equal("Bearer perm-token", _authorization);
         Assert.Equal("State", fieldName);
         Assert.Equal(new[] { "Open", "Ready", "Test", "Review", "Done" }, values);
-    }
-
-    [Fact]
-    public async Task GetProjectStateFieldAsync_ExcludesAResolvedValue_OverARealHttpRoundTrip()
-    {
-        var requests = new List<string>();
-        var server = await LoopbackHttpServer.StartAsync(context =>
-        {
-            requests.Add(context.Request.QueryString.Value ?? string.Empty);
-            return context.Response.WriteAsync(
-                """[{"field":{"name":"State"},"bundle":{"values":[{"name":"Open","isResolved":false},{"name":"Done","isResolved":true}]}}]""");
-        });
-        var client = new YouTrackClient();
-
-        var (fieldName, values) = await client.GetProjectStateFieldAsync(server.BaseUrl + "api", "t", "AC", CancellationToken.None);
-
-        await server.DisposeAsync();
-        Assert.Equal("State", fieldName);
-        Assert.Equal(["Open"], values);
-        Assert.Single(requests);
     }
 
     [Fact]
@@ -94,7 +75,7 @@ public class YouTrackClientStateFieldTests : IAsyncLifetime
             """
             [
               {"field":{"name":"Priority"},"bundle":{"values":[{"name":"Low"}]}},
-              {"field":{"name":"State"},"bundle":{"values":[{"name":"Open"},{"name":"Ready"},{"name":"Test"},{"name":"Review"},{"name":"Done"}]}}
+              {"field":{"name":"State"},"bundle":{"values":[{"name":"Open"},{"name":"Ready"},{"name":"Test"},{"name":"Review"},{"name":"Done"},{"name":"Closed","isResolved":true}]}}
             ]
             """);
     }

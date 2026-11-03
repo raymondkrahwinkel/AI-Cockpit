@@ -20,7 +20,10 @@ public class OpenAiCompatPluginSessionDriverTests
         var chatClient = Substitute.For<IChatClient>();
         chatClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
             .Returns(stalls ? _StalledStream() : _SlowSteadyStream());
-        var driver = new OpenAiCompatPluginSessionDriver(chatClient, "anthropic/claude-sonnet-4.5", streamIdleTimeout: TimeSpan.FromMilliseconds(50));
+        // A stall never sends again, so a short timeout is exact; a steady stream gets 200x its 10 ms gap, so a busy
+        // machine cannot stretch one gap past the timeout and turn the steady case into an idle one.
+        var idleTimeout = stalls ? TimeSpan.FromMilliseconds(50) : TimeSpan.FromSeconds(2);
+        var driver = new OpenAiCompatPluginSessionDriver(chatClient, "anthropic/claude-sonnet-4.5", streamIdleTimeout: idleTimeout);
 
         await driver.StartAsync();
         await driver.SendUserMessageAsync("hi");

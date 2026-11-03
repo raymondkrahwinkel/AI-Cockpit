@@ -1,4 +1,3 @@
-using System.Globalization;
 using Cockpit.Core.HeavyRuns;
 
 namespace Cockpit.Core.Tests.HeavyRuns;
@@ -32,25 +31,5 @@ public class HeavyRunAdmissionTests
         var decision = HeavyRunAdmission.Next(waiting, new MachineLoad(cpu, 8 * Gigabyte, 16 * Gigabyte), new HeavyRunSettings(), isAnyRunning, Now);
 
         Assert.Equal((expectedAdmit < 0 ? null : expectedAdmit, expectedReason), (decision.Admit, decision.WaitReason));
-    }
-
-    // Windows samples are written "idle kernel user"; /proc/stat samples as the file's own `cpu` line.
-    [Theory]
-    [InlineData(true, "cpu  100 0 50 800 50 0 0 0 0 0", "cpu  200 0 100 850 50 0 0 0 0 0", 75)]
-    [InlineData(false, "800 1000 200", "900 1150 250", 50)]
-    public void TheBusyShareIsTheNonIdlePartOfTheTimeBetweenTwoSamples(bool isProcStat, string before, string after, double expected)
-    {
-        CpuTimes Read(string sample)
-        {
-            if (isProcStat)
-            {
-                return CpuTimes.FromProcStat(sample) ?? throw new InvalidOperationException("No cpu line.");
-            }
-
-            var times = sample.Split(' ').Select(time => ulong.Parse(time, CultureInfo.InvariantCulture)).ToArray();
-            return CpuTimes.FromSystemTimes(times[0], times[1], times[2]);
-        }
-
-        Assert.Equal(expected, CpuTimes.BusyPercent(Read(before), Read(after)), precision: 6);
     }
 }

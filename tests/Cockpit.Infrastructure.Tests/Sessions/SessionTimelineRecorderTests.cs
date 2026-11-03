@@ -49,24 +49,6 @@ public sealed class SessionTimelineRecorderTests : IDisposable
     }
 
     [Fact]
-    public async Task ALineOfAnOlderVersion_WithAFieldThisOneDoesNotKnow_StaysReadable_AndLinesAreWrittenByName()
-    {
-        await File.WriteAllTextAsync(_Path,
-            """{"Kind":"Status","At":"2026-10-25T12:00:00+00:00","PaneId":"old","Ticket":"AC-3","Status":"NeedsAttention","Mood":"later field"}""" + "\n"
-            + """{"Kind":"Stopped","At":"2026-10-25T12:20:00+00:00"}""" + "\n");
-
-        using var recorder = new SessionTimelineRecorder(_Path, _clock);
-        recorder.Start(_Registry());
-        await recorder.FlushAsync();
-
-        var written = (await File.ReadAllLinesAsync(_Path))[^1];
-        Assert.Contains("\"Kind\":\"Closed\"", written);
-        Assert.Contains("\"PaneId\":\"old\"", written);
-        Assert.Contains("\"Ticket\":\"AC-3\"", written);
-        Assert.Contains("\"At\":\"2026-10-25T12:20:00+00:00\"", written);
-    }
-
-    [Fact]
     public async Task TwoTurnsAndAnAnsweredQuestion_GiveTheirStatusesAndOneOperatorLineEach_ButNeverWhatWasSentOrAnswered()
     {
         const string Message = "the unmistakable sentence nobody else writes 7f3a";

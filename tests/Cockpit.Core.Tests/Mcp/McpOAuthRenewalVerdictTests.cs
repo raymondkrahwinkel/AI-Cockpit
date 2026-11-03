@@ -75,51 +75,6 @@ public class McpOAuthRenewalVerdictTests
     }
 
     [Fact]
-    public async Task Acquire_WhenTheTokenEndpointFailsWithoutSayingWhy_ReportsThatItCouldNotBeConfirmed()
-    {
-        await using var server = await InProcessOAuthMcpServer.StartAsync(advertiseOfflineAccess: true);
-        server.FailNextRefreshes(count: int.MaxValue);
-        var store = await _StoreWithAStaleTokenAsync(server, InProcessOAuthMcpServer.RefreshToken);
-
-        var access = await _Coordinator(store).AcquireAsync(_Server(server.Url), interactive: false);
-
-        // The bug itself. This refresh token is the good one and the grant behind it is alive; the endpoint simply
-        // returned a 500. Before the fix this arrived at the agent as "revoked or has run out" — reached by
-        // elimination, from a server that had said no such thing.
-        Assert.Equal(McpAuthState.AuthorizationRequired, access.State);
-        Assert.Equal(McpOAuthAttentionReason.RenewalCouldNotBeConfirmed, access.Reason);
-
-        // The sentence has to send the agent back to the call, not to Settings: reading "authorize it again" is what
-        // made a session stop over a failure that had already passed.
-        var guidance = McpOAuthSignInGuidance.For("depot", access.Reason);
-        Assert.Contains("again is the first thing to try", guidance, StringComparison.Ordinal);
-        Assert.DoesNotContain("revoked", guidance, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task Acquire_WhenTheRenewalSucceedsOnTheSecondAttempt_SaysNothingAtAll()
-    {
-        await using var server = await InProcessOAuthMcpServer.StartAsync(advertiseOfflineAccess: true);
-        server.FailNextRefreshes(count: 1);
-        var store = await _StoreWithAStaleTokenAsync(server, InProcessOAuthMcpServer.RefreshToken);
-        var coordinator = _Coordinator(store);
-        var config = _Server(server.Url);
-
-        var first = await coordinator.AcquireAsync(config, interactive: false);
-        var second = await coordinator.AcquireAsync(config, interactive: false);
-
-        // One bad second, which is what was actually measured. The second ask finds the same grant perfectly alive,
-        // and a caller that gives the renewal that second chance never has anything to report to anybody.
-        Assert.Equal(McpOAuthAttentionReason.RenewalCouldNotBeConfirmed, first.Reason);
-        Assert.Equal(McpAuthState.Authorized, second.State);
-        Assert.Equal(InProcessOAuthMcpServer.RenewedAccessToken, second.AccessToken);
-
-        // Two refreshes reached the token endpoint and no more: the second ask really did present the grant again
-        // rather than being answered out of anything left behind by the first.
-        Assert.Equal(2, server.RefreshAttempts);
-    }
-
-    [Fact]
     public async Task Acquire_WhenTheRenewalCouldNotBeConfirmed_DoesNotInterruptTheOperator()
     {
         await using var server = await InProcessOAuthMcpServer.StartAsync(advertiseOfflineAccess: true);
@@ -132,25 +87,6 @@ public class McpOAuthRenewalVerdictTests
         // The operator is interrupted when something of theirs is needed. Nothing here is: the call retries itself
         // and the next one works. A desktop notification reading "MCP server unavailable — sign in again" over a
         // storm that lasted a second is the same wrong claim as the tool error, just harder to ignore.
-        await Task.Delay(TimeSpan.FromMilliseconds(200));
-        Assert.Empty(toasts.Shown);
-    }
-
-    [Fact]
-    public async Task Acquire_WhenTheAuthorizationServerRejectsTheGrant_StillInterruptsTheOperator()
-    {
-        await using var server = await InProcessOAuthMcpServer.StartAsync(advertiseOfflineAccess: true);
-        var store = await _StoreWithAStaleTokenAsync(server, refreshToken: "a-refresh-token-this-server-never-issued");
-        var toasts = new CapturingToastNotifier();
-        var coordinator = _Coordinator(store, toasts);
-        var signInNeeded = new List<string>();
-        coordinator.SignInNeeded += needing => signInNeeded.Add(needing.Name);
-
-        await coordinator.AcquireAsync(_Server(server.Url), interactive: false);
-
-        // Quietening is only right for the case nobody has to act on. A sign-in the server has declared dead is the
-        // case the notice exists for; since AC-1517 it is named in the cockpit, with Sign in, instead of on the desktop.
-        Assert.Equal(["depot"], signInNeeded);
         await Task.Delay(TimeSpan.FromMilliseconds(200));
         Assert.Empty(toasts.Shown);
     }

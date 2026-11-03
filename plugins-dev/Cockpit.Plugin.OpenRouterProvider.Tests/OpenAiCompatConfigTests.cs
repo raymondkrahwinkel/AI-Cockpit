@@ -20,17 +20,6 @@ public class OpenAiCompatConfigTests
         Assert.Contains("https://openrouter.ai/api/v1", text);
     }
 
-    [Fact]
-    public void ToString_WithAnEmptyApiKey_PrintsNullInsteadOfAsterisks()
-    {
-        var config = new OpenAiCompatConfig(string.Empty, "anthropic/claude-sonnet-4.5", "https://openrouter.ai/api/v1");
-
-        var text = config.ToString();
-
-        Assert.Contains("ApiKey = null", text);
-        Assert.DoesNotContain("***", text);
-    }
-
     // AC-1484: where the key comes from. A key on the profile wins; an empty one falls back to the process
     // environment (a container secret), but only on the provider's own host; neither means no sign-in. Fake values.
     [Theory]

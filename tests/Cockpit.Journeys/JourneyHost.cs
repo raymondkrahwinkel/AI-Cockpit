@@ -108,24 +108,6 @@ public sealed class JourneyHost : IAsyncDisposable
         return backend;
     });
 
-    public static JourneyHost DesktopWithProductionDrivers(Action<string>? beforeBuild = null, string? stateRoot = null, Action<IServiceCollection>? configure = null) => new(stateRoot, (loggerFactory, _) =>
-    {
-        beforeBuild?.Invoke(CockpitBuild.StateRoot);
-        var attempt = StartupAttempt.Begin(loggerFactory.CreateLogger<StartupAttempt>());
-        var backend = CockpitBackend.Build(
-            loggerFactory,
-            services =>
-            {
-                Program.AddDesktop(services, loggerFactory);
-                services.AddSingleton(attempt);
-                configure?.Invoke(services);
-            },
-            attempt.SafeMode ? PluginStartup.SafeMode : PluginStartup.Load,
-            nodeListenAddress: System.Net.IPAddress.Loopback);
-        Program.Services = backend.Services;
-        return backend;
-    });
-
     // `Program.Main`'s Start, then App's steps in App's order: the main window over the cockpit, the assistant's host
     // and chip, the palette's quick note, the plugins' phase 2 with their UI parts, the planners, the restore.
     public async Task StartDesktopAsync()

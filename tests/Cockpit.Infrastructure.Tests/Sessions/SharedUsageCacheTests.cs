@@ -14,14 +14,6 @@ public class SharedUsageCacheTests
     private static readonly SessionStatusFeed Status = new(42, [new SessionRateWindow("5h", 60, null, null)]);
 
     /// <summary>A clock that only moves when a test moves it, so the TTL edge is exact rather than a race.</summary>
-    private sealed class StoppedClock(DateTimeOffset start) : TimeProvider
-    {
-        private DateTimeOffset _now = start;
-
-        public override DateTimeOffset GetUtcNow() => _now;
-
-        public void Advance(TimeSpan by) => _now += by;
-    }
 
     [Fact]
     public void TwoConfigs_DifferentCredential_NeverShareAnEntry()
@@ -39,12 +31,6 @@ public class SharedUsageCacheTests
         cache.Set(new PluginProviderConfig("codex", "{\"apiKey\":\"k1\"}"), Status);
 
         Assert.Null(cache.TryGet(new PluginProviderConfig("codex", "{\"apiKey\":\"k2\"}")));
-    }
-
-    public static IEnumerable<object?[]> _UncacheableConfigs()
-    {
-        yield return [new LmStudioConfig("http://localhost:1234", "some-model")];
-        yield return [null];
     }
 
 }

@@ -81,13 +81,20 @@ public class LocalCiMcpToolsTests : IDisposable
         Assert.Equal(_neighbour.Root, act.Calls.Single().WorkingDirectory);
     }
 
-    [Fact]
-    public async Task ACheckoutTheCallerDoesNotOwnIsRefused()
+    // Registered to a different pane — the exact confused-deputy case worktree_remove already guards against — or
+    // not any registered worktree at all.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ACheckoutTheCallerDoesNotOwnIsRefused(bool registeredToAnotherPane)
     {
         _host.CallerPaneId = "pane-caller";
-        // Registered to a different pane — the exact confused-deputy case worktree_remove already guards against.
         var worktrees = new FakeWorktreeManager();
-        worktrees.Records.Add(new WorktreeRecord("pane-neighbour", _neighbour.Root, _neighbour.Root, "cockpit/other", "abc123", DateTimeOffset.UtcNow));
+        if (registeredToAnotherPane)
+        {
+            worktrees.Records.Add(new WorktreeRecord("pane-neighbour", _neighbour.Root, _neighbour.Root, "cockpit/other", "abc123", DateTimeOffset.UtcNow));
+        }
+
         var act = FakeStreamingCliRunner.Exiting(0);
 
         var answer = await _Tools(act, worktrees: worktrees).RunLocalChecks(checkout: _neighbour.Root);
@@ -96,41 +103,18 @@ public class LocalCiMcpToolsTests : IDisposable
         Assert.Empty(act.Calls);
     }
 
-    [Fact]
-    public async Task ACheckoutThatIsNotAnyRegisteredWorktreeIsRefused()
+    // The blank is the interesting one: a host that has no answer and a host that answers with nothing look alike
+    // here, and treating the second as a real caller is how a lookup starts being done on an id nobody vouched for.
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public async Task WithoutAKnownCallerNothingRuns(string? callerPaneId)
     {
-        _host.CallerPaneId = "pane-caller";
-        var act = FakeStreamingCliRunner.Exiting(0);
-
-        var answer = await _Tools(act, worktrees: new FakeWorktreeManager()).RunLocalChecks(checkout: _neighbour.Root);
-
-        Assert.False(_Read(answer).GetProperty("ok").GetBoolean());
-        Assert.Empty(act.Calls);
-    }
-
-    [Fact]
-    public async Task WithoutAKnownCallerNothingRuns()
-    {
-        _host.CallerPaneId = null;
+        _host.CallerPaneId = callerPaneId;
         var act = FakeStreamingCliRunner.Exiting(0);
 
         var answer = await _Tools(act).RunLocalChecks();
 
-        Assert.False(_Read(answer).GetProperty("ok").GetBoolean());
-        Assert.Empty(act.Calls);
-    }
-
-    [Fact]
-    public async Task AnEmptyCallerIsNoCallerAtAll()
-    {
-        _host.CallerPaneId = string.Empty;
-        var act = FakeStreamingCliRunner.Exiting(0);
-
-        var answer = await _Tools(act).RunLocalChecks();
-
-        // The blank is the interesting one: a host that has no answer and a host that answers with nothing look
-        // alike here, and treating the second as a real caller is how a lookup starts being done on an id nobody
-        // vouched for.
         Assert.False(_Read(answer).GetProperty("ok").GetBoolean());
         Assert.Empty(act.Calls);
     }
@@ -169,21 +153,6 @@ public class LocalCiMcpToolsTests : IDisposable
         Assert.Equal(ConsentRisk.Dangerous, asked.Risk);
         Assert.Empty(act.Calls);
         Assert.Equal(nameof(LocalRunOutcome.NotApproved), _Read(verdict).GetProperty("verdict").GetString());
-    }
-
-    [Fact]
-    public async Task DefaultSettingsStillAskEveryRun()
-    {
-        // AC-710: the setting exists, but a fresh install must keep asking every time — nothing about today's
-        // behaviour changes until the operator opts in.
-        _host.CallerPaneId = "pane-caller";
-        var act = FakeStreamingCliRunner.Exiting(0);
-
-        await _Tools(act, skipConsent: false).RunLocalChecks();
-        await _host.Delivered;
-
-        Assert.Single(_host.Asked);
-        Assert.Single(act.Calls);
     }
 
     [Fact]

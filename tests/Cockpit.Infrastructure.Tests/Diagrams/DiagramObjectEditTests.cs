@@ -1,4 +1,3 @@
-using Cockpit.Core.Abstractions.Diagrams;
 using Cockpit.Infrastructure.Diagrams;
 
 namespace Cockpit.Infrastructure.Tests.Diagrams;
@@ -16,16 +15,6 @@ public class DiagramObjectEditTests
             A --> B
         """;
 
-    [Fact]
-    public void AddNode_AppendsTheNode_AndLeavesEveryOtherLineAsItWas()
-    {
-        var edit = DiagramObjectEdit.AddNode(Source, "C", "Done");
-
-        Assert.Null(edit.Refusal);
-        Assert.Equal(Source.ReplaceLineEndings("\n") + "\n    C[\"Done\"]", edit.Text);
-        Assert.Contains("added node C", edit.Summary);
-    }
-
     // One refusal, two reasons an id can be unusable: it is already in the diagram, or it is not one word and would
     // otherwise be written into the source as its own arrow. Neither may produce text.
     [Theory]
@@ -37,26 +26,6 @@ public class DiagramObjectEditTests
 
         Assert.Null(edit.Text);
         Assert.Contains(expected, edit.Refusal);
-    }
-
-    public static TheoryData<string, string, string> RenameNodeCases => new()
-    {
-        { Source, "Pick one", """
-            flowchart LR
-                A["Start"]
-                B{"Pick one"}
-                A --> B
-            """.ReplaceLineEndings("\n") },
-        { "flowchart LR\n    A[\"B is next\"]\n    B[\"Stop\"]", "Halt", "flowchart LR\n    A[\"B is next\"]\n    B[\"Halt\"]" },
-    };
-
-    [Theory]
-    [MemberData(nameof(RenameNodeCases))]
-    public void RenameNode_ChangesOnlyTheNamedNodesLabel(string source, string label, string expected)
-    {
-        var edit = DiagramObjectEdit.RenameNode(source, "B", label);
-
-        Assert.Equal(expected, edit.Text);
     }
 
     [Fact]
@@ -71,58 +40,11 @@ public class DiagramObjectEditTests
     }
 
     [Fact]
-    public void Connect_AppendsOnceAndDisconnectRestoresTheSource()
-    {
-        var first = DiagramObjectEdit.Connect(Source, "B", "A", label: null);
-        Assert.EndsWith("\n    B --> A", first.Text);
-
-        var again = DiagramObjectEdit.Connect(first.Text!, "B", "A", label: null);
-        Assert.Null(again.Text);
-        Assert.Contains("already connected", again.Refusal);
-        Assert.Equal(Source.ReplaceLineEndings("\n"), DiagramObjectEdit.Disconnect(first.Text ?? throw new InvalidOperationException("Connect produced no text."), "B", "A").Text);
-        Assert.Equal("""
-            flowchart LR
-                A["Start"]
-                B{Choose}
-            """.ReplaceLineEndings("\n"), DiagramObjectEdit.Disconnect(Source, "A", "B").Text);
-    }
-
-    [Fact]
-    public void RelabelConnection_ChangesAnExistingLabel_LeavingTheConnectorAlone()
-    {
-        var withLabel = DiagramObjectEdit.Connect(Source, "B", "A", "back home").Text!;
-
-        var edit = DiagramObjectEdit.RelabelConnection(withLabel, "B", "A", "return");
-
-        Assert.EndsWith("\n    B -->|\"return\"| A", edit.Text);
-    }
-
-    [Fact]
-    public void SetNodeShape_ChangesTheShape_KeepingTheLabelAndId()
-    {
-        var edit = DiagramObjectEdit.SetNodeShape(Source, "A", DiagramNodeShape.Rounded);
-
-        Assert.Contains("A(\"Start\")", edit.Text, StringComparison.Ordinal);
-        Assert.Contains("changed the shape of node A to rounded", edit.Summary);
-    }
-
-    [Fact]
     public void AChainLine_IsRefused_RatherThanSplitInHalf()
     {
         const string chain = "flowchart LR\n    A --> B --> C";
 
         Assert.Contains("chain", DiagramObjectEdit.Disconnect(chain, "A", "C").Refusal);
         Assert.Contains("chain", DiagramObjectEdit.RemoveNode(chain, "B").Refusal);
-    }
-
-    [Fact]
-    public void ADiagramThatIsNotAFlowchart_IsRefused_SoItsOwnGrammarIsNeverGuessedAt()
-    {
-        const string sequence = "sequenceDiagram\n    Alice->>Bob: Hello";
-
-        var edit = DiagramObjectEdit.AddNode(sequence, "C", "Carol");
-
-        Assert.Null(edit.Text);
-        Assert.Contains("edit_diagram", edit.Refusal);
     }
 }

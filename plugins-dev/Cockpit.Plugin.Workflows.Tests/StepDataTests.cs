@@ -9,20 +9,15 @@ namespace Cockpit.Plugin.Workflows.Tests;
 // string where a path should be is a worse outcome than a command that visibly did not resolve.
 public class StepDataTests
 {
-    [Fact]
-    public void WithAnEscaper_OnlyTheSubstitutedValueIsQuoted_NotTheTemplate()
+    // A plain field and a computed value are both quoted; the template around them is not.
+    [Theory]
+    [InlineData("echo {output}", "echo 'a; rm -rf ~'")]
+    [InlineData("echo {= 'a; b' }", "echo 'a; b'")]
+    public void WithAnEscaper_OnlyTheSubstitutedValueIsQuoted_NotTheTemplate(string template, string expected)
     {
-        var result = StepData.Resolve("echo {output}", _Items(("output", "a; rm -rf ~")), escapeValue: ShellQuoting.QuotePosix);
+        var result = StepData.Resolve(template, _Items(("output", "a; rm -rf ~")), escapeValue: ShellQuoting.QuotePosix);
 
-        Assert.Equal("echo 'a; rm -rf ~'", result.Text);
-    }
-
-    [Fact]
-    public void WithAnEscaper_AComputedValueIsQuotedToo_NotOnlyAPlainField()
-    {
-        var result = StepData.Resolve("echo {= 'a; b' }", [], escapeValue: ShellQuoting.QuotePosix);
-
-        Assert.Equal("echo 'a; b'", result.Text);
+        Assert.Equal(expected, result.Text);
     }
 
     private static IReadOnlyList<WorkflowItem> _Items(params (string Field, string Value)[] fields)

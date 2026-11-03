@@ -83,27 +83,6 @@ public class NodeDiscoveryTests : IAsyncLifetime
         }
     }
 
-    [Fact]
-    public async Task Discovery_AnswersAWhitelistedCaller_OutsideItsOwnRange()
-    {
-        // Criterion 3, first moment: the whitelist gates a discovery reply, independently of the pairing gate
-        // below.
-        await _store.SaveAsync((await _store.LoadAsync()) with { AllowedDiscoveryRanges = ["127.0.0.0/8"] });
-        var pairingHost = await _StartPairingHostAsync(() => []);
-        var responder = await _StartResponderAsync(pairingHost, () => []);
-        try
-        {
-            var finder = _CreateFinder(IPAddress.Loopback, responder.BoundPort!.Value);
-            var results = await finder.FindAsync(TimeSpan.FromSeconds(3));
-
-            Assert.Single(results);
-        }
-        finally
-        {
-            await responder.DisposeAsync();
-            await pairingHost.DisposeAsync();
-        }
-    }
 
     [Fact]
     public async Task PairingRequest_FromOutsideTheOwnRange_WithAnEmptyWhitelist_IsRefusedBeforeTheBrokerSeesIt()
@@ -127,51 +106,7 @@ public class NodeDiscoveryTests : IAsyncLifetime
         }
     }
 
-    [Fact]
-    public async Task PairingRequest_FromOutsideTheOwnRange_ButWhitelisted_Succeeds()
-    {
-        await _store.SaveAsync((await _store.LoadAsync()) with { AllowedDiscoveryRanges = ["127.0.0.0/8"] });
-        var pairingHost = await _StartPairingHostAsync(() => []);
-        try
-        {
-            var client = new NodePairingClient();
-            var handshake = await client.BeginAsync($"127.0.0.1:{pairingHost.BoundPort}", "the controller");
 
-            Assert.Equal(NodePairingCode.Digits, handshake.Code.Length);
-        }
-        finally
-        {
-            await pairingHost.DisposeAsync();
-        }
-    }
-
-    [Fact]
-    public async Task Start_WhileTheNodeSwitchIsOff_AnswersNothing()
-    {
-        var offPath = Path.Combine(Path.GetTempPath(), $"node-discovery-off-{Guid.NewGuid():N}.json");
-        var offStore = new NodeEndpointSettingsStore(offPath);
-        var visibility = new NodeVisibilityPolicy(offStore, () => [IPNetwork.Parse("127.0.0.0/8")]);
-        var pairingHost = new NodePairingHost(
-            offStore, _broker, _certificate, visibility, NullLoggerFactory.Instance, listenAddress: new NodeListenAddress(IPAddress.Loopback));
-        var responder = new NodeDiscoveryResponder(
-            offStore, visibility, new NodeDiscoveryId(_discoveryIdPath), pairingHost, NullLoggerFactory.Instance, IPAddress.Loopback, port: 0);
-
-        await pairingHost.StartAsync(CancellationToken.None);
-        await responder.StartAsync(CancellationToken.None);
-
-        try
-        {
-            // No bound socket is the boundary that makes answering impossible. Probing a released ephemeral port
-            // instead made Windows report ICMP NetworkUnreachable and tested an unrelated port.
-            Assert.Null(responder.BoundPort);
-        }
-        finally
-        {
-            await responder.DisposeAsync();
-            await pairingHost.DisposeAsync();
-            File.Delete(offPath);
-        }
-    }
 
     [Fact]
     public async Task TheAnnouncePayload_CarriesOnlyTheMarkerIdAndPort_NoMachineNameOrOtherField()

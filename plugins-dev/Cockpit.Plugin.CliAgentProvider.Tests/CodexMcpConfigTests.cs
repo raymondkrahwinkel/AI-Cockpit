@@ -28,47 +28,15 @@ public class CodexMcpConfigTests
         Assert.Equal(new[] { "-c", """mcp_servers.youtrack={ url = "http://127.0.0.1:9000/mcp", startup_timeout_sec = 60, bearer_token_env_var = "COCKPIT_MCP_TOKEN_0" }""" }, launch.ConfigArgs);
         Assert.DoesNotContain(launch.ConfigArgs, arg => arg.Contains(token));
         Assert.Contains(new KeyValuePair<string, string?>("COCKPIT_MCP_TOKEN_0", token), launch.EnvironmentVariables);
-    }
 
-    [Fact]
-    public void Build_IndexesTheTokenEnvVarPerServer_SoTwoTokensNeverCollide()
-    {
-        var launch = CodexMcpConfig.Build(
+        // The env var is indexed per server, so two tokens never collide.
+        var two = CodexMcpConfig.Build(
         [
             new PluginMcpServer { Name = "a", Url = "http://a/mcp", BearerToken = "token-a" },
             new PluginMcpServer { Name = "b", Url = "http://b/mcp", BearerToken = "token-b" },
         ]);
-
-        Assert.Contains(new KeyValuePair<string, string?>("COCKPIT_MCP_TOKEN_0", "token-a"), launch.EnvironmentVariables);
-        Assert.Contains(new KeyValuePair<string, string?>("COCKPIT_MCP_TOKEN_1", "token-b"), launch.EnvironmentVariables);
-    }
-
-    [Fact]
-    public void Build_ForAStdioServer_EmitsCommandAndArgs()
-    {
-        var launch = CodexMcpConfig.Build([new PluginMcpServer { Name = "fs", Command = "npx", Args = ["-y", "@modelcontextprotocol/server-filesystem"] }]);
-
-        Assert.Equal(new[] { "-c", """mcp_servers.fs={ command = "npx", args = ["-y", "@modelcontextprotocol/server-filesystem"] }""" }, launch.ConfigArgs);
-        Assert.Empty(launch.EnvironmentVariables);
-    }
-
-    [Fact]
-    public void Build_SanitizesAServerNameToCodexCharset_SoItStartsRatherThanBeingRejected()
-    {
-        // AC-77: Codex validates each server name against ^[a-zA-Z0-9_-]+$ and refuses "YouTrack: Personal" /
-        // "SQL Explorer" with "Invalid MCP server name". Every out-of-charset character folds to '_', and the
-        // result is a bare (unquoted) TOML key.
-        var launch = CodexMcpConfig.Build(
-        [
-            new PluginMcpServer { Name = "YouTrack: Personal", Url = "http://x/mcp" },
-            new PluginMcpServer { Name = "SQL Explorer", Url = "http://y/mcp" },
-        ]);
-
-        Assert.Equal(new[]
-        {
-            "-c", """mcp_servers.YouTrack__Personal={ url = "http://x/mcp", startup_timeout_sec = 60 }""",
-            "-c", """mcp_servers.SQL_Explorer={ url = "http://y/mcp", startup_timeout_sec = 60 }""",
-        }, launch.ConfigArgs);
+        Assert.Contains(new KeyValuePair<string, string?>("COCKPIT_MCP_TOKEN_0", "token-a"), two.EnvironmentVariables);
+        Assert.Contains(new KeyValuePair<string, string?>("COCKPIT_MCP_TOKEN_1", "token-b"), two.EnvironmentVariables);
     }
 
     [Fact]

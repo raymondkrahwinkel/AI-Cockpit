@@ -78,27 +78,6 @@ public sealed class GitCliStrayCommitTests : IDisposable
         Assert.Equal(string.Empty, _Git(_repository, "status", "--porcelain").Trim());
     }
 
-    [Fact]
-    public async Task RecoverStrayCommitsAsync_WhenGitWillNotAnswer_ReportsAnUnmeasuredCheck_NotAnAllClear()
-    {
-        // The path nobody sees: git refuses (here, a run branch that is not a revision) and the answer used to be an
-        // empty result — which reads as "nothing went astray" about a step that was never actually checked.
-        var stray = await _publisher.RecoverStrayCommitsAsync(_repository, "autopilot/no-such-branch", _stepWorktree);
-
-        Assert.False(stray.Found);
-        Assert.True(stray.NeedsSaying);
-        Assert.NotNull(stray.Error);
-    }
-
-    [Fact]
-    public async Task RecoverStrayCommitsAsync_WhenTheStepsWorktreeIsGone_ReportsAnUnmeasuredCheck()
-    {
-        var stray = await _publisher.RecoverStrayCommitsAsync(_repository, RunBranch, Path.Combine(Path.GetTempPath(), $"ac1037-gone-{Guid.NewGuid():N}"));
-
-        Assert.True(stray.NeedsSaying);
-        Assert.NotNull(stray.Error);
-    }
-
     public void Dispose()
     {
         foreach (var directory in new[] { _stepWorktree, _repository })

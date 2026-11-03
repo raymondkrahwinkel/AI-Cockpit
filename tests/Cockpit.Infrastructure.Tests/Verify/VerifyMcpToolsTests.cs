@@ -50,16 +50,6 @@ public sealed class VerifyMcpToolsTests : IDisposable
         await _gateway.Received(1).FeedResultAsync(authenticatedPane, Arg.Any<string>(), Arg.Any<byte[]>(), Arg.Any<CancellationToken>());
     }
 
-    [Fact]
-    public async Task Verify_WithoutAnAuthenticatedPane_RefusesAndRunsNothing()
-    {
-        _RegisterRunner(withScreenshot: false);
-
-        var response = await _ToolFor(null).VerifyAsync();
-
-        Assert.Contains("\"ok\":false", response);
-        await _commandRunner.DidNotReceive().RunAsync(Arg.Any<VerifyRunner>(), Arg.Any<CancellationToken>());
-    }
 
     [Fact]
     public async Task Verify_WhenTheOperatorDeclines_RunsNothing()

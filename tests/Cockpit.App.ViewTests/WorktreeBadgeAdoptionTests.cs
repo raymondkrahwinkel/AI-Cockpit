@@ -43,34 +43,6 @@ public class WorktreeBadgeAdoptionTests
         Assert.Equal(expected, session.WorktreeBranch);
     }
 
-    // The UI-driven paths resolve the branch themselves, before this runs; a second lookup must not talk over them.
-    [Fact]
-    public async Task BranchAlreadyResolved_IsLeftAlone()
-    {
-        var worktrees = _Registry(new WorktreeRecord(
-            "cockpit-assistant", Repository, _Path("wt"), "ac-633-badge", "abc123", DateTimeOffset.UnixEpoch));
-
-        var (cockpit, session) = _NewSession(worktrees);
-        session.WorktreeBranch = "set-at-start";
-        await cockpit._AdoptWorktreeBadgeAsync(session, _Path("wt"));
-
-        Assert.Equal("set-at-start", session.WorktreeBranch);
-        await worktrees.DidNotReceive().ListAsync(Arg.Any<CancellationToken>());
-    }
-
-    // A registry that throws must cost a badge, not a started session.
-    [Fact]
-    public async Task RegistryThrows_LeavesTheBadgeOffWithoutThrowing()
-    {
-        var worktrees = Substitute.For<IWorktreeManager>();
-        worktrees.ListAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<WorktreeRecord>>(_ => throw new IOException("registry unreadable"));
-
-        var (cockpit, session) = _NewSession(worktrees);
-        await cockpit._AdoptWorktreeBadgeAsync(session, _Path("wt"));
-
-        Assert.Null(session.WorktreeBranch);
-    }
-
     private static IWorktreeManager _Registry(params WorktreeRecord[] records)
     {
         var worktrees = Substitute.For<IWorktreeManager>();

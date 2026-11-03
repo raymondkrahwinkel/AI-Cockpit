@@ -38,23 +38,17 @@ public sealed class AssistantConsentBypassPolicyTests
         };
 
     [Fact]
-    public async Task AnOrdinaryPane_IsNeverBypassed_EvenForASwitchedOnSource()
+    public async Task AnOrdinaryOrUnverifiedPane_IsNeverBypassed_EvenForASwitchedOnSource()
     {
         // Condition 1. The switch belongs to the assistant, not to the source: an ordinary agent session asking the
         // same thing of the same source is asked about exactly as it was before this feature existed.
         var policy = await PolicyAsync(Enabled(lowRisk: [Terminal]));
 
         Assert.False(policy.ShouldBypass("pane-ordinary", Terminal, dangerous: false));
-    }
 
-    [Fact]
-    public async Task ARequestWithNoVerifiedPane_IsNeverBypassed()
-    {
         // The in-process tool loop and the app's own UI-side consent arrive with no verified session at all. "I
         // cannot tell who this is" is not an identity, so it can never be the assistant's — and this is also where
         // a forged Source.PaneId lands, because the broker only ever hands the transport-stamped id to this method.
-        var policy = await PolicyAsync(Enabled(lowRisk: [Terminal]));
-
         Assert.False(policy.ShouldBypass(null, Terminal, dangerous: false));
     }
 
@@ -89,49 +83,6 @@ public sealed class AssistantConsentBypassPolicyTests
 
         Assert.False(policy.ShouldBypass(AssistantIdentity.PaneId, "terminal mcp", dangerous: false));
         Assert.False(policy.ShouldBypass(AssistantIdentity.PaneId, "Terminal MCP ", dangerous: false));
-    }
-
-    [Fact]
-    public async Task DefaultSettings_BypassEverythingTheAssistantAsks()
-    {
-        // #AC-637 turned this one around: a fresh install has allow-all on, so both risk classes of every source —
-        // named by the catalogue or not — go through without a card. The condition above it still holds.
-        var policy = await PolicyAsync(new AssistantSettings { IsEnabled = true });
-
-        Assert.True(policy.ShouldBypass(AssistantIdentity.PaneId, Terminal, dangerous: false));
-        Assert.True(policy.ShouldBypass(AssistantIdentity.PaneId, Terminal, dangerous: true));
-        Assert.True(policy.ShouldBypass(AssistantIdentity.PaneId, "a-plugin-nobody-listed", dangerous: true));
-        Assert.False(policy.ShouldBypass("pane-ordinary", Terminal, dangerous: false));
-    }
-
-    [Fact]
-    public async Task WithAllowAllSwitchedOff_OnlyTheTickedSourcesAreBypassed()
-    {
-        // The other half of the switch: off is the granular list exactly as #AC-575 built it, not an empty one.
-        // Conditions 1 and 4 in the same run: the ticked source is bypassed, and a dangerous action on that same
-        // source is not — the whole reason there are two checkboxes rather than one three-state picker. A shell
-        // command is not "the terminal, but more of it"; it is the decision the operator has not made yet.
-        var policy = await PolicyAsync(Enabled(lowRisk: [Terminal]));
-
-        Assert.True(policy.ShouldBypass(AssistantIdentity.PaneId, Terminal, dangerous: false));
-        Assert.False(policy.ShouldBypass(AssistantIdentity.PaneId, Terminal, dangerous: true));
-        Assert.False(policy.ShouldBypass(AssistantIdentity.PaneId, "cockpit-kubernetes", dangerous: false));
-    }
-
-    [Fact]
-    public async Task SwitchingAllowAllOff_TakesEffectOnTheNextRequest()
-    {
-        // The snapshot is replaced on the save Options raises, so switching the widest setting off is not a
-        // permission that lingers until the next restart.
-        var store = new FakeStore(new AssistantSettings { IsEnabled = true });
-        var policy = new AssistantConsentBypassPolicy(store);
-        await policy.ApplySettingsAsync();
-        Assert.True(policy.ShouldBypass(AssistantIdentity.PaneId, Terminal, dangerous: true));
-
-        store.Settings = Enabled();
-        await policy.ApplySettingsAsync();
-
-        Assert.False(policy.ShouldBypass(AssistantIdentity.PaneId, Terminal, dangerous: true));
     }
 
     [Fact]

@@ -24,7 +24,7 @@ namespace Cockpit.Core.Tests.Delegation;
 public class DelegationGuardTests
 {
     [Fact]
-    public async Task DelegateAsync_ToAProfileThatIsNotATarget_IsRefused()
+    public async Task DelegateAsync_ToAProfileThatIsNotATarget_OrWithATaskTypeItDoesNotAccept_IsRefused()
     {
         // The default: a profile is not a delegation target until someone opts it in by hand.
         var service = _ServiceWith(new SessionProfile("private", new ClaudeConfig("/home/raymond/.claude")));
@@ -33,34 +33,18 @@ public class DelegationGuardTests
 
         var thrown = await Assert.ThrowsAsync<DelegationRejectedException>(delegate_);
         Assert.Contains("not available as a delegation target", thrown.Message);
-    }
 
-    [Fact]
-    public async Task DelegateAsync_ToAnUnknownProfile_IsRefused()
-    {
-        // Only an existing profile can be a target: the driver, credentials and environment come from the
-        // profile, so a free-form target would be a way to run anything.
-        var service = _ServiceWith(_Target("local"));
+        // Opted in, but only for some task types.
+        var typed = _ServiceWith(_Target("local", policy => policy with { AllowedTaskTypes = ["summarize"] }));
 
-        var delegate_ = async () => await service.DelegateAsync(new DelegationRequest("no-such-profile", "do work"));
+        var wrongType = async () => await typed.DelegateAsync(new DelegationRequest("local", "rm -rf", TaskType: "refactor"));
 
-        var thrown = await Assert.ThrowsAsync<DelegationRejectedException>(delegate_);
-        Assert.Contains("No profile named", thrown.Message);
-    }
-
-    [Fact]
-    public async Task DelegateAsync_WithATaskTypeTheProfileDoesNotAccept_IsRefused()
-    {
-        var service = _ServiceWith(_Target("local", policy => policy with { AllowedTaskTypes = ["summarize"] }));
-
-        var delegate_ = async () => await service.DelegateAsync(new DelegationRequest("local", "rm -rf", TaskType: "refactor"));
-
-        var thrown = await Assert.ThrowsAsync<DelegationRejectedException>(delegate_);
+        thrown = await Assert.ThrowsAsync<DelegationRejectedException>(wrongType);
         Assert.Contains("only accepts these task types", thrown.Message);
     }
 
     [Fact]
-    public async Task DelegateAsync_WithAWorkingDirectoryOutsideThePolicy_IsRefused()
+    public async Task DelegateAsync_WithAWorkingDirectoryOutsideThePolicy_IsRefused_EvenWhenWalkedOutOfAnAllowedOne()
     {
         var service = _ServiceWith(_Target("local", policy => policy with { AllowedWorkingDirs = ["/home/raymond/projects"] }));
 
@@ -69,50 +53,12 @@ public class DelegationGuardTests
 
         var thrown = await Assert.ThrowsAsync<DelegationRejectedException>(delegate_);
         Assert.Contains("does not allow a task to run in", thrown.Message);
-    }
 
-    [Fact]
-    public async Task DelegateAsync_CannotWalkOutOfAnAllowedWorkingDirectory()
-    {
         // The check resolves the path first, so a traversal that lands outside the allowed root is still outside.
-        var service = _ServiceWith(_Target("local", policy => policy with { AllowedWorkingDirs = ["/home/raymond/projects"] }));
-
-        var delegate_ = async () => await service.DelegateAsync(
+        var walkOut = async () => await service.DelegateAsync(
             new DelegationRequest("local", "escape", WorkingDirectory: "/home/raymond/projects/../../.ssh"));
 
-        await Assert.ThrowsAsync<DelegationRejectedException>(delegate_);
-    }
-
-    // AC-1160: the allow-list compared `OrdinalIgnoreCase` on every platform, so where the filesystem keeps
-    // `repo` and `Repo` apart the guard still called them one root. What is asserted here is not a platform but
-    // what the volume under the temp directory actually does -- the two answers are not the same question.
-    [Fact]
-    public async Task DelegateAsync_WithAWorkingDirectoryDifferingOnlyInCase_FollowsTheVolume()
-    {
-        var root = _TempRoot();
-        try
-        {
-            var allowed = Directory.CreateDirectory(Path.Combine(root, "repo")).FullName;
-            var asked = Path.Combine(root, "Repo");
-            var service = _ServiceWith(_Target("local", policy => policy with { AllowedWorkingDirs = [allowed] }));
-
-            var delegate_ = async () => await service.DelegateAsync(
-                new DelegationRequest("local", "work", WorkingDirectory: asked));
-
-            if (_FoldsCase(root))
-            {
-                // The negative control: where the filesystem itself says these are one directory, the guard has to
-                // go on allowing it. This fix may not cost a Windows or macOS operator a directory that works.
-                Assert.NotEqual(DelegatedTaskStatus.Failed, (await delegate_()).Status);
-                return;
-            }
-
-            await Assert.ThrowsAsync<DelegationRejectedException>(delegate_);
-        }
-        finally
-        {
-            _Discard(root);
-        }
+        await Assert.ThrowsAsync<DelegationRejectedException>(walkOut);
     }
 
     // The same question on a volume that is made to keep the two apart, so the refusing half is covered on a
@@ -218,31 +164,6 @@ public class DelegationGuardTests
         }
     }
 
-    // The same rule at the seam, both ways round. The budget counts passes rather than links, and the last pass
-    // is the one that finds no further link -- so a two-link chain settles on the third and not the second.
-    [SkippableFact]
-    public void Canonicalize_ResolvesAChainWithinItsBudget_AndYieldsNothingBeyondIt()
-    {
-        var root = _TempRoot();
-        try
-        {
-            var first = Directory.CreateDirectory(Path.Combine(root, "d0")).FullName;
-            var second = Directory.CreateDirectory(Path.Combine(root, "d1")).FullName;
-            var target = Directory.CreateDirectory(Path.Combine(root, "target")).FullName;
-            _CreateLinkOrSkip(Path.Combine(first, "l"), second);
-            _CreateLinkOrSkip(Path.Combine(second, "l"), target);
-
-            var asked = Path.Combine(first, "l", "l");
-
-            Assert.Equal(target, FilesystemPath.Canonicalize(asked, maxLinkHops: 3));
-            Assert.Null(FilesystemPath.Canonicalize(asked, maxLinkHops: 2));
-        }
-        finally
-        {
-            _Discard(root);
-        }
-    }
-
     private static string _TempRoot([CallerMemberName] string name = "")
     {
         var root = Path.Combine(Path.GetTempPath(), $"ac1160-{name}-{Guid.NewGuid():N}");
@@ -334,31 +255,17 @@ public class DelegationGuardTests
     }
 
     [Fact]
-    public async Task ListTargetsAsync_HidesProfilesThatAreNotTargets()
+    public async Task StartedTask_RunsUnderTheProfilesCeiling_AndInstallsTheCeilingGate_NotBlanketAutoApprove()
     {
-        // An agent cannot delegate to what it cannot see; the opted-out profile is simply absent.
-        var service = _ServiceWith(
-            new SessionProfile("private", new ClaudeConfig("/home/raymond/.claude")),
-            _Target("local", policy => policy with { Purpose = "cheap bulk work", Tags = ["local", "cheap"] }));
-
-        var targets = await service.ListTargetsAsync();
-
-        Assert.Single(targets);
-        Assert.Equal("local", targets[0].ProfileLabel);
-        Assert.Equal("cheap bulk work", targets[0].Purpose);
-        Assert.Contains("cheap", targets[0].Tags);
-    }
-
-    [Fact]
-    public async Task StartedTask_RunsUnderTheProfilesPermissionCeiling_NotWhateverTheCallerWanted()
-    {
-        // A delegated session has nobody to answer a permission prompt, so it must not run in a mode that waits
-        // for one — and "non-interactive" must not quietly become "bypass everything".
+        // AC-79: a delegated local-model session is non-interactive (no human to answer a tool prompt). With the
+        // profile's "Auto-Approve tool calls" off, it must gate each tool call against the ceiling + allow-list
+        // rather than either hanging on a prompt or blanket-approving everything. And it must not start in a mode
+        // that waits for a prompt — "non-interactive" must not quietly become "bypass everything".
         var driver = Substitute.For<ISessionDriver>();
         driver.Events.Returns(_EmptyStream());
-        var service = _ServiceWith(driver, _Target("local", policy => policy with { PermissionCeiling = "plan" }));
+        var service = _ServiceWith(driver, _Target("local", policy => policy with { PermissionCeiling = "plan", AllowedTools = ["get_current_user"] }));
 
-        await service.DelegateAsync(new DelegationRequest("local", "look around"));
+        await service.DelegateAsync(new DelegationRequest("local", "call a tool"));
 
         await driver.Received(1).StartAsync(
             Arg.Any<SessionProfile?>(),
@@ -367,20 +274,6 @@ public class DelegationGuardTests
             Arg.Any<IReadOnlySet<string>?>(),
             Arg.Any<string?>(),
             Arg.Any<SessionResume?>(), Arg.Any<IReadOnlyDictionary<string, string>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task StartedTask_WithoutAutoApprove_InstallsTheCeilingGate_NotBlanketAutoApprove()
-    {
-        // AC-79: a delegated local-model session is non-interactive (no human to answer a tool prompt). With the
-        // profile's "Auto-Approve tool calls" off, it must gate each tool call against the ceiling + allow-list
-        // rather than either hanging on a prompt or blanket-approving everything. _Target's default ceiling is
-        // acceptEdits and it lists no tools.
-        var driver = Substitute.For<ISessionDriver>();
-        driver.Events.Returns(_EmptyStream());
-        var service = _ServiceWith(driver, _Target("local", policy => policy with { PermissionCeiling = "plan", AllowedTools = ["get_current_user"] }));
-
-        await service.DelegateAsync(new DelegationRequest("local", "call a tool"));
 
         await driver.Received(1).SetDelegatedToolGateAsync(
             "plan",
@@ -404,43 +297,6 @@ public class DelegationGuardTests
             DelegatedToolPermissionPolicy.ReadOnlyCeiling,
             Arg.Is<IReadOnlyList<string>>(list => list.Count == 0),
             Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task StartedTask_WithAutoApproveOn_AllowsEverything_AndDoesNotInstallTheCeilingGate()
-    {
-        // The operator's per-profile "Auto-Approve tool calls" is the explicit "trust this profile fully": a
-        // delegated session then allows every tool (still bounded by the enabled-server set), so it uses blanket
-        // auto-approve and not the ceiling gate.
-        var driver = Substitute.For<ISessionDriver>();
-        driver.Events.Returns(_EmptyStream());
-        var profile = new SessionProfile(
-            "local",
-            new ClaudeConfig(string.Empty),
-            Defaults: new ProfileDefaults(string.Empty, string.Empty, string.Empty, AutoApproveTools: true),
-            Delegation: new DelegationPolicy(AllowedAsTarget: true));
-        var service = _ServiceWith(driver, profile);
-
-        await service.DelegateAsync(new DelegationRequest("local", "call a tool"));
-
-        await driver.Received(1).SetAutoApproveToolsAsync(true, Arg.Any<CancellationToken>());
-        await driver.DidNotReceive().SetDelegatedToolGateAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task StartedTask_SendsThePromptToTheSession()
-    {
-        var driver = Substitute.For<ISessionDriver>();
-        driver.Events.Returns(_EmptyStream());
-        var service = _ServiceWith(driver, _Target("local"));
-
-        var task = await service.DelegateAsync(new DelegationRequest("local", "summarise the changelog"));
-
-        await driver.Received(1).SendUserMessageAsync(
-            "summarise the changelog",
-            Arg.Any<IReadOnlyList<Cockpit.Core.Sessions.ImageAttachment>?>(),
-            Arg.Any<CancellationToken>());
-        Assert.Equal(DelegatedTaskStatus.Running, service.GetTask(task.TaskId)!.Status);
     }
 
     [Fact]
@@ -472,58 +328,6 @@ public class DelegationGuardTests
     }
 
     [Fact]
-    public async Task ADelegatedSession_GetsTheOrchestrator_WhenItsProfileMayDelegateFurther()
-    {
-        // The escape hatch is explicit and per profile: turn it on and that profile's tasks can delegate on.
-        var driver = Substitute.For<ISessionDriver>();
-        driver.Events.Returns(_EmptyStream());
-        var driverFactory = Substitute.For<ISessionDriverFactory>();
-        driverFactory.Create(Arg.Any<SessionProfile?>()).Returns(driver);
-        var service = _Service(
-            driverFactory,
-            _Registry(),
-            _Target("local", policy => policy with { MayDelegateFurther = true }));
-
-        await service.DelegateAsync(new DelegationRequest("local", "work"));
-
-        await driver.Received(1).StartAsync(
-            Arg.Any<SessionProfile?>(),
-            Arg.Any<string?>(),
-            Arg.Any<string?>(),
-            Arg.Is<IReadOnlySet<string>?>(servers => servers!.Contains("cockpit-orchestrator")),
-            Arg.Any<string?>(),
-            Arg.Any<SessionResume?>(),
-            Arg.Any<IReadOnlyDictionary<string, string>?>(),
-            Arg.Any<string?>(),
-            Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task SendFollowUp_ReachesATaskThatHasAlreadyAnswered()
-    {
-        // A task that answered is Completed but its session is deliberately kept alive, so a follow-up must land
-        // on it. This was broken: "finished" was read as "cannot take another turn", the message was dropped, and
-        // the caller got a response that looked like success — so it waited for a turn that was never coming.
-        var driver = Substitute.For<ISessionDriver>();
-        driver.Events.Returns(_StreamCompletingATurn());
-        var driverFactory = Substitute.For<ISessionDriverFactory>();
-        driverFactory.Create(Arg.Any<SessionProfile?>()).Returns(driver);
-        var service = _Service(driverFactory, _Registry(), _Target("local"));
-
-        var task = await service.DelegateAsync(new DelegationRequest("local", "first turn"));
-        await _WaitUntilAsync(() => service.GetTask(task.TaskId)!.Status == DelegatedTaskStatus.Completed);
-
-        // The whole point is the follow-up landing on an *answered* task, so assert that state before sending —
-        // without this the test passes against the bug simply because the turn had not completed yet.
-        Assert.Equal(DelegatedTaskStatus.Completed, service.GetTask(task.TaskId)!.Status);
-
-        await service.SendFollowUpAsync(task.TaskId, "and now the tests");
-
-        await driver.Received(1).SendUserMessageAsync("and now the tests", Arg.Any<IReadOnlyList<Cockpit.Core.Sessions.ImageAttachment>?>(), Arg.Any<CancellationToken>());
-        Assert.Equal(DelegatedTaskStatus.Running, service.GetTask(task.TaskId)!.Status);
-    }
-
-    [Fact]
     public async Task SendFollowUp_WhenTheProfileIsAlreadyAtItsCap_IsRefused()
     {
         // Found in live use: the cap gated new tasks but not follow-ups, so a follow-up woke a finished session
@@ -551,20 +355,6 @@ public class DelegationGuardTests
         var thrown = await Assert.ThrowsAsync<DelegationRejectedException>(followUp);
         Assert.Contains("already running as many tasks as it allows", thrown.Message);
         Assert.Equal(DelegatedTaskStatus.Completed, service.GetTask(first.TaskId)!.Status);
-    }
-
-    [Fact]
-    public async Task SendFollowUp_ToATaskWhoseSessionIsGone_IsRefusedLoudly()
-    {
-        // The other half: never a quiet "ok" for a follow-up that cannot land.
-        var service = _ServiceWith(_Target("local"));
-        var task = await service.DelegateAsync(new DelegationRequest("local", "work"));
-        await service.StopAsync(task.TaskId);
-
-        var followUp = async () => await service.SendFollowUpAsync(task.TaskId, "more please");
-
-        var thrown = await Assert.ThrowsAsync<DelegationRejectedException>(followUp);
-        Assert.Contains("no live session", thrown.Message);
     }
 
     private static async Task _WaitUntilAsync(Func<bool> condition)

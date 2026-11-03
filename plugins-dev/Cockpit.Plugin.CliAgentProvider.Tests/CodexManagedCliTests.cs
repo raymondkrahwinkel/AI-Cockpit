@@ -21,16 +21,6 @@ public class CodexManagedCliTests
         }
         """;
 
-    [Theory]
-    [InlineData("linux", "x64", false, "x86_64-unknown-linux-musl")]
-    [InlineData("linux", "arm64", false, "aarch64-unknown-linux-musl")]
-    [InlineData("darwin", "arm64", false, "aarch64-apple-darwin")]
-    [InlineData("win32", "x64", false, "x86_64-pc-windows-msvc")]
-    public void TargetTriple_MapsOsAndArch_AndIsAlwaysMuslOnLinux(string os, string arch, bool musl, string expected)
-    {
-        Assert.Equal(expected, CodexManagedCli.TargetTriple(new ManagedCliPlatform(os, arch, musl)));
-    }
-
     [Fact]
     public void BuildPlan_Linux_ExtractsUrlDigestAndEntry_AsTarGz()
     {

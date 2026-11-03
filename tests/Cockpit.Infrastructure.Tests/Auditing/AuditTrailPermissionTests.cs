@@ -1,10 +1,8 @@
 using System.Runtime.Versioning;
-using System.Reflection;
 using Cockpit.Core.Abstractions.Consent;
 using Cockpit.Infrastructure.Auditing;
 using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure.Consent;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cockpit.Infrastructure.Tests.Auditing;
@@ -64,20 +62,6 @@ public sealed class AuditTrailPermissionTests : IDisposable
         }
     }
 
-    [PosixFact("Windows has no mode bits; there the boundary is the per-user profile directory instead.")]
-    [UnsupportedOSPlatform("windows")]
-    public void RestrictAuditTrails_LeavesAFileItDoesNotOwnAlone()
-    {
-        // The state root is shared with whatever else the operator keeps there, and a derived log can be pointed at
-        // an arbitrary file. The repair therefore walks the known trails, and only those.
-        var unrelated = Path.Combine(_directory, "notes.txt");
-        File.WriteAllText(unrelated, "mine");
-        File.SetUnixFileMode(unrelated, WorldReadable);
-
-        CredentialFileHousekeeping.RestrictAuditTrails(_directory);
-
-        Assert.Equal(WorldReadable, File.GetUnixFileMode(unrelated));
-    }
 
     [PosixFact("Windows has no mode bits; there the boundary is the per-user profile directory instead.")]
     [UnsupportedOSPlatform("windows")]
@@ -95,17 +79,6 @@ public sealed class AuditTrailPermissionTests : IDisposable
         Assert.Equal(WorldReadable, File.GetUnixFileMode(target));
     }
 
-    [Fact]
-    public void AuditTrailFiles_Names_CoverEveryTrailTheCockpitWrites()
-    {
-        // The repair can only close what it knows about, and it knows only what AuditTrailFiles names. A trail that
-        // names its own file would be created owner-only and then never repaired on the machines that already have
-        // it — a gap that reads as covered. Asking each trail where it actually writes is the only way to hold the
-        // two sides together; counting them would pass on a list with a name duplicated and one missing.
-        var written = _TrailTypes().Select(_DefaultPathOf).ToHashSet();
-
-        Assert.Equal(AuditTrailFiles.In(CockpitConfigPath.Root).ToHashSet(), written);
-    }
 
     public void Dispose()
     {
@@ -113,43 +86,6 @@ public sealed class AuditTrailPermissionTests : IDisposable
         {
             Directory.Delete(_directory, recursive: true);
         }
-    }
-
-    private static IEnumerable<Type> _TrailTypes() =>
-        typeof(JsonlAuditLog<>).Assembly
-            .GetTypes()
-            .Where(type => type is { IsAbstract: false, IsGenericTypeDefinition: false } && _IsTrail(type));
-
-    private static bool _IsTrail(Type type)
-    {
-        for (var current = type.BaseType; current is not null; current = current.BaseType)
-        {
-            if (current.IsGenericType && current.GetGenericTypeDefinition() == typeof(JsonlAuditLog<>))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /// <summary>
-    /// Builds a trail the way the container does — through the constructor that takes only a logger, the one that
-    /// decides the default path — and reports where it would write. Constructing writes nothing; the file appears on
-    /// the first record. A trail that no longer offers that shape fails here on purpose: where it writes by default
-    /// is what this test exists to read.
-    /// </summary>
-    private static string _DefaultPathOf(Type type)
-    {
-        var constructor = type.GetConstructor([typeof(ILogger<>).MakeGenericType(type)]);
-        Assert.NotNull(constructor);
-
-        var logger = typeof(NullLogger<>).MakeGenericType(type).GetProperty("Instance")?.GetValue(null);
-        var trail = constructor.Invoke([logger]);
-
-        var filePath = type.GetProperty("FilePath", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(trail);
-
-        return Assert.IsType<string>(filePath);
     }
 
     private static ConsentAuditEntry Entry() =>

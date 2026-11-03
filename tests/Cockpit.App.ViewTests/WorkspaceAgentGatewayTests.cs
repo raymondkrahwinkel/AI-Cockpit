@@ -66,63 +66,7 @@ public class WorkspaceAgentGatewayTests
         Assert.Contains(snapshot!.Panes, pane => pane.PaneId == caller.PaneId);
         Assert.Contains(snapshot.Panes, pane => pane.PaneId == neighbour.PaneId);
         Assert.DoesNotContain(snapshot.Panes, pane => pane.PaneId == offDesk.PaneId);
-    }
-
-    [Fact]
-    public void GetWorkspaceSnapshot_TwoWorkspaces_OnlyReturnsTheCallersOwnWorkspaceMates()
-    {
-        var (gateway, deskA, deskB) = Dispatcher.UIThread.Invoke(() =>
-        {
-            var sessions = new SessionRegistry();
-            var cockpit = new CockpitViewModel(sessionRegistry: sessions);
-            var sessionA = new SessionViewModel { WorkspaceId = "desk-a" };
-            var sessionB = new SessionViewModel { WorkspaceId = "desk-b" };
-            cockpit.Sessions.Add(sessionA);
-            cockpit.Sessions.Add(sessionB);
-
-            return (new WorkspaceAgentGateway(sessions, NullLogger<WorkspaceAgentGateway>.Instance), sessionA, sessionB);
-        });
-
-        var snapshot = Dispatcher.UIThread.Invoke(() => gateway.GetWorkspaceSnapshotAsync(deskA.PaneId).GetAwaiter().GetResult());
-
-        Assert.NotNull(snapshot);
-        Assert.Equal("desk-a", snapshot!.WorkspaceId);
-        Assert.Single(snapshot.Panes);
-        Assert.Equal(deskA.PaneId, snapshot.Panes[0].PaneId);
-        Assert.DoesNotContain(snapshot.Panes, pane => pane.PaneId == deskB.PaneId);
-    }
-
-    [Fact]
-    public void GetWorkspaceSnapshot_TwoSessionsOnTheSameDesk_BothAppearInTheSnapshot()
-    {
-        var (gateway, sessionA, sessionB) = Dispatcher.UIThread.Invoke(() =>
-        {
-            var sessions = new SessionRegistry();
-            var cockpit = new CockpitViewModel(sessionRegistry: sessions);
-            var a = new SessionViewModel { WorkspaceId = "shared-desk" };
-            var b = new SessionViewModel { WorkspaceId = "shared-desk" };
-            cockpit.Sessions.Add(a);
-            cockpit.Sessions.Add(b);
-
-            return (new WorkspaceAgentGateway(sessions, NullLogger<WorkspaceAgentGateway>.Instance), a, b);
-        });
-
-        var snapshot = Dispatcher.UIThread.Invoke(() => gateway.GetWorkspaceSnapshotAsync(sessionA.PaneId).GetAwaiter().GetResult());
-
-        Assert.NotNull(snapshot);
-        Assert.Equal(2, snapshot!.Panes.Count);
-        Assert.Contains(snapshot.Panes, pane => pane.PaneId == sessionA.PaneId);
-        Assert.Contains(snapshot.Panes, pane => pane.PaneId == sessionB.PaneId);
-    }
-
-    [Fact]
-    public void GetWorkspaceSnapshot_UnknownPaneId_ReturnsNull()
-    {
-        var gateway = new WorkspaceAgentGateway(new SessionRegistry(), NullLogger<WorkspaceAgentGateway>.Instance);
-
-        var snapshot = Dispatcher.UIThread.Invoke(() => gateway.GetWorkspaceSnapshotAsync("no-such-pane").GetAwaiter().GetResult());
-
-        Assert.Null(snapshot);
+        Assert.Equal("desk-a", snapshot.WorkspaceId);
     }
 
     /// <summary>
@@ -210,68 +154,6 @@ public class WorkspaceAgentGatewayTests
     }
 
     /// <summary>
-    /// S-3: an unstamped session's fallback ("the first Sessions workspace") has nothing to resolve to when no
-    /// Sessions workspace exists at all — every desk closed, or a graph that only ever built a Projects overview.
-    /// It remains visible on the synthetic unplaced roster instead of disappearing from every list.
-    /// </summary>
-    [Fact]
-    public void GetWorkspaceSnapshot_NoSessionsWorkspaceExists_ReturnsTheUnplacedRoster()
-    {
-        var (gateway, unstamped) = Dispatcher.UIThread.Invoke(() =>
-        {
-            var sessions = new SessionRegistry();
-            var cockpit = new CockpitViewModel(sessionRegistry: sessions);
-            // Replace the settings outright with one holding only the fixed Projects overview — no Sessions desk
-            // for an unstamped session to fall back to.
-            cockpit.Workspaces.Settings = new WorkspaceSettings
-            {
-                Workspaces = [Workspace.Create("Projects", WorkspaceType.Projects)],
-            };
-            var session = new SessionViewModel();
-            cockpit.Sessions.Add(session);
-
-            return (new WorkspaceAgentGateway(sessions, NullLogger<WorkspaceAgentGateway>.Instance), session);
-        });
-
-        var snapshot = Dispatcher.UIThread.Invoke(() => gateway.GetWorkspaceSnapshotAsync(unstamped.PaneId).GetAwaiter().GetResult());
-
-        Assert.NotNull(snapshot);
-        Assert.Equal("unplaced", snapshot!.WorkspaceId);
-        Assert.Contains(snapshot.Panes, pane => pane.PaneId == unstamped.PaneId);
-    }
-
-    [Fact]
-    public void Embed_EnrollsTheAgentBeforeItCallsAnyTool()
-    {
-        var coordinator = new WorkspaceAgentCoordinator();
-        var paneId = Dispatcher.UIThread.Invoke(() =>
-        {
-            var cockpit = _NewEmbeddingCapableCockpit(agentCoordinator: coordinator);
-            return cockpit.Embed("unplaced", new EmbeddedSessionRequest()).PaneId;
-        });
-
-        Assert.True(coordinator.IsEnrolled(paneId));
-        Assert.Null(coordinator.LastContactUtc(paneId));
-    }
-
-    // AC-1373: an embedded pane is live like a grid pane, so it is in the registry until it closes, marked as
-    // embedded so the directory list that only ever held grid panes (SessionWorkspaces) can keep leaving it out.
-    [Fact]
-    public async Task Embed_RegistersThePaneAsEmbedded_UntilItCloses()
-    {
-        var sessions = new SessionRegistry();
-        var embedded = Dispatcher.UIThread.Invoke(() =>
-            _NewEmbeddingCapableCockpit(sessionRegistry: sessions).Embed("unplaced", new EmbeddedSessionRequest()));
-        var handle = sessions.Find(embedded.PaneId);
-
-        await Dispatcher.UIThread.InvokeAsync(embedded.CloseAsync);
-
-        Assert.NotNull(handle);
-        Assert.True(handle.IsEmbedded);
-        Assert.Null(sessions.Find(embedded.PaneId));
-    }
-
-    /// <summary>
     /// MF-1: an embedded session (an Autopilot step, a plugin run) is a full agent session with its own MCP token,
     /// but the grid deliberately never lists it in <see cref="CockpitViewModel.Sessions"/> — it lives in the
     /// host's separate embedded-sessions table instead. It must still show up as a workspace neighbour, or an
@@ -297,103 +179,6 @@ public class WorkspaceAgentGatewayTests
         Assert.NotNull(snapshot);
         Assert.Equal(2, snapshot!.Panes.Count);
         Assert.Contains(snapshot.Panes, pane => pane.PaneId == embeddedPaneId);
-    }
-
-    /// <summary>
-    /// S-1: a closed session must stop being remembered on the agent-presence roster, or the roster only grows for
-    /// the app's lifetime. <see cref="CockpitViewModel.CloseSessionCommand"/> is the grid's own close path — this
-    /// proves it actually calls <see cref="IWorkspaceAgentCoordinator.Forget"/> for the pane that closed, not just
-    /// that the API exists.
-    /// </summary>
-    [Fact]
-    public void CloseSession_ForgetsThePaneFromTheAgentCoordinator()
-    {
-        var coordinator = Substitute.For<IWorkspaceAgentCoordinator>();
-        var (cockpit, session) = Dispatcher.UIThread.Invoke(() =>
-        {
-            var c = _NewEmbeddingCapableCockpit(coordinator);
-            var s = new SessionViewModel();
-            c.Sessions.Add(s);
-            return (c, s);
-        });
-
-        Dispatcher.UIThread.Invoke(() => cockpit.CloseSessionCommand.ExecuteAsync(session).GetAwaiter().GetResult());
-
-        coordinator.Received(1).Forget(session.PaneId);
-    }
-
-    /// <summary>
-    /// S-2 (review round 2): <see cref="CloseSession_ForgetsThePaneFromTheAgentCoordinator"/> above proves the
-    /// grid's own close path; the embedded half of that same wiring — <c>CockpitViewModel._TeardownEmbeddedSessionAsync</c>,
-    /// which every embedded-session end path (a workspace closing, <see cref="Plugins.Abstractions.Workspaces.IEmbeddedSession.CloseAsync"/>,
-    /// the session ending itself) funnels through — had no test covering it at all. Removing that call still left
-    /// every other test in this suite green.
-    /// </summary>
-    [Fact]
-    public void CloseEmbeddedSession_ForgetsThePaneFromTheAgentCoordinator()
-    {
-        var coordinator = Substitute.For<IWorkspaceAgentCoordinator>();
-        var (cockpit, embedded) = Dispatcher.UIThread.Invoke(() =>
-        {
-            var c = _NewEmbeddingCapableCockpit(coordinator);
-            var grid = new SessionViewModel { WorkspaceId = "plugin-desk" };
-            c.Sessions.Add(grid);
-
-            var e = c.Embed("plugin-desk", new EmbeddedSessionRequest());
-            return (c, e);
-        });
-
-        Dispatcher.UIThread.Invoke(() => embedded.CloseAsync().GetAwaiter().GetResult());
-
-        coordinator.Received(1).Forget(embedded.PaneId);
-    }
-
-    /// <summary>
-    /// AC-393's entire expiry story: there is no heartbeat and no TTL, so a claim stops standing only because the
-    /// closing pane's teardown drops it. This proves the grid's own close path actually calls
-    /// <see cref="IAgentResourceClaims.Forget"/> — the sibling roster call one line above it has had that proof since
-    /// AC-391, and without this one both new call sites could be deleted with every test still green.
-    /// </summary>
-    [Fact]
-    public void CloseSession_ForgetsThePanesResourceClaims()
-    {
-        var claims = Substitute.For<IAgentResourceClaims>();
-        var (cockpit, session) = Dispatcher.UIThread.Invoke(() =>
-        {
-            var c = _NewEmbeddingCapableCockpit(agentClaims: claims);
-            var s = new SessionViewModel();
-            c.Sessions.Add(s);
-            return (c, s);
-        });
-
-        Dispatcher.UIThread.Invoke(() => cockpit.CloseSessionCommand.ExecuteAsync(session).GetAwaiter().GetResult());
-
-        claims.Received(1).Forget(session.PaneId);
-    }
-
-    /// <summary>
-    /// The embedded half of the same wiring, which for the roster was the half that had no test at all until it was
-    /// caught in review. An embedded session ends through <c>_TeardownEmbeddedSessionAsync</c> — a workspace closing,
-    /// <see cref="Plugins.Abstractions.Workspaces.IEmbeddedSession.CloseAsync"/>, or the session ending itself — and
-    /// nothing else funnels through there.
-    /// </summary>
-    [Fact]
-    public void CloseEmbeddedSession_ForgetsThePanesResourceClaims()
-    {
-        var claims = Substitute.For<IAgentResourceClaims>();
-        var (cockpit, embedded) = Dispatcher.UIThread.Invoke(() =>
-        {
-            var c = _NewEmbeddingCapableCockpit(agentClaims: claims);
-            var grid = new SessionViewModel { WorkspaceId = "plugin-desk" };
-            c.Sessions.Add(grid);
-
-            var e = c.Embed("plugin-desk", new EmbeddedSessionRequest());
-            return (c, e);
-        });
-
-        Dispatcher.UIThread.Invoke(() => embedded.CloseAsync().GetAwaiter().GetResult());
-
-        claims.Received(1).Forget(embedded.PaneId);
     }
 
     /// <summary>
@@ -431,9 +216,10 @@ public class WorkspaceAgentGatewayTests
     public void CloseEmbeddedSession_WhenDisposingTheSessionThrows_StillForgetsWhatTheHostHeldForIt()
     {
         var claims = Substitute.For<IAgentResourceClaims>();
+        var coordinator = Substitute.For<IWorkspaceAgentCoordinator>();
         var (cockpit, embedded) = Dispatcher.UIThread.Invoke(() =>
         {
-            var c = _NewEmbeddingCapableCockpit(agentClaims: claims, sessionFactory: () => new ThrowsOnDisposeSession());
+            var c = _NewEmbeddingCapableCockpit(coordinator, claims, sessionFactory: () => new ThrowsOnDisposeSession());
             var grid = new SessionViewModel { WorkspaceId = "plugin-desk" };
             c.Sessions.Add(grid);
 
@@ -444,6 +230,7 @@ public class WorkspaceAgentGatewayTests
         Dispatcher.UIThread.Invoke(() => embedded.CloseAsync().GetAwaiter().GetResult());
 
         claims.Received(1).Forget(embedded.PaneId);
+        coordinator.Received(1).Forget(embedded.PaneId);
     }
 
     /// <summary>

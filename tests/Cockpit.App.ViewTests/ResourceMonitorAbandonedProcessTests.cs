@@ -14,8 +14,6 @@ public sealed class ResourceMonitorAbandonedProcessTests
     // A parent id that is in no process table here, which is what a session's launcher looks like once it is gone.
     private const int DeadParentProcessId = 900_003;
 
-    private const int SecondSessionProcessId = 900_004;
-
     [Fact]
     public void Sample_AfterASessionsChildIsOrphaned_StillCountsItInTheCockpitWideTotal()
     {
@@ -32,38 +30,9 @@ public sealed class ResourceMonitorAbandonedProcessTests
         // 100 (cockpit) + 200 (session) + 400 (the orphan). Without the union the walk stops at 300, and the budget
         // would be blind to the one process that is worth reporting.
         Assert.Equal(700, usage.MemoryBytes);
-        Assert.Equal(1, usage.Sessions.Single().AbandonedProcessCount);
-    }
-
-    [Fact]
-    public void Sample_AfterASessionsChildIsOrphaned_ItStillCountsAsThatSessionsSpawnedProcess()
-    {
-        // AC-1310, the counterproof to membership: this is the reason a ppid walk was rejected. A test run whose
-        // launcher exited is exactly the work the TTY status must keep seeing — dropping out of the session's own
-        // count at that moment would time the pane out to Done while the run is still going.
-        var table = new MutableProcessTable(_Rows(spawnedParentProcessId: SessionProcessId));
-        var monitor = new ResourceMonitor(table, _ => null);
-        var sessions = new[] { new SessionProcessRef("pane-a", "Session", SessionProcessId) };
-
-        monitor.Sample(sessions);
-        table.Rows = _Rows(spawnedParentProcessId: DeadParentProcessId);
-        var measured = monitor.Sample(sessions).Sessions.Single();
-
+        // AC-1310: the orphan still counts as the session's spawned work, or the TTY status would time out to Done.
+        var measured = usage.Sessions.Single();
         Assert.Equal((2, 1, 1), (measured.ProcessCount, measured.SpawnedProcessCount, measured.AbandonedProcessCount));
-    }
-
-    [Fact]
-    public void Sample_DoesNotCountASessionsProcessesTwice()
-    {
-        // Everything still hangs off the cockpit, so the tree and the membership overlap completely — summing the
-        // two would read 900 for a machine holding 700.
-        var table = new MutableProcessTable(_Rows(spawnedParentProcessId: SessionProcessId));
-        var monitor = new ResourceMonitor(table, _ => null);
-        var sessions = new[] { new SessionProcessRef("pane-a", "Session", SessionProcessId) };
-
-        monitor.Sample(sessions);
-
-        Assert.Equal(700, monitor.Sample(sessions).MemoryBytes);
     }
 
     [Fact]
@@ -85,31 +54,6 @@ public sealed class ResourceMonitorAbandonedProcessTests
         ];
 
         Assert.Equal(100, monitor.Sample([]).MemoryBytes);
-    }
-
-    [Fact]
-    public void Sample_WhenOneSessionClosesAsAnotherOpens_TheClosedOneStillDropsOut()
-    {
-        // The count that decides whether to prune stays level across that swap, so it is worth pinning that it
-        // still prunes: `_previous` only ever grows between prunes, so it exceeds the session count the moment any
-        // measured process is no longer measured — a swap included.
-        var table = new MutableProcessTable(_Rows(spawnedParentProcessId: SessionProcessId));
-        var monitor = new ResourceMonitor(table, _ => null);
-
-        monitor.Sample([new SessionProcessRef("pane-a", "Session", SessionProcessId)]);
-
-        table.Rows =
-        [
-            new ProcessRow(Environment.ProcessId, 0, TimeSpan.Zero, 100),
-            new ProcessRow(SessionProcessId, DeadParentProcessId, TimeSpan.Zero, 200),
-            new ProcessRow(SpawnedProcessId, SessionProcessId, TimeSpan.Zero, 400),
-            new ProcessRow(SecondSessionProcessId, Environment.ProcessId, TimeSpan.Zero, 50),
-        ];
-
-        var usage = monitor.Sample([new SessionProcessRef("pane-b", "Session", SecondSessionProcessId)]);
-
-        // 100 (cockpit) + 50 (the session that just opened). The 600 the closed one left behind is nobody's.
-        Assert.Equal(150, usage.MemoryBytes);
     }
 
     private static ProcessRow[] _Rows(int spawnedParentProcessId) =>

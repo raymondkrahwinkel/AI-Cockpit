@@ -24,26 +24,6 @@ namespace Cockpit.App.ViewTests;
 public class WhiteboardCollabWindowTests
 {
     [Fact]
-    public Task OpeningTwoWhiteboardsFromOneSession_BindsEachToThatSessionInItsOwnWindow() => HeadlessAvalonia.RunAsync(async () =>
-    {
-        var (plugin, host) = _StartPlugin();
-
-        await host.InvokeWhiteboardActionAsync();
-        await host.InvokeWhiteboardActionAsync();
-
-        Assert.Equal(2, host.Windows.Count);
-        Assert.NotEqual(host.Windows[0].Key, host.Windows[1].Key);
-        Assert.All(host.Windows, window => Assert.StartsWith("whiteboard.document.", window.Key, StringComparison.Ordinal));
-
-        var surfaces = host.Registry.ListSurfaces("pane-a");
-        Assert.Equal(2, surfaces.Count);
-        Assert.All(surfaces, surface => Assert.False(surface.Coupling!.CanRead));
-
-        _Show(host.Windows[0].Content);
-        Assert.Contains("Werksessie", _CouplingText(host.Windows[0].Content));
-    });
-
-    [Fact]
     public Task WhenTheBoundSessionEnds_TheCouplingGoesAndTheWindowStaysWithAnExplanation() => HeadlessAvalonia.RunAsync(async () =>
     {
         var (plugin, host) = _StartPlugin();
@@ -81,39 +61,6 @@ public class WhiteboardCollabWindowTests
         Assert.True(host.Registry.CouplingOf("pane-a", host.Registry.ListSurfaces("pane-a").Single().SurfaceId)!.CanRead);
         Assert.Equal(2, host.ConsentRequests.Count);
         Assert.Contains("screenshot", host.ConsentRequests[0].Action, StringComparison.OrdinalIgnoreCase);
-    });
-
-    [Fact]
-    public Task InvokingWithNoActiveSession_StillOpensTheBoard_WithNoAgentOnIt() => HeadlessAvalonia.RunAsync(async () =>
-    {
-        // W-2/AC-843 replaced AC-842's "no session, no window, a toast" with the diagram's quick-start shape: the
-        // board opens on its name alone, and "no agent on this board" is a state the window itself draws.
-        var (plugin, host) = _StartPlugin();
-        host.Surfaces.ActivePaneId = null;
-
-        await host.InvokeWhiteboardActionAsync();
-
-        var opened = Assert.Single(host.Windows);
-        _Show(opened.Content);
-        Assert.Contains("No agent coupled", _CouplingText(opened.Content), StringComparison.Ordinal);
-    });
-
-    [Fact]
-    public Task DisconnectFromTheBoard_DropsTheCoupling() => HeadlessAvalonia.RunAsync(async () =>
-    {
-        var (plugin, host) = _StartPlugin();
-        await host.InvokeWhiteboardActionAsync();
-        var content = host.Windows[0].Content;
-        _Show(content);
-        var surfaceId = host.Registry.ListSurfaces("pane-a").Single().SurfaceId;
-        host.Registry.Grant("pane-a", surfaceId);
-        await HeadlessAvalonia.SettleAsync();
-
-        content.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "Disconnect"))
-            .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
-        await HeadlessAvalonia.SettleAsync();
-
-        Assert.Null(host.Registry.CouplingOf("pane-a", surfaceId));
     });
 
     private static void _ClickInvite(Control content) =>

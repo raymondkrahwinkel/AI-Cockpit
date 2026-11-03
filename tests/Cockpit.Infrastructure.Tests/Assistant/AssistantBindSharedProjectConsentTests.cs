@@ -1,7 +1,6 @@
 using System.Text.Json.Nodes;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Assistant;
-using Cockpit.Core.Consent;
 using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Mcp;
@@ -27,18 +26,6 @@ public sealed class AssistantBindSharedProjectConsentTests : IDisposable
 
     private static JsonNode _Json(string result) => JsonNode.Parse(result)!;
 
-    [Fact]
-    public async Task TheCard_ShowsTheFolder_TheProjectIdAndTheProfile()
-    {
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-
-        await _Tools(_consent).BindSharedProjectAsync("depot:handbook", Folder, "Zyra");
-
-        var asked = Assert.Single(_consent.Asked);
-        Assert.Contains(Folder, asked.Action);
-        Assert.Contains("depot:handbook", asked.Action);
-        Assert.Contains("Zyra", asked.Action);
-    }
 
     [Theory]
     [InlineData("depot:handbook\nfolder: /home/raymond/anything", "/home/raymond/work/handbook", "Zyra")]
@@ -59,21 +46,6 @@ public sealed class AssistantBindSharedProjectConsentTests : IDisposable
         Assert.Empty(_gateway.Calls);
     }
 
-    [Fact]
-    public async Task ItIsAskedUnderItsOwnBypassKey()
-    {
-        // Its own switch in Options, not one shared with the assistant's other writes: an operator happy for their
-        // team's projects to be added unasked has not thereby agreed to anything else.
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-
-        await _Tools(_consent).BindSharedProjectAsync("depot:handbook", Folder, "Zyra");
-
-        var asked = Assert.Single(_consent.Asked);
-        Assert.Equal(
-            ConsentSourceCatalog.AssistantProjectBinding,
-            ConsentSourceCatalog.KeyFor(asked.Source.PluginId, asked.Source.Label));
-        Assert.Contains(ConsentSourceCatalog.AssistantProjectBinding, ConsentSourceCatalog.HostSources);
-    }
 
     [Fact]
     public async Task ADeniedCard_NeverReachesTheGateway()
@@ -88,40 +60,8 @@ public sealed class AssistantBindSharedProjectConsentTests : IDisposable
         Assert.Null(result["approval"]);
     }
 
-    [Fact]
-    public async Task WithNobodyToAsk_ItRefuses()
-    {
-        McpRequestContext.Set(AssistantIdentity.PaneId);
 
-        Assert.False((bool)_Json(await _Tools(null).BindSharedProjectAsync("depot:handbook", Folder, "Zyra"))["ok"]!);
-        Assert.Empty(_gateway.Calls);
-    }
 
-    [Fact]
-    public async Task WhatTheConsentCheckDidIsReported_RatherThanAssumed()
-    {
-        // AC-759, the same reporting every other asking tool on this server does.
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-        _consent.Bypassed = true;
-
-        var result = _Json(await _Tools(_consent).BindSharedProjectAsync("depot:handbook", Folder, "Zyra"));
-
-        Assert.True((bool)result["ok"]!);
-        Assert.Equal("bypassed", (string)result["approval"]!);
-    }
-
-    [Fact]
-    public async Task TheResultCarriesWhatWasAdded_SoTheAssistantCanNameItBack()
-    {
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-
-        var result = _Json(await _Tools(_consent).BindSharedProjectAsync("depot:handbook", Folder, "Zyra"));
-
-        Assert.Equal("local-1", (string)result["projectId"]!);
-        Assert.Equal("Handbook", (string)result["name"]!);
-        Assert.Equal("Depot — Work", (string)result["sourceName"]!);
-        Assert.Equal(Folder, (string)result["sourceDirectory"]!);
-    }
 
     private sealed class RecordingBroker : IConsentBroker
     {

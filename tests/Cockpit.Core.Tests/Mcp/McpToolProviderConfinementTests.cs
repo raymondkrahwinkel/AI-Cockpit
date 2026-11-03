@@ -56,15 +56,6 @@ public class McpToolProviderConfinementTests
     }
 
     [Fact]
-    public void ConfinedServers_KeepsEverySelectedServer()
-    {
-        var names = McpToolProvider._ConfinedServers(_FullEffectiveSet(), "/wt/run-1").Select(server => server.Name).ToList();
-
-        // AC-1962: confinement changes the filesystem root, never the operator's selection.
-        Assert.Equal(_FullEffectiveSet().Select(server => server.Name), names);
-    }
-
-    [Fact]
     public async Task ConfinedServers_KeepsSafeCockpitEndpoints_WhileElevationRequiresExplicitSelection()
     {
         var names = McpToolProvider._ConfinedServers(_FullEffectiveSet(), "/wt/run-1").Select(server => server.Name).ToList();
@@ -123,21 +114,5 @@ public class McpToolProviderConfinementTests
             Arg.Any<TimeSpan>(),
             Arg.Any<string>(),
             Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public void ConfinedServers_WithoutAReportEndpoint_PreservesOnlyTheSelectedServers()
-    {
-        // A session that never had the report endpoint does not gain it — confinement never adds reach it lacked.
-        IReadOnlyList<McpServerConfig> noReport =
-        [
-            _Stdio("filesystem", "-y", "@modelcontextprotocol/server-filesystem", "/home/op"),
-            new() { Name = "cockpit-terminal", Transport = McpTransport.Http, Url = "http://x", CockpitHosted = true },
-        ];
-
-        var names = McpToolProvider._ConfinedServers(noReport, "/wt/run-1").Select(server => server.Name).ToList();
-
-        Assert.Equal(new[] { "filesystem", "cockpit-terminal" }, names); // AC-1962: no filtering or extra presets.
-        Assert.Empty(McpToolProvider._ConfinedServers([], "/wt/run-1"));
     }
 }

@@ -17,25 +17,8 @@ public class DepotNoteRouteTests
         "m1", "NoteInvitation", false, false, DateTimeOffset.UtcNow, null, "Sanne invites you to a note", "https://work.example.com/mailbox?id=m1",
         new UiContracts.DepotInboxNote("note", "Sprint review", "Meetings/sprint.md", true, "https://work.example.com/n/tok", "cockpit", ["Sanne"]));
 
-    // Layer 2, plugin logic: the inbox, the Notes tab and a transcript link all end in the one route, with the same result.
-    [Fact]
-    public async Task Route_FromInboxNotesTabAndLink_OpensTheSameNote()
-    {
-        var live = new UiContracts.DepotLiveNote("krahwinkel-it/cockpit", "cockpit", "Meetings/sprint.md", "Sprint review", "/n/tok", true, []);
-        var fromInbox = new Rig("ok", "editor");
-        var fromNotes = new Rig("ok", "editor");
-        var fromLink = new Rig("ok", "editor");
-
-        await fromInbox.Route.JoinInvitationAsync(Work, Invitation);
-        await fromNotes.Route.JoinLiveAsync(Work, live);
-        await fromLink.Route.JoinLinkAsync("https://work.example.com/n/tok");
-
-        Assert.Equal($"resolve:tok;live:{Place}:Edit;joined:m1", fromInbox.Seen);
-        Assert.Equal($"resolve:tok;live:{Place}:Edit", fromNotes.Seen);
-        Assert.Equal(fromNotes.Seen, fromLink.Seen);
-    }
-
     // Layer 2, plugin logic: Depot's role decides the stand; an account without a right gets the bare "Shared note" tab.
+    // No leak: the message knows the note's title and path, but an account without a right gets neither on the tab.
     [Fact]
     public async Task Route_RoleOfTheAccount_DecidesTheStand()
     {
@@ -50,22 +33,12 @@ public class DepotNoteRouteTests
         Assert.Equal($"live:{Place}:Edit", editor.Live);
         Assert.Equal($"live:{Place}:ViewOnly", viewer.Live);
         Assert.Equal(string.Empty, none.Live);
-        Assert.Equal(UiRoute.DepotSharedNote.TabTitle, Assert.Single(none.Tabs).Title);
-    }
-
-    // Layer 2, no leak: the message knows the note's title and path, but an account without a right gets neither on the tab.
-    [Fact]
-    public async Task Route_WithoutARight_ShowsNeitherTitleNorPath()
-    {
-        var rig = new Rig("unavailable", null);
-
-        await rig.Route.JoinInvitationAsync(Work, Invitation);
-
-        var tab = Assert.Single(rig.Tabs);
+        var tab = Assert.Single(none.Tabs);
+        Assert.Equal(UiRoute.DepotSharedNote.TabTitle, tab.Title);
         var shown = $"{tab.Title}|{tab.InstanceKey}";
         Assert.DoesNotContain("Sprint", shown, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Meetings", shown, StringComparison.OrdinalIgnoreCase);
-        Assert.Equal("resolve:tok", rig.Seen);
+        Assert.Equal("resolve:tok", none.Seen);
     }
 
     private sealed class Rig

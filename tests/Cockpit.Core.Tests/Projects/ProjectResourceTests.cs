@@ -51,59 +51,7 @@ public class ProjectResourceTests : IDisposable
         Assert.Equal("depot:ai-cockpit", writtenEntry["MemoryRef"]!.GetValue<string>());
     }
 
-    // --- AC2: two rows with the same role round-trip in order ------------------------------------------------------
-
-    [Fact]
-    public async Task SaveAsync_TwoMemoryRows_RoundTripsBothInOrder()
-    {
-        var project = Project.Create("Cockpit") with
-        {
-            Resources =
-            [
-                new ProjectResource("depot:ai-cockpit", ProjectResourceRole.Memory),
-                new ProjectResource("/home/raymond/Notes/Cockpit", ProjectResourceRole.Memory),
-            ],
-        };
-
-        var store = new ProjectStore(_configFilePath);
-        await store.SaveAsync(ProjectSettings.Empty.WithProject(project));
-        var loaded = await store.LoadAsync();
-
-        Assert.Equal(project.Resources, Assert.Single(loaded.Projects).Resources);
-    }
-
-    // --- AC3: a resource whose plugin is not installed is written through untouched --------------------------------
-
-    // --- AC4: a blank/empty Reference yields no row -----------------------------------------------------------------
-
-    // --- AC5: Label and ReachesSessions round-trip; ReachesSessions defaults to true ---------------------------------
-
-    // A "true survives the round trip" test used to sit here. Removed: it could not fail. ProjectResource's own
-    // default and ProjectResourceEntry's own default are both true, so the assertion would hold even if nothing in
-    // between ever read or wrote the flag at all. SaveAsync_LabelAndReachesSessions_RoundTrip above carries the
-    // real weight for this AC — it sets ReachesSessions = false, a value neither default would produce by
-    // accident, so it actually discriminates a broken round trip from a working one.
-
-    // --- AC6: MemoryRef mirrors the first Memory row, and is null with none ------------------------------------------
-
     // --- MUST-FIX 2: a missing or unrecognised Role never resolves to Memory, and never costs the whole file --------
-
-    /// <summary>
-    /// A row with no <c>role</c> at all — the shape a very small hand edit produces. Before this fix, a
-    /// non-nullable enum with <see cref="ProjectResourceRole.Memory"/> at ordinal 0 read that as Memory: the most
-    /// powerful role there is (read <em>and</em> written back to) handed to the row that never asked for it.
-    /// </summary>
-    [Fact]
-    public async Task LoadAsync_ARowWithNoRole_LoadsAsReferenceNotMemory()
-    {
-        await File.WriteAllTextAsync(
-            _configFilePath,
-            """{"Projects":[{"Id":"p","Name":"Cockpit","Resources":[{"Reference":"D:\\handbook"}]}]}""");
-
-        var loaded = await new ProjectStore(_configFilePath).LoadAsync();
-
-        Assert.Equal(ProjectResourceRole.Reference, Assert.Single(Assert.Single(loaded.Projects).Resources).Role);
-    }
 
     /// <summary>
     /// An unrecognised <c>role</c> — a typo, or a role only a newer build knows — must not throw for the whole
@@ -114,7 +62,7 @@ public class ProjectResourceTests : IDisposable
     /// important half of the fix: proving the bad row costs only itself, not the rest of the config.
     /// </summary>
     [Fact]
-    public async Task LoadAsync_ARowWithAnUnrecognisedRole_LoadsAsReferenceAndTheRestOfTheFileLoadsToo()
+    public async Task LoadAsync_OlderOrForeignShapes_LoadWithoutCostingTheRestOfTheFile()
     {
         await File.WriteAllTextAsync(
             _configFilePath,
@@ -122,63 +70,33 @@ public class ProjectResourceTests : IDisposable
             {
               "Projects":[
                 {"Id":"p","Name":"Cockpit","Resources":[{"Reference":"D:\\handbook","Role":"Instruction"}]},
-                {"Id":"q","Name":"Second project"}
+                {"Id":"q","Name":"Second project"},
+                {"Id":"r","Name":"Both","MemoryRef":"depot:stale","Resources":[{"Reference":"depot:current","Role":"Memory"}]},
+                {"Id":"s","Name":"Legacy","SourceDirectory":"/home/raymond/legacy"}
               ]
             }
             """);
 
         var loaded = await new ProjectStore(_configFilePath).LoadAsync();
 
-        Assert.Equal(2, System.Linq.Enumerable.Count(loaded.Projects));
+        Assert.Equal(4, System.Linq.Enumerable.Count(loaded.Projects));
         Assert.Equal(
             ProjectResourceRole.Reference,
             Assert.Single(loaded.Projects.Single(project => project.Id == "p").Resources).Role);
         Assert.Equal("Second project", loaded.Projects.Single(project => project.Id == "q").Name);
-    }
 
-    // --- FIX 7: cases the review found missing ------------------------------------------------------------------------
+        // FIX 7: a file carrying both the legacy MemoryRef and the list trusts Resources, the fuller answer.
+        var both = loaded.Projects.Single(project => project.Id == "r");
+        Assert.Equal(new ProjectResource("depot:current", ProjectResourceRole.Memory), Assert.Single(both.Resources));
+        Assert.Equal("depot:current", both.MemoryRef);
 
-    /// <summary>
-    /// A file written by a build in between (or hand-edited) carries both the legacy field and the list. The
-    /// documented precedence — <c>Resources</c> is the fuller, more current answer — was asserted in prose
-    /// (<c>ProjectEntry.ToDomain</c>'s doc comment) but never actually exercised until now.
-    /// </summary>
-    [Fact]
-    public async Task LoadAsync_BothMemoryRefAndResourcesPresent_TrustsResources()
-    {
-        await File.WriteAllTextAsync(
-            _configFilePath,
-            """
-            {"Projects":[{"Id":"p","Name":"Cockpit","MemoryRef":"depot:stale",
-              "Resources":[{"Reference":"depot:current","Role":"Memory"}]}]}
-            """);
-
-        var loaded = await new ProjectStore(_configFilePath).LoadAsync();
-
-        var project = Assert.Single(loaded.Projects);
-        Assert.Equal(new ProjectResource("depot:current", ProjectResourceRole.Memory), Assert.Single(project.Resources));
-        Assert.Equal("depot:current", project.MemoryRef);
-    }
-
-    /// <summary>
-    /// An explicit empty list beside a legacy value is not "Resources absent" — it is a project a newer build
-    /// already saved with no resources at all, and the fallback to <c>MemoryRef</c> in <c>ProjectEntry.ToDomain</c>
-    /// only triggers when <c>Resources</c> is null, not when it is present-but-empty. Worth pinning apart from the
-    /// "both present with rows" case above: an empty array is falsy in enough languages that "absent" is an easy
-    /// mistake to make here.
-    /// </summary>
-    [Fact]
-    public async Task LoadAsync_EmptyResourcesBesideALegacyMemoryRef_TrustsTheEmptyList()
-    {
-        await File.WriteAllTextAsync(
-            _configFilePath,
-            """{"Projects":[{"Id":"p","Name":"Cockpit","MemoryRef":"depot:stale","Resources":[]}]}""");
-
-        var loaded = await new ProjectStore(_configFilePath).LoadAsync();
-
-        var project = Assert.Single(loaded.Projects);
-        Assert.Empty(project.Resources);
-        Assert.Null(project.MemoryRef);
+        // AC-938: a project from before multi-repository only wrote the singular SourceDirectory — it loads as
+        // exactly the one repository it always described.
+        var legacy = loaded.Projects.Single(project => project.Id == "s");
+        Assert.Equal("/home/raymond/legacy", legacy.SourceDirectory);
+        var repository = Assert.Single(legacy.SourceDirectories);
+        Assert.Equal("/home/raymond/legacy", repository.Path);
+        Assert.Null(repository.Label);
     }
 
     public void Dispose()

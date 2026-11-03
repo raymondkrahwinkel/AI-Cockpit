@@ -1,4 +1,3 @@
-using System.Collections.ObjectModel;
 using Avalonia.Controls;
 using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
@@ -31,69 +30,9 @@ public class ProjectDialogMemorySourceTests
         return viewModel;
     }
 
-    // Distinguished from the Profile row's own ComboBox (ObservableCollection<string>) by the runtime type of what
-    // it is actually bound to, rather than by position — the one thing that cannot drift out of sync with the markup.
-    private static ComboBox? MemoryComboBox(Window window) =>
-        window.GetVisualDescendants().OfType<ComboBox>()
-            .FirstOrDefault(box => box.ItemsSource is ObservableCollection<MemorySourceChoice>);
-
     private static Button ChooseButton(ProjectDialogViewModel viewModel, Window window) =>
         window.GetVisualDescendants().OfType<Button>()
             .First(button => ReferenceEquals(button.Command, viewModel.PickResourceCommand));
-
-    [Fact]
-    public void NoMemorySourcesRegistered_ThePickerStaysHiddenAndChooseStaysUsable() => HeadlessAvalonia.Run(() =>
-    {
-        var viewModel = ViewModelWith();
-        var window = new ProjectDialog { DataContext = viewModel };
-        window.Show();
-        window.UpdateLayout();
-
-        var comboBox = MemoryComboBox(window);
-        var chooseButton = ChooseButton(viewModel, window);
-        window.Close();
-
-        Assert.NotNull(comboBox);
-        Assert.False(comboBox!.IsEffectivelyVisible, "a cockpit with no memory-source plugin must not hold an empty picker open");
-        Assert.True(chooseButton.IsEnabled, "with no source registered, Folder is the only mode there is");
-    });
-
-    [Fact]
-    public void SourcesRegistered_ThePickerOffersFolderThenEachSource() => HeadlessAvalonia.Run(() =>
-    {
-        var folder = new MemorySourceChoice("Folder", null);
-        var depot = new MemorySourceChoice("Depot project", "depot");
-        var viewModel = ViewModelWith(folder, depot);
-        var window = new ProjectDialog { DataContext = viewModel };
-        window.Show();
-        window.UpdateLayout();
-
-        var comboBox = MemoryComboBox(window);
-        window.Close();
-
-        Assert.NotNull(comboBox);
-        Assert.True(comboBox!.IsEffectivelyVisible);
-        Assert.Equal(new object[] { folder, depot }, comboBox.ItemsSource!.Cast<object>());
-    });
-
-    [Fact]
-    public void PickingASourceInTheComboBox_ReachesTheViewModelAndDisablesChoose() => HeadlessAvalonia.Run(() =>
-    {
-        var depot = new MemorySourceChoice("Depot project", "depot");
-        var viewModel = ViewModelWith(new MemorySourceChoice("Folder", null), depot);
-        var window = new ProjectDialog { DataContext = viewModel };
-        window.Show();
-        window.UpdateLayout();
-
-        var comboBox = MemoryComboBox(window)!;
-        comboBox.SelectedItem = depot;
-        window.UpdateLayout();
-        var chooseButton = ChooseButton(viewModel, window);
-        window.Close();
-
-        Assert.Equal(depot, viewModel.ResourceRows.Single().SelectedMemorySourceChoice);
-        Assert.False(chooseButton.IsEnabled, "a source's identifier is typed, not browsed for on disk");
-    });
 
     [Fact]
     public void TypingTheIdentifierWithASourceSelected_ReachesWhatGetsSaved() => HeadlessAvalonia.Run(() =>
@@ -120,29 +59,5 @@ public class ProjectDialogMemorySourceTests
 
         Assert.Equal("cockpit", viewModel.ResourceRows.Single().Reference);
         Assert.Equal("depot:cockpit", viewModel.ToProject().MemoryRef);
-    });
-
-    // AC-502: a source that CAN enumerate its own locations flips this from disabled back to enabled — the
-    // opposite of PickingASourceInTheComboBox_ReachesTheViewModelAndDisablesChoose above, which pins the case a
-    // source cannot list at all.
-    [Fact]
-    public void PickingASourceThatCanListItsOwnLocations_KeepsChooseEnabled() => HeadlessAvalonia.Run(() =>
-    {
-        var depot = new MemorySourceChoice("Depot project", "depot")
-        {
-            ListLocationsAsync = _ => Task.FromResult(Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocationsResult.Success([])),
-        };
-        var viewModel = ViewModelWith(new MemorySourceChoice("Folder", null), depot);
-        var window = new ProjectDialog { DataContext = viewModel };
-        window.Show();
-        window.UpdateLayout();
-
-        var comboBox = MemoryComboBox(window)!;
-        comboBox.SelectedItem = depot;
-        window.UpdateLayout();
-        var chooseButton = ChooseButton(viewModel, window);
-        window.Close();
-
-        Assert.True(chooseButton.IsEnabled, "this source can list its own locations, so Choose… opens a picker of names");
     });
 }

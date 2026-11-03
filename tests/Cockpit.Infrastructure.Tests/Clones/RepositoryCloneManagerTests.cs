@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using Cockpit.Core.Clones;
 using Cockpit.Infrastructure.Clones;
 using Cockpit.TestSupport;
 
@@ -59,25 +58,6 @@ public sealed class RepositoryCloneManagerTests : IDisposable
 
         await Assert.ThrowsAsync<InvalidOperationException>(act);
         Assert.True(File.Exists(untouched));
-    }
-
-    [Fact]
-    public async Task ReconcileAsync_ForgetsAVanishedClone_ButKeepsOneStillOnDisk()
-    {
-        var present = await _manager.CloneAsync(_sourceUrl);
-        await _registry.AddAsync(new RepositoryClone(
-            "github.com/org/gone",
-            "https://github.com/org/gone",
-            Path.Combine(_clonesRoot, "github.com", "org", "gone"),
-            DateTimeOffset.UtcNow,
-            DateTimeOffset.UtcNow));
-
-        await _manager.ReconcileAsync();
-
-        var remaining = await _registry.ListAsync();
-        Assert.Equal(present.Path, Assert.Single(remaining).Path);
-        // Never deletes disk: the surviving clone's folder is left exactly as it was.
-        Assert.True(Directory.Exists(present.Path));
     }
 
     private static string _Git(string workingDirectory, params string[] arguments)

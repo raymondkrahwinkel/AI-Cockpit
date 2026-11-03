@@ -10,7 +10,7 @@ using NSubstitute;
 namespace Cockpit.Core.Tests.Plugins;
 
 /// <summary>
-/// <see cref="DesktopBackendHost.AddSharedProjectSource"/>/<see cref="DesktopBackendHost.RemoveSharedProjectSource"/> (AC-245):
+/// <see cref="DesktopBackendHost.AddSharedProjectSource"/> (AC-245) and <see cref="DesktopBackendHost.ClaimProjectOwnership"/> (AC-604):
 /// the host's forwarding half of <see cref="ISharedProjectSourceRegistry"/>, exercised through the real DI-resolved
 /// registry rather than a mock — <c>Cockpit.Backend.Tests.Projects.SharedProjectSourceRegistryTests</c> already
 /// covers the registry's own rules in isolation. Mirrors <see cref="CockpitHostProjectMemorySourceTests"/>.
@@ -18,7 +18,7 @@ namespace Cockpit.Core.Tests.Plugins;
 public class CockpitHostSharedProjectSourceTests
 {
     [Fact]
-    public void Add_ASecondPluginUnderTheSameKey_IsIgnored()
+    public void ASecondPluginUnderTheSameSourceKeyOrClaimingTheSameProject_IsIgnored()
     {
         var host = _BuildHost();
         var first = new _FakeSource("depot");
@@ -27,6 +27,12 @@ public class CockpitHostSharedProjectSourceTests
         host.AddSharedProjectSource(new _FakeSource("depot"));
 
         Assert.Same(first, Assert.Single(host.SharedProjectSources));
+
+        // The same first-wins rule for a project's field ownership (AC-604).
+        host.ClaimProjectOwnership(new ProjectOwnershipRegistration("proj-1", new ProjectFieldOwnership("Depot — Work")));
+        host.ClaimProjectOwnership(new ProjectOwnershipRegistration("proj-1", new ProjectFieldOwnership("A different plugin")));
+
+        Assert.Equal("Depot — Work", host.GetProjectFieldOwnership("proj-1")![HostProjectField.Name]!.SourceName);
     }
 
     private static ICockpitHost _BuildHost()

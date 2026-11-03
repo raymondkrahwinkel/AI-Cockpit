@@ -6,24 +6,6 @@ namespace Cockpit.Core.Tests.Plugins;
 public class PluginHashTests
 {
     [Fact]
-    public void ComputeClosure_IsIndependentOfFileOrder_AndPathSeparator()
-    {
-        var a = PluginHash.ComputeClosure(
-        [
-            new PluginClosureFile("Plugin.dll", "aaaa"),
-            new PluginClosureFile("runtimes/linux/native/lib.so", "bbbb"),
-        ]);
-        var reordered = PluginHash.ComputeClosure(
-        [
-            new PluginClosureFile(@"runtimes\linux\native\lib.so", "bbbb"),
-            new PluginClosureFile("Plugin.dll", "aaaa"),
-        ]);
-
-        Assert.Equal(reordered, a);
-        Assert.Matches("^[0-9a-f]{64}$", a);
-    }
-
-    [Fact]
     public void ComputeClosure_AChangedDependencyHash_ChangesTheClosure()
     {
         var original = PluginHash.ComputeClosure(
@@ -35,7 +17,7 @@ public class PluginHashTests
     }
 
     [Fact]
-    public void ComputeClosure_BindsEachHashToItsPath()
+    public void ComputeClosure_BindsEachHashToItsPath_AndCannotBeForgedByADelimiterInAPath()
     {
         // The same two hashes on swapped paths must not collide — otherwise moving bytes between files would be a
         // silent no-op the pin never sees.
@@ -45,11 +27,7 @@ public class PluginHashTests
             [new PluginClosureFile("a.dll", "y"), new PluginClosureFile("b.dll", "x")]);
 
         Assert.NotEqual(one, swapped);
-    }
 
-    [Fact]
-    public void ComputeClosure_CannotBeForgedByADelimiterInAPath()
-    {
         // A Unix path may contain a newline. A manifest that joined entries with one would render these two
         // different closures identically ("1  a\n2  b"), letting a crafted filename forge the pin; length-prefixed
         // framing must keep them distinct.

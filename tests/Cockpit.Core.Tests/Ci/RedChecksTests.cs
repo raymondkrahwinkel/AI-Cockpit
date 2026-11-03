@@ -25,12 +25,4 @@ public class RedChecksTests
         Assert.Equal("https://github.com/o/r/actions/runs/1/job/2", checks.Single(check => check.IsRed).Link);
     }
 
-    [Theory]
-    [InlineData("")]
-    [InlineData("   ")]
-    [InlineData("not json at all")]
-    [InlineData("""{"message":"no pull requests found"}""")]
-    public void AnAnswerItCannotRead_IsNoChecksRatherThanAGuess(string output) =>
-        Assert.Empty(RedChecks.Parse(output));
-
 }

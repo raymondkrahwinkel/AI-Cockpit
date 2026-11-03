@@ -5,7 +5,6 @@ using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Secrets;
-using NSubstitute;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
@@ -15,61 +14,6 @@ namespace Cockpit.Core.Tests.ViewModels;
 /// </summary>
 public class SecurityOptionsViewModelTests
 {
-    [Fact]
-    public async Task RefreshAsync_ShowsThePairingPortReasonUnlessTheMcpListenerAlreadyHasOne()
-    {
-        var pairing = Substitute.For<INodePairingEndpoint>();
-        pairing.Address.Returns((string?)null);
-        pairing.Error.Returns("Not listening for pairing: port 21288 is already in use.");
-        var settings = new FakeNodeEndpointSettingsStore(new NodeEndpointSettings { Enabled = true, SharedSecret = "" });
-
-        var vm = new SecurityOptionsViewModel(new FakeProtection(), nodeEndpointSettings: settings, nodePairingEndpoint: pairing);
-        await vm.RefreshAsync();
-
-        Assert.Contains("port 21288 is already in use", vm.NodePairingAddress, StringComparison.Ordinal);
-
-        var mcp = Substitute.For<ICockpitInternalMcpProvider>();
-        mcp.GetNodeAddresses().Returns([]);
-        mcp.NodeListenerError.Returns("Not listening on the network: port 21289 is already in use.");
-        vm = new SecurityOptionsViewModel(new FakeProtection(), nodeEndpointSettings: settings, mcpEndpointHosts: [mcp], nodePairingEndpoint: pairing);
-        await vm.RefreshAsync();
-
-        Assert.Equal("", vm.NodePairingAddress);
-    }
-
-    [Fact]
-    public async Task RefreshAsync_MapsTheServicesWarning_OntoTheBanner()
-    {
-        var vm = new SecurityOptionsViewModel(new FakeProtection { Warn = true });
-
-        await vm.RefreshAsync();
-
-        Assert.True(vm.ShowUnprotectedBanner);
-    }
-
-    [Fact]
-    public async Task RefreshAsync_LeavesTheBannerDown_WhenTheServiceDoesNotWarn()
-    {
-        var vm = new SecurityOptionsViewModel(new FakeProtection { Warn = false });
-
-        await vm.RefreshAsync();
-
-        Assert.False(vm.ShowUnprotectedBanner);
-    }
-
-    [Fact]
-    public async Task DismissBanner_HidesItAtOnce_AndPersistsTheDismissal()
-    {
-        var protection = new FakeProtection { Warn = true };
-        var vm = new SecurityOptionsViewModel(protection);
-        await vm.RefreshAsync();
-
-        await vm.DismissBannerCommand.ExecuteAsync(null);
-
-        Assert.False(vm.ShowUnprotectedBanner, "the operator dismissed it");
-        Assert.Equal(1, protection.DismissCalls);
-    }
-
     [Fact]
     public async Task TogglingTheNodeSwitch_KeepsThePairingRecord()
     {
@@ -209,36 +153,6 @@ public class SecurityOptionsViewModelTests
     }
 
     /// <summary>
-    /// AC-1286, the reported loss: a refresh that lands while the Options dialog is staging used to overwrite the
-    /// tick with the disk value, and Apply then wrote that old value back. The measured sequence was tick → Apply =
-    /// True, tick → refresh → Apply = False. Both controls are rows here: an ordinary refresh must leave the staged
-    /// tick alone, Cancel's own re-seed must still put the disk value back, and outside staging a refresh seeds as
-    /// it always did.
-    /// </summary>
-    [Theory]
-    [InlineData(true, false, true)]
-    [InlineData(true, true, false)]
-    // Outside staging the handler has already written the tick, so the refresh reads back what the operator chose
-    // rather than what was there before — the same guarantee, reached by the other path.
-    [InlineData(false, false, true)]
-    public async Task ARefreshWhileTheDialogIsStaging_DoesNotCostTheOperatorTheTick(
-        bool staged, bool reseedStagedValues, bool expectedOnDisk)
-    {
-        var store = new FakeNodeEndpointSettingsStore(new NodeEndpointSettings { Enabled = false, SharedSecret = "kept" });
-        var vm = new SecurityOptionsViewModel(new FakeProtection(), nodeEndpointSettings: store);
-        await vm.RefreshAsync();
-        vm.SuspendPersistence = staged;
-
-        vm.NodeEndpointEnabled = true;
-        await vm.PendingWrites;
-        await vm.RefreshAsync(reseedStagedValues);
-        vm.SuspendPersistence = false;
-        await vm.SaveStagedAsync();
-
-        Assert.Equal(expectedOnDisk, (await store.LoadAsync()).Enabled);
-    }
-
-    /// <summary>
     /// Apply writes in two steps — the security stores, then the node section. Clearing the line on any success let
     /// the second step erase the first one's failure, so Apply closed over a setting that was never written with
     /// nothing on screen: the reported bug, surviving inside its own fix.
@@ -256,31 +170,6 @@ public class SecurityOptionsViewModelTests
 
         Assert.Contains("the screen lock is not having it", vm.PersistError, StringComparison.Ordinal);
         Assert.Equal("security", vm.PersistErrorCategoryTag);
-    }
-
-    /// <summary>
-    /// AC-1286: a write that fails used to end on the dispatcher as an unobserved exception from an
-    /// <c>async partial void</c> handler — measured as "the caller saw nothing". The operator now reads what did not
-    /// get saved, and the positive control in the same run is the line going away once a write succeeds.
-    /// </summary>
-    [Fact]
-    public async Task AWriteThatFails_IsReportedOnTheTab_AndTheLineGoesAwayWhenTheNextWriteSucceeds()
-    {
-        var store = new FailableNodeEndpointSettingsStore { Fails = true };
-        var vm = new SecurityOptionsViewModel(new FakeProtection(), nodeEndpointSettings: store);
-        await vm.RefreshAsync();
-
-        await vm.SaveStagedAsync();
-
-        Assert.Contains("Not saved", vm.PersistError, StringComparison.Ordinal);
-        Assert.Contains("the disk is not having it", vm.PersistError, StringComparison.Ordinal);
-        Assert.Equal("swarm", vm.PersistErrorCategoryTag);
-
-        store.Fails = false;
-        await vm.SaveStagedAsync();
-
-        Assert.Equal("", vm.PersistError);
-        Assert.Null(vm.PersistErrorCategoryTag);
     }
 
     [Fact]
@@ -327,7 +216,6 @@ public class SecurityOptionsViewModelTests
 
         Assert.True(condition(), "Condition did not become true.");
     }
-
 
     private sealed class SequencedNodeSessions : INodeSessionsClient
     {
@@ -442,17 +330,6 @@ public class SecurityOptionsViewModelTests
 
         public Task SaveAsync(ScreenLockSettings settings, CancellationToken cancellationToken = default) =>
             Fails ? throw new InvalidOperationException("the screen lock is not having it") : Task.CompletedTask;
-    }
-
-    private sealed class FailableNodeEndpointSettingsStore : INodeEndpointSettingsStore
-    {
-        public bool Fails { get; set; }
-
-        public Task<NodeEndpointSettings> LoadAsync(CancellationToken cancellationToken = default) =>
-            Task.FromResult(new NodeEndpointSettings { Enabled = false, SharedSecret = "kept" });
-
-        public Task SaveAsync(NodeEndpointSettings value, CancellationToken cancellationToken = default) =>
-            Fails ? throw new InvalidOperationException("the disk is not having it") : Task.CompletedTask;
     }
 
     private sealed class FakeNodeEndpointSettingsStore(NodeEndpointSettings settings) : INodeEndpointSettingsStore

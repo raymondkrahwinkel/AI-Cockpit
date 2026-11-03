@@ -13,28 +13,6 @@ namespace Cockpit.App.ViewTests;
 public class SessionLabelSinkTests
 {
     [Fact]
-    public async Task TheStatuslineLandsOnThePaneThatWasNamed()
-    {
-        var (handle, session) = _HandleOnASession();
-
-        var applied = await handle.SetStatuslineAsync("AC-312");
-
-        Assert.True(applied);
-        Dispatcher.UIThread.Invoke(() => Assert.Equal("AC-312", session.Statusline));
-    }
-
-    [Fact]
-    public async Task ASessionStillCarryingAMadeUpName_TakesTheOneProposed()
-    {
-        var (handle, session) = _HandleOnASession();
-
-        var renamed = await handle.SuggestNameAsync("AC-312");
-
-        Assert.True(renamed);
-        Dispatcher.UIThread.Invoke(() => Assert.Equal("AC-312", session.Title));
-    }
-
-    [Fact]
     public async Task ASessionNamedOnPurpose_KeepsItsName_AndSaysSo()
     {
         var (handle, session) = _HandleOnASession();

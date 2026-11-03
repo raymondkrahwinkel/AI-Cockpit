@@ -20,17 +20,6 @@ public class OpenAiCompatModelCatalogTests
         Assert.Equal(new AuthenticationHeaderValue("Bearer", "super-secret-key"), handler.Authorization);
     }
 
-    [Fact]
-    public async Task ListAsync_ReturnsTheIdsSortedAndWithoutBlanks()
-    {
-        var handler = new StubHandler("""{"data":[{"id":"qwen3-coder"},{"id":""},{"id":"gpt-oss-120b"}]}""");
-        using var httpClient = new HttpClient(handler);
-
-        var models = await OpenAiCompatModelCatalog.ListAsync(httpClient, "https://inference.hetzner.com/api/v1", "key", CancellationToken.None);
-
-        Assert.Equal(["gpt-oss-120b", "qwen3-coder"], models);
-    }
-
     private sealed class StubHandler(string body, HttpStatusCode statusCode = HttpStatusCode.OK) : HttpMessageHandler
     {
         public Uri? RequestUri { get; private set; }

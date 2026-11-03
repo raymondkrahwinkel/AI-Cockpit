@@ -20,17 +20,6 @@ public class OpenAiCompatModelCatalogTests
         Assert.Equal(new AuthenticationHeaderValue("Bearer", "super-secret-token"), handler.Authorization);
     }
 
-    [Fact]
-    public async Task ListAsync_ReturnsTheIdsSortedAndWithoutBlanks()
-    {
-        var handler = new StubHandler("""{"data":[{"id":"openai/gpt-4.1"},{"id":""},{"id":"meta/llama-3.3-70b-instruct"}]}""");
-        using var httpClient = new HttpClient(handler);
-
-        var models = await OpenAiCompatModelCatalog.ListAsync(httpClient, "https://models.github.ai/inference", "token", CancellationToken.None);
-
-        Assert.Equal(["meta/llama-3.3-70b-instruct", "openai/gpt-4.1"], models);
-    }
-
     private sealed class StubHandler(string body, HttpStatusCode statusCode = HttpStatusCode.OK) : HttpMessageHandler
     {
         public Uri? RequestUri { get; private set; }

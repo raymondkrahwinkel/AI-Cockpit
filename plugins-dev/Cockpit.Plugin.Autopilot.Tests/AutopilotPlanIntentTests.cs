@@ -163,7 +163,7 @@ public class AutopilotPlanIntentTests : IDisposable
         });
 
     [Fact]
-    public async Task Plan_OnAnItemThatIsNotOnTheExecutableStage_RefusesAndCommentsWhy()
+    public async Task Plan_RefusesAnItemNotOnTheExecutableStage_ABrainstormItem_AndAnotherPluginsIntent()
     {
         var (handler, tracker) = Started();
 
@@ -174,29 +174,16 @@ public class AutopilotPlanIntentTests : IDisposable
         var (issueId, comment) = Assert.Single(tracker.Comments);
         Assert.Equal("AC-345", issueId);
         Assert.Contains("Ready", comment);
-    }
 
-    [Fact]
-    public async Task Plan_FromAPluginThatIsNotTheTracker_RefusesWithoutWritingOnTheIssue()
-    {
+        // A brainstorm item is refused even on the executable stage.
+        var (brainstormHandler, _) = Started();
+        Assert.Equal("not-ready", (await brainstormHandler(Plan("Ready", title: "[Brainstorm] should the CEO validate twice?")))["status"]);
+
         // Any installed plugin may send an intent, and the payload names its own tracker and issue. Commenting on
         // whatever it names would hand every plugin a way to write on arbitrary issues with the operator's token.
-        var (handler, tracker) = Started();
-
-        var result = await handler(Plan("Backlog", caller: "some-other-plugin"));
-
-        Assert.Equal("not-ready", result["status"]);
-        Assert.Empty(tracker.Comments);
-    }
-
-    [Fact]
-    public async Task Plan_OnABrainstormItem_IsRefusedEvenOnTheExecutableStage()
-    {
-        var (handler, _) = Started();
-
-        var result = await handler(Plan("Ready", title: "[Brainstorm] should the CEO validate twice?"));
-
-        Assert.Equal("not-ready", result["status"]);
+        var (strangerHandler, strangerTracker) = Started();
+        Assert.Equal("not-ready", (await strangerHandler(Plan("Backlog", caller: "some-other-plugin")))["status"]);
+        Assert.Empty(strangerTracker.Comments);
     }
 
     // AC-346: an epic click (the same "plan" intent, on an item that turns out to have "parent for" children) never

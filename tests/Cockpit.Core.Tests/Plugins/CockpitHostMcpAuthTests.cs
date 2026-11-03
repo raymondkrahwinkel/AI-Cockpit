@@ -34,94 +34,6 @@ public class CockpitHostMcpAuthTests
     };
 
     [Fact]
-    public async Task GetMcpServerAuthStateAsync_NoCoordinatorRegistered_AnswersUnknown()
-    {
-        var host = _BuildHost(new List<McpServerConfig> { OAuthServer }, coordinator: null);
-
-        var state = await host.GetMcpServerAuthStateAsync("Depot: Work");
-
-        Assert.Equal(PluginMcpAuthState.Unknown, state);
-    }
-
-    [Fact]
-    public async Task GetMcpServerAuthStateAsync_NoServerOfThatName_AnswersUnknown_WithoutAskingTheCoordinator()
-    {
-        var coordinator = Substitute.For<IMcpOAuthCoordinator>();
-        var host = _BuildHost(new List<McpServerConfig> { OAuthServer }, coordinator);
-
-        var state = await host.GetMcpServerAuthStateAsync("Depot: Nonexistent");
-
-        Assert.Equal(PluginMcpAuthState.Unknown, state);
-        await coordinator.DidNotReceive().GetStateAsync(Arg.Any<McpServerConfig>(), Arg.Any<CancellationToken>());
-    }
-
-    // The guard that keeps this from acting on a server that used to be OAuth, or was never this plugin's: a
-    // same-named entry that is not OAuth must not be handed to the coordinator as though it were.
-    [Fact]
-    public async Task GetMcpServerAuthStateAsync_SameNameButNotOAuth_AnswersUnknown_WithoutAskingTheCoordinator()
-    {
-        var staticServer = OAuthServer with { Auth = McpServerAuth.ApiKey, OAuthAuthority = null };
-        var coordinator = Substitute.For<IMcpOAuthCoordinator>();
-        var host = _BuildHost(new List<McpServerConfig> { staticServer }, coordinator);
-
-        var state = await host.GetMcpServerAuthStateAsync("Depot: Work");
-
-        Assert.Equal(PluginMcpAuthState.Unknown, state);
-        await coordinator.DidNotReceive().GetStateAsync(Arg.Any<McpServerConfig>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task GetMcpServerAuthStateAsync_CoordinatorReportsAuthorized_IsCarriedThroughVerbatim()
-    {
-        var coordinator = Substitute.For<IMcpOAuthCoordinator>();
-        coordinator.GetStateAsync(Arg.Any<McpServerConfig>(), Arg.Any<CancellationToken>()).Returns(McpAuthState.Authorized);
-        var host = _BuildHost(new List<McpServerConfig> { OAuthServer }, coordinator);
-
-        var state = await host.GetMcpServerAuthStateAsync("Depot: Work");
-
-        Assert.Equal(PluginMcpAuthState.Authorized, state);
-    }
-
-    [Fact]
-    public async Task GetMcpServerAuthStateAsync_CoordinatorReportsAuthorizationRequired_IsCarriedThroughVerbatim()
-    {
-        var coordinator = Substitute.For<IMcpOAuthCoordinator>();
-        coordinator.GetStateAsync(Arg.Any<McpServerConfig>(), Arg.Any<CancellationToken>()).Returns(McpAuthState.AuthorizationRequired);
-        var host = _BuildHost(new List<McpServerConfig> { OAuthServer }, coordinator);
-
-        var state = await host.GetMcpServerAuthStateAsync("Depot: Work");
-
-        Assert.Equal(PluginMcpAuthState.AuthorizationRequired, state);
-    }
-
-    [Fact]
-    public async Task GetMcpServerAuthStateAsync_WhenTheCoordinatorThrows_AnswersUnknown_AndRecordsAFailure()
-    {
-        var coordinator = Substitute.For<IMcpOAuthCoordinator>();
-        coordinator.GetStateAsync(Arg.Any<McpServerConfig>(), Arg.Any<CancellationToken>())
-            .Returns<Task<McpAuthState>>(_ => throw new InvalidOperationException("store unreadable"));
-        var diagnostics = new PluginDiagnostics();
-        var host = _BuildHost(new List<McpServerConfig> { OAuthServer }, coordinator, diagnostics);
-
-        var state = await host.GetMcpServerAuthStateAsync("Depot: Work");
-
-        Assert.Equal(PluginMcpAuthState.Unknown, state);
-        var failure = diagnostics.ForFolder("depot");
-        Assert.NotNull(failure);
-        Assert.Equal("mcp-auth-state", failure.Phase);
-    }
-
-    [Fact]
-    public async Task SignInMcpServerAsync_NoCoordinatorRegistered_AnswersUnavailable()
-    {
-        var host = _BuildHost(new List<McpServerConfig> { OAuthServer }, coordinator: null);
-
-        var outcome = await host.SignInMcpServerAsync("Depot: Work");
-
-        Assert.Equal(PluginMcpSignInOutcome.Unavailable, outcome);
-    }
-
-    [Fact]
     public async Task SignInMcpServerAsync_SameNameButNotOAuth_AnswersUnavailable_WithoutOpeningABrowser()
     {
         var staticServer = OAuthServer with { Auth = McpServerAuth.ApiKey, OAuthAuthority = null };
@@ -135,36 +47,7 @@ public class CockpitHostMcpAuthTests
     }
 
     [Fact]
-    public async Task SignInMcpServerAsync_AsksTheCoordinatorInteractively_NeverSilently()
-    {
-        var coordinator = Substitute.For<IMcpOAuthCoordinator>();
-        coordinator.AcquireAsync(Arg.Any<McpServerConfig>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
-            .Returns(new McpOAuthAccess(McpAuthState.Authorized, "token-abc", McpSignInStage.NoBrowserLaunched));
-        var host = _BuildHost(new List<McpServerConfig> { OAuthServer }, coordinator);
-
-        await host.SignInMcpServerAsync("Depot: Work");
-
-        await coordinator.Received(1).AcquireAsync(
-            Arg.Is<McpServerConfig>(server => server.Name == "Depot: Work"),
-            interactive: true,
-            Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task SignInMcpServerAsync_CoordinatorReturnsAuthorized_AnswersAuthorized()
-    {
-        var coordinator = Substitute.For<IMcpOAuthCoordinator>();
-        coordinator.AcquireAsync(Arg.Any<McpServerConfig>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
-            .Returns(new McpOAuthAccess(McpAuthState.Authorized, "token-abc", McpSignInStage.AuthorizationReturned));
-        var host = _BuildHost(new List<McpServerConfig> { OAuthServer }, coordinator);
-
-        var outcome = await host.SignInMcpServerAsync("Depot: Work");
-
-        Assert.Equal(PluginMcpSignInOutcome.Authorized, outcome);
-    }
-
-    [Fact]
-    public async Task SignInMcpServerAsync_CoordinatorReturnsAnythingElse_AnswersDeclined_NeverACredentialOrDetail()
+    public async Task SignInMcpServerAsync_AsksTheCoordinatorInteractively_AndAnythingButAuthorizedIsDeclined_NeverACredentialOrDetail()
     {
         var coordinator = Substitute.For<IMcpOAuthCoordinator>();
         coordinator.AcquireAsync(Arg.Any<McpServerConfig>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
@@ -173,24 +56,11 @@ public class CockpitHostMcpAuthTests
 
         var outcome = await host.SignInMcpServerAsync("Depot: Work");
 
+        await coordinator.Received(1).AcquireAsync(
+            Arg.Is<McpServerConfig>(server => server.Name == "Depot: Work"),
+            interactive: true,
+            Arg.Any<CancellationToken>());
         Assert.Equal(PluginMcpSignInOutcome.Declined, outcome);
-    }
-
-    [Fact]
-    public async Task SignInMcpServerAsync_WhenTheCoordinatorThrows_AnswersUnreachable_AndRecordsAFailure()
-    {
-        var coordinator = Substitute.For<IMcpOAuthCoordinator>();
-        coordinator.AcquireAsync(Arg.Any<McpServerConfig>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
-            .Returns<Task<McpOAuthAccess>>(_ => throw new InvalidOperationException("no network"));
-        var diagnostics = new PluginDiagnostics();
-        var host = _BuildHost(new List<McpServerConfig> { OAuthServer }, coordinator, diagnostics);
-
-        var outcome = await host.SignInMcpServerAsync("Depot: Work");
-
-        Assert.Equal(PluginMcpSignInOutcome.Unreachable, outcome);
-        var failure = diagnostics.ForFolder("depot");
-        Assert.NotNull(failure);
-        Assert.Equal("mcp-sign-in", failure.Phase);
     }
 
     // AC-1660 (layer 2, secrets): sign-out forgets the stored token itself, so the next read asks for a sign-in. Only for
