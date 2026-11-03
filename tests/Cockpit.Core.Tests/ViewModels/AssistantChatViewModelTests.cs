@@ -44,7 +44,7 @@ public class AssistantChatViewModelTests
     // operator to try to approve something in a window they are talking to.
 
     [Fact]
-    public async Task SayingYesInTheChat_GrantsNothing_ThePermissionIsStillPendingAfterwards()
+    public async Task SayingYesInTheChat_GrantsNothing_OnlyTheAllowButtonOnTheRowResolvesThePermission()
     {
         // This covers the spoken path too, and not by analogy: a finished transcript goes to
         // IAssistantSessionHost.SendAsync (AssistantPushToTalkCoordinator, OpenMicCoordinator) — the very method
@@ -75,20 +75,8 @@ public class AssistantChatViewModelTests
         Assert.True(session.HasPendingPermission);
         Assert.True(string.IsNullOrEmpty(pending.PermissionDecision));
 
-        await session.DisposeAsync();
-    }
-
-    [Fact]
-    public async Task OnlyTheAllowButtonOnTheRowResolvesThePermission()
-    {
         // The other half: the row's own command is what answers, and it answers the driver rather than merely
-        // greying the buttons out. Without this the test above would also pass on a window where nothing at all
-        // could grant permission — including the click.
-        var (session, driver) = await _StartedSessionAsync();
-        session.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "toolu_1", ToolName = "start_agent", InputJson = "{}" });
-        session.Apply(new PermissionRequested { SessionId = "S1", ToolUseId = "toolu_1", ToolName = "start_agent", InputJson = "{}" });
-        var pending = session.Transcript.Single(entry => entry.ToolUseId == "toolu_1");
-
+        // greying the buttons out — without it this would also pass where nothing at all could grant permission.
         await session.AllowToolCommand.ExecuteAsync(pending);
 
         // AC-715: every decision now travels the overload that can also carry answers; a plain allow carries none.

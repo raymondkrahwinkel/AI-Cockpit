@@ -48,28 +48,7 @@ public class SessionViewModelAskUserQuestionTests
     }
 
     [Fact]
-    public async Task SubmitQuestionAnswers_SendsTheChosenLabelsKeyedByQuestion_AndKeepsTheCardOnScreen()
-    {
-        var (vm, driver) = await _StartedAsync();
-        var entry = _RaiseQuestion(vm, OneQuestion);
-        entry.QuestionPrompts?[0].Options[1].SelectCommand.Execute(null);
-
-        await vm.SubmitQuestionAnswersCommand.ExecuteAsync(entry);
-
-        await driver.Received(1).RespondToPermissionAsync(
-            "t1", true, Arg.Is<string>(json => _AnswerFor(json, "Which suites?") == "All"), Arg.Any<CancellationToken>());
-        // The question and what was chosen stay put — a card that collapsed would take the agent's question with it.
-        Assert.True(entry.HasQuestionPrompts);
-        Assert.True(entry.QuestionPrompts?[0].IsAnswered);
-        Assert.True(entry.QuestionPrompts?[0].Options[1].IsSelected);
-        Assert.False(entry.IsPendingPermission);
-        Assert.Equal("Answered", entry.PermissionDecision);
-
-        await vm.DisposeAsync();
-    }
-
-    [Fact]
-    public async Task SubmitQuestionAnswers_StaysShutUntilEveryQuestionOnTheCardIsAnswered()
+    public async Task SubmitQuestionAnswers_StaysShutUntilEveryQuestionIsAnswered_ThenSendsTheLabelsKeyedByQuestion_AndKeepsTheCard()
     {
         // One card carries all 1-4 questions of a call and sends once, so a half-filled card must not go: the SDK
         // reads the answers object by question text and would find a key missing.
@@ -90,6 +69,13 @@ public class SessionViewModelAskUserQuestionTests
         await vm.SubmitQuestionAnswersCommand.ExecuteAsync(entry);
         await driver.Received(1).RespondToPermissionAsync(
             "t1", true, Arg.Is<string>(json => _AnswerFor(json, "Then what?") == "Push"), Arg.Any<CancellationToken>());
+
+        // The question and what was chosen stay put — a card that collapsed would take the agent's question with it.
+        Assert.True(entry.HasQuestionPrompts);
+        Assert.True(entry.QuestionPrompts?[1].IsAnswered);
+        Assert.True(entry.QuestionPrompts?[1].Options[0].IsSelected);
+        Assert.False(entry.IsPendingPermission);
+        Assert.Equal("Answered", entry.PermissionDecision);
 
         await vm.DisposeAsync();
     }

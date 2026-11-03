@@ -31,6 +31,13 @@ public class SessionProfileEntryTests
         // goes red if the migration is dropped or loses the ConfigDir.
         Assert.Equal(SessionProvider.Plugin, profile.Provider);
         Assert.Equal(ClaudePluginProfile.Create("/home/raymond/.claude-work", null), profile.ProviderConfig);
+
+        // Every field added since must read as "not set" rather than throwing or being invented — AC-139/AC-6's
+        // DefaultKind in particular, which SessionKindDefaults then falls back to TTY for rather than picking SDK.
+        Assert.Null(profile.EnvironmentVariables);
+        Assert.Null(profile.EnabledMcpServerNames);
+        Assert.Null(profile.DefaultWorkingDirectory);
+        Assert.Null(profile.DefaultKind);
     }
 
     // A secret variable's value lands in the SecretValue field — the name the secret rule recognises — so it
@@ -54,22 +61,6 @@ public class SessionProfileEntryTests
         Assert.Null(entry.EnvironmentVariables[0].SecretValue);
         Assert.Null(entry.EnvironmentVariables[1].Value);
         Assert.Equal("s3cret", entry.EnvironmentVariables[1].SecretValue);
-    }
-
-    // What every profile written before these fields existed looks like on disk: a label and ConfigDir, nothing
-    // else. Each absent field must read as "not set" rather than throwing or being invented — AC-139/AC-6's
-    // DefaultKind in particular, which SessionKindDefaults then falls back to TTY for rather than picking SDK.
-    [Fact]
-    public void ToDomain_WithoutTheNewerFields_LeavesThemAllUnset_SoOlderConfigsKeepWorking()
-    {
-        var entry = new SessionProfileEntry { Label = "work", ConfigDir = "/home/raymond/.claude-work" };
-
-        var profile = entry.ToDomain();
-
-        Assert.Null(profile.EnvironmentVariables);
-        Assert.Null(profile.EnabledMcpServerNames);
-        Assert.Null(profile.DefaultWorkingDirectory);
-        Assert.Null(profile.DefaultKind);
     }
 
     [Fact]

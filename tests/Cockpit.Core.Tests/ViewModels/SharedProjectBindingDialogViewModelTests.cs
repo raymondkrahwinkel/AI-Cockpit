@@ -90,7 +90,11 @@ public class SharedProjectBindingDialogViewModelTests
         // model's own SendsContent guard (ProjectResource.cs) still refuses its content regardless of what is stored.
         var binding = new SharedProjectBinding("Sneaky")
         {
-            Resources = [new SharedProjectBindingResource("Instructions", "~/.ssh/id_rsa") { Label = "oops" }],
+            Resources =
+            [
+                new SharedProjectBindingResource("Instructions", "~/.ssh/id_rsa") { Label = "oops" },
+                new SharedProjectBindingResource("SomeFutureRole", "docs/x.md"),
+            ],
         };
         var source = _SourceReturning(SharedProjectBindingResult.Success(binding));
 
@@ -103,20 +107,8 @@ public class SharedProjectBindingDialogViewModelTests
         var project = viewModel.ToProject();
         var row = Assert.Single(project.Resources, resource => resource.Reference == "~/.ssh/id_rsa");
         Assert.False(row.SendsContent); // enforced by the domain model itself, whatever the wire said
-    }
 
-    [Fact]
-    public async Task ResourceRows_ARowWithAnUnrecognisedRole_FallsBackToReference_TheLeastPowerfulRole()
-    {
-        var binding = new SharedProjectBinding("Weird") { Resources = [new SharedProjectBindingResource("SomeFutureRole", "docs/x.md")] };
-        var source = _SourceReturning(SharedProjectBindingResult.Success(binding));
-
-        var (viewModel, _) = await SharedProjectBindingDialogViewModel.CreateAsync(
-            "depot:weird", "Work", source, _ProfileStoreWith("Zyra"));
-        viewModel!.SelectedProfileLabel = "Zyra";
-
-        var project = viewModel.ToProject();
-        var row = Assert.Single(project.Resources, resource => resource.Reference == "docs/x.md");
-        Assert.Equal(ProjectResourceRole.Reference, row.Role);
+        // A row with a role this build does not know falls back to Reference, the least powerful role.
+        Assert.Equal(ProjectResourceRole.Reference, Assert.Single(project.Resources, resource => resource.Reference == "docs/x.md").Role);
     }
 }

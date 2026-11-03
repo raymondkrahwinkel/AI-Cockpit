@@ -15,24 +15,20 @@ public class SessionUsageThresholdOverrideTests
         new("weekly", "wk", PluginUsageSignalKind.Allowance, 90) { Description = "Week" };
 
     [Fact]
-    public void AProfileOverride_AppliesToThatSessionOnly()
+    public void AProfileOrAssistantOverride_AppliesToThatSessionOnly()
     {
-        var settings = new UsageThresholdSettings();
-        settings.Set(settings.ByProfile, "work", "weekly", 50);
+        var byProfile = new UsageThresholdSettings();
+        byProfile.Set(byProfile.ByProfile, "work", "weekly", 50);
 
-        var work = new TtyViewModel { UsageThresholds = settings, UsageProviderId = "claude", ActiveProfileLabel = "work" };
-        var personal = new TtyViewModel { UsageThresholds = settings, UsageProviderId = "claude", ActiveProfileLabel = "personal" };
+        var work = new TtyViewModel { UsageThresholds = byProfile, UsageProviderId = "claude", ActiveProfileLabel = "work" };
+        var personal = new TtyViewModel { UsageThresholds = byProfile, UsageProviderId = "claude", ActiveProfileLabel = "personal" };
 
         work.ApplyUsage([Weekly], [new PluginUsageReading("weekly", 55, null)]);
         personal.ApplyUsage([Weekly], [new PluginUsageReading("weekly", 55, null)]);
 
         Assert.True(work.HasUsageWarning);
         Assert.False(personal.HasUsageWarning, "that profile still follows the provider's 90");
-    }
 
-    [Fact]
-    public void AnAssistantOverride_AppliesToTheAssistantPaneOnly()
-    {
         // AC-805: the same profile ("work" here) serves both the Assistant and an ordinary session — the
         // Assistant's own threshold must not leak onto the ordinary session that happens to share it.
         var settings = new UsageThresholdSettings();

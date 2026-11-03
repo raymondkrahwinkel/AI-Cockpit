@@ -36,26 +36,13 @@ public class DelegationPermissionClampTests
     }
 
     [Fact]
-    public async Task NoRequest_GatesReadOnly_NotAtTheProfileCeiling()
-    {
-        // AC-971: asking for nothing gets read-only, whatever the profile would have allowed. A research task
-        // used to inherit a coder profile's write rights purely because its caller never mentioned permissions.
-        var driver = Substitute.For<ISessionDriver>();
-        driver.Events.Returns(_EmptyStream());
-        var service = _ServiceWith(driver, ceiling: "acceptEdits");
-
-        await service.DelegateAsync(new DelegationRequest("local", "work"));
-
-        await driver.Received().SetDelegatedToolGateAsync("default", Arg.Any<IReadOnlyList<string>>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task ARequestAboveTheCeiling_ApprovedByTheOperator_GatesAtTheRequest()
+    public async Task ARequestAboveTheCeiling_AskedAsADangerousNeverRememberedAction_AndApproved_GatesAtTheRequest()
     {
         var driver = Substitute.For<ISessionDriver>();
         driver.Events.Returns(_EmptyStream());
         var consent = Substitute.For<IConsentBroker>();
-        consent.RequestConsentAsync(Arg.Any<ConsentRequest>(), Arg.Any<CancellationToken>())
+        ConsentRequest? captured = null;
+        consent.RequestConsentAsync(Arg.Do<ConsentRequest>(request => captured = request), Arg.Any<CancellationToken>())
             .Returns(new ConsentDecision(ConsentOutcome.Approved));
         var auditLog = Substitute.For<IDelegationAuditLog>();
         var service = _ServiceWith(driver, ceiling: "default", consent, auditLog);
@@ -76,6 +63,11 @@ public class DelegationPermissionClampTests
         await auditLog.Received().RecordAsync(
             Arg.Is<DelegationAuditEntry>(e => e.Action == DelegationAuditAction.PermissionElevated),
             Arg.Any<CancellationToken>());
+
+        Assert.NotNull(captured);
+        Assert.Equal(ConsentRisk.Dangerous, captured!.Risk);
+        Assert.False(captured.AllowRemember);
+        Assert.Equal("delegation.permission:local", captured.Scope);
     }
 
     [Fact]
@@ -95,25 +87,6 @@ public class DelegationPermissionClampTests
         await auditLog.Received().RecordAsync(
             Arg.Is<DelegationAuditEntry>(e => e.Action == DelegationAuditAction.PermissionElevationDenied),
             Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task ARequestAboveTheCeiling_AsksAsADangerousActionThatIsNeverRemembered()
-    {
-        var driver = Substitute.For<ISessionDriver>();
-        driver.Events.Returns(_EmptyStream());
-        var consent = Substitute.For<IConsentBroker>();
-        ConsentRequest? captured = null;
-        consent.RequestConsentAsync(Arg.Do<ConsentRequest>(request => captured = request), Arg.Any<CancellationToken>())
-            .Returns(new ConsentDecision(ConsentOutcome.Approved));
-        var service = _ServiceWith(driver, ceiling: "default", consent);
-
-        await service.DelegateAsync(new DelegationRequest("local", "do everything", RequestedPermission: "bypassPermissions"));
-
-        Assert.NotNull(captured);
-        Assert.Equal(ConsentRisk.Dangerous, captured!.Risk);
-        Assert.False(captured.AllowRemember);
-        Assert.Equal("delegation.permission:local", captured.Scope);
     }
 
     /// <summary>

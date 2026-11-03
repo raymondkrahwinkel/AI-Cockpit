@@ -55,16 +55,12 @@ public class ProjectResourceSendsContentTests
         var resource = new ProjectResource("~/.ssh/id_rsa", ProjectResourceRole.Instructions) { SendsContent = true };
 
         Assert.False(resource.SendsContent);
-    }
 
-    /// <summary>An absolute path resolving to the same secrets location is refused identically (AC-612 constraint 2) — the resolved location is what is judged, not the literal text.</summary>
-    [Fact]
-    public void SendsContent_OnAnInstructionsRowPointingAtASecretPathByItsAbsoluteForm_ReadsAsFalse()
-    {
+        // An absolute path resolving to the same secrets location is refused identically (AC-612 constraint 2) —
+        // the resolved location is what is judged, not the literal text.
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var absolute = Path.Combine(home, ".ssh", "id_rsa");
-        var resource = new ProjectResource(absolute, ProjectResourceRole.Instructions) { SendsContent = true };
+        var absolute = new ProjectResource(Path.Combine(home, ".ssh", "id_rsa"), ProjectResourceRole.Instructions) { SendsContent = true };
 
-        Assert.False(resource.SendsContent);
+        Assert.False(absolute.SendsContent);
     }
 }

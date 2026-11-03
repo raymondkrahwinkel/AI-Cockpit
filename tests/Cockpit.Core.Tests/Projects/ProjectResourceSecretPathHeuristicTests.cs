@@ -60,17 +60,4 @@ public class ProjectResourceSecretPathHeuristicTests
     [InlineData("~", false)]
     public void IsLikelySecretPath_MatchesTheMeasuredTable(string? reference, bool expected) =>
         Assert.Equal(expected, ProjectResourceSecretPathHeuristic.IsLikelySecretPath(reference));
-
-    /// <summary>An absolute path resolves to the same answer as its "~/" form (AC-612 constraint 2) — the heuristic works on the resolved location, not the literal text.</summary>
-    [Fact]
-    public void IsLikelySecretPath_AnAbsolutePathUnderHome_MatchesItsAnchorFormsAnswer()
-    {
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var absolute = Path.Combine(home, ".ssh", "id_rsa");
-
-        Assert.True(ProjectResourceSecretPathHeuristic.IsLikelySecretPath(absolute));
-        Assert.Equal(
-            ProjectResourceSecretPathHeuristic.IsLikelySecretPath("~/.ssh/id_rsa"),
-            ProjectResourceSecretPathHeuristic.IsLikelySecretPath(absolute));
-    }
 }

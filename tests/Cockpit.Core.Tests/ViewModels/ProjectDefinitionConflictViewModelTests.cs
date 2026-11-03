@@ -16,7 +16,7 @@ public class ProjectDefinitionConflictViewModelTests
         new(name, description, behaviorPrompt, IsolateInWorktreeByDefault: false, EnabledMcpServerNames: null);
 
     [Fact]
-    public void Rows_OnlyTheRemoteSideChanged_IsARowButNotACollision()
+    public void Rows_OnlyTheRemoteSideChanged_IsARowButNotACollision_BothSidesChangedIs()
     {
         var baseline = Binding(name: "Cockpit", description: "Original");
         var mine = Edit(name: "Cockpit", description: "Original"); // the operator never touched this field.
@@ -29,22 +29,18 @@ public class ProjectDefinitionConflictViewModelTests
         Assert.False(row.MineChanged);
         Assert.Equal("unchanged", row.MineValue);
         Assert.False(viewModel.HasCollision);
-    }
 
-    [Fact]
-    public void Rows_BothSidesChangedTheSameField_IsACollision()
-    {
-        var baseline = Binding(behaviorPrompt: "Use ICqrsSender");
-        var mine = Edit(behaviorPrompt: "Use ICqrsSender + no AutoMapper");
-        var latest = Binding(behaviorPrompt: "Use ICqrsSender, add tests");
+        // Both sides changed the same field: that is a collision.
+        var collision = new ProjectDefinitionConflictViewModel(
+            Edit(behaviorPrompt: "Use ICqrsSender + no AutoMapper"),
+            Binding(behaviorPrompt: "Use ICqrsSender"),
+            Binding(behaviorPrompt: "Use ICqrsSender, add tests"));
 
-        var viewModel = new ProjectDefinitionConflictViewModel(mine, baseline, latest);
-
-        var row = Assert.Single(viewModel.Rows);
-        Assert.Equal("Behaviour", row.FieldLabel);
-        Assert.True(row.MineChanged);
-        Assert.Equal("Use ICqrsSender + no AutoMapper", row.MineValue);
-        Assert.Equal("Use ICqrsSender, add tests", row.DepotValue);
-        Assert.True(viewModel.HasCollision);
+        var both = Assert.Single(collision.Rows);
+        Assert.Equal("Behaviour", both.FieldLabel);
+        Assert.True(both.MineChanged);
+        Assert.Equal("Use ICqrsSender + no AutoMapper", both.MineValue);
+        Assert.Equal("Use ICqrsSender, add tests", both.DepotValue);
+        Assert.True(collision.HasCollision);
     }
 }

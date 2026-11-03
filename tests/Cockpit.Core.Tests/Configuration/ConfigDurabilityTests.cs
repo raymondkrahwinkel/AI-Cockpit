@@ -39,6 +39,10 @@ public class ConfigDurabilityTests : IDisposable
         await Store().SaveAsync([Server("first")]);
         await Store().SaveAsync([Server("second")]);
 
+        // The write is atomic: the sibling it goes to first must not survive it — a leftover .new means the rename
+        // never happened.
+        Assert.False(File.Exists(_configPath + ".new"));
+
         // What a kill mid-write leaves behind: a file that is no longer JSON.
         await File.WriteAllTextAsync(_configPath, """{ "McpServers": [ { "Name": "sec""");
 
@@ -60,16 +64,6 @@ public class ConfigDurabilityTests : IDisposable
 
         await Assert.ThrowsAsync<InvalidOperationException>(act);
         Assert.Equal("{ this is not json", await File.ReadAllTextAsync(_configPath));
-    }
-
-    [Fact]
-    public async Task TheWriteIsAtomic_SoAHalfFileIsNeverWhatTheOperatorIsLeftWith()
-    {
-        await Store().SaveAsync([Server("first")]);
-
-        // The sibling the write goes to first must not survive it: a leftover .new means the rename never happened.
-        Assert.False(File.Exists(_configPath + ".new"));
-        Assert.Single(await Store().LoadAsync());
     }
 
     public void Dispose()

@@ -24,19 +24,27 @@ public class PluginManagerViewModelBusyGateTests
 {
 
     /// <summary>
-    /// Remove a plugin, change your mind, install it again. The removal is applied at the next start, so the
-    /// folder is still there and the installer stages over it — which used to walk into the update branch and
-    /// read "the state it had" off a registration Remove had just deleted. That reads as disabled, so the
-    /// plugin came back switched off and with the new bytes pinned as approved, under a line promising it would
-    /// activate. It must write no registration at all: no registration is what awaiting-approval looks like.
+    /// Remove a plugin, change your mind, install it again: the removal is applied at the next start, so the
+    /// installer stages over the folder — which used to read "the state it had" off a registration Remove had just
+    /// deleted, bringing the plugin back disabled with the new bytes pinned as approved. It must write no
+    /// registration at all (awaiting-approval). An ordinary update over a known, enabled install still comes back
+    /// enabled with the new bytes pinned and no consent prompt.
     /// </summary>
-    [Fact]
-    public async Task Reinstalling_APluginYouJustRemoved_DoesNotComeBackDisabledAndUnasked()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AnUpdate_KeepsAKnownInstallsEnabledState_ButAJustRemovedOneComesBackUnasked(bool knownInstall)
     {
+        var registrations = new Dictionary<string, PluginRegistration>();
+        if (knownInstall)
+        {
+            registrations["plugin-folder"] = new(Enabled: true, PinnedSha256: "sha256-of-the-old-bytes");
+        }
+
         var registrationStore = Substitute.For<IPluginRegistrationStore>();
         registrationStore
             .LoadAllAsync(Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<IReadOnlyDictionary<string, PluginRegistration>>(new Dictionary<string, PluginRegistration>()));
+            .Returns(Task.FromResult<IReadOnlyDictionary<string, PluginRegistration>>(registrations));
         var storeClient = Substitute.For<IPluginStoreClient>();
         var installer = Substitute.For<IPluginInstaller>();
         _Downloads(storeClient, () => { });
@@ -45,38 +53,19 @@ public class PluginManagerViewModelBusyGateTests
 
         await manager.InstallFromStoreCommand.ExecuteAsync(_UpdatableRow("github-issues", "GitHub Issues"));
 
-        await registrationStore.DidNotReceive().SaveAsync(
-            Arg.Any<string>(), Arg.Any<PluginRegistration>(), Arg.Any<CancellationToken>());
-        Assert.True(manager.NeedsRestart);
-    }
-
-    /// <summary>
-    /// And the ordinary update still keeps what it had, which is the branch above's whole reason for existing:
-    /// an enabled plugin that updates comes back enabled, with the new bytes pinned, and no consent prompt.
-    /// </summary>
-    [Fact]
-    public async Task AnUpdateOverAKnownInstall_KeepsItsEnabledStateAndRepinsTheNewBytes()
-    {
-        var registrationStore = Substitute.For<IPluginRegistrationStore>();
-        registrationStore
-            .LoadAllAsync(Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<IReadOnlyDictionary<string, PluginRegistration>>(
-                new Dictionary<string, PluginRegistration>
-                {
-                    ["plugin-folder"] = new(Enabled: true, PinnedSha256: "sha256-of-the-old-bytes"),
-                }));
-        var storeClient = Substitute.For<IPluginStoreClient>();
-        var installer = Substitute.For<IPluginInstaller>();
-        _Downloads(storeClient, () => { });
-        _StagesTheUpdate(installer);
-        var manager = _Manager(storeClient, installer, Substitute.For<IAppRestartService>(), registrationStore: registrationStore);
-
-        await manager.InstallFromStoreCommand.ExecuteAsync(_UpdatableRow("github-issues", "GitHub Issues"));
-
-        await registrationStore.Received(1).SaveAsync(
-            "plugin-folder",
-            Arg.Is<PluginRegistration>(saved => saved.Enabled && saved.PinnedSha256 == "sha256-of-the-new-bytes"),
-            Arg.Any<CancellationToken>());
+        if (knownInstall)
+        {
+            await registrationStore.Received(1).SaveAsync(
+                "plugin-folder",
+                Arg.Is<PluginRegistration>(saved => saved.Enabled && saved.PinnedSha256 == "sha256-of-the-new-bytes"),
+                Arg.Any<CancellationToken>());
+        }
+        else
+        {
+            await registrationStore.DidNotReceive().SaveAsync(
+                Arg.Any<string>(), Arg.Any<PluginRegistration>(), Arg.Any<CancellationToken>());
+            Assert.True(manager.NeedsRestart);
+        }
     }
 
     private static readonly string _ZipPath = Path.Combine(Path.GetTempPath(), "ac-420-download-that-is-never-written.zip");

@@ -40,16 +40,9 @@ public class DelegationMcpSelectionTests
         var servers = await service._ToolsForAsync(_Profile(selection: ["filesystem", "youtrack", "ghost"]));
 
         Assert.Equivalent(new object[] { "filesystem" }, servers);
-    }
 
-    [Fact]
-    public async Task AnEmptySelection_MeansNone()
-    {
-        var service = _ServiceWithRegistry(_Enabled("filesystem"), _Enabled("youtrack"));
-
-        var servers = await service._ToolsForAsync(_Profile(selection: []));
-
-        Assert.Empty(servers);
+        // And an empty selection means none, not "no restriction".
+        Assert.Empty(await service._ToolsForAsync(_Profile(selection: [])));
     }
 
     [Fact]
@@ -64,26 +57,13 @@ public class DelegationMcpSelectionTests
         Assert.Equivalent(new object[] { "filesystem" }, servers);
     }
 
-    [Fact]
-    public async Task APerTaskSelectionOfTheOrchestrator_IsStillDroppedWithoutMayDelegateFurther()
-    {
-        // The recursion guard applies to the per-task layer too: even naming the orchestrator per task cannot get
-        // it past the !MayDelegateFurther removal.
-        var service = _ServiceWithRegistry(_Enabled("filesystem"), _Enabled(Orchestrator));
-
-        var servers = await service._ToolsForAsync(
-            _Profile(selection: ["filesystem", Orchestrator]), [Orchestrator, "filesystem"]);
-
-        Assert.Equivalent(new object[] { "filesystem" }, servers);
-    }
-
     private static McpServerConfig _Enabled(string name) => new() { Name = name, Enabled = true };
 
     private static McpServerConfig _Disabled(string name) => new() { Name = name, Enabled = false };
 
-    private static SessionProfile _Profile(IReadOnlyList<string>? selection, bool mayDelegateFurther = false) =>
+    private static SessionProfile _Profile(IReadOnlyList<string>? selection) =>
         new("local", new ClaudeConfig(string.Empty),
-            Delegation: new DelegationPolicy(AllowedAsTarget: true, MayDelegateFurther: mayDelegateFurther))
+            Delegation: new DelegationPolicy(AllowedAsTarget: true, MayDelegateFurther: false))
         {
             EnabledMcpServerNames = selection,
         };

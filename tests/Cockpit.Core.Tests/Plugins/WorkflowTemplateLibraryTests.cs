@@ -13,7 +13,7 @@ public class WorkflowTemplateLibraryTests : IDisposable
     private readonly string _root = Path.Combine(Path.GetTempPath(), "cockpit-tests", Guid.NewGuid().ToString("N"));
 
     [Fact]
-    public void AnInstalledTemplate_IsThereTheNextTimeTheCockpitLooks()
+    public void AnInstalledTemplate_IsThereTheNextTimeTheCockpitLooks_AndAnEscapingIdStaysInside()
     {
         var library = new WorkflowTemplateLibrary(_root);
 
@@ -25,18 +25,13 @@ public class WorkflowTemplateLibraryTests : IDisposable
         Assert.Equal("Ticket → branch → agent", loaded.Name);
         Assert.Contains("cockpit.command", loaded.Json);
         Assert.Equal(new[] { "youtrack" }, loaded.Requires);
-    }
 
-    // A store's id is a string the cockpit did not write, and it is used as a file name. One that tries to climb out of
-    // the template directory writes inside it anyway.
-    [Fact]
-    public void AnIdThatTriesToEscapeTheDirectory_WritesInsideItAnyway()
-    {
-        var library = new WorkflowTemplateLibrary(_root);
-
+        // A store's id is a string the cockpit did not write, and it is used as a file name. One that tries to climb
+        // out of the template directory writes inside it anyway.
         library.Install(_Template("../../evil"));
 
-        Assert.StartsWith(_root, Assert.Single(Directory.GetFiles(_root)));
+        Assert.Equal(2, Directory.GetFiles(_root).Length);
+        Assert.All(Directory.GetFiles(_root), file => Assert.StartsWith(_root, file));
     }
 
     private static InstalledWorkflowTemplate _Template(string id) => new(

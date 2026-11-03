@@ -341,7 +341,7 @@ inline	tests/Cockpit.Core.Tests/Mcp/InProcessOAuthMcpServer.cs	1
 inline	tests/Cockpit.Core.Tests/Mcp/McpHeaderStorageTests.cs	1
 inline	tests/Cockpit.Core.Tests/Mcp/McpOAuthAuthorizerTests.cs	1
 inline	tests/Cockpit.Core.Tests/Mcp/McpOAuthCredentialFanOutTests.cs	3
-inline	tests/Cockpit.Core.Tests/Mcp/McpOAuthOfflineAccessFlowTests.cs	2
+inline	tests/Cockpit.Core.Tests/Mcp/McpOAuthOfflineAccessFlowTests.cs	1
 inline	tests/Cockpit.Core.Tests/Mcp/McpOAuthSessionMarginTests.cs	1
 inline	tests/Cockpit.Core.Tests/Mcp/McpOAuthTokenStoreTests.cs	2
 inline	tests/Cockpit.Core.Tests/Mcp/McpServerStoreTests.cs	2
@@ -365,7 +365,6 @@ inline	tests/Cockpit.Core.Tests/Projects/ProjectResourceTests.cs	1
 inline	tests/Cockpit.Core.Tests/Screenshots/ScreenshotCoordinatorTests.cs	1
 inline	tests/Cockpit.Core.Tests/Screenshots/StrokeMarkTests.cs	1
 inline	tests/Cockpit.Core.Tests/Services/Ac1124_ShutdownTeardownBudgetTests.cs	2
-inline	tests/Cockpit.Core.Tests/Services/SessionStateRecorderTests.cs	1
 inline	tests/Cockpit.Core.Tests/Sessions/PendingResumeLabelTests.cs	1
 inline	tests/Cockpit.Core.Tests/Sessions/ScheduleResumeDialogTests.cs	3
 inline	tests/Cockpit.Core.Tests/Sessions/SessionResourceMergeTests.cs	1
@@ -378,7 +377,6 @@ inline	tests/Cockpit.Core.Tests/Styles/ThemeHexColorGuardTests.cs	4
 inline	tests/Cockpit.Core.Tests/UiDispatcherSentinel.cs	1
 inline	tests/Cockpit.Core.Tests/Usage/UsageHistoryLogTests.cs	1
 inline	tests/Cockpit.Core.Tests/ViewModels/AssistantChatViewModelTests.cs	1
-inline	tests/Cockpit.Core.Tests/ViewModels/AssistantOptionsViewModelTests.cs	1
 inline	tests/Cockpit.Core.Tests/ViewModels/CockpitViewModelTests.cs	1
 inline	tests/Cockpit.Core.Tests/ViewModels/MemorySourceLocationPickerViewModelTests.cs	1
 inline	tests/Cockpit.Core.Tests/ViewModels/NewSessionProjectFirstTests.cs	1
@@ -401,7 +399,7 @@ inline	tests/Cockpit.Core.Tests/Voice/AssistantPushToTalkCoordinatorTests.cs	2
 inline	tests/Cockpit.Core.Tests/Voice/ProcessStderrTailTests.cs	2
 inline	tests/Cockpit.Core.Tests/Workspaces/SessionWorkspaceSeparationTests.cs	1
 inline	tests/Cockpit.Core.Tests/Workspaces/WorkspacesViewModelTests.cs	2
-inline	tests/Cockpit.Core.Tests/Worktrees/WorktreeToolsAssistantOwnershipTests.cs	2
+inline	tests/Cockpit.Core.Tests/Worktrees/WorktreeToolsAssistantOwnershipTests.cs	1
 inline	tests/Cockpit.Infrastructure.Tests/Agents/AgentsMcpToolsTests.cs	2
 inline	tests/Cockpit.Infrastructure.Tests/Agents/PhysicalResourceIdentityTests.cs	1
 inline	tests/Cockpit.Infrastructure.Tests/Assistant/AssistantActMountRuleTests.cs	2
@@ -522,7 +520,6 @@ summary	tests/Cockpit.Core.Tests/Sessions/SessionStartDefaultsTests.cs	3
 summary	tests/Cockpit.Core.Tests/Sessions/SessionStateStoreDependencyInjectionTests.cs	1
 summary	tests/Cockpit.Core.Tests/Sessions/TtyLauncherTests.cs	1
 summary	tests/Cockpit.Core.Tests/Sessions/TtySessionProviderResolverTests.cs	1
-summary	tests/Cockpit.Core.Tests/Shortcuts/ShortcutSettingsStoreZoomMigrationTests.cs	1
 summary	tests/Cockpit.Core.Tests/Shortcuts/ZoomShortcutTests.cs	1
 summary	tests/Cockpit.Core.Tests/Toasts/ToastHostViewModelTests.cs	1
 summary	tests/Cockpit.Core.Tests/Updates/BuildChannelTests.cs	1

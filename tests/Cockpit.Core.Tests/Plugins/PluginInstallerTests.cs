@@ -24,7 +24,7 @@ public class PluginInstallerTests : IDisposable
     // (above) never sees it. Left unchecked, `Path.Combine(stagingDir, "../approved-plugin/entry.dll")`
     // walks out of staging and hashes/installs over an already-approved sibling's real assembly instead.
     [Fact]
-    public async Task InstallFromZipAsync_EntryAssemblyEscapesViaDotDot_Rejected()
+    public async Task InstallFromZipAsync_EntryAssemblyOrZipEntryEscapingViaDotDot_Rejected()
     {
         await _installer.InstallFromZipAsync(_PluginZip("approved-plugin", dll: "MZ-approved"), HostMajor);
         var zip = _CreateZip(new()
@@ -36,23 +36,11 @@ public class PluginInstallerTests : IDisposable
 
         Assert.False(result.IsSuccess);
         Assert.False(Directory.Exists(Path.Combine(_pluginsRoot, "victim")));
-    }
 
-    [Fact]
-    public async Task InstallFromZipAsync_ZipSlipEntry_Rejected()
-    {
-        // A crafted entry escaping the destination must be refused before anything lands on disk.
-        var zip = Path.Combine(_tempDir, "evil.zip");
-        using (var archive = ZipFile.Open(zip, ZipArchiveMode.Create))
-        {
-            var entry = archive.CreateEntry("../escape.txt");
-            using var writer = new StreamWriter(entry.Open());
-            writer.Write("pwned");
-        }
+        // And the zip-slip guard itself: a crafted entry escaping the destination is refused before anything lands.
+        var slip = await _installer.InstallFromZipAsync(_CreateZip(new() { ["../escape.txt"] = "pwned" }), HostMajor);
 
-        var result = await _installer.InstallFromZipAsync(zip, HostMajor);
-
-        Assert.False(result.IsSuccess);
+        Assert.False(slip.IsSuccess);
         Assert.False(File.Exists(Path.Combine(_tempDir, "escape.txt")));
     }
 

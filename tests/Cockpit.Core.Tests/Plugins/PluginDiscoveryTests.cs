@@ -16,22 +16,7 @@ public class PluginDiscoveryTests : IDisposable
     }
 
     [Fact]
-    public async Task DiscoverAsync_ValidFolder_NeverSeen_DecidesNeedsConsent()
-    {
-        WritePlugin("github-issues", entryAssembly: "Plugin.dll", abstractionsVersion: 1);
-        var discovery = new PluginDiscovery();
-
-        var found = await discovery.DiscoverAsync(_root, Empty, HostMajor);
-
-        Assert.Single(found);
-        Assert.Equal("github-issues", found[0].FolderId);
-        Assert.Equal("github-issues-name", found[0].Manifest.Name);
-        Assert.Equal(PluginLoadDecision.NeedsConsent, found[0].Decision);
-        Assert.Matches("^[0-9a-f]{64}$", found[0].Sha256);
-    }
-
-    [Fact]
-    public async Task DiscoverAsync_EnabledButADependencyDllWasSwappedKeepingSizeAndWriteTime_DecidesNeedsConsent()
+    public async Task DiscoverAsync_NeverSeen_OrEnabledButADependencyDllWasSwappedKeepingSizeAndWriteTime_DecidesNeedsConsent()
     {
         // AC-43: the pin covers the whole closure, so a swapped dependency DLL re-triggers consent. AC-2018: Options
         // reuses an unchanged file's hash, and a swap that keeps size and write time must still be seen by the startup
@@ -41,6 +26,13 @@ public class PluginDiscoveryTests : IDisposable
         var writtenAt = DateTime.UtcNow.AddHours(-1);
         await File.WriteAllTextAsync(dependency, "original-dependency-bytes");
         File.SetLastWriteTimeUtc(dependency, writtenAt);
+
+        // A valid folder never seen before needs consent.
+        var unseen = Assert.Single(await new PluginDiscovery().DiscoverAsync(_root, new Dictionary<string, PluginRegistration>(), HostMajor));
+        Assert.Equal("weather-name", unseen.Manifest.Name);
+        Assert.Equal(PluginLoadDecision.NeedsConsent, unseen.Decision);
+        Assert.Matches("^[0-9a-f]{64}$", unseen.Sha256);
+
         var shown = await new PluginDiscovery().DiscoverAsync(_root, new Dictionary<string, PluginRegistration>(), HostMajor, forDisplay: true);
         var saved = new Dictionary<string, PluginRegistration> { ["weather"] = new(Enabled: true, PinnedSha256: Assert.Single(shown).Sha256) };
 
@@ -63,9 +55,6 @@ public class PluginDiscoveryTests : IDisposable
         File.WriteAllText(Path.Combine(folder, entryAssembly), $"fake-assembly-bytes-for-{folderId}");
         return folder;
     }
-
-    private static readonly IReadOnlyDictionary<string, PluginRegistration> Empty =
-        new Dictionary<string, PluginRegistration>();
 
     public void Dispose()
     {

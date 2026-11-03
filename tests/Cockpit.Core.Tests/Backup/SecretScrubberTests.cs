@@ -11,24 +11,14 @@ namespace Cockpit.Core.Tests.Backup;
 public class SecretScrubberTests
 {
     [Fact]
-    public void AKeyAtTheTop_IsEmptied_AndNamed()
+    public void AKeyAtTheTop_AndATokenInsideAPluginsOwnJson_AreEmptiedAndNamed()
     {
-        var settings = JsonNode.Parse("""{"providers":[{"label":"OpenAI","apiKey":"sk-live-abc"}]}""")!;
-
-        var removed = SecretScrubber.Scrub(settings);
-
-        Assert.Empty(settings["providers"]![0]!["apiKey"]!.ToString());
-        Assert.Equal(new[] { "providers[0].apiKey" }, removed);
-    }
-
-    [Fact]
-    public void ATokenInsideAPluginsOwnJson_IsFoundToo()
-    {
-        // This is where the YouTrack token actually lives: a plugin keeps its settings as a JSON *string* inside the
-        // cockpit's JSON. A scrubber that only walked the outer document would report a clean backup and ship the
+        // The second is where the YouTrack token actually lives: a plugin keeps its settings as a JSON *string* inside
+        // the cockpit's JSON. A scrubber that only walked the outer document would report a clean backup and ship the
         // token in it.
         var settings = JsonNode.Parse("""
         {
+          "providers": [{ "label": "OpenAI", "apiKey": "sk-live-abc" }],
           "plugins": {
             "youtrack": {
               "Data": {
@@ -41,6 +31,8 @@ public class SecretScrubberTests
 
         var removed = SecretScrubber.Scrub(settings);
 
+        Assert.Empty(settings["providers"]![0]!["apiKey"]!.ToString());
+        Assert.Contains("providers[0].apiKey", removed);
         Assert.DoesNotContain("perm:secret", settings.ToJsonString());
         Assert.Single(removed, path => path.Contains("instances"));
     }

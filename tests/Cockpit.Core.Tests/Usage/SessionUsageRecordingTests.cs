@@ -120,18 +120,7 @@ public class SessionUsageRecordingTests
     }
 
     [Fact]
-    public void ATurnThatReportedNothing_LeavesNoRecord_RatherThanARowOfZeroes()
-    {
-        var history = new RecordingUsageHistory();
-        var session = _Session(history);
-
-        session.Apply(_Turn(usage: null, costUsd: null));
-
-        Assert.Empty(history.Recorded);
-    }
-
-    [Fact]
-    public void ASessionEmbeddedForARun_CarriesThatRun_SoItsSessionsAddUp()
+    public void ASessionEmbeddedForARun_CarriesThatRun_AndATurnThatReportedNothingLeavesNoRecord()
     {
         var history = new RecordingUsageHistory();
         var session = _Session(history);
@@ -139,6 +128,10 @@ public class SessionUsageRecordingTests
         session.RunKind = UsageRunKind.Embedded;
         session.RunId = "run-7";
         session.RunLabel = "AC-251 - persist usage";
+
+        // A turn that reported nothing leaves no record, rather than a row of zeroes.
+        session.Apply(_Turn(usage: null, costUsd: null));
+        Assert.Empty(history.Recorded);
 
         session.Apply(_Turn(new TokenUsage(10, 1, 0, 0), 0.01));
 
