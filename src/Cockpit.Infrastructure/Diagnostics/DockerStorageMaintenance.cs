@@ -22,6 +22,7 @@ internal sealed class DockerStorageMaintenance(
     HeavyRunQueue queue,
     IAgentMessageInbox inbox,
     ILiveSessionRegistry live,
+    ISessionRegistry sessions,
     ILogger<DockerStorageMaintenance> logger,
     IToastService? toasts = null,
     ISessionBehaviorSettingsStore? settings = null) : IDockerStorageMaintenance, ISingletonService, IAsyncDisposable
@@ -70,15 +71,23 @@ internal sealed class DockerStorageMaintenance(
     {
         _usage = null;
         _disk = null;
-        var result = await docker.RunAsync(["system", "df", "--format", "json"], cancellationToken).ConfigureAwait(false);
-        if (result.ExitCode != 0)
+        DockerCliResult? result;
+        try
+        {
+            result = await docker.RunAsync(["system", "df", "--format", "json"], cancellationToken).ConfigureAwait(false);
+        }
+        catch (DockerUnavailableException)
+        {
+            result = null;
+        }
+        if (result is null || result.Value.ExitCode != 0)
         {
             Volatile.Write(ref _summary, "Docker is unavailable; disk monitoring continues.");
             Changed?.Invoke();
             return;
         }
 
-        var usage = DockerStorageUsage.Parse(result.StandardOutput);
+        var usage = DockerStorageUsage.Parse(result.Value.StandardOutput);
         DockerDataDisk? disk = null;
         try
         {
@@ -195,7 +204,7 @@ internal sealed class DockerStorageMaintenance(
         }
 
         var restart = false;
-        var participants = live.LiveSessionIds.ToArray();
+        var participants = live.LiveSessionIds.Where(pane => pane != AssistantIdentity.PaneId).ToArray();
         try
         {
             _stopping.Token.ThrowIfCancellationRequested();
@@ -223,11 +232,33 @@ internal sealed class DockerStorageMaintenance(
                 {
                     throw new InvalidOperationException($"Could not notify {pane}; compaction canceled.");
                 }
+
+                if (sessions.Find(pane) is { } session
+                    && !await session.HasOutstandingBackgroundShellsAsync().ConfigureAwait(false)
+                    && session.SessionStatus != SessionStatus.Busy)
+                {
+                    AcknowledgePause(pane, pauseId);
+                }
             }
 
-            await Task.WhenAll(acknowledgements).WaitAsync(bounded.Token).ConfigureAwait(false);
+            try
+            {
+                await Task.WhenAll(acknowledgements).WaitAsync(bounded.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!_stopping.IsCancellationRequested && !reservation.Revoked.IsCancellationRequested)
+            {
+                string[] missing;
+                lock (_gate)
+                {
+                    missing = _acknowledgements.Where(pair => !pair.Value.Task.IsCompleted)
+                        .Select(pair => sessions.Find(pair.Key)?.Title ?? pair.Key).ToArray();
+                }
+
+                _Report($"Compaction canceled: no acknowledgement within 5 minutes from {string.Join(", ", missing)}. Ask them to pause Docker work, or request compaction again.", ToastSeverity.Warning);
+                return;
+            }
             bounded.CancelAfter(Timeout.InfiniteTimeSpan);
-            if (!live.LiveSessionIds.SetEquals(participants))
+            if (!live.LiveSessionIds.Where(pane => pane != AssistantIdentity.PaneId).ToHashSet(StringComparer.Ordinal).SetEquals(participants))
             {
                 throw new InvalidOperationException("The session roster changed; request compaction again.");
             }
@@ -320,7 +351,7 @@ internal sealed class DockerStorageMaintenance(
                 finally { _operation.Release(); }
             }
 
-            if (!automatic && pressure >= DiskPressure.Elevated && now - _lastSuggestion >= TimeSpan.FromHours(6))
+            if (!automatic && pressure >= DiskPressure.Elevated && now - _lastSuggestion >= TimeSpan.FromHours(6) && _usage is not null)
             {
                 _lastSuggestion = now;
                 var worst = resources.Disks.MaxBy(drive => drive.Pressure)!;

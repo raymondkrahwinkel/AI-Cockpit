@@ -2,6 +2,7 @@ using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Shell;
 using Cockpit.Core.Abstractions.Toasts;
+using Cockpit.Core.Assistant;
 using Cockpit.Core.HeavyRuns;
 using Cockpit.Core.Toasts;
 using Cockpit.Infrastructure.Diagnostics;
@@ -59,7 +60,21 @@ public sealed class DockerStorageMaintenanceTests
         {
             await using var test = new Fixture();
             test.Elevated.Outcome = outcome;
-            test.Live.LiveSessionIds.Returns(new HashSet<string> { "session" });
+            test.Live.LiveSessionIds.Returns(new HashSet<string> { "session", "background", "idle", "done", "failed", AssistantIdentity.PaneId });
+            var busy = Substitute.For<ISessionHandle>();
+            busy.SessionStatus.Returns(SessionStatus.Busy);
+            test.Sessions.Find("session").Returns(busy);
+            var background = Substitute.For<ISessionHandle>();
+            background.SessionStatus.Returns(SessionStatus.Idle);
+            background.HasOutstandingBackgroundShellsAsync().Returns(true);
+            test.Sessions.Find("background").Returns(background);
+            foreach (var (pane, status) in new[] { ("idle", SessionStatus.Idle), ("done", SessionStatus.Done), ("failed", SessionStatus.Failed) })
+            {
+                var idle = Substitute.For<ISessionHandle>();
+                idle.SessionStatus.Returns(status);
+                idle.HasOutstandingBackgroundShellsAsync().Returns(false);
+                test.Sessions.Find(pane).Returns(idle);
+            }
             await using var running = test.Queue.Request(test.Request("existing", HeavyRunPurpose.Operator));
             await test.Maintenance.RequestCompactionAsync();
             Assert.Contains(test.Toasts.Messages, message => message.Contains("Ubuntu") && message.Contains("docker-desktop"));
@@ -72,12 +87,18 @@ public sealed class DockerStorageMaintenanceTests
             await running.DisposeAsync();
             await test.Inbox.PauseSent.Task.WaitAsync(TimeSpan.FromSeconds(10));
             Assert.DoesNotContain("desktop stop", test.Docker.Calls);
-            var pause = Assert.Single(test.Inbox.Deliveries, delivery => delivery.Kind == "storage pause");
+            var pause = Assert.Single(test.Inbox.Deliveries, delivery => delivery.Kind == "storage pause" && delivery.PaneId == "session");
             var id = pause.Body.Split("pauseId=", StringSplitOptions.None)[1].Split('.')[0];
             Assert.False(test.Maintenance.AcknowledgePause("other-session", id));
             Assert.False(test.Maintenance.AcknowledgePause("session", "stale-id"));
             Assert.True(test.Maintenance.AcknowledgePause("session", id));
+            Assert.False(test.Maintenance.Compaction.IsCompleted);
+            Assert.DoesNotContain("desktop stop", test.Docker.Calls);
+            Assert.False(test.Maintenance.AcknowledgePause(AssistantIdentity.PaneId, id));
+            Assert.True(test.Maintenance.AcknowledgePause("background", id));
             await test.Maintenance.Compaction.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(5, test.Inbox.Deliveries.Count(delivery => delivery.Kind == "storage pause"));
+            Assert.Equal(5, test.Inbox.Deliveries.Count(delivery => delivery.Kind == "storage resume"));
             Assert.Single(test.Elevated.Commands);
             Assert.Contains("attach vdisk readonly", test.Elevated.Commands[0]);
             Assert.Equal(new[] { "stop", "shutdown", "elevate", "start", "ready" }, test.Order);
@@ -102,6 +123,7 @@ public sealed class DockerStorageMaintenanceTests
         public readonly FakeToasts Toasts = new();
         public readonly FakeInbox Inbox = new();
         public readonly ILiveSessionRegistry Live = Substitute.For<ILiveSessionRegistry>();
+        public readonly ISessionRegistry Sessions = Substitute.For<ISessionRegistry>();
         public readonly HeavyRunQueue Queue;
         public readonly DockerStorageMaintenance Maintenance;
 
@@ -118,7 +140,7 @@ public sealed class DockerStorageMaintenanceTests
             settings.LoadAsync(Arg.Any<CancellationToken>()).Returns(new HeavyRunSettings());
             Live.LiveSessionIds.Returns(new HashSet<string>());
             Queue = new HeavyRunQueue(resources, settings, new HeavyRunCostStore(_costPath));
-            Maintenance = new DockerStorageMaintenance(resources, Docker, Platform, Elevated, Queue, Inbox, Live, NullLogger<DockerStorageMaintenance>.Instance, Toasts);
+            Maintenance = new DockerStorageMaintenance(resources, Docker, Platform, Elevated, Queue, Inbox, Live, Sessions, NullLogger<DockerStorageMaintenance>.Instance, Toasts);
         }
 
         public HeavyRunRequest Request(string id, HeavyRunPurpose purpose) => new(id, HeavyRunKind.Build, purpose, "session", id, Environment.CurrentDirectory);
@@ -194,11 +216,11 @@ public sealed class DockerStorageMaintenanceTests
     private sealed class FakeInbox : IAgentMessageInbox
     {
         private readonly IAgentMessageInbox _unused = Substitute.For<IAgentMessageInbox>();
-        public readonly List<(string Kind, string Body)> Deliveries = [];
+        public readonly List<(string PaneId, string Kind, string Body)> Deliveries = [];
         public readonly TaskCompletionSource PauseSent = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public AgentMessageDelivery Deliver(string fromPaneId, string toPaneId, string kind, string body, string? senderProfile = null, string? senderProjectId = null, bool profileWide = false, string? subjectPaneId = null)
         {
-            Deliveries.Add((kind, body));
+            Deliveries.Add((toPaneId, kind, body));
             if (kind == "storage pause") { PauseSent.TrySetResult(); }
             return new AgentMessageDelivery(AgentMessageDeliveryOutcome.Delivered, null);
         }
