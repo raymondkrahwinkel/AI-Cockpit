@@ -9,10 +9,16 @@ namespace Cockpit.Infrastructure.Sessions;
 internal sealed class PluginModelIntelligenceReader(IPluginProviderRegistry registry, ISessionProfileStore profiles)
     : IProviderModelIntelligence, ISingletonService
 {
+    private readonly LocalModelImageFacts _localFacts = new();
+
     public async Task<PluginModelIntelligence?> ReadAsync(string profileLabel, CancellationToken cancellationToken = default)
     {
         var profile = (await profiles.LoadAsync(cancellationToken).ConfigureAwait(false))
             .FirstOrDefault(candidate => string.Equals(candidate.Label, profileLabel, StringComparison.Ordinal));
+        if (profile?.ProviderConfig is LmStudioConfig or OllamaConfig)
+        {
+            return await _localFacts.ReadAsync(profileLabel, profile.ProviderConfig, cancellationToken).ConfigureAwait(false);
+        }
         if (profile?.ProviderConfig is not PluginProviderConfig config
             || registry.Resolve(config.ProviderId)?.ReadModelIntelligenceAsync is not { } read)
         {
