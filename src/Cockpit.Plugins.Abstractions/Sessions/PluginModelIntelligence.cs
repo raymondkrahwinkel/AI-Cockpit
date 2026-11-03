@@ -12,6 +12,12 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// </remarks>
 public sealed record PluginModelIntelligence
 {
+    /// <summary>Image input guaranteed by the service for every model, when the contract is model independent.</summary>
+    public bool? SupportsImageInput { get; init; }
+
+    /// <summary>Origin and lifetime of the service-wide image-input guarantee.</summary>
+    public PluginFactSource? ImageInputSource { get; init; }
+
     /// <summary>
     /// Whether this profile runs the configured model on the operator's own hardware, so public token prices do not apply.
     /// </summary>

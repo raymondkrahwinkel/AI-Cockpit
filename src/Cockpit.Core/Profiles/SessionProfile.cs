@@ -10,6 +10,8 @@ public sealed record SessionProfile(
     ProfileDefaults? Defaults = null,
     DelegationPolicy? Delegation = null)
 {
+    public Cockpit.Core.ModelIntelligence.ImageInputMode ImageInputMode { get; init; }
+
     // What this profile allows when another session delegates work to it (#67); no policy means it is not a target.
     public DelegationPolicy DelegationPolicy => Delegation ?? DelegationPolicy.None;
 

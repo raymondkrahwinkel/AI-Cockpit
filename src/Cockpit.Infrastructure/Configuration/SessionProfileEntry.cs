@@ -8,6 +8,7 @@ namespace Cockpit.Infrastructure.Configuration;
 internal sealed class SessionProfileEntry
 {
     public string Label { get; set; } = string.Empty;
+    public string? ImageInputMode { get; set; }
 
     // Claude's config directory. Read for a Claude profile, ignored for any other.
     public string ConfigDir { get; set; } = string.Empty;
@@ -54,6 +55,7 @@ internal sealed class SessionProfileEntry
     public static SessionProfileEntry FromDomain(SessionProfile profile) => new()
     {
         Label = profile.Label,
+        ImageInputMode = profile.ImageInputMode.ToString(),
         // Only a legacy in-tree ClaudeConfig profile writes settings to the top-level fields; a plugin
         // profile keeps them in its own PluginConfigJson, so these stay blank and nothing is duplicated.
         ConfigDir = (profile.ProviderConfig as ClaudeConfig)?.ConfigDir ?? string.Empty,
@@ -91,6 +93,7 @@ internal sealed class SessionProfileEntry
 
         return new(Label, providerConfig, Purpose, defaults, Delegation?.ToDomain())
         {
+            ImageInputMode = Enum.TryParse<Cockpit.Core.ModelIntelligence.ImageInputMode>(ImageInputMode, true, out var imageMode) ? imageMode : Cockpit.Core.ModelIntelligence.ImageInputMode.Auto,
             EnvironmentVariables = EnvironmentVariables is { Count: > 0 }
                 ? [.. EnvironmentVariables.Select(entry => entry.ToDomain())]
                 : null,

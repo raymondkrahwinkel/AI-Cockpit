@@ -11,6 +11,7 @@ internal static class SettingsCarrierWhitelist
     public static readonly IReadOnlyList<string> Carried =
     [
         "Profiles[].Label", "Profiles[].Purpose", "Profiles[].SystemPrompt", "Profiles[].Assistant",
+        "Profiles[].ImageInputMode",
         "Profiles[].DefaultKind", "Profiles[].MemoryCapMegabytes", "Profiles[].EnabledMcpServers",
         "Profiles[].Defaults.PermissionMode", "Profiles[].Defaults.Model", "Profiles[].Defaults.Effort",
         "Profiles[].Defaults.AutoApproveTools", "Profiles[].Defaults.OptionDefaults", "Profiles[].Defaults.DefaultReadingLevel",
