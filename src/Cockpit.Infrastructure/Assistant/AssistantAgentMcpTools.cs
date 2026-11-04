@@ -1362,7 +1362,7 @@ internal sealed class AssistantAgentMcpTools(
     }
 
     [McpServerTool(Name = "remember", ReadOnly = false, Destructive = false)]
-    [Description("Persists one fact without approval. scope is required: behaviour writes locally and relays to every paired node, awaiting each result; machines is refused for that scope. machine requires machines containing \"local\", node names, or both, and writes only there. Check destinations for failures even when ok is true; unreachable writes are not queued. Behavior and machine memories remain separate. Use note_state for transient progress. No tool removes a remembered line; the operator must edit the file.")]
+    [Description("Persists one fact without approval. scope is required: behaviour writes locally and relays to every paired node, awaiting each result; machines is refused for that scope. machine requires machines containing \"local\", node names, or both, and writes only there. Check destinations for failures even when ok is true; unreachable writes are not queued. Behavior and machine memories remain separate. Use note_state for transient progress.")]
     public async Task<string> RememberAsync(
         [Description("The one thing to remember, in a full sentence that will still make sense on its own with no conversation around it.")] string text,
         [Description("Either behaviour or machine. A behaviour rule is something you are told and belongs everywhere; machine knowledge is learned by doing, when a command fails or a path differs, and belongs only where it holds.")] string? scope = null,
@@ -1479,6 +1479,44 @@ internal sealed class AssistantAgentMcpTools(
         }
 
         return new { ok = true, remembered = text.Trim(), scope, destinations };
+    }
+
+    [McpServerTool(Name = "rewrite_assistant_memory", ReadOnly = false, Destructive = false)]
+    [Description("Replace behaviour memory with consolidated text, after making a timestamped backup locally and on every paired node. Check each destination for failures. The heading and at least one non-empty bullet are required.")]
+    public async Task<string> RewriteAssistantMemoryAsync(string text)
+    {
+        try
+        {
+            if (_RefuseIfNotTheAssistant() is { } refusal)
+            {
+                return refusal;
+            }
+            var result = await memory.RewriteAsync(text).ConfigureAwait(false);
+            var destinations = new List<object> { new { machine = "local", succeeded = true, error = (string?)null } };
+            if (nodes is not null)
+            {
+                IReadOnlyList<string> nodeNames;
+                try
+                {
+                    nodeNames = await nodes.ListNodesAsync().ConfigureAwait(false);
+                }
+                catch (Exception exception)
+                {
+                    destinations.Add(new { machine = "(paired nodes)", succeeded = false, error = exception.Message });
+                    nodeNames = [];
+                }
+                foreach (var node in nodeNames)
+                {
+                    var error = await nodes.RewriteMemoryOnNodeAsync(node, text).ConfigureAwait(false);
+                    destinations.Add(new { machine = node, succeeded = error is null, error });
+                }
+            }
+            return _Serialize(new { ok = true, result, destinations });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
     }
 
     [McpServerTool(Name = "read_node_memory", ReadOnly = true)]

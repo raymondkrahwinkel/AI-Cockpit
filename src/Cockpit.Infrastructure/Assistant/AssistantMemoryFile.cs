@@ -107,8 +107,6 @@ internal sealed class AssistantMemoryFile : IAssistantMemory, ISingletonService
         return (await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false)).Trim();
     }
 
-    // ponytail: append-only, so the file only ever grows. It is one line per thing the operator said to keep, and
-    // pruning is opening it — worth a second look on the day it is long enough to weigh on the launch instruction.
     public async Task RememberAsync(
         string text,
         AssistantMemoryScope scope,
@@ -131,6 +129,29 @@ internal sealed class AssistantMemoryFile : IAssistantMemory, ISingletonService
         {
             await takeover.PublishAsync(cancellationToken);
         }
+    }
+
+    public async Task<AssistantMemoryRewrite> RewriteAsync(string text, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(text);
+        var lines = text.Split('\n').Select(line => line.TrimEnd('\r')).ToArray();
+        if (lines[0] != Heading || !lines.Skip(1).Any(line => line.StartsWith("- ", StringComparison.Ordinal) && !string.IsNullOrWhiteSpace(line[2..])) ||
+            lines.Skip(1).Any(line => !string.IsNullOrWhiteSpace(line) && (!line.StartsWith("- ", StringComparison.Ordinal) || string.IsNullOrWhiteSpace(line[2..]))))
+        {
+            throw new ArgumentException("Memory must have its heading and at least one non-empty bullet; every content line must be a bullet.", nameof(text));
+        }
+
+        var beforeBytes = File.Exists(_filePath) ? await File.ReadAllBytesAsync(_filePath, cancellationToken).ConfigureAwait(false) : [];
+        var before = System.Text.Encoding.UTF8.GetString(beforeBytes);
+        CockpitConfigPath.EnsurePrivateDirectory(Path.GetDirectoryName(_filePath) ?? CockpitConfigPath.Root);
+        var backup = File.Exists(_filePath) ? AssistantMemoryBackup.CopyAside(_filePath) : null;
+        CockpitConfigPath.ReplaceAtomicallyPrivate(_filePath, text);
+        if (_services?.GetService<SwarmTakeoverCoordinator>() is { } takeover)
+        {
+            await takeover.PublishAsync(cancellationToken).ConfigureAwait(false);
+        }
+        return new(beforeBytes.Length, new FileInfo(_filePath).Length,
+            before.Length == 0 ? 0 : before.Split('\n').Length, text.Split('\n').Length, backup);
     }
 
     // AC-1929: when the note state last changed, which a merge after a split compares; a restore carries it over.

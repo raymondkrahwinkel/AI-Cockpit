@@ -19,6 +19,8 @@ internal sealed class RecordingAssistantMemory : IAssistantMemory
 
     public Task<string> ReadAsync(AssistantMemoryScope scope, CancellationToken cancellationToken = default) => Task.FromResult(Contents);
 
+    public Task<AssistantMemoryRewrite> RewriteAsync(string text, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
     public Task RememberAsync(string text, AssistantMemoryScope scope, CancellationToken cancellationToken = default)
     {
         Remembered.Add(text);

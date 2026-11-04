@@ -254,6 +254,8 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
 
         public Task<string> ReadCurrentStateAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
+        public Task<AssistantMemoryRewrite> RewriteAsync(string text, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
         public Task<string> ReadOrgRulesAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
         public Task NoteCurrentStateAsync(string text, CancellationToken cancellationToken = default) => throw new NotSupportedException();
