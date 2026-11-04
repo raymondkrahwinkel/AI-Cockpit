@@ -380,9 +380,9 @@ public sealed class ProductivityHoursJourneyTests
         Assert.True(_Control<TextBlock>(overviewScreen, "YourTimeTileDetail").TextWrapping == Avalonia.Media.TextWrapping.Wrap);
         Assert.Contains("Overview", _Texts(overviewScreen));
         Assert.Contains("Your time per day, with the agents beside it", _Texts(overviewScreen));
-        Assert.Contains("Tijd per project", _Texts(overviewScreen));
-        Assert.Contains("Eigen regels deze week", _Texts(overviewScreen));
-        Assert.StartsWith("zonder tarief:", _Control<TextBlock>(overviewScreen, "CostTileDetail").Text);
+        Assert.Contains("Time per project", _Texts(overviewScreen));
+        Assert.Contains("Own rows this week", _Texts(overviewScreen));
+        Assert.StartsWith("without rate:", _Control<TextBlock>(overviewScreen, "CostTileDetail").Text);
         _Control<Button>(overviewScreen, "HoursTab");
         _Control<Button>(overviewScreen, "OverviewTab");
         _Control<Button>(overviewScreen, "PreviousOverviewRange");
@@ -406,7 +406,7 @@ public sealed class ProductivityHoursJourneyTests
         timeEntries.Seed(new CockpitTimeEntry(Guid.NewGuid(), "Na het openen geregistreerd", _Local(2026, 10, 19).AddHours(9), TimeSpan.FromMinutes(10), null, CockpitTimeEntrySource.Duration, CockpitTimeEntryStatus.Open));
         _Click(overviewScreen, "RefreshButton");
         await _Until(() => _NamedText(overviewScreen, "OwnEntriesTile") == "6", "the entry registered after opening, via ↻");
-        Assert.Equal("zojuist bijgewerkt", _NamedText(overviewScreen, "RefreshedAt"));
+        Assert.Equal("updated just now", _NamedText(overviewScreen, "RefreshedAt"));
 
         _Click(overviewScreen, "IncludeAgent");
         await _Until(
@@ -422,7 +422,7 @@ public sealed class ProductivityHoursJourneyTests
             () => _NamedText(overviewScreen, "YourTimeTile") == "8h05",
             "the one-day custom overview");
         Assert.Equal("8h", _Control<TextBlock>(overviewScreen, "ScheduleTile").Text);
-        Assert.Contains("ma 19 – ma 19 okt 2026", _Texts(overviewScreen));
+        Assert.Contains("Mon 19 – Mon 19 Oct 2026", _Texts(overviewScreen));
         _Render(overviewScene.Window, "overzicht-eigen-bereik.png");
 
         _Click(overviewScreen, "IncludeAgent");
@@ -444,7 +444,7 @@ public sealed class ProductivityHoursJourneyTests
         await _Until(
             () => _Texts(overviewScreen).Contains("The start date must be on or before the end date."),
             "custom range validation");
-        Assert.Contains("ma 6 – ma 6 jan 2025", _Texts(overviewScreen));
+        Assert.Contains("Mon 6 – Mon 6 Jan 2025", _Texts(overviewScreen));
         _Control<DatePicker>(overviewScreen, "CustomFrom").SelectedDate = historicalDay;
         _Click(overviewScreen, "ApplyCustomRange");
         await _Until(
