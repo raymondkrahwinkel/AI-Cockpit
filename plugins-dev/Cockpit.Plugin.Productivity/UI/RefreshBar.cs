@@ -16,7 +16,7 @@ internal sealed class RefreshBar
     private readonly Func<TimeSpan> _interval;
     private readonly Func<DateTimeOffset> _now;
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(1) };
-    private readonly Button _button = Ui.IconButton("RefreshButton", MaterialIconKind.Refresh, "Ververs nu");
+    private readonly Button _button = Ui.IconButton("RefreshButton", MaterialIconKind.Refresh, "Refresh now");
     private readonly ProgressBar _busy = new() { Name = "RefreshBusy", IsIndeterminate = true, Width = 28, MinWidth = 0, Height = 4, MinHeight = 0, Opacity = 0, VerticalAlignment = VerticalAlignment.Center };
     private readonly TextBlock _age = Ui.Hint(string.Empty);
     private bool _wasVisible = true;

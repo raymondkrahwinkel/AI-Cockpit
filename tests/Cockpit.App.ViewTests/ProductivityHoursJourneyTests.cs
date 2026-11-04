@@ -89,15 +89,15 @@ public sealed class ProductivityHoursJourneyTests
         Func<Control>? sidebarFactory = null;
         var menuItems = new List<string>();
         var workspaces = new Dictionary<string, WorkspaceTypeRegistration>(StringComparer.Ordinal);
-        ui.AddSideMenuButtonWithBadge("Uren", Arg.Do<Action>(value => open = value), MaterialIconKind.ClockOutline).Returns(badge);
-        menuItems.Add("Uren");
+        ui.AddSideMenuButtonWithBadge("Hours", Arg.Do<Action>(value => open = value), MaterialIconKind.ClockOutline).Returns(badge);
+        menuItems.Add("Hours");
         ui.When(host => host.AddSideMenuButton(Arg.Any<string>(), Arg.Any<Action>(), Arg.Any<MaterialIconKind>()))
             .Do(call =>
             {
                 menuItems.Add(call.ArgAt<string>(0));
                 openOverview = call.ArgAt<Action>(1);
             });
-        ui.When(host => host.AddSideMenuSection("Tijd", Arg.Any<Func<Control>>()))
+        ui.When(host => host.AddSideMenuSection("Time", Arg.Any<Func<Control>>()))
             .Do(call => sidebarFactory = call.Arg<Func<Control>>());
         ui.When(host => host.AddWorkspaceType(Arg.Any<WorkspaceTypeRegistration>()))
             .Do(call =>
@@ -107,36 +107,36 @@ public sealed class ProductivityHoursJourneyTests
             });
 
         new UiParts.ProductivityUi().InitializeUi(ui);
-        (open ?? throw new InvalidOperationException("No Uren button."))();
+        (open ?? throw new InvalidOperationException("No Hours button."))();
         await ui.Received(1).OpenWorkspaceAsync(UiParts.ProductivityUi.WorkspaceTypeId);
         var registration = workspaces[UiParts.ProductivityUi.WorkspaceTypeId];
         var screen = registration.CreateBody(Substitute.For<IWorkspaceContext>());
         using var scene = RenderedScene.Show(screen, 1280, 820);
-        await _Until(() => badge.Text == "0u10 vandaag", "the initial badge with ten measured minutes");
+        await _Until(() => badge.Text == "0u10 today", "the initial badge with ten measured minutes");
         Assert.Equal(SideMenuButtonBadgeTone.Success, badge.Tone);
         var idleSidebar = (sidebarFactory ?? throw new InvalidOperationException("No Tijd sidebar."))();
         using (var idleScene = RenderedScene.Show(idleSidebar, 360, 180))
         {
-            Assert.Contains("Geen stopwatch actief", _Texts(idleSidebar));
+            Assert.Contains("No stopwatch active", _Texts(idleSidebar));
             _Control<Button>(idleSidebar, "SidebarStart");
         }
 
         _Control<TextBox>(screen, "Description").Text = "Telefonisch overleg met klant XXX";
         _Control<TextBox>(screen, "Duration").Text = "ongeldig";
         _Click(screen, "AddEntry");
-        await _Until(() => _Texts(screen).Any(text => text.Contains("geldige duur", StringComparison.OrdinalIgnoreCase)), "invalid duration feedback");
+        await _Until(() => _Texts(screen).Any(text => text.Contains("valid duration", StringComparison.OrdinalIgnoreCase)), "invalid duration feedback");
         Assert.Empty(timeEntries.Entries);
 
         _Control<TextBox>(screen, "Duration").Text = "0:15";
         _Click(screen, "AddEntry");
-        await _Until(() => timeEntries.Entries.Count == 1 && badge.Text == "0u25 vandaag", "the added entry and badge, measured plus own");
+        await _Until(() => timeEntries.Entries.Count == 1 && badge.Text == "0u25 today", "the added entry and badge, measured plus own");
         Assert.Equal("cockpit", timeEntries.Entries[0].ProjectId);
         _Render(scene.Window, "01-uren-dag.png");
 
         _Control<TextBox>(screen, "Description").Text = "Uitwerking voorstel";
         _Click(screen, "StartStopwatch");
         await _Until(() => timeEntries.Running is not null && !_Control<Button>(screen, "StartStopwatch").IsEnabled, "one running stopwatch");
-        Assert.Contains(_Texts(screen), text => text.Contains("Er loopt al", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(_Texts(screen), text => text.Contains("A stopwatch is already running", StringComparison.OrdinalIgnoreCase));
         _Render(scene.Window, "02-uren-dag-stopwatch-lopend.png");
 
         var sidebar = (sidebarFactory ?? throw new InvalidOperationException("No Tijd sidebar."))();
@@ -195,19 +195,19 @@ public sealed class ProductivityHoursJourneyTests
 
         _Click(screen, "Today");
         await _Until(() => _Texts(screen).Contains("Telefonisch overleg met klant XXX"), "returning to today");
-        Assert.Equal("0u50 vandaag", badge.Text);
+        Assert.Equal("0u50 today", badge.Text);
 
         _Click(screen, "WeekMode");
-        await _Until(() => _Texts(screen).Contains("Voorstel per dag"), "the week proposal");
-        Assert.Contains("Schema (grens)", _Texts(screen));
+        await _Until(() => _Texts(screen).Contains("Proposal per day"), "the week proposal");
+        Assert.Contains("Schedule (limit)", _Texts(screen));
         _Render(scene.Window, "04-uren-week.png");
         _Click(screen, "PreviousDay");
-        await _Until(() => _Texts(screen).Any(text => text.StartsWith("Voorstel per dag · week", StringComparison.Ordinal)), "the week before");
+        await _Until(() => _Texts(screen).Any(text => text.StartsWith("Proposal per day · week", StringComparison.Ordinal)), "the week before");
         _Render(scene.Window, "05-uren-week-eerder.png");
         _Click(screen, "CopyTable");
         await _Until(() => copied is not null, "the copied table");
         var table = (copied ?? string.Empty).Split(Environment.NewLine);
-        string[] header = ["Regel", .. screen.GetVisualDescendants().OfType<Button>().Where(button => button.Name == "OpenDay").Select(button => button.Content as string ?? string.Empty), "Week", "Status"];
+        string[] header = ["Row", .. screen.GetVisualDescendants().OfType<Button>().Where(button => button.Name == "OpenDay").Select(button => button.Content as string ?? string.Empty), "Week", "Status"];
         Assert.Equal(header, table[0].Split('\t'));
         Assert.Equal(screen.GetVisualDescendants().OfType<Grid>().Count(grid => grid.Name == "ProposalRow") + 4, table.Length);
 
@@ -228,8 +228,8 @@ public sealed class ProductivityHoursJourneyTests
         var dialog = offerDialog ?? throw new InvalidOperationException("No offer dialog.");
         using var offerScene = RenderedScene.Show(dialog, 980, 696);
         var preview = _Control<TextBox>(dialog, "PromptPreview").Text ?? string.Empty;
-        Assert.Contains("Boek per dag nooit meer dan het schema", preview, StringComparison.Ordinal);
-        Assert.Contains("Schrijf niets voordat je dat akkoord hebt", preview, StringComparison.Ordinal);
+        Assert.Contains("Never book more than the schedule per day", preview, StringComparison.Ordinal);
+        Assert.Contains("Write nothing before you have that approval", preview, StringComparison.Ordinal);
         Assert.False(_Control<Button>(dialog, "SendOffer").IsEnabled);
         _Control<CheckBox>(dialog, "ConfirmOffer").IsChecked = true;
         await _Until(() => _Control<Button>(dialog, "SendOffer").IsEnabled, "the confirmed send button");
@@ -237,7 +237,7 @@ public sealed class ProductivityHoursJourneyTests
         _Click(dialog, "SendOffer");
         await _Until(() => sentPrompt is not null && timeEntries.Entries.Where(entry => entry.Description is "Telefonisch overleg met klant XXX" or "Uitwerking voorstel").All(entry => entry.Status == CockpitTimeEntryStatus.Offered), "the delivered and offered rows");
         Assert.Equal(preview, sentPrompt);
-        await _Until(() => _Texts(screen).Any(text => text.Contains("aangeboden", StringComparison.OrdinalIgnoreCase)), "the offered week status");
+        await _Until(() => _Texts(screen).Any(text => text.Contains("offered", StringComparison.OrdinalIgnoreCase)), "the offered week status");
 
         var unmarked = await timeEntries.AddAsync("Nog te verwerken", DateTimeOffset.Now, TimeSpan.FromMinutes(15), "cockpit", CockpitTimeEntrySource.Duration);
         timeEntries.MarkFailure = new InvalidOperationException("The time-entry store is unavailable.");

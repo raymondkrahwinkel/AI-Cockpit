@@ -58,8 +58,8 @@ internal sealed class ProductivityController(IPluginUiChannel channel, TimeProvi
     public bool CanStartStopwatch => IsToday && Stopwatch is null;
 
     public string? StartDisabledReason => Stopwatch is not null
-        ? "Er loopt al een stopwatch. Stop die eerst."
-        : IsToday ? null : "Een stopwatch kan alleen voor vandaag starten.";
+        ? "A stopwatch is already running. Stop it first."
+        : IsToday ? null : "A stopwatch can only be started for today.";
 
     public void AttachBadge(SideMenuButtonBadge badge)
     {
@@ -135,7 +135,7 @@ internal sealed class ProductivityController(IPluginUiChannel channel, TimeProvi
     {
         if (string.IsNullOrWhiteSpace(description))
         {
-            return _Reject("Geef de stopwatch een omschrijving.");
+            return _Reject("Give the stopwatch a description.");
         }
 
         if (StartDisabledReason is { } reason)
@@ -155,7 +155,7 @@ internal sealed class ProductivityController(IPluginUiChannel channel, TimeProvi
     {
         if (string.IsNullOrWhiteSpace(description))
         {
-            return _Reject("Geef de stopwatch een omschrijving.");
+            return _Reject("Give the stopwatch a description.");
         }
 
         return await _MutateAsync(
@@ -175,12 +175,12 @@ internal sealed class ProductivityController(IPluginUiChannel channel, TimeProvi
     {
         if (string.IsNullOrWhiteSpace(description))
         {
-            return _Reject("Geef de regel een omschrijving.");
+            return _Reject("Give the row a description.");
         }
 
         if (DurationText.Parse(durationText) is not { } duration)
         {
-            return _Reject("Voer een geldige duur in, bijvoorbeeld 0:15, 15m of 1,5u.");
+            return _Reject("Enter a valid duration, for example 0:15, 15m or 1.5h.");
         }
 
         var action = id is null ? ProductivityChannel.Add : ProductivityChannel.Update;
@@ -286,7 +286,7 @@ internal sealed class ProductivityController(IPluginUiChannel channel, TimeProvi
             if (_badge is { } badge)
             {
                 var totalMinutes = (long)TodayTotal.TotalMinutes;
-                badge.Text = string.Create(CultureInfo.InvariantCulture, $"{totalMinutes / 60}u{totalMinutes % 60:00} vandaag");
+                badge.Text = string.Create(CultureInfo.InvariantCulture, $"{totalMinutes / 60}u{totalMinutes % 60:00} today");
             }
 
             Changed?.Invoke();

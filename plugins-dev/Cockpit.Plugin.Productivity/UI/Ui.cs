@@ -69,12 +69,12 @@ internal static class Ui
     }
 
     public static string Source(CockpitTimeEntrySource source) =>
-        source == CockpitTimeEntrySource.Stopwatch ? "stopwatch" : "duur";
+        source == CockpitTimeEntrySource.Stopwatch ? "stopwatch" : "duration";
 
     public static string Status(CockpitTimeEntry entry) => entry.Status switch
     {
         CockpitTimeEntryStatus.Open => "open",
-        CockpitTimeEntryStatus.Offered => $"aangeboden op {entry.OfferedAt?.ToLocalTime():d MMM}",
-        _ => "geboekt",
+        CockpitTimeEntryStatus.Offered => $"offered on {entry.OfferedAt?.ToLocalTime():d MMM}",
+        _ => "booked",
     };
 }

@@ -11,7 +11,7 @@ internal sealed class OverviewController(IPluginUiChannel channel, TimeProvider 
     private readonly TimeProvider _time = time;
     private DateOnly _lastValidFrom = _Monday(DateOnly.FromDateTime(time.GetLocalNow().DateTime));
     private DateOnly _lastValidTo = _Monday(DateOnly.FromDateTime(time.GetLocalNow().DateTime)).AddDays(4);
-    private string _lastValidRange = "Werkweek";
+    private string _lastValidRange = "Work week";
     private bool _disposed;
     private long _refreshGeneration;
 
@@ -29,7 +29,7 @@ internal sealed class OverviewController(IPluginUiChannel channel, TimeProvider 
 
     public DateOnly To { get; private set; } = _Monday(DateOnly.FromDateTime(time.GetLocalNow().DateTime)).AddDays(4);
 
-    public string SelectedRange { get; private set; } = "Werkweek";
+    public string SelectedRange { get; private set; } = "Work week";
 
     public bool IncludeAgentWithoutYou { get; private set; }
 
@@ -49,13 +49,13 @@ internal sealed class OverviewController(IPluginUiChannel channel, TimeProvider 
         var today = DateOnly.FromDateTime(_time.GetLocalNow().DateTime);
         (From, To) = range switch
         {
-            "Uur" or "Dag" => (today, today),
-            "Werkweek" => (_Monday(today), _Monday(today).AddDays(4)),
+            "Hour" or "Day" => (today, today),
+            "Work week" => (_Monday(today), _Monday(today).AddDays(4)),
             "Week" => (_Monday(today), _Monday(today).AddDays(6)),
-            "Maand" => (new DateOnly(today.Year, today.Month, 1), new DateOnly(today.Year, today.Month, 1).AddMonths(1).AddDays(-1)),
+            "Month" => (new DateOnly(today.Year, today.Month, 1), new DateOnly(today.Year, today.Month, 1).AddMonths(1).AddDays(-1)),
             _ => (From, To),
         };
-        if (range == "Eigen bereik")
+        if (range == "Own range")
         {
             _PublishChanged();
             return;
@@ -68,12 +68,12 @@ internal sealed class OverviewController(IPluginUiChannel channel, TimeProvider 
     {
         if (from > to)
         {
-            Error = "De begindatum moet op of vóór de einddatum liggen.";
+            Error = "The start date must be on or before the end date.";
             _PublishChanged();
             return;
         }
 
-        SelectedRange = "Eigen bereik";
+        SelectedRange = "Own range";
         From = from;
         To = to;
         await RefreshAsync().ConfigureAwait(false);
@@ -81,7 +81,7 @@ internal sealed class OverviewController(IPluginUiChannel channel, TimeProvider 
 
     public void ReportMissingCustomRange()
     {
-        Error = "Kies zowel een begin- als einddatum.";
+        Error = "Choose both a start and an end date.";
         _PublishChanged();
     }
 
@@ -89,13 +89,13 @@ internal sealed class OverviewController(IPluginUiChannel channel, TimeProvider 
     {
         var days = SelectedRange switch
         {
-            "Uur" or "Dag" => 1,
-            "Werkweek" => 7,
+            "Hour" or "Day" => 1,
+            "Work week" => 7,
             "Week" => 7,
-            "Maand" => 0,
+            "Month" => 0,
             _ => Math.Max(1, To.DayNumber - From.DayNumber + 1),
         };
-        if (SelectedRange == "Maand")
+        if (SelectedRange == "Month")
         {
             From = From.AddMonths(direction);
             To = From.AddMonths(1).AddDays(-1);

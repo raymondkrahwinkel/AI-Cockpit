@@ -53,7 +53,7 @@ internal sealed record ProjectName(string Label, string? Tooltip, string? Projec
 // the project. A value that leads nowhere reads as unknown, its raw value only in the tooltip.
 internal sealed class ProjectNames(IReadOnlyList<PluginProjectInfo> projects, IReadOnlyList<SessionLabel> sessions)
 {
-    public const string NoProject = "geen project";
+    public const string NoProject = "no project";
 
     public static ProjectNames Empty { get; } = new([], []);
 
@@ -69,7 +69,7 @@ internal sealed class ProjectNames(IReadOnlyList<PluginProjectInfo> projects, IR
             return new ProjectName(project.Name, null, project.Id);
         }
 
-        return new ProjectName("Onbekend project", $"'{value}' hoort bij geen project in de cockpit: het project is weg, of de map is van vóór de projecten.", null);
+        return new ProjectName("Unknown project", $"'{value}' does not belong to a project in the cockpit: the project is gone, or the folder is from before projects.", null);
     }
 
     // A session's line: project · ticket · name, leaving out what is not known.
@@ -92,7 +92,7 @@ internal sealed class ProjectNames(IReadOnlyList<PluginProjectInfo> projects, IR
 
         if (parts.Count == (withProject ? 1 : 0))
         {
-            parts.Add("Onbekende sessie");
+            parts.Add("Unknown session");
         }
 
         return string.Join(" · ", parts);
