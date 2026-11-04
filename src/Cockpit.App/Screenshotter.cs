@@ -3336,7 +3336,6 @@ internal static partial class Screenshotter
         [
             Row("autopilot", "Autopilot", "Automation", "autopilot.svg", "🤖"),
             Row("depot", "Depot", "Project tools", "depot.svg", "🗄️"),
-            Row("fan-out", "Fan-Out", "Automation", "fan-out.svg", "🍴"),
             Row("local-ci", "Local CI", "Automation", "local-ci.svg", "🧪"),
             Row("transcript-search", "Claude Transcript Search", "Productivity", "transcript-search.svg", "🔍"),
             Row("git-status", "Git status", "Productivity", "git-status.svg", "🌿"),

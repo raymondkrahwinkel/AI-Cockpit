@@ -32,6 +32,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Removed
 
+- The Fan-out plugin and its workspace, because it is no longer used.
 - The GitHub Models provider plugin, because the service has been discontinued.
 
 ### Added

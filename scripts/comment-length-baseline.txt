@@ -67,10 +67,6 @@ inline	plugins-dev/Cockpit.Plugin.Docker/Security/DockerAccessGate.cs	1
 inline	plugins-dev/Cockpit.Plugin.Docker/StatusBar/RunningContainerRegistry.cs	1
 inline	plugins-dev/Cockpit.Plugin.Docker/Ui/DockerSettingsControl.cs	1
 inline	plugins-dev/Cockpit.Plugin.ExampleWorkspace/ExampleWorkspaceBody.cs	2
-inline	plugins-dev/Cockpit.Plugin.FanOut/FanOutRun.cs	2
-inline	plugins-dev/Cockpit.Plugin.FanOut/FanOutTileLayout.cs	1
-inline	plugins-dev/Cockpit.Plugin.FanOut/FanOutVariant.cs	1
-inline	plugins-dev/Cockpit.Plugin.FanOut/FanOutWorkspaceBody.cs	2
 inline	plugins-dev/Cockpit.Plugin.GeminiProvider.Tests/OpenAiCompatConfigTests.cs	1
 inline	plugins-dev/Cockpit.Plugin.GeminiProvider.Tests/OpenAiCompatPluginSessionDriverTests.cs	1
 inline	plugins-dev/Cockpit.Plugin.GeminiProvider/GeminiProviderPlugin.cs	1
