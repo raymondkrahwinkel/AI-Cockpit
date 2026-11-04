@@ -24,7 +24,7 @@ public interface IPluginAdministration
     /// <summary>
     /// Installs one store version, the same way <see cref="InstallFromZipAsync"/> installs an archive.
     /// </summary>
-    Task<PluginProvisionResult> InstallFromStoreAsync(PluginProvisionRequest request, CancellationToken cancellationToken = default);
+    Task<PluginProvisionResult> InstallFromStoreAsync(PluginProvisionRequest request, CancellationToken cancellationToken = default, IProgress<PluginDownloadProgress>? progress = null);
 
     /// <summary>
     /// Enables or disables a plugin; enabling trusts exactly the bytes <paramref name="pinnedSha256"/> names.

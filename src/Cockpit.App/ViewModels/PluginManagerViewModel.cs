@@ -96,6 +96,15 @@ public partial class PluginManagerViewModel : ViewModelBase
     [ObservableProperty]
     private double _busyProgressValue;
 
+    [ObservableProperty]
+    private bool _busyDownloadProgressIndeterminate = true;
+
+    [ObservableProperty]
+    private double _busyDownloadProgressValue;
+
+    [ObservableProperty]
+    private bool _hasBusyDownloadProgress;
+
     // "The store is working" is a depth, not a flag (AC-420).
     private int _busyDepth;
 
@@ -111,6 +120,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         if (_busyDepth == 0)
         {
             IsBusy = false;
+            HasBusyDownloadProgress = false;
         }
     }
 
@@ -1131,7 +1141,19 @@ public partial class PluginManagerViewModel : ViewModelBase
             return false;
         }
 
-        var provision = await _administration.InstallFromStoreAsync(new PluginProvisionRequest(row.Id, row.Name, row.Store, version));
+        BusyDownloadProgressIndeterminate = true;
+        BusyDownloadProgressValue = 0;
+        HasBusyDownloadProgress = true;
+        var progress = new Progress<PluginDownloadProgress>(update =>
+        {
+            BusyDownloadProgressIndeterminate = update.TotalBytes is null;
+            BusyDownloadProgressValue = update.TotalBytes is > 0 ? 100d * update.BytesReceived / update.TotalBytes.Value : 0;
+            var downloaded = update.BytesReceived / 1_000_000d;
+            StatusMessage = update.TotalBytes is { } total
+                ? $"Downloading '{row.Name}' v{version.Version}… {downloaded:0.0} / {total / 1_000_000d:0.0} MB"
+                : $"Downloading '{row.Name}' v{version.Version}… {downloaded:0.0} MB";
+        });
+        var provision = await _administration.InstallFromStoreAsync(new PluginProvisionRequest(row.Id, row.Name, row.Store, version), progress: progress);
 
         // Surface an unverified-checksum advisory ahead of the installed message (AC-46): a store that publishes
         // no per-artifact hash still installs, but the operator is told the download could not be verified.

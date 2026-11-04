@@ -39,9 +39,9 @@ internal sealed class PluginAdministration(
         return result;
     }
 
-    public async Task<PluginProvisionResult> InstallFromStoreAsync(PluginProvisionRequest request, CancellationToken cancellationToken = default)
+    public async Task<PluginProvisionResult> InstallFromStoreAsync(PluginProvisionRequest request, CancellationToken cancellationToken = default, IProgress<PluginDownloadProgress>? progress = null)
     {
-        var result = await provisioning.InstallAsync(request, AbstractionsContract.Version, cancellationToken: cancellationToken).ConfigureAwait(false);
+        var result = await provisioning.InstallAsync(request, AbstractionsContract.Version, cancellationToken: cancellationToken, progress: progress).ConfigureAwait(false);
         if (result.Outcome == PluginProvisionOutcome.Staged)
         {
             await _RepinAsync(result.FolderId, result.Sha256, cancellationToken).ConfigureAwait(false);

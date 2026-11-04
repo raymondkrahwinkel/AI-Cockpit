@@ -52,6 +52,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- Plugin-store downloads now show their current byte progress, and disk status details include free, used and total space.
+
 - Docker storage compaction no longer waits for the assistant or idle sessions without background work. If active sessions do not acknowledge the pause within five minutes, the warning names them.
 - Swarm takeover keeps the assistant's recent conversation within a bounded prompt, so long histories no longer prevent it from responding.
 - Development plugin refresh now preserves child executables and other files in subdirectories, so opening the Browser no longer fails because its subprocess was dropped during a refresh.
