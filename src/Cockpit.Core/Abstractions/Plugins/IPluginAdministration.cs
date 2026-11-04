@@ -32,7 +32,7 @@ public interface IPluginAdministration
     Task<PluginLiveState> SetEnabledAsync(string folderId, bool enabled, string pinnedSha256, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Uninstalls a plugin at the next start and forgets its registration.
+    /// Forgets a plugin's registration, deactivates it in the running host when it can, and deletes its folder at the next start.
     /// </summary>
-    Task RemoveAsync(string folderId, CancellationToken cancellationToken = default);
+    Task<PluginLiveState> RemoveAsync(string folderId, CancellationToken cancellationToken = default);
 }

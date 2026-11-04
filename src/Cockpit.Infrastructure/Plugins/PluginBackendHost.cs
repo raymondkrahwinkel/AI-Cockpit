@@ -660,6 +660,7 @@ public class PluginBackendHost(
                     EffortSuggestions = effort?.KnownValues?.Select(value => value.Value).ToList()
                         ?? (profile.Claude is not null ? LegacyClaudeEfforts : []),
                     // The local, free-to-run providers; everything else (Claude, Codex, hosted plugin providers) is a paid API.
+                    ProviderAvailable = profile.ProviderConfig is not Core.Profiles.PluginProviderConfig plugin || registry.Resolve(plugin.ProviderId) is not null,
                     RunsLocally = profile.Provider is Core.Profiles.SessionProvider.Ollama or Core.Profiles.SessionProvider.LmStudio,
                     UsesPersonalLogin = NodeCallerSessionPolicy.UsesPersonalLogin(profile, logins),
                 };

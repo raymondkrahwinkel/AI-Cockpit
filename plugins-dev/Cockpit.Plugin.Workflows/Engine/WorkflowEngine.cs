@@ -74,6 +74,19 @@ public sealed class WorkflowEngine(IReadOnlyList<IStepRunner> runners, ICockpitH
             return run;
         }
 
+        // A step no loaded plugin runs means its plugin is disabled or removed: skip the whole run and say so, rather than pass the gap by.
+        var missing = workflow.Nodes.Where(node => !node.IsDisabled && !_runners.ContainsKey(node.TypeId)).Select(node => node.TypeId).Distinct().ToList();
+        if (missing.Count > 0)
+        {
+            run.Status = RunStatus.Skipped;
+            run.Reason = WorkflowRunReason.PluginMissing;
+            run.Note = $"Not run: the plugin for {string.Join(", ", missing.Select(typeId => $"'{typeId}'"))} is not available (disabled or removed).";
+            run.FinishedAt = DateTimeOffset.UtcNow;
+            run.Phase = WorkflowRunPhase.Completed;
+            changed?.Invoke(run);
+            return run;
+        }
+
         // Breadth-first from the trigger: each pending entry is a step and the items handed to it. Fan-out simply
         // means one step queues several.
         var pending = new Queue<(string NodeId, IReadOnlyList<WorkflowItem> Input)>();

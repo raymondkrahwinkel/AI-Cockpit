@@ -138,6 +138,8 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
 
     public string? ProjectId { get; }
 
+    public string? ProviderId { get; private set; }
+
     public bool IsTerminal => false;
 
     // AC-294: an SDK session's record is in memory and always there, the same as `SessionPanelHandle`'s.
@@ -555,6 +557,7 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
     public async Task StartAsync(SessionLaunchRequest request, string? workingDirectory)
     {
         McpServersOverride = request.McpServersOverride;
+        ProviderId = (request.Profile.ProviderConfig as Core.Profiles.PluginProviderConfig)?.ProviderId;
         var runtime = await _host.StartAsync(new SessionStart(
             request.Profile, request.PermissionMode, request.Model,
             McpServerRegistryFilter.EffectiveSessionSelection(request.EnabledMcpServerNames, request.Profile.EnabledMcpServerNames),

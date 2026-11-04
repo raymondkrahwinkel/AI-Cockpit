@@ -522,7 +522,7 @@ internal static class ServerAdminScene
 
         public Task<Cockpit.Core.Plugins.PluginLiveState> SetEnabledAsync(string folderId, bool enabled, string pinnedSha256, CancellationToken cancellationToken = default) => Task.FromResult(Cockpit.Core.Plugins.PluginLiveState.Active);
 
-        public Task RemoveAsync(string folderId, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task<Cockpit.Core.Plugins.PluginLiveState> RemoveAsync(string folderId, CancellationToken cancellationToken = default) => Task.FromResult(Cockpit.Core.Plugins.PluginLiveState.Active);
 
         internal static InstalledPlugin _Plugin(string id, string name, string version, bool enabled) => new(
             new DiscoveredPlugin(id, id, new PluginManifest(id, name, version, "plugin.dll", 3, null, null, null, null), "hash", PluginLoadDecision.Load),

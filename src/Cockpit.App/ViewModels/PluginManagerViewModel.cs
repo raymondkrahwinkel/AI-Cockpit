@@ -507,15 +507,26 @@ public partial class PluginManagerViewModel : ViewModelBase
         if (_dialogService is not null &&
             !await _dialogService.ShowConfirmationDialogAsync(
                 "Remove plugin",
-                $"Remove '{row.DisplayName}'? It will be uninstalled on the next restart. You can install it again from the store.",
+                $"Remove '{row.DisplayName}'? It stops now and its files are deleted on the next start. You can install it again from the store.",
                 "Remove"))
         {
             return;
         }
 
-        await _administration.RemoveAsync(row.FolderId);
+        if (_server is null && _contributionSink is not null && !await _contributionSink.ConfirmPluginWorkspacesCloseAsync(row.FolderId))
+        {
+            return;
+        }
+
+        var state = await _administration.RemoveAsync(row.FolderId);
         await LoadAsync();
-        StatusMessage = $"'{row.DisplayName}' will be removed on the next restart.";
+        if (state is { IsLive: true })
+        {
+            StatusMessage = $"'{row.DisplayName}' removed{_On}. Its files are deleted on the next start.";
+            return;
+        }
+
+        StatusMessage = $"'{row.DisplayName}' removed{_On}. Restart needed: {(state?.RestartReason ?? "the plugin cannot be unloaded while running").TrimEnd('.')}. {_Restart} to unload it.";
         NeedsRestart = true;
     }
 

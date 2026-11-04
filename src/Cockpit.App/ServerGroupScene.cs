@@ -321,7 +321,7 @@ internal static class ServerGroupScene
 
         public Task<Cockpit.Core.Plugins.PluginLiveState> SetEnabledAsync(string folderId, bool enabled, string pinnedSha256, CancellationToken cancellationToken = default) => Task.FromResult(Cockpit.Core.Plugins.PluginLiveState.Active);
 
-        public Task RemoveAsync(string folderId, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task<Cockpit.Core.Plugins.PluginLiveState> RemoveAsync(string folderId, CancellationToken cancellationToken = default) => Task.FromResult(Cockpit.Core.Plugins.PluginLiveState.Active);
     }
 
     // A session on the stand-in server: two rows for its pane, and nothing it can be asked to do.

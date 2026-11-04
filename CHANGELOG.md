@@ -42,6 +42,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - Backend support for activating individual plugins while running, with a restart reason when their services need a new host container.
 - Plugin MCP providers can join the running catalog without rebuilding the host container.
 - When a plugin is disabled, a running session that still calls one of its MCP tools gets the error "plugin <name> is uitgeschakeld" and carries on; new sessions are no longer offered those tools.
+- Removing a plugin, in Options → Plugins or on a server, now stops it at once and deletes its files on the next start. Disabling or removing a provider plugin while a session still runs on it asks for a restart and names the session.
+- A workflow that uses a step from a disabled plugin is skipped with that reason, and a scheduled agent task whose provider plugin is disabled is skipped instead of failing.
 - Grok image input is detected from the service's model metadata, including model aliases.
 - Kimi and OpenCode sessions can receive image attachments when the selected model supports them.
 - Per-profile image input selection (Auto, On or Off), with the effective capability and its source.

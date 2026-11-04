@@ -48,9 +48,10 @@ internal sealed class RemotePluginAdministration(BackendApiClient client, ILogge
         return response.Live ? PluginLiveState.Active : PluginLiveState.Restart(response.RestartReason ?? "The server applies this when it restarts.");
     }
 
-    public async Task RemoveAsync(string folderId, CancellationToken cancellationToken = default)
+    public async Task<PluginLiveState> RemoveAsync(string folderId, CancellationToken cancellationToken = default)
     {
-        await client.SendAsync<JsonObject>(HttpMethod.Delete, $"api/v1/plugins/{Uri.EscapeDataString(folderId)}", null, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false);
+        var response = await client.SendAsync<RemotePluginEnabled>(HttpMethod.Delete, $"api/v1/plugins/{Uri.EscapeDataString(folderId)}", null, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false);
+        return response.Live ? PluginLiveState.Active : PluginLiveState.Restart(response.RestartReason ?? "The server applies this when it restarts.");
     }
 
     public Task<JsonElement> InvokeChannelAsync(string folderId, string action, JsonElement payload, CancellationToken cancellationToken = default) =>

@@ -111,9 +111,9 @@ internal static class PluginEndpoints
                 return BackendApiRoutes.Error(StatusCodes.Status404NotFound, "no_plugin", "That plugin is not installed on the server.");
             }
 
-            await plugins().RemoveAsync(folderId, cancellationToken).ConfigureAwait(false);
+            var state = await plugins().RemoveAsync(folderId, cancellationToken).ConfigureAwait(false);
             await _AuditAsync(services, "api:remove_plugin", cancellationToken).ConfigureAwait(false);
-            return Results.Json(new { takesEffectAfterServerRestarts = true }, ConnectKeyEndpoints.Json);
+            return Results.Json(new { live = state.IsLive, restartReason = state.RestartReason, takesEffectAfterServerRestarts = true }, ConnectKeyEndpoints.Json);
         }).RequireAdmin();
 
         // AC-1511: the view a plugin offers an admin of this server reaches the plugin's backend part here. The JSON
