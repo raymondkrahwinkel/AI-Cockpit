@@ -63,13 +63,21 @@ internal sealed partial class CockpitUiHost
                 _Service<ILogger<MarkdownFileWorkspace>>(),
                 () => services.GetRequiredService<CockpitViewModel>().OpenPluginStoreUpdatesAsync());
         }) { CanFloat = true, IconKind = MaterialIconKind.FileDocumentOutline };
-        if (!services.GetRequiredService<IWorkspaceTypeRegistry>().Register(registration, Storage, host.Sessions))
+        var registry = services.GetRequiredService<IWorkspaceTypeRegistry>();
+        if (!registry.Register(registration, Storage, host.Sessions))
         {
             _fileWorkspaceTypes.Remove(id);
         }
         else
         {
             _Service<CockpitViewModel>()?.Workspaces.RegisterFileWorkspaceType(id);
+            _runtime.Add(() =>
+            {
+                _Service<CockpitViewModel>()?.Workspaces.UnregisterFileWorkspaceType(id);
+                registry.Unregister(id);
+                _fileWorkspaceTypes.Remove(id);
+                _fileWorkspaceChannels.Remove(id);
+            });
         }
     }
 

@@ -2119,6 +2119,8 @@ internal static partial class Screenshotter
         public bool Remove(string scheme) => false;
 
         public bool RegisterFamily(Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceFamily family) => false;
+
+        public bool RemoveFamily(string key) => false;
     }
 
     private static ManageProfilesDialog _ManageProfilesEditing(SessionProfile profile, Services.IPluginRegistrations? plugins = null)
@@ -4553,6 +4555,14 @@ internal static partial class Screenshotter
 
         public void Register(Cockpit.Plugins.Abstractions.Sessions.SessionProviderRegistration registration, string? ownerPluginId = null) { }
 
+        public bool Unregister(string providerId, string? ownerPluginId) => false;
+
+        public event EventHandler? Changed
+        {
+            add { }
+            remove { }
+        }
+
         public string? OwnerOf(string providerId) => null;
 
         public IReadOnlyList<Cockpit.Plugins.Abstractions.Sessions.SessionProviderRegistration> Registrations => [Claude];
@@ -4586,6 +4596,14 @@ internal static partial class Screenshotter
         };
 
         public void Register(Cockpit.Plugins.Abstractions.Sessions.SessionProviderRegistration registration, string? ownerPluginId = null) { }
+
+        public bool Unregister(string providerId, string? ownerPluginId) => false;
+
+        public event EventHandler? Changed
+        {
+            add { }
+            remove { }
+        }
 
         public string? OwnerOf(string providerId) => null;
 

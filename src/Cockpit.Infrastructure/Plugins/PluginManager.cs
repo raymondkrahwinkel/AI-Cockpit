@@ -45,6 +45,8 @@ public sealed class PluginManager(
     // AC-1571: the host each backend part was given, so the admin API writes through the storage that plugin reads.
     private readonly Dictionary<string, ICockpitHost> _hosts = new(StringComparer.Ordinal);
 
+    private readonly Dictionary<string, PluginRuntime> _runtimes = new(StringComparer.Ordinal);
+
     // Both the host's abstractions version and how to read a plugin's are seams so a test can drive the
     // drift check without a real assembly; defaults read the host's own Abstractions and the plugin's
     // compile-time assembly reference (which no manifest can misstate).
@@ -83,6 +85,20 @@ public sealed class PluginManager(
         lock (_lifecycleLock)
         {
             return _hosts.GetValueOrDefault(folderId);
+        }
+    }
+
+    // AC-2024: one per plugin, so its hosts record into the same place; a closed one gives way to a fresh activation.
+    public PluginRuntime RuntimeFor(string folderId)
+    {
+        lock (_lifecycleLock)
+        {
+            if (!_runtimes.TryGetValue(folderId, out var runtime) || runtime.IsDisposed)
+            {
+                runtime = _runtimes[folderId] = new PluginRuntime(folderId, logger);
+            }
+
+            return runtime;
         }
     }
 
@@ -289,6 +305,7 @@ public sealed class PluginManager(
             if (plugin is IPluginMcpProvider provider)
             {
                 McpProviders.Register(provider);
+                RuntimeFor(discovered.FolderId).Add(() => McpProviders.Remove(provider));
             }
             plugin.Initialize(host);
             lock (_lifecycleLock)

@@ -115,6 +115,8 @@ public sealed class ServerProfileServices(
     {
     }
 
+    public bool Unregister(string providerId, Func<string?, IPluginProviderConfigView> createView) => false;
+
     public Func<string?, IPluginProviderConfigView>? Find(string providerId) => _views.GetValueOrDefault(providerId);
 
     public IReadOnlyList<SessionProviderRegistration> SessionProviders => _registrations;

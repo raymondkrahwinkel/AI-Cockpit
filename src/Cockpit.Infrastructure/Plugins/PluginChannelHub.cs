@@ -104,6 +104,23 @@ public sealed class PluginChannelHub(ILogger<PluginChannelHub> logger) : ISingle
         return new Registration(() => _Unsubscribe((pluginId, name), handler));
     }
 
+    // AC-2024: everything of one plugin on the hub, so its next activation can take the same actions again.
+    public void Remove(string pluginId)
+    {
+        lock (_gate)
+        {
+            foreach (var key in _handlers.Keys.Where(key => key.PluginId == pluginId).ToList())
+            {
+                _handlers.Remove(key);
+            }
+
+            foreach (var key in _subscribers.Keys.Where(key => key.PluginId == pluginId).ToList())
+            {
+                _subscribers.Remove(key);
+            }
+        }
+    }
+
     // A copy the receiver may keep past an await, after the sender disposed the document it came from, as a
     // remote receiver always can. `default` (no payload) has no document to copy.
     private static JsonElement _Own(JsonElement payload) =>

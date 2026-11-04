@@ -15,6 +15,11 @@ public interface IWorkflowStepRegistry
 
     void Register(IWorkflowStep step);
 
+    /// <summary>
+    /// Withdraws <paramref name="step"/>; false when it is not registered.
+    /// </summary>
+    bool Unregister(IWorkflowStep step);
+
     event EventHandler? Changed;
 
     /// <summary>
@@ -57,6 +62,25 @@ internal sealed class WorkflowStepRegistry(ILogger<WorkflowStepRegistry> logger)
             _steps.Add(step);
         }
 
+        _RaiseChanged(step);
+    }
+
+    public bool Unregister(IWorkflowStep step)
+    {
+        lock (_gate)
+        {
+            if (!_steps.Remove(step))
+            {
+                return false;
+            }
+        }
+
+        _RaiseChanged(step);
+        return true;
+    }
+
+    private void _RaiseChanged(IWorkflowStep step)
+    {
         foreach (EventHandler handler in Changed?.GetInvocationList() ?? [])
         {
             try
@@ -65,7 +89,7 @@ internal sealed class WorkflowStepRegistry(ILogger<WorkflowStepRegistry> logger)
             }
             catch (Exception exception)
             {
-                logger.LogWarning(exception, "A workflow step change subscriber failed after registering '{TypeId}'.", step.TypeId);
+                logger.LogWarning(exception, "A workflow step change subscriber failed after '{TypeId}' changed.", step.TypeId);
             }
         }
     }

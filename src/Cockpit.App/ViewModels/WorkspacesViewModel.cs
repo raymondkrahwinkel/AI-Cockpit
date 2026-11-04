@@ -254,6 +254,12 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
         _RefreshTabCapabilities();
     }
 
+    internal void UnregisterFileWorkspaceType(string id)
+    {
+        _fileWorkspaceTypes.Remove(id);
+        _RefreshTabCapabilities();
+    }
+
     private void _RefreshTabCapabilities()
     {
         foreach (var tab in Tabs)

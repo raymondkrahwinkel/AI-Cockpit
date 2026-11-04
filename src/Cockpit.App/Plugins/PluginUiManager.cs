@@ -112,7 +112,11 @@ public sealed class PluginUiManager(ILogger<PluginUiManager> logger, PluginDiagn
 
                 foreach (var route in ui.CreateFirstStartRoutes(firstStartHostFor(discovered)))
                 {
-                    if (!routes.Register(route, discovered.Manifest.Name))
+                    if (routes.Register(route, discovered.Manifest.Name))
+                    {
+                        backend.RuntimeFor(discovered.FolderId).Add(() => routes.Unregister(route.Id));
+                    }
+                    else
                     {
                         logger.LogWarning("First-start route '{RouteId}' of plugin {PluginId} is already offered by another plugin; it is ignored.", route.Id, discovered.FolderId);
                     }

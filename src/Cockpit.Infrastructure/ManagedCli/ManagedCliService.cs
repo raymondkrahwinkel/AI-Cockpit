@@ -60,6 +60,9 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
         _descriptors[descriptor.CliName] = descriptor;
     }
 
+    public bool Unregister(ManagedCliDescriptor descriptor) =>
+        _descriptors.TryRemove(new KeyValuePair<string, ManagedCliDescriptor>(descriptor.CliName, descriptor));
+
     public string? ResolveInstalledPath(string cliName)
     {
         if (!_IsSafeCliName(cliName))

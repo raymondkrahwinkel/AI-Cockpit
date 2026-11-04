@@ -13,6 +13,11 @@ public interface IConversationPickerRegistry
     void Register(ConversationPickerRegistration picker);
 
     /// <summary>
+    /// Withdraws <paramref name="picker"/>; false when it is not registered.
+    /// </summary>
+    bool Unregister(ConversationPickerRegistration picker);
+
+    /// <summary>
     /// Every picker registered so far, in registration order. Empty is the normal case — no plugin that browses a provider's history is installed.
     /// </summary>
     IReadOnlyList<ConversationPickerRegistration> Pickers { get; }
@@ -22,7 +27,30 @@ internal sealed class ConversationPickerRegistry : IConversationPickerRegistry, 
 {
     private readonly List<ConversationPickerRegistration> _pickers = [];
 
-    public IReadOnlyList<ConversationPickerRegistration> Pickers => _pickers;
+    public IReadOnlyList<ConversationPickerRegistration> Pickers
+    {
+        get
+        {
+            lock (_pickers)
+            {
+                return [.. _pickers];
+            }
+        }
+    }
 
-    public void Register(ConversationPickerRegistration picker) => _pickers.Add(picker);
+    public void Register(ConversationPickerRegistration picker)
+    {
+        lock (_pickers)
+        {
+            _pickers.Add(picker);
+        }
+    }
+
+    public bool Unregister(ConversationPickerRegistration picker)
+    {
+        lock (_pickers)
+        {
+            return _pickers.Remove(picker);
+        }
+    }
 }

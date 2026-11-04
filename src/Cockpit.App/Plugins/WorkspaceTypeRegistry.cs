@@ -23,7 +23,12 @@ public interface IWorkspaceTypeRegistry
     bool Register(WorkspaceTypeRegistration registration, IPluginStorage pluginStorage, ICockpitSessionObserver sessions);
 
     /// <summary>
-    /// Raised when a plugin contributes a workspace type. Plugins initialize after the cockpit's view models are
+    /// Withdraws the workspace type <paramref name="typeId"/>; false when none is registered. Open workspaces stay on the strip.
+    /// </summary>
+    bool Unregister(string typeId);
+
+    /// <summary>
+    /// Raised when a plugin contributes or withdraws a workspace type. Plugins initialize after the cockpit's view models are
     /// built, so anything reading <see cref="WorkspaceTypes"/> would otherwise read an empty list once, at startup,
     /// and never hear about the types that arrived a moment later — the same reason the widget registry raises this.
     /// </summary>
@@ -68,6 +73,17 @@ internal sealed class WorkspaceTypeRegistry(IServiceProvider services) : IWorksp
         _types.Add(new RegisteredWorkspaceType(registration, pluginStorage, sessions));
         Changed?.Invoke(this, EventArgs.Empty);
 
+        return true;
+    }
+
+    public bool Unregister(string typeId)
+    {
+        if (_types.RemoveAll(type => type.Registration.Id == typeId) == 0)
+        {
+            return false;
+        }
+
+        Changed?.Invoke(this, EventArgs.Empty);
         return true;
     }
 

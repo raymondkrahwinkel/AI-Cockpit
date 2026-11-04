@@ -17,6 +17,13 @@ public interface IAutopilotTemplateRegistry
     void Register(string ownerPluginId, PluginAutopilotTemplate template);
 
     /// <summary>
+    /// Withdraws <paramref name="ownerPluginId"/>'s template <paramref name="templateId"/>; false when it has none.
+    /// </summary>
+    bool Unregister(string ownerPluginId, string templateId);
+
+    event EventHandler? Changed;
+
+    /// <summary>
     /// Every registration, each carrying the id of the plugin that contributed it — what the Autopilot plugin reads to build its template picker.
     /// </summary>
     IReadOnlyList<RegisteredAutopilotTemplate> Registrations { get; }
@@ -29,8 +36,40 @@ internal sealed class AutopilotTemplateRegistry : IAutopilotTemplateRegistry, IS
     // string equality (ValueTuple's default) is the right comparison — the same choice PluginIntentRegistry makes.
     private readonly Dictionary<(string PluginId, string TemplateId), RegisteredAutopilotTemplate> _registrations = [];
 
-    public void Register(string ownerPluginId, PluginAutopilotTemplate template) =>
-        _registrations[(ownerPluginId, template.Id)] = new RegisteredAutopilotTemplate(ownerPluginId, template);
+    public event EventHandler? Changed;
 
-    public IReadOnlyList<RegisteredAutopilotTemplate> Registrations => [.. _registrations.Values];
+    public void Register(string ownerPluginId, PluginAutopilotTemplate template)
+    {
+        lock (_registrations)
+        {
+            _registrations[(ownerPluginId, template.Id)] = new RegisteredAutopilotTemplate(ownerPluginId, template);
+        }
+
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    public bool Unregister(string ownerPluginId, string templateId)
+    {
+        lock (_registrations)
+        {
+            if (!_registrations.Remove((ownerPluginId, templateId)))
+            {
+                return false;
+            }
+        }
+
+        Changed?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+
+    public IReadOnlyList<RegisteredAutopilotTemplate> Registrations
+    {
+        get
+        {
+            lock (_registrations)
+            {
+                return [.. _registrations.Values];
+            }
+        }
+    }
 }
