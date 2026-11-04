@@ -30,6 +30,9 @@ internal sealed class RemotePluginAdministration(BackendApiClient client, ILogge
             : new PluginStoreFetchResult(false, "That plugin store is not configured on the server.", null, null);
     }
 
+    public async Task<int> GetRetiredLoadContextsAsync(CancellationToken cancellationToken = default) =>
+        (await client.SendAsync<RemoteRetiredLoadContexts>(HttpMethod.Get, "api/v1/plugins/retired", null, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false)).Count;
+
     public Task<IReadOnlyList<PluginStoreCatalogEntry>> GetStoresAsync(CancellationToken cancellationToken = default) =>
         client.SendAsync<IReadOnlyList<PluginStoreCatalogEntry>>(HttpMethod.Get, "api/v1/plugins/store", null, ConnectKeyEndpoints.Json, cancellationToken);
 
@@ -301,6 +304,8 @@ internal sealed class RemotePluginAdministration(BackendApiClient client, ILogge
     }
 
     private sealed record RemotePluginInstall(PluginProvisionOutcome Outcome, string Id, string Name, string Version, string? Error, string? FolderId, string? Sha256, string? RestartReason = null, bool Live = false, bool Failed = false, bool RolledBack = false);
+
+    private sealed record RemoteRetiredLoadContexts(int Count);
 
     private sealed record RemotePluginEnabled(bool Live, string? RestartReason);
 

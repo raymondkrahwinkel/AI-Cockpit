@@ -462,6 +462,7 @@ public partial class CockpitViewModel
         await Plugins.LoadAsync();
         var admin = new ServerAdminViewModel(group.Name, key.Label, group.Server.Administration, profiles, projects, plugins, group.Server.Projects, dialogService: _dialogService, runningSessions: () => group.Sessions.Count, logger: _logger, serverVersion: key.Version)
         {
+            RestartAdviceAfter = PluginRestartAdviceAfter,
             InitialCategory = category,
             GitHubCredentials = Composition.RemoteServerGitHubCredentials.For(group.Server),
             Profiles = new ServerProfilesViewModel(new ServerProfileServices(group.Name, group.Server.Profiles, _serverSignIns, plugins, LocalPluginUiPart)),

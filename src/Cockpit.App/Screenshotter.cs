@@ -556,6 +556,11 @@ internal static partial class Screenshotter
         ["plugin-store-disabled-live"] = (_, _) => _PluginStoreDisabledLive(),
         ["plugin-store-updates-incompatible"] = (_, _) => _PluginStoreUpdatesWithIncompatible(),
         ["plugin-store-update-failed"] = (_, _) => _PluginStoreUpdateFailed(),
+        // AC-2025: Update all, the plugins updated while the cockpit ran; the mixed batch with its one restart notice and its failure; the memory advice.
+        ["plugin-store-updated-live"] = (_, _) => _PluginStoreUpdatedLive(mixed: false),
+        ["plugin-store-update-all-mixed"] = (_, _) => _PluginStoreUpdatedLive(mixed: true),
+        ["plugin-store-restart-advice"] = (_, _) => _PluginStoreRestartAdvice(),
+        ["server-admin-plugins-advice"] = ServerAdminScene.PluginsAdvice,
         // AC-553: the eleven bundled plugins' real logo tiles — its own scene, not added to `_SampleStorePlugins`,
         // whose row count PluginStoreBusyGateTests asserts on. Height raised past the dialog's own 820: twelve
         // rows do not fit at rest.
@@ -3273,6 +3278,42 @@ internal static partial class Screenshotter
             null,
             null)));
         manager.StatusMessage = "'Clock' disabled.";
+        return dialog;
+    }
+
+    private static PluginStoreDialog _PluginStoreUpdatedLive(bool mixed)
+    {
+        var dialog = _PluginStoreInstalled();
+        var manager = dialog.DataContext is PluginStoreDialogViewModel { Manager: var found } ? found : throw new InvalidOperationException("The store scene has no view model.");
+        static PluginRowViewModel Row(string id, string name, string version) => new(new InstalledPlugin(
+            new DiscoveredPlugin(Path.Combine("plugins", id), id, new PluginManifest(id, name, version, null, 3, null, null, $"The {name} plugin.", "Cockpit"), $"{id}-hash", PluginLoadDecision.Load),
+            new PluginRegistration(true, $"{id}-hash"),
+            null,
+            null,
+            null));
+
+        manager.Plugins.Add(Row("clock", "Clock", "1.1.0"));
+        manager.Plugins.Add(Row("system-monitor", "System Monitor", "0.9.2"));
+        manager.RetiredLoadContexts = 2;
+        if (mixed)
+        {
+            manager.NeedsRestart = true;
+            manager.StatusIsError = true;
+            manager.StatusMessage = "Updated 2 plugin(s); they are active now. 'Browser' will update after a restart. Restart the cockpit to finish. Failed: 'Depot' (the update could not be activated (Initialize threw). Version 0.11.10 is running).";
+        }
+        else
+        {
+            manager.StatusMessage = "Updated 2 plugin(s); they are active now.";
+        }
+
+        return dialog;
+    }
+
+    private static PluginStoreDialog _PluginStoreRestartAdvice()
+    {
+        var dialog = _PluginStoreUpdatedLive(mixed: false);
+        var manager = dialog.DataContext is PluginStoreDialogViewModel { Manager: var found } ? found : throw new InvalidOperationException("The store scene has no view model.");
+        manager.RetiredLoadContexts = 3;
         return dialog;
     }
 

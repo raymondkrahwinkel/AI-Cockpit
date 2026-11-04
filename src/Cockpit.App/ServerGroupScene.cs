@@ -311,6 +311,8 @@ internal static class ServerGroupScene
 
     private sealed class ScenePlugins : IPluginAdministration
     {
+        public Task<int> GetRetiredLoadContextsAsync(CancellationToken cancellationToken = default) => Task.FromResult(0);
+
         public Task<IReadOnlyList<Cockpit.Core.Plugins.InstalledPlugin>> GetInstalledAsync(CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<Cockpit.Core.Plugins.InstalledPlugin>>([]);
 
         public Task<Cockpit.Core.Plugins.PluginStoreFetchResult> FetchStoreIndexAsync(Cockpit.Core.Plugins.PluginStoreConfig store, CancellationToken cancellationToken = default) => Task.FromResult(new Cockpit.Core.Plugins.PluginStoreFetchResult(false, null, null, null));

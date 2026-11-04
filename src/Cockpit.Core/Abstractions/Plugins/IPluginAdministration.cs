@@ -32,6 +32,11 @@ public interface IPluginAdministration
     Task<PluginLiveState> SetEnabledAsync(string folderId, bool enabled, string pinnedSha256, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// How many plugin versions are held in memory that no longer run: a live update leaves the old one until the next start.
+    /// </summary>
+    Task<int> GetRetiredLoadContextsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Forgets a plugin's registration, deactivates it in the running host when it can, and deletes its folder at the next start.
     /// </summary>
     Task<PluginLiveState> RemoveAsync(string folderId, CancellationToken cancellationToken = default);

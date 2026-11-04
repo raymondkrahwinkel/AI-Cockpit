@@ -116,7 +116,19 @@ public sealed partial class ServerAdminViewModel : ObservableObject
 
     // AC-1525: a plugin change on the server waits for its restart, which this dialog offers once there is one.
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowMemoryAdvice))]
     private bool _needsRestart;
+
+    // AC-2025: the server holds the plugin versions its live updates replaced until it restarts, the same as the desktop.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowMemoryAdvice), nameof(MemoryAdviceDetail))]
+    private int _retiredLoadContexts;
+
+    public int RestartAdviceAfter { get; init; } = Cockpit.Core.SessionBehavior.SessionBehaviorSettings.DefaultPluginRestartAdviceAfter;
+
+    public bool ShowMemoryAdvice => !NeedsRestart && PluginMemoryAdvice.IsDue(RetiredLoadContexts, RestartAdviceAfter);
+
+    public string MemoryAdviceDetail => PluginMemoryAdvice.Detail(RetiredLoadContexts);
 
     // AC-1650: installed plugins the server's stores have a newer, runnable version of.
     [ObservableProperty]
@@ -615,6 +627,7 @@ public sealed partial class ServerAdminViewModel : ObservableObject
 
         await server.RestartAsync();
         NeedsRestart = false;
+        RetiredLoadContexts = 0;
         Status = $"{Server} is restarting; it reconnects when it is back.";
         return true;
     }
@@ -636,6 +649,7 @@ public sealed partial class ServerAdminViewModel : ObservableObject
         }
 
         OnPropertyChanged(nameof(PluginsCount));
+        RetiredLoadContexts = await _plugins.GetRetiredLoadContextsAsync();
         await _ShowAvailableUpdatesAsync();
     }
 

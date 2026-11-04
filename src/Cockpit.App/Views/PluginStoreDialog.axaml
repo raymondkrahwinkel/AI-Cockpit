@@ -30,9 +30,14 @@
                         Command="{Binding Manager.RestartNowCommand}"
                         IsVisible="{Binding Manager.NeedsRestart}"
                         ToolTip.Tip="{Binding Manager.RestartTip}"/>
+                <!-- AC-2025: no change waits for a restart, but live updates left old plugin versions in memory. -->
+                <Button Grid.Column="0" Content="Restart to free memory" HorizontalAlignment="Left"
+                        Command="{Binding Manager.RestartNowCommand}"
+                        IsVisible="{Binding Manager.ShowMemoryAdvice}"
+                        ToolTip.Tip="{Binding Manager.MemoryAdviceDetail}"/>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
                     <TextBlock Text="{Binding Manager.StatusMessage}" Classes="optionsHint" VerticalAlignment="Center" FontSize="11"
-                               MaxWidth="420" TextTrimming="CharacterEllipsis"
+                               MaxWidth="420" TextWrapping="Wrap"
                                Classes.error="{Binding Manager.StatusIsError}"
                                Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                                IsVisible="{Binding Manager.StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>

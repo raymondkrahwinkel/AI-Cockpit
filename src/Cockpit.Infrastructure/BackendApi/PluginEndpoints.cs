@@ -33,6 +33,9 @@ internal static class PluginEndpoints
             return Results.Json(installed.Select(plugin => PluginListEntry.From(plugin, loaded)), ConnectKeyEndpoints.Json);
         }).RequireAdmin();
 
+        api.MapGet("/plugins/retired", async (CancellationToken cancellationToken) =>
+            Results.Json(new { count = await plugins().GetRetiredLoadContextsAsync(cancellationToken).ConfigureAwait(false) }, ConnectKeyEndpoints.Json)).RequireAdmin();
+
         api.MapGet("/plugins/store", async (CancellationToken cancellationToken) =>
         {
             var catalog = new List<PluginStoreReference>();

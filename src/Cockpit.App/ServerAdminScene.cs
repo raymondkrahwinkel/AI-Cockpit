@@ -141,6 +141,18 @@ internal static class ServerAdminScene
         return dialog;
     }
 
+    // AC-2025: the server has kept three replaced plugin versions in memory, so the page advises a restart of the server.
+    public static OptionsDialog PluginsAdvice(int width, int height)
+    {
+        var admin = _Admin(plugins: new ScenePlugins(retired: 3));
+        admin.LoadCommand.Execute(null);
+        var dialog = OptionsDialog.ForServer(admin);
+        dialog.Width = width;
+        dialog.Height = height;
+        dialog.SelectCategory("server-plugins");
+        return dialog;
+    }
+
     // AC-1590: the Depot row of a server this desktop lacks the plugin for, with "Install on this desktop".
     public static OptionsDialog PluginsDesktop(int width, int height) => _PluginsDesktop(width, height, installed: false);
 
@@ -501,8 +513,10 @@ internal static class ServerAdminScene
             ]);
     }
 
-    private sealed class ScenePlugins : IPluginAdministration
+    private sealed class ScenePlugins(int retired = 0) : IPluginAdministration
     {
+        public Task<int> GetRetiredLoadContextsAsync(CancellationToken cancellationToken = default) => Task.FromResult(retired);
+
         public Task<IReadOnlyList<InstalledPlugin>> GetInstalledAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<InstalledPlugin>>(
             [

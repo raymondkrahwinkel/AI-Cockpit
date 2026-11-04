@@ -33,7 +33,7 @@ internal static class SettingsCarrierWhitelist
         "TranscriptDisplay.ShowTimestamps",
         "UsagePill.VisibleFields",
         "SessionBehavior.AutoCloseOnExit", "SessionBehavior.CombineQueuedMessages", "SessionBehavior.WakeAgentsByDefault",
-        "SessionBehavior.MemoryBudgetPercent",
+        "SessionBehavior.MemoryBudgetPercent", "SessionBehavior.PluginRestartAdviceAfter",
         "ProjectsDisplay.LayoutMode",
         "UsageThresholds.ByProvider", "UsageThresholds.ByProfile", "UsageThresholds.ByAssistant",
         "Terminal.FontFamily", "Terminal.FontSize",
