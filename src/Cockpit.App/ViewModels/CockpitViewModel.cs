@@ -4585,13 +4585,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         // Raised on the host this view model owns: ToastService is built *from* it, and injecting the service back in
         // is a circle the container walks forever.
-        ToastHost.Add(
+        ToastHost.AddCondition(
+            "memory-budget",
             $"The cockpit and its sessions are holding {_Megabytes(usage.MemoryBytes)} of {_Megabytes(machine)} — over the {MemoryBudgetPercent}% shared budget. "
             + "That figure is this app plus every process the sessions now open have spawned, including ones they have lost the parent of. "
             + $"Nothing is closed automatically; when memory runs out the system ends a session for you instead.{advice}{abandoned}",
             ToastSeverity.Warning,
-            actionLabel: null,
-            onAction: null);
+            [],
+            () => _warnedAboutMemory);
     }
 
     // The sessions the diagnostics panel weighs (AC-58): title, kind and process id, built here so the collector
