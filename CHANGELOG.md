@@ -58,6 +58,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- The Depot sync no longer warns after one slow check: it waits up to 30 seconds, tries three times within the same round, and only then says so once, without the "Open Depot settings" button. Not being signed in is still reported at once with that button, and an unchanged project logo is no longer downloaded again on every check.
 - Plugin-store downloads now show their current byte progress, and disk status details include free, used and total space.
 
 - Delegated tasks now receive their profile and project brain instructions alongside the standing session instructions.

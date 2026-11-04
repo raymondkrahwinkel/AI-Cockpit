@@ -16,6 +16,7 @@ internal sealed class DepotSharedProjectSource(
     private readonly DepotProjectAddressing _addressing = DepotProjectAddressing.For(host, connection, scheme, httpClient);
     private readonly DepotBranding _branding = DepotBranding.For(host);
     private readonly bool _loadBranding = httpClient is null;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string Checksum, byte[] Bytes)> _logos = new(StringComparer.Ordinal);
     private DepotBrandingSnapshot _brand = DepotBrandingSnapshot.Default;
     private readonly DepotProjectListingSource _projects = httpClient is null
         ? DepotProjectListingSource.For(host, connection)
@@ -258,13 +259,26 @@ internal sealed class DepotSharedProjectSource(
         // AC-763: a bind is the moment a shared logo first has to become visible on this machine, without the
         // operator picking anything — so it is worth the extra round trip here, unlike WriteBackAsync's own
         // conflict snapshot (_ToBinding's other caller), which never shows a logo and would only pay for one.
-        if (definition.Logo is { Length: > 0 })
+        if (definition.Logo is not { Length: > 0 })
+        {
+            _logos.TryRemove(slug, out _);
+        }
+        else if (_logos.TryGetValue(slug, out var known) && known.Checksum == definitionResult.Checksum)
+        {
+            // The sync watcher asks every 15 minutes; the same checksum means the same logo, so skip its two requests.
+            binding = binding with { LogoBytes = known.Bytes };
+        }
+        else
         {
             var download = await CockpitProjectLogoBlob.DownloadAsync(host, connection, slug, httpClient, cancellationToken)
                 .ConfigureAwait(false);
             if (download.Outcome == PluginMcpToolCallOutcome.Success)
             {
                 binding = binding with { LogoBytes = download.Bytes };
+                if (definitionResult.Checksum is { Length: > 0 } checksum && download.Bytes is { } bytes)
+                {
+                    _logos[slug] = (checksum, bytes);
+                }
             }
             else
             {
