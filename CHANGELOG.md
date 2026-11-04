@@ -36,6 +36,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- The assistant can consolidate its behaviour memory with a timestamped backup on each destination.
 - Groq, Mistral, Cerebras and a Custom entry with your own base URL as session providers in the OpenAI-compatible plugin, each with a note on what works.
 - Plugins can list search terms, so the store finds a plugin on names that are not in its description. Searching for Gemini, Grok or Hetzner now finds the OpenAI-compatible plugin.
 - Grok image input is detected from the service's model metadata, including model aliases.
