@@ -296,7 +296,7 @@ internal sealed class OverviewWorkspaceBody : UserControl
     }
 
     private static string _WholeDuration(int minutes) =>
-        minutes % 60 == 0 ? $"{minutes / 60}u" : Ui.Duration(TimeSpan.FromMinutes(minutes));
+        minutes % 60 == 0 ? $"{minutes / 60}h" : Ui.Duration(TimeSpan.FromMinutes(minutes));
 
     private static Control _Charts(ProductivityOverviewSnapshot snapshot, bool includeAgent)
     {
@@ -714,7 +714,7 @@ internal sealed class OverviewWorkspaceBody : UserControl
                 var value = maximum * step / 4;
                 var y = top + plotHeight - (plotHeight * step / 4);
                 context.DrawLine(gridPen, new Point(left, y), new Point(Bounds.Width - 8, y));
-                var scale = new FormattedText($"{value:0.#}u", CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Typeface.Default, 10, muted);
+                var scale = new FormattedText($"{value:0.#}h", CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Typeface.Default, 10, muted);
                 context.DrawText(scale, new Point(2, y - scale.Height / 2));
             }
 

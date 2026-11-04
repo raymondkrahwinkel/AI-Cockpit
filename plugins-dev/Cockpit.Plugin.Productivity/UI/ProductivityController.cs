@@ -286,7 +286,7 @@ internal sealed class ProductivityController(IPluginUiChannel channel, TimeProvi
             if (_badge is { } badge)
             {
                 var totalMinutes = (long)TodayTotal.TotalMinutes;
-                badge.Text = string.Create(CultureInfo.InvariantCulture, $"{totalMinutes / 60}u{totalMinutes % 60:00} today");
+                badge.Text = string.Create(CultureInfo.InvariantCulture, $"{totalMinutes / 60}h{totalMinutes % 60:00} today");
             }
 
             Changed?.Invoke();

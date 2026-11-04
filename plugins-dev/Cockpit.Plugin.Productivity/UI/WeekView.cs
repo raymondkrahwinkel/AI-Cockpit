@@ -115,7 +115,7 @@ internal static class WeekView
             Children =
             {
                 Ui.Hint("Total"),
-                new TextBlock { Text = $"{(settings.ScheduleMinutes.Sum() / 60.0).ToString("0.##", English)}u", FontWeight = FontWeight.Bold },
+            new TextBlock { Text = $"{(settings.ScheduleMinutes.Sum() / 60.0).ToString("0.##", English)}h", FontWeight = FontWeight.Bold },
             },
         };
         Grid.SetColumn(total, 3);

@@ -112,7 +112,7 @@ public sealed class ProductivityHoursJourneyTests
         var registration = workspaces[UiParts.ProductivityUi.WorkspaceTypeId];
         var screen = registration.CreateBody(Substitute.For<IWorkspaceContext>());
         using var scene = RenderedScene.Show(screen, 1280, 820);
-        await _Until(() => badge.Text == "0u10 today", "the initial badge with ten measured minutes");
+        await _Until(() => badge.Text == "0h10 today", "the initial badge with ten measured minutes");
         Assert.Equal(SideMenuButtonBadgeTone.Success, badge.Tone);
         var idleSidebar = (sidebarFactory ?? throw new InvalidOperationException("No Tijd sidebar."))();
         using (var idleScene = RenderedScene.Show(idleSidebar, 360, 180))
@@ -129,7 +129,7 @@ public sealed class ProductivityHoursJourneyTests
 
         _Control<TextBox>(screen, "Duration").Text = "0:15";
         _Click(screen, "AddEntry");
-        await _Until(() => timeEntries.Entries.Count == 1 && badge.Text == "0u25 today", "the added entry and badge, measured plus own");
+        await _Until(() => timeEntries.Entries.Count == 1 && badge.Text == "0h25 today", "the added entry and badge, measured plus own");
         Assert.Equal("cockpit", timeEntries.Entries[0].ProjectId);
         _Render(scene.Window, "01-uren-dag.png");
 
@@ -195,7 +195,7 @@ public sealed class ProductivityHoursJourneyTests
 
         _Click(screen, "Today");
         await _Until(() => _Texts(screen).Contains("Telefonisch overleg met klant XXX"), "returning to today");
-        Assert.Equal("0u50 today", badge.Text);
+        Assert.Equal("0h50 today", badge.Text);
 
         _Click(screen, "WeekMode");
         await _Until(() => _Texts(screen).Contains("Proposal per day"), "the week proposal");
@@ -371,9 +371,9 @@ public sealed class ProductivityHoursJourneyTests
         _Control<DatePicker>(overviewScreen, "CustomTo").SelectedDate = overviewFrom.AddDays(4);
         _Click(overviewScreen, "ApplyCustomRange");
         await _Until(
-            () => _NamedText(overviewScreen, "YourTimeTile") == "31u00",
+            () => _NamedText(overviewScreen, "YourTimeTile") == "31h00",
             "the week overview");
-        Assert.Equal("36u", _Control<TextBlock>(overviewScreen, "ScheduleTile").Text);
+        Assert.Equal("36h", _Control<TextBlock>(overviewScreen, "ScheduleTile").Text);
         // AC-1766: usage without a price makes the total a lower bound, and the detail says which profiles to price. The
         // tile fills after the range applies, so it is awaited rather than read.
         await _Until(() => _NamedText(overviewScreen, "CostTile") == "≥ $184.20", "the week's cost, a lower bound");
@@ -410,7 +410,7 @@ public sealed class ProductivityHoursJourneyTests
 
         _Click(overviewScreen, "IncludeAgent");
         await _Until(
-            () => _NamedText(overviewScreen, "YourTimeTile") == "43u10",
+            () => _NamedText(overviewScreen, "YourTimeTile") == "43h10",
             "the overview including agent time outside your own time");
         _Render(overviewScene.Window, "04-overzicht-plus-agent.png");
 
@@ -419,9 +419,9 @@ public sealed class ProductivityHoursJourneyTests
         _Control<DatePicker>(overviewScreen, "CustomTo").SelectedDate = overviewFrom;
         _Click(overviewScreen, "ApplyCustomRange");
         await _Until(
-            () => _NamedText(overviewScreen, "YourTimeTile") == "8u05",
+            () => _NamedText(overviewScreen, "YourTimeTile") == "8h05",
             "the one-day custom overview");
-        Assert.Equal("8u", _Control<TextBlock>(overviewScreen, "ScheduleTile").Text);
+        Assert.Equal("8h", _Control<TextBlock>(overviewScreen, "ScheduleTile").Text);
         Assert.Contains("ma 19 – ma 19 okt 2026", _Texts(overviewScreen));
         _Render(overviewScene.Window, "overzicht-eigen-bereik.png");
 
@@ -431,12 +431,12 @@ public sealed class ProductivityHoursJourneyTests
         _Control<DatePicker>(overviewScreen, "CustomTo").SelectedDate = historicalDay;
         _Click(overviewScreen, "ApplyCustomRange");
         await _Until(
-            () => _NamedText(overviewScreen, "YourTimeTile") == "3u00",
+            () => _NamedText(overviewScreen, "YourTimeTile") == "3h00",
             "the historical aggregate including agent time");
         // AC-1766: the legacy day carries no price, so its cost is a lower bound of nothing priced.
         await _Until(() => _NamedText(overviewScreen, "CostTile") == "≥ $0.00", "the historical day's cost, unpriced");
         Assert.Contains("legacy-model", _Texts(overviewScreen));
-        Assert.Contains("3u00", _Texts(overviewScreen));
+        Assert.Contains("3h00", _Texts(overviewScreen));
 
         _Control<DatePicker>(overviewScreen, "CustomFrom").SelectedDate = historicalDay.AddDays(1);
         _Control<DatePicker>(overviewScreen, "CustomTo").SelectedDate = historicalDay;
@@ -448,7 +448,7 @@ public sealed class ProductivityHoursJourneyTests
         _Control<DatePicker>(overviewScreen, "CustomFrom").SelectedDate = historicalDay;
         _Click(overviewScreen, "ApplyCustomRange");
         await _Until(
-            () => _NamedText(overviewScreen, "YourTimeTile") == "3u00",
+            () => _NamedText(overviewScreen, "YourTimeTile") == "3h00",
             "the valid range after validation");
 
         var alternating = await channel.InvokeAsync(
