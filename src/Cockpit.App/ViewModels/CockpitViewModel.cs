@@ -1450,6 +1450,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             newValue.IsSelectedInSimpleStand = true;
 
+            if (SimpleView
+                && !newValue.BelongsToNoWorkspace
+                && !BelongsToActiveWorkspace(newValue)
+                && SessionWorkspacePlacement.Resolve(newValue, SessionWorkspacePlacement.FirstSessionsWorkspaceId(Workspaces.Settings)) is { } workspaceId)
+            {
+                Workspaces.SelectWorkspaceCommand.Execute(workspaceId);
+            }
+
             // AC-1304: picking a conversation is the answer to the question the start screen asks, so the screen
             // stands down here rather than at each of the places that can pick one — the rail, `Go there`, and a
             // project just started from the screen itself.
