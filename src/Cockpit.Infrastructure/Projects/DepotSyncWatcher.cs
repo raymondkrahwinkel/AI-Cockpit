@@ -283,14 +283,23 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
 
     private async Task _CheckAsync(DepotBoundProject bound, CancellationToken cancellationToken, bool clearFlag = false)
     {
-        var attempt = await _AttemptAsync(bound, cancellationToken).ConfigureAwait(true);
-        for (var retry = 0; attempt.Retry && retry < RetryPauses.Length; retry++)
+        _Attempt attempt;
+        try
         {
-            _logger.LogInformation(
-                "Checking {ProjectId} for a Depot change failed ({Reason}); trying again in {Pause} seconds.",
-                bound.ProjectId, attempt.Reason, RetryPauses[retry].TotalSeconds);
-            await Task.Delay(RetryPauses[retry], _time, cancellationToken).ConfigureAwait(true);
             attempt = await _AttemptAsync(bound, cancellationToken).ConfigureAwait(true);
+            for (var retry = 0; attempt.Retry && retry < RetryPauses.Length; retry++)
+            {
+                _logger.LogInformation(
+                    "Checking {ProjectId} for a Depot change failed ({Reason}); trying again in {Pause} seconds.",
+                    bound.ProjectId, attempt.Reason, RetryPauses[retry].TotalSeconds);
+                await Task.Delay(RetryPauses[retry], _time, cancellationToken).ConfigureAwait(true);
+                attempt = await _AttemptAsync(bound, cancellationToken).ConfigureAwait(true);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Shutting down is not a failed check: no retry and no toast.
+            return;
         }
 
         if (attempt.Checksum is not { } checksum)
@@ -342,13 +351,14 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
             var completed = await Task.WhenAny(bindingTask, Task.Delay(SourceTimeout, _time, cancellationToken)).ConfigureAwait(true);
             if (completed != bindingTask)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 timeoutCts.Cancel();
                 return new(null, null, $"no answer within {SourceTimeout.TotalSeconds:0} seconds.", Retry: true);
             }
 
             result = await bindingTask.ConfigureAwait(true);
         }
-        catch (Exception exception)
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
         {
             _logger.LogDebug(exception, "Checking {ProjectId} for a Depot change failed.", bound.ProjectId);
             var transient = exception is HttpRequestException { StatusCode: null or >= System.Net.HttpStatusCode.InternalServerError }
