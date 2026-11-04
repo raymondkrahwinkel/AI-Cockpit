@@ -163,6 +163,11 @@ public interface IPluginContributionSink
     void RemovePluginContributions(string pluginId);
 
     /// <summary>
+    /// Runs the close guards of this plugin's open workspaces; false when the operator wants to keep one.
+    /// </summary>
+    Task<bool> ConfirmPluginWorkspacesCloseAsync(string pluginId);
+
+    /// <summary>
     /// Registers <paramref name="pluginId"/>'s settings view, titled after <paramref name="pluginName"/> wherever it is opened from.
     /// </summary>
     void AddPluginSettings(string pluginId, string pluginName, Func<Control> createView);

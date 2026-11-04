@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Reflection;
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Plugins;
@@ -10,6 +11,9 @@ namespace Cockpit.Infrastructure.Plugins;
 // AC-1403: `withoutFrontend` loads each plugin with the load context's guard against Avalonia.
 public sealed class PluginActivator(ILogger<PluginActivator> logger, bool withoutFrontend = false)
 {
+    // AC-2024: non-collectible, so the same bytes enabled again reuse their context rather than load a second copy.
+    private readonly ConcurrentDictionary<(string FolderId, string Sha256), PluginLoadContext> _contexts = new();
+
     public ICockpitPlugin? Activate(DiscoveredPlugin discovered)
     {
         // AC-1159: discovery already checked this, but the activator loads in-process with full trust and
@@ -23,8 +27,10 @@ public sealed class PluginActivator(ILogger<PluginActivator> logger, bool withou
             return null;
         }
 
-        var context = new PluginLoadContext(entryPath, withoutFrontend ? discovered.Manifest.Name : null);
-        var assembly = context.LoadFromAssemblyPath(entryPath);
+        var context = _contexts.GetOrAdd(
+            (discovered.FolderId, discovered.Sha256),
+            _ => new PluginLoadContext(entryPath, withoutFrontend ? discovered.Manifest.Name : null));
+        var assembly = context.LoadOnce(entryPath);
 
         var entryType = _ResolveEntryType(assembly, discovered.Manifest.EntryType);
         if (entryType is null)

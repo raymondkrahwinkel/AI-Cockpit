@@ -272,6 +272,8 @@ internal static partial class Screenshotter
         ["workspace-menu-projects"] = (width, height) => _MarkdownFileScene(width, height, "preview"),
         // AC-1751 (mockup AC-1749 v003, flow 8): a keyed workspace popped out into its own window, with "⇤ Dock back".
         ["workspace-floating"] = (_, _) => _WorkspaceFloatingScene(),
+        // AC-2024: the tab of a workspace whose plugin was just disabled.
+        ["workspace-plugin-disabled"] = (_, _) => _WorkspacePluginDisabledScene(),
         // AC-1753 (mockup AC-1749 v003, flows 6 and 10): the Markdown editor live, with the caret in a table, as source, and read-only.
         ["markdown-editor"] = (width, height) => _MarkdownEditorScene(width, height, editor => editor.EditLine(12, atEnd: true)),
         ["markdown-file-new"] = (width, height) => _MarkdownFileScene(width, height, "new"),
@@ -550,6 +552,8 @@ internal static partial class Screenshotter
         // badge — "● This machine" and "◆ Depot — Work" — now that the old "On this machine" heading is gone.
         ["plugin-store"] = (_, _) => _PluginStore(),
         ["plugin-store-installed"] = (_, _) => _PluginStoreInstalled(),
+        // AC-2024: the list right after a live disable, with no restart banner.
+        ["plugin-store-disabled-live"] = (_, _) => _PluginStoreDisabledLive(),
         ["plugin-store-updates-incompatible"] = (_, _) => _PluginStoreUpdatesWithIncompatible(),
         ["plugin-store-update-failed"] = (_, _) => _PluginStoreUpdateFailed(),
         // AC-553: the eleven bundled plugins' real logo tiles — its own scene, not added to `_SampleStorePlugins`,
@@ -3258,6 +3262,20 @@ internal static partial class Screenshotter
         return new PluginStoreDialog { DataContext = viewModel };
     }
 
+    private static PluginStoreDialog _PluginStoreDisabledLive()
+    {
+        var dialog = _PluginStoreInstalled();
+        var manager = dialog.DataContext is PluginStoreDialogViewModel { Manager: var found } ? found : throw new InvalidOperationException("The store scene has no view model.");
+        manager.Plugins.Add(new PluginRowViewModel(new InstalledPlugin(
+            new DiscoveredPlugin(Path.Combine("plugins", "clock"), "clock", new PluginManifest("clock", "Clock", "1.0.9", null, 3, null, null, "The time and date, for a Dashboard workspace.", "Cockpit"), "clock-hash", PluginLoadDecision.Disabled),
+            new PluginRegistration(false, "clock-hash"),
+            null,
+            null,
+            null)));
+        manager.StatusMessage = "'Clock' disabled.";
+        return dialog;
+    }
+
     // AC-2013: a runnable update and a host-incompatible one must remain distinguishable in the same list.
     private static PluginStoreDialog _PluginStoreUpdatesWithIncompatible()
         => new() { DataContext = _PluginStoreUpdatesWithIncompatibleViewModel() };
@@ -4898,6 +4916,19 @@ internal static partial class Screenshotter
             }
         }
         cockpit.Workspaces.OpenWorkspaceAsync("scene.markdown", new("Ideas/depot-sync.md", "depot-sync.md", Preview: true)).GetAwaiter().GetResult();
+        return new MainWindow { DataContext = cockpit };
+    }
+
+    private static MainWindow _WorkspacePluginDisabledScene()
+    {
+        var registry = new WorkspaceTypeRegistry(new ServiceCollection().BuildServiceProvider());
+        registry.Register(
+            new Cockpit.Plugins.Abstractions.Workspaces.WorkspaceTypeRegistration("scene.autopilot", "Autopilot", _ => new TextBlock { Text = "Autopilot" }),
+            new PluginScenes.SceneStorage(),
+            NullCockpitSessionObserver.Instance);
+        var cockpit = new CockpitViewModel(workspaceTypeRegistry: registry);
+        cockpit.Workspaces.OpenWorkspaceAsync("scene.autopilot").GetAwaiter().GetResult();
+        registry.Unregister("scene.autopilot");
         return new MainWindow { DataContext = cockpit };
     }
 

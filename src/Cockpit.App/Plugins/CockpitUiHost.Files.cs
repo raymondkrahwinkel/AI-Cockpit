@@ -64,7 +64,7 @@ internal sealed partial class CockpitUiHost
                 () => services.GetRequiredService<CockpitViewModel>().OpenPluginStoreUpdatesAsync());
         }) { CanFloat = true, IconKind = MaterialIconKind.FileDocumentOutline };
         var registry = services.GetRequiredService<IWorkspaceTypeRegistry>();
-        if (!registry.Register(registration, Storage, host.Sessions))
+        if (!registry.Register(registration, Storage, host.Sessions, pluginId))
         {
             _fileWorkspaceTypes.Remove(id);
         }

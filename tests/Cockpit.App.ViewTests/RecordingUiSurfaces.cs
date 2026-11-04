@@ -75,6 +75,12 @@ internal sealed class RecordingUiSurfaces : IPluginContributionSink, IPluginDial
     {
     }
 
+    public Task<bool> ConfirmPluginWorkspacesCloseAsync(string pluginId) => Task.FromResult(true);
+
+    public void CloseDialogs(string keyPrefix)
+    {
+    }
+
     public void RemovePluginContributions(string pluginId)
     {
     }

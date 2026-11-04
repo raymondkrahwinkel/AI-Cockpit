@@ -134,14 +134,27 @@ public sealed class ToastHostViewModel
         }
     }
 
-    private static void _Resolve(ConditionToast condition)
+    // AC-2024: the buttons of a plugin that left would call into it; what it said stays readable.
+    internal void RetireSource(string sourceId)
     {
-        foreach (var action in condition.Toast.Actions)
+        foreach (var item in Notifications.Items.Where(item => item.SourceId == sourceId))
+        {
+            _DisableActions(item.Actions);
+        }
+    }
+
+    private static void _DisableActions(IReadOnlyList<ToastActionViewModel> actions)
+    {
+        foreach (var action in actions)
         {
             action.StillApplies = static () => false;
             action.InvokeCommand.NotifyCanExecuteChanged();
         }
+    }
 
+    private static void _Resolve(ConditionToast condition)
+    {
+        _DisableActions(condition.Toast.Actions);
         condition.Item.MarkResolved();
         condition.Toast.CloseCommand.Execute(null);
     }
