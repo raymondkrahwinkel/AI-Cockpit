@@ -657,7 +657,8 @@ public sealed class FirstStartJourney
             PluginProvisionRequest request,
             int hostAbstractionsMajor,
             Version? hostVersion = null,
-            CancellationToken cancellationToken = default) =>
+            CancellationToken cancellationToken = default,
+            IProgress<PluginDownloadProgress>? progress = null) =>
             _InstallAsync(request, cancellationToken);
 
         public async Task<PluginProvisionBatchResult> InstallManyAsync(

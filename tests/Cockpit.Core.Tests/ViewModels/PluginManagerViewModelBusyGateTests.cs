@@ -72,7 +72,7 @@ public class PluginManagerViewModelBusyGateTests
 
     private static void _Downloads(IPluginStoreClient storeClient, Action observe) =>
         storeClient
-            .DownloadZipAsync(Arg.Any<PluginStoreConfig>(), Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .DownloadZipAsync(Arg.Any<PluginStoreConfig>(), Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>(), Arg.Any<IProgress<PluginDownloadProgress>?>())
             .Returns(_ =>
             {
                 observe();

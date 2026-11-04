@@ -17,9 +17,15 @@ internal sealed class RecordingAssistantMemory : IAssistantMemory
 
     public List<string> Imported { get; } = [];
 
+    public List<string> Rewritten { get; } = [];
+
     public Task<string> ReadAsync(AssistantMemoryScope scope, CancellationToken cancellationToken = default) => Task.FromResult(Contents);
 
-    public Task<AssistantMemoryRewrite> RewriteAsync(string text, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    public Task<AssistantMemoryRewrite> RewriteAsync(string text, CancellationToken cancellationToken = default)
+    {
+        Rewritten.Add(text);
+        return Task.FromResult(new AssistantMemoryRewrite(0, 0, 0, 0, null));
+    }
 
     public Task RememberAsync(string text, AssistantMemoryScope scope, CancellationToken cancellationToken = default)
     {

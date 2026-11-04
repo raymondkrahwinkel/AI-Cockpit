@@ -172,7 +172,7 @@ public sealed class AssistantActMountRuleTests : IDisposable
 
         Assert.Equal(
             tools.Count,
-            _gateway.Calls.Count + _memory.Remembered.Count + _memory.Noted.Count + _memory.Exported.Count + _memory.Imported.Count + _nodes.Reads.Count);
+            _gateway.Calls.Count + _memory.Remembered.Count + _memory.Noted.Count + _memory.Exported.Count + _memory.Imported.Count + _memory.Rewritten.Count + _nodes.Reads.Count);
     }
 
 
