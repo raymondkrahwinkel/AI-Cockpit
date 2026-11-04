@@ -191,13 +191,7 @@ public sealed class WorkflowEngine(IReadOnlyList<IStepRunner> runners, ICockpitH
             return StepOutcome.Passing(input, string.Empty);
         }
 
-        if (!_runners.TryGetValue(node.TypeId, out var runner))
-        {
-            step.Status = RunStatus.Skipped;
-            step.Note = $"This cockpit cannot run '{node.TypeId}' yet — the step was passed by, not performed.";
-            step.Items = RunItems.Keep(input);
-            return StepOutcome.Passing(input, string.Empty);
-        }
+        var runner = _runners[node.TypeId];
 
         // A step that acts with the operator's rights is gated: unless the operator started this run themselves, the
         // literal action is put to them for Approve/Deny before it happens. Denied ends this branch as Skipped, not

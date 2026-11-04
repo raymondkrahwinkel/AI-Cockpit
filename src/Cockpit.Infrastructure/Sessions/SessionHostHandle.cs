@@ -582,6 +582,7 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
     {
         try
         {
+            ProviderId = (launch.Profile.ProviderConfig as Core.Profiles.PluginProviderConfig)?.ProviderId;
             var runtime = await _host.StartAsync(new SessionStart(
                 launch.Profile, SessionPermissionModes.Default, Model: null, launch.EnabledMcpServerNames,
                 launch.WorkingDirectory, launch.Resume, launch.LaunchOptions, ProjectId: null)).ConfigureAwait(false);

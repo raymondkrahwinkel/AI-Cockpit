@@ -71,7 +71,9 @@ public interface ISessionHandle
     /// </summary>
     string? ProjectId => null;
 
-    // The plugin provider the session runs on, null for a plain terminal or a handle that cannot tell (AC-2024).
+    /// <summary>
+    /// The plugin provider the session runs on, null for a plain terminal or a handle that cannot tell (AC-2024).
+    /// </summary>
     string? ProviderId => null;
 
     /// <summary>

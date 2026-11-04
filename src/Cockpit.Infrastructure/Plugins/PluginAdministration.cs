@@ -1,6 +1,10 @@
+using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Abstractions.Plugins;
+using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Delegation;
 using Cockpit.Core.Plugins;
+using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
 using Cockpit.Plugins.Abstractions;
@@ -19,7 +23,9 @@ internal sealed class PluginAdministration(
     PluginManager? manager = null,
     ISessionRegistry? sessions = null,
     IPluginProviderRegistry? providers = null,
-    IPluginTtyProviderRegistry? ttyProviders = null) : IPluginAdministration
+    IPluginTtyProviderRegistry? ttyProviders = null,
+    IDelegationService? delegation = null,
+    ISessionProfileStore? profiles = null) : IPluginAdministration
 {
     public async Task<IReadOnlyList<InstalledPlugin>> GetInstalledAsync(CancellationToken cancellationToken = default)
     {
@@ -74,7 +80,7 @@ internal sealed class PluginAdministration(
             return PluginLiveState.Restart("This host cannot deactivate a plugin while it runs.");
         }
 
-        if (_DeactivationBlocker(manager, folderId) is { } blocker)
+        if (await _DeactivationBlockerAsync(manager, folderId).ConfigureAwait(false) is { } blocker)
         {
             return PluginLiveState.Restart(blocker);
         }
@@ -86,7 +92,7 @@ internal sealed class PluginAdministration(
     }
 
     // What a live deactivation would cut off: a flagged plugin, or a session still running on one of its providers.
-    private string? _DeactivationBlocker(PluginManager loaded, string folderId)
+    private async Task<string?> _DeactivationBlockerAsync(PluginManager loaded, string folderId)
     {
         if (loaded.LoadedParts.Any(entry => entry.Discovered.FolderId == folderId && entry.Discovered.Manifest.RequiresRestart))
         {
@@ -94,10 +100,29 @@ internal sealed class PluginAdministration(
         }
 
         var running = sessions is null ? [] : sessions.All.Concat(sessions.Assistant is { } assistant ? [assistant] : []);
-        var user = running.FirstOrDefault(session => session.ProviderId is { } providerId
-            && (providers?.OwnerOf(providerId) == folderId || ttyProviders?.OwnerOf(providerId) == folderId));
-        return user is null ? null : $"Session '{user.Title}' uses this provider.";
+        var user = running.FirstOrDefault(session => session.ProviderId is { } providerId && _Owns(folderId, providerId));
+        if (user is not null)
+        {
+            return $"Session '{user.Title}' uses this provider.";
+        }
+
+        // A delegated task has no pane, so it is not in the registry.
+        if (delegation is null || profiles is null)
+        {
+            return null;
+        }
+
+        var labels = (await profiles.LoadAsync().ConfigureAwait(false))
+            .Where(profile => profile.ProviderConfig is PluginProviderConfig plugin && _Owns(folderId, plugin.ProviderId))
+            .Select(profile => profile.Label)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var task = delegation.ListTasks().FirstOrDefault(candidate =>
+            candidate.Status is DelegatedTaskStatus.Queued or DelegatedTaskStatus.Running && labels.Contains(candidate.ProfileLabel));
+        return task is null ? null : $"Delegated task '{task.Label ?? task.TaskId}' uses this provider.";
     }
+
+    private bool _Owns(string folderId, string providerId) =>
+        providers?.OwnerOf(providerId) == folderId || ttyProviders?.OwnerOf(providerId) == folderId;
 
     // Any failure falls back to a restart, which loads the plugin the ordinary way.
     private async Task<PluginLiveState> _ActivateAsync(string folderId, CancellationToken cancellationToken)
