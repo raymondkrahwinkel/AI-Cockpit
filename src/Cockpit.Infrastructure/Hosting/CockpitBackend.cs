@@ -644,6 +644,7 @@ public sealed class CockpitBackend
             Services.GetService<ISessionLauncher>(),
             Services.GetService<Cockpit.Core.Abstractions.Agents.IWorkspaceAgentCoordinator>());
         var diagnostics = Services.GetRequiredService<PluginDiagnostics>();
+        var plugins = Services.GetService<PluginManager>();
 
         return (discovered, plugin) => new PluginBackendHost(
             discovered.FolderId,
@@ -655,7 +656,8 @@ public sealed class CockpitBackend
             diagnostics,
             plugin.GetType(),
             cache.CreateFor(discovered.FolderId),
-            discovered.Manifest.Capabilities);
+            discovered.Manifest.Capabilities,
+            plugins?.RuntimeFor(discovered.FolderId));
     }
 
     // AC-1378/AC-1439: the one launcher everywhere; without a frontend it keeps the desks as saved and hosts its sessions

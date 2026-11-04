@@ -156,6 +156,8 @@ public sealed class ToastHostViewModel
 
     internal void AddNotificationSource(string sourceId, Func<string, Task<PluginNotification?>> recheck) => _sources[sourceId] = recheck;
 
+    internal void RemoveNotificationSource(string sourceId) => _sources.TryRemove(sourceId, out _);
+
     // AC-1804: after the plugins registered, each kept item is asked again: still standing comes back live, else resolved.
     internal async Task RestoreNotificationsAsync(string path)
     {

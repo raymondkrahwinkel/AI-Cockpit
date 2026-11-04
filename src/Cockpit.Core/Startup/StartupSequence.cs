@@ -86,6 +86,16 @@ public sealed class StartupSequence(TimeProvider? clock = null, TimeSpan? slowAf
         return step;
     }
 
+    public void Remove(StartupStep step)
+    {
+        lock (_gate)
+        {
+            _steps.Remove(step);
+        }
+
+        Changed?.Invoke();
+    }
+
     // Core steps run in order, plugin steps beside them; an essential failure is thrown once all the others have ended.
     public async Task RunPendingAsync()
     {

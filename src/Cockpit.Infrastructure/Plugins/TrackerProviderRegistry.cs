@@ -19,6 +19,13 @@ public interface ITrackerProviderRegistry
     bool Register(ITrackerProvider provider);
 
     /// <summary>
+    /// Withdraws <paramref name="provider"/>; false when it is not registered.
+    /// </summary>
+    bool Unregister(ITrackerProvider provider);
+
+    event EventHandler? Changed;
+
+    /// <summary>
     /// Every tracker registered so far, in registration order.
     /// </summary>
     IReadOnlyList<ITrackerProvider> Providers { get; }
@@ -28,16 +35,46 @@ internal sealed class TrackerProviderRegistry : ITrackerProviderRegistry, ISingl
 {
     private readonly List<ITrackerProvider> _providers = [];
 
-    public IReadOnlyList<ITrackerProvider> Providers => [.. _providers];
+    public event EventHandler? Changed;
+
+    public IReadOnlyList<ITrackerProvider> Providers
+    {
+        get
+        {
+            lock (_providers)
+            {
+                return [.. _providers];
+            }
+        }
+    }
 
     public bool Register(ITrackerProvider provider)
     {
-        if (_providers.Any(existing => string.Equals(existing.TrackerId, provider.TrackerId, StringComparison.OrdinalIgnoreCase)))
+        lock (_providers)
         {
-            return false;
+            if (_providers.Any(existing => string.Equals(existing.TrackerId, provider.TrackerId, StringComparison.OrdinalIgnoreCase)))
+            {
+                return false;
+            }
+
+            _providers.Add(provider);
         }
 
-        _providers.Add(provider);
+        Changed?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+
+    public bool Unregister(ITrackerProvider provider)
+    {
+        lock (_providers)
+        {
+            if (!_providers.Remove(provider))
+            {
+                return false;
+            }
+        }
+
+        Changed?.Invoke(this, EventArgs.Empty);
         return true;
     }
 }

@@ -19,7 +19,12 @@ public interface IFirstStartRouteRegistry
     bool Register(FirstStartRoute route, string pluginName);
 
     /// <summary>
-    /// Raised when a route is registered, so a step that is already on screen can list it.
+    /// Withdraws the route <paramref name="routeId"/>; false when none is registered.
+    /// </summary>
+    bool Unregister(string routeId);
+
+    /// <summary>
+    /// Raised when a route is registered or withdrawn, so a step that is already on screen can list it.
     /// </summary>
     event EventHandler? Changed;
 
@@ -57,6 +62,21 @@ internal sealed class FirstStartRouteRegistry : IFirstStartRouteRegistry, ISingl
             }
 
             _routes.Add((route, pluginName));
+        }
+
+        Changed?.Invoke(this, EventArgs.Empty);
+
+        return true;
+    }
+
+    public bool Unregister(string routeId)
+    {
+        lock (_gate)
+        {
+            if (_routes.RemoveAll(entry => entry.Route.Id == routeId) == 0)
+            {
+                return false;
+            }
         }
 
         Changed?.Invoke(this, EventArgs.Empty);

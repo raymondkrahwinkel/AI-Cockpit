@@ -40,9 +40,9 @@ internal sealed class PluginStatusBarHost : StackPanel
         }
 
         _cockpit.PluginSupervisedActivities.CollectionChanged += _OnSourcesChanged;
-        foreach (var source in _cockpit.PluginSupervisedActivities)
+        foreach (var entry in _cockpit.PluginSupervisedActivities)
         {
-            _Add(source);
+            _Add(entry.Source);
         }
     }
 
@@ -55,9 +55,9 @@ internal sealed class PluginStatusBarHost : StackPanel
             return;
         }
 
-        foreach (var source in _cockpit.PluginSupervisedActivities)
+        foreach (var entry in _cockpit.PluginSupervisedActivities)
         {
-            _Add(source);
+            _Add(entry.Source);
         }
     }
 

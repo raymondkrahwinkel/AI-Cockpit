@@ -10,6 +10,7 @@ using Cockpit.Infrastructure.Plugins;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.StatusBar;
 using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.App.Plugins;
@@ -27,8 +28,9 @@ internal sealed class DesktopBackendHost(
     PluginDiagnostics diagnostics,
     Type? ownPluginType = null,
     IPluginCache? cache = null,
-    IReadOnlyList<string>? capabilities = null)
-    : PluginBackendHost(pluginId, pluginName, services, storage, sessions, actions, diagnostics, ownPluginType, cache, capabilities), ICockpitHost
+    IReadOnlyList<string>? capabilities = null,
+    PluginRuntime? runtime = null)
+    : PluginBackendHost(pluginId, pluginName, services, storage, sessions, actions, diagnostics, ownPluginType, cache, capabilities, runtime), ICockpitHost
 {
     public override bool IsHeadless => false;
 
@@ -40,6 +42,16 @@ internal sealed class DesktopBackendHost(
 
     // AC-1379: the gateway keeps no thread of its own; this host makes the UI-thread hops it used to make itself.
     protected override IAssistantSessionHost AssistantHostFor(IAssistantSessionHost host) => new UiThreadAssistantSessionHost(host);
+
+    // AC-2024: the status bar's sources are a window contribution, so the windowless base drops them.
+    public override void AddSupervisedActivityProvider(ISupervisedActivitySource source)
+    {
+        if (Services.GetService<CockpitViewModel>() is IPluginContributionSink sink)
+        {
+            sink.AddSupervisedActivityProvider(PluginId, source);
+            Runtime.Add(() => sink.RemovePluginContributions(PluginId));
+        }
+    }
 
     public override void ShowToast(string message, PluginToastSeverity severity, string? actionLabel, Action? onAction)
     {
@@ -85,8 +97,14 @@ internal sealed class DesktopBackendHost(
         }
     }
 
-    public void AddNotificationSource(Func<string, Task<PluginNotification?>> recheck) =>
-        Services.GetService<CockpitViewModel>()?.ToastHost.AddNotificationSource(PluginId, recheck);
+    public void AddNotificationSource(Func<string, Task<PluginNotification?>> recheck)
+    {
+        if (Services.GetService<CockpitViewModel>()?.ToastHost is { } toasts)
+        {
+            toasts.AddNotificationSource(PluginId, recheck);
+            Runtime.Add(() => toasts.RemoveNotificationSource(PluginId));
+        }
+    }
 
     // AC-1398: the route WorkspaceContext.EmbedSession takes, reachable by workspace id so a backend part can embed
     // what its UI part's workspace shows. AC-1418: marshals itself, since a backend part has no UI thread to be on.

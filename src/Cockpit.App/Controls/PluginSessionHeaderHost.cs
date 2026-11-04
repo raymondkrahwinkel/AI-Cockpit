@@ -93,6 +93,7 @@ internal sealed class PluginSessionHeaderHost : StackPanel
         button.Click += (_, _) =>
         {
             var items = cockpit.PluginSessionHeaderActions
+                .Select(entry => entry.Action)
                 .Select(action =>
                 {
                     var item = new MenuItem { Header = action.Title };

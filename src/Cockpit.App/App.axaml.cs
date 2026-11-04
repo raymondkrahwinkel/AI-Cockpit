@@ -562,7 +562,7 @@ public partial class App : Application
         // type. Plugins add theirs later, through ICockpitHost, as they load.
         foreach (var source in Program.Services.GetServices<ISupervisedActivitySource>())
         {
-            cockpitViewModel.PluginSupervisedActivities.Add(source);
+            cockpitViewModel.PluginSupervisedActivities.Add(new PluginSupervisedActivity(null, source));
         }
 
         // ProfileDisplayConverter is x:Static rather than DI-created, so supply the now-populated registry here to
@@ -953,6 +953,7 @@ public partial class App : Application
 
         // AC-1389: one backend host per plugin, shared by its backend part and the UI part's CockpitUiHost that forwards
         // what a backend can do too to it, and built on demand for a plugin that is only a UI part.
+        var pluginManager = Program.Services.GetRequiredService<PluginManager>();
         var hosts = new Dictionary<DiscoveredPlugin, ICockpitHost>();
         ICockpitHost HostFor(DiscoveredPlugin discovered, Type pluginType)
         {
@@ -969,7 +970,8 @@ public partial class App : Application
                     // AC-499: distinguish the plugin's own MCP provider registration from other plugins'.
                     pluginType,
                     pluginCache.CreateFor(discovered.FolderId),
-                    discovered.Manifest.Capabilities);
+                    discovered.Manifest.Capabilities,
+                    pluginManager.RuntimeFor(discovered.FolderId));
             }
         }
 
@@ -991,9 +993,10 @@ public partial class App : Application
                 // The keys this plugin says hold a credential. They already gate encryption and the backup scrubber;
                 // handing them to the widget registry lets a dashboard export drop them too, which is the third place
                 // a declared secret has to be honoured.
-                discovered.Manifest.SecretKeys ?? []);
+                discovered.Manifest.SecretKeys ?? [],
+                pluginManager.RuntimeFor(discovered.FolderId));
         uiParts.InitializeUi(PluginUiManager.ActivateUi, UiHostFor);
-        Program.Services.GetRequiredService<PluginManager>().Activated += (discovered, plugin) => Dispatcher.UIThread.Post(() =>
+        pluginManager.Activated += (discovered, plugin) => Dispatcher.UIThread.Post(() =>
         {
             uiParts.InitializeUiOne(discovered, plugin, PluginUiManager.ActivateUi, UiHostFor);
             Program.Services.GetRequiredService<HelpService>().Invalidate();

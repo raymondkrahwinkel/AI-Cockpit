@@ -21,6 +21,11 @@ public interface IProjectFieldRegistry
     bool Register(ProjectFieldRegistration registration);
 
     /// <summary>
+    /// Withdraws the field under <paramref name="key"/>; false when none is registered. Stored project links stay.
+    /// </summary>
+    bool Remove(string key);
+
+    /// <summary>
     /// Every field registered so far, in registration order — the order the editor draws them in.
     /// </summary>
     IReadOnlyList<ProjectFieldRegistration> Fields { get; }
@@ -46,4 +51,6 @@ internal sealed class ProjectFieldRegistry : IProjectFieldRegistry, ISingletonSe
         _fields.Add(registration);
         return true;
     }
+
+    public bool Remove(string key) => _fields.RemoveAll(field => string.Equals(field.Key, key, StringComparison.Ordinal)) > 0;
 }

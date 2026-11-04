@@ -311,11 +311,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // What plugins can *do* to one session (#: session actions) — gathered into the single menu in every session's
     // header, rather than a button each.
-    public ObservableCollection<PluginSessionAction> PluginSessionHeaderActions { get; } = [];
+    public ObservableCollection<PluginSessionHeaderAction> PluginSessionHeaderActions { get; } = [];
 
     // Plugin-registered sources of supervised background activities (AC-82) — the status bar shows a counter per source
     // (only while it has activities) and a panel with a Kill per item.
-    public ObservableCollection<ISupervisedActivitySource> PluginSupervisedActivities { get; } = [];
+    public ObservableCollection<PluginSupervisedActivity> PluginSupervisedActivities { get; } = [];
 
     // AC-1711: at most one line of text per plugin in the status bar, in the order the plugins first set one.
     public ObservableCollection<PluginStatusText> PluginStatusTexts { get; } = [];
@@ -426,7 +426,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private sealed record PluginMenuPreference(int Order, bool Hidden, bool Pinned);
 
     // Keyboard shortcuts contributed by plugins (#: shortcuts), dispatched alongside the built-in app-action shortcuts.
-    public ObservableCollection<PluginShortcut> PluginShortcuts { get; } = [];
+    public ObservableCollection<PluginKeyboardShortcut> PluginShortcuts { get; } = [];
 
     // The currently-active shortcuts (app actions + plugin shortcuts) the view matches key presses against.
     public IReadOnlyList<ShortcutBinding> ActiveShortcuts { get; private set; } = [];
@@ -837,23 +837,50 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         MaterialIconKind iconKind) =>
         _OnUiThread(() => PluginSideButtons.Add(new PluginSideButton(pluginId, title, onInvoke, badge, iconKind)));
 
-    void IPluginContributionSink.AddPluginSessionHeaderItem(Func<IPluginSessionContext, Control> createView) =>
-        _OnUiThread(() => PluginSessionHeaderItems.Add(new PluginSessionHeaderItem(createView)));
+    void IPluginContributionSink.AddPluginSessionHeaderItem(string pluginId, Func<IPluginSessionContext, Control> createView) =>
+        _OnUiThread(() => PluginSessionHeaderItems.Add(new PluginSessionHeaderItem(pluginId, createView)));
 
-    void IPluginContributionSink.AddPluginSessionBannerItem(Func<IPluginSessionContext, Control> createView) =>
-        _OnUiThread(() => PluginSessionBanners.Add(new PluginSessionBannerItem(createView)));
+    void IPluginContributionSink.AddPluginSessionBannerItem(string pluginId, Func<IPluginSessionContext, Control> createView) =>
+        _OnUiThread(() => PluginSessionBanners.Add(new PluginSessionBannerItem(pluginId, createView)));
 
-    void IPluginContributionSink.AddPluginSessionHeaderAction(PluginSessionAction action) =>
-        _OnUiThread(() => PluginSessionHeaderActions.Add(action));
+    void IPluginContributionSink.AddPluginSessionHeaderAction(string pluginId, PluginSessionAction action) =>
+        _OnUiThread(() => PluginSessionHeaderActions.Add(new PluginSessionHeaderAction(pluginId, action)));
 
-    void IPluginContributionSink.AddSupervisedActivityProvider(ISupervisedActivitySource source) =>
-        _OnUiThread(() => PluginSupervisedActivities.Add(source));
+    void IPluginContributionSink.AddSupervisedActivityProvider(string pluginId, ISupervisedActivitySource source) =>
+        _OnUiThread(() => PluginSupervisedActivities.Add(new PluginSupervisedActivity(pluginId, source)));
 
     void IPluginContributionSink.AddToolbarAction(string pluginId, ToolbarAction action) =>
         _OnUiThread(() => PluginToolbarActions.Add(new PluginToolbarAction(pluginId, action)));
 
-    void IPluginContributionSink.AddPluginShortcut(PluginShortcut shortcut) =>
-        _OnUiThread(() => PluginShortcuts.Add(shortcut));
+    void IPluginContributionSink.AddPluginShortcut(string pluginId, PluginShortcut shortcut) =>
+        _OnUiThread(() => PluginShortcuts.Add(new PluginKeyboardShortcut(pluginId, shortcut)));
+
+    void IPluginContributionSink.RemovePluginContributions(string pluginId) => _OnUiThread(() =>
+    {
+        _RemoveWhere(PluginSideSections, entry => entry.PluginId == pluginId);
+        _RemoveWhere(PluginSideButtons, entry => entry.PluginId == pluginId);
+        _RemoveWhere(PluginSessionHeaderItems, entry => entry.PluginId == pluginId);
+        _RemoveWhere(PluginSessionBanners, entry => entry.PluginId == pluginId);
+        _RemoveWhere(PluginSessionHeaderActions, entry => entry.PluginId == pluginId);
+        _RemoveWhere(PluginSupervisedActivities, entry => entry.PluginId == pluginId);
+        _RemoveWhere(PluginStatusTexts, entry => entry.PluginId == pluginId);
+        _RemoveWhere(PluginToolbarActions, entry => entry.PluginId == pluginId);
+        _RemoveWhere(PluginShortcuts, entry => entry.PluginId == pluginId);
+        PluginSettings.Remove(pluginId);
+        PluginServerSettings.Remove(pluginId);
+        _settingsSavedHandlers.Remove(pluginId);
+    });
+
+    private static void _RemoveWhere<T>(ObservableCollection<T> items, Func<T, bool> match)
+    {
+        for (var index = items.Count - 1; index >= 0; index--)
+        {
+            if (match(items[index]))
+            {
+                items.RemoveAt(index);
+            }
+        }
+    }
 
     // Registration touches only this plain dictionary — never a bound ObservableCollection — and every caller is an
     // Avalonia UI-thread callback in practice (a plugin's Initialize).
@@ -4158,7 +4185,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             ShortcutRows.Add(new ShortcutRowViewModel(descriptor.Label, descriptor.Action, _shortcutSettings.GestureFor(descriptor.Action)));
         }
 
-        foreach (var shortcut in PluginShortcuts)
+        foreach (var shortcut in PluginShortcuts.Select(entry => entry.Shortcut))
         {
             ShortcutRows.Add(new ShortcutRowViewModel(
                 $"{shortcut.Title} (plugin)",
@@ -4222,7 +4249,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             }
         }
 
-        foreach (var shortcut in PluginShortcuts)
+        foreach (var shortcut in PluginShortcuts.Select(entry => entry.Shortcut))
         {
             var gesture = _shortcutSettings.GestureForPlugin(shortcut.Id, shortcut.DefaultGesture);
             if (!string.IsNullOrWhiteSpace(gesture))
@@ -7528,7 +7555,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 () => _InvokeAppAction(descriptor.Action)));
         }
 
-        foreach (var shortcut in PluginShortcuts)
+        foreach (var shortcut in PluginShortcuts.Select(entry => entry.Shortcut))
         {
             commands.Add(new PaletteCommand(
                 shortcut.Title,
