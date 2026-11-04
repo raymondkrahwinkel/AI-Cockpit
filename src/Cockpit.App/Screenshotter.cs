@@ -284,6 +284,7 @@ internal static partial class Screenshotter
         ["markdown-file-conflict-compare"] = (width, height) => _MarkdownFileScene(width, height, "conflict-compare"),
         ["markdown-file-readonly"] = (width, height) => _MarkdownFileScene(width, height, "readonly"),
         ["markdown-file-live"] = (width, height) => _MarkdownFileScene(width, height, "live"),
+        ["markdown-file-live-timeout"] = (width, height) => _MarkdownFileScene(width, height, "live-timeout"),
         ["markdown-file-live-light"] = (width, height) => _MarkdownFileScene(width, height, "live-light"),
         ["markdown-file-live-light-saved"] = (width, height) => _MarkdownFileScene(width, height, "live-light-saved"),
         ["markdown-file-sign-in-expired"] = (width, height) => _MarkdownFileScene(width, height, "sign-in-expired"),
