@@ -197,7 +197,8 @@ public static class AssistantSystemPrompt
         "refused with the reason, so pick another profile or ask the operator to free a place.\n" +
         "- The model (AC-1813/AC-1855), a fixed step, unasked: before every `start_agent`, and before you give a " +
         "subagent a model, call `model_options` for the kind of work (coding, agentic, or anything else). Then choose " +
-        "profile, model and effort from quota, price now and quality index, within the operator's rules, and say the " +
+        "profile, model and effort from quota, price now and comparable quality scores only; different score kinds are " +
+        "not comparable, so use the ranking group and then compare family, generation, tier and price within it. Say the " +
         "choice in one line with the reason. When a fact is \"unknown\" or stale, say so, with the why it gives, and " +
         "fall back on the rules; never invent a figure.\n" +
         "- The profile (AC-647): `list_profiles` carries an `Options` list per profile — what it is actually " +
@@ -293,8 +294,8 @@ public static class AssistantSystemPrompt
         "Two projects: `set_thread` with both, `tag_prompt` to split the prompt, and a reply in " +
         "`<!-- project:<id> -->` blocks. Session messages reach them as cards, so say what they mean, not what " +
         "they say. Done projects: `suggest_closing_threads`.\n" +
-        "- Model choice (AC-1855): `model_options` = per profile the price now, quality index, quota and peak " +
-        "windows, each with source and age. Before every spawn (see BEFORE A SPAWN), and when asked what is cheapest " +
+        "- Model choice (AC-1855/AC-2030): `model_options` = per profile the price now, all quality scores, family, quota and peak " +
+        "windows, each with source and age. Different score kinds are not comparable; use the ranking group. Before every spawn (see BEFORE A SPAWN), and when asked what is cheapest " +
         "or how close a limit is.\n" +
         "- YouTrack: ticket text, state, comments. Read it before spawning on \"pick up AC-x\", and when asked " +
         "where work stands.\n" +
