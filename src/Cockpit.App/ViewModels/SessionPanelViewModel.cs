@@ -523,11 +523,20 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
                 return string.Empty;
             }
 
+            var label = string.IsNullOrWhiteSpace(run.Label)
+                || string.Equals(run.Label.Trim(), run.Command.Trim(), StringComparison.Ordinal)
+                || run.Label.Contains('\r')
+                || run.Label.Contains('\n')
+                || run.Label.Length > 80
+                ? string.Empty
+                : $": {run.Label.Trim()}";
             return run.State == SessionRunState.Queued
-                ? $"Waiting for run: {run.Label}: queued ({run.WaitReason ?? "waiting"})"
-                : $"Waiting for run: {run.Label}: running {_RunDuration(run.Since)}";
+                ? $"Waiting for run{label}: queued ({run.WaitReason ?? "waiting"})"
+                : $"Waiting for run{label}: running {_RunDuration(run.Since)}";
         }
     }
+
+    public string RunCommandTooltip => _activeRuns.FirstOrDefault()?.Command ?? string.Empty;
 
     private bool _hasOutstandingProcesses;
     private bool _lastSampleHadOutstanding;
@@ -1298,6 +1307,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         OnPropertyChanged(nameof(HasActiveRun));
         OnPropertyChanged(nameof(HasOutstandingWork));
         OnPropertyChanged(nameof(RunStatusLabel));
+        OnPropertyChanged(nameof(RunCommandTooltip));
         OnPropertyChanged(nameof(SessionStatusLabel));
 
         if (previousStatus != SessionStatus)

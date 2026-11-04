@@ -215,6 +215,7 @@
                 <materialIcons:MaterialIcon Kind="ClockOutline" Width="14" Height="14"
                                             Foreground="{DynamicResource CockpitStatusBackgroundBrush}"/>
                 <TextBlock Text="{Binding RunStatusLabel}" FontSize="11" TextTrimming="CharacterEllipsis"
+                           ToolTip.Tip="{Binding RunCommandTooltip}"
                            Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
             </StackPanel>
         </Button>
