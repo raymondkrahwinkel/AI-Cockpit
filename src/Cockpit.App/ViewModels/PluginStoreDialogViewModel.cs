@@ -466,7 +466,8 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
         {
             var needle = searchText.Trim();
             scoped = scoped.Where(row =>
-                _Contains(row.Name, needle) || _Contains(row.Description, needle) || _Contains(row.Author, needle));
+                _Contains(row.Name, needle) || _Contains(row.Description, needle) || _Contains(row.Author, needle)
+                || row.Keywords.Any(keyword => _Contains(keyword, needle)));
         }
 
         return Sort(scoped, sortMode);

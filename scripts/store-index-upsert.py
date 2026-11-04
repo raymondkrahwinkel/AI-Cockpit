@@ -8,7 +8,7 @@ nothing else, so the publish workflow can open a reviewable PR instead of a pers
 
 Source-of-truth split (the "metadata gap" the design settled on):
   * Mechanical + identity fields come from the plugin's own plugin.json — id, name, description,
-    author, version, abstractionsVersion, minHostVersion. These are what the app enforces.
+    author, version, abstractionsVersion, minHostVersion, keywords. The app enforces all but keywords, which its search reads.
   * Editorial fields the manifest does not carry — category, icon, homepage, repository, featured,
     audience — are taken from an optional store.json beside plugin.json, else preserved from the existing index
     entry, else left unset for a human to fill in the PR. A brand-new plugin with neither is listed
@@ -99,6 +99,10 @@ def build_entry(existing: OrderedDict | None, store_meta: dict, args) -> Ordered
     category = first_present(store_meta.get("category"), existing.get("category"))
     if category is not None:
         entry["category"] = category
+
+    keywords = first_present(store_meta.get("keywords"), args.keywords, existing.get("keywords"))
+    if keywords is not None:
+        entry["keywords"] = keywords
 
     # AC-1289: a curator-assigned work-kind tag (AC-511) a plugin author cannot set for themselves.
     # store.json never carries it, so this is really just "preserve what the index already has".
@@ -201,6 +205,7 @@ def main() -> int:
     parser.add_argument("--name", required=True)
     parser.add_argument("--description", default=None)
     parser.add_argument("--author", default=None)
+    parser.add_argument("--keyword", dest="keywords", action="append", default=None, help="A store search term, repeatable.")
     parser.add_argument("--version", required=True)
     parser.add_argument("--abstractions-version", type=int, default=None)
     parser.add_argument("--min-host-version", default=None)
