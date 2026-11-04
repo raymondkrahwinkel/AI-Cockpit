@@ -11,8 +11,8 @@ public interface IToastService
 {
     /// <summary>
     /// Queues a toast for display. <paramref name="actionLabel"/>/<paramref name="onAction"/> are both
-    /// optional and must be supplied together to show an action button; the toast auto-dismisses after a
-    /// severity-dependent timeout (longer for <see cref="ToastSeverity.Error"/>) and always has a close button.
+    /// optional and must be supplied together to show an action button; without one, the toast auto-dismisses after
+    /// a severity-dependent timeout (longer for <see cref="ToastSeverity.Warning"/> and <see cref="ToastSeverity.Error"/>).
     /// </summary>
     void Show(string message, ToastSeverity severity, string? actionLabel = null, Action? onAction = null);
 
