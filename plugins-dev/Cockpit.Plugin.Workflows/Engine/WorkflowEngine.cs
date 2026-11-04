@@ -159,7 +159,12 @@ public sealed class WorkflowEngine(IReadOnlyList<IStepRunner> runners, ICockpitH
         }
 
         run.FinishedAt = DateTimeOffset.UtcNow;
-        if (run.Status == RunStatus.Running)
+        if (run.Status == RunStatus.Running && cancellationToken.IsCancellationRequested)
+        {
+            run.Status = RunStatus.Failed;
+            run.Error = "The run was stopped before it finished.";
+        }
+        else if (run.Status == RunStatus.Running)
         {
             run.Status = RunStatus.Succeeded;
         }

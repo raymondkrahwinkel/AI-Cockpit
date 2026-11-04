@@ -16,6 +16,8 @@ namespace Cockpit.App.Plugins;
 // half names no window type. Runs after every backend part's Initialize, over what PluginManager loaded.
 public sealed class PluginUiManager(ILogger<PluginUiManager> logger, PluginDiagnostics diagnostics, PluginManager backend) : IDisposable
 {
+    private static readonly TimeSpan _UiDisposeBudget = TimeSpan.FromSeconds(1);
+
     private readonly Dictionary<DiscoveredPlugin, ICockpitPluginUi> _ui = [];
 
     // AC-1571: the host each UI part was given, which a server's copy of that part borrows its window helpers from.
@@ -240,6 +242,13 @@ public sealed class PluginUiManager(ILogger<PluginUiManager> logger, PluginDiagn
             return;
         }
 
+        // AC-2024: a synchronous call on the UI thread cannot be cut short. This names the plugin that holds it, also
+        // when the call never returns.
+        using var overrun = new Timer(
+            _ => logger.LogWarning("Plugin {PluginId} is blocking the UI thread in the Dispose of its UI part.", discovered.FolderId),
+            null,
+            _UiDisposeBudget,
+            Timeout.InfiniteTimeSpan);
         try
         {
             ui.Dispose();

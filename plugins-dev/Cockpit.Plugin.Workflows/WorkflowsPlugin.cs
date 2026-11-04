@@ -53,7 +53,7 @@ public sealed class WorkflowsPlugin : ICockpitPlugin
         // through the host's endpoint mechanism (#AC-13) — it appears as the cockpit-workflows MCP. Fire-and-forget,
         // as the host asks. AC-40: gated on the plugin's own setting, read live each time a session's servers are
         // gathered, so the Workflows-settings toggle takes effect without a restart; the settings view edits it.
-        _ = host.AddMcpEndpoint("cockpit-workflows", new WorkflowMcpTools(store, runs, host), isEnabled: () => settings.McpEnabled);
+        _ = host.AddMcpEndpoint("cockpit-workflows", new WorkflowMcpTools(store, runs, host, _watcher.Stopping), isEnabled: () => settings.McpEnabled);
 
         _Handle(host, WorkflowsChannel.Load, (_, _) => Task.FromResult<object?>(WorkflowJson.WriteAll(store.Load())));
         _Handle(host, WorkflowsChannel.Save, (payload, _) =>
@@ -75,6 +75,7 @@ public sealed class WorkflowsPlugin : ICockpitPlugin
             var workflowId = _Read<WorkflowsLastRunRequest>(payload).WorkflowId;
             return Task.FromResult<object?>(runs.Load().FirstOrDefault(run => run.WorkflowId == workflowId));
         });
+        var stopping = _watcher.Stopping;
         _Handle(host, WorkflowsChannel.Run, async (payload, _) =>
         {
             var request = _Read<WorkflowsRunRequest>(payload);
@@ -82,7 +83,7 @@ public sealed class WorkflowsPlugin : ICockpitPlugin
                 ?? throw new ArgumentException("That is not a flow this build can read.", nameof(payload));
 
             // The same engine the watcher uses: a flow must not do different things depending on who started it.
-            var run = await EngineFactory.Create(host, host.WorkflowSteps).RunAsync(workflow, request.TriggerNodeId, RunOrigin.Operator);
+            var run = await EngineFactory.Create(host, host.WorkflowSteps).RunAsync(workflow, request.TriggerNodeId, RunOrigin.Operator, cancellationToken: stopping);
             runs.Add(run);
             return run;
         });

@@ -9,8 +9,10 @@ namespace Cockpit.Plugin.Autopilot;
 
 // AC-1398: the UI part — the plan-flow workspace, which places the sessions the backend holds by pane id. AC-1418:
 // it reaches the backend's runs, plan, queue, history and templates over the plugin's channel only.
-public sealed class AutopilotUi : ICockpitPluginUi
+public sealed class AutopilotUi : ICockpitPluginUi, IDisposable
 {
+    private Action? _stopWatchingActiveSession;
+
     public void InitializeUi(ICockpitUiHost host)
     {
         // The settings are loose keys in the plugin's storage, the same slice the backend part reads.
@@ -29,7 +31,9 @@ public sealed class AutopilotUi : ICockpitPluginUi
         // The backend has no selected session; the directory of the one this window has selected is what its epic
         // merge check runs git in, so it is told on every change.
         void ReportActiveDirectory() => _ = host.Channel.InvokeAsync(ActiveDirectory, JsonSerializer.SerializeToElement(host.ActiveSessionWorkingDirectory ?? string.Empty));
-        host.ActiveSessionChanged += (_, _) => ReportActiveDirectory();
+        EventHandler activeSessionChanged = (_, _) => ReportActiveDirectory();
+        host.ActiveSessionChanged += activeSessionChanged;
+        _stopWatchingActiveSession = () => host.ActiveSessionChanged -= activeSessionChanged;
         ReportActiveDirectory();
 
         // What the backend part wants shown arrives as events, since it has no window of its own.
@@ -43,4 +47,6 @@ public sealed class AutopilotUi : ICockpitPluginUi
             Description = "The CEO plans the work, you approve it once, then it runs autonomously — the pipeline on one surface.",
         });
     }
+
+    public void Dispose() => _stopWatchingActiveSession?.Invoke();
 }

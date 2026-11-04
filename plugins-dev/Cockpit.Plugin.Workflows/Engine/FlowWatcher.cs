@@ -44,6 +44,9 @@ internal sealed class FlowWatcher : IDisposable
     private readonly Dictionary<string, WorkflowRun> _active = [];
     private readonly Lock _runningLock = new();
 
+    // AC-2024: every run ends with the plugin. An "Ask me first" step can wait for days, and a command for minutes.
+    private readonly CancellationTokenSource _stopping = new();
+
     private bool _disposed;
 
     public FlowWatcher(WorkflowStore store, RunStore runs, ScheduleMarks marks, ICockpitHost host, Func<TimeSpan> grace)
@@ -70,6 +73,9 @@ internal sealed class FlowWatcher : IDisposable
     }
 
     public SchedulerHealth Health { get; }
+
+    // Cancelled when the plugin stops: the token of a run this watcher did not start itself.
+    public CancellationToken Stopping => _stopping.Token;
 
     public WorkflowRun? Active(string workflowId)
     {
@@ -103,6 +109,7 @@ internal sealed class FlowWatcher : IDisposable
         _host.WorkflowTriggerRaised -= _OnPluginTrigger;
         _host.WorkflowStepsChanged -= _OnWorkflowStepsChanged;
         _timer.Dispose();
+        _stopping.Cancel();
     }
 
     private void _OnWorkflowStepsChanged(object? sender, EventArgs args)
@@ -252,6 +259,11 @@ internal sealed class FlowWatcher : IDisposable
 
         lock (_runningLock)
         {
+            if (_disposed)
+            {
+                return false;
+            }
+
             if (!_running.Add(key))
             {
                 if (recordBusy)
@@ -289,7 +301,8 @@ internal sealed class FlowWatcher : IDisposable
                 trigger.Id,
                 origin,
                 seed,
-                changed: changed => _Track(key, changed));
+                _stopping.Token,
+                changed => _Track(key, changed));
         }
         catch (Exception exception)
         {
@@ -312,7 +325,7 @@ internal sealed class FlowWatcher : IDisposable
 
         // A flow that fired and failed while you were looking elsewhere must say so — this is the one thing that
         // separates automation from a machine quietly doing nothing.
-            if (run.Status == RunStatus.Failed)
+            if (run.Status == RunStatus.Failed && !_stopping.IsCancellationRequested)
             {
                 _host.ShowToast($"'{workflow.Name}' failed: {run.Error}", Cockpit.Plugins.Abstractions.Notifications.PluginToastSeverity.Warning);
             }

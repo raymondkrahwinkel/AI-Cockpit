@@ -18,10 +18,16 @@ internal sealed class LocalRunTracker : ISupervisedActivitySource
 
     // AC-1535: one entry per run, so a second run never takes the first one's Kill out of the status bar.
     private readonly Dictionary<string, InFlight> _inFlight = new(StringComparer.Ordinal);
+    private readonly CancellationTokenSource _stopping = new();
 
     public string Label => "Local CI";
 
     public event Action? Changed;
+
+    // AC-2024: a run started here, queued or running, ends with the plugin. Its verdict says it was cancelled.
+    public CancellationToken Stopping => _stopping.Token;
+
+    public void Stop() => _stopping.Cancel();
 
     public void Begin(string runId, string projectRoot, string jobId, DateTimeOffset startedAt, Func<Task> stopAsync)
     {

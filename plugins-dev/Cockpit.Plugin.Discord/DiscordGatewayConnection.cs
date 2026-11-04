@@ -10,6 +10,7 @@ namespace Cockpit.Plugin.Discord;
 internal sealed class DiscordGatewayConnection : IDisposable
 {
     private readonly DiscordSocketClient _client;
+    private readonly Task _connecting;
     private readonly DiscordChannelBridge _bridge;
     private readonly DiscordFileFetcher _files;
     private readonly DiscordHealthState _health;
@@ -49,7 +50,7 @@ internal sealed class DiscordGatewayConnection : IDisposable
         _client.Ready += _OnReady;
         _client.Disconnected += _OnDisconnected;
 
-        _ = _ConnectAsync(botToken, reportError);
+        _connecting = _ConnectAsync(botToken, reportError);
     }
 
     private async Task _ConnectAsync(string botToken, Action<string> reportError)
@@ -57,6 +58,11 @@ internal sealed class DiscordGatewayConnection : IDisposable
         try
         {
             await _client.LoginAsync(TokenType.Bot, botToken).ConfigureAwait(false);
+            if (_disposed)
+            {
+                return;
+            }
+
             await _client.StartAsync().ConfigureAwait(false);
         }
         catch (Exception exception)
@@ -230,6 +236,8 @@ internal sealed class DiscordGatewayConnection : IDisposable
     {
         try
         {
+            // After the connect, not beside it: a StartAsync landing behind this stop would leave the socket open.
+            await _connecting.ConfigureAwait(false);
             await _client.StopAsync().ConfigureAwait(false);
         }
         catch (Exception)

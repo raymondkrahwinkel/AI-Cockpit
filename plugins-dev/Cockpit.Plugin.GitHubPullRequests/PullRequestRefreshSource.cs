@@ -89,6 +89,7 @@ internal sealed class PullRequestRefreshSource : IDisposable
     private readonly Func<bool, CancellationToken, Task<PullRequestFeedResult>> _load;
     private readonly Timer _timer;
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
+    private readonly CancellationTokenSource _stopping = new();
 
     private PullRequestFeedSnapshot _current;
 
@@ -204,10 +205,14 @@ internal sealed class PullRequestRefreshSource : IDisposable
         {
             try
             {
-                var result = await _load(forceRefresh, CancellationToken.None);
+                var result = await _load(forceRefresh, _stopping.Token);
                 _current = new PullRequestFeedSnapshot(result, DateTimeOffset.UtcNow);
                 _storage.Set(StorageKey, PersistedSnapshot.From(_current));
                 LastError = null;
+            }
+            catch (OperationCanceledException) when (_stopping.IsCancellationRequested)
+            {
+                return false;
             }
             catch (Exception exception)
             {
@@ -240,15 +245,12 @@ internal sealed class PullRequestRefreshSource : IDisposable
         return true;
     }
 
-    // Does not wait for a refresh that is mid-flight at the moment this runs (a poll tick or the settings-saved
-    // callback landing the instant the plugin unloads) — `ICockpitPlugin.Dispose` is synchronous, and
-    // blocking it on an in-progress `gh` call would hang the app's own shutdown on network/process latency this
-    // class does not control. Instead it makes finishing safe: `RefreshAsync` catches
-    // `ObjectDisposedException` around every touch of `_refreshGate`, so a call already
-    // running when this executes still completes (and still updates `_current`/`LastError`
-    // and raises `Updated`) without a disposed gate throwing out of it.
+    // Cancels a refresh that is mid-flight but does not wait for it: `ICockpitPlugin.Dispose` is synchronous.
+    // `RefreshAsync` catches `ObjectDisposedException` around every touch of `_refreshGate`, so a call already running
+    // ends without a disposed gate throwing out of it.
     public void Dispose()
     {
+        _stopping.Cancel();
         _timer.Dispose();
         _refreshGate.Dispose();
     }

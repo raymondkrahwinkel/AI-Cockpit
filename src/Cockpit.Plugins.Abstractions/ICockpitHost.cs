@@ -920,6 +920,16 @@ public interface ICockpitHost
     IReadOnlyList<Tracking.ITrackerProvider> TrackerProviders => [];
 
     /// <summary>
+    /// Raised after a tracker joined or left <see cref="TrackerProviders"/>, for instance because its plugin was
+    /// disabled. A consumer that holds on to a tracker for longer than a call watches this. Default never raised.
+    /// </summary>
+    event EventHandler? TrackerProvidersChanged
+    {
+        add { }
+        remove { }
+    }
+
+    /// <summary>
     /// Registers a managed-CLI install recipe (#AC-20): the host can then download the provider's CLI, verify it,
     /// keep it up to date, and hand its path back through <see cref="ResolveManagedCliPath"/>.
     /// </summary>

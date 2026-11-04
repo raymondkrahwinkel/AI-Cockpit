@@ -83,7 +83,7 @@ internal sealed class AutopilotWorkspaceRuns
         _manager.AwaitingEpicGo);
 
     // The workspace was really closed: stop being the runner and cancel every run, which unwinds its driver loop and
-    // coordinator awaits and closes its step sessions and CEO; a chain still waiting on a gate stops too.
+    // coordinator awaits and closes its step sessions and CEO; a chain waiting on a gate and a planning CEO stop too.
     public void Close()
     {
         _manager.Runner = null;
@@ -100,6 +100,7 @@ internal sealed class AutopilotWorkspaceRuns
         }
 
         _closing.Cancel();
+        ClosePlanningCeo();
     }
 
     // The planning round's CEO (AC-174), embedded in this workspace and bound to the shared plan controller so only
