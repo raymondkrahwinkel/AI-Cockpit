@@ -75,6 +75,7 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
     private long _rev;
     private bool _loaded;
     private string _previous = string.Empty;
+    private string? _sourceText;
     private bool _editor;
     private bool _typedAway;
     private string? _lastEditId;
@@ -249,6 +250,11 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
         await _text.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            if (_state == DepotNoteLiveState.DocumentError && !_loaded)
+            {
+                return new LiveFileSnapshot(_sourceText ?? throw new FileSourceException(FileSourceErrorKind.Unavailable,
+                    _MessageFor(DepotNoteLiveState.DocumentError) ?? "This note could not be opened safely."), _rev, _LiveStatus());
+            }
             var text = _loaded ? await _room.ReadAsync(cancellationToken).ConfigureAwait(false) : _previous;
             return new LiveFileSnapshot(text, _rev, _LiveStatus());
         }
@@ -573,6 +579,7 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
         await _text.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            _sourceText = result.Markdown;
             List<byte[]> known = [.. result.Updates.OrderBy(row => row.Seq).Select(row => row.Data)];
             foreach (var row in known)
             {
@@ -699,8 +706,8 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            // A doc no note can be read from (protocol §5.3): the host keeps its text, and the next update may make the doc read again.
-            _logger?.LogWarning(exception, "The live note for {Connection} does not read as a note; waiting for the next change.", _connection.Name);
+            _logger?.LogWarning(exception, "The live note for {Connection} cannot be opened safely.", _connection.Name);
+            _Terminal(DepotNoteLiveState.DocumentError);
             return;
         }
 
@@ -935,10 +942,13 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
     {
         var state = exception switch
         {
+            InvalidDataException => DepotNoteLiveState.DocumentError,
             HttpRequestException { StatusCode: HttpStatusCode.Unauthorized } => DepotNoteLiveState.SignInNeeded,
             HttpRequestException { StatusCode: HttpStatusCode.Forbidden } => DepotNoteLiveState.Unavailable,
             HubException hub => _StateFor(RefusedCode().Match(hub.Message) is { Success: true } match ? match.Groups[1].Value : null) ?? DepotNoteLiveState.Unavailable,
-            _ => null,
+            System.Net.WebSockets.WebSocketException or HttpRequestException or IOException or TimeoutException
+                or InvalidOperationException or OperationCanceledException => null,
+            _ => DepotNoteLiveState.DocumentError,
         };
         if (state is null)
         {
@@ -961,6 +971,11 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
     // The state ends the loop: no second attempt until Connect is called again.
     private void _Terminal(string state)
     {
+        if (state == DepotNoteLiveState.DocumentError)
+        {
+            _editor = false;
+            _saver?.SetSaver(false);
+        }
         _terminal = true;
         _Status(state);
         _ready.TrySetResult();
@@ -1055,6 +1070,7 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
 
         var status = state switch
         {
+            DepotNoteLiveState.DocumentError => new LiveFileStatus(LiveFileState.ReadOnly, _MessageFor(state)),
             DepotNoteLiveState.Live when _schemaMismatch => new LiveFileStatus(LiveFileState.ReadOnly,
                 "This note uses a newer Depot editor. You can watch it live; editing comes back once Cockpit's Depot plugin is updated.") { ReadOnlyReason = LiveReadOnlyReason.SchemaMismatch },
             DepotNoteLiveState.Live when _roleLost => new LiveFileStatus(LiveFileState.ReadOnly, "You can no longer edit this note.") { ReadOnlyReason = LiveReadOnlyReason.RoleLost },
@@ -1083,6 +1099,7 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
         DepotNoteLiveState.Unavailable => "This note is not available in Depot.",
         DepotNoteLiveState.Disabled => "Live notes are not part of this Depot plan.",
         DepotNoteLiveState.Stale => "The note was rebuilt while you were away.",
+        DepotNoteLiveState.DocumentError => "This note could not be opened safely. Your text is still here; copy any unsaved changes before closing and reopening it, or open it in Depot.",
         _ => null,
     };
 
@@ -1149,7 +1166,7 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
         await _text.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            return _loaded ? await _room.SerializeAsync(cancellationToken).ConfigureAwait(false) : string.Empty;
+            return _loaded && _state != DepotNoteLiveState.DocumentError ? await _room.SerializeAsync(cancellationToken).ConfigureAwait(false) : string.Empty;
         }
         finally
         {
