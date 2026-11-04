@@ -30,6 +30,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ## [Unreleased]
 
+### Added
+
+- The assistant can see the active tool and elapsed state for each SDK session it lists.
+
 ### Removed
 
 - The Fan-out plugin and its workspace, because it is no longer used.

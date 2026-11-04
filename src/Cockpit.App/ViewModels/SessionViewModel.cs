@@ -133,6 +133,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // header's plain words instead (AC-1533).
     public string ActiveToolActivityLabel => _ShownReadingLevel == ReadingLevel.Simple ? SimpleActivityLabel : _CurrentActiveToolCall()?.Label ?? string.Empty;
 
+    public string AssistantToolActivityLabel => _CurrentActiveToolCall()?.Label ?? string.Empty;
+
     // While that call is paused on a permission prompt this reads "waiting for permission" instead: the tool is not
     // running, it is blocked on the operator, and a still-climbing number under a "running" label would misreport a
     // human wait as tool work.

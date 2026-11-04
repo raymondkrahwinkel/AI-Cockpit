@@ -107,6 +107,8 @@ internal sealed class AssistantReadMcpTools(
                 abandonedProcessCount = session.AbandonedProcessCount,
                 projectId = session.ProjectId,
                 mcpServers = session.McpServers,
+                activity = session.Activity,
+                activityAge = session.ActivityAge,
                 machine = here,
             });
 
@@ -557,10 +559,10 @@ internal sealed class AssistantReadMcpTools(
     // One transcript row as the assistant may be shown it: terminal control sequences stripped (via
     // `AgentMessageContent.Normalize`, since ANSI could reposition the cockpit's own output) and cut to
     // `MaxEntryTextLength`. Truncation is reported off the normalised length, not the raw one.
-    internal static (string Text, bool Truncated) Bounded(string? text)
+    internal static (string Text, bool Truncated) Bounded(string? text, int maxLength = MaxEntryTextLength)
     {
         var normalized = AgentMessageContent.Normalize(text, out _);
-        return (BoundedText.Trim(normalized, MaxEntryTextLength), normalized.Length > MaxEntryTextLength);
+        return (BoundedText.Trim(normalized, maxLength), normalized.Length > maxLength);
     }
 
     // The gate, in one place so every tool on this server shares it. A request with no verified pane is refused
