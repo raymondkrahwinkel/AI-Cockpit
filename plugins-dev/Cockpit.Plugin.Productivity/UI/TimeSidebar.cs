@@ -7,8 +7,8 @@ using Avalonia.Threading;
 
 namespace Cockpit.Plugin.Productivity.UI;
 
-// The sidebar's Tijd section, as v3 #09's `.railsw`: a quiet idle line with a small Start, or the running stopwatch
-// with its red dot, a mono clock, Stop, the description and "project · gestart". Square, like the rest of the sidebar.
+// The sidebar's Time section, as v3 #09's `.railsw`: a quiet idle line with a small Start, or the running stopwatch
+// with its red dot, a mono clock, Stop, the description and "project · started". Square, like the rest of the sidebar.
 internal sealed class TimeSidebar : UserControl
 {
     private readonly ProductivityController _controller;
@@ -74,7 +74,7 @@ internal sealed class TimeSidebar : UserControl
         row.Children.Add(start);
         row.Children.Add(new TextBlock
         {
-            Text = "Geen stopwatch actief",
+            Text = "No stopwatch active",
             FontSize = 12,
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 0, 6, 0),
@@ -123,7 +123,7 @@ internal sealed class TimeSidebar : UserControl
             .Themed(TextBlock.ForegroundProperty, "CockpitTextSecondaryBrush"));
         body.Children.Add(new TextBlock
         {
-            Text = $"{_controller.Names.Resolve(stopwatch.ProjectId).Label} · gestart {stopwatch.StartedAt.ToLocalTime():HH:mm}",
+            Text = $"{_controller.Names.Resolve(stopwatch.ProjectId).Label} · started {stopwatch.StartedAt.ToLocalTime():HH:mm}",
             TextWrapping = TextWrapping.Wrap,
             FontSize = 11,
         }.Themed(TextBlock.ForegroundProperty, "CockpitTextFaintBrush"));

@@ -1,6 +1,6 @@
 namespace Cockpit.Plugin.Productivity.Contracts;
 
-// When the Uren and Overzicht screens refresh themselves, and how "last updated" reads (AC-1816).
+// When the Hours and Overview screens refresh themselves, and how "last updated" reads (AC-1816).
 internal static class RefreshPolicy
 {
     public const int DefaultSeconds = 60;
@@ -16,13 +16,13 @@ internal static class RefreshPolicy
     {
         if (last is null)
         {
-            return "nog niet bijgewerkt";
+            return "not updated yet";
         }
 
         var age = now - last.Value;
-        return age.TotalSeconds < 10 ? "zojuist bijgewerkt"
-            : age.TotalMinutes < 1 ? $"bijgewerkt {(int)age.TotalSeconds} s geleden"
-            : age.TotalHours < 1 ? $"bijgewerkt {(int)age.TotalMinutes} min geleden"
-            : $"bijgewerkt {(int)age.TotalHours} u geleden";
+        return age.TotalSeconds < 10 ? "updated just now"
+            : age.TotalMinutes < 1 ? $"updated {(int)age.TotalSeconds} s ago"
+            : age.TotalHours < 1 ? $"updated {(int)age.TotalMinutes} min ago"
+            : $"updated {(int)age.TotalHours} h ago";
     }
 }

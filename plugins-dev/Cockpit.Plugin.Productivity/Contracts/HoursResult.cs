@@ -40,16 +40,16 @@ internal sealed record WeekReport(IReadOnlyList<WeekReportedRow> Rows, string? A
         var rows = _Rows(entryId, projectId);
         if (rows.Any(row => row.Status == "booked" && Warnings.Any(day => day.Day == row.Row.Day && day.Overrun)))
         {
-            return "⚠ overschrijding";
+            return "⚠ overrun";
         }
 
         var booked = rows.Count(row => row.Status == "booked");
         if (entryId is null && booked > 0)
         {
-            return $"✓ {booked} van {rows.Count} dagen";
+            return $"✓ {booked} of {rows.Count} days";
         }
 
-        return rows.Any(row => row.Status == "skipped") ? "⚠ niet geboekt · weer open" : booked > 0 ? "✓ geboekt" : string.Empty;
+        return rows.Any(row => row.Status == "skipped") ? "⚠ not booked · open again" : booked > 0 ? "✓ booked" : string.Empty;
     }
 
     public string Reason(Guid? entryId, string? projectId) =>
