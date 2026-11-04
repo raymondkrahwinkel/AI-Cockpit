@@ -3722,8 +3722,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             WatchController(controllerPresence);
         }
 
-        // Before the first load below, so every card it builds carries them (AC-772) — these are what let one
-        // ProjectCardView serve both the Projects workspace and the Manage-projects window.
+        // Before the first load below, so every card it builds carries them (AC-772).
         Projects.CardActions = new ProjectCardActions(
             StartProjectSessionCommand,
             NewSessionForProjectCommand,
@@ -3732,7 +3731,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             OpenProjectFolderCommand,
             ShareProjectCommand,
             SyncProjectNowCommand,
-            SelectSessionCommand);
+            OpenProjectSessionCommand);
 
         // The sidebar's Projects section (AC-164) is on screen from startup, so the list is read now rather than
         // when Options opens — which used to be the only thing that needed it. Fire-and-forget like every other
@@ -6535,23 +6534,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // sidebar's ▶ and the launcher's Start. What it opens with is `ProjectQuickStart`'s to answer; this
     // only launches it, through the same path the dialog's result takes.
     [RelayCommand]
-    private Task StartProjectSessionAsync(Project? project) => _QuickStartProjectAsync(project, job: null);
-
-    // AC-1304 criterion 2(a) and 3(a): a job started straight away, the way Start above already is — the start
-    // screen's own answer for a job. `StartProjectJobAsync` keeps the dialog it has offered since AC-491; which of
-    // the two a surface wants is the surface's to say (`ProjectCardView.JobCommand`), not this command's to guess.
-    [RelayCommand]
-    private Task StartProjectJobNowAsync(ProjectJobChoice? choice) =>
-        _QuickStartProjectAsync(choice?.Project, choice?.Job);
+    private Task StartProjectSessionAsync(Project? project) => _QuickStartProjectAsync(project);
 
     // AC-492's "save and start": the same dialog-free start as the sidebar's ▶, with the note in the composer.
     internal Task StartProjectSessionWithPromptAsync(Project project, string prompt) =>
-        _QuickStartProjectAsync(project, job: null, prompt);
+        _QuickStartProjectAsync(project, prompt);
 
-    // The dialog-free start, carrying `job` when one was picked, or a bare `prompt` (AC-492). Whichever it is goes
-    // into the composer once the session exists, through the same seam the dialog route uses — nothing is sent,
-    // which is the promise the start screen makes out loud (criterion 3).
-    private async Task _QuickStartProjectAsync(Project? project, ProjectJob? job, string? prompt = null)
+    // The dialog-free start, carrying a bare `prompt` when given (AC-492). It goes into the composer once the
+    // session exists, through the same seam the dialog route uses — nothing is sent.
+    private async Task _QuickStartProjectAsync(Project? project, string? prompt = null)
     {
         if (project is null)
         {
@@ -6563,9 +6554,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             // Only the name changes; that it is composed came with the result, and stays with it (#AC-324) — and being
             // composed is also what gets it numbered against the sessions already open, in
             // _LaunchSessionFromResultAsync.
-            var paneId = await _LaunchSessionFromResultAsync(result with { SessionName = project.Name, ProjectJobId = job?.Id });
+            var paneId = await _LaunchSessionFromResultAsync(result with { SessionName = project.Name });
             var started = Sessions.FirstOrDefault(session => session.PaneId == paneId);
-            if ((prompt ?? job?.Prompt) is { } composerText)
+            if (prompt is { } composerText)
             {
                 started?.InjectText(composerText);
             }
@@ -6584,7 +6575,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // The project names no profile that still exists, so there is nothing to start it on. Ask rather than fail
         // quietly: the dialog opens on the project, leaving the operator only the choice the project cannot make.
         // Criterion 4 rests on exactly this: `ComposeAsync` says whether it can start, and nothing here re-asks.
-        await _NewSessionForProjectAsync(project, job);
+        await _NewSessionForProjectAsync(project, job: null);
     }
 
     // Opens the New-session dialog on `project` (AC-164) — the "New session…" next to the quick
@@ -6614,9 +6605,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         var paneId = await _LaunchSessionFromResultAsync(result with { ProjectJobId = job?.Id });
+        var started = Sessions.FirstOrDefault(session => session.PaneId == paneId);
         if (paneId is not null && prefill?.InitialPrompt is { } initialPrompt)
         {
-            Sessions.FirstOrDefault(session => session.PaneId == paneId)?.InjectText(initialPrompt);
+            started?.InjectText(initialPrompt);
+        }
+
+        // The Simple stand draws what it has picked, so the dialog route needs the same pick as the quick start.
+        if (SimpleView && started is not null)
+        {
+            SimpleSelectedSession = started;
         }
     }
 
@@ -8985,6 +8983,20 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     {
         SelectSession(child.Owner);
         child.Owner.OpenChild(child);
+    }
+
+    // The Projects list is hosted by both stands; "Open" on a running session lands in the stand's own selection.
+    [RelayCommand]
+    private void OpenProjectSession(SessionPanelViewModel session)
+    {
+        if (SimpleView)
+        {
+            SimpleSelectedSession = session;
+        }
+        else
+        {
+            SelectSession(session);
+        }
     }
 
     [RelayCommand]

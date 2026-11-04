@@ -596,6 +596,7 @@ internal static partial class Screenshotter
         ["simple-view-history"] = (_, _) => new MainWindow { DataContext = _SimpleStandHistory() },
         // AC-1527: the stand's Projects page, reached through the rail's own entry.
         ["simple-view-projects"] = (_, _) => new MainWindow { DataContext = _SimpleStandProjects() },
+        ["simple-view-projects-detail"] = (_, _) => new MainWindow { DataContext = _SimpleStandProjects("Cockpit") },
         // AC-1529: a picked conversation in a project, at work — the header, the stand and Stop over the 720px column.
         ["simple-view-conversation"] = (_, _) => new MainWindow { DataContext = _SimpleStandConversation() },
         // AC-488: Home on a cockpit that has no projects yet, the second place the starting-point gallery is drawn.
@@ -3815,13 +3816,8 @@ internal static partial class Screenshotter
         return cockpit;
     }
 
-    private static ViewModels.CockpitViewModel _SimpleStandProjects()
-    {
-        var cockpit = _SimpleStand(withAssistant: true);
-        cockpit.Projects.StageDesignSample();
-        cockpit.ShowSimpleProjectsCommand.Execute(null);
-        return cockpit;
-    }
+    private static ViewModels.CockpitViewModel _SimpleStandProjects(string? selecting = null) =>
+        SimpleStandProjects(_SimpleStand(withAssistant: true), selecting);
 
     private static ViewModels.CockpitViewModel _SimpleStandConversation(bool withCost = false)
     {
