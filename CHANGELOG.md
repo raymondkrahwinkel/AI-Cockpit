@@ -38,6 +38,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 - Model choices no longer rank different quality score types as if they were comparable.
 
+### Changed
+
+- Simple session and assistant views now use the available window width instead of a fixed 720 px column.
+
 ### Removed
 
 - The redundant AssistantReadGateway test, because AssistantReadMcpTools.Bounded is already covered by ReadTranscript_StripsTerminalControlSequences.

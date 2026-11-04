@@ -24,9 +24,7 @@
         <Style Selector="Border.hiddenInSimple">
             <Setter Property="IsVisible" Value="False"/>
         </Style>
-        <Style Selector="DockPanel.simpleColumn">
-            <Setter Property="MaxWidth" Value="720"/>
-        </Style>
+        <Style Selector="DockPanel.simpleColumn"/>
         <Style Selector="TextBox#InputBox" x:DataType="vm:SessionViewModel">
             <Setter Property="PlaceholderText" Value="{Binding ComposerPlaceholder}"/>
         </Style>
