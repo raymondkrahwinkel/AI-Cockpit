@@ -6,4 +6,5 @@ public sealed record SessionRunActivity(
     string Kind,
     SessionRunState State,
     DateTimeOffset Since,
-    string? WaitReason);
+    string? WaitReason,
+    string Command = "");
