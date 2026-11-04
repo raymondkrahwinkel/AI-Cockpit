@@ -65,7 +65,6 @@ on:
           - depot
           - docker
           - example-workspace
-          - fan-out
           - gemini-provider
           - github-actions
           - github-issues

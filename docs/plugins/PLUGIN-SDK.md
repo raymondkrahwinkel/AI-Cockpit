@@ -1667,8 +1667,8 @@ store, or open a PR against it to list your plugin alongside the official ones.
 
 ## Plugins that ship with the app {#plugins-that-ship-with-the-app}
 
-Nine plugins are **bundled**: transcript search, git status, Claude Code, the clock, usage trend, the example
-workspace, the example companion tool, Autopilot and Fan-out. They are built with the cockpit, copied into its
+Eight plugins are **bundled**: transcript search, git status, Claude Code, the clock, usage trend, the example
+workspace, the example companion tool and Autopilot. They are built with the cockpit, copied into its
 `bundled-plugins/` output, and installed into the operator's plugins directory on startup — enabled, and without
 the consent dialog (it asks whether you trust third-party code, and these came out of the very build that is
 asking).
@@ -1692,9 +1692,8 @@ to prove their own SDK extension points end to end from outside the host, not be
 — see [Workspace plugins](#workspace-plugins--a-whole-workspace-surface) and
 [Companion tool plugins](#companion-tool-plugins--a-mini-tool-in-the-pop-out-window).
 
-**Autopilot** and **Fan-out** are bundled because they are first-class features of the cockpit itself — the
-issue-to-PR pipeline and running several agents on one task at once — not something bundling merely defaults on,
-the way the clock is.
+**Autopilot** is bundled because it is the cockpit's first-class issue-to-PR pipeline, not something bundling
+merely defaults on, the way the clock is.
 
 A bundled plugin's files are taken from its output folder by wildcard (every `.dll`, every `.deps.json` and
 `plugin.json`), so a bundled plugin that splits into a backend and a UI part ships both without a change to the
