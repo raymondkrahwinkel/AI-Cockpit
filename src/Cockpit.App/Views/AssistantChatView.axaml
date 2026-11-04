@@ -42,9 +42,9 @@
         <Style Selector="TextBox#InputBox.unavailable.controlled">
             <Setter Property="PlaceholderText" Value="{Binding UnavailableReason}"/>
         </Style>
-        <!-- AC-1529: the Simple stand's column reads as one document of about 720px, as a picked session does. -->
+        <!-- AC-2063: the Simple stand uses the available width with a small inner margin. -->
         <Style Selector="Border#ComposerBorder.simpleColumn, ItemsControl#TranscriptItems.simpleColumn">
-            <Setter Property="MaxWidth" Value="720"/>
+            <Setter Property="Margin" Value="0,0,10,0"/>
         </Style>
         <!-- Assistant threads: the icon rail's items centre their 20 px mark in its 44 px. -->
         <Style Selector="ListBox.iconRail ListBoxItem">
