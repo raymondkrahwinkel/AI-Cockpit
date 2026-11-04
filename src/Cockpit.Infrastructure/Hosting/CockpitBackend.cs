@@ -571,6 +571,12 @@ public sealed class CockpitBackend
             var discovered = new PluginBootstrap()
                 .ApplyPendingChangesAndDiscoverAsync(AbstractionsContract.Version).GetAwaiter().GetResult();
             manager.LoadAndConfigure(discovered, services, new PluginActivator(loggerFactory.CreateLogger<PluginActivator>(), withoutFrontend).Activate);
+
+            // AC-2025: copies of versions that are no longer installed, and of plugins that are off, are dropped.
+            if (!safeMode)
+            {
+                PluginShadow.Sweep(PluginBootstrap.PluginsRoot, discovered.Where(plugin => plugin.Decision == PluginLoadDecision.Load));
+            }
         }
         catch (Exception exception)
         {

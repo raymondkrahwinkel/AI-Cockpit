@@ -6,7 +6,7 @@ namespace Cockpit.Core.Tests.Plugins;
 public class PluginHashTests
 {
     [Fact]
-    public void ComputeClosure_AChangedDependencyHash_ChangesTheClosure()
+    public void ComputeClosure_BindsEachHashToItsPath_NoticesAChangedDependency_AndCannotBeForgedByADelimiterInAPath()
     {
         var original = PluginHash.ComputeClosure(
             [new PluginClosureFile("Plugin.dll", "entry"), new PluginClosureFile("Dep.dll", "dep-v1")]);
@@ -14,11 +14,7 @@ public class PluginHashTests
             [new PluginClosureFile("Plugin.dll", "entry"), new PluginClosureFile("Dep.dll", "dep-v2")]);
 
         Assert.NotEqual(original, depChanged);
-    }
 
-    [Fact]
-    public void ComputeClosure_BindsEachHashToItsPath_AndCannotBeForgedByADelimiterInAPath()
-    {
         // The same two hashes on swapped paths must not collide — otherwise moving bytes between files would be a
         // silent no-op the pin never sees.
         var one = PluginHash.ComputeClosure(

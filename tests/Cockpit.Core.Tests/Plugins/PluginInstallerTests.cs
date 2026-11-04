@@ -62,7 +62,7 @@ public class PluginInstallerTests : IDisposable
         Assert.False(string.IsNullOrEmpty(v2.Sha256));
         Assert.NotEqual(v1.Sha256, v2.Sha256);
 
-        // v1 is a fresh install (not staged); v2 is an update over it (staged to .pending-updates).
+        // v1 is a fresh install (not staged); v2 is an update over it (staged: the new bytes take effect at the next start).
         Assert.False(v1.Staged);
         Assert.True(v2.Staged);
         Assert.Equal("acme.provider", Assert.Single(v2.Manifest?.SessionProviders ?? []).Id);

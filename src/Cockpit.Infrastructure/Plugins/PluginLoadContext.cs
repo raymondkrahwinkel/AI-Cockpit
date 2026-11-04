@@ -10,7 +10,8 @@ namespace Cockpit.Infrastructure.Plugins;
 // AC-1391: public — the desktop's PluginUiManager loads a UI part alongside the backend part across the boundary.
 // AC-1403: `refuseUiFor` names the plugin in a backend without a frontend, where resolving Avalonia is refused with
 // that reason instead of a bare FileNotFoundException whenever the JIT first meets an Avalonia type.
-public sealed class PluginLoadContext(string pluginMainAssemblyPath, string? refuseUiFor = null) : AssemblyLoadContext
+// AC-2025: with a `shadow` the context loads only files it has just hashed to what was approved.
+public sealed class PluginLoadContext(string pluginMainAssemblyPath, string? refuseUiFor = null, PluginShadow? shadow = null) : AssemblyLoadContext
 {
     private readonly List<AssemblyDependencyResolver> _resolvers = [new(pluginMainAssemblyPath)];
 
@@ -23,11 +24,18 @@ public sealed class PluginLoadContext(string pluginMainAssemblyPath, string? ref
         }
 
         _resolvers.Add(new AssemblyDependencyResolver(assemblyPath));
-        return LoadFromAssemblyPath(assemblyPath);
+        return _LoadVerified(assemblyPath);
     }
 
     // AC-2024: a plugin enabled again comes back into the context it left, which holds its assembly until the restart.
-    public Assembly LoadOnce(string assemblyPath) => _Loaded(assemblyPath) ?? LoadFromAssemblyPath(assemblyPath);
+    public Assembly LoadOnce(string assemblyPath) => _Loaded(assemblyPath) ?? _LoadVerified(assemblyPath);
+
+    // Hashed right before it is handed to the runtime; a file outside the approved closure, or one that changed since, is refused.
+    private Assembly _LoadVerified(string path)
+    {
+        shadow?.Verify(path);
+        return LoadFromAssemblyPath(path);
+    }
 
     private Assembly? _Loaded(string assemblyPath) =>
         Assemblies.FirstOrDefault(assembly => string.Equals(assembly.Location, assemblyPath, StringComparison.Ordinal));
@@ -41,12 +49,18 @@ public sealed class PluginLoadContext(string pluginMainAssemblyPath, string? ref
         }
 
         var path = _resolvers.Select(resolver => resolver.ResolveAssemblyToPath(assemblyName)).FirstOrDefault(found => found is not null);
-        return path is null ? null : LoadFromAssemblyPath(path);
+        return path is null ? null : _LoadVerified(path);
     }
 
     protected override nint LoadUnmanagedDll(string unmanagedDllName)
     {
         var path = _resolvers.Select(resolver => resolver.ResolveUnmanagedDllToPath(unmanagedDllName)).FirstOrDefault(found => found is not null);
-        return path is null ? nint.Zero : LoadUnmanagedDllFromPath(path);
+        if (path is null)
+        {
+            return nint.Zero;
+        }
+
+        shadow?.Verify(path);
+        return LoadUnmanagedDllFromPath(path);
     }
 }

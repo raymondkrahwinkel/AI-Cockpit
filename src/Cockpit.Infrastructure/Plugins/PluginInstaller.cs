@@ -8,8 +8,9 @@ using Cockpit.Infrastructure.Configuration;
 namespace Cockpit.Infrastructure.Plugins;
 
 // Installs a plugin from a `.zip` and schedules removals (#14). Unpacked via the `PluginInstallPath`
-// zip-slip guard into same-volume staging, validated, then moved into `plugins/&lt;id&gt;/`. Removal and
-// update are both deferred to next startup, since a loaded plugin's assembly stays locked until exit.
+// zip-slip guard into same-volume staging, validated, then moved into `plugins/&lt;id&gt;/`. Removal is deferred to
+// next startup. AC-2025: a plugin loads from a copy (`PluginShadow`), so an update replaces `plugins/&lt;id&gt;/` at once;
+// only a plugin that asks for a restart (or a folder that cannot be replaced) still goes through `.pending-updates`.
 internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
 {
     // The file dropped into a plugin's folder to have it deleted at the next start. Discovery reads it too, so a plugin the operator removed is out of the list from that moment rather than at the restart.
@@ -19,6 +20,9 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
     // .pending-updates/<folderId>/. Kept off to the side rather than swapped in place so an update never has to
     // delete a locked, loaded assembly mid-session; the swap happens at startup before any plugin loads.
     private const string PendingUpdatesFolder = ".pending-updates";
+
+    // AC-2025: where the folder an update replaced waits for its deletion.
+    private const string ReplacedPrefix = ".replaced-";
 
     // Whether a folder under the plugins root is an installed plugin at all. Dot-prefixed ones are this installer's
     // own reserved areas — a leftover `.staging-*` extraction, `.pending-updates` — and one carrying the marker is
@@ -110,9 +114,15 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
             var finalDir = Path.Combine(_pluginsRoot, folderId);
             if (Directory.Exists(finalDir))
             {
-                // Updating an existing install: a loaded assembly's file is locked until process exit (on
-                // Windows), so stage the new version and let SweepPendingUpdatesAsync swap it in at next
-                // startup, before any plugin loads — same restart-deferred contract removal uses.
+                // An update. `Staged` keeps meaning "the new bytes take effect at the next start", whether they are
+                // already in place or waiting in `.pending-updates`; the caller re-pins them either way.
+                if (!manifest.RequiresRestart && _TryReplaceInPlace(stagingDir, finalDir, folderId))
+                {
+                    return PluginInstallResult.Success(folderId, newSha256, staged: true, manifest: manifest);
+                }
+
+                // The fallback: stage the new version and let SweepPendingUpdatesAsync swap it in at next
+                // startup, before any plugin loads — the restart-deferred contract removal uses.
                 var pendingDir = Path.Combine(_pluginsRoot, PendingUpdatesFolder, folderId);
                 Directory.CreateDirectory(Path.Combine(_pluginsRoot, PendingUpdatesFolder));
                 if (Directory.Exists(pendingDir))
@@ -144,6 +154,47 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
                     // Best-effort staging cleanup; a leftover staging folder is harmless and swept on reinstall.
                 }
             }
+        }
+    }
+
+    // The old folder is renamed aside first, so a failure leaves it as it was; discovery skips the dot-prefixed name.
+    private bool _TryReplaceInPlace(string stagingDir, string finalDir, string folderId)
+    {
+        var aside = Path.Combine(_pluginsRoot, ReplacedPrefix + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.Move(finalDir, aside);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+
+        try
+        {
+            Directory.Move(stagingDir, finalDir);
+        }
+        catch
+        {
+            Directory.Move(aside, finalDir);
+            throw;
+        }
+
+        // An update staged earlier would otherwise be swapped in at the next start, over this newer one.
+        _TryDelete(Path.Combine(_pluginsRoot, PendingUpdatesFolder, folderId));
+        _TryDelete(aside);
+        return true;
+    }
+
+    private static void _TryDelete(string folder)
+    {
+        try
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // Best-effort, like the other deletions here; a leftover `.replaced-*` folder is swept at the next start.
         }
     }
 
@@ -186,6 +237,11 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
         if (!Directory.Exists(_pluginsRoot))
         {
             return Task.CompletedTask;
+        }
+
+        foreach (var leftover in Directory.EnumerateDirectories(_pluginsRoot, ReplacedPrefix + "*"))
+        {
+            _TryDelete(leftover);
         }
 
         foreach (var folder in Directory.EnumerateDirectories(_pluginsRoot))

@@ -19,7 +19,7 @@ public sealed class PluginActivator(ILogger<PluginActivator> logger, bool withou
         // AC-1159: discovery already checked this, but the activator loads in-process with full trust and
         // must not trust that a manifest read back off disk still resolves the same way.
         if (discovered.Manifest.EntryAssembly is not { } entryAssembly
-            || !PluginEntryPath.TryResolve(discovered.FolderPath, entryAssembly, out var entryPath))
+            || !PluginEntryPath.TryResolve(discovered.FolderPath, entryAssembly, out _))
         {
             logger.LogWarning(
                 "Plugin {PluginId} has an entry assembly path outside its folder ({EntryAssembly}); refusing to load it.",
@@ -27,9 +27,16 @@ public sealed class PluginActivator(ILogger<PluginActivator> logger, bool withou
             return null;
         }
 
+        // AC-2025: the copy is hashed against the pin, and the plugin loads from the copy and nowhere else.
+        var shadow = PluginShadow.GetOrPrepare(discovered);
+        if (!PluginEntryPath.TryResolve(shadow.Folder, entryAssembly, out var entryPath))
+        {
+            return null;
+        }
+
         var context = _contexts.GetOrAdd(
             (discovered.FolderId, discovered.Sha256),
-            _ => new PluginLoadContext(entryPath, withoutFrontend ? discovered.Manifest.Name : null));
+            _ => new PluginLoadContext(entryPath, withoutFrontend ? discovered.Manifest.Name : null, shadow));
         var assembly = context.LoadOnce(entryPath);
 
         var entryType = _ResolveEntryType(assembly, discovered.Manifest.EntryType);
