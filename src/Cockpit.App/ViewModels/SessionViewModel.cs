@@ -160,23 +160,81 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
     }
 
-    // Re-raises the age text's change notification (AC-532) — called on a view-owned tick so the composer's elapsed time counts up instead of freezing at whatever it read on first render.
-    public void RefreshActiveToolActivityAge() => OnPropertyChanged(nameof(ActiveToolActivityAgeText));
+    // Re-raises the age text for the composer and active transcript rows.
+    public void RefreshActiveToolActivityAge()
+    {
+        OnPropertyChanged(nameof(ActiveToolActivityAgeText));
+        OnPropertyChanged(nameof(ThinkingAgeText));
+        foreach (var call in _activeToolCalls)
+        {
+            Transcript.LastOrDefault(row => row.ToolUseId == call.ToolUseId)?.RefreshActivityAge();
+        }
+    }
 
     // "m:ss", matching the approved mockup's notation (e.g. "0:12", "1:05") — the composer band is the first place this ships, so this is the notation a later background-task pop-out (AC-531) follows rather than inventing its own.
     internal static string _FormatElapsed(TimeSpan elapsed)
     {
         var totalSeconds = Math.Max(0, (int)elapsed.TotalSeconds);
-        return $"{totalSeconds / 60}:{totalSeconds % 60:00}";
+        return totalSeconds >= 3600
+            ? $"{totalSeconds / 3600}:{totalSeconds / 60 % 60:00}:{totalSeconds % 60:00}"
+            : $"{totalSeconds / 60}:{totalSeconds % 60:00}";
     }
 
     // The two bands occupy the same composer slot and are never both visible — the activity band replaces "Thinking…"
     // for the span it is active, rather than stacking on top (composer height must not grow) (AC-532).
     public bool ShowThinkingIndicator => IsBusy && !HasActiveToolActivity;
 
+    private DateTimeOffset? _thinkingStartedAt;
+    private DispatcherTimer? _activityAgeTicker;
+    private volatile bool _activityClockDisposed;
+    public string ThinkingAgeText => _thinkingStartedAt is { } started ? _FormatElapsed(DateTimeOffset.Now - started) : string.Empty;
+
+    internal string ToolActivityAge(string? toolUseId)
+    {
+        var call = _activeToolCalls.FindIndex(item => item.ToolUseId == toolUseId);
+        return call >= 0 && !_IsAwaitingPermission(_activeToolCalls[call].ToolUseId)
+            ? _FormatElapsed(DateTimeOffset.Now - _activeToolCalls[call].StartedAt)
+            : string.Empty;
+    }
+
+    private void _UpdateActivityClock()
+    {
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            Dispatcher.UIThread.Post(_UpdateActivityClock);
+            return;
+        }
+
+        if (_activityClockDisposed)
+        {
+            return;
+        }
+
+        _thinkingStartedAt = ShowThinkingIndicator ? _thinkingStartedAt ?? DateTimeOffset.Now : null;
+        OnPropertyChanged(nameof(ThinkingAgeText));
+        if (IsBusy || HasActiveToolActivity || HasBackgroundTasks || ChildAgents.Any(child => child.Reference.State == "running"))
+        {
+            if (_activityAgeTicker is null)
+            {
+                _activityAgeTicker = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+                _activityAgeTicker.Tick += (_, _) =>
+                {
+                    RefreshActiveToolActivityAge();
+                    RefreshBackgroundTaskAges();
+                };
+            }
+            _activityAgeTicker.Start();
+        }
+        else
+        {
+            _activityAgeTicker?.Stop();
+        }
+    }
+
     // Raises every notification the active-tool-activity fields need after `_activeToolCalls` changes.
     private void _RaiseActiveToolActivityChanged()
     {
+        _UpdateActivityClock();
         OnPropertyChanged(nameof(HasActiveToolActivity));
         OnPropertyChanged(nameof(ActiveToolActivityLabel));
         OnPropertyChanged(nameof(ActiveToolActivityAgeText));
@@ -203,6 +261,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     private void _OnHostBusyChanged()
     {
+        _UpdateActivityClock();
         OnPropertyChanged(nameof(ShowThinkingIndicator));
         OnPropertyChanged(nameof(IsBusy));
         OnPropertyChanged(nameof(ShowsSimpleStop));
@@ -278,6 +337,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _SyncBackgroundGroup(BackgroundShells, _backgroundTasks.Where(task => task.Kind == BackgroundTaskKind.Shell));
         _SyncBackgroundGroup(BackgroundOtherTasks, _backgroundTasks.Where(task => task.Kind == BackgroundTaskKind.Unknown));
 
+        _UpdateActivityClock();
+
         OnPropertyChanged(nameof(HasBackgroundSubAgents));
         OnPropertyChanged(nameof(HasBackgroundShells));
         OnPropertyChanged(nameof(HasBackgroundOtherTasks));
@@ -339,9 +400,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
     }
 
-    // Re-raises AgeText's change notification for every row currently listed (AC-531 #8) — called on
-    // the same view-owned tick `RefreshActiveToolActivityAge` uses, so the pop-out's elapsed times
-    // count up instead of freezing at whatever they read on first render. A no-op with nothing outstanding.
+    // Re-raises AgeText for the background work shown by the same session clock.
     public void RefreshBackgroundTaskAges()
     {
         foreach (var child in ChildAgents)
@@ -2934,6 +2993,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             OnPropertyChanged(nameof(ComposerPlaceholder));
         }
         UpdateChildAgents(state.Children);
+        _UpdateActivityClock();
         _cliSessionId = state.CliSessionId;
         if (state.Connection is { } connection && !ReferenceEquals(connection, _shownConnection))
         {
@@ -2943,7 +3003,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
         if (!ReferenceEquals(state.ActiveToolCalls, _shownToolCalls))
         {
-            _ShowActiveToolCalls(state.ActiveToolCalls);
+            ShowActiveToolCalls(state.ActiveToolCalls);
         }
 
         // Replaced wholesale, an empty list included, which is how the last task ending arrives (AC-276).
@@ -3011,7 +3071,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     }
 
     // AC-532: a call keeps the label its row had when it surfaced ("Bash  ·  dotnet build"), the row's own ToolHeader.
-    private void _ShowActiveToolCalls(IReadOnlyList<SessionActiveToolCall> calls)
+    internal void ShowActiveToolCalls(IReadOnlyList<SessionActiveToolCall> calls)
     {
         var surfaced = calls.Any(call => _activeToolCalls.TrueForAll(shown => shown.ToolUseId != call.ToolUseId));
         var shown = _activeToolCalls.ToList();
@@ -3024,6 +3084,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 call.ToolUseId,
                 Transcript.LastOrDefault(row => row.ToolUseId == call.ToolUseId)?.ToolHeader ?? call.ToolName,
                 call.StartedAt)));
+        foreach (var call in shown.Concat(_activeToolCalls))
+        {
+            Transcript.LastOrDefault(row => row.ToolUseId == call.ToolUseId)?.RefreshActivityAge();
+        }
         _RaiseActiveToolActivityChanged();
         if (!surfaced)
         {
@@ -3203,6 +3267,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     protected override async ValueTask DisposeCoreAsync()
     {
+        _activityClockDisposed = true;
+        _OnUiThread(() => _activityAgeTicker?.Stop());
         // It was left unawaited so the turn could settle without waiting on a file, and a session closing right behind
         // it would otherwise take the process down before the record reached disk (AC-251).
         await _DrainUsageWritesAsync();
