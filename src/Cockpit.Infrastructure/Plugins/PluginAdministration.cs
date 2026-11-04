@@ -223,11 +223,8 @@ internal sealed class PluginAdministration(
         }
     }
 
-    // The previous version runs again from its verified copy, and its folder and pin go back with it. Without the copy
-    // the load is refused rather than run the new bytes under the old pin. The pin is always the hash of what runs, so
-    // a restart asks for approval instead of loading the new bytes.
-    // restartTo: the version that only a restart can start. Then the previous one runs again, but its folder and pin are not
-    // put back: they stay on the new version, which the restart loads.
+    // The previous version runs again from its verified copy, with its folder and pin put back, so a restart asks for approval
+    // rather than load the new bytes. restartTo (bytes only a restart can start): folder and pin stay on it for that restart.
     private async Task<PluginLiveState> _RollBackAsync(PluginManager loaded, DiscoveredPlugin previous, string? error, bool stopped, DiscoveredPlugin? restartTo)
     {
         var failure = (error ?? "The new version could not be activated.").TrimEnd('.');
