@@ -52,6 +52,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     private readonly IProjectStore _projectStore;
     private readonly IProjectDefinitionBuilder<SharedProjectPublishDefinition> _projectDefinitionBuilder;
     private readonly SurfaceWindows _surfaces;
+    private AgentsPaletteDialog? _agentsPaletteDialog;
 
     // The assistant's own profile slot (AC-543) — its own section of the config, not an entry in `_profileStore`.
     private readonly IAssistantProfileStore _assistantProfileStore;
@@ -805,21 +806,34 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         viewModel.Chosen?.Invoke();
     }
 
-    public async Task ShowAgentsPaletteDialogAsync(AgentsOverviewViewModel agents)
+    public Task ShowAgentsPaletteDialogAsync(AgentsOverviewViewModel agents)
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
         {
-            return;
+            return Task.CompletedTask;
+        }
+
+        if (_agentsPaletteDialog is { } existing)
+        {
+            existing.Activate();
+            return Task.CompletedTask;
         }
 
         var viewModel = new AgentsPaletteViewModel(agents);
-        await new AgentsPaletteDialog { DataContext = viewModel }.ShowDialog(owner);
-
-        // Open the pick after the palette has closed, like the command palette does.
-        if (viewModel.Chosen is { } chosen)
+        var dialog = new AgentsPaletteDialog { DataContext = viewModel };
+        dialog.Closed += async (_, _) =>
         {
-            await chosen();
-        }
+            _agentsPaletteDialog = null;
+
+            // Open the pick after the palette has closed, like the command palette does.
+            if (viewModel.Chosen is { } chosen)
+            {
+                await chosen();
+            }
+        };
+        _agentsPaletteDialog = dialog;
+        dialog.Show(owner);
+        return Task.CompletedTask;
     }
 
     public async Task<bool> ShowConfirmationDialogAsync(string title, string message, string confirmLabel = "Remove")
