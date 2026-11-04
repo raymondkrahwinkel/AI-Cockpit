@@ -946,7 +946,8 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
             HttpRequestException { StatusCode: HttpStatusCode.Unauthorized } => DepotNoteLiveState.SignInNeeded,
             HttpRequestException { StatusCode: HttpStatusCode.Forbidden } => DepotNoteLiveState.Unavailable,
             HubException hub => _StateFor(RefusedCode().Match(hub.Message) is { Success: true } match ? match.Groups[1].Value : null) ?? DepotNoteLiveState.Unavailable,
-            System.Net.WebSockets.WebSocketException or HttpRequestException or IOException or TimeoutException => null,
+            System.Net.WebSockets.WebSocketException or HttpRequestException or IOException or TimeoutException
+                or InvalidOperationException or OperationCanceledException => null,
             _ => DepotNoteLiveState.DocumentError,
         };
         if (state is null)
@@ -1098,7 +1099,7 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
         DepotNoteLiveState.Unavailable => "This note is not available in Depot.",
         DepotNoteLiveState.Disabled => "Live notes are not part of this Depot plan.",
         DepotNoteLiveState.Stale => "The note was rebuilt while you were away.",
-        DepotNoteLiveState.DocumentError => "This note could not be opened safely. Close it and reopen it, or open it in Depot.",
+        DepotNoteLiveState.DocumentError => "This note could not be opened safely. Your text is still here; copy any unsaved changes before closing and reopening it, or open it in Depot.",
         _ => null,
     };
 
