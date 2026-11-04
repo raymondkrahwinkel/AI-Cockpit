@@ -36,6 +36,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- Simple view's Projects page now shows the same list as Projects in the normal view, including Depot projects, the detail pane and the options to add a project.
 - Model choices no longer rank different quality score types as if they were comparable.
 
 ### Changed
