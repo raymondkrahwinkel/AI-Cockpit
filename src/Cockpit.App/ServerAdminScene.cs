@@ -518,7 +518,7 @@ internal static class ServerAdminScene
 
         public Task<PluginInstallResult> InstallFromZipAsync(string zipFilePath, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Install from the server's store, or copy the zip onto the server.");
 
-        public Task<PluginProvisionResult> InstallFromStoreAsync(PluginProvisionRequest request, CancellationToken cancellationToken = default) => Task.FromResult(new PluginProvisionResult(PluginProvisionOutcome.Failed, request.Id, request.Name, "No store is configured.", null, null, null));
+        public Task<PluginProvisionResult> InstallFromStoreAsync(PluginProvisionRequest request, CancellationToken cancellationToken = default, IProgress<PluginDownloadProgress>? progress = null) => Task.FromResult(new PluginProvisionResult(PluginProvisionOutcome.Failed, request.Id, request.Name, "No store is configured.", null, null, null));
 
         public Task SetEnabledAsync(string folderId, bool enabled, string pinnedSha256, CancellationToken cancellationToken = default) => Task.CompletedTask;
 

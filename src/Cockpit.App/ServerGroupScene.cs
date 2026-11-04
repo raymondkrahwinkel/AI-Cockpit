@@ -317,7 +317,7 @@ internal static class ServerGroupScene
 
         public Task<Cockpit.Core.Plugins.PluginInstallResult> InstallFromZipAsync(string zipFilePath, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Install from the server's store, or copy the zip onto the server.");
 
-        public Task<Cockpit.Core.Plugins.PluginProvisionResult> InstallFromStoreAsync(Cockpit.Core.Plugins.PluginProvisionRequest request, CancellationToken cancellationToken = default) => Task.FromResult(new Cockpit.Core.Plugins.PluginProvisionResult(Cockpit.Core.Plugins.PluginProvisionOutcome.Failed, request.Id, request.Name, null, null, null, null));
+        public Task<Cockpit.Core.Plugins.PluginProvisionResult> InstallFromStoreAsync(Cockpit.Core.Plugins.PluginProvisionRequest request, CancellationToken cancellationToken = default, IProgress<Cockpit.Core.Plugins.PluginDownloadProgress>? progress = null) => Task.FromResult(new Cockpit.Core.Plugins.PluginProvisionResult(Cockpit.Core.Plugins.PluginProvisionOutcome.Failed, request.Id, request.Name, null, null, null, null));
 
         public Task SetEnabledAsync(string folderId, bool enabled, string pinnedSha256, CancellationToken cancellationToken = default) => Task.CompletedTask;
 

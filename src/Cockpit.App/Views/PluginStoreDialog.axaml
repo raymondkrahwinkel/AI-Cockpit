@@ -505,6 +505,11 @@
                                      IsIndeterminate="{Binding Manager.BusyProgressIndeterminate}"
                                      Value="{Binding Manager.BusyProgressValue}"
                                      Foreground="{DynamicResource CockpitAccentBrush}"/>
+                        <ProgressBar Minimum="0" Maximum="100" Height="6"
+                                     IsVisible="{Binding Manager.HasBusyDownloadProgress}"
+                                     IsIndeterminate="{Binding Manager.BusyDownloadProgressIndeterminate}"
+                                     Value="{Binding Manager.BusyDownloadProgressValue}"
+                                     Foreground="{DynamicResource CockpitAccentBrush}"/>
                     </StackPanel>
                 </Border>
             </Border>

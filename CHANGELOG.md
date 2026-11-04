@@ -52,6 +52,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- Plugin-store downloads now show their current byte progress, and disk status details include free, used and total space.
+
 - Delegated tasks now receive their profile and project brain instructions alongside the standing session instructions.
 - Docker storage compaction no longer waits for the assistant or idle sessions without background work. If active sessions do not acknowledge the pause within five minutes, the warning names them.
 - Swarm takeover keeps the assistant's recent conversation within a bounded prompt, so long histories no longer prevent it from responding.

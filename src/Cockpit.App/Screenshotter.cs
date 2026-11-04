@@ -557,7 +557,7 @@ internal static partial class Screenshotter
         // rows do not fit at rest.
         ["plugin-store-logos"] = (_, _) => new PluginStoreDialog { DataContext = _PluginStoreWithLogos(), Height = 1900 },
         // The store's two busy states (AC-420) — otherwise only reachable while a real download is in flight.
-        ["plugin-store-installing"] = (_, _) => _PluginStoreBusy(percent: null, "Downloading 'GitHub Issues' v1.8.0…"),
+        ["plugin-store-installing"] = (_, _) => _PluginStoreBusy(percent: null, "Downloading 'GitHub Issues' v1.8.0… 12.4 / 38.0 MB"),
         ["plugin-store-updating"] = (_, _) => _PluginStoreBusy(percent: 200.0 / 6, "Updating 'Git status' (3 of 6)…"),
         ["manage-stores"] = (_, _) => _ManageStores(),
         ["tasks"] = (_, _) => new DelegatedTasksDialog { DataContext = new ViewModels.DelegatedTasksViewModel() },
@@ -3294,6 +3294,9 @@ internal static partial class Screenshotter
         viewModel.Manager.StatusMessage = status;
         viewModel.Manager.BusyProgressIndeterminate = percent is null;
         viewModel.Manager.BusyProgressValue = percent ?? 0;
+        viewModel.Manager.BusyDownloadProgressIndeterminate = false;
+        viewModel.Manager.BusyDownloadProgressValue = 100d * 12.4 / 38;
+        viewModel.Manager.HasBusyDownloadProgress = true;
         viewModel.Manager.NeedsRestart = true;
         viewModel.Manager.IsBusy = true;
 
