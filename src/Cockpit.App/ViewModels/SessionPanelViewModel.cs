@@ -1210,19 +1210,11 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // Which metrics the header's usage pill shows (AC-105), a global preference pushed down from
     // `CockpitViewModel`. Defaults to just the context window — the original behaviour.
     [ObservableProperty]
-    // SessionUsage is in the default because the standalone meter it replaced had no opt-in at all: it simply
-    // showed whenever usage existed. Leaving it out would have silently dropped the token/cost figure from every
-    // header that never visited Options, which is a different change than the one being made here.
-    private IReadOnlyList<UsagePillField> _usagePillVisibleFields = [UsagePillField.Context, UsagePillField.SessionUsage];
+    private IReadOnlyList<UsagePillField> _usagePillVisibleFields = [UsagePillField.Context];
 
     // The mini-pills the header renders (AC-105): one per selected field the session actually has data for, in
     // the operator's chosen order. Rebuilt whenever the selection or any underlying metric changes.
     public ObservableCollection<UsagePillItem> UsagePillItems { get; } = [];
-
-    // Whether a reading level vetoes the token/cost figure outright, regardless of the operator's pill selection
-    // (AC-138): false on the base (TTY has no reading level) and on the SDK session except at Simple, whose "no
-    // cost" promise has to hold even when session usage is selected.
-    protected virtual bool SuppressCostMeter => false;
 
     // Whether the header's kind chip (TTY / SDK / provider tag) shows: by default whenever there is a label. The SDK
     // session overrides this to drop the chip at the Simple reading level (AC-138), where a model/provider tag is
@@ -1269,8 +1261,9 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         };
     }
 
-    // Whether the usage pill shows at all: at least one metric segment, or the chevron's detail flyout.
-    public bool HasUsagePillRegion => UsagePillItems.Count > 0 || HasUsagePill;
+    public bool HasUsagePillSegments => UsagePillItems.Count > 0;
+
+    public bool HasUsagePillRegion => HasUsagePillSegments || HasUsagePill;
 
     // Whether a divider sits between the last metric segment and the chevron — only when both are present.
     public bool ShowChevronDivider => UsagePillItems.Count > 0 && HasUsagePill;
@@ -1422,6 +1415,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         UnreportedWindowsNotice = _DescribeUnreportedWindows();
 
         OnPropertyChanged(nameof(HasUsagePillRegion));
+        OnPropertyChanged(nameof(HasUsagePillSegments));
         OnPropertyChanged(nameof(ShowChevronDivider));
     }
 
@@ -1437,7 +1431,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
                 break;
 
             // Suppress cost here because this is its only rendering; deselecting usage must remove it, not move it.
-            case UsagePillField.SessionUsage when HasUsage && !SuppressCostMeter:
+            case UsagePillField.SessionUsage when HasUsage:
                 yield return new UsagePillItem(UsageSummary, "CockpitTextSecondaryBrush", UsageTooltip);
                 break;
 
