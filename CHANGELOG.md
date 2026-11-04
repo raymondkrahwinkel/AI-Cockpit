@@ -60,6 +60,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- Disabling a plugin now stops its work right away: workflow and schedule runs, Local CI runs, the pull request poll, and the Slack and Discord connections. A stopped workflow or schedule run says so in its history.
+- A running Autopilot run stops with a clear reason when the plugin behind its tracker is disabled, and a run that starts without its tracker says so.
+- Browser now asks for a restart when you disable it, because its engine cannot start twice in one process.
 - Docker, Kind, Kubernetes and Local CI show their running activities in the status bar again, with the Kill button.
 - Docker storage compaction no longer waits for the assistant or idle sessions without background work. If active sessions do not acknowledge the pause within five minutes, the warning names them.
 - Swarm takeover keeps the assistant's recent conversation within a bounded prompt, so long histories no longer prevent it from responding.

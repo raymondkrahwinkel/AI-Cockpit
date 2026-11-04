@@ -16,6 +16,7 @@ internal sealed class AutopilotRunContext
     private readonly Lock _phaseLock = new();
     private AutopilotPlanPhase _lastPhase = AutopilotPlanPhase.Planning;
     private IEmbeddedSession? _ceo;
+    private volatile bool _trackerSeen;
 
     // Where a checkpointed validator is re-embedded (AC-253) — the run's worktree, else its folder. Resolved in
     // `_RunAsync` before the first CEO exists, so the coordinator can never call back here while it is still blank.
@@ -86,6 +87,8 @@ internal sealed class AutopilotRunContext
             checkpointCeo: _CheckpointCeoAsync,
             mergeExecutor: new GitCliMergeExecutor(),
             mergeBuildLedger: new AutopilotMergeBuildLedger(host.Storage));
+        _trackerSeen = _HasTracker();
+        _host.TrackerProvidersChanged += _OnTrackerProvidersChanged;
         Completed = _RunAsync(plan);
     }
 
@@ -137,6 +140,31 @@ internal sealed class AutopilotRunContext
         }
     }
 
+    // AC-2024: a run whose tracker left has nowhere to report, so it ends as blocked, with the reason in its history.
+    // Only a tracker this run saw counts as gone: a source no provider ever backed is allowed, and the event also
+    // fires when a tracker joins. Parked before the cancel, as Stop is; a run past its last step keeps its result.
+    private void _OnTrackerProvidersChanged(object? sender, EventArgs args)
+    {
+        if (_HasTracker())
+        {
+            _trackerSeen = true;
+            return;
+        }
+
+        if (!_trackerSeen || Controller.Phase is not (AutopilotPlanPhase.Planning or AutopilotPlanPhase.Running or AutopilotPlanPhase.AwaitingOperator))
+        {
+            return;
+        }
+
+        Controller.Park($"The tracker plugin for {Plan.Source?.Tracker} is disabled, so this run stopped.");
+        Cancel();
+    }
+
+    // True for a run without a source: it uses no tracker, so none can leave.
+    private bool _HasTracker() =>
+        Plan.Source is not { Tracker.Length: > 0 } source
+        || _host.TrackerProviders.Any(provider => string.Equals(provider.TrackerId, source.Tracker, StringComparison.OrdinalIgnoreCase));
+
     private async Task _RunAsync(AutopilotPlan plan)
     {
         // Re-raise the controller's own change (a step started/settled/noted) as this run's Changed so the surface
@@ -152,6 +180,13 @@ internal sealed class AutopilotRunContext
 
         try
         {
+            // A plan can have outlived its tracker in the queue, but this cannot tell that from a source without one, so
+            // the run goes on, as it always did without a provider, and says what it will not do.
+            if (!_trackerSeen)
+            {
+                _host.ShowToast($"Run “{plan.Label}” has no tracker plugin for {plan.Source?.Tracker}, so its issue will not be updated.", PluginToastSeverity.Warning);
+            }
+
             var repositoryDirectory = AutopilotWorkingDirectory.Resolve(null, plan.WorkingDirectory);
 
             // Whether the run isolates each step in a worktree (AC-174). Only a folder the host positively reports
@@ -204,6 +239,8 @@ internal sealed class AutopilotRunContext
             }
 
             _ceo = ceo;
+            // A stop that landed during the embed stands: Approve below would put the run back on Running.
+            _cts.Token.ThrowIfCancellationRequested();
             Controller.BindSession(ceo.PaneId);
             Controller.Approve();
 
@@ -216,6 +253,7 @@ internal sealed class AutopilotRunContext
         }
         finally
         {
+            _host.TrackerProvidersChanged -= _OnTrackerProvidersChanged;
             Controller.Changed -= OnControllerChanged;
             await _Now(() =>
             {

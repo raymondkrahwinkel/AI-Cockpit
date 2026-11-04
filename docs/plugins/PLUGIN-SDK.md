@@ -52,9 +52,24 @@ built from the .NET "app with plugins" pattern:
   its own copy of one of these assemblies, the types it implements would be a *different* `ICockpitPlugin`
   from the host's point of view, and the host would silently fail to find a plugin in it.
 - Enabling a plugin activates it **without a restart** (host 0.159.0+) unless it sets `requiresRestart` or its `ConfigureServices` registers services; sessions that are already running get its new MCP tools at their next start.
-- Loading is **non-collectible**: disabling a plugin removes its UI and calls `Dispose()`, but the assembly
-  itself is only actually freed when the process restarts (a loaded assembly cannot be truly unloaded from a
-  non-collectible context). The plugin manager says as much when you disable one.
+- Disabling a plugin takes effect **without a restart** (host 0.160.0+), unless it sets `requiresRestart` or a
+  running session uses its provider. Loading is **non-collectible**, so the assembly itself stays in memory until
+  the process restarts; enabling the same version again reuses it, with a new instance of your plugin class.
+
+### What a live disable stops {#live-disable}
+
+| Who | What |
+|---|---|
+| **The host** | Everything registered through it: contributions and UI, open workspaces and dialogs, registries, MCP endpoints, channel handlers and subscriptions. Store items from `AddMcpServer` stay. |
+| **Your plugin, in `Dispose()`** | Everything it started: timers, pollers, sockets, processes and running work. Also every C# event it subscribed to with `+=` on the host or a host object (`host.Sessions`, `ActiveSessionChanged`, a session context): the host does not track those. |
+
+- The backend part's `Dispose()` runs off the UI thread. A live disable waits for it for 10 seconds and then moves on, so
+  cancel work rather than wait for it.
+- A UI part's `Dispose()` runs on the UI thread, before the backend part's. The host cannot interrupt it, so it must
+  not block: a blocked `Dispose()` hangs the window, and all the host can do is log the plugin's name.
+- Work that cannot stop cleanly, or a process-wide runtime that starts once (CEF), is what `requiresRestart` is for.
+- A tracker can leave while you use it. Watch `ICockpitHost.TrackerProvidersChanged` when you hold on to one for
+  longer than a call.
 
 **Unsandboxed.** A plugin runs with the same rights as the cockpit process. The next section says exactly
 what the host does and does not enforce, and why.
@@ -328,8 +343,9 @@ public sealed record PluginMetadata(string Id, string DisplayName, string Versio
    the next restart** (the container is already built). Keep `ConfigureServices` optional where you can.
 2. **`Initialize(ICockpitHost)`** runs once the host and UI exist. Register your contribution points here —
    at most once each for `AddSettings`, and as many `AddSideMenuButton`/`AddSideMenuSection` calls as you need.
-3. **`Dispose()`** runs when the plugin is disabled or the app exits. Note: the assembly is **not** unloaded
-   until the process restarts (a loaded plugin cannot be truly unloaded) — "disable" means UI off + Dispose.
+3. **`Dispose()`** runs when the plugin is disabled or the app exits. The host has then already withdrawn what you
+   registered; you stop what you started, see [What a live disable stops](#live-disable). The assembly is **not**
+   unloaded until the process restarts.
 
 ### Settings dialog {#settings-dialog}
 
@@ -1331,8 +1347,8 @@ What actually happens under the hood, so you can reason about the "restart to ap
     **needs consent again**, same dialog, same pin-on-enable.
   - Previously disabled → **stays disabled** (no dialog) until you re-enable it in the manager.
   - `abstractionsVersion` mismatch → refused outright, regardless of any of the above.
-- **Disable.** Removes its UI contributions and calls `Dispose()`, but the assembly stays loaded (and its
-  folder stays locked) until the process exits — a loaded plugin cannot be truly unloaded.
+- **Disable.** Takes effect at once, see [What a live disable stops](#live-disable), but the assembly stays loaded
+  (and its folder stays locked) until the process exits — a loaded plugin cannot be truly unloaded.
 - **Remove.** Drops a marker file in the plugin's folder; the folder is actually deleted at the **next
   startup** (once the previous process has released the file lock), not immediately.
 - **Restart to apply.** Because of the above, every state change that isn't purely "remove UI" — a fresh

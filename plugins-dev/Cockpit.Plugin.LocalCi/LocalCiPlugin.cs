@@ -37,6 +37,8 @@ public sealed class LocalCiPlugin : ICockpitPlugin
     private readonly List<IDisposable> _handlers = [];
 
     private LocalCiRuntime? _runtime;
+    private LocalRunTracker? _tracker;
+    private Action? _stopWatchingSessions;
 
     public void ConfigureServices(IServiceCollection services)
     {
@@ -53,6 +55,7 @@ public sealed class LocalCiPlugin : ICockpitPlugin
         _runtime = runtime;
 
         var tracker = new LocalRunTracker();
+        _tracker = tracker;
         var head = new GitHead(cli);
         var runner = new LocalJobRunner(
             runtime,
@@ -74,7 +77,9 @@ public sealed class LocalCiPlugin : ICockpitPlugin
 
         // A closed pane must drop out of the checkout map — without it a pane that never comes back still pins its
         // last-known working directory forever.
-        host.Sessions.SessionClosed += (_, paneId) => checkouts.Forget(paneId);
+        EventHandler<string> sessionClosed = (_, paneId) => checkouts.Forget(paneId);
+        host.Sessions.SessionClosed += sessionClosed;
+        _stopWatchingSessions = () => host.Sessions.SessionClosed -= sessionClosed;
 
         // The gate, as something the two places that open a pull request can ask about. Off in every checkout
         // until the operator switches it on, and it answers "did not run" rather than "passed" when there is
@@ -150,6 +155,8 @@ public sealed class LocalCiPlugin : ICockpitPlugin
 
     public void Dispose()
     {
+        _tracker?.Stop();
+        _stopWatchingSessions?.Invoke();
         foreach (var handler in _handlers)
         {
             handler.Dispose();
@@ -182,7 +189,7 @@ public sealed class LocalCiPlugin : ICockpitPlugin
 
         // Linked rather than passed through directly: the tracker's own stop callback (the status bar's Kill,
         // AC-82) must be able to cancel this run even when the UI part's own Stop button never fires.
-        using var stopping = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, slot.Revoked);
+        using var stopping = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, slot.Revoked, tracker.Stopping);
         tracker.Begin(runId, request.ProjectRoot, request.JobId, startedAt, () =>
         {
             stopping.Cancel();

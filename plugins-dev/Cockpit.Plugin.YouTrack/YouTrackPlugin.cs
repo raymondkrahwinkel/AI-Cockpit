@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Mcp;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.YouTrack;
 
@@ -21,6 +22,7 @@ public sealed class YouTrackPlugin : ICockpitPlugin, IPluginMcpProvider
     // current set each time the host asks (AC-11), rather than a snapshot taken once.
     private YouTrackSettings? _settings;
     private readonly List<IDisposable> _handlers = [];
+    private Action? _stopWatchingTools;
 
     public PluginMetadata Metadata { get; } = new(
         Id: "youtrack",
@@ -108,7 +110,9 @@ public sealed class YouTrackPlugin : ICockpitPlugin, IPluginMcpProvider
         // call and this turn's images generically (the read/observe surface); this watcher does the YouTrack-specific
         // matching and upload, gated by the global auto-attach setting.
         var autoAttacher = new YouTrackAutoAttacher(host, settings);
-        host.Sessions.ToolActivityObserved += (_, activity) => _ = autoAttacher.HandleAsync(activity);
+        EventHandler<SessionToolActivity> toolActivityObserved = (_, activity) => _ = autoAttacher.HandleAsync(activity);
+        host.Sessions.ToolActivityObserved += toolActivityObserved;
+        _stopWatchingTools = () => host.Sessions.ToolActivityObserved -= toolActivityObserved;
 
         // And the explicit fallback: a cockpit-hosted tool the agent can call to attach the current message's images
         // to an issue in a turn that has no create/update. Registered only while an instance is configured, so it is
@@ -137,6 +141,7 @@ public sealed class YouTrackPlugin : ICockpitPlugin, IPluginMcpProvider
 
     public void Dispose()
     {
+        _stopWatchingTools?.Invoke();
         foreach (var handler in _handlers)
         {
             handler.Dispose();

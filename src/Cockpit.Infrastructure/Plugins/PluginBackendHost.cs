@@ -511,6 +511,12 @@ public class PluginBackendHost(
     public IReadOnlyList<ITrackerProvider> TrackerProviders =>
         services.GetRequiredService<ITrackerProviderRegistry>().Providers;
 
+    public event EventHandler? TrackerProvidersChanged
+    {
+        add => services.GetRequiredService<ITrackerProviderRegistry>().Changed += value;
+        remove => services.GetRequiredService<ITrackerProviderRegistry>().Changed -= value;
+    }
+
     public void AddSessionResourceProvider(ISessionResourceProvider provider)
     {
         // Refused means this exact provider is already registered — a plugin whose Initialize ran twice, not two
@@ -873,13 +879,15 @@ public class PluginBackendHost(
                 if (!_relayingAccountChanges && services.GetService<IMcpOAuthCoordinator>() is { } coordinator)
                 {
                     _relayingAccountChanges = true;
-                    coordinator.AccountChanged += server =>
+                    Action<McpServerConfig> relay = server =>
                     {
                         if (_OwnOAuthServer(server.Name) is not null)
                         {
                             _RaiseAccountChanged(server.Name);
                         }
                     };
+                    coordinator.AccountChanged += relay;
+                    Runtime.Add(() => coordinator.AccountChanged -= relay);
                 }
             }
         }

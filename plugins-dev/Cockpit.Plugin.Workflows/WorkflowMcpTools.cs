@@ -23,11 +23,14 @@ internal sealed class WorkflowMcpTools
     private readonly RunStore _runs;
     private readonly ICockpitHost _host;
 
-    public WorkflowMcpTools(WorkflowStore store, RunStore runs, ICockpitHost host)
+    private readonly CancellationToken _stopping;
+
+    public WorkflowMcpTools(WorkflowStore store, RunStore runs, ICockpitHost host, CancellationToken stopping = default)
     {
         _store = store;
         _runs = runs;
         _host = host;
+        _stopping = stopping;
     }
 
     [McpServerTool(Name = "list_workflows", ReadOnly = true)]
@@ -125,7 +128,7 @@ internal sealed class WorkflowMcpTools
         }
 
         var engine = EngineFactory.Create(_host, _host.WorkflowSteps);
-        var run = await engine.RunAsync(workflow, manual.Id, RunOrigin.McpAgent);
+        var run = await engine.RunAsync(workflow, manual.Id, RunOrigin.McpAgent, cancellationToken: _stopping);
         _runs.Add(run);
 
         return JsonSerializer.Serialize(
