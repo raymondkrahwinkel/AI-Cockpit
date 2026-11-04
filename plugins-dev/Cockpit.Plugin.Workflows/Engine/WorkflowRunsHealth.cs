@@ -110,6 +110,7 @@ internal sealed class WorkflowRunsHealth(
                 WorkflowRunReason.AlreadyRunning => "Already running",
                 WorkflowRunReason.Missed => "Missed",
                 WorkflowRunReason.ConsentDenied => "Consent denied",
+                WorkflowRunReason.PluginMissing => "Plugin missing",
                 _ => "Unknown",
             }}";
         }

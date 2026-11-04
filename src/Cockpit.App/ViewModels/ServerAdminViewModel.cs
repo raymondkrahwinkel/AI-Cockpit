@@ -531,10 +531,16 @@ public sealed partial class ServerAdminViewModel : ObservableObject
             return;
         }
 
-        await _plugins.RemoveAsync(row.FolderId);
+        var state = await _plugins.RemoveAsync(row.FolderId);
         Plugins.Remove(row);
         OnPropertyChanged(nameof(PluginsCount));
-        _ChangedPlugins();
+        if (state is { IsLive: true })
+        {
+            Status = "Removed. The plugin has stopped; its files are deleted when the server next starts.";
+            return;
+        }
+
+        _ChangedPlugins(state);
     });
 
     // Done forgets the key: after this nothing in the cockpit holds it.
