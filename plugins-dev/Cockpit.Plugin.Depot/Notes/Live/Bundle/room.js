@@ -166,6 +166,8 @@ function rebind() {
 // Half-typed Markdown parses to what the schema refuses (`>` alone is a quote with nothing in it, `1.` an item without a paragraph):
 // ProseMirror fills in what a node lacks, the way the editor itself would, so nothing invalid ever reaches the room.
 function repair(node) {
+  // addToSet applies the schema's exclusions; code wins over formatting without losing text.
+  node = node.mark(node.marks.reduce((marks, mark) => mark.addToSet(marks), []));
   if (node.isLeaf) {
     return node;
   }
@@ -173,7 +175,7 @@ function repair(node) {
   node.forEach((child) => {
     const fixed = repair(child);
     if (fixed) {
-      children.push(fixed);
+      children.push(fixed.mark(node.type.allowedMarks(fixed.marks)));
     }
   });
   const content = Fragment.fromArray(children);
