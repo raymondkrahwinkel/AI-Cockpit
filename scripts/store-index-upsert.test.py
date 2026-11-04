@@ -32,7 +32,7 @@ def check(name, got, expect):
 
 
 def args(**overrides):
-    base = dict(id="plugin", name="Plugin", description=None, author=None)
+    base = dict(id="plugin", name="Plugin", description=None, author=None, keywords=None)
     base.update(overrides)
     return SimpleNamespace(**base)
 

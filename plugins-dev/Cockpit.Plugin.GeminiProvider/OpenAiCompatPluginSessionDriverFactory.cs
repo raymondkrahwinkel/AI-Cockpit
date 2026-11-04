@@ -10,7 +10,7 @@ using Cockpit.Plugins.OpenAiCompat;
 
 namespace Cockpit.Plugin.GeminiProvider;
 
-// `IPluginSessionDriverFactory` for this plugin's Gemini/OpenAI providers (#45): deserializes
+// `IPluginSessionDriverFactory` for this plugin's OpenAI-compatible providers (#45): deserializes
 // the profile's opaque config JSON into an `OpenAiCompatConfig` and builds an
 // `IChatClient` against its base URL via the OpenAI SDK with a custom
 // `OpenAIClientOptions.Endpoint` — the same construction
@@ -32,7 +32,7 @@ internal sealed class OpenAiCompatPluginSessionDriverFactory(ICockpitHost host, 
             OpenAiCompatConfig.ResolveApiKey(config, apiKeyEnvVar, OpenAiCompatDefaultBaseUrls.Gemini)
             ?? throw new InvalidOperationException(apiKeyEnvVar is null ? "No API key on the profile." : $"No API key: set one on the profile or {apiKeyEnvVar} in session.env."));
         var chatClient = new OpenAIClient(credential, options).GetChatClient(config.Model).AsIChatClient();
-        return new OpenAiCompatPluginSessionDriver(chatClient, config.Model, options.NetworkTimeout, logger, ChatTurnLimits.From(config.TurnLimits, logger), providerName: "Gemini / OpenAI", preservePrefix: options.Endpoint.IsLoopback);
+        return new OpenAiCompatPluginSessionDriver(chatClient, config.Model, options.NetworkTimeout, logger, ChatTurnLimits.From(config.TurnLimits, logger), providerName: "OpenAI-compatible", preservePrefix: options.Endpoint.IsLoopback);
     }
 
     // AC-1344/AC-1345: split out so a test can assert the configured (or default) TimeoutSeconds lands on
@@ -44,7 +44,7 @@ internal sealed class OpenAiCompatPluginSessionDriverFactory(ICockpitHost host, 
         if (timeoutSeconds <= 0)
         {
             logger?.LogWarning(
-                "TimeoutSeconds {TimeoutSeconds} in the Gemini/OpenAI provider config is not positive; falling back to the default of {DefaultTimeoutSeconds}s",
+                "TimeoutSeconds {TimeoutSeconds} in the OpenAI-compatible provider config is not positive; falling back to the default of {DefaultTimeoutSeconds}s",
                 timeoutSeconds,
                 OpenAiCompatConfig.DefaultTimeoutSeconds);
             timeoutSeconds = OpenAiCompatConfig.DefaultTimeoutSeconds;

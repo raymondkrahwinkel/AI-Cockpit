@@ -3190,7 +3190,7 @@ internal static partial class Screenshotter
             "cli-agent-provider", "Codex (ChatGPT)", "Requires the codex CLI installed and authenticated (codex login) on the machine running Cockpit.",
             ViewModels.Onboarding.ProviderDetectionState.NotFound));
         viewModel.Providers.Add(_ProviderRow(
-            "gemini-provider", "Gemini / OpenAI Provider", "Configure an API key and model per profile in Manage profiles.",
+            "gemini-provider", "OpenAI-compatible", "Configure an API key and model per profile in Manage profiles.",
             ViewModels.Onboarding.ProviderDetectionState.NotApplicable));
         viewModel.Providers.Add(_ProviderRow(
             "kimi-provider", "Kimi Code Provider (ACP)", "Requires the kimi CLI installed and authenticated on this machine.",
@@ -4708,7 +4708,7 @@ internal static partial class Screenshotter
             Row("git-status", "Git status", "A git indicator in every session — a coloured dot and the branch, so you always know the repo state.", "Productivity", "1.4.0", "🌱", featured: false, installed: true, hasSettings: true, repository: true),
             Row("transcript-search", "Claude Transcript Search", "Search everything you and the agent ever wrote in a Claude CLI session.", "Productivity", "1.2.0", "🔍", featured: false, installed: true, repository: true),
             Row("codex-provider", "Codex (ChatGPT)", "Adds Codex CLI as a selectable session provider, driven as a subprocess per session.", "AI providers", "0.2.0", "🧩", featured: false, installed: false, homepage: true, repository: true),
-            Row("gemini-openai", "Gemini / OpenAI Provider", "Adds Gemini and OpenAI models as selectable session providers, keyed per profile.", "AI providers", "0.4.0", "✨", featured: false, installed: true, hasSettings: true, homepage: true, repository: true),
+            Row("gemini-openai", "OpenAI-compatible", "Adds Gemini and OpenAI models as selectable session providers, keyed per profile.", "AI providers", "0.4.0", "✨", featured: false, installed: true, hasSettings: true, homepage: true, repository: true),
         ];
     }
 

@@ -46,6 +46,8 @@ public sealed partial class StorePluginRowViewModel(
 
     public string? Author => entry.Author;
 
+    public IReadOnlyList<string> Keywords => entry.Keywords ?? [];
+
     public bool HasAuthor => !string.IsNullOrWhiteSpace(entry.Author);
 
     public string LatestVersion => $"v{entry.LatestVersion}";

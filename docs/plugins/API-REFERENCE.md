@@ -1916,7 +1916,7 @@ public PluginMetadata Metadata { get; } =
 Everything under `Cockpit.Plugins.Abstractions.Sessions`, used with `ICockpitHost.AddSessionProvider` (#45) to
 register a plugin as a **new selectable session provider** — the same picker slot as the built-in Claude
 CLI / Ollama / LM Studio providers. Plugins in [`plugins-dev/`](https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/plugins-dev) exercise this:
-**Gemini/OpenAI Provider** (a persistent `IChatClient` over an OpenAI-compatible endpoint) and
+**OpenAI-compatible** (a persistent `IChatClient` over an OpenAI-compatible endpoint) and
 **CLI Agent Provider** (a subprocess-per-turn driver around the `codex` CLI).
 
 This is a deliberately **narrow** contract — a trimmed mirror of the host's own internal `ISessionDriver` —
@@ -1956,7 +1956,7 @@ What you hand to `host.AddSessionProvider(...)` in `Initialize`.
 | `CreateConfigView` | Builds the "add/edit profile" config view; argument is the existing config JSON (edit) or `null` (add). |
 | `DefaultBaseUrl` | Pre-filled default base URL for your config view, when you have one. |
 
-A plugin can register **more than one** provider from a single `Initialize` — the Gemini/OpenAI plugin
+A plugin can register **more than one** provider from a single `Initialize` — the OpenAI-compatible plugin
 registers `"gemini-provider.gemini"` and `"gemini-provider.openai"` from the same `CreateDriverFactory`
 implementation, differing only in `DefaultBaseUrl`:
 

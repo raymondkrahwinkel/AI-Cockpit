@@ -36,6 +36,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- Groq, Mistral, Cerebras and a Custom entry with your own base URL as session providers in the OpenAI-compatible plugin, each with a note on what works.
+- Plugins can list search terms, so the store finds a plugin on names that are not in its description. Searching for Gemini, Grok or Hetzner now finds the OpenAI-compatible plugin.
 - Grok image input is detected from the service's model metadata, including model aliases.
 - Kimi and OpenCode sessions can receive image attachments when the selected model supports them.
 - Per-profile image input selection (Auto, On or Off), with the effective capability and its source.
@@ -50,9 +52,14 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - The Depot "New Markdown file" dialog can now create a new folder: choose "New folder…" in the Folder list, pick the folder it goes in and type its name. The name is checked as you type, and the folder appears in the tree once the file is saved.
 - Codex sessions accept pasted images; the text-only spark model says so and sends the text.
 
+### Changed
+
+- The Gemini / OpenAI Provider plugin is now called OpenAI-compatible. Existing profiles, including ones on a gateway such as Hetzner Inference, keep working unchanged.
+
 ### Fixed
 
 - Delegated tasks now receive their profile and project brain instructions alongside the standing session instructions.
+- Saving a profile of the OpenAI-compatible plugin no longer drops its self-hosted setting.
 - Docker storage compaction no longer waits for the assistant or idle sessions without background work. If active sessions do not acknowledge the pause within five minutes, the warning names them.
 - Swarm takeover keeps the assistant's recent conversation within a bounded prompt, so long histories no longer prevent it from responding.
 - Development plugin refresh now preserves child executables and other files in subdirectories, so opening the Browser no longer fails because its subprocess was dropped during a refresh.

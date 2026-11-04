@@ -485,6 +485,7 @@ jobs:
           if [ -n "$abs" ]; then args+=(--abstractions-version "$abs"); fi
           if [ -n "$NOTES" ]; then args+=(--notes "$NOTES"); fi
           for package in $PACKAGES; do args+=(--package "$package"); done
+          while IFS= read -r keyword; do args+=(--keyword "$keyword"); done < <(jq -r '.keywords // [] | .[]' "$MANIFEST")
           if [ -f "$DIR/store.json" ]; then
             args+=(--store-json "$DIR/store.json")
             echo "Using editorial fields from $DIR/store.json"

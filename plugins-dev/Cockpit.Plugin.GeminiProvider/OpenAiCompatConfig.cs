@@ -5,8 +5,8 @@ namespace Cockpit.Plugin.GeminiProvider;
 
 // This plugin's own provider config — never seen by the host, only (de)serialized here and inside
 // `OpenAiCompatProviderConfigView`/`OpenAiCompatPluginSessionDriverFactory` via the
-// opaque `ConfigJson` the host round-trips (#45). One shape covers both providers this plugin
-// registers (Gemini and OpenAI) — they differ only in which base URL a profile carries.
+// opaque `ConfigJson` the host round-trips (#45). One shape covers every provider this plugin
+// registers — they differ only in which base URL a profile carries.
 // AC-1489: `TurnLimits` is the optional `turnLimits` object the driver bounds its turns with; opaque here, so the
 // config view carries it through a save untouched.
 internal sealed record OpenAiCompatConfig(string ApiKey, string Model, string BaseUrl, int? TimeoutSeconds = null, JsonElement? TurnLimits = null, bool IsSelfHosted = false)
