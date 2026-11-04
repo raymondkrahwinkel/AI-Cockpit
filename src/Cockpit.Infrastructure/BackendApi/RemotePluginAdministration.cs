@@ -39,7 +39,15 @@ internal sealed class RemotePluginAdministration(BackendApiClient client, ILogge
     public async Task<PluginProvisionResult> InstallFromStoreAsync(PluginProvisionRequest request, CancellationToken cancellationToken = default)
     {
         var response = await client.SendAsync<RemotePluginInstall>(HttpMethod.Post, "api/v1/plugins", new { storeId = request.Store.Location, pluginId = request.Id, version = request.Version.Version }, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false);
-        return new PluginProvisionResult(response.Outcome, response.Id, response.Name, response.Error, null, response.FolderId, response.Sha256, Live: response.RestartReason is { } reason ? PluginLiveState.Restart(reason) : null);
+        PluginLiveState? live = response switch
+        {
+            { RolledBack: true, RestartReason: { } error } => PluginLiveState.UpdateRolledBack(error),
+            { Failed: true, RestartReason: { } error } => PluginLiveState.UpdateFailed(error),
+            { Live: true } => PluginLiveState.Active,
+            { RestartReason: { } reason } => PluginLiveState.Restart(reason),
+            _ => null,
+        };
+        return new PluginProvisionResult(response.Outcome, response.Id, response.Name, response.Error, null, response.FolderId, response.Sha256, Live: live);
     }
 
     public async Task<PluginLiveState> SetEnabledAsync(string folderId, bool enabled, string pinnedSha256, CancellationToken cancellationToken = default)
@@ -292,7 +300,7 @@ internal sealed class RemotePluginAdministration(BackendApiClient client, ILogge
         await client.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/server/restart", null, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false);
     }
 
-    private sealed record RemotePluginInstall(PluginProvisionOutcome Outcome, string Id, string Name, string Version, string? Error, string? FolderId, string? Sha256, string? RestartReason = null);
+    private sealed record RemotePluginInstall(PluginProvisionOutcome Outcome, string Id, string Name, string Version, string? Error, string? FolderId, string? Sha256, string? RestartReason = null, bool Live = false, bool Failed = false, bool RolledBack = false);
 
     private sealed record RemotePluginEnabled(bool Live, string? RestartReason);
 

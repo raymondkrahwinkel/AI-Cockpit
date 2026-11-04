@@ -1171,14 +1171,14 @@ public partial class PluginManagerViewModel : ViewModelBase
         // Translated back to the installer's own result shape so the shared aftercare below stays the one place the
         // consent walk lives, unchanged by where the bytes came from.
         var installResult = provision is { IsSuccess: true, FolderId: { } folderId }
-            ? PluginInstallResult.Success(folderId, provision.Sha256, staged: provision.Outcome == PluginProvisionOutcome.Staged)
+            ? PluginInstallResult.Success(folderId, provision.Sha256, staged: provision.Outcome == PluginProvisionOutcome.Staged) with { Live = provision.Live }
             : PluginInstallResult.Failure(provision.Error ?? "Install failed.");
 
         await _AfterInstallAsync(installResult, installedMessage);
 
-        // A staged update is live only after restart, so remember the version it now effectively is, so the
-        // store stops offering the same update (and drops it out of the updates list) until the restart.
-        if (provision.Outcome == PluginProvisionOutcome.Staged)
+        // A staged update that waits for the restart is remembered as the version it effectively is, so the store stops
+        // offering the same update (and drops it out of the updates list) until then. A live one is simply installed.
+        if (provision.Outcome == PluginProvisionOutcome.Staged && provision.Live is not { IsLive: true } and not { RolledBack: true })
         {
             _pendingUpdateVersions[row.Id] = version.Version;
         }
@@ -1216,9 +1216,24 @@ public partial class PluginManagerViewModel : ViewModelBase
 
         if (result.Staged)
         {
-            // An update: the administration already re-pinned the new bytes and the restart applies them. No
-            // rediscovery, no consent.
-            StatusMessage = installedMessage;
+            // An update: the administration already re-pinned the new bytes. It either swapped the running version
+            // for them (AC-2025), put the old one back after a failed activation, or leaves them to the restart.
+            // No consent.
+            switch (result.Live)
+            {
+                case { IsLive: true }:
+                    await LoadAsync();
+                    StatusMessage = $"Plugin updated{_On}.";
+                    return;
+                case { Failed: true } failed:
+                    await LoadAsync();
+                    StatusIsError = true;
+                    StatusMessage = failed.RestartReason ?? "The update could not be activated.";
+                    NeedsRestart |= !failed.RolledBack;
+                    return;
+            }
+
+            StatusMessage = result.Live?.RestartReason is { } reason ? $"{installedMessage} {reason}" : installedMessage;
             NeedsRestart = true;
             return;
         }

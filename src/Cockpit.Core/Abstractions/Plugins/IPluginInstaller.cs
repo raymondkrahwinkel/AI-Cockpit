@@ -31,4 +31,11 @@ public interface IPluginInstaller
     /// Applies any staged plugin updates (replacing the old folder with the new version); called once at startup before discovery, so the swap runs while no plugin assembly is loaded/locked.
     /// </summary>
     Task SweepPendingUpdatesAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Puts back the plugin's folder from a verified copy of an earlier version, after a live update to a newer one was rolled back.
+    /// False when the copy no longer hashes to <paramref name="expectedSha256"/> or the folder could not be replaced; the folder is then as it was.
+    /// </summary>
+    Task<bool> RestoreFolderAsync(string folderId, string sourceFolder, string expectedSha256, CancellationToken cancellationToken = default) =>
+        Task.FromResult(false);
 }

@@ -115,9 +115,13 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
             {
                 // An update. `Staged` keeps meaning "the new bytes take effect at the next start", whether they are
                 // already in place or waiting in `.pending-updates`; the caller re-pins them either way.
-                if (!manifest.RequiresRestart && _TryReplaceInPlace(stagingDir, finalDir, folderId))
+                // AC-2025: more capabilities than were approved wait for the restart's consent step, beside the running version.
+                var added = _AddedCapabilities(finalDir, manifest);
+                // What the folder held before it is replaced: the caller pins the update only over bytes that were approved.
+                var replacedSha256 = await PluginClosureHash.OfInstalledFolderAsync(finalDir, cancellationToken).ConfigureAwait(false);
+                if (added.Count == 0 && !manifest.RequiresRestart && _TryReplaceInPlace(stagingDir, finalDir, folderId))
                 {
-                    return PluginInstallResult.Success(folderId, newSha256, staged: true, manifest: manifest);
+                    return PluginInstallResult.Success(folderId, newSha256, staged: true, manifest: manifest, inPlace: true, replacedSha256: replacedSha256);
                 }
 
                 // The fallback: stage the new version and let SweepPendingUpdatesAsync swap it in at next
@@ -130,7 +134,9 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
                 }
 
                 Directory.Move(stagingDir, pendingDir);
-                return PluginInstallResult.Success(folderId, newSha256, staged: true, manifest: manifest);
+                return PluginInstallResult.Success(
+                    folderId, newSha256, staged: true, manifest: manifest, replacedSha256: replacedSha256,
+                    consentReason: added.Count == 0 ? null : $"The update asks for new capabilities ({string.Join(", ", added)}). Approve it in Plugin Manager after the restart, or the plugin stays off.");
             }
 
             Directory.Move(stagingDir, finalDir);
@@ -183,6 +189,42 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
         _TryDelete(Path.Combine(_pluginsRoot, PendingUpdatesFolder, folderId));
         _TryDelete(aside);
         return true;
+    }
+
+    // What the new manifest asks for beyond the installed one; everything when the installed one cannot be read.
+    private static List<string> _AddedCapabilities(string installedFolder, PluginManifest incoming)
+    {
+        var manifestPath = Path.Combine(installedFolder, "plugin.json");
+        var known = File.Exists(manifestPath) && PluginManifest.TryParse(File.ReadAllText(manifestPath), out var installed, out _) && installed is not null
+            ? installed.Capabilities
+            : [];
+        return [.. incoming.Capabilities.Except(known, StringComparer.OrdinalIgnoreCase)];
+    }
+
+    public async Task<bool> RestoreFolderAsync(string folderId, string sourceFolder, string expectedSha256, CancellationToken cancellationToken = default)
+    {
+        var staging = Path.Combine(_pluginsRoot, ".staging-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            foreach (var path in PluginClosureHash.InstalledFiles(sourceFolder))
+            {
+                var target = Path.Combine(staging, Path.GetRelativePath(sourceFolder, path));
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                File.Copy(path, target);
+            }
+
+            Directory.CreateDirectory(staging);
+            return string.Equals(await PluginClosureHash.OfInstalledFolderAsync(staging, cancellationToken).ConfigureAwait(false), expectedSha256, StringComparison.OrdinalIgnoreCase)
+                && _TryReplaceInPlace(staging, Path.Combine(_pluginsRoot, folderId), folderId);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+        finally
+        {
+            _TryDelete(staging);
+        }
     }
 
     private static void _TryDelete(string folder)
