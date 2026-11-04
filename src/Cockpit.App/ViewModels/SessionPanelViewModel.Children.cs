@@ -148,7 +148,7 @@ public abstract partial class SessionPanelViewModel
                 ReturnToParent();
             }
         }
-        foreach (var child in children.OrderBy(child => child.State == "running" ? 0 : 1))
+        foreach (var child in children)
         {
             ChildAgentViewModel? row = ChildAgents.FirstOrDefault(row => (row.Reference.AgentId ?? row.Reference.TaskId) == (child.AgentId ?? child.TaskId));
             if (row is null)

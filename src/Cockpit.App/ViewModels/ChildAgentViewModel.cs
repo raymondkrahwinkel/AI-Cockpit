@@ -11,14 +11,14 @@ public sealed class ChildAgentViewModel(SessionPanelViewModel owner, BackgroundT
     public RelayCommand OpenCommand => _openCommand ??= new(() => Owner.OpenChild(this));
     private BackgroundTask _reference = reference;
     public BackgroundTask Reference => _reference;
-    public string Title => _reference.State == "running"
-        ? (string.IsNullOrWhiteSpace(_reference.Description) ? _reference.AgentId ?? _reference.TaskId : _reference.Description)
+    public string Title => !string.IsNullOrWhiteSpace(_reference.Description)
+        ? _reference.Description
         : _reference.State switch
         {
-            "completed" => "Completed sub-agent",
-            "failed" => "Failed sub-agent",
-            "stopped" or "cancelled" or "interrupted" => "Stopped sub-agent",
-            _ => "Sub-agent status unknown",
+            "completed" => $"Completed sub-agent · {_reference.AgentId ?? _reference.TaskId}",
+            "failed" => $"Failed sub-agent · {_reference.AgentId ?? _reference.TaskId}",
+            "stopped" or "cancelled" or "interrupted" => $"Stopped sub-agent · {_reference.AgentId ?? _reference.TaskId}",
+            _ => _reference.AgentId ?? _reference.TaskId,
         };
     public string Detail => $"{Owner.UsageProviderId ?? "Provider"} · {_reference.State}";
     public string StatusText => _reference.State switch { "completed" => "Done", "running" => "Running", "failed" => "Failed", "stopped" or "cancelled" or "interrupted" => "Stopped", _ => "Status unknown" };
