@@ -56,7 +56,9 @@ public sealed class PluginLiveLifecycleTests
     public Task APluginThatMakesEveryContribution_LeavesNothingBehind_AndComesBack() => HeadlessAvalonia.RunAsync(async () =>
     {
         var folder = Directory.CreateTempSubdirectory("cockpit-live-plugin").FullName;
-        File.WriteAllText(Path.Combine(folder, "plugin.json"), "{}");
+        File.WriteAllText(
+            Path.Combine(folder, "plugin.json"),
+            $$"""{"id":"{{PluginId}}","name":"Everything","version":"1.0.0","entryAssembly":"everything.dll","abstractionsVersion":3}""");
         var sha256 = await PluginClosureHash.OfInstalledFolderAsync(folder);
         var discovered = new DiscoveredPlugin(
             folder, PluginId, new PluginManifest(PluginId, "Everything", "1.0.0", "everything.dll", 3, null, null, null, null), sha256, PluginLoadDecision.Load);

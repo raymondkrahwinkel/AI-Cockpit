@@ -197,11 +197,18 @@ public sealed class PluginManager(
         }
     }
 
-    private static string? _CheckAgainstPin(DiscoveredPlugin discovered)
+    // AC-2025: hashes the copy again (a copy made earlier is not trusted on its name) and swaps in the manifest it holds.
+    private static string? _VerifyCopy(ref DiscoveredPlugin discovered)
     {
         try
         {
-            PluginShadow.GetOrPrepare(discovered);
+            var shadow = PluginShadow.GetOrPrepare(discovered, fresh: true);
+            if (!PluginManifest.TryParse(File.ReadAllText(Path.Combine(shadow.Folder, "plugin.json")), out var manifest, out _) || manifest is null)
+            {
+                return "The plugin manifest could not be read from the verified copy.";
+            }
+
+            discovered = discovered with { Manifest = manifest };
             return null;
         }
         catch (PluginIntegrityException exception)
@@ -415,12 +422,17 @@ public sealed class PluginManager(
             {
                 // AC-2023: display discovery may reuse file hashes; loading must read every byte again.
                 // AC-2025: the bytes are read from the copy that is loaded, so what is approved is what runs.
-                var changed = _CheckAgainstPin(discovered);
+                // The manifest is read from that copy too: a re-enable must not trust what discovery read from the original.
+                var changed = _VerifyCopy(ref discovered);
                 if (changed is not null)
                 {
                     logger.LogWarning("Plugin {PluginId} failed to load; skipping it. {Reason}", discovered.FolderId, changed);
                     diagnostics.Record(discovered.FolderId, discovered.Manifest.Name, "load", changed);
                     result = new(PluginActivationStatus.Refused, changed);
+                }
+                else if (discovered.Manifest.RequiresRestart)
+                {
+                    result = new(PluginActivationStatus.NeedsRestart, "The plugin asks for a restart to activate.");
                 }
                 else if (discovered.Manifest.EntryAssembly is null)
                 {

@@ -8,8 +8,7 @@ namespace Cockpit.Infrastructure.Plugins;
 // identity. Non-collectible. AC-479: dependency isolation, NOT a security boundary — see PLUGIN-SDK.md.
 
 // AC-1391: public — the desktop's PluginUiManager loads a UI part alongside the backend part across the boundary.
-// AC-1403: `refuseUiFor` names the plugin in a backend without a frontend, where resolving Avalonia is refused with
-// that reason instead of a bare FileNotFoundException whenever the JIT first meets an Avalonia type.
+// AC-1403: `refuseUiFor` names the plugin in a backend without a frontend, where Avalonia is refused with that reason.
 // AC-2025: with a `shadow` the context loads only files it has just hashed to what was approved.
 public sealed class PluginLoadContext(string pluginMainAssemblyPath, string? refuseUiFor = null, PluginShadow? shadow = null) : AssemblyLoadContext
 {

@@ -7,10 +7,9 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Plugins;
 
-// Installs a plugin from a `.zip` and schedules removals (#14). Unpacked via the `PluginInstallPath`
-// zip-slip guard into same-volume staging, validated, then moved into `plugins/&lt;id&gt;/`. Removal is deferred to
-// next startup. AC-2025: a plugin loads from a copy (`PluginShadow`), so an update replaces `plugins/&lt;id&gt;/` at once;
-// only a plugin that asks for a restart (or a folder that cannot be replaced) still goes through `.pending-updates`.
+// Installs a plugin from a `.zip` (zip-slip guarded, staged, validated, moved into `plugins/&lt;id&gt;/`) and schedules removals (#14).
+// AC-2025: plugins load from a copy, so an update replaces its folder at once; `.pending-updates` is the fallback
+// for a plugin that asks for a restart or a folder that cannot be replaced.
 internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
 {
     // The file dropped into a plugin's folder to have it deleted at the next start. Discovery reads it too, so a plugin the operator removed is out of the list from that moment rather than at the restart.
@@ -160,7 +159,7 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
     // The old folder is renamed aside first, so a failure leaves it as it was; discovery skips the dot-prefixed name.
     private bool _TryReplaceInPlace(string stagingDir, string finalDir, string folderId)
     {
-        var aside = Path.Combine(_pluginsRoot, ReplacedPrefix + Guid.NewGuid().ToString("N"));
+        var aside = Path.Combine(_pluginsRoot, ReplacedPrefix + folderId + "." + Guid.NewGuid().ToString("N"));
         try
         {
             Directory.Move(finalDir, aside);
@@ -239,11 +238,6 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
             return Task.CompletedTask;
         }
 
-        foreach (var leftover in Directory.EnumerateDirectories(_pluginsRoot, ReplacedPrefix + "*"))
-        {
-            _TryDelete(leftover);
-        }
-
         foreach (var folder in Directory.EnumerateDirectories(_pluginsRoot))
         {
             if (!File.Exists(Path.Combine(folder, RemovalMarker)))
@@ -265,8 +259,41 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
         return Task.CompletedTask;
     }
 
+    // A start that finds `.replaced-<id>.<guid>` next to a missing `<id>` is a crash between the two renames of an
+    // in-place update: the old version goes back instead of the plugin vanishing. Otherwise it is only left-over.
+    private void _RecoverReplaced()
+    {
+        if (!Directory.Exists(_pluginsRoot))
+        {
+            return;
+        }
+
+        foreach (var aside in Directory.EnumerateDirectories(_pluginsRoot, ReplacedPrefix + "*"))
+        {
+            var name = Path.GetFileName(aside)[ReplacedPrefix.Length..];
+            var dot = name.LastIndexOf('.');
+            var original = dot > 0 ? Path.Combine(_pluginsRoot, name[..dot]) : null;
+            try
+            {
+                if (original is not null && !Directory.Exists(original))
+                {
+                    Directory.Move(aside, original);
+                }
+                else
+                {
+                    Directory.Delete(aside, recursive: true);
+                }
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                // Still locked: it is dealt with at the next start.
+            }
+        }
+    }
+
     public Task SweepPendingUpdatesAsync(CancellationToken cancellationToken = default)
     {
+        _RecoverReplaced();
         var pendingRoot = Path.Combine(_pluginsRoot, PendingUpdatesFolder);
         if (!Directory.Exists(pendingRoot))
         {
