@@ -772,20 +772,24 @@
                                                     Foreground="{DynamicResource CockpitAccentBrush}"/>
                         <TextBlock Text="Thinking…" FontSize="11.5" VerticalAlignment="Center"
                                    Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        <TextBlock Text="{Binding Session.ThinkingAgeText, StringFormat='· {0}'}" FontSize="11.5" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                     </StackPanel>
 
                     <!-- Replaces "Thinking…" for the stretch it used to leave blank (AC-532): a tool call is the
                          longest wait in a turn, and naming the running step is the difference between a window that
                          looks stuck and one that is visibly working. Same slot, one row. -->
-                    <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center"
+                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9" VerticalAlignment="Center"
                                 IsVisible="{Binding Session.HasActiveToolActivity, FallbackValue=False}">
                         <materialIcons:MaterialIcon Kind="Circle" Classes="pulse" Width="9" Height="9"
                                                     VerticalAlignment="Center"
                                                     Foreground="{DynamicResource CockpitAccentBrush}"/>
-                        <TextBlock Text="{Binding Session.ActiveToolActivityLabel}" FontSize="11.5"
+                        <TextBlock Grid.Column="1" Text="{Binding Session.ActiveToolActivityLabel}" FontSize="11.5"
                                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                                    Foreground="{DynamicResource CockpitTextPrimaryBrush}"/>
-                    </StackPanel>
+                        <TextBlock Grid.Column="2" Text="{Binding Session.ActiveToolActivityAgeText, StringFormat='· {0}'}" FontSize="11.5"
+                                   VerticalAlignment="Center" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                    </Grid>
 
                     <!-- Background work (AC-531): a detached sub-agent or shell outlives both indicators above, and
                          this count is what still says so. No badge at zero rather than a "0" one, the same rule the

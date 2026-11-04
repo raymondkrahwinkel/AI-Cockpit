@@ -40,6 +40,25 @@ internal static partial class Screenshotter
     private const int DefaultWindowWidth = 1100;
     private const int DefaultWindowHeight = 760;
 
+    private static Window _ElapsedScene(int width, int height, ReadingLevel level, bool assistant)
+    {
+        var session = new SessionViewModel { Title = "Session", ReadingLevel = level };
+        session.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.ToolUse, "")
+        {
+            ToolName = "Bash", ToolUseId = "elapsed-scene", InputJson = "{\"command\":\"dotnet build Cockpit.slnx\"}",
+        });
+        session._ShowActiveToolCalls([new SessionActiveToolCall("elapsed-scene", "Bash", DateTimeOffset.Now.AddSeconds(-72))]);
+        if (assistant)
+        {
+            var chat = _AssistantChatViewModel(session);
+            chat.IsSimpleViewHost = level == ReadingLevel.Simple;
+            return new Window { Width = width, Height = height, Content = new AssistantChatView { DataContext = chat } };
+        }
+
+        session.IsShownInSimpleStand = level == ReadingLevel.Simple;
+        return new Window { Width = width, Height = height, Content = new SessionView { DataContext = session } };
+    }
+
     private static Window _BackgroundWorkScene()
     {
         var session = new SessionViewModel();
@@ -792,6 +811,10 @@ internal static partial class Screenshotter
 
         // AC-543 (strand 4): the pop-out chat window (AssistantChatWindow.axaml), criterion 11's other half — the
         // indicator is a badge, this is where the conversation actually reads.
+        ["elapsed-session-simple"] = (width, height) => _ElapsedScene(width, height, ReadingLevel.Simple, false),
+        ["elapsed-session-classic"] = (width, height) => _ElapsedScene(width, height, ReadingLevel.Developer, false),
+        ["elapsed-assistant-simple"] = (width, height) => _ElapsedScene(width, height, ReadingLevel.Simple, true),
+        ["elapsed-assistant-classic"] = (width, height) => _ElapsedScene(width, height, ReadingLevel.Developer, true),
         ["assistant-chat"] = (_, _) => _AssistantChat(withConversation: true),
         ["assistant-chat-file-drop"] = (_, _) => _AssistantChat(withConversation: true),
         ["session-file-drop"] = (width, height) => new Window { Width = width, Height = height, Content = new SessionView { DataContext = new SessionViewModel { Title = "Session" } } },
