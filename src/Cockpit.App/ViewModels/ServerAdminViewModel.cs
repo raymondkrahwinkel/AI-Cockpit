@@ -773,6 +773,9 @@ public sealed partial class ServerPluginRowViewModel(InstalledPlugin plugin) : O
 
     public string Version { get; } = plugin.Discovered.Manifest.Version;
 
+    // AC-2025: what the server runs, which after a live update or a pending restart is not what its disk holds.
+    public string RunningVersion { get; } = plugin.RunningVersion ?? plugin.Discovered.Manifest.Version;
+
     public string? Author { get; } = plugin.Discovered.Manifest.Author;
 
     // AC-1525: the server's own hash of the bytes on its disk, which the consent shows and the server pins.

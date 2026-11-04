@@ -494,7 +494,7 @@ public partial class CockpitViewModel
 
     // AC-1571: the UI part of the same plugin on this desktop, for opening its own settings view against the server.
     // Set once the UI parts have initialized.
-    internal Func<string, (Type UiType, ICockpitUiHost Host)?> LocalPluginUiPart { get; set; } = _ => null;
+    internal Func<string, (Type UiType, ICockpitUiHost Host, string Version)?> LocalPluginUiPart { get; set; } = _ => null;
     private Action<IRemoteServer>? _registerRemoteFileWorkspaces;
 
     internal void FollowRemoteFileWorkspaces(Action<IRemoteServer> register)
@@ -506,7 +506,7 @@ public partial class CockpitViewModel
         }
     }
 
-    private (Type UiType, ICockpitUiHost Host)? _LocalSettingsPartFor(ServerPluginRowViewModel row) =>
+    private (Type UiType, ICockpitUiHost Host, string Version)? _LocalSettingsPartFor(ServerPluginRowViewModel row) =>
         LocalPluginUiPart(row.Id) is { Host.HasSettings: true } part ? part : null;
 
     // Opened beside the Admin dialog, with a channel that goes to the plugin's backend part on that server. The plugin's
@@ -521,6 +521,12 @@ public partial class CockpitViewModel
 
         if (_LocalSettingsPartFor(row) is { } part)
         {
+            // Shown by the admin dialog as the error of the click.
+            if (ServerPluginVersions.Differ(part.Version, row.RunningVersion))
+            {
+                throw new InvalidOperationException(ServerPluginVersions.Message(row.Name, server, row.RunningVersion, part.Version));
+            }
+
             if (await ServerPluginSettings.OpenAsync(part.UiType, part.Host, relay, row.FolderId, () => ServerPluginTargets.ProfilesAsync(profiles), () => ServerPluginTargets.ProjectsAsync(projects), server) is { } remote)
             {
                 await _dialogService.ShowServerPluginSettingsAsync($"{row.Name} on {server}", remote.CreateView, remote.PersistAsync);

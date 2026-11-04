@@ -319,11 +319,12 @@ internal sealed class RemotePluginAdministration(BackendApiClient client, ILogge
         string? PinnedSha256,
         string? Author,
         string? Description,
-        string? MinHostVersion)
+        string? MinHostVersion,
+        string? RunningVersion = null)
     {
         public static InstalledPlugin ToInstalled(RemotePluginEntry entry) => new(
             new DiscoveredPlugin("", entry.FolderId, new PluginManifest(entry.Id, entry.Name, entry.Version, null, 0, null, entry.MinHostVersion, entry.Description, entry.Author), entry.Sha256, entry.Decision),
-            entry.PinnedSha256 is { } pinned ? new PluginRegistration(entry.Enabled, pinned) : null, null, null, null);
+            entry.PinnedSha256 is { } pinned ? new PluginRegistration(entry.Enabled, pinned) : null, null, null, null, entry.RunningVersion);
     }
 
 }

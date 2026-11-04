@@ -27,7 +27,10 @@ public sealed class PluginManager(
 
     public PluginMcpProviderRegistry McpProviders { get; } = new();
 
-    public event Action<DiscoveredPlugin, ICockpitPlugin?>? Activated;
+    // AC-2025: starts the UI part of a plugin that just activated and answers why it could not, or null. The desktop sets
+    // it, so an update can decide on the outcome; a server has no UI part. It asks `isCurrent` on the UI thread before it
+    // touches anything: an attempt that was abandoned meanwhile starts nothing.
+    public Func<DiscoveredPlugin, ICockpitPlugin?, Func<bool>, Task<string?>> StartUiPart { get; set; } = (_, _, _) => Task.FromResult<string?>(null);
 
     // AC-2024: raised on the UI thread once the plugin's contributions are undone, for what holds its UI part.
     public event Action<DiscoveredPlugin, ICockpitPlugin?>? Deactivated;
@@ -54,6 +57,8 @@ public sealed class PluginManager(
 
     // Both directions: a plugin going up or down refuses the other until it has settled.
     private readonly HashSet<string> _activating = new(StringComparer.Ordinal);
+    // AC-2025: the running activation per folder; one that was abandoned (it hung) is no longer the current one.
+    private readonly Dictionary<string, object> _attempts = new(StringComparer.Ordinal);
     // AC-2023: the activator's non-collectible ALC survives a refusal, so retrying requires a restart. Per bytes
     // (AC-2025): a version that failed does not count against the next one, nor against the one it replaced.
     private readonly Dictionary<string, (string Sha256, string Reason)> _restartReasons = new(StringComparer.Ordinal);
@@ -339,15 +344,21 @@ public sealed class PluginManager(
         DiscoveredPlugin discovered,
         ICockpitPlugin plugin,
         Func<DiscoveredPlugin, ICockpitPlugin, ICockpitHost> hostFor,
-        bool liveActivation = false)
+        object? attempt = null)
     {
         try
         {
             SecretKeyHolder.Shared.Declare(discovered.Manifest.SecretKeys);
             var host = hostFor(discovered, plugin);
+            // An abandoned attempt that wakes up late must not register anything under the version that runs by then.
+            if (attempt is not null && !_IsCurrent(discovered.FolderId, attempt))
+            {
+                return "The activation was abandoned.";
+            }
+
             if (host is PluginBackendHost backendHost)
             {
-                backendHost.IsLiveActivation = liveActivation;
+                backendHost.IsLiveActivation = attempt is not null;
             }
             if (plugin is IPluginMcpProvider provider)
             {
@@ -357,7 +368,7 @@ public sealed class PluginManager(
             plugin.Initialize(host);
             lock (_lifecycleLock)
             {
-                if (!_disposed)
+                if (!_disposed && (attempt is null || _IsCurrent(discovered.FolderId, attempt)))
                 {
                     _hosts[discovered.FolderId] = host;
                 }
@@ -373,8 +384,11 @@ public sealed class PluginManager(
             }
             lock (_lifecycleLock)
             {
-                _initializeFailed.Add(discovered);
-                _hosts.Remove(discovered.FolderId);
+                if (attempt is null || _IsCurrent(discovered.FolderId, attempt))
+                {
+                    _initializeFailed.Add(discovered);
+                    _hosts.Remove(discovered.FolderId);
+                }
             }
             var reason = _Reason(exception);
             diagnostics.Record(discovered.FolderId, discovered.Manifest.Name, "initialize", reason);
@@ -391,8 +405,26 @@ public sealed class PluginManager(
         }
     }
 
+    // AC-2025: why ActivateOne would turn these bytes away before it starts anything, or null; asked before the running
+    // version is stopped for them.
+    public PluginActivationResult? WouldRefuse(DiscoveredPlugin discovered)
+    {
+        lock (_lifecycleLock)
+        {
+            if (_restartReasons.TryGetValue(discovered.FolderId, out var held) && held.Sha256 == discovered.Sha256)
+            {
+                return new(PluginActivationStatus.NeedsRestart, held.Reason);
+            }
+
+            return discovered.Manifest.RequiresRestart
+                ? new(PluginActivationStatus.NeedsHostRestart, "The plugin asks for a restart to activate.")
+                : null;
+        }
+    }
+
     public PluginActivationResult ActivateOne(DiscoveredPlugin discovered)
     {
+        var attempt = new object();
         Func<DiscoveredPlugin, ICockpitPlugin?> activate;
         Func<DiscoveredPlugin, ICockpitPlugin, ICockpitHost> hostFor;
         lock (_lifecycleLock)
@@ -409,7 +441,7 @@ public sealed class PluginManager(
 
             if (discovered.Manifest.RequiresRestart)
             {
-                return new(PluginActivationStatus.NeedsRestart, "The plugin asks for a restart to activate.");
+                return new(PluginActivationStatus.NeedsHostRestart, "The plugin asks for a restart to activate.");
             }
 
             if (_activating.Contains(discovered.FolderId))
@@ -426,6 +458,7 @@ public sealed class PluginManager(
             }
 
             _activating.Add(discovered.FolderId);
+            _attempts[discovered.FolderId] = attempt;
             activate = _activate;
             hostFor = _hostFor;
         }
@@ -454,7 +487,7 @@ public sealed class PluginManager(
                 }
                 else if (discovered.Manifest.RequiresRestart)
                 {
-                    result = new(PluginActivationStatus.NeedsRestart, "The plugin asks for a restart to activate.");
+                    result = new(PluginActivationStatus.NeedsHostRestart, "The plugin asks for a restart to activate.");
                 }
                 else if (discovered.Manifest.EntryAssembly is null)
                 {
@@ -478,12 +511,12 @@ public sealed class PluginManager(
                         {
                             _DisposeQuietly(discovered, plugin);
                             plugin = null;
-                            result = new(PluginActivationStatus.NeedsRestart, "ConfigureServices registered services that require rebuilding the host container.");
+                            result = new(PluginActivationStatus.NeedsHostRestart, "ConfigureServices registered services that require rebuilding the host container.");
                         }
                         else
                         {
                             _WarnIfBuiltAgainstNewerHost(discovered, plugin);
-                            var failure = _InitializeOne(discovered, plugin, hostFor, liveActivation: true);
+                            var failure = _InitializeOne(discovered, plugin, hostFor, attempt);
                             result = failure is null
                                 ? new(PluginActivationStatus.Activated)
                                 : new(PluginActivationStatus.NeedsRestart, failure);
@@ -506,51 +539,159 @@ public sealed class PluginManager(
             result = new(PluginActivationStatus.NeedsRestart, reason);
         }
 
+        var kept = false;
         lock (_lifecycleLock)
         {
-            _activating.Remove(discovered.FolderId);
-            if (result.Status == PluginActivationStatus.NeedsRestart && result.Reason is { } reason)
+            if (!_IsCurrent(discovered.FolderId, attempt))
             {
-                _restartReasons[discovered.FolderId] = (discovered.Sha256, reason);
-            }
-
-            if (!_disposed)
-            {
-                if (result.Status == PluginActivationStatus.Activated || plugin is not null)
-                {
-                    _loaded.Add((discovered, plugin));
-                }
-
-                if (result.Status != PluginActivationStatus.Activated)
-                {
-                    return result;
-                }
+                result = new(PluginActivationStatus.NeedsRestart, "The activation was abandoned after it did not finish in time.");
             }
             else
             {
-                result = new(PluginActivationStatus.NeedsRestart, "The plugin manager was disposed during activation.");
+                if (result.Status is PluginActivationStatus.NeedsRestart or PluginActivationStatus.NeedsHostRestart && result.Reason is { } reason)
+                {
+                    _restartReasons[discovered.FolderId] = (discovered.Sha256, reason);
+                }
+
+                if (_disposed)
+                {
+                    result = new(PluginActivationStatus.NeedsRestart, "The plugin manager was disposed during activation.");
+                }
+                else if (result.Status == PluginActivationStatus.Activated || plugin is not null)
+                {
+                    _loaded.Add((discovered, plugin));
+                    kept = true;
+                }
+
+                // An activated plugin stays claimed until its UI part has started or failed.
+                if (result.Status != PluginActivationStatus.Activated || !kept)
+                {
+                    _EndAttempt(discovered.FolderId);
+                }
             }
         }
 
-        if (result.Status == PluginActivationStatus.Activated)
+        if (!kept)
         {
-            try
+            // A late finisher of an abandoned attempt, or a disposed manager: the part never joins what runs.
+            if (plugin is not null)
             {
-                Activated?.Invoke(discovered, plugin);
+                _DisposeQuietly(discovered, plugin);
             }
-            catch (Exception exception)
-            {
-                logger.LogWarning(exception, "Plugin {PluginId}'s activation subscriber failed.", discovered.FolderId);
-            }
+
             return result;
         }
 
-        if (plugin is not null)
+        if (result.Status != PluginActivationStatus.Activated)
         {
-            _DisposeQuietly(discovered, plugin);
+            return result;
         }
 
-        return result;
+        // Abandoned between joining and starting its UI: no UI part may start under what runs by now.
+        if (!_IsCurrent(discovered.FolderId, attempt))
+        {
+            return _DropAbandoned(discovered, plugin);
+        }
+
+        var uiFailure = _StartUiPart(discovered, plugin, () => _IsCurrent(discovered.FolderId, attempt));
+        lock (_lifecycleLock)
+        {
+            if (!_IsCurrent(discovered.FolderId, attempt))
+            {
+                // Dropped behind the start in the UI queue, so a UI part that did start goes away again.
+                return _DropAbandoned(discovered, plugin);
+            }
+
+            _EndAttempt(discovered.FolderId);
+            if (uiFailure is not null)
+            {
+                _restartReasons[discovered.FolderId] = (discovered.Sha256, uiFailure);
+            }
+        }
+
+        // The backend part stays loaded: the caller decides, and an update takes the whole plugin back down.
+        return uiFailure is null ? result : new(PluginActivationStatus.NeedsRestart, uiFailure);
+    }
+
+    // An abandoned attempt that had already joined: the rollback may have taken it out, and if not it goes now.
+    private PluginActivationResult _DropAbandoned(DiscoveredPlugin discovered, ICockpitPlugin? plugin)
+    {
+        bool removed;
+        lock (_lifecycleLock)
+        {
+            // Someone deactivating it right now takes it out themselves.
+            removed = !_activating.Contains(discovered.FolderId) && _loaded.RemoveAll(entry => entry.Discovered == discovered && ReferenceEquals(entry.Plugin, plugin)) > 0;
+        }
+
+        if (removed)
+        {
+            try
+            {
+                RunOnUiThread(() => Deactivated?.Invoke(discovered, plugin)).GetAwaiter().GetResult();
+            }
+            catch (Exception exception)
+            {
+                logger.LogWarning(exception, "Plugin {PluginId}'s abandoned UI part could not be removed.", discovered.FolderId);
+            }
+
+            if (plugin is not null)
+            {
+                _DisposeQuietly(discovered, plugin);
+            }
+        }
+
+        return new(PluginActivationStatus.NeedsRestart, "The activation was abandoned after it did not finish in time.");
+    }
+
+    private string? _StartUiPart(DiscoveredPlugin discovered, ICockpitPlugin? plugin, Func<bool> isCurrent)
+    {
+        try
+        {
+            return StartUiPart(discovered, plugin, isCurrent).GetAwaiter().GetResult();
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Plugin {PluginId}'s UI part could not be started.", discovered.FolderId);
+            return _Reason(exception);
+        }
+    }
+
+    private bool _IsCurrent(string folderId, object attempt)
+    {
+        lock (_lifecycleLock)
+        {
+            return _attempts.TryGetValue(folderId, out var current) && ReferenceEquals(current, attempt);
+        }
+    }
+
+    private void _EndAttempt(string folderId)
+    {
+        _activating.Remove(folderId);
+        _attempts.Remove(folderId);
+    }
+
+    // AC-2025: an activation that did not finish in time. It is no longer the current one, so what it registers late is
+    // undone as it arrives, its part is disposed instead of joining what runs, and the folder is free for the version
+    // that comes back. Without this the late part would run under whichever version the pin names by then.
+    public async Task AbandonActivationAsync(DiscoveredPlugin discovered, string reason)
+    {
+        PluginRuntime? runtime;
+        lock (_lifecycleLock)
+        {
+            if (!_attempts.Remove(discovered.FolderId))
+            {
+                return;
+            }
+
+            _activating.Remove(discovered.FolderId);
+            _restartReasons[discovered.FolderId] = (discovered.Sha256, reason);
+            runtime = _runtimes.Remove(discovered.FolderId, out var held) ? held : null;
+        }
+
+        if (runtime is not null)
+        {
+            await RunOnUiThread(runtime.Dispose).ConfigureAwait(false);
+        }
     }
 
     // AC-2024: no lock across the hop, since the Changed subscribers that run in it read LoadedParts. The backend part
