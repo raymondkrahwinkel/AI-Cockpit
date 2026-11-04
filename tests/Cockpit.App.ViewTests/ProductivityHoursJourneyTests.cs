@@ -382,7 +382,7 @@ public sealed class ProductivityHoursJourneyTests
         Assert.Contains("Your time per day, with the agents beside it", _Texts(overviewScreen));
         Assert.Contains("Time per project", _Texts(overviewScreen));
         Assert.Contains("Own rows this week", _Texts(overviewScreen));
-        Assert.StartsWith("without rate:", _Control<TextBlock>(overviewScreen, "CostTileDetail").Text);
+        Assert.StartsWith("without a rate:", _Control<TextBlock>(overviewScreen, "CostTileDetail").Text);
         _Control<Button>(overviewScreen, "HoursTab");
         _Control<Button>(overviewScreen, "OverviewTab");
         _Control<Button>(overviewScreen, "PreviousOverviewRange");
