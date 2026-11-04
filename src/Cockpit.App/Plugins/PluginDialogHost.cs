@@ -70,6 +70,9 @@ internal sealed class PluginDialogHost(SurfaceWindows surfaces) : IPluginDialogH
         await surfaces.ShowAsync(key, window, owner);
     }
 
+    public void CloseDialogs(string keyPrefix) =>
+        surfaces.Close(key => key is ValueTuple<string, string> { Item1: "plugin" } plugin && plugin.Item2.StartsWith(keyPrefix, StringComparison.Ordinal));
+
     // The Save/Close footer every plugin settings dialog gets, extracted so its failure branch is testable
     // without `ApplicationLifetime`. AC-1003: the immediate half of the staged contract — a standalone
     // window stages and commits on the same click. AC-1571: `persist` then writes a server copy's storage there.

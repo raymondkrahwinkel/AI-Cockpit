@@ -36,7 +36,11 @@ public sealed class DockPanelHost
 
         if (registry is not null)
         {
-            registry.Changed += (_, _) => RestoreIfStarted();
+            registry.Changed += (_, _) =>
+            {
+                _CloseWindowsOfWithdrawnPanels();
+                RestoreIfStarted();
+            };
         }
     }
 
@@ -115,6 +119,15 @@ public sealed class DockPanelHost
             }
 
             _ShowWindow(panel.Id);
+        }
+    }
+
+    // AC-2024: closing one docks its id back, which is where a re-enabled plugin's panel starts.
+    private void _CloseWindowsOfWithdrawnPanels()
+    {
+        foreach (var panelId in _windows.Keys.Where(id => _registry?.Panels.All(panel => panel.Id != id) == true).ToList())
+        {
+            _CloseWindow(panelId);
         }
     }
 

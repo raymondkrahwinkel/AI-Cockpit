@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Reflection;
 using System.Runtime.Loader;
 using Microsoft.Extensions.Logging;
@@ -19,6 +20,9 @@ public sealed class PluginUiManager(ILogger<PluginUiManager> logger, PluginDiagn
 
     // AC-1571: the host each UI part was given, which a server's copy of that part borrows its window helpers from.
     private readonly Dictionary<DiscoveredPlugin, ICockpitUiHost> _hosts = [];
+
+    // AC-2024: the same reuse as PluginActivator, for a plugin that is only a UI part and so never passes through it.
+    private static readonly ConcurrentDictionary<(string FolderId, string Sha256), PluginLoadContext> _UiOnlyContexts = new();
 
     internal void RegisterRemoteFileWorkspaces(IRemoteServer server)
     {
@@ -183,7 +187,7 @@ public sealed class PluginUiManager(ILogger<PluginUiManager> logger, PluginDiagn
         {
             PluginLoadContext shared => shared.LoadAlongside(uiPath),
             { } other => other.LoadFromAssemblyPath(uiPath),
-            null => new PluginLoadContext(uiPath).LoadFromAssemblyPath(uiPath),
+            null => _UiOnlyContexts.GetOrAdd((discovered.FolderId, discovered.Sha256), _ => new PluginLoadContext(uiPath)).LoadOnce(uiPath),
         };
 
         var uiType = _ResolveUiEntryType(assembly, manifest.UiEntryType)
@@ -208,28 +212,41 @@ public sealed class PluginUiManager(ILogger<PluginUiManager> logger, PluginDiagn
     private static bool _IsConcreteUi(Type type) =>
         typeof(ICockpitPluginUi).IsAssignableFrom(type) && type is { IsAbstract: false, IsInterface: false };
 
-    // A UI part that is its own object, not the backend entry type doing both, goes here; the backend part is
-    // PluginManager's to dispose.
+    // AC-2024: one plugin's UI part, on the UI thread, after its contributions left.
+    public void DeactivateUi(DiscoveredPlugin discovered, ICockpitPlugin? plugin)
+    {
+        _DisposePart(discovered, plugin);
+        _ui.Remove(discovered);
+        _hosts.Remove(discovered);
+    }
+
     public void Dispose()
     {
         foreach (var (discovered, plugin) in backend.LoadedParts)
         {
-            if (_ui.GetValueOrDefault(discovered) is not IDisposable ui || ReferenceEquals(ui, plugin))
-            {
-                continue;
-            }
-
-            try
-            {
-                ui.Dispose();
-            }
-            catch (Exception exception)
-            {
-                logger.LogWarning(exception, "Plugin {PluginId} threw while disposing.", discovered.FolderId);
-            }
+            _DisposePart(discovered, plugin);
         }
 
         _ui.Clear();
         _hosts.Clear();
+    }
+
+    // A UI part that is its own object, not the backend entry type doing both, goes here; the backend part is
+    // PluginManager's to dispose.
+    private void _DisposePart(DiscoveredPlugin discovered, ICockpitPlugin? plugin)
+    {
+        if (_ui.GetValueOrDefault(discovered) is not IDisposable ui || ReferenceEquals(ui, plugin))
+        {
+            return;
+        }
+
+        try
+        {
+            ui.Dispose();
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Plugin {PluginId} threw while disposing.", discovered.FolderId);
+        }
     }
 }

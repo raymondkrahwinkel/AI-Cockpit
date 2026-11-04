@@ -20,7 +20,7 @@ public interface IWorkspaceTypeRegistry
     /// <returns>
     /// False when another plugin already contributes this type id — the caller says so; nothing throws.
     /// </returns>
-    bool Register(WorkspaceTypeRegistration registration, IPluginStorage pluginStorage, ICockpitSessionObserver sessions);
+    bool Register(WorkspaceTypeRegistration registration, IPluginStorage pluginStorage, ICockpitSessionObserver sessions, string? pluginId = null);
 
     /// <summary>
     /// Withdraws the workspace type <paramref name="typeId"/>; false when none is registered. Open workspaces stay on the strip.
@@ -50,11 +50,23 @@ public interface IWorkspaceTypeRegistry
     /// Whether a plugin here contributes <paramref name="typeId"/>.
     /// </summary>
     bool IsRegistered(string typeId);
+
+    /// <summary>
+    /// Whether <paramref name="typeId"/> was withdrawn in this run: its plugin was disabled, not never there.
+    /// </summary>
+    bool IsWithdrawn(string typeId);
+
+    /// <summary>
+    /// The ids of the types the plugin <paramref name="pluginId"/> registered.
+    /// </summary>
+    IReadOnlyList<string> TypesOf(string pluginId);
 }
 
 internal sealed class WorkspaceTypeRegistry(IServiceProvider services) : IWorkspaceTypeRegistry, ISingletonService
 {
     private readonly List<RegisteredWorkspaceType> _types = [];
+    private readonly Dictionary<string, string> _owners = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _withdrawn = new(StringComparer.Ordinal);
 
     public event EventHandler? Changed;
 
@@ -63,7 +75,7 @@ internal sealed class WorkspaceTypeRegistry(IServiceProvider services) : IWorksp
     // First registration of a type id wins, and a later one is refused rather than added beside it — the same
     // rule the widget registry keeps, and for the same reason: two entries with one id put the type in the "+"
     // menu twice and leave `CreateBody` resolving to whichever plugin loaded first.
-    public bool Register(WorkspaceTypeRegistration registration, IPluginStorage pluginStorage, ICockpitSessionObserver sessions)
+    public bool Register(WorkspaceTypeRegistration registration, IPluginStorage pluginStorage, ICockpitSessionObserver sessions, string? pluginId = null)
     {
         if (IsRegistered(registration.Id))
         {
@@ -71,6 +83,12 @@ internal sealed class WorkspaceTypeRegistry(IServiceProvider services) : IWorksp
         }
 
         _types.Add(new RegisteredWorkspaceType(registration, pluginStorage, sessions));
+        _withdrawn.Remove(registration.Id);
+        if (pluginId is not null)
+        {
+            _owners[registration.Id] = pluginId;
+        }
+
         Changed?.Invoke(this, EventArgs.Empty);
 
         return true;
@@ -83,11 +101,18 @@ internal sealed class WorkspaceTypeRegistry(IServiceProvider services) : IWorksp
             return false;
         }
 
+        _owners.Remove(typeId);
+        _withdrawn.Add(typeId);
         Changed?.Invoke(this, EventArgs.Empty);
         return true;
     }
 
     public bool IsRegistered(string typeId) => _types.Any(type => type.Registration.Id == typeId);
+
+    public bool IsWithdrawn(string typeId) => _withdrawn.Contains(typeId);
+
+    public IReadOnlyList<string> TypesOf(string pluginId) =>
+        [.. _owners.Where(owner => owner.Value == pluginId).Select(owner => owner.Key)];
 
     public (WorkspaceTypeRegistration Registration, IWorkspaceContext Context)? CreateBody(string typeId, string workspaceId)
     {

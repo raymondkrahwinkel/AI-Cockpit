@@ -478,9 +478,21 @@ public partial class PluginManagerViewModel : ViewModelBase
             return;
         }
 
-        await _administration.SetEnabledAsync(row.FolderId, enabled: false, row.Discovered.Sha256);
+        // A live disable closes this plugin's workspaces at once, so what would ask on closing a tab asks here.
+        if (_server is null && _contributionSink is not null && !await _contributionSink.ConfirmPluginWorkspacesCloseAsync(row.FolderId))
+        {
+            return;
+        }
+
+        var state = await _administration.SetEnabledAsync(row.FolderId, enabled: false, row.Discovered.Sha256);
         await LoadAsync();
-        StatusMessage = $"'{row.DisplayName}' disabled{_On}. {_Restart} to unload it.";
+        if (state is { IsLive: true })
+        {
+            StatusMessage = $"'{row.DisplayName}' disabled{_On}.";
+            return;
+        }
+
+        StatusMessage = $"'{row.DisplayName}' disabled{_On}. Restart needed: {(state?.RestartReason ?? "the plugin cannot be unloaded while running").TrimEnd('.')}. {_Restart} to unload it.";
         NeedsRestart = true;
     }
 

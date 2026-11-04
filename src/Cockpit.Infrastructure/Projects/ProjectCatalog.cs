@@ -57,7 +57,15 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
         _sharedSources.Registered += source =>
         {
             _Watch(source);
-            _ = _RefreshAfterRegistrationAsync(source);
+            _ = _RefreshAfterChangeAsync(source.SourceName);
+        };
+
+        // AC-2024: its cards go now; the read after that also supersedes one under way with the source still in it.
+        _sharedSources.Removed += key =>
+        {
+            _sharedProjectGroups = [.. _sharedProjectGroups.Where(group => group.SourceKey != key)];
+            _PublishAndRaise();
+            _ = _RefreshAfterChangeAsync(key);
         };
 
         // AC-894: the watcher asks which projects to poll every tick and reports each check back here.
@@ -263,7 +271,7 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
     }
 
     // Nothing awaits a read a registration starts, so its failure is logged here rather than lost unobserved.
-    private async Task _RefreshAfterRegistrationAsync(ISharedProjectSource source)
+    private async Task _RefreshAfterChangeAsync(string sourceName)
     {
         try
         {
@@ -275,7 +283,7 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
         }
         catch (Exception exception)
         {
-            _logger.LogWarning(exception, "Reading the shared projects after {Source} registered failed.", source.SourceName);
+            _logger.LogWarning(exception, "Reading the shared projects after {Source} changed failed.", sourceName);
         }
     }
 
@@ -286,7 +294,7 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
         {
             if (sharedId is null)
             {
-                _ = _RefreshAfterRegistrationAsync(source);
+                _ = _RefreshAfterChangeAsync(source.SourceName);
             }
         };
     }

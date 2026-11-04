@@ -871,6 +871,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _settingsSavedHandlers.Remove(pluginId);
     });
 
+    Task<bool> IPluginContributionSink.ConfirmPluginWorkspacesCloseAsync(string pluginId) =>
+        Workspaces.ConfirmPluginWorkspacesCloseAsync(pluginId);
+
     private static void _RemoveWhere<T>(ObservableCollection<T> items, Func<T, bool> match)
     {
         for (var index = items.Count - 1; index >= 0; index--)
@@ -925,7 +928,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             onSaved: pane.Refresh,
             // Per widget, and not optional here (AC-367): the form is built once above and handed to the window as
             // a captured instance, so a second window would try to adopt a control that already has a parent.
-            singleInstanceKey: $"widget:{pane.Id}");
+            singleInstanceKey: $"{CockpitUiHost.WidgetDialogKeyPrefix(pane.WidgetId)}{pane.Id}");
     }
 
     // Unlike the three contributions above, registration here touches only this private dictionary — never a bound
@@ -1648,6 +1651,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             OnPropertyChanged(nameof(HasRailTabs));
             OnPropertyChanged(nameof(HasDockPanels));
             OnPropertyChanged(nameof(ShowDockRail));
+            OnPropertyChanged(nameof(EffectiveOpenDockPanelId));
         };
     }
 
@@ -7684,6 +7688,17 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         else
         {
             PluginOptionsRows.Add(row);
+        }
+    }
+
+    // AC-2024: what a departed plugin leaves here. Its toasts keep their text, and an Options row stops offering its view.
+    public void ForgetLivePlugin(string pluginId)
+    {
+        ToastHost.RetireSource(pluginId);
+        var rowIndex = PluginOptionsRows.ToList().FindIndex(existing => existing.PluginId == pluginId);
+        if (rowIndex >= 0)
+        {
+            PluginOptionsRows[rowIndex] = new PluginOptionsRowViewModel(pluginId, PluginOptionsRows[rowIndex].DisplayName, createView: null, "Disabled");
         }
     }
 

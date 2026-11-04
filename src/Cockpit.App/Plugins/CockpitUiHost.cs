@@ -50,13 +50,17 @@ internal sealed partial class CockpitUiHost(
     PluginRuntime? runtime = null) : ICockpitUiHost
 {
     // AC-2024: the same rule as PluginBackendHost.Runtime. What the sink holds is keyed by plugin, so one undo covers it.
-    private readonly PluginRuntime _runtime = _WithContributions(runtime ?? new PluginRuntime(pluginId), contributionSink);
+    private readonly PluginRuntime _runtime = _WithContributions(runtime ?? new PluginRuntime(pluginId), contributionSink, dialogHost);
 
-    private static PluginRuntime _WithContributions(PluginRuntime runtime, IPluginContributionSink sink)
+    private static PluginRuntime _WithContributions(PluginRuntime runtime, IPluginContributionSink sink, IPluginDialogHost dialogs)
     {
         runtime.Add(() => sink.RemovePluginContributions(runtime.PluginId));
+        runtime.Add(() => dialogs.CloseDialogs($"{runtime.PluginId}:"));
         return runtime;
     }
+
+    // AC-2024: a widget's settings dialog is the host's, so it is found by widget type rather than by plugin.
+    internal static string WidgetDialogKeyPrefix(string widgetId) => $"widget:{widgetId}:";
 
     public IPluginUiChannel Channel { get; } = new UiChannel(services.GetRequiredService<PluginChannelHub>(), pluginId);
 
@@ -159,7 +163,11 @@ internal sealed partial class CockpitUiHost(
         var registry = services.GetRequiredService<IWidgetRegistry>();
         if (registry.Register(registration, host.Storage, host.Sessions, declaredSecretKeys))
         {
-            _runtime.Add(() => registry.Unregister(registration.Id));
+            _runtime.Add(() =>
+            {
+                dialogHost.CloseDialogs(WidgetDialogKeyPrefix(registration.Id));
+                registry.Unregister(registration.Id);
+            });
         }
         else
         {
@@ -232,7 +240,7 @@ internal sealed partial class CockpitUiHost(
     {
         services.GetService<StartupAttempt>()?.NoteSurface(registration.Id, pluginId, pluginName);
         var registry = services.GetRequiredService<IWorkspaceTypeRegistry>();
-        if (registry.Register(registration, host.Storage, host.Sessions))
+        if (registry.Register(registration, host.Storage, host.Sessions, pluginId))
         {
             _runtime.Add(() => registry.Unregister(registration.Id));
         }
@@ -296,8 +304,9 @@ internal sealed partial class CockpitUiHost(
 
     // A plugin's dialog gets a gear in its title bar when the plugin has settings to open — checked when the
     // dialog opens, not when the plugin is built, since settings and dialogs can register in any order.
+    // AC-2024: every dialog gets a key under this plugin, a unique one when it folds with nothing, so its leaving finds them.
     public Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560) =>
-        _ShowPluginDialogAsync(title, createContent, width, height, singleInstanceKey: null);
+        _ShowPluginDialogAsync(title, createContent, width, height, $"{pluginId}:{Guid.NewGuid():n}");
 
     public Task ShowDialogAsync(string title, Func<Control> createContent, string singleInstanceKey, double width = 720, double height = 560) =>
         // Scoped to the plugin, so a plugin only has to be unique within itself: two plugins picking "issues"
@@ -305,7 +314,7 @@ internal sealed partial class CockpitUiHost(
         // for the other, and the operator would act on the wrong repository.
         _ShowPluginDialogAsync(title, createContent, width, height, $"{pluginId}:{singleInstanceKey}");
 
-    private Task _ShowPluginDialogAsync(string title, Func<Control> createContent, double width, double height, string? singleInstanceKey) =>
+    private Task _ShowPluginDialogAsync(string title, Func<Control> createContent, double width, double height, string singleInstanceKey) =>
         dialogHost.ShowDialogAsync(
             title,
             createContent,

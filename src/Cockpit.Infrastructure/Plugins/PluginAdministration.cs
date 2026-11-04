@@ -57,7 +57,21 @@ internal sealed class PluginAdministration(
         await registrations.SaveAsync(folderId, new PluginRegistration(Enabled: enabled, PinnedSha256: pinnedSha256), cancellationToken).ConfigureAwait(false);
         return enabled
             ? await _ActivateAsync(folderId, cancellationToken).ConfigureAwait(false)
-            : PluginLiveState.Restart("Disabling takes effect when the host restarts.");
+            : await _DeactivateAsync(folderId).ConfigureAwait(false);
+    }
+
+    // The registration is saved already, so whatever goes wrong here a restart leaves the plugin out.
+    private async Task<PluginLiveState> _DeactivateAsync(string folderId)
+    {
+        if (manager is null)
+        {
+            return PluginLiveState.Restart("This host cannot deactivate a plugin while it runs.");
+        }
+
+        var result = await manager.DeactivateAsync(folderId).ConfigureAwait(false);
+        return result.Status is PluginActivationStatus.Deactivated or PluginActivationStatus.NotActive
+            ? PluginLiveState.Active
+            : PluginLiveState.Restart(result.Reason ?? "The plugin could not be deactivated.");
     }
 
     // Any failure falls back to a restart, which loads the plugin the ordinary way.

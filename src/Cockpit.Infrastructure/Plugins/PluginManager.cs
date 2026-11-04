@@ -29,12 +29,26 @@ public sealed class PluginManager(
 
     public event Action<DiscoveredPlugin, ICockpitPlugin?>? Activated;
 
+    // AC-2024: raised on the UI thread once the plugin's contributions are undone, for what holds its UI part.
+    public event Action<DiscoveredPlugin, ICockpitPlugin?>? Deactivated;
+
+    // AC-2024: the desktop points this at its UI thread; a server has none, and runs the teardown in place.
+    public Func<Action, Task> RunOnUiThread { get; set; } = work =>
+    {
+        work();
+        return Task.CompletedTask;
+    };
+
     // AC-1389: Plugin is null for a plugin that is only a UI part, which the desktop's PluginUiManager activates.
     private readonly List<(DiscoveredPlugin Discovered, ICockpitPlugin? Plugin)> _loaded = [];
     private readonly object _lifecycleLock = new();
     private Func<DiscoveredPlugin, ICockpitPlugin?>? _activate;
     private Func<DiscoveredPlugin, ICockpitPlugin, ICockpitHost>? _hostFor;
     private bool _disposed;
+    // AC-2024: a Dispose that hangs costs the plugin its cleanup, not the operator the Options screen.
+    private static readonly TimeSpan _BackendDisposeGrace = TimeSpan.FromSeconds(10);
+
+    // Both directions: a plugin going up or down refuses the other until it has settled.
     private readonly HashSet<string> _activating = new(StringComparer.Ordinal);
     // AC-2023: the activator's non-collectible ALC survives a refusal, so retrying requires a restart.
     private readonly Dictionary<string, string> _restartReasons = new(StringComparer.Ordinal);
@@ -490,6 +504,91 @@ public sealed class PluginManager(
         }
 
         return result;
+    }
+
+    // AC-2024: no lock across the hop, since the Changed subscribers that run in it read LoadedParts. The backend part
+    // leaves off the UI thread: it has to work on a server, so it may block on a worker that marshals back to it.
+    public async Task<PluginActivationResult> DeactivateAsync(string folderId)
+    {
+        DiscoveredPlugin discovered;
+        ICockpitPlugin? plugin;
+        lock (_lifecycleLock)
+        {
+            if (_activating.Contains(folderId))
+            {
+                return new(PluginActivationStatus.Busy, "The plugin is being activated or deactivated.");
+            }
+
+            var loaded = _loaded.FirstOrDefault(entry => entry.Discovered.FolderId == folderId);
+            if (_disposed || loaded.Discovered is null)
+            {
+                return new(PluginActivationStatus.NotActive);
+            }
+
+            (discovered, plugin) = loaded;
+            _activating.Add(folderId);
+        }
+
+        try
+        {
+            await RunOnUiThread(() => _UndoContributions(discovered, plugin)).ConfigureAwait(false);
+            lock (_lifecycleLock)
+            {
+                if (_disposed)
+                {
+                    return new(PluginActivationStatus.NotActive);
+                }
+
+                _loaded.RemoveAll(entry => entry.Discovered.FolderId == folderId);
+                _hosts.Remove(folderId);
+                _initializeFailed.Remove(discovered);
+                _runtimes.Remove(folderId);
+            }
+
+            if (plugin is not null)
+            {
+                await _DisposeOffUiThreadAsync(discovered, plugin).ConfigureAwait(false);
+            }
+
+            return new(PluginActivationStatus.Deactivated);
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Plugin {PluginId} could not be deactivated; a restart unloads it.", folderId);
+            return new(PluginActivationStatus.NeedsRestart, _Reason(exception));
+        }
+        finally
+        {
+            lock (_lifecycleLock)
+            {
+                _activating.Remove(folderId);
+            }
+        }
+    }
+
+    private void _UndoContributions(DiscoveredPlugin discovered, ICockpitPlugin? plugin)
+    {
+        RuntimeFor(discovered.FolderId).Dispose();
+        try
+        {
+            Deactivated?.Invoke(discovered, plugin);
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Plugin {PluginId}'s deactivation subscriber failed.", discovered.FolderId);
+        }
+    }
+
+    private async Task _DisposeOffUiThreadAsync(DiscoveredPlugin discovered, ICockpitPlugin plugin)
+    {
+        try
+        {
+            await Task.Run(() => _DisposeQuietly(discovered, plugin)).WaitAsync(_BackendDisposeGrace).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            logger.LogWarning("Plugin {PluginId} did not finish disposing in time; it is deactivated regardless.", discovered.FolderId);
+        }
     }
 
     public void Dispose()

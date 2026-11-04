@@ -1002,6 +1002,25 @@ public partial class App : Application
             Program.Services.GetRequiredService<HelpService>().Invalidate();
             cockpit.RefreshLivePlugin(discovered.FolderId);
         });
+        // AC-2024: uncapped, as a timeout here would leave the plugin half gone with its registration already saved.
+        pluginManager.RunOnUiThread = work => UiThreadCall.Uncapped(() =>
+        {
+            work();
+            return Task.CompletedTask;
+        });
+        pluginManager.Deactivated += (discovered, plugin) =>
+        {
+            uiParts.DeactivateUi(discovered, plugin);
+
+            // The host holds the runtime that just closed; the next activation has to build its own.
+            lock (hosts)
+            {
+                hosts.Remove(discovered);
+            }
+
+            Program.Services.GetRequiredService<HelpService>().Invalidate();
+            cockpit.ForgetLivePlugin(discovered.FolderId);
+        };
         cockpit.FollowRemoteFileWorkspaces(uiParts.RegisterRemoteFileWorkspaces);
 
         // The templates installed from a store (#69) join the ones the plugins ship, in the same registry: to the

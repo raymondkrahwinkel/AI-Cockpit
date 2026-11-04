@@ -33,7 +33,7 @@ public sealed partial class StorePluginRowViewModel(
     public string ToggleBrushKey => isEnabled ? "CockpitStatusDoneBrush" : "CockpitTextFaintBrush";
 
     // Hover text for the enable/disable toggle.
-    public string ToggleTooltip => isEnabled ? "Enabled — click to disable (takes effect after restart)" : "Disabled — click to enable (takes effect after restart)";
+    public string ToggleTooltip => isEnabled ? "Enabled — click to disable" : "Disabled — click to enable";
 
     // The store this row came from — the manager downloads through it, so a private or local store resolves the same way it was browsed.
     public PluginStoreConfig Store => store;

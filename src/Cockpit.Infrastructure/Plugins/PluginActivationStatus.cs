@@ -6,5 +6,7 @@ public enum PluginActivationStatus
     AlreadyActive,
     Busy,
     NeedsRestart,
-    Refused
+    Refused,
+    Deactivated,
+    NotActive
 }

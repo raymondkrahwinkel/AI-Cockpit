@@ -17,9 +17,20 @@ public sealed class PluginLoadContext(string pluginMainAssemblyPath, string? ref
     // AC-1389: a UI part loaded into its backend part's context brings its own deps.json, read after the backend's.
     public Assembly LoadAlongside(string assemblyPath)
     {
+        if (_Loaded(assemblyPath) is { } loaded)
+        {
+            return loaded;
+        }
+
         _resolvers.Add(new AssemblyDependencyResolver(assemblyPath));
         return LoadFromAssemblyPath(assemblyPath);
     }
+
+    // AC-2024: a plugin enabled again comes back into the context it left, which holds its assembly until the restart.
+    public Assembly LoadOnce(string assemblyPath) => _Loaded(assemblyPath) ?? LoadFromAssemblyPath(assemblyPath);
+
+    private Assembly? _Loaded(string assemblyPath) =>
+        Assemblies.FirstOrDefault(assembly => string.Equals(assembly.Location, assemblyPath, StringComparison.Ordinal));
 
     protected override Assembly? Load(AssemblyName assemblyName)
     {

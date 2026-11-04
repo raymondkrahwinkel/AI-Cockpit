@@ -108,6 +108,7 @@ public class ProjectsViewModelTests
         public IReadOnlyList<ISharedProjectSource> Sources => _sources;
 
         public event Action<ISharedProjectSource>? Registered;
+        public event Action<string>? Removed { add { } remove { } }
 
         public bool Register(ISharedProjectSource source)
         {

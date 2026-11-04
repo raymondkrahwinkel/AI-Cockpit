@@ -17,7 +17,7 @@ namespace Cockpit.App.ViewTests;
 public sealed class SurfaceWindowsTests
 {
     [Fact]
-    public async Task ShowAsync_OpensTheSurfaceBesideTheOwner_NotOverIt()
+    public async Task ShowAsync_OpensBesideTheOwner_AndTheKeyIsFreeByTheTimeTheCallerResumes()
     {
         await HeadlessAvalonia.RunAsync(async () =>
         {
@@ -31,32 +31,8 @@ public sealed class SurfaceWindowsTests
             Assert.False(pending.IsCompleted);
             Assert.Contains(surface, owner.OwnedWindows);
 
-            surface.Close();
-            await pending;
-
-            owner.Close();
-        });
-    }
-
-    [Fact]
-    public async Task ShowAsync_ByTheTimeTheCallerResumes_TheKeyIsFreeAgain()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var surfaces = new SurfaceWindows();
-            var owner = _ShownOwner();
-            var surface = new Window();
-
-            var pending = surfaces.ShowAsync("key", surface, owner);
-
-            // Saving a project closes its window and the caller reopens the list from the line after the await.
-            // Releasing the caller before clearing the registry would hand that reopen the window that has just
-            // closed, and it would never appear.
-            //
-            // Continued synchronously on purpose: an ordinary `await` in this harness is posted to the dispatcher
-            // and runs well after the completion, so it cannot tell the two orders apart — a mutation round put
-            // the removal after the release and every test stayed green. This runs in the completion itself,
-            // which is where a real awaiter of a TaskCompletionSource resumes.
+            // Synchronous on purpose, in the completion where a real awaiter resumes: an ordinary await here is posted
+            // to the dispatcher and cannot tell whether the registry was cleared before the caller was released.
             var observed = pending.ContinueWith(
                 _ => surfaces.TryActivateAsync("key"),
                 CancellationToken.None,
