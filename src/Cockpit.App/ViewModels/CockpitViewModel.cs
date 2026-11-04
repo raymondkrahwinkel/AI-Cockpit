@@ -2204,6 +2204,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private int _memoryBudgetPercent = MemoryPressure.DefaultBudgetPercent;
 
+    // AC-2025: how many plugin versions a live update may leave in memory before the plugin screens advise a restart.
+    [ObservableProperty]
+    private int _pluginRestartAdviceAfter = SessionBehaviorSettings.DefaultPluginRestartAdviceAfter;
+
+    partial void OnPluginRestartAdviceAfterChanged(int value) => Plugins.RestartAdviceAfter = value;
+
     // AC-2035: whether Docker's build cache and old images are pruned by the cockpit itself. Read afresh by the storage
     // maintenance on every tick, so a saved change applies without a restart.
     [ObservableProperty]
@@ -4410,6 +4416,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         CombineQueuedMessages = settings.CombineQueuedMessages;
         WakeAgentsByDefault = settings.WakeAgentsByDefault;
         MemoryBudgetPercent = settings.MemoryBudgetPercent;
+        PluginRestartAdviceAfter = settings.PluginRestartAdviceAfter;
         AutomaticDockerCleanup = settings.AutomaticDockerCleanup;
         // Pushed explicitly as well as through the property's own change handler: the saved value can equal the
         // property's initial one, and then nothing changed and the handler never ran — leaving the coordinator on
@@ -4432,6 +4439,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             CombineQueuedMessages = CombineQueuedMessages,
             WakeAgentsByDefault = WakeAgentsByDefault,
             MemoryBudgetPercent = MemoryBudgetPercent,
+            PluginRestartAdviceAfter = PluginRestartAdviceAfter,
             AutomaticDockerCleanup = AutomaticDockerCleanup,
         });
         SessionBehaviorSettingsStatus = "Saved";
@@ -8052,6 +8060,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         CombineQueuedMessages = behavior.CombineQueuedMessages;
         WakeAgentsByDefault = behavior.WakeAgentsByDefault;
         MemoryBudgetPercent = behavior.MemoryBudgetPercent;
+        PluginRestartAdviceAfter = behavior.PluginRestartAdviceAfter;
         AutomaticDockerCleanup = behavior.AutomaticDockerCleanup;
 
         var screenshot = new ScreenshotSettings();

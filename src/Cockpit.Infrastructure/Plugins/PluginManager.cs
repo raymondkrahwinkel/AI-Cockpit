@@ -63,6 +63,33 @@ public sealed class PluginManager(
     // (AC-2025): a version that failed does not count against the next one, nor against the one it replaced.
     private readonly Dictionary<string, (string Sha256, string Reason)> _restartReasons = new(StringComparer.Ordinal);
 
+    // AC-2025: the bytes each folder loaded this run. Contexts are non-collectible, so every one but the latest stays in memory.
+    private readonly Dictionary<string, HashSet<string>> _loadedBytes = new(StringComparer.Ordinal);
+
+    public int RetiredLoadContexts
+    {
+        get
+        {
+            lock (_lifecycleLock)
+            {
+                return _loadedBytes.Values.Sum(versions => versions.Count - 1);
+            }
+        }
+    }
+
+    private void _NoteLoaded(DiscoveredPlugin discovered)
+    {
+        lock (_lifecycleLock)
+        {
+            if (!_loadedBytes.TryGetValue(discovered.FolderId, out var versions))
+            {
+                _loadedBytes[discovered.FolderId] = versions = [];
+            }
+
+            versions.Add(discovered.Sha256);
+        }
+    }
+
     // AC-2025: plugins whose ConfigureServices added to the host container at startup; a live swap cannot replace those.
     private readonly HashSet<string> _registersServices = new(StringComparer.Ordinal);
 
@@ -177,6 +204,7 @@ public sealed class PluginManager(
             ICockpitPlugin? plugin;
             try
             {
+                _NoteLoaded(candidate);
                 plugin = activate(candidate);
             }
             catch (Exception exception)
@@ -495,6 +523,7 @@ public sealed class PluginManager(
                 }
                 else
                 {
+                    _NoteLoaded(discovered);
                     plugin = activate(discovered);
                     if (plugin is null)
                     {

@@ -69,6 +69,7 @@ public class PluginUpdateTests : IDisposable
         Assert.Contains("Version 1.0.0 is running", update.Live.RestartReason);
         Assert.Equal(v1.Sha256, Assert.Single(manager.Loaded).Sha256);
         Assert.Equal((await store.LoadAllAsync())[Id].PinnedSha256, v1.Sha256);
+        Assert.Equal(1, manager.RetiredLoadContexts);
 
         // The folder is the old version again, so a restart loads what runs now instead of waiting for approval of the failed one.
         Assert.Equal(v1.Sha256, await PluginClosureHash.OfInstalledFolderAsync(Path.Combine(pluginsRoot, Id)));

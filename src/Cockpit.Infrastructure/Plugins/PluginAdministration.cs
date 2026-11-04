@@ -40,6 +40,9 @@ internal sealed class PluginAdministration(
             .ToList();
     }
 
+    public Task<int> GetRetiredLoadContextsAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult(manager?.RetiredLoadContexts ?? 0);
+
     public Task<PluginStoreFetchResult> FetchStoreIndexAsync(PluginStoreConfig store, CancellationToken cancellationToken = default) =>
         storeClient.FetchIndexAsync(store, cancellationToken);
 

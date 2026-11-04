@@ -42,6 +42,7 @@ internal static class OptionsStaging
         "NotifyWhenAllSessionsIdle",
         "OpenInSimpleView",
         "OrchestratorMcpEnabled",
+        "PluginRestartAdviceAfter",
         "QuickNoteGlobalHotkeyEnabled",
         "QuickNoteHotkeyKeyName",
         "RenderBackendSelection",

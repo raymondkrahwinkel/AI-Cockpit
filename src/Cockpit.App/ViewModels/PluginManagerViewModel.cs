@@ -8,6 +8,7 @@ using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Plugins;
+using Cockpit.Core.SessionBehavior;
 
 namespace Cockpit.App.ViewModels;
 
@@ -169,6 +170,7 @@ public partial class PluginManagerViewModel : ViewModelBase
     // shows a "Restart now" button once this flips, instead of the operator having to remember to close and relaunch
     // the app by hand.
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowMemoryAdvice))]
     private bool _needsRestart;
 
     // "Update all" raises `NeedsRestart` after the *first* plugin of the batch, so the button appeared while the other
@@ -249,6 +251,32 @@ public partial class PluginManagerViewModel : ViewModelBase
         OnPropertyChanged(nameof(UnavailableUpdateSummary));
     }
 
+    // AC-2025: plugin versions a live update replaced and the process still holds, against how many the operator allows.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowMemoryAdvice), nameof(MemoryAdviceDetail))]
+    private int _retiredLoadContexts;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowMemoryAdvice))]
+    private int _restartAdviceAfter = SessionBehaviorSettings.DefaultPluginRestartAdviceAfter;
+
+    // A restart that is already offered frees the memory too.
+    public bool ShowMemoryAdvice => !NeedsRestart && PluginMemoryAdvice.IsDue(RetiredLoadContexts, RestartAdviceAfter);
+
+    public string MemoryAdviceDetail => PluginMemoryAdvice.Detail(RetiredLoadContexts);
+
+    private async Task _RefreshRetiredAsync()
+    {
+        try
+        {
+            RetiredLoadContexts = _administration is null ? 0 : await _administration.GetRetiredLoadContextsAsync();
+        }
+        catch (Exception)
+        {
+            // Advice only: an unreachable server must not break the plugin screen.
+        }
+    }
+
     public string RestartLabel => _server is null ? "Restart the cockpit now" : "Restart the server now";
 
     public string RestartTip => _server is null
@@ -304,6 +332,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         }
 
         await _LoadStoresAsync();
+        await _RefreshRetiredAsync();
     }
 
     private async Task _LoadStoresAsync()
@@ -1006,11 +1035,15 @@ public partial class PluginManagerViewModel : ViewModelBase
             BusyProgressIndeterminate = false;
             try
             {
-                var updated = 0;
+                var restartBefore = NeedsRestart;
+                var live = 0;
                 // Kept rather than only shown as they happen (AC-455): StatusMessage is one line, so each
                 // failure was overwritten by the next plugin, then by the catalogue reload, then by a summary
                 // telling the operator to read a message that no longer existed anywhere.
                 var failed = new List<string>();
+                // AC-2025: the plugins that only a restart can finish, told once at the end.
+                var waiting = new List<string>();
+                var unrecovered = false;
                 for (var i = 0; i < updates.Count; i++)
                 {
                     var row = updates[i];
@@ -1018,33 +1051,55 @@ public partial class PluginManagerViewModel : ViewModelBase
                     try
                     {
                         // Isolate each plugin: one failing update must not abort the whole batch.
-                        if (await _DownloadAndInstallRowAsync(row))
+                        var outcome = await _DownloadAndInstallRowAsync(row);
+                        if (!outcome.Installed)
                         {
-                            updated++;
+                            failed.Add($"'{row.Name}' ({StatusMessage.TrimEnd('.')})");
+                        }
+                        else if (outcome.Live is { IsLive: true })
+                        {
+                            live++;
+                        }
+                        else if (outcome.Live is { Failed: true } failure)
+                        {
+                            failed.Add($"'{row.Name}' ({failure.RestartReason?.TrimEnd('.') ?? "it could not be activated"})");
+                            unrecovered |= !failure.RolledBack;
                         }
                         else
                         {
-                            failed.Add(row.Name);
+                            waiting.Add($"'{row.Name}'");
                         }
                     }
                     catch (Exception exception)
                     {
-                        failed.Add(row.Name);
-                        StatusMessage = $"'{row.Name}' failed to update: {exception.Message}";
+                        failed.Add($"'{row.Name}' ({exception.Message.TrimEnd('.')})");
                     }
 
                     // Counted whether it worked or not: the bar tracks how far through the batch we are, and a
-                    // failed plugin is behind us too. Whether it installed is what `updated` answers.
+                    // failed plugin is behind us too.
                     BusyProgressValue = (i + 1) * 100.0 / updates.Count;
                 }
 
                 await BrowseStoresAsync();
-                StatusMessage = failed.Count == 0
-                    ? $"Updated {updated} plugin(s){_On}. {_Restart} to activate."
-                    : $"Updated {updated} of {updates.Count} plugin(s). {string.Join(", ", failed.Select(name => $"'{name}'"))} failed."
-                      + (updated > 0 ? $" {_Restart} to activate the rest." : string.Empty);
+                var summary = new List<string>();
+                if (live > 0)
+                {
+                    summary.Add($"Updated {live} plugin(s){_On}; they are active now.");
+                }
+
+                if (waiting.Count > 0)
+                {
+                    summary.Add($"{string.Join(", ", waiting)} will update after a restart. {_Restart} to finish.");
+                }
+
+                if (failed.Count > 0)
+                {
+                    summary.Add($"Failed: {string.Join(", ", failed)}.");
+                }
+
+                StatusMessage = summary.Count == 0 ? "Nothing was updated." : string.Join(" ", summary);
                 StatusIsError = failed.Count > 0;
-                NeedsRestart = updated > 0;
+                NeedsRestart = restartBefore || waiting.Count > 0 || unrecovered;
             }
             finally
             {
@@ -1134,7 +1189,7 @@ public partial class PluginManagerViewModel : ViewModelBase
             }
 
             var installed = await _DownloadAndInstallRowAsync(row);
-            outcome = new DesktopInstallOutcome(installed, NeedsRestart, StatusMessage);
+            outcome = new DesktopInstallOutcome(installed.Installed, NeedsRestart, StatusMessage);
         });
 
         return outcome ?? new DesktopInstallOutcome(false, false, "Another install is running; try again when it is done.");
@@ -1146,18 +1201,18 @@ public partial class PluginManagerViewModel : ViewModelBase
     // Install one store row's version — its advertised latest, or an explicit one for a rollback — through the
     // provisioning service (AC-510[b]), then run the same UI-side aftercare every install path always has: the consent
     // walk for a fresh install, the registration re-pin for a staged update.
-    private async Task<bool> _DownloadAndInstallRowAsync(StorePluginRowViewModel row, PluginStoreVersion? explicitVersion = null)
+    private async Task<InstallOutcome> _DownloadAndInstallRowAsync(StorePluginRowViewModel row, PluginStoreVersion? explicitVersion = null)
     {
         if ((explicitVersion ?? row.LatestVersionEntry) is not { } version)
         {
             StatusMessage = $"'{row.Name}' has no downloadable version in the store.";
-            return false;
+            return new InstallOutcome(false, null);
         }
 
         StatusMessage = $"Downloading '{row.Name}' v{version.Version}…";
         if (_administration is null)
         {
-            return false;
+            return new InstallOutcome(false, null);
         }
 
         var provision = await _administration.InstallFromStoreAsync(new PluginProvisionRequest(row.Id, row.Name, row.Store, version));
@@ -1189,7 +1244,7 @@ public partial class PluginManagerViewModel : ViewModelBase
             await _registrationStore.SetVersionChosenAsync(installedFolderId, explicitVersion is not null && explicitVersion.Version != row.LatestVersionEntry?.Version);
         }
 
-        return installResult.IsSuccess;
+        return new InstallOutcome(installResult.IsSuccess, provision.Live);
     }
 
     // AC-1500: the "Update" action of the bundle-minimum notice — the store's own update for one plugin, no extra prompt.
@@ -1260,3 +1315,5 @@ public partial class PluginManagerViewModel : ViewModelBase
 // AC-1590: what "Install on this desktop" came to: whether the plugin is installed, whether it needs the desktop to
 // restart before its UI part loads, and the line to show either way.
 public sealed record DesktopInstallOutcome(bool Installed, bool NeedsRestart, string Message);
+
+internal readonly record struct InstallOutcome(bool Installed, PluginLiveState? Live);
