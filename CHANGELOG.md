@@ -40,6 +40,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - Live plugin activation prepares encrypted settings, runs startup tasks and makes contributed workflow steps available without a restart.
 - Backend support for activating individual plugins while running, with a restart reason when their services need a new host container.
 - Plugin MCP providers can join the running catalog without rebuilding the host container.
+- When a plugin is disabled, a running session that still calls one of its MCP tools gets the error "plugin <name> is uitgeschakeld" and carries on; new sessions are no longer offered those tools.
 - Grok image input is detected from the service's model metadata, including model aliases.
 - Kimi and OpenCode sessions can receive image attachments when the selected model supports them.
 - Per-profile image input selection (Auto, On or Off), with the effective capability and its source.

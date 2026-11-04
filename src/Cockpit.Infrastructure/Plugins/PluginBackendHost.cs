@@ -1082,10 +1082,14 @@ public class PluginBackendHost(
         }
     }
 
-    public Task AddMcpEndpoint(string serverName, object tools, Func<bool>? isEnabled = null, bool isInternal = false) =>
-        services.GetService<ICockpitMcpEndpointHost>() is { } endpointHost
-            ? endpointHost.MountAsync(serverName, tools, isEnabled, isInternal)
-            : Task.CompletedTask;
+    public async Task AddMcpEndpoint(string serverName, object tools, Func<bool>? isEnabled = null, bool isInternal = false)
+    {
+        if (services.GetService<ICockpitMcpEndpointHost>() is { } endpointHost
+            && await endpointHost.MountAsync(serverName, tools, isEnabled, isInternal).ConfigureAwait(false))
+        {
+            Runtime.Add(() => endpointHost.Retire(serverName, $"plugin {pluginName} is uitgeschakeld"));
+        }
+    }
 
     public void AddManagedCli(ManagedCliDescriptor descriptor)
     {

@@ -12,5 +12,12 @@ public interface ICockpitMcpEndpointHost
     /// — the cockpit's own, not the registry (AC-40), idempotent per name. <paramref name="isEnabled"/> gates it on
     /// the plugin's setting (null = always on); <paramref name="isInternal"/> (AC-204) hides it but keeps it explicitly mountable; <paramref name="alwaysMounted"/> mounts into every session regardless.
     /// </summary>
-    Task MountAsync(string serverName, object tools, Func<bool>? isEnabled = null, bool isInternal = false, bool alwaysMounted = false, CancellationToken cancellationToken = default);
+    /// <returns>False when the name was already mounted, so the caller does not own that endpoint.</returns>
+    Task<bool> MountAsync(string serverName, object tools, Func<bool>? isEnabled = null, bool isInternal = false, bool alwaysMounted = false, CancellationToken cancellationToken = default);
+
+    /// <summary>Marks a mounted endpoint as gone: its tools answer <paramref name="reason"/> as an error and sessions stop being offered it (AC-2024).</summary>
+    void Retire(string serverName, string reason);
+
+    /// <summary>Closes the endpoint's listener.</summary>
+    Task UnmountAsync(string serverName, CancellationToken cancellationToken = default);
 }

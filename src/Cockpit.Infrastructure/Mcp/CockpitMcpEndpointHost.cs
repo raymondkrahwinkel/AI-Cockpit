@@ -110,10 +110,64 @@ internal sealed class CockpitMcpEndpointHost
 
     // A plugin's endpoint is never NodeOnly: that flag exists for this cockpit's own node-control endpoint, and a
     // plugin has no way to ask for a listener the operator's switches do not govern.
-    public Task MountAsync(string serverName, object tools, Func<bool>? isEnabled = null, bool isInternal = false, bool alwaysMounted = false, CancellationToken cancellationToken = default) =>
+    public Task<bool> MountAsync(string serverName, object tools, Func<bool>? isEnabled = null, bool isInternal = false, bool alwaysMounted = false, CancellationToken cancellationToken = default) =>
         _MountAsync(serverName, tools, isEnabled, isInternal, alwaysMounted, nodeOnly: false, cancellationToken);
 
-    private async Task _MountAsync(string serverName, object tools, Func<bool>? isEnabled, bool isInternal, bool alwaysMounted, bool nodeOnly, CancellationToken cancellationToken)
+    // AC-2024: the undo of a plugin's mount. The listener stays, so a session that still holds the URL gets a tool
+    // error naming the plugin instead of a refused connection; a later mount of the name replaces it.
+    public void Retire(string serverName, string reason)
+    {
+        lock (_mountedLock)
+        {
+            if (_mounted.FirstOrDefault(endpoint => endpoint.Name == serverName) is { } endpoint)
+            {
+                endpoint.Retired = reason;
+            }
+        }
+    }
+
+    public async Task UnmountAsync(string serverName, CancellationToken cancellationToken = default)
+    {
+        await _mountGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await _UnmountLockedAsync(serverName).ConfigureAwait(false);
+        }
+        finally
+        {
+            _mountGate.Release();
+        }
+    }
+
+    private async Task _UnmountLockedAsync(string serverName)
+    {
+        MountedEndpoint? endpoint;
+        lock (_mountedLock)
+        {
+            endpoint = _mounted.FirstOrDefault(mounted => mounted.Name == serverName);
+            if (endpoint is not null)
+            {
+                _mounted.Remove(endpoint);
+                _apps.Remove(endpoint.App);
+            }
+        }
+
+        if (endpoint is not null)
+        {
+            await endpoint.App.StopAsync().ConfigureAwait(false);
+            await endpoint.App.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
+    private string? _RetiredReason(string serverName)
+    {
+        lock (_mountedLock)
+        {
+            return _mounted.FirstOrDefault(endpoint => endpoint.Name == serverName)?.Retired;
+        }
+    }
+
+    private async Task<bool> _MountAsync(string serverName, object tools, Func<bool>? isEnabled, bool isInternal, bool alwaysMounted, bool nodeOnly, CancellationToken cancellationToken)
     {
         await _mountGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -122,7 +176,12 @@ internal sealed class CockpitMcpEndpointHost
             // for the same MCP server.
             if (_IsMounted(serverName))
             {
-                return;
+                if (_RetiredReason(serverName) is null)
+                {
+                    return false;
+                }
+
+                await _UnmountLockedAsync(serverName).ConfigureAwait(false);
             }
 
             var builder = WebApplication.CreateSlimBuilder();
@@ -141,6 +200,11 @@ internal sealed class CockpitMcpEndpointHost
                 CallToolResult result;
                 try
                 {
+                    if (_RetiredReason(serverName) is { } retired)
+                    {
+                        return new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = retired }] };
+                    }
+
                     var expectedParameters = _ExpectedParameterNames(context.MatchedPrimitive);
                     var unknownParameters = context.MatchedPrimitive is McpServerTool tool && context.Params.Arguments is { } arguments
                         ? UnknownParameterNames(tool.ProtocolTool.InputSchema, arguments.Keys)
@@ -280,7 +344,7 @@ internal sealed class CockpitMcpEndpointHost
 
             lock (_mountedLock)
             {
-                _mounted.Add(new MountedEndpoint(serverName, url, enabled, isInternal, alwaysMounted, nodeUrl, nodeOnly));
+                _mounted.Add(new MountedEndpoint(serverName, url, enabled, isInternal, alwaysMounted, nodeUrl, nodeOnly, app));
             }
 
             _logger.LogInformation("Cockpit MCP endpoint {ServerName} listening at {McpUrl}.", serverName, url);
@@ -290,6 +354,8 @@ internal sealed class CockpitMcpEndpointHost
             {
                 _logger.LogInformation("Node listener for {ServerName} presents certificate fingerprint {Fingerprint}.", serverName, _nodeCertificate.Fingerprint);
             }
+
+            return true;
         }
         finally
         {
@@ -314,7 +380,7 @@ internal sealed class CockpitMcpEndpointHost
                     Url = endpoint.Url,
                     // AC-1148: a NodeOnly endpoint is never offered to a session — it exists for the paired
                     // controller, which does not read this list.
-                    Enabled = endpoint.IsEnabled() && !endpoint.NodeOnly,
+                    Enabled = endpoint.IsEnabled() && !endpoint.NodeOnly && endpoint.Retired is null,
                     CockpitHosted = true,
                     Internal = endpoint.Internal,
                     AlwaysMounted = endpoint.AlwaysMounted,
@@ -562,5 +628,8 @@ internal sealed class CockpitMcpEndpointHost
         }
     }
 
-    private sealed record MountedEndpoint(string Name, string Url, Func<bool> IsEnabled, bool Internal, bool AlwaysMounted = false, string? NodeUrl = null, bool NodeOnly = false);
+    private sealed record MountedEndpoint(string Name, string Url, Func<bool> IsEnabled, bool Internal, bool AlwaysMounted = false, string? NodeUrl = null, bool NodeOnly = false, WebApplication App = null!)
+    {
+        public string? Retired { get; set; }
+    }
 }
