@@ -47,7 +47,7 @@ internal static partial class Screenshotter
         {
             ToolName = "Bash", ToolUseId = "elapsed-scene", InputJson = "{\"command\":\"dotnet build Cockpit.slnx\"}",
         });
-        session._ShowActiveToolCalls([new SessionActiveToolCall("elapsed-scene", "Bash", DateTimeOffset.Now.AddSeconds(-72))]);
+        session.ShowActiveToolCalls([new SessionActiveToolCall("elapsed-scene", "Bash", DateTimeOffset.Now.AddSeconds(-72))]);
         if (assistant)
         {
             var chat = _AssistantChatViewModel(session);

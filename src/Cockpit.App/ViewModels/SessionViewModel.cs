@@ -186,6 +186,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     private DateTimeOffset? _thinkingStartedAt;
     private DispatcherTimer? _activityAgeTicker;
+    private volatile bool _activityClockDisposed;
     public string ThinkingAgeText => _thinkingStartedAt is { } started ? _FormatElapsed(DateTimeOffset.Now - started) : string.Empty;
 
     internal string ToolActivityAge(string? toolUseId)
@@ -198,6 +199,17 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     private void _UpdateActivityClock()
     {
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            Dispatcher.UIThread.Post(_UpdateActivityClock);
+            return;
+        }
+
+        if (_activityClockDisposed)
+        {
+            return;
+        }
+
         _thinkingStartedAt = ShowThinkingIndicator ? _thinkingStartedAt ?? DateTimeOffset.Now : null;
         OnPropertyChanged(nameof(ThinkingAgeText));
         if (IsBusy || HasActiveToolActivity || HasBackgroundTasks || ChildAgents.Any(child => child.Reference.State == "running"))
@@ -2991,7 +3003,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
         if (!ReferenceEquals(state.ActiveToolCalls, _shownToolCalls))
         {
-            _ShowActiveToolCalls(state.ActiveToolCalls);
+            ShowActiveToolCalls(state.ActiveToolCalls);
         }
 
         // Replaced wholesale, an empty list included, which is how the last task ending arrives (AC-276).
@@ -3059,7 +3071,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     }
 
     // AC-532: a call keeps the label its row had when it surfaced ("Bash  ·  dotnet build"), the row's own ToolHeader.
-    internal void _ShowActiveToolCalls(IReadOnlyList<SessionActiveToolCall> calls)
+    internal void ShowActiveToolCalls(IReadOnlyList<SessionActiveToolCall> calls)
     {
         var surfaced = calls.Any(call => _activeToolCalls.TrueForAll(shown => shown.ToolUseId != call.ToolUseId));
         var shown = _activeToolCalls.ToList();
@@ -3255,7 +3267,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     protected override async ValueTask DisposeCoreAsync()
     {
-        _activityAgeTicker?.Stop();
+        _activityClockDisposed = true;
+        _OnUiThread(() => _activityAgeTicker?.Stop());
         // It was left unawaited so the turn could settle without waiting on a file, and a session closing right behind
         // it would otherwise take the process down before the record reached disk (AC-251).
         await _DrainUsageWritesAsync();

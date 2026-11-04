@@ -772,7 +772,7 @@
                                                     Foreground="{DynamicResource CockpitAccentBrush}"/>
                         <TextBlock Text="Thinking…" FontSize="11.5" VerticalAlignment="Center"
                                    Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                        <TextBlock Text="{Binding Session.ThinkingAgeText, StringFormat='· {0}'}" FontSize="11.5" VerticalAlignment="Center"
+                        <TextBlock Text="{Binding Session.ThinkingAgeText, StringFormat='· {0}'}" IsVisible="{Binding Session.ThinkingAgeText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" FontSize="11.5" VerticalAlignment="Center"
                                    Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                     </StackPanel>
 
@@ -787,7 +787,7 @@
                         <TextBlock Grid.Column="1" Text="{Binding Session.ActiveToolActivityLabel}" FontSize="11.5"
                                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                                    Foreground="{DynamicResource CockpitTextPrimaryBrush}"/>
-                        <TextBlock Grid.Column="2" Text="{Binding Session.ActiveToolActivityAgeText, StringFormat='· {0}'}" FontSize="11.5"
+                        <TextBlock Grid.Column="2" Text="{Binding Session.ActiveToolActivityAgeText, StringFormat='· {0}'}" IsVisible="{Binding Session.ActiveToolActivityAgeText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" FontSize="11.5"
                                    VerticalAlignment="Center" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                     </Grid>
 

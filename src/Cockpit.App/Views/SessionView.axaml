@@ -343,7 +343,7 @@
                                    VerticalAlignment="Center" Foreground="{DynamicResource CockpitAccentBrush}"/>
                         <TextBlock Text="Thinking…" FontSize="12" VerticalAlignment="Center"
                                    Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                        <TextBlock Text="{Binding ThinkingAgeText, StringFormat='· {0}'}" FontSize="12" VerticalAlignment="Center"
+                        <TextBlock Text="{Binding ThinkingAgeText, StringFormat='· {0}'}" IsVisible="{Binding ThinkingAgeText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" FontSize="12" VerticalAlignment="Center"
                                    Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                     </StackPanel>
                 </Border>
@@ -362,7 +362,7 @@
                                    Foreground="{DynamicResource CockpitTextPrimaryBrush}"/>
                         <!-- Third segment joined by the same "·" the mockup uses between all three (tool, step,
                              elapsed) — not just the first two. -->
-                        <TextBlock Grid.Column="2" Text="·" FontSize="12" VerticalAlignment="Center"
+                        <TextBlock Grid.Column="2" Text="·" IsVisible="{Binding ActiveToolActivityAgeText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" FontSize="12" VerticalAlignment="Center"
                                    Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                         <TextBlock Grid.Column="3" Text="{Binding ActiveToolActivityAgeText}" FontSize="12" VerticalAlignment="Center"
                                    Foreground="{DynamicResource CockpitTextFaintBrush}"/>
