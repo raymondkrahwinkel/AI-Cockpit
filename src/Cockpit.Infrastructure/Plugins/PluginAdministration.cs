@@ -26,7 +26,8 @@ internal sealed class PluginAdministration(
     IPluginTtyProviderRegistry? ttyProviders = null,
     IDelegationService? delegation = null,
     ISessionProfileStore? profiles = null,
-    ITrackerProviderRegistry? trackers = null) : IPluginAdministration
+    ITrackerProviderRegistry? trackers = null,
+    Func<DiscoveredPlugin, TimeSpan>? startGrace = null) : IPluginAdministration
 {
     public async Task<IReadOnlyList<InstalledPlugin>> GetInstalledAsync(CancellationToken cancellationToken = default)
     {
@@ -152,7 +153,7 @@ internal sealed class PluginAdministration(
         var (next, problem) = await _PrepareAsync(folderId).ConfigureAwait(false);
         if (next is null)
         {
-            return await _RollBackAsync(manager, running, problem, stopped: false).ConfigureAwait(false);
+            return await _RollBackAsync(manager, running, problem, stopped: false, restartTo: null).ConfigureAwait(false);
         }
 
         // Asked again: a session can start and a workspace can get unsaved work while the new version is prepared.
@@ -161,13 +162,26 @@ internal sealed class PluginAdministration(
             return PluginLiveState.Restart(late);
         }
 
+        // Turned away up front, so the running version does not stop for bytes that cannot start.
+        if (manager.WouldRefuse(next) is { } refused)
+        {
+            return await _RollBackAsync(manager, running, refused.Reason, stopped: false, restartTo: refused.Status == PluginActivationStatus.NeedsHostRestart ? next : null).ConfigureAwait(false);
+        }
+
         if (await _LeaveAsync(manager, folderId).ConfigureAwait(false) is { } stuck)
         {
             return stuck;
         }
 
-        var activated = await _ActivateAsync(folderId, next).ConfigureAwait(false);
-        return activated.IsLive ? activated : await _RollBackAsync(manager, running, activated.RestartReason, stopped: true).ConfigureAwait(false);
+        var activated = await _TryActivateAsync(folderId, next).ConfigureAwait(false);
+        if (activated.Status is PluginActivationStatus.Activated or PluginActivationStatus.AlreadyActive)
+        {
+            return PluginLiveState.Active;
+        }
+
+        // These bytes can only start with a restart: the running version comes back, and the files and the pin stay on the
+        // new ones (approved when the pin moved), so the restart is the route to them and asks for nothing more.
+        return await _RollBackAsync(manager, running, activated.Reason, stopped: true, restartTo: activated.Status == PluginActivationStatus.NeedsHostRestart ? next : null).ConfigureAwait(false);
     }
 
     // What a live swap would cut off: what a deactivation would, plus services only a restart replaces and unsaved work.
@@ -209,10 +223,9 @@ internal sealed class PluginAdministration(
         }
     }
 
-    // The previous version runs again from its verified copy, and its folder and pin go back with it. Without the copy
-    // the load is refused rather than run the new bytes under the old pin. The pin is always the hash of what runs, so
-    // a restart asks for approval instead of loading the new bytes.
-    private async Task<PluginLiveState> _RollBackAsync(PluginManager loaded, DiscoveredPlugin previous, string? error, bool stopped)
+    // The previous version runs again from its verified copy, with its folder and pin put back, so a restart asks for approval
+    // rather than load the new bytes. restartTo (bytes only a restart can start): folder and pin stay on it for that restart.
+    private async Task<PluginLiveState> _RollBackAsync(PluginManager loaded, DiscoveredPlugin previous, string? error, bool stopped, DiscoveredPlugin? restartTo)
     {
         var failure = (error ?? "The new version could not be activated.").TrimEnd('.');
         if (stopped)
@@ -226,6 +239,11 @@ internal sealed class PluginAdministration(
             {
                 return PluginLiveState.UpdateFailed($"The update failed ({failure}) and version {previous.Manifest.Version} could not be brought back ({restored.Reason?.TrimEnd('.')}).");
             }
+        }
+
+        if (restartTo is not null)
+        {
+            return PluginLiveState.Restart($"Version {restartTo.Manifest.Version} needs a restart to start ({failure}). Version {previous.Manifest.Version} keeps running until then.");
         }
 
         await registrations.SaveAsync(previous.FolderId, new PluginRegistration(Enabled: true, PinnedSha256: previous.Sha256), CancellationToken.None).ConfigureAwait(false);
@@ -245,17 +263,19 @@ internal sealed class PluginAdministration(
     }
 
     // A plugin that never finishes Initialize must not hold the gate and the tracker hold for good.
-    private static readonly TimeSpan StartGrace = TimeSpan.FromSeconds(30);
+    private readonly Func<DiscoveredPlugin, TimeSpan> _startGrace = startGrace ?? (_ => TimeSpan.FromSeconds(30));
 
-    private static async Task<PluginActivationResult> _ActivateWithinAsync(PluginManager loaded, DiscoveredPlugin plugin)
+    private async Task<PluginActivationResult> _ActivateWithinAsync(PluginManager loaded, DiscoveredPlugin plugin)
     {
         try
         {
-            return await Task.Run(() => loaded.ActivateOne(plugin)).WaitAsync(StartGrace).ConfigureAwait(false);
+            return await Task.Run(() => loaded.ActivateOne(plugin)).WaitAsync(_startGrace(plugin)).ConfigureAwait(false);
         }
         catch (TimeoutException)
         {
-            return new PluginActivationResult(PluginActivationStatus.NeedsRestart, $"The plugin did not finish starting in {StartGrace.TotalSeconds:0} seconds.");
+            var reason = $"The plugin did not finish starting in {_startGrace(plugin).TotalSeconds:0.#} seconds.";
+            await loaded.AbandonActivationAsync(plugin, reason).ConfigureAwait(false);
+            return new PluginActivationResult(PluginActivationStatus.NeedsRestart, reason);
         }
     }
 
@@ -311,11 +331,19 @@ internal sealed class PluginAdministration(
         providers?.OwnerOf(providerId) == folderId || ttyProviders?.OwnerOf(providerId) == folderId;
 
     // Any failure falls back to a restart, which loads the plugin the ordinary way.
-    private async Task<PluginLiveState> _ActivateAsync(string folderId, DiscoveredPlugin? found = null, CancellationToken cancellationToken = default)
+    private async Task<PluginLiveState> _ActivateAsync(string folderId, CancellationToken cancellationToken = default)
+    {
+        var result = await _TryActivateAsync(folderId, null, cancellationToken).ConfigureAwait(false);
+        return result.Status is PluginActivationStatus.Activated or PluginActivationStatus.AlreadyActive
+            ? PluginLiveState.Active
+            : PluginLiveState.Restart(result.Reason ?? "The plugin could not be activated.");
+    }
+
+    private async Task<PluginActivationResult> _TryActivateAsync(string folderId, DiscoveredPlugin? found, CancellationToken cancellationToken = default)
     {
         if (manager is null)
         {
-            return PluginLiveState.Restart("This host cannot activate a plugin while it runs.");
+            return new(PluginActivationStatus.NeedsRestart, "This host cannot activate a plugin while it runs.");
         }
 
         try
@@ -323,19 +351,13 @@ internal sealed class PluginAdministration(
             // AC-2025: a plugin that loads is hashed from every byte, not from display-cached file hashes.
             var discovered = found ?? (await bootstrap.DiscoverAsync(AbstractionsContract.Version, cancellationToken).ConfigureAwait(false))
                 .FirstOrDefault(plugin => plugin.FolderId == folderId);
-            if (discovered is null)
-            {
-                return PluginLiveState.Restart("The plugin is no longer on disk.");
-            }
-
-            var result = await _ActivateWithinAsync(manager, discovered).ConfigureAwait(false);
-            return result.Status is PluginActivationStatus.Activated or PluginActivationStatus.AlreadyActive
-                ? PluginLiveState.Active
-                : PluginLiveState.Restart(result.Reason ?? "The plugin could not be activated.");
+            return discovered is null
+                ? new(PluginActivationStatus.NeedsRestart, "The plugin is no longer on disk.")
+                : await _ActivateWithinAsync(manager, discovered).ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            return PluginLiveState.Restart(exception.Message);
+            return new(PluginActivationStatus.NeedsRestart, exception.Message);
         }
     }
 
@@ -366,6 +388,7 @@ internal sealed class PluginAdministration(
             registration,
             failures.LastOrDefault(failure => IPluginDiagnostics.ActivationPhases.Contains(failure.Phase))?.Error,
             failures.LastOrDefault(failure => failure.Phase == "compatibility")?.Error,
-            failures.LastOrDefault(failure => failure.Phase == "mcp-server")?.Error);
+            failures.LastOrDefault(failure => failure.Phase == "mcp-server")?.Error,
+            manager?.LoadedParts.FirstOrDefault(entry => entry.Discovered.FolderId == plugin.FolderId).Discovered?.Manifest.Version);
     }
 }

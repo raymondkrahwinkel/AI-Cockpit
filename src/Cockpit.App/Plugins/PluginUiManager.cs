@@ -69,7 +69,8 @@ public sealed class PluginUiManager(ILogger<PluginUiManager> logger, PluginDiagn
         }
     }
 
-    public void InitializeUiOne(
+    // Why the UI part could not start, or null (also for a plugin without one); a live update rolls back on it.
+    public string? InitializeUiOne(
         DiscoveredPlugin discovered,
         ICockpitPlugin? plugin,
         Func<DiscoveredPlugin, ICockpitPlugin?, ICockpitPluginUi?> activateUi,
@@ -79,17 +80,19 @@ public sealed class PluginUiManager(ILogger<PluginUiManager> logger, PluginDiagn
         {
             if (_Activate(discovered, plugin, activateUi) is not { } ui)
             {
-                return;
+                return null;
             }
 
             var host = hostFor(discovered, ui);
             _hosts[discovered] = host;
             ui.InitializeUi(host);
+            return null;
         }
         catch (Exception exception)
         {
             logger.LogWarning(exception, "Plugin {PluginId}'s UI part failed; its UI contributions are skipped.", discovered.FolderId);
             diagnostics.Record(discovered.FolderId, discovered.Manifest.Name, "initialize-ui", exception.Message);
+            return exception.Message;
         }
     }
 
@@ -162,11 +165,13 @@ public sealed class PluginUiManager(ILogger<PluginUiManager> logger, PluginDiagn
 
     // AC-1571: the UI part type and host of the plugin with manifest id `pluginId`, when that part is its own type. One the
     // backend entry type plays too is left out: a fresh copy of it would run InitializeUi without its Initialize.
-    public (Type UiType, ICockpitUiHost Host)? UiPartOf(string pluginId) =>
+    // AC-2025: with the version it is, read when asked and never kept, so the type of a replaced version is not held on to.
+    public (Type UiType, ICockpitUiHost Host, string Version)? UiPartOf(string pluginId) =>
         backend.LoadedParts
             .Where(entry => string.Equals(entry.Discovered.Manifest.Id, pluginId, StringComparison.Ordinal)
-                && _ui.TryGetValue(entry.Discovered, out var ui) && !ReferenceEquals(ui, entry.Plugin))
-            .Select(entry => ((Type, ICockpitUiHost)?)(_ui[entry.Discovered].GetType(), _hosts[entry.Discovered]))
+                && _ui.TryGetValue(entry.Discovered, out var ui) && !ReferenceEquals(ui, entry.Plugin)
+                && _hosts.ContainsKey(entry.Discovered))
+            .Select(entry => ((Type, ICockpitUiHost, string)?)(_ui[entry.Discovered].GetType(), _hosts[entry.Discovered], entry.Discovered.Manifest.Version))
             .FirstOrDefault();
 
     private static Assembly _LoadVerified(AssemblyLoadContext context, PluginShadow shadow, string path)

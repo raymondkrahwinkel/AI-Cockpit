@@ -996,11 +996,18 @@ public partial class App : Application
                 discovered.Manifest.SecretKeys ?? [],
                 pluginManager.RuntimeFor(discovered.FolderId));
         uiParts.InitializeUi(PluginUiManager.ActivateUi, UiHostFor);
-        pluginManager.Activated += (discovered, plugin) => Dispatcher.UIThread.Post(() =>
+        // AC-2025: awaited by the activation, so a UI part that fails fails the update instead of reporting it done.
+        pluginManager.StartUiPart = (discovered, plugin, isCurrent) => UiThreadCall.Uncapped(() =>
         {
-            uiParts.InitializeUiOne(discovered, plugin, PluginUiManager.ActivateUi, UiHostFor);
+            if (!isCurrent())
+            {
+                return Task.FromResult<string?>("The activation was abandoned.");
+            }
+
+            var failure = uiParts.InitializeUiOne(discovered, plugin, PluginUiManager.ActivateUi, UiHostFor);
             Program.Services.GetRequiredService<HelpService>().Invalidate();
             cockpit.RefreshLivePlugin(discovered.FolderId);
+            return Task.FromResult(failure);
         });
         // AC-2024: uncapped, as a timeout here would leave the plugin half gone with its registration already saved.
         pluginManager.RunOnUiThread = work => UiThreadCall.Uncapped(() =>

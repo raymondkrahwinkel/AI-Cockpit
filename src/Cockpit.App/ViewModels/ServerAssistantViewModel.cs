@@ -212,7 +212,7 @@ public sealed partial class ServerAssistantViewModel(string server, IAssistantAd
         var dialog = new AssistantProfileDialogViewModel(
             slot, null, pluginProviderRegistry: services, mcpServerCatalog: services, tokenEstimator: services, pluginConfigViews: services, canChooseProvider: false);
         await dialog.LoadAsync();
-        if (services.BrainsUnavailable is { } note)
+        if (services.Notes is { } note)
         {
             dialog.StatusMessage = note;
         }

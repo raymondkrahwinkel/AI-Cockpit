@@ -640,7 +640,8 @@ internal static class PluginEndpoints
         string? PinnedSha256,
         string? Author,
         string? Description,
-        string? MinHostVersion)
+        string? MinHostVersion,
+        string? RunningVersion = null)
     {
         public static PluginListEntry From(InstalledPlugin plugin, IReadOnlyList<DiscoveredPlugin>? loaded)
         {
@@ -660,7 +661,8 @@ internal static class PluginEndpoints
                 plugin.Registration?.PinnedSha256,
                 discovered.Manifest.Author,
                 discovered.Manifest.Description,
-                discovered.Manifest.MinHostVersion);
+                discovered.Manifest.MinHostVersion,
+                plugin.RunningVersion);
         }
     }
 
