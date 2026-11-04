@@ -1008,6 +1008,8 @@ public partial class App : Application
             work();
             return Task.CompletedTask;
         });
+        pluginManager.UpdateBlocker = folderId => UiThreadCall.Uncapped(() => Task.FromResult<string?>(
+            cockpit.Workspaces.HasGuardedPluginWorkspace(folderId) ? "A workspace of this plugin asks before it closes." : null));
         pluginManager.Deactivated += (discovered, plugin) =>
         {
             uiParts.DeactivateUi(discovered, plugin);

@@ -32,6 +32,10 @@ public sealed class PluginManager(
     // AC-2024: raised on the UI thread once the plugin's contributions are undone, for what holds its UI part.
     public event Action<DiscoveredPlugin, ICockpitPlugin?>? Deactivated;
 
+    // AC-2025: what the UI holds open for a plugin that an update would close without asking (unsaved work in a
+    // workspace): a reason, or null. The desktop sets it; a server has no workspaces.
+    public Func<string, Task<string?>> UpdateBlocker { get; set; } = _ => Task.FromResult<string?>(null);
+
     // AC-2024: the desktop points this at its UI thread; a server has none, and runs the teardown in place.
     public Func<Action, Task> RunOnUiThread { get; set; } = work =>
     {
@@ -50,8 +54,12 @@ public sealed class PluginManager(
 
     // Both directions: a plugin going up or down refuses the other until it has settled.
     private readonly HashSet<string> _activating = new(StringComparer.Ordinal);
-    // AC-2023: the activator's non-collectible ALC survives a refusal, so retrying requires a restart.
-    private readonly Dictionary<string, string> _restartReasons = new(StringComparer.Ordinal);
+    // AC-2023: the activator's non-collectible ALC survives a refusal, so retrying requires a restart. Per bytes
+    // (AC-2025): a version that failed does not count against the next one, nor against the one it replaced.
+    private readonly Dictionary<string, (string Sha256, string Reason)> _restartReasons = new(StringComparer.Ordinal);
+
+    // AC-2025: plugins whose ConfigureServices added to the host container at startup; a live swap cannot replace those.
+    private readonly HashSet<string> _registersServices = new(StringComparer.Ordinal);
 
     // AC-1389: a plugin whose backend part threw in Initialize gets no UI part, which would only meet unknown actions.
     private readonly HashSet<DiscoveredPlugin> _initializeFailed = [];
@@ -182,7 +190,12 @@ public sealed class PluginManager(
 
             try
             {
+                var before = services.Count;
                 plugin.ConfigureServices(services);
+                if (services.Count > before)
+                {
+                    _registersServices.Add(candidate.FolderId);
+                }
             }
             catch (Exception exception)
             {
@@ -369,6 +382,15 @@ public sealed class PluginManager(
         }
     }
 
+    // AC-2025: whether a startup ConfigureServices added to the container, which only a restart replaces.
+    public bool RegistersServices(string folderId)
+    {
+        lock (_lifecycleLock)
+        {
+            return _registersServices.Contains(folderId);
+        }
+    }
+
     public PluginActivationResult ActivateOne(DiscoveredPlugin discovered)
     {
         Func<DiscoveredPlugin, ICockpitPlugin?> activate;
@@ -380,9 +402,9 @@ public sealed class PluginManager(
                 return new(PluginActivationStatus.NeedsRestart, "The plugin lifecycle is not available for live activation.");
             }
 
-            if (_restartReasons.TryGetValue(discovered.FolderId, out var reason))
+            if (_restartReasons.TryGetValue(discovered.FolderId, out var held) && held.Sha256 == discovered.Sha256)
             {
-                return new(PluginActivationStatus.NeedsRestart, reason);
+                return new(PluginActivationStatus.NeedsRestart, held.Reason);
             }
 
             if (discovered.Manifest.RequiresRestart)
@@ -489,7 +511,7 @@ public sealed class PluginManager(
             _activating.Remove(discovered.FolderId);
             if (result.Status == PluginActivationStatus.NeedsRestart && result.Reason is { } reason)
             {
-                _restartReasons[discovered.FolderId] = reason;
+                _restartReasons[discovered.FolderId] = (discovered.Sha256, reason);
             }
 
             if (!_disposed)

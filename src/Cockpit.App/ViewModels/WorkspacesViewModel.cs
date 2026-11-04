@@ -476,6 +476,14 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     public Task<bool> ConfirmCloseAsync(string workspaceId) =>
         (_pluginContexts.GetValueOrDefault(workspaceId) as WorkspaceContext)?.ConfirmCloseAsync() ?? Task.FromResult(true);
 
+    // AC-2025: whether an open workspace of this plugin asks before it closes. A live update closes them without asking.
+    internal bool HasGuardedPluginWorkspace(string pluginId)
+    {
+        var types = _workspaceTypes?.TypesOf(pluginId) ?? [];
+        return Settings.Workspaces.Any(workspace =>
+            types.Contains(workspace.Type.Id) && (_pluginContexts.GetValueOrDefault(workspace.Id) as WorkspaceContext)?.HasCloseGuard == true);
+    }
+
     // AC-2024: the guards of every open workspace of this plugin, stopping at the first the operator declines.
     public async Task<bool> ConfirmPluginWorkspacesCloseAsync(string pluginId)
     {

@@ -348,7 +348,8 @@ public sealed partial class ProviderStepViewModel : ObservableObject
                             manifest.Version,
                             manifest.Author,
                             plugin.Discovered.FolderPath,
-                            pinnedSha256)
+                            pinnedSha256,
+                            manifest.Capabilities)
                         : new Cockpit.App.ViewModels.PluginRowViewModel(plugin).ToConsentInfo();
                     if (!await _dialogs.ShowPluginConsentAsync(consent).ConfigureAwait(true))
                     {
