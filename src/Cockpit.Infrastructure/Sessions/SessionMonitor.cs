@@ -3,6 +3,7 @@ using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Assistant;
+using Cockpit.Infrastructure.Agents;
 using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Infrastructure.Sessions;
@@ -59,6 +60,11 @@ public sealed class SessionMonitor(
             var live = new Dictionary<string, Observation>(StringComparer.Ordinal);
             foreach (ISessionHandle handle in watching())
             {
+                if (handle.IsTerminal)
+                {
+                    continue;
+                }
+
                 try
                 {
                     SessionWakeState state = await handle.ReadWakeStateAsync().ConfigureAwait(false);
@@ -89,7 +95,8 @@ public sealed class SessionMonitor(
                 {
                     active[(paneId, SessionWatchEvents.NeedsAttention)] = session;
                 }
-                if (session.Status != SessionStatus.Busy && session.Handle.AbandonedProcessCount > 0)
+                if (session.Status is not (SessionStatus.Busy or SessionStatus.WorkingBackground)
+                    && session.Handle.AbandonedProcessCount > 0)
                 {
                     active[(paneId, Abandoned)] = session;
                 }
@@ -199,7 +206,7 @@ public sealed class SessionMonitor(
 
     private static string _Short(string text, int limit)
     {
-        string single = text.ReplaceLineEndings(" ").Trim();
+        string single = AgentMessageContent.Normalize(text, out _).ReplaceLineEndings(" ").Trim();
         return single.Length <= limit ? single : single[..limit] + "…";
     }
 

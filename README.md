@@ -1,8 +1,9 @@
 # AI-Cockpit
 
 The host checks live sessions every 30 seconds for failed turns, unanswered permissions,
-abandoned processes while not Busy, and panes that disappear before finishing. It sends at most
-one inbox message per tick to the assistant, with transcript context, and leaves each incident quiet
+abandoned processes when a session is neither Busy nor WorkingBackground, and panes that disappear
+before finishing. Plain terminals are excluded. It sends at most one inbox message per tick to the
+assistant, with transcript context, and leaves each incident quiet
 until it clears. An event armed through `watch_session` is handled by that watch instead.
 `Notifications.MonitorMessagesPerHour` in `cockpit.json` caps these messages over a rolling hour
 (default 12; nonpositive values use the default). Findings over the cap are held until room returns.
