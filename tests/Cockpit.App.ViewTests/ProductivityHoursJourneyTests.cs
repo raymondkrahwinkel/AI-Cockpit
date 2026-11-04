@@ -337,7 +337,7 @@ public sealed class ProductivityHoursJourneyTests
         Assert.True(overlapResponseA.RootElement.GetProperty("ok").GetBoolean());
         Assert.True(overlapResponseB.RootElement.GetProperty("ok").GetBoolean());
         Assert.False(overlapResponseB.RootElement.GetProperty("isGreen").GetBoolean());
-        await _Until(() => _Texts(screen).Contains("⚠ overschrijding"), "the overrun across overlapping offers");
+        await _Until(() => _Texts(screen).Contains("⚠ overrun"), "the overrun across overlapping offers");
         timeEntries.Entries.Clear();
         timeEntries.Seed(beforeReport);
 
