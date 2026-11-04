@@ -2107,6 +2107,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private bool _notifyOnCiFailure = true;
 
+    [ObservableProperty]
+    private int _monitorMessagesPerHour = NotificationSettings.DefaultMonitorMessagesPerHour;
+
     // Whether the cockpit window is the focused one. Set by the window itself (it is the only thing that knows),
     // and read by the finished-session notification: a session you are looking at does not need to announce itself.
     [ObservableProperty]
@@ -4063,6 +4066,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         NotifyOnSessionIdle = settings.NotifyOnSessionIdle;
         NotifyWhenAllSessionsIdle = settings.NotifyWhenAllSessionsIdle;
         NotifyOnCiFailure = settings.NotifyOnCiFailure;
+        MonitorMessagesPerHour = settings.MonitorMessagesPerHour;
         _remoteHealthWatchedInterval = settings.RemoteHealthWatchedInterval;
         _remoteHealthBackgroundInterval = settings.RemoteHealthBackgroundInterval;
     }
@@ -4098,6 +4102,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             NotifyOnSessionIdle = NotifyOnSessionIdle,
             NotifyWhenAllSessionsIdle = NotifyWhenAllSessionsIdle,
             NotifyOnCiFailure = NotifyOnCiFailure,
+            MonitorMessagesPerHour = MonitorMessagesPerHour > 0 ? MonitorMessagesPerHour : NotificationSettings.DefaultMonitorMessagesPerHour,
             // 0 is a real choice here ("never let a session go idle"), so it is saved as written rather than
             // being nudged back to the default the way the away-threshold is.
             SessionIdleThreshold = SessionIdleMinutes > 0 ? TimeSpan.FromMinutes(SessionIdleMinutes) : TimeSpan.Zero,
@@ -7974,6 +7979,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         NotifyOnSessionIdle = notifications.NotifyOnSessionIdle;
         NotifyWhenAllSessionsIdle = notifications.NotifyWhenAllSessionsIdle;
         NotifyOnCiFailure = notifications.NotifyOnCiFailure;
+        MonitorMessagesPerHour = notifications.MonitorMessagesPerHour;
 
         ShowTimestamps = new TranscriptDisplaySettings().ShowTimestamps;
 

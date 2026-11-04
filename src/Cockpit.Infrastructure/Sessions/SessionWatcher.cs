@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Agents;
@@ -75,7 +76,7 @@ public sealed class SessionWatcher : ISessionWatcher, ISingletonService, IDispos
     private readonly ILogger<SessionWatcher> _logger;
     private readonly TimeProvider _time;
 
-    private readonly Dictionary<string, Armed> _watches = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, Armed> _watches = new(StringComparer.Ordinal);
 
     private ITimer? _timer;
 
@@ -229,7 +230,11 @@ public sealed class SessionWatcher : ISessionWatcher, ISingletonService, IDispos
 
     // Disarms a pane. False when nothing was armed on it, which is worth saying rather than reporting a stop of
     // something that was never running.
-    public bool Unwatch(string paneId) => _watches.Remove(paneId);
+    public bool Unwatch(string paneId) => _watches.TryRemove(paneId, out _);
+
+    // The monitor asks per event: a pattern watch must not hide an unrelated failure on the same pane.
+    public bool IsArmed(string paneId, string @event) =>
+        _watches.TryGetValue(paneId, out Armed? watch) && watch.Events.Contains(@event);
 
     // AC-1375/AC-1380: no hop to make any more — the gateway reached across to the UI thread this watcher used to
     // live on; now both sides are in Infrastructure, and `_watches` is this class's own state either way.
@@ -285,7 +290,7 @@ public sealed class SessionWatcher : ISessionWatcher, ISingletonService, IDispos
         {
             // A pane that is gone is unwatched whatever it was armed for — a watch on something that no longer
             // exists would otherwise sit there for the rest of the run.
-            _watches.Remove(paneId);
+            _watches.TryRemove(paneId, out _);
             if (watch.Events.Contains(SessionWatchEvents.Gone) && !watch.Reported)
             {
                 _Report(paneId, watch.Title, SessionWatchEvents.Gone,
