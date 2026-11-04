@@ -36,6 +36,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Removed
 
+- The redundant AssistantReadGateway test, because AssistantReadMcpTools.Bounded is already covered by ReadTranscript_StripsTerminalControlSequences.
 - The Fan-out plugin and its workspace, because it is no longer used.
 - The GitHub Models provider plugin, because the service has been discontinued.
 
