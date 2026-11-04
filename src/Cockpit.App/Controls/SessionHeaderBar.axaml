@@ -18,83 +18,7 @@
     <Grid RowDefinitions="Auto,Auto">
     <DockPanel>
 
-        <!-- Usage pill (AC-105): one segmented pill that reads as a whole — a segment per selected metric the
-             session has data for (each coloured by its own severity, amber/red on its threshold), the segments
-             butting together with a thin divider between them, and the chevron glued on as the final segment.
-             Which metrics show is a global Options preference; empty (no space taken) when none applies. -->
-        <Border DockPanel.Dock="Right" VerticalAlignment="Center" Margin="8,0,0,0" ClipToBounds="True"
-                Background="{DynamicResource CockpitSecondaryBgBrush}"
-                BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
-                CornerRadius="{StaticResource CockpitPillRadius}"
-                IsVisible="{Binding HasUsagePillRegion}">
-            <StackPanel Orientation="Horizontal">
-                <ItemsControl ItemsSource="{Binding UsagePillItems}" VerticalAlignment="Stretch">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <StackPanel Orientation="Horizontal"/>
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="vm:UsagePillItem">
-                            <StackPanel Orientation="Horizontal">
-                                <!-- Divider between adjacent segments; the first segment carries none. -->
-                                <Border Width="1" Background="{DynamicResource CockpitHairlineBrush}"
-                                        IsVisible="{Binding ShowLeadingDivider}"/>
-                                <TextBlock Text="{Binding DisplayText}" FontSize="10" Padding="8,2"
-                                           VerticalAlignment="Center"
-                                           Foreground="{Binding SeverityBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"
-                                           ToolTip.Tip="{Binding Tooltip}"/>
-                            </StackPanel>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-
-                <!-- Chevron as the final segment: opens the detail flyout (ctx plus each rate window with its
-                     reset time) — the thing the compact segments cannot say. Its divider shows only when a
-                     metric segment precedes it. -->
-                <Border Width="1" Background="{DynamicResource CockpitHairlineBrush}"
-                        IsVisible="{Binding ShowChevronDivider}"/>
-                <Button VerticalAlignment="Stretch" Padding="6,2"
-                        MinWidth="0" MinHeight="0"
-                        Background="Transparent" BorderThickness="0"
-                        IsVisible="{Binding HasUsagePill}"
-                        ToolTip.Tip="{Binding LimitsTooltip}">
-                    <materialIcons:MaterialIcon Kind="ChevronDown" Width="12" Height="12"
-                                                VerticalAlignment="Center"
-                                                Foreground="{DynamicResource CockpitTextFaintBrush}"/>
-                    <Button.Flyout>
-                        <Flyout Placement="Bottom">
-                            <StackPanel Spacing="8" MinWidth="210" Margin="4">
-                                <TextBlock Text="Usage" FontWeight="SemiBold" FontSize="11.5"
-                                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                                <controls:LimitBar Label="ctx" Percent="{Binding ContextUsedPercent}" Threshold="{Binding ContextThreshold}" FontSize="10" Height="14"
-                                                   StretchTrack="True" HorizontalAlignment="Stretch"/>
-                                <ItemsControl ItemsSource="{Binding RateLimits}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate x:DataType="sessions:SessionRateWindow">
-                                            <StackPanel Spacing="1" Margin="0,4,0,0">
-                                                <controls:LimitBar Label="{Binding Label}" Percent="{Binding UsedPercent}" Threshold="{Binding ThresholdPercent}" FontSize="10" Height="14"
-                                                                   StretchTrack="True" HorizontalAlignment="Stretch"/>
-                                                <TextBlock Text="{Binding ResetsAt, Converter={x:Static conv:RateWindowResetConverter.Instance}}"
-                                                           FontSize="10" Foreground="{DynamicResource CockpitTextFaintBrush}"
-                                                           IsVisible="{Binding ResetsAt, Converter={x:Static ObjectConverters.IsNotNull}}"/>
-                                            </StackPanel>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                                <!-- AC-549: a window ticked in Options that this provider does not report says
-                                     so here. The pill stays empty (AC-530 criterion 5 — an unknown window must
-                                     not be drawn as 0%), but silence in both places reads as a broken setting. -->
-                                <TextBlock Text="{Binding UnreportedWindowsNotice}" FontSize="10" TextWrapping="Wrap"
-                                           Margin="0,4,0,0"
-                                           Foreground="{DynamicResource CockpitTextFaintBrush}"
-                                           IsVisible="{Binding UnreportedWindowsNotice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                            </StackPanel>
-                        </Flyout>
-                    </Button.Flyout>
-                </Button>
-            </StackPanel>
-        </Border>
+        <controls:UsagePill DockPanel.Dock="Right" Margin="8,0,0,0"/>
 
         <!-- Branch (plugin-contributed, e.g. git-status): sizes to its own content (the badge trims its own long
              branch names), clipped to whatever room is left so it never renders onto the pill beside it. Hidden on
@@ -215,6 +139,7 @@
                 <materialIcons:MaterialIcon Kind="ClockOutline" Width="14" Height="14"
                                             Foreground="{DynamicResource CockpitStatusBackgroundBrush}"/>
                 <TextBlock Text="{Binding RunStatusLabel}" FontSize="11" TextTrimming="CharacterEllipsis"
+                           ToolTip.Tip="{Binding RunCommandTooltip}"
                            Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
             </StackPanel>
         </Button>

@@ -29,7 +29,7 @@ public sealed class StartupJourney
 
     private static readonly string[] Bundled =
     [
-        "autopilot", "claude-provider", "cli-agent-provider", "clock", "depot", "example-companion-tool", "example-workspace", "fan-out", "gemini-provider", "git-status",
+        "autopilot", "claude-provider", "cli-agent-provider", "clock", "depot", "example-companion-tool", "example-workspace", "gemini-provider", "git-status",
         "schedules", "transcript-search", "usage-trend",
     ];
 

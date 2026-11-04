@@ -522,7 +522,8 @@ public sealed class HeavyRunQueue : ISessionRunActivities, ISupervisedActivitySo
             slot.Request.Kind.ToString().ToLowerInvariant(),
             state,
             since,
-            waitReason);
+            waitReason,
+            slot.Request.Command);
 
     private sealed class Slot(HeavyRunQueue queue, HeavyRunRequest request, DateTimeOffset enqueuedAt, string costKey) : IHeavyRunSlot
     {

@@ -269,9 +269,12 @@ public sealed class ToastHostViewModel
     {
         Toasts.Add(toast);
 
-        if (!sticky && toast.Actions.Count == 0 && toast.Severity is ToastSeverity.Information or ToastSeverity.Success)
+        if (!sticky && toast.Actions.Count == 0)
         {
-            _scheduleAutoDismiss(toast, AutoDismissDelay);
+            var delay = toast.Severity is ToastSeverity.Warning or ToastSeverity.Error
+                ? AutoDismissDelay + AutoDismissDelay
+                : AutoDismissDelay;
+            _scheduleAutoDismiss(toast, delay);
         }
     }
 

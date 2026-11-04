@@ -54,6 +54,7 @@ internal sealed class AssistantReadMcpTools(
         + "workspaceId and workspaceName identify the local desk; projectId identifies its project, or null for none. "
         + "machine gives name, stable discoveryId and local; pane ids alone may collide across machines. "
         + "statusline is the session's own convention, not a work record; a missing ticket there does not prove nobody works on it. hasStatusline says whether it is set. "
+        + "activity and activityAge name the active tool and its elapsed state; empty means no current tool or no tool stream, not an idle session. "
         + "status reports activity; Failed means the last turn crashed, with no question waiting. "
         + "needsYou means an unanswered permission (status == NeedsAttention); always report it and name the session. "
         + "ready distinguishes an Idle session able to accept a prompt from one that never came up. "
@@ -107,6 +108,8 @@ internal sealed class AssistantReadMcpTools(
                 abandonedProcessCount = session.AbandonedProcessCount,
                 projectId = session.ProjectId,
                 mcpServers = session.McpServers,
+                activity = session.Activity,
+                activityAge = session.ActivityAge,
                 machine = here,
             });
 
@@ -356,7 +359,7 @@ internal sealed class AssistantReadMcpTools(
 
     [McpServerTool(Name = "model_options", ReadOnly = true)]
     [McpMeta(AssistantAgentMcpTools.AlwaysLoadMeta, true)]
-    [Description("States what is known right now about the model behind each configured profile, so you can pick profile, model and effort with facts: call it BEFORE every start_agent and before giving a subagent a model, for the task type at hand. Per profile: price now (USD per million tokens, input and output) and which window or modifier is applied, the quality index for the task type (taskType coding uses the coding index, agentic the agentic one, anything else or none the intelligence index), context tokens, limits, peak windows (provider-reported or public, each with whether it is active now) and quota state (how far each usage window stands and when it resets). EVERY FACT CARRIES ITS SOURCE AND AGE (ageSeconds; stale true once it is past what its source vouches for) and attribution lists the sources used. \"unknown\" means no source knows it, and the text after it says why: it is never 0 and never free (a model that is genuinely free says price 0 with a source). Say so when you meet it, and when data is stale, and never fill a gap with a figure of your own. Rows are ranked by the quality index for the task type, best first, unknown last. maxPricePerMTokens keeps only rows whose known input and output price now are both at or under it; a row with an unknown price is kept and marked, never dropped. This tool states facts and does not choose: the choice stays yours, within the operator's rules, and you state it in one line with the reason.")]
+    [Description("States what is known right now about the model behind each configured profile, so you can pick profile, model and effort with facts: call it BEFORE every start_agent and before giving a subagent a model, for the task type at hand. Per profile: price now (USD per million tokens, input and output) and which window or modifier is applied, every available quality score (coding, agentic and intelligence) with its source and age, provider/generation/tier when publicModelRef can establish them, context tokens, limits, peak windows (provider-reported or public, each with whether it is active now) and quota state (how far each usage window stands and when it resets). EVERY FACT CARRIES ITS SOURCE AND AGE (ageSeconds; stale true once it is past what its source vouches for) and attribution lists the sources used. \"unknown\" means no source knows it, and the text after it says why: it is never 0 and never free (a model that is genuinely free says price 0 with a source). Say so when you meet it, and when data is stale, and never fill a gap with a figure of your own. ranking says which one score kind ranked comparable rows; different score kinds are never comparable or mixed into that order. maxPricePerMTokens keeps only rows whose known input and output price now are both at or under it; a row with an unknown price is kept and marked, never dropped. This tool states facts and does not choose: the choice stays yours, within the operator's rules, and you state it in one line with the reason.")]
     public async Task<string> ModelOptionsAsync(
         [Description("What the work is: coding, agentic, or anything else (e.g. review, research, chat) for the general intelligence index. Optional.")] string? taskType = null,
         [Description("Keep only rows whose known price now (input and output, USD per million tokens) is at or under this. Optional.")] decimal? maxPricePerMTokens = null,
@@ -557,10 +560,10 @@ internal sealed class AssistantReadMcpTools(
     // One transcript row as the assistant may be shown it: terminal control sequences stripped (via
     // `AgentMessageContent.Normalize`, since ANSI could reposition the cockpit's own output) and cut to
     // `MaxEntryTextLength`. Truncation is reported off the normalised length, not the raw one.
-    internal static (string Text, bool Truncated) Bounded(string? text)
+    internal static (string Text, bool Truncated) Bounded(string? text, int maxLength = MaxEntryTextLength)
     {
         var normalized = AgentMessageContent.Normalize(text, out _);
-        return (BoundedText.Trim(normalized, MaxEntryTextLength), normalized.Length > MaxEntryTextLength);
+        return (BoundedText.Trim(normalized, maxLength), normalized.Length > maxLength);
     }
 
     // The gate, in one place so every tool on this server shares it. A request with no verified pane is refused

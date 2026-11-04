@@ -45,7 +45,7 @@ public sealed class BackgroundTaskViewModel : ObservableObject
 
     public string TokensText => _tokens?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "unknown";
 
-    public string StatusText => "running";
+    public string StatusText => "Running";
 
     public string KindLabel => Kind switch
     {

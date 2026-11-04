@@ -10,7 +10,7 @@ public sealed class PluginProvisioningService(IPluginStoreClient storeClient, IP
     : IPluginProvisioningService, ISingletonService
 {
     public async Task<PluginProvisionResult> InstallAsync(
-        PluginProvisionRequest request, int hostAbstractionsMajor, Version? hostVersion = null, CancellationToken cancellationToken = default)
+        PluginProvisionRequest request, int hostAbstractionsMajor, Version? hostVersion = null, CancellationToken cancellationToken = default, IProgress<PluginDownloadProgress>? progress = null)
     {
         var effectiveHostVersion = hostVersion ?? HostVersionInfo.Current;
 
@@ -24,7 +24,7 @@ public sealed class PluginProvisioningService(IPluginStoreClient storeClient, IP
             return new PluginProvisionResult(PluginProvisionOutcome.Incompatible, request.Id, request.Name, reason, Warning: null, FolderId: null, Sha256: null);
         }
 
-        var download = await storeClient.DownloadZipAsync(request.Store, package.Path, package.Sha256, cancellationToken).ConfigureAwait(false);
+        var download = await storeClient.DownloadZipAsync(request.Store, package.Path, package.Sha256, cancellationToken, progress).ConfigureAwait(false);
         if (!download.IsSuccess || download.ZipPath is null)
         {
             return new PluginProvisionResult(PluginProvisionOutcome.Failed, request.Id, request.Name, download.Error ?? "Download failed.", Warning: null, FolderId: null, Sha256: null);

@@ -315,14 +315,18 @@
                                                     <Ellipse StrokeThickness="1" Stroke="{Binding StatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
                                                     <Ellipse Opacity="{Binding DotFillOpacity}" Fill="{Binding StatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
                                                 </Grid>
-                                                <TextBlock Grid.Column="1" Text="{Binding Title}" FontSize="12" TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding Title}" FontSize="12" TextTrimming="CharacterEllipsis"
+                                                           Foreground="{Binding RowForegroundBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
                                             </Grid>
-                                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="5" Margin="13,0,0,0">
-                                                <Border Background="{DynamicResource CockpitStatusBackgroundChipTintBrush}" CornerRadius="3" Padding="4,0" VerticalAlignment="Center">
-                                                    <TextBlock Text="{Binding TypeText}" FontSize="10" Foreground="{DynamicResource CockpitStatusBackgroundBrush}"/>
+                                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="5" Margin="13,0,0,0">
+                                                <Border Background="{Binding StatusChipTintBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}" CornerRadius="3" Padding="4,0" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding TypeText}" FontSize="10" Foreground="{Binding StatusChipForegroundBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
                                                 </Border>
                                                 <TextBlock Grid.Column="1" Text="{Binding SidebarDetail}" FontSize="10.5" TextTrimming="CharacterEllipsis"
-                                                           Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                                           Foreground="{Binding RowForegroundBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                                                <Border Grid.Column="2" Background="{Binding StatusChipTintBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}" CornerRadius="3" Padding="4,0" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding StatusText}" FontSize="10" Foreground="{Binding StatusChipForegroundBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                                                </Border>
                                             </Grid>
                                         </StackPanel>
                                         </Panel>
@@ -2222,56 +2226,12 @@
 
             <views:SimpleHomeView Grid.Row="1" x:Name="SimpleHomePage" IsVisible="{Binding SimpleStandShowsTheStartScreen}"/>
 
-            <!-- AC-1527: the Simple stand's Projects page — the overview's own cards (`ProjectCategoryGroups`), whose
-                 Start is the dialog-free quick start, so a click lands in the new conversation. -->
-            <ScrollViewer Grid.Row="1" x:Name="SimpleProjectsPage" IsVisible="{Binding SimpleStandShowsTheProjects}"
-                          HorizontalScrollBarVisibility="Disabled">
-                <StackPanel Margin="52,40,52,32">
-                    <DockPanel Margin="8,0,8,12">
-                        <Button DockPanel.Dock="Right" VerticalAlignment="Top" Padding="12,6"
-                                Command="{Binding Projects.AddProjectCommand}"
-                                ToolTip.Tip="Add a project — from a folder on this computer, or one your team shares">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <materialIcons:MaterialIcon Kind="Plus" Width="14" Height="14"/>
-                                <TextBlock Text="New project" FontWeight="SemiBold"/>
-                            </StackPanel>
-                        </Button>
-                        <StackPanel Spacing="4">
-                            <TextBlock Text="Your projects" FontSize="22" FontWeight="SemiBold"/>
-                            <TextBlock Text="A project keeps a folder, the instructions for the assistant and its conversations together."
-                                       FontSize="13" TextWrapping="Wrap"
-                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                        </StackPanel>
-                    </DockPanel>
-                    <Panel IsVisible="{Binding !Projects.HasProjects}">
-                        <controls:StartingPointsView DataContext="{Binding Projects}"/>
-                    </Panel>
-                    <ItemsControl ItemsSource="{Binding Projects.ProjectCategoryGroups}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="vm:ProjectCategoryGroupViewModel">
-                                <StackPanel Spacing="4">
-                                    <TextBlock Text="{Binding CategoryName}" FontSize="13" FontWeight="SemiBold" Margin="8,8,0,0"
-                                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"
-                                               IsVisible="{Binding HasHeader}"/>
-                                    <ItemsControl ItemsSource="{Binding Cards}">
-                                        <ItemsControl.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <WrapPanel/>
-                                            </ItemsPanelTemplate>
-                                        </ItemsControl.ItemsPanel>
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate x:DataType="vm:ProjectCardViewModel">
-                                                <controls:ProjectCardView
-                                                    JobCommand="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).StartProjectJobNowCommand}"/>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                </StackPanel>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </StackPanel>
-            </ScrollViewer>
+            <!-- AC-2078: the Simple stand's Projects page is the Projects workspace itself — one list, one detail pane,
+                 one set of add options — hosted here under its own toolbar. -->
+            <DockPanel Grid.Row="1" x:Name="SimpleProjectsPage" IsVisible="{Binding SimpleStandShowsTheProjects}">
+                <controls:ProjectsToolbar DockPanel.Dock="Top" DataContext="{Binding Projects}"/>
+                <controls:ProjectsWorkspace DataContext="{Binding Projects}"/>
+            </DockPanel>
 
             <!-- AC-1305: a session that is not the one in this column is waiting for consent. The card itself
                  (ConsentBanner, over the conversation) stays where the question belongs, so this only names who is

@@ -42,7 +42,7 @@ internal sealed class PluginStoreClient : IPluginStoreClient, ISingletonService
         }
     }
 
-    public async Task<PluginStoreDownloadResult> DownloadZipAsync(PluginStoreConfig store, string relativePath, string? expectedSha256, CancellationToken cancellationToken = default)
+    public async Task<PluginStoreDownloadResult> DownloadZipAsync(PluginStoreConfig store, string relativePath, string? expectedSha256, CancellationToken cancellationToken = default, IProgress<PluginDownloadProgress>? progress = null)
     {
         if (!_TryResolveRelative(store, relativePath, out var target, out var error))
         {
@@ -51,7 +51,7 @@ internal sealed class PluginStoreClient : IPluginStoreClient, ISingletonService
 
         try
         {
-            var bytes = await _ReadBytesAsync(target, maxBytes: null, cancellationToken).ConfigureAwait(false);
+            var bytes = await _ReadBytesAsync(target, maxBytes: null, cancellationToken, progress).ConfigureAwait(false);
             if (_ChecksumMismatch(bytes, expectedSha256))
             {
                 return new PluginStoreDownloadResult(false, "The downloaded plugin did not match the store's published checksum and was rejected.", null);
@@ -301,11 +301,12 @@ internal sealed class PluginStoreClient : IPluginStoreClient, ISingletonService
         return await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private static async Task<byte[]> _ReadBytesAsync(StoreTarget target, long? maxBytes, CancellationToken cancellationToken)
+    private static async Task<byte[]> _ReadBytesAsync(StoreTarget target, long? maxBytes, CancellationToken cancellationToken, IProgress<PluginDownloadProgress>? progress = null)
     {
         if (target.IsLocal)
         {
-            var bytes = await File.ReadAllBytesAsync(target.Value, cancellationToken).ConfigureAwait(false);
+            await using var stream = File.OpenRead(target.Value);
+            var bytes = await _ReadStreamAsync(stream, stream.Length, maxBytes, cancellationToken, progress).ConfigureAwait(false);
             if (maxBytes is { } localCap && bytes.Length > localCap)
             {
                 throw new InvalidOperationException("The store icon is too large.");
@@ -315,7 +316,7 @@ internal sealed class PluginStoreClient : IPluginStoreClient, ISingletonService
         }
 
         using var request = _BuildRequest(target);
-        using var response = await Http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        using var response = await Http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
 
         if (maxBytes is { } cap && response.Content.Headers.ContentLength > cap)
@@ -323,13 +324,26 @@ internal sealed class PluginStoreClient : IPluginStoreClient, ISingletonService
             throw new InvalidOperationException("The store icon is too large.");
         }
 
-        var payload = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
-        if (maxBytes is { } limit && payload.Length > limit)
+        await using var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        return await _ReadStreamAsync(responseStream, response.Content.Headers.ContentLength, maxBytes, cancellationToken, progress).ConfigureAwait(false);
+    }
+
+    private static async Task<byte[]> _ReadStreamAsync(Stream stream, long? totalBytes, long? maxBytes, CancellationToken cancellationToken, IProgress<PluginDownloadProgress>? progress)
+    {
+        await using var buffer = new MemoryStream(totalBytes is > 0 and <= int.MaxValue ? (int)totalBytes.Value : 0);
+        var chunk = new byte[81920];
+        long read = 0;
+        int count;
+        while ((count = await stream.ReadAsync(chunk, cancellationToken).ConfigureAwait(false)) > 0)
         {
-            throw new InvalidOperationException("The store icon is too large.");
+            read += count;
+            if (maxBytes is { } limit && read > limit)
+                throw new InvalidOperationException("The store icon is too large.");
+            await buffer.WriteAsync(chunk.AsMemory(0, count), cancellationToken).ConfigureAwait(false);
+            progress?.Report(new PluginDownloadProgress(read, totalBytes));
         }
 
-        return payload;
+        return buffer.ToArray();
     }
 
     private static HttpRequestMessage _BuildRequest(StoreTarget target)

@@ -24,6 +24,7 @@ using Cockpit.Core.Sessions;
 using Cockpit.Core.Updates;
 using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Microsoft.Extensions.Logging;
 
 namespace Cockpit.App.Services;
 
@@ -52,6 +53,8 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     private readonly IProjectStore _projectStore;
     private readonly IProjectDefinitionBuilder<SharedProjectPublishDefinition> _projectDefinitionBuilder;
     private readonly SurfaceWindows _surfaces;
+    private readonly ILogger<SessionDialogService> _logger;
+    private AgentsPaletteDialog? _agentsPaletteDialog;
 
     // The assistant's own profile slot (AC-543) — its own section of the config, not an entry in `_profileStore`.
     private readonly IAssistantProfileStore _assistantProfileStore;
@@ -81,8 +84,10 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         IPluginProviderConfigViews pluginConfigViews,
         IOrgPolicy orgPolicy,
         IProfileSessionLimits sessionLimit,
-        IProjectDefinitionBuilder<SharedProjectPublishDefinition> projectDefinitionBuilder)
+        IProjectDefinitionBuilder<SharedProjectPublishDefinition> projectDefinitionBuilder,
+        ILogger<SessionDialogService> logger)
     {
+        _logger = logger;
         _sessionLimit = sessionLimit;
         _orgPolicy = orgPolicy;
         _projectDefinitionBuilder = projectDefinitionBuilder;
@@ -805,20 +810,58 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         viewModel.Chosen?.Invoke();
     }
 
-    public async Task ShowAgentsPaletteDialogAsync(AgentsOverviewViewModel agents)
+    public Task ShowAgentsPaletteDialogAsync(AgentsOverviewViewModel agents)
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
         {
-            return;
+            return Task.CompletedTask;
+        }
+
+        if (_agentsPaletteDialog is { } existing)
+        {
+            existing.Activate();
+            return Task.CompletedTask;
         }
 
         var viewModel = new AgentsPaletteViewModel(agents);
-        await new AgentsPaletteDialog { DataContext = viewModel }.ShowDialog(owner);
+        var dialog = new AgentsPaletteDialog { DataContext = viewModel };
+        dialog.Position = _CenterOn(owner, dialog);
+        EventHandler mainClosed = (_, _) => dialog.Close();
+        owner.Closed += mainClosed;
+        dialog.Closed += (_, _) =>
+        {
+            owner.Closed -= mainClosed;
+            _agentsPaletteDialog = null;
 
-        // Open the pick after the palette has closed, like the command palette does.
-        if (viewModel.Chosen is { } chosen)
+            // Open the pick after the palette has closed, like the command palette does.
+            if (viewModel.Chosen is { } chosen)
+            {
+                _ = _RunAgentsPaletteChoiceAsync(chosen);
+            }
+        };
+        _agentsPaletteDialog = dialog;
+        dialog.Show();
+        return Task.CompletedTask;
+    }
+
+    private static PixelPoint _CenterOn(Window owner, Window window)
+    {
+        var origin = owner.PointToScreen(default);
+        var size = PixelSize.FromSize(owner.ClientSize, owner.RenderScaling);
+        return new PixelPoint(
+            origin.X + (int)((size.Width - window.Width * owner.RenderScaling) / 2),
+            origin.Y + (int)((size.Height - window.Height * owner.RenderScaling) / 2));
+    }
+
+    private async Task _RunAgentsPaletteChoiceAsync(Func<Task> chosen)
+    {
+        try
         {
             await chosen();
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Opening the selected agent from the palette failed.");
         }
     }
 

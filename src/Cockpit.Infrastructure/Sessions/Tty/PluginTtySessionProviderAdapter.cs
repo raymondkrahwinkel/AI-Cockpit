@@ -85,7 +85,7 @@ internal sealed class PluginTtySessionProviderAdapter(
 
         try
         {
-            var registry = mcpServerCatalog.GetServersForProjectAsync(projectId).GetAwaiter().GetResult();
+            var registry = mcpServerCatalog.GetServersForSessionAsync(projectId, enabledServerNames).GetAwaiter().GetResult();
             // AC-869: cockpit-github-pull-requests is Internal (hidden from every picker); a git-repo working
             // directory names it explicitly here rather than through operator config. Blocking is consistent with
             // the catalog read above — this spawn path is synchronous all the way out to ITtyLauncher.Launch.

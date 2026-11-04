@@ -33,6 +33,7 @@ internal static class OptionsStaging
         "MemoryBudgetPercent",
         "MinimizeToTrayOnClose",
         "NotifyOnCiFailure",
+        "MonitorMessagesPerHour",
         "NotificationSoundOnNeedsAttention",
         "NotificationSoundOnSessionFinished",
         "NotificationSoundsEnabled",

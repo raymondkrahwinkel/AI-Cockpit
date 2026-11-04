@@ -40,6 +40,25 @@ internal static partial class Screenshotter
     private const int DefaultWindowWidth = 1100;
     private const int DefaultWindowHeight = 760;
 
+    private static Window _ElapsedScene(int width, int height, ReadingLevel level, bool assistant)
+    {
+        var session = new SessionViewModel { Title = "Session", ReadingLevel = level };
+        session.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.ToolUse, "")
+        {
+            ToolName = "Bash", ToolUseId = "elapsed-scene", InputJson = "{\"command\":\"dotnet build Cockpit.slnx\"}",
+        });
+        session.ShowActiveToolCalls([new SessionActiveToolCall("elapsed-scene", "Bash", DateTimeOffset.Now.AddSeconds(-72))]);
+        if (assistant)
+        {
+            var chat = _AssistantChatViewModel(session);
+            chat.IsSimpleViewHost = level == ReadingLevel.Simple;
+            return new Window { Width = width, Height = height, Content = new AssistantChatView { DataContext = chat } };
+        }
+
+        session.IsShownInSimpleStand = level == ReadingLevel.Simple;
+        return new Window { Width = width, Height = height, Content = new SessionView { DataContext = session } };
+    }
+
     private static Window _BackgroundWorkScene()
     {
         var session = new SessionViewModel();
@@ -286,6 +305,7 @@ internal static partial class Screenshotter
         ["markdown-file-conflict-compare"] = (width, height) => _MarkdownFileScene(width, height, "conflict-compare"),
         ["markdown-file-readonly"] = (width, height) => _MarkdownFileScene(width, height, "readonly"),
         ["markdown-file-live"] = (width, height) => _MarkdownFileScene(width, height, "live"),
+        ["markdown-file-live-timeout"] = (width, height) => _MarkdownFileScene(width, height, "live-timeout"),
         ["markdown-file-live-light"] = (width, height) => _MarkdownFileScene(width, height, "live-light"),
         ["markdown-file-live-light-saved"] = (width, height) => _MarkdownFileScene(width, height, "live-light-saved"),
         ["markdown-file-sign-in-expired"] = (width, height) => _MarkdownFileScene(width, height, "sign-in-expired"),
@@ -566,7 +586,7 @@ internal static partial class Screenshotter
         // rows do not fit at rest.
         ["plugin-store-logos"] = (_, _) => new PluginStoreDialog { DataContext = _PluginStoreWithLogos(), Height = 1900 },
         // The store's two busy states (AC-420) — otherwise only reachable while a real download is in flight.
-        ["plugin-store-installing"] = (_, _) => _PluginStoreBusy(percent: null, "Downloading 'GitHub Issues' v1.8.0…"),
+        ["plugin-store-installing"] = (_, _) => _PluginStoreBusy(percent: null, "Downloading 'GitHub Issues' v1.8.0… 12.4 / 38.0 MB"),
         ["plugin-store-updating"] = (_, _) => _PluginStoreBusy(percent: 200.0 / 6, "Updating 'Git status' (3 of 6)…"),
         ["manage-stores"] = (_, _) => _ManageStores(),
         ["tasks"] = (_, _) => new DelegatedTasksDialog { DataContext = new ViewModels.DelegatedTasksViewModel() },
@@ -582,6 +602,12 @@ internal static partial class Screenshotter
         // the panels stand is hidden rather than dismantled, and that the title bar and the status bar around
         // both stands are the same in either.
         ["simple-view"] = (_, _) => new MainWindow { DataContext = _SimpleStand(withAssistant: true) },
+        ["ac2066-assistant-claude"] = (_, _) => new MainWindow { DataContext = _UsageSimpleScene(true, false, false) },
+        ["ac2066-assistant-codex"] = (_, _) => new MainWindow { DataContext = _UsageSimpleScene(true, true, false) },
+        ["ac2066-docked-claude"] = (_, _) => new MainWindow { DataContext = _UsageSimpleScene(false, false, false) },
+        ["ac2066-docked-codex"] = (_, _) => new MainWindow { DataContext = _UsageSimpleScene(false, true, false) },
+        ["ac2066-session-claude"] = (_, _) => new MainWindow { DataContext = _UsageSimpleScene(false, false, true) },
+        ["ac2066-session-codex"] = (_, _) => new MainWindow { DataContext = _UsageSimpleScene(false, true, true) },
         // AC-1302 criterion 4(b): the same stand with no assistant session, so the rail has no root to hang a
         // tree under and lists the sessions flat. Its own scene because that is a different rail, not a variation.
         ["simple-view-no-assistant"] = (_, _) => new MainWindow { DataContext = _SimpleStand(withAssistant: false) },
@@ -605,6 +631,7 @@ internal static partial class Screenshotter
         ["simple-view-history"] = (_, _) => new MainWindow { DataContext = _SimpleStandHistory() },
         // AC-1527: the stand's Projects page, reached through the rail's own entry.
         ["simple-view-projects"] = (_, _) => new MainWindow { DataContext = _SimpleStandProjects() },
+        ["simple-view-projects-detail"] = (_, _) => new MainWindow { DataContext = _SimpleStandProjects("Cockpit") },
         // AC-1529: a picked conversation in a project, at work — the header, the stand and Stop over the 720px column.
         ["simple-view-conversation"] = (_, _) => new MainWindow { DataContext = _SimpleStandConversation() },
         // AC-488: Home on a cockpit that has no projects yet, the second place the starting-point gallery is drawn.
@@ -799,6 +826,10 @@ internal static partial class Screenshotter
 
         // AC-543 (strand 4): the pop-out chat window (AssistantChatWindow.axaml), criterion 11's other half — the
         // indicator is a badge, this is where the conversation actually reads.
+        ["elapsed-session-simple"] = (width, height) => _ElapsedScene(width, height, ReadingLevel.Simple, false),
+        ["elapsed-session-classic"] = (width, height) => _ElapsedScene(width, height, ReadingLevel.Developer, false),
+        ["elapsed-assistant-simple"] = (width, height) => _ElapsedScene(width, height, ReadingLevel.Simple, true),
+        ["elapsed-assistant-classic"] = (width, height) => _ElapsedScene(width, height, ReadingLevel.Developer, true),
         ["assistant-chat"] = (_, _) => _AssistantChat(withConversation: true),
         ["assistant-chat-file-drop"] = (_, _) => _AssistantChat(withConversation: true),
         ["session-file-drop"] = (width, height) => new Window { Width = width, Height = height, Content = new SessionView { DataContext = new SessionViewModel { Title = "Session" } } },
@@ -3201,7 +3232,7 @@ internal static partial class Screenshotter
             "cli-agent-provider", "Codex (ChatGPT)", "Requires the codex CLI installed and authenticated (codex login) on the machine running Cockpit.",
             ViewModels.Onboarding.ProviderDetectionState.NotFound));
         viewModel.Providers.Add(_ProviderRow(
-            "gemini-provider", "Gemini / OpenAI Provider", "Configure an API key and model per profile in Manage profiles.",
+            "gemini-provider", "OpenAI-compatible", "Configure an API key and model per profile in Manage profiles.",
             ViewModels.Onboarding.ProviderDetectionState.NotApplicable));
         viewModel.Providers.Add(_ProviderRow(
             "kimi-provider", "Kimi Code Provider (ACP)", "Requires the kimi CLI installed and authenticated on this machine.",
@@ -3355,6 +3386,9 @@ internal static partial class Screenshotter
         viewModel.Manager.StatusMessage = status;
         viewModel.Manager.BusyProgressIndeterminate = percent is null;
         viewModel.Manager.BusyProgressValue = percent ?? 0;
+        viewModel.Manager.BusyDownloadProgressIndeterminate = false;
+        viewModel.Manager.BusyDownloadProgressValue = 100d * 12.4 / 38;
+        viewModel.Manager.HasBusyDownloadProgress = true;
         viewModel.Manager.NeedsRestart = true;
         viewModel.Manager.IsBusy = true;
 
@@ -3394,7 +3428,6 @@ internal static partial class Screenshotter
         [
             Row("autopilot", "Autopilot", "Automation", "autopilot.svg", "🤖"),
             Row("depot", "Depot", "Project tools", "depot.svg", "🗄️"),
-            Row("fan-out", "Fan-Out", "Automation", "fan-out.svg", "🍴"),
             Row("local-ci", "Local CI", "Automation", "local-ci.svg", "🧪"),
             Row("transcript-search", "Claude Transcript Search", "Productivity", "transcript-search.svg", "🔍"),
             Row("git-status", "Git status", "Productivity", "git-status.svg", "🌿"),
@@ -3694,6 +3727,34 @@ internal static partial class Screenshotter
             cockpit: cockpit);
     }
 
+    private static ViewModels.CockpitViewModel _UsageSimpleScene(bool assistant, bool codex, bool sessionSelected)
+    {
+        var cockpit = _SimpleStandConversation(withCost: true);
+        var session = sessionSelected ? _Named(cockpit, "kind→staging") : cockpit.AssistantChat?.Session
+            ?? throw new InvalidOperationException("The assistant scene needs a session.");
+        session.ProviderBadge = codex ? "CODEX" : "CLAUDE";
+        session.UsagePillVisibleFields = [
+            Cockpit.Core.UsagePill.UsagePillField.Context,
+            Cockpit.Core.UsagePill.UsagePillField.SessionUsage,
+            Cockpit.Core.UsagePill.UsagePillField.RateWindows,
+        ];
+        session.ContextUsedPercent = 37;
+        session.HasUsage = true;
+        session.UsageSummary = "45.2k tok";
+        session.RateLimits.Clear();
+        session.RateLimits.Add(new SessionRateWindow(codex ? "7d" : "5h", 58, null));
+        if (!codex)
+        {
+            session.RateLimits.Add(new SessionRateWindow("wk", 82, null));
+        }
+        if (assistant)
+        {
+            cockpit.SimpleSelectedSession = cockpit.AssistantRootSession;
+            cockpit.SimplePage = ViewModels.SimplePage.Conversation;
+        }
+        return cockpit;
+    }
+
     // AC-1301: the Simple stand with a conversation actually standing in its column — the chat view comes from
     // the same factory the running app hands over, so this shows the column filled rather than merely reserved.
     private static ViewModels.CockpitViewModel _SimpleStand(
@@ -3874,13 +3935,8 @@ internal static partial class Screenshotter
         return cockpit;
     }
 
-    private static ViewModels.CockpitViewModel _SimpleStandProjects()
-    {
-        var cockpit = _SimpleStand(withAssistant: true);
-        cockpit.Projects.StageDesignSample();
-        cockpit.ShowSimpleProjectsCommand.Execute(null);
-        return cockpit;
-    }
+    private static ViewModels.CockpitViewModel _SimpleStandProjects(string? selecting = null) =>
+        SimpleStandProjects(_SimpleStand(withAssistant: true), selecting);
 
     private static ViewModels.CockpitViewModel _SimpleStandConversation(bool withCost = false)
     {
@@ -4785,7 +4841,7 @@ internal static partial class Screenshotter
             Row("git-status", "Git status", "A git indicator in every session — a coloured dot and the branch, so you always know the repo state.", "Productivity", "1.4.0", "🌱", featured: false, installed: true, hasSettings: true, repository: true),
             Row("transcript-search", "Claude Transcript Search", "Search everything you and the agent ever wrote in a Claude CLI session.", "Productivity", "1.2.0", "🔍", featured: false, installed: true, repository: true),
             Row("codex-provider", "Codex (ChatGPT)", "Adds Codex CLI as a selectable session provider, driven as a subprocess per session.", "AI providers", "0.2.0", "🧩", featured: false, installed: false, homepage: true, repository: true),
-            Row("gemini-openai", "Gemini / OpenAI Provider", "Adds Gemini and OpenAI models as selectable session providers, keyed per profile.", "AI providers", "0.4.0", "✨", featured: false, installed: true, hasSettings: true, homepage: true, repository: true),
+            Row("gemini-openai", "OpenAI-compatible", "Adds Gemini and OpenAI models as selectable session providers, keyed per profile.", "AI providers", "0.4.0", "✨", featured: false, installed: true, hasSettings: true, homepage: true, repository: true),
         ];
     }
 

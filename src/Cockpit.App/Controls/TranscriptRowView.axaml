@@ -564,6 +564,8 @@
                     </Button>
                     <TextBlock Text="{Binding StepTail}" VerticalAlignment="Center"
                                Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                    <TextBlock Text="{Binding ToolActivityAgeText}" VerticalAlignment="Center"
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                 </StackPanel>
 
                 <!-- Plain-language consent line (AC-138 Simple): a tool call that asked for approval
@@ -768,6 +770,8 @@
                                 <TextBlock Text="{Binding ToolHeader}"/>
                             </StackPanel>
                         </Button>
+                        <TextBlock Text="{Binding ToolActivityAgeText}" FontSize="11" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                         <TextBlock Text="{Binding ToolOriginLabel}" FontSize="11" VerticalAlignment="Center"
                                    Foreground="{DynamicResource CockpitTextFaintBrush}"
                                    IsVisible="{Binding ToolOriginLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>

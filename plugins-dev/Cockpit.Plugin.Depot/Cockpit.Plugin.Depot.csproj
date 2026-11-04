@@ -62,7 +62,7 @@
        AC-1896 G3). Notes/Live/Bundle/build.mjs builds it and prints both; moving the pin is changing both here. -->
   <PropertyGroup>
     <DepotBundleCommit>6fe38ee8190553341b909770d12c48a57c202bbb</DepotBundleCommit>
-    <DepotBundleSha256>c3b74904ddf8e30374d2aaeaca27755add88ed478b8a24b2a7eb8ca41a694977</DepotBundleSha256>
+    <DepotBundleSha256>d8049abc0900c5cdfdac227ed3b717b8782ff841c4c7e43e30d26d085c1549c2</DepotBundleSha256>
   </PropertyGroup>
 
   <!-- The build refuses a bundle that is not the pinned one, and takes the schema version Join sends (protocol §5.4: SHA-256[:12] of

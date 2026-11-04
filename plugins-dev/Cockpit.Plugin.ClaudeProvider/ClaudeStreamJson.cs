@@ -102,10 +102,13 @@ internal sealed class ClaudeStreamJson
                 var description = _String(task, "description");
                 var key = _NullableString(task, "agent_id") ?? id;
                 _tasks.TryGetValue(key, out var previous);
-                tasks.Add(new PluginBackgroundTask(key, kind, string.IsNullOrEmpty(description) ? previous?.Description : description)
+                var run = _NullableString(task, "run_id");
+                string? stableDescription = previous is { RunId: var previousRun, Description: { Length: > 0 } previousDescription }
+                    && previousRun == run ? previousDescription : description;
+                tasks.Add(new PluginBackgroundTask(key, kind, stableDescription)
                 {
                     AgentId = _NullableString(task, "agent_id") ?? previous?.AgentId ?? (_NullableString(task, "run_id") is null ? null : id),
-                    RunId = _NullableString(task, "run_id") ?? previous?.RunId,
+                    RunId = run ?? previous?.RunId,
                     ParentTaskId = _NullableString(task, "parent_task_id") ?? previous?.ParentTaskId,
                     ParentToolUseId = _NullableString(task, "tool_use_id") ?? previous?.ParentToolUseId,
                     LastTool = previous?.LastTool,
@@ -192,8 +195,10 @@ internal sealed class ClaudeStreamJson
         long? tokens = patch.TryGetProperty("usage", out var usage) && usage.ValueKind == JsonValueKind.Object
             && usage.TryGetProperty("total_tokens", out var total) && total.TryGetInt64(out var count) ? count : null;
         var kind = previous?.Kind ?? (_String(root, "task_type") == "local_bash" ? PluginBackgroundTaskKind.Shell : PluginBackgroundTaskKind.SubAgent);
-        _tasks[id] = new PluginBackgroundTask(id, kind,
-            _NullableString(patch, "description") ?? previous?.Description)
+        string? description = subtype == "task_started"
+            ? _NullableString(patch, "description") ?? previous?.Description
+            : previous?.Description ?? _NullableString(patch, "description");
+        _tasks[id] = new PluginBackgroundTask(id, kind, description)
         {
             AgentId = _NullableString(root, "agent_id") ?? id,
             RunId = run ?? previous?.RunId,

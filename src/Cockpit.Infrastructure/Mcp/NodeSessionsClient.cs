@@ -417,6 +417,9 @@ internal sealed class NodeSessionsClient(
     public Task<string?> RememberOnNodeAsync(string nodeName, string text, string scope, CancellationToken cancellationToken = default) =>
         _ActAsync(nodeName, "remember_on_node", new Dictionary<string, object?> { ["text"] = text, ["scope"] = scope }, cancellationToken);
 
+    public Task<string?> RewriteMemoryOnNodeAsync(string nodeName, string text, CancellationToken cancellationToken = default) =>
+        _ActAsync(nodeName, "rewrite_memory_on_node", new Dictionary<string, object?> { ["text"] = text }, cancellationToken);
+
     // Null when the node did it, its own words when it refused, a sentence of ours when it could not be reached.
     // The three are deliberately one return value: to the operator pressing the button they are the same question —
     // did this happen — and only the text differs.

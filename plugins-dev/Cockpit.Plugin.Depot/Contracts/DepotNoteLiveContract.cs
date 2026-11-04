@@ -16,6 +16,8 @@ internal static class DepotNoteLiveChannel
 
 internal static class DepotNoteLiveState
 {
+    public const string DocumentError = "document-error";
+
     public const string Connecting = "connecting";
 
     public const string Live = "live";
