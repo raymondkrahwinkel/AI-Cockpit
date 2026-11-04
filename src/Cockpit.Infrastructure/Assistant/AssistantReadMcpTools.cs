@@ -54,6 +54,7 @@ internal sealed class AssistantReadMcpTools(
         + "workspaceId and workspaceName identify the local desk; projectId identifies its project, or null for none. "
         + "machine gives name, stable discoveryId and local; pane ids alone may collide across machines. "
         + "statusline is the session's own convention, not a work record; a missing ticket there does not prove nobody works on it. hasStatusline says whether it is set. "
+        + "activity and activityAge name the active tool and its elapsed state; empty means no current tool or no tool stream, not an idle session. "
         + "status reports activity; Failed means the last turn crashed, with no question waiting. "
         + "needsYou means an unanswered permission (status == NeedsAttention); always report it and name the session. "
         + "ready distinguishes an Idle session able to accept a prompt from one that never came up. "
