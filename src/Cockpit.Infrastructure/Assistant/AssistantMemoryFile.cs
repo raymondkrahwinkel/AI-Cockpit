@@ -51,6 +51,7 @@ internal sealed class AssistantMemoryFile : IAssistantMemory, ISingletonService
 
     private readonly string _orgRulesPath;
     private readonly IServiceProvider? _services;
+    private readonly SemaphoreSlim _writeLock = new(1, 1);
 
     public AssistantMemoryFile(IServiceProvider services)
         : this(CockpitConfigPath.AssistantMemory, CockpitConfigPath.AssistantCurrentState, CockpitConfigPath.AssistantMachineMemory, services)
@@ -115,19 +116,27 @@ internal sealed class AssistantMemoryFile : IAssistantMemory, ISingletonService
         var line = text?.Trim();
         ArgumentException.ThrowIfNullOrWhiteSpace(line);
 
-        var path = _PathFor(scope);
-        CockpitConfigPath.EnsurePrivateDirectory(Path.GetDirectoryName(path) ?? CockpitConfigPath.Root);
-
-        var isNew = !File.Exists(path);
-        var entry = $"- {DateTimeOffset.Now:yyyy-MM-dd} — {line.ReplaceLineEndings(" ")}{Environment.NewLine}";
-
-        await File.AppendAllTextAsync(
-            path,
-            isNew ? $"{_HeadingFor(scope)}{Environment.NewLine}{Environment.NewLine}{entry}" : entry,
-            cancellationToken).ConfigureAwait(false);
-        if (_services?.GetService<SwarmTakeoverCoordinator>() is { } takeover)
+        await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            await takeover.PublishAsync(cancellationToken);
+            var path = _PathFor(scope);
+            CockpitConfigPath.EnsurePrivateDirectory(Path.GetDirectoryName(path) ?? CockpitConfigPath.Root);
+
+            var isNew = !File.Exists(path);
+            var entry = $"- {DateTimeOffset.Now:yyyy-MM-dd} — {line.ReplaceLineEndings(" ")}{Environment.NewLine}";
+
+            await File.AppendAllTextAsync(
+                path,
+                isNew ? $"{_HeadingFor(scope)}{Environment.NewLine}{Environment.NewLine}{entry}" : entry,
+                cancellationToken).ConfigureAwait(false);
+            if (_services?.GetService<SwarmTakeoverCoordinator>() is { } takeover)
+            {
+                await takeover.PublishAsync(cancellationToken);
+            }
+        }
+        finally
+        {
+            _writeLock.Release();
         }
     }
 
@@ -141,17 +150,25 @@ internal sealed class AssistantMemoryFile : IAssistantMemory, ISingletonService
             throw new ArgumentException("Memory must have its heading and at least one non-empty bullet; every content line must be a bullet.", nameof(text));
         }
 
-        var beforeBytes = File.Exists(_filePath) ? await File.ReadAllBytesAsync(_filePath, cancellationToken).ConfigureAwait(false) : [];
-        var before = System.Text.Encoding.UTF8.GetString(beforeBytes);
-        CockpitConfigPath.EnsurePrivateDirectory(Path.GetDirectoryName(_filePath) ?? CockpitConfigPath.Root);
-        var backup = File.Exists(_filePath) ? AssistantMemoryBackup.CopyAside(_filePath) : null;
-        CockpitConfigPath.ReplaceAtomicallyPrivate(_filePath, text);
-        if (_services?.GetService<SwarmTakeoverCoordinator>() is { } takeover)
+        await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            await takeover.PublishAsync(cancellationToken).ConfigureAwait(false);
+            var beforeBytes = File.Exists(_filePath) ? await File.ReadAllBytesAsync(_filePath, cancellationToken).ConfigureAwait(false) : [];
+            var before = System.Text.Encoding.UTF8.GetString(beforeBytes);
+            CockpitConfigPath.EnsurePrivateDirectory(Path.GetDirectoryName(_filePath) ?? CockpitConfigPath.Root);
+            var backup = File.Exists(_filePath) ? AssistantMemoryBackup.CopyAside(_filePath) : null;
+            CockpitConfigPath.ReplaceAtomicallyPrivate(_filePath, text);
+            if (_services?.GetService<SwarmTakeoverCoordinator>() is { } takeover)
+            {
+                await takeover.PublishAsync(cancellationToken).ConfigureAwait(false);
+            }
+            return new(beforeBytes.Length, new FileInfo(_filePath).Length,
+                before.Length == 0 ? 0 : before.Split('\n').Length, text.Split('\n').Length, backup);
         }
-        return new(beforeBytes.Length, new FileInfo(_filePath).Length,
-            before.Length == 0 ? 0 : before.Split('\n').Length, text.Split('\n').Length, backup);
+        finally
+        {
+            _writeLock.Release();
+        }
     }
 
     // AC-1929: when the note state last changed, which a merge after a split compares; a restore carries it over.
