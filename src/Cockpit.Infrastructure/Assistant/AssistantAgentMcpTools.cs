@@ -42,7 +42,7 @@ internal sealed class AssistantAgentMcpTools(
         [Description("Overrides only named keys from the profile's Options in list_profiles. Unknown keys/values, permission-mode, sandbox and approval-policy are refused. Omitted keys retain profile values. Refused on nodes.")] Dictionary<string, string>? options = null,
         [Description("true requests a git worktree; omitted inherits project isolation, otherwise unisolated. false is always refused. Refused on nodes.")] bool? isolate = null,
         [Description("An exact paired-node name from list_sessions, or local to select this machine explicitly. Omitted means local unless projectId is ambiguous with a cached node project. Nodes accept only profile, projectId, prompt and name.")] string? node = null,
-        [Description("Exact MCP server names for this session, overriding project and profile selection. Omitted preserves defaults; [] keeps only always-mounted servers. Internal, unknown or unavailable names are refused. Global switches still apply. Refused on nodes.")] string[]? mcpServers = null)
+        [Description("Exact MCP server names for this session, overriding project and profile selection. Any registered server may be named, also one that belongs to another project. Omitted preserves defaults (the project's brain server included); [] keeps only always-mounted servers. Internal, unknown, globally disabled or not-yet-authorized names are refused. Global switches still apply. Refused on nodes.")] string[]? mcpServers = null)
     {
         try
         {

@@ -52,7 +52,7 @@ public class AssistantSpawnProjectIsolationTests
         {
             (null, true), ("", true), ("cockpit-coding", true), ("cockpit-session", true),
             ("cockpit-elevated", false), ("cockpit-assistant", false), ("unknown", false),
-            ("other-project-server", false), ("off-server", false), ("oauth", false), ("project-server", true),
+            ("other-project-server", true), ("off-server", false), ("oauth", false), ("project-server", true),
         })
         {
             var profile = new SessionProfile("work", new ClaudeConfig("/fake/.claude"))
@@ -105,10 +105,9 @@ public class AssistantSpawnProjectIsolationTests
             }
             if (server == "project-server")
             {
-                var refused = await gateway.SpawnAsync(_Request(workspaceId) with { McpServers = [server] });
-                Assert.False(refused.Ok);
-                Assert.Contains("another project", refused.Error);
-                Assert.Contains("another project", trail.Entries.Last().Refusal);
+                // AC-2083: an explicit list wins over the project, so the server starts without its projectId too.
+                var withoutProject = await gateway.SpawnAsync(_Request(workspaceId) with { McpServers = [server] });
+                Assert.True(withoutProject.Ok, withoutProject.Error);
             }
         }
     }
@@ -281,6 +280,10 @@ public class AssistantSpawnProjectIsolationTests
                 .. call.ArgAt<string?>(0) == project.Id ? new McpServerConfig[] { new() { Name = "project-server", ProjectLinked = true } } : [],
             ]);
         });
+        mcpCatalog.GetServersAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<McpServerConfig>>([
+            new() { Name = "other-project-server", ProjectLinked = true },
+            new() { Name = "project-server", ProjectLinked = true },
+        ]));
         var quickStart = new ProjectQuickStart(profileStore, new SessionStartComposer(
             projectStore, mcpCatalog, Substitute.For<ITtySessionProviderResolver>(), new ProjectMemorySourceRegistry(), worktreeManager));
 

@@ -176,13 +176,13 @@ internal sealed class AssistantAgentGateway(
                 return await _RefuseSpawnAsync(request, workspace.Name, "The MCP catalog is unavailable.", cancellationToken).ConfigureAwait(false);
             }
 
-            var catalog = await mcpServers.GetServersForProjectAsync(project?.Id, cancellationToken).ConfigureAwait(false);
+            var catalog = await mcpServers.GetServersForSessionAsync(project?.Id, new ExactMcpServerSelection(requestedServers), cancellationToken).ConfigureAwait(false);
             var offered = McpServerRegistryFilter.OfferedToOperator(catalog);
             foreach (var name in requestedServers)
             {
                 var server = offered.FirstOrDefault(server => string.Equals(server.Name, name, StringComparison.OrdinalIgnoreCase))
                     ?? catalog.FirstOrDefault(server => string.Equals(server.Name, name, StringComparison.OrdinalIgnoreCase));
-                var reason = server is null ? "unknown or belongs to another project; use its projectId (its connections and credentials are project-bound)"
+                var reason = server is null ? "unknown"
                     : server.Internal ? "internal servers cannot be requested"
                     : !server.Enabled ? "globally disabled"
                     : null;

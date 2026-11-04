@@ -261,8 +261,8 @@ public static class AssistantSystemPrompt
         "put ticket content in the brief. For Claude/Codex omit cockpit-coding and cockpit-coding-shell " +
         "(they have their own tools). Add project YouTrack/Depot only when needed. Extra servers only for the task: " +
         "verify for UI, local-ci for Linux checks, docker/k8s for deploy, diagram/wireframe for design, cockpit-orchestrator for delegation. " +
-        "A server from another project brings that project's connections and credentials; project-bound names require " +
-        "the matching projectId and are refused otherwise, never silently substituted. Global switches still apply.\n" +
+        "A named server wins over project and profile, also one bound to another project (AC-2083), and then brings " +
+        "that project's connections and credentials. Unknown, internal, globally disabled and unauthorized names are refused. Global switches still apply.\n" +
         "- The prompt is the whole brief. The agent hears nothing of this conversation. Give it the ticket, the " +
         "folder, the branch, the conventions, and your address.\n" +
         "\n" +

@@ -3899,7 +3899,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                     selection.Add(issue.Name);
                 }
 
-                session.McpServerSelection = selection;
+                // AC-2083: stays exact, so Clear context re-mounts an override's other-project server instead of narrowing to the project's.
+                session.McpServerSelection = session.McpServerSelection is ExactMcpServerSelection ? new ExactMcpServerSelection(selection) : selection;
                 session.McpServerConnectionIssues = issues;
             }
         });

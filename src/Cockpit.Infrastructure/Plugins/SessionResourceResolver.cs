@@ -83,7 +83,7 @@ internal sealed class SessionResourceResolver(
 
         try
         {
-            var registry = await mcpServerCatalog.GetServersForProjectAsync(projectId, cancellationToken).ConfigureAwait(false);
+            var registry = await mcpServerCatalog.GetServersForSessionAsync(projectId, enabledMcpServerNames, cancellationToken).ConfigureAwait(false);
             return
             [
                 .. McpServerRegistryFilter.ApplySessionSelection(registry, enabledMcpServerNames)
