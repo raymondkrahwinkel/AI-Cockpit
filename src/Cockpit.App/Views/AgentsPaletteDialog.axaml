@@ -5,8 +5,8 @@
         x:Class="Cockpit.App.Views.AgentsPaletteDialog"
         x:DataType="vm:AgentsPaletteViewModel"
         Title="Agents"
-        Width="920" Height="520" CanResize="False"
-        WindowStartupLocation="CenterOwner"
+        Width="920" Height="520" CanResize="True"
+        WindowStartupLocation="Manual"
         Background="{DynamicResource CockpitPanelBgBrush}">
     <Window.Styles>
         <Style Selector="Border.paletteRow">
