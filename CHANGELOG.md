@@ -36,6 +36,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- Plugins now load from a verified copy in the Cockpit state folder (`plugin-shadow`), so a plugin's installed folder is never locked on Windows and an update to a plugin that does not ask for a restart is written in place at once. The copy is checked against the approved hash before anything loads, and copies of old versions are removed at the next start.
 - Enabling a plugin in Options → Plugins, or on a server, now activates it at once. It says "Restart needed" with the reason when the plugin asks for it (`requiresRestart` in `plugin.json`) or cannot start live. Running sessions get new MCP tools at their next start.
 - Disabling a plugin, in the Plugin store or on a server, now takes effect at once: its widgets, dialogs, panels and menu items go, and enabling it again brings them back. An open workspace of that plugin keeps its tab and says the plugin is disabled, and unsaved work asks first. It only says "Restart needed" when the plugin could not be unloaded.
 - Live plugin activation prepares encrypted settings, runs startup tasks and makes contributed workflow steps available without a restart.

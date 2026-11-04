@@ -134,7 +134,8 @@ internal sealed class PluginAdministration(
 
         try
         {
-            var discovered = (await bootstrap.DiscoverForDisplayAsync(AbstractionsContract.Version, cancellationToken).ConfigureAwait(false))
+            // AC-2025: a plugin that loads is hashed from every byte, not from display-cached file hashes.
+            var discovered = (await bootstrap.DiscoverAsync(AbstractionsContract.Version, cancellationToken).ConfigureAwait(false))
                 .FirstOrDefault(plugin => plugin.FolderId == folderId);
             if (discovered is null)
             {

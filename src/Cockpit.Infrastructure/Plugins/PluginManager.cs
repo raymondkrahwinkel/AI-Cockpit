@@ -197,6 +197,26 @@ public sealed class PluginManager(
         }
     }
 
+    // AC-2025: hashes the copy again (a copy made earlier is not trusted on its name) and swaps in the manifest it holds.
+    private static string? _VerifyCopy(ref DiscoveredPlugin discovered)
+    {
+        try
+        {
+            var shadow = PluginShadow.GetOrPrepare(discovered, fresh: true);
+            if (!PluginManifest.TryParse(File.ReadAllText(Path.Combine(shadow.Folder, "plugin.json")), out var manifest, out _) || manifest is null)
+            {
+                return "The plugin manifest could not be read from the verified copy.";
+            }
+
+            discovered = discovered with { Manifest = manifest };
+            return null;
+        }
+        catch (PluginIntegrityException exception)
+        {
+            return exception.Message;
+        }
+    }
+
     // A skipped plugin discovery otherwise leaves no trace, so a silently vanished provider becomes an
     // unexplained "no such provider" downstream — this is that breadcrumb. Refused/awaiting-consent decisions
     // are also recorded for the UI (AC-208); disabled is log-only since the manager already shows that state.
@@ -401,13 +421,18 @@ public sealed class PluginManager(
             else
             {
                 // AC-2023: display discovery may reuse file hashes; loading must read every byte again.
-                var sha256 = PluginClosureHash.OfInstalledFolderAsync(discovered.FolderPath).GetAwaiter().GetResult();
-                if (!string.Equals(sha256, discovered.Sha256, StringComparison.OrdinalIgnoreCase))
+                // AC-2025: the bytes are read from the copy that is loaded, so what is approved is what runs.
+                // The manifest is read from that copy too: a re-enable must not trust what discovery read from the original.
+                var changed = _VerifyCopy(ref discovered);
+                if (changed is not null)
                 {
-                    const string reason = "The plugin files changed; discover and approve them again before loading.";
-                    logger.LogWarning("Plugin {PluginId} failed to load; skipping it. {Reason}", discovered.FolderId, reason);
-                    diagnostics.Record(discovered.FolderId, discovered.Manifest.Name, "load", reason);
-                    result = new(PluginActivationStatus.Refused, reason);
+                    logger.LogWarning("Plugin {PluginId} failed to load; skipping it. {Reason}", discovered.FolderId, changed);
+                    diagnostics.Record(discovered.FolderId, discovered.Manifest.Name, "load", changed);
+                    result = new(PluginActivationStatus.Refused, changed);
+                }
+                else if (discovered.Manifest.RequiresRestart)
+                {
+                    result = new(PluginActivationStatus.NeedsRestart, "The plugin asks for a restart to activate.");
                 }
                 else if (discovered.Manifest.EntryAssembly is null)
                 {

@@ -169,6 +169,12 @@ public sealed class PluginUiManager(ILogger<PluginUiManager> logger, PluginDiagn
             .Select(entry => ((Type, ICockpitUiHost)?)(_ui[entry.Discovered].GetType(), _hosts[entry.Discovered]))
             .FirstOrDefault();
 
+    private static Assembly _LoadVerified(AssemblyLoadContext context, PluginShadow shadow, string path)
+    {
+        shadow.Verify(path);
+        return context.LoadFromAssemblyPath(path);
+    }
+
     // AC-1389: the plugin's UI part, or null when it has none. Without a uiAssembly that is the backend entry type
     // itself when it implements ICockpitPluginUi too (a plugin moving its UI over before it splits); with one, the
     // UI assembly loads in the backend part's own context. Throws with the reason when the UI part is unusable.
@@ -180,7 +186,14 @@ public sealed class PluginUiManager(ILogger<PluginUiManager> logger, PluginDiagn
             return backend as ICockpitPluginUi;
         }
 
-        if (!PluginEntryPath.TryResolve(discovered.FolderPath, uiAssembly, out var uiPath))
+        if (!PluginEntryPath.TryResolve(discovered.FolderPath, uiAssembly, out _))
+        {
+            throw new InvalidOperationException($"The UI assembly path '{uiAssembly}' is outside the plugin's folder.");
+        }
+
+        // AC-2025: from the verified copy, the one the backend part loaded from.
+        var shadow = PluginShadow.GetOrPrepare(discovered);
+        if (!PluginEntryPath.TryResolve(shadow.Folder, uiAssembly, out var uiPath))
         {
             throw new InvalidOperationException($"The UI assembly path '{uiAssembly}' is outside the plugin's folder.");
         }
@@ -188,8 +201,8 @@ public sealed class PluginUiManager(ILogger<PluginUiManager> logger, PluginDiagn
         var assembly = (backend is null ? null : AssemblyLoadContext.GetLoadContext(backend.GetType().Assembly)) switch
         {
             PluginLoadContext shared => shared.LoadAlongside(uiPath),
-            { } other => other.LoadFromAssemblyPath(uiPath),
-            null => _UiOnlyContexts.GetOrAdd((discovered.FolderId, discovered.Sha256), _ => new PluginLoadContext(uiPath)).LoadOnce(uiPath),
+            { } other => _LoadVerified(other, shadow, uiPath),
+            null => _UiOnlyContexts.GetOrAdd((discovered.FolderId, discovered.Sha256), _ => new PluginLoadContext(uiPath, shadow: shadow)).LoadOnce(uiPath),
         };
 
         var uiType = _ResolveUiEntryType(assembly, manifest.UiEntryType)
