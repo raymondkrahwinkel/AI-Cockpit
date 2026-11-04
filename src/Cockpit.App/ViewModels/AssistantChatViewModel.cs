@@ -87,7 +87,7 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     // host's edge and hairline are its frame, and a rounded one of its own would stand inside that square edge.
     public bool DrawsOwnFrame => Host == AssistantChatHost.Floating;
 
-    // AC-1529: the Simple stand, in its column or its dock — the header leaves rights and usage to ⋯ → Details there.
+    // AC-1529: the Simple stand, in its column or its dock — the header leaves rights to ⋯ → Details there.
     public bool IsInSimpleStand => _cockpit?.SimpleView ?? false;
 
     // Everything else the operator had in flight (input text, attachments, the mention picker) is already on this view

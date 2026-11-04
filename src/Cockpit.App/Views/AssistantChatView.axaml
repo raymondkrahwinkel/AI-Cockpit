@@ -381,80 +381,14 @@
                 </StackPanel>
             </Border>
             <WrapPanel DockPanel.Dock="Top" Margin="10,6,10,0" ItemSpacing="8" LineSpacing="6">
-                <!-- AC-1529: usage is ⋯ → Details in the Simple stand (AC-1533). -->
                 <Panel>
-                <Panel.IsVisible>
-                    <MultiBinding Converter="{x:Static BoolConverters.And}">
-                        <Binding ElementName="UsagePill" Path="IsVisible"/>
-                        <Binding Path="!IsInSimpleStand"/>
-                    </MultiBinding>
-                </Panel.IsVisible>
-                <Border x:Name="UsagePill" ClipToBounds="True"
-                        Background="{DynamicResource CockpitSecondaryBgBrush}"
-                        BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
-                        CornerRadius="{StaticResource CockpitPillRadius}"
-                        IsVisible="{Binding Session.HasUsagePillRegion, FallbackValue=False}">
-                    <StackPanel Orientation="Horizontal">
-                        <ItemsControl ItemsSource="{Binding Session.UsagePillItems}" VerticalAlignment="Stretch">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <StackPanel Orientation="Horizontal"/>
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="vm:UsagePillItem">
-                                    <StackPanel Orientation="Horizontal">
-                                        <Border Width="1" Background="{DynamicResource CockpitHairlineBrush}"
-                                                IsVisible="{Binding ShowLeadingDivider}"/>
-                                        <TextBlock Text="{Binding DisplayText}" FontSize="10" Padding="8,2"
-                                                   VerticalAlignment="Center"
-                                                   Foreground="{Binding SeverityBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"
-                                                   ToolTip.Tip="{Binding Tooltip}"/>
-                                    </StackPanel>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-
-                        <Border Width="1" Background="{DynamicResource CockpitHairlineBrush}"
-                                IsVisible="{Binding Session.ShowChevronDivider, FallbackValue=False}"/>
-                        <Button VerticalAlignment="Stretch" Padding="6,2"
-                                MinWidth="0" MinHeight="0"
-                                Background="Transparent" BorderThickness="0"
-                                IsVisible="{Binding Session.HasUsagePill, FallbackValue=False}"
-                                ToolTip.Tip="{Binding Session.LimitsTooltip}">
-                            <materialIcons:MaterialIcon Kind="ChevronDown" Width="12" Height="12"
-                                                        VerticalAlignment="Center"
-                                                        Foreground="{DynamicResource CockpitTextFaintBrush}"/>
-                            <Button.Flyout>
-                                <Flyout Placement="Bottom">
-                                    <StackPanel Spacing="8" MinWidth="210" Margin="4">
-                                        <TextBlock Text="Usage" FontWeight="SemiBold" FontSize="11.5"
-                                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                                        <controls:LimitBar Label="ctx" Percent="{Binding Session.ContextUsedPercent}" Threshold="{Binding Session.ContextThreshold}" FontSize="10" Height="14"
-                                                           StretchTrack="True" HorizontalAlignment="Stretch"/>
-                                        <ItemsControl ItemsSource="{Binding Session.RateLimits}">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate x:DataType="sessions:SessionRateWindow">
-                                                    <StackPanel Spacing="1" Margin="0,4,0,0">
-                                                        <controls:LimitBar Label="{Binding Label}" Percent="{Binding UsedPercent}" Threshold="{Binding ThresholdPercent}" FontSize="10" Height="14"
-                                                                           StretchTrack="True" HorizontalAlignment="Stretch"/>
-                                                        <TextBlock Text="{Binding ResetsAt, Converter={x:Static conv:RateWindowResetConverter.Instance}}"
-                                                                   FontSize="10" Foreground="{DynamicResource CockpitTextFaintBrush}"
-                                                                   IsVisible="{Binding ResetsAt, Converter={x:Static ObjectConverters.IsNotNull}}"/>
-                                                    </StackPanel>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                        <TextBlock Text="{Binding Session.UnreportedWindowsNotice}" FontSize="10" TextWrapping="Wrap"
-                                                   Margin="0,4,0,0"
-                                                   Foreground="{DynamicResource CockpitTextFaintBrush}"
-                                                   IsVisible="{Binding Session.UnreportedWindowsNotice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                                    </StackPanel>
-                                </Flyout>
-                            </Button.Flyout>
-                        </Button>
-                    </StackPanel>
-                </Border>
+                    <Panel.IsVisible>
+                        <MultiBinding Converter="{x:Static BoolConverters.Or}">
+                            <Binding Path="!IsInSimpleStand"/>
+                            <Binding Path="Session.HasUsagePillSegments" FallbackValue="False"/>
+                        </MultiBinding>
+                    </Panel.IsVisible>
+                    <controls:UsagePill x:Name="UsagePill" DataContext="{Binding Session}"/>
                 </Panel>
 
                 <!-- AC-776 Deel 1: session-status pill, same shape as the usage pill above — same

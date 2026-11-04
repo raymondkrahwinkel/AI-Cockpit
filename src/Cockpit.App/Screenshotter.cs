@@ -593,6 +593,12 @@ internal static partial class Screenshotter
         // the panels stand is hidden rather than dismantled, and that the title bar and the status bar around
         // both stands are the same in either.
         ["simple-view"] = (_, _) => new MainWindow { DataContext = _SimpleStand(withAssistant: true) },
+        ["ac2066-assistant-claude"] = (_, _) => new MainWindow { DataContext = _UsageSimpleScene(true, false, false) },
+        ["ac2066-assistant-codex"] = (_, _) => new MainWindow { DataContext = _UsageSimpleScene(true, true, false) },
+        ["ac2066-docked-claude"] = (_, _) => new MainWindow { DataContext = _UsageSimpleScene(false, false, false) },
+        ["ac2066-docked-codex"] = (_, _) => new MainWindow { DataContext = _UsageSimpleScene(false, true, false) },
+        ["ac2066-session-claude"] = (_, _) => new MainWindow { DataContext = _UsageSimpleScene(false, false, true) },
+        ["ac2066-session-codex"] = (_, _) => new MainWindow { DataContext = _UsageSimpleScene(false, true, true) },
         // AC-1302 criterion 4(b): the same stand with no assistant session, so the rail has no root to hang a
         // tree under and lists the sessions flat. Its own scene because that is a different rail, not a variation.
         ["simple-view-no-assistant"] = (_, _) => new MainWindow { DataContext = _SimpleStand(withAssistant: false) },
@@ -3658,6 +3664,34 @@ internal static partial class Screenshotter
         return new ViewModels.AssistantChatViewModel(
             host, new _FakeAssistantSettingsStore(speakReplies), new _NullVoicePlaybackQueue(), indicator: indicator,
             cockpit: cockpit);
+    }
+
+    private static ViewModels.CockpitViewModel _UsageSimpleScene(bool assistant, bool codex, bool sessionSelected)
+    {
+        var cockpit = _SimpleStandConversation(withCost: true);
+        var session = sessionSelected ? _Named(cockpit, "kind→staging") : cockpit.AssistantChat?.Session
+            ?? throw new InvalidOperationException("The assistant scene needs a session.");
+        session.ProviderBadge = codex ? "CODEX" : "CLAUDE";
+        session.UsagePillVisibleFields = [
+            Cockpit.Core.UsagePill.UsagePillField.Context,
+            Cockpit.Core.UsagePill.UsagePillField.SessionUsage,
+            Cockpit.Core.UsagePill.UsagePillField.RateWindows,
+        ];
+        session.ContextUsedPercent = 37;
+        session.HasUsage = true;
+        session.UsageSummary = "45.2k tok";
+        session.RateLimits.Clear();
+        session.RateLimits.Add(new SessionRateWindow(codex ? "7d" : "5h", 58, null));
+        if (!codex)
+        {
+            session.RateLimits.Add(new SessionRateWindow("wk", 82, null));
+        }
+        if (assistant)
+        {
+            cockpit.SimpleSelectedSession = cockpit.AssistantRootSession;
+            cockpit.SimplePage = ViewModels.SimplePage.Conversation;
+        }
+        return cockpit;
     }
 
     // AC-1301: the Simple stand with a conversation actually standing in its column — the chat view comes from

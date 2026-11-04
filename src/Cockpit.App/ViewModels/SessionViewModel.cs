@@ -702,10 +702,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     [ObservableProperty]
     private ReadingLevel _readingLevel = ReadingLevel.Developer;
 
-    // Only Simple hides the standalone "$" token/cost meter unconditionally (AC-138: "no cost" is that level's
-    // plain-language promise) (AC-105, AC-536).
-    protected override bool SuppressCostMeter => _ShownReadingLevel == ReadingLevel.Simple;
-
     // Simple drops the model/provider kind chip (AC-138) — a tag that is jargon the level exists to hide.
     public override bool ShowKindChip => _ShownReadingLevel != ReadingLevel.Simple && !string.IsNullOrEmpty(KindLabel);
 
@@ -737,9 +733,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
 
         _RebuildVisibleTranscript();
-        // Rebuild rather than just re-announce: the token/cost figure is a pill segment now, and Simple drops it
-        // (SuppressCostMeter), so switching level changes which segments exist rather than one visibility flag.
-        RebuildUsagePillItems();
         OnPropertyChanged(nameof(ShowKindChip));
         OnPropertyChanged(nameof(ActiveToolActivityLabel));
     }
