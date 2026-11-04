@@ -1,9 +1,16 @@
+using Cockpit.Core.Abstractions;
 using Cockpit.Plugins.Abstractions.Mcp;
 
 namespace Cockpit.Infrastructure.Plugins;
 
-public sealed class PluginMcpProviderRegistry(params IPluginMcpProvider[] providers)
+// A singleton of its own so a backend without plugins resolves the catalog too; PluginManager's replaces it when loading.
+public sealed class PluginMcpProviderRegistry(params IPluginMcpProvider[] providers) : ISingletonService
 {
+    public PluginMcpProviderRegistry()
+        : this([])
+    {
+    }
+
     private readonly object _gate = new();
     private readonly List<IPluginMcpProvider> _providers = [.. providers];
 
