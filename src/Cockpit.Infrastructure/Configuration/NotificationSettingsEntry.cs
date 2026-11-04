@@ -42,6 +42,8 @@ internal sealed class NotificationSettingsEntry
 
     public bool NotifyOnCiFailure { get; set; } = true;
 
+    public int MonitorMessagesPerHour { get; set; } = NotificationSettings.DefaultMonitorMessagesPerHour;
+
     // Minutes a finished session stays "done" before it counts as idle. 0 turns the idle transition off, so it round-trips as written rather than falling back to the default.
     public int SessionIdleMinutes { get; set; } = (int)SessionIdleDecision.DefaultIdleThreshold.TotalMinutes;
 
@@ -72,6 +74,7 @@ internal sealed class NotificationSettingsEntry
         NotifyOnSessionIdle = settings.NotifyOnSessionIdle,
         NotifyWhenAllSessionsIdle = settings.NotifyWhenAllSessionsIdle,
         NotifyOnCiFailure = settings.NotifyOnCiFailure,
+        MonitorMessagesPerHour = settings.MonitorMessagesPerHour,
         SessionIdleMinutes = (int)settings.SessionIdleThreshold.TotalMinutes,
         LoginCheckIntervalSeconds = (int)settings.LoginCheckInterval.TotalSeconds,
         RemoteHealthWatchedIntervalSeconds = (int)settings.RemoteHealthWatchedInterval.TotalSeconds,
@@ -100,6 +103,7 @@ internal sealed class NotificationSettingsEntry
         NotifyOnSessionIdle = NotifyOnSessionIdle,
         NotifyWhenAllSessionsIdle = NotifyWhenAllSessionsIdle,
         NotifyOnCiFailure = NotifyOnCiFailure,
+        MonitorMessagesPerHour = MonitorMessagesPerHour > 0 ? MonitorMessagesPerHour : NotificationSettings.DefaultMonitorMessagesPerHour,
         SessionIdleThreshold = SessionIdleMinutes > 0
             ? TimeSpan.FromMinutes(SessionIdleMinutes)
             : TimeSpan.Zero,

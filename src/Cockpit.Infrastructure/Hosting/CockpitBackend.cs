@@ -316,6 +316,12 @@ public sealed class CockpitBackend
             sessionWatcher.Start();
         }
 
+        if (Services.GetService<SessionMonitor>() is { } sessionMonitor)
+        {
+            sessionMonitor.Watching = () => sessionRegistry.All;
+            sessionMonitor.Start();
+        }
+
         // AC-656: and give every pane a turn as soon as its own inbox has mail, instead of leaving it for that
         // pane's next turn or tool call to notice. Unlike SessionWatcher this needs nothing armed — every live pane
         // is checked, the assistant included (`All` does not carry it; `cockpit-agents` reaches it anyway).
@@ -405,7 +411,8 @@ public sealed class CockpitBackend
         IDisposable?[] planners =
         [
             Services.GetService<HomeFolderWatcher>(),
-            Services.GetService<CiWatcher>(), Services.GetService<SessionWatcher>(), Services.GetService<InboxWakeScheduler>(), Services.GetService<StallNudger>(), Services.GetService<SessionTimelineRecorder>(),
+            Services.GetService<CiWatcher>(), Services.GetService<SessionWatcher>(), Services.GetService<SessionMonitor>(),
+            Services.GetService<InboxWakeScheduler>(), Services.GetService<StallNudger>(), Services.GetService<SessionTimelineRecorder>(),
             Services.GetService<WorktreeReconciler>(), Services.GetService<DepotSyncWatcher>(), Services.GetService<StaleClaimReaper>(),
             Services.GetService<ScheduledBackup>(), Services.GetService<SettingsCarrierSync>(),
         ];

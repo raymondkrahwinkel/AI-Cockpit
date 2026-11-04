@@ -41,6 +41,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- The assistant automatically hears about failed turns, unanswered permissions, abandoned processes and panes disappearing before finishing; reports are bundled and capped per hour.
 - The assistant can consolidate its behaviour memory with a timestamped backup on each destination.
 - Groq, Mistral, Cerebras and a Custom entry with your own base URL as session providers in the OpenAI-compatible plugin, each with a note on what works.
 - Plugins can list search terms, so the store finds a plugin on names that are not in its description. Searching for Gemini, Grok or Hetzner now finds the OpenAI-compatible plugin.

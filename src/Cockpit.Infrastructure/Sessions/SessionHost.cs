@@ -533,7 +533,7 @@ public sealed partial class SessionHost : ISessionTurnGate, ISessionTranscript, 
 
         try
         {
-            await _SendWithWaitingMessagesAsync(runtime, OutgoingText(prompt), prompt.Images, noteMail: true);
+            await _SendWithWaitingMessagesAsync(runtime, OutgoingText(prompt), prompt.Images);
         }
         catch (Exception ex)
         {
@@ -552,7 +552,7 @@ public sealed partial class SessionHost : ISessionTurnGate, ISessionTranscript, 
     public Task SendPromptAsync(string prompt) => _readOnlyTurn is not null
         ? SubmitForTheAgentAsync(new QueuedPrompt(prompt, []))
         : Runtime is { } runtime
-            ? _SendWithWaitingMessagesAsync(runtime, prompt, images: null, noteMail: false)
+            ? _SendWithWaitingMessagesAsync(runtime, prompt, images: null)
             : Task.CompletedTask;
 
     // The one place a turn is handed to the runtime, so that turn-start delivery (AC-394) cannot be reached by one send
@@ -560,8 +560,7 @@ public sealed partial class SessionHost : ISessionTurnGate, ISessionTranscript, 
     private async Task _SendWithWaitingMessagesAsync(
         ISessionRuntime runtime,
         string text,
-        IReadOnlyList<ImageAttachment>? images,
-        bool noteMail)
+        IReadOnlyList<ImageAttachment>? images)
     {
         if (TurnsHeldBecause is { } held)
         {
@@ -592,11 +591,7 @@ public sealed partial class SessionHost : ISessionTurnGate, ISessionTranscript, 
 
         if (waiting is not null)
         {
-            if (noteMail)
-            {
-                MailDelivered?.Invoke(waiting);
-            }
-
+            MailDelivered?.Invoke(waiting);
             _turnInboxDelivery?.ConfirmDelivered(waiting);
         }
     }

@@ -28,7 +28,7 @@ internal static class SettingsCarrierWhitelist
         "Notifications.NotificationSoundOnNeedsAttention", "Notifications.NotificationSoundVolume",
         "Notifications.SessionFinishedSound", "Notifications.NeedsAttentionSound",
         "Notifications.NotifyWhenAllSessionsIdle", "Notifications.NotifyOnCiFailure", "Notifications.IdleThresholdMinutes",
-        "Notifications.SessionIdleMinutes",
+        "Notifications.SessionIdleMinutes", "Notifications.MonitorMessagesPerHour",
         "SessionSwitching.IsEnabled", "SessionSwitching.Modifier",
         "TranscriptDisplay.ShowTimestamps",
         "UsagePill.VisibleFields",
