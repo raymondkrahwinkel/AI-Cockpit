@@ -65,7 +65,7 @@ public sealed class SessionMonitor(
                     bool needsAttention = state.SessionStatus == SessionStatus.NeedsAttention || state.HasPendingConsent
                         || (await handle.ReadPendingPermissionsAsync().ConfigureAwait(false)).Count > 0;
                     live[handle.PaneId] = new Observation(handle, state.SessionStatus, needsAttention,
-                        watcher.IsArmed(handle.PaneId, SessionWatchEvents.Gone));
+                        watcher.CaptureArming(handle.PaneId, SessionWatchEvents.Gone));
                 }
                 catch (Exception exception)
                 {
@@ -98,7 +98,7 @@ public sealed class SessionMonitor(
             foreach ((string paneId, Observation last) in _lastSeen)
             {
                 if (!live.ContainsKey(paneId) && last.Status is not (SessionStatus.Idle or SessionStatus.Done)
-                    && !last.GoneArmed)
+                    && !last.GoneArmed())
                 {
                     active[(paneId, SessionWatchEvents.Gone)] = last;
                 }
@@ -222,5 +222,5 @@ public sealed class SessionMonitor(
         _timer = null;
     }
 
-    private sealed record Observation(ISessionHandle Handle, SessionStatus Status, bool NeedsAttention, bool GoneArmed);
+    private sealed record Observation(ISessionHandle Handle, SessionStatus Status, bool NeedsAttention, Func<bool> GoneArmed);
 }

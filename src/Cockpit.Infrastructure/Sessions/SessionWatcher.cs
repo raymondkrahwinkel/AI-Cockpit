@@ -88,6 +88,8 @@ public sealed class SessionWatcher : ISessionWatcher, ISingletonService, IDispos
     // One pane's state, as of the last tick that looked at it.
     private sealed class Armed
     {
+        public volatile bool Disarmed;
+
         public required IReadOnlySet<string> Events { get; init; }
 
         public required TimeSpan StuckAfter { get; init; }
@@ -213,6 +215,7 @@ public sealed class SessionWatcher : ISessionWatcher, ISingletonService, IDispos
             return AssistantWatchResult.Refused("afterMinutes has to be a number of minutes above zero.");
         }
 
+        Unwatch(paneId);
         _watches[paneId] = new Armed
         {
             Events = wanted,
@@ -230,11 +233,25 @@ public sealed class SessionWatcher : ISessionWatcher, ISingletonService, IDispos
 
     // Disarms a pane. False when nothing was armed on it, which is worth saying rather than reporting a stop of
     // something that was never running.
-    public bool Unwatch(string paneId) => _watches.TryRemove(paneId, out _);
+    public bool Unwatch(string paneId)
+    {
+        if (!_watches.TryRemove(paneId, out Armed? watch))
+        {
+            return false;
+        }
+        watch.Disarmed = true;
+        return true;
+    }
 
     // The monitor asks per event: a pattern watch must not hide an unrelated failure on the same pane.
     public bool IsArmed(string paneId, string @event) =>
         _watches.TryGetValue(paneId, out Armed? watch) && watch.Events.Contains(@event);
+
+    // Retain the original arm for a vanished pane after its watch drops, while still observing an explicit unwatch.
+    internal Func<bool> CaptureArming(string paneId, string @event) =>
+        _watches.TryGetValue(paneId, out Armed? watch)
+            ? () => !watch.Disarmed && watch.Events.Contains(@event)
+            : () => false;
 
     // AC-1375/AC-1380: no hop to make any more — the gateway reached across to the UI thread this watcher used to
     // live on; now both sides are in Infrastructure, and `_watches` is this class's own state either way.
