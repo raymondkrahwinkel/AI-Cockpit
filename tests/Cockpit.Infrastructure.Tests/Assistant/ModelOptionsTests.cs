@@ -39,16 +39,17 @@ public sealed class ModelOptionsTests
             new NodeDiscoveryId(Path.Combine(Path.GetTempPath(), $"node-discovery-id-{Guid.NewGuid():N}.txt")),
             new ModelPictureReader(_public, _provider, _profiles, new FakeClock(Now)));
 
-    private void _Given(ModelIndices indices, PluginModelIntelligence? reading)
+    private void _Given(ModelIndices indices, PluginModelIntelligence? reading, IReadOnlyList<ModelSnapshot>? snapshots = null)
     {
         _profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns([new SessionProfile("Prov", new PluginProviderConfig("p", "{}"))]);
         _public.GetSnapshotsAsync(Arg.Any<CancellationToken>()).Returns(
-            [new ModelSnapshot("m1", "M1", new ModelPrice(5m, 10m), 200_000, true, indices, [], [], "public feed", Now, TimeSpan.FromHours(24))]);
+            snapshots ?? [new ModelSnapshot("m1", "M1", new ModelPrice(5m, 10m), 200_000, true, indices, [], [], "public feed", Now, TimeSpan.FromHours(24))]);
         _provider.ReadAsync("Prov", Arg.Any<CancellationToken>()).Returns(reading);
     }
 
-    [Fact]
-    public async Task ModelOptions_AssistantToolRefusesAgents_OrchestratorToolShowsOnlyDelegatableProfiles()
+    [Theory]
+    [MemberData(nameof(ModelReferenceCases))]
+    public async Task ModelOptions_AssistantToolRefusesAgents_OrchestratorToolShowsOnlyDelegatableProfiles(string model, string snapshotId, string? aliasTarget, string publicModelRef, string? unmatched)
     {
         McpRequestContext.Set("pane-ordinary");
 
@@ -59,10 +60,21 @@ public sealed class ModelOptionsTests
         await _public.DidNotReceive().GetSnapshotsAsync(Arg.Any<CancellationToken>());
         await _provider.DidNotReceive().ReadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
 
-        _Given(new ModelIndices(50m, null, null), new PluginModelIntelligence
+        var snapshots = unmatched is null
+            ? new[]
+            {
+                new ModelSnapshot(snapshotId, "M1", new ModelPrice(5m, 10m), 200_000, true, new ModelIndices(null, 80m, null), [], [], "public feed", Now, TimeSpan.FromHours(24)) { AliasTarget = aliasTarget },
+                new ModelSnapshot("example/intelligence-only", "M2", new ModelPrice(5m, 10m), 200_000, true, new ModelIndices(90m, null, null), [], [], "public feed", Now, TimeSpan.FromHours(24)),
+            }
+            : new[]
+            {
+                new ModelSnapshot("qwen/qwen3.8-27b", "Closest", new ModelPrice(5m, 10m), 200_000, true, new ModelIndices(null, 80m, null), [], [], "public feed", Now, TimeSpan.FromHours(24)),
+                new ModelSnapshot("example/intelligence-only", "M2", new ModelPrice(5m, 10m), 200_000, true, new ModelIndices(90m, null, null), [], [], "public feed", Now, TimeSpan.FromHours(24)),
+            };
+        _Given(new ModelIndices(null, 80m, null), new PluginModelIntelligence
         {
-            Models = [new PluginModelCostEstimate("m1")],
-        });
+            Models = [new PluginModelCostEstimate(model), new PluginModelCostEstimate("intelligence-only")],
+        }, snapshots);
         _profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns(
         [
             new SessionProfile("Prov", new PluginProviderConfig("p", "{}")),
@@ -73,35 +85,37 @@ public sealed class ModelOptionsTests
             [new DelegationTargetView("Prov", "p", null, [], [], 1, 0, [])]);
         var tools = new OrchestratorTools(delegation, new ModelPictureReader(_public, _provider, _profiles, new FakeClock(Now)));
 
-        var options = JsonNode.Parse(await tools.ModelOptionsAsync())!;
+        var options = JsonNode.Parse(await tools.ModelOptionsAsync(taskType: "coding"))!;
 
         Assert.True((bool)options["ok"]!);
-        Assert.Equal(1, (int)options["count"]!);
-        Assert.Equal("Prov", (string)Assert.Single(options["models"]!.AsArray())!["profile"]!);
+        Assert.Equal(2, (int)options["count"]!);
+        Assert.Equal(unmatched is null ? "coding" : "intelligence", (string)options["ranking"]!["kind"]!);
+        Assert.Contains(unmatched is null ? "not comparable" : "Requested coding", (string)options["ranking"]!["message"]!);
+        var models = options["models"]!.AsArray();
+        var sourceModel = models.Single(candidate => (string)candidate!["model"]! == model)!;
+        Assert.Equal(publicModelRef, (string)sourceModel["publicModelRef"]!);
+        Assert.Equal(unmatched is null, (bool)sourceModel["comparable"]!);
+        if (unmatched is not null)
+        {
+            Assert.Equal($"unknown: {unmatched}", (string)sourceModel["quality"]!);
+        }
         var tool = typeof(OrchestratorTools).GetMethod(nameof(OrchestratorTools.ModelOptionsAsync))!.GetCustomAttribute<McpServerToolAttribute>()!;
         Assert.Equal("model_options", tool.Name);
         Assert.True(tool.ReadOnly);
     }
 
-    // AC-1855 merged two cases: the provider's price wins with its source, and a missing quota or index is unknown, never 0.
-
-    public static TheoryData<string, string, string, string, Func<JsonNode, string>> ModelReferenceCases => new()
+    public static TheoryData<string, string, string?, string, string?> ModelReferenceCases => new()
     {
-        { "claude-opus-5-5", "coding", "anthropic/claude-opus-5.5", "coding missing → intelligence", _Basis },
-        { "anthropic/claude-opus-5.5", "coding", "anthropic/claude-opus-5.5", "coding missing → intelligence", _Basis },
-        { "~anthropic/claude-opus-latest", "coding", "anthropic/claude-opus-5.5 via ~anthropic/claude-opus-latest", "coding missing → intelligence", _Basis },
-        { "anthropic/claude-opus-5.5:batch", "coding", "anthropic/claude-opus-5.5", "coding missing → intelligence", _Basis },
-        { "gpt-6.1-sol", "coding", "openai/gpt-6.1-sol", "coding missing → intelligence", _Basis },
-        { "openai/gpt-6.1-sol", "coding", "openai/gpt-6.1-sol", "coding missing → intelligence", _Basis },
-        { "qwen3.8-27b-Q4_K_M", "coding", "qwen/qwen3.8-27b", "coding missing → intelligence", _Basis },
-        { "agentic-only", "agentic", "example/agentic-only", "agentic missing → coding", _Basis },
-        { "onbekend-model", "coding", "onbekend-model", "unknown: no match for onbekend-model; closest approximation: qwen/qwen3.8-27b", _Quality },
+        { "claude-opus-5-5", "anthropic/claude-opus-5.5", null, "anthropic/claude-opus-5.5", null },
+        { "anthropic/claude-opus-5.5", "anthropic/claude-opus-5.5", null, "anthropic/claude-opus-5.5", null },
+        { "~anthropic/claude-opus-latest", "~anthropic/claude-opus-latest", "anthropic/claude-opus-5.5", "anthropic/claude-opus-5.5 via ~anthropic/claude-opus-latest", null },
+        { "anthropic/claude-opus-5.5:batch", "anthropic/claude-opus-5.5", null, "anthropic/claude-opus-5.5", null },
+        { "gpt-6.1-sol", "openai/gpt-6.1-sol", null, "openai/gpt-6.1-sol", null },
+        { "openai/gpt-6.1-sol", "openai/gpt-6.1-sol", null, "openai/gpt-6.1-sol", null },
+        { "qwen3.8-27b-Q4_K_M", "qwen/qwen3.8-27b", null, "qwen/qwen3.8-27b", null },
+        { "agentic-only", "example/agentic-only", null, "example/agentic-only", null },
+        { "onbekend-model", "", null, "onbekend-model", "no match for onbekend-model; closest approximation: qwen/qwen3.8-27b" },
     };
-
-
-    private static string _Basis(JsonNode row) => row["quality"]?["basis"]?.GetValue<string>() ?? throw new InvalidOperationException("Missing fallback basis");
-
-    private static string _Quality(JsonNode row) => row["quality"]?.GetValue<string>() ?? throw new InvalidOperationException("Missing quality");
 
     private sealed class FeedHandler(string feed) : HttpMessageHandler
     {

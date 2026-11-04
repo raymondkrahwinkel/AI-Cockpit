@@ -34,6 +34,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 - The assistant can see the active tool and elapsed state for each SDK session it lists.
 
+### Fixed
+
+- Model choices no longer rank different quality score types as if they were comparable.
+
 ### Removed
 
 - The redundant AssistantReadGateway test, because AssistantReadMcpTools.Bounded is already covered by ReadTranscript_StripsTerminalControlSequences.
