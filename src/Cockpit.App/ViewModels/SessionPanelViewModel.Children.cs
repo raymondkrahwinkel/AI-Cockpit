@@ -148,7 +148,7 @@ public abstract partial class SessionPanelViewModel
                 ReturnToParent();
             }
         }
-        foreach (var child in children)
+        foreach (var child in children.OrderBy(child => child.State == "running" ? 0 : 1))
         {
             ChildAgentViewModel? row = ChildAgents.FirstOrDefault(row => (row.Reference.AgentId ?? row.Reference.TaskId) == (child.AgentId ?? child.TaskId));
             if (row is null)
@@ -162,6 +162,15 @@ public abstract partial class SessionPanelViewModel
                     ReturnToParent();
                 }
                 row.Update(child);
+            }
+        }
+        ChildAgentViewModel[] orderedRows = [.. ChildAgents.OrderBy(row => row.Reference.State == "running" ? 0 : 1)];
+        for (int index = 0; index < orderedRows.Length; index++)
+        {
+            int currentIndex = ChildAgents.IndexOf(orderedRows[index]);
+            if (currentIndex != index)
+            {
+                ChildAgents.Move(currentIndex, index);
             }
         }
         OnPropertyChanged(nameof(HasChildAgents));

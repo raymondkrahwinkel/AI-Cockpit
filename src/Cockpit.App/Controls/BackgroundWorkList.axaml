@@ -33,21 +33,23 @@
                         <DataTemplate x:DataType="vm:ChildAgentViewModel">
                             <Button Command="{Binding OpenCommand}" Classes="Subtle" Padding="8,6" Margin="6,1,6,3"
                                     HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
-                                    Background="{DynamicResource CockpitSecondaryBgBrush}">
+                                    Background="{DynamicResource CockpitSecondaryBgBrush}" Opacity="{Binding RowOpacity}">
                                 <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto">
                                     <Grid Width="8" Height="8" Margin="0,4,8,0" VerticalAlignment="Top">
                                         <Ellipse StrokeThickness="1" Stroke="{Binding StatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
                                         <Ellipse Opacity="{Binding DotFillOpacity}" Fill="{Binding StatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
                                     </Grid>
                                     <Grid Grid.Column="1" ColumnDefinitions="Auto,*" Margin="0,0,10,0">
-                                        <Border Background="{DynamicResource CockpitStatusBackgroundChipTintBrush}" CornerRadius="3" Padding="4,1" Margin="0,0,6,0" VerticalAlignment="Top">
-                                            <TextBlock Text="{Binding TypeText}" FontSize="10.5" Foreground="{DynamicResource CockpitStatusBackgroundBrush}"/>
+                                        <Border Background="{Binding StatusChipTintBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}" CornerRadius="3" Padding="4,1" Margin="0,0,6,0" VerticalAlignment="Top">
+                                            <TextBlock Text="{Binding TypeText}" FontSize="10.5" Foreground="{Binding StatusChipForegroundBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
                                         </Border>
-                                        <TextBlock Grid.Column="1" Text="{Binding Title}" FontSize="12" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding Title}" FontSize="12" TextTrimming="CharacterEllipsis" Foreground="{Binding RowForegroundBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
                                     </Grid>
                                     <StackPanel Grid.Column="2" HorizontalAlignment="Right" Spacing="1">
                                         <TextBlock Text="{Binding TimeText}" FontSize="11.5" HorizontalAlignment="Right"/>
-                                        <TextBlock Text="{Binding StatusText}" FontSize="10" HorizontalAlignment="Right" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                        <Border Background="{Binding StatusChipTintBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}" CornerRadius="3" Padding="4,1">
+                                            <TextBlock Text="{Binding StatusText}" FontSize="10" HorizontalAlignment="Right" Foreground="{Binding StatusChipForegroundBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                                        </Border>
                                     </StackPanel>
                                     <Grid Grid.Row="1" Grid.Column="1" ColumnDefinitions="*,Auto" Margin="0,4,0,0">
                                         <TextBlock Text="{Binding LastToolText, StringFormat='Last tool: {0}'}" FontSize="11" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding LastToolText}" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
