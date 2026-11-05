@@ -94,6 +94,9 @@ public interface INodeSessionsClient
     /// </summary>
     Task<string?> RememberOnNodeAsync(string nodeName, string text, string scope, CancellationToken cancellationToken = default);
 
+    Task<string?> RewriteMemoryOnNodeAsync(string nodeName, string text, CancellationToken cancellationToken = default) =>
+        Task.FromResult<string?>("Memory rewriting is not supported by this node client.");
+
     /// <summary>
     /// AC-1352: opens a connection to <paramref name="row"/> exactly as an ordinary read would, but on a row that
     /// is not in the MCP registry yet and without the moved-node re-resolve — the connect dialog's own proof that

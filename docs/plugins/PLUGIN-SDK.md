@@ -1098,6 +1098,7 @@ version-mismatched manifest is rejected with a message rather than crashing mid-
 | `secretKeys` | no | Storage keys that hold a credential, beyond the names the host recognises itself (`["pat"]`). Read before your plugin loads, so such a value is decrypted on the way in rather than handed to you as ciphertext. See "Credentials". |
 | `minHostVersion` | no | The oldest cockpit your plugin actually works against. **Enforced from host 1.0 onwards**: an older host refuses to load you, and the Plugins manager says "Needs a newer cockpit". Ignored entirely while the host is 0.x — enforcing it there would refuse every plugin in existence, because they all claim `1.0.0` and none of them meant it. That is exactly why the 0.x window is when to make it honest: name the first version carrying the contribution points you call, not the number the template happened to ship. This covers a host **theme resource or control style class** your plugin looks up by name too, not just an SDK member — see "Theme tokens and control classes" below; that dependency has no compiler to catch you if you forget it. |
 | `description`, `author` | no | Shown in the Plugins manager and any store catalogue. |
+| `keywords` | no | Extra store search terms (`["Gemini", "Grok"]`), for names that do not belong in your description. The publish workflow copies them to the store index. An older host ignores the field, so it needs no higher `minHostVersion`. |
 
 ## Project setup {#project-setup}
 
@@ -1685,8 +1686,8 @@ store, or open a PR against it to list your plugin alongside the official ones.
 
 ## Plugins that ship with the app {#plugins-that-ship-with-the-app}
 
-Nine plugins are **bundled**: transcript search, git status, Claude Code, the clock, usage trend, the example
-workspace, the example companion tool, Autopilot and Fan-out. They are built with the cockpit, copied into its
+Eight plugins are **bundled**: transcript search, git status, Claude Code, the clock, usage trend, the example
+workspace, the example companion tool and Autopilot. They are built with the cockpit, copied into its
 `bundled-plugins/` output, and installed into the operator's plugins directory on startup — enabled, and without
 the consent dialog (it asks whether you trust third-party code, and these came out of the very build that is
 asking).
@@ -1710,9 +1711,8 @@ to prove their own SDK extension points end to end from outside the host, not be
 — see [Workspace plugins](#workspace-plugins--a-whole-workspace-surface) and
 [Companion tool plugins](#companion-tool-plugins--a-mini-tool-in-the-pop-out-window).
 
-**Autopilot** and **Fan-out** are bundled because they are first-class features of the cockpit itself — the
-issue-to-PR pipeline and running several agents on one task at once — not something bundling merely defaults on,
-the way the clock is.
+**Autopilot** is bundled because it is the cockpit's first-class issue-to-PR pipeline, not something bundling
+merely defaults on, the way the clock is.
 
 A bundled plugin's files are taken from its output folder by wildcard (every `.dll`, every `.deps.json` and
 `plugin.json`), so a bundled plugin that splits into a backend and a UI part ships both without a change to the
@@ -1759,10 +1759,10 @@ they exercise the main contribution points:
 
 **Provider plugins (`host.AddSessionProvider`, #45):**
 
-- **[Gemini / OpenAI Provider](https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/plugins-dev/Cockpit.Plugin.GeminiProvider)** — registers **two**
-  providers (Gemini and OpenAI) from one `Initialize`, both backed by the same persistent-`IChatClient` driver
-  factory over an OpenAI-compatible chat-completions endpoint, differing only in default base URL. Chat-only
-  capabilities (no tools/permissions). Experimental (0.x).
+- **[OpenAI-compatible](https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/plugins-dev/Cockpit.Plugin.GeminiProvider)** — registers
+  **several** providers (Gemini, OpenAI, Groq, Mistral, Cerebras and Custom) from one `Initialize`, all backed by the same
+  persistent-`IChatClient` driver factory over an OpenAI-compatible chat-completions endpoint, differing only in
+  default base URL. Tools run through the host's loop. Experimental (0.x).
 - **[OpenRouter](https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/plugins-dev/Cockpit.Plugin.OpenRouterProvider)** — the same OpenAI-compatible driver
   against OpenRouter's endpoint (`openrouter.ai/api/v1`), model id in OpenRouter's `vendor/model` notation
   (e.g. `anthropic/claude-sonnet-4.5`). Chat-only, same as the other two; declares no usage signals since the

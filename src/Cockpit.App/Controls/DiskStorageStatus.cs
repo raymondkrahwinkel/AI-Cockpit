@@ -101,7 +101,7 @@ internal sealed class DiskStorageStatus : Button
         _text.Bind(TextBlock.ForegroundProperty, this.GetResourceObservable(brushKey));
         ToolTip.SetTip(this, disks.Count == 0
             ? "Disk space and Docker storage — awaiting readings"
-            : string.Join(" · ", disks.Select(disk => $"{disk.Name} {_Bytes(disk.FreeBytes)} free")));
+            : string.Join("\n", disks.Select(disk => $"{disk.Name}: {_Bytes(disk.FreeBytes)} free, {_Bytes(Math.Max(0, disk.TotalBytes - disk.FreeBytes))} used, {_Bytes(disk.TotalBytes)} total")));
         _RefreshPanel();
     }
 

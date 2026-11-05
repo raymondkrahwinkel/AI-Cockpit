@@ -945,6 +945,10 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
 
     public string StepTail => IsStepRunning ? "…" : string.Empty;
 
+    public string ToolActivityAgeText => IsStepRunning && Session?.ToolActivityAge(ToolUseId) is { Length: > 0 } age ? $"· {age}" : string.Empty;
+
+    internal void RefreshActivityAge() => OnPropertyChanged(nameof(ToolActivityAgeText));
+
     public MaterialIconKind StepIconKind => IsStepRunning ? MaterialIconKind.ClockOutline : MaterialIconKind.Check;
 
     // A step's folder, a made file and Open folder all go out through the session, so a test can stand in for the system.

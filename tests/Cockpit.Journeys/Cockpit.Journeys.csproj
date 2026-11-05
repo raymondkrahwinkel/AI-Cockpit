@@ -64,7 +64,6 @@
     <_StoreOnlyPlugin Include="Clock" FolderId="clock" />
     <_StoreOnlyPlugin Include="ExampleCompanionTool" FolderId="example-companion-tool" />
     <_StoreOnlyPlugin Include="ExampleWorkspace" FolderId="example-workspace" />
-    <_StoreOnlyPlugin Include="FanOut" FolderId="fan-out" />
     <_StoreOnlyPlugin Include="GitStatus" FolderId="git-status" />
     <_StoreOnlyPlugin Include="GeminiProvider" FolderId="gemini-provider" />
     <_StoreOnlyPlugin Include="TranscriptSearch" FolderId="transcript-search" />

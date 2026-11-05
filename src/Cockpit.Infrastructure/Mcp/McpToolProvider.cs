@@ -33,7 +33,7 @@ internal sealed class McpToolProvider(
         var sessionToken = string.IsNullOrEmpty(paneId) ? null : keyring.TokenFor(paneId);
         // AC-11/AC-218: registry plus what active plugins provide, scoped to projectId so a local model
         // sees a plugin's/project's own servers too, not just the unscoped registry.
-        var registry = await catalog.GetServersForProjectAsync(projectId, cancellationToken).ConfigureAwait(false);
+        var registry = await catalog.GetServersForSessionAsync(projectId, enabledServerNames, cancellationToken).ConfigureAwait(false);
         // AC-869: cockpit-github-pull-requests is Internal (hidden from every picker); a git-repo working
         // directory names it explicitly here rather than through operator config.
         var autoMounted = await GitHubPullRequestsAutoMount.NamesAsync(worktreeManager, workingDirectory, cancellationToken).ConfigureAwait(false);

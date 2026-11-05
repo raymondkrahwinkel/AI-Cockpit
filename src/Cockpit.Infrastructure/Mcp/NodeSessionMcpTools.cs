@@ -276,6 +276,25 @@ internal sealed class NodeSessionMcpTools(
         }
     }
 
+    [McpServerTool(Name = "rewrite_memory_on_node", ReadOnly = false, Destructive = false)]
+    [Description("Replaces this node's behaviour memory after making a timestamped backup.")]
+    public async Task<string> RewriteMemoryOnNodeAsync(string text)
+    {
+        try
+        {
+            if (_RefuseIfNotTheController() is { } refusal)
+            {
+                return refusal;
+            }
+            var result = await memory.RewriteAsync(text).ConfigureAwait(false);
+            return _Serialize(new { ok = true, result });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
     [McpServerTool(Name = "start_node_agent", ReadOnly = false, Destructive = false)]
     [Description("Starts an AI session on the node — on that machine, under that machine's own account, spending that machine's own budget. THIS IS NOT YOUR COCKPIT: you cannot see the session's screen, and the operator of this cockpit may not be sitting at the other one. Say plainly which machine you are starting something on before you do it, and read the node name back off the result. THE PROFILE MUST BE ONE list_node_profiles REPORTED: anything else is refused, because the node's operator ticked those and only those. THE SAME GOES FOR projectId — take it from list_node_projects or leave it out. YOU DO NOT PICK A DESK OR A FOLDER: the session lands on whatever desk that machine is showing and runs where its profile or project says, so there is nothing here to name and nothing for you to guess. IF YOU WANT TO HEAR HOW IT WENT, ASK FOR IT IN THE prompt: a session there reaches you only by notifying its own assistant (cockpit-assistant), which is queued for you while you hold the line and arrives with your inbox as `<node> · <paneId>` — and only from a profile the node's operator shared. Nothing tells you it finished unless it says so itself. WHAT YOU START KEEPS RUNNING: closing this cockpit, losing the network or unpairing does not stop it — it goes on spending until somebody stops it, here with stop_node_agent or there by hand. Never describe this as borrowing the machine for a moment.")]
     public async Task<string> StartNodeAgentAsync(

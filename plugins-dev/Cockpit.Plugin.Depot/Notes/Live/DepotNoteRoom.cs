@@ -169,6 +169,10 @@ internal sealed class JintNoteRoom(uint clientId) : IDepotNoteRoom
                 return call(engine, room);
             }, cancellationToken).ConfigureAwait(false);
         }
+        catch (Jint.Runtime.JavaScriptException exception)
+        {
+            throw new InvalidDataException("The live note could not be converted safely.", exception);
+        }
         finally
         {
             _actor.Release();

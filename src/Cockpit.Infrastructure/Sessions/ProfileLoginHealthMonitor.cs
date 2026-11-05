@@ -127,18 +127,20 @@ internal sealed class ProfileLoginHealthMonitor : BackgroundService, IProfileLog
 
         var previous = Current.ToDictionary(row => row.Profile, StringComparer.Ordinal);
         var next = new List<ProfileLoginHealth>();
+        var localHealth = profiles
+            .Where(profile => profile.ProviderConfig is OllamaConfig or LmStudioConfig)
+            .ToDictionary(profile => profile.Label, profile => profile.ProviderConfig switch
+            {
+                OllamaConfig ollama => _LocalHealthAsync(profile.Label, ollama.BaseUrl, null, "Ollama", previous.GetValueOrDefault(profile.Label)),
+                LmStudioConfig lmStudio => _LocalHealthAsync(profile.Label, lmStudio.BaseUrl, lmStudio.ApiKey, "LM Studio", previous.GetValueOrDefault(profile.Label)),
+                _ => throw new InvalidOperationException("The local profile filter and mapping disagree."),
+            }, StringComparer.Ordinal);
+
         foreach (var profile in profiles)
         {
-            previous.TryGetValue(profile.Label, out var before);
-            if (profile.ProviderConfig is OllamaConfig ollama)
+            if (profile.ProviderConfig is OllamaConfig or LmStudioConfig)
             {
-                next.Add(await _LocalHealthAsync(profile.Label, ollama.BaseUrl, null, "Ollama", before).ConfigureAwait(false));
-                continue;
-            }
-
-            if (profile.ProviderConfig is LmStudioConfig lmStudio)
-            {
-                next.Add(await _LocalHealthAsync(profile.Label, lmStudio.BaseUrl, lmStudio.ApiKey, "LM Studio", before).ConfigureAwait(false));
+                next.Add(await localHealth[profile.Label].ConfigureAwait(false));
                 continue;
             }
 
@@ -146,6 +148,8 @@ internal sealed class ProfileLoginHealthMonitor : BackgroundService, IProfileLog
             {
                 continue;
             }
+
+            previous.TryGetValue(profile.Label, out var before);
 
             bool signedIn;
             bool hasCheck;

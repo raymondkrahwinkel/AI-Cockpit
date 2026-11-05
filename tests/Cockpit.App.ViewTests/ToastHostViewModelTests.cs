@@ -73,9 +73,9 @@ public sealed class ToastHostViewModelTests
         Assert.False(_AutoDismisses(ToastSeverity.Information, true));
         Assert.True(_AutoDismisses(ToastSeverity.Success, false));
         Assert.False(_AutoDismisses(ToastSeverity.Success, true));
-        Assert.False(_AutoDismisses(ToastSeverity.Warning, false));
+        Assert.True(_AutoDismisses(ToastSeverity.Warning, false));
         Assert.False(_AutoDismisses(ToastSeverity.Warning, true));
-        Assert.False(_AutoDismisses(ToastSeverity.Error, false));
+        Assert.True(_AutoDismisses(ToastSeverity.Error, false));
         Assert.False(_AutoDismisses(ToastSeverity.Error, true));
     }
 

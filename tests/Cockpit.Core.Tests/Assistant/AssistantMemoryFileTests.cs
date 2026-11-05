@@ -68,6 +68,18 @@ public class AssistantMemoryFileTests : IDisposable
         await File.WriteAllTextAsync(_filePath, "# Notes\n\n- Only this one survived the pruning.\n");
 
         Assert.Equal("# Notes\n\n- Only this one survived the pruning.", await memory.ReadAsync(AssistantMemoryScope.Behaviour));
+
+        var original = "# What the operator asked me to remember\n\n- Undated rule\n- Duplicate rule\n- Duplicate rule\n";
+        await File.WriteAllTextAsync(_filePath, original);
+        var originalBytes = await File.ReadAllBytesAsync(_filePath);
+        var rewritten = "# What the operator asked me to remember\n\n- Undated rule\n";
+        var result = await memory.RewriteAsync(rewritten);
+        Assert.Equal(originalBytes, await File.ReadAllBytesAsync(result.BackupPath!));
+        Assert.Equal(rewritten, await File.ReadAllTextAsync(_filePath));
+        Assert.True(result.BytesAfter < result.BytesBefore);
+        await Assert.ThrowsAsync<ArgumentException>(() => memory.RewriteAsync("invalid"));
+        await Assert.ThrowsAsync<ArgumentException>(() => memory.RewriteAsync(""));
+        Assert.Equal(rewritten, await File.ReadAllTextAsync(_filePath));
     }
 
     [Fact]

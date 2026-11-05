@@ -43,10 +43,6 @@ public partial class SessionView : UserControl
     // see _ResolveDiagnostics. Null leaves this pane on exactly the pre-AC-883 behaviour: minimising, nothing else.
     internal DiagnosticsBackgroundService? Diagnostics { get; set; }
 
-    // AC-532: ticks the composer's tool-activity elapsed time each second so "running 0:12" counts
-    // up (and, AC-531, the background-work pop-out's per-task times). Lives here, not the view
-    // model, since the derived state must stay dispatcher-free for platform-less unit tests.
-    private DispatcherTimer? _activityAgeTicker;
 
     private ScrollViewer? _transcriptScroll;
 
@@ -158,9 +154,6 @@ public partial class SessionView : UserControl
         _WatchSession(DataContext as SessionViewModel);
         Dispatcher.UIThread.Post(_UpdateJumpAffordance, DispatcherPriority.Background);
 
-        _activityAgeTicker = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-        _activityAgeTicker.Tick += _OnActivityAgeTick;
-        _activityAgeTicker.Start();
 
         if (TopLevel.GetTopLevel(this) is Window window)
         {
@@ -181,8 +174,6 @@ public partial class SessionView : UserControl
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
-        _activityAgeTicker?.Stop();
-        _activityAgeTicker = null;
 
         _WatchSession(null);
 
@@ -272,19 +263,6 @@ public partial class SessionView : UserControl
 
         // Rows dematerialise while paused, so what is reachable changed even though nothing scrolled (AC-996).
         Dispatcher.UIThread.Post(_UpdateJumpAffordance, DispatcherPriority.Background);
-    }
-
-    private void _OnActivityAgeTick(object? sender, EventArgs e)
-    {
-        if (DataContext is not SessionViewModel vm)
-        {
-            return;
-        }
-
-        vm.RefreshActiveToolActivityAge();
-        // AC-531: same ticker, one more thing to re-tick — the background-work pop-out's elapsed times need to
-        // count up too, and a second DispatcherTimer for the same one-second cadence would be pure duplication.
-        vm.RefreshBackgroundTaskAges();
     }
 
     // AC-1121: no follow from here. Avalonia raises this from LayoutUpdated, so the ScrollIntoView the old

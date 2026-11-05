@@ -55,6 +55,12 @@ public class DepotNoteBridgeTests
         Assert.Equal(text, serialized);
         Assert.Equal(SchemaSha[..12], _Sha(Encoding.UTF8.GetBytes(bundleSchema))[..12]);
         Assert.Equal(SchemaSha[..12], DepotNoteSchema.Version);
+        // Category B: opening and saving nested formatting must preserve the text in every block kind.
+        const string marked = "# **`heading`**\n\n- **`item`**\n\n| Column |\n| --- |\n| **`cell`** |\n\n**`paragraph`**\n";
+        const string normalized = "# `heading`\n\n- `item`\n\n| Column |\n| ------ |\n| `cell` |\n\n`paragraph`\n";
+        await room.SeedAsync(marked, CancellationToken.None);
+        await room.LoadAsync(string.Empty, CancellationToken.None);
+        Assert.Equal(normalized, await room.SerializeAsync(CancellationToken.None));
     }
 
     // One keystroke in a paragraph is one Edited and one Update, and that update changes that paragraph and no other Y item; the same

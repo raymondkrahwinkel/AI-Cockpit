@@ -154,12 +154,7 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     // signed-out connection's own "Sign in to this Depot connection…" error by implying nothing is set up.
     public bool HasNoSharedProjectSources => _snapshot.Sources.Count == 0;
 
-    // `Projects` grouped by category for the list (AC-618), rebuilt by `_Republish` — replaces AC-245's "On this
-    // machine" heading with a per-card origin badge instead (`ProjectCardViewModel.OriginBadge`).
-    public ObservableCollection<ProjectCategoryGroupViewModel> ProjectCategoryGroups { get; } = [];
-
-    // The same cards the groups above hold, in "last worked on" order — what the Continue layout draws (AC-772).
-    // Rebuilt alongside them by `_RepublishRecentCards`, so the two never disagree about which projects exist.
+    // The project cards in "last worked on" order — what Home's Continue layout draws (AC-772), rebuilt by `_Republish`.
     public ObservableCollection<ProjectCardViewModel> RecentCards { get; } = [];
 
     // The always-present, never-disappearing catch-all category group's heading (AC-618).
@@ -858,36 +853,7 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         OnPropertyChanged(nameof(MostRecentProject));
         OnPropertyChanged(nameof(HasMoreThanSidebarShows));
 
-        _RepublishCategoryGroups();
-    }
-
-    // Normalize locally before rebuilding so a newly typed category heading appears immediately (AC-618).
-    private void _RepublishCategoryGroups()
-    {
-        ProjectCategoryGroups.Clear();
-
-        var normalized = _snapshot.Settings.Normalized();
-        _RepublishRecentCards(normalized);
-        if (!normalized.Projects.Any(project => !string.IsNullOrWhiteSpace(project.Category)))
-        {
-            ProjectCategoryGroups.Add(new ProjectCategoryGroupViewModel(CategoryName: null, [.. normalized.Projects.Select(_ToCard)]));
-            return;
-        }
-
-        foreach (var category in normalized.CategoryOrder)
-        {
-            var cards = normalized.Projects
-                .Where(project => string.Equals(project.Category, category, StringComparison.OrdinalIgnoreCase))
-                .Select(_ToCard)
-                .ToList();
-            ProjectCategoryGroups.Add(new ProjectCategoryGroupViewModel(category, cards));
-        }
-
-        var uncategorized = normalized.Projects
-            .Where(project => string.IsNullOrWhiteSpace(project.Category))
-            .Select(_ToCard)
-            .ToList();
-        ProjectCategoryGroups.Add(new ProjectCategoryGroupViewModel(_UncategorizedLabel, uncategorized));
+        _RepublishRecentCards(_snapshot.Settings.Normalized());
     }
 
     // The Continue layout's own order (AC-772): most recently worked on first, never-opened last. Flat rather than
@@ -948,11 +914,8 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         ToggleSharingCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(ShareToggleLabel));
 
-        // AC-709: keeps every already-materialized card's selected style in sync — a plain assignment here
-        // (rather than going through a full _Republish) is what OnProjectPressed does on every click. AC-772:
-        // `RecentCards` holds its own instances for the same projects, so it has to be reached too.
-        var cards = ProjectCategoryGroups.SelectMany(group => group.Cards).Concat(RecentCards);
-        foreach (var card in cards)
+        // AC-709: keeps every already-materialized card's selected style in sync, without a full _Republish.
+        foreach (var card in RecentCards)
         {
             card.IsSelected = card.Project.Id == value?.Id;
         }

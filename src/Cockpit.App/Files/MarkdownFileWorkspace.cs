@@ -373,9 +373,11 @@ internal sealed partial class MarkdownFileWorkspace : UserControl
     private async Task<bool> _OpenLiveAsync(Snapshot read)
     {
         var live = new LiveTextDocument(Editor.TextEditor.Document, _client, _logger);
+        using var openingLife = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        var opening = _client.OpenLiveAsync(_options.File, openingLife.Token);
         try
         {
-            var (id, snapshot, wire) = await _client.OpenLiveAsync(_options.File, _lifetime.Token).ConfigureAwait(true);
+            var (id, snapshot, wire) = await opening.WaitAsync(TimeSpan.FromSeconds(15), _lifetime.Token).ConfigureAwait(true);
             if (_closed)
             {
                 live.Dispose();
@@ -394,11 +396,41 @@ internal sealed partial class MarkdownFileWorkspace : UserControl
             }
             return true;
         }
+        catch (Exception error) when (error is TimeoutException or OperationCanceledException)
+        {
+            live.Dispose();
+            openingLife.Cancel();
+            _ = CloseLateAsync();
+            if (_lifetime.IsCancellationRequested)
+            {
+                throw;
+            }
+            _error = "Live editing did not connect in time. Showing the saved file instead.";
+            _logger.LogWarning(error, "Markdown workspace {WorkspaceId} timed out opening its file live; it saves snapshots instead.", _context.WorkspaceId);
+            return false;
+        }
         catch (FileSourceException error)
         {
             live.Dispose();
             _logger.LogWarning(error, "Markdown workspace {WorkspaceId} could not open its file live; it saves snapshots instead.", _context.WorkspaceId);
             return false;
+        }
+
+        // A source may ignore cancellation and return an id later; it must never attach to this editor.
+        async Task CloseLateAsync()
+        {
+            try
+            {
+                var (id, _, _) = await opening.ConfigureAwait(false);
+                await _client.CloseLiveAsync(id, CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception error)
+            {
+                _logger.LogWarning(error, "Closing the abandoned live open for markdown workspace {WorkspaceId} failed.", _context.WorkspaceId);
+            }
         }
     }
 
@@ -813,7 +845,7 @@ internal sealed partial class MarkdownFileWorkspace : UserControl
         Editor.IsVisible = !_comparing;
         _message.Text = _error;
         _message.IsVisible = _error is not null;
-        var version = _version is null ? "New file" : $"Source version {_version[..Math.Min(8, _version.Length)]}";
+        var version = !_loaded && !_new ? "" : _version is null ? "New file" : $"Source version {_version[..Math.Min(8, _version.Length)]}";
         _footer.Text = $"{(Editor.ShowSource ? "Markdown source" : "Live")} · {_WordCount(text)} words · {version}";
         _UpdateLiveLight();
         _UpdateLiveBanner();

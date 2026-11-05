@@ -19,7 +19,7 @@ public sealed class PluginShadow
     // A copy or staging folder touched this recently may belong to a process that has not marked it yet.
     private static readonly TimeSpan Grace = TimeSpan.FromMinutes(10);
 
-    private static readonly ConcurrentDictionary<(string FolderId, string Sha256), Lazy<PluginShadow>> _prepared = new();
+    private static readonly ConcurrentDictionary<(string Root, string FolderId, string Sha256), Lazy<PluginShadow>> _prepared = new();
 
     private FileStream? _inUse;
 
@@ -50,7 +50,8 @@ public sealed class PluginShadow
     // copied are not the bytes the pin approved.
     public static PluginShadow GetOrPrepare(DiscoveredPlugin discovered, bool fresh = false)
     {
-        var key = (discovered.FolderId, discovered.Sha256);
+        // Per state root too: a process that holds two (a test host after another) must not hand one the other's copies.
+        var key = (RootFor(Path.GetDirectoryName(Path.GetFullPath(discovered.FolderPath))!), discovered.FolderId, discovered.Sha256);
         if (fresh)
         {
             _prepared.TryRemove(key, out _);

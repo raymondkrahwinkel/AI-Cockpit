@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Cockpit.Core.ModelIntelligence;
 
 namespace Cockpit.Infrastructure.ModelIntelligence;
@@ -17,26 +18,20 @@ internal static class ModelOptions
         try
         {
             var picture = await modelPicture.ReadAsync().ConfigureAwait(false);
-            var kind = taskType?.Trim().ToLowerInvariant() switch { "coding" => "coding", "agentic" => "agentic", _ => "intelligence" };
-            (decimal? Value, string? Basis) Index(ModelPictureRow row) => row.Indices is null ? (null, null) : kind switch
-            {
-                "coding" when row.Indices.Coding is { } value => (value, "coding"),
-                "coding" when row.Indices.Agentic is { } value => (value, "coding missing → agentic"),
-                "coding" when row.Indices.Intelligence is { } value => (value, "coding missing → intelligence"),
-                "agentic" when row.Indices.Agentic is { } value => (value, "agentic"),
-                "agentic" when row.Indices.Coding is { } value => (value, "agentic missing → coding"),
-                "agentic" when row.Indices.Intelligence is { } value => (value, "agentic missing → intelligence"),
-                _ when row.Indices.Intelligence is { } value => (value, "intelligence"),
-                _ => (null, null),
-            };
-
+            var requestedKind = taskType?.Trim().ToLowerInvariant() switch { "coding" => "coding", "agentic" => "agentic", _ => "intelligence" };
             var rows = picture.Rows
                 .Where(row => allowedProfiles is null || allowedProfiles.Contains(row.Profile))
                 .Where(row => maxPricePerMTokens is not { } max || row.PriceNow is null
                     || ((row.PriceNow.Input ?? 0m) <= max && (row.PriceNow.Output ?? 0m) <= max))
-                .OrderBy(row => Index(row).Value is null)
-                .ThenByDescending(row => Index(row).Value ?? 0m)
+                .Where(row => string.IsNullOrEmpty(provider) || row.Provider.Contains(provider, StringComparison.OrdinalIgnoreCase))
+                .Where(row => string.IsNullOrEmpty(profile) || string.Equals(row.Profile, profile, StringComparison.OrdinalIgnoreCase))
                 .ToArray();
+            var kind = _RankingKind(rows, requestedKind);
+            var comparableRows = rows.Where(row => _Index(row, kind) is not null)
+                .OrderByDescending(row => _Index(row, kind))
+                .ToArray();
+            var nonComparableRows = rows.Where(row => _Index(row, kind) is null).ToArray();
+            var rankedRows = comparableRows.Concat(nonComparableRows).ToArray();
 
             var used = new SortedSet<string>(StringComparer.Ordinal);
             object? Fact(Sourced? source)
@@ -58,9 +53,9 @@ internal static class ModelOptions
 
             static object Unknown(string why) => $"unknown: {why}";
 
-            var models = rows.Select(row =>
+            var models = rankedRows.Select(row =>
             {
-                var index = Index(row);
+                var index = _Index(row, kind);
                 var images = ImageInput.Resolve(row.ImageInputMode, row.HasImageTransport, row.ServiceImageInput?.At(picture.At), row.OpenRouterImageInput?.At(picture.At));
                 return new
                 {
@@ -69,6 +64,8 @@ internal static class ModelOptions
                     model = row.Model,
                     sessions = sessions?.GetValueOrDefault(row.Profile),
                     publicModelRef = row.PublicModelRef,
+                    family = _Family(row.PublicModelRef),
+                    comparable = index is not null,
                     supportsImageInput = images.SupportsVision,
                     imageInputMode = row.ImageInputMode.ToString(),
                     imageInputSource = images.Source,
@@ -77,7 +74,13 @@ internal static class ModelOptions
                     price = row.SelfHosted ? (object)"self-hosted / own endpoint" : row.Price is null ? Unknown(row.Unmatched ?? $"OpenRouter lists no price for {row.PublicModelRef}") : new { inputPerMTokens = row.Price.Input, outputPerMTokens = row.Price.Output, fact = Fact(row.Price.Source) },
                     priceNow = row.SelfHosted ? "self-hosted / own endpoint" : row.PriceNow is null ? (object)"unknown" : new { inputPerMTokens = row.PriceNow.Input, outputPerMTokens = row.PriceNow.Output, applied = row.PriceNow.Applied },
                     modifiers = row.Modifiers.Select(modifier => new { modifier.Condition, modifier.Factor, modifier.ActiveNow }),
-                    quality = index.Value is null ? Unknown(row.Unmatched ?? $"OpenRouter carries no Artificial Analysis {kind} index for {row.PublicModelRef}") : new { kind, index = index.Value, basis = index.Basis, fact = Fact(row.PublicSource) },
+                    quality = index is null ? Unknown(row.Unmatched ?? $"not comparable: OpenRouter carries no {kind} index for {row.PublicModelRef}") : new { kind, index, basis = kind, fact = Fact(row.PublicSource) },
+                    scores = row.Indices is null ? null : new
+                    {
+                        coding = _Score(row.Indices.Coding, row.PublicSource, Fact),
+                        agentic = _Score(row.Indices.Agentic, row.PublicSource, Fact),
+                        intelligence = _Score(row.Indices.Intelligence, row.PublicSource, Fact),
+                    },
                     contextTokens = row.Context is null ? Unknown(row.Unmatched ?? $"OpenRouter lists no context length for {row.PublicModelRef}") : new { tokens = row.Context.Tokens, fact = Fact(row.Context.Source) },
                     limits = row.Limits.Count == 0
                         ? (object)"unknown"
@@ -128,17 +131,58 @@ internal static class ModelOptions
                 };
             }).ToArray();
 
-            models = models
-                .Where(model => string.IsNullOrEmpty(provider) || model.provider.Contains(provider, StringComparison.OrdinalIgnoreCase))
-                .Where(model => string.IsNullOrEmpty(profile) || string.Equals(model.profile, profile, StringComparison.OrdinalIgnoreCase))
-                .ToArray();
-
-            return JsonSerializer.Serialize(new { ok = true, taskType = kind, at = picture.At, count = models.Length, models, attribution = used });
+            var message = kind != requestedKind
+                ? $"Requested {requestedKind}, but not every row has it; ranked by {kind}."
+                : comparableRows.Length == rows.Length
+                ? $"Ranked by {kind} score."
+                : $"Ranked by {kind} score; {nonComparableRows.Length} row(s) are not comparable because they have no {kind} score.";
+            return JsonSerializer.Serialize(new { ok = true, taskType = requestedKind, at = picture.At, count = models.Length, ranking = new { kind, message, comparableCount = comparableRows.Length, notComparableCount = nonComparableRows.Length }, models, attribution = used });
         }
         catch (Exception exception)
         {
             return JsonSerializer.Serialize(new { ok = false, error = exception.Message });
         }
+    }
+
+    private static decimal? _Index(ModelPictureRow row, string kind) => row.Indices is null ? null : kind switch
+    {
+        "coding" => row.Indices.Coding,
+        "agentic" => row.Indices.Agentic,
+        _ => row.Indices.Intelligence,
+    };
+
+    private static string _RankingKind(IReadOnlyList<ModelPictureRow> rows, string requestedKind) =>
+        rows.All(row => _Index(row, requestedKind) is not null)
+            ? requestedKind
+            : new[] { "coding", "agentic", "intelligence" }
+                .OrderByDescending(kind => rows.Count(row => _Index(row, kind) is not null))
+                .ThenBy(kind => kind == requestedKind ? 0 : 1)
+                .First();
+
+    private static object? _Score(decimal? value, Sourced? source, Func<Sourced?, object?> fact) =>
+        value is null ? null : new { index = value, fact = fact(source) };
+
+    private static object _Family(string? publicModelRef)
+    {
+        var reference = publicModelRef?.Split(" via ", StringSplitOptions.None)[0];
+        var match = reference is null ? null : Regex.Match(reference, "^(?<provider>[^/]+)/(?<model>[^/]+)$");
+        if (match is null || !match.Success)
+        {
+            return new { provider = "unknown", generation = "unknown", tier = "unknown" };
+        }
+
+        var model = match.Groups["model"].Value;
+        var generation = Regex.Match(model, "\\d+(?:\\.\\d+)*");
+        var before = generation.Success ? model[..generation.Index].Trim('-') : string.Empty;
+        var after = generation.Success ? model[(generation.Index + generation.Length)..].Trim('-') : string.Empty;
+        var tier = after.Split('-', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()
+            ?? before.Split('-', StringSplitOptions.RemoveEmptyEntries).LastOrDefault();
+        return new
+        {
+            provider = match.Groups["provider"].Value,
+            generation = generation.Success ? generation.Value : "unknown",
+            tier = tier is "gpt" or "claude" or null ? "unknown" : tier,
+        };
     }
 }
 

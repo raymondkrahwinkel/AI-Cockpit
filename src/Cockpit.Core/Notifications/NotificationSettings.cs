@@ -53,6 +53,10 @@ public sealed record NotificationSettings
     // at all, not merely that the answer is swallowed.
     public bool NotifyOnCiFailure { get; init; } = true;
 
+    public const int DefaultMonitorMessagesPerHour = 12;
+
+    public int MonitorMessagesPerHour { get; init; } = DefaultMonitorMessagesPerHour;
+
     // How long a finished session stays "done" before it counts as idle. Distinct from `IdleThreshold`,
     // which is about *you* being away from the PC — this is about a *session* having nothing to do.
     // `TimeSpan.Zero` turns the idle transition off.

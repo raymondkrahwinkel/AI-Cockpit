@@ -30,8 +30,25 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ## [Unreleased]
 
+### Added
+
+- The assistant can see the active tool and elapsed state for each SDK session it lists.
+
+### Fixed
+
+- Files whose live session does not respond now show the saved snapshot after a short timeout instead of staying on Loading; existing files no longer show "New file" while opening.
+- Depot notes containing bold inline code now open safely; unreadable notes show their source read-only with a recovery message instead of retrying forever.
+- Simple view's Projects page now shows the same list as Projects in the normal view, including Depot projects, the detail pane and the options to add a project.
+- Model choices no longer rank different quality score types as if they were comparable.
+
+### Changed
+
+- Simple session and assistant views now use the available window width instead of a fixed 720 px column.
+
 ### Removed
 
+- The redundant AssistantReadGateway test, because AssistantReadMcpTools.Bounded is already covered by ReadTranscript_StripsTerminalControlSequences.
+- The Fan-out plugin and its workspace, because it is no longer used.
 - The GitHub Models provider plugin, because the service has been discontinued.
 
 ### Added
@@ -48,6 +65,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - When a plugin is disabled, a running session that still calls one of its MCP tools gets the error "plugin <name> is uitgeschakeld" and carries on; new sessions are no longer offered those tools.
 - Removing a plugin, in Options → Plugins or on a server, now stops it at once and deletes its files on the next start. Disabling or removing a provider plugin while a session still runs on it asks for a restart and names the session.
 - A workflow that uses a step from a disabled plugin is skipped with that reason, and a scheduled agent task whose provider plugin is disabled is skipped instead of failing.
+- The assistant automatically hears about failed turns, unanswered permissions, abandoned processes and panes disappearing before finishing; reports are bundled and capped per hour.
+- The assistant can consolidate its behaviour memory with a timestamped backup on each destination.
+- Groq, Mistral, Cerebras and a Custom entry with your own base URL as session providers in the OpenAI-compatible plugin, each with a note on what works.
+- Plugins can list search terms, so the store finds a plugin on names that are not in its description. Searching for Gemini, Grok or Hetzner now finds the OpenAI-compatible plugin.
 - Grok image input is detected from the service's model metadata, including model aliases.
 - Kimi and OpenCode sessions can receive image attachments when the selected model supports them.
 - Per-profile image input selection (Auto, On or Off), with the effective capability and its source.
@@ -62,12 +83,21 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - The Depot "New Markdown file" dialog can now create a new folder: choose "New folder…" in the Folder list, pick the folder it goes in and type its name. The name is checked as you type, and the folder appears in the tree once the file is saved.
 - Codex sessions accept pasted images; the text-only spark model says so and sends the text.
 
+### Changed
+
+- The Gemini / OpenAI Provider plugin is now called OpenAI-compatible. Existing profiles, including ones on a gateway such as Hetzner Inference, keep working unchanged.
+
 ### Fixed
 
 - Disabling a plugin now stops its work right away: workflow and schedule runs, Local CI runs, the pull request poll, and the Slack and Discord connections. A stopped workflow or schedule run says so in its history.
 - A running Autopilot run stops with a clear reason when the plugin behind its tracker is disabled, and a run that starts without its tracker says so.
 - Browser now asks for a restart when you disable it, because its engine cannot start twice in one process.
 - Docker, Kind, Kubernetes and Local CI show their running activities in the status bar again, with the Kill button.
+- The Depot sync no longer warns after one slow check: it waits up to 30 seconds, tries three times within the same round, and only then says so once, without the "Open Depot settings" button. Not being signed in is still reported at once with that button, and an unchanged project logo is no longer downloaded again on every check.
+- Plugin-store downloads now show their current byte progress, and disk status details include free, used and total space.
+
+- Delegated tasks now receive their profile and project brain instructions alongside the standing session instructions.
+- Saving a profile of the OpenAI-compatible plugin no longer drops its self-hosted setting.
 - Docker storage compaction no longer waits for the assistant or idle sessions without background work. If active sessions do not acknowledge the pause within five minutes, the warning names them.
 - Swarm takeover keeps the assistant's recent conversation within a bounded prompt, so long histories no longer prevent it from responding.
 - Development plugin refresh now preserves child executables and other files in subdirectories, so opening the Browser no longer fails because its subprocess was dropped during a refresh.

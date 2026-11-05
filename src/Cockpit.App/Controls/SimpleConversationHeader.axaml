@@ -7,10 +7,10 @@
              x:Class="Cockpit.App.Controls.SimpleConversationHeader"
              x:DataType="vm:SessionPanelViewModel">
 
-    <!-- AC-1529 (mockup simple-view-conversation.png): no usage pill, no Tune, no ctx-% — those are ⋯ → Details. -->
     <Border Background="{DynamicResource CockpitChromeBgBrush}" Padding="20,10"
             BorderBrush="{DynamicResource CockpitHairlineSoftBrush}" BorderThickness="0,0,0,1">
         <!-- AC-1533: a dock rather than a row, so a narrow column trims the title and the stand before Stop and ⋯. -->
+        <StackPanel>
         <DockPanel>
             <controls:ConversationDetailsButton x:Name="SimpleDetailsButton" DockPanel.Dock="Right" Margin="8,0,0,0"
                                                 ProjectName="{Binding $parent[controls:SimpleConversationHeader].ProjectName}"/>
@@ -96,5 +96,10 @@
                 </Border>
             </DockPanel>
         </DockPanel>
+        <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"
+                      IsVisible="{Binding HasUsagePillSegments}" Margin="0,8,0,0">
+            <controls:UsagePill HorizontalAlignment="Left"/>
+        </ScrollViewer>
+        </StackPanel>
     </Border>
 </UserControl>

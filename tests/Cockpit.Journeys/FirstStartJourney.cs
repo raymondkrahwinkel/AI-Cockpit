@@ -201,7 +201,7 @@ public sealed class FirstStartJourney
                         var claude = Row("claude-provider", "Claude Code", ProviderDetectionState.Found);
                         Assert.False(claude.IsSelected);
                         viewModel.Providers.Add(claude);
-                        var gemini = Row("gemini-provider", "Gemini / OpenAI Provider", ProviderDetectionState.NotApplicable);
+                        var gemini = Row("gemini-provider", "OpenAI-compatible", ProviderDetectionState.NotApplicable);
                         gemini.IsSelected = true;
                         viewModel.Providers.Add(gemini);
                         var codex = Row("cli-agent-provider", "Codex (ChatGPT)", ProviderDetectionState.NotFound);
@@ -300,7 +300,7 @@ public sealed class FirstStartJourney
                 var providerPicker = HeadlessAvalonia.Run(() => profileDialog.GetLogicalDescendants().OfType<ComboBox>()
                     .Single(combo => ReferenceEquals(combo.ItemsSource, profileViewModel.Profile.Providers)));
                 var providerOptions = HeadlessAvalonia.Run(() => providerPicker.ItemsSource?.Cast<SessionProviderOption>().ToList() ?? []);
-                Assert.Equal(["Ollama", "LM Studio", "Gemini", "OpenAI", "Codex (CLI)", "Claude"], providerOptions.Select(option => option.Label));
+                Assert.Equal(["Ollama", "LM Studio", "Gemini", "OpenAI", "Groq", "Mistral", "Cerebras", "Custom (OpenAI-compatible)", "Codex (CLI)", "Claude"], providerOptions.Select(option => option.Label));
                 Assert.Null(HeadlessAvalonia.Run(() => providerPicker.SelectedItem));
                 HeadlessAvalonia.Run(() =>
                 {
@@ -657,7 +657,8 @@ public sealed class FirstStartJourney
             PluginProvisionRequest request,
             int hostAbstractionsMajor,
             Version? hostVersion = null,
-            CancellationToken cancellationToken = default) =>
+            CancellationToken cancellationToken = default,
+            IProgress<PluginDownloadProgress>? progress = null) =>
             _InstallAsync(request, cancellationToken);
 
         public async Task<PluginProvisionBatchResult> InstallManyAsync(

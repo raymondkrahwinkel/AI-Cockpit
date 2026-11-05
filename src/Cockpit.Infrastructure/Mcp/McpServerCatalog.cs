@@ -38,9 +38,12 @@ internal sealed class McpServerCatalog(
         // parsed here in Cockpit.Core so a plugin never parses a reference across the plugin-ALC boundary.
         // AC-766: an unscoped query unions every project's schemes instead of using one project's own.
         var projectMemorySchemes = (project is not null ? (IReadOnlyList<Project>)[project] : projects.Projects)
-            .SelectMany(candidate => candidate.Resources)
-            .Where(resource => resource.Role == ProjectResourceRole.Memory && resource.ReachesSessions)
-            .Select(resource => ProjectMemoryRef.TryParse(resource.Reference.Trim(), out var scheme, out _) ? scheme : null)
+            .SelectMany(candidate => candidate.Resources
+                .Where(resource => resource.Role == ProjectResourceRole.Memory && resource.ReachesSessions)
+                .Select(resource => resource.Reference)
+                // AC-2083: the brain's server comes along too, even when it sits on another Depot than the memory.
+                .Concat(ProjectMemoryRef.IsBrainReference(candidate.Assistant) ? [candidate.Assistant!] : []))
+            .Select(reference => ProjectMemoryRef.TryParse(reference.Trim(), out var scheme, out _) ? scheme : null)
             .OfType<string>()
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();

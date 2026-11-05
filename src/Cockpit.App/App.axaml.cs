@@ -1158,12 +1158,12 @@ public partial class App : Application
         var catalog = Program.Services.GetRequiredService<IProjectCatalog>();
         var signIns = Program.Services.GetService<PluginSignInStanding>();
         watcher.WaitsForSignIn = () => signIns is null ? Task.FromResult(false) : signIns.WaitsAsync("depot");
-        watcher.OnFailing = (projectId, reason) =>
+        watcher.OnFailing = (projectId, reason, offerSettings) =>
         {
             var name = catalog.Current.Settings.Projects.FirstOrDefault(project => project.Id == projectId)?.Name ?? projectId;
             var message = $"The Depot sync cannot check {name}: {reason}";
 
-            if (cockpit.HasPluginSettings("depot"))
+            if (offerSettings && cockpit.HasPluginSettings("depot"))
             {
                 // A toast action is synchronous, so the wrapper observes and logs the detached settings task.
                 toasts.Show(message, ToastSeverity.Warning, "Open Depot settings", () => _ = _OpenPluginSettingsAsync(cockpit, "depot"));

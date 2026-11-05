@@ -64,7 +64,7 @@ internal static partial class Screenshotter
             "idea", presence ? "2026-10-28 Weekly sync.md" : "md-editor-in-cockpit.md", "Depot / Work / krahwinkel-it/cockpit",
             Edit: state is not ("readonly" or "preview"), CreateNew: state == "new", InitialText: "# md-editor-in-cockpit\n\n");
         var registry = new WorkspaceTypeRegistry(new ServiceCollection().BuildServiceProvider());
-        var sceneChannel = new FileSceneChannel(text, state != "readonly", state.StartsWith("conflict"), state is "live" || presence, presence, away: state == "presence-away", status: readOnly ?? _SceneStatus(state), agent: state == "presence-agent");
+        var sceneChannel = new FileSceneChannel(text, state != "readonly", state.StartsWith("conflict"), state is "live" or "live-timeout" || presence, presence, away: state == "presence-away", status: readOnly ?? _SceneStatus(state), agent: state == "presence-agent", hangOpen: state == "live-timeout");
         registry.Register(new WorkspaceTypeRegistration("scene.file", "Markdown", context =>
             new MarkdownFileWorkspace(context, options, new FileSourceChannelClient(sceneChannel),
                 () => Task.FromResult(false))) { CanFloat = true }, new PluginScenes.SceneStorage(), NullCockpitSessionObserver.Instance);
@@ -77,7 +77,16 @@ internal static partial class Screenshotter
         workspaces.OpenWorkspaceAsync("scene.file", new("idea", options.Title, state == "preview")).GetAwaiter().GetResult();
         var entry = workspaces.Active ?? throw new InvalidOperationException("The file scene did not open.");
         var body = workspaces.BodyFor(entry) as MarkdownFileWorkspace ?? throw new InvalidOperationException("The editor scene is missing.");
+        while (state == "live-timeout" && !body.Ready.IsCompleted)
+        {
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            Thread.Sleep(5);
+        }
         body.Ready.GetAwaiter().GetResult();
+        if (state == "live-timeout" && (body.Editor.Text != text || body.LiveStatus is not null))
+        {
+            throw new InvalidOperationException("A timed-out live open did not retain the saved snapshot.");
+        }
         if (state == "presence-agent")
         {
             body.Editor.MarkExternalEdit(new ExternalTextEdit("Assistant · on behalf of Raymond", DateTimeOffset.UtcNow, [new(PresenceNote.Length, text.Length)]));
@@ -140,7 +149,7 @@ internal static partial class Screenshotter
         return saved is null ? null : new LiveFileStatus(LiveFileState.Live) { Saved = saved };
     }
 
-    private sealed class FileSceneChannel(string text, bool writable, bool conflict = false, bool live = false, bool presence = false, bool away = false, LiveFileStatus? status = null, bool agent = false) : IPluginUiChannel
+    private sealed class FileSceneChannel(string text, bool writable, bool conflict = false, bool live = false, bool presence = false, bool away = false, LiveFileStatus? status = null, bool agent = false, bool hangOpen = false) : IPluginUiChannel
     {
         private string Changed => text.Replace("`baseChecksum`" + (char)10, "`baseChecksum`" + (char)10 + "- Compare before you overwrite" + (char)10);
         private bool _read;
@@ -158,7 +167,8 @@ internal static partial class Screenshotter
                     text.Insert(text.IndexOf("\n\n## Decisions", StringComparison.Ordinal), LocalNoteLines))), FileSourceChannel.Json)));
         }
 
-        public Task<JsonElement> InvokeAsync(string action, JsonElement payload, CancellationToken cancellationToken = default) => Task.FromResult(action switch
+        public Task<JsonElement> InvokeAsync(string action, JsonElement payload, CancellationToken cancellationToken = default) =>
+            action == FileSourceChannel.LiveOpen && hangOpen ? new TaskCompletionSource<JsonElement>().Task : Task.FromResult(action switch
         {
             FileSourceChannel.Write when !conflict => JsonSerializer.SerializeToElement(new FileSourceAnswer<FileWriteResult>(new(FileWriteStatus.Written, "e7a1b6ca"), null), FileSourceChannel.Json),
             FileSourceChannel.Write => JsonSerializer.SerializeToElement(new FileSourceAnswer<FileWriteResult>(new(FileWriteStatus.Conflict, "f00dcafe"), null), FileSourceChannel.Json),

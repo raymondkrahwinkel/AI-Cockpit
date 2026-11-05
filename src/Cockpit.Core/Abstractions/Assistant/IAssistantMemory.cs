@@ -2,8 +2,8 @@ namespace Cockpit.Core.Abstractions.Assistant;
 
 /// <summary>
 /// What the voice assistant was told to hold on to across sessions (AC-595) — a name, a house rule, which desk
-/// "prod" means. Read at every start and appended to while talking; append, never rewrite, or a replace would quietly
-/// lose what was said an hour earlier. Pruning is the operator opening the file — no forget tool, no UI, a known ceiling (see the <c>ponytail:</c> note).
+/// "prod" means. Read at every start and appended to while talking; consolidation replaces behaviour memory only
+/// after saving a backup.
 /// </summary>
 public interface IAssistantMemory
 {
@@ -16,6 +16,8 @@ public interface IAssistantMemory
     /// Adds a line to one scope. Blank text is refused rather than stored.
     /// </summary>
     Task RememberAsync(string text, AssistantMemoryScope scope, CancellationToken cancellationToken = default);
+
+    Task<AssistantMemoryRewrite> RewriteAsync(string text, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// The rule set the organisation provisioned for the assistant (AC-1567), as the applier wrote it. Read-only:
@@ -47,6 +49,8 @@ public interface IAssistantMemory
     /// </summary>
     Task<IReadOnlyList<string>> ImportAsync(string archivePath, CancellationToken cancellationToken = default);
 }
+
+public record AssistantMemoryRewrite(long BytesBefore, long BytesAfter, int LinesBefore, int LinesAfter, string? BackupPath);
 
 public enum AssistantMemoryScope
 {
