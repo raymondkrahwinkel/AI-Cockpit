@@ -14,12 +14,12 @@ internal sealed class HoursResultReporter(ICockpitHost host, SemaphoreSlim? repo
         var caller = host.CurrentMcpCaller;
         if (caller is not { Kind: McpCallerKind.Session } || string.IsNullOrWhiteSpace(caller.PaneId))
         {
-            throw new UnauthorizedAccessException("Alleen de geverifieerde ontvanger van het urenvoorstel mag rapporteren.");
+            throw new UnauthorizedAccessException("Only the verified recipient of the hours proposal may report.");
         }
 
         if (request.Week.DayOfWeek != DayOfWeek.Monday || request.Items is not { Count: > 0 and <= 1000 } || request.AlreadyBooked is null)
         {
-            throw new ArgumentException("Geef de maandag van de week en 1 tot 1000 resultaten op.");
+            throw new ArgumentException("Give the Monday of the week and 1 to 1000 results.");
         }
 
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -34,22 +34,22 @@ internal sealed class HoursResultReporter(ICockpitHost host, SemaphoreSlim? repo
             {
                 if (item is null || string.IsNullOrEmpty(item.Marker) || !rows.TryGetValue(item.Marker, out var row) || row.PaneId != caller.PaneId)
                 {
-                    throw new UnauthorizedAccessException("Dit kenmerk hoort niet bij deze ontvanger of aangeboden week.");
+                    throw new UnauthorizedAccessException("This marker does not belong to this recipient or offered week.");
                 }
 
                 if (!markers.Add(item.Marker) || item.Status is not ("booked" or "skipped") || item.Status == "skipped" && string.IsNullOrWhiteSpace(item.Reason))
                 {
-                    throw new ArgumentException("Gebruik unieke kenmerken, booked of skipped, en een reden bij skipped.");
+                    throw new ArgumentException("Use unique markers, booked or skipped, and a reason for skipped.");
                 }
 
                 if (row.Status is not null && (row.Status != item.Status || row.Reason != item.Reason))
                 {
-                    throw new InvalidOperationException("Dit resultaat is al verwerkt; bied de open regel eerst opnieuw aan.");
+                    throw new InvalidOperationException("This result was already processed; offer the open row again first.");
                 }
 
                 if (row.PendingStatus is not null && (row.PendingStatus != item.Status || row.PendingReason != item.Reason))
                 {
-                    throw new InvalidOperationException("Herhaal het onderbroken resultaat ongewijzigd.");
+                    throw new InvalidOperationException("Repeat the interrupted result unchanged.");
                 }
 
                 if (row.Status is null && row.Row.EntryId is { } id)
@@ -61,21 +61,21 @@ internal sealed class HoursResultReporter(ICockpitHost host, SemaphoreSlim? repo
                         && entry.OutcomeReason == (string.IsNullOrWhiteSpace(item.Reason) ? null : item.Reason.Trim());
                     if (!canWrite && !recovered)
                     {
-                        throw new UnauthorizedAccessException("De eigen regel is niet aan deze ontvanger aangeboden of is inmiddels gewijzigd.");
+                        throw new UnauthorizedAccessException("The own row was not offered to this recipient or has since been changed.");
                     }
                 }
             }
 
             if (request.AlreadyBooked.Any(day => day is null || day.Minutes < 0 || day.Minutes > 1000000 || day.Day < request.Week || day.Day >= request.Week.AddDays(7) || !request.Items.Any(item => rows[item.Marker].Row.Day == day.Day)) || request.AlreadyBooked.Select(day => day.Day).Distinct().Count() != request.AlreadyBooked.Count)
             {
-                throw new ArgumentException("Geef per dag hoogstens één niet-negatief aantal al geboekte minuten op.");
+                throw new ArgumentException("Give at most one non-negative number of already booked minutes per day.");
             }
 
             var already = request.AlreadyBooked.ToDictionary(day => day.Day, day => day.Minutes);
             var offers = request.Items.Select(item => rows[item.Marker].OfferId).ToHashSet();
             if (report.Rows.Any(row => offers.Contains(row.OfferId) && already.TryGetValue(row.Row.Day, out var minutes) && minutes < row.AlreadyBooked))
             {
-                throw new InvalidOperationException("Een herhaald rapport mag eerder gemelde geboekte minuten niet verlagen.");
+                throw new InvalidOperationException("A repeated report may not lower already reported booked minutes.");
             }
 
             foreach (var item in request.Items)

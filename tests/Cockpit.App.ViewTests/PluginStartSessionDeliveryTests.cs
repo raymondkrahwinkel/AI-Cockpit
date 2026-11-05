@@ -18,6 +18,7 @@ using Cockpit.Core.SessionBehavior;
 using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.Voice;
+using Cockpit.Core.Workspaces;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Plugins.Abstractions;
@@ -57,7 +58,13 @@ public sealed class PluginStartSessionDeliveryTests
         Assert.Equal(string.Empty, session.InputText);
 
         var other = new SessionViewModel();
+        var otherDesk = Workspace.Create("Other desk", WorkspaceType.Sessions);
+        cockpit.Workspaces.Settings = cockpit.Workspaces.Settings.WithWorkspace(otherDesk);
+        session.WorkspaceId = otherDesk.Id;
+        var activeDesk = cockpit.Workspaces.Settings.Workspaces.First(workspace => workspace.Type == WorkspaceType.Sessions && workspace.Id != otherDesk.Id);
         cockpit.Sessions.Add(other);
+        cockpit.Workspaces.SelectWorkspaceCommand.Execute(activeDesk.Id);
+        Assert.Equal(activeDesk.Id, cockpit.Workspaces.Active?.Id);
         cockpit.SimpleView = false;
         cockpit.SelectedSession = other;
         var surfaces = new RecordingUiSurfaces();
@@ -71,8 +78,11 @@ public sealed class PluginStartSessionDeliveryTests
         Assert.Same(session, cockpit.SelectedSession);
         cockpit.SimpleView = true;
         cockpit.SimpleSelectedSession = other;
+        cockpit.Workspaces.SelectWorkspaceCommand.Execute(activeDesk.Id);
         Assert.True(await uiHost.FocusSessionAsync(session.PaneId));
         Assert.Same(session, cockpit.SimpleSelectedSession);
+        Assert.Equal(otherDesk.Id, cockpit.Workspaces.Active?.Id);
+        Assert.True(session.IsPaneVisible);
         Assert.True(session.HasPromptWaitingToBeDelivered);
         Assert.Equal(string.Empty, session.InputText);
     });

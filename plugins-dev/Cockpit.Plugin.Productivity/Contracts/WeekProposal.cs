@@ -57,7 +57,7 @@ internal sealed record WeekProposal(IReadOnlyList<ProposalDay> Days, IReadOnlyLi
 {
     public WeekReport Report { get; init; } = WeekReport.Empty;
 
-    private static readonly CultureInfo Dutch = CultureInfo.GetCultureInfo("nl-NL");
+    private static readonly CultureInfo English = CultureInfo.GetCultureInfo("en-US");
 
     // What goes to an agent: the open lines with only their open days. Booked never goes again.
     public IReadOnlyList<ProposalLine> OpenLines =>
@@ -78,7 +78,7 @@ internal sealed record WeekProposal(IReadOnlyList<ProposalDay> Days, IReadOnlyLi
                 entry.Description,
                 entry.ProjectId,
                 entry.Id,
-                entry.ProjectId is { } project ? _Name(project, projectNames) : "geen project",
+                entry.ProjectId is { } project ? _Name(project, projectNames) : "no project",
                 [new ProposalCell(DateOnly.FromDateTime(entry.StartedAt.LocalDateTime), entry.Duration, entry.Status, entry.ProjectId, entry.OfferedAt, entry.OutcomeReason)]));
         }
 
@@ -140,18 +140,18 @@ internal sealed record WeekProposal(IReadOnlyList<ProposalDay> Days, IReadOnlyLi
         return new WeekProposal(totals, lines);
     }
 
-    // The rows as shown, Monday to Sunday without the empty weekend days; Kopieer als tabel writes exactly this.
+    // The rows as shown, Monday to Sunday without the empty weekend days; Copy as table writes exactly this.
     public IReadOnlyList<string[]> Grid()
     {
         var days = VisibleDays;
         List<string[]> rows =
         [
-            ["Regel", .. days.Select(day => day.Day.ToDateTime(TimeOnly.MinValue).ToString("ddd d", Dutch)), "Week", "Status"],
-            ["Schema (grens)", .. days.Select(day => Text(day.Schedule)), Text(_Sum(days.Select(day => day.Schedule))), string.Empty],
+            ["Row", .. days.Select(day => day.Day.ToDateTime(TimeOnly.MinValue).ToString("ddd d", English)), "Week", "Status"],
+            ["Schedule (limit)", .. days.Select(day => Text(day.Schedule)), Text(_Sum(days.Select(day => day.Schedule))), string.Empty],
         ];
         foreach (var line in Lines)
         {
-            var label = line.Own ? $"eigen · {line.Label}" : line.Label;
+            var label = line.Own ? $"own · {line.Label}" : line.Label;
             rows.Add([
                 string.IsNullOrEmpty(line.Detail) ? label : $"{label} · {line.Detail}",
                 .. days.Select(day => Cell(line, day.Day)),
@@ -160,8 +160,8 @@ internal sealed record WeekProposal(IReadOnlyList<ProposalDay> Days, IReadOnlyLi
             ]);
         }
 
-        rows.Add(["Totaal voorstel", .. days.Select(day => Text(day.Total)), Text(_Sum(days.Select(day => day.Total))), string.Empty]);
-        rows.Add(["gemeten", .. days.Select(day => Text(day.Measured)), Text(_Sum(days.Select(day => day.Measured))), string.Empty]);
+        rows.Add(["Proposal total", .. days.Select(day => Text(day.Total)), Text(_Sum(days.Select(day => day.Total))), string.Empty]);
+        rows.Add(["measured", .. days.Select(day => Text(day.Measured)), Text(_Sum(days.Select(day => day.Measured))), string.Empty]);
         return rows;
     }
 
@@ -186,16 +186,16 @@ internal sealed record WeekProposal(IReadOnlyList<ProposalDay> Days, IReadOnlyLi
             var cell = line.Cells[0];
             return cell.Status switch
             {
-                CockpitTimeEntryStatus.Booked => "geboekt",
-                CockpitTimeEntryStatus.Offered => $"aangeboden op {cell.OfferedAt?.ToLocalTime().ToString("d-M", Dutch)}",
-                _ when cell.OutcomeReason is { } reason => $"niet geboekt, {reason} · open",
+                CockpitTimeEntryStatus.Booked => "booked",
+                CockpitTimeEntryStatus.Offered => $"offered on {cell.OfferedAt?.ToLocalTime().ToString("d-M", English)}",
+                _ when cell.OutcomeReason is { } reason => $"not booked, {reason} · open",
                 _ => "open",
             };
         }
 
         var groups = line.Cells
-            .GroupBy(cell => cell.Status switch { CockpitTimeEntryStatus.Booked => "geboekt", CockpitTimeEntryStatus.Offered => "aangeboden", _ => "open" })
-            .Select(group => $"{group.Key} {string.Join(", ", group.Select(cell => cell.Day.ToDateTime(TimeOnly.MinValue).ToString("ddd", Dutch)))}")
+            .GroupBy(cell => cell.Status switch { CockpitTimeEntryStatus.Booked => "booked", CockpitTimeEntryStatus.Offered => "offered", _ => "open" })
+            .Select(group => $"{group.Key} {string.Join(", ", group.Select(cell => cell.Day.ToDateTime(TimeOnly.MinValue).ToString("ddd", English)))}")
             .ToList();
         return groups.Count == 1 && line.Cells.All(cell => cell.Status == CockpitTimeEntryStatus.Open) ? "open" : string.Join(" · ", groups);
     }

@@ -89,15 +89,15 @@ public sealed class ProductivityHoursJourneyTests
         Func<Control>? sidebarFactory = null;
         var menuItems = new List<string>();
         var workspaces = new Dictionary<string, WorkspaceTypeRegistration>(StringComparer.Ordinal);
-        ui.AddSideMenuButtonWithBadge("Uren", Arg.Do<Action>(value => open = value), MaterialIconKind.ClockOutline).Returns(badge);
-        menuItems.Add("Uren");
+        ui.AddSideMenuButtonWithBadge("Hours", Arg.Do<Action>(value => open = value), MaterialIconKind.ClockOutline).Returns(badge);
+        menuItems.Add("Hours");
         ui.When(host => host.AddSideMenuButton(Arg.Any<string>(), Arg.Any<Action>(), Arg.Any<MaterialIconKind>()))
             .Do(call =>
             {
                 menuItems.Add(call.ArgAt<string>(0));
                 openOverview = call.ArgAt<Action>(1);
             });
-        ui.When(host => host.AddSideMenuSection("Tijd", Arg.Any<Func<Control>>()))
+        ui.When(host => host.AddSideMenuSection("Time", Arg.Any<Func<Control>>()))
             .Do(call => sidebarFactory = call.Arg<Func<Control>>());
         ui.When(host => host.AddWorkspaceType(Arg.Any<WorkspaceTypeRegistration>()))
             .Do(call =>
@@ -107,41 +107,41 @@ public sealed class ProductivityHoursJourneyTests
             });
 
         new UiParts.ProductivityUi().InitializeUi(ui);
-        (open ?? throw new InvalidOperationException("No Uren button."))();
+        (open ?? throw new InvalidOperationException("No Hours button."))();
         await ui.Received(1).OpenWorkspaceAsync(UiParts.ProductivityUi.WorkspaceTypeId);
         var registration = workspaces[UiParts.ProductivityUi.WorkspaceTypeId];
         var screen = registration.CreateBody(Substitute.For<IWorkspaceContext>());
         using var scene = RenderedScene.Show(screen, 1280, 820);
-        await _Until(() => badge.Text == "0u10 vandaag", "the initial badge with ten measured minutes");
+        await _Until(() => badge.Text == "0h10 today", "the initial badge with ten measured minutes");
         Assert.Equal(SideMenuButtonBadgeTone.Success, badge.Tone);
         var idleSidebar = (sidebarFactory ?? throw new InvalidOperationException("No Tijd sidebar."))();
         using (var idleScene = RenderedScene.Show(idleSidebar, 360, 180))
         {
-            Assert.Contains("Geen stopwatch actief", _Texts(idleSidebar));
+            Assert.Contains("No stopwatch active", _Texts(idleSidebar));
             _Control<Button>(idleSidebar, "SidebarStart");
         }
 
         _Control<TextBox>(screen, "Description").Text = "Telefonisch overleg met klant XXX";
         _Control<TextBox>(screen, "Duration").Text = "ongeldig";
         _Click(screen, "AddEntry");
-        await _Until(() => _Texts(screen).Any(text => text.Contains("geldige duur", StringComparison.OrdinalIgnoreCase)), "invalid duration feedback");
+        await _Until(() => _Texts(screen).Any(text => text.Contains("valid duration", StringComparison.OrdinalIgnoreCase)), "invalid duration feedback");
         Assert.Empty(timeEntries.Entries);
 
         _Control<TextBox>(screen, "Duration").Text = "0:15";
         _Click(screen, "AddEntry");
-        await _Until(() => timeEntries.Entries.Count == 1 && badge.Text == "0u25 vandaag", "the added entry and badge, measured plus own");
+        await _Until(() => timeEntries.Entries.Count == 1 && badge.Text == "0h25 today", "the added entry and badge, measured plus own");
         Assert.Equal("cockpit", timeEntries.Entries[0].ProjectId);
         _Render(scene.Window, "01-uren-dag.png");
 
         _Control<TextBox>(screen, "Description").Text = "Uitwerking voorstel";
         _Click(screen, "StartStopwatch");
         await _Until(() => timeEntries.Running is not null && !_Control<Button>(screen, "StartStopwatch").IsEnabled, "one running stopwatch");
-        Assert.Contains(_Texts(screen), text => text.Contains("Er loopt al", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(_Texts(screen), text => text.Contains("A stopwatch is already running", StringComparison.OrdinalIgnoreCase));
         _Render(scene.Window, "02-uren-dag-stopwatch-lopend.png");
 
         var sidebar = (sidebarFactory ?? throw new InvalidOperationException("No Tijd sidebar."))();
-        var menu = new PluginLauncherButton("Uren", () => { }, badge: badge, iconKind: MaterialIconKind.ClockOutline);
-        var overviewMenu = new PluginLauncherButton("Overzicht", () => { }, iconKind: MaterialIconKind.ViewDashboardOutline);
+            var menu = new PluginLauncherButton("Hours", () => { }, badge: badge, iconKind: MaterialIconKind.ClockOutline);
+            var overviewMenu = new PluginLauncherButton("Overview", () => { }, iconKind: MaterialIconKind.ViewDashboardOutline);
         var sidebarSceneBody = new StackPanel
         {
             Margin = new Thickness(8, 12),
@@ -158,7 +158,7 @@ public sealed class ProductivityHoursJourneyTests
                 new Border
                 {
                     Padding = new Thickness(8),
-                    Child = new TextBlock { Text = "Één item Uren: snelle invoer, dan Dag of Week. De stopwatch staat in een eigen zijbalksectie.", TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                    Child = new TextBlock { Text = "One Hours item: quick entry, then Day or Week. The stopwatch has its own sidebar section.", TextWrapping = Avalonia.Media.TextWrapping.Wrap },
                 },
             },
         };
@@ -195,19 +195,19 @@ public sealed class ProductivityHoursJourneyTests
 
         _Click(screen, "Today");
         await _Until(() => _Texts(screen).Contains("Telefonisch overleg met klant XXX"), "returning to today");
-        Assert.Equal("0u50 vandaag", badge.Text);
+        Assert.Equal("0h50 today", badge.Text);
 
         _Click(screen, "WeekMode");
-        await _Until(() => _Texts(screen).Contains("Voorstel per dag"), "the week proposal");
-        Assert.Contains("Schema (grens)", _Texts(screen));
+        await _Until(() => _Texts(screen).Contains("Proposal per day"), "the week proposal");
+        Assert.Contains("Schedule (limit)", _Texts(screen));
         _Render(scene.Window, "04-uren-week.png");
         _Click(screen, "PreviousDay");
-        await _Until(() => _Texts(screen).Any(text => text.StartsWith("Voorstel per dag · week", StringComparison.Ordinal)), "the week before");
+        await _Until(() => _Texts(screen).Any(text => text.StartsWith("Proposal per day · week", StringComparison.Ordinal)), "the week before");
         _Render(scene.Window, "05-uren-week-eerder.png");
         _Click(screen, "CopyTable");
         await _Until(() => copied is not null, "the copied table");
         var table = (copied ?? string.Empty).Split(Environment.NewLine);
-        string[] header = ["Regel", .. screen.GetVisualDescendants().OfType<Button>().Where(button => button.Name == "OpenDay").Select(button => button.Content as string ?? string.Empty), "Week", "Status"];
+        string[] header = ["Row", .. screen.GetVisualDescendants().OfType<Button>().Where(button => button.Name == "OpenDay").Select(button => button.Content as string ?? string.Empty), "Week", "Status"];
         Assert.Equal(header, table[0].Split('\t'));
         Assert.Equal(screen.GetVisualDescendants().OfType<Grid>().Count(grid => grid.Name == "ProposalRow") + 4, table.Length);
 
@@ -228,8 +228,8 @@ public sealed class ProductivityHoursJourneyTests
         var dialog = offerDialog ?? throw new InvalidOperationException("No offer dialog.");
         using var offerScene = RenderedScene.Show(dialog, 980, 696);
         var preview = _Control<TextBox>(dialog, "PromptPreview").Text ?? string.Empty;
-        Assert.Contains("Boek per dag nooit meer dan het schema", preview, StringComparison.Ordinal);
-        Assert.Contains("Schrijf niets voordat je dat akkoord hebt", preview, StringComparison.Ordinal);
+        Assert.Contains("Never book more than the schedule per day", preview, StringComparison.Ordinal);
+        Assert.Contains("Write nothing before you have that approval", preview, StringComparison.Ordinal);
         Assert.False(_Control<Button>(dialog, "SendOffer").IsEnabled);
         _Control<CheckBox>(dialog, "ConfirmOffer").IsChecked = true;
         await _Until(() => _Control<Button>(dialog, "SendOffer").IsEnabled, "the confirmed send button");
@@ -237,7 +237,7 @@ public sealed class ProductivityHoursJourneyTests
         _Click(dialog, "SendOffer");
         await _Until(() => sentPrompt is not null && timeEntries.Entries.Where(entry => entry.Description is "Telefonisch overleg met klant XXX" or "Uitwerking voorstel").All(entry => entry.Status == CockpitTimeEntryStatus.Offered), "the delivered and offered rows");
         Assert.Equal(preview, sentPrompt);
-        await _Until(() => _Texts(screen).Any(text => text.Contains("aangeboden", StringComparison.OrdinalIgnoreCase)), "the offered week status");
+        await _Until(() => _Texts(screen).Any(text => text.Contains("offered", StringComparison.OrdinalIgnoreCase)), "the offered week status");
 
         var unmarked = await timeEntries.AddAsync("Nog te verwerken", DateTimeOffset.Now, TimeSpan.FromMinutes(15), "cockpit", CockpitTimeEntrySource.Duration);
         timeEntries.MarkFailure = new InvalidOperationException("The time-entry store is unavailable.");
@@ -251,7 +251,7 @@ public sealed class ProductivityHoursJourneyTests
         {
             _Control<CheckBox>(failedDialog, "ConfirmOffer").IsChecked = true;
             _Click(failedDialog, "SendOffer");
-            await _Until(() => _Texts(failedDialog).Any(text => text.Contains("Het urenvoorstel is afgeleverd", StringComparison.Ordinal)), "the delivered offer with failed status update");
+            await _Until(() => _Texts(failedDialog).Any(text => text.Contains("The hours proposal was delivered", StringComparison.Ordinal)), "the delivered offer with failed status update");
             Assert.False(_Control<Button>(failedDialog, "SendOffer").IsEnabled);
             Assert.False(_Control<CheckBox>(failedDialog, "ConfirmOffer").IsEnabled);
             await actions.Received(2).SendPromptToSessionAsync("pane-agent", Arg.Any<string>(), Arg.Any<string>());
@@ -297,24 +297,24 @@ public sealed class ProductivityHoursJourneyTests
         using var retryResponse = JsonDocument.Parse(await reportTools.ReportHoursResult("2026-10-19", resultItems, [new(reportMonday.AddDays(3), 60, "Overleg leverancier")]));
         Assert.True(retryResponse.RootElement.GetProperty("ok").GetBoolean());
         Assert.Equal(6, timeEntries.OutcomeWrites);
-        await _Until(() => _Texts(screen).Contains("✓ 4 van 5 dagen"), "the reported project status");
+        await _Until(() => _Texts(screen).Contains("✓ 4 of 5 days"), "the reported project status");
         Assert.DoesNotContain("Agent", _Texts(screen));
-        Assert.Equal(5, screen.GetVisualDescendants().OfType<TextBlock>().Count(text => text.Name == "AgentOutcome" && text.Text == "✓ geboekt"));
-        Assert.Single(screen.GetVisualDescendants().OfType<TextBlock>(), text => text.Name == "AgentOutcome" && text.Text == "⚠ niet geboekt · weer open");
-        Assert.Equal(2, screen.GetVisualDescendants().OfType<TextBlock>().Count(text => text.Name == "AgentOutcome" && text.Text == "✓ 4 van 5 dagen"));
+        Assert.Equal(5, screen.GetVisualDescendants().OfType<TextBlock>().Count(text => text.Name == "AgentOutcome" && text.Text == "✓ booked"));
+        Assert.Single(screen.GetVisualDescendants().OfType<TextBlock>(), text => text.Name == "AgentOutcome" && text.Text == "⚠ not booked · open again");
+        Assert.Equal(2, screen.GetVisualDescendants().OfType<TextBlock>().Count(text => text.Name == "AgentOutcome" && text.Text == "✓ 4 of 5 days"));
         Assert.Single(timeEntries.Entries, entry => entry.Status == CockpitTimeEntryStatus.Open);
         var savedReport = storage.Get<WeekReport>(WeekReport.StorageKey(reportMonday));
         Assert.NotNull(savedReport);
         Assert.Equal(13, savedReport.BookedCount);
         Assert.Equal(3, savedReport.Rows.Count(row => row.Status == "skipped"));
         var notice = _Control<TextBlock>(screen, "AgentReportNotice").Text ?? string.Empty;
-        Assert.Contains("Werkagent meldde om", notice, StringComparison.Ordinal);
-        Assert.Contains("13 regels geboekt (ma, di, wo, vr)", notice, StringComparison.Ordinal);
+        Assert.Contains("Werkagent reported at", notice, StringComparison.Ordinal);
+        Assert.Contains("13 rows booked (Mon, Tue, Wed, Fri)", notice, StringComparison.Ordinal);
         Assert.Contains("[cockpit:wk43-", notice, StringComparison.Ordinal);
         var warningText = _Control<TextBlock>(screen, "AgentDayWarning").Text ?? string.Empty;
-        Assert.Contains("Niets geschreven, voorgelegd", warningText, StringComparison.Ordinal);
+        Assert.Contains("Nothing written, put forward", warningText, StringComparison.Ordinal);
         Assert.Contains("Overleg leverancier", warningText, StringComparison.Ordinal);
-        Assert.Contains("9:00 tegenover 8:00", warningText, StringComparison.Ordinal);
+        Assert.Contains("9:00 against 8:00", warningText, StringComparison.Ordinal);
         Assert.Single(screen.GetVisualDescendants().OfType<TextBlock>(), text => text.Name == "ProposalDayTotal" && text.Text == "8:00 ⚠");
         _Click(screen, "OpenReportAgent");
         await ui.Received(1).FocusSessionAsync("pane-agent");
@@ -337,7 +337,7 @@ public sealed class ProductivityHoursJourneyTests
         Assert.True(overlapResponseA.RootElement.GetProperty("ok").GetBoolean());
         Assert.True(overlapResponseB.RootElement.GetProperty("ok").GetBoolean());
         Assert.False(overlapResponseB.RootElement.GetProperty("isGreen").GetBoolean());
-        await _Until(() => _Texts(screen).Contains("⚠ overschrijding"), "the overrun across overlapping offers");
+        await _Until(() => _Texts(screen).Contains("⚠ overrun"), "the overrun across overlapping offers");
         timeEntries.Entries.Clear();
         timeEntries.Seed(beforeReport);
 
@@ -362,7 +362,7 @@ public sealed class ProductivityHoursJourneyTests
             overview.GetProperty("timeline").GetProperty("usage").EnumerateArray(),
             usage => usage.GetProperty("inputTokens").GetInt32() > 0 && usage.GetProperty("costUsd").GetDouble() == 0);
 
-        Assert.Equal(["Uren", "Overzicht"], menuItems);
+        Assert.Equal(["Hours", "Overview"], menuItems);
         (openOverview ?? throw new InvalidOperationException("No Overzicht button."))();
         await ui.Received(1).OpenWorkspaceAsync("workspace.productivity.overview");
         var overviewScreen = workspaces["workspace.productivity.overview"].CreateBody(Substitute.For<IWorkspaceContext>());
@@ -371,18 +371,18 @@ public sealed class ProductivityHoursJourneyTests
         _Control<DatePicker>(overviewScreen, "CustomTo").SelectedDate = overviewFrom.AddDays(4);
         _Click(overviewScreen, "ApplyCustomRange");
         await _Until(
-            () => _NamedText(overviewScreen, "YourTimeTile") == "31u00",
+            () => _NamedText(overviewScreen, "YourTimeTile") == "31h00",
             "the week overview");
-        Assert.Equal("36u", _Control<TextBlock>(overviewScreen, "ScheduleTile").Text);
+        Assert.Equal("36h", _Control<TextBlock>(overviewScreen, "ScheduleTile").Text);
         // AC-1766: usage without a price makes the total a lower bound, and the detail says which profiles to price. The
         // tile fills after the range applies, so it is awaited rather than read.
         await _Until(() => _NamedText(overviewScreen, "CostTile") == "≥ $184.20", "the week's cost, a lower bound");
         Assert.True(_Control<TextBlock>(overviewScreen, "YourTimeTileDetail").TextWrapping == Avalonia.Media.TextWrapping.Wrap);
-        Assert.Contains("Overzicht", _Texts(overviewScreen));
-        Assert.Contains("Jouw tijd per dag, met de agents ernaast", _Texts(overviewScreen));
-        Assert.Contains("Tijd per project", _Texts(overviewScreen));
-        Assert.Contains("Eigen regels deze week", _Texts(overviewScreen));
-        Assert.StartsWith("zonder tarief:", _Control<TextBlock>(overviewScreen, "CostTileDetail").Text);
+        Assert.Contains("Overview", _Texts(overviewScreen));
+        Assert.Contains("Your time per day, with the agents beside it", _Texts(overviewScreen));
+        Assert.Contains("Time per project", _Texts(overviewScreen));
+        Assert.Contains("Own rows this week", _Texts(overviewScreen));
+        Assert.StartsWith("without a rate:", _Control<TextBlock>(overviewScreen, "CostTileDetail").Text);
         _Control<Button>(overviewScreen, "HoursTab");
         _Control<Button>(overviewScreen, "OverviewTab");
         _Control<Button>(overviewScreen, "PreviousOverviewRange");
@@ -406,11 +406,11 @@ public sealed class ProductivityHoursJourneyTests
         timeEntries.Seed(new CockpitTimeEntry(Guid.NewGuid(), "Na het openen geregistreerd", _Local(2026, 10, 19).AddHours(9), TimeSpan.FromMinutes(10), null, CockpitTimeEntrySource.Duration, CockpitTimeEntryStatus.Open));
         _Click(overviewScreen, "RefreshButton");
         await _Until(() => _NamedText(overviewScreen, "OwnEntriesTile") == "6", "the entry registered after opening, via ↻");
-        Assert.Equal("zojuist bijgewerkt", _NamedText(overviewScreen, "RefreshedAt"));
+        Assert.Equal("updated just now", _NamedText(overviewScreen, "RefreshedAt"));
 
         _Click(overviewScreen, "IncludeAgent");
         await _Until(
-            () => _NamedText(overviewScreen, "YourTimeTile") == "43u10",
+            () => _NamedText(overviewScreen, "YourTimeTile") == "43h10",
             "the overview including agent time outside your own time");
         _Render(overviewScene.Window, "04-overzicht-plus-agent.png");
 
@@ -419,10 +419,10 @@ public sealed class ProductivityHoursJourneyTests
         _Control<DatePicker>(overviewScreen, "CustomTo").SelectedDate = overviewFrom;
         _Click(overviewScreen, "ApplyCustomRange");
         await _Until(
-            () => _NamedText(overviewScreen, "YourTimeTile") == "8u05",
+            () => _NamedText(overviewScreen, "YourTimeTile") == "8h05",
             "the one-day custom overview");
-        Assert.Equal("8u", _Control<TextBlock>(overviewScreen, "ScheduleTile").Text);
-        Assert.Contains("ma 19 – ma 19 okt 2026", _Texts(overviewScreen));
+        Assert.Equal("8h", _Control<TextBlock>(overviewScreen, "ScheduleTile").Text);
+        Assert.Contains("Mon 19 – Mon 19 Oct 2026", _Texts(overviewScreen));
         _Render(overviewScene.Window, "overzicht-eigen-bereik.png");
 
         _Click(overviewScreen, "IncludeAgent");
@@ -431,24 +431,24 @@ public sealed class ProductivityHoursJourneyTests
         _Control<DatePicker>(overviewScreen, "CustomTo").SelectedDate = historicalDay;
         _Click(overviewScreen, "ApplyCustomRange");
         await _Until(
-            () => _NamedText(overviewScreen, "YourTimeTile") == "3u00",
+            () => _NamedText(overviewScreen, "YourTimeTile") == "3h00",
             "the historical aggregate including agent time");
         // AC-1766: the legacy day carries no price, so its cost is a lower bound of nothing priced.
         await _Until(() => _NamedText(overviewScreen, "CostTile") == "≥ $0.00", "the historical day's cost, unpriced");
         Assert.Contains("legacy-model", _Texts(overviewScreen));
-        Assert.Contains("3u00", _Texts(overviewScreen));
+        Assert.Contains("3h00", _Texts(overviewScreen));
 
         _Control<DatePicker>(overviewScreen, "CustomFrom").SelectedDate = historicalDay.AddDays(1);
         _Control<DatePicker>(overviewScreen, "CustomTo").SelectedDate = historicalDay;
         _Click(overviewScreen, "ApplyCustomRange");
         await _Until(
-            () => _Texts(overviewScreen).Contains("De begindatum moet op of vóór de einddatum liggen."),
+            () => _Texts(overviewScreen).Contains("The start date must be on or before the end date."),
             "custom range validation");
-        Assert.Contains("ma 6 – ma 6 jan 2025", _Texts(overviewScreen));
+        Assert.Contains("Mon 6 – Mon 6 Jan 2025", _Texts(overviewScreen));
         _Control<DatePicker>(overviewScreen, "CustomFrom").SelectedDate = historicalDay;
         _Click(overviewScreen, "ApplyCustomRange");
         await _Until(
-            () => _NamedText(overviewScreen, "YourTimeTile") == "3u00",
+            () => _NamedText(overviewScreen, "YourTimeTile") == "3h00",
             "the valid range after validation");
 
         var alternating = await channel.InvokeAsync(

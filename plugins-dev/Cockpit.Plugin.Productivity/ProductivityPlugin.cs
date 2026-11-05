@@ -32,7 +32,7 @@ public sealed class ProductivityPlugin : ICockpitPlugin
         }
         catch (Exception exception)
         {
-            host.ShowToast($"De uren-terugmelding kon niet worden gestart: {exception.Message}", Cockpit.Plugins.Abstractions.Notifications.PluginToastSeverity.Error);
+            host.ShowToast($"Could not start the hours report-back: {exception.Message}", Cockpit.Plugins.Abstractions.Notifications.PluginToastSeverity.Error);
         }
     }
 
