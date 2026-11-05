@@ -17,6 +17,7 @@
         Title="Options"
         Width="880" Height="680"
         WindowStartupLocation="CenterOwner"
+        KeyboardNavigation.TabNavigation="Cycle"
         Background="{DynamicResource CockpitPanelBgBrush}">
 
     <Design.DataContext>
