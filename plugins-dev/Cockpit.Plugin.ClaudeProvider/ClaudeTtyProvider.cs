@@ -67,6 +67,8 @@ internal sealed class ClaudeTtyProvider(Func<string, string?>? managedResolver =
             context.Resume,
             statusLineSettings);
 
+        ClaudeMcpPermissionRules.Apply(context, config.ConfigDir, userHome, arguments);
+
         var sessionScopedFiles = new List<string>(3);
         if (mcpConfigPath is not null)
         {

@@ -65,6 +65,11 @@ public sealed record PluginTtyLaunchContext(
     /// Called whenever the provider learns this session's conversation id, and again when it changes (AC-408).
     /// </summary>
     public Action<PluginConversationId>? ReportConversationId { get; init; }
+
+    /// <summary>
+    /// Translates a saved MCP permission rule to the names exposed by this session's gateway.
+    /// </summary>
+    public Func<string, IReadOnlyList<string>>? TranslateMcpPermissionRule { get; init; }
 }
 
 /// <summary>

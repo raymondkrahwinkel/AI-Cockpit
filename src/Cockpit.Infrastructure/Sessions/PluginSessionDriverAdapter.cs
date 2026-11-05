@@ -134,6 +134,8 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
             ? await _ResolveMcpServersAsync(selection, projectId, workingDirectory, cancellationToken).ConfigureAwait(false)
             : [];
 
+        _gatewayToolNames = PluginMcpServerMapper.GatewayToolNames(mcpServers, paneId, mcpMounts);
+
         // AC-927: what this session actually mounted, so the header names those servers rather than the checklist
         // it was launched from — which never holds the always-mounted and auto-mounted ones it also just got.
         IReadOnlyList<string> mountedServerNames =
@@ -170,6 +172,10 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         var scratchOptions = options is null ? new Dictionary<string, string>() : new Dictionary<string, string>(options);
         scratchOptions[WellKnownPluginSessionOptions.AppendSystemPrompt] = string.Join("\n\n",
             options?.GetValueOrDefault(WellKnownPluginSessionOptions.AppendSystemPrompt), SessionScratch.Instruction(_scratch)).TrimStart('\n');
+        if (_gatewayToolNames is { } names)
+        {
+            scratchOptions[WellKnownPluginSessionOptions.AppendSystemPrompt] = names.InBrief(scratchOptions[WellKnownPluginSessionOptions.AppendSystemPrompt]);
+        }
         await inner.StartAsync(model, workingDirectory, resumeSessionId, scratchOptions, mcpServers, environment, _hostToolset, cancellationToken).ConfigureAwait(false);
     }
 
@@ -511,9 +517,11 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
     private async Task<string?> _ProxyUrlAsync(McpServerConfig server, CancellationToken cancellationToken) =>
         oauthProxy is null ? null : await oauthProxy.MountAsync(server, cancellationToken).ConfigureAwait(false);
 
+    private McpToolNames? _gatewayToolNames;
+
     public Task SendUserMessageAsync(string text, IReadOnlyList<ImageAttachment>? images = null, CancellationToken cancellationToken = default) =>
         inner.SendUserMessageAsync(
-            text,
+            _gatewayToolNames?.InBrief(text) ?? text,
             images?.Select(image => new PluginImageAttachment(image.MediaType, image.Base64Data)).ToList(),
             cancellationToken);
 
@@ -716,8 +724,15 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
 
     private async IAsyncEnumerable<SessionEvent> _AdaptEventsAsync([EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        await foreach (var pluginEvent in _PluginEventsAsync(cancellationToken).ConfigureAwait(false))
+        await foreach (var incoming in _PluginEventsAsync(cancellationToken).ConfigureAwait(false))
         {
+            var names = _gatewayToolNames;
+            var pluginEvent = incoming switch
+            {
+                PluginPermissionRequested request => request with { ToolName = names?.ToCanonical(request.ToolName) ?? request.ToolName },
+                PluginToolUseRequested tool => tool with { ToolName = names?.ToCanonical(tool.ToolName) ?? tool.ToolName },
+                _ => incoming,
+            };
             _ReportConversationIfChanged();
 
             if (pluginEvent is PluginSessionError error)

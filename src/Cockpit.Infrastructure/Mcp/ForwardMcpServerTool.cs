@@ -21,9 +21,6 @@ internal sealed class ForwardMcpServerTool : McpServerTool
     public override Tool ProtocolTool { get; }
     private object Route { get; }
 
-    internal static string NameFor(string alias, string name) =>
-        $"{new string(alias.Select(character => char.IsAsciiLetterOrDigit(character) || character is '_' or '-' ? character : '_').ToArray())}__{name}";
-
     internal bool Matches(McpServerTool other) => other is ForwardMcpServerTool forward
         && ReferenceEquals(Route, forward.Route)
         && JsonNode.DeepEquals(JsonSerializer.SerializeToNode(ProtocolTool), JsonSerializer.SerializeToNode(other.ProtocolTool));
