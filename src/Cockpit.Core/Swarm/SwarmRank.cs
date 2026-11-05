@@ -4,6 +4,18 @@ namespace Cockpit.Core.Swarm;
 
 public static class SwarmRank
 {
+    public static long DrawBelow(IEnumerable<long> occupied)
+    {
+        var minimum = occupied.Min();
+        if (minimum == long.MinValue)
+        {
+            throw new InvalidOperationException("No lower swarm rank is available.");
+        }
+        var available = unchecked((ulong)(minimum - long.MinValue));
+        var offset = BitConverter.ToUInt64(RandomNumberGenerator.GetBytes(sizeof(long))) % available;
+        return unchecked(long.MinValue + (long)offset);
+    }
+
     public static long DrawAbove(IEnumerable<long> occupied)
     {
         var maximum = occupied.Max();

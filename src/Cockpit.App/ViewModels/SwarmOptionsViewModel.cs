@@ -24,6 +24,25 @@ public sealed partial class SwarmOptionsViewModel(ISwarmOptions? options = null,
     public ObservableCollection<NodeDiscoveryFound> Found { get; } = [];
     public bool NoOtherMachineOnline => !Machines.Any(machine => !machine.IsSelf && machine.IsOnline);
     public IReadOnlyList<string> ReturnChoices { get; } = ["Take over after a wait", "Join at the back"];
+    public bool CanClaimLeadership => leadership is { IsActive: true, IsSelf: false };
+
+    [RelayCommand(CanExecute = nameof(CanClaimLeadership))]
+    private async Task ClaimLeadershipAsync()
+    {
+        try
+        {
+            if (leadership is not null)
+            {
+                await leadership.ClaimLeadershipAsync();
+                Status = "This machine will lead while reachable. The next machine by rank takes over when it is unreachable.";
+            }
+        }
+        catch (Exception ex)
+        {
+            Status = $"Could not take over. {ex.Message}";
+        }
+        await RefreshAsync();
+    }
 
     [ObservableProperty] private string _leaderLine = "Leader: this machine · No other machine online";
     [ObservableProperty] private string _rankOrder = "Ranks are assigned when your machines join.";
@@ -171,6 +190,8 @@ public sealed partial class SwarmOptionsViewModel(ISwarmOptions? options = null,
                 : string.Join(" → ", machines.OrderBy(machine => machine.Member.Rank).Select(machine => $"{machine.Member.Name} ({machine.Member.Rank.ToString(CultureInfo.InvariantCulture)})"));
             Incoming = options.Pending is { } pending && pending.PairingId != _answeredPairing ? pending : null;
             OnPropertyChanged(nameof(NoOtherMachineOnline));
+            OnPropertyChanged(nameof(CanClaimLeadership));
+            ClaimLeadershipCommand.NotifyCanExecuteChanged();
         }
         catch (Exception ex) { Status = $"Could not refresh the swarm. {ex.Message}"; }
         finally { _refreshing = false; }

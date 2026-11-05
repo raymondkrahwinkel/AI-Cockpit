@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Take over swarm leadership on this machine from the assistant chat or Options › Swarm, through the reachable current leader.
+
 - Proxmox VE supports multiple named servers; MCP tools and the overview select one explicitly, and their tokens are scrubbed from settings exports.
 - Proxmox Backup Server targets can show datastores and recent tasks, while agents can inspect backups and jobs and consent-gate verification or garbage collection.
 

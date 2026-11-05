@@ -244,6 +244,8 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
         if (e.PropertyName is nameof(CockpitViewModel.AssistantLeadershipLabel))
         {
             OnPropertyChanged(nameof(LeadershipLabel));
+            OnPropertyChanged(nameof(CanClaimLeadership));
+            ClaimLeadershipCommand.NotifyCanExecuteChanged();
             OnPropertyChanged(nameof(IsUnavailable));
             OnPropertyChanged(nameof(LocationLabel));
             OnPropertyChanged(nameof(LeaderIsServer));

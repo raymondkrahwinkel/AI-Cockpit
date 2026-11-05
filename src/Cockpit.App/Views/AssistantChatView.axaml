@@ -180,6 +180,9 @@
                             <TextBlock Text="{Binding LeadershipLabel}" FontSize="11" VerticalAlignment="Center"
                                        Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                                        IsVisible="{Binding LeadershipLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                            <Button Content="Take over" Classes="Compact" Command="{Binding ClaimLeadershipCommand}"
+                                    IsVisible="{Binding CanClaimLeadership}"
+                                    ToolTip.Tip="Make this machine the leader. The current leader must be reachable."/>
                         </StackPanel>
                         <TextBlock Text="{Binding Session.ActiveProfileLabel}" FontSize="11"
                                    Foreground="{DynamicResource CockpitTextFaintBrush}"
@@ -377,6 +380,9 @@
                                Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                     <TextBlock Text="{Binding LeaderSessionError}" FontSize="11" TextWrapping="Wrap"
                                IsVisible="{Binding LeaderSessionError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                    <TextBlock Text="{Binding ClaimError}" FontSize="11" TextWrapping="Wrap"
+                               IsVisible="{Binding ClaimError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                 </StackPanel>
             </Border>
