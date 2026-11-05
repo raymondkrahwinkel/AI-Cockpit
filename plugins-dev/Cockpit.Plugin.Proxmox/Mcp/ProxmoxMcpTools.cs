@@ -16,8 +16,54 @@ internal sealed class ProxmoxMcpTools(ProxmoxSettings settings, ProxmoxAccessGat
     public string ListServers() => McpText.Ok(new
     {
         ok = true,
-        servers = settings.Servers.Select(server => new { name = server.Name, host = server.Host, configured = server.IsConfigured && !string.IsNullOrWhiteSpace(settings.GetApiToken(server.Id)) }),
+        servers = settings.Servers.Select(server => new { name = server.Name, host = server.Host, kind = server.Kind.ToString().ToLowerInvariant(), configured = server.IsConfigured && !string.IsNullOrWhiteSpace(settings.GetApiToken(server.Id)) }),
     });
+
+    [McpServerTool(Name = "pbs_list_datastores", ReadOnly = true)]
+    [Description("Lists PBS datastores with bytes used/free and their GC and verification status. A read behind one-time connection consent for the selected PBS server.")]
+    public Task<string> PbsListDatastores([Description(SessionDescription)] string session, [Description(ServerDescription)] string? server = null, CancellationToken cancellationToken = default) =>
+        _PbsReadAsync(session, server, "list PBS datastores", async selected =>
+        {
+            var stores = await selected.ListPbsDatastoresAsync(cancellationToken);
+            return new { ok = true, count = stores.Count, datastores = stores.Select(store => new { name = store.Name, totalBytes = store.TotalBytes, usedBytes = store.UsedBytes, freeBytes = Math.Max(0, store.TotalBytes - store.UsedBytes), gcStatus = store.GcStatus, verifyStatus = store.VerifyStatus }) };
+        });
+
+    [McpServerTool(Name = "pbs_list_backups", ReadOnly = true)]
+    [Description("Lists PBS backup snapshots in one datastore, optionally filtered to a backup type and id such as vm and 101. A read behind one-time connection consent for the selected PBS server.")]
+    public Task<string> PbsListBackups([Description(SessionDescription)] string session, [Description("PBS datastore name.")] string datastore, [Description("Optional backup type, for example vm.")] string? type = null, [Description("Optional backup id, for example 101.")] string? id = null, [Description(ServerDescription)] string? server = null, CancellationToken cancellationToken = default) =>
+        _PbsReadAsync(session, server, $"list PBS backups in datastore \"{datastore}\"", async selected =>
+        {
+            var backups = await selected.ListPbsBackupsAsync(datastore, type, id, cancellationToken);
+            return new { ok = true, count = backups.Count, backups = backups.Select(backup => new { datastore = backup.Datastore, type = backup.Type, id = backup.Id, backupTime = backup.BackupTime, sizeBytes = backup.SizeBytes, verification = backup.VerifyState, @protected = backup.Protected }) };
+        });
+
+    [McpServerTool(Name = "pbs_list_tasks", ReadOnly = true)]
+    [Description("Lists recent PBS tasks including backup, verify, prune, garbage collection and sync work. A read behind one-time connection consent for the selected PBS server.")]
+    public Task<string> PbsListTasks([Description(SessionDescription)] string session, [Description(ServerDescription)] string? server = null, CancellationToken cancellationToken = default) =>
+        _PbsReadAsync(session, server, "list PBS tasks", async selected =>
+        {
+            var tasks = await selected.ListPbsTasksAsync(cancellationToken);
+            return new { ok = true, count = tasks.Count, tasks = tasks.Select(task => new { upid = task.Upid, type = task.Type, status = task.Status, user = task.User, startTime = task.StartTime, endTime = task.EndTime }) };
+        });
+
+    [McpServerTool(Name = "pbs_list_jobs", ReadOnly = true)]
+    [Description("Lists configured PBS verify, prune and sync jobs with their schedule and last outcome. A read behind one-time connection consent for the selected PBS server.")]
+    public Task<string> PbsListJobs([Description(SessionDescription)] string session, [Description(ServerDescription)] string? server = null, CancellationToken cancellationToken = default) =>
+        _PbsReadAsync(session, server, "list PBS jobs", async selected =>
+        {
+            var jobs = await selected.ListPbsJobsAsync(cancellationToken);
+            return new { ok = true, count = jobs.Count, jobs = jobs.Select(job => new { type = job.Type, id = job.Id, datastore = job.Datastore, schedule = job.Schedule, lastRunState = job.LastRunState }) };
+        });
+
+    [McpServerTool(Name = "pbs_start_verify_job", ReadOnly = false, Destructive = false)]
+    [Description("Starts an existing PBS verification job. Every start asks the operator afresh with the literal job and server, and is never remembered.")]
+    public Task<string> PbsStartVerifyJob([Description(SessionDescription)] string session, [Description("Existing PBS verification job id.")] string id, [Description(ServerDescription)] string? server = null, CancellationToken cancellationToken = default) =>
+        _PbsMutateAsync(session, server, $"start PBS verify job \"{id}\"", selected => selected.StartPbsVerifyJobAsync(id, cancellationToken));
+
+    [McpServerTool(Name = "pbs_start_gc", ReadOnly = false, Destructive = false)]
+    [Description("Starts PBS garbage collection for one datastore. Every start asks the operator afresh with the literal datastore and server, and is never remembered.")]
+    public Task<string> PbsStartGc([Description(SessionDescription)] string session, [Description("PBS datastore name.")] string datastore, [Description(ServerDescription)] string? server = null, CancellationToken cancellationToken = default) =>
+        _PbsMutateAsync(session, server, $"start PBS garbage collection for datastore \"{datastore}\"", selected => selected.StartPbsGcAsync(datastore, cancellationToken));
 
     [McpServerTool(Name = "version", ReadOnly = true)]
     [Description("Returns the Proxmox VE API's version and release. This is the first call that touches the selected API, so it asks the operator for consent once per server; after that, reads are free for that server in the session. Start here to confirm the target is reachable.")]
@@ -162,12 +208,21 @@ internal sealed class ProxmoxMcpTools(ProxmoxSettings settings, ProxmoxAccessGat
     public Task<string> DeleteLxc([Description(SessionDescription)] string session, [Description("The node the LXC container runs on.")] string node, [Description("The LXC container id.")] string vmid, [Description(ServerDescription)] string? server = null, CancellationToken cancellationToken = default) =>
         _DangerAsync(session, server, DangerCapability.Delete, target => target.AllowDelete, ProxmoxActionText.DeleteLxc(node, vmid), selected => selected.DeleteLxcAsync(node, vmid, cancellationToken));
 
-    private async Task<string> _ReadAsync(string session, string? server, string operation, Func<IProxmoxEngine, Task<object>> read)
+    private Task<string> _PbsReadAsync(string session, string? server, string operation, Func<IProxmoxEngine, Task<object>> read) => _ReadAsync(session, server, operation, read, ProxmoxServerKind.Pbs);
+
+    private Task<string> _PbsMutateAsync(string session, string? server, string operation, Func<IProxmoxEngine, Task<ProxmoxTaskOutcome>> action) => _MutateAsync(session, server, operation, action, ProxmoxServerKind.Pbs);
+
+    private async Task<string> _ReadAsync(string session, string? server, string operation, Func<IProxmoxEngine, Task<object>> read, ProxmoxServerKind requiredKind = ProxmoxServerKind.Pve)
     {
         var target = _Target(server, out var error);
         if (target is null)
         {
             return error!;
+        }
+
+        if (target.Kind != requiredKind)
+        {
+            return McpText.Error($"This tool requires a {requiredKind.ToString().ToUpperInvariant()} server; \"{target.Name}\" is {target.Kind.ToString().ToUpperInvariant()}.");
         }
 
         var decision = await gate.AuthorizeConnectionAsync($"{operation} on Proxmox server \"{target.Name}\"", session, target.Id);
@@ -193,12 +248,17 @@ internal sealed class ProxmoxMcpTools(ProxmoxSettings settings, ProxmoxAccessGat
             return new { ok = true, count = snapshots.Count, snapshots = snapshots.Select(snapshot => new { name = snapshot.Name, description = snapshot.Description, snapTime = snapshot.SnapTime, isCurrent = snapshot.IsCurrent }) };
         });
 
-    private async Task<string> _MutateAsync(string session, string? server, string operation, Func<IProxmoxEngine, Task<ProxmoxTaskOutcome>> action)
+    private async Task<string> _MutateAsync(string session, string? server, string operation, Func<IProxmoxEngine, Task<ProxmoxTaskOutcome>> action, ProxmoxServerKind requiredKind = ProxmoxServerKind.Pve)
     {
         var target = _Target(server, out var error);
         if (target is null)
         {
             return error!;
+        }
+
+        if (target.Kind != requiredKind)
+        {
+            return McpText.Error($"This tool requires a {requiredKind.ToString().ToUpperInvariant()} server; \"{target.Name}\" is {target.Kind.ToString().ToUpperInvariant()}.");
         }
 
         var decision = await gate.AuthorizeMutationAsync($"{operation} on Proxmox server \"{target.Name}\"", session, target.Id);
@@ -223,6 +283,11 @@ internal sealed class ProxmoxMcpTools(ProxmoxSettings settings, ProxmoxAccessGat
         if (target is null)
         {
             return error!;
+        }
+
+        if (target.Kind != ProxmoxServerKind.Pve)
+        {
+            return McpText.Error($"This tool requires a PVE server; \"{target.Name}\" is {target.Kind.ToString().ToUpperInvariant()}.");
         }
 
         var decision = await gate.AuthorizeDangerAsync(capability, enabled(target), $"{operation} on Proxmox server \"{target.Name}\"", session, target.Id);

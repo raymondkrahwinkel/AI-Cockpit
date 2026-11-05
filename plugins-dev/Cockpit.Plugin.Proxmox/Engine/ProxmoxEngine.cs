@@ -35,6 +35,13 @@ internal sealed class ProxmoxEngine : IProxmoxEngine, IDisposable
 
     public IProxmoxEngine ForServer(ProxmoxServer server) => new ProxmoxEngine(_settings, server, _cache, ownsCache: false);
 
+    internal static string BuildAuthorizationHeader(ProxmoxServer server, string token)
+    {
+        var tokenScheme = server.Kind == ProxmoxServerKind.Pbs ? "PBSAPIToken" : "PVEAPIToken";
+        var tokenSeparator = server.Kind == ProxmoxServerKind.Pbs ? ':' : '=';
+        return $"{tokenScheme}={server.TokenId}{tokenSeparator}{token}";
+    }
+
     private HttpClient _Client()
     {
         if (_server is not { IsConfigured: true })
@@ -68,7 +75,7 @@ internal sealed class ProxmoxEngine : IProxmoxEngine, IDisposable
             // Proxmox's own scheme: the whole "PVEAPIToken=user@realm!id=secret" is the header value, not a
             // standard "scheme value" pair — TryAddWithoutValidation avoids AuthenticationHeaderValue rejecting it.
             client.DefaultRequestHeaders.TryAddWithoutValidation(
-                "Authorization", $"PVEAPIToken={_server.TokenId}={_settings.GetApiToken(_server.Id)}");
+                "Authorization", BuildAuthorizationHeader(_server, _settings.GetApiToken(_server.Id)));
             client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
             _cache.Clients[_server.Id] = client;
@@ -217,6 +224,40 @@ internal sealed class ProxmoxEngine : IProxmoxEngine, IDisposable
             : [];
     }
 
+    public async Task<IReadOnlyList<PbsDatastore>> ListPbsDatastoresAsync(CancellationToken cancellationToken)
+    {
+        var data = await _GetAsync("admin/datastore", cancellationToken);
+        return PbsResponseParser.Datastores(data);
+    }
+
+    public async Task<IReadOnlyList<PbsBackup>> ListPbsBackupsAsync(string datastore, string? type, string? id, CancellationToken cancellationToken)
+    {
+        var query = string.IsNullOrWhiteSpace(type) || string.IsNullOrWhiteSpace(id) ? string.Empty : $"?backup-type={_Enc(type)}&backup-id={_Enc(id)}";
+        var data = await _GetAsync($"admin/datastore/{_Enc(datastore)}/snapshots{query}", cancellationToken);
+        return PbsResponseParser.Backups(datastore, data);
+    }
+
+    public async Task<IReadOnlyList<PbsTask>> ListPbsTasksAsync(CancellationToken cancellationToken)
+    {
+        var data = await _GetAsync("nodes/localhost/tasks", cancellationToken);
+        return PbsResponseParser.Tasks(data);
+    }
+
+    public async Task<IReadOnlyList<PbsJob>> ListPbsJobsAsync(CancellationToken cancellationToken)
+    {
+        var verify = _GetAsync("config/verify", cancellationToken);
+        var prune = _GetAsync("config/prune", cancellationToken);
+        var sync = _GetAsync("config/sync?sync-direction=all", cancellationToken);
+        await Task.WhenAll(verify, prune, sync);
+        return PbsResponseParser.Jobs(verify.Result, prune.Result, sync.Result);
+    }
+
+    public async Task<ProxmoxTaskOutcome> StartPbsVerifyJobAsync(string id, CancellationToken cancellationToken) =>
+        _StartedPbsTask(await _PostAsync($"admin/verify/{_Enc(id)}/run", null, cancellationToken));
+
+    public async Task<ProxmoxTaskOutcome> StartPbsGcAsync(string datastore, CancellationToken cancellationToken) =>
+        _StartedPbsTask(await _PostAsync($"admin/gc/{_Enc(datastore)}", null, cancellationToken));
+
     private async Task<ProxmoxTaskOutcome> _GuestActionAsync(string node, string type, string vmId, string action, CancellationToken cancellationToken)
     {
         var data = await _PostAsync($"nodes/{_Enc(node)}/{type}/{_Enc(vmId)}/status/{action}", null, cancellationToken);
@@ -288,6 +329,8 @@ internal sealed class ProxmoxEngine : IProxmoxEngine, IDisposable
 
     private static string _Upid(JsonElement data) =>
         data.ValueKind == JsonValueKind.String ? data.GetString()! : throw new ProxmoxApiException("Proxmox did not return a task id for this action.");
+
+    private static ProxmoxTaskOutcome _StartedPbsTask(JsonElement data) => new(_Upid(data), IsSuccess: true, ExitStatus: "started", TimedOut: false);
 
     private Task<JsonElement> _GetAsync(string path, CancellationToken cancellationToken) =>
         _SendAsync(HttpMethod.Get, path, null, cancellationToken);

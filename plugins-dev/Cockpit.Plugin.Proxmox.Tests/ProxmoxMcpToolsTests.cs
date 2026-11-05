@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using System.Text.Json;
 using Cockpit.Plugin.Proxmox.Engine;
 using Cockpit.Plugin.Proxmox.Mcp;
 using Cockpit.Plugin.Proxmox.Security;
@@ -66,8 +67,9 @@ public sealed class ProxmoxMcpToolsTests
         Assert.Equal(ConsentRisk.Dangerous, enabled.Asked[^1].Risk);
     }
 
-    [Fact]
-    public void Settings_LegacySingleServer_MigratesWithoutLosingConnectionData()
+    [Theory]
+    [InlineData("{\"datastores\":[{\"store\":\"vault\",\"total\":1099511627776,\"used\":274877906944,\"gc-status\":\"OK\",\"verify-status\":\"ok\"}],\"snapshots\":[{\"backup-type\":\"vm\",\"backup-id\":\"101\",\"backup-time\":1735689600,\"size\":42,\"verification\":\"ok\",\"protected\":true}],\"tasks\":[{\"upid\":\"UPID:pbs:1\",\"worker_type\":\"verify\",\"status\":\"OK\",\"user\":\"root@pam\",\"starttime\":1735689600,\"endtime\":1735689660}]}")]
+    public void Settings_LegacySingleServer_MigratesWithoutLosingConnectionData_AndPbsRecordedResponsesParse(string recorded)
     {
         var storage = new FakePluginStorage();
         storage.Set("host", "pve.example.test");
@@ -84,6 +86,18 @@ public sealed class ProxmoxMcpToolsTests
         Assert.Equal("user@pam!agent", server.TokenId);
         Assert.Equal("fingerprint", server.TrustedCertFingerprint);
         Assert.Equal("test-token", new ProxmoxSettings(storage).GetApiToken(server.Id));
+
+        var pbs = new ProxmoxServer("pbs", "pbs", "pbs.example.test", 8007, "user@pbs!agent", string.Empty, false, false, ProxmoxServerKind.Pbs);
+        Assert.Equal("PBSAPIToken=user@pbs!agent:test-token", ProxmoxEngine.BuildAuthorizationHeader(pbs, "test-token"));
+
+        using var document = JsonDocument.Parse(recorded);
+        var datastores = PbsResponseParser.Datastores(document.RootElement.GetProperty("datastores"));
+        var backups = PbsResponseParser.Backups("vault", document.RootElement.GetProperty("snapshots"));
+        var tasks = PbsResponseParser.Tasks(document.RootElement.GetProperty("tasks"));
+
+        Assert.Equal("vault", datastores.Single().Name);
+        Assert.Equal("101", backups.Single().Id);
+        Assert.Equal("verify", tasks.Single().Type);
     }
 
 }

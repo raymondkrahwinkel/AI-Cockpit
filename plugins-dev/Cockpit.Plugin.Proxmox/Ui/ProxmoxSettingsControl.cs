@@ -17,6 +17,7 @@ internal sealed class ProxmoxSettingsControl : UserControl, IPluginSettingsView
     private readonly ListBox _list = new() { Height = 110 };
     private readonly CheckBox _mcp;
     private readonly TextBox _name = new() { PlaceholderText = "e.g. production" };
+    private readonly ComboBox _kind = new() { ItemsSource = Enum.GetValues<ProxmoxServerKind>() };
     private readonly TextBox _hostName = new() { PlaceholderText = "e.g. pve.example.lan" };
     private readonly TextBox _port = new() { Width = 100, PlaceholderText = "8006" };
     private readonly TextBox _tokenId = new() { PlaceholderText = "user@realm!tokenid" };
@@ -36,6 +37,13 @@ internal sealed class ProxmoxSettingsControl : UserControl, IPluginSettingsView
         _tokens = _servers.ToDictionary(server => server.Id, server => settings.GetApiToken(server.Id));
 
         _mcp = new CheckBox { Content = "Offer the cockpit-proxmox MCP server to sessions", IsChecked = settings.McpEnabled };
+        _kind.SelectionChanged += (_, _) =>
+        {
+            if (_kind.SelectedItem is ProxmoxServerKind kind && string.IsNullOrWhiteSpace(_hostName.Text))
+            {
+                _port.Text = kind == ProxmoxServerKind.Pbs ? "8007" : "8006";
+            }
+        };
         _list.SelectionChanged += (_, _) =>
         {
             if (_list.SelectedIndex >= 0 && _list.SelectedIndex != _selected)
@@ -89,10 +97,11 @@ internal sealed class ProxmoxSettingsControl : UserControl, IPluginSettingsView
                 _list,
                 new StackPanel { Orientation = Orientation.Horizontal, Children = { add, remove } },
                 _name,
+                _kind,
                 new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { _hostName, _port } },
                 _tokenId,
                 _token,
-                new TextBlock { Text = "The token needs PVEAuditor on / for reads; changes need write access to the resource they change.", Opacity = 0.7, FontSize = 11, TextWrapping = TextWrapping.Wrap },
+                new TextBlock { Text = "PVE reads need PVEAuditor; PBS reads need DatastoreAudit. PBS verify and GC need DatastoreVerify and DatastoreModify.", Opacity = 0.7, FontSize = 11, TextWrapping = TextWrapping.Wrap },
                 new TextBlock { Text = "Certificate", FontWeight = FontWeight.SemiBold },
                 _fingerprint,
                 new StackPanel { Orientation = Orientation.Horizontal, Children = { show, trust } },
@@ -163,6 +172,7 @@ internal sealed class ProxmoxSettingsControl : UserControl, IPluginSettingsView
             TrustedCertFingerprint = _pendingFingerprint ?? current.TrustedCertFingerprint,
             AllowRollback = _rollback.IsChecked ?? false,
             AllowDelete = _delete.IsChecked ?? false,
+            Kind = _kind.SelectedItem is ProxmoxServerKind kind ? kind : ProxmoxServerKind.Pve,
         };
         if (!string.IsNullOrWhiteSpace(_token.Text))
         {
@@ -177,6 +187,7 @@ internal sealed class ProxmoxSettingsControl : UserControl, IPluginSettingsView
             _name.Text = string.Empty;
             _hostName.Text = string.Empty;
             _port.Text = "8006";
+            _kind.SelectedItem = ProxmoxServerKind.Pve;
             _tokenId.Text = string.Empty;
             _token.Text = string.Empty;
             _fingerprint.Text = "No servers configured.";
@@ -187,6 +198,7 @@ internal sealed class ProxmoxSettingsControl : UserControl, IPluginSettingsView
 
         var server = _servers[_selected];
         _name.Text = server.Name;
+        _kind.SelectedItem = server.Kind;
         _hostName.Text = server.Host;
         _port.Text = server.Port.ToString();
         _tokenId.Text = server.TokenId;

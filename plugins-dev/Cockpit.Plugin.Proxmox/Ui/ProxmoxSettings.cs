@@ -62,6 +62,7 @@ internal sealed class ProxmoxSettings(IPluginStorage storage)
 internal enum ProxmoxServerKind
 {
     Pve,
+    Pbs,
 }
 
 internal sealed record ProxmoxServer(string Id, string Name, string Host, int Port, string TokenId, string TrustedCertFingerprint, bool AllowRollback, bool AllowDelete, ProxmoxServerKind Kind = ProxmoxServerKind.Pve)
