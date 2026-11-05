@@ -16,7 +16,8 @@ internal static class AgentNetworkBoundaryScenario
         await using var destination = new OwnedTabFixture(acceptAnyHost: true);
         var settings = new BackendBrowserSettings(new Storage());
         settings.SaveAgentNetworkAllowlist([new Uri(pageFixture.Url).Authority]);
-        var policy = new AddressPolicy(() => settings.AgentNetworkAllowlist, (host, _) => Task.FromResult(host == "public.invalid"
+        var publicUrl = new UriBuilder(destination.Url) { Host = "localhost" }.Uri;
+        var policy = new AddressPolicy(() => settings.AgentNetworkAllowlist, (host, _) => Task.FromResult(host == "localhost"
             ? new[] { IPAddress.Parse("203.0.113.1") } : new[] { IPAddress.Loopback }));
         using var browsers = pageFixture.Browsers();
         browsers.NetworkPolicy = policy;
@@ -31,20 +32,33 @@ internal static class AgentNetworkBoundaryScenario
         using var target = JsonDocument.Parse(await response.Content.ReadAsStringAsync(timeout.Token));
         var id = Assert.IsType<string>(target.RootElement.GetProperty("id").GetString());
         await boundary.ReadyAsync(id, timeout.Token);
+        async Task<AgentTabBoundary.Blocked> WaitForBlockedAsync()
+        {
+            while (true)
+            {
+                if (boundary.TakeBlocked(id) is { } blocked) return blocked;
+                await Task.Delay(50, timeout.Token);
+            }
+        }
         var loaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource? topFrameNavigated = null;
         using var page = await CdpPage.ConnectAsync(Assert.IsType<string>(target.RootElement.GetProperty("webSocketDebuggerUrl").GetString()),
-            (name, data) => { _ = name == "Page.loadEventFired" && loaded.TrySetResult(); }, timeout.Token);
+            (name, data) =>
+            {
+                if (name == "Page.loadEventFired") loaded.TrySetResult();
+                if (name == "Page.frameNavigated" && !data.GetProperty("frame").TryGetProperty("parentId", out _)) topFrameNavigated?.TrySetResult();
+            }, timeout.Token);
         await page.CallAsync("Page.enable", null, timeout.Token);
         Assert.False(await SocketAsync(page, destination.Url, timeout.Token));
-        await boundary.PermitAgentNavigationAsync(id, new Uri(pageFixture.Url), timeout.Token);
-        await page.CallAsync("Page.navigate", new { url = pageFixture.Url }, timeout.Token);
+        var pageUrl = pageFixture.Url + "#/route";
+        await boundary.PermitAgentNavigationAsync(id, new Uri(pageUrl), timeout.Token);
+        await page.CallAsync("Page.navigate", new { url = pageUrl }, timeout.Token);
         await loaded.Task.WaitAsync(timeout.Token);
 
-        Assert.True(await EvaluateAsync(page, $"(() => {{ const frame=document.createElement('iframe'); frame.id='public'; frame.src={JsonSerializer.Serialize(new UriBuilder(destination.Url) { Host = "public.invalid" }.Uri.AbsoluteUri)}; document.body.append(frame); return true; }})()", timeout.Token));
-        await Task.Delay(200, timeout.Token);
+        Assert.True(await EvaluateAsync(page, $"new Promise(resolve => {{ const frame=document.createElement('iframe'); frame.id='public'; frame.onload=() => resolve(true); frame.src={JsonSerializer.Serialize(publicUrl.AbsoluteUri)}; document.body.append(frame); }})", timeout.Token));
+        boundary.TakeBlocked(id);
         Assert.True(await EvaluateAsync(page, $"(() => {{ document.querySelector('#public').src={JsonSerializer.Serialize(destination.Url)}; return true; }})()", timeout.Token));
-        await Task.Delay(200, timeout.Token);
-        Assert.Equal("network_blocked", boundary.TakeBlocked(id)?.Code);
+        Assert.Equal("network_blocked", (await WaitForBlockedAsync()).Code);
 
         Assert.True(await FetchAsync(page, destination.Url, timeout.Token));
         Assert.Null(boundary.TakeBlocked(id));
@@ -66,13 +80,12 @@ internal static class AgentNetworkBoundaryScenario
         Assert.True(await SocketAsync(page, rebound.AbsoluteUri, timeout.Token));
         Assert.Equal(2, dnsLookups);
 
-        var publicUrl = new UriBuilder(destination.Url) { Host = "public.invalid" }.Uri;
+        topFrameNavigated = new(TaskCreationOptions.RunContinuationsAsynchronously);
         await boundary.PermitAgentNavigationAsync(id, publicUrl, timeout.Token);
         await page.CallAsync("Page.navigate", new { url = publicUrl.AbsoluteUri }, timeout.Token);
-        await Task.Delay(200, timeout.Token);
+        await topFrameNavigated.Task.WaitAsync(timeout.Token);
         Assert.True(await EvaluateAsync(page, $"(() => {{ location={JsonSerializer.Serialize(destination.Url)}; return true; }})()", timeout.Token));
-        await Task.Delay(200, timeout.Token);
-        Assert.Equal("network_blocked", boundary.TakeBlocked(id)?.Code);
+        Assert.Equal("network_blocked", (await WaitForBlockedAsync()).Code);
     }
 
     private static Task<bool> FetchAsync(CdpPage page, string url, CancellationToken token) => EvaluateAsync(page,

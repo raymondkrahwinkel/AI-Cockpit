@@ -13,8 +13,11 @@ internal sealed class AgentTabBoundary(Func<string, bool> register, Action<strin
     private readonly ConcurrentDictionary<string, string> _openers = new();
     private readonly ConcurrentDictionary<string, ConcurrentQueue<string>> _popupUrls = new();
     private readonly ConcurrentDictionary<string, AgentNavigation> _agentNavigations = new();
-    private readonly ConcurrentDictionary<(string Target, string Url), byte> _pendingLocalNavigations = new();
+    private readonly ConcurrentDictionary<(string Target, string Url), string> _pendingLocalNavigations = new();
     private readonly ConcurrentDictionary<(string Target, string Frame), byte> _localFrames = new();
+    private readonly ConcurrentDictionary<string, string> _mainFrames = new();
+    private readonly ConcurrentDictionary<string, string> _frameOwners = new();
+    private readonly ConcurrentDictionary<string, string> _attachedOwners = new();
     private CdpPage? _browser;
     private CdpPage Browser => _browser ?? throw new IOException("The agent boundary is not connected.");
     private sealed record AgentNavigation(string Url, string? MainFrame, bool BeginsAfterBlank);
@@ -32,7 +35,7 @@ internal sealed class AgentTabBoundary(Func<string, bool> register, Action<strin
         await DenyDownloadsAsync(token).ConfigureAwait(false);
         await _browser.CallAsync("Target.setDiscoverTargets", new { discover = true }, token).ConfigureAwait(false);
         await _browser.CallAsync("Target.setAutoAttach", new { autoAttach = true, waitForDebuggerOnStart = true, flatten = true,
-            filter = new object[] { new { type = "page", exclude = false }, new { exclude = true } } }, token).ConfigureAwait(false);
+            filter = new object[] { new { type = "page", exclude = false }, new { type = "iframe", exclude = false }, new { exclude = true } } }, token).ConfigureAwait(false);
     }
 
     public Task DenyDownloadsAsync(CancellationToken token) =>
@@ -45,6 +48,7 @@ internal sealed class AgentTabBoundary(Func<string, bool> register, Action<strin
 
     public async Task PermitAgentNavigationAsync(string target, Uri url, CancellationToken token, bool beginsAfterBlank = false)
     {
+        foreach (var key in _pendingLocalNavigations.Keys.Where(key => key.Target == target)) _pendingLocalNavigations.TryRemove(key, out _);
         var session = _targets.FirstOrDefault(pair => pair.Value == target).Key;
         string? mainFrame = null;
         if (session is not null && !beginsAfterBlank)
@@ -53,13 +57,14 @@ internal sealed class AgentTabBoundary(Func<string, bool> register, Action<strin
             {
                 var tree = await SendAsync("Page.getFrameTree", null, session).ConfigureAwait(false);
                 mainFrame = RequiredString(tree.GetProperty("frameTree").GetProperty("frame"), "id");
+                _mainFrames[target] = mainFrame;
             }
             catch (Exception ex) when (AgentOwnedTabs.IsBrowserFailure(ex))
             {
                 // A just-attached popup is paused before it has a queryable frame tree.
             }
         }
-        _agentNavigations[target] = new(url.AbsoluteUri, mainFrame, beginsAfterBlank);
+        _agentNavigations[target] = new(url.GetLeftPart(UriPartial.Query), mainFrame, beginsAfterBlank);
     }
 
     private void OnEvent(string name, JsonElement data, string? session)
@@ -75,6 +80,7 @@ internal sealed class AgentTabBoundary(Func<string, bool> register, Action<strin
             if (name == "Target.targetDestroyed")
             {
                 var destroyed = RequiredString(data, "targetId");
+                if (_attachedOwners.TryRemove(destroyed, out var owner) && owner != destroyed) return;
                 ClearTarget(destroyed);
                 _ = Task.Run(() => closed(destroyed));
                 return;
@@ -83,8 +89,12 @@ internal sealed class AgentTabBoundary(Func<string, bool> register, Action<strin
             {
                 session = RequiredString(data, "sessionId");
                 var info = data.GetProperty("targetInfo");
-                target = RequiredString(info, "targetId");
+                var attachedTarget = RequiredString(info, "targetId");
+                target = attachedTarget;
+                if (info.TryGetProperty("parentFrameId", out var parentFrame) && parentFrame.GetString() is { } parentId
+                    && _frameOwners.TryGetValue(parentId, out var owner)) target = owner;
                 _targets[session] = target;
+                _attachedOwners[attachedTarget] = target;
                 if (info.TryGetProperty("openerId", out var opener))
                 {
                     var openerId = opener.GetString() ?? throw new IOException("The popup has no opener.");
@@ -94,7 +104,7 @@ internal sealed class AgentTabBoundary(Func<string, bool> register, Action<strin
                         if (!IsWeb(popupUrl))
                         {
                             _blocked[openerId] = new("invalid_argument", "Only http(s) pages are allowed.");
-                            var close = CloseAsync(target);
+                            var close = CloseAsync(attachedTarget);
                             // Chromium needs the paused renderer released to finish the already requested close.
                             await SendAsync("Runtime.runIfWaitingForDebugger", null, session).ConfigureAwait(false);
                             await close.ConfigureAwait(false);
@@ -113,12 +123,12 @@ internal sealed class AgentTabBoundary(Func<string, bool> register, Action<strin
                 var url = info.GetProperty("url").GetString();
                 if (url is { Length: > 0 } && url != "about:blank" && !IsWeb(url))
                 {
-                    await CloseAsync(target).ConfigureAwait(false);
+                    await CloseAsync(attachedTarget).ConfigureAwait(false);
                     return;
                 }
                 if (data.GetProperty("waitingForDebugger").GetBoolean() && !register(target))
                 {
-                    var close = CloseAsync(target);
+                    var close = CloseAsync(attachedTarget);
                     await SendAsync("Runtime.runIfWaitingForDebugger", null, session).ConfigureAwait(false);
                     await close.ConfigureAwait(false);
                     return;
@@ -134,10 +144,14 @@ internal sealed class AgentTabBoundary(Func<string, bool> register, Action<strin
                 var frame = data.GetProperty("frame");
                 var frameId = RequiredString(frame, "id");
                 var url = RequiredString(frame, "url");
-                var key = (target, url);
+                var key = (target, Uri.TryCreate(url, UriKind.Absolute, out var navigationUri) ? navigationUri.GetLeftPart(UriPartial.Query) : url);
                 var parentId = frame.TryGetProperty("parentId", out var parent) ? parent.GetString() : null;
+                _frameOwners[frameId] = target;
+                if (parentId is null) _mainFrames[target] = frameId;
                 var inherited = url is "about:blank" or "about:srcdoc" && parentId is not null && _localFrames.ContainsKey((target, parentId));
-                var local = _pendingLocalNavigations.TryRemove(key, out _) || inherited || await IsLocalAddressAsync(url).ConfigureAwait(false);
+                var pending = _pendingLocalNavigations.TryGetValue(key, out var pendingFrame) && pendingFrame == frameId
+                    && _pendingLocalNavigations.TryRemove(key, out _);
+                var local = pending || inherited || await IsLocalAddressAsync(url).ConfigureAwait(false);
                 if (local)
                 {
                     _localFrames[(target, frameId)] = 0;
@@ -159,7 +173,10 @@ internal sealed class AgentTabBoundary(Func<string, bool> register, Action<strin
                         if (location && Uri.TryCreate(requestUrl, UriKind.Absolute, out var requestUri) && Uri.TryCreate(requestUri, header.GetProperty("value").GetString(), out var redirect))
                         {
                             var document = data.TryGetProperty("resourceType", out var resourceType) && resourceType.GetString() == "Document";
+                            var frame = data.TryGetProperty("frameId", out var frameId) ? frameId.GetString() : null;
                             var directLocalRedirect = target is not null && document
+                                && frame is not null && _mainFrames.TryGetValue(target, out var mainFrame) && frame == mainFrame
+                                && _pendingLocalNavigations.TryGetValue((target, requestUri.AbsoluteUri), out var pendingFrame) && pendingFrame == frame
                                 && _pendingLocalNavigations.TryRemove((target, requestUri.AbsoluteUri), out _);
                             blocked ??= await CheckAddressAsync(redirect.AbsoluteUri, target, data, directLocalRedirect).ConfigureAwait(false);
                         }
@@ -210,13 +227,22 @@ internal sealed class AgentTabBoundary(Func<string, bool> register, Action<strin
         }
         var document = request.TryGetProperty("resourceType", out var resourceType) && resourceType.GetString() == "Document";
         var frame = request.TryGetProperty("frameId", out var frameId) ? frameId.GetString() : null;
+        var requestUrl = uri.GetLeftPart(UriPartial.Query);
+        var mainFrame = target is not null && _mainFrames.TryGetValue(target, out var knownMainFrame) ? knownMainFrame : null;
+        var mainDocument = document && frame is not null && frame == mainFrame;
         var agentNavigation = inheritedAgentNavigation || target is not null && document
-            && _pendingLocalNavigations.TryRemove((target, uri.AbsoluteUri), out _);
+            && mainDocument && _pendingLocalNavigations.TryGetValue((target, uri.AbsoluteUri), out var pendingMainFrame)
+            && pendingMainFrame == frame && _pendingLocalNavigations.TryRemove((target, uri.AbsoluteUri), out _);
         if (target is not null && document && _agentNavigations.TryGetValue(target, out var navigation)
-            && (navigation.BeginsAfterBlank || navigation.MainFrame is null ? uri.AbsoluteUri == navigation.Url : frame == navigation.MainFrame)
+            && (navigation.BeginsAfterBlank || navigation.MainFrame is null ? requestUrl == navigation.Url : frame == navigation.MainFrame)
             && _agentNavigations.TryRemove(target, out _))
         {
-            agentNavigation = uri.AbsoluteUri == navigation.Url;
+            agentNavigation = requestUrl == navigation.Url;
+            if (agentNavigation && frame is not null)
+            {
+                _mainFrames[target] = frame;
+                mainDocument = true;
+            }
         }
         var resolved = await addressPolicy.ResolveAsync(uri, _lifetime.Token).ConfigureAwait(false);
         if (resolved.Reason is not null)
@@ -226,6 +252,9 @@ internal sealed class AgentTabBoundary(Func<string, bool> register, Action<strin
         var localAddress = addressPolicy.IsOwnMachineOnly(resolved.Addresses);
         if (!localAddress)
         {
+            if (target is not null && document && frame is not null) _localFrames.TryRemove((target, frame), out _);
+            if (target is not null && mainDocument)
+                foreach (var key in _pendingLocalNavigations.Keys.Where(key => key.Target == target)) _pendingLocalNavigations.TryRemove(key, out _);
             return null;
         }
         if (target is null) return null;
@@ -235,9 +264,9 @@ internal sealed class AgentTabBoundary(Func<string, bool> register, Action<strin
         {
             return new("network_blocked", "Network access blocked: a local service may only be opened by the agent or by a local page.");
         }
-        if (document)
+        if (mainDocument)
         {
-            _pendingLocalNavigations[(target, uri.AbsoluteUri)] = 0;
+            _pendingLocalNavigations[(target, uri.AbsoluteUri)] = frame!;
         }
         return null;
     }
@@ -247,6 +276,8 @@ internal sealed class AgentTabBoundary(Func<string, bool> register, Action<strin
         _agentNavigations.TryRemove(target, out _);
         foreach (var key in _pendingLocalNavigations.Keys.Where(key => key.Target == target)) _pendingLocalNavigations.TryRemove(key, out _);
         foreach (var key in _localFrames.Keys.Where(key => key.Target == target)) _localFrames.TryRemove(key, out _);
+        _mainFrames.TryRemove(target, out _);
+        foreach (var frame in _frameOwners.Where(entry => entry.Value == target).Select(entry => entry.Key)) _frameOwners.TryRemove(frame, out _);
     }
 
 
