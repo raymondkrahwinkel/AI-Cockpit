@@ -24,6 +24,8 @@ internal sealed class ProxmoxOverviewBody : UserControl
     private readonly StackPanel _vmsPanel = new() { Spacing = 4 };
     private readonly StackPanel _lxcPanel = new() { Spacing = 4 };
     private readonly StackPanel _storagePanel = new() { Spacing = 4 };
+    private readonly StackPanel _pbsDatastoresPanel = new() { Spacing = 4 };
+    private readonly StackPanel _pbsTasksPanel = new() { Spacing = 4 };
     private bool _isLoading;
 
     public ProxmoxOverviewBody(IWorkspaceContext context, ICockpitUiHost host)
@@ -61,6 +63,8 @@ internal sealed class ProxmoxOverviewBody : UserControl
                 _Section("VMs", _vmsPanel),
                 _Section("LXC containers", _lxcPanel),
                 _Section("Storage", _storagePanel),
+                _Section("PBS datastores", _pbsDatastoresPanel),
+                _Section("PBS recent tasks", _pbsTasksPanel),
             },
         };
 
@@ -100,11 +104,25 @@ internal sealed class ProxmoxOverviewBody : UserControl
                 return;
             }
 
+            if (answer.PbsDatastores is not null)
+            {
+                _RenderPbs(answer.PbsDatastores, answer.PbsTasks ?? []);
+                _clusterPanel.Children.Clear();
+                _nodesPanel.Children.Clear();
+                _vmsPanel.Children.Clear();
+                _lxcPanel.Children.Clear();
+                _storagePanel.Children.Clear();
+                _statusText.Text = $"Updated {DateTimeOffset.Now:T}";
+                return;
+            }
+
             _RenderCluster(answer.Cluster ?? throw new InvalidOperationException("The backend part answered no cluster data."));
             _RenderNodes(answer.Nodes ?? []);
             _RenderGuests(_vmsPanel, answer.Vms ?? [], isLxc: false);
             _RenderGuests(_lxcPanel, answer.Lxc ?? [], isLxc: true);
             _RenderStorage(answer.Storage ?? []);
+            _pbsDatastoresPanel.Children.Clear();
+            _pbsTasksPanel.Children.Clear();
             _statusText.Text = $"Updated {DateTimeOffset.Now:T}";
         }
         catch (OperationCanceledException)
@@ -248,6 +266,22 @@ internal sealed class ProxmoxOverviewBody : UserControl
         if (pools.Count == 0)
         {
             _storagePanel.Children.Add(new TextBlock { Text = "No storage pools.", Opacity = 0.7 });
+        }
+    }
+
+    private void _RenderPbs(IReadOnlyList<PbsDatastoreData> stores, IReadOnlyList<PbsTaskData> tasks)
+    {
+        _pbsDatastoresPanel.Children.Clear();
+        foreach (var store in stores)
+        {
+            var percent = store.TotalBytes > 0 ? store.UsedBytes * 100.0 / store.TotalBytes : 0;
+            _pbsDatastoresPanel.Children.Add(new TextBlock { Text = $"{store.Name} — {_Bytes(store.UsedBytes)}/{_Bytes(store.TotalBytes)} ({percent:0.#}%), GC {store.GcStatus ?? "-"}, verify {store.VerifyStatus ?? "-"}" });
+        }
+
+        _pbsTasksPanel.Children.Clear();
+        foreach (var task in tasks)
+        {
+            _pbsTasksPanel.Children.Add(new TextBlock { Text = $"{task.Type} — {task.Status ?? "running"}" });
         }
     }
 

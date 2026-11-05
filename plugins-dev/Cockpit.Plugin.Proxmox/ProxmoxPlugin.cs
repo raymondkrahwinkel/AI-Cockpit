@@ -105,6 +105,22 @@ public sealed class ProxmoxPlugin : ICockpitPlugin
             return _Serialize(new ProxmoxOverviewAnswer(reason, null, null, null, null, null, null));
         }
 
+        if (server.Kind == ProxmoxServerKind.Pbs)
+        {
+            try
+            {
+                var stores = await selected.ListPbsDatastoresAsync(cancellationToken);
+                var tasks = await selected.ListPbsTasksAsync(cancellationToken);
+                return _Serialize(new ProxmoxOverviewAnswer(null, null, null, null, null, null, null,
+                    stores.Select(store => new PbsDatastoreData(store.Name, store.TotalBytes, store.UsedBytes, store.GcStatus, store.VerifyStatus)).ToList(),
+                    tasks.Take(10).Select(task => new PbsTaskData(task.Type, task.Status, task.StartTime)).ToList()));
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                return _Serialize(new ProxmoxOverviewAnswer(null, _FailureMessage(ex), null, null, null, null, null));
+            }
+        }
+
         try
         {
             var clusterTask = selected.GetClusterInfoAsync(cancellationToken);

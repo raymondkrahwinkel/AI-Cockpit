@@ -107,4 +107,32 @@ internal sealed class FakeProxmoxEngine : IProxmoxEngine
         _MaybeThrow();
         return Task.FromResult<IReadOnlyList<ProxmoxTaskSummary>>([]);
     }
+
+    public Task<IReadOnlyList<PbsDatastore>> ListPbsDatastoresAsync(CancellationToken cancellationToken)
+    {
+        _MaybeThrow();
+        return Task.FromResult<IReadOnlyList<PbsDatastore>>([]);
+    }
+
+    public Task<IReadOnlyList<PbsBackup>> ListPbsBackupsAsync(string datastore, string? type, string? id, CancellationToken cancellationToken)
+    {
+        _MaybeThrow();
+        return Task.FromResult<IReadOnlyList<PbsBackup>>([]);
+    }
+
+    public Task<IReadOnlyList<PbsTask>> ListPbsTasksAsync(CancellationToken cancellationToken)
+    {
+        _MaybeThrow();
+        return Task.FromResult<IReadOnlyList<PbsTask>>([]);
+    }
+
+    public Task<IReadOnlyList<PbsJob>> ListPbsJobsAsync(CancellationToken cancellationToken)
+    {
+        _MaybeThrow();
+        return Task.FromResult<IReadOnlyList<PbsJob>>([]);
+    }
+
+    public Task<ProxmoxTaskOutcome> StartPbsVerifyJobAsync(string id, CancellationToken cancellationToken) => _Outcome();
+
+    public Task<ProxmoxTaskOutcome> StartPbsGcAsync(string datastore, CancellationToken cancellationToken) => _Outcome();
 }
