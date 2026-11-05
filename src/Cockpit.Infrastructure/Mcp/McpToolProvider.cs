@@ -30,6 +30,7 @@ internal sealed partial class McpToolProvider(
     private readonly IMcpOAuthCoordinator _oauthCoordinator = oauthCoordinator;
     private readonly SessionMcpMounts? _mounts = mounts;
     private readonly SessionMcpKeyring _keyring = keyring;
+    private readonly ILogger<McpToolProvider> _logger = logger;
 
     public async Task<IMcpToolSession> ConnectAsync(IReadOnlySet<string>? enabledServerNames = null, string? paneId = null, string? confineFileToolsToDirectory = null, string? projectId = null, string? workingDirectory = null, CancellationToken cancellationToken = default, string? agentName = null)
     {
@@ -55,7 +56,7 @@ internal sealed partial class McpToolProvider(
             var independentServers = enabledServers.Where(server =>
                 !string.Equals(server.Name, "filesystem", StringComparison.OrdinalIgnoreCase)
                 && !string.Equals(server.Name, CodingTools.EndpointName, StringComparison.OrdinalIgnoreCase));
-            logger.LogInformation(
+            _logger.LogInformation(
                 "MCP file confinement covers the filesystem preset and cockpit-coding at {Root}; other selected servers outside that guarantee: [{Names}]. Their own access rules apply.",
                 confineFileToolsToDirectory, string.Join(", ", independentServers.Select(server => server.Name)));
         }
@@ -174,7 +175,7 @@ internal sealed partial class McpToolProvider(
         }
         catch (Exception exception)
         {
-            logger.LogWarning(exception, "MCP tool {Tool} on {Server} could not be called", toolName, serverName);
+            _logger.LogWarning(exception, "MCP tool {Tool} on {Server} could not be called", toolName, serverName);
             return McpToolInvocationResult.Failed(exception.Message);
         }
         finally
@@ -186,8 +187,11 @@ internal sealed partial class McpToolProvider(
     // The connect result plus, on failure, the operator-facing reason (AC-997) — carried alongside the null
     // ServerConnection rather than thrown, since Task.WhenAll below needs one result per server regardless of
     // which one failed.
-    private async Task<(ServerConnection? Connection, string? FailureReason)> _ConnectServerAsync(McpServerConfig server, string? sessionToken, CancellationToken cancellationToken, string? agentName = null)
+    private async Task<(ServerConnection? Connection, string? FailureReason)> _ConnectServerAsync(McpServerConfig server, string? sessionToken, CancellationToken cancellationToken, string? agentName = null, bool gateway = false)
     {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(TimeSpan.FromSeconds(15));
+        cancellationToken = deadline.Token;
         McpClient? client = null;
         var connected = false;
 
@@ -201,7 +205,12 @@ internal sealed partial class McpToolProvider(
                 return (null, NeedsSignIn);
             }
 
-            client = await McpClientConnector.ConnectAsync(new CancellationForwardingTransport(_BuildTransport(server, sessionToken, agentName)), options: null, cancellationToken).ConfigureAwait(false);
+            var transport = _BuildTransport(server, sessionToken, agentName, gateway);
+            if (gateway)
+            {
+                transport = new CancellationForwardingTransport(transport, _logger);
+            }
+            client = await McpClientConnector.ConnectAsync(transport, options: null, cancellationToken).ConfigureAwait(false);
             var serverTools = await client.ListToolsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
 
             // AC-79: classify each tool from its MCP annotations at connect; an absent readOnlyHint stays
@@ -231,12 +240,12 @@ internal sealed partial class McpToolProvider(
             // Same idiom as McpOAuthCoordinator's non-interactive handshake: with nobody here to answer a browser
             // prompt, any failure at this transport reads as "no usable sign-in yet" rather than a specific status
             // code — the SDK's own OAuth negotiation can fail several ways before it ever gets as far as one.
-            logger.LogWarning(ex, "MCP server {Name} needs an OAuth sign-in that has not happened yet; skipping its tools", server.Name);
+            _logger.LogWarning(ex, "MCP server {Name} needs an OAuth sign-in that has not happened yet; skipping its tools", server.Name);
             return (null, NeedsSignIn);
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "MCP server {Name} could not be connected — skipping its tools", server.Name);
+            _logger.LogWarning(ex, "MCP server {Name} could not be connected — skipping its tools", server.Name);
             return (null, _ShortReason(ex));
         }
         finally
@@ -249,7 +258,7 @@ internal sealed partial class McpToolProvider(
                 }
                 catch (Exception ex)
                 {
-                    logger.LogWarning(ex, "MCP server {Name} could not be disposed after its tools failed to load", server.Name);
+                    _logger.LogWarning(ex, "MCP server {Name} could not be disposed after its tools failed to load", server.Name);
                 }
             }
         }
@@ -307,7 +316,7 @@ internal sealed partial class McpToolProvider(
 
     private const string NeedsSignIn = "Needs a sign-in.";
 
-    private IClientTransport _BuildTransport(McpServerConfig server, string? sessionToken, string? agentName = null) => server.Transport switch
+    private IClientTransport _BuildTransport(McpServerConfig server, string? sessionToken, string? agentName = null, bool gateway = false) => server.Transport switch
     {
         McpTransport.Stdio => new StdioClientTransport(new StdioClientTransportOptions
         {
@@ -329,7 +338,7 @@ internal sealed partial class McpToolProvider(
             // Never interactive (AC-1517): the browser opens only from a Sign in the operator pressed, so a token
             // the coordinator approved but the server then refuses ends as a failed connect, not as a stray tab.
             OAuth = server.Auth == McpServerAuth.OAuth ? oauthAuthorizer.CreateOptions(server, interactive: false) : null,
-        }, timeout: Timeout.InfiniteTimeSpan),
+        }, timeout: gateway ? Timeout.InfiniteTimeSpan : null),
         _ => throw new NotSupportedException($"Unsupported MCP transport {server.Transport}."),
     };
 

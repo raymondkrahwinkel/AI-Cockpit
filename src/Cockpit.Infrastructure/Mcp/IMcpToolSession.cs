@@ -19,7 +19,9 @@ internal interface IMcpToolSession : IAsyncDisposable
 
     void RemoveServer(string serverName);
 
-    string? ServerInstructions { get; }
+    string CaptureServerInstructions();
+
+    Task WaitForConnectionsAsync(CancellationToken cancellationToken);
 
     IReadOnlyList<ModelContextProtocol.Server.McpServerTool> ForwardTools { get; }
 

@@ -13,9 +13,8 @@ namespace Cockpit.Core.Tests.Mcp;
 public partial class McpClientConnectorTests
 {
     // Category D: the wire contract must retain image blocks and tool metadata through the gateway.
-    private static async Task _AssertGatewayContractAsync()
+    private static async Task _AssertGatewayContractAsync(InProcessMcpHttpServer upstream, McpClient direct)
     {
-        await using var upstream = await InProcessMcpHttpServer.StartAsync<GatewayContractTool>();
         var config = new McpServerConfig { Name = "depot", Transport = McpTransport.Http, Url = upstream.Url };
         var catalog = Substitute.For<IMcpServerCatalog>();
         catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns([config]);
@@ -34,7 +33,6 @@ public partial class McpClientConnectorTests
             await File.WriteAllTextAsync(path, """{"SessionMcpGatewayEnabled":true}""");
             await using var gateway = new SessionMcpGatewayHost(auth, keyring, NullLoggerFactory.Instance, path, provider, mounts);
             await gateway.StartAsync(CancellationToken.None);
-            await using var direct = await McpClient.CreateAsync(new HttpClientTransport(new() { Endpoint = new Uri(upstream.Url) }));
             await using var client = await McpClient.CreateAsync(new HttpClientTransport(new()
             {
                 Endpoint = new Uri(gateway.UrlFor("contract") ?? throw new InvalidOperationException("Gateway unavailable")),

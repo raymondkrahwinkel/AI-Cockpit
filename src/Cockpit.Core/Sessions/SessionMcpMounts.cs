@@ -35,8 +35,20 @@ public sealed class SessionMcpMounts : ISingletonService
         Reported?.Invoke(paneId, connectedServerNames, issues ?? []);
     }
 
-    public void ReportConnections(string paneId, IReadOnlyList<string> connectedServerNames, IReadOnlyList<McpServerConnectionIssue> issues) =>
-        Reported?.Invoke(paneId, connectedServerNames, issues);
+    public void ReportConnections(string paneId, IReadOnlyList<string> connectedServerNames, IReadOnlyList<McpServerConnectionIssue> issues, Action<Exception> onHandlerError)
+    {
+        foreach (var handler in Reported?.GetInvocationList() ?? [])
+        {
+            try
+            {
+                ((Action<string, IReadOnlyList<string>, IReadOnlyList<McpServerConnectionIssue>>)handler)(paneId, connectedServerNames, issues);
+            }
+            catch (Exception exception)
+            {
+                onHandlerError(exception);
+            }
+        }
+    }
 
     // AC-1148: records the mount decision without announcing it — for a route that grants before it connects,
     // being its own client. Last write wins, the same "once per launch" rule Report follows, so a relaunch in

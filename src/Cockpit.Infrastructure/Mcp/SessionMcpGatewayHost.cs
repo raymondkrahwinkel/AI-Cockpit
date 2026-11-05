@@ -46,6 +46,7 @@ internal sealed class SessionMcpGatewayHost : IHostedService, IAsyncDisposable
         _provider = () => provider;
         _mounts = mounts;
         _inbox = inbox;
+        _cleanup = new(loggerFactory.CreateLogger<SessionMcpGatewayHost>());
     }
     internal string? BoundUrl { get; private set; }
     public bool IsEnabled { get; private set; }
@@ -93,32 +94,53 @@ internal sealed class SessionMcpGatewayHost : IHostedService, IAsyncDisposable
                     ?? throw new InvalidOperationException("The gateway route has no pane.");
                 var token = _Bearer(http);
                 session.ToolCollection = new McpServerPrimitiveCollection<McpServerTool>();
+                GatewayMcpBinding? activeBinding = null;
+                SemaphoreSlim? collectionGate = null;
+                Action? refresh = null;
                 if (_provider?.Invoke() is { } provider && _mounts is not null)
                 {
-                    var binding = _bindings.GetOrAdd((paneId, token), _ => new Lazy<GatewayMcpBinding>(() => new GatewayMcpBinding(provider, _mounts, paneId, token))).Value;
+                    var binding = _bindings.GetOrAdd((paneId, token), _ => new Lazy<GatewayMcpBinding>(() => new GatewayMcpBinding(provider, _mounts, paneId, token, _loggerFactory.CreateLogger<SessionMcpGatewayHost>()))).Value;
                     if (!string.Equals(_keyring.CurrentToken(paneId), token, StringComparison.Ordinal))
                     {
                         _bindings.TryRemove((paneId, token), out _);
                         await binding.DisposeAsync();
                         throw new McpException("This MCP run has ended.");
                     }
+                    activeBinding = binding;
                     var live = binding.Session;
                     var collection = session.ToolCollection;
+                    var gate = new SemaphoreSlim(1);
+                    collectionGate = gate;
                     void Refresh()
                     {
-                        lock (collection)
+                        gate.Wait();
+                        try
                         {
-                            collection.Clear();
-                            foreach (var tool in live.ForwardTools)
+                            var desired = live.ForwardTools.ToDictionary(tool => tool.ProtocolTool.Name, StringComparer.Ordinal);
+                            using var batch = collection.DeferChangedEvents();
+                            foreach (var existing in collection.ToArray())
                             {
-                                collection.Add(tool);
+                                if (!desired.TryGetValue(existing.ProtocolTool.Name, out var replacement)
+                                    || existing is not ForwardMcpServerTool forward || !forward.Matches(replacement))
+                                {
+                                    collection.Remove(existing);
+                                }
+                            }
+                            foreach (var tool in desired.Values)
+                            {
+                                collection.TryAdd(tool);
                             }
                         }
+                        finally
+                        {
+                            gate.Release();
+                        }
                     }
+                    refresh = Refresh;
                     live.ToolsChanged += Refresh;
                     http.Items[typeof(GatewayMcpBinding)] = (Action)(() => live.ToolsChanged -= Refresh);
-                    await Task.WhenAny(binding.Initial, Task.Delay(TimeSpan.FromSeconds(3), ct));
-                    session.ServerInstructions = live.ServerInstructions;
+                    await binding.WaitForConnectionsAsync(ct);
+                    session.ServerInstructions = live.CaptureServerInstructions();
                     Refresh();
                 }
                 session.Capabilities = new ServerCapabilities { Tools = new ToolsCapability { ListChanged = true } };
@@ -129,10 +151,24 @@ internal sealed class SessionMcpGatewayHost : IHostedService, IAsyncDisposable
                     var result = await next(context, ct);
                     return McpInboxPiggyback.Attach(result, _inbox, _loggerFactory.CreateLogger<SessionMcpGatewayHost>());
                 });
-                session.Filters.Request.ListToolsFilters.Add(next => (context, ct) =>
+                session.Filters.Request.ListToolsFilters.Add(next => async (context, ct) =>
                 {
                     _RequirePane(paneId, token);
-                    return next(context, ct);
+                    if (activeBinding is null || collectionGate is null)
+                    {
+                        return await next(context, ct);
+                    }
+                    await activeBinding.WaitForConnectionsAsync(ct);
+                    refresh?.Invoke();
+                    await collectionGate.WaitAsync(ct);
+                    try
+                    {
+                        return await next(context, ct);
+                    }
+                    finally
+                    {
+                        collectionGate.Release();
+                    }
                 });
             };
 #pragma warning disable MCPEXP002 // Tie the SDK session to the existing run-key lifetime.
@@ -226,7 +262,7 @@ internal sealed class SessionMcpGatewayHost : IHostedService, IAsyncDisposable
     }
 
     private readonly ConcurrentDictionary<(string Pane, string Token), Lazy<GatewayMcpBinding>> _bindings = new();
-    private readonly ConcurrentBag<Task> _cleanup = [];
+    private readonly McpBackgroundTasks _cleanup;
 
     private void _EndBindings(string paneId)
     {
@@ -234,7 +270,7 @@ internal sealed class SessionMcpGatewayHost : IHostedService, IAsyncDisposable
         {
             if (pair.Key.Pane == paneId && _bindings.TryRemove(pair.Key, out var binding) && binding.IsValueCreated)
             {
-                _cleanup.Add(binding.Value.DisposeAsync().AsTask());
+                _cleanup.Run(async () => await binding.Value.DisposeAsync());
             }
         }
     }
@@ -267,6 +303,6 @@ internal sealed class SessionMcpGatewayHost : IHostedService, IAsyncDisposable
             if (binding.IsValueCreated) { await binding.Value.DisposeAsync(); }
         }
         _bindings.Clear();
-        await Task.WhenAll(_cleanup);
+        await _cleanup.DrainAsync();
     }
 }

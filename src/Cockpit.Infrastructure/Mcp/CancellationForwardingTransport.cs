@@ -1,19 +1,21 @@
 using System.Text.Json;
 using System.Threading.Channels;
+using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 
 namespace Cockpit.Infrastructure.Mcp;
 
-internal sealed class CancellationForwardingTransport(IClientTransport inner) : IClientTransport
+internal sealed class CancellationForwardingTransport(IClientTransport inner, ILogger logger) : IClientTransport
 {
     public string Name => inner.Name;
 
     public async Task<ITransport> ConnectAsync(CancellationToken cancellationToken = default) =>
-        new SessionTransport(await inner.ConnectAsync(cancellationToken));
+        new SessionTransport(await inner.ConnectAsync(cancellationToken), logger);
 
-    private sealed class SessionTransport(ITransport transport) : ITransport
+    private sealed class SessionTransport(ITransport transport, ILogger logger) : ITransport
     {
+        private readonly McpBackgroundTasks _notifications = new(logger);
         public string? SessionId => transport.SessionId;
         public ChannelReader<JsonRpcMessage> MessageReader => transport.MessageReader;
 
@@ -25,26 +27,26 @@ internal sealed class CancellationForwardingTransport(IClientTransport inner) : 
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested && message is JsonRpcRequest { Method: "tools/call" })
             {
-                // AC-2124: SDK 2.3 registers protocol cancellation only after the HTTP send, which can await SSE.
+                // AC-2124: this failed send precedes SDK cancellation registration, so only this layer notifies.
                 var request = (JsonRpcRequest)message;
-                using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-                try
+                _notifications.Run(async () =>
                 {
+                    using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(3));
                     await transport.SendMessageAsync(new JsonRpcNotification
                     {
                         Method = "notifications/cancelled",
                         Params = JsonSerializer.SerializeToNode(new CancelledNotificationParams { RequestId = request.Id }),
                         Context = new JsonRpcMessageContext { RelatedTransport = request.Context?.RelatedTransport },
                     }, deadline.Token);
-                }
-                catch (Exception)
-                {
-                    // A disconnected upstream cannot receive cancellation; preserve the caller's cancellation.
-                }
+                });
                 throw;
             }
         }
 
-        public ValueTask DisposeAsync() => transport.DisposeAsync();
+        public async ValueTask DisposeAsync()
+        {
+            await _notifications.DrainAsync();
+            await transport.DisposeAsync();
+        }
     }
 }
