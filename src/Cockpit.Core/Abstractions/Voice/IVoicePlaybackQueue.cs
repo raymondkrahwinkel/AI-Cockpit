@@ -43,6 +43,11 @@ public interface IVoicePlaybackQueue
     event EventHandler? SpeakingStarted;
 
     /// <summary>
+    /// Raised when <see cref="StopAll"/> cancels the active read-aloud generation.
+    /// </summary>
+    event EventHandler? PlaybackStopped;
+
+    /// <summary>
     /// Cancels whatever is currently synthesizing/playing and discards anything still queued.
     /// </summary>
     void StopAll();

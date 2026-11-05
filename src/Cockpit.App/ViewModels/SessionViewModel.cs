@@ -22,6 +22,7 @@ using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Provisioning;
 using Cockpit.Core.Usage;
+using Cockpit.Core.Voice;
 using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Shared;
@@ -2485,6 +2486,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // below stay on the bare text, so a reply prefix never changes retry or auto-close behaviour.
     private void _OnTurnStarting(QueuedPrompt prompt)
     {
+        ResetReadAloudCancellation();
+
         var text = prompt.Text;
         var images = prompt.Images;
         var replyTo = _RowOf(prompt.ReplyToRowId);
@@ -2759,6 +2762,32 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _ = EnqueueReadAloudAsync(pending);
     }
 
+    private void _QueueCompletedProseForReadAloud()
+    {
+        if (!ReadResponsesAloud)
+        {
+            return;
+        }
+
+        var prose = string.Concat(_currentTurnAssistantEntries.Select(
+            (entry, index) => index == 0 || entry.IsReplyContinuation ? entry.Text : "\n\n" + entry.Text));
+        if (_readAloudFlushedLength >= prose.Length)
+        {
+            return;
+        }
+
+        var stream = TtsProseExtractor.ExtractCompleted(prose[_readAloudFlushedLength..]);
+        if (stream.ConsumedLength == 0)
+        {
+            return;
+        }
+
+        _readAloudFlushedLength += stream.ConsumedLength;
+        _spokenSomethingThisTurn |= stream.Sentences.Count > 0;
+        _RestartSignOfLifeClock();
+        _ = EnqueueReadAloudAsync(stream.Sentences);
+    }
+
     // Says out loud that it is about to go and look, when the model went straight to a tool without saying so (AC-597).
     internal void _SpeakLeadInIfTheModelGaveNone()
     {
@@ -2851,7 +2880,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         // AC-146: a sub-agent's text, in its lane or orphaned, is never the reply that is read aloud.
         if (fold.IsReply)
         {
-            _currentTurnAssistantEntries.AddRange(_addedByFold);
+            foreach (var entry in _addedByFold.Append(landed).OfType<TranscriptEntryViewModel>())
+            {
+                if (!_currentTurnAssistantEntries.Contains(entry))
+                {
+                    _currentTurnAssistantEntries.Add(entry);
+                }
+            }
+            _QueueCompletedProseForReadAloud();
         }
 
         // A result coupled to its call (L14) is where a backgrounded call learns its task id, in any lane.

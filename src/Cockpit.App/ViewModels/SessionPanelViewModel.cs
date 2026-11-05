@@ -1497,6 +1497,8 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     private IVoicePushToTalkService? _voicePushToTalk;
     private IVoiceSettingsStore? _voiceSettingsStore;
     private IVoicePlaybackQueue? _voicePlaybackQueue;
+    private bool _readAloudCancelled;
+    private EventHandler? _playbackStoppedHandler;
     private IOpenMicState? _openMicState;
 
     public bool IsAudioAvailable { get; private set; } = true;
@@ -1585,6 +1587,11 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         _voicePushToTalk = voicePushToTalk;
         _voiceSettingsStore = voiceSettingsStore;
         _voicePlaybackQueue = voicePlaybackQueue;
+        if (_voicePlaybackQueue is not null)
+        {
+            _playbackStoppedHandler = (_, _) => _readAloudCancelled = true;
+            _voicePlaybackQueue.PlaybackStopped += _playbackStoppedHandler;
+        }
         _openMicState = openMicState;
         _voiceOverlay = voiceOverlay;
         IsAudioAvailable = audioAvailability?.IsAvailable ?? true;
@@ -1608,22 +1615,16 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
     // A no-op when the playback queue was never wired (design-time/tests) or there is nothing to say (AC-729, AC-410).
     protected Task EnqueueReadAloudAsync(string text)
+        => EnqueueReadAloudAsync(TtsProseExtractor.Extract(text));
+
+    protected Task EnqueueReadAloudAsync(IReadOnlyList<string> sentences)
     {
-        if (_voicePlaybackQueue is null)
+        if (_voicePlaybackQueue is null || _readAloudCancelled)
         {
             return Task.CompletedTask;
         }
 
         var source = PaneId == AssistantIdentity.PaneId ? VoicePlaybackSource.Assistant : VoicePlaybackSource.Session;
-
-        var sentences = TtsProseExtractor.Extract(text);
-        if (ReadAloudAsOneUtterance && sentences.Count > 1)
-        {
-            // Joined after extraction, not instead of it: the extractor is what strips code blocks and tables
-            // out of something that would otherwise be read character by character, and that job is unrelated
-            // to how many clips the result is spoken in.
-            sentences = [string.Join(" ", sentences)];
-        }
 
         if (sentences.Count == 0)
         {
@@ -1650,8 +1651,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         return Task.CompletedTask;
     }
 
-    // Whether this session's replies are spoken as one synthesis rather than sentence by sentence.
-    public bool ReadAloudAsOneUtterance { get; set; }
+    protected void ResetReadAloudCancellation() => _readAloudCancelled = false;
 
     // Starts a push-to-talk hold (KeyDown on the configured hotkey). Returns false — a no-op the
     // caller should not mark `Handled` for — when voice is off, unwired, or a hold is already in
@@ -1993,6 +1993,12 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         }
 
         _disposed = true;
+
+        if (_voicePlaybackQueue is not null && _playbackStoppedHandler is not null)
+        {
+            _voicePlaybackQueue.PlaybackStopped -= _playbackStoppedHandler;
+            _playbackStoppedHandler = null;
+        }
 
         if (_heavyRuns is not null)
         {

@@ -4728,6 +4728,8 @@ internal static partial class Screenshotter
 
         public event EventHandler? SpeakingStarted { add { } remove { } }
 
+        public event EventHandler? PlaybackStopped { add { } remove { } }
+
         public void StopAll()
         {
         }

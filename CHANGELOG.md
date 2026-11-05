@@ -58,6 +58,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- Assistant replies now start read-aloud while they stream, prepare a small bounded look-ahead buffer, and keep consecutive spoken pieces seamless.
 - Simple session and assistant views now use the available window width instead of a fixed 720 px column.
 
 ### Removed
