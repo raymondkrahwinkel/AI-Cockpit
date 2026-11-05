@@ -65,8 +65,16 @@ internal static class NodeCertificatePin
     // The HTTP transport for `server`, pinned when paired and unchanged otherwise — one helper rather than the
     // same conditional at both call sites, since a duplicated rule is the one that drifts. ownsHttpClient: true
     // since the pinned client exists for this transport alone; the default false would leak a handler per call.
-    public static HttpClientTransport TransportFor(McpServerConfig server, HttpClientTransportOptions options) =>
-        string.IsNullOrEmpty(server.PinnedCertificateFingerprint)
-            ? new HttpClientTransport(options)
-            : new HttpClientTransport(options, new HttpClient(Require(server.PinnedCertificateFingerprint)), loggerFactory: null, ownsHttpClient: true);
+    public static HttpClientTransport TransportFor(McpServerConfig server, HttpClientTransportOptions options, TimeSpan? timeout = null)
+    {
+        if (string.IsNullOrEmpty(server.PinnedCertificateFingerprint) && timeout is null)
+        {
+            return new HttpClientTransport(options);
+        }
+        var handler = string.IsNullOrEmpty(server.PinnedCertificateFingerprint)
+            ? new HttpClientHandler()
+            : (HttpMessageHandler)Require(server.PinnedCertificateFingerprint);
+        var client = new HttpClient(handler) { Timeout = timeout ?? TimeSpan.FromSeconds(100) };
+        return new HttpClientTransport(options, client, loggerFactory: null, ownsHttpClient: true);
+    }
 }

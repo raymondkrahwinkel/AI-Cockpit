@@ -13,6 +13,18 @@ internal interface IMcpToolSession : IAsyncDisposable
 {
     IReadOnlyList<McpSessionTool> Tools { get; }
 
+    event Action? ToolsChanged;
+
+    Task AddServerAsync(McpServerConfig server, CancellationToken cancellationToken = default);
+
+    void RemoveServer(string serverName);
+
+    string CaptureServerInstructions();
+
+    Task WaitForConnectionsAsync(CancellationToken cancellationToken);
+
+    IReadOnlyList<ModelContextProtocol.Server.McpServerTool> ForwardTools { get; }
+
     IReadOnlyList<string> ConnectedServerNames { get; }
 
     /// <summary>
@@ -36,8 +48,8 @@ internal interface IMcpToolSession : IAsyncDisposable
     IReadOnlyDictionary<string, ToolPermissionClass> ToolClasses { get; }
 
     /// <summary>
-    /// The pane token this session minted (AC-89), or <c>null</c> when it connected without a pane id. Read by a
-    /// caller that needs the same live token elsewhere (AC-994), so it never mints a second one for the same pane.
+    /// The pane token used by this session, or <c>null</c> without a pane. Gateway sessions borrow the existing token;
+    /// only the route that minted it may revoke it.
     /// </summary>
     string? PaneToken { get; }
 }
