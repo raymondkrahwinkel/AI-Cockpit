@@ -56,6 +56,7 @@ internal sealed class PluginAdministration(
         await _changes.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            await bootstrap.ReconcileUpdatesAsync(cancellationToken).ConfigureAwait(false);
             var result = await installer.InstallFromZipAsync(zipFilePath, AbstractionsContract.Version, cancellationToken: cancellationToken).ConfigureAwait(false);
             return result.Staged ? result with { Live = await _UpdateAsync(result).ConfigureAwait(false) } : result;
         }
@@ -70,6 +71,7 @@ internal sealed class PluginAdministration(
         await _changes.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            await bootstrap.ReconcileUpdatesAsync(cancellationToken).ConfigureAwait(false);
             var result = await provisioning.InstallAsync(request, AbstractionsContract.Version, cancellationToken: cancellationToken, progress: progress).ConfigureAwait(false);
             return result.Outcome == PluginProvisionOutcome.Staged
                 ? result with { Live = await _UpdateAsync(result.FolderId, result.Sha256, result.InPlace, result.ConsentReason, result.ReplacedSha256).ConfigureAwait(false) ?? PluginLiveState.Restart("An update is applied when the host restarts.") }
