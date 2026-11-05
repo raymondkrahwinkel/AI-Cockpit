@@ -91,7 +91,12 @@ internal sealed class ProxmoxSettings(IPluginStorage storage)
     }
 }
 
-internal sealed record ProxmoxServer(string Id, string Name, string Host, int Port, string TokenId, string TrustedCertFingerprint, bool AllowRollback, bool AllowDelete)
+internal enum ProxmoxServerKind
+{
+    Pve,
+}
+
+internal sealed record ProxmoxServer(string Id, string Name, string Host, int Port, string TokenId, string TrustedCertFingerprint, bool AllowRollback, bool AllowDelete, ProxmoxServerKind Kind = ProxmoxServerKind.Pve)
 {
     public bool IsConfigured => !string.IsNullOrWhiteSpace(Host) && !string.IsNullOrWhiteSpace(TokenId);
 }

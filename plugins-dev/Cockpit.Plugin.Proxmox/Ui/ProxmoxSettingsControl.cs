@@ -34,10 +34,6 @@ internal sealed class ProxmoxSettingsControl : UserControl, IPluginSettingsView
         _settings = settings;
         _servers = settings.Servers.ToList();
         _tokens = _servers.ToDictionary(server => server.Id, server => settings.GetApiToken(server.Id));
-        if (_servers.Count == 0)
-        {
-            _servers.Add(_NewServer());
-        }
 
         _mcp = new CheckBox { Content = "Offer the cockpit-proxmox MCP server to sessions", IsChecked = settings.McpEnabled };
         _list.SelectionChanged += (_, _) =>
@@ -62,15 +58,15 @@ internal sealed class ProxmoxSettingsControl : UserControl, IPluginSettingsView
         var remove = new Button { Content = "Remove selected", Margin = new(6, 0, 0, 0) };
         remove.Click += (_, _) =>
         {
+            if (_servers.Count == 0)
+            {
+                return;
+            }
+
             _Capture();
             _tokens.Remove(_servers[_selected].Id);
             _servers.RemoveAt(_selected);
-            if (_servers.Count == 0)
-            {
-                _servers.Add(_NewServer());
-            }
-
-            _selected = Math.Min(_selected, _servers.Count - 1);
+            _selected = _servers.Count == 0 ? -1 : Math.Min(_selected, _servers.Count - 1);
             _RefreshList();
             _Load();
         };
@@ -152,6 +148,11 @@ internal sealed class ProxmoxSettingsControl : UserControl, IPluginSettingsView
 
     private void _Capture()
     {
+        if (_selected < 0 || _servers.Count == 0)
+        {
+            return;
+        }
+
         var current = _servers[_selected];
         _servers[_selected] = current with
         {
@@ -171,6 +172,19 @@ internal sealed class ProxmoxSettingsControl : UserControl, IPluginSettingsView
 
     private void _Load()
     {
+        if (_selected < 0 || _servers.Count == 0)
+        {
+            _name.Text = string.Empty;
+            _hostName.Text = string.Empty;
+            _port.Text = "8006";
+            _tokenId.Text = string.Empty;
+            _token.Text = string.Empty;
+            _fingerprint.Text = "No servers configured.";
+            _rollback.IsChecked = false;
+            _delete.IsChecked = false;
+            return;
+        }
+
         var server = _servers[_selected];
         _name.Text = server.Name;
         _hostName.Text = server.Host;
@@ -186,7 +200,7 @@ internal sealed class ProxmoxSettingsControl : UserControl, IPluginSettingsView
     private void _RefreshList()
     {
         _list.ItemsSource = _servers.Select(server => string.IsNullOrWhiteSpace(server.Name) ? "New server" : server.Name).ToList();
-        _list.SelectedIndex = _selected;
+        _list.SelectedIndex = _servers.Count == 0 ? -1 : _selected;
     }
 
     private static ProxmoxServer _NewServer() => new(Guid.NewGuid().ToString("N"), string.Empty, string.Empty, 8006, string.Empty, string.Empty, false, false);

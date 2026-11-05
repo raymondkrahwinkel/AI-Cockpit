@@ -11,7 +11,7 @@ certificate it connects over, and the two capabilities that reach past ordinary 
 
 ## Connecting {#connecting}
 
-Register each Proxmox VE installation with a unique name. MCP tools accept an optional `server` name; omitting it is supported only when exactly one server is configured. `list_servers` shows names, hosts and whether each server is ready, never tokens. All server tokens live in the declared `apiTokens` secret key, so settings exports scrub them. Existing single-server settings migrate automatically on first read.
+Register each Proxmox VE installation with a unique name. Targets are recorded as PVE so a later release can add another Proxmox product type without changing saved target identities. MCP tools accept an optional `server` name; omitting it is supported only when exactly one server is configured. `list_servers` shows names, hosts and whether each server is ready, never tokens. All server tokens live in the declared `apiTokens` secret key, so settings exports scrub them. Existing single-server settings migrate automatically on first read.
 
 Fill in the host (e.g. `pve.example.lan`), the port (`8006` unless you changed it), and an API token's
 identity (`user@realm!tokenid`) and its secret UUID, kept in the encrypted secrets layer.
