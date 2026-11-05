@@ -52,14 +52,11 @@ public sealed class AssistantActMountRuleTests : IDisposable
 
     private readonly RecordingNodesClient _nodes = new();
 
-    private readonly string _attachmentDirectory = Path.Combine(Path.GetTempPath(), "ac-2091-mount-" + Guid.NewGuid().ToString("N"));
     private int _attached;
 
     private AssistantAgentMcpTools _Tools()
     {
         var png = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==");
-        Directory.CreateDirectory(_attachmentDirectory);
-        File.WriteAllBytes(Path.Combine(_attachmentDirectory, "operator.png"), png);
         var sessions = Substitute.For<ISessionRegistry>();
         var session = Substitute.For<ISessionHandle>();
         var control = Substitute.For<ISessionControl>();
@@ -98,7 +95,7 @@ public sealed class AssistantActMountRuleTests : IDisposable
     /// </summary>
     private async Task<JsonNode> _CallAsync(AssistantAgentMcpTools tools, MethodInfo tool) =>
         _Json(await (Task<string>)tool.Invoke(tools, tool.Name == nameof(AssistantAgentMcpTools.AttachToReplyAsync)
-            ? [Path.Combine(_attachmentDirectory, "operator.png"), null]
+            ? [null, null, 0]
             : [.. tool.GetParameters().Select(_Argument)])!);
 
     private static object? _Argument(ParameterInfo parameter) =>
@@ -510,12 +507,5 @@ public sealed class AssistantActMountRuleTests : IDisposable
     }
 
     /// <summary>Clears the ambient pane so one test's caller is never another's.</summary>
-    public void Dispose()
-    {
-        McpRequestContext.Set(null);
-        if (Directory.Exists(_attachmentDirectory))
-        {
-            Directory.Delete(_attachmentDirectory, recursive: true);
-        }
-    }
+    public void Dispose() => McpRequestContext.Set(null);
 }

@@ -52,7 +52,7 @@ public static class ReplyAttachmentPath
     public static bool TryResolve(string path, IReadOnlyList<string> roots, out string resolved, out string? refusal)
     {
         resolved = string.Empty;
-        refusal = "Only the assistant scratch directory, managed worktrees or an operator-provided image may be attached.";
+        refusal = "Only paths in the assistant scratch directory or managed worktrees may be attached; use operatorImage to select an image from the current turn.";
         try
         {
             var candidate = Path.GetFullPath(path);
