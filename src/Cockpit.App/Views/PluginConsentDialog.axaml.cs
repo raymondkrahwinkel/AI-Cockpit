@@ -13,6 +13,7 @@ public partial class PluginConsentDialog : Window
     {
         InitializeComponent();
         CockpitWindowChrome.Apply(this);
+        CockpitWindowChrome.EnableConfirmationKeys(this);
     }
 
     private void OnEnable(object? sender, RoutedEventArgs e) => Close(true);

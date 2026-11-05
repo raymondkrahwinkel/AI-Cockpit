@@ -253,6 +253,7 @@
                         <!-- Hover-revealed close, hidden while the confirm prompt is up. -->
                         <Button Grid.Column="1" Classes="Subtle closeSession"
                                 VerticalAlignment="Top" Padding="4,0"
+                                Focusable="True"
                                 Foreground="{DynamicResource CockpitTextFaintBrush}"
                                 IsVisible="{Binding !IsConfirmingClose}"
                                 Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).RequestCloseSessionCommand}"
@@ -396,6 +397,9 @@
             <Setter Property="Opacity" Value="0"/>
         </Style>
         <Style Selector="Border.sessionItem:pointerover Button.closeSession">
+            <Setter Property="Opacity" Value="1"/>
+        </Style>
+        <Style Selector="Border.sessionItem Button.closeSession:focus">
             <Setter Property="Opacity" Value="1"/>
         </Style>
 

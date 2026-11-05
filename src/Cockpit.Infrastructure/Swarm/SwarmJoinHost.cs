@@ -63,7 +63,11 @@ internal sealed class SwarmJoinHost(
         group.MapPost("/request", (Delegate)((HttpContext context) => _HandleAsync(context, async () =>
             await RequestAsync(await _ReadAsync<SwarmJoinRequest>(context), context.RequestAborted))));
         group.MapPost("/join", (Delegate)((HttpContext context) => _HandleAsync(context, async () =>
-            await PrepareAsync(await _ReadAsync<SwarmJoinPrepare>(context), context.RequestAborted))));
+        {
+            var request = await _ReadAsync<SwarmJoinPrepare>(context);
+            var prepared = await PrepareAsync(request, context.RequestAborted);
+            return request.IncludeLog ? (object)prepared : prepared.Record;
+        })));
         group.MapPost("/join/commit", (Delegate)((HttpContext context) => _HandleAsync(context, async () =>
         {
             var transport = await CommitAsync(await _ReadAsync<SwarmJoinCommit>(context), context.RequestAborted);
@@ -124,7 +128,8 @@ internal sealed class SwarmJoinHost(
                 throw NodePairingException.For(NodePairingError.PairingInProgress, "Another join is waiting.");
             }
             var current = await membership.LoadAsync(ct);
-            if (current.Sequence != 0 && !current.Tombstones.Any(item => item.Member == identity.MemberId))
+            if (current.Sequence != 0 && current.PublicKeyOf(identity.MemberId) is not null
+                && !current.Tombstones.Any(item => item.Member == SwarmMemberId.FromPublicKey(peer.PublicKey.ExportSubjectPublicKeyInfo())))
             {
                 throw NodePairingException.For(NodePairingError.AlreadyPaired, "This machine is already a swarm member.");
             }
@@ -172,7 +177,7 @@ internal sealed class SwarmJoinHost(
         return state;
     }
 
-    internal async Task<SwarmRecord> PrepareAsync(SwarmJoinPrepare request, CancellationToken ct)
+    internal async Task<SwarmJoinProposal> PrepareAsync(SwarmJoinPrepare request, CancellationToken ct)
     {
         _Desktop();
         await _gate.WaitAsync(ct);
@@ -181,24 +186,44 @@ internal sealed class SwarmJoinHost(
             var state = _Claim(request.Claim);
             var register = SwarmMembership.Replay(request.Log);
             var previous = await membership.LoadAsync(ct);
-            if (!_ExtendsLog(previous, register) || register.Sequence < previous.Sequence)
+            using var peer = X509CertificateLoader.LoadCertificate(state.Request.Certificate);
+            var peerKey = peer.PublicKey.ExportSubjectPublicKeyInfo();
+            var peerId = SwarmMemberId.FromPublicKey(peerKey);
+            // A former member may initiate its own return. The remaining member supplies the authoritative log.
+            var returning = previous.PublicKeyOf(identity.MemberId) is not null
+                && previous.Tombstones.Any(item => item.Member == peerId);
+            if (returning)
+            {
+                if (register.Sequence > previous.Sequence || !_ExtendsLog(register, previous))
+                {
+                    throw NodePairingException.For(NodePairingError.InvalidToken, "Join must retain the signed removal history.");
+                }
+                register = previous;
+            }
+            else if (!_ExtendsLog(previous, register) || register.Sequence < previous.Sequence)
             {
                 throw NodePairingException.For(NodePairingError.InvalidToken, "Join must retain the signed removal history.");
             }
-            using var peer = X509CertificateLoader.LoadCertificate(state.Request.Certificate);
-            var peerId = SwarmMemberId.FromPublicKey(peer.PublicKey.ExportSubjectPublicKeyInfo());
-            if (register.PublicKeyOf(peerId) is null)
+            if (!returning && register.PublicKeyOf(peerId) is null)
             {
                 throw NodePairingException.For(NodePairingError.InvalidToken, "The adding machine is not a member.");
             }
             var local = await settings.LoadAsync(ct);
-            var rank = SwarmRank.Draw(register.Log.Select(record => record.Payload.Deserialize<SwarmChange>(SwarmRecordJson.Options))
-                .OfType<SwarmMember>().Select(member => member.Rank));
-            var member = new SwarmMember(certificate.Value.PublicKey.ExportSubjectPublicKeyInfo(), Name,
-                rank, [NodeReachableAddress.Resolve() ?? "127.0.0.1"], local.Port, peerId, Time.GetUtcNow(), register.Sequence + 1);
+            var ranks = register.Log.Select(record => record.Payload.Deserialize<SwarmChange>(SwarmRecordJson.Options))
+                .SelectMany(change => change switch
+                {
+                    SwarmMember added => new[] { added.Rank },
+                    SwarmRankChange changed => new[] { changed.Rank },
+                    _ => Array.Empty<long>(),
+                });
+            var member = new SwarmMember(returning ? peerKey : certificate.Value.PublicKey.ExportSubjectPublicKeyInfo(),
+                returning ? state.Request.Name : Name, SwarmRank.Draw(ranks),
+                returning ? state.Request.Addresses : [NodeReachableAddress.Resolve() ?? "127.0.0.1"],
+                returning ? state.Request.Port : local.Port, returning ? identity.MemberId : peerId,
+                Time.GetUtcNow(), register.Sequence + 1);
             state.Register = register;
             state.Proposal = identity.Sign(SwarmMembership.ToPayload(member));
-            return state.Proposal;
+            return new(state.Proposal, register.Log);
         }
         finally { _gate.Release(); }
     }

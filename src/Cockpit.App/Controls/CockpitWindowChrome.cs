@@ -4,6 +4,7 @@ using Avalonia.Controls.Chrome;
 using Avalonia.Controls.Documents;
 using Avalonia.Input;
 using Avalonia.Layout;
+using Avalonia.LogicalTree;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
@@ -83,6 +84,20 @@ internal static class CockpitWindowChrome
         window.Content = remoteServer is null
             ? root
             : new Border { BorderBrush = _Brush("CockpitAccentBrush"), BorderThickness = new Thickness(2), Child = root };
+    }
+
+    public static void EnableConfirmationKeys(Window window)
+    {
+        window.Opened += (_, _) =>
+        {
+            var primary = window.GetLogicalDescendants().OfType<Button>()
+                .FirstOrDefault(button => button.Classes.Contains("Accent"));
+            if (primary is not null)
+            {
+                primary.IsDefault = true;
+                primary.Focus();
+            }
+        };
     }
 
     private static Control _ChromeRoot(Window window, string title, string? subtitle, CockpitTitleBar shape, Control body, bool includeMinimize, bool includeMaximize, Action? onSettings, string? remoteServer, Control? captionAction)
