@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add the opt-in foundation for a separate loopback MCP URL per session, with session-key isolation.
+
 - Take over swarm leadership on this machine from the assistant chat or Options › Swarm, through the reachable current leader.
 
 - Proxmox VE supports multiple named servers; MCP tools and the overview select one explicitly, and their tokens are scrubbed from settings exports.

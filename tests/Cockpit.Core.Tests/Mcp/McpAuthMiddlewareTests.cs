@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Net.Security;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -47,6 +48,85 @@ public class McpAuthMiddlewareTests
         keyring.Revoke("pane-42", token);
         using var response = await listeners.SendAsync(listeners.LoopbackUrl, token);
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+
+        await _AssertGatewayIsolationAsync();
+    }
+
+    // Category A: a valid credential must never open another pane's URL or MCP session.
+    private static async Task _AssertGatewayIsolationAsync()
+    {
+        var keyring = new SessionMcpKeyring();
+        var authKey = new McpAuthKey();
+        var tokenA = keyring.TokenFor("pane-a");
+        var tokenB = keyring.TokenFor("pane-b");
+        var mounts = new SessionMcpMounts();
+        var context = new SessionMcpContext(null, Path.GetTempPath(), null, "agent", SessionMcpManager.Assistant);
+        mounts.Bind("pane-a", context);
+        mounts.Grant("pane-a", ["cockpit-session"]);
+        var configPath = Path.Combine(Path.GetTempPath(), $"gateway-{Guid.NewGuid():N}.json");
+        try
+        {
+            await using var disabled = new SessionMcpGatewayHost(authKey, keyring, NullLoggerFactory.Instance, configPath);
+            await disabled.StartAsync(CancellationToken.None);
+            Assert.Null(disabled.UrlFor("pane-a"));
+            Assert.NotNull(disabled.BoundUrl);
+            Assert.StartsWith("http://127.0.0.1:", disabled.BoundUrl);
+            await disabled.StopAsync(CancellationToken.None);
+
+            await File.WriteAllTextAsync(configPath, """{"SessionMcpGatewayEnabled":true}""");
+            await using var gateway = new SessionMcpGatewayHost(authKey, keyring, NullLoggerFactory.Instance, configPath);
+            await gateway.StartAsync(CancellationToken.None);
+            var urlA = gateway.UrlFor("pane-a") ?? throw new InvalidOperationException("Gateway did not bind.");
+            var urlB = gateway.UrlFor("pane-b") ?? throw new InvalidOperationException("Gateway did not bind.");
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+            using var wrongPane = await _GatewayRequestAsync(client, urlB, tokenA);
+            Assert.Equal(HttpStatusCode.Forbidden, wrongPane.StatusCode);
+            using var appKey = await _GatewayRequestAsync(client, urlA, authKey.Value);
+            Assert.Equal(HttpStatusCode.Forbidden, appKey.StatusCode);
+            using var node = await _GatewayRequestAsync(client, urlA, keyring.TokenFor(NodeCallerIdentity.PaneId));
+            Assert.Equal(HttpStatusCode.Forbidden, node.StatusCode);
+            using var initializedB = await _GatewayRequestAsync(client, urlB, tokenB);
+            initializedB.EnsureSuccessStatusCode();
+            var sessionB = initializedB.Headers.GetValues("Mcp-Session-Id").Single();
+            using var stolen = await _GatewayRequestAsync(client, urlA, tokenA, sessionB);
+            Assert.Equal(HttpStatusCode.Forbidden, stolen.StatusCode);
+            using var initializedA = await _GatewayRequestAsync(client, urlA, tokenA);
+            initializedA.EnsureSuccessStatusCode();
+            var replacement = keyring.TokenFor("pane-a");
+            var tokenIsCurrent = string.Equals(replacement, keyring.CurrentToken("pane-a"), StringComparison.Ordinal);
+            Assert.True(tokenIsCurrent);
+            Assert.Same(context, mounts.Set("pane-a")?.Context);
+            Assert.True(mounts.IsMounted("pane-a", "cockpit-session"));
+            using var oldToken = await _GatewayRequestAsync(client, urlA, tokenA);
+            Assert.Equal(HttpStatusCode.Unauthorized, oldToken.StatusCode);
+            using var restarted = await _GatewayRequestAsync(client, urlA, replacement);
+            restarted.EnsureSuccessStatusCode();
+            keyring.Revoke("pane-a", replacement);
+            using var closed = await _GatewayRequestAsync(client, urlA, replacement);
+            Assert.Equal(HttpStatusCode.Unauthorized, closed.StatusCode);
+            Assert.Null(keyring.CurrentToken("pane-a"));
+            await gateway.StopAsync(CancellationToken.None);
+        }
+        finally
+        {
+            File.Delete(configPath);
+        }
+    }
+
+    private static async Task<HttpResponseMessage> _GatewayRequestAsync(HttpClient client, string url, string token, string? sessionId = null)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, url);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        request.Headers.Accept.ParseAdd("application/json, text/event-stream");
+        if (sessionId is not null)
+        {
+            request.Headers.Add("Mcp-Session-Id", sessionId);
+        }
+
+        request.Content = sessionId is null
+            ? JsonContent.Create(new { jsonrpc = "2.0", id = 1, method = "initialize", @params = new { protocolVersion = "2025-11-25", capabilities = new { }, clientInfo = new { name = "auth-test", version = "1" } } })
+            : JsonContent.Create(new { jsonrpc = "2.0", id = 2, method = "tools/list" });
+        return await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
     }
 
     // L2b (authorization), AC-1685 criterion 2, folding in AC-791 criterion 1: a connect key is Remote with its

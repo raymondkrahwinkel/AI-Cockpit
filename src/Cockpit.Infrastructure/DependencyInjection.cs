@@ -27,6 +27,8 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddInfrastructure(this IServiceCollection services)
     {
+        services.AddSingleton<Mcp.SessionMcpGatewayHost>();
+        services.AddSingleton<Microsoft.Extensions.Hosting.IHostedService>(provider => provider.GetRequiredService<Mcp.SessionMcpGatewayHost>());
         services.AddSingleton<Cockpit.Core.Swarm.SwarmReachability>();
         // AC-1110: handed to DelegationService as a deferred lookup, not as the instance. The catalog reaches that
         // service back through ICockpitInternalMcpProvider, and injecting it directly closes a construction cycle
