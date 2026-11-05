@@ -29,6 +29,9 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
     internal static bool IsInstalledPlugin(string folder) =>
         !Path.GetFileName(folder).StartsWith('.') && !File.Exists(Path.Combine(folder, RemovalMarker));
 
+    // `<UpdateMarkerPrefix><folderId>` in the plugins root: "<replaced sha256>\n<new sha256>" of an in-place update past the capability check.
+    internal const string UpdateMarkerPrefix = ".updating-";
+
     private readonly string _pluginsRoot;
 
     public PluginInstaller()
@@ -119,9 +122,19 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
                 var added = _AddedCapabilities(finalDir, manifest);
                 // What the folder held before it is replaced: the caller pins the update only over bytes that were approved.
                 var replacedSha256 = await PluginClosureHash.OfInstalledFolderAsync(finalDir, cancellationToken).ConfigureAwait(false);
-                if (added.Count == 0 && !manifest.RequiresRestart && _TryReplaceInPlace(stagingDir, finalDir, folderId))
+                // The marker goes down before the swap: a kill between the swap and the caller's re-pin leaves the new bytes
+                // under the old pin, and only the marker lets the next start tell that from an unapproved swap.
+                var markerPath = Path.Combine(_pluginsRoot, UpdateMarkerPrefix + folderId);
+                var inPlace = added.Count == 0 && !manifest.RequiresRestart;
+                if (inPlace)
                 {
-                    return PluginInstallResult.Success(folderId, newSha256, staged: true, manifest: manifest, inPlace: true, replacedSha256: replacedSha256);
+                    await File.WriteAllTextAsync(markerPath, replacedSha256 + "\n" + newSha256, cancellationToken).ConfigureAwait(false);
+                    if (_TryReplaceInPlace(stagingDir, finalDir, folderId))
+                    {
+                        return PluginInstallResult.Success(folderId, newSha256, staged: true, manifest: manifest, inPlace: true, replacedSha256: replacedSha256);
+                    }
+
+                    File.Delete(markerPath);
                 }
 
                 // The fallback: stage the new version and let SweepPendingUpdatesAsync swap it in at next
@@ -336,6 +349,15 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
     public Task SweepPendingUpdatesAsync(CancellationToken cancellationToken = default)
     {
         _RecoverReplaced();
+        if (Directory.Exists(_pluginsRoot))
+        {
+            // Nothing installs while the host starts, so every `.staging-*` here is left by a kill.
+            foreach (var orphan in Directory.EnumerateDirectories(_pluginsRoot, ".staging-*"))
+            {
+                _TryDelete(orphan);
+            }
+        }
+
         var pendingRoot = Path.Combine(_pluginsRoot, PendingUpdatesFolder);
         if (!Directory.Exists(pendingRoot))
         {

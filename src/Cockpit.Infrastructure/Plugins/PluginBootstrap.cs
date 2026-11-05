@@ -37,8 +37,35 @@ public sealed class PluginBootstrap : ISingletonService
     {
         await _installer.SweepPendingUpdatesAsync(cancellationToken).ConfigureAwait(false);
         await _installer.SweepRemovalsAsync(cancellationToken).ConfigureAwait(false);
+        await ReconcileUpdatesAsync(cancellationToken).ConfigureAwait(false);
 
         return await DiscoverAsync(hostAbstractionsMajor, cancellationToken).ConfigureAwait(false);
+    }
+
+    // AC-2096: an in-place update killed between the folder swap and the re-pin leaves its marker. New bytes on disk and the
+    // pin still on the bytes the marker says were replaced: the capability check passed, so the pin moves. Else only the marker goes.
+    internal async Task ReconcileUpdatesAsync(CancellationToken cancellationToken = default)
+    {
+        if (!Directory.Exists(_pluginsRoot))
+        {
+            return;
+        }
+
+        foreach (var marker in Directory.EnumerateFiles(_pluginsRoot, PluginInstaller.UpdateMarkerPrefix + "*"))
+        {
+            var folderId = Path.GetFileName(marker)[PluginInstaller.UpdateMarkerPrefix.Length..];
+            var folder = Path.Combine(_pluginsRoot, folderId);
+            var hashes = File.ReadAllLines(marker);
+            if (hashes.Length == 2 && Directory.Exists(folder)
+                && string.Equals(await PluginClosureHash.OfInstalledFolderAsync(folder, cancellationToken).ConfigureAwait(false), hashes[1], StringComparison.OrdinalIgnoreCase)
+                && (await _registrationStore.LoadAllAsync(cancellationToken).ConfigureAwait(false)).GetValueOrDefault(folderId) is { } prior
+                && string.Equals(prior.PinnedSha256, hashes[0], StringComparison.OrdinalIgnoreCase))
+            {
+                await _registrationStore.SaveAsync(folderId, new PluginRegistration(prior.Enabled, hashes[1]), cancellationToken).ConfigureAwait(false);
+            }
+
+            File.Delete(marker);
+        }
     }
 
     // Scans the plugins root this instance was built with, parses each manifest, hashes each entry assembly
