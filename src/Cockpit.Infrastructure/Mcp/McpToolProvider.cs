@@ -23,7 +23,8 @@ internal sealed partial class McpToolProvider(
     SessionMcpKeyring keyring,
     ILogger<McpToolProvider> logger,
     IWorktreeManager? worktreeManager = null,
-    SessionMcpMounts? mounts = null)
+    SessionMcpMounts? mounts = null,
+    SessionMcpGatewayHost? gateway = null)
     : IMcpToolProvider, IMcpToolInvoker, ISingletonService
 {
     private readonly IMcpServerCatalog _catalog = catalog;
@@ -34,6 +35,12 @@ internal sealed partial class McpToolProvider(
 
     public async Task<IMcpToolSession> ConnectAsync(IReadOnlySet<string>? enabledServerNames = null, string? paneId = null, string? confineFileToolsToDirectory = null, string? projectId = null, string? workingDirectory = null, CancellationToken cancellationToken = default, string? agentName = null)
     {
+        if (gateway?.IsEnabled == true)
+        {
+            paneId = string.IsNullOrEmpty(paneId) ? Guid.NewGuid().ToString("N") : paneId;
+            await gateway.BindLaunchAsync(paneId, projectId, workingDirectory, confineFileToolsToDirectory, agentName,
+                enabledServerNames is ExactMcpServerSelection, cancellationToken).ConfigureAwait(false);
+        }
         // AC-89: a session with a pane id mints one per-session token here (not per server) so every
         // cockpit-hosted endpoint it connects to can attribute requests to this pane; no pane id falls back to the shared app key.
         var sessionToken = string.IsNullOrEmpty(paneId) ? null : _keyring.TokenFor(paneId);

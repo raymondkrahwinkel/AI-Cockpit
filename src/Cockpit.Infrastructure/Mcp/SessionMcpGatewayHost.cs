@@ -3,6 +3,7 @@ using System.Net;
 using Cockpit.Infrastructure.Configuration;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
+using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Agents;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -29,12 +30,14 @@ internal sealed class SessionMcpGatewayHost : IHostedService, IAsyncDisposable
     private readonly Func<McpToolProvider?>? _provider;
     private readonly SessionMcpMounts? _mounts;
     private readonly IAgentTurnInboxDelivery? _inbox;
+    private readonly IProjectStore? _projects;
     private WebApplication? _app;
 
-    public SessionMcpGatewayHost(McpAuthKey authKey, SessionMcpKeyring keyring, ILoggerFactory loggerFactory, Func<IMcpToolProvider>? provider = null, SessionMcpMounts? mounts = null, IAgentTurnInboxDelivery? inbox = null)
+    public SessionMcpGatewayHost(McpAuthKey authKey, SessionMcpKeyring keyring, ILoggerFactory loggerFactory, Func<IMcpToolProvider>? provider = null, SessionMcpMounts? mounts = null, IAgentTurnInboxDelivery? inbox = null, IProjectStore? projects = null)
         : this(authKey, keyring, loggerFactory, CockpitConfigPath.Default, mounts: mounts, inbox: inbox)
     {
         _provider = () => provider?.Invoke() as McpToolProvider;
+        _projects = projects;
     }
 
     internal SessionMcpGatewayHost(McpAuthKey authKey, SessionMcpKeyring keyring, ILoggerFactory loggerFactory, string configPath, McpToolProvider? provider = null, SessionMcpMounts? mounts = null, IAgentTurnInboxDelivery? inbox = null)
@@ -54,6 +57,25 @@ internal sealed class SessionMcpGatewayHost : IHostedService, IAsyncDisposable
     public string? UrlFor(string paneId) => IsEnabled && BoundUrl is { } url
         ? $"{url}/s/{Uri.EscapeDataString(paneId)}/mcp"
         : null;
+
+    internal async Task BindLaunchAsync(string paneId, string? projectId, string? workingDirectory, string? confineRoot, string? agentName, bool assistantManaged, CancellationToken ct)
+    {
+        var project = _projects is null ? null : (await _projects.LoadAsync(ct).ConfigureAwait(false)).Find(projectId);
+        _mounts?.Bind(paneId, new SessionMcpContext(project, workingDirectory ?? Directory.GetCurrentDirectory(), confineRoot, agentName,
+            assistantManaged ? SessionMcpManager.Assistant : SessionMcpManager.Operator));
+    }
+
+    internal async Task PrepareLaunchAsync(string paneId, CancellationToken ct)
+    {
+        var token = _keyring.CurrentToken(paneId) ?? throw new InvalidOperationException("The MCP launch has no session key.");
+        if (_provider?.Invoke() is { } provider && _mounts is not null)
+        {
+            var binding = _bindings.GetOrAdd((paneId, token), _ => new Lazy<GatewayMcpBinding>(() => new GatewayMcpBinding(provider, _mounts, paneId, token, _loggerFactory.CreateLogger<SessionMcpGatewayHost>()))).Value;
+            await binding.WaitForConnectionsAsync(ct).ConfigureAwait(false);
+            // ForwardTools registers reachable shortened names before launch-time glob rules are translated.
+            _ = binding.Session.ForwardTools;
+        }
+    }
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {

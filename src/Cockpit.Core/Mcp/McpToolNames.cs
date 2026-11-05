@@ -8,6 +8,7 @@ public sealed class McpToolNames
     public const int MaximumLength = 64;
     private const string GatewayPrefix = "mcp__cockpit__";
     private readonly Lock _sync = new();
+    private readonly HashSet<string> _directPrefixes = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _aliases = new(StringComparer.Ordinal);
     private readonly HashSet<string> _usedAliases = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _canonical = new(StringComparer.Ordinal);
@@ -41,6 +42,18 @@ public sealed class McpToolNames
         }
     }
 
+    public void PreserveDirectServers(IEnumerable<string> serverNames)
+    {
+        lock (_sync)
+        {
+            _directPrefixes.Clear();
+            foreach (var server in serverNames)
+            {
+                _directPrefixes.Add($"mcp__{Alias(server, new HashSet<string>(StringComparer.Ordinal))}__");
+            }
+        }
+    }
+
     public string ToGateway(string name)
     {
         if (!name.StartsWith("mcp__", StringComparison.Ordinal))
@@ -49,6 +62,10 @@ public sealed class McpToolNames
         }
         lock (_sync)
         {
+            if (_directPrefixes.Any(prefix => name.StartsWith(prefix, StringComparison.Ordinal) || name == prefix[..^2]))
+            {
+                return name;
+            }
             if (_gateway.TryGetValue(name, out var existing))
             {
                 return existing;
@@ -78,10 +95,14 @@ public sealed class McpToolNames
             {
                 return [ToGateway(rule)];
             }
+            if (_directPrefixes.Any(prefix => rule.StartsWith(prefix, StringComparison.Ordinal) || rule == prefix[..^2]))
+            {
+                return [rule];
+            }
             var pattern = rule.Contains('*') ? rule : rule + "__*";
             var expression = "^" + System.Text.RegularExpressions.Regex.Escape(pattern).Replace("\\*", ".*") + "$";
             var known = _gateway.Where(pair => System.Text.RegularExpressions.Regex.IsMatch(pair.Key, expression)).Select(pair => pair.Value);
-            return [GatewayPrefix + pattern[5..], .. known];
+            return [.. _directPrefixes.Count > 0 ? new[] { rule } : Array.Empty<string>(), GatewayPrefix + pattern[5..], .. known];
         }
     }
 

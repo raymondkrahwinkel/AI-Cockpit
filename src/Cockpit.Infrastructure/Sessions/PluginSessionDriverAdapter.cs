@@ -19,7 +19,7 @@ namespace Cockpit.Infrastructure.Sessions;
 // Wraps a plugin's narrow `IPluginSessionDriver` to satisfy the app's real `ISessionDriver`
 // contract (#45), the seam `SessionDriverFactory` uses. Claude-CLI-only live-control members
 // (permission mode/model/thinking-budget switch, always-allow persistence) are deliberate no-ops here.
-internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, PluginSessionCapabilities pluginCapabilities, McpAuthKey authKey, IMcpServerCatalog? mcpServerCatalog = null, ILogger<PluginSessionDriverAdapter>? logger = null, SessionMcpKeyring? keyring = null, ISessionResourceResolver? sessionResources = null, IMcpOAuthCoordinator? oauthCoordinator = null, ISessionConversationSink? conversationSink = null, IMcpOAuthProxy? oauthProxy = null, IWorktreeManager? worktreeManager = null, SessionMcpMounts? mcpMounts = null, IMcpToolProvider? mcpToolProvider = null) : ISessionDriver
+internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, PluginSessionCapabilities pluginCapabilities, McpAuthKey authKey, IMcpServerCatalog? mcpServerCatalog = null, ILogger<PluginSessionDriverAdapter>? logger = null, SessionMcpKeyring? keyring = null, ISessionResourceResolver? sessionResources = null, IMcpOAuthCoordinator? oauthCoordinator = null, ISessionConversationSink? conversationSink = null, IMcpOAuthProxy? oauthProxy = null, IWorktreeManager? worktreeManager = null, SessionMcpMounts? mcpMounts = null, IMcpToolProvider? mcpToolProvider = null, SessionMcpGatewayHost? gateway = null) : ISessionDriver
 {
     // #45 review finding 3: plan mode/thinking budget have no equivalent on the narrow surface, so always
     // unsupported here. SupportsVision maps straight through (every built-in plugin reports it false today, #64 fase 2).
@@ -114,6 +114,8 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         // the Codex plugin ask for a cwd it already had and report "Connected (0 tools)". Only BySessionId resume
         // crosses the narrow surface; MostRecent needs a provider-side "list newest" step (increment 2).
         Profile = profile;
+        _minted = null;
+        _gatewayServerNames = null;
         var resumeSessionId = resume is { Mode: SessionResumeMode.BySessionId, SessionId: { Length: > 0 } sessionId } ? sessionId : null;
 
         // #44/AC-130: a launch with no per-session selection (a programmatic open, not the New-session dialog)
@@ -124,7 +126,28 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         // can depend on the project that pane belongs to. AC-408: kept on the field too, so the event loop below
         // knows which pane to report a later conversation-id change against.
         var paneId = launchOptions is not null && launchOptions.TryGetValue(WellKnownPluginSessionOptions.PaneId, out var pane) ? pane : null;
+        if (gateway?.IsEnabled == true && string.IsNullOrEmpty(paneId))
+        {
+            paneId = Guid.NewGuid().ToString("N");
+            launchOptions = new Dictionary<string, string>(launchOptions ?? new Dictionary<string, string>())
+            {
+                [WellKnownPluginSessionOptions.PaneId] = paneId,
+            };
+        }
         _paneId = paneId;
+        if (gateway?.IsEnabled == true && paneId is not null)
+        {
+            var confineRoot = launchOptions?.GetValueOrDefault(WellKnownPluginSessionOptions.ConfineFileToolsToWorkingDirectory) == "true" ? workingDirectory : null;
+            await gateway.BindLaunchAsync(paneId, projectId, workingDirectory, confineRoot, profile?.Label, selection is ExactMcpServerSelection, cancellationToken).ConfigureAwait(false);
+        }
+        if (gateway?.IsEnabled == true && pluginCapabilities.HostToolLoop == PluginHostToolLoop.None)
+        {
+            if (keyring is null || paneId is null)
+            {
+                throw new InvalidOperationException("The MCP gateway requires a session keyring and identity.");
+            }
+            _minted = new MintedToken(paneId, keyring.TokenFor(paneId));
+        }
 
         // AC-964: a provider that declared a host tool loop gets the tools already connected and gated instead of
         // the endpoints to mount itself — the two are alternatives, so the server list stays empty here rather than
@@ -139,7 +162,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         // AC-927: what this session actually mounted, so the header names those servers rather than the checklist
         // it was launched from — which never holds the always-mounted and auto-mounted ones it also just got.
         IReadOnlyList<string> mountedServerNames =
-            _hostToolset is { } toolset ? toolset.ConnectedServerNames : [.. mcpServers.Select(server => server.Name)];
+            _hostToolset is { } toolset ? toolset.ConnectedServerNames : _gatewayServerNames ?? [.. mcpServers.Select(server => server.Name)];
         if (paneId is { Length: > 0 })
         {
             mcpMounts?.Report(paneId, mountedServerNames, _hostToolset?.ConnectionIssues);
@@ -280,6 +303,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         var paneId = launchOptions is not null && launchOptions.TryGetValue(WellKnownPluginSessionOptions.PaneId, out var value) ? value : null;
         var mcpKey = _hostToolset is { PaneToken: { } toolsetToken }
             ? toolsetToken
+            : gateway?.IsEnabled == true && _minted is { } minted && minted.PaneId == paneId ? minted.Token
             : keyring is not null && !string.IsNullOrEmpty(paneId) ? keyring.TokenFor(paneId) : authKey.Value;
 
         // Remembered so this session's token dies with it (AC-89). Only when we minted one here: the host toolset's
@@ -424,6 +448,17 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
                 .Where(McpConfigFile.IsAgentEligible)
                 .ToList();
 
+            if (gateway?.IsEnabled == true && _paneId is { } gatewayPane)
+            {
+                var url = gateway.UrlFor(gatewayPane) ?? throw new InvalidOperationException("The session MCP gateway is unavailable.");
+                _gatewayServerNames = [.. eligible.Select(server => server.Name)];
+                mcpMounts?.Grant(gatewayPane, _gatewayServerNames);
+                await gateway.PrepareLaunchAsync(gatewayPane, cancellationToken).ConfigureAwait(false);
+                return [new PluginMcpServer { Name = "cockpit", Url = url, CockpitHosted = true },
+                    .. eligible.Where(server => server.Transport == McpTransport.Stdio)
+                        .Select(server => PluginMcpServerMapper.ToPluginMcpServer(server, null, null)).OfType<PluginMcpServer>()];
+            }
+
             var resolved = await Task.WhenAll(eligible.Select(async server =>
             {
                 // The endpoint first, because it changes what has to be asked for. Behind it the session never holds
@@ -518,6 +553,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         oauthProxy is null ? null : await oauthProxy.MountAsync(server, cancellationToken).ConfigureAwait(false);
 
     private McpToolNames? _gatewayToolNames;
+    private IReadOnlyList<string>? _gatewayServerNames;
 
     public Task SendUserMessageAsync(string text, IReadOnlyList<ImageAttachment>? images = null, CancellationToken cancellationToken = default) =>
         inner.SendUserMessageAsync(

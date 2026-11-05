@@ -7,9 +7,16 @@ namespace Cockpit.Infrastructure.Sessions;
 
 internal static class PluginMcpServerMapper
 {
-    internal static McpToolNames? GatewayToolNames(IReadOnlyList<PluginMcpServer> servers, string? paneId, SessionMcpMounts? mounts) =>
-        paneId is not null && servers.Any(server => server.CockpitHosted && server.Name == "cockpit")
-            ? mounts?.Set(paneId)?.ToolNames : null;
+    internal static McpToolNames? GatewayToolNames(IReadOnlyList<PluginMcpServer> servers, string? paneId, SessionMcpMounts? mounts)
+    {
+        if (paneId is null || !servers.Any(server => server.CockpitHosted && server.Name == "cockpit"))
+        {
+            return null;
+        }
+        var names = mounts?.Set(paneId)?.ToolNames;
+        names?.PreserveDirectServers(servers.Where(server => server.Command is not null).Select(server => server.Name));
+        return names;
+    }
 
     internal static PluginMcpServer? ToPluginMcpServer(McpServerConfig server, string? oauthAccessToken, string? oauthProxyUrl, string? agentName = null) => server.Transport switch
     {

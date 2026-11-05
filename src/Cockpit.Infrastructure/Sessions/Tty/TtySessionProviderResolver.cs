@@ -39,6 +39,7 @@ internal sealed class TtySessionProviderResolver(
                 services.GetService<Core.Sessions.ISessionConversationSink>(),
                 services.GetService<IMcpOAuthProxy>(),
                 services.GetService<Core.Abstractions.Worktrees.IWorktreeManager>(),
-                services.GetService<Core.Sessions.SessionMcpMounts>())
+                services.GetService<Core.Sessions.SessionMcpMounts>(),
+                services.GetRequiredService<Mcp.SessionMcpGatewayHost>())
             : null;
 }
