@@ -1093,6 +1093,7 @@ public partial class PluginManagerViewModel : ViewModelBase
                 // failure was overwritten by the next plugin, then by the catalogue reload, then by a summary
                 // telling the operator to read a message that no longer existed anywhere.
                 var failed = new List<string>();
+                var blocked = new List<string>();
                 // AC-2025: the plugins that only a restart can finish, told once at the end.
                 var waiting = new List<string>();
                 for (var i = 0; i < updates.Count; i++)
@@ -1119,6 +1120,10 @@ public partial class PluginManagerViewModel : ViewModelBase
                         {
                             waiting.Add($"'{row.Name}'");
                         }
+                        else if (outcome.Live is { Notice: { } notice })
+                        {
+                            blocked.Add($"'{row.Name}' ({notice.TrimEnd('.')}).");
+                        }
                     }
                     catch (Exception exception)
                     {
@@ -1140,6 +1145,11 @@ public partial class PluginManagerViewModel : ViewModelBase
                 if (waiting.Count > 0)
                 {
                     summary.Add($"{string.Join(", ", waiting)} will update after a restart. {_Restart} to finish.");
+                }
+
+                if (blocked.Count > 0)
+                {
+                    summary.Add(string.Join(" ", blocked));
                 }
 
                 if (failed.Count > 0)
