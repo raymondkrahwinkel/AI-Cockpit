@@ -169,6 +169,23 @@ public class DiscordChannelBridgeTests
 
         Assert.Single(sink.Posted);
         Assert.Equal((1UL, "final", true), Assert.Single(sink.Edited));
+
+        // AC-2084 regression (category C, ordering): under "final answer only" a successful turn adds no TurnCompleted
+        // row, so the held answer goes out when the turn ends — not at the next user message — ahead of a later error.
+        var (_, finalGateway, finalSink) = _Build(AssistantChannelVerbosity.FinalAnswerOnly);
+        finalGateway.RaiseRowChanged(row with { Text = "partial" });
+        finalGateway.RaiseRowChanged(row with { IsUpdate = true, Text = "answer" });
+        await Task.Delay(100);
+        Assert.Empty(finalSink.Posted);
+
+        finalGateway.RaiseTurnEnded();
+        finalGateway.RaiseRowChanged(new AssistantChannelRow
+        {
+            Id = Guid.NewGuid(), Kind = AssistantChannelRowKind.Error, Text = "boom", Timestamp = DateTimeOffset.UtcNow,
+        });
+        await Task.Delay(300);
+
+        Assert.Equal(["answer", "boom"], finalSink.Posted.Select(post => post.Text));
     }
 
     // Review point 1: RowChanged/ConsentPromptOpened/ConsentPromptClosed arrive on the gateway's own thread

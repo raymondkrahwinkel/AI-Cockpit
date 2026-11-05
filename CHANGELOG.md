@@ -49,6 +49,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - Simple sessions now use the same provider instructions as sessions started from Panels.
 - A plugin is now turned off only after it is named in two interrupted starts in a row; Cockpit explains that recovery decision and offers to turn it back on.
 - Discord final-answer relays now send a streamed answer as one message.
+- Discord final-answer relays now post the answer when the assistant's turn ends, not when the next message arrives.
 - Assistant image input stays available after a model is confirmed, including Discord attachments, and model capabilities refresh without restarting the session.
 - Simple view now opens files and plugin workspaces in the main column, with open items to switch between them and guarded Back and Close actions.
 - Files whose live session does not respond now show the saved snapshot after a short timeout instead of staying on Loading; existing files no longer show "New file" while opening.
