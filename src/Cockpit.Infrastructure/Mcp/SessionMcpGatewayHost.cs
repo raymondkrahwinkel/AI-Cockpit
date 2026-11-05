@@ -2,6 +2,8 @@ using System.Collections.Concurrent;
 using System.Net;
 using Cockpit.Infrastructure.Configuration;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Sessions;
+using Cockpit.Core.Abstractions.Agents;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
@@ -24,19 +26,26 @@ internal sealed class SessionMcpGatewayHost : IHostedService, IAsyncDisposable
     private readonly SessionMcpKeyring _keyring;
     private readonly ILoggerFactory _loggerFactory;
     private readonly CockpitConfigFileAccess _configFile;
+    private readonly Func<McpToolProvider?>? _provider;
+    private readonly SessionMcpMounts? _mounts;
+    private readonly IAgentTurnInboxDelivery? _inbox;
     private WebApplication? _app;
 
-    public SessionMcpGatewayHost(McpAuthKey authKey, SessionMcpKeyring keyring, ILoggerFactory loggerFactory)
-        : this(authKey, keyring, loggerFactory, CockpitConfigPath.Default)
+    public SessionMcpGatewayHost(McpAuthKey authKey, SessionMcpKeyring keyring, ILoggerFactory loggerFactory, Func<IMcpToolProvider>? provider = null, SessionMcpMounts? mounts = null, IAgentTurnInboxDelivery? inbox = null)
+        : this(authKey, keyring, loggerFactory, CockpitConfigPath.Default, mounts: mounts, inbox: inbox)
     {
+        _provider = () => provider?.Invoke() as McpToolProvider;
     }
 
-    internal SessionMcpGatewayHost(McpAuthKey authKey, SessionMcpKeyring keyring, ILoggerFactory loggerFactory, string configPath)
+    internal SessionMcpGatewayHost(McpAuthKey authKey, SessionMcpKeyring keyring, ILoggerFactory loggerFactory, string configPath, McpToolProvider? provider = null, SessionMcpMounts? mounts = null, IAgentTurnInboxDelivery? inbox = null)
     {
         _authKey = authKey;
         _keyring = keyring;
         _loggerFactory = loggerFactory;
         _configFile = new CockpitConfigFileAccess(configPath);
+        _provider = () => provider;
+        _mounts = mounts;
+        _inbox = inbox;
     }
     internal string? BoundUrl { get; private set; }
     public bool IsEnabled { get; private set; }
@@ -78,25 +87,47 @@ internal sealed class SessionMcpGatewayHost : IHostedService, IAsyncDisposable
 #pragma warning disable MCP9006 // AC-2123 requires stateful sessions for list_changed notifications.
             options.IdleTimeout = TimeSpan.FromDays(30);
 #pragma warning restore MCP9006
-            options.ConfigureSessionOptions = (http, session, _) =>
+            options.ConfigureSessionOptions = async (http, session, ct) =>
             {
                 var paneId = http.Request.RouteValues["paneId"]?.ToString()
                     ?? throw new InvalidOperationException("The gateway route has no pane.");
                 var token = _Bearer(http);
                 session.ToolCollection = new McpServerPrimitiveCollection<McpServerTool>();
+                if (_provider?.Invoke() is { } provider && _mounts is not null)
+                {
+                    var binding = _bindings.GetOrAdd((paneId, token), _ => new Lazy<GatewayMcpBinding>(() => new GatewayMcpBinding(provider, _mounts, paneId, token))).Value;
+                    var live = binding.Session;
+                    var collection = session.ToolCollection;
+                    void Refresh()
+                    {
+                        lock (collection)
+                        {
+                            collection.Clear();
+                            foreach (var tool in live.ForwardTools)
+                            {
+                                collection.Add(tool);
+                            }
+                        }
+                    }
+                    live.ToolsChanged += Refresh;
+                    http.Items[typeof(GatewayMcpBinding)] = (Action)(() => live.ToolsChanged -= Refresh);
+                    await Task.WhenAny(binding.Initial, Task.Delay(TimeSpan.FromSeconds(3), ct));
+                    session.ServerInstructions = live.ServerInstructions;
+                    Refresh();
+                }
                 session.Capabilities = new ServerCapabilities { Tools = new ToolsCapability { ListChanged = true } };
                 session.Filters = new McpServerFilters();
-                session.Filters.Request.CallToolFilters.Add(next => (context, ct) =>
+                session.Filters.Request.CallToolFilters.Add(next => async (context, ct) =>
                 {
                     _RequirePane(paneId, token);
-                    return next(context, ct);
+                    var result = await next(context, ct);
+                    return McpInboxPiggyback.Attach(result, _inbox, _loggerFactory.CreateLogger<SessionMcpGatewayHost>());
                 });
                 session.Filters.Request.ListToolsFilters.Add(next => (context, ct) =>
                 {
                     _RequirePane(paneId, token);
                     return next(context, ct);
                 });
-                return Task.CompletedTask;
             };
 #pragma warning disable MCPEXP002 // Tie the SDK session to the existing run-key lifetime.
             options.RunSessionHandler = _RunSessionAsync;
@@ -122,6 +153,7 @@ internal sealed class SessionMcpGatewayHost : IHostedService, IAsyncDisposable
             await next(http);
         });
         app.MapMcp("/s/{paneId}/mcp");
+        _keyring.RunEnded += _EndBindings;
         await app.StartAsync(cancellationToken);
         var addresses = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()
             ?? throw new InvalidOperationException("Kestrel did not expose its bound addresses.");
@@ -174,11 +206,29 @@ internal sealed class SessionMcpGatewayHost : IHostedService, IAsyncDisposable
         }
         finally
         {
+            if (http.Items[typeof(GatewayMcpBinding)] is Action unsubscribe)
+            {
+                unsubscribe();
+            }
             _owners.TryRemove(sessionId, out _);
             _keyring.RunEnded -= EndRun;
             lock (lifetimeLock)
             {
                 ended = true;
+            }
+        }
+    }
+
+    private readonly ConcurrentDictionary<(string Pane, string Token), Lazy<GatewayMcpBinding>> _bindings = new();
+    private readonly ConcurrentBag<Task> _cleanup = [];
+
+    private void _EndBindings(string paneId)
+    {
+        foreach (var pair in _bindings)
+        {
+            if (pair.Key.Pane == paneId && _bindings.TryRemove(pair.Key, out var binding) && binding.IsValueCreated)
+            {
+                _cleanup.Add(binding.Value.DisposeAsync().AsTask());
             }
         }
     }
@@ -200,10 +250,17 @@ internal sealed class SessionMcpGatewayHost : IHostedService, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        _keyring.RunEnded -= _EndBindings;
         if (_app is { } app)
         {
             _app = null;
             await app.DisposeAsync();
         }
+        foreach (var binding in _bindings.Values)
+        {
+            if (binding.IsValueCreated) { await binding.Value.DisposeAsync(); }
+        }
+        _bindings.Clear();
+        await Task.WhenAll(_cleanup);
     }
 }

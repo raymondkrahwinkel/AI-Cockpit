@@ -35,6 +35,9 @@ public sealed class SessionMcpMounts : ISingletonService
         Reported?.Invoke(paneId, connectedServerNames, issues ?? []);
     }
 
+    public void ReportConnections(string paneId, IReadOnlyList<string> connectedServerNames, IReadOnlyList<McpServerConnectionIssue> issues) =>
+        Reported?.Invoke(paneId, connectedServerNames, issues);
+
     // AC-1148: records the mount decision without announcing it — for a route that grants before it connects,
     // being its own client. Last write wins, the same "once per launch" rule Report follows, so a relaunch in
     // this pane replaces the grant rather than widening it with the previous session's.

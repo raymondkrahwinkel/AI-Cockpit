@@ -27,6 +27,7 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddInfrastructure(this IServiceCollection services)
     {
+        services.AddSingleton<Func<Mcp.IMcpToolProvider>>(provider => () => provider.GetRequiredService<Mcp.IMcpToolProvider>());
         services.AddSingleton<Mcp.SessionMcpGatewayHost>();
         services.AddSingleton<Microsoft.Extensions.Hosting.IHostedService>(provider => provider.GetRequiredService<Mcp.SessionMcpGatewayHost>());
         services.AddSingleton<Cockpit.Core.Swarm.SwarmReachability>();

@@ -13,6 +13,16 @@ internal interface IMcpToolSession : IAsyncDisposable
 {
     IReadOnlyList<McpSessionTool> Tools { get; }
 
+    event Action? ToolsChanged;
+
+    Task AddServerAsync(McpServerConfig server, CancellationToken cancellationToken = default);
+
+    void RemoveServer(string serverName);
+
+    string? ServerInstructions { get; }
+
+    IReadOnlyList<ModelContextProtocol.Server.McpServerTool> ForwardTools { get; }
+
     IReadOnlyList<string> ConnectedServerNames { get; }
 
     /// <summary>

@@ -15,7 +15,7 @@ namespace Cockpit.Infrastructure.Mcp;
 // `IMcpToolProvider` that connects to each enabled server in the shared registry via the MCP
 // client (#26), skipping unreachable ones; OAuth servers go through `IMcpOAuthAuthorizer`.
 // Also the app's own `IMcpToolInvoker` (AC-502), same connect path for one tool on one server.
-internal sealed class McpToolProvider(
+internal sealed partial class McpToolProvider(
     IMcpServerCatalog catalog,
     IMcpOAuthAuthorizer oauthAuthorizer,
     IMcpOAuthCoordinator oauthCoordinator,
@@ -26,24 +26,24 @@ internal sealed class McpToolProvider(
     SessionMcpMounts? mounts = null)
     : IMcpToolProvider, IMcpToolInvoker, ISingletonService
 {
+    private readonly IMcpServerCatalog _catalog = catalog;
+    private readonly IMcpOAuthCoordinator _oauthCoordinator = oauthCoordinator;
+    private readonly SessionMcpMounts? _mounts = mounts;
+    private readonly SessionMcpKeyring _keyring = keyring;
+
     public async Task<IMcpToolSession> ConnectAsync(IReadOnlySet<string>? enabledServerNames = null, string? paneId = null, string? confineFileToolsToDirectory = null, string? projectId = null, string? workingDirectory = null, CancellationToken cancellationToken = default, string? agentName = null)
     {
         // AC-89: a session with a pane id mints one per-session token here (not per server) so every
         // cockpit-hosted endpoint it connects to can attribute requests to this pane; no pane id falls back to the shared app key.
-        var sessionToken = string.IsNullOrEmpty(paneId) ? null : keyring.TokenFor(paneId);
+        var sessionToken = string.IsNullOrEmpty(paneId) ? null : _keyring.TokenFor(paneId);
         // AC-11/AC-218: registry plus what active plugins provide, scoped to projectId so a local model
         // sees a plugin's/project's own servers too, not just the unscoped registry.
-        var registry = await catalog.GetServersForSessionAsync(projectId, enabledServerNames, cancellationToken).ConfigureAwait(false);
+        var registry = await _catalog.GetServersForSessionAsync(projectId, enabledServerNames, cancellationToken).ConfigureAwait(false);
         // AC-869: cockpit-github-pull-requests is Internal (hidden from every picker); a git-repo working
         // directory names it explicitly here rather than through operator config.
         var autoMounted = await GitHubPullRequestsAutoMount.NamesAsync(worktreeManager, workingDirectory, cancellationToken).ConfigureAwait(false);
         var effectiveSelection = McpServerRegistryFilter.WithAutoMountedServers(enabledServerNames, registry, autoMounted);
         var sessionRegistry = McpServerRegistryFilter.ApplySessionSelection(registry, effectiveSelection);
-        var clients = new List<McpClient>();
-        var tools = new List<McpSessionTool>();
-        var connectedNames = new List<string>();
-        var toolClasses = new Dictionary<string, ToolPermissionClass>(StringComparer.Ordinal);
-
         // Local models host the built-in defaults (#26) overlaid by the registry (a registry entry, including
         // a disabled one, overrides the same-named built-in). #44's per-session selection is already applied above.
         var enabledServers = _EffectiveServers(sessionRegistry).Where(server => server.Enabled).ToList();
@@ -65,64 +65,28 @@ internal sealed class McpToolProvider(
         // AC-1962: confinement grants the same selection, including independently scoped servers.
         if (!string.IsNullOrEmpty(paneId))
         {
-            mounts?.Grant(paneId, [.. enabledServers.Select(server => server.Name)]);
+            _mounts?.Grant(paneId, [.. enabledServers.Select(server => server.Name)]);
         }
 
-        // Connect concurrently rather than one-by-one — sequential round-trips added up once more than one
-        // server was configured. Task.WhenAll preserves input order, so results stay deterministic even
-        // though the connects race in parallel; each keeps its own try/catch (_ConnectServerAsync).
-        var connections = await Task.WhenAll(enabledServers.Select(server => _ConnectServerAsync(server, sessionToken, cancellationToken, agentName)));
-        var serversNeedingSignIn = new List<string>();
-        var connectionIssues = new List<McpServerConnectionIssue>();
+        var session = new LiveMcpToolSession(this, paneId, sessionToken, projectId, agentName, ownsToken: true);
+        await Task.WhenAll(enabledServers.Select(server => session.AddServerAsync(server, cancellationToken)));
+        return session;
+    }
 
-        for (var i = 0; i < connections.Length; i++)
-        {
-            var (connection, failureReason) = connections[i];
-            if (connection is null)
-            {
-                // AC-500: a failed OAuth server is a named outcome ("waiting on a sign-in"), not just an absence
-                // from ConnectedServerNames indistinguishable from any other unreachable/misconfigured server.
-                if (enabledServers[i].Auth == McpServerAuth.OAuth)
-                {
-                    serversNeedingSignIn.Add(enabledServers[i].Name);
-                    connectionIssues.Add(new McpServerConnectionIssue(enabledServers[i].Name, NeedsSignIn));
-                }
-                else if (failureReason is { Length: > 0 })
-                {
-                    // AC-997: the same outcome for every other connect failure — unreachable, or a stdio server
-                    // that started and then exited — so a caller can report it upstream instead of leaving it in
-                    // cockpit.log alone.
-                    connectionIssues.Add(new McpServerConnectionIssue(enabledServers[i].Name, failureReason));
-                }
+    internal IMcpToolSession CreateGatewaySession(string paneId, string token, SessionMcpContext? context) =>
+        new LiveMcpToolSession(this, paneId, token, context?.Project?.Id, context?.AgentName, ownsToken: false);
 
-                continue;
-            }
-
-            clients.Add(connection.Client);
-            // AC-963: carry the origin server (and whether it is always mounted) alongside each tool — the search
-            // layer needs it to name where a hit lives, and the driver to decide what stays preloaded.
-            tools.AddRange(connection.Tools.Select(tool => new McpSessionTool(tool, connection.Name, enabledServers[i].AlwaysMounted)));
-            connectedNames.Add(connection.Name);
-
-            // AC-79: the delegated gate trusts by bare tool name, so a name shared by two servers is
-            // ambiguous here. Reconcile to the *more restrictive* class on collision, never last-wins.
-            foreach (var (toolName, toolClass) in connection.ToolClasses)
-            {
-                toolClasses[toolName] = toolClasses.TryGetValue(toolName, out var existing)
-                    ? DelegatedToolPermissionPolicy.MoreRestrictive(existing, toolClass)
-                    : toolClass;
-            }
-        }
-
-        // AC-143: hand the session the pane/token it minted above so its own DisposeAsync can revoke exactly that
-        // token when this tool loop ends — the same mint site owns the teardown, rather than a shared cross-
-        // component path that could revoke a live sibling's token.
-        return new McpToolSession(clients, tools, connectedNames, serversNeedingSignIn, connectionIssues, toolClasses, keyring, paneId, sessionToken);
+    internal async Task<IReadOnlyList<McpServerConfig>> GatewayServersAsync(string paneId, CancellationToken ct)
+    {
+        var set = _mounts?.Set(paneId);
+        if (set is null) { return []; }
+        var registry = await _catalog.GetServersForSessionAsync(set.Context?.Project?.Id, set.ServerNames, ct);
+        return [.. registry.Where(server => server.Enabled && server.Transport == McpTransport.Http && set.ServerNames.Contains(server.Name))];
     }
 
     public async Task<IReadOnlyList<AIFunction>?> EnumerateServerToolsAsync(string serverName, string? projectId = null, CancellationToken cancellationToken = default)
     {
-        var registry = await catalog.GetServersForProjectAsync(projectId, cancellationToken).ConfigureAwait(false);
+        var registry = await _catalog.GetServersForProjectAsync(projectId, cancellationToken).ConfigureAwait(false);
         var server = registry.FirstOrDefault(candidate =>
             candidate.Enabled && string.Equals(candidate.Name, serverName, StringComparison.OrdinalIgnoreCase));
 
@@ -159,11 +123,11 @@ internal sealed class McpToolProvider(
         IReadOnlyList<McpServerConfig>? callerFallbackServers = null,
         CancellationToken cancellationToken = default)
     {
-        var registry = await catalog.GetServersForProjectAsync(projectId, cancellationToken).ConfigureAwait(false);
+        var registry = await _catalog.GetServersForProjectAsync(projectId, cancellationToken).ConfigureAwait(false);
         var server = registry.FirstOrDefault(candidate =>
             candidate.Enabled && string.Equals(candidate.Name, serverName, StringComparison.OrdinalIgnoreCase));
 
-        // AC-499: the catalog only carries a plugin-delivered server once a project points at it. A caller
+        // AC-499: the _catalog only carries a plugin-delivered server once a project points at it. A caller
         // entitled to that server (scoped by the host, see ICockpitHost.CallMcpToolAsync) can still reach it via
         // callerFallbackServers — the same asymmetry CockpitHost's acceptance check already tolerates.
         server ??= callerFallbackServers?.FirstOrDefault(candidate =>
@@ -224,7 +188,7 @@ internal sealed class McpToolProvider(
             // AC-1517: settled through the coordinator, which renews silently and names a needed sign-in in the
             // cockpit. Connecting interactively here opened a browser tab from a background plugin call.
             if (server.Auth == McpServerAuth.OAuth
-                && (await oauthCoordinator.AcquireAsync(server, interactive: false, cancellationToken).ConfigureAwait(false)).State != McpAuthState.Authorized)
+                && (await _oauthCoordinator.AcquireAsync(server, interactive: false, cancellationToken).ConfigureAwait(false)).State != McpAuthState.Authorized)
             {
                 return (null, NeedsSignIn);
             }
@@ -260,7 +224,7 @@ internal sealed class McpToolProvider(
             // prompt, any failure at this transport reads as "no usable sign-in yet" rather than a specific status
             // code — the SDK's own OAuth negotiation can fail several ways before it ever gets as far as one.
             logger.LogWarning(ex, "MCP server {Name} needs an OAuth sign-in that has not happened yet; skipping its tools", server.Name);
-            return (null, null);
+            return (null, NeedsSignIn);
         }
         catch (Exception ex)
         {
@@ -357,7 +321,7 @@ internal sealed class McpToolProvider(
             // Never interactive (AC-1517): the browser opens only from a Sign in the operator pressed, so a token
             // the coordinator approved but the server then refuses ends as a failed connect, not as a stray tab.
             OAuth = server.Auth == McpServerAuth.OAuth ? oauthAuthorizer.CreateOptions(server, interactive: false) : null,
-        }),
+        }, timeout: Timeout.InfiniteTimeSpan),
         _ => throw new NotSupportedException($"Unsupported MCP transport {server.Transport}."),
     };
 
@@ -378,53 +342,4 @@ internal sealed class McpToolProvider(
         return headers;
     }
 
-    // AC-143: keyring/paneId/token are the mint this session made in ConnectAsync (null when there was no pane id
-    // to mint for), carried through so DisposeAsync can revoke exactly that token at this route's own teardown —
-    // the in-process tool loop ending is the only signal this component has that the pane is done with it.
-    private sealed class McpToolSession(
-        IReadOnlyList<McpClient> clients,
-        IReadOnlyList<McpSessionTool> tools,
-        IReadOnlyList<string> names,
-        IReadOnlyList<string> serversNeedingSignIn,
-        IReadOnlyList<McpServerConnectionIssue> connectionIssues,
-        IReadOnlyDictionary<string, ToolPermissionClass> toolClasses,
-        SessionMcpKeyring? keyring = null,
-        string? paneId = null,
-        string? token = null)
-        : IMcpToolSession
-    {
-        public IReadOnlyList<McpSessionTool> Tools => tools;
-
-        public IReadOnlyList<string> ConnectedServerNames => names;
-
-        public IReadOnlyList<string> ServersNeedingSignIn => serversNeedingSignIn;
-
-        public IReadOnlyList<McpServerConnectionIssue> ConnectionIssues => connectionIssues;
-
-        public IReadOnlyDictionary<string, ToolPermissionClass> ToolClasses => toolClasses;
-
-        public string? PaneToken => token;
-
-        public async ValueTask DisposeAsync()
-        {
-            foreach (var client in clients)
-            {
-                try
-                {
-                    await client.DisposeAsync().ConfigureAwait(false);
-                }
-                catch (Exception)
-                {
-                    // Best-effort teardown — a client that already died on its own is fine.
-                }
-            }
-
-            // AC-143: this pane's bearer must not survive the tool loop that owned it — dropped by the minter,
-            // never logged (the value is the secret).
-            if (keyring is not null && paneId is not null && token is not null)
-            {
-                keyring.Revoke(paneId, token);
-            }
-        }
-    }
 }
