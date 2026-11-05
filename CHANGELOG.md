@@ -46,6 +46,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- Sessions that start directly in a project folder keep their no-isolation warning visible until an operator closes it.
+- The local gate now uses the available Windows or Unix Python launcher for its guards.
+
 - Plugin changes now require a restart only when the plugin declares it or a lifecycle operation fails; approving new capabilities resumes live updates.
 
 - A plugin update marker now clears as soon as the approved version is confirmed on disk; disabling a provider in use names its session and finishes after it closes without offering an unnecessary restart.

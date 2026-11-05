@@ -6786,7 +6786,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
             if (launched?.UnisolatedNotice is { } notice)
             {
-                ToastHost.Add(notice.Message, ToastSeverity.Warning, null, null);
+                ToastHost.Add(notice.Message, ToastSeverity.Warning, [], sticky: true,
+                    key: $"session.unisolated:{launched.PaneId}");
             }
 
             return launched?.PaneId is { Length: > 0 } started ? started : null;
