@@ -185,7 +185,7 @@ internal sealed class PluginAdministration(
         {
             if (blocker.Kind == PluginBlockerKind.UserActivity)
             {
-                _WaitForUsageToEnd(folderId, update: true);
+                _WaitForUsageToEnd(folderId, updateSha256: sha256, runningSha256: running.Sha256);
             }
 
             return _StateFor(blocker);
@@ -211,7 +211,7 @@ internal sealed class PluginAdministration(
         {
             if (late.Kind == PluginBlockerKind.UserActivity)
             {
-                _WaitForUsageToEnd(folderId, update: true);
+                _WaitForUsageToEnd(folderId, updateSha256: sha256, runningSha256: running.Sha256);
             }
 
             return _StateFor(late);
@@ -406,16 +406,26 @@ internal sealed class PluginAdministration(
 
     private sealed record PluginBlocker(string Reason, PluginBlockerKind Kind);
 
+    private sealed record DeferredPluginUpdate(string TargetSha256, string RunningSha256);
+
     private readonly HashSet<string> _waitingForUsage = new(StringComparer.Ordinal);
-    private readonly HashSet<string> _updatesWaitingForUsage = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, DeferredPluginUpdate> _updatesWaitingForUsage = new(StringComparer.Ordinal);
     private bool _watchingUsage;
 
     private static PluginLiveState _StateFor(PluginBlocker blocker) =>
         blocker.Kind == PluginBlockerKind.Restart ? PluginLiveState.Restart(blocker.Reason) : PluginLiveState.Blocked(blocker.Reason);
 
-    private void _WaitForUsageToEnd(string folderId, bool update = false)
+    private void _WaitForUsageToEnd(string folderId, string? updateSha256 = null, string? runningSha256 = null)
     {
-        (update ? _updatesWaitingForUsage : _waitingForUsage).Add(folderId);
+        if (updateSha256 is not null && runningSha256 is not null)
+        {
+            _updatesWaitingForUsage[folderId] = new(updateSha256, runningSha256);
+        }
+        else
+        {
+            _waitingForUsage.Add(folderId);
+        }
+
         if (_watchingUsage)
         {
             return;
@@ -452,16 +462,22 @@ internal sealed class PluginAdministration(
                     await _DeactivateAsync(folderId).ConfigureAwait(false);
                 }
 
-                foreach (var folderId in _updatesWaitingForUsage.ToArray())
+                foreach (var (folderId, pending) in _updatesWaitingForUsage.ToArray())
                 {
                     var registration = (await registrations.LoadAllAsync(CancellationToken.None).ConfigureAwait(false)).GetValueOrDefault(folderId);
-                    if (registration is null || !registration.Enabled)
+                    var running = manager?.LoadedParts.FirstOrDefault(entry => entry.Discovered.FolderId == folderId).Discovered;
+                    var discovered = (await bootstrap.DiscoverAsync(AbstractionsContract.Version, CancellationToken.None).ConfigureAwait(false))
+                        .FirstOrDefault(plugin => plugin.FolderId == folderId);
+                    if (registration is null || !registration.Enabled
+                        || running is null || !string.Equals(running.Sha256, pending.RunningSha256, StringComparison.OrdinalIgnoreCase)
+                        || discovered is null || !string.Equals(discovered.Sha256, pending.TargetSha256, StringComparison.OrdinalIgnoreCase)
+                        || !string.Equals(registration.PinnedSha256, pending.TargetSha256, StringComparison.OrdinalIgnoreCase))
                     {
                         _StopWaitingForUsage(folderId);
                         continue;
                     }
 
-                    var state = await _UpdateAsync(folderId, registration.PinnedSha256, inPlace: true, consentReason: null, replacedSha256: null).ConfigureAwait(false);
+                    var state = await _UpdateAsync(folderId, pending.TargetSha256, inPlace: true, consentReason: null, replacedSha256: null).ConfigureAwait(false);
                     if (state is { IsLive: true } or { RestartRequired: true } or { Failed: true } or { RolledBack: true })
                     {
                         _StopWaitingForUsage(folderId);
