@@ -16,15 +16,26 @@ public sealed class ProductivityUi : ICockpitPluginUi, IDisposable
     public static IReadOnlyDictionary<string, Func<(WorkspaceTypeRegistration Registration, string? StatusText)>> WorkspaceScenes => ProductivityScenes.Workspaces;
 
     private ICockpitUiHost? _host;
+    private readonly TimeProvider _time;
     private ProductivityController? _controller;
     private OverviewController? _overviewController;
     private IDisposable? _reports;
 
+    public ProductivityUi()
+        : this(TimeProvider.System)
+    {
+    }
+
+    public ProductivityUi(TimeProvider time)
+    {
+        _time = time;
+    }
+
     public void InitializeUi(ICockpitUiHost host)
     {
         _host = host;
-        _controller = new ProductivityController(host.Channel, TimeProvider.System);
-        _overviewController = new OverviewController(host.Channel, TimeProvider.System);
+        _controller = new ProductivityController(host.Channel, _time);
+        _overviewController = new OverviewController(host.Channel, _time);
         _reports = host.Channel.Subscribe("productivity.hours-reported", message => { _ = _RefreshAsync(host, _controller); });
         _controller.UpdateProjectFallback(host.ActiveProjectId);
         var badge = host.AddSideMenuButtonWithBadge("Hours", () => _Open(host), MaterialIconKind.ClockOutline);
@@ -35,7 +46,7 @@ public sealed class ProductivityUi : ICockpitPluginUi, IDisposable
         host.AddWorkspaceType(new WorkspaceTypeRegistration(
             WorkspaceTypeId,
             "Hours",
-            _ => new HoursWorkspaceBody(_controller, host, () => _OpenOverview(host)))
+            _ => new HoursWorkspaceBody(_controller, host, () => _OpenOverview(host), _time))
         {
             IconKind = MaterialIconKind.ClockOutline,
             Description = "Record your own hours with a duration or stopwatch and review them per day.",

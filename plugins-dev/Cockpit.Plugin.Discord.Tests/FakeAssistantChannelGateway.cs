@@ -23,6 +23,8 @@ internal sealed class FakeAssistantChannelGateway : IAssistantChannelGateway
 
     public event EventHandler<AssistantChannelRow>? RowChanged;
 
+    public event EventHandler? TurnEnded;
+
     public event EventHandler<AssistantChannelConsentPrompt>? ConsentPromptOpened;
 
     public event EventHandler<Guid>? ConsentPromptClosed;
@@ -62,6 +64,8 @@ internal sealed class FakeAssistantChannelGateway : IAssistantChannelGateway
     }
 
     public void RaiseRowChanged(AssistantChannelRow row) => RowChanged?.Invoke(this, row);
+
+    public void RaiseTurnEnded() => TurnEnded?.Invoke(this, EventArgs.Empty);
 
     public void RaisePromptOpened(AssistantChannelConsentPrompt prompt) => ConsentPromptOpened?.Invoke(this, prompt);
 
