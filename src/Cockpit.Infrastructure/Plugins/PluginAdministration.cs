@@ -90,6 +90,12 @@ internal sealed class PluginAdministration(
         try
         {
             await registrations.SaveAsync(folderId, new PluginRegistration(Enabled: enabled, PinnedSha256: pinnedSha256), cancellationToken).ConfigureAwait(false);
+            await bootstrap.ConfirmPinnedInPlaceUpdateAsync(folderId, pinnedSha256, cancellationToken).ConfigureAwait(false);
+            if (!enabled)
+            {
+                _WatchDisabledPluginsForSessionChanges();
+            }
+
             return enabled
                 ? await _ActivateAsync(folderId, cancellationToken: cancellationToken).ConfigureAwait(false)
                 : await _DeactivateAsync(folderId).ConfigureAwait(false);
@@ -130,10 +136,7 @@ internal sealed class PluginAdministration(
         }
 
         await registrations.SaveAsync(folderId, new PluginRegistration(Enabled: prior.Enabled, PinnedSha256: sha256), CancellationToken.None).ConfigureAwait(false);
-        if (inPlace)
-        {
-            bootstrap.CompleteInPlaceUpdate(folderId);
-        }
+        await bootstrap.ConfirmPinnedInPlaceUpdateAsync(folderId, sha256).ConfigureAwait(false);
 
         if (!inPlace || manager is null)
         {
@@ -149,7 +152,7 @@ internal sealed class PluginAdministration(
 
         if (await _UpdateBlockerAsync(manager, folderId).ConfigureAwait(false) is { } blocker)
         {
-            return PluginLiveState.Restart(blocker);
+            return _IsSessionBlocker(blocker) ? PluginLiveState.Blocked(blocker) : PluginLiveState.Restart(blocker);
         }
 
         // Autopilot reads a tracker that is withdrawn as gone; here it is withdrawn and registered again at once.
@@ -170,7 +173,7 @@ internal sealed class PluginAdministration(
         // Asked again: a session can start and a workspace can get unsaved work while the new version is prepared.
         if (await _UpdateBlockerAsync(manager, folderId).ConfigureAwait(false) is { } late)
         {
-            return PluginLiveState.Restart(late);
+            return _IsSessionBlocker(late) ? PluginLiveState.Blocked(late) : PluginLiveState.Restart(late);
         }
 
         // Turned away up front, so the running version does not stop for bytes that cannot start.
@@ -305,7 +308,7 @@ internal sealed class PluginAdministration(
 
         if (await _DeactivationBlockerAsync(manager, folderId).ConfigureAwait(false) is { } blocker)
         {
-            return PluginLiveState.Restart(blocker);
+            return _IsSessionBlocker(blocker) ? PluginLiveState.Blocked(blocker) : PluginLiveState.Restart(blocker);
         }
 
         var result = await manager.DeactivateAsync(folderId).ConfigureAwait(false);
@@ -343,6 +346,53 @@ internal sealed class PluginAdministration(
             candidate.Status is DelegatedTaskStatus.Queued or DelegatedTaskStatus.Running && labels.Contains(candidate.ProfileLabel));
         return task is null ? null : $"Delegated task '{task.Label ?? task.TaskId}' uses this provider.";
     }
+
+    private bool _watchingDisabledPlugins;
+
+    private void _WatchDisabledPluginsForSessionChanges()
+    {
+        if (_watchingDisabledPlugins || sessions is null)
+        {
+            return;
+        }
+
+        sessions.Changed += _OnSessionsChanged;
+        _watchingDisabledPlugins = true;
+    }
+
+    private async void _OnSessionsChanged(object? sender, EventArgs args)
+    {
+        try
+        {
+            await _DeactivateDisabledPluginsAsync().ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            diagnostics?.Record("plugins", "Plugins", "deactivate", exception.Message);
+        }
+    }
+
+    private async Task _DeactivateDisabledPluginsAsync()
+    {
+        await _changes.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            foreach (var (folderId, registration) in await registrations.LoadAllAsync(CancellationToken.None).ConfigureAwait(false))
+            {
+                if (!registration.Enabled)
+                {
+                    await _DeactivateAsync(folderId).ConfigureAwait(false);
+                }
+            }
+        }
+        finally
+        {
+            _changes.Release();
+        }
+    }
+
+    private static bool _IsSessionBlocker(string reason) =>
+        reason.StartsWith("Session '", StringComparison.Ordinal) || reason.StartsWith("Delegated task '", StringComparison.Ordinal);
 
     private bool _Owns(string folderId, string providerId) =>
         providers?.OwnerOf(providerId) == folderId || ttyProviders?.OwnerOf(providerId) == folderId;

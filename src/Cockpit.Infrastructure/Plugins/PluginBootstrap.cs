@@ -68,8 +68,25 @@ public sealed class PluginBootstrap : ISingletonService
         }
     }
 
-    internal void CompleteInPlaceUpdate(string folderId) =>
-        File.Delete(Path.Combine(_pluginsRoot, PluginInstaller.UpdateMarkerPrefix + folderId));
+    // The marker is recovery evidence until the pin names the bytes that are actually on disk.
+    internal async Task ConfirmPinnedInPlaceUpdateAsync(string folderId, string pinnedSha256, CancellationToken cancellationToken = default)
+    {
+        var marker = Path.Combine(_pluginsRoot, PluginInstaller.UpdateMarkerPrefix + folderId);
+        if (!File.Exists(marker))
+        {
+            return;
+        }
+
+        var hashes = await File.ReadAllLinesAsync(marker, cancellationToken).ConfigureAwait(false);
+        var folder = Path.Combine(_pluginsRoot, folderId);
+        if (hashes.Length == 2
+            && string.Equals(hashes[1], pinnedSha256, StringComparison.OrdinalIgnoreCase)
+            && Directory.Exists(folder)
+            && string.Equals(await PluginClosureHash.OfInstalledFolderAsync(folder, cancellationToken).ConfigureAwait(false), pinnedSha256, StringComparison.OrdinalIgnoreCase))
+        {
+            File.Delete(marker);
+        }
+    }
 
     // Scans the plugins root this instance was built with, parses each manifest, hashes each entry assembly
     // and runs the load policy against saved registrations — returning what to do, loading nothing and

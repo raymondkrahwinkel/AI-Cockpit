@@ -409,7 +409,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         {
             StatusMessage = $"Installing '{Path.GetFileName(zipPath)}'…";
             var result = await _administration.InstallFromZipAsync(zipPath);
-            await _AfterInstallAsync(result, $"Plugin installed{_On}. {_Restart} to activate it.");
+            await _AfterInstallAsync(result, $"Plugin installed{_On}.");
         });
     }
 
@@ -438,8 +438,10 @@ public partial class PluginManagerViewModel : ViewModelBase
             return;
         }
 
-        StatusMessage = $"'{row.DisplayName}' enabled{_On}. Restart needed: {(state?.RestartReason ?? "the plugin cannot be activated while running").TrimEnd('.')}. {_Restart} to load it.";
-        _SetRestartPending(row.FolderId, true);
+        _SetRestartPending(row.FolderId, state?.RestartRequired == true);
+        StatusMessage = state?.RestartRequired == true
+            ? $"'{row.DisplayName}' enabled{_On}. Restart needed: {state.RestartReason?.TrimEnd('.')}. {_Restart} to load it."
+            : $"'{row.DisplayName}' enabled{_On}. {state?.RestartReason?.TrimEnd('.') ?? "The plugin cannot be activated while running"}.";
     }
 
     // The manager's gear is now one of several ways into a plugin's settings, so it opens them the same way the others do.
@@ -556,8 +558,10 @@ public partial class PluginManagerViewModel : ViewModelBase
             return;
         }
 
-        StatusMessage = $"'{row.DisplayName}' disabled{_On}. Restart needed: {(state?.RestartReason ?? "the plugin cannot be unloaded while running").TrimEnd('.')}. {_Restart} to unload it.";
-        _SetRestartPending(row.FolderId, true);
+        _SetRestartPending(row.FolderId, state?.RestartRequired == true);
+        StatusMessage = state?.RestartRequired == true
+            ? $"'{row.DisplayName}' disabled{_On}. Restart needed: {state.RestartReason?.TrimEnd('.')}. {_Restart} to unload it."
+            : $"'{row.DisplayName}' disabled{_On}. {state?.RestartReason?.TrimEnd('.') ?? "The plugin cannot be unloaded while running"}.";
     }
 
     [RelayCommand(CanExecute = nameof(CanChangePlugins))]
@@ -591,8 +595,10 @@ public partial class PluginManagerViewModel : ViewModelBase
             return;
         }
 
-        StatusMessage = $"'{row.DisplayName}' removed{_On}. Restart needed: {(state?.RestartReason ?? "the plugin cannot be unloaded while running").TrimEnd('.')}. {_Restart} to unload it.";
-        _SetRestartPending(row.FolderId, true);
+        _SetRestartPending(row.FolderId, state?.RestartRequired == true);
+        StatusMessage = state?.RestartRequired == true
+            ? $"'{row.DisplayName}' removed{_On}. Restart needed: {state.RestartReason?.TrimEnd('.')}. {_Restart} to unload it."
+            : $"'{row.DisplayName}' removed{_On}. {state?.RestartReason?.TrimEnd('.') ?? "The plugin cannot be unloaded while running"}.";
     }
 
     // Opens a folder picker for a local store (AC-7) and puts the chosen path in the add-store form.
@@ -1108,7 +1114,7 @@ public partial class PluginManagerViewModel : ViewModelBase
                         {
                             failed.Add($"'{row.Name}' ({failure.RestartReason?.TrimEnd('.') ?? "it could not be activated"})");
                         }
-                        else
+                        else if (outcome.Live is { RestartRequired: true })
                         {
                             waiting.Add($"'{row.Name}'");
                         }
@@ -1274,8 +1280,8 @@ public partial class PluginManagerViewModel : ViewModelBase
         // Surface an unverified-checksum advisory ahead of the installed message (AC-46): a store that publishes
         // no per-artifact hash still installs, but the operator is told the download could not be verified.
         var installedMessage = provision.Warning is { } warning
-            ? $"⚠ {warning} '{row.Name}' installed{_On}. {_Restart} to activate it."
-            : $"'{row.Name}' installed{_On}. {_Restart} to activate it.";
+            ? $"⚠ {warning} '{row.Name}' installed{_On}."
+            : $"'{row.Name}' installed{_On}.";
 
         // Translated back to the installer's own result shape so the shared aftercare below stays the one place the
         // consent walk lives, unchanged by where the bytes came from.
@@ -1339,12 +1345,12 @@ public partial class PluginManagerViewModel : ViewModelBase
                     await LoadAsync();
                     StatusIsError = true;
                     StatusMessage = failed.RestartReason ?? "The update could not be activated.";
-                    _SetRestartPending(result.FolderId ?? "", !failed.RolledBack);
+                    _SetRestartPending(result.FolderId ?? "", failed.RestartRequired && !failed.RolledBack);
                     return;
             }
 
             StatusMessage = result.Live?.RestartReason is { } reason ? $"{installedMessage} {reason}" : installedMessage;
-            _SetRestartPending(result.FolderId ?? "", true);
+            _SetRestartPending(result.FolderId ?? "", result.Live?.RestartRequired == true);
             return;
         }
 
@@ -1360,8 +1366,9 @@ public partial class PluginManagerViewModel : ViewModelBase
         }
         else
         {
-            StatusMessage = installedMessage;
-            _SetRestartPending(result.FolderId ?? "", true);
+            var restartRequired = installed?.Discovered.Manifest.RequiresRestart == true;
+            StatusMessage = restartRequired ? $"{installedMessage} {_Restart} to activate it." : installedMessage;
+            _SetRestartPending(result.FolderId ?? "", restartRequired);
         }
     }
 

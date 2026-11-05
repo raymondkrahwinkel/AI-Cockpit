@@ -103,7 +103,7 @@ internal static class PluginEndpoints
             }
 
             var state = await plugins().SetEnabledAsync(folderId, enabled, pin, cancellationToken).ConfigureAwait(false);
-            return Results.Json(new { live = state.IsLive, restartReason = state.RestartReason, takesEffectAfterServerRestarts = !state.IsLive }, ConnectKeyEndpoints.Json);
+            return Results.Json(new { live = state.IsLive, restartReason = state.RestartReason, restartRequired = state.RestartRequired, takesEffectAfterServerRestarts = state.RestartRequired }, ConnectKeyEndpoints.Json);
         }).RequireAdmin().Audited("set_plugin_enabled", services);
 
         api.MapDelete("/plugins/{folderId}", async (string folderId, CancellationToken cancellationToken) =>
@@ -116,7 +116,7 @@ internal static class PluginEndpoints
 
             var state = await plugins().RemoveAsync(folderId, cancellationToken).ConfigureAwait(false);
             await _AuditAsync(services, "api:remove_plugin", cancellationToken).ConfigureAwait(false);
-            return Results.Json(new { live = state.IsLive, restartReason = state.RestartReason, takesEffectAfterServerRestarts = true }, ConnectKeyEndpoints.Json);
+            return Results.Json(new { live = state.IsLive, restartReason = state.RestartReason, restartRequired = state.RestartRequired, takesEffectAfterServerRestarts = state.RestartRequired }, ConnectKeyEndpoints.Json);
         }).RequireAdmin();
 
         // AC-1511: the view a plugin offers an admin of this server reaches the plugin's backend part here. The JSON
@@ -620,12 +620,12 @@ internal static class PluginEndpoints
 
     // AC-1525: a plugin installed here is live only after the server restarts, and its consent step needs the folder and the
     // bytes the server computed.
-    private sealed record PluginInstallResponse(PluginProvisionOutcome Outcome, string Id, string Name, string Version, string? Error, string? FolderId, string? Sha256, bool TakesEffectAfterServerRestarts, string? RestartReason, bool Live = false, bool Failed = false, bool RolledBack = false)
+    private sealed record PluginInstallResponse(PluginProvisionOutcome Outcome, string Id, string Name, string Version, string? Error, string? FolderId, string? Sha256, bool TakesEffectAfterServerRestarts, string? RestartReason, bool RestartRequired = false, bool Live = false, bool Failed = false, bool RolledBack = false)
     {
         // AC-2025: an update that went live, or failed and was rolled back, waits for no restart.
         public static PluginInstallResponse From(PluginProvisionResult result, string version) =>
             new(result.Outcome, result.Id, result.Name, version, result.IsSuccess ? null : result.ErrorIsSafeToShow ? result.Error : "The server could not install the plugin.", result.FolderId, result.Sha256,
-                result.IsSuccess && result.Live is not { IsLive: true } and not { RolledBack: true }, result.Live?.RestartReason, result.Live?.IsLive == true, result.Live?.Failed == true, result.Live?.RolledBack == true);
+            result.Live?.RestartRequired == true, result.Live?.RestartReason, result.Live?.RestartRequired == true, result.Live?.IsLive == true, result.Live?.Failed == true, result.Live?.RolledBack == true);
     }
 
     // AC-1525: what the consent dialog shows, the server's own hash of the bytes, and whether this run already reflects the
