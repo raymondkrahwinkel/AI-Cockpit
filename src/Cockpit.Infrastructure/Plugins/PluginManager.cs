@@ -197,6 +197,7 @@ public sealed class PluginManager(
             // AC-1389: a plugin that is only a UI part has nothing to configure; InitializeUi activates it.
             if (candidate.Manifest.EntryAssembly is null)
             {
+                _NoteLoaded(candidate);
                 _loaded.Add((candidate, null));
                 continue;
             }
@@ -525,6 +526,8 @@ public sealed class PluginManager(
                 }
                 else if (discovered.Manifest.EntryAssembly is null)
                 {
+                    // Its UI part loads in a context of its own, which stays in memory like any other.
+                    _NoteLoaded(discovered);
                     result = new(PluginActivationStatus.Activated);
                 }
                 else
