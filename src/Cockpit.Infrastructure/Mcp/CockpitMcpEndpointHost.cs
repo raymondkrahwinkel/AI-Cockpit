@@ -218,6 +218,7 @@ internal sealed class CockpitMcpEndpointHost
                 loopbackPort = await _WaitUntilFreeAsync(loopbackPort).ConfigureAwait(false);
             }
 
+        build:
             var builder = WebApplication.CreateSlimBuilder();
             builder.Services.AddSingleton(_loggerFactory);
 
@@ -349,7 +350,19 @@ internal sealed class CockpitMcpEndpointHost
 
             _apps.Add(app);
 
-            await app.StartAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await app.StartAsync(cancellationToken).ConfigureAwait(false);
+            }
+            // The port was free when probed but taken before Kestrel bound it: mount on a fresh one rather than not at all.
+            catch (IOException) when (loopbackPort != 0)
+            {
+                _logger.LogWarning("Port {Port} of the {ServerName} MCP endpoint was taken before it could be reused; it starts on a new port, so sessions that started earlier need a new session for its tools.", loopbackPort, serverName);
+                _apps.Remove(app);
+                await app.DisposeAsync().ConfigureAwait(false);
+                loopbackPort = 0;
+                goto build;
+            }
 
             var addresses = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()
                 ?? throw new InvalidOperationException("Kestrel did not expose its bound addresses.");
