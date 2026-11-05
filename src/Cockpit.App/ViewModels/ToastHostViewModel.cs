@@ -59,6 +59,10 @@ public sealed class ToastHostViewModel
             _startupToasts?.RemoveAll(queued => ReferenceEquals(queued.Toast, toast));
         };
         item = Notifications.Post(toast, source, key, sourceId);
+        if (key is not null)
+        {
+            _keyedToasts[key] = toast;
+        }
 
         if (_startupToasts is not null)
         {
@@ -74,6 +78,19 @@ public sealed class ToastHostViewModel
         _Show(toast, sticky);
 
         return toast;
+    }
+
+    private readonly Dictionary<string, ToastViewModel> _keyedToasts = [];
+
+    // Takes down a keyed toast and its notification once what it announced no longer holds.
+    internal void Withdraw(string key)
+    {
+        if (_keyedToasts.Remove(key, out var toast))
+        {
+            toast.CloseCommand.Execute(null);
+        }
+
+        Notifications.Items.FirstOrDefault(item => item.Key == key && item.SourceId is null)?.DismissCommand.Execute(null);
     }
 
     internal ToastViewModel AddCondition(string key, string message, ToastSeverity severity,

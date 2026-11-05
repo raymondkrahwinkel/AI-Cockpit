@@ -1,3 +1,4 @@
+using Avalonia.Threading;
 using Microsoft.Extensions.Logging;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Plugins;
@@ -49,7 +50,10 @@ public sealed class PluginUpdateChecker : IPluginUpdateChecker
         _logger = logger;
         _hostVersion = hostVersion ?? HostVersionInfo.Current;
         _registrations = registrations;
+        cockpit.Plugins.UpdatesCleared += () => Dispatcher.UIThread.Post(() => cockpit.ToastHost.Withdraw(UpdateToastKey));
     }
+
+    private const string UpdateToastKey = "plugin-update-available";
 
     public async Task CheckNowAsync(CancellationToken cancellationToken = default)
     {
@@ -214,6 +218,6 @@ public sealed class PluginUpdateChecker : IPluginUpdateChecker
             ? $"Plugin update available: {newUpdates[0].Name} {newUpdates[0].InstalledVersion} → {newUpdates[0].LatestVersion}"
             : $"{newUpdates.Count} plugin updates available";
 
-        _toastService.Show(message, ToastSeverity.Information, "View", () => _ = _cockpit.OpenPluginStoreUpdatesAsync());
+        _toastService.Show(message, ToastSeverity.Information, [new ToastAction("View", () => _ = _cockpit.OpenPluginStoreUpdatesAsync())], sticky: false, source: null, key: UpdateToastKey);
     }
 }
