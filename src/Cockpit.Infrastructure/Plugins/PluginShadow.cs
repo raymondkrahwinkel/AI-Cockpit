@@ -19,7 +19,7 @@ public sealed class PluginShadow
     // A copy or staging folder touched this recently may belong to a process that has not marked it yet.
     private static readonly TimeSpan Grace = TimeSpan.FromMinutes(10);
 
-    private static readonly ConcurrentDictionary<(string Root, string FolderId, string Sha256), Lazy<PluginShadow>> _prepared = new();
+    private static readonly ConcurrentDictionary<(string FolderId, string Sha256), Lazy<PluginShadow>> _prepared = new();
 
     private FileStream? _inUse;
 
@@ -50,8 +50,7 @@ public sealed class PluginShadow
     // copied are not the bytes the pin approved.
     public static PluginShadow GetOrPrepare(DiscoveredPlugin discovered, bool fresh = false)
     {
-        // Per state root too: a process that holds two (a test host after another) must not hand one the other's copies.
-        var key = (RootFor(Path.GetDirectoryName(Path.GetFullPath(discovered.FolderPath))!), discovered.FolderId, discovered.Sha256);
+        var key = (discovered.FolderId, discovered.Sha256);
         if (fresh)
         {
             _prepared.TryRemove(key, out _);
@@ -59,7 +58,16 @@ public sealed class PluginShadow
 
         try
         {
-            return _prepared.GetOrAdd(key, _ => new Lazy<PluginShadow>(() => _Prepare(discovered))).Value;
+            var shadow = _prepared.GetOrAdd(key, _ => new Lazy<PluginShadow>(() => _Prepare(discovered))).Value;
+
+            // A copy that is gone (a state root removed under a process that made another, as a test host does) is made again.
+            if (!Directory.Exists(shadow.Folder))
+            {
+                _prepared.TryRemove(key, out _);
+                shadow = _prepared.GetOrAdd(key, _ => new Lazy<PluginShadow>(() => _Prepare(discovered))).Value;
+            }
+
+            return shadow;
         }
         catch
         {

@@ -12,13 +12,13 @@ internal static class WeekOfferMarker
 
     private static string _Day(DateOnly day) => day.DayOfWeek switch
     {
-        DayOfWeek.Monday => "ma",
-        DayOfWeek.Tuesday => "di",
-        DayOfWeek.Wednesday => "wo",
-        DayOfWeek.Thursday => "do",
-        DayOfWeek.Friday => "vr",
-        DayOfWeek.Saturday => "za",
-        _ => "zo",
+        DayOfWeek.Monday => "Mon",
+        DayOfWeek.Tuesday => "Tue",
+        DayOfWeek.Wednesday => "Wed",
+        DayOfWeek.Thursday => "Thu",
+        DayOfWeek.Friday => "Fri",
+        DayOfWeek.Saturday => "Sat",
+        _ => "Sun",
     };
 }
 
@@ -55,11 +55,11 @@ internal sealed record WeekOfferDraft(
 
 internal static class WeekOfferPrompt
 {
-    private static readonly CultureInfo Dutch = CultureInfo.GetCultureInfo("nl-NL");
+    private static readonly CultureInfo English = CultureInfo.GetCultureInfo("en-US");
 
-    public const string HardBoundary = "Boek per dag nooit meer dan het schema, met wat er al geboekt staat meegerekend. Komt een dag erboven, of staat er al meer dan het schema: boek die dag niets en leg hem eerst voor.";
-    public const string PriorApproval = "Maak eerst je eigen boekingsvoorstel (per regel datum, duur, contact of project, omschrijving; per dag het totaal tegenover het schema), leg het voor en vraag expliciet akkoord. Schrijf niets voordat je dat akkoord hebt.";
-    public const string DefaultInstructions = "Lees eerst wat er deze week al geboekt staat, ook zonder contact.\nLeid uit de omschrijving van een eigen regel af hoe je die boekt.\nBoek niets dubbel en zet het kenmerk uit elke regel ongewijzigd in de omschrijving.\nMeld daarna per regel het resultaat met `report_hours_result`, ook als je een regel niet boekte; geef dan de reden.";
+    public const string HardBoundary = "Never book more than the schedule per day, including what is already booked. If a day comes above it, or already holds more than the schedule: book nothing for that day and put it forward first.";
+    public const string PriorApproval = "First make your own booking proposal (per row: date, duration, contact or project, description; per day the total against the schedule), put it forward and ask for explicit approval. Write nothing before you have that approval.";
+    public const string DefaultInstructions = "First read what is already booked this week, including entries without a contact.\nWork out how to book each of your own rows from its description.\nNever book the same thing twice, and keep each row's marker unchanged in the description.\nThen report the result per row with `report_hours_result`, also for rows you did not book; give the reason.";
 
     public static WeekOfferDraft Build(WeekProposal proposal, int weekNumber, string instructions)
     {
@@ -74,10 +74,10 @@ internal static class WeekOfferPrompt
         var offeredRows = new List<WeekOfferRow>();
         var lines = new List<string>
         {
-            $"Boek dit urenvoorstel voor week {weekNumber}.",
+            $"Book this hours proposal for week {weekNumber}.",
             string.Empty,
-            "Voorstel",
-            "| Datum | Duur | Project | Omschrijving | Soort |",
+            "Proposal",
+            "| Date | Duration | Project | Description | Type |",
             "| --- | --- | --- | --- | --- |",
         };
         foreach (var row in rows)
@@ -89,7 +89,7 @@ internal static class WeekOfferPrompt
             offeredRows.Add(new WeekOfferRow(row.Cell.Day, sequence, (int)Math.Round(row.Cell.Time.TotalMinutes), row.Line.EntryId, row.Line.ProjectId));
             var description = row.Line.Own ? row.Line.Label : row.Cell.Description ?? row.Line.Detail;
             var project = row.Line.Own ? row.Line.Detail : row.Line.Label;
-            lines.Add($"| {_Date(row.Cell.Day)} | {WeekProposal.Text(row.Cell.Time)} | {_Text(project)} | {_Text(description)} {marker} | {(row.Line.Own ? "eigen" : string.Empty)} |");
+            lines.Add($"| {_Date(row.Cell.Day)} | {WeekProposal.Text(row.Cell.Time)} | {_Text(project)} | {_Text(description)} {marker} | {(row.Line.Own ? "own" : string.Empty)} |");
             if (row.Line.EntryId is { } entryId)
             {
                 ownIds.Add(entryId);
@@ -107,8 +107,8 @@ internal static class WeekOfferPrompt
 
         lines.AddRange([
             string.Empty,
-            "Werkschema (harde grens)",
-            "| Datum | Schema |",
+            "Schedule (hard limit)",
+            "| Date | Schedule |",
             "| --- | --- |",
             .. proposal.VisibleDays.Select(day => $"| {_Date(day.Day)} | {WeekProposal.Text(day.Schedule)} |"),
             string.Empty,
@@ -118,7 +118,7 @@ internal static class WeekOfferPrompt
         ]);
         if (string.IsNullOrWhiteSpace(instructions) == false)
         {
-            lines.AddRange([string.Empty, "Instructies", instructions.Trim()]);
+            lines.AddRange([string.Empty, "Instructions", instructions.Trim()]);
         }
 
         return new WeekOfferDraft(
@@ -130,7 +130,7 @@ internal static class WeekOfferPrompt
     }
 
     private static string _Date(DateOnly day) =>
-        day.ToDateTime(TimeOnly.MinValue).ToString("ddd dd-MM-yyyy", Dutch);
+        day.ToDateTime(TimeOnly.MinValue).ToString("ddd dd-MM-yyyy", English);
 
     private static string _Text(string value) =>
         value.ReplaceLineEndings(" ").Replace("|", "\\|", StringComparison.Ordinal).Trim();
@@ -168,7 +168,7 @@ internal sealed record WeekOfferSendRequest(
 internal sealed record WeekOfferSendResult(string PaneId, string? FinalizationError = null);
 
 internal sealed class WeekOfferFinalizationException(string paneId, Exception innerException)
-    : Exception("Het urenvoorstel is afgeleverd, maar de status kon niet volledig worden bijgewerkt. Verstuur het niet opnieuw; sluit dit venster en controleer de regels.", innerException)
+    : Exception("The hours proposal was delivered, but the status could not fully be updated. Do not send it again; close this window and check the rows.", innerException)
 {
     public string PaneId { get; } = paneId;
 }
@@ -200,7 +200,7 @@ internal sealed class WeekOfferSender(
         {
             WeekOfferDestinationKind.Session => await _SendToSessionAsync(request).ConfigureAwait(false),
             WeekOfferDestinationKind.Profile => await _StartSessionAsync(request).ConfigureAwait(false),
-            _ => throw new InvalidOperationException("Kies een sessie of profiel."),
+            _ => throw new InvalidOperationException("Choose a session or profile."),
         };
         try
         {
@@ -234,21 +234,21 @@ internal sealed class WeekOfferSender(
         await actions.SendPromptToSessionAsync(
             request.Destination.Id,
             request.Prompt,
-            $"Urenvoorstel week {request.WeekNumber}").ConfigureAwait(false);
+            $"Hours proposal week {request.WeekNumber}").ConfigureAwait(false);
         return request.Destination.Id;
     }
 
     private async Task<string> _StartSessionAsync(WeekOfferSendRequest request)
     {
         var existing = sessions.OpenSessions.Select(session => session.PaneId).ToHashSet(StringComparer.Ordinal);
-        var sessionName = $"Uren week {request.WeekNumber} · {Guid.NewGuid():N}"[..22];
+        var sessionName = $"Hours week {request.WeekNumber} · {Guid.NewGuid():N}"[..22];
         await actions.StartSessionAsync(request.Destination.Id, request.Prompt, null, sessionName).ConfigureAwait(false);
         var matches = sessions.OpenSessions
             .Where(session => existing.Contains(session.PaneId) == false && string.Equals(session.Name, sessionName, StringComparison.Ordinal))
             .ToList();
         return matches.Count == 1
             ? matches[0].PaneId
-            : throw new InvalidOperationException("De nieuwe sessie is gestart, maar Cockpit kon de ontvanger niet eenduidig terugvinden. De regels blijven open.");
+            : throw new InvalidOperationException("The new session has started, but Cockpit could not find the recipient unambiguously. The rows stay open.");
     }
 
     private void _FreezeProjectCells(WeekOfferSendRequest request, DateTimeOffset offeredAt, string paneId)

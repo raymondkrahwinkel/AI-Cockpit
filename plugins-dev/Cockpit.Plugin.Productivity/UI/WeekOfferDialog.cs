@@ -17,8 +17,8 @@ internal sealed class WeekOfferDialog : UserControl
     private readonly DateOnly _weekStart;
     private readonly int _weekNumber;
     private readonly string? _projectId;
-    private readonly Button _send = new() { Name = "SendOffer", Content = "Versturen", IsEnabled = false, Classes = { "Accent" } };
-    private readonly CheckBox _confirm = new() { Name = "ConfirmOffer", Content = "Ik heb het voorstel en de instructies gecontroleerd" };
+    private readonly Button _send = new() { Name = "SendOffer", Content = "Send", IsEnabled = false, Classes = { "Accent" } };
+    private readonly CheckBox _confirm = new() { Name = "ConfirmOffer", Content = "I have checked the proposal and the instructions" };
     private readonly TextBlock _error = new() { TextWrapping = TextWrapping.Wrap, IsVisible = false };
     private WeekOfferDestination? _selected;
 
@@ -40,7 +40,7 @@ internal sealed class WeekOfferDialog : UserControl
         _error.Themed(TextBlock.ForegroundProperty, "CockpitStatusErrorBrush");
         _confirm.IsCheckedChanged += (_, _) => _send.IsEnabled = _confirm.IsChecked == true && _selected is not null;
         _send.Click += async (_, _) => await _SendAsync();
-        var cancel = new Button { Name = "CancelOffer", Content = "Annuleren", Classes = { "Subtle" } };
+        var cancel = new Button { Name = "CancelOffer", Content = "Cancel", Classes = { "Subtle" } };
         cancel.Click += (_, _) => cancel.FindAncestorOfType<Window>()?.Close();
 
         var body = new Grid { ColumnDefinitions = new ColumnDefinitions("330,*"), ColumnSpacing = 18 };
@@ -49,8 +49,8 @@ internal sealed class WeekOfferDialog : UserControl
             Name = "OfferDestinationTabs",
             ItemsSource = new[]
             {
-                new TabItem { Header = "Bestaande sessie", Content = _Choices(options.Sessions, options.Remembered, "Er zijn geen agentsessies open.") },
-                new TabItem { Header = "Nieuw met profiel", Content = _Choices(options.Profiles, options.Remembered, "Er zijn geen profielen beschikbaar.") },
+                new TabItem { Header = "Existing session", Content = _Choices(options.Sessions, options.Remembered, "There are no agent sessions open.") },
+                new TabItem { Header = "New with profile", Content = _Choices(options.Profiles, options.Remembered, "There are no profiles available.") },
             },
             SelectedIndex = _selected?.Kind == WeekOfferDestinationKind.Profile ? 1 : 0,
         };
@@ -59,15 +59,15 @@ internal sealed class WeekOfferDialog : UserControl
             Spacing = 12,
             Children =
             {
-                new TextBlock { Text = "1  Kies waar de opdracht heen gaat", FontSize = 15, FontWeight = FontWeight.SemiBold },
+                new TextBlock { Text = "1  Choose where the task goes", FontSize = 15, FontWeight = FontWeight.SemiBold },
                 tabs,
                 Ui.Card(new StackPanel
                 {
                     Spacing = 5,
                     Children =
                     {
-                        new TextBlock { Text = "Vaste veiligheidsgrenzen", FontWeight = FontWeight.SemiBold },
-                        Ui.Hint("De schemagrens en het akkoord vooraf staan vast in de prompt en zijn niet bewerkbaar."),
+                        new TextBlock { Text = "Fixed safety limits", FontWeight = FontWeight.SemiBold },
+                        Ui.Hint("The schedule limit and the prior approval are fixed in the prompt and are not editable."),
                     },
                 }, 12),
             },
@@ -86,7 +86,7 @@ internal sealed class WeekOfferDialog : UserControl
         ScrollViewer.SetHorizontalScrollBarVisibility(preview, Avalonia.Controls.Primitives.ScrollBarVisibility.Auto);
         ScrollViewer.SetVerticalScrollBarVisibility(preview, Avalonia.Controls.Primitives.ScrollBarVisibility.Auto);
         var previewPanel = new Grid { RowDefinitions = new RowDefinitions("Auto,*") };
-        previewPanel.Children.Add(new TextBlock { Text = "2  Controleer de prompt", FontSize = 15, FontWeight = FontWeight.SemiBold });
+        previewPanel.Children.Add(new TextBlock { Text = "2  Check the prompt", FontSize = 15, FontWeight = FontWeight.SemiBold });
         Grid.SetRow(preview, 1);
         previewPanel.Children.Add(preview);
         Grid.SetColumn(previewPanel, 1);
@@ -105,7 +105,7 @@ internal sealed class WeekOfferDialog : UserControl
             Margin = new Thickness(18),
             Children =
             {
-                new TextBlock { Text = $"Geef aan een agent · urenvoorstel week {weekNumber}", FontSize = 19, FontWeight = FontWeight.SemiBold },
+                new TextBlock { Text = $"Give to an agent · hours proposal week {weekNumber}", FontSize = 19, FontWeight = FontWeight.SemiBold },
                 body,
                 _error,
                 footer,
@@ -200,7 +200,7 @@ internal sealed class WeekOfferDialog : UserControl
                 _projectId,
                 _draft.Rows,
                 _draft.Schedule));
-            _host.ShowToast("Het urenvoorstel is aan de agent gegeven.", PluginToastSeverity.Success);
+            _host.ShowToast("The hours proposal was given to the agent.", PluginToastSeverity.Success);
             this.FindAncestorOfType<Window>()?.Close();
         }
         catch (WeekOfferFinalizationException exception)
@@ -220,16 +220,16 @@ internal sealed class WeekOfferDialog : UserControl
     private void _Select(WeekOfferDestination destination)
     {
         _selected = destination;
-        _send.Content = $"Versturen naar {destination.Label}";
+        _send.Content = $"Send to {destination.Label}";
         _send.IsEnabled = _confirm.IsChecked == true;
     }
 
     private static string _Status(string status) => status switch
     {
-        "Busy" => "bezig",
-        "Waiting" => "wacht",
-        "NeedsAttention" => "aandacht nodig",
-        "Done" => "klaar",
+        "Busy" => "busy",
+        "Waiting" => "waiting",
+        "NeedsAttention" => "needs attention",
+        "Done" => "done",
         "Idle" => "idle",
         _ => status,
     };

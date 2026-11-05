@@ -11,7 +11,7 @@ namespace Cockpit.Plugin.Productivity.UI;
 
 internal sealed class OverviewWorkspaceBody : UserControl
 {
-    private static readonly CultureInfo Dutch = CultureInfo.GetCultureInfo("nl-NL");
+    private static readonly CultureInfo English = CultureInfo.GetCultureInfo("en-US");
     private static readonly Color Lavender = Color.Parse("#B79CF0");
     private static readonly Color Own = Color.Parse("#E2A93B");
     private static readonly Color Agent = Color.Parse("#22C7DF");
@@ -44,9 +44,9 @@ internal sealed class OverviewWorkspaceBody : UserControl
 
     private void _RenderRefreshState() => _bar.Update(_controller.IsRefreshing, _controller.LastRefreshed);
 
-    // Dates picked for "Eigen bereik" but not applied yet would be reset by a rebuild.
+    // Dates picked for "Own range" but not applied yet would be reset by a rebuild.
     private bool _CustomRangeUnapplied() =>
-        _controller.SelectedRange == "Eigen bereik"
+        _controller.SelectedRange == "Own range"
         && (_customFrom?.SelectedDate?.Date != _controller.From.ToDateTime(TimeOnly.MinValue) || _customTo?.SelectedDate?.Date != _controller.To.ToDateTime(TimeOnly.MinValue));
 
     private void _Render()
@@ -61,7 +61,7 @@ internal sealed class OverviewWorkspaceBody : UserControl
         }
         else if (_controller.Snapshot is not { } snapshot)
         {
-            _body.Children.Add(Ui.Card(Ui.Hint("Overzicht laden…"), 14));
+            _body.Children.Add(Ui.Card(Ui.Hint("Loading overview…"), 14));
         }
         else
         {
@@ -81,7 +81,7 @@ internal sealed class OverviewWorkspaceBody : UserControl
         row.Children.Add(WorkspaceSwitch.Build(true, _openHours, openOverview));
         Grid.SetColumn(_bar.View, 1);
         row.Children.Add(_bar.View);
-        var today = Ui.Pill($"vandaag · {DateTimeOffset.Now.ToString("ddd d MMM", Dutch)}", "CockpitTextSecondaryBrush", "CockpitInsetBgBrush");
+        var today = Ui.Pill($"today · {DateTimeOffset.Now.ToString("ddd d MMM", English)}", "CockpitTextSecondaryBrush", "CockpitInsetBgBrush");
         Grid.SetColumn(today, 2);
         row.Children.Add(today);
         return row;
@@ -90,7 +90,7 @@ internal sealed class OverviewWorkspaceBody : UserControl
     private Control _RangeCard()
     {
         var ranges = new StackPanel { Name = "OverviewRangePicker", Orientation = Orientation.Horizontal, Spacing = 4, VerticalAlignment = VerticalAlignment.Center };
-        foreach (var range in new[] { "Dag", "Werkweek", "Week", "Maand", "Eigen bereik" })
+        foreach (var range in new[] { "Day", "Work week", "Week", "Month", "Own range" })
         {
             var button = new Button { Content = range, Classes = { "Compact" } };
             if (range == _controller.SelectedRange)
@@ -104,7 +104,7 @@ internal sealed class OverviewWorkspaceBody : UserControl
 
         var dates = new TextBlock
         {
-            Text = $"{_controller.From.ToDateTime(TimeOnly.MinValue).ToString("ddd d", Dutch)} – {_controller.To.ToDateTime(TimeOnly.MinValue).ToString("ddd d MMM yyyy", Dutch)}",
+            Text = $"{_controller.From.ToDateTime(TimeOnly.MinValue).ToString("ddd d", English)} – {_controller.To.ToDateTime(TimeOnly.MinValue).ToString("ddd d MMM yyyy", English)}",
             FontSize = 12.5,
             FontWeight = FontWeight.SemiBold,
             VerticalAlignment = VerticalAlignment.Center,
@@ -120,8 +120,8 @@ internal sealed class OverviewWorkspaceBody : UserControl
             VerticalAlignment = VerticalAlignment.Center,
             Children = { previous, dates, next },
         };
-        var yours = new Button { Name = "YourTimeOnly", Content = "Jouw tijd", Classes = { "Compact" } };
-        var withAgent = new Button { Name = "IncludeAgent", Content = "+ agent zonder jou", Classes = { "Compact" } };
+        var yours = new Button { Name = "YourTimeOnly", Content = "Your time", Classes = { "Compact" } };
+        var withAgent = new Button { Name = "IncludeAgent", Content = "+ agent without you", Classes = { "Compact" } };
         if (_controller.IncludeAgentWithoutYou)
         {
             withAgent.Classes.Add("Accent");
@@ -166,7 +166,7 @@ internal sealed class OverviewWorkspaceBody : UserControl
         };
         _customFrom = customFrom;
         _customTo = customTo;
-        var apply = new Button { Name = "ApplyCustomRange", Content = "Toepassen", Classes = { "Accent", "Compact" } };
+        var apply = new Button { Name = "ApplyCustomRange", Content = "Apply", Classes = { "Accent", "Compact" } };
         apply.Click += async (_, _) =>
         {
             if (customFrom.SelectedDate is { } from && customTo.SelectedDate is { } to)
@@ -180,10 +180,10 @@ internal sealed class OverviewWorkspaceBody : UserControl
         };
         var custom = new StackPanel
         {
-            IsVisible = _controller.SelectedRange == "Eigen bereik",
+            IsVisible = _controller.SelectedRange == "Own range",
             Orientation = Orientation.Horizontal,
             Spacing = 8,
-            Children = { Ui.Hint("Van"), customFrom, Ui.Hint("tot"), customTo, apply },
+            Children = { Ui.Hint("From"), customFrom, Ui.Hint("to"), customTo, apply },
         };
         return Ui.Card(new StackPanel { Spacing = 8, Children = { row, custom } }, 10);
     }
@@ -203,22 +203,22 @@ internal sealed class OverviewWorkspaceBody : UserControl
         var tokens = snapshot.Timeline.Usage.Sum(usage => (long)usage.InputTokens + usage.OutputTokens + usage.CacheReadInputTokens + usage.CacheCreationInputTokens)
             + snapshot.Timeline.Days.Sum(day => (long)day.InputTokens + day.OutputTokens + day.CacheReadInputTokens + day.CacheCreationInputTokens);
         var unpriced = snapshot.Timeline.Usage.Where(usage => ProfileRates.Cost(usage, snapshot.RatesPerMillionTokens) is null)
-            .Select(usage => usage.ProfileLabel ?? "onbekend profiel")
-            .Concat(snapshot.Timeline.Days.Where(day => ProfileRates.Cost(day) is null).Select(_ => "eerdere dagen"))
+            .Select(usage => usage.ProfileLabel ?? "unknown profile")
+            .Concat(snapshot.Timeline.Days.Where(day => ProfileRates.Cost(day) is null).Select(_ => "earlier days"))
             .Distinct(StringComparer.Ordinal)
             .ToList();
         var costText = cost.ToString("$0.00", CultureInfo.InvariantCulture);
         var costDetail = unpriced.Count == 0
-            ? $"{_Tokens(tokens)} tokens · gemeld of uit je tarief"
-            : $"zonder tarief: {string.Join(", ", unpriced)} · stel het in onder Instellingen › Productivity";
+            ? $"{_Tokens(tokens)} tokens · reported or from your rate"
+            : $"without a rate: {string.Join(", ", unpriced)} · set it under Settings › Productivity";
         var schedule = _ScheduledMinutes(snapshot.ScheduleMinutes, from, to);
         var values = new[]
         {
-            ("YourTimeTile", "Jouw tijd", Ui.Duration(includeAgent ? snapshot.WithAgentWithoutYou : snapshot.YourTime), $"gemeten {Ui.Duration(measured)} + eigen {Ui.Duration(snapshot.Attention.Own)} − {Ui.Duration(snapshot.Attention.Overlap)} overlap"),
-            ("AgentTimeTile", "Agents (actief)", Ui.Duration(snapshot.Attention.AgentTime), $"{sessions} sessies · naast jouw tijd"),
-            ("ScheduleTile", "Schema", schedule == 0 ? "—" : _WholeDuration(schedule), schedule == 0 ? "geen schema ingesteld" : _ScheduleDetail(snapshot.ScheduleMinutes)),
-            ("CostTile", "Kosten", unpriced.Count == 0 ? costText : $"≥ {costText}", costDetail),
-            ("OwnEntriesTile", "Eigen regels", snapshot.Entries.Count.ToString(CultureInfo.InvariantCulture), $"{snapshot.Entries.Count(entry => entry.Status == Cockpit.Plugins.Abstractions.TimeTracking.CockpitTimeEntryStatus.Open)} open"),
+            ("YourTimeTile", "Your time", Ui.Duration(includeAgent ? snapshot.WithAgentWithoutYou : snapshot.YourTime), $"measured {Ui.Duration(measured)} + own {Ui.Duration(snapshot.Attention.Own)} − {Ui.Duration(snapshot.Attention.Overlap)} overlap"),
+            ("AgentTimeTile", "Agents (active)", Ui.Duration(snapshot.Attention.AgentTime), $"{sessions} sessions · beside your time"),
+            ("ScheduleTile", "Schedule", schedule == 0 ? "—" : _WholeDuration(schedule), schedule == 0 ? "no schedule set" : _ScheduleDetail(snapshot.ScheduleMinutes)),
+            ("CostTile", "Costs", unpriced.Count == 0 ? costText : $"≥ {costText}", costDetail),
+            ("OwnEntriesTile", "Own rows", snapshot.Entries.Count.ToString(CultureInfo.InvariantCulture), $"{snapshot.Entries.Count(entry => entry.Status == Cockpit.Plugins.Abstractions.TimeTracking.CockpitTimeEntryStatus.Open)} open"),
         };
         for (var index = 0; index < values.Length; index++)
         {
@@ -258,7 +258,7 @@ internal sealed class OverviewWorkspaceBody : UserControl
 
     private static string _ScheduleDetail(IReadOnlyList<int> minutes)
     {
-        var labels = new[] { "ma", "di", "wo", "do", "vr", "za", "zo" };
+        var labels = new[] { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" };
         var parts = new List<string>();
         for (var start = 0; start < Math.Min(7, minutes.Count);)
         {
@@ -296,7 +296,7 @@ internal sealed class OverviewWorkspaceBody : UserControl
     }
 
     private static string _WholeDuration(int minutes) =>
-        minutes % 60 == 0 ? $"{minutes / 60}u" : Ui.Duration(TimeSpan.FromMinutes(minutes));
+        minutes % 60 == 0 ? $"{minutes / 60}h" : Ui.Duration(TimeSpan.FromMinutes(minutes));
 
     private static Control _Charts(ProductivityOverviewSnapshot snapshot, bool includeAgent)
     {
@@ -319,23 +319,23 @@ internal sealed class OverviewWorkspaceBody : UserControl
                 .. snapshot.Days.Select(day =>
                 {
                     return new OverviewDailyDatum(
-                        day.Day.ToDateTime(TimeOnly.MinValue).ToString("ddd d", Dutch),
+                        day.Day.ToDateTime(TimeOnly.MinValue).ToString("ddd d", English),
                         (day.Attention.Measured - day.Attention.Overlap + day.HistoricalMeasured).TotalHours,
                         day.Attention.Own.TotalHours,
                         day.Attention.AgentTime.TotalHours);
                 }),
             ],
-            TooltipText = "Jouw tijd en actieve agenttijd per dag",
+            TooltipText = "Your time and active agent time per day",
         };
         return Ui.Card(new StackPanel
         {
             Spacing = 8,
             Children =
             {
-                new TextBlock { Text = "Jouw tijd per dag, met de agents ernaast", FontSize = 15, FontWeight = FontWeight.SemiBold },
+                new TextBlock { Text = "Your time per day, with the agents beside it", FontSize = 15, FontWeight = FontWeight.SemiBold },
                 chart,
                 _DailyLegend(),
-                Ui.Hint("Per dag twee staven: links jouw tijd, rechts de agents. Agenttijd telt nooit op bij jouw tijd."),
+                Ui.Hint("Two bars per day: left your time, right the agents. Agent time is never added to your time."),
             },
         }, 14);
     }
@@ -347,9 +347,9 @@ internal sealed class OverviewWorkspaceBody : UserControl
             Spacing = 14,
             Children =
             {
-                _LegendItem(Lavender, "jouw tijd · gemeten"),
-                _LegendItem(Own, "jouw tijd · eigen regels"),
-                _LegendItem(Agent, "agents actief (naast jou, niet erbij)"),
+                _LegendItem(Lavender, "your time · measured"),
+                _LegendItem(Own, "your time · own rows"),
+                _LegendItem(Agent, "agents active (beside you, not added)"),
             },
         };
 
@@ -360,9 +360,9 @@ internal sealed class OverviewWorkspaceBody : UserControl
             Spacing = 14,
             Children =
             {
-                _LegendItem(Lavender, "gemeten"),
-                _LegendItem(Own, "eigen regels"),
-                _LegendItem(Agent, "agent zonder jou"),
+                _LegendItem(Lavender, "measured"),
+                _LegendItem(Own, "own rows"),
+                _LegendItem(Agent, "agent without you"),
             },
         };
 
@@ -389,7 +389,7 @@ internal sealed class OverviewWorkspaceBody : UserControl
             Spacing = 7,
             Children =
             {
-                new TextBlock { Text = "Tijd per project", FontSize = 15, FontWeight = FontWeight.SemiBold },
+                new TextBlock { Text = "Time per project", FontSize = 15, FontWeight = FontWeight.SemiBold },
                 _ProjectLegend(),
             },
         };
@@ -410,11 +410,11 @@ internal sealed class OverviewWorkspaceBody : UserControl
             ToolTip.SetTip(row, project.Tooltip);
             var segments = new List<ChartSegment>
             {
-                new("gemeten", project.Measured.TotalMinutes, Lavender),
-                new("eigen regels", project.Own.TotalMinutes, Own, true),
+                new("measured", project.Measured.TotalMinutes, Lavender),
+                new("own rows", project.Own.TotalMinutes, Own, true),
             };
-            // The agents' time stands beside yours in the bar; it joins the total only with "+ agent zonder jou".
-            segments.Add(new ChartSegment("agent zonder jou", project.Agent.TotalMinutes, Agent));
+            // The agents' time stands beside yours in the bar; it joins the total only with "+ agent without you".
+            segments.Add(new ChartSegment("agent without you", project.Agent.TotalMinutes, Agent));
             var barTime = project.Measured + project.Own + project.Agent;
             var totalTime = project.Measured + project.Own + (includeAgent ? project.Agent : TimeSpan.Zero);
             var chart = new HorizontalBarChartControl
@@ -422,7 +422,7 @@ internal sealed class OverviewWorkspaceBody : UserControl
                 Height = 30,
                 MinWidth = 25,
                 Segments = segments,
-                TooltipText = $"{project.Label} · jij {Ui.Duration(project.Measured + project.Own)} · agent zonder jou {Ui.Duration(project.Agent)}",
+                TooltipText = $"{project.Label} · you {Ui.Duration(project.Measured + project.Own)} · agent without you {Ui.Duration(project.Agent)}",
             };
             var scale = new Grid { Name = "ProjectBarScale" };
             scale.ColumnDefinitions.Add(new ColumnDefinition(new GridLength(Math.Max(1, barTime.TotalMinutes), GridUnitType.Star)));
@@ -490,7 +490,7 @@ internal sealed class OverviewWorkspaceBody : UserControl
             Children =
             {
                 new TextBlock { Text = "Agents", FontSize = 15, FontWeight = FontWeight.SemiBold },
-                _TableHead(["Sessie", "Profiel", "Actief", "Zonder jou", "Tokens", "Kosten"], SessionColumns),
+                _TableHead(["Session", "Profile", "Active", "Without you", "Tokens", "Costs"], SessionColumns),
             },
         };
         var active = snapshot.Attention.Agents
@@ -531,13 +531,13 @@ internal sealed class OverviewWorkspaceBody : UserControl
                     costs.Any(value => value is null) ? "—" : costs.Sum(value => value ?? 0).ToString("$0.00", CultureInfo.InvariantCulture),
                 ],
                 SessionColumns);
-            ToolTip.SetTip(row, names.Describe(label) + (label.HasTimeline ? string.Empty : " · geen tijdlijn voor deze sessie, dus actieve tijd onbekend") + (costs.Any(value => value is null) ? " · geen tarief voor dit profiel, dus kosten onbekend" : string.Empty));
+            ToolTip.SetTip(row, names.Describe(label) + (label.HasTimeline ? string.Empty : " · no timeline for this session, so active time unknown") + (costs.Any(value => value is null) ? " · no rate for this profile, so cost unknown" : string.Empty));
             body.Children.Add(row);
         }
 
         if (sessions.Count == 0)
         {
-            body.Children.Add(Ui.Hint("Geen agents in dit bereik."));
+            body.Children.Add(Ui.Hint("No agents in this range."));
         }
 
         return Ui.Card(body, 14);
@@ -558,8 +558,8 @@ internal sealed class OverviewWorkspaceBody : UserControl
     private Control _Entries(ProductivityOverviewSnapshot snapshot)
     {
         var heading = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-        heading.Children.Add(new TextBlock { Text = "Eigen regels deze week", FontSize = 15, FontWeight = FontWeight.SemiBold });
-        var add = new Button { Name = "AddOverviewEntry", Content = "+ Regel", Classes = { "Compact" } };
+        heading.Children.Add(new TextBlock { Text = "Own rows this week", FontSize = 15, FontWeight = FontWeight.SemiBold });
+        var add = new Button { Name = "AddOverviewEntry", Content = "+ Row", Classes = { "Compact" } };
         add.Click += (_, _) => _openHours();
         Grid.SetColumn(add, 1);
         heading.Children.Add(add);
@@ -569,14 +569,14 @@ internal sealed class OverviewWorkspaceBody : UserControl
             Children =
             {
                 heading,
-                _TableHead(["Dag", "Omschrijving", "Project", "Duur", "Status"], "80,*,160,70,90"),
+                _TableHead(["Day", "Description", "Project", "Duration", "Status"], "80,*,160,70,90"),
             },
         };
         var names = _Names(snapshot);
         foreach (var entry in snapshot.Entries.OrderBy(entry => entry.StartedAt))
         {
             var row = new Grid { ColumnDefinitions = new ColumnDefinitions("80,*,160,70,90"), ColumnSpacing = 8 };
-            _AddCell(row, 0, entry.StartedAt.ToLocalTime().ToString("ddd d", Dutch));
+            _AddCell(row, 0, entry.StartedAt.ToLocalTime().ToString("ddd d", English));
             _AddCell(row, 1, entry.Description);
             var projectId = entry.ProjectId ?? string.Empty;
             var project = new StackPanel
@@ -609,7 +609,7 @@ internal sealed class OverviewWorkspaceBody : UserControl
 
         if (snapshot.Entries.Count == 0)
         {
-            body.Children.Add(Ui.Hint("Geen eigen regels in dit bereik."));
+            body.Children.Add(Ui.Hint("No own rows in this range."));
         }
 
         return Ui.Card(body, 14);
@@ -622,8 +622,8 @@ internal sealed class OverviewWorkspaceBody : UserControl
             Spacing = 6,
             Children =
             {
-                new TextBlock { Text = "Tickets in dit bereik", FontSize = 15, FontWeight = FontWeight.SemiBold },
-                _TableHead(["Ticket", "Project", "Jouw tijd", "Laatste status"], "120,180,90,*"),
+                new TextBlock { Text = "Tickets in this range", FontSize = 15, FontWeight = FontWeight.SemiBold },
+                _TableHead(["Ticket", "Project", "Your time", "Last status"], "120,180,90,*"),
             },
         };
         var names = _Names(snapshot);
@@ -636,7 +636,7 @@ internal sealed class OverviewWorkspaceBody : UserControl
 
         if (snapshot.Tickets.Count == 0)
         {
-            body.Children.Add(Ui.Hint("Geen tickets in dit bereik."));
+            body.Children.Add(Ui.Hint("No tickets in this range."));
         }
 
         return Ui.Card(body, 14);
@@ -714,7 +714,7 @@ internal sealed class OverviewWorkspaceBody : UserControl
                 var value = maximum * step / 4;
                 var y = top + plotHeight - (plotHeight * step / 4);
                 context.DrawLine(gridPen, new Point(left, y), new Point(Bounds.Width - 8, y));
-                var scale = new FormattedText($"{value:0.#}u", CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Typeface.Default, 10, muted);
+                var scale = new FormattedText($"{value:0.#}h", CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Typeface.Default, 10, muted);
                 context.DrawText(scale, new Point(2, y - scale.Height / 2));
             }
 

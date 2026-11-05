@@ -13,13 +13,13 @@ namespace Cockpit.Plugin.Productivity.UI;
 // the price per profile for usage its provider reports no cost for (AC-1766).
 internal sealed class ProductivitySettingsControl : UserControl, IPluginSettingsView
 {
-    private static readonly CultureInfo Dutch = CultureInfo.GetCultureInfo("nl-NL");
-    private static readonly string[] DayNames = ["ma", "di", "wo", "do", "vr", "za", "zo"];
+    private static readonly CultureInfo English = CultureInfo.GetCultureInfo("en-US");
+    private static readonly string[] DayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
     private readonly ICockpitUiHost _host;
     private readonly ProductivityController _controller;
     private readonly WeekSettings _settings;
     private readonly TextBox[] _hours;
-    private readonly ComboBox _rounding = new() { ItemsSource = new[] { "5 minuten", "15 minuten", "30 minuten" }, Width = 140 };
+    private readonly ComboBox _rounding = new() { ItemsSource = new[] { "5 minutes", "15 minutes", "30 minutes" }, Width = 140 };
     private readonly TextBox _refreshSeconds;
     private readonly TextBox _instructions;
     private readonly StackPanel _projects = new() { Spacing = 4 };
@@ -34,7 +34,7 @@ internal sealed class ProductivitySettingsControl : UserControl, IPluginSettings
         _controller = controller;
         _settings = host.Storage.Get<WeekSettings>(WeekSettings.StorageKey) ?? WeekSettings.Default;
         _storedRates = host.Storage.Get<Dictionary<string, double>>(ProfileRates.StorageKey) ?? [];
-        _refreshSeconds = new TextBox { Name = "RefreshSeconds", Text = _settings.RefreshSeconds.ToString(Dutch), Width = 70 };
+        _refreshSeconds = new TextBox { Name = "RefreshSeconds", Text = _settings.RefreshSeconds.ToString(English), Width = 70 };
         _instructions = new TextBox
         {
             Name = "AgentInstructions",
@@ -43,7 +43,7 @@ internal sealed class ProductivitySettingsControl : UserControl, IPluginSettings
             TextWrapping = Avalonia.Media.TextWrapping.Wrap,
             MinHeight = 110,
         };
-        _hours = [.. _settings.ScheduleMinutes.Select((minutes, index) => new TextBox { Name = $"Schedule{index}", Text = (minutes / 60.0).ToString("0.##", Dutch), Width = 56 })];
+        _hours = [.. _settings.ScheduleMinutes.Select((minutes, index) => new TextBox { Name = $"Schedule{index}", Text = (minutes / 60.0).ToString("0.##", English), Width = 56 })];
         _rounding.SelectedIndex = Array.IndexOf([5, 15, 30], _settings.RoundingMinutes) is var index and >= 0 ? index : 1;
 
         var schedule = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
@@ -57,18 +57,18 @@ internal sealed class ProductivitySettingsControl : UserControl, IPluginSettings
             Spacing = 10,
             Children =
             {
-                new TextBlock { Text = "Werkschema in uren per dag · harde grens", FontWeight = Avalonia.Media.FontWeight.SemiBold },
+                new TextBlock { Text = "Schedule in hours per day · hard limit", FontWeight = Avalonia.Media.FontWeight.SemiBold },
                 schedule,
-                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { new TextBlock { Text = "Afronden op", VerticalAlignment = VerticalAlignment.Center }, _rounding } },
-                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { new TextBlock { Text = "Uren en Overzicht verversen elke (seconden)", VerticalAlignment = VerticalAlignment.Center }, _refreshSeconds } },
-                new TextBlock { Text = "Projecten in het voorstel", FontWeight = Avalonia.Media.FontWeight.SemiBold, Margin = new Thickness(0, 6, 0, 0) },
-                new TextBlock { Text = "Een privé-project telt wel als jouw tijd, maar komt niet in het voorstel.", Opacity = 0.7, TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { new TextBlock { Text = "Round to", VerticalAlignment = VerticalAlignment.Center }, _rounding } },
+                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { new TextBlock { Text = "Hours and Overview refresh every (seconds)", VerticalAlignment = VerticalAlignment.Center }, _refreshSeconds } },
+                new TextBlock { Text = "Projects in the proposal", FontWeight = Avalonia.Media.FontWeight.SemiBold, Margin = new Thickness(0, 6, 0, 0) },
+                new TextBlock { Text = "A private project still counts as your time, but it does not go into the proposal.", Opacity = 0.7, TextWrapping = Avalonia.Media.TextWrapping.Wrap },
                 _projects,
-                new TextBlock { Text = "Instructies voor de boekingsagent", FontWeight = Avalonia.Media.FontWeight.SemiBold, Margin = new Thickness(0, 6, 0, 0) },
-                new TextBlock { Text = "Deze tekst is bewerkbaar. De harde schemagrens en het verplichte akkoord staan vast buiten deze tekst.", Opacity = 0.7, TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                new TextBlock { Text = "Instructions for the booking agent", FontWeight = Avalonia.Media.FontWeight.SemiBold, Margin = new Thickness(0, 6, 0, 0) },
+                new TextBlock { Text = "This text is editable. The hard schedule limit and the required approval are fixed outside this text.", Opacity = 0.7, TextWrapping = Avalonia.Media.TextWrapping.Wrap },
                 _instructions,
-                new TextBlock { Text = "Tarief per profiel", FontWeight = Avalonia.Media.FontWeight.SemiBold, Margin = new Thickness(0, 6, 0, 0) },
-                new TextBlock { Text = "In dollar per miljoen tokens (invoer, uitvoer en cache-schrijven), voor een profiel waarvan de aanbieder geen kosten meldt. Leeg laat het zonder prijs.", Opacity = 0.7, TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                new TextBlock { Text = "Rate per profile", FontWeight = Avalonia.Media.FontWeight.SemiBold, Margin = new Thickness(0, 6, 0, 0) },
+                new TextBlock { Text = "In dollars per million tokens (input, output and cache writes), for a profile whose provider reports no cost. Empty leaves it unpriced.", Opacity = 0.7, TextWrapping = Avalonia.Media.TextWrapping.Wrap },
                 _rateRows,
             },
         };
@@ -84,17 +84,17 @@ internal sealed class ProductivitySettingsControl : UserControl, IPluginSettings
             if (double.TryParse(_hours[day].Text?.Replace(',', '.'), NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var hours) == false || hours > 24)
             {
                 commit = null;
-                error = $"Vul voor {DayNames[day]} een aantal uren in tussen 0 en 24.";
+                error = $"Enter a number of hours between 0 and 24 for {DayNames[day]}.";
                 return false;
             }
 
             minutes[day] = (int)Math.Round(hours * 60);
         }
 
-        if (int.TryParse(_refreshSeconds.Text, NumberStyles.None, Dutch, out var refreshSeconds) == false || refreshSeconds is < 15 or > 3600)
+        if (int.TryParse(_refreshSeconds.Text, NumberStyles.None, English, out var refreshSeconds) == false || refreshSeconds is < 15 or > 3600)
         {
             commit = null;
-            error = "Vul voor het verversen een aantal seconden in tussen 15 en 3600.";
+            error = "Enter a number of seconds between 15 and 3600 for the refresh.";
             return false;
         }
 
@@ -112,7 +112,7 @@ internal sealed class ProductivitySettingsControl : UserControl, IPluginSettings
             else
             {
                 commit = null;
-                error = $"Vul voor {profile} een tarief in, bijvoorbeeld 3,5, of laat het leeg.";
+                error = $"Enter a rate for {profile}, for example 3.5, or leave it empty.";
                 return false;
             }
         }
@@ -145,7 +145,7 @@ internal sealed class ProductivitySettingsControl : UserControl, IPluginSettings
                 {
                     Name = $"Rate{_rates.Count}",
                     Width = 80,
-                    Text = _storedRates.TryGetValue(profile.Label, out var rate) ? rate.ToString("0.##", Dutch) : string.Empty,
+                    Text = _storedRates.TryGetValue(profile.Label, out var rate) ? rate.ToString("0.##", English) : string.Empty,
                 };
                 _rates.Add((profile.Label, box));
                 _rateRows.Children.Add(new StackPanel
@@ -158,7 +158,7 @@ internal sealed class ProductivitySettingsControl : UserControl, IPluginSettings
         }
         catch (Exception exception)
         {
-            _host.ShowToast($"De profielen konden niet worden geladen: {exception.Message}", PluginToastSeverity.Error);
+            _host.ShowToast($"The profiles could not be loaded: {exception.Message}", PluginToastSeverity.Error);
         }
     }
 
@@ -168,14 +168,14 @@ internal sealed class ProductivitySettingsControl : UserControl, IPluginSettings
         {
             foreach (var project in await _host.GetProjectsAsync() ?? [])
             {
-                var box = new CheckBox { Content = $"{project.Name} · privé", IsChecked = _settings.PrivateProjects.Contains(project.Id, StringComparer.Ordinal) };
+                var box = new CheckBox { Content = $"{project.Name} · private", IsChecked = _settings.PrivateProjects.Contains(project.Id, StringComparer.Ordinal) };
                 _private.Add((project.Id, box));
                 _projects.Children.Add(box);
             }
         }
         catch (Exception exception)
         {
-            _host.ShowToast($"De projecten konden niet worden geladen: {exception.Message}", PluginToastSeverity.Error);
+            _host.ShowToast($"The projects could not be loaded: {exception.Message}", PluginToastSeverity.Error);
         }
     }
 }
