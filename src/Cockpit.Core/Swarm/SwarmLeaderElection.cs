@@ -22,10 +22,14 @@ public interface ISwarmLeadership
     T WithLeader<T>(Func<SwarmMember?, T> action) => action(Current);
     Task TakeOverNowAsync(CancellationToken ct = default);
     Task StayWithCurrentAsync(CancellationToken ct = default);
+    Task ClaimLeadershipAsync(CancellationToken ct = default) => throw new NotSupportedException();
 }
 
 public static class SwarmLeaderElection
 {
+    public static SwarmRankChange ClaimLead(SwarmMembership register, SwarmMemberId member) =>
+        new(member, SwarmRank.DrawBelow(register.Members.Select(item => item.Rank)), register.Sequence + 1);
+
     public static SwarmRankChange RejoinAtBack(SwarmMembership register, SwarmMemberId member) =>
         new(member, SwarmRank.DrawAbove(register.Members.Select(item => item.Rank)), register.Sequence + 1);
 

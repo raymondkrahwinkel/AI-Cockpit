@@ -109,6 +109,16 @@ internal sealed class SwarmHeartbeat(
     {
         kick?.MapRoutes(routes, services);
         var group = SwarmNetworkPolicy.MapGroup(routes, services);
+        group.MapPost("/claim", (Delegate)((HttpContext context) => HandleAsync(context, async peer =>
+        {
+            var record = await context.Request.ReadFromJsonAsync<SwarmRecord>(SwarmRecordJson.Options, context.RequestAborted);
+            if (record is null || record.Signatures is null)
+            {
+                return Results.BadRequest();
+            }
+            var delta = await leadership.AcceptClaimAsync(peer, record, context.RequestAborted);
+            return Results.Json(delta, SwarmRecordJson.Options);
+        })));
         group.MapPost("/heartbeat", (Delegate)((HttpContext context) => HandleAsync(context, async peer =>
         {
             var record = await context.Request.ReadFromJsonAsync<SwarmRecord>(SwarmRecordJson.Options, context.RequestAborted);

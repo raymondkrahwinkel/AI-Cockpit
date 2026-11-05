@@ -302,6 +302,8 @@
                             <TextBlock Text="{Binding Swarm.RemovalStatus}" TextWrapping="Wrap"/>
                         </Border>
                         <TextBlock Text="{Binding Swarm.LeaderLine}" TextWrapping="Wrap" FontWeight="SemiBold"/>
+                        <Button Content="Make this machine leader" Classes="Compact" HorizontalAlignment="Left"
+                                Command="{Binding Swarm.ClaimLeadershipCommand}" IsVisible="{Binding Swarm.CanClaimLeadership}"/>
                         <Border Classes="errorCard informational" Padding="12,10" IsVisible="{Binding Swarm.NoOtherMachineOnline}">
                             <StackPanel Spacing="4">
                                 <TextBlock Text="No other machine online" FontWeight="SemiBold"/>

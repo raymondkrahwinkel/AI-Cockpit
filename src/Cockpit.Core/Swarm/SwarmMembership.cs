@@ -18,6 +18,9 @@ public sealed class SwarmMembership
 
     public IReadOnlyList<SwarmRecord> Log => _log;
 
+    public SwarmMemberId? ClaimedLeader { get; private set; }
+    public long ClaimSequence { get; private set; }
+
     public IEnumerable<SwarmMember> Members => _members.Values.Where(member => !_tombstones.ContainsKey(member.Id));
 
     public IEnumerable<SwarmTombstone> Tombstones => _tombstones.Values;
@@ -62,6 +65,15 @@ public sealed class SwarmMembership
                 _tombstones.Add(tombstone.Member, tombstone);
                 break;
             case SwarmRankChange rank:
+                if (Members.All(member => member.Rank > rank.Rank))
+                {
+                    ClaimedLeader = rank.Member;
+                    ClaimSequence = rank.Sequence;
+                }
+                else if (ClaimedLeader == rank.Member)
+                {
+                    ClaimedLeader = null;
+                }
                 _members[rank.Member] = _members[rank.Member] with { Rank = rank.Rank };
                 break;
         }
@@ -90,7 +102,8 @@ public sealed class SwarmMembership
             SwarmTombstone tombstone => _JudgeTombstone(tombstone, signers),
             SwarmRankChange rank => PublicKeyOf(rank.Member) is null ? SwarmMembershipVerdict.UnknownMember
                 : !signers.Contains(rank.Member) ? SwarmMembershipVerdict.MissingSignature
-                : Members.Any(member => member.Rank >= rank.Rank) ? SwarmMembershipVerdict.RankTaken
+                : Members.Any(member => member.Rank >= rank.Rank) && Members.Any(member => member.Rank <= rank.Rank)
+                    ? SwarmMembershipVerdict.RankTaken
                 : SwarmMembershipVerdict.Accepted,
             _ => SwarmMembershipVerdict.Malformed,
         };

@@ -1,14 +1,17 @@
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Swarm;
+using System.Text.Json;
 
 namespace Cockpit.Infrastructure.Swarm;
 
 internal sealed class SwarmLeadership(SwarmMembershipStore store, SwarmSettingsStore settings,
-    SwarmIdentity identity, SwarmReachability reachability) : ISwarmLeadership, ISingletonService
+    SwarmIdentity identity, SwarmReachability reachability, SwarmClaimClient? claims = null) : ISwarmLeadership, ISingletonService
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private volatile SwarmLeadershipState _state = new();
     private volatile bool _active;
+    private long _observedClaim;
+    private SwarmMemberId? _honoredClaim;
     public bool IsActive => _active;
     private readonly Lock _leadershipGate = new();
     public T WithLeader<T>(Func<SwarmMember?, T> action)
@@ -101,6 +104,63 @@ internal sealed class SwarmLeadership(SwarmMembershipStore store, SwarmSettingsS
     public Task TakeOverNowAsync(CancellationToken ct = default) => RefreshAsync(SwarmTakeoverAction.TakeOverNow, ct);
     public Task StayWithCurrentAsync(CancellationToken ct = default) => RefreshAsync(SwarmTakeoverAction.StayWithCurrent, ct);
 
+    public async Task ClaimLeadershipAsync(CancellationToken ct = default)
+    {
+        if (IsSelf)
+        {
+            return;
+        }
+        var leader = Current ?? throw new InvalidOperationException("The leader is unreachable. Wait for the normal election.");
+        if (IsActive == false || reachability.Get(leader.Id).Status != SwarmPresence.Online)
+        {
+            throw new InvalidOperationException("The leader is unreachable. Wait for the normal election.");
+        }
+        var client = claims ?? throw new InvalidOperationException("Swarm claims are unavailable.");
+        await client.ClaimAsync(leader, ct);
+        await RefreshAsync(ct: ct);
+    }
+
+    internal async Task<SwarmRecords> AcceptClaimAsync(SwarmMemberId caller, SwarmRecord record, CancellationToken ct)
+    {
+        SwarmRecords result;
+        await _gate.WaitAsync(ct);
+        try
+        {
+            await store.Gate.WaitAsync(ct);
+            try
+            {
+                var register = await store.LoadAsync(ct);
+                var change = record.Payload.Deserialize<SwarmChange>(SwarmRecordJson.Options);
+                if (IsSelf == false || IsActive == false || caller == identity.MemberId
+                    || change is not SwarmRankChange rank || rank.Member != caller
+                    || register.Members.Any(member => member.Rank <= rank.Rank)
+                    || register.Accept(record) != SwarmMembershipVerdict.Accepted)
+                {
+                    throw new InvalidDataException("swarm_claim_conflict");
+                }
+                store.Save(register);
+                _honoredClaim = caller;
+                _observedClaim = register.ClaimSequence;
+                var leader = register.Members.Single(member => member.Id == caller);
+                lock (_leadershipGate)
+                {
+                    _state = new(leader);
+                }
+                result = new(0, null, register.Log.ToArray());
+            }
+            finally
+            {
+                store.Gate.Release();
+            }
+        }
+        finally
+        {
+            _gate.Release();
+        }
+        Changed?.Invoke(this, EventArgs.Empty);
+        return result;
+    }
+
     internal async Task RefreshAsync(SwarmTakeoverAction action = SwarmTakeoverAction.Wait, CancellationToken ct = default, bool asleep = false)
     {
         bool changed;
@@ -114,8 +174,23 @@ internal sealed class SwarmLeadership(SwarmMembershipStore store, SwarmSettingsS
             SwarmMemberPresence Presence(SwarmMemberId id) => id == identity.MemberId
                 ? new(asleep ? SwarmPresence.Asleep : SwarmPresence.Online, now, true)
                 : reachability.Get(id);
+            if (_active && register.ClaimSequence > _observedClaim)
+            {
+                _honoredClaim = register.ClaimedLeader;
+            }
+            _observedClaim = register.ClaimSequence;
+            var claimed = register.Members.FirstOrDefault(member => member.Id == _honoredClaim
+                && Presence(member.Id).Status == SwarmPresence.Online);
+            if (claimed is null)
+            {
+                _honoredClaim = null;
+            }
             var previous = _state;
-            if (previous.Current is null)
+            if (claimed is not null)
+            {
+                previous = new(claimed);
+            }
+            else if (previous.Current is null)
             {
                 var peer = register.Members.Where(member => member.Id != identity.MemberId && Presence(member.Id).Status == SwarmPresence.Online
                     && _leaders.TryGetValue(member.Id, out var leader) && leader == member.Id)

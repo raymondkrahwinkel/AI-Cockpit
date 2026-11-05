@@ -1,5 +1,6 @@
 using Cockpit.Core.Assistant;
 using Cockpit.App.Services;
+using CommunityToolkit.Mvvm.Input;
 
 namespace Cockpit.App.ViewModels;
 
@@ -20,6 +21,27 @@ public sealed partial class AssistantChatViewModel
     public bool LeaderIsServer => _cockpit?.AssistantLeaderIsServer == true;
     public string? LeaderSessionError => _leaderSessionError;
     public bool CanClearConversation => !IsFollowingLeader;
+    public bool CanClaimLeadership => IsFollowingLeader;
+    private string? _claimError;
+    public string? ClaimError => _claimError;
+
+    [RelayCommand(CanExecute = nameof(CanClaimLeadership))]
+    private async Task ClaimLeadershipAsync()
+    {
+        _claimError = null;
+        try
+        {
+            if (_cockpit?.SwarmLeadership is { } leadership)
+            {
+                await leadership.ClaimLeadershipAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _claimError = $"Could not take over. {ex.Message}";
+        }
+        OnPropertyChanged(nameof(ClaimError));
+    }
 
     internal async Task RefreshLeaderSessionAsync(CancellationToken cancellationToken = default)
     {
