@@ -100,6 +100,7 @@ internal sealed partial class AgentOwnedTabs
             await page.CallAsync("Page.enable", null, timeout.Token).ConfigureAwait(false);
             await page.CallAsync("Page.setLifecycleEventsEnabled", new { enabled = true }, timeout.Token).ConfigureAwait(false);
             Check(caller, session.Generation, mutate: true);
+            await boundary.PermitAgentNavigationAsync(target, uri, timeout.Token).ConfigureAwait(false);
             var navigation = await page.CallAsync("Page.navigate", new { url = uri.AbsoluteUri }, timeout.Token).ConfigureAwait(false);
             if (navigation.TryGetProperty("isDownload", out var download) && download.GetBoolean())
             {

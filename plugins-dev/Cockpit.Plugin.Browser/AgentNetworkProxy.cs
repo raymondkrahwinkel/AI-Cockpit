@@ -89,11 +89,17 @@ internal sealed class AgentNetworkProxy : IDisposable
                     await ReplyAsync(downstream, 2, token).ConfigureAwait(false);
                     return;
                 }
+                await ReplyAsync(downstream, 0, token).ConfigureAwait(false);
+                var initial = await ReadInitialAsync(downstream, token).ConfigureAwait(false);
+                if (_policy().IsOwnMachineOnly(resolved.Addresses) && IsForeignWebSocket(initial))
+                {
+                    return;
+                }
                 // This overload uses only checked numeric addresses, including fallback; no second DNS lookup can rebind.
                 await upstream.ConnectAsync(resolved.Addresses, port, token).ConfigureAwait(false);
-                await ReplyAsync(downstream, 0, token).ConfigureAwait(false);
                 using var remote = new NetworkStream(upstream, ownsSocket: false);
                 using var relay = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+                await remote.WriteAsync(initial, relay.Token).ConfigureAwait(false);
                 var sending = downstream.CopyToAsync(remote, relay.Token);
                 var receiving = remote.CopyToAsync(downstream, relay.Token);
                 await Task.WhenAny(sending, receiving).ConfigureAwait(false);
@@ -137,6 +143,29 @@ internal sealed class AgentNetworkProxy : IDisposable
         await stream.ReadExactlyAsync(address, token).ConfigureAwait(false);
         var ip = new IPAddress(address);
         return type == 4 ? $"[{ip}]" : ip.ToString();
+    }
+
+    private static async Task<byte[]> ReadInitialAsync(Stream stream, CancellationToken token)
+    {
+        var buffer = new byte[16 * 1024];
+        var read = await stream.ReadAsync(buffer, token).ConfigureAwait(false);
+        return buffer[..read];
+    }
+
+    private bool IsForeignWebSocket(byte[] initial)
+    {
+        var request = Encoding.ASCII.GetString(initial);
+        if (!request.Contains("\r\nUpgrade: websocket", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+        var origin = request.Split("\r\n", StringSplitOptions.None).FirstOrDefault(line => line.StartsWith("Origin:", StringComparison.OrdinalIgnoreCase))?[7..].Trim();
+        if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri))
+        {
+            return true;
+        }
+        var resolved = _policy().ResolveAsync(uri, _lifetime.Token).GetAwaiter().GetResult();
+        return resolved.Reason is not null || !_policy().IsOwnMachineOnly(resolved.Addresses);
     }
 
     private static ValueTask ReplyAsync(Stream stream, byte status, CancellationToken token) =>

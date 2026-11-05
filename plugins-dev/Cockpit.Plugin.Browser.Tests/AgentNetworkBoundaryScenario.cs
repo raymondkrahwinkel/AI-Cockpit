@@ -34,12 +34,14 @@ internal static class AgentNetworkBoundaryScenario
         using var page = await CdpPage.ConnectAsync(Assert.IsType<string>(target.RootElement.GetProperty("webSocketDebuggerUrl").GetString()),
             (name, data) => { _ = name == "Page.loadEventFired" && loaded.TrySetResult(); }, timeout.Token);
         await page.CallAsync("Page.enable", null, timeout.Token);
+        Assert.False(await SocketAsync(page, destination.Url, timeout.Token));
+        await boundary.PermitAgentNavigationAsync(id, new Uri(pageFixture.Url), timeout.Token);
         await page.CallAsync("Page.navigate", new { url = pageFixture.Url }, timeout.Token);
         await loaded.Task.WaitAsync(timeout.Token);
 
-        Assert.False(await FetchAsync(page, destination.Url, timeout.Token));
-        Assert.Equal("network_blocked", boundary.TakeBlocked(id)?.Code);
-        Assert.False(await SocketAsync(page, destination.Url, timeout.Token));
+        Assert.True(await FetchAsync(page, destination.Url, timeout.Token));
+        Assert.Null(boundary.TakeBlocked(id));
+        Assert.True(await SocketAsync(page, destination.Url, timeout.Token));
         settings.SaveAgentNetworkAllowlist([new Uri(pageFixture.Url).Authority, new Uri(destination.Url).Authority]);
         Assert.True(await FetchAsync(page, destination.Url, timeout.Token));
         Assert.True(await SocketAsync(page, destination.Url, timeout.Token));

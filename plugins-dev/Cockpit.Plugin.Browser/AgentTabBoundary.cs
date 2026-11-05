@@ -12,6 +12,10 @@ internal sealed class AgentTabBoundary(Func<string, bool> register, Action<strin
     private readonly ConcurrentDictionary<string, Blocked> _blocked = new();
     private readonly ConcurrentDictionary<string, string> _openers = new();
     private readonly ConcurrentDictionary<string, ConcurrentQueue<string>> _popupUrls = new();
+    private readonly ConcurrentDictionary<(string Target, string Url), byte> _agentNavigations = new();
+    private readonly ConcurrentDictionary<(string Target, string Url), byte> _pendingLocalNavigations = new();
+    private readonly ConcurrentDictionary<(string Target, string Frame), byte> _localFrames = new();
+    private readonly ConcurrentDictionary<string, byte> _blankTargets = new();
     private CdpPage? _browser;
     private CdpPage Browser => _browser ?? throw new IOException("The agent boundary is not connected.");
 
@@ -39,6 +43,15 @@ internal sealed class AgentTabBoundary(Func<string, bool> register, Action<strin
 
     public Blocked? TakeBlocked(string target) => _blocked.TryRemove(target, out var blocked) ? blocked : null;
 
+    public Task PermitAgentNavigationAsync(string target, Uri url, CancellationToken token)
+    {
+        _blankTargets.TryRemove(target, out _);
+        _agentNavigations[(target, url.AbsoluteUri)] = 0;
+        _agentNavigations[(target, "")] = 0;
+        _ = ExpireAgentNavigationAsync(target);
+        return Task.CompletedTask;
+    }
+
     private void OnEvent(string name, JsonElement data, string? session)
     {
         _ = HandleAsync(name, data.Clone(), session);
@@ -52,6 +65,7 @@ internal sealed class AgentTabBoundary(Func<string, bool> register, Action<strin
             if (name == "Target.targetDestroyed")
             {
                 var destroyed = RequiredString(data, "targetId");
+                ClearTarget(destroyed);
                 _ = Task.Run(() => closed(destroyed));
                 return;
             }
@@ -65,14 +79,21 @@ internal sealed class AgentTabBoundary(Func<string, bool> register, Action<strin
                 {
                     var openerId = opener.GetString() ?? throw new IOException("The popup has no opener.");
                     _openers[target] = openerId;
-                    if (_popupUrls.TryGetValue(openerId, out var urls) && urls.TryDequeue(out var popupUrl) && !IsWeb(popupUrl))
+                    if (_popupUrls.TryGetValue(openerId, out var urls) && urls.TryDequeue(out var popupUrl))
                     {
-                        _blocked[openerId] = new("invalid_argument", "Only http(s) pages are allowed.");
-                        var close = CloseAsync(target);
-                        // Chromium needs the paused renderer released to finish the already requested close.
-                        await SendAsync("Runtime.runIfWaitingForDebugger", null, session).ConfigureAwait(false);
-                        await close.ConfigureAwait(false);
-                        return;
+                        if (!IsWeb(popupUrl))
+                        {
+                            _blocked[openerId] = new("invalid_argument", "Only http(s) pages are allowed.");
+                            var close = CloseAsync(target);
+                            // Chromium needs the paused renderer released to finish the already requested close.
+                            await SendAsync("Runtime.runIfWaitingForDebugger", null, session).ConfigureAwait(false);
+                            await close.ConfigureAwait(false);
+                            return;
+                        }
+                        if (_localFrames.Keys.Any(key => key.Target == openerId))
+                        {
+                            await PermitAgentNavigationAsync(target, new Uri(popupUrl, UriKind.Absolute), _lifetime.Token).ConfigureAwait(false);
+                        }
                     }
                 }
                 await SendAsync("Fetch.enable", new { patterns = new object[] {
@@ -96,12 +117,34 @@ internal sealed class AgentTabBoundary(Func<string, bool> register, Action<strin
                 await SendAsync("Runtime.runIfWaitingForDebugger", null, session).ConfigureAwait(false);
                 await chooser.ConfigureAwait(false);
                 await SendAsync("Page.enable", null, session).ConfigureAwait(false);
+                if (url == "about:blank")
+                {
+                    _blankTargets[target] = 0;
+                    _ = CloseUnusedBlankAsync(target);
+                }
                 _ready.GetOrAdd(target, _ => new(TaskCreationOptions.RunContinuationsAsynchronously)).TrySetResult();
+            }
+            else if (name == "Page.frameNavigated" && target is not null)
+            {
+                var frame = data.GetProperty("frame");
+                var frameId = RequiredString(frame, "id");
+                var url = RequiredString(frame, "url");
+                var key = (target, url);
+                _blankTargets.TryRemove(target, out _);
+                if (_pendingLocalNavigations.TryRemove(key, out _)
+                    || frame.TryGetProperty("parentId", out var parent) && _localFrames.ContainsKey((target, parent.GetString() ?? "")))
+                {
+                    _localFrames[(target, frameId)] = 0;
+                }
+                else
+                {
+                    _localFrames.TryRemove((target, frameId), out _);
+                }
             }
             else if (name == "Fetch.requestPaused" && session is not null)
             {
                 var requestUrl = data.GetProperty("request").GetProperty("url").GetString();
-                var blocked = await CheckAddressAsync(requestUrl).ConfigureAwait(false);
+                var blocked = data.TryGetProperty("responseStatusCode", out _) ? null : await CheckAddressAsync(requestUrl, target, data).ConfigureAwait(false);
                 if (data.TryGetProperty("responseHeaders", out var headers))
                 {
                     foreach (var header in headers.EnumerateArray())
@@ -109,7 +152,9 @@ internal sealed class AgentTabBoundary(Func<string, bool> register, Action<strin
                         var location = string.Equals(header.GetProperty("name").GetString(), "Location", StringComparison.OrdinalIgnoreCase);
                         if (location && Uri.TryCreate(requestUrl, UriKind.Absolute, out var requestUri) && Uri.TryCreate(requestUri, header.GetProperty("value").GetString(), out var redirect))
                         {
-                            blocked ??= await CheckAddressAsync(redirect.AbsoluteUri).ConfigureAwait(false);
+                            var document = data.TryGetProperty("resourceType", out var resourceType) && resourceType.GetString() == "Document";
+                            var directLocalRedirect = target is not null && document && _pendingLocalNavigations.Keys.Any(key => key.Target == target);
+                            blocked ??= await CheckAddressAsync(redirect.AbsoluteUri, target, data, directLocalRedirect).ConfigureAwait(false);
                         }
                     }
                 }
@@ -150,14 +195,70 @@ internal sealed class AgentTabBoundary(Func<string, bool> register, Action<strin
         }
     }
 
-    private async Task<Blocked?> CheckAddressAsync(string? url)
+    private async Task<Blocked?> CheckAddressAsync(string? url, string? target, JsonElement request, bool inheritedAgentNavigation = false)
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
         {
             return new("invalid_argument", "Only http(s) pages are allowed.");
         }
-        var reason = await addressPolicy.BlockReasonAsync(uri, _lifetime.Token).ConfigureAwait(false);
-        return reason is null ? null : new("network_blocked", reason);
+        var document = request.TryGetProperty("resourceType", out var resourceType) && resourceType.GetString() == "Document";
+        var resolved = await addressPolicy.ResolveAsync(uri, _lifetime.Token).ConfigureAwait(false);
+        if (resolved.Reason is not null)
+        {
+            return new("network_blocked", resolved.Reason);
+        }
+        var localAddress = addressPolicy.IsOwnMachineOnly(resolved.Addresses);
+        if (!localAddress)
+        {
+            return null;
+        }
+        if (target is null) return null;
+
+        var frame = request.TryGetProperty("frameId", out var frameId) ? frameId.GetString() : null;
+        var agentNavigation = inheritedAgentNavigation || document && (_agentNavigations.TryRemove((target, uri.AbsoluteUri), out _)
+            || _agentNavigations.TryRemove((target, ""), out _));
+        var localPage = frame is not null && _localFrames.ContainsKey((target, frame));
+        if (!agentNavigation && !localPage)
+        {
+            return new("network_blocked", "Network access blocked: a local service may only be opened by the agent or by a local page.");
+        }
+        if (document)
+        {
+            _pendingLocalNavigations[(target, uri.AbsoluteUri)] = 0;
+        }
+        return null;
+    }
+
+    private void ClearTarget(string target)
+    {
+        _blankTargets.TryRemove(target, out _);
+        foreach (var key in _agentNavigations.Keys.Where(key => key.Target == target)) _agentNavigations.TryRemove(key, out _);
+        foreach (var key in _pendingLocalNavigations.Keys.Where(key => key.Target == target)) _pendingLocalNavigations.TryRemove(key, out _);
+        foreach (var key in _localFrames.Keys.Where(key => key.Target == target)) _localFrames.TryRemove(key, out _);
+    }
+
+
+    private async Task CloseUnusedBlankAsync(string target)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(2), _lifetime.Token).ConfigureAwait(false);
+            if (_blankTargets.TryRemove(target, out _))
+            {
+                await CloseAsync(target).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private async Task ExpireAgentNavigationAsync(string target)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(2), _lifetime.Token).ConfigureAwait(false);
+            _agentNavigations.TryRemove((target, ""), out _);
+        }
+        catch (OperationCanceledException) { }
     }
 
     private Task<JsonElement> SendAsync(string method, object? parameters, string session) =>

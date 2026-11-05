@@ -49,6 +49,7 @@ internal sealed partial class AgentOwnedTabs
             switch (action.Tool)
             {
                 case "navigate":
+                    await boundary.PermitAgentNavigationAsync(entry.Target, new Uri(action.Text!, UriKind.Absolute), token).ConfigureAwait(false);
                     var navigation = await Send("Page.navigate", new { url = action.Text }).ConfigureAwait(false);
                     if (navigation.TryGetProperty("isDownload", out var download) && download.GetBoolean())
                         throw new OwnedTabException("confirmation_required", "File transfer requires an operator action.");
