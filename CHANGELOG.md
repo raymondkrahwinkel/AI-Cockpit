@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2117: reset swarm membership from any state, rejoin with fresh confirmation, show standalone/paused status and explain conflicting histories.
+
 - Take over swarm leadership on this machine from the assistant chat or Options › Swarm, through the reachable current leader.
 
 - Proxmox VE supports multiple named servers; MCP tools and the overview select one explicitly, and their tokens are scrubbed from settings exports.

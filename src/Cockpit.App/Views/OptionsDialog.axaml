@@ -303,6 +303,11 @@
                             <TextBlock Text="{Binding Swarm.RemovalStatus}" TextWrapping="Wrap"/>
                         </Border>
                         <TextBlock Text="{Binding Swarm.LeaderLine}" TextWrapping="Wrap" FontWeight="SemiBold"/>
+                        <Button Content="Leave / reset swarm…" Classes="Compact" HorizontalAlignment="Left"
+                                Command="{Binding Swarm.ResetCommand}" IsEnabled="{Binding !Swarm.IsBusy}"/>
+                        <Border Classes="errorCard temporary" Padding="12,10" IsVisible="{Binding Swarm.ConnectionFailure.Length}">
+                            <TextBlock Text="{Binding Swarm.ConnectionFailure}" TextWrapping="Wrap"/>
+                        </Border>
                         <Button Content="Make this machine leader" Classes="Compact" HorizontalAlignment="Left"
                                 Command="{Binding Swarm.ClaimLeadershipCommand}" IsVisible="{Binding Swarm.CanClaimLeadership}"/>
                         <Border Classes="errorCard informational" Padding="12,10" IsVisible="{Binding Swarm.NoOtherMachineOnline}">
@@ -400,7 +405,7 @@
                         <TextBlock Classes="optionsHint" TextWrapping="Wrap"
                                    IsVisible="{Binding Security.PersistError.Length}"
                                    Text="{Binding Security.PersistError}"/>
-                        <TextBlock Text="Apply this setting and restart Cockpit to change the network listener." Classes="optionsHint"/>
+                        <TextBlock Text="Apply to pause swarm participation; membership is kept. Restart Cockpit to change the network listener. Use Leave / reset swarm to become standalone." Classes="optionsHint"/>
                         <TextBlock Text="{Binding Security.NodePairingAddress}" Classes="optionsHint" IsVisible="{Binding Security.NodeEndpointEnabled}"/>
                         <Border Padding="10" CornerRadius="{StaticResource CockpitControlRadius}"
                                 Background="{DynamicResource CockpitInsetBgBrush}" IsVisible="{Binding Swarm.Incoming, Converter={x:Static ObjectConverters.IsNotNull}}">
