@@ -956,7 +956,17 @@ public partial class PluginManagerViewModel : ViewModelBase
     // Whether the sidebar "Plugin store" badge shows — true while the background checker's last count found updates (AC-76).
     public bool HasUpdateBadge => UpdateBadgeCount > 0;
 
-    partial void OnUpdateBadgeCountChanged(int value) => OnPropertyChanged(nameof(HasUpdateBadge));
+    // Raised when the last pending update is gone, whichever route installed it, so the "update available" toast can go.
+    public event Action? UpdatesCleared;
+
+    partial void OnUpdateBadgeCountChanged(int value)
+    {
+        OnPropertyChanged(nameof(HasUpdateBadge));
+        if (value == 0)
+        {
+            UpdatesCleared?.Invoke();
+        }
+    }
 
     // AC-208: Plugins is only ever populated by LoadAsync, which runs when the operator opens the Options/store dialog
     // — not at startup.

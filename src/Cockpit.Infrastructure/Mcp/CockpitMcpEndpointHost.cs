@@ -159,6 +159,36 @@ internal sealed class CockpitMcpEndpointHost
         }
     }
 
+    private int _MountedPort(string serverName)
+    {
+        lock (_mountedLock)
+        {
+            return _mounted.FirstOrDefault(endpoint => endpoint.Name == serverName) is { } endpoint ? new Uri(endpoint.Url).Port : 0;
+        }
+    }
+
+    // The old listener has just stopped; give the OS a moment to release the port, else fall back to a fresh one.
+    private static async Task<int> _WaitUntilFreeAsync(int port)
+    {
+        for (var attempt = 0; port != 0 && attempt < 20; attempt++)
+        {
+            try
+            {
+                var probe = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, port);
+                probe.Start();
+                probe.Stop();
+
+                return port;
+            }
+            catch (System.Net.Sockets.SocketException)
+            {
+                await Task.Delay(100).ConfigureAwait(false);
+            }
+        }
+
+        return 0;
+    }
+
     private string? _RetiredReason(string serverName)
     {
         lock (_mountedLock)
@@ -174,6 +204,7 @@ internal sealed class CockpitMcpEndpointHost
         {
             // Idempotent per name: a plugin re-initialised, or two racing to mount, must not bind a second listener
             // for the same MCP server.
+            var loopbackPort = 0;
             if (_IsMounted(serverName))
             {
                 if (_RetiredReason(serverName) is null)
@@ -181,7 +212,10 @@ internal sealed class CockpitMcpEndpointHost
                     return false;
                 }
 
+                // A session started before the update still holds the old URL, so the replacement takes its port.
+                loopbackPort = _MountedPort(serverName);
                 await _UnmountLockedAsync(serverName).ConfigureAwait(false);
+                loopbackPort = await _WaitUntilFreeAsync(loopbackPort).ConfigureAwait(false);
             }
 
             var builder = WebApplication.CreateSlimBuilder();
@@ -262,7 +296,7 @@ internal sealed class CockpitMcpEndpointHost
             {
                 // Port 0 lets the OS pick a free loopback port. IPv4 specifically, not ListenLocalhost — that binds
                 // both families on one shared dynamic port, which Kestrel refuses.
-                options.Listen(System.Net.IPAddress.Loopback, 0);
+                options.Listen(System.Net.IPAddress.Loopback, loopbackPort);
                 if (bindNodeListener)
                 {
                     // A second, network-reachable listener next to the loopback one (AC-790), guarded by connect keys
