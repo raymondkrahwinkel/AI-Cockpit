@@ -355,6 +355,10 @@
                         <TextBlock Text="Rank order" FontWeight="SemiBold" FontSize="12"/>
                         <TextBlock Text="{Binding Swarm.RankOrder}" Classes="optionsHint"/>
 
+                        <Border Classes="errorCard blocking" Padding="12,10"
+                                IsVisible="{Binding Swarm.PairingError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                            <TextBlock Text="{Binding Swarm.PairingError}" TextWrapping="Wrap"/>
+                        </Border>
                         <TextBlock Text="Add a machine" FontWeight="SemiBold" Margin="0,12,0,0"/>
                         <TextBlock Classes="optionsHint" TextWrapping="Wrap"
                                    Text="{x:Static terms:ProviderTerms.GeneralNotice}"/>
@@ -389,7 +393,7 @@
                                 </StackPanel>
                             </StackPanel>
                         </Border>
-                        <TextBlock Text="{Binding Swarm.Status}" IsVisible="{Binding Swarm.Status.Length}" Classes="optionsHint"/>
+                        <TextBlock Text="{Binding Swarm.Status}" IsVisible="{Binding Swarm.Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" TextWrapping="Wrap" Classes="optionsHint"/>
 
                         <TextBlock Text="This machine" FontWeight="SemiBold" Margin="0,12,0,0"/>
                         <CheckBox Content="Accept connections from my other Cockpits" IsChecked="{Binding Security.NodeEndpointEnabled}"/>

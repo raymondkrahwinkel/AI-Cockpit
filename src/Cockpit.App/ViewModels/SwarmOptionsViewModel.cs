@@ -52,6 +52,7 @@ public sealed partial class SwarmOptionsViewModel(ISwarmOptions? options = null,
     [ObservableProperty] private string _cidrError = "";
     [ObservableProperty] private string _persistError = "";
     [ObservableProperty] private string _status = "";
+    [ObservableProperty] private string _pairingError = "";
     [ObservableProperty] private string _removalStatus = "";
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private string _pairingCode = "";
@@ -268,6 +269,7 @@ public sealed partial class SwarmOptionsViewModel(ISwarmOptions? options = null,
         }
         IsBusy = true;
         CancelPairing();
+        PairingError = "";
         try
         {
             _handshake = discovered ? await options.BeginAsync(address.Trim()) : await options.BeginManualAsync(address.Trim());
@@ -276,7 +278,7 @@ public sealed partial class SwarmOptionsViewModel(ISwarmOptions? options = null,
             PairingCode = _handshake.Code;
             Status = "Pairing expires after two minutes. Only continue if both screens show the same six digits.";
         }
-        catch (Exception ex) { Status = $"Could not start pairing. {ex.Message}"; }
+        catch (Exception ex) { PairingError = $"Could not start pairing. {ex.Message}"; }
         finally { IsBusy = false; await RefreshAsync(); }
     }
 
@@ -288,6 +290,7 @@ public sealed partial class SwarmOptionsViewModel(ISwarmOptions? options = null,
             return;
         }
         IsBusy = true;
+        PairingError = "";
         try
         {
             await options.CompleteAsync(_handshake, _discovered);
@@ -295,7 +298,7 @@ public sealed partial class SwarmOptionsViewModel(ISwarmOptions? options = null,
             CancelPairing();
             await RefreshAsync();
         }
-        catch (Exception ex) { Status = $"Pairing not completed. {ex.Message} Confirm on the other machine, then try again."; }
+        catch (Exception ex) { PairingError = $"Pairing not completed. {ex.Message}"; }
         finally { IsBusy = false; }
     }
 

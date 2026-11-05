@@ -45,9 +45,15 @@ public sealed partial class AssistantChatViewModel
 
     internal async Task RefreshLeaderSessionAsync(CancellationToken cancellationToken = default)
     {
-        var version = ++_leaderVersion;
         var leadership = _cockpit?.SwarmLeadership;
         var leader = leadership?.Current;
+        // Attaching a rebuilt host opens the chat again. Replacing a healthy follower session here
+        // would rebuild that host again, losing its composer and caret after every asynchronous open.
+        if (IsFollowingLeader && _leaderId == leader?.Id.Value && Session is { IsRemote: true, IsLinkUp: true })
+        {
+            return;
+        }
+        var version = ++_leaderVersion;
         _leaderId = leader?.Id.Value;
         _leaderSessionError = null;
         OnPropertyChanged(nameof(LeaderSessionError));

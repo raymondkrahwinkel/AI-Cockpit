@@ -45,7 +45,7 @@ public class SwarmKickTests
             return;
         }
         pair.B.Sleep = true;
-        await pair.A.Kick.RemoveAsync(third.Identity.MemberId, default);
+        await third.Kick.RemoveAsync(third.Identity.MemberId, default);
         Assert.Contains("removed_from_swarm", await third.Kick.StatusAsync(default));
         Assert.Contains("removal_pending", await pair.A.Kick.StatusAsync(default));
         Assert.NotNull((await pair.B.Membership.LoadAsync()).PublicKeyOf(third.Identity.MemberId));
@@ -66,11 +66,12 @@ public class SwarmKickTests
         var replay = pair.A.Identity.Sign(SwarmMembership.ToPayload(oldMember with { Sequence = current.Sequence + 1 }));
         using var key = third.Certificate.Value.GetECDsaPrivateKey()!;
         Assert.Equal(SwarmMembershipVerdict.Removed, current.Accept(replay.CoSign(key)));
-        var handshake = await pair.A.Client.BeginAsync(third.Address);
-        var pending = await Assert.ThrowsAsync<Cockpit.Core.Mcp.NodePairingException>(() => pair.A.Client.CompleteAsync(handshake));
+        var handshake = await third.Client.BeginAsync(pair.A.Address);
+        Assert.Equal(pair.A.Join.Pending?.Code, handshake.Code);
+        var pending = await Assert.ThrowsAsync<Cockpit.Core.Mcp.NodePairingException>(() => third.Client.CompleteAsync(handshake));
         Assert.Equal(Cockpit.Core.Mcp.NodePairingError.Pending, pending.Error);
-        third.Join.Confirm(handshake.Offer.PairingId);
-        await pair.A.Client.CompleteAsync(handshake);
+        pair.A.Join.Confirm(handshake.Offer.PairingId);
+        await third.Client.CompleteAsync(handshake);
         var rejoined = await pair.A.Membership.LoadAsync();
         Assert.NotEqual(oldRank, rejoined.Members.Single(member => member.Id == third.Identity.MemberId).Rank);
         Assert.NotNull((await third.Membership.LoadAsync()).PublicKeyOf(third.Identity.MemberId));
