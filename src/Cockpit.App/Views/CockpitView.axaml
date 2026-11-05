@@ -1174,6 +1174,30 @@
                     </Button>
                 </StackPanel>
 
+                <StackPanel DockPanel.Dock="Top" x:Name="SimpleOpenItems" Spacing="2" Margin="0,0,0,12" IsVisible="{Binding Workspaces.HasOpenItems}">
+                    <TextBlock Text="OPEN ITEMS" FontSize="11" FontWeight="SemiBold" Margin="2,0,0,2"
+                               Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                    <ScrollViewer MaxHeight="150" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding Workspaces.OpenItems}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:WorkspaceTabViewModel">
+                                    <Button Classes="Subtle" Padding="0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                                            Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).ShowSimpleWorkspaceCommand}" CommandParameter="{Binding Id}">
+                                        <Border Classes="sessionItem" Classes.active="{Binding IsActive}" Padding="10,7" CornerRadius="{StaticResource CockpitControlRadius}">
+                                            <DockPanel>
+                                                <Ellipse DockPanel.Dock="Right" Width="7" Height="7" Margin="7,0,0,0" VerticalAlignment="Center"
+                                                         Fill="{DynamicResource CockpitStatusWaitingBrush}" IsVisible="{Binding HasMarker}" ToolTip.Tip="Unsaved changes"/>
+                                                <materialIcons:MaterialIcon DockPanel.Dock="Left" Kind="{Binding Icon}" Width="16" Height="16" Margin="0,0,10,0"/>
+                                                <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                            </DockPanel>
+                                        </Border>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </StackPanel>
+
                 <!-- AC-1302: the tree of sessions. It groups *who drives what* — the assistant and the sessions
                      it started. AC-1305's rail groups *where something stands* (workspace -> sessions). Two trees
                      with the same shape and a different meaning: they may never become one tree, because half of
@@ -1226,27 +1250,6 @@
                             <ItemsControl x:Name="SimpleRailFlatSessions"
                                           ItemsSource="{Binding Sessions}"
                                           ItemTemplate="{StaticResource SimpleRailSessionRow}"/>
-                        </StackPanel>
-                        <StackPanel Spacing="2" Margin="0,6,0,0" IsVisible="{Binding Workspaces.HasOpenItems}">
-                            <TextBlock Text="OPEN ITEMS" FontSize="11" FontWeight="SemiBold" Margin="2,0,0,2"
-                                       Foreground="{DynamicResource CockpitTextFaintBrush}"/>
-                            <ItemsControl ItemsSource="{Binding Workspaces.OpenItems}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate x:DataType="vm:WorkspaceTabViewModel">
-                                        <Button Classes="Subtle" Padding="0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
-                                                Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).ShowSimpleWorkspaceCommand}" CommandParameter="{Binding Id}">
-                                            <Border Classes="sessionItem" Classes.active="{Binding IsActive}" Padding="10,7" CornerRadius="{StaticResource CockpitControlRadius}">
-                                                <DockPanel>
-                                                    <Ellipse DockPanel.Dock="Right" Width="7" Height="7" Margin="7,0,0,0" VerticalAlignment="Center"
-                                                             Fill="{DynamicResource CockpitStatusWaitingBrush}" IsVisible="{Binding HasMarker}" ToolTip.Tip="Unsaved changes"/>
-                                                    <materialIcons:MaterialIcon DockPanel.Dock="Left" Kind="{Binding Icon}" Width="16" Height="16" Margin="0,0,10,0"/>
-                                                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
-                                                </DockPanel>
-                                            </Border>
-                                        </Button>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
                         </StackPanel>
                     </StackPanel>
                 </ScrollViewer>
