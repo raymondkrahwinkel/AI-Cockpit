@@ -408,6 +408,20 @@ public class CodexAppServerSessionDriverTests
         var warning = Assert.Single(logger.Warnings);
         Assert.Contains("YouTrack: Personal", warning);
         Assert.Contains("thread-1", warning);
+
+        // Category D: the app-server contract marks reconnect notices with willRetry, not with message text.
+        await fake.PushStdoutAsync("""{"method":"turn/started","params":{"threadId":"thread-1","turn":{"id":"turn-1"}}}""");
+        await fake.PushStdoutAsync("""{"method":"error","params":{"error":{"message":"Reconnecting... 2/5"},"willRetry":true,"threadId":"thread-1","turnId":"turn-1"}}""");
+        await fake.PushStdoutAsync("""{"method":"item/agentMessage/delta","params":{"threadId":"thread-1","delta":"recovered"}}""");
+        await fake.PushStdoutAsync("""{"method":"turn/completed","params":{"threadId":"thread-1","turn":{"status":"completed"}}}""");
+
+        var events = await _CollectUntilTurnCompletedAsync(driver);
+        Assert.DoesNotContain(events, evt => evt is PluginSessionError);
+        Assert.False(Assert.Single(events.OfType<PluginTurnCompleted>()).IsError);
+
+        await fake.PushStdoutAsync("""{"method":"error","params":{"error":{"message":"authentication failed"},"willRetry":false,"threadId":"thread-1","turnId":"turn-2"}}""");
+        var terminal = await _NextEventOfTypeAsync<PluginSessionError>(driver);
+        Assert.Equal("authentication failed", terminal.Message);
     }
 
     // --- helpers -----------------------------------------------------------------------------------------
