@@ -190,7 +190,7 @@ internal sealed partial class McpToolProvider(
     private async Task<(ServerConnection? Connection, string? FailureReason)> _ConnectServerAsync(McpServerConfig server, string? sessionToken, CancellationToken cancellationToken, string? agentName = null, bool gateway = false)
     {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        deadline.CancelAfter(TimeSpan.FromSeconds(15));
+        deadline.CancelAfter(TimeSpan.FromSeconds(gateway ? 15 : 60));
         cancellationToken = deadline.Token;
         McpClient? client = null;
         var connected = false;
