@@ -89,12 +89,20 @@ public class AgentOwnedTabTests
     // L2b: address classification, DNS answers, explicit exceptions and validation share the agent boundary scenario.
     private static async Task ClassifierBoundaryAsync()
     {
-        var policy = new AddressPolicy(() => [], (_, _) => Task.FromResult(new[] { IPAddress.Parse("8.8.8.8"), IPAddress.Loopback }));
-        Assert.Contains("loopback", await policy.BlockReasonAsync(new Uri("http://127.0.0.1"), CancellationToken.None));
-        Assert.Contains("loopback", await policy.BlockReasonAsync(new Uri("http://[::1]"), CancellationToken.None));
-        Assert.Contains("loopback", await policy.BlockReasonAsync(new Uri("http://[::ffff:127.0.0.1]"), CancellationToken.None));
-        Assert.Contains("localhost", await policy.BlockReasonAsync(new Uri("http://LOCALHOST."), CancellationToken.None));
-        Assert.Contains("localhost", await policy.BlockReasonAsync(new Uri("http://app.localhost"), CancellationToken.None));
+        var ownMachine = IPAddress.Parse("192.168.1.42");
+        var policy = new AddressPolicy(() => [], (host, _) => Task.FromResult(
+            host.EndsWith("localhost", StringComparison.OrdinalIgnoreCase) || host.EndsWith("localhost.", StringComparison.OrdinalIgnoreCase)
+                ? new[] { IPAddress.Loopback }
+                : new[] { IPAddress.Parse("8.8.8.8"), IPAddress.Loopback }), () => [ownMachine]);
+        Assert.Null(await policy.BlockReasonAsync(new Uri("http://127.0.0.1"), CancellationToken.None));
+        Assert.Null(await policy.BlockReasonAsync(new Uri("http://127.0.0.2"), CancellationToken.None));
+        Assert.Null(await policy.BlockReasonAsync(new Uri("http://[::1]"), CancellationToken.None));
+        Assert.Null(await policy.BlockReasonAsync(new Uri("http://[::ffff:127.0.0.1]"), CancellationToken.None));
+        Assert.Null(await policy.BlockReasonAsync(new Uri("http://LOCALHOST."), CancellationToken.None));
+        Assert.Null(await policy.BlockReasonAsync(new Uri("http://app.localhost"), CancellationToken.None));
+        Assert.Null(await policy.BlockReasonAsync(new Uri("http://192.168.1.42"), CancellationToken.None));
+        var ownLocalName = new AddressPolicy(() => [], (_, _) => Task.FromResult(new[] { ownMachine }), () => [ownMachine]);
+        Assert.Null(await ownLocalName.BlockReasonAsync(new Uri("http://this-machine.local"), CancellationToken.None));
         Assert.Contains("RFC1918", await policy.BlockReasonAsync(new Uri("http://10.1.2.3"), CancellationToken.None));
         Assert.Contains("RFC1918", await policy.BlockReasonAsync(new Uri("http://172.16.0.1"), CancellationToken.None));
         Assert.Contains("RFC1918", await policy.BlockReasonAsync(new Uri("http://172.31.255.255"), CancellationToken.None));
@@ -108,6 +116,8 @@ public class AgentOwnedTabTests
         Assert.Contains("unspecified", await policy.BlockReasonAsync(new Uri("http://[::]"), CancellationToken.None));
         Assert.Contains(".local", await policy.BlockReasonAsync(new Uri("http://printer.local."), CancellationToken.None));
         Assert.Contains("loopback", await policy.BlockReasonAsync(new Uri("http://public.example"), CancellationToken.None));
+        var ownMachineRebind = new AddressPolicy(() => [], (_, _) => Task.FromResult(new[] { ownMachine }), () => [ownMachine]);
+        Assert.Contains("RFC1918", await ownMachineRebind.BlockReasonAsync(new Uri("http://public.example"), CancellationToken.None));
         Assert.Null(await policy.BlockReasonAsync(new Uri("https://8.8.8.8"), CancellationToken.None));
         Assert.Null(await policy.BlockReasonAsync(new Uri("http://172.32.0.1"), CancellationToken.None));
         Assert.Null(await policy.BlockReasonAsync(new Uri("http://100.128.0.1"), CancellationToken.None));
@@ -120,7 +130,7 @@ public class AgentOwnedTabTests
         Assert.Null(await allowed.BlockReasonAsync(new Uri("http://[::1]:8080"), CancellationToken.None));
         Assert.Null(await allowed.BlockReasonAsync(new Uri("http://[fd00::1]"), CancellationToken.None));
         Assert.Null(await allowed.BlockReasonAsync(new Uri("http://dev.local:9000"), CancellationToken.None));
-        Assert.Contains("localhost", await allowed.BlockReasonAsync(new Uri("http://localhost:8081"), CancellationToken.None));
+        Assert.Null(await allowed.BlockReasonAsync(new Uri("http://localhost:8081"), CancellationToken.None));
         var localRange = new AddressPolicy(() => ["127.0.0.0/8"], (_, _) => Task.FromResult(new[] { IPAddress.Loopback }));
         Assert.Null(await localRange.BlockReasonAsync(new Uri("http://localhost:8081"), CancellationToken.None));
         Assert.Throws<ArgumentException>(() => settings.SaveAgentNetworkAllowlist(["http://localhost"]));
@@ -140,26 +150,17 @@ public class AgentOwnedTabTests
         var tabs = new AgentOwnedTabs(browsers, new AddressPolicy(() => settings.AgentNetworkAllowlist));
         var localUrl = fixture.Url.Replace("127.0.0.1", "localhost", StringComparison.Ordinal);
         var localhost = await tabs.OpenAsync("network", localUrl, "self");
-        Assert.False(localhost.Ok);
-        Assert.Equal("network_blocked", localhost.Code);
-        Assert.Contains("localhost", localhost.Error);
+        Assert.True(localhost.Ok, localhost.Error);
         var loopback = await tabs.OpenAsync("network", fixture.Url, "self");
-        Assert.False(loopback.Ok);
-        Assert.Equal("network_blocked", loopback.Code);
-        Assert.Contains("loopback", loopback.Error);
-        Assert.Empty(await tabs.ListAsync("network"));
-        settings.SaveAgentNetworkAllowlist([new Uri(fixture.Url).Authority]);
+        Assert.True(loopback.Ok, loopback.Error);
+        Assert.Equal(2, (await tabs.ListAsync("network")).Count);
         var redirect = await tabs.OpenAsync("network", fixture.Url + "redirect?to=" + Uri.EscapeDataString(localUrl), "self");
-        Assert.False(redirect.Ok);
-        Assert.Equal("network_blocked", redirect.Code);
-        Assert.Contains("localhost", redirect.Error);
+        Assert.True(redirect.Ok, redirect.Error);
         var opened = await tabs.OpenAsync("network", fixture.Url, "self");
         Assert.True(opened.Ok, opened.Error);
         var tabId = Assert.IsType<string>(opened.TabId);
         var action = await tabs.ActAsync("network", new("", "", "navigate", tabId, Text: localUrl));
-        Assert.False(action.Ok);
-        Assert.Contains("network_blocked:", action.Error);
-        Assert.Contains("localhost", action.Error);
+        Assert.True(action.Ok, action.Error);
     }
 
     private sealed class NetworkStorage : IPluginStorage

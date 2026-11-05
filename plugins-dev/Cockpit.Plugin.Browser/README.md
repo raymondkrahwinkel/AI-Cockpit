@@ -50,12 +50,19 @@ A web browser inside Cockpit on CEF (Chromium Embedded Framework). This README c
 
 ## The agent profile (AC-1713)
 
-- **Network boundary:** agent pages and all their resources use the global `agentNetworkAllowlist`. Local and LAN
-  destinations are denied unless explicitly allowed. A per-browser SOCKS5 proxy resolves and checks every address,
-  then connects only to those numeric IPs, including for WebSockets. Loopback bypass and QUIC are disabled.
+- **Network boundary:** an agent may open `localhost`, `*.localhost`, all of `127.0.0.0/8`, `::1`, and literal
+  addresses assigned to this machine, including its resolving `.local` name, by default, so it can inspect its own local dev app. Other LAN and private
+  destinations remain denied unless the global `agentNetworkAllowlist` names them. A public hostname that resolves to
+  a local address is still denied, preventing DNS-rebinding from turning a public page into local access. A public
+  page cannot fetch or open a local service: only a navigation requested by the agent, or a page already loaded from
+  this machine, may use local resources. A per-browser SOCKS5 proxy resolves and checks every address, then connects
+  only to those numeric IPs, including for WebSockets. Loopback bypass and QUIC are disabled.
   `--force-webrtc-ip-handling-policy=disable_non_proxied_udp` also prevents WebRTC from sending UDP outside the proxy;
   this SOCKS5 proxy supports TCP only. The boundary applies to agent tabs opened for the operator too; the
-  operator's own User/RaymondProfile browser is separate.
+  operator's own User/RaymondProfile browser is separate and can use local services. A shared operator tab keeps its
+  existing same-origin control grant, so an agent may operate a shared local tab without adding an allowlist entry.
+  `ws://` upgrades carry an Origin that the SOCKS boundary checks before connecting locally; `wss://` hides that
+  handshake inside TLS, so its Origin cannot be inspected there.
 - **The Agents side** of the profile switch lists the tabs of every live agent browser (AC-1712) with the session as a
   badge. It reads them over the plugin channel (`agents.*`), so it works when the backend runs on a server.
 - **The picture** is a CDP `Page.startScreencast` of the tab on screen, straight from the agent Chromium: no CEF. It runs
@@ -64,6 +71,10 @@ A web browser inside Cockpit on CEF (Chromium Embedded Framework). This README c
   drive, the proxy answers the session's `Input.*` commands with an error that says so; everything else passes. Your
   own mouse and keys go to the tab over a separate connection, so the pause never holds them. Stop agent kills the
   Chromium and leaves the proxy up, so the session's next call reads that you stopped it.
+- **Lifecycle and failures:** an open first creates an internal `about:blank` target, but a rejected navigation returns
+  a structured reason and closes that target. Self-tabs close with their session; only a tab explicitly opened for the
+  operator is retained after the session ends, and closing the last retained tab stops its browser and removes its
+  profile.
 - **Known edges:** a session's `Runtime.evaluate` can still click while you drive (only `Input.*` is held), and the
   rail count is refreshed on changes and while the panel is open, not by a background poll.
 

@@ -9,44 +9,64 @@ using Cockpit.Core.Voice;
 
 namespace Cockpit.Infrastructure.Voice;
 
-// AC-1013: `IVoicePlaybackQueue` — a single background consumer synthesizes and plays queued utterances one
-// sentence at a time so nothing overlaps; a singleton so a push-to-talk hold on any session can interrupt
-// whichever session is talking (#35). Classic (not primary) constructor: the consumer loop starts once, from real ctor logic.
 internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonService
 {
+    private sealed class QueuedBatch(int total, DateTimeOffset enqueuedAt)
+    {
+        private int _completed;
+        private int _played;
+        private int _aborted;
+
+        public int Total { get; } = total;
+        public DateTimeOffset EnqueuedAt { get; } = enqueuedAt;
+        public Stopwatch Stopwatch { get; } = Stopwatch.StartNew();
+
+        public (bool IsComplete, int Played, bool Aborted) Complete(bool played, bool aborted)
+        {
+            if (played)
+            {
+                Interlocked.Increment(ref _played);
+            }
+            if (aborted)
+            {
+                Interlocked.Exchange(ref _aborted, 1);
+            }
+
+            var completed = Interlocked.Increment(ref _completed);
+            return (completed == Total, Volatile.Read(ref _played), Volatile.Read(ref _aborted) != 0);
+        }
+    }
+
+    private sealed record QueuedSentence(QueuedBatch Batch, string Text, string Language, int SpeakerId, VoicePlaybackSource Source, string? OwnerId, int Generation, CancellationToken CancellationToken);
+    private sealed record PreparedSentence(QueuedSentence Sentence, TtsAudio? Audio);
+
+    private const int PreparedSentenceCapacity = 3;
     private readonly ITextToSpeechService _textToSpeech;
     private readonly IAudioPlaybackService _audioPlayback;
     private readonly ILogger<VoicePlaybackQueue> _logger;
     private readonly IAudioAvailability? _audioAvailability;
-
-    // One queued read-aloud batch: language-tagged segments plus the single speaker (sid) that voices them all.
-    private sealed record QueuedUtterance(IReadOnlyList<SpeechSegment> Segments, int SpeakerId, VoicePlaybackSource Source);
-
-    private readonly Channel<QueuedUtterance> _channel = Channel.CreateUnbounded<QueuedUtterance>();
-
-    private CancellationTokenSource _playbackCancellation = new();
-    private readonly Task _consumerTask;
-
-    // Flipped by both the consumer loop and NotifyPreparing/StopAll (UI thread), so all three fields below are
-    // guarded by _activeGate.
+    private readonly Channel<QueuedSentence> _sentences = Channel.CreateUnbounded<QueuedSentence>();
+    private readonly Channel<PreparedSentence> _prepared = Channel.CreateBounded<PreparedSentence>(new BoundedChannelOptions(PreparedSentenceCapacity)
+    {
+        SingleReader = true,
+        SingleWriter = true,
+    });
     private readonly object _activeGate = new();
+    private readonly Task _preparationTask;
+    private readonly Task _consumerTask;
+    private CancellationTokenSource _playbackCancellation = new();
+    private int _queuedSentenceCount;
+    private long _lastPlaybackEnded;
     private bool _isPlaybackActive;
-
-    // Whether SpeakingStarted has fired for the current active window — reset when it goes idle, so the next
-    // read-aloud announces its preparing→speaking boundary again.
     private bool _speakingAnnounced;
-
-    // Bumped by StopAll so a caller preparing a batch can tell a barge-in cancelled it mid-rewrite (see Generation).
     private int _generation;
-
-    // The source of whichever batch most recently opened the active window (AC-729) — only written on the
-    // false→true transition inside `_SetPlaybackActive`, guarded by the same gate, so a second source calling
-    // NotifyPreparing/Enqueue while a window is already open never overwrites who is actually being heard.
     private VoicePlaybackSource _activeSource;
+    private string? _activeOwnerId;
+    private readonly HashSet<(VoicePlaybackSource Source, string? OwnerId)> _openStreams = [];
 
     public event EventHandler<bool>? PlaybackActiveChanged;
-
     public event EventHandler? SpeakingStarted;
+    public event EventHandler<VoicePlaybackStoppedEventArgs>? PlaybackStopped;
 
     public int Generation
     {
@@ -70,6 +90,11 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
         }
     }
 
+    public string? ActiveOwnerId
+    {
+        get { lock (_activeGate) { return _activeOwnerId; } }
+    }
+
     public VoicePlaybackQueue(
         ITextToSpeechService textToSpeech,
         IAudioPlaybackService audioPlayback,
@@ -80,23 +105,19 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
         _audioPlayback = audioPlayback;
         _logger = logger;
         _audioAvailability = audioAvailability;
-
-        // Started once, for the lifetime of this singleton — no separate Start/Stop lifecycle needed
-        // since the channel simply idles (ReadAllAsync awaits) until something is enqueued.
+        _preparationTask = _PrepareAsync();
         _consumerTask = _ConsumeAsync();
     }
 
-    public void Enqueue(IReadOnlyList<string> sentences, int speakerId, string language, VoicePlaybackSource source = VoicePlaybackSource.Session)
+    public void Enqueue(IReadOnlyList<string> sentences, int speakerId, string language, VoicePlaybackSource source = VoicePlaybackSource.Session, string? ownerId = null)
     {
-        if (sentences.Count == 0)
+        if (sentences.Count > 0)
         {
-            return;
+            Enqueue([new SpeechSegment(sentences, language)], speakerId, source, ownerId);
         }
-
-        Enqueue([new SpeechSegment(sentences, language)], speakerId, source);
     }
 
-    public void Enqueue(IReadOnlyList<SpeechSegment> segments, int speakerId, VoicePlaybackSource source = VoicePlaybackSource.Session)
+    public void Enqueue(IReadOnlyList<SpeechSegment> segments, int speakerId, VoicePlaybackSource source = VoicePlaybackSource.Session, string? ownerId = null)
     {
         if (_audioAvailability?.IsAvailable == false)
         {
@@ -109,148 +130,183 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
             return;
         }
 
-        // Queue depth (AC-535): two sessions share this one playback line, so a deep queue here is a real
-        // explanation for "read-aloud feels slow" that the per-utterance timing below cannot show on its own.
-        _logger.LogInformation("Read-aloud enqueued {Count} sentence(s) across {Segments} language segment(s); {QueueDepth} batch(es) already queued.",
-            sentenceCount, segments.Count, _channel.Reader.Count);
-        _channel.Writer.TryWrite(new QueuedUtterance(segments, speakerId, source));
+        _logger.LogInformation("Read-aloud enqueued {Count} sentence(s) across {Segments} language segment(s); {QueueDepth} sentence(s) already queued.",
+            sentenceCount, segments.Count, _sentences.Reader.Count);
+        var batch = new QueuedBatch(sentenceCount, DateTimeOffset.UtcNow);
+        var generation = _CaptureGeneration();
+        foreach (var segment in segments)
+        {
+            foreach (var sentence in segment.Sentences)
+            {
+                Interlocked.Increment(ref _queuedSentenceCount);
+                _sentences.Writer.TryWrite(new QueuedSentence(batch, sentence, segment.Language, speakerId, source, ownerId, generation.Generation, generation.Token));
+            }
+        }
     }
 
-    public void NotifyPreparing(VoicePlaybackSource source = VoicePlaybackSource.Session)
+    public void NotifyPreparing(VoicePlaybackSource source = VoicePlaybackSource.Session, string? ownerId = null)
     {
         if (_audioAvailability?.IsAvailable != false)
         {
-            _SetPlaybackActive(true, source);
+            lock (_activeGate)
+            {
+                _openStreams.Add((source, ownerId));
+            }
+            _SetPlaybackActive(true, source, ownerId);
+        }
+    }
+
+    public void CompleteStream(VoicePlaybackSource source, string? ownerId)
+    {
+        lock (_activeGate)
+        {
+            _openStreams.Remove((source, ownerId));
+        }
+        _SetInactiveIfDrained();
+    }
+
+    public async Task WarmUpAsync(CancellationToken cancellationToken = default)
+    {
+        if (_audioAvailability?.IsAvailable != false)
+        {
+            await _textToSpeech.WarmUpAsync(cancellationToken).ConfigureAwait(false);
         }
     }
 
     public void StopAll()
     {
-        // Swap in a fresh token so a later Enqueue plays normally again, then cancel + dispose the old
-        // one — that cancels whatever SynthesizeAsync/PlayAsync call is currently in flight — and drain
-        // anything still queued so it never starts.
-        var previous = Interlocked.Exchange(ref _playbackCancellation, new CancellationTokenSource());
-        previous.Cancel();
-        previous.Dispose();
-        while (_channel.Reader.TryRead(out _))
-        {
-        }
-
-        // Bump the generation so a batch still preparing (awaiting the local-LLM rewrite) drops itself instead of
-        // enqueuing over this interrupt once it comes back.
+        VoicePlaybackStoppedEventArgs stopped;
+        CancellationTokenSource previous;
         lock (_activeGate)
         {
             _generation++;
+            previous = _playbackCancellation;
+            _playbackCancellation = new CancellationTokenSource();
+            stopped = new VoicePlaybackStoppedEventArgs(_activeSource, _activeOwnerId);
+            _openStreams.Clear();
         }
-
-        // Clear a "preparing" pill that never reached playback (barge-in during the local-LLM/synth gap).
+        previous.Cancel();
+        previous.Dispose();
+        while (_sentences.Reader.TryRead(out _))
+        {
+            Interlocked.Decrement(ref _queuedSentenceCount);
+        }
+        while (_prepared.Reader.TryRead(out _))
+        {
+            Interlocked.Decrement(ref _queuedSentenceCount);
+        }
+        Interlocked.Exchange(ref _lastPlaybackEnded, 0);
+        PlaybackStopped?.Invoke(this, stopped);
         _SetPlaybackActive(false);
+    }
+
+    private async Task _PrepareAsync()
+    {
+        await foreach (var sentence in _sentences.Reader.ReadAllAsync())
+        {
+            if (!_IsCurrent(sentence))
+            {
+                _Complete(sentence, played: false, aborted: true);
+                continue;
+            }
+
+            var audio = await _TrySynthesizeAsync(sentence.Text, sentence.SpeakerId, sentence.Language, sentence.CancellationToken)
+                .ConfigureAwait(false);
+            if (!_IsCurrent(sentence))
+            {
+                _Complete(sentence, played: false, aborted: true);
+                continue;
+            }
+
+            try
+            {
+                await _prepared.Writer.WriteAsync(new PreparedSentence(sentence, audio), sentence.CancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                _Complete(sentence, played: false, aborted: true);
+            }
+        }
     }
 
     private async Task _ConsumeAsync()
     {
-        await foreach (var utterance in _channel.Reader.ReadAllAsync())
+        await foreach (var prepared in _prepared.Reader.ReadAllAsync())
         {
-            // A no-op if NotifyPreparing already opened this window for the same source (the ordinary paired
-            // flow); the real transition for a caller that enqueues without preparing first, e.g. `PreviewVoice`.
-            _SetPlaybackActive(true, utterance.Source);
-            await _PlayUtteranceAsync(utterance, _playbackCancellation.Token).ConfigureAwait(false);
-
-            // Only go idle once nothing is waiting behind this batch, so back-to-back read-aloud turns do
-            // not flap the barge-in guard off and on between them.
-            if (_channel.Reader.Count == 0)
+            var sentence = prepared.Sentence;
+            if (!_IsCurrent(sentence))
             {
-                _SetPlaybackActive(false);
+                _Complete(sentence, played: false, aborted: true);
+                continue;
+            }
+
+            _SetPlaybackActive(true, sentence.Source, sentence.OwnerId);
+            if (prepared.Audio is null)
+            {
+                _Complete(sentence, played: false, aborted: false);
+                continue;
+            }
+
+            var previousEnd = Interlocked.Read(ref _lastPlaybackEnded);
+            if (previousEnd == 0)
+            {
+                _logger.LogInformation("Read-aloud first sound after {FirstSoundMs} ms.",
+                    (DateTimeOffset.UtcNow - sentence.Batch.EnqueuedAt).TotalMilliseconds);
+            }
+            else
+            {
+                _logger.LogInformation("Read-aloud gap since the prior sentence was {GapMs} ms.",
+                    Stopwatch.GetElapsedTime(previousEnd).TotalMilliseconds);
+            }
+
+            bool announce;
+            lock (_activeGate)
+            {
+                announce = !_speakingAnnounced;
+                _speakingAnnounced = true;
+            }
+            if (announce)
+            {
+                SpeakingStarted?.Invoke(this, EventArgs.Empty);
+            }
+
+            try
+            {
+                var pcmBytes = PcmSampleConverter.ToInt16Bytes(prepared.Audio.Samples);
+                await _audioPlayback.PlayAsync(pcmBytes, new AudioFormat(prepared.Audio.SampleRate, Channels: 1), sentence.CancellationToken)
+                    .ConfigureAwait(false);
+                Interlocked.Exchange(ref _lastPlaybackEnded, Stopwatch.GetTimestamp());
+                _Complete(sentence, played: true, aborted: false);
+            }
+            catch (OperationCanceledException)
+            {
+                _Complete(sentence, played: false, aborted: true);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Read-aloud playback failed for a queued sentence; skipping it and continuing.");
+                _Complete(sentence, played: false, aborted: false);
             }
         }
     }
 
-    private async Task _PlayUtteranceAsync(QueuedUtterance utterance, CancellationToken cancellationToken)
+    private void _Complete(QueuedSentence sentence, bool played, bool aborted)
     {
-        // AC-1013: One sentence plays at a time but the next is synthesized while it plays — synthesizing
-        // strictly between plays left an audible gap, so prefetching one ahead overlaps synth with playback.
-        var items = utterance.Segments
-            .SelectMany(segment => segment.Sentences.Select(sentence => (Text: sentence, segment.Language)))
-            .ToList();
-        if (items.Count == 0)
+        var completed = sentence.Batch.Complete(played, aborted);
+        Interlocked.Decrement(ref _queuedSentenceCount);
+        if (completed.IsComplete)
         {
-            return;
+            _logger.LogInformation("Read-aloud played {SentencesPlayed}/{TotalSentences} sentence(s) in {ElapsedMs} ms{Aborted}.",
+                completed.Played, sentence.Batch.Total, sentence.Batch.Stopwatch.ElapsedMilliseconds, completed.Aborted ? " (aborted)" : string.Empty);
         }
 
-        var stopwatch = Stopwatch.StartNew();
-        var sentencesPlayed = 0;
-        var aborted = false;
-        try
-        {
-            var pending = _TrySynthesizeAsync(items[0].Text, utterance.SpeakerId, items[0].Language, cancellationToken);
-            for (var i = 0; i < items.Count; i++)
-            {
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    aborted = true;
-                    return;
-                }
-
-                var audio = await pending.ConfigureAwait(false);
-
-                // Kick off the next synthesis before playing the current clip, so the two overlap and no silence opens up.
-                pending = i + 1 < items.Count
-                    ? _TrySynthesizeAsync(items[i + 1].Text, utterance.SpeakerId, items[i + 1].Language, cancellationToken)
-                    : Task.FromResult<TtsAudio?>(null);
-
-                if (audio is null)
-                {
-                    continue;
-                }
-
-                // The first real clip of this window is the preparing→speaking boundary: until now it was synthesizing
-                // in silence, and the overlay should switch from "preparing" to "reading aloud" exactly here. The
-                // check-and-set is atomic under the gate because a UI-thread StopAll can reset the flag concurrently.
-                bool announce;
-                lock (_activeGate)
-                {
-                    announce = !_speakingAnnounced;
-                    _speakingAnnounced = true;
-                }
-
-                if (announce)
-                {
-                    SpeakingStarted?.Invoke(this, EventArgs.Empty);
-                }
-
-                try
-                {
-                    var pcmBytes = PcmSampleConverter.ToInt16Bytes(audio.Samples);
-                    await _audioPlayback.PlayAsync(pcmBytes, new AudioFormat(audio.SampleRate, Channels: 1), cancellationToken)
-                        .ConfigureAwait(false);
-                    sentencesPlayed++;
-                }
-                catch (OperationCanceledException)
-                {
-                    aborted = true;
-                    return;
-                }
-            }
-        }
-        finally
-        {
-            // AC-535: one line per utterance regardless of how it ended, so "was this slow, and why" and "did it
-            // get cut off" are both answerable from the log alone. A barge-in is expected behavior, not a fault —
-            // logged at the same level either way, never a warning.
-            _logger.LogInformation(
-                "Read-aloud played {SentencesPlayed}/{TotalSentences} sentence(s) in {ElapsedMs} ms{Aborted}.",
-                sentencesPlayed, items.Count, stopwatch.ElapsedMilliseconds, aborted ? " (aborted)" : string.Empty);
-        }
+        _SetInactiveIfDrained();
     }
 
-    // Synthesizes one sentence, swallowing a failure to null so a single bad sentence neither kills the utterance nor faults the prefetch task waiting behind it.
     private async Task<TtsAudio?> _TrySynthesizeAsync(string text, int speakerId, string language, CancellationToken cancellationToken)
     {
         try
         {
-            // Length, never the sentence itself: this log is what gets shared when someone asks "why is read-aloud
-            // slow", and what it reads aloud is whatever the assistant just said — notes, names, customer detail.
-            // The rest of the voice tracing measures without quoting; this line used to be the exception.
             _logger.LogDebug("Read-aloud synthesizing a sentence of {Length} chars.", text.Length);
             return await _textToSpeech.SynthesizeAsync(text, speakerId, language, cancellationToken).ConfigureAwait(false);
         }
@@ -265,10 +321,33 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
         }
     }
 
-    private void _SetPlaybackActive(bool active, VoicePlaybackSource source = VoicePlaybackSource.Session)
+    private (int Generation, CancellationToken Token) _CaptureGeneration()
     {
-        // NotifyPreparing (UI thread) and the consumer loop both flip this, so the transition is guarded — the
-        // event is raised outside the lock so a handler can never deadlock against it.
+        lock (_activeGate) { return (_generation, _playbackCancellation.Token); }
+    }
+
+    private bool _IsCurrent(QueuedSentence sentence)
+    {
+        lock (_activeGate)
+        {
+            return sentence.Generation == _generation && sentence.CancellationToken == _playbackCancellation.Token && !sentence.CancellationToken.IsCancellationRequested;
+        }
+    }
+
+    private void _SetInactiveIfDrained()
+    {
+        lock (_activeGate)
+        {
+            if (Volatile.Read(ref _queuedSentenceCount) != 0 || _openStreams.Count != 0)
+            {
+                return;
+            }
+        }
+        _SetPlaybackActive(false);
+    }
+
+    private void _SetPlaybackActive(bool active, VoicePlaybackSource source = VoicePlaybackSource.Session, string? ownerId = null)
+    {
         lock (_activeGate)
         {
             if (_isPlaybackActive == active)
@@ -277,17 +356,12 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
             }
 
             _isPlaybackActive = active;
-
-            // Only stamped on the way in: a second source calling in while this window is already open (already
-            // handled above by the equality check) must not relabel whichever batch is actually being heard.
             if (active)
             {
                 _activeSource = source;
+                _activeOwnerId = ownerId;
             }
-
-            // Going idle ends the window: the next read-aloud starts preparing again before it speaks. Reset under
-            // the same gate that guards the announce check-and-set above.
-            if (!active)
+            else
             {
                 _speakingAnnounced = false;
             }
