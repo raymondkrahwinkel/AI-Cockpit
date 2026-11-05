@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using System.Threading.Channels;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions.Permissions;
@@ -25,10 +23,12 @@ internal sealed partial class McpToolProvider
         private readonly McpBackgroundTasks _retirements;
         private readonly HashSet<(string Server, string Instructions)> _deliveredInstructions = [];
         private bool _disposed;
+        private readonly McpToolNames _toolNames;
 
         public LiveMcpToolSession(McpToolProvider provider, string? paneId, string? token, string? projectId, string? agentName, bool ownsToken)
         {
             _provider = provider;
+            _toolNames = paneId is null ? new() : provider._mounts?.Set(paneId)?.ToolNames ?? new();
             _paneId = paneId;
             PaneToken = token;
             _projectId = projectId;
@@ -62,21 +62,11 @@ internal sealed partial class McpToolProvider
                 lock (_sync)
                 {
                     var tools = new List<McpServerTool>();
-                    var names = new HashSet<string>(StringComparer.Ordinal);
                     foreach (var server in _servers.Values.OrderBy(server => server.Config.Name, StringComparer.Ordinal))
                     {
                         foreach (var tool in server.Tools.OfType<McpClientTool>())
                         {
-                            var name = ForwardMcpServerTool.NameFor(server.Config.Name, tool.Name);
-                            if (!names.Add(name))
-                            {
-                                var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{server.Config.Name}/{tool.Name}")))[..8];
-                                name += $"_{hash}";
-                                while (!names.Add(name))
-                                {
-                                    name += "_";
-                                }
-                            }
+                            var name = _toolNames.ForTool(server.Config.Name, tool.Name);
                             tools.Add(new ForwardMcpServerTool(name, tool.ProtocolTool, server, (context, ct) => _CallAsync(server, tool.Name, context, ct)));
                         }
                     }

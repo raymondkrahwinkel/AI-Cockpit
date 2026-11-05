@@ -12,9 +12,45 @@ namespace Cockpit.Core.Tests.Mcp;
 
 public partial class McpClientConnectorTests
 {
+    // Category E: folding and bounded gateway names must remain unique and reversible (AC-2128).
+    private static void _AssertToolNameRules()
+    {
+        var used = new HashSet<string>(StringComparer.Ordinal);
+        Assert.Equal("YouTrack__Personal", McpToolNames.Alias("YouTrack: Personal", used));
+        Assert.Equal("YouTrack__Personal_2", McpToolNames.Alias("YouTrack? Personal", used));
+        var names = new McpToolNames();
+        var exposed = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var canonical in new[]
+        {
+            "mcp__YouTrack__Personal__get_issue",
+            "mcp__Depot__depot_krahwinkel-it_nl__get_self_registration",
+            "mcp__" + new string('a', 70) + "__read",
+            "mcp__" + new string('a', 70) + "__write",
+        })
+        {
+            var gateway = names.ToGateway(canonical);
+            Assert.True(gateway.Length <= 64);
+            Assert.True(exposed.Add(gateway));
+            Assert.Equal(canonical, names.ToCanonical(gateway));
+            Assert.Equal(gateway, names.ToGateway(canonical));
+        }
+        var first = names.ForTool("a b", "read");
+        var second = names.ForTool("a:b", "read");
+        Assert.NotEqual(first, second);
+        Assert.Equal(first, names.ForTool("a b", "read"));
+        Assert.Equal("mcp__a_b__read", names.ToCanonical("mcp__cockpit__" + first));
+        Assert.Equal("mcp__a_b_2__read", names.ToCanonical("mcp__cockpit__" + second));
+        Assert.Equal("Read", names.ToCanonical("Read"));
+        Assert.Equal("mcp__depot__read", names.ToCanonical("mcp__depot__read"));
+        var boundary = "mcp__" + new string('x', 50);
+        Assert.Equal(64, names.ToGateway(boundary).Length);
+        Assert.Equal("mcp__cockpit__" + boundary[5..], names.ToGateway(boundary));
+    }
+
     // Category D: the wire contract must retain image blocks and tool metadata through the gateway.
     private static async Task _AssertGatewayContractAsync(InProcessMcpHttpServer upstream, McpClient direct)
     {
+        _AssertToolNameRules();
         var config = new McpServerConfig { Name = "depot", Transport = McpTransport.Http, Url = upstream.Url };
         var catalog = Substitute.For<IMcpServerCatalog>();
         catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns([config]);
