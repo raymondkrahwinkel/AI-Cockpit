@@ -358,8 +358,20 @@ public sealed class PluginManager(
             .FirstOrDefault(name => string.Equals(name.Name, "Cockpit.Plugins.Abstractions", StringComparison.Ordinal))?
             .Version;
 
-    public Task WaitForInitializationAsync(CancellationToken cancellationToken = default) =>
-        SafeMode ? Task.CompletedTask : _initialized.Task.WaitAsync(cancellationToken);
+    public async Task<bool> WaitForInitializationAsync(CancellationToken cancellationToken = default, bool allowBeforeStart = false)
+    {
+        lock (_lifecycleLock)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (SafeMode || (allowBeforeStart && _hostFor is null && !_initialized.Task.IsCompleted))
+            {
+                return false;
+            }
+        }
+
+        await _initialized.Task.WaitAsync(TimeSpan.FromSeconds(30), cancellationToken).ConfigureAwait(false);
+        return true;
+    }
 
     // Live changes must wait for the frontend too, or they can miss UI activation and teardown.
     public void Initialize(Func<DiscoveredPlugin, ICockpitPlugin, ICockpitHost> hostFor, Action? initializeFrontend = null)

@@ -53,6 +53,20 @@ public class PluginUpdateTests : IDisposable
             diagnostics, manager, trackers: trackers, startGrace: candidate => candidate.Manifest.Version == "5.0.0" ? TimeSpan.FromMilliseconds(300) : TimeSpan.FromSeconds(30));
         manager.StartUiPart = (candidate, _, _) => Task.FromResult<string?>(candidate.Manifest.Version == "3.0.0" ? "3.0.0 UI cannot start" : null);
 
+        var disabledBeforeStart = await admin.SetEnabledAsync(Id, false, discovered.Sha256);
+        Assert.True(disabledBeforeStart.RestartRequired);
+        Assert.False(instances[0].Disposed);
+        Assert.False((await store.LoadAllAsync())[Id].Enabled);
+        var enabledBeforeStart = await admin.SetEnabledAsync(Id, true, discovered.Sha256);
+        Assert.True(enabledBeforeStart.RestartRequired);
+        Assert.True((await store.LoadAllAsync())[Id].Enabled);
+
+        using var cancelledStartup = new CancellationTokenSource();
+        var waiting = manager.WaitForInitializationAsync(cancelledStartup.Token);
+        Assert.False(waiting.IsCompleted);
+        await cancelledStartup.CancelAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => waiting);
+
         var updating = admin.InstallFromZipAsync(_Zip("1.0.0", "MZ-v1"));
         Assert.False(updating.IsCompleted);
         Assert.False(instances[0].Disposed);
