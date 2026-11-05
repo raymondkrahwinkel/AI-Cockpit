@@ -61,6 +61,8 @@ A web browser inside Cockpit on CEF (Chromium Embedded Framework). This README c
   this SOCKS5 proxy supports TCP only. The boundary applies to agent tabs opened for the operator too; the
   operator's own User/RaymondProfile browser is separate and can use local services. A shared operator tab keeps its
   existing same-origin control grant, so an agent may operate a shared local tab without adding an allowlist entry.
+  `ws://` upgrades carry an Origin that the SOCKS boundary checks before connecting locally; `wss://` hides that
+  handshake inside TLS, so its Origin cannot be inspected there.
 - **The Agents side** of the profile switch lists the tabs of every live agent browser (AC-1712) with the session as a
   badge. It reads them over the plugin channel (`agents.*`), so it works when the backend runs on a server.
 - **The picture** is a CDP `Page.startScreencast` of the tab on screen, straight from the agent Chromium: no CEF. It runs

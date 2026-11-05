@@ -91,7 +91,7 @@ internal sealed class AgentNetworkProxy : IDisposable
                 }
                 await ReplyAsync(downstream, 0, token).ConfigureAwait(false);
                 var initial = await ReadInitialAsync(downstream, token).ConfigureAwait(false);
-                if (_policy().IsOwnMachineOnly(resolved.Addresses) && IsForeignWebSocket(initial))
+                if (_policy().IsOwnMachineOnly(resolved.Addresses) && await IsForeignWebSocketAsync(initial, token).ConfigureAwait(false))
                 {
                     return;
                 }
@@ -152,7 +152,7 @@ internal sealed class AgentNetworkProxy : IDisposable
         return buffer[..read];
     }
 
-    private bool IsForeignWebSocket(byte[] initial)
+    private async Task<bool> IsForeignWebSocketAsync(byte[] initial, CancellationToken token)
     {
         var request = Encoding.ASCII.GetString(initial);
         if (!request.Contains("\r\nUpgrade: websocket", StringComparison.OrdinalIgnoreCase))
@@ -164,7 +164,7 @@ internal sealed class AgentNetworkProxy : IDisposable
         {
             return true;
         }
-        var resolved = _policy().ResolveAsync(uri, _lifetime.Token).GetAwaiter().GetResult();
+        var resolved = await _policy().ResolveAsync(uri, token).ConfigureAwait(false);
         return resolved.Reason is not null || !_policy().IsOwnMachineOnly(resolved.Addresses);
     }
 
