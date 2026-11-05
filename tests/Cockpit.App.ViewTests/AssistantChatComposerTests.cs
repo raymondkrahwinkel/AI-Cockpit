@@ -62,13 +62,21 @@ public class AssistantChatComposerTests
             return Substitute.For<ITimer>();
         });
         var profiles = Substitute.For<ISessionProfileStore>();
-        var runtime = new SessionRuntime(factory, Profile, imageInput: reader, profiles: profiles, timeProvider: clock);
+        await using var runtime = new SessionRuntime(factory, Profile, imageInput: reader, profiles: profiles, timeProvider: clock);
         var manager = Substitute.For<ISessionManager>();
         manager.Create(Arg.Any<SessionProfile?>()).Returns(runtime);
         await using var session = TestSessions.Pane(manager);
         await session.StartConfiguredAsync(Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.ResolveModel("opus"), SessionOptionCatalog.DefaultEffort);
         var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var pasteReady = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var confirmed = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        session.PropertyChanged += (_, change) =>
+        {
+            if (change.PropertyName == nameof(SessionViewModel.CanPasteImages) && session.CanPasteImages)
+            {
+                pasteReady.TrySetResult();
+            }
+        };
         runtime.EventAppended += evt =>
         {
             if (evt is SessionCapabilitiesChanged { Capabilities.SupportsVision: true })
@@ -91,7 +99,7 @@ public class AssistantChatComposerTests
         Assert.True(await confirmed.Task.WaitAsync(TimeSpan.FromSeconds(5)));
         var refresh = await scheduled.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.True((await reader.ReadAsync(Profile, "claude-opus-4-7")).OpenRouter?.SupportsImageInput);
-        Dispatcher.UIThread.RunJobs();
+        await pasteReady.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.True(session.CanPasteImages);
         var host = _FakeHost(session);
         var vm = new AssistantChatViewModel(host, _FakeSettingsStore(), Substitute.For<IVoicePlaybackQueue>());

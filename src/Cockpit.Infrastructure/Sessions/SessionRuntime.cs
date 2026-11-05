@@ -48,6 +48,7 @@ internal sealed class SessionRuntime : ISessionRuntime
     private readonly ILogger? _logger;
     private readonly TimeProvider _clock;
     private ITimer? _visionTimer;
+    private Task _visionRead = Task.CompletedTask;
     private TimeSpan _visionRetryDelay = TimeSpan.FromSeconds(30);
     private volatile bool _readOnlyTurn;
 
@@ -185,7 +186,18 @@ internal sealed class SessionRuntime : ISessionRuntime
             && _lifetime is { IsCancellationRequested: false } lifetime)
         {
             var cancellationToken = lifetime.Token;
-            _ = Task.Run(() => _ReadVisionAsync(profile, model, revision, cancellationToken));
+            _StartVisionRead(profile, model, revision, cancellationToken);
+        }
+    }
+
+    private void _StartVisionRead(SessionProfile profile, string? model, int revision, CancellationToken cancellationToken)
+    {
+        lock (_visionLock)
+        {
+            if (revision == _visionRevision && !cancellationToken.IsCancellationRequested)
+            {
+                _visionRead = Task.Run(() => _ReadVisionAsync(profile, model, revision, cancellationToken));
+            }
         }
     }
 
@@ -245,7 +257,7 @@ internal sealed class SessionRuntime : ISessionRuntime
                 _visionRetryDelay = TimeSpan.FromSeconds(Math.Min(_visionRetryDelay.TotalSeconds * 2, TimeSpan.FromMinutes(15).TotalSeconds));
             }
             _visionTimer?.Dispose();
-            _visionTimer = _clock.CreateTimer(state => { _ = _ReadVisionAsync(profile, model, revision, cancellationToken); },
+            _visionTimer = _clock.CreateTimer(state => _StartVisionRead(profile, model, revision, cancellationToken),
                 null, delay, Timeout.InfiniteTimeSpan);
         }
     }
@@ -487,11 +499,11 @@ internal sealed class SessionRuntime : ISessionRuntime
             await _lifetime.CancelAsync();
         }
 
-        if (_pump is not null)
+        if (_pump is not null || !_visionRead.IsCompletedSuccessfully)
         {
             try
             {
-                await _pump;
+                await Task.WhenAll(_pump ?? Task.CompletedTask, _visionRead);
             }
             catch (Exception)
             {
