@@ -521,6 +521,11 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
                     _FinishChild(source, "failed");
                     break;
                 }
+                if (_TryGetBoolean(notification.Params, "willRetry", out var willRetry) && willRetry)
+                {
+                    _logger?.LogInformation("Codex session {SessionId} status: {Message}", _threadId, _ExtractErrorMessage(notification.Params));
+                    break;
+                }
                 if (_IsRateLimitRefusal(notification.Params))
                 {
                     _RecordObservation(PluginModelObservationKind.RateLimitRefusal);
@@ -971,6 +976,20 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         }
 
         value = string.Empty;
+        return false;
+    }
+
+    private static bool _TryGetBoolean(JsonElement parent, string property, out bool value)
+    {
+        if (parent.ValueKind == JsonValueKind.Object
+            && parent.TryGetProperty(property, out var element)
+            && element.ValueKind is JsonValueKind.True or JsonValueKind.False)
+        {
+            value = element.GetBoolean();
+            return true;
+        }
+
+        value = false;
         return false;
     }
 

@@ -46,7 +46,8 @@ public partial class SimpleHomeView : UserControl
                 cockpit.SimpleHome.SendCommand.Execute(null);
             }
         }
-        else if (PushToTalkKeyGate.ShouldHandleLocally(e.Key, cockpit.VoicePushToTalkKeyName, cockpit.VoiceGlobalPushToTalk))
+        else if (cockpit.IsAudioAvailable
+            && PushToTalkKeyGate.ShouldHandleLocally(e.Key, cockpit.VoicePushToTalkKeyName, cockpit.VoiceGlobalPushToTalk))
         {
             e.Handled = true;
             HomeComposerBar.PressMic();
@@ -55,7 +56,7 @@ public partial class SimpleHomeView : UserControl
 
     private async void _OnInputKeyUp(object? sender, KeyEventArgs e)
     {
-        if (Cockpit is { } cockpit
+        if (Cockpit is { IsAudioAvailable: true } cockpit
             && PushToTalkKeyGate.ShouldHandleLocally(e.Key, cockpit.VoicePushToTalkKeyName, cockpit.VoiceGlobalPushToTalk))
         {
             e.Handled = true;

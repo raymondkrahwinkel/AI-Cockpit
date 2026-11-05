@@ -3,6 +3,7 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Diagnostics;
 using Cockpit.Core.Mcp;
@@ -1501,6 +1502,10 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     private IVoicePlaybackQueue? _voicePlaybackQueue;
     private IOpenMicState? _openMicState;
 
+    public bool IsAudioAvailable { get; private set; } = true;
+
+    public string VoiceTooltip => IsAudioAvailable ? "Hold to dictate into this box" : "Audio is unavailable. See Health for details.";
+
     // Where a hold reports what it is doing. This view model is where the in-window F9 handlers and the global
     // `Services.VoicePushToTalkCoordinator` meet, so it is the one place that can say the same thing on
     // both routes — the in-window one said nothing at all before AC-557.
@@ -1577,13 +1582,15 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         IVoiceSettingsStore? voiceSettingsStore,
         IVoicePlaybackQueue? voicePlaybackQueue = null,
         IOpenMicState? openMicState = null,
-        VoiceOverlayCoordinator? voiceOverlay = null)
+        VoiceOverlayCoordinator? voiceOverlay = null,
+        IAudioAvailability? audioAvailability = null)
     {
         _voicePushToTalk = voicePushToTalk;
         _voiceSettingsStore = voiceSettingsStore;
         _voicePlaybackQueue = voicePlaybackQueue;
         _openMicState = openMicState;
         _voiceOverlay = voiceOverlay;
+        IsAudioAvailable = audioAvailability?.IsAvailable ?? true;
 
         if (voiceSettingsStore is not null)
         {
@@ -1654,7 +1661,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // progress (the underlying service's own key-repeat guard).
     public bool BeginVoiceHold()
     {
-        if (!CanReceiveOperatorInput || !VoiceEnabled || _voicePushToTalk is null)
+        if (!CanReceiveOperatorInput || !IsAudioAvailable || !VoiceEnabled || _voicePushToTalk is null)
         {
             return false;
         }

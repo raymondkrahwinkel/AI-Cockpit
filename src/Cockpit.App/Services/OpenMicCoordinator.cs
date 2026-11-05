@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Assistant;
+using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Voice;
 
@@ -24,6 +25,7 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
     private readonly IVoicePlaybackQueue _playbackQueue;
     private readonly VoiceOverlayCoordinator _overlay;
     private readonly ILogger<OpenMicCoordinator> _logger;
+    private readonly IAudioAvailability? _audioAvailability;
 
     private bool _wired;
 
@@ -61,7 +63,8 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
         IAssistantSettingsStore assistantSettingsStore,
         IVoicePlaybackQueue playbackQueue,
         VoiceOverlayCoordinator overlay,
-        ILogger<OpenMicCoordinator> logger)
+        ILogger<OpenMicCoordinator> logger,
+        IAudioAvailability? audioAvailability = null)
     {
         _listener = listener;
         _assistant = assistant;
@@ -70,6 +73,7 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
         _playbackQueue = playbackQueue;
         _overlay = overlay;
         _logger = logger;
+        _audioAvailability = audioAvailability;
 
         // Subscribed for the singleton's whole life, not only while open-mic is on: read-aloud can play without
         // dictation ever being enabled (the per-session toggle, the Options "Test" button), and its overlay must
@@ -99,7 +103,7 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
         {
             var settings = await _voiceSettingsStore.LoadAsync(cancellationToken);
             var assistant = await _assistantSettingsStore.LoadAsync(cancellationToken);
-            IsAvailable = settings.IsEnabled && assistant.IsEnabled;
+            IsAvailable = (_audioAvailability?.IsAvailable ?? true) && settings.IsEnabled && assistant.IsEnabled;
             if (IsAvailable && settings.OpenMicEnabled)
             {
                 await _EnableAsync(cancellationToken);
@@ -124,7 +128,7 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
         var voice = await _voiceSettingsStore.LoadAsync(cancellationToken);
         var assistant = await _assistantSettingsStore.LoadAsync(cancellationToken);
 
-        IsAvailable = voice.IsEnabled && assistant.IsEnabled;
+        IsAvailable = (_audioAvailability?.IsAvailable ?? true) && voice.IsEnabled && assistant.IsEnabled;
         if (!IsAvailable && IsListening)
         {
             await _DisableAsync();

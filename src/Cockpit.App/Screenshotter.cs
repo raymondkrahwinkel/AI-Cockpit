@@ -831,6 +831,7 @@ internal static partial class Screenshotter
         ["elapsed-assistant-simple"] = (width, height) => _ElapsedScene(width, height, ReadingLevel.Simple, true),
         ["elapsed-assistant-classic"] = (width, height) => _ElapsedScene(width, height, ReadingLevel.Developer, true),
         ["assistant-chat"] = (_, _) => _AssistantChat(withConversation: true),
+        ["assistant-chat-attachments"] = (_, _) => _AssistantReplyAttachments(),
         ["assistant-chat-file-drop"] = (_, _) => _AssistantChat(withConversation: true),
         ["session-file-drop"] = (width, height) => new Window { Width = width, Height = height, Content = new SessionView { DataContext = new SessionViewModel { Title = "Session" } } },
         ["assistant-chat-empty"] = (_, _) => _AssistantChat(withConversation: false),
@@ -3687,6 +3688,19 @@ internal static partial class Screenshotter
         window.UpdateLayout();
         window.GetVisualDescendants().OfType<Border>().First(border => border.Name == "DropOverlay").IsVisible = true;
         Dispatcher.UIThread.RunJobs();
+    }
+
+    private static AssistantChatWindow _AssistantReplyAttachments()
+    {
+        var session = new SessionViewModel { Title = "Assistant" };
+        session.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, "Here are the screenshot and the report.")
+        {
+            ReplyAttachments = [new("screenshot.png", [], true), new("report.txt", "Report"u8.ToArray(), false)],
+        });
+        return new AssistantChatWindow
+        {
+            DataContext = _AssistantChatViewModel(session), Topmost = false, WindowStartupLocation = WindowStartupLocation.Manual,
+        };
     }
 
     private static AssistantChatWindow _AssistantChat(bool withConversation, bool speakReplies = true, bool alwaysOn = false)

@@ -23,6 +23,7 @@ internal static class TranscriptSnapshot
         entry.Timestamp)
     {
         SubAgentRows = entry.HasSubAgentRows ? [.. entry.SubAgentRows.Select(Capture)] : null,
+        ReplyAttachments = entry.ReplyAttachments.Count == 0 ? null : entry.ReplyAttachments,
         PermissionDecision = entry.PermissionDecision,
 
         // Written only when it is something: `Unknown` is the default every ordinary row carries, and a field on
@@ -99,6 +100,7 @@ internal static class TranscriptSnapshot
         var entry = new TranscriptEntryViewModel(kind, record.Text, record.Timestamp)
         {
             Id = record.Id,
+            ReplyAttachments = record.ReplyAttachments ?? [],
             ToolName = record.ToolName,
             InputJson = record.InputJson,
             ToolUseId = record.ToolUseId,

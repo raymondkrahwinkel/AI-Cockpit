@@ -39,6 +39,14 @@ internal sealed class DepotNotesModel : IDisposable
         }
     }
 
+    public IReadOnlyList<DepotNotesPage> Snapshot()
+    {
+        lock (_pagesLock)
+        {
+            return [.. _pages.Values];
+        }
+    }
+
     public DepotNotesPage? PageOf(string connectionId)
     {
         lock (_pagesLock)

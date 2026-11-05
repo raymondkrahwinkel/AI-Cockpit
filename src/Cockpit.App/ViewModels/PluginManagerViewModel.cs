@@ -784,7 +784,8 @@ public partial class PluginManagerViewModel : ViewModelBase
                         store,
                         installedVersion,
                         isEnabled: installedRow?.CanDisable ?? false,
-                        hasSettings: installedRow?.HasSettings ?? false);
+                        hasSettings: installedRow?.HasSettings ?? false,
+                        disabledByStartupProtection: installedRow?.DisabledByStartupProtection ?? false);
                     AvailablePlugins.Add(row);
 
                     // AC-553 option A: a provider plugin's `LogoAsset` naming its vendor's own CDN — fetched the
@@ -1347,6 +1348,11 @@ public partial class PluginManagerViewModel : ViewModelBase
                     StatusMessage = failed.RestartReason ?? "The update could not be activated.";
                     _SetRestartPending(result.FolderId ?? "", failed.RestartRequired && !failed.RolledBack);
                     return;
+            }
+
+            if (result.InPlace)
+            {
+                await LoadAsync();
             }
 
             StatusMessage = result.Live?.RestartReason is { } reason ? $"{installedMessage} {reason}" : installedMessage;

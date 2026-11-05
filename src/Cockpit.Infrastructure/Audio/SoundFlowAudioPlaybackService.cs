@@ -3,7 +3,6 @@ using SoundFlow.Abstracts;
 using SoundFlow.Components;
 using SoundFlow.Enums;
 using SoundFlow.Providers;
-using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Voice;
 
@@ -14,7 +13,7 @@ internal sealed class SoundFlowAudioPlaybackService(
     AudioDeviceEnumerator deviceEnumerator,
     IVoiceSettingsStore voiceSettingsStore,
     ILogger<SoundFlowAudioPlaybackService> logger)
-    : ISingletonService, IAudioPlaybackService
+    : IAudioPlaybackService
 {
     // miniaudio races the last audio callback against Stop()/Dispose() right after natural
     // end-of-stream: stopping the device immediately hangs indefinitely. A short grace period

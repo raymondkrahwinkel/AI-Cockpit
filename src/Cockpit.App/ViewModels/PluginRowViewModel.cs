@@ -25,6 +25,8 @@ public sealed class PluginRowViewModel(InstalledPlugin installed, bool hasSettin
     // AC-1588: whether the operator muted this plugin's system notifications; the label names the action.
     public bool NotificationsMuted => installed.Registration?.NotificationsMuted ?? false;
 
+    public bool DisabledByStartupProtection => installed.Registration?.DisabledByStartupProtection ?? false;
+
     public string NotificationsToggleLabel => NotificationsMuted ? "Allow notifications" : "Mute notifications";
 
     public string NotificationsToggleTip => NotificationsMuted
@@ -69,6 +71,7 @@ public sealed class PluginRowViewModel(InstalledPlugin installed, bool hasSettin
         // would say the opposite of what happened.
         PluginLoadDecision.Load when installed.ActivationFailure is not null => "Failed to load — see below",
         PluginLoadDecision.Load => "Enabled — active this session",
+        PluginLoadDecision.Disabled when DisabledByStartupProtection => "Disabled by startup protection",
         PluginLoadDecision.Disabled => "Disabled",
         PluginLoadDecision.NeedsConsent => "Needs your consent",
         PluginLoadDecision.AbstractionsMajorMismatch => "Incompatible — built for another contract version",

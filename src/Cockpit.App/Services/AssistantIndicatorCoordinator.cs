@@ -178,6 +178,7 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     private void _Refresh()
     {
         Indicator.LeadershipLabel = _cockpit.AssistantLeadershipLabel;
+        Indicator.IsAudioAvailable = _cockpit.IsAudioAvailable;
         Indicator.Activity = _ResolveActivity();
         Indicator.UnavailableReason = _assistant.UnavailableReason;
         Indicator.PreparationStatus = _assistant.PreparationStatus;
@@ -546,9 +547,9 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         // AC-1303: in the Simple stand the dock is a role and not a setting, so this button means "give the main
         // column back" rather than "pop out into a window". It lands in the same state as picking the assistant's
         // own row in the rail, which is the other way back — one state, reached two ways (criterion 4(a)).
-        if (_cockpit.SimpleStandDocksTheAssistant)
+        if (_cockpit.SimpleStandDocksTheAssistant && _cockpit.AssistantRootSession is { } assistant)
         {
-            _cockpit.SimpleSelectedSession = _cockpit.AssistantRootSession;
+            await _cockpit.SelectSimpleSessionCommand.ExecuteAsync(assistant);
             return;
         }
 
@@ -563,7 +564,7 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     // one-line guard keeps the microphone from opening on a filter that doesn't exist yet.
     private async Task _ApplyListeningModeAsync(AssistantListeningMode mode)
     {
-        if (mode == AssistantListeningMode.AlwaysOnWithWakeWord)
+        if (!_cockpit.IsAudioAvailable || mode == AssistantListeningMode.AlwaysOnWithWakeWord)
         {
             return;
         }

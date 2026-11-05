@@ -30,8 +30,13 @@ internal sealed class AgentsMcpTools(
 
     [McpServerTool(Name = "acknowledge_storage_pause", ReadOnly = false, Destructive = false)]
     [Description("Acknowledges this session's Docker pause using the inbox pauseId until storage resume arrives, without approving compaction for the operator.")]
-    public string AcknowledgeStoragePause([Description("The pauseId from this session's storage pause message.")] string pauseId) =>
-        _Serialize(new { ok = McpRequestContext.CurrentPaneId is { } caller && storage?.AcknowledgePause(caller, pauseId) == true });
+    public string AcknowledgeStoragePause([Description("The pauseId from this session's storage pause message.")] string pauseId)
+    {
+        if (McpRequestContext.CurrentPaneId is not { } caller)
+            return _Serialize(new { ok = false, reason = "no_caller" });
+        var result = storage is null ? new(false, "unavailable") : storage.AcknowledgePause(caller, pauseId);
+        return _Serialize(new { ok = result.Ok, reason = result.Reason });
+    }
 
     // AC-1013: bound is the recipient's, not the senders' — draining everything waiting would let neighbours
     // decide how much context/money the recipient spends reading mail. `remaining` in the reply avoids silent loss.

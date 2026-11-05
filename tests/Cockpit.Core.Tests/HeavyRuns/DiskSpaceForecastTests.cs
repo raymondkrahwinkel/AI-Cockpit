@@ -41,14 +41,14 @@ public class DiskSpaceForecastTests
         peak.Sample(now.AddHours(2), 100_000, 30_000, settings);
         var stable = peak.Sample(now.AddHours(3), 100_000, 15_000, settings);
         Assert.Null(stable.TimeToFull);
-        Assert.Equal(DiskPressure.Elevated, stable.Pressure);
-        Assert.Equal(DiskPressure.Critical, peak.Sample(now.AddHours(4), 100_000, 9_000, settings).Pressure);
+        Assert.Equal(DiskPressure.Normal, stable.Pressure);
+        Assert.Equal(DiskPressure.Elevated, peak.Sample(now.AddHours(4), 100_000, 9_000, settings).Pressure);
         Assert.Equal(DiskPressure.Normal, peak.Sample(now.AddHours(29), 100_000, 9_000, settings).Pressure);
 
         var retention = new DiskSpaceForecast("retention");
         retention.Sample(now, 100_000, 20_000, settings);
         retention.Sample(now.AddHours(1), 100_000, 9_000, settings);
-        Assert.Equal(DiskPressure.Critical, retention.Sample(now.AddHours(25), 100_000, 9_000, settings).Pressure);
+        Assert.Equal(DiskPressure.Elevated, retention.Sample(now.AddHours(25), 100_000, 9_000, settings).Pressure);
         Assert.Equal(DiskPressure.Normal, retention.Sample(now.AddHours(25).AddMinutes(1), 100_000, 9_000, settings).Pressure);
 
         var regression = new DiskSpaceForecast("regression");

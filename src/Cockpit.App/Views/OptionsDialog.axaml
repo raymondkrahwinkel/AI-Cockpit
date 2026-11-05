@@ -17,6 +17,7 @@
         Title="Options"
         Width="880" Height="680"
         WindowStartupLocation="CenterOwner"
+        KeyboardNavigation.TabNavigation="Cycle"
         Background="{DynamicResource CockpitPanelBgBrush}">
 
     <Design.DataContext>
@@ -302,6 +303,8 @@
                             <TextBlock Text="{Binding Swarm.RemovalStatus}" TextWrapping="Wrap"/>
                         </Border>
                         <TextBlock Text="{Binding Swarm.LeaderLine}" TextWrapping="Wrap" FontWeight="SemiBold"/>
+                        <Button Content="Make this machine leader" Classes="Compact" HorizontalAlignment="Left"
+                                Command="{Binding Swarm.ClaimLeadershipCommand}" IsVisible="{Binding Swarm.CanClaimLeadership}"/>
                         <Border Classes="errorCard informational" Padding="12,10" IsVisible="{Binding Swarm.NoOtherMachineOnline}">
                             <StackPanel Spacing="4">
                                 <TextBlock Text="No other machine online" FontWeight="SemiBold"/>
@@ -856,6 +859,7 @@
                         </StackPanel>
 
                         <TextBlock Classes="optionsSectionHeader" Text="3. SOUND PINGS"/>
+                        <StackPanel IsEnabled="{Binding IsAudioAvailable}">
                         <CheckBox Content="Play notification sounds"
                                   IsChecked="{Binding NotificationSoundsEnabled}"/>
                         <StackPanel Spacing="8" IsEnabled="{Binding NotificationSoundsEnabled}">
@@ -894,6 +898,9 @@
                                         TickFrequency="0.05" Width="260"/>
                             </StackPanel>
                         </StackPanel>
+                        </StackPanel>
+                        <TextBlock Text="{Binding AudioUnavailableMessage}" Classes="optionsHint"
+                                   IsVisible="{Binding AudioUnavailableMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
 
                         <TextBlock Classes="optionsSectionHeader" Text="4. SESSIONS FINISHING AND FALLING QUIET"/>
                         <StackPanel Spacing="8">
@@ -970,6 +977,7 @@
                         </StackPanel>
 
                         <TextBlock Classes="optionsSectionHeader" Text="2. DICTATION PUSH-TO-TALK"/>
+                        <StackPanel Spacing="6" IsEnabled="{Binding IsAudioAvailable}">
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Push-to-talk key"
                                        Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11"
@@ -1019,9 +1027,13 @@
                             <TextBlock Text="This does not remove your desktop's old registration for the previous location — clean that up yourself in System Settings → Shortcuts."
                                        Foreground="{DynamicResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                         </StackPanel>
+                        </StackPanel>
+                        <TextBlock Text="{Binding AudioUnavailableMessage}" Classes="optionsHint"
+                                   IsVisible="{Binding AudioUnavailableMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
 
                         <TextBlock Classes="optionsSectionHeader" Text="3. ASSISTANT PUSH-TO-TALK"/>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
+                                    IsEnabled="{Binding IsAudioAvailable}">
                             <TextBlock Text="Push to talk"
                                        Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11"
                                        VerticalAlignment="Center"/>
@@ -1030,6 +1042,8 @@
                             <materialIcons:MaterialIcon Classes="hint"
                                 ToolTip.Tip="Hold to speak to the assistant. Works while Cockpit is in the background."/>
                         </StackPanel>
+                        <TextBlock Text="{Binding AudioUnavailableMessage}" Classes="optionsHint"
+                                   IsVisible="{Binding AudioUnavailableMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
 
                         <TextBlock Classes="optionsSectionHeader" Text="4. QUICK NOTE"/>
                         <!-- AC-492: a note into a project's memory without starting anything. Only the desktop-wide
@@ -1107,6 +1121,9 @@
                         </StackPanel>
                         <TextBlock Text="Push-to-talk dictation and its transcription model, plus mic behaviour while the assistant talks." Classes="optionsHint"/>
                         <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}" Margin="0,4"/>
+                        <TextBlock Text="{Binding AudioUnavailableMessage}" Classes="optionsHint"
+                                   IsVisible="{Binding AudioUnavailableMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                        <StackPanel Spacing="8" IsEnabled="{Binding IsAudioAvailable}">
 
                         <TextBlock Classes="optionsSectionHeader" Text="1. DICTATION"/>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
@@ -1355,6 +1372,7 @@
                                     ToolTip.Tip="Open mic is turned on/off at runtime from the sidebar mic button, not here — this is only its tuning."/>
                             </StackPanel>
                         </StackPanel>
+                        </StackPanel>
                     </StackPanel>
                 </ScrollViewer>
 
@@ -1433,8 +1451,11 @@
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <CheckBox Content="Speak replies"
-                                          IsChecked="{Binding AssistantOptions.SpeakReplies}"/>
+                                          IsChecked="{Binding AssistantOptions.SpeakReplies}"
+                                          IsEnabled="{Binding IsAudioAvailable}"/>
                             </StackPanel>
+                            <TextBlock Text="{Binding AudioUnavailableMessage}" Classes="optionsHint"
+                                       IsVisible="{Binding AudioUnavailableMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
 
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <TextBlock Text="Keep chat window on top" FontWeight="SemiBold"/>
@@ -1467,6 +1488,7 @@
                                  relocated Read-aloud's remainder here too): these settings exist because the
                                  assistant speaks, and sessions no longer do — so they belong with the rest of the
                                  assistant's settings, not on a page named after a feature that was removed. -->
+                            <StackPanel Spacing="6" IsEnabled="{Binding IsAudioAvailable}">
                             <TextBlock Classes="optionsSectionHeader" Text="4. SPEECH"/>
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <TextBlock Text="Speech" FontWeight="SemiBold"/>
@@ -1513,6 +1535,7 @@
                                           DisplayMemberBinding="{Binding Label}" MinWidth="220"/>
                                 <materialIcons:MaterialIcon Classes="hint"
                                     ToolTip.Tip="Which speaker/headset the assistant's speech plays to. 'System default' follows your OS setting."/>
+                            </StackPanel>
                             </StackPanel>
                         </StackPanel>
                     </StackPanel>

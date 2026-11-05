@@ -93,8 +93,15 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     // AC-1751: raised when something walks to a floating workspace (its key, the sidebar); its window comes to the front instead.
     public event EventHandler<string>? FloatingWorkspaceShown;
 
+    public event EventHandler? WorkspaceOpened;
+
     // The tab strip's items, rebuilt whenever the workspace set or the selection changes. A floating workspace has none.
     public ObservableCollection<WorkspaceTabViewModel> Tabs { get; } = [];
+
+    public IEnumerable<WorkspaceTabViewModel> OpenItems => Tabs.Where(tab =>
+        Settings.Workspaces.Any(workspace => workspace.Id == tab.Id && workspace.Type != WorkspaceType.Sessions && workspace.Type != WorkspaceType.Projects));
+
+    public bool HasOpenItems => OpenItems.Any();
 
     [ObservableProperty]
     private bool _hasHiddenTabs;
@@ -207,7 +214,7 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     // `_RefreshPluginBody`). Null when a host type is active, or when the active plugin type's plugin
     // is not installed — the view shows the unknown-type placeholder then (`ShowUnknownPluginWorkspace`).
     public Control? ActivePluginBody =>
-        Active is { } active && _pluginBodies.TryGetValue(active.Id, out var body) ? body : null;
+        Active is { Type.IsBuiltIn: false } active ? BodyFor(active) : null;
 
     // True when a plugin workspace is active but its body could not be built — the plugin that registers this type
     // is not installed. The view shows a placeholder rather than an empty surface, and the body rebuilds itself the
@@ -338,7 +345,13 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     }
 
     // AC-1013: Brings the workspace of type `workspaceTypeId` to the front, creating one when none is open
-    public Task OpenWorkspaceAsync(string workspaceTypeId)
+    public async Task OpenWorkspaceAsync(string workspaceTypeId)
+    {
+        await _OpenWorkspaceAsync(workspaceTypeId);
+        WorkspaceOpened?.Invoke(this, EventArgs.Empty);
+    }
+
+    private Task _OpenWorkspaceAsync(string workspaceTypeId)
     {
         var type = WorkspaceType.FromId(workspaceTypeId);
         if (Active is { } active && active.Type == type)
@@ -358,11 +371,17 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     }
 
     // AC-1750: one instance of a plugin type by key, or the preview tab, which a new preview replaces in the same strip position.
-    public Task OpenWorkspaceAsync(string workspaceTypeId, WorkspaceOpenOptions options)
+    public async Task OpenWorkspaceAsync(string workspaceTypeId, WorkspaceOpenOptions options)
+    {
+        await _OpenWorkspaceAsync(workspaceTypeId, options);
+        WorkspaceOpened?.Invoke(this, EventArgs.Empty);
+    }
+
+    private Task _OpenWorkspaceAsync(string workspaceTypeId, WorkspaceOpenOptions options)
     {
         if (options.InstanceKey is null && !options.Preview)
         {
-            return OpenWorkspaceAsync(workspaceTypeId);
+            return _OpenWorkspaceAsync(workspaceTypeId);
         }
 
         var type = WorkspaceType.FromId(workspaceTypeId);
@@ -873,6 +892,8 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
         _RefreshTabs();
         _RefreshWidgetPanes();
         _RefreshPluginBody();
+        OnPropertyChanged(nameof(OpenItems));
+        OnPropertyChanged(nameof(HasOpenItems));
         OnPropertyChanged(nameof(Active));
         OnPropertyChanged(nameof(ShowTabStrip));
         OnPropertyChanged(nameof(IsDashboardActive));

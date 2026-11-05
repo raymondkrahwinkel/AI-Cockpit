@@ -64,7 +64,7 @@ public class PluginManagerViewModelBusyGateTests
         {
             await registrationStore.DidNotReceive().SaveAsync(
                 Arg.Any<string>(), Arg.Any<PluginRegistration>(), Arg.Any<CancellationToken>());
-            Assert.True(manager.NeedsRestart);
+            Assert.False(manager.NeedsRestart);
         }
     }
 

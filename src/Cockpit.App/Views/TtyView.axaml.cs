@@ -301,7 +301,7 @@ public partial class TtyView : UserControl
     // `PushToTalkKeyGate`) so the global coordinator's hold does not fire twice.
     private void _OnPushToTalkKeyDown(object? sender, KeyEventArgs e)
     {
-        if (_viewModel is { } vm
+        if (_viewModel is { IsAudioAvailable: true } vm
             && PushToTalkKeyGate.ShouldHandleLocally(e.Key, vm.PushToTalkKeyName, vm.GlobalPushToTalkEnabled)
             && vm.BeginVoiceHold())
         {

@@ -1,3 +1,5 @@
+using Cockpit.Plugin.Proxmox.Settings;
+
 namespace Cockpit.Plugin.Proxmox.Engine;
 
 /// <summary>
@@ -7,6 +9,8 @@ namespace Cockpit.Plugin.Proxmox.Engine;
 /// </summary>
 internal interface IProxmoxEngine
 {
+    IProxmoxEngine ForServer(ProxmoxServer server);
+
     /// <summary>
     /// The API's version (<c>/version</c>). Touches the API — the first call that does, in an MCP session.
     /// </summary>
@@ -121,6 +125,18 @@ internal interface IProxmoxEngine
     /// Lists a node's recent tasks — what ran or is running, with outcome. A read.
     /// </summary>
     Task<IReadOnlyList<ProxmoxTaskSummary>> ListTasksAsync(string node, CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<PbsDatastore>> ListPbsDatastoresAsync(CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<PbsBackup>> ListPbsBackupsAsync(string datastore, string? type, string? id, CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<PbsTask>> ListPbsTasksAsync(CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<PbsJob>> ListPbsJobsAsync(CancellationToken cancellationToken);
+
+    Task<ProxmoxTaskOutcome> StartPbsVerifyJobAsync(string id, CancellationToken cancellationToken);
+
+    Task<ProxmoxTaskOutcome> StartPbsGcAsync(string datastore, CancellationToken cancellationToken);
 }
 
 // The API's own version/release, from `/version`.
@@ -149,3 +165,11 @@ internal sealed record ProxmoxStoragePool(string Storage, string Node, string Ty
 
 // One entry from a node's task history, from `/nodes/{node}/tasks`.
 internal sealed record ProxmoxTaskSummary(string Upid, string Type, string? Status, string User, long StartTime, long? EndTime);
+
+internal sealed record PbsDatastore(string Name, long TotalBytes, long UsedBytes, string? GcStatus, string? VerifyStatus);
+
+internal sealed record PbsBackup(string Datastore, string Type, string Id, long BackupTime, long SizeBytes, string? VerifyState, bool Protected);
+
+internal sealed record PbsTask(string Upid, string Type, string? Status, string User, long StartTime, long? EndTime);
+
+internal sealed record PbsJob(string Type, string Id, string? Datastore, string? Schedule, string? LastRunState);

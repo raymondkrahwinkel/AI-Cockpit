@@ -61,6 +61,21 @@ internal sealed class SessionTranscriptBuilder(
 
     // Top-level rows in transcript order, and every row by id, nested ones included.
     private readonly List<Row> _rows = [];
+    private readonly List<ReplyAttachment> _replyAttachments = [];
+    private int _replyAttachmentCount;
+
+    public string? AttachToReply(ReplyAttachment attachment)
+    {
+        if (_replyAttachmentCount >= 10)
+        {
+            return "At most 10 files may be attached to a reply.";
+        }
+
+        _replyAttachments.Add(attachment);
+        _replyAttachmentCount++;
+        return null;
+    }
+
     private readonly Dictionary<string, Row> _byId = new(StringComparer.Ordinal);
 
     private Row? _currentAssistantRow;
@@ -134,6 +149,8 @@ internal sealed class SessionTranscriptBuilder(
     // A turn is about to be sent: prose it produces starts a fresh reply, and a fresh thinking row.
     public void EndReply()
     {
+        _replyAttachments.Clear();
+        _replyAttachmentCount = 0;
         _currentAssistantRow = null;
         _CloseThinkingRow();
     }
@@ -141,6 +158,8 @@ internal sealed class SessionTranscriptBuilder(
     // The context was cleared (AC-564). The thinking row is left as it was, as it always has been.
     public void ResetStreaming()
     {
+        _replyAttachments.Clear();
+        _replyAttachmentCount = 0;
         _subAgentLanes.Clear();
         _currentAssistantRow = null;
         _currentOrphanedSubAgentTextRow = null;
@@ -737,6 +756,12 @@ internal sealed class SessionTranscriptBuilder(
     // in it made each sub-agent step copy, serialise and store the whole lane again, on the UI thread.
     private void _Publish(Row row)
     {
+        if (row.Parent is null && row.Entry.Kind == AssistantText && _replyAttachments.Count > 0)
+        {
+            row.Entry = row.Entry with { ReplyAttachments = [.. row.Entry.ReplyAttachments ?? [], .. _replyAttachments] };
+            _replyAttachments.Clear();
+        }
+
         row.Version++;
         changed(row.Version, row.Parent is { } parent ? row.Entry with { ParentRowId = parent.Entry.Id } : _Snapshot(row));
     }

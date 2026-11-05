@@ -22,18 +22,24 @@ public sealed class ProxmoxAccessGateTests
     {
         var (gate, asked) = _Gate(ConsentOutcome.Approved);
 
-        var result = await gate.AuthorizeMutationAsync("start VM 100 on node \"pve1\"", Session);
+        var result = await gate.AuthorizeMutationAsync("start VM 100 on node \"pve1\"", Session, "development");
 
         Assert.True(result.IsAllowed);
         Assert.Equal(2, asked.Count);
         // The connection is asked once per pane, LowRisk and rememberable; the change itself is Dangerous, never remembered.
         Assert.Equal(ConsentRisk.LowRisk, asked[0].Risk);
         Assert.True(asked[0].AllowRemember);
-        Assert.Equal("proxmox.connect:default", asked[0].Scope);
+        Assert.Equal("proxmox.connect:development", asked[0].Scope);
         Assert.Equal(Session, asked[0].Source.PaneId);
         Assert.Equal(ConsentRisk.Dangerous, asked[1].Risk);
         Assert.False(asked[1].AllowRemember);
         Assert.Equal("proxmox.mutate:default", asked[1].Scope);
+
+        var production = await gate.AuthorizeMutationAsync("start VM 100 on node \"pve1\"", Session, "production");
+
+        Assert.True(production.IsAllowed);
+        Assert.Equal(4, asked.Count);
+        Assert.Equal("proxmox.connect:production", asked[2].Scope);
     }
 
     [Fact]
@@ -41,7 +47,7 @@ public sealed class ProxmoxAccessGateTests
     {
         var (gate, asked) = _Gate(ConsentOutcome.Approved);
 
-        var result = await gate.AuthorizeDangerAsync(DangerCapability.Rollback, enabled: true, "roll back VM 100 to snapshot \"pre-upgrade\"", Session);
+        var result = await gate.AuthorizeDangerAsync(DangerCapability.Rollback, enabled: true, "roll back VM 100 to snapshot \"pre-upgrade\"", Session, "development");
 
         Assert.True(result.IsAllowed);
         Assert.Equal(2, asked.Count);
@@ -55,10 +61,10 @@ public sealed class ProxmoxAccessGateTests
     {
         var (gate, asked) = _Gate(ConsentOutcome.Approved);
 
-        await gate.AuthorizeMutationAsync("delete\nVM\n100", Session);
+        await gate.AuthorizeMutationAsync("delete\nVM\n100", Session, "development");
         // AC-1062, criterion 3 (mirrors ClusterAccessGate): the multi-line ingress still holds the AC-92 invariant — a
         // detail line carrying a raw newline of its own comes out escaped on its own line, not as a second line.
-        await gate.AuthorizeMutationAsync("start VM 100 on node \"pve1\"", Session, detailLines: ["snapshot note: pre-upgrade\nrm -rf /data"]);
+        await gate.AuthorizeMutationAsync("start VM 100 on node \"pve1\"", Session, "development", detailLines: ["snapshot note: pre-upgrade\nrm -rf /data"]);
 
         // Newlines are escaped VISIBLY (as the two literal chars \n) so the operator sees the command is multi-line —
         // an agent cannot disguise a second line as commented-out — while the consent body stays one physical line.

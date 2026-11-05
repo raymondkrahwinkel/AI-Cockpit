@@ -7,6 +7,7 @@ using Cockpit.App.Services;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Core.Configuration;
@@ -202,7 +203,8 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         IUsageHistory? usageHistory = null,
         VoiceOverlayCoordinator? voiceOverlay = null,
         ILogger<TtyViewModel>? logger = null,
-        ISessionRunActivities? heavyRuns = null)
+        ISessionRunActivities? heavyRuns = null,
+        IAudioAvailability? audioAvailability = null)
         : base(usageHistory, heavyRuns)
     {
         _launcher = launcher;
@@ -214,7 +216,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         // Also publish it on the shared base so the read/observe surface reports where this session runs — the
         // TTY working dir is known up front (unlike an SDK session, which learns it from its init event).
         WorkingDirectory = WorkingPath;
-        InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, openMicState, voiceOverlay);
+        InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, openMicState, voiceOverlay, audioAvailability);
     }
 
     // The effective TTY working directory — the configured Claude:WorkingDirectory when set, else the process

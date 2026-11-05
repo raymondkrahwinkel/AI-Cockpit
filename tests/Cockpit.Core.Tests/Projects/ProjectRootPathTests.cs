@@ -60,6 +60,18 @@ public class ProjectRootPathTests
             Assert.Equal(targetInside, refusal is null);
             Assert.True(aliasAccepted, aliasRefusal);
             Assert.Equal(Path.Combine(inside, "file.txt"), resolved);
+
+            var attachment = Path.Combine(root, "file.txt");
+            File.WriteAllText(attachment, "attachment");
+            using var opened = File.OpenRead(attachment);
+            Assert.True(Cockpit.Infrastructure.Assistant.ReplyAttachmentPath.TryResolve(
+                Cockpit.Infrastructure.Assistant.ReplyAttachmentPath.OpenedPath(opened), [root], out _, out var attachmentRefusal), attachmentRefusal);
+            Assert.False(Cockpit.Infrastructure.Assistant.ReplyAttachmentPath.TryResolve(
+                Path.Combine(root, "cockpit.json"), [root], out _, out var configRefusal));
+            Assert.NotNull(configRefusal);
+            Assert.Equal(targetInside, Cockpit.Infrastructure.Assistant.ReplyAttachmentPath.TryResolve(
+                Path.Combine(link, "file.txt"), [root], out _, out var linkRefusal));
+            Assert.Equal(targetInside, linkRefusal is null);
         }
         finally
         {

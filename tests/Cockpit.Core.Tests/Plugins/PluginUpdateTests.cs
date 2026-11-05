@@ -10,9 +10,7 @@ using NSubstitute;
 
 namespace Cockpit.Core.Tests.Plugins;
 
-// AC-2025 (layer 2, isolation): a live update whose new version cannot start puts the old version back from its copy:
-// running, in its folder, and under its pin. Versions: 2 throws in Initialize, 3 fails in its UI part, 5 hangs in Initialize,
-// 4 needs a restart (it adds services). The ticket allows two tests for AC-2025 (set before testregels v2); this is the second.
+// A failed live update restores the approved version; only an explicit manifest flag requires a restart.
 public class PluginUpdateTests : IDisposable
 {
     private const string Id = "update-probe";
@@ -101,14 +99,32 @@ public class PluginUpdateTests : IDisposable
         Assert.True(SpinWait.SpinUntil(() => instances.Single(probe => probe.Version == "5.0.0").Disposed, TimeSpan.FromSeconds(10)));
         Assert.Equal(v1.Sha256, Assert.Single(manager.Loaded).Sha256);
 
+        var undeclared = await admin.InstallFromZipAsync(_Zip("6.0.0", "MZ-v6"));
+        var refused = Assert.IsType<PluginLiveState>(undeclared.Live);
+        Assert.True(refused.RolledBack);
+        Assert.False(refused.RestartRequired);
+        Assert.Equal(v1.Sha256, Assert.Single(manager.Loaded).Sha256);
+
+        var consent = await admin.InstallFromZipAsync(_Zip("7.0.0", "MZ-v7"));
+        Assert.True(consent.InPlace);
+        Assert.False(Assert.IsType<PluginLiveState>(consent.Live).RestartRequired);
+        Assert.Equal(v1.Sha256, (await store.LoadAllAsync())[Id].PinnedSha256);
+        await bootstrap.ReconcileUpdatesAsync();
+        Assert.Equal(v1.Sha256, (await store.LoadAllAsync())[Id].PinnedSha256);
+        Assert.Equal(v1.Sha256, Assert.Single(manager.Loaded).Sha256);
+        var approved = await admin.SetEnabledAsync(Id, true, consent.Sha256 ?? throw new InvalidOperationException());
+        Assert.True(approved.IsLive);
+        Assert.Equal(consent.Sha256, Assert.Single(manager.Loaded).Sha256);
+        Assert.Equal(consent.Sha256, (await store.LoadAllAsync())[Id].PinnedSha256);
+
         // Bytes that only a restart can start: the old version keeps running, and files and pin stay on the new ones.
         var restart = await admin.InstallFromZipAsync(_Zip("4.0.0", "MZ-v4"));
         Assert.False(restart.Live!.IsLive);
         Assert.False(restart.Live.Failed);
-        Assert.Contains("needs a restart", restart.Live.RestartReason);
-        Assert.Equal(v1.Sha256, Assert.Single(manager.Loaded).Sha256);
+        Assert.True(restart.Live.RestartRequired);
+        Assert.Equal(consent.Sha256, Assert.Single(manager.Loaded).Sha256);
         Assert.Equal(restart.Sha256, (await store.LoadAllAsync())[Id].PinnedSha256);
-        Assert.Equal(restart.Sha256, await PluginClosureHash.OfInstalledFolderAsync(Path.Combine(pluginsRoot, Id)));
+        Assert.Equal(restart.Sha256, await PluginClosureHash.OfInstalledFolderAsync(Path.Combine(pluginsRoot, ".pending-updates", Id)));
     }
 
     private string _Zip(string version, string dll)
@@ -116,7 +132,7 @@ public class PluginUpdateTests : IDisposable
         Directory.CreateDirectory(_root);
         var zipPath = Path.Combine(_root, Guid.NewGuid().ToString("N") + ".zip");
         using var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create);
-        var manifest = $$"""{"id":"{{Id}}","name":"{{Id}}","version":"{{version}}","entryAssembly":"Plugin.dll","abstractionsVersion":{{AbstractionsContract.Version}},"sessionProviders":[{"id":"{{Id}}.provider","name":"Probe"}]}""";
+        var manifest = $$"""{"id":"{{Id}}","name":"{{Id}}","version":"{{version}}","requiresRestart":{{(version == "4.0.0" ? "true" : "false")}},"capabilities":{{(version == "7.0.0" ? "[\"time.entries\"]" : "[]")}},"entryAssembly":"Plugin.dll","abstractionsVersion":{{AbstractionsContract.Version}},"sessionProviders":[{"id":"{{Id}}.provider","name":"Probe"}]}""";
         foreach (var (name, content) in new Dictionary<string, string> { ["plugin.json"] = manifest, ["Plugin.dll"] = dll })
         {
             using var writer = new StreamWriter(archive.CreateEntry(name).Open());
@@ -152,7 +168,7 @@ public class PluginUpdateTests : IDisposable
 
         public void ConfigureServices(IServiceCollection services)
         {
-            if (Version == "4.0.0")
+            if (Version is "4.0.0" or "6.0.0")
             {
                 services.AddSingleton(new object());
             }

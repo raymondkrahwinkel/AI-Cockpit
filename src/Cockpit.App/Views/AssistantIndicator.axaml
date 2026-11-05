@@ -175,9 +175,10 @@
                          of it; IsChecked is one-way because the stand is the host's answer, not the switch's. -->
                     <CheckBox Grid.Column="2" Classes="Switch assistantIndicatorSwitch"
                               IsVisible="{Binding ShowsListeningSwitch}"
+                              IsEnabled="{Binding IsAudioAvailable}"
                               IsChecked="{Binding IsListeningModeAlwaysOn, Mode=OneWay}"
                               Command="{Binding ToggleListeningModeCommand}"
-                              ToolTip.Tip="On: the microphone stays open and everything you say goes to the assistant. Off: only the held assistant hotkey opens it."/>
+                              ToolTip.Tip="{Binding AudioControlTooltip}"/>
                 </Grid>
                 <!-- The first-use fetch, which is a ~1.6 GB model and can take minutes (AC-543, 2026-08-08 — this
                      used to be the pill's own row). Only for a step that knows its total: one parked at an invented
