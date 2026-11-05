@@ -485,9 +485,11 @@ public sealed class PluginManager(
     }
 
     private PluginActivationResult? _LifecycleRefusal() =>
-        _disposed || SafeMode || !_initialized.Task.IsCompletedSuccessfully || _activate is null || _hostFor is null
-            ? new(PluginActivationStatus.NeedsRestart, "The plugin lifecycle is not available for live activation.")
-            : null;
+        SafeMode
+            ? new(PluginActivationStatus.NeedsRestart, "Cockpit is in safe mode, so no plugin runs until the next normal start.")
+            : _disposed || !_initialized.Task.IsCompletedSuccessfully || _activate is null || _hostFor is null
+                ? new(PluginActivationStatus.NeedsRestart, "The plugin lifecycle is not available for live activation.")
+                : null;
 
     public PluginActivationResult ActivateOne(DiscoveredPlugin discovered)
     {
