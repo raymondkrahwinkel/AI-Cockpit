@@ -3,7 +3,6 @@ using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using SoundFlow.Abstracts;
 using SoundFlow.Enums;
-using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Voice;
 
@@ -14,7 +13,7 @@ internal sealed class SoundFlowAudioCaptureService(
     AudioDeviceEnumerator deviceEnumerator,
     IVoiceSettingsStore voiceSettingsStore,
     ILogger<SoundFlowAudioCaptureService> logger)
-    : ISingletonService, IAudioCaptureService
+    : IAudioCaptureService
 {
     public async IAsyncEnumerable<ReadOnlyMemory<byte>> CaptureAsync(
         Core.Audio.AudioFormat format,

@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using Microsoft.Extensions.DependencyInjection;
 using SoundFlow.Abstracts;
 using SoundFlow.Backends.MiniAudio;
+using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Diagnostics;
@@ -18,6 +19,7 @@ using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Voice;
 using Cockpit.Infrastructure.Hotkeys;
 using Cockpit.Infrastructure.Voice;
+using Cockpit.Infrastructure.Audio;
 
 namespace Cockpit.Infrastructure;
 
@@ -127,7 +129,7 @@ public static class DependencyInjection
 
     public static IServiceCollection AddDesktopInfrastructure(this IServiceCollection services)
     {
-        services.AddSingleton<AudioEngine, MiniAudioEngine>();
+        AddAudio(services);
         services.AddSingleton<ISpeechToTextService, WhisperWorkerSpeechToTextService>();
         AddGlobalHotkey(services);
         AddScreenshotCapture(services);
@@ -135,6 +137,35 @@ public static class DependencyInjection
         AddPresenceDetector(services);
 
         return services;
+    }
+
+    private static void AddAudio(IServiceCollection services)
+    {
+        try
+        {
+            var engine = new MiniAudioEngine();
+            services.AddSingleton<AudioEngine>(_ => engine);
+            services.AddSingleton<AudioDeviceEnumerator>();
+            services.AddSingleton<IAudioCaptureService, SoundFlowAudioCaptureService>();
+            services.AddSingleton<IAudioPlaybackService, SoundFlowAudioPlaybackService>();
+            services.AddSingleton<IAudioDeviceProvider, SoundFlowAudioDeviceProvider>();
+            services.AddSingleton<IAudioAvailability>(new AudioAvailability(true, null));
+        }
+        catch (Exception exception) when (exception is DllNotFoundException
+            or BadImageFormatException
+            or EntryPointNotFoundException
+            or FileLoadException
+            or TypeInitializationException
+            or InvalidOperationException)
+        {
+            var cause = exception.GetBaseException();
+            var reason = $"Native audio runtime could not be loaded ({cause.GetType().Name}: {cause.Message})";
+            var unavailable = new UnavailableAudioServices(reason);
+            services.AddSingleton<IAudioCaptureService>(unavailable);
+            services.AddSingleton<IAudioPlaybackService>(unavailable);
+            services.AddSingleton<IAudioDeviceProvider>(unavailable);
+            services.AddSingleton<IAudioAvailability>(new AudioAvailability(false, reason));
+        }
     }
 
     // OS screen-lock detection (AC-5) is registered by platform here rather than via the Scrutor marker scan,

@@ -142,6 +142,26 @@
              Properties="Configuration=$(Configuration);RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=$(SelfContained);PublishDir=$([System.IO.Path]::Combine($(MSBuildProjectDirectory), $(PublishDir)))" />
   </Target>
 
+  <!-- SoundFlow's miniaudio backend imports VCRUNTIME140.dll. A clean Windows has no guarantee that the VC++
+       redistributable is installed, so publish the one DLL alongside the self-contained app. `vswhere` locates the
+       redist on both Community and the hosted CI editions; the glob admits newer v14 redists without pinning VS. -->
+  <Target Name="PublishVCRuntime" AfterTargets="Publish"
+          Condition="$([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win-'))">
+    <PropertyGroup>
+      <_VsWhere>$(MSBuildProgramFiles32)\Microsoft Visual Studio\Installer\vswhere.exe</_VsWhere>
+    </PropertyGroup>
+    <Exec Command="&quot;$(_VsWhere)&quot; -latest -products * -requires Microsoft.VisualStudio.Component.VC.Redist.14.Latest -property installationPath"
+          ConsoleToMSBuild="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_VisualStudioInstall" />
+    </Exec>
+    <ItemGroup>
+      <_VCRuntime Include="$([System.String]::Copy('$(_VisualStudioInstall)').Trim())\VC\Redist\MSVC\*\x64\Microsoft.VC*.CRT\vcruntime140.dll" />
+    </ItemGroup>
+    <Error Condition="'@(_VCRuntime)' == ''"
+           Text="The Visual C++ x64 runtime was not found; SoundFlow's native audio backend would not start on clean Windows." />
+    <Copy SourceFiles="@(_VCRuntime)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
+  </Target>
+
   <!-- AC-1392: the bundled plugins' build and copy, shared with Cockpit.Backend.Tests. -->
   <Import Project="..\BundledPlugins.targets" />
 

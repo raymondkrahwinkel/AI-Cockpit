@@ -14,6 +14,7 @@ using Cockpit.Core.Abstractions.Mentions;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
@@ -1469,7 +1470,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         ISessionTranscriptReader? transcriptReader = null,
         ILogger<SessionViewModel>? logger = null,
         IBackendEventLog? eventLog = null,
-        ISessionRunActivities? heavyRuns = null)
+        ISessionRunActivities? heavyRuns = null,
+        IAudioAvailability? audioAvailability = null)
         : base(usageHistory, heavyRuns)
     {
         _transcriptReader = transcriptReader;
@@ -1487,7 +1489,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _logger = logger;
         MentionPicker = new MentionPickerViewModel(_MentionPathsAsync, () => WorkingDirectory);
         _TrackPendingAttachments();
-        InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, openMicState, voiceOverlay);
+        InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, openMicState, voiceOverlay, audioAvailability);
         CloseRequested += (_, _) => _control.StopPolling();
     }
 
