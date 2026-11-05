@@ -6784,6 +6784,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 launched = await launcher.StartSessionAsync(request with { WorkingDirectory = decision.WorkingDirectory, RunUnisolated = true });
             }
 
+            if (launched?.UnisolatedNotice is { } notice)
+            {
+                ToastHost.Add(notice.Message, ToastSeverity.Warning, null, null);
+            }
+
             return launched?.PaneId is { Length: > 0 } started ? started : null;
         }
         catch (Exception exception) when (exception is WorktreeAdmissionException || (exception is ProfileSessionLimitException && !refuseLoudly))
