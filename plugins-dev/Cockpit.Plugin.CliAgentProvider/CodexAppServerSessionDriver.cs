@@ -981,15 +981,11 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
 
     private static bool _TryGetBoolean(JsonElement parent, string property, out bool value)
     {
-        if (parent.ValueKind == JsonValueKind.Object && parent.TryGetProperty(property, out var element) && element.ValueKind == JsonValueKind.True)
+        if (parent.ValueKind == JsonValueKind.Object
+            && parent.TryGetProperty(property, out var element)
+            && element.ValueKind is JsonValueKind.True or JsonValueKind.False)
         {
-            value = true;
-            return true;
-        }
-
-        if (parent.ValueKind == JsonValueKind.Object && parent.TryGetProperty(property, out element) && element.ValueKind == JsonValueKind.False)
-        {
-            value = false;
+            value = element.GetBoolean();
             return true;
         }
 
