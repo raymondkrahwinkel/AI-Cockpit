@@ -94,7 +94,7 @@ public class PluginUpdateTests : IDisposable
         // The failure is shown, and the old version runs again, from its copy, under the pin it had.
         Assert.True(update.Live!.Failed);
         Assert.True(update.Live.RolledBack);
-        Assert.Contains("Version 1.0.0 is running", update.Live.RestartReason);
+        Assert.Contains("Version 1.0.0 is running", update.Live.Notice);
         Assert.Equal(v1.Sha256, Assert.Single(manager.Loaded).Sha256);
         Assert.Equal((await store.LoadAllAsync())[Id].PinnedSha256, v1.Sha256);
         Assert.Equal(2, manager.RetiredLoadContexts);
@@ -114,7 +114,7 @@ public class PluginUpdateTests : IDisposable
         // A UI part that fails fails the update: the old version comes back, where it used to read "updated".
         var uiFails = await admin.InstallFromZipAsync(_Zip("3.0.0", "MZ-v3"));
         Assert.True(uiFails.Live!.RolledBack);
-        Assert.Contains("3.0.0 UI cannot start", uiFails.Live.RestartReason);
+        Assert.Contains("3.0.0 UI cannot start", uiFails.Live.Notice);
         Assert.Equal(v1.Sha256, Assert.Single(manager.Loaded).Sha256);
         Assert.Equal(v1.Sha256, (await store.LoadAllAsync())[Id].PinnedSha256);
 
@@ -142,6 +142,25 @@ public class PluginUpdateTests : IDisposable
         await bootstrap.ReconcileUpdatesAsync();
         Assert.Equal(v1.Sha256, (await store.LoadAllAsync())[Id].PinnedSha256);
         Assert.Equal(v1.Sha256, Assert.Single(manager.Loaded).Sha256);
+        Assert.Equal("", (await File.ReadAllLinesAsync(Path.Combine(pluginsRoot, PluginInstaller.UpdateMarkerPrefix + Id)))[0]);
+        var recovered = Assert.Single(await bootstrap.ApplyPendingChangesAndDiscoverAsync(AbstractionsContract.Version));
+        Assert.Equal(PluginLoadDecision.Load, recovered.Decision);
+        Assert.Equal(v1.Sha256, recovered.Sha256);
+        Assert.Equal(v1.Sha256, (await store.LoadAllAsync())[Id].PinnedSha256);
+
+        consent = await admin.InstallFromZipAsync(_Zip("7.0.0", "MZ-v7"));
+        var backup = Assert.Single(Directory.EnumerateDirectories(pluginsRoot, ".replaced-*"));
+        await File.WriteAllTextAsync(Path.Combine(backup, "Plugin.dll"), "tampered backup");
+        await store.SaveAsync(Id, new PluginRegistration(Enabled: true, PinnedSha256: "missing-approved-bytes"));
+        Assert.Equal(PluginLoadDecision.NeedsConsent, Assert.Single(await bootstrap.ApplyPendingChangesAndDiscoverAsync(AbstractionsContract.Version)).Decision);
+        Assert.Equal("missing-approved-bytes", (await store.LoadAllAsync())[Id].PinnedSha256);
+
+        await store.SaveAsync(Id, new PluginRegistration(Enabled: true, PinnedSha256: v1.Sha256 ?? throw new InvalidOperationException()));
+        recovered = Assert.Single(await bootstrap.ApplyPendingChangesAndDiscoverAsync(AbstractionsContract.Version));
+        Assert.Equal(PluginLoadDecision.Load, recovered.Decision);
+        Assert.Equal(v1.Sha256, recovered.Sha256);
+        Assert.Equal(v1.Sha256, (await store.LoadAllAsync())[Id].PinnedSha256);
+        consent = await admin.InstallFromZipAsync(_Zip("7.0.0", "MZ-v7"));
         var approved = await admin.SetEnabledAsync(Id, true, consent.Sha256 ?? throw new InvalidOperationException());
         Assert.True(approved.IsLive);
         Assert.Equal(consent.Sha256, Assert.Single(manager.Loaded).Sha256);

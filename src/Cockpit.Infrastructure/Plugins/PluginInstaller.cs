@@ -130,7 +130,7 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
                 {
                     // An empty prior hash prevents recovery from approving added capabilities.
                     await File.WriteAllTextAsync(markerPath, (added.Count == 0 ? replacedSha256 : "") + "\n" + newSha256, cancellationToken).ConfigureAwait(false);
-                    if (_TryReplaceInPlace(stagingDir, finalDir, folderId))
+                    if (_TryReplaceInPlace(stagingDir, finalDir, folderId, keepPrevious: added.Count > 0))
                     {
                         return PluginInstallResult.Success(folderId, newSha256, staged: true, manifest: manifest, inPlace: true, replacedSha256: replacedSha256,
                             consentReason: added.Count == 0 ? null : $"The update asks for new capabilities ({string.Join(", ", added)}). Approve it in Plugin Manager to activate it.");
@@ -179,12 +179,15 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
     }
 
     // The old folder is renamed aside first, so a failure leaves it as it was; discovery skips the dot-prefixed name.
-    private bool _TryReplaceInPlace(string stagingDir, string finalDir, string folderId)
+    private bool _TryReplaceInPlace(string stagingDir, string finalDir, string folderId, bool keepPrevious = false)
     {
         var aside = Path.Combine(_pluginsRoot, ReplacedPrefix + folderId + "." + Guid.NewGuid().ToString("N"));
         try
         {
-            Directory.Move(finalDir, aside);
+            if (Directory.Exists(finalDir))
+            {
+                Directory.Move(finalDir, aside);
+            }
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
@@ -197,7 +200,10 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
         }
         catch
         {
-            Directory.Move(aside, finalDir);
+            if (Directory.Exists(aside))
+            {
+                Directory.Move(aside, finalDir);
+            }
             throw;
         }
         finally
@@ -207,7 +213,10 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
 
         // An update staged earlier would otherwise be swapped in at the next start, over this newer one.
         _TryDelete(Path.Combine(_pluginsRoot, PendingUpdatesFolder, folderId));
-        _TryDelete(aside);
+        if (!keepPrevious)
+        {
+            _TryDelete(aside);
+        }
         return true;
     }
 
@@ -349,6 +358,77 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
                 // Still locked: it is dealt with at the next start.
+            }
+        }
+    }
+
+    internal async Task RestoreUnapprovedUpdatesAsync(IReadOnlyDictionary<string, PluginRegistration> registrations, CancellationToken cancellationToken)
+    {
+        if (!Directory.Exists(_pluginsRoot))
+        {
+            return;
+        }
+
+        foreach (var marker in Directory.EnumerateFiles(_pluginsRoot, UpdateMarkerPrefix + "*"))
+        {
+            try
+            {
+                var hashes = await File.ReadAllLinesAsync(marker, cancellationToken).ConfigureAwait(false);
+                var folderId = Path.GetFileName(marker)[UpdateMarkerPrefix.Length..];
+                if (hashes.Length != 2 || hashes[0].Length != 0 || registrations.GetValueOrDefault(folderId) is not { } prior)
+                {
+                    continue;
+                }
+
+                var folder = Path.Combine(_pluginsRoot, folderId);
+                if (Directory.Exists(folder) && string.Equals(await PluginClosureHash.OfInstalledFolderAsync(folder, cancellationToken).ConfigureAwait(false), prior.PinnedSha256, StringComparison.OrdinalIgnoreCase))
+                {
+                    File.Delete(marker);
+                    continue;
+                }
+
+                // Only the saved pin authorizes recovery; neither a backup name nor the marker grants consent.
+                var candidates = Directory.EnumerateDirectories(_pluginsRoot, ReplacedPrefix + folderId + ".*")
+                    .Append(Path.Combine(PluginShadow.RootFor(_pluginsRoot), folderId, prior.PinnedSha256.ToLowerInvariant()));
+                foreach (var candidate in candidates.ToList())
+                {
+                    if (Directory.Exists(candidate) && await RestoreFolderAsync(folderId, candidate, prior.PinnedSha256, cancellationToken).ConfigureAwait(false))
+                    {
+                        File.Delete(marker);
+                        break;
+                    }
+                }
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                // One unreadable plugin must not prevent the other plugins from starting.
+            }
+        }
+
+        var pendingRoot = Path.Combine(_pluginsRoot, PendingUpdatesFolder);
+        if (!Directory.Exists(pendingRoot))
+        {
+            return;
+        }
+
+        foreach (var pending in Directory.EnumerateDirectories(pendingRoot))
+        {
+            try
+            {
+                var folderId = Path.GetFileName(pending);
+                var folder = Path.Combine(_pluginsRoot, folderId);
+                var manifestPath = Path.Combine(pending, "plugin.json");
+                if (Directory.Exists(folder) && File.Exists(manifestPath) && registrations.GetValueOrDefault(folderId) is { } prior
+                    && PluginManifest.TryParse(await File.ReadAllTextAsync(manifestPath, cancellationToken).ConfigureAwait(false), out var incoming, out _) && incoming is not null
+                    && _AddedCapabilities(folder, incoming).Count > 0
+                    && string.Equals(await PluginClosureHash.OfInstalledFolderAsync(folder, cancellationToken).ConfigureAwait(false), prior.PinnedSha256, StringComparison.OrdinalIgnoreCase))
+                {
+                    _TryDelete(pending);
+                }
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                // One unreadable plugin must not prevent the other plugins from starting.
             }
         }
     }

@@ -35,6 +35,7 @@ public sealed class PluginBootstrap : ISingletonService
     // rediscovery (enable/disable/remove, 15-min update timer) swapped files under a still-running plugin.
     public async Task<IReadOnlyList<DiscoveredPlugin>> ApplyPendingChangesAndDiscoverAsync(int hostAbstractionsMajor, CancellationToken cancellationToken = default)
     {
+        await _installer.RestoreUnapprovedUpdatesAsync(await _registrationStore.LoadAllAsync(cancellationToken).ConfigureAwait(false), cancellationToken).ConfigureAwait(false);
         await _installer.SweepPendingUpdatesAsync(cancellationToken).ConfigureAwait(false);
         await _installer.SweepRemovalsAsync(cancellationToken).ConfigureAwait(false);
         await ReconcileUpdatesAsync(cancellationToken).ConfigureAwait(false);
@@ -53,18 +54,28 @@ public sealed class PluginBootstrap : ISingletonService
 
         foreach (var marker in Directory.EnumerateFiles(_pluginsRoot, PluginInstaller.UpdateMarkerPrefix + "*"))
         {
-            var folderId = Path.GetFileName(marker)[PluginInstaller.UpdateMarkerPrefix.Length..];
-            var folder = Path.Combine(_pluginsRoot, folderId);
-            var hashes = File.ReadAllLines(marker);
-            if (hashes.Length == 2 && Directory.Exists(folder)
-                && string.Equals(await PluginClosureHash.OfInstalledFolderAsync(folder, cancellationToken).ConfigureAwait(false), hashes[1], StringComparison.OrdinalIgnoreCase)
-                && (await _registrationStore.LoadAllAsync(cancellationToken).ConfigureAwait(false)).GetValueOrDefault(folderId) is { } prior
-                && string.Equals(prior.PinnedSha256, hashes[0], StringComparison.OrdinalIgnoreCase))
+            try
             {
-                await _registrationStore.SaveAsync(folderId, new PluginRegistration(prior.Enabled, hashes[1]), cancellationToken).ConfigureAwait(false);
-            }
+                var folderId = Path.GetFileName(marker)[PluginInstaller.UpdateMarkerPrefix.Length..];
+                var folder = Path.Combine(_pluginsRoot, folderId);
+                var hashes = File.ReadAllLines(marker);
+                if (hashes.Length == 2 && hashes[0].Length > 0 && Directory.Exists(folder)
+                    && string.Equals(await PluginClosureHash.OfInstalledFolderAsync(folder, cancellationToken).ConfigureAwait(false), hashes[1], StringComparison.OrdinalIgnoreCase)
+                    && (await _registrationStore.LoadAllAsync(cancellationToken).ConfigureAwait(false)).GetValueOrDefault(folderId) is { } prior
+                    && string.Equals(prior.PinnedSha256, hashes[0], StringComparison.OrdinalIgnoreCase))
+                {
+                    await _registrationStore.SaveAsync(folderId, new PluginRegistration(prior.Enabled, hashes[1]), cancellationToken).ConfigureAwait(false);
+                }
 
-            File.Delete(marker);
+                if (hashes.Length != 2 || hashes[0].Length != 0)
+                {
+                    File.Delete(marker);
+                }
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                // One unreadable plugin must not prevent the other plugins from starting.
+            }
         }
     }
 
