@@ -1498,7 +1498,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     private IVoiceSettingsStore? _voiceSettingsStore;
     private IVoicePlaybackQueue? _voicePlaybackQueue;
     private bool _readAloudCancelled;
-    private EventHandler? _playbackStoppedHandler;
+    private EventHandler<VoicePlaybackStoppedEventArgs>? _playbackStoppedHandler;
     private IOpenMicState? _openMicState;
 
     public bool IsAudioAvailable { get; private set; } = true;
@@ -1571,6 +1571,10 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         {
             _voicePlaybackQueue?.StopAll();
         }
+        else if (IsAudioAvailable && _voicePlaybackQueue is not null)
+        {
+            _ = _voicePlaybackQueue.WarmUpAsync();
+        }
     }
 
     // Wires the shared push-to-talk plumbing and loads the current voice settings. Called from the
@@ -1589,7 +1593,13 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         _voicePlaybackQueue = voicePlaybackQueue;
         if (_voicePlaybackQueue is not null)
         {
-            _playbackStoppedHandler = (_, _) => _readAloudCancelled = true;
+            _playbackStoppedHandler = (_, stopped) =>
+            {
+                if (string.Equals(stopped.OwnerId, PaneId, StringComparison.Ordinal))
+                {
+                    _readAloudCancelled = true;
+                }
+            };
             _voicePlaybackQueue.PlaybackStopped += _playbackStoppedHandler;
         }
         _openMicState = openMicState;
@@ -1638,7 +1648,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
         // Show the overlay now: the first synthesis (and any first-use model download) runs before a word is
         // heard, and that gap otherwise reads as nothing happening.
-        _voicePlaybackQueue.NotifyPreparing(source);
+        _voicePlaybackQueue.NotifyPreparing(source, PaneId);
 
         if (_voicePlaybackQueue.Generation != generation)
         {
@@ -1647,8 +1657,17 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
             return Task.CompletedTask;
         }
 
-        _voicePlaybackQueue.Enqueue(sentences, TtsVoiceSid, ReadAloudLanguage, source);
+        _voicePlaybackQueue.Enqueue(sentences, TtsVoiceSid, ReadAloudLanguage, source, PaneId);
         return Task.CompletedTask;
+    }
+
+    protected void CompleteReadAloudStream()
+    {
+        if (_voicePlaybackQueue is not null)
+        {
+            var source = PaneId == AssistantIdentity.PaneId ? VoicePlaybackSource.Assistant : VoicePlaybackSource.Session;
+            _voicePlaybackQueue.CompleteStream(source, PaneId);
+        }
     }
 
     protected void ResetReadAloudCancellation() => _readAloudCancelled = false;

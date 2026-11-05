@@ -12,21 +12,27 @@ public interface IVoicePlaybackQueue
     /// <summary>
     /// Queues <paramref name="sentences"/> for playback with the given speaker and language, appended after whatever is already queued.
     /// </summary>
-    void Enqueue(IReadOnlyList<string> sentences, int speakerId, string language, VoicePlaybackSource source = VoicePlaybackSource.Session);
+    void Enqueue(IReadOnlyList<string> sentences, int speakerId, string language, VoicePlaybackSource source = VoicePlaybackSource.Session, string? ownerId = null);
 
     /// <summary>
     /// Queues language-routed <paramref name="segments"/> for playback: the single Supertonic voice
     /// (<paramref name="speakerId"/>) speaks each segment in its own language, back-to-back — no silence gap,
     /// since one voice reading two languages has no timbre jump to bridge.
     /// </summary>
-    void Enqueue(IReadOnlyList<SpeechSegment> segments, int speakerId, VoicePlaybackSource source = VoicePlaybackSource.Session);
+    void Enqueue(IReadOnlyList<SpeechSegment> segments, int speakerId, VoicePlaybackSource source = VoicePlaybackSource.Session, string? ownerId = null);
 
     /// <summary>
     /// Marks read-aloud as active before anything is queued, so the overlay shows it is working during the gap the
     /// operator otherwise sees as silence — the first synthesis, including the one-time model download, which runs
     /// before any audio plays. Raises <see cref="PlaybackActiveChanged"/> like real playback; the batch that follows clears it when it finishes, and <see cref="StopAll"/> clears it if nothing ends up queued.
     /// </summary>
-    void NotifyPreparing(VoicePlaybackSource source = VoicePlaybackSource.Session);
+    void NotifyPreparing(VoicePlaybackSource source = VoicePlaybackSource.Session, string? ownerId = null);
+
+    /// <summary>Marks this response stream as complete; active stays true until its queued audio drains.</summary>
+    void CompleteStream(VoicePlaybackSource source, string? ownerId) { }
+
+    /// <summary>Starts model loading without queuing speech. Implementations must return immediately when unavailable.</summary>
+    Task WarmUpAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
     /// <summary>
     /// Raised when read-aloud playback becomes active (a batch starts, or <see cref="NotifyPreparing"/> is called) or
@@ -45,7 +51,7 @@ public interface IVoicePlaybackQueue
     /// <summary>
     /// Raised when <see cref="StopAll"/> cancels the active read-aloud generation.
     /// </summary>
-    event EventHandler? PlaybackStopped;
+    event EventHandler<VoicePlaybackStoppedEventArgs>? PlaybackStopped;
 
     /// <summary>
     /// Cancels whatever is currently synthesizing/playing and discards anything still queued.
@@ -64,4 +70,9 @@ public interface IVoicePlaybackQueue
     /// way <see cref="Generation"/> is read around a call rather than carried on the event itself.
     /// </summary>
     VoicePlaybackSource ActiveSource { get; }
+
+    /// <summary>The pane which owns the active read-aloud stream, when known.</summary>
+    string? ActiveOwnerId => null;
 }
+
+public sealed record VoicePlaybackStoppedEventArgs(VoicePlaybackSource Source, string? OwnerId);

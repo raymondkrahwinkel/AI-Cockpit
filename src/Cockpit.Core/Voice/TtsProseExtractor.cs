@@ -140,20 +140,46 @@ public static partial class TtsProseExtractor
             return lineEnd;
         }
 
-        if (ListItem().IsMatch(line) && line.EndsWith('\n'))
+        if ((ListItem().IsMatch(line) || Heading().IsMatch(line)) && line.EndsWith('\n'))
         {
             completedLength = lineEnd;
         }
 
         for (var index = lineStart; index < lineEnd; index++)
         {
-            if (markdown[index] is '.' or '!' or '?' && (index + 1 == markdown.Length || char.IsWhiteSpace(markdown[index + 1])))
+            if (markdown[index] is '.' or '!' or '?' && _IsCompletedSentence(markdown, index))
             {
                 completedLength = index + 1;
             }
         }
 
         return completedLength;
+    }
+
+    private static bool _IsCompletedSentence(string markdown, int index)
+    {
+        if (index + 1 < markdown.Length && !char.IsWhiteSpace(markdown[index + 1]))
+        {
+            return false;
+        }
+
+        if (markdown[index] != '.')
+        {
+            return true;
+        }
+
+        var wordStart = index;
+        while (wordStart > 0 && char.IsLetterOrDigit(markdown[wordStart - 1]))
+        {
+            wordStart--;
+        }
+        var word = markdown[wordStart..index];
+        if (word.Length is <= 2 || word.Equals("e.g", StringComparison.OrdinalIgnoreCase) || word.Equals("i.e", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return index == 0 || !char.IsDigit(markdown[index - 1]) || index + 1 == markdown.Length || !char.IsDigit(markdown[index + 1]);
     }
 
     // Appends a block's plain text, forcing a sentence boundary after it — headings and list items rarely end in punctuation, and without one the next block would run on into the same spoken sentence.
@@ -226,6 +252,9 @@ public static partial class TtsProseExtractor
 
     [GeneratedRegex(@"^\s*(?:[-*+]|\d+[.)])\s+")]
     private static partial Regex ListItem();
+
+    [GeneratedRegex(@"^\s{0,3}#{1,6}\s+")]
+    private static partial Regex Heading();
 
     [GeneratedRegex(@"^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$", RegexOptions.NonBacktracking)]
     private static partial Regex TableSeparator();

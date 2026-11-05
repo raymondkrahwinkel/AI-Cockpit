@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.Text;
 using System.Text.Json.Nodes;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -422,7 +423,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _transcriptReader?.ReadToolResult(_profile, _cliSessionId, toolUseId);
 
     // A turn pauses on a question/permission and then keeps streaming into the same growing entry afterwards (AC-97).
-    private int _readAloudFlushedLength;
+    private readonly StringBuilder _readAloudPendingProse = new();
+    private readonly Dictionary<TranscriptEntryViewModel, string> _readAloudObservedEntries = [];
+    private int _readAloudObservedEntryCount;
 
     // AC-597/598: whether anything has actually been spoken this turn. What decides both fillers — a lead-in is
     // only owed when the model gave none, and a sign of life only when the operator has heard nothing since.
@@ -1963,7 +1966,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _control.ClearQueue();
         _control.ResetTranscriptStreaming();
         _currentTurnAssistantEntries.Clear();
-        _readAloudFlushedLength = 0;
+        _ResetReadAloudStream();
         _spokenSomethingThisTurn = false;
         _StopSignOfLifeClock();
         ClearCurrentTurnImages();
@@ -2748,15 +2751,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         // AC-1238: a reply split at its own blank lines already carries them, so a continuation is concatenated
         // rather than separated — inserting a separator there would shift every index past it by two characters
         // and re-speak or skip that much. Rows separated by a tool call still get theirs.
-        var prose = string.Concat(_currentTurnAssistantEntries.Select(
-            (entry, index) => index == 0 || entry.IsReplyContinuation ? entry.Text : "\n\n" + entry.Text));
-        if (_readAloudFlushedLength >= prose.Length)
-        {
-            return;
-        }
-
-        var pending = prose[_readAloudFlushedLength..];
-        _readAloudFlushedLength = prose.Length;
+        _AppendStreamingReadAloudDelta();
+        if (_readAloudPendingProse.Length == 0) return;
+        var pending = _readAloudPendingProse.ToString();
+        _readAloudPendingProse.Clear();
         _spokenSomethingThisTurn = true;
         _RestartSignOfLifeClock();
         _ = EnqueueReadAloudAsync(pending);
@@ -2769,23 +2767,45 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             return;
         }
 
-        var prose = string.Concat(_currentTurnAssistantEntries.Select(
-            (entry, index) => index == 0 || entry.IsReplyContinuation ? entry.Text : "\n\n" + entry.Text));
-        if (_readAloudFlushedLength >= prose.Length)
-        {
-            return;
-        }
-
-        var stream = TtsProseExtractor.ExtractCompleted(prose[_readAloudFlushedLength..]);
+        _AppendStreamingReadAloudDelta();
+        var stream = TtsProseExtractor.ExtractCompleted(_readAloudPendingProse.ToString());
         if (stream.ConsumedLength == 0)
         {
             return;
         }
 
-        _readAloudFlushedLength += stream.ConsumedLength;
+        _readAloudPendingProse.Remove(0, stream.ConsumedLength);
         _spokenSomethingThisTurn |= stream.Sentences.Count > 0;
         _RestartSignOfLifeClock();
         _ = EnqueueReadAloudAsync(stream.Sentences);
+    }
+
+    private void _AppendStreamingReadAloudDelta()
+    {
+        for (var index = _readAloudObservedEntryCount; index < _currentTurnAssistantEntries.Count; index++)
+        {
+            var entry = _currentTurnAssistantEntries[index];
+            if (index > 0 && !entry.IsReplyContinuation) _readAloudPendingProse.Append("\n\n");
+            _readAloudObservedEntries[entry] = entry.Text;
+            _readAloudPendingProse.Append(entry.Text);
+        }
+        _readAloudObservedEntryCount = _currentTurnAssistantEntries.Count;
+        if (_currentTurnAssistantEntries.LastOrDefault() is not { } current
+            || !_readAloudObservedEntries.TryGetValue(current, out var observed)
+            || string.Equals(observed, current.Text, StringComparison.Ordinal)) return;
+
+        _readAloudObservedEntries[current] = current.Text;
+        if (current.Text.StartsWith(observed, StringComparison.Ordinal))
+        {
+            _readAloudPendingProse.Append(current.Text.AsSpan(observed.Length));
+        }
+    }
+
+    private void _ResetReadAloudStream()
+    {
+        _readAloudPendingProse.Clear();
+        _readAloudObservedEntries.Clear();
+        _readAloudObservedEntryCount = 0;
     }
 
     // Says out loud that it is about to go and look, when the model went straight to a tool without saying so (AC-597).
@@ -3005,9 +3025,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
 
         _FlushPendingProseForReadAloud();
+        CompleteReadAloudStream();
 
         _currentTurnAssistantEntries.Clear();
-        _readAloudFlushedLength = 0;
+        _ResetReadAloudStream();
         _spokenSomethingThisTurn = false;
         _StopSignOfLifeClock();
         // This turn's images belong to this turn only (AC-116): a later image-less turn's tool call attaches nothing stale.

@@ -37,7 +37,7 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
         }
     }
 
-    private sealed record QueuedSentence(QueuedBatch Batch, string Text, string Language, int SpeakerId, VoicePlaybackSource Source, int Generation);
+    private sealed record QueuedSentence(QueuedBatch Batch, string Text, string Language, int SpeakerId, VoicePlaybackSource Source, string? OwnerId, int Generation, CancellationToken CancellationToken);
     private sealed record PreparedSentence(QueuedSentence Sentence, TtsAudio? Audio);
 
     private const int PreparedSentenceCapacity = 3;
@@ -61,10 +61,12 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
     private bool _speakingAnnounced;
     private int _generation;
     private VoicePlaybackSource _activeSource;
+    private string? _activeOwnerId;
+    private readonly HashSet<(VoicePlaybackSource Source, string? OwnerId)> _openStreams = [];
 
     public event EventHandler<bool>? PlaybackActiveChanged;
     public event EventHandler? SpeakingStarted;
-    public event EventHandler? PlaybackStopped;
+    public event EventHandler<VoicePlaybackStoppedEventArgs>? PlaybackStopped;
 
     public int Generation
     {
@@ -88,6 +90,11 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
         }
     }
 
+    public string? ActiveOwnerId
+    {
+        get { lock (_activeGate) { return _activeOwnerId; } }
+    }
+
     public VoicePlaybackQueue(
         ITextToSpeechService textToSpeech,
         IAudioPlaybackService audioPlayback,
@@ -102,15 +109,15 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
         _consumerTask = _ConsumeAsync();
     }
 
-    public void Enqueue(IReadOnlyList<string> sentences, int speakerId, string language, VoicePlaybackSource source = VoicePlaybackSource.Session)
+    public void Enqueue(IReadOnlyList<string> sentences, int speakerId, string language, VoicePlaybackSource source = VoicePlaybackSource.Session, string? ownerId = null)
     {
         if (sentences.Count > 0)
         {
-            Enqueue([new SpeechSegment(sentences, language)], speakerId, source);
+            Enqueue([new SpeechSegment(sentences, language)], speakerId, source, ownerId);
         }
     }
 
-    public void Enqueue(IReadOnlyList<SpeechSegment> segments, int speakerId, VoicePlaybackSource source = VoicePlaybackSource.Session)
+    public void Enqueue(IReadOnlyList<SpeechSegment> segments, int speakerId, VoicePlaybackSource source = VoicePlaybackSource.Session, string? ownerId = null)
     {
         if (_audioAvailability?.IsAvailable == false)
         {
@@ -126,33 +133,58 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
         _logger.LogInformation("Read-aloud enqueued {Count} sentence(s) across {Segments} language segment(s); {QueueDepth} sentence(s) already queued.",
             sentenceCount, segments.Count, _sentences.Reader.Count);
         var batch = new QueuedBatch(sentenceCount, DateTimeOffset.UtcNow);
-        var generation = Generation;
+        var generation = _CaptureGeneration();
         foreach (var segment in segments)
         {
             foreach (var sentence in segment.Sentences)
             {
                 Interlocked.Increment(ref _queuedSentenceCount);
-                _sentences.Writer.TryWrite(new QueuedSentence(batch, sentence, segment.Language, speakerId, source, generation));
+                _sentences.Writer.TryWrite(new QueuedSentence(batch, sentence, segment.Language, speakerId, source, ownerId, generation.Generation, generation.Token));
             }
         }
     }
 
-    public void NotifyPreparing(VoicePlaybackSource source = VoicePlaybackSource.Session)
+    public void NotifyPreparing(VoicePlaybackSource source = VoicePlaybackSource.Session, string? ownerId = null)
     {
         if (_audioAvailability?.IsAvailable != false)
         {
-            _SetPlaybackActive(true, source);
+            lock (_activeGate)
+            {
+                _openStreams.Add((source, ownerId));
+            }
+            _SetPlaybackActive(true, source, ownerId);
+        }
+    }
+
+    public void CompleteStream(VoicePlaybackSource source, string? ownerId)
+    {
+        lock (_activeGate)
+        {
+            _openStreams.Remove((source, ownerId));
+        }
+        _SetInactiveIfDrained();
+    }
+
+    public async Task WarmUpAsync(CancellationToken cancellationToken = default)
+    {
+        if (_audioAvailability?.IsAvailable != false)
+        {
+            await _textToSpeech.WarmUpAsync(cancellationToken).ConfigureAwait(false);
         }
     }
 
     public void StopAll()
     {
+        VoicePlaybackStoppedEventArgs stopped;
+        CancellationTokenSource previous;
         lock (_activeGate)
         {
             _generation++;
+            previous = _playbackCancellation;
+            _playbackCancellation = new CancellationTokenSource();
+            stopped = new VoicePlaybackStoppedEventArgs(_activeSource, _activeOwnerId);
+            _openStreams.Clear();
         }
-
-        var previous = Interlocked.Exchange(ref _playbackCancellation, new CancellationTokenSource());
         previous.Cancel();
         previous.Dispose();
         while (_sentences.Reader.TryRead(out _))
@@ -164,7 +196,7 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
             Interlocked.Decrement(ref _queuedSentenceCount);
         }
         Interlocked.Exchange(ref _lastPlaybackEnded, 0);
-        PlaybackStopped?.Invoke(this, EventArgs.Empty);
+        PlaybackStopped?.Invoke(this, stopped);
         _SetPlaybackActive(false);
     }
 
@@ -172,16 +204,15 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
     {
         await foreach (var sentence in _sentences.Reader.ReadAllAsync())
         {
-            var cancellationToken = _playbackCancellation.Token;
-            if (sentence.Generation != Generation || cancellationToken.IsCancellationRequested)
+            if (!_IsCurrent(sentence))
             {
                 _Complete(sentence, played: false, aborted: true);
                 continue;
             }
 
-            var audio = await _TrySynthesizeAsync(sentence.Text, sentence.SpeakerId, sentence.Language, cancellationToken)
+            var audio = await _TrySynthesizeAsync(sentence.Text, sentence.SpeakerId, sentence.Language, sentence.CancellationToken)
                 .ConfigureAwait(false);
-            if (sentence.Generation != Generation || cancellationToken.IsCancellationRequested)
+            if (!_IsCurrent(sentence))
             {
                 _Complete(sentence, played: false, aborted: true);
                 continue;
@@ -189,7 +220,7 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
 
             try
             {
-                await _prepared.Writer.WriteAsync(new PreparedSentence(sentence, audio), cancellationToken).ConfigureAwait(false);
+                await _prepared.Writer.WriteAsync(new PreparedSentence(sentence, audio), sentence.CancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -203,13 +234,13 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
         await foreach (var prepared in _prepared.Reader.ReadAllAsync())
         {
             var sentence = prepared.Sentence;
-            if (sentence.Generation != Generation)
+            if (!_IsCurrent(sentence))
             {
                 _Complete(sentence, played: false, aborted: true);
                 continue;
             }
 
-            _SetPlaybackActive(true, sentence.Source);
+            _SetPlaybackActive(true, sentence.Source, sentence.OwnerId);
             if (prepared.Audio is null)
             {
                 _Complete(sentence, played: false, aborted: false);
@@ -242,7 +273,7 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
             try
             {
                 var pcmBytes = PcmSampleConverter.ToInt16Bytes(prepared.Audio.Samples);
-                await _audioPlayback.PlayAsync(pcmBytes, new AudioFormat(prepared.Audio.SampleRate, Channels: 1), _playbackCancellation.Token)
+                await _audioPlayback.PlayAsync(pcmBytes, new AudioFormat(prepared.Audio.SampleRate, Channels: 1), sentence.CancellationToken)
                     .ConfigureAwait(false);
                 Interlocked.Exchange(ref _lastPlaybackEnded, Stopwatch.GetTimestamp());
                 _Complete(sentence, played: true, aborted: false);
@@ -250,6 +281,11 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
             catch (OperationCanceledException)
             {
                 _Complete(sentence, played: false, aborted: true);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Read-aloud playback failed for a queued sentence; skipping it and continuing.");
+                _Complete(sentence, played: false, aborted: false);
             }
         }
     }
@@ -264,10 +300,7 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
                 completed.Played, sentence.Batch.Total, sentence.Batch.Stopwatch.ElapsedMilliseconds, completed.Aborted ? " (aborted)" : string.Empty);
         }
 
-        if (Volatile.Read(ref _queuedSentenceCount) == 0)
-        {
-            _SetPlaybackActive(false);
-        }
+        _SetInactiveIfDrained();
     }
 
     private async Task<TtsAudio?> _TrySynthesizeAsync(string text, int speakerId, string language, CancellationToken cancellationToken)
@@ -288,7 +321,32 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
         }
     }
 
-    private void _SetPlaybackActive(bool active, VoicePlaybackSource source = VoicePlaybackSource.Session)
+    private (int Generation, CancellationToken Token) _CaptureGeneration()
+    {
+        lock (_activeGate) { return (_generation, _playbackCancellation.Token); }
+    }
+
+    private bool _IsCurrent(QueuedSentence sentence)
+    {
+        lock (_activeGate)
+        {
+            return sentence.Generation == _generation && sentence.CancellationToken == _playbackCancellation.Token && !sentence.CancellationToken.IsCancellationRequested;
+        }
+    }
+
+    private void _SetInactiveIfDrained()
+    {
+        lock (_activeGate)
+        {
+            if (Volatile.Read(ref _queuedSentenceCount) != 0 || _openStreams.Count != 0)
+            {
+                return;
+            }
+        }
+        _SetPlaybackActive(false);
+    }
+
+    private void _SetPlaybackActive(bool active, VoicePlaybackSource source = VoicePlaybackSource.Session, string? ownerId = null)
     {
         lock (_activeGate)
         {
@@ -301,6 +359,7 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
             if (active)
             {
                 _activeSource = source;
+                _activeOwnerId = ownerId;
             }
             else
             {
