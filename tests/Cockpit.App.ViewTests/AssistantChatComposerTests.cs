@@ -7,6 +7,7 @@ using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Assistant;
+using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Assistant;
@@ -60,7 +61,8 @@ public class AssistantChatComposerTests
             scheduled.TrySetResult(call.ArgAt<TimerCallback>(0));
             return Substitute.For<ITimer>();
         });
-        var runtime = new SessionRuntime(factory, Profile, imageInput: reader, timeProvider: clock);
+        var profiles = Substitute.For<ISessionProfileStore>();
+        var runtime = new SessionRuntime(factory, Profile, imageInput: reader, profiles: profiles, timeProvider: clock);
         var manager = Substitute.For<ISessionManager>();
         manager.Create(Arg.Any<SessionProfile?>()).Returns(runtime);
         await using var session = TestSessions.Pane(manager);
@@ -101,21 +103,42 @@ public class AssistantChatComposerTests
 
         await host.Received().SendAsync(string.Empty, Arg.Any<CancellationToken>());
 
-        now += TimeSpan.FromHours(1);
         clock.Received().CreateTimer(Arg.Any<TimerCallback>(), Arg.Any<object?>(), TimeSpan.FromHours(1), Timeout.InfiniteTimeSpan);
         catalog.GetSnapshotsAsync(Arg.Any<CancellationToken>()).Returns(Task.FromException<IReadOnlyList<ModelSnapshot>>(new HttpRequestException("offline")));
-        scheduled = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        refresh(null);
-        var retry = await scheduled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var retry = await RefreshAsync(refresh, TimeSpan.FromHours(1), TimeSpan.FromSeconds(30));
         Assert.True(runtime.Capabilities?.SupportsVision);
-        clock.Received().CreateTimer(Arg.Any<TimerCallback>(), Arg.Any<object?>(), TimeSpan.FromSeconds(30), Timeout.InfiniteTimeSpan);
+        retry = await RefreshAsync(retry, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(60));
+        retry = await RefreshAsync(retry, TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(120));
+        retry = await RefreshAsync(retry, TimeSpan.FromSeconds(120), TimeSpan.FromSeconds(240));
+        retry = await RefreshAsync(retry, TimeSpan.FromSeconds(240), TimeSpan.FromSeconds(480));
+        retry = await RefreshAsync(retry, TimeSpan.FromSeconds(480), TimeSpan.FromMinutes(15));
+        retry = await RefreshAsync(retry, TimeSpan.FromMinutes(15), TimeSpan.FromMinutes(15));
 
-        now += TimeSpan.FromSeconds(30);
         catalog.GetSnapshotsAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<ModelSnapshot>>([snapshot with { SupportsImageInput = false, FetchedAt = now }]));
-        scheduled = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        retry(null);
-        await scheduled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        retry = await RefreshAsync(retry, TimeSpan.FromMinutes(15), TimeSpan.FromMinutes(45));
         Assert.False(runtime.Capabilities?.SupportsVision);
+        catalog.GetSnapshotsAsync(Arg.Any<CancellationToken>()).Returns(Task.FromException<IReadOnlyList<ModelSnapshot>>(new HttpRequestException("offline")));
+        retry = await RefreshAsync(retry, TimeSpan.FromMinutes(45), TimeSpan.FromSeconds(30));
+
+        clock.ClearReceivedCalls();
+        catalog.ClearReceivedCalls();
+        profiles.Saved += Raise.Event<Func<IReadOnlyList<SessionProfile>, Task>>((object)new[] { Profile with { ImageInputMode = ImageInputMode.Off } });
+        retry(null);
+        profiles.Saved += Raise.Event<Func<IReadOnlyList<SessionProfile>, Task>>((object)new[] { Profile with { ImageInputMode = ImageInputMode.On } });
+        retry(null);
+        clock.DidNotReceive().CreateTimer(Arg.Any<TimerCallback>(), Arg.Any<object?>(), Arg.Any<TimeSpan>(), Arg.Any<TimeSpan>());
+        await catalog.DidNotReceive().GetSnapshotsAsync(Arg.Any<CancellationToken>());
+
+        async Task<TimerCallback> RefreshAsync(TimerCallback callback, TimeSpan elapsed, TimeSpan expected)
+        {
+            now += elapsed;
+            scheduled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            clock.ClearReceivedCalls();
+            callback(null);
+            var next = await scheduled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            clock.Received(1).CreateTimer(Arg.Any<TimerCallback>(), Arg.Any<object?>(), expected, Timeout.InfiniteTimeSpan);
+            return next;
+        }
     });
 
     /// <summary>

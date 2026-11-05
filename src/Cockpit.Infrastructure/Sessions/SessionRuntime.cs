@@ -48,6 +48,7 @@ internal sealed class SessionRuntime : ISessionRuntime
     private readonly ILogger? _logger;
     private readonly TimeProvider _clock;
     private ITimer? _visionTimer;
+    private TimeSpan _visionRetryDelay = TimeSpan.FromSeconds(30);
     private volatile bool _readOnlyTurn;
 
     public bool SupportsReadOnlyTurns => _driver?.SupportsReadOnlyTurns == true;
@@ -151,10 +152,13 @@ internal sealed class SessionRuntime : ISessionRuntime
 
     private ImageInputDecision _VisionDecision(SessionCapabilities transport)
     {
-        var decision = ImageInput.Resolve(Profile?.ImageInputMode ?? ImageInputMode.Auto, transport.SupportsVision,
+        if (transport.SupportsVision && Profile is { ImageInputMode: ImageInputMode.Auto, ProviderConfig: PluginProviderConfig } profile
+            && _serviceVision?.SupportsImageInput is null && _publicVision?.SupportsImageInput is null && _imageInput?.HasTransport(profile) == true)
+        {
+            return new(true, "plugin SupportsVision");
+        }
+        return ImageInput.Resolve(Profile?.ImageInputMode ?? ImageInputMode.Auto, transport.SupportsVision,
             _serviceVision?.SupportsImageInput, _publicVision?.SupportsImageInput);
-        return decision.Source == "unknown" && Profile is { ProviderConfig: PluginProviderConfig } profile && _imageInput?.HasTransport(profile) == true
-            ? new(true, "plugin SupportsVision") : decision;
     }
 
     private void _RefreshVision(string? model, bool confirmed = false)
@@ -187,9 +191,10 @@ internal sealed class SessionRuntime : ISessionRuntime
 
     private async Task _ReadVisionAsync(SessionProfile profile, string? model, int revision, CancellationToken cancellationToken)
     {
+        var receivedFact = false;
         lock (_visionLock)
         {
-            if (revision != _visionRevision || cancellationToken.IsCancellationRequested)
+            if (revision != _visionRevision || cancellationToken.IsCancellationRequested || Profile?.ImageInputMode != ImageInputMode.Auto)
             {
                 return;
             }
@@ -209,6 +214,7 @@ internal sealed class SessionRuntime : ISessionRuntime
                 }
                 _serviceVision = facts.Service?.SupportsImageInput is not null ? facts.Service : _serviceVision;
                 _publicVision = facts.OpenRouter?.SupportsImageInput is not null ? facts.OpenRouter : _publicVision;
+                receivedFact = facts.Service?.At(_clock.GetUtcNow()) is not null || facts.OpenRouter?.At(_clock.GetUtcNow()) is not null;
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -222,14 +228,22 @@ internal sealed class SessionRuntime : ISessionRuntime
         _PublishVision();
         lock (_visionLock)
         {
-            if (revision != _visionRevision || cancellationToken.IsCancellationRequested)
+            if (revision != _visionRevision || cancellationToken.IsCancellationRequested || Profile?.ImageInputMode != ImageInputMode.Auto)
             {
                 return;
             }
+            if (receivedFact)
+            {
+                _visionRetryDelay = TimeSpan.FromSeconds(30);
+            }
             var delay = new[] { _serviceVision, _publicVision }.OfType<ImageInputFact>()
                 .Select(fact => fact.TimeToLive - (_clock.GetUtcNow() - fact.AsOf))
-                .Select(remaining => remaining > TimeSpan.Zero ? remaining : TimeSpan.FromSeconds(30))
-                .DefaultIfEmpty(TimeSpan.FromSeconds(30)).Min();
+                .Select(remaining => remaining > TimeSpan.Zero ? remaining : _visionRetryDelay)
+                .DefaultIfEmpty(_visionRetryDelay).Min();
+            if (!receivedFact)
+            {
+                _visionRetryDelay = TimeSpan.FromSeconds(Math.Min(_visionRetryDelay.TotalSeconds * 2, TimeSpan.FromMinutes(15).TotalSeconds));
+            }
             _visionTimer?.Dispose();
             _visionTimer = _clock.CreateTimer(state => { _ = _ReadVisionAsync(profile, model, revision, cancellationToken); },
                 null, delay, Timeout.InfiniteTimeSpan);
