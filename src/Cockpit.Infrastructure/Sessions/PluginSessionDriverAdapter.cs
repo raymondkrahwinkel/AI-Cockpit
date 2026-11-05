@@ -126,28 +126,18 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         // can depend on the project that pane belongs to. AC-408: kept on the field too, so the event loop below
         // knows which pane to report a later conversation-id change against.
         var paneId = launchOptions is not null && launchOptions.TryGetValue(WellKnownPluginSessionOptions.PaneId, out var pane) ? pane : null;
-        if (gateway?.IsEnabled == true && string.IsNullOrEmpty(paneId))
+        var candidatePane = string.IsNullOrEmpty(paneId) ? Guid.NewGuid().ToString("N") : paneId;
+        if (gateway?.UrlFor(candidatePane) is not null)
         {
-            paneId = Guid.NewGuid().ToString("N");
+            paneId = candidatePane;
             launchOptions = new Dictionary<string, string>(launchOptions ?? new Dictionary<string, string>())
             {
                 [WellKnownPluginSessionOptions.PaneId] = paneId,
             };
         }
         _paneId = paneId;
-        if (gateway?.IsEnabled == true && paneId is not null)
-        {
-            var confineRoot = launchOptions?.GetValueOrDefault(WellKnownPluginSessionOptions.ConfineFileToolsToWorkingDirectory) == "true" ? workingDirectory : null;
-            await gateway.BindLaunchAsync(paneId, projectId, workingDirectory, confineRoot, profile?.Label, selection is ExactMcpServerSelection, cancellationToken).ConfigureAwait(false);
-        }
-        if (gateway?.IsEnabled == true && pluginCapabilities.HostToolLoop == PluginHostToolLoop.None)
-        {
-            if (keyring is null || paneId is null)
-            {
-                throw new InvalidOperationException("The MCP gateway requires a session keyring and identity.");
-            }
-            _minted = new MintedToken(paneId, keyring.TokenFor(paneId));
-        }
+        _gatewayActive = false;
+        _launchOptions = launchOptions;
 
         // AC-964: a provider that declared a host tool loop gets the tools already connected and gated instead of
         // the endpoints to mount itself — the two are alternatives, so the server list stays empty here rather than
@@ -303,7 +293,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         var paneId = launchOptions is not null && launchOptions.TryGetValue(WellKnownPluginSessionOptions.PaneId, out var value) ? value : null;
         var mcpKey = _hostToolset is { PaneToken: { } toolsetToken }
             ? toolsetToken
-            : gateway?.IsEnabled == true && _minted is { } minted && minted.PaneId == paneId ? minted.Token
+            : _gatewayActive && _minted is { } minted && minted.PaneId == paneId ? minted.Token
             : keyring is not null && !string.IsNullOrEmpty(paneId) ? keyring.TokenFor(paneId) : authKey.Value;
 
         // Remembered so this session's token dies with it (AC-89). Only when we minted one here: the host toolset's
@@ -448,15 +438,40 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
                 .Where(McpConfigFile.IsAgentEligible)
                 .ToList();
 
-            if (gateway?.IsEnabled == true && _paneId is { } gatewayPane)
+            if (_paneId is { } gatewayPane && gateway?.UrlFor(gatewayPane) is { } url)
             {
-                var url = gateway.UrlFor(gatewayPane) ?? throw new InvalidOperationException("The session MCP gateway is unavailable.");
-                _gatewayServerNames = [.. eligible.Select(server => server.Name)];
-                mcpMounts?.Grant(gatewayPane, _gatewayServerNames);
-                await gateway.PrepareLaunchAsync(gatewayPane, cancellationToken).ConfigureAwait(false);
-                return [new PluginMcpServer { Name = "cockpit", Url = url, CockpitHosted = true },
-                    .. eligible.Where(server => server.Transport == McpTransport.Stdio)
-                        .Select(server => PluginMcpServerMapper.ToPluginMcpServer(server, null, null)).OfType<PluginMcpServer>()];
+                try
+                {
+                    if (keyring is null)
+                    {
+                        throw new InvalidOperationException("The MCP gateway requires a session keyring.");
+                    }
+                    var confineRoot = _launchOptions?.GetValueOrDefault(WellKnownPluginSessionOptions.ConfineFileToolsToWorkingDirectory) == "true" ? workingDirectory : null;
+                    await gateway.BindLaunchAsync(gatewayPane, projectId, workingDirectory, confineRoot, Profile?.Label,
+                        enabledServerNames is ExactMcpServerSelection, cancellationToken).ConfigureAwait(false);
+                    _minted = new MintedToken(gatewayPane, keyring.TokenFor(gatewayPane));
+                    var names = eligible.Select(server => server.Name).ToList();
+                    mcpMounts?.Grant(gatewayPane, names);
+                    await gateway.PrepareLaunchAsync(gatewayPane, cancellationToken).ConfigureAwait(false);
+                    _gatewayServerNames = names;
+                    _gatewayActive = true;
+                    return [new PluginMcpServer { Name = "cockpit", Url = url, CockpitHosted = true },
+                        .. eligible.Where(server => server.Transport == McpTransport.Stdio)
+                            .Select(server => PluginMcpServerMapper.ToPluginMcpServer(server, null, null)).OfType<PluginMcpServer>()];
+                }
+                catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+                {
+                    if (_minted is { } minted)
+                    {
+                        keyring?.Revoke(minted.PaneId, minted.Token);
+                        _minted = null;
+                    }
+                    logger?.LogWarning(exception, "Preparing the session MCP gateway failed; using the direct MCP servers.");
+                }
+            }
+            else if (gateway?.IsEnabled == true)
+            {
+                logger?.LogWarning("The session MCP gateway is unavailable; using the direct MCP servers.");
             }
 
             var resolved = await Task.WhenAll(eligible.Select(async server =>
@@ -552,6 +567,8 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
     private async Task<string?> _ProxyUrlAsync(McpServerConfig server, CancellationToken cancellationToken) =>
         oauthProxy is null ? null : await oauthProxy.MountAsync(server, cancellationToken).ConfigureAwait(false);
 
+    private bool _gatewayActive;
+    private IReadOnlyDictionary<string, string>? _launchOptions;
     private McpToolNames? _gatewayToolNames;
     private IReadOnlyList<string>? _gatewayServerNames;
 

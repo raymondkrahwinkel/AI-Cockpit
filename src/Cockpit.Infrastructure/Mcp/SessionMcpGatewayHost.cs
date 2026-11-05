@@ -65,13 +65,16 @@ internal sealed class SessionMcpGatewayHost : IHostedService, IAsyncDisposable
             assistantManaged ? SessionMcpManager.Assistant : SessionMcpManager.Operator));
     }
 
-    internal async Task PrepareLaunchAsync(string paneId, CancellationToken ct)
+    internal async Task PrepareLaunchAsync(string paneId, CancellationToken ct, bool waitForNames = true)
     {
         var token = _keyring.CurrentToken(paneId) ?? throw new InvalidOperationException("The MCP launch has no session key.");
         if (_provider?.Invoke() is { } provider && _mounts is not null)
         {
             var binding = _bindings.GetOrAdd((paneId, token), _ => new Lazy<GatewayMcpBinding>(() => new GatewayMcpBinding(provider, _mounts, paneId, token, _loggerFactory.CreateLogger<SessionMcpGatewayHost>()))).Value;
-            await binding.WaitForConnectionsAsync(ct).ConfigureAwait(false);
+            if (waitForNames)
+            {
+                await binding.WaitForConnectionsAsync(ct).ConfigureAwait(false);
+            }
             // ForwardTools registers reachable shortened names before launch-time glob rules are translated.
             _ = binding.Session.ForwardTools;
         }

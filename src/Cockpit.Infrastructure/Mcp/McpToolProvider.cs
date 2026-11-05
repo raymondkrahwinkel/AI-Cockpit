@@ -35,11 +35,19 @@ internal sealed partial class McpToolProvider(
 
     public async Task<IMcpToolSession> ConnectAsync(IReadOnlySet<string>? enabledServerNames = null, string? paneId = null, string? confineFileToolsToDirectory = null, string? projectId = null, string? workingDirectory = null, CancellationToken cancellationToken = default, string? agentName = null)
     {
-        if (gateway?.IsEnabled == true)
+        if (gateway?.UrlFor(paneId ?? "launch") is not null)
         {
-            paneId = string.IsNullOrEmpty(paneId) ? Guid.NewGuid().ToString("N") : paneId;
-            await gateway.BindLaunchAsync(paneId, projectId, workingDirectory, confineFileToolsToDirectory, agentName,
-                enabledServerNames is ExactMcpServerSelection, cancellationToken).ConfigureAwait(false);
+            try
+            {
+                var candidatePane = string.IsNullOrEmpty(paneId) ? Guid.NewGuid().ToString("N") : paneId;
+                await gateway.BindLaunchAsync(candidatePane, projectId, workingDirectory, confineFileToolsToDirectory, agentName,
+                    enabledServerNames is ExactMcpServerSelection, cancellationToken).ConfigureAwait(false);
+                paneId = candidatePane;
+            }
+            catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+            {
+                _logger.LogWarning(exception, "Binding the session MCP gateway failed; using the direct MCP tools.");
+            }
         }
         // AC-89: a session with a pane id mints one per-session token here (not per server) so every
         // cockpit-hosted endpoint it connects to can attribute requests to this pane; no pane id falls back to the shared app key.

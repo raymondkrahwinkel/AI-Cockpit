@@ -31,7 +31,7 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemory
         string? projectId = null,
         Action<string>? notice = null)
     {
-        if (gateway?.IsEnabled == true && string.IsNullOrEmpty(paneId))
+        if (string.IsNullOrEmpty(paneId) && gateway?.UrlFor("launch") is not null)
         {
             paneId = Guid.NewGuid().ToString("N");
         }
