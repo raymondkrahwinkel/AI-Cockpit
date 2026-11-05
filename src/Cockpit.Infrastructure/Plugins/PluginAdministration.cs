@@ -57,6 +57,7 @@ internal sealed class PluginAdministration(
         await _changes.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            await _WaitForInitializationAsync(cancellationToken).ConfigureAwait(false);
             await bootstrap.ReconcileUpdatesAsync(cancellationToken).ConfigureAwait(false);
             var result = await installer.InstallFromZipAsync(zipFilePath, AbstractionsContract.Version, cancellationToken: cancellationToken).ConfigureAwait(false);
             return result.Staged ? result with { Live = await _UpdateAsync(result).ConfigureAwait(false) } : result;
@@ -72,6 +73,7 @@ internal sealed class PluginAdministration(
         await _changes.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            await _WaitForInitializationAsync(cancellationToken).ConfigureAwait(false);
             await bootstrap.ReconcileUpdatesAsync(cancellationToken).ConfigureAwait(false);
             var result = await provisioning.InstallAsync(request, AbstractionsContract.Version, cancellationToken: cancellationToken, progress: progress).ConfigureAwait(false);
             return result.Outcome == PluginProvisionOutcome.Staged
@@ -89,6 +91,7 @@ internal sealed class PluginAdministration(
         await _changes.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            await _WaitForInitializationAsync(cancellationToken).ConfigureAwait(false);
             var running = manager?.Loaded.FirstOrDefault(plugin => plugin.FolderId == folderId);
             if (enabled && running is not null && !string.Equals(running.Sha256, pinnedSha256, StringComparison.OrdinalIgnoreCase))
             {
@@ -115,6 +118,10 @@ internal sealed class PluginAdministration(
             _changes.Release();
         }
     }
+
+    // Startup still owns the loaded instances until both backend and frontend lifecycle hooks are ready.
+    private Task _WaitForInitializationAsync(CancellationToken cancellationToken) =>
+        manager?.WaitForInitializationAsync(cancellationToken) ?? Task.CompletedTask;
 
     // AC-2025: the new bytes are installed. The pin moves to them first (no registration means the operator removed the
     // plugin and installed it again before the restart, AC-455), then the running version gives way to them. Nothing
@@ -502,6 +509,7 @@ internal sealed class PluginAdministration(
         await _changes.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            await _WaitForInitializationAsync(cancellationToken).ConfigureAwait(false);
             await installer.MarkForRemovalAsync(folderId, cancellationToken).ConfigureAwait(false);
             await registrations.RemoveAsync(folderId, cancellationToken).ConfigureAwait(false);
             return await _DeactivateAsync(folderId).ConfigureAwait(false);
