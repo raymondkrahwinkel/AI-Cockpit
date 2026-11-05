@@ -140,7 +140,7 @@ public sealed class SessionLauncher(
         bool? promptDelivered = string.IsNullOrWhiteSpace(request.Prompt)
             ? null
             : await hosted.SubmitPromptWhenReadyAsync(request.Prompt).ConfigureAwait(false);
-        return new LaunchedSession(paneId, name, promptDelivered);
+        return new LaunchedSession(paneId, name, promptDelivered, UnisolatedNotice: admitted.Notice);
     }
 
     // Hosted, registered and recorded, in that order; null when the desk stopped holding sessions meanwhile.
