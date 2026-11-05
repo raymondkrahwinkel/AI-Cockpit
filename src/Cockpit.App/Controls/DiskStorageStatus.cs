@@ -217,6 +217,12 @@ internal sealed class DiskStorageStatus : Button
             sub.Bind(TextBlock.ForegroundProperty, this.GetResourceObservable(pressureKey ?? "CockpitTextFaintBrush"));
             row.Children.Add(sub);
         }
+        else if (disk.PressureReason is { } reason)
+        {
+            var sub = new TextBlock { Text = reason, FontSize = 10.5 };
+            sub.Bind(TextBlock.ForegroundProperty, this.GetResourceObservable(pressureKey ?? "CockpitTextFaintBrush"));
+            row.Children.Add(sub);
+        }
 
         return row;
     }

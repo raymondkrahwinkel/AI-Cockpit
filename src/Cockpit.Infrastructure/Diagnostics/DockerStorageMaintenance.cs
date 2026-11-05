@@ -59,11 +59,19 @@ internal sealed class DockerStorageMaintenance(
         }
     }, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(60));
 
-    internal bool AcknowledgePause(string paneId, string pauseId)
+    internal StoragePauseAcknowledgement AcknowledgePause(string paneId, string pauseId)
     {
         lock (_gate)
         {
-            return _pauseId == pauseId && _acknowledgements.TryGetValue(paneId, out var acknowledgement) && acknowledgement.TrySetResult();
+            if (_pauseId is null)
+                return new(false, "no_pause");
+            if (_pauseId != pauseId)
+                return new(false, "unknown_pause");
+            if (!_acknowledgements.TryGetValue(paneId, out var acknowledgement))
+                return new(true, "not_required");
+            return acknowledgement.TrySetResult()
+                ? new(true, "acknowledged")
+                : new(true, "already_acknowledged");
         }
     }
 
@@ -355,7 +363,7 @@ internal sealed class DockerStorageMaintenance(
             {
                 _lastSuggestion = now;
                 var worst = resources.Disks.MaxBy(drive => drive.Pressure)!;
-                _Report($"Disk space on {worst.Name} is {(pressure == DiskPressure.Critical ? "critically low" : "running low")} and automatic Docker clean-up is off. Clean up Docker by hand from the storage status in the status bar.", ToastSeverity.Warning);
+                _Report($"Disk space on {worst.Name} is {(pressure == DiskPressure.Critical ? "critically low" : "running low")} ({worst.PressureReason ?? "below the configured threshold"}) and automatic Docker clean-up is off. Clean up Docker by hand from the storage status in the status bar.", ToastSeverity.Warning);
             }
 
             if (CanCompact && now - _lastOffer >= TimeSpan.FromDays(1))
@@ -405,3 +413,5 @@ internal sealed class DockerStorageMaintenance(
         _operation.Release();
     }
 }
+
+internal sealed record StoragePauseAcknowledgement(bool Ok, string Reason);
