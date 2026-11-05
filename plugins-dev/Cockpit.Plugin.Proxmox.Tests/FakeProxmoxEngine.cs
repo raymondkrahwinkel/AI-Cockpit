@@ -1,4 +1,5 @@
 using Cockpit.Plugin.Proxmox.Engine;
+using Cockpit.Plugin.Proxmox.Settings;
 
 namespace Cockpit.Plugin.Proxmox.Tests;
 
@@ -8,6 +9,8 @@ internal sealed class FakeProxmoxEngine : IProxmoxEngine
 {
     public Exception? Throw;
     public ProxmoxTaskOutcome NextOutcome = new("UPID:node:0:0:0:task:0:root@pam:", IsSuccess: true, ExitStatus: "OK", TimedOut: false);
+
+    public IProxmoxEngine ForServer(ProxmoxServer server) => this;
 
     private void _MaybeThrow()
     {

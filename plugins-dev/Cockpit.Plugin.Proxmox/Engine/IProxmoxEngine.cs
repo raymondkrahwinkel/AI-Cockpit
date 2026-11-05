@@ -1,3 +1,5 @@
+using Cockpit.Plugin.Proxmox.Settings;
+
 namespace Cockpit.Plugin.Proxmox.Engine;
 
 /// <summary>
@@ -7,6 +9,8 @@ namespace Cockpit.Plugin.Proxmox.Engine;
 /// </summary>
 internal interface IProxmoxEngine
 {
+    IProxmoxEngine ForServer(ProxmoxServer server);
+
     /// <summary>
     /// The API's version (<c>/version</c>). Touches the API — the first call that does, in an MCP session.
     /// </summary>

@@ -32,7 +32,9 @@ internal static class ProxmoxChannel
 
 internal sealed record ProxmoxEmptyRequest();
 
-internal sealed record ProxmoxGuestActionRequest(string Node, string VmId, bool IsLxc);
+internal sealed record ProxmoxOverviewRequest(string? Server);
+
+internal sealed record ProxmoxGuestActionRequest(string Node, string VmId, bool IsLxc, string? Server);
 
 internal sealed record ProxmoxFingerprintRequest(string Host, int Port);
 

@@ -1,179 +1,207 @@
+using System.Text.Json;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
-using System.Text.Json;
 using Cockpit.Plugin.Proxmox.Contracts;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.UI;
 
 namespace Cockpit.Plugin.Proxmox.UI;
 
-// The plugin's settings view: one Proxmox target (host, port, API token), its certificate trust, and the two
-// off-by-default capabilities. All code-behind Avalonia, like the other plugins. The API token box is never
-// prefilled with the stored value — a blank box keeps what is already stored, typing replaces it.
 internal sealed class ProxmoxSettingsControl : UserControl, IPluginSettingsView
 {
     private readonly ProxmoxSettings _settings;
-    private readonly CheckBox _mcpEnabled;
-    private readonly TextBox _host;
-    private readonly TextBox _port;
-    private readonly TextBox _tokenId;
-    private readonly TextBox _apiToken;
-    private readonly TextBlock _fingerprintText;
-    private readonly Button _trustButton;
-    private readonly CheckBox _allowRollback;
-    private readonly CheckBox _allowDelete;
-
+    private readonly ICockpitUiHost _host;
+    private readonly List<ProxmoxServer> _servers;
+    private readonly Dictionary<string, string> _tokens;
+    private readonly ListBox _list = new() { Height = 110 };
+    private readonly CheckBox _mcp;
+    private readonly TextBox _name = new() { PlaceholderText = "e.g. production" };
+    private readonly TextBox _hostName = new() { PlaceholderText = "e.g. pve.example.lan" };
+    private readonly TextBox _port = new() { Width = 100, PlaceholderText = "8006" };
+    private readonly TextBox _tokenId = new() { PlaceholderText = "user@realm!tokenid" };
+    private readonly TextBox _token = new() { PasswordChar = '•', PlaceholderText = "Leave blank to keep the stored token" };
+    private readonly TextBlock _fingerprint = new() { FontSize = 11, TextWrapping = TextWrapping.Wrap };
+    private readonly CheckBox _rollback = new() { Content = "Allow snapshot rollback (destructive)" };
+    private readonly CheckBox _delete = new() { Content = "Allow VM/LXC deletion (destructive)" };
+    private int _selected;
+    private string? _pendingFingerprint;
     private string? _fetchedFingerprint;
-    private string? _pendingTrustedFingerprint;
-    private readonly ICockpitUiHost _uiHost;
 
     public ProxmoxSettingsControl(ICockpitUiHost host, ProxmoxSettings settings)
     {
-        _uiHost = host;
+        _host = host;
         _settings = settings;
-        _pendingTrustedFingerprint = settings.TrustedCertFingerprint is { Length: > 0 } stored ? stored : null;
+        _servers = settings.Servers.ToList();
+        _tokens = _servers.ToDictionary(server => server.Id, server => settings.GetApiToken(server.Id));
 
-        _mcpEnabled = new CheckBox { Content = "Offer the cockpit-proxmox MCP server to sessions", IsChecked = settings.McpEnabled };
-
-        _host = new TextBox { Text = settings.Host, PlaceholderText = "e.g. pve.example.lan" };
-        _port = new TextBox { Text = settings.Port.ToString(), PlaceholderText = "8006", Width = 100 };
-        _tokenId = new TextBox { Text = settings.TokenId, PlaceholderText = "user@realm!tokenid" };
-        _apiToken = new TextBox
+        _mcp = new CheckBox { Content = "Offer the cockpit-proxmox MCP server to sessions", IsChecked = settings.McpEnabled };
+        _list.SelectionChanged += (_, _) =>
         {
-            PasswordChar = '•',
-            PlaceholderText = settings.IsConfigured ? "Leave blank to keep the stored token, or type a new one to replace it" : "Token UUID",
+            if (_list.SelectedIndex >= 0 && _list.SelectedIndex != _selected)
+            {
+                _Capture();
+                _selected = _list.SelectedIndex;
+                _Load();
+            }
         };
 
-        _fingerprintText = new TextBlock { Text = _FingerprintLabel(), FontSize = 11, TextWrapping = TextWrapping.Wrap };
-        var showFingerprint = new Button { Content = "Show fingerprint" };
-        _trustButton = new Button { Content = "Trust this certificate", IsEnabled = false, Margin = new(6, 0, 0, 0) };
-        showFingerprint.Click += async (_, _) => await _ShowFingerprintAsync(showFingerprint);
-        _trustButton.Click += (_, _) => _TrustFetchedFingerprint();
-
-        _allowRollback = new CheckBox { Content = "Allow rolling back a VM/LXC snapshot (destructive — off by default)", IsChecked = settings.AllowRollback };
-        _allowDelete = new CheckBox { Content = "Allow deleting a VM or LXC container (off by default)", IsChecked = settings.AllowDelete };
-
-        var connectionHeading = new StackPanel
+        var add = new Button { Content = "Add server" };
+        add.Click += (_, _) =>
         {
-            Orientation = Orientation.Horizontal,
-            Margin = new(0, 8, 0, 0),
-            Children = { new TextBlock { Text = "Proxmox target" }, host.CreateHelpHint("proxmox", "connecting") },
+            _Capture();
+            _servers.Add(_NewServer());
+            _selected = _servers.Count - 1;
+            _RefreshList();
+            _Load();
         };
+        var remove = new Button { Content = "Remove selected", Margin = new(6, 0, 0, 0) };
+        remove.Click += (_, _) =>
+        {
+            if (_servers.Count == 0)
+            {
+                return;
+            }
 
-        var portRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { _host, _port } };
-        var fingerprintButtons = new StackPanel { Orientation = Orientation.Horizontal, Children = { showFingerprint, _trustButton } };
+            _Capture();
+            _tokens.Remove(_servers[_selected].Id);
+            _servers.RemoveAt(_selected);
+            _selected = _servers.Count == 0 ? -1 : Math.Min(_selected, _servers.Count - 1);
+            _RefreshList();
+            _Load();
+        };
+        var show = new Button { Content = "Show fingerprint" };
+        show.Click += async (_, _) => await _ShowFingerprintAsync(show);
+        var trust = new Button { Content = "Trust shown fingerprint", Margin = new(6, 0, 0, 0) };
+        trust.Click += (_, _) =>
+        {
+            _pendingFingerprint = _fetchedFingerprint;
+            _fingerprint.Text = _pendingFingerprint is null ? "No fingerprint was fetched." : $"Will trust SHA-256: {_pendingFingerprint}";
+        };
 
         Content = new StackPanel
         {
             Spacing = 8,
             Children =
             {
-                _mcpEnabled,
-                connectionHeading,
-                portRow,
+                _mcp,
+                new TextBlock { Text = "Proxmox servers", FontWeight = FontWeight.SemiBold },
+                _list,
+                new StackPanel { Orientation = Orientation.Horizontal, Children = { add, remove } },
+                _name,
+                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { _hostName, _port } },
                 _tokenId,
-                _apiToken,
-                new TextBlock
-                {
-                    Text = "The token needs at least PVEAuditor on / to read; a change also needs write access to what it touches. See Datacenter → Permissions in Proxmox.",
-                    Opacity = 0.7,
-                    FontSize = 11,
-                    TextWrapping = TextWrapping.Wrap,
-                },
-                new TextBlock { Text = "Certificate", Margin = new(0, 6, 0, 0) },
-                _fingerprintText,
-                fingerprintButtons,
-                new TextBlock { Text = "Dangerous capabilities — off by default", Margin = new(0, 6, 0, 0) },
-                _allowRollback,
-                _allowDelete,
+                _token,
+                new TextBlock { Text = "The token needs PVEAuditor on / for reads; changes need write access to the resource they change.", Opacity = 0.7, FontSize = 11, TextWrapping = TextWrapping.Wrap },
+                new TextBlock { Text = "Certificate", FontWeight = FontWeight.SemiBold },
+                _fingerprint,
+                new StackPanel { Orientation = Orientation.Horizontal, Children = { show, trust } },
+                _rollback,
+                _delete,
             },
         };
+        _RefreshList();
+        _Load();
     }
 
     public bool TryStage(out Action? commit, out string? error)
     {
-        if (!int.TryParse(_port.Text, out var port) || port is <= 0 or > 65535)
+        _Capture();
+        if (_servers.Any(server => string.IsNullOrWhiteSpace(server.Name)) || _servers.Select(server => server.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count() != _servers.Count)
         {
             commit = null;
-            error = "The port must be a number between 1 and 65535.";
+            error = "Every Proxmox server needs a unique name.";
             return false;
         }
 
-        commit = _Commit;
+        if (_servers.Any(server => string.IsNullOrWhiteSpace(server.Host) || server.Port is <= 0 or > 65535))
+        {
+            commit = null;
+            error = "Every Proxmox server needs a host and a port between 1 and 65535.";
+            return false;
+        }
+
+        commit = () =>
+        {
+            _settings.SaveServers(_servers, _tokens);
+            _settings.McpEnabled = _mcp.IsChecked ?? true;
+        };
         error = null;
         return true;
     }
 
-    private void _Commit()
-    {
-        _settings.Host = (_host.Text ?? string.Empty).Trim();
-        _settings.Port = int.TryParse(_port.Text, out var port) ? port : 8006;
-        _settings.TokenId = (_tokenId.Text ?? string.Empty).Trim();
-
-        var typedToken = _apiToken.Text ?? string.Empty;
-        if (typedToken.Length > 0)
-        {
-            _settings.ApiToken = typedToken;
-        }
-
-        if (_pendingTrustedFingerprint is not null)
-        {
-            _settings.TrustedCertFingerprint = _pendingTrustedFingerprint;
-        }
-
-        _settings.AllowRollback = _allowRollback.IsChecked ?? false;
-        _settings.AllowDelete = _allowDelete.IsChecked ?? false;
-        _settings.McpEnabled = _mcpEnabled.IsChecked ?? true;
-    }
-
     private async Task _ShowFingerprintAsync(Button trigger)
     {
-        var host = (_host.Text ?? string.Empty).Trim();
-        if (host.Length == 0 || !int.TryParse(_port.Text, out var port))
+        if (!int.TryParse(_port.Text, out var port) || string.IsNullOrWhiteSpace(_hostName.Text))
         {
-            _fingerprintText.Text = "Enter a host and port first.";
+            _fingerprint.Text = "Enter a host and valid port first.";
             return;
         }
 
         trigger.IsEnabled = false;
-        _trustButton.IsEnabled = false;
-        _fingerprintText.Text = "Connecting…";
-
-        // AC-1571: through the backend part, so the certificate is read where the plugin will connect from.
-        var answer = await _uiHost.Channel.InvokeAsync(
-            ProxmoxChannel.FetchFingerprint,
-            JsonSerializer.SerializeToElement(new ProxmoxFingerprintRequest(host, port), ProxmoxChannel.Json));
-        var (fingerprint, error) = answer.Deserialize<ProxmoxFingerprintAnswer>(ProxmoxChannel.Json) is { } read
-            ? (read.Fingerprint, read.Error)
-            : (null, "The plugin gave no answer for the certificate.");
-
+        var answer = await _host.Channel.InvokeAsync(ProxmoxChannel.FetchFingerprint, JsonSerializer.SerializeToElement(new ProxmoxFingerprintRequest(_hostName.Text.Trim(), port), ProxmoxChannel.Json));
+        var result = answer.Deserialize<ProxmoxFingerprintAnswer>(ProxmoxChannel.Json);
+        _fetchedFingerprint = result?.Fingerprint;
+        _fingerprint.Text = _fetchedFingerprint is null ? result?.Error ?? "Could not read the certificate." : $"Presented SHA-256: {_fetchedFingerprint}";
         trigger.IsEnabled = true;
-        if (fingerprint is null)
-        {
-            _fetchedFingerprint = null;
-            _fingerprintText.Text = error ?? "Could not read the certificate.";
-            return;
-        }
-
-        _fetchedFingerprint = fingerprint;
-        _trustButton.IsEnabled = true;
-        _fingerprintText.Text = $"Presented fingerprint (SHA-256):\n{fingerprint}\n\nVerify this matches your Proxmox host's certificate (shown on its own console/GUI) before trusting it.";
     }
 
-    private void _TrustFetchedFingerprint()
+    private void _Capture()
     {
-        if (_fetchedFingerprint is null)
+        if (_selected < 0 || _servers.Count == 0)
         {
             return;
         }
 
-        _pendingTrustedFingerprint = _fetchedFingerprint;
-        _trustButton.IsEnabled = false;
-        _fingerprintText.Text = $"Will be trusted on save (SHA-256):\n{_fetchedFingerprint}";
+        var current = _servers[_selected];
+        _servers[_selected] = current with
+        {
+            Name = (_name.Text ?? string.Empty).Trim(),
+            Host = (_hostName.Text ?? string.Empty).Trim(),
+            Port = int.TryParse(_port.Text, out var port) ? port : 0,
+            TokenId = (_tokenId.Text ?? string.Empty).Trim(),
+            TrustedCertFingerprint = _pendingFingerprint ?? current.TrustedCertFingerprint,
+            AllowRollback = _rollback.IsChecked ?? false,
+            AllowDelete = _delete.IsChecked ?? false,
+        };
+        if (!string.IsNullOrWhiteSpace(_token.Text))
+        {
+            _tokens[current.Id] = _token.Text;
+        }
     }
 
-    private string _FingerprintLabel() => _pendingTrustedFingerprint is { } fingerprint
-        ? $"Currently trusted (SHA-256):\n{fingerprint}"
-        : "No certificate trusted yet — enter the host and port above, then \"Show fingerprint\" to read it.";
+    private void _Load()
+    {
+        if (_selected < 0 || _servers.Count == 0)
+        {
+            _name.Text = string.Empty;
+            _hostName.Text = string.Empty;
+            _port.Text = "8006";
+            _tokenId.Text = string.Empty;
+            _token.Text = string.Empty;
+            _fingerprint.Text = "No servers configured.";
+            _rollback.IsChecked = false;
+            _delete.IsChecked = false;
+            return;
+        }
+
+        var server = _servers[_selected];
+        _name.Text = server.Name;
+        _hostName.Text = server.Host;
+        _port.Text = server.Port.ToString();
+        _tokenId.Text = server.TokenId;
+        _token.Text = string.Empty;
+        _pendingFingerprint = server.TrustedCertFingerprint;
+        _fingerprint.Text = string.IsNullOrWhiteSpace(_pendingFingerprint) ? "No certificate fingerprint trusted." : $"Trusted SHA-256: {_pendingFingerprint}";
+        _rollback.IsChecked = server.AllowRollback;
+        _delete.IsChecked = server.AllowDelete;
+    }
+
+    private void _RefreshList()
+    {
+        _list.ItemsSource = _servers.Select(server => string.IsNullOrWhiteSpace(server.Name) ? "New server" : server.Name).ToList();
+        _list.SelectedIndex = _servers.Count == 0 ? -1 : _selected;
+    }
+
+    private static ProxmoxServer _NewServer() => new(Guid.NewGuid().ToString("N"), string.Empty, string.Empty, 8006, string.Empty, string.Empty, false, false);
 }
