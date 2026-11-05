@@ -10,26 +10,43 @@ namespace Cockpit.Plugin.Proxmox.Engine;
 // `IProxmoxEngine` backed directly by `HttpClient` (AC-1038, no community library needed). The client is built
 // lazily from the configured host/port/token and cached; `Invalidate` (called on settings save) drops it so the
 // next call rebuilds against the new target — mirrors `DockerEngine`'s caching shape.
-internal sealed class ProxmoxEngine(ProxmoxSettings settings) : IProxmoxEngine, IDisposable
+internal sealed class ProxmoxEngine : IProxmoxEngine, IDisposable
 {
     private static readonly TimeSpan TaskPollInterval = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan TaskTimeout = TimeSpan.FromMinutes(10);
 
-    private readonly object _lock = new();
-    private HttpClient? _client;
+    private readonly ProxmoxSettings _settings;
+    private readonly ProxmoxServer? _server;
+    private readonly ProxmoxClientCache _cache;
+    private readonly bool _ownsCache;
+
+    public ProxmoxEngine(ProxmoxSettings settings)
+        : this(settings, null, new ProxmoxClientCache(), ownsCache: true)
+    {
+    }
+
+    private ProxmoxEngine(ProxmoxSettings settings, ProxmoxServer? server, ProxmoxClientCache cache, bool ownsCache)
+    {
+        _settings = settings;
+        _server = server;
+        _cache = cache;
+        _ownsCache = ownsCache;
+    }
+
+    public IProxmoxEngine ForServer(ProxmoxServer server) => new ProxmoxEngine(_settings, server, _cache, ownsCache: false);
 
     private HttpClient _Client()
     {
-        if (!settings.IsConfigured)
+        if (_server is not { IsConfigured: true })
         {
-            throw new ProxmoxApiException("No Proxmox target is configured yet. Set the host, port and API token in the plugin settings.");
+            throw new ProxmoxApiException("The selected Proxmox server is incomplete. Set its host and token identity in the plugin settings.");
         }
 
-        lock (_lock)
+        lock (_cache.Lock)
         {
-            if (_client is not null)
+            if (_cache.Clients.TryGetValue(_server.Id, out var client))
             {
-                return _client;
+                return client;
             }
 
             var handler = new HttpClientHandler
@@ -39,33 +56,37 @@ internal sealed class ProxmoxEngine(ProxmoxSettings settings) : IProxmoxEngine, 
                 // fails closed.
                 ServerCertificateCustomValidationCallback = (_, certificate, _, sslPolicyErrors) =>
                     sslPolicyErrors == SslPolicyErrors.None
-                    || (certificate is not null && ProxmoxCertificateProbe.Fingerprint(certificate) == settings.TrustedCertFingerprint),
+                    || (certificate is not null && ProxmoxCertificateProbe.Fingerprint(certificate) == _server.TrustedCertFingerprint),
             };
 
-            var client = new HttpClient(handler)
+            client = new HttpClient(handler)
             {
-                BaseAddress = new Uri($"https://{settings.Host}:{settings.Port}/api2/json/"),
+                BaseAddress = new Uri($"https://{_server.Host}:{_server.Port}/api2/json/"),
                 Timeout = TimeSpan.FromSeconds(20),
             };
 
             // Proxmox's own scheme: the whole "PVEAPIToken=user@realm!id=secret" is the header value, not a
             // standard "scheme value" pair — TryAddWithoutValidation avoids AuthenticationHeaderValue rejecting it.
             client.DefaultRequestHeaders.TryAddWithoutValidation(
-                "Authorization", $"PVEAPIToken={settings.TokenId}={settings.ApiToken}");
+                "Authorization", $"PVEAPIToken={_server.TokenId}={_settings.GetApiToken(_server.Id)}");
             client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
-            _client = client;
-            return _client;
+            _cache.Clients[_server.Id] = client;
+            return client;
         }
     }
 
     // Drops the cached client so the next call rebuilds it — the host/port/token/fingerprint may have changed.
     public void Invalidate()
     {
-        lock (_lock)
+        lock (_cache.Lock)
         {
-            _client?.Dispose();
-            _client = null;
+            foreach (var client in _cache.Clients.Values)
+            {
+                client.Dispose();
+            }
+
+            _cache.Clients.Clear();
         }
     }
 
@@ -301,18 +322,18 @@ internal sealed class ProxmoxEngine(ProxmoxSettings settings) : IProxmoxEngine, 
         }
         catch (TaskCanceledException)
         {
-            throw new ProxmoxApiException($"The Proxmox API at {settings.Host}:{settings.Port} did not respond in time.");
+            throw new ProxmoxApiException($"The Proxmox API at {_server!.Host}:{_server.Port} did not respond in time.");
         }
         catch (HttpRequestException ex) when (ex.InnerException is AuthenticationException)
         {
             throw new ProxmoxApiException(
-                $"The certificate presented by {settings.Host}:{settings.Port} does not match the trusted fingerprint. " +
+                $"The certificate presented by {_server!.Host}:{_server.Port} does not match the trusted fingerprint. " +
                 "It may have changed — verify and re-trust it in the Proxmox plugin settings.");
         }
         catch (Exception ex)
         {
             throw new ProxmoxApiException(
-                $"The Proxmox API at {settings.Host}:{settings.Port} could not be reached ({ex.GetType().Name}). Check that the host and port are correct and reachable.");
+                $"The Proxmox API at {_server!.Host}:{_server.Port} could not be reached ({ex.GetType().Name}). Check that the host and port are correct and reachable.");
         }
 
         using (response)
@@ -394,7 +415,19 @@ internal sealed class ProxmoxEngine(ProxmoxSettings settings) : IProxmoxEngine, 
             ? value.ValueKind switch { JsonValueKind.True => true, JsonValueKind.False => false, JsonValueKind.Number => value.GetInt32() != 0, _ => fallback }
             : fallback;
 
-    public void Dispose() => Invalidate();
+    public void Dispose()
+    {
+        if (_ownsCache)
+        {
+            Invalidate();
+        }
+    }
+
+    private sealed class ProxmoxClientCache
+    {
+        public object Lock { get; } = new();
+        public Dictionary<string, HttpClient> Clients { get; } = new(StringComparer.Ordinal);
+    }
 }
 
 // A readable, safe-to-show Proxmox API error — never a stack trace, never the raw exception text (AC-1038 criterion 6).

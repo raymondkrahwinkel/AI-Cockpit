@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Proxmox VE supports multiple named servers; MCP tools and the overview select one explicitly, and their tokens are scrubbed from settings exports.
+
 All notable changes to Wispslate Cockpit are recorded here, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are the tag you release
 (`v1.2.3` → `1.2.3`) — the same string the About dialog and the in-app updater read.

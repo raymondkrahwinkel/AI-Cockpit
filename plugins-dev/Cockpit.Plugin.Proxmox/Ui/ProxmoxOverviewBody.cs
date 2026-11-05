@@ -15,6 +15,7 @@ namespace Cockpit.Plugin.Proxmox.UI;
 internal sealed class ProxmoxOverviewBody : UserControl
 {
     private readonly ICockpitUiHost _host;
+    private readonly ComboBox _server;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly TextBlock _statusText = new() { FontSize = 11, Opacity = 0.7 };
     private readonly Button _refreshButton = new() { Content = "Refresh" };
@@ -28,15 +29,24 @@ internal sealed class ProxmoxOverviewBody : UserControl
     public ProxmoxOverviewBody(IWorkspaceContext context, ICockpitUiHost host)
     {
         _host = host;
+        _server = new ComboBox
+        {
+            ItemsSource = new ProxmoxSettings(host.Storage).Servers.Select(server => server.Name).ToList(),
+            Width = 180,
+            SelectedIndex = 0,
+        };
 
         _refreshButton.Click += async (_, _) => await _RefreshAsync();
+        _server.SelectionChanged += async (_, _) => await _RefreshAsync();
         context.RefreshRequested += async (_, _) => await _RefreshAsync();
         context.Closed += (_, _) => _lifetime.Cancel();
 
         var header = new DockPanel { Margin = new Thickness(12, 12, 12, 4) };
         var title = new TextBlock { Text = "Proxmox", FontWeight = Avalonia.Media.FontWeight.SemiBold, FontSize = 15 };
         DockPanel.SetDock(_refreshButton, Dock.Right);
+        DockPanel.SetDock(_server, Dock.Right);
         header.Children.Add(_refreshButton);
+        header.Children.Add(_server);
         header.Children.Add(title);
 
         var body = new StackPanel
@@ -77,7 +87,7 @@ internal sealed class ProxmoxOverviewBody : UserControl
 
         try
         {
-            var answer = await _AskAsync<ProxmoxEmptyRequest, ProxmoxOverviewAnswer>(ProxmoxChannel.Overview, new ProxmoxEmptyRequest());
+            var answer = await _AskAsync<ProxmoxOverviewRequest, ProxmoxOverviewAnswer>(ProxmoxChannel.Overview, new ProxmoxOverviewRequest(_server.SelectedItem as string));
             if (answer.DeniedReason is { } denied)
             {
                 _statusText.Text = denied;
@@ -190,7 +200,7 @@ internal sealed class ProxmoxOverviewBody : UserControl
         ProxmoxActionAnswer answer;
         try
         {
-            answer = await _AskAsync<ProxmoxGuestActionRequest, ProxmoxActionAnswer>(action, new ProxmoxGuestActionRequest(node, vmId, isLxc));
+            answer = await _AskAsync<ProxmoxGuestActionRequest, ProxmoxActionAnswer>(action, new ProxmoxGuestActionRequest(node, vmId, isLxc, _server.SelectedItem as string));
         }
         catch (OperationCanceledException)
         {
