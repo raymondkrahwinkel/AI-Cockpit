@@ -6780,7 +6780,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             result.Mode.Value,
             PaneId: Guid.NewGuid().ToString("n"))
         {
-            IsComposed = true,
+            IsComposed = result.IsComposed,
             NameIsComposed = result.NameIsComposed,
             Effort = result.Effort.Value,
             EnabledMcpServerNames = result.EnabledMcpServerNames,
