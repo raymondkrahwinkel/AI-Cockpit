@@ -26,6 +26,9 @@ internal sealed class PluginRegistrationEntry
     // Whether the operator muted this plugin's system notifications (AC-1588).
     public bool NotificationsMuted { get; set; }
 
+    // AC-2109: distinct from the operator choosing Disabled, so recovery can explain why this plugin is off.
+    public bool DisabledByStartupProtection { get; set; }
+
     // The plugin's own key/value storage (`Cockpit.Plugins.Abstractions.IPluginStorage`); values are JSON strings. Owned by the plugin, not the load decision.
     public Dictionary<string, string> Data { get; set; } = [];
 
@@ -39,9 +42,10 @@ internal sealed class PluginRegistrationEntry
         ExpectedMinVersion = registration.ExpectedMinVersion,
         VersionChosen = registration.VersionChosen,
         NotificationsMuted = registration.NotificationsMuted,
+        DisabledByStartupProtection = registration.DisabledByStartupProtection,
     };
 
     // AC-937 (Raymond, voorstel A): every plugin starts collapsed into "Plugins ›" until the operator pins it.
     public PluginRegistration ToDomain() =>
-        new(Enabled, PinnedSha256, MenuOrder, HiddenInMenu, PinnedToSidebar ?? false, ExpectedMinVersion, VersionChosen, NotificationsMuted);
+        new(Enabled, PinnedSha256, MenuOrder, HiddenInMenu, PinnedToSidebar ?? false, ExpectedMinVersion, VersionChosen, NotificationsMuted, DisabledByStartupProtection);
 }

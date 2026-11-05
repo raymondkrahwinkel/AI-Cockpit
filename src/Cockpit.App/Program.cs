@@ -442,7 +442,7 @@ sealed class Program
         }
 
         // AC-2039: a quit or restart the operator asked for is not a crash, whatever the teardown below does next.
-        Services?.GetService<StartupAttempt>()?.Complete();
+        CompleteStartupAttempt();
 
         // Started here and not only in Main's finally: while the shutdown is held open for this, nothing else bounds
         // the process, and a wedged teardown must never hold the exit up (bug #32).
@@ -463,6 +463,9 @@ sealed class Program
 
     // AC-1202: its own bound, separate from TeardownBudget above — AwaitTeardownAsync can already spend the
     // full 3s against the 4s watchdog, so this gets what is safely left rather than a share of the whole budget.
+    // Direct Velopack updates bypass the desktop lifetime, so they clear the marker first.
+    internal static void CompleteStartupAttempt() => Services?.GetService<StartupAttempt>()?.Complete();
+
     private static readonly TimeSpan ContainerDisposeBudget = TimeSpan.FromMilliseconds(800);
 
     // AC-1202: asynchronously disposes singleton resources; sync disposal rejects CockpitViewModel's async-only path.

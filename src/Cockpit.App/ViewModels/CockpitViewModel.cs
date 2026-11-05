@@ -5112,7 +5112,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         UpdateStatus = "Restarting…";
-        try { updates.ApplyDownloadedUpdateAndRestart(); }
+        try
+        {
+            // Velopack stops this instance itself, bypassing AppRestartService's RequestQuit path.
+            Program.CompleteStartupAttempt();
+            updates.ApplyDownloadedUpdateAndRestart();
+        }
         finally
         {
             // A refused/no-op apply returns normally; the operator must still be able to use this process.

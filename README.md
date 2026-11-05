@@ -194,8 +194,9 @@ calling agent cannot delegate to what it cannot see.
 - Enabling/disabling/installing a plugin needs a **restart** (a loaded assembly can't be unloaded); a "Restart
   cockpit now" button appears once one is pending. Settings changes do not.
 - **A crash while starting cannot lock you out.** Each start keeps `startup-attempt.json` in the state root until
-  it has been up 30 s after the restore, or until it quits. If it is still there at the next start, the plugins
-  whose panel or tab that start was reopening are turned off (with a **Turn back on** notification); with no plugin
+  it has been up 30 s after the restore, or until it quits. A plugin is turned off only when two consecutive
+  unfinished starts were both reopening its panel or tab; the sticky **Turn back on** notification explains why.
+  This recovery state is separate from the operator's own disabled choice and stays on that machine. With no plugin
   named, the second unfinished start in a row starts in **safe mode** (as `--safe-mode`), and the next good start
   ends it.
 

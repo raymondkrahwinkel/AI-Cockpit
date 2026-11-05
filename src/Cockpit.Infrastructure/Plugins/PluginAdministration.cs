@@ -51,6 +51,7 @@ internal sealed class PluginAdministration(
     }
 
     public Task SetEnabledAsync(string folderId, bool enabled, string pinnedSha256, CancellationToken cancellationToken = default) =>
+        // Any enable/disable action through the plugin manager is the operator's choice, not the startup guard's.
         registrations.SaveAsync(folderId, new PluginRegistration(Enabled: enabled, PinnedSha256: pinnedSha256), cancellationToken);
 
     public async Task RemoveAsync(string folderId, CancellationToken cancellationToken = default)
@@ -85,7 +86,7 @@ internal sealed class PluginAdministration(
         var saved = await registrations.LoadAllAsync(cancellationToken).ConfigureAwait(false);
         if (saved.TryGetValue(folderId, out var prior))
         {
-            await registrations.SaveAsync(folderId, new PluginRegistration(Enabled: prior.Enabled, PinnedSha256: sha256), cancellationToken).ConfigureAwait(false);
+            await registrations.SaveAsync(folderId, prior with { PinnedSha256 = sha256 }, cancellationToken).ConfigureAwait(false);
         }
     }
 }
