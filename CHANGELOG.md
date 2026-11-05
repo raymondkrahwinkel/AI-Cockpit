@@ -36,6 +36,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- Discord final-answer relays now send a streamed answer as one message.
 - Assistant image input stays available after a model is confirmed, including Discord attachments, and model capabilities refresh without restarting the session.
 - Simple view now opens files and plugin workspaces in the main column, with open items to switch between them and guarded Back and Close actions.
 - Files whose live session does not respond now show the saved snapshot after a short timeout instead of staying on Loading; existing files no longer show "New file" while opening.
