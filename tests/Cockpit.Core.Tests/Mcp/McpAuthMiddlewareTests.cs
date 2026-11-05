@@ -126,7 +126,7 @@ public class McpAuthMiddlewareTests
         request.Content = sessionId is null
             ? JsonContent.Create(new { jsonrpc = "2.0", id = 1, method = "initialize", @params = new { protocolVersion = "2025-11-25", capabilities = new { }, clientInfo = new { name = "auth-test", version = "1" } } })
             : JsonContent.Create(new { jsonrpc = "2.0", id = 2, method = "tools/list" });
-        return await client.SendAsync(request);
+        return await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
     }
 
     // L2b (authorization), AC-1685 criterion 2, folding in AC-791 criterion 1: a connect key is Remote with its

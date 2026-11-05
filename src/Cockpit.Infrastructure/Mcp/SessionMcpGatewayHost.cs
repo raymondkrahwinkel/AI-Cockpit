@@ -126,6 +126,7 @@ internal sealed class SessionMcpGatewayHost : IHostedService, IAsyncDisposable
         var addresses = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()
             ?? throw new InvalidOperationException("Kestrel did not expose its bound addresses.");
         BoundUrl = addresses.Addresses.Single();
+        _loggerFactory.CreateLogger<SessionMcpGatewayHost>().LogInformation("Session MCP gateway listening at {GatewayUrl}", BoundUrl);
     }
 
     private void _RequirePane(string paneId, string token)
