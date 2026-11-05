@@ -89,13 +89,13 @@ public sealed class DockerStorageMaintenanceTests
             Assert.DoesNotContain("desktop stop", test.Docker.Calls);
             var pause = Assert.Single(test.Inbox.Deliveries, delivery => delivery.Kind == "storage pause" && delivery.PaneId == "session");
             var id = pause.Body.Split("pauseId=", StringSplitOptions.None)[1].Split('.')[0];
-            Assert.False(test.Maintenance.AcknowledgePause("other-session", id));
-            Assert.False(test.Maintenance.AcknowledgePause("session", "stale-id"));
-            Assert.True(test.Maintenance.AcknowledgePause("session", id));
+            Assert.True(test.Maintenance.AcknowledgePause("other-session", id).Ok);
+            Assert.False(test.Maintenance.AcknowledgePause("session", "stale-id").Ok);
+            Assert.True(test.Maintenance.AcknowledgePause("session", id).Ok);
             Assert.False(test.Maintenance.Compaction.IsCompleted);
             Assert.DoesNotContain("desktop stop", test.Docker.Calls);
-            Assert.False(test.Maintenance.AcknowledgePause(AssistantIdentity.PaneId, id));
-            Assert.True(test.Maintenance.AcknowledgePause("background", id));
+            Assert.True(test.Maintenance.AcknowledgePause(AssistantIdentity.PaneId, id).Ok);
+            Assert.True(test.Maintenance.AcknowledgePause("background", id).Ok);
             await test.Maintenance.Compaction.WaitAsync(TimeSpan.FromSeconds(10));
             Assert.Equal(5, test.Inbox.Deliveries.Count(delivery => delivery.Kind == "storage pause"));
             Assert.Equal(5, test.Inbox.Deliveries.Count(delivery => delivery.Kind == "storage resume"));

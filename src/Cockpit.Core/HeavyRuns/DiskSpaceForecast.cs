@@ -41,13 +41,22 @@ public sealed class DiskSpaceForecast(string name)
             }
         }
 
-        var freeThreshold = Math.Max(totalBytes * settings.DiskMinimumFreePercent / 100,
+        var minimumFreeThreshold = totalBytes * settings.DiskMinimumFreePercent / 100;
+        var growthThreshold = Math.Min(minimumFreeThreshold,
             maxHourlyGrowth * settings.DiskHourlyGrowthMultiplier);
+        var freeThreshold = minimumFreeThreshold + growthThreshold;
         var pressure = freeBytes < freeThreshold / 2 || timeToFull?.TotalHours < settings.DiskCriticalTimeToFullHours
             ? DiskPressure.Critical
             : freeBytes < freeThreshold || timeToFull?.TotalHours < settings.DiskElevatedTimeToFullHours
                 ? DiskPressure.Elevated
                 : DiskPressure.Normal;
-        return new DiskSpaceSnapshot(name, totalBytes, freeBytes, timeToFull, pressure);
+        var reason = pressure == DiskPressure.Normal ? null
+            : timeToFull?.TotalHours < settings.DiskElevatedTimeToFullHours
+                ? $"full in {(timeToFull is { } eta ? _FormatHours(eta) : "under 1 hour")}"
+                : freeBytes < minimumFreeThreshold ? $"below {settings.DiskMinimumFreePercent:0.#}% free space"
+                : $"growth of {maxHourlyGrowth / 1e9:0.#} GB/hour";
+        return new DiskSpaceSnapshot(name, totalBytes, freeBytes, timeToFull, pressure, reason);
     }
+
+    private static string _FormatHours(TimeSpan eta) => eta.TotalHours >= 1 ? $"{eta.TotalHours:0.#} hours" : "under 1 hour";
 }
