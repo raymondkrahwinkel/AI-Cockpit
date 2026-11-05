@@ -601,7 +601,7 @@ public sealed partial class ServerAdminViewModel : ObservableObject
         }
 
         NeedsRestart = state?.RestartRequired == true && _plugins is IServerRestart;
-        Status = state?.RestartReason is { } reason
+        Status = (state?.Notice ?? state?.RestartReason) is { } reason
             ? state.RestartRequired ? $"Restart needed: {reason.TrimEnd('.')}." : reason
             : "This change is waiting for the current session to close.";
     }

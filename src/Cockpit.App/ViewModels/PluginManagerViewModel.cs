@@ -441,7 +441,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         _SetRestartPending(row.FolderId, state?.RestartRequired == true);
         StatusMessage = state?.RestartRequired == true
             ? $"'{row.DisplayName}' enabled{_On}. Restart needed: {state.RestartReason?.TrimEnd('.')}. {_Restart} to load it."
-            : $"'{row.DisplayName}' enabled{_On}. {state?.RestartReason?.TrimEnd('.') ?? "The plugin cannot be activated while running"}.";
+            : $"'{row.DisplayName}' enabled{_On}. {(state?.Notice ?? (state?.Notice ?? state?.RestartReason))?.TrimEnd('.') ?? "The plugin cannot be activated while running"}.";
     }
 
     // The manager's gear is now one of several ways into a plugin's settings, so it opens them the same way the others do.
@@ -561,7 +561,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         _SetRestartPending(row.FolderId, state?.RestartRequired == true);
         StatusMessage = state?.RestartRequired == true
             ? $"'{row.DisplayName}' disabled{_On}. Restart needed: {state.RestartReason?.TrimEnd('.')}. {_Restart} to unload it."
-            : $"'{row.DisplayName}' disabled{_On}. {state?.RestartReason?.TrimEnd('.') ?? "The plugin cannot be unloaded while running"}.";
+            : $"'{row.DisplayName}' disabled{_On}. {(state?.Notice ?? (state?.Notice ?? state?.RestartReason))?.TrimEnd('.') ?? "The plugin cannot be unloaded while running"}.";
     }
 
     [RelayCommand(CanExecute = nameof(CanChangePlugins))]
@@ -598,7 +598,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         _SetRestartPending(row.FolderId, state?.RestartRequired == true);
         StatusMessage = state?.RestartRequired == true
             ? $"'{row.DisplayName}' removed{_On}. Restart needed: {state.RestartReason?.TrimEnd('.')}. {_Restart} to unload it."
-            : $"'{row.DisplayName}' removed{_On}. {state?.RestartReason?.TrimEnd('.') ?? "The plugin cannot be unloaded while running"}.";
+            : $"'{row.DisplayName}' removed{_On}. {(state?.Notice ?? (state?.Notice ?? state?.RestartReason))?.TrimEnd('.') ?? "The plugin cannot be unloaded while running"}.";
     }
 
     // Opens a folder picker for a local store (AC-7) and puts the chosen path in the add-store form.
@@ -1113,7 +1113,7 @@ public partial class PluginManagerViewModel : ViewModelBase
                         }
                         else if (outcome.Live is { Failed: true } failure)
                         {
-                            failed.Add($"'{row.Name}' ({failure.RestartReason?.TrimEnd('.') ?? "it could not be activated"})");
+                            failed.Add($"'{row.Name}' ({(failure.Notice ?? (failure.Notice ?? failure.RestartReason))?.TrimEnd('.') ?? "it could not be activated"})");
                         }
                         else if (outcome.Live is { RestartRequired: true })
                         {
@@ -1345,7 +1345,7 @@ public partial class PluginManagerViewModel : ViewModelBase
                 case { Failed: true } failed:
                     await LoadAsync();
                     StatusIsError = true;
-                    StatusMessage = failed.RestartReason ?? "The update could not be activated.";
+                    StatusMessage = (failed.Notice ?? (failed.Notice ?? failed.RestartReason)) ?? "The update could not be activated.";
                     _SetRestartPending(result.FolderId ?? "", failed.RestartRequired && !failed.RolledBack);
                     return;
             }
@@ -1355,7 +1355,7 @@ public partial class PluginManagerViewModel : ViewModelBase
                 await LoadAsync();
             }
 
-            StatusMessage = result.Live?.RestartReason is { } reason ? $"{installedMessage} {reason}" : installedMessage;
+            StatusMessage = (result.Live?.Notice ?? (result.Live?.Notice ?? result.Live?.RestartReason)) is { } reason ? $"{installedMessage} {reason}" : installedMessage;
             _SetRestartPending(result.FolderId ?? "", result.Live?.RestartRequired == true);
             return;
         }
