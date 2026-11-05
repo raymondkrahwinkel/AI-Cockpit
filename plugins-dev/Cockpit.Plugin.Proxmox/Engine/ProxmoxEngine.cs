@@ -35,6 +35,13 @@ internal sealed class ProxmoxEngine : IProxmoxEngine, IDisposable
 
     public IProxmoxEngine ForServer(ProxmoxServer server) => new ProxmoxEngine(_settings, server, _cache, ownsCache: false);
 
+    internal static string BuildAuthorizationHeader(ProxmoxServer server, string token)
+    {
+        var tokenScheme = server.Kind == ProxmoxServerKind.Pbs ? "PBSAPIToken" : "PVEAPIToken";
+        var tokenSeparator = server.Kind == ProxmoxServerKind.Pbs ? ':' : '=';
+        return $"{tokenScheme}={server.TokenId}{tokenSeparator}{token}";
+    }
+
     private HttpClient _Client()
     {
         if (_server is not { IsConfigured: true })
@@ -67,9 +74,8 @@ internal sealed class ProxmoxEngine : IProxmoxEngine, IDisposable
 
             // Proxmox's own scheme: the whole "PVEAPIToken=user@realm!id=secret" is the header value, not a
             // standard "scheme value" pair — TryAddWithoutValidation avoids AuthenticationHeaderValue rejecting it.
-            var tokenScheme = _server.Kind == ProxmoxServerKind.Pbs ? "PBSAPIToken" : "PVEAPIToken";
             client.DefaultRequestHeaders.TryAddWithoutValidation(
-                "Authorization", $"{tokenScheme}={_server.TokenId}={_settings.GetApiToken(_server.Id)}");
+                "Authorization", BuildAuthorizationHeader(_server, _settings.GetApiToken(_server.Id)));
             client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
             _cache.Clients[_server.Id] = client;

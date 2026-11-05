@@ -87,6 +87,9 @@ public sealed class ProxmoxMcpToolsTests
         Assert.Equal("fingerprint", server.TrustedCertFingerprint);
         Assert.Equal("test-token", new ProxmoxSettings(storage).GetApiToken(server.Id));
 
+        var pbs = new ProxmoxServer("pbs", "pbs", "pbs.example.test", 8007, "user@pbs!agent", string.Empty, false, false, ProxmoxServerKind.Pbs);
+        Assert.Equal("PBSAPIToken=user@pbs!agent:test-token", ProxmoxEngine.BuildAuthorizationHeader(pbs, "test-token"));
+
         using var document = JsonDocument.Parse(recorded);
         var datastores = PbsResponseParser.Datastores(document.RootElement.GetProperty("datastores"));
         var backups = PbsResponseParser.Backups("vault", document.RootElement.GetProperty("snapshots"));

@@ -30,6 +30,8 @@ Give a PBS token **DatastoreAudit** on every `/datastore/<name>` it reads. PBS t
 
 Endpoints, permissions and response shapes are verified from the official [Proxmox Backup Server API Viewer](https://pbs.proxmox.com/docs/api-viewer/) and [User Management](https://pbs.proxmox.com/docs/user-management.html), documentation version **4.2.8-1** (2 October 2026): `/admin/datastore`, `/admin/datastore/{store}/snapshots`, `/nodes/localhost/tasks`, `/config/verify`, `/config/prune`, `/config/sync`, `/admin/verify/{id}/run` and `/admin/gc/{store}`.
 
+The same **User Management - API Tokens** source specifies `Authorization: PBSAPIToken=TOKENID:TOKENSECRET`; PBS therefore uses a colon between token ID and secret. PVE retains its `PVEAPIToken=TOKENID=TOKENSECRET` format.
+
 ## The certificate {#certificate}
 
 A certificate from a real CA (say, a reverse proxy in front of Proxmox with a Let's Encrypt certificate)
