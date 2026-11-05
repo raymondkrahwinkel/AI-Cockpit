@@ -153,6 +153,7 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
             }
 
             Directory.Move(stagingDir, finalDir);
+            PluginClosureHash.Forget(finalDir);
             return PluginInstallResult.Success(folderId, newSha256, staged: false, manifest: manifest);
         }
         catch (Exception exception)
@@ -196,6 +197,10 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
         {
             Directory.Move(aside, finalDir);
             throw;
+        }
+        finally
+        {
+            PluginClosureHash.Forget(finalDir);
         }
 
         // An update staged earlier would otherwise be swapped in at the next start, over this newer one.

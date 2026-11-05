@@ -55,6 +55,16 @@ internal static class PluginClosureHash
     private static readonly ConcurrentDictionary<string, (long Length, DateTime WrittenUtc, string Sha)> _fileHashes =
         new(StringComparer.OrdinalIgnoreCase);
 
+    // A zip stamps its own write times, so replaced bytes can keep size and time: drop what was remembered for the folder.
+    internal static void Forget(string folder)
+    {
+        var prefix = Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder)) + Path.DirectorySeparatorChar;
+        foreach (var path in _fileHashes.Keys.Where(path => path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+        {
+            _fileHashes.TryRemove(path, out _);
+        }
+    }
+
     private static async Task<string> _ShaAsync(Task<(string Sha, IReadOnlyList<PluginClosureFile> Files)> closure) => (await closure.ConfigureAwait(false)).Sha;
 
     private static async Task<(string Sha, IReadOnlyList<PluginClosureFile> Files)> _ComputeAsync(string folder, IEnumerable<string> files, bool reuseUnchanged, CancellationToken cancellationToken)

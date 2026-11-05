@@ -16,6 +16,9 @@ public sealed class PluginShadow
     // old process, a server may share the root) finds it locked and leaves the copy alone. Dot-prefixed, so not hashed.
     private const string InUseMarker = ".in-use";
 
+    // In a copy whose update failed to activate: the sweep never keeps it as the rollback target.
+    private const string FailedMarker = ".failed";
+
     // A copy or staging folder touched this recently may belong to a process that has not marked it yet.
     private static readonly TimeSpan Grace = TimeSpan.FromMinutes(10);
 
@@ -77,8 +80,25 @@ public sealed class PluginShadow
         }
     }
 
+    // Marks the copy of an update that failed to activate; a copy not prepared in this process has nothing to mark.
+    public static void MarkFailed(DiscoveredPlugin discovered)
+    {
+        if (!_prepared.TryGetValue((discovered.FolderId, discovered.Sha256), out var lazy) || !lazy.IsValueCreated)
+        {
+            return;
+        }
+
+        try
+        {
+            File.WriteAllBytes(Path.Combine(lazy.Value.Folder, FailedMarker), []);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+        }
+    }
+
     // Removes the copies that are not one of `keep` and not in use by a live process, and the folders of plugins that
-    // are gone. The newest other copy of a kept plugin stays: it is what a failed update rolls back to. Best effort.
+    // are gone. The newest other copy of a kept plugin that did not fail stays: the last working one. Best effort.
     public static void Sweep(string pluginsRoot, IEnumerable<DiscoveredPlugin> keep)
     {
         var root = RootFor(pluginsRoot);
@@ -94,7 +114,7 @@ public sealed class PluginShadow
             var others = Directory.EnumerateDirectories(idFolder).Where(copy => !kept.Contains(Path.GetFileName(copy).ToLowerInvariant())).ToList();
             var rollback = kept.Count == 0
                 ? null
-                : others.Where(copy => !Path.GetFileName(copy).StartsWith('.')).OrderByDescending(Directory.GetCreationTimeUtc).FirstOrDefault();
+                : others.Where(copy => !Path.GetFileName(copy).StartsWith('.') && !File.Exists(Path.Combine(copy, FailedMarker))).OrderByDescending(Directory.GetCreationTimeUtc).FirstOrDefault();
             foreach (var copy in others.Where(copy => copy != rollback && !_IsInUse(copy)))
             {
                 _TryDelete(copy);
@@ -125,6 +145,7 @@ public sealed class PluginShadow
         {
             if (_Verified(copy, copy, discovered.Sha256) is { } reused)
             {
+                File.Delete(Path.Combine(copy, FailedMarker));
                 return reused._Hold();
             }
 

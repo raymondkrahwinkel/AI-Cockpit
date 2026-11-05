@@ -41,7 +41,8 @@ public sealed record PluginProvisionResult(
     PluginLiveState? Live = null,
     bool InPlace = false,
     string? ConsentReason = null,
-    string? ReplacedSha256 = null)
+    string? ReplacedSha256 = null,
+    bool ErrorIsSafeToShow = false)
 {
     public bool IsSuccess => Outcome is PluginProvisionOutcome.Installed or PluginProvisionOutcome.Staged;
 }

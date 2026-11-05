@@ -624,7 +624,7 @@ internal static class PluginEndpoints
     {
         // AC-2025: an update that went live, or failed and was rolled back, waits for no restart.
         public static PluginInstallResponse From(PluginProvisionResult result, string version) =>
-            new(result.Outcome, result.Id, result.Name, version, result.IsSuccess ? null : "The server could not install the plugin.", result.FolderId, result.Sha256,
+            new(result.Outcome, result.Id, result.Name, version, result.IsSuccess ? null : result.ErrorIsSafeToShow ? result.Error : "The server could not install the plugin.", result.FolderId, result.Sha256,
                 result.IsSuccess && result.Live is not { IsLive: true } and not { RolledBack: true }, result.Live?.RestartReason, result.Live?.IsLive == true, result.Live?.Failed == true, result.Live?.RolledBack == true);
     }
 
