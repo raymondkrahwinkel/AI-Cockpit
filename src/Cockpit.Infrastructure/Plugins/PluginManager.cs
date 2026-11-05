@@ -90,9 +90,6 @@ public sealed class PluginManager(
         }
     }
 
-    // AC-2025: plugins whose ConfigureServices added to the host container at startup; a live swap cannot replace those.
-    private readonly HashSet<string> _registersServices = new(StringComparer.Ordinal);
-
     // AC-1389: a plugin whose backend part threw in Initialize gets no UI part, which would only meet unknown actions.
     private readonly HashSet<DiscoveredPlugin> _initializeFailed = [];
 
@@ -224,11 +221,18 @@ public sealed class PluginManager(
 
             try
             {
-                var before = services.Count;
-                plugin.ConfigureServices(services);
-                if (services.Count > before)
+                var configured = new ServiceCollection();
+                plugin.ConfigureServices(configured);
+                if (configured.Count > 0 && !candidate.Manifest.RequiresRestart)
                 {
-                    _registersServices.Add(candidate.FolderId);
+                    diagnostics.Record(candidate.FolderId, candidate.Manifest.Name, "configure", _HostServicesRequireManifest);
+                    _DisposeQuietly(candidate, plugin);
+                    continue;
+                }
+
+                foreach (var descriptor in configured)
+                {
+                    services.Add(descriptor);
                 }
             }
             catch (Exception exception)
@@ -431,14 +435,7 @@ public sealed class PluginManager(
         }
     }
 
-    // AC-2025: whether a startup ConfigureServices added to the container, which only a restart replaces.
-    public bool RegistersServices(string folderId)
-    {
-        lock (_lifecycleLock)
-        {
-            return _registersServices.Contains(folderId);
-        }
-    }
+    private const string _HostServicesRequireManifest = "Host service registrations require requiresRestart in plugin.json; keep plugin-owned services inside the plugin to support live changes.";
 
     // AC-2025: why ActivateOne would turn these bytes away before it starts anything, or null; asked before the running
     // version is stopped for them.
@@ -549,7 +546,8 @@ public sealed class PluginManager(
                         {
                             _DisposeQuietly(discovered, plugin);
                             plugin = null;
-                            result = new(PluginActivationStatus.NeedsHostRestart, "ConfigureServices registered services that require rebuilding the host container.");
+                            diagnostics.Record(discovered.FolderId, discovered.Manifest.Name, "configure", _HostServicesRequireManifest);
+                            result = new(PluginActivationStatus.Refused, _HostServicesRequireManifest);
                         }
                         else
                         {

@@ -1350,6 +1350,11 @@ public partial class PluginManagerViewModel : ViewModelBase
                     return;
             }
 
+            if (result.InPlace)
+            {
+                await LoadAsync();
+            }
+
             StatusMessage = result.Live?.RestartReason is { } reason ? $"{installedMessage} {reason}" : installedMessage;
             _SetRestartPending(result.FolderId ?? "", result.Live?.RestartRequired == true);
             return;

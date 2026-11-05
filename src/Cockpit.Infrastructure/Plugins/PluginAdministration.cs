@@ -75,7 +75,7 @@ internal sealed class PluginAdministration(
             await bootstrap.ReconcileUpdatesAsync(cancellationToken).ConfigureAwait(false);
             var result = await provisioning.InstallAsync(request, AbstractionsContract.Version, cancellationToken: cancellationToken, progress: progress).ConfigureAwait(false);
             return result.Outcome == PluginProvisionOutcome.Staged
-                ? result with { Live = await _UpdateAsync(result.FolderId, result.Sha256, result.InPlace, result.ConsentReason, result.ReplacedSha256).ConfigureAwait(false) ?? PluginLiveState.Restart("An update is applied when the host restarts.") }
+                ? result with { Live = await _UpdateAsync(result.FolderId, result.Sha256, result.InPlace, result.ConsentReason, result.ReplacedSha256, result.Manifest?.RequiresRestart == true).ConfigureAwait(false) ?? PluginLiveState.Blocked("Approve the installed plugin in Plugin Manager to activate it.") }
                 : result;
         }
         finally
@@ -89,6 +89,16 @@ internal sealed class PluginAdministration(
         await _changes.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            var running = manager?.Loaded.FirstOrDefault(plugin => plugin.FolderId == folderId);
+            if (enabled && running is not null && !string.Equals(running.Sha256, pinnedSha256, StringComparison.OrdinalIgnoreCase))
+            {
+                var saved = (await registrations.LoadAllAsync(cancellationToken).ConfigureAwait(false)).GetValueOrDefault(folderId);
+                await registrations.SaveAsync(folderId, new PluginRegistration(Enabled: true, PinnedSha256: saved?.PinnedSha256 ?? running.Sha256), cancellationToken).ConfigureAwait(false);
+                _StopWaitingForUsage(folderId);
+                return await _UpdateAsync(folderId, pinnedSha256, inPlace: true, consentReason: null, replacedSha256: null).ConfigureAwait(false)
+                    ?? PluginLiveState.Blocked("The plugin could not be updated.");
+            }
+
             await registrations.SaveAsync(folderId, new PluginRegistration(Enabled: enabled, PinnedSha256: pinnedSha256), cancellationToken).ConfigureAwait(false);
             await bootstrap.ConfirmPinnedInPlaceUpdateAsync(folderId, pinnedSha256, cancellationToken).ConfigureAwait(false);
             if (enabled)
@@ -110,16 +120,16 @@ internal sealed class PluginAdministration(
     // plugin and installed it again before the restart, AC-455), then the running version gives way to them. Nothing
     // here takes the caller's token: the bytes are replaced already, and a half-done swap would leave no version running.
     private async Task<PluginLiveState> _UpdateAsync(PluginInstallResult installed) =>
-        await _UpdateAsync(installed.FolderId, installed.Sha256, installed.InPlace, installed.ConsentReason, installed.ReplacedSha256).ConfigureAwait(false)
-        ?? PluginLiveState.Restart("An update is applied when the host restarts.");
+        await _UpdateAsync(installed.FolderId, installed.Sha256, installed.InPlace, installed.ConsentReason, installed.ReplacedSha256, installed.Manifest?.RequiresRestart == true).ConfigureAwait(false)
+        ?? PluginLiveState.Blocked("Approve the installed plugin in Plugin Manager to activate it.");
 
-    // Null: nothing to swap live, the restart applies it.
-    private async Task<PluginLiveState?> _UpdateAsync(string? folderId, string? sha256, bool inPlace, string? consentReason, string? replacedSha256)
+    // Null: there is no approved registration to update.
+    private async Task<PluginLiveState?> _UpdateAsync(string? folderId, string? sha256, bool inPlace, string? consentReason, string? replacedSha256, bool requiresRestart = false)
     {
-        // More capabilities than the approved version had: the bytes wait beside it, unpinned, for the restart's consent step.
+        // New capabilities wait unpinned for explicit approval.
         if (consentReason is not null)
         {
-            return PluginLiveState.Restart(consentReason);
+            return requiresRestart ? PluginLiveState.Restart(consentReason) : PluginLiveState.Blocked(consentReason);
         }
 
         var prior = folderId is null ? null : (await registrations.LoadAllAsync(CancellationToken.None).ConfigureAwait(false)).GetValueOrDefault(folderId);
@@ -132,15 +142,24 @@ internal sealed class PluginAdministration(
         // one is not the operator's decision to take for them, so it stays unpinned and off until they approve it.
         if (replacedSha256 is not null && !string.Equals(replacedSha256, prior.PinnedSha256, StringComparison.OrdinalIgnoreCase))
         {
-            return PluginLiveState.Restart("The files this update replaced were not the approved version. Approve it in Plugin Manager, or the plugin stays off.");
+            return PluginLiveState.Blocked("The files this update replaced were not the approved version. Approve it in Plugin Manager, or the plugin stays off.");
         }
 
         await registrations.SaveAsync(folderId, new PluginRegistration(Enabled: prior.Enabled, PinnedSha256: sha256), CancellationToken.None).ConfigureAwait(false);
         await bootstrap.ConfirmPinnedInPlaceUpdateAsync(folderId, sha256).ConfigureAwait(false);
 
-        if (!inPlace || manager is null)
+        if (!inPlace)
         {
-            return null;
+            return requiresRestart
+                ? PluginLiveState.Restart("The plugin asks for a restart to apply the update.")
+                : manager is null
+                    ? PluginLiveState.Blocked("This host cannot activate a plugin while it runs.")
+                    : PluginLiveState.UpdateFailed("The installed files could not be replaced while the plugin runs.");
+        }
+
+        if (manager is null)
+        {
+            return PluginLiveState.Blocked("This host cannot activate a plugin while it runs.");
         }
 
         var running = manager.LoadedParts.FirstOrDefault(entry => entry.Discovered.FolderId == folderId).Discovered;
@@ -199,17 +218,12 @@ internal sealed class PluginAdministration(
         return await _RollBackAsync(manager, running, activated.Reason, stopped: true, restartTo: activated.Status == PluginActivationStatus.NeedsHostRestart ? next : null, failed: next).ConfigureAwait(false);
     }
 
-    // What a live swap would cut off: what a deactivation would, plus services only a restart replaces and unsaved work.
+    // A live update also waits for unsaved workspace work.
     private async Task<PluginBlocker?> _UpdateBlockerAsync(PluginManager loaded, string folderId)
     {
         if (await _DeactivationBlockerAsync(loaded, folderId).ConfigureAwait(false) is { } deactivation)
         {
             return deactivation;
-        }
-
-        if (loaded.RegistersServices(folderId))
-        {
-            return new("The plugin adds services to the host, which only a restart replaces.", PluginBlockerKind.Restart);
         }
 
         return await loaded.UpdateBlocker(folderId).ConfigureAwait(false) is { } unsaved
@@ -222,7 +236,7 @@ internal sealed class PluginAdministration(
         var left = await loaded.DeactivateAsync(folderId).ConfigureAwait(false);
         return left.Status is PluginActivationStatus.Deactivated or PluginActivationStatus.NotActive
             ? null
-            : PluginLiveState.Restart(left.Reason ?? "The plugin could not be deactivated.");
+            : _LiveState(left, "The plugin could not be deactivated.");
     }
 
     // The new version as discovery sees it (every byte hashed), with its verified copy made; or why it cannot load.
@@ -315,7 +329,7 @@ internal sealed class PluginAdministration(
     {
         if (manager is null)
         {
-            return PluginLiveState.Restart("This host cannot deactivate a plugin while it runs.");
+            return PluginLiveState.Blocked("This host cannot deactivate a plugin while it runs.");
         }
 
         if (await _DeactivationBlockerAsync(manager, folderId).ConfigureAwait(false) is { } blocker)
@@ -329,9 +343,7 @@ internal sealed class PluginAdministration(
         }
 
         var result = await manager.DeactivateAsync(folderId).ConfigureAwait(false);
-        var state = result.Status is PluginActivationStatus.Deactivated or PluginActivationStatus.NotActive
-            ? PluginLiveState.Active
-            : PluginLiveState.Restart(result.Reason ?? "The plugin could not be deactivated.");
+        var state = _LiveState(result, "The plugin could not be deactivated.");
         _StopWaitingForUsage(folderId);
         return state;
     }
@@ -452,16 +464,21 @@ internal sealed class PluginAdministration(
     private async Task<PluginLiveState> _ActivateAsync(string folderId, CancellationToken cancellationToken = default)
     {
         var result = await _TryActivateAsync(folderId, null, cancellationToken).ConfigureAwait(false);
-        return result.Status is PluginActivationStatus.Activated or PluginActivationStatus.AlreadyActive
-            ? PluginLiveState.Active
-            : PluginLiveState.Restart(result.Reason ?? "The plugin could not be activated.");
+        return _LiveState(result, "The plugin could not be activated.");
     }
+
+    private static PluginLiveState _LiveState(PluginActivationResult result, string fallback) => result.Status switch
+    {
+        PluginActivationStatus.Activated or PluginActivationStatus.AlreadyActive or PluginActivationStatus.Deactivated or PluginActivationStatus.NotActive => PluginLiveState.Active,
+        PluginActivationStatus.NeedsRestart or PluginActivationStatus.NeedsHostRestart => PluginLiveState.Restart(result.Reason ?? fallback),
+        _ => PluginLiveState.Blocked(result.Reason ?? fallback)
+    };
 
     private async Task<PluginActivationResult> _TryActivateAsync(string folderId, DiscoveredPlugin? found, CancellationToken cancellationToken = default)
     {
         if (manager is null)
         {
-            return new(PluginActivationStatus.NeedsRestart, "This host cannot activate a plugin while it runs.");
+            return new(PluginActivationStatus.Refused, "This host cannot activate a plugin while it runs.");
         }
 
         try
@@ -470,7 +487,7 @@ internal sealed class PluginAdministration(
             var discovered = found ?? (await bootstrap.DiscoverAsync(AbstractionsContract.Version, cancellationToken).ConfigureAwait(false))
                 .FirstOrDefault(plugin => plugin.FolderId == folderId);
             return discovered is null
-                ? new(PluginActivationStatus.NeedsRestart, "The plugin is no longer on disk.")
+                ? new(PluginActivationStatus.Refused, "The plugin is no longer on disk.")
                 : await _ActivateWithinAsync(manager, discovered).ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)

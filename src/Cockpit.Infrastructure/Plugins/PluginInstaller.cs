@@ -118,20 +118,22 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
             {
                 // An update. `Staged` keeps meaning "the new bytes take effect at the next start", whether they are
                 // already in place or waiting in `.pending-updates`; the caller re-pins them either way.
-                // AC-2025: more capabilities than were approved wait for the restart's consent step, beside the running version.
+                // Extra capabilities keep the new bytes unapproved until the operator accepts them.
                 var added = _AddedCapabilities(finalDir, manifest);
                 // What the folder held before it is replaced: the caller pins the update only over bytes that were approved.
                 var replacedSha256 = await PluginClosureHash.OfInstalledFolderAsync(finalDir, cancellationToken).ConfigureAwait(false);
                 // The marker goes down before the swap: a kill between the swap and the caller's re-pin leaves the new bytes
                 // under the old pin, and only the marker lets the next start tell that from an unapproved swap.
                 var markerPath = Path.Combine(_pluginsRoot, UpdateMarkerPrefix + folderId);
-                var inPlace = added.Count == 0 && !manifest.RequiresRestart;
+                var inPlace = !manifest.RequiresRestart;
                 if (inPlace)
                 {
-                    await File.WriteAllTextAsync(markerPath, replacedSha256 + "\n" + newSha256, cancellationToken).ConfigureAwait(false);
+                    // An empty prior hash prevents recovery from approving added capabilities.
+                    await File.WriteAllTextAsync(markerPath, (added.Count == 0 ? replacedSha256 : "") + "\n" + newSha256, cancellationToken).ConfigureAwait(false);
                     if (_TryReplaceInPlace(stagingDir, finalDir, folderId))
                     {
-                        return PluginInstallResult.Success(folderId, newSha256, staged: true, manifest: manifest, inPlace: true, replacedSha256: replacedSha256);
+                        return PluginInstallResult.Success(folderId, newSha256, staged: true, manifest: manifest, inPlace: true, replacedSha256: replacedSha256,
+                            consentReason: added.Count == 0 ? null : $"The update asks for new capabilities ({string.Join(", ", added)}). Approve it in Plugin Manager to activate it.");
                     }
 
                     File.Delete(markerPath);

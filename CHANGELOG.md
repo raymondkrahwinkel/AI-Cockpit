@@ -46,6 +46,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- Plugin changes now require a restart only when the plugin declares it or a lifecycle operation fails; approving new capabilities resumes live updates.
+
 - A plugin update marker now clears as soon as the approved version is confirmed on disk; disabling a provider in use names its session and finishes after it closes without offering an unnecessary restart.
 - A plugin channel call that arrives during a live plugin update now waits for the replacement instead of failing because its action is briefly unavailable.
 - Simple sessions now use the same provider instructions as sessions started from Panels.
