@@ -1274,6 +1274,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [NotifyPropertyChangedFor(nameof(SimpleStandShowsTheStartScreen))]
     [NotifyPropertyChangedFor(nameof(ShowSessionEmptyState))]
     [NotifyPropertyChangedFor(nameof(ShowSessionsSkeleton))]
+    [NotifyPropertyChangedFor(nameof(SimpleStandShowsTheWorkspace))]
+    [NotifyPropertyChangedFor(nameof(ShowWorkspaceContent))]
     private bool _simpleView;
 
     // AC-1527: the Simple stand's navigation — what its main column shows and which rail entry is marked. One state
@@ -1281,16 +1283,22 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SimpleStandShowsTheStartScreen))]
     [NotifyPropertyChangedFor(nameof(SimpleStandShowsTheProjects))]
+    [NotifyPropertyChangedFor(nameof(SimpleStandShowsTheWorkspace))]
+    [NotifyPropertyChangedFor(nameof(ShowWorkspaceContent))]
+    [NotifyPropertyChangedFor(nameof(SimpleStandDocksTheAssistant))]
+    [NotifyPropertyChangedFor(nameof(EffectiveOpenDockPanelId))]
+    [NotifyPropertyChangedFor(nameof(ShowDockRail))]
     private SimplePage _simplePage = SimplePage.Home;
 
     // Raised only when it can have changed: the view rebuilds the chat host on it, and Home -> Conversation must keep
     // the same composer (and its caret) on screen (AC-1316).
     partial void OnSimplePageChanged(SimplePage oldValue, SimplePage newValue)
     {
-        if (oldValue == SimplePage.Projects || newValue == SimplePage.Projects)
+        if (oldValue is SimplePage.Projects or SimplePage.Workspace || newValue is SimplePage.Projects or SimplePage.Workspace)
         {
             OnPropertyChanged(nameof(SimpleStandShowsTheAssistantInTheMainColumn));
         }
+        RefreshPaneVisibility();
     }
 
     // AC-1321: the paired controller holding the line to this node right now, or null while it is on its own —
@@ -1346,8 +1354,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     public bool SimpleStandDocksTheAssistant =>
         SimpleView
         && AssistantRootSession is not null
-        && SimpleSelectedSession is not null
-        && !ReferenceEquals(SimpleSelectedSession, AssistantRootSession);
+        && (SimplePage == SimplePage.Workspace
+            || SimpleSelectedSession is not null && !ReferenceEquals(SimpleSelectedSession, AssistantRootSession));
 
     // The other half of the same answer. With no assistant session there is nothing to put in either place: a
     // picked session then takes the column on its own, there is no dock, and no way back is drawn to it
@@ -1358,7 +1366,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // itself and starts the assistant on the first message, so the column holds it whenever nothing else is picked.
     public bool SimpleStandShowsTheAssistantInTheMainColumn =>
         SimpleView
-        && SimplePage != SimplePage.Projects
+        && SimplePage is not (SimplePage.Projects or SimplePage.Workspace)
         && (SimpleSelectedSession is null || ReferenceEquals(SimpleSelectedSession, AssistantRootSession));
 
     // AC-1316: the screen is the empty state of the assistant's own conversation, drawn inside the chat view.
@@ -1418,16 +1426,24 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // dialog. The selection goes first, so the stand lands in one state — the question in the column, nothing
     // docked beside it — rather than the screen laid over a conversation still marked as picked.
     [RelayCommand]
-    private void ShowSimpleStartScreen()
+    private async Task ShowSimpleStartScreenAsync()
     {
+        if (!await _CanLeaveSimpleWorkspaceAsync())
+        {
+            return;
+        }
         SimpleSelectedSession = null;
         SimplePage = SimplePage.Home;
         _simpleHome?.Refresh();
     }
 
     [RelayCommand]
-    private void ShowSimpleProjects()
+    private async Task ShowSimpleProjectsAsync()
     {
+        if (!await _CanLeaveSimpleWorkspaceAsync())
+        {
+            return;
+        }
         SimpleSelectedSession = null;
         SimplePage = SimplePage.Projects;
     }
@@ -1435,7 +1451,18 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // AC-1302: the rail's producer for the Simple stand's own selection. Separate from `SelectSession`, which
     // moves the panels stand's selection — the two stands deliberately do not share one choice (AC-1301).
     [RelayCommand]
-    private void SelectSimpleSession(SessionPanelViewModel session) => SimpleSelectedSession = session;
+    private async Task SelectSimpleSessionAsync(SessionPanelViewModel session)
+    {
+        if (await _CanLeaveSimpleWorkspaceAsync())
+        {
+            SimpleSelectedSession = session;
+            SimplePage = SimplePage.Conversation;
+            if (SessionWorkspacePlacement.Resolve(session, SessionWorkspacePlacement.FirstSessionsWorkspaceId(Workspaces.Settings)) is { } workspaceId)
+            {
+                await Workspaces.SelectWorkspaceCommand.ExecuteAsync(workspaceId);
+            }
+        }
+    }
 
     // Marks the picked row in the rail, the way `OnSelectedSessionChanged` marks it in the sidebar. Without this
     // a click in the rail changes nothing you can see, which reads as a list that does not work.
@@ -1564,10 +1591,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // parameter would be a string to parse, and there are exactly two stands.
     // AC-1527 criterion 5: coming back from Panels lands on Home, not on the conversation left there.
     [RelayCommand]
-    private void ShowSimpleView()
+    private async Task ShowSimpleViewAsync()
     {
         SimpleView = true;
-        ShowSimpleStartScreen();
+        await ShowSimpleStartScreenAsync();
     }
 
     [RelayCommand]
@@ -3113,7 +3140,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             var here = BelongsToActiveWorkspace(session);
             session.IsOnActiveDesk = here;
             session.IsPaneVisible = here && (simple
-                ? ReferenceEquals(session, SimpleSelectedSession)
+                ? SimplePage == SimplePage.Conversation && ReferenceEquals(session, SimpleSelectedSession)
                 : !single || session.IsSelected);
             session.IsShownInSimpleStand = simple && session.IsPaneVisible;
         }
@@ -3331,12 +3358,19 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // Called from both constructors, right after `Workspaces` is built — the design-time/test graph needs this exactly
     // as much as the real one, and wiring it in only one of them is how the two quietly drift apart.
-    private void _WireWorkspaceVisibility() =>
-        Workspaces.PropertyChanged += (_, e) =>
+    private void _WireWorkspaceVisibility()
+    {
+        Workspaces.WorkspaceOpened += (_, _) => _ShowSimpleWorkspace();
+        Workspaces.PropertyChanged += async (_, e) =>
         {
             if (e.PropertyName is not (nameof(WorkspacesViewModel.IsSessionsActive) or nameof(WorkspacesViewModel.Settings)))
             {
                 return;
+            }
+
+            if (SimpleStandShowsTheWorkspace && (Workspaces.IsSessionsActive || Workspaces.IsProjectsActive))
+            {
+                await _RestoreSimplePageAsync();
             }
 
             OnPropertyChanged(nameof(ShowSessionGrid));
@@ -3353,6 +3387,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             // It ends in RefreshPaneVisibility, which is also what keeps the other desks' sessions alive but unshown.
             _OnEffectiveLayoutChanged();
         };
+    }
 
     // Parameterless constructor kept for the Avalonia previewer/Screenshotter design-time context — seeds three sample
     // sessions across different providers and statuses so the render shows the overview + grid without a real DI-backed
