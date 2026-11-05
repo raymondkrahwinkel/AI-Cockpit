@@ -68,6 +68,9 @@ public sealed class PluginBootstrap : ISingletonService
         }
     }
 
+    internal void CompleteInPlaceUpdate(string folderId) =>
+        File.Delete(Path.Combine(_pluginsRoot, PluginInstaller.UpdateMarkerPrefix + folderId));
+
     // Scans the plugins root this instance was built with, parses each manifest, hashes each entry assembly
     // and runs the load policy against saved registrations — returning what to do, loading nothing and
     // changing nothing on disk. A plugin marked for removal is left out even though its folder survives.

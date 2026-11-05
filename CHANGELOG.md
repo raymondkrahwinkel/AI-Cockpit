@@ -36,6 +36,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- A plugin channel call that arrives during a live plugin update now waits for the replacement instead of failing because its action is briefly unavailable.
 - Files whose live session does not respond now show the saved snapshot after a short timeout instead of staying on Loading; existing files no longer show "New file" while opening.
 - Depot notes containing bold inline code now open safely; unreadable notes show their source read-only with a recovery message instead of retrying forever.
 - Simple view's Projects page now shows the same list as Projects in the normal view, including Depot projects, the detail pane and the options to add a project.
