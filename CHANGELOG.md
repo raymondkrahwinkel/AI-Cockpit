@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Take over swarm leadership on this machine from the assistant chat or Options › Swarm, through the reachable current leader.
+
+- Proxmox VE supports multiple named servers; MCP tools and the overview select one explicitly, and their tokens are scrubbed from settings exports.
+- Proxmox Backup Server targets can show datastores and recent tasks, while agents can inspect backups and jobs and consent-gate verification or garbage collection.
+
 All notable changes to Wispslate Cockpit are recorded here, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are the tag you release
 (`v1.2.3` → `1.2.3`) — the same string the About dialog and the in-app updater read.
@@ -32,12 +39,20 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- The assistant can attach files from its scratch folder and managed worktrees to replies, with image previews and file downloads in chat.
+- Discord replies now carry files and images on the last message part, and display Markdown tables as aligned code blocks.
+- The "live notes · Depot" line in the status bar is now a button: it opens a list of the live notes you may open, with the project and who is in them, and one click opens the note and joins it.
 - The assistant can see the active tool and elapsed state for each SDK session it lists.
 
 ### Fixed
 
 - A plugin update marker now clears as soon as the approved version is confirmed on disk; disabling a provider in use names its session and finishes after it closes without offering an unnecessary restart.
 - A plugin channel call that arrives during a live plugin update now waits for the replacement instead of failing because its action is briefly unavailable.
+- Simple sessions now use the same provider instructions as sessions started from Panels.
+- A plugin is now turned off only after it is named in two interrupted starts in a row; Cockpit explains that recovery decision and offers to turn it back on.
+- Discord final-answer relays now send a streamed answer as one message.
+- Assistant image input stays available after a model is confirmed, including Discord attachments, and model capabilities refresh without restarting the session.
+- Simple view now opens files and plugin workspaces in the main column, with open items to switch between them and guarded Back and Close actions.
 - Files whose live session does not respond now show the saved snapshot after a short timeout instead of staying on Loading; existing files no longer show "New file" while opening.
 - Depot notes containing bold inline code now open safely; unreadable notes show their source read-only with a recovery message instead of retrying forever.
 - Simple view's Projects page now shows the same list as Projects in the normal view, including Depot projects, the detail pane and the options to add a project.

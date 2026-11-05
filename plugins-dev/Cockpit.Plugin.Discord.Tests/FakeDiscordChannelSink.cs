@@ -14,6 +14,8 @@ internal sealed class FakeDiscordChannelSink : IDiscordChannelSink
     // Set to hold the next PostAsync until the test completes it — a post still on its way when its prompt closes.
     public TaskCompletionSource<ulong>? HoldNextPost { get; set; }
 
+    public TimeSpan PostDelay { get; set; }
+
     public List<(string Text, Guid? ConsentPromptId)> Posted { get; } = [];
 
     // The option buttons each post carried (AC-1544), in the same order as Posted.
@@ -23,29 +25,45 @@ internal sealed class FakeDiscordChannelSink : IDiscordChannelSink
 
     public List<(ulong MessageId, string Emoji)> Reactions { get; } = [];
 
-    public Task<ulong> PostAsync(string text, Guid? consentPromptId = null, DiscordAnswerButtons? answers = null, CancellationToken cancellationToken = default)
+    public async Task<ulong> PostAsync(string text, Guid? consentPromptId = null, DiscordAnswerButtons? answers = null, CancellationToken cancellationToken = default,
+        IReadOnlyList<Cockpit.Plugins.Abstractions.Channels.AssistantChannelAttachment>? attachments = null)
     {
+        if (PostDelay > TimeSpan.Zero)
+        {
+            await Task.Delay(PostDelay, cancellationToken);
+        }
+
+        Task<ulong>? held;
         lock (_gate)
         {
             if (FailNextPost)
             {
                 FailNextPost = false;
-                return Task.FromException<ulong>(new InvalidOperationException("simulated Discord post failure"));
+                throw new InvalidOperationException("simulated Discord post failure");
             }
 
             Posted.Add((text, consentPromptId));
             PostedAnswers.Add(answers);
-            if (HoldNextPost is { } held)
+            held = HoldNextPost?.Task;
+            if (held is not null)
             {
                 HoldNextPost = null;
-                return held.Task;
             }
+        }
 
-            return Task.FromResult(_nextMessageId++);
+        if (held is not null)
+        {
+            return await held;
+        }
+
+        lock (_gate)
+        {
+            return _nextMessageId++;
         }
     }
 
-    public Task EditAsync(ulong messageId, string text, bool keepButtons = true, CancellationToken cancellationToken = default)
+    public Task EditAsync(ulong messageId, string text, bool keepButtons = true, CancellationToken cancellationToken = default,
+        IReadOnlyList<Cockpit.Plugins.Abstractions.Channels.AssistantChannelAttachment>? attachments = null)
     {
         lock (_gate)
         {

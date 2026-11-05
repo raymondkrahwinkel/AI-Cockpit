@@ -81,8 +81,8 @@ public sealed class RestartJourney
                 }
             });
 
-            // AC-2039: a start in between crashed natively while opening the Depot's panel; only its marker says so.
-            File.WriteAllText(Path.Combine(stateRoot, StartupAttempt.FileName), """{"Attempts":1,"Plugins":[{"Id":"depot","Name":"Depot"}]}""");
+            // AC-2109: the two incomplete starts in between both restored Depot's panel; that is enough evidence to turn it off.
+            File.WriteAllText(Path.Combine(stateRoot, StartupAttempt.FileName), """{"Attempts":2,"Plugins":[{"Id":"depot","Name":"Depot"}],"PreviousPlugins":[{"Id":"depot","Name":"Depot"}]}""");
             await using var after = JourneyHost.Desktop(stateRoot: stateRoot, configure: _TwoGpus);
             // AC-1804: a plugin notification nobody answered is asked again at the restart: live if it stands, else resolved.
             var doneAfterRestart = false;

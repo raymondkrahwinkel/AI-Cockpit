@@ -70,7 +70,7 @@ public partial class CockpitViewModel
     {
         try
         {
-            if (_notificationSettingsStore is null || _playbackService is null)
+            if (!IsAudioAvailable || _notificationSettingsStore is null || _playbackService is null)
             {
                 return;
             }
@@ -112,7 +112,7 @@ public partial class CockpitViewModel
 
     private async Task _PlaySelectedNotificationSoundAsync(string selectedSound, string customPath, double volume)
     {
-        if (_playbackService is null || _isVoicePlaybackActive)
+        if (!IsAudioAvailable || _playbackService is null || _isVoicePlaybackActive)
         {
             return;
         }

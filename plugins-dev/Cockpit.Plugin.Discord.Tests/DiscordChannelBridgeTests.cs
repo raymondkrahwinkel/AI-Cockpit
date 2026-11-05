@@ -146,7 +146,7 @@ public class DiscordChannelBridgeTests
     // Review point 2: a failed post must not register the prompt as open — otherwise a "JA" typed for an
     // unrelated reason later would answer a prompt nobody in the channel ever actually saw.
     [Fact]
-    public async Task ConsentPromptOpened_WhenThePostFails_NeverRegistersAsOpen()
+    public async Task PostAsync_FailureDoesNotRegisterPrompt_AndDelayedRowUpdatesProduceOnePost()
     {
         var (bridge, gateway, sink) = _Build();
         sink.FailNextPost = true;
@@ -157,6 +157,18 @@ public class DiscordChannelBridgeTests
 
         Assert.Empty(gateway.Responses);
         Assert.Contains((_AllowedUserId, "JA"), gateway.SentMessages);
+
+        sink.PostDelay = TimeSpan.FromMilliseconds(500);
+        var row = new AssistantChannelRow
+        {
+            Id = Guid.NewGuid(), Kind = AssistantChannelRowKind.AssistantText, Text = "first", Timestamp = DateTimeOffset.UtcNow,
+        };
+        gateway.RaiseRowChanged(row);
+        gateway.RaiseRowChanged(row with { IsUpdate = true, Text = "final" });
+        await Task.Delay(1100);
+
+        Assert.Single(sink.Posted);
+        Assert.Equal((1UL, "final", true), Assert.Single(sink.Edited));
     }
 
     // Review point 1: RowChanged/ConsentPromptOpened/ConsentPromptClosed arrive on the gateway's own thread

@@ -11,9 +11,12 @@ public sealed record DiagnosticsSnapshot(
     ManagedHeapInfo ManagedHeap,
     long MachineMemoryBytes,
     IReadOnlyList<SessionDiagnostic> Sessions,
-    IReadOnlyList<CrashLogEntry> CrashLogs);
+    IReadOnlyList<CrashLogEntry> CrashLogs,
+    AudioDiagnostics Audio);
 
 // One open session's contribution (AC-58): named with the resident memory of its whole process tree — the same
 // figure the status bar's per-session number uses — since a managed climb can hide in a session's child tree.
 // `Kind` is "Agent" or "Terminal"; `ProcessId` is null for an HTTP-backed provider with nothing local to weigh.
 public sealed record SessionDiagnostic(string Title, string Kind, int? ProcessId, long ResidentBytes);
+
+public sealed record AudioDiagnostics(bool IsAvailable, string? UnavailableReason);

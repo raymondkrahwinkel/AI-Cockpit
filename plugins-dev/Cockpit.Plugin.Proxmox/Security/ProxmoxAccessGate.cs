@@ -12,11 +12,11 @@ internal sealed class ProxmoxAccessGate(ICockpitHost host)
     private const string SourceLabel = "Proxmox";
 
     // Authorize touching the API at all. LowRisk, remembered per pane — asks once, then reads are free.
-    public Task<GateResult> AuthorizeConnectionAsync(string operation, string? paneId) =>
+    public Task<GateResult> AuthorizeConnectionAsync(string operation, string? paneId, string serverId) =>
         _RequestAsync(
             "Connect to Proxmox",
             operation,
-            "proxmox.connect:default",
+            $"proxmox.connect:{serverId}",
             ConsentRisk.LowRisk,
             allowRemember: true,
             paneId);
@@ -24,9 +24,9 @@ internal sealed class ProxmoxAccessGate(ICockpitHost host)
     // Authorize a change (start/stop/shutdown/reboot/snapshot). Layered on connection auth, then always Dangerous and never remembered.
     // `detailLines` (AC-1062) is the multi-line ingress: each line is escaped on its own and joined with a real
     // newline, rather than the whole composed body being flattened as one — see `_ComposeAction`.
-    public async Task<GateResult> AuthorizeMutationAsync(string operation, string? paneId, IReadOnlyList<string>? detailLines = null)
+    public async Task<GateResult> AuthorizeMutationAsync(string operation, string? paneId, string serverId, IReadOnlyList<string>? detailLines = null)
     {
-        var connection = await AuthorizeConnectionAsync(operation, paneId);
+        var connection = await AuthorizeConnectionAsync(operation, paneId, serverId);
         if (!connection.IsAllowed)
         {
             return connection;
@@ -44,7 +44,7 @@ internal sealed class ProxmoxAccessGate(ICockpitHost host)
 
     // Authorize a dangerous capability (rollback/delete). Blocked with a settings hint when off — a policy block,
     // so no prompt is shown. When on: connection auth, then always Dangerous and never remembered.
-    public async Task<GateResult> AuthorizeDangerAsync(DangerCapability capability, bool enabled, string operation, string? paneId)
+    public async Task<GateResult> AuthorizeDangerAsync(DangerCapability capability, bool enabled, string operation, string? paneId, string serverId)
     {
         if (!enabled)
         {
@@ -52,7 +52,7 @@ internal sealed class ProxmoxAccessGate(ICockpitHost host)
                 $"\"{capability}\" is off for this Proxmox target. Turn it on in the plugin settings first.");
         }
 
-        var connection = await AuthorizeConnectionAsync(operation, paneId);
+        var connection = await AuthorizeConnectionAsync(operation, paneId, serverId);
         if (!connection.IsAllowed)
         {
             return connection;

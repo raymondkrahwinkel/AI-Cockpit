@@ -77,7 +77,7 @@ internal sealed class ModelPictureReader(
     {
         var estimate = model is null ? null : reading?.Models.FirstOrDefault(candidate => string.Equals(candidate.Model, model, StringComparison.Ordinal));
         var reference = estimate?.PublicModelRef ?? model;
-        var match = _Match(reference, snapshots);
+        var match = Match(reference, snapshots);
         var snapshot = match.Snapshot;
         var publicRef = snapshot?.AliasTarget is { } target
             ? $"{target} via {snapshot.Id}"
@@ -160,7 +160,7 @@ internal sealed class ModelPictureReader(
         };
     }
 
-    private static ModelMatch _Match(string? reference, IReadOnlyDictionary<string, ModelSnapshot> snapshots)
+    internal static ModelMatch Match(string? reference, IReadOnlyDictionary<string, ModelSnapshot> snapshots)
     {
         if (string.IsNullOrWhiteSpace(reference))
         {
@@ -192,7 +192,7 @@ internal sealed class ModelPictureReader(
     }
 
     private static IEnumerable<string> _Keys(ModelSnapshot snapshot) =>
-        new[] { snapshot.Id, snapshot.CanonicalSlug, snapshot.HuggingFaceId }
+        new[] { snapshot.Id, snapshot.CanonicalSlug, snapshot.HuggingFaceId, snapshot.AliasTarget }
             .OfType<string>()
             .Select(_Normalize);
 

@@ -14,6 +14,13 @@ internal static class AudioSpike
     public static async Task RunAsync(IServiceProvider services)
     {
         var logger = services.GetRequiredService<ILogger<Program>>();
+        var availability = services.GetRequiredService<IAudioAvailability>();
+        if (!availability.IsAvailable)
+        {
+            logger.LogError("Audio spike cannot run: {Reason}", availability.UnavailableReason);
+            return;
+        }
+
         var engine = services.GetRequiredService<AudioEngine>();
         var captureService = services.GetRequiredService<IAudioCaptureService>();
         var playbackService = services.GetRequiredService<IAudioPlaybackService>();

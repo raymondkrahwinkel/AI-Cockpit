@@ -41,13 +41,13 @@ public sealed class ProxmoxPlugin : ICockpitPlugin
 
         _ = host.AddMcpEndpoint("cockpit-proxmox", tools, isEnabled: () => settings.McpEnabled);
 
-        _handlers.Add(host.Channel.Handle(ProxmoxChannel.Overview, (_, cancellationToken) => _AnswerOverviewAsync(gate, engine, cancellationToken)));
+        _handlers.Add(host.Channel.Handle(ProxmoxChannel.Overview, (payload, cancellationToken) => _AnswerOverviewAsync(payload, settings, gate, engine, cancellationToken)));
         _handlers.Add(host.Channel.Handle(ProxmoxChannel.StartGuest, (payload, cancellationToken) =>
-            _AnswerGuestActionAsync(payload, gate, cancellationToken, ProxmoxActionText.StartVm, ProxmoxActionText.StartLxc, engine.StartVmAsync, engine.StartLxcAsync)));
+            _AnswerGuestActionAsync(payload, settings, gate, engine, cancellationToken, ProxmoxActionText.StartVm, ProxmoxActionText.StartLxc, (selected, node, vmId, ct) => selected.StartVmAsync(node, vmId, ct), (selected, node, vmId, ct) => selected.StartLxcAsync(node, vmId, ct))));
         _handlers.Add(host.Channel.Handle(ProxmoxChannel.ShutdownGuest, (payload, cancellationToken) =>
-            _AnswerGuestActionAsync(payload, gate, cancellationToken, ProxmoxActionText.ShutdownVm, ProxmoxActionText.ShutdownLxc, engine.ShutdownVmAsync, engine.ShutdownLxcAsync)));
+            _AnswerGuestActionAsync(payload, settings, gate, engine, cancellationToken, ProxmoxActionText.ShutdownVm, ProxmoxActionText.ShutdownLxc, (selected, node, vmId, ct) => selected.ShutdownVmAsync(node, vmId, ct), (selected, node, vmId, ct) => selected.ShutdownLxcAsync(node, vmId, ct))));
         _handlers.Add(host.Channel.Handle(ProxmoxChannel.StopGuest, (payload, cancellationToken) =>
-            _AnswerGuestActionAsync(payload, gate, cancellationToken, ProxmoxActionText.StopVm, ProxmoxActionText.StopLxc, engine.StopVmAsync, engine.StopLxcAsync)));
+            _AnswerGuestActionAsync(payload, settings, gate, engine, cancellationToken, ProxmoxActionText.StopVm, ProxmoxActionText.StopLxc, (selected, node, vmId, ct) => selected.StopVmAsync(node, vmId, ct), (selected, node, vmId, ct) => selected.StopLxcAsync(node, vmId, ct))));
         _handlers.Add(host.Channel.Handle(ProxmoxChannel.FetchFingerprint, async (payload, cancellationToken) =>
         {
             var request = payload.Deserialize<ProxmoxFingerprintRequest>(ProxmoxChannel.Json)
@@ -85,21 +85,49 @@ public sealed class ProxmoxPlugin : ICockpitPlugin
         _engine?.Dispose();
     }
 
-    private static async Task<JsonElement> _AnswerOverviewAsync(ProxmoxAccessGate gate, IProxmoxEngine engine, CancellationToken cancellationToken)
+    private static async Task<JsonElement> _AnswerOverviewAsync(JsonElement payload, ProxmoxSettings settings, ProxmoxAccessGate gate, IProxmoxEngine engine, CancellationToken cancellationToken)
     {
-        var decision = await gate.AuthorizeConnectionAsync("show the Proxmox overview", paneId: null);
+        var request = payload.Deserialize<ProxmoxOverviewRequest>(ProxmoxChannel.Json) ?? new ProxmoxOverviewRequest(null);
+        ProxmoxServer server;
+        try
+        {
+            server = settings.ResolveServer(request.Server);
+        }
+        catch (Exception ex)
+        {
+            return _Serialize(new ProxmoxOverviewAnswer(null, _FailureMessage(ex), null, null, null, null, null));
+        }
+
+        var selected = engine.ForServer(server);
+        var decision = await gate.AuthorizeConnectionAsync($"show the Proxmox overview for server \"{server.Name}\"", paneId: null, server.Id);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return _Serialize(new ProxmoxOverviewAnswer(reason, null, null, null, null, null, null));
         }
 
+        if (server.Kind == ProxmoxServerKind.Pbs)
+        {
+            try
+            {
+                var stores = await selected.ListPbsDatastoresAsync(cancellationToken);
+                var tasks = await selected.ListPbsTasksAsync(cancellationToken);
+                return _Serialize(new ProxmoxOverviewAnswer(null, null, null, null, null, null, null,
+                    stores.Select(store => new PbsDatastoreData(store.Name, store.TotalBytes, store.UsedBytes, store.GcStatus, store.VerifyStatus)).ToList(),
+                    tasks.Take(10).Select(task => new PbsTaskData(task.Type, task.Status, task.StartTime)).ToList()));
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                return _Serialize(new ProxmoxOverviewAnswer(null, _FailureMessage(ex), null, null, null, null, null));
+            }
+        }
+
         try
         {
-            var clusterTask = engine.GetClusterInfoAsync(cancellationToken);
-            var nodesTask = engine.ListNodesAsync(cancellationToken);
-            var vmsTask = engine.ListVmsAsync(cancellationToken);
-            var lxcTask = engine.ListLxcAsync(cancellationToken);
-            var storageTask = engine.ListStorageAsync(cancellationToken);
+            var clusterTask = selected.GetClusterInfoAsync(cancellationToken);
+            var nodesTask = selected.ListNodesAsync(cancellationToken);
+            var vmsTask = selected.ListVmsAsync(cancellationToken);
+            var lxcTask = selected.ListLxcAsync(cancellationToken);
+            var storageTask = selected.ListStorageAsync(cancellationToken);
             await Task.WhenAll(clusterTask, nodesTask, vmsTask, lxcTask, storageTask);
 
             var cluster = clusterTask.Result;
@@ -125,18 +153,30 @@ public sealed class ProxmoxPlugin : ICockpitPlugin
 
     private static async Task<JsonElement> _AnswerGuestActionAsync(
         JsonElement payload,
+        ProxmoxSettings settings,
         ProxmoxAccessGate gate,
+        IProxmoxEngine engine,
         CancellationToken cancellationToken,
         Func<string, string, string> vmOperationText,
         Func<string, string, string> lxcOperationText,
-        Func<string, string, CancellationToken, Task<ProxmoxTaskOutcome>> vmAction,
-        Func<string, string, CancellationToken, Task<ProxmoxTaskOutcome>> lxcAction)
+        Func<IProxmoxEngine, string, string, CancellationToken, Task<ProxmoxTaskOutcome>> vmAction,
+        Func<IProxmoxEngine, string, string, CancellationToken, Task<ProxmoxTaskOutcome>> lxcAction)
     {
         var request = payload.Deserialize<ProxmoxGuestActionRequest>(ProxmoxChannel.Json)
             ?? throw new ArgumentException("The request names no guest.", nameof(payload));
 
-        var operation = request.IsLxc ? lxcOperationText(request.Node, request.VmId) : vmOperationText(request.Node, request.VmId);
-        var decision = await gate.AuthorizeMutationAsync(operation, paneId: null);
+        ProxmoxServer server;
+        try
+        {
+            server = settings.ResolveServer(request.Server);
+        }
+        catch (Exception ex)
+        {
+            return _Serialize(new ProxmoxActionAnswer(null, _FailureMessage(ex), null));
+        }
+
+        var operation = $"{(request.IsLxc ? lxcOperationText(request.Node, request.VmId) : vmOperationText(request.Node, request.VmId))} on Proxmox server \"{server.Name}\"";
+        var decision = await gate.AuthorizeMutationAsync(operation, paneId: null, server.Id);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return _Serialize(new ProxmoxActionAnswer(reason, null, null));
@@ -145,8 +185,8 @@ public sealed class ProxmoxPlugin : ICockpitPlugin
         try
         {
             var outcome = request.IsLxc
-                ? await lxcAction(request.Node, request.VmId, cancellationToken)
-                : await vmAction(request.Node, request.VmId, cancellationToken);
+                ? await lxcAction(engine.ForServer(server), request.Node, request.VmId, cancellationToken)
+                : await vmAction(engine.ForServer(server), request.Node, request.VmId, cancellationToken);
             return _Serialize(new ProxmoxActionAnswer(null, null, new ProxmoxTaskOutcomeData(outcome.Upid, outcome.IsSuccess, outcome.ExitStatus, outcome.TimedOut)));
         }
         catch (OperationCanceledException)

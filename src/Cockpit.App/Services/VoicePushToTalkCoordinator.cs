@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Hotkeys;
+using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Voice;
 
 namespace Cockpit.App.Services;
@@ -17,6 +18,7 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
     private readonly VoiceOverlayCoordinator _overlayCoordinator;
     private readonly IVoicePushToTalkService _pushToTalk;
     private readonly ILogger<VoicePushToTalkCoordinator> _logger;
+    private readonly IAudioAvailability? _audioAvailability;
 
     // Whether the hold in progress actually opened a microphone — see `HandleHoldStarted`.
     private bool _isRecording;
@@ -29,13 +31,15 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
         CockpitViewModel cockpit,
         VoiceOverlayCoordinator overlayCoordinator,
         IVoicePushToTalkService pushToTalk,
-        ILogger<VoicePushToTalkCoordinator> logger)
+        ILogger<VoicePushToTalkCoordinator> logger,
+        IAudioAvailability? audioAvailability = null)
     {
         _hotkeys = hotkeys;
         _cockpit = cockpit;
         _overlayCoordinator = overlayCoordinator;
         _pushToTalk = pushToTalk;
         _logger = logger;
+        _audioAvailability = audioAvailability;
         _cockpit.SimpleHome.UseDictation(pushToTalk, overlayCoordinator);
 
         // Subscribed once, for the life of the app: the hotkey coordinator re-arms in place rather than handing
@@ -77,6 +81,12 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
     // Test seam: the UI-thread logic for a hold starting — see the threading remarks on this class.
     internal void HandleHoldStarted()
     {
+        if (_audioAvailability?.IsAvailable == false)
+        {
+            _isRecording = false;
+            return;
+        }
+
         // AC-627: no stand-down for open-mic any more — it steps aside in
         // `SessionPanelViewModel.BeginVoiceHold`, where this route and the in-window one meet.
 

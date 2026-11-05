@@ -1174,6 +1174,30 @@
                     </Button>
                 </StackPanel>
 
+                <StackPanel DockPanel.Dock="Top" x:Name="SimpleOpenItems" Spacing="2" Margin="0,0,0,12" IsVisible="{Binding Workspaces.HasOpenItems}">
+                    <TextBlock Text="OPEN ITEMS" FontSize="11" FontWeight="SemiBold" Margin="2,0,0,2"
+                               Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                    <ScrollViewer MaxHeight="150" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding Workspaces.OpenItems}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:WorkspaceTabViewModel">
+                                    <Button Classes="Subtle" Padding="0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                                            Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).ShowSimpleWorkspaceCommand}" CommandParameter="{Binding Id}">
+                                        <Border Classes="sessionItem" Classes.active="{Binding IsActive}" Padding="10,7" CornerRadius="{StaticResource CockpitControlRadius}">
+                                            <DockPanel>
+                                                <Ellipse DockPanel.Dock="Right" Width="7" Height="7" Margin="7,0,0,0" VerticalAlignment="Center"
+                                                         Fill="{DynamicResource CockpitStatusWaitingBrush}" IsVisible="{Binding HasMarker}" ToolTip.Tip="Unsaved changes"/>
+                                                <materialIcons:MaterialIcon DockPanel.Dock="Left" Kind="{Binding Icon}" Width="16" Height="16" Margin="0,0,10,0"/>
+                                                <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                            </DockPanel>
+                                        </Border>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </StackPanel>
+
                 <!-- AC-1302: the tree of sessions. It groups *who drives what* — the assistant and the sessions
                      it started. AC-1305's rail groups *where something stands* (workspace -> sessions). Two trees
                      with the same shape and a different meaning: they may never become one tree, because half of
@@ -1470,9 +1494,22 @@
                 </DockPanel>
             </Border>
 
-            <!-- AC-1793: the Panels stand's workspace bodies, one switch for all of them. Simple has no workspace tabs,
-                 so a tab left open here would draw under its pages; hidden, not rebuilt, it comes back as it was left. -->
-            <Panel Grid.Row="1" IsVisible="{Binding !SimpleView}">
+            <DockPanel Grid.Row="1" IsVisible="{Binding ShowWorkspaceContent}">
+                <Border DockPanel.Dock="Top" IsVisible="{Binding SimpleStandShowsTheWorkspace}" Padding="12,8"
+                        BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,0,0,1">
+                    <DockPanel>
+                        <Button DockPanel.Dock="Left" Classes="Subtle Compact" Content="← Back" Margin="0,0,10,0"
+                                Command="{Binding ReturnFromSimpleWorkspaceCommand}"/>
+                        <Button DockPanel.Dock="Right" Classes="Subtle Compact" Content="Close"
+                                Command="{Binding Workspaces.CloseWorkspaceCommand}" CommandParameter="{Binding Workspaces.Active.Id}"/>
+                        <TextBlock Text="{Binding Workspaces.Active.Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                    </DockPanel>
+                </Border>
+                <ScrollViewer DockPanel.Dock="Top" IsVisible="{Binding SimpleStandShowsTheWorkspace}"
+                              HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                    <controls:WorkspaceHeaderActionsHost/>
+                </ScrollViewer>
+                <Panel>
                 <!-- Dashboard: the widget grid, shown instead of the session content when a Dashboard workspace is
                      active. Its own empty state says "add a widget", never "no sessions yet" — the workspace type
                      drives the affordance, so a dashboard never asks for something it cannot hold. -->
@@ -1759,7 +1796,8 @@
                                    Opacity="0.7" TextWrapping="Wrap"/>
                     </StackPanel>
                 </Border>
-            </Panel>
+                </Panel>
+            </DockPanel>
 
             <!-- Session grid + zoom, shown once at least one session exists and a Sessions workspace is active. -->
             <DockPanel Grid.Row="1" Margin="12" IsVisible="{Binding ShowSessionGrid}">
@@ -2732,9 +2770,20 @@
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
                             <DataTemplate DataType="plugins:PluginStatusText">
-                                <TextBlock Text="{Binding Text}" FontSize="11" Margin="0,0,12,0"
-                                           Foreground="{Binding Tone, Converter={x:Static conv:BadgeToneBrushConverter.Instance}}"
-                                           VerticalAlignment="Center"/>
+                                <Panel>
+                                    <TextBlock Text="{Binding Text}" FontSize="11" Margin="0,0,12,0"
+                                               IsVisible="{Binding Popup, Converter={x:Static ObjectConverters.IsNull}}"
+                                               Foreground="{Binding Tone, Converter={x:Static conv:BadgeToneBrushConverter.Instance}}"
+                                               VerticalAlignment="Center"/>
+                                    <!-- A plugin that offered a popup (SetStatusText with createPopup): a button like the other meters. -->
+                                    <controls:PluginStatusTextButton Classes="statusMeter" Padding="8,2" Margin="0,0,8,0"
+                                                                     IsVisible="{Binding Popup, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                                                     AutomationProperties.Name="{Binding Text}">
+                                        <TextBlock Text="{Binding Text}" FontSize="11"
+                                                   Foreground="{Binding Tone, Converter={x:Static conv:BadgeToneBrushConverter.Instance}}"
+                                                   VerticalAlignment="Center"/>
+                                    </controls:PluginStatusTextButton>
+                                </Panel>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>

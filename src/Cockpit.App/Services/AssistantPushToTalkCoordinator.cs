@@ -4,6 +4,7 @@ using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Hotkeys;
+using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Voice;
@@ -26,6 +27,7 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
     // a cold voice makes the answer a second wait. Optional — a cockpit with no voice simply warms nothing.
     private readonly ITextToSpeechService? _textToSpeech;
     private readonly ILogger<AssistantPushToTalkCoordinator> _logger;
+    private readonly IAudioAvailability? _audioAvailability;
 
     // Whether the hold in progress actually opened a microphone — nothing to transcribe if it did not.
     private bool _isRecording;
@@ -49,7 +51,8 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
         IVoicePlaybackQueue playbackQueue,
         IOpenMicState? openMicState = null,
         ITextToSpeechService? textToSpeech = null,
-        TimeSpan? messageLinger = null)
+        TimeSpan? messageLinger = null,
+        IAudioAvailability? audioAvailability = null)
     {
         _hotkeys = hotkeys;
         _assistant = assistant;
@@ -59,6 +62,7 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
         _openMicState = openMicState;
         _textToSpeech = textToSpeech;
         _logger = logger;
+        _audioAvailability = audioAvailability;
         _messageLinger = messageLinger ?? DefaultMessageLinger;
 
         // Subscribed once, for the life of the app, and filtered on this key's own id: the hotkey coordinator
@@ -108,6 +112,12 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
     // Test seam: the UI-thread logic for a hold starting.
     internal void HandleHoldStarted()
     {
+        if (_audioAvailability?.IsAvailable == false)
+        {
+            _isRecording = false;
+            return;
+        }
+
         // Open-mic already sends to the assistant, so unlike F9 there is nothing for a hold to take back. Silent
         // and still armed (AC-627): it is not a fault, and an unregistered F10 would fall through to the app
         // underneath.

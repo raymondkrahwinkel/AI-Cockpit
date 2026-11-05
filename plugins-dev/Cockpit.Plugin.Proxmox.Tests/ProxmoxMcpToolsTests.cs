@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using System.Text.Json;
 using Cockpit.Plugin.Proxmox.Engine;
 using Cockpit.Plugin.Proxmox.Mcp;
 using Cockpit.Plugin.Proxmox.Security;
@@ -17,7 +18,9 @@ public sealed class ProxmoxMcpToolsTests
 
     private static Harness _Build(ConsentOutcome outcome, bool allowDelete = false)
     {
-        var settings = new ProxmoxSettings(new FakePluginStorage()) { AllowDelete = allowDelete };
+        var settings = new ProxmoxSettings(new FakePluginStorage());
+        var server = new ProxmoxServer("test", "test", "test.example", 8006, "user@pam!agent", string.Empty, false, allowDelete);
+        settings.SaveServers([server], new Dictionary<string, string> { [server.Id] = "test-token" });
         var asked = new List<ConsentRequest>();
         var host = Substitute.For<ICockpitHost>();
         host.RequestConsentAsync(Arg.Do<ConsentRequest>(asked.Add)).Returns(new ConsentDecision(outcome));
@@ -43,29 +46,58 @@ public sealed class ProxmoxMcpToolsTests
     // ---- Off-by-default capabilities ---------------------------------------------------------------------------
 
     [Fact]
-    public async Task DeleteVm_WhenOff_IsBlockedWithoutPrompting_AndNeverTouchesTheEngine()
+    public async Task DeleteVm_RespectsCapabilityAndConsent()
     {
-        var h = _Build(ConsentOutcome.Approved, allowDelete: false);
-        h.Engine.Throw = new InvalidOperationException("the engine must not be called");
+        var disabled = _Build(ConsentOutcome.Approved, allowDelete: false);
+        disabled.Engine.Throw = new InvalidOperationException("the engine must not be called");
 
-        var json = JsonNode.Parse(await h.Tools.DeleteVm(Session, "pve1", "100"));
+        var blocked = JsonNode.Parse(await disabled.Tools.DeleteVm(Session, "pve1", "100"));
 
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Contains("settings", json["error"]!.GetValue<string>());
-        Assert.Empty(h.Asked);
+        Assert.False(blocked!["ok"]!.GetValue<bool>());
+        Assert.Contains("settings", blocked["error"]!.GetValue<string>());
+        Assert.Empty(disabled.Asked);
+
+        var enabled = _Build(ConsentOutcome.Approved, allowDelete: true);
+        enabled.Engine.NextOutcome = new ProxmoxTaskOutcome("UPID:pve1:...", IsSuccess: true, ExitStatus: "OK", TimedOut: false);
+
+        var completed = JsonNode.Parse(await enabled.Tools.DeleteVm(Session, "pve1", "100"));
+
+        Assert.True(completed!["ok"]!.GetValue<bool>());
+        Assert.NotEmpty(enabled.Asked);
+        Assert.Equal(ConsentRisk.Dangerous, enabled.Asked[^1].Risk);
     }
 
-    [Fact]
-    public async Task DeleteVm_WhenOn_AsksEveryTime_AndReportsTheTaskOutcome()
+    [Theory]
+    [InlineData("{\"datastores\":[{\"store\":\"vault\",\"total\":1099511627776,\"used\":274877906944,\"gc-status\":\"OK\",\"verify-status\":\"ok\"}],\"snapshots\":[{\"backup-type\":\"vm\",\"backup-id\":\"101\",\"backup-time\":1735689600,\"size\":42,\"verification\":\"ok\",\"protected\":true}],\"tasks\":[{\"upid\":\"UPID:pbs:1\",\"worker_type\":\"verify\",\"status\":\"OK\",\"user\":\"root@pam\",\"starttime\":1735689600,\"endtime\":1735689660}]}")]
+    public void Settings_LegacySingleServer_MigratesWithoutLosingConnectionData_AndPbsRecordedResponsesParse(string recorded)
     {
-        var h = _Build(ConsentOutcome.Approved, allowDelete: true);
-        h.Engine.NextOutcome = new ProxmoxTaskOutcome("UPID:pve1:...", IsSuccess: true, ExitStatus: "OK", TimedOut: false);
+        var storage = new FakePluginStorage();
+        storage.Set("host", "pve.example.test");
+        storage.Set("port", 9443);
+        storage.Set("tokenId", "user@pam!agent");
+        storage.Set("apiToken", "test-token");
+        storage.Set("trustedCertFingerprint", "fingerprint");
 
-        var json = JsonNode.Parse(await h.Tools.DeleteVm(Session, "pve1", "100"));
+        var server = new ProxmoxSettings(storage).Servers.Single();
 
-        Assert.True(json!["ok"]!.GetValue<bool>());
-        Assert.NotEmpty(h.Asked);
-        Assert.Equal(ConsentRisk.Dangerous, h.Asked[^1].Risk);
+        Assert.Equal("pve.example.test", server.Name);
+        Assert.Equal("pve.example.test", server.Host);
+        Assert.Equal(9443, server.Port);
+        Assert.Equal("user@pam!agent", server.TokenId);
+        Assert.Equal("fingerprint", server.TrustedCertFingerprint);
+        Assert.Equal("test-token", new ProxmoxSettings(storage).GetApiToken(server.Id));
+
+        var pbs = new ProxmoxServer("pbs", "pbs", "pbs.example.test", 8007, "user@pbs!agent", string.Empty, false, false, ProxmoxServerKind.Pbs);
+        Assert.Equal("PBSAPIToken=user@pbs!agent:test-token", ProxmoxEngine.BuildAuthorizationHeader(pbs, "test-token"));
+
+        using var document = JsonDocument.Parse(recorded);
+        var datastores = PbsResponseParser.Datastores(document.RootElement.GetProperty("datastores"));
+        var backups = PbsResponseParser.Backups("vault", document.RootElement.GetProperty("snapshots"));
+        var tasks = PbsResponseParser.Tasks(document.RootElement.GetProperty("tasks"));
+
+        Assert.Equal("vault", datastores.Single().Name);
+        Assert.Equal("101", backups.Single().Id);
+        Assert.Equal("verify", tasks.Single().Type);
     }
 
 }

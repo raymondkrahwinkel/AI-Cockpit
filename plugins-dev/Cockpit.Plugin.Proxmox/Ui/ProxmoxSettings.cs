@@ -1,71 +1,71 @@
+using System.Text.Json;
 using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.Proxmox.UI;
 
-// AC-1394: this UI part's own copy of the backend's Settings/ProxmoxSettings.cs — not shared source, because
-// Cockpit.Plugin.Proxmox.Tests references both assemblies and a linked copy under the same namespace made the
-// type ambiguous (CS0433) for the existing backend tests that already construct one. A plain IPluginStorage
-// wrapper, so both copies read/write the exact same storage slice regardless of which host handed it out; keep
-// this in step with the backend's copy by hand if a field is added there.
 internal sealed class ProxmoxSettings(IPluginStorage storage)
 {
-    // Whether the cockpit-proxmox MCP server is offered to sessions. On by default.
+    private const string ServersKey = "servers";
+    private const string TokensKey = "apiTokens";
+
     public bool McpEnabled
     {
         get => storage.Get<bool?>("mcpEnabled") ?? true;
         set => storage.Set("mcpEnabled", value);
     }
 
-    // The Proxmox API host, e.g. "pve.example.lan". Blank means no target is configured yet.
-    public string Host
+    public IReadOnlyList<ProxmoxServer> Servers
     {
-        get => storage.Get<string>("host") ?? string.Empty;
-        set => storage.Set("host", value);
+        get
+        {
+            _MigrateLegacySettings();
+            return storage.Get<List<ProxmoxServer>>(ServersKey) ?? [];
+        }
     }
 
-    // The Proxmox API port. Defaults to Proxmox's standard 8006.
-    public int Port
+    public string GetApiToken(string serverId)
     {
-        get => storage.Get<int?>("port") ?? 8006;
-        set => storage.Set("port", value);
+        _MigrateLegacySettings();
+        var tokens = JsonSerializer.Deserialize<Dictionary<string, string>>(storage.GetSecret(TokensKey) ?? "{}") ?? [];
+        return tokens.GetValueOrDefault(serverId) ?? string.Empty;
     }
 
-    // The token's identity, `user@realm!tokenid` — not secret by itself; the token's UUID is (see `ApiToken`).
-    public string TokenId
+    public void SaveServers(IEnumerable<ProxmoxServer> servers, IReadOnlyDictionary<string, string> tokens)
     {
-        get => storage.Get<string>("tokenId") ?? string.Empty;
-        set => storage.Set("tokenId", value);
+        storage.Set(ServersKey, servers.ToList());
+        storage.SetSecret(TokensKey, JsonSerializer.Serialize(tokens.Where(entry => !string.IsNullOrWhiteSpace(entry.Value)).ToDictionary()));
+        storage.SetSecret("apiToken", string.Empty);
     }
 
-    // The token's UUID. Written through the secret layer, so it is encrypted at rest when the operator has that on.
-    public string ApiToken
+    private void _MigrateLegacySettings()
     {
-        get => storage.GetSecret("apiToken") ?? string.Empty;
-        set => storage.SetSecret("apiToken", value);
-    }
+        if (storage.Get<List<ProxmoxServer>>(ServersKey) is not null)
+        {
+            return;
+        }
 
-    // The SHA-256 fingerprint (hex, lower-case) of the certificate the operator explicitly confirmed trusting, or
-    // empty when none has been trusted yet. Not secret — a fingerprint identifies, it does not authenticate.
-    public string TrustedCertFingerprint
-    {
-        get => storage.Get<string>("trustedCertFingerprint") ?? string.Empty;
-        set => storage.Set("trustedCertFingerprint", value);
-    }
+        var host = storage.Get<string>("host") ?? string.Empty;
+        var tokenId = storage.Get<string>("tokenId") ?? string.Empty;
+        var token = storage.GetSecret("apiToken") ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(host) && string.IsNullOrWhiteSpace(tokenId) && string.IsNullOrWhiteSpace(token))
+        {
+            storage.Set(ServersKey, new List<ProxmoxServer>());
+            return;
+        }
 
-    // Whether rolling back a VM/LXC snapshot is offered. Off by default — destructive for everything since the snapshot.
-    public bool AllowRollback
-    {
-        get => storage.Get<bool?>("allowRollback") ?? false;
-        set => storage.Set("allowRollback", value);
+        var server = new ProxmoxServer(Guid.NewGuid().ToString("N"), host, host, storage.Get<int?>("port") ?? 8006, tokenId,
+            storage.Get<string>("trustedCertFingerprint") ?? string.Empty, storage.Get<bool?>("allowRollback") ?? false, storage.Get<bool?>("allowDelete") ?? false);
+        SaveServers([server], new Dictionary<string, string> { [server.Id] = token });
     }
+}
 
-    // Whether deleting a VM or LXC container is offered. Off by default.
-    public bool AllowDelete
-    {
-        get => storage.Get<bool?>("allowDelete") ?? false;
-        set => storage.Set("allowDelete", value);
-    }
+internal enum ProxmoxServerKind
+{
+    Pve,
+    Pbs,
+}
 
-    public bool IsConfigured =>
-        !string.IsNullOrWhiteSpace(Host) && !string.IsNullOrWhiteSpace(TokenId) && !string.IsNullOrWhiteSpace(ApiToken);
+internal sealed record ProxmoxServer(string Id, string Name, string Host, int Port, string TokenId, string TrustedCertFingerprint, bool AllowRollback, bool AllowDelete, ProxmoxServerKind Kind = ProxmoxServerKind.Pve)
+{
+    public bool IsConfigured => !string.IsNullOrWhiteSpace(Host) && !string.IsNullOrWhiteSpace(TokenId);
 }

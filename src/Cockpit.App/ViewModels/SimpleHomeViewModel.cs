@@ -61,7 +61,11 @@ public sealed partial class SimpleHomeViewModel : ObservableObject, ISimpleCompo
         }
     }
 
-    public bool VoiceEnabled => _cockpit.VoiceEnabled;
+    public bool VoiceEnabled => _cockpit.VoiceEnabled && _cockpit.IsAudioAvailable;
+
+    public bool IsAudioAvailable => _cockpit.IsAudioAvailable;
+
+    public string VoiceTooltip => IsAudioAvailable ? "Hold to dictate into this box" : _cockpit.AudioUnavailableMessage;
 
     // Raised each time Home is shown, so a window left open over noon does not keep saying good morning.
     internal void Refresh() => OnPropertyChanged(nameof(Greeting));
@@ -159,9 +163,11 @@ public sealed partial class SimpleHomeViewModel : ObservableObject, ISimpleCompo
 
     private void _OnCockpitPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(CockpitViewModel.VoiceEnabled))
+        if (e.PropertyName is nameof(CockpitViewModel.VoiceEnabled) or nameof(CockpitViewModel.IsAudioAvailable))
         {
             OnPropertyChanged(nameof(VoiceEnabled));
+            OnPropertyChanged(nameof(IsAudioAvailable));
+            OnPropertyChanged(nameof(VoiceTooltip));
         }
     }
 

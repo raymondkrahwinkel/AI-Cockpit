@@ -7,6 +7,10 @@ public interface ISimpleComposerTarget
 {
     bool VoiceEnabled { get; }
 
+    bool IsAudioAvailable { get; }
+
+    string VoiceTooltip { get; }
+
     // Any image, not only a screenshot: null when it landed, otherwise why not.
     Task<string?> InjectScreenshotAsync(byte[] screenshotPng);
 

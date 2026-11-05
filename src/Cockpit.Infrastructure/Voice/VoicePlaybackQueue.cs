@@ -17,6 +17,7 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
     private readonly ITextToSpeechService _textToSpeech;
     private readonly IAudioPlaybackService _audioPlayback;
     private readonly ILogger<VoicePlaybackQueue> _logger;
+    private readonly IAudioAvailability? _audioAvailability;
 
     // One queued read-aloud batch: language-tagged segments plus the single speaker (sid) that voices them all.
     private sealed record QueuedUtterance(IReadOnlyList<SpeechSegment> Segments, int SpeakerId, VoicePlaybackSource Source);
@@ -69,11 +70,16 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
         }
     }
 
-    public VoicePlaybackQueue(ITextToSpeechService textToSpeech, IAudioPlaybackService audioPlayback, ILogger<VoicePlaybackQueue> logger)
+    public VoicePlaybackQueue(
+        ITextToSpeechService textToSpeech,
+        IAudioPlaybackService audioPlayback,
+        ILogger<VoicePlaybackQueue> logger,
+        IAudioAvailability? audioAvailability = null)
     {
         _textToSpeech = textToSpeech;
         _audioPlayback = audioPlayback;
         _logger = logger;
+        _audioAvailability = audioAvailability;
 
         // Started once, for the lifetime of this singleton — no separate Start/Stop lifecycle needed
         // since the channel simply idles (ReadAllAsync awaits) until something is enqueued.
@@ -92,6 +98,11 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
 
     public void Enqueue(IReadOnlyList<SpeechSegment> segments, int speakerId, VoicePlaybackSource source = VoicePlaybackSource.Session)
     {
+        if (_audioAvailability?.IsAvailable == false)
+        {
+            return;
+        }
+
         var sentenceCount = segments.Sum(segment => segment.Sentences.Count);
         if (sentenceCount == 0)
         {
@@ -105,7 +116,13 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
         _channel.Writer.TryWrite(new QueuedUtterance(segments, speakerId, source));
     }
 
-    public void NotifyPreparing(VoicePlaybackSource source = VoicePlaybackSource.Session) => _SetPlaybackActive(true, source);
+    public void NotifyPreparing(VoicePlaybackSource source = VoicePlaybackSource.Session)
+    {
+        if (_audioAvailability?.IsAvailable != false)
+        {
+            _SetPlaybackActive(true, source);
+        }
+    }
 
     public void StopAll()
     {

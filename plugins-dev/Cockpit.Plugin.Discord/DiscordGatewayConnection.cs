@@ -178,6 +178,11 @@ internal sealed class DiscordGatewayConnection : IDisposable
             return Task.CompletedTask;
         }
 
+        if (message.Author.Id == _client.CurrentUser?.Id)
+        {
+            return Task.CompletedTask;
+        }
+
         if (!DiscordInboundFilter.Accepts(message.Author.IsBot, message.Channel is IDMChannel))
         {
             _logRefusal($"Discord ignored a message from {message.Author.Id} in channel {message.Channel.Id}: only user DMs are accepted.");
