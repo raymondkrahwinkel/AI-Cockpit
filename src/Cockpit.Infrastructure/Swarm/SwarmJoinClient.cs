@@ -60,7 +60,11 @@ internal sealed class SwarmJoinClient(
             return true;
         };
         using var client = new HttpClient(handler) { BaseAddress = uri, Timeout = NodeConnectionFailure.DefaultBudget };
-        var request = new SwarmJoinRequest(local.Name, certificate.Value.RawData, "");
+        var request = new SwarmJoinRequest(local.Name, certificate.Value.RawData, "")
+        {
+            Addresses = [NodeReachableAddress.Resolve() ?? "127.0.0.1"],
+            Port = (await settings.LoadAsync(ct)).Port,
+        };
         var offer = await _PostAsync<SwarmJoinRequest, NodePairingOffer>(client, "swarm/request", request, ct);
         if (pin is null || publicKey is null)
         {
@@ -87,20 +91,42 @@ internal sealed class SwarmJoinClient(
             }
             using var client = new HttpClient(NodeCertificatePin.Require(handshake.Pin, network.ConnectAsync)) { BaseAddress = new(handshake.Address) };
             var claim = new NodePairingClaimRequest(handshake.Offer.PairingId, handshake.Offer.ClaimToken);
-            var proposal = await _PostAsync<SwarmJoinPrepare, SwarmRecord>(client, "swarm/join", new(claim, register.Log), ct);
+            var response = await _PostAsync<SwarmJoinPrepare, JsonElement>(client, "swarm/join",
+                new(claim, register.Log) { IncludeLog = true }, ct);
+            // Older peers return just the proposal for an ordinary join.
+            var prepared = response.TryGetProperty("record", out _)
+                ? response.Deserialize<SwarmJoinProposal>(SwarmRecordJson.Options)
+                : new SwarmJoinProposal(response.Deserialize<SwarmRecord>(SwarmRecordJson.Options)
+                    ?? throw new InvalidDataException("Empty join proposal."), register.Log);
+            if (prepared is null)
+            {
+                throw new InvalidDataException("Empty join proposal.");
+            }
+            if (prepared.Log.Count < register.Sequence || !register.Log.Zip(prepared.Log).All(pair =>
+                JsonSerializer.Serialize(pair.First, SwarmRecordJson.Options) == JsonSerializer.Serialize(pair.Second, SwarmRecordJson.Options)))
+            {
+                throw NodePairingException.For(NodePairingError.InvalidToken, "Join must retain the signed removal history.");
+            }
+            register = SwarmMembership.Replay(prepared.Log);
+            var proposal = prepared.Record;
             var member = proposal.Payload.Deserialize<SwarmChange>(SwarmRecordJson.Options) as SwarmMember;
             var peerId = SwarmMemberId.FromPublicKey(handshake.PublicKey);
-            if (member is null || member.Id != peerId || member.AddedBy != identity.MemberId
+            var returning = register.PublicKeyOf(identity.MemberId) is null && register.PublicKeyOf(peerId) is not null;
+            if (member is null || member.Id != (returning ? identity.MemberId : peerId)
+                || member.AddedBy != (returning ? peerId : identity.MemberId)
                 || register.Members.Any(existing => existing.Rank == member.Rank)
                 || !proposal.Verify(id => id == peerId ? handshake.PublicKey : null))
+            {
                 throw NodePairingException.For(NodePairingError.InvalidToken, "Invalid join proposal.");
+            }
             using var key = certificate.Value.GetECDsaPrivateKey() ?? throw new InvalidOperationException("No signing key.");
             var signed = proposal.CoSign(key);
             if (register.Accept(signed) != SwarmMembershipVerdict.Accepted)
             {
                 throw new InvalidDataException("Invalid membership change.");
             }
-            var reverse = await local.IssueTransportAsync(member, ct);
+            var peerMember = returning ? register.Members.Single(existing => existing.Id == peerId) : member;
+            var reverse = await local.IssueTransportAsync(peerMember, ct);
             var transport = await _PostAsync<SwarmJoinCommit, SwarmTransport>(client, "swarm/join/commit", new(claim, signed, reverse), ct);
             if (transport.Pin != handshake.Pin)
             {
