@@ -2252,9 +2252,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private int _pluginRestartAdviceAfter = SessionBehaviorSettings.DefaultPluginRestartAdviceAfter;
 
-    [ObservableProperty]
-    private bool _sessionMcpGatewayEnabled;
-
     partial void OnPluginRestartAdviceAfterChanged(int value) => Plugins.RestartAdviceAfter = value;
 
     // AC-2035: whether Docker's build cache and old images are pruned by the cockpit itself. Read afresh by the storage
@@ -4477,7 +4474,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         WakeAgentsByDefault = settings.WakeAgentsByDefault;
         MemoryBudgetPercent = settings.MemoryBudgetPercent;
         PluginRestartAdviceAfter = settings.PluginRestartAdviceAfter;
-        SessionMcpGatewayEnabled = settings.SessionMcpGatewayEnabled;
         AutomaticDockerCleanup = settings.AutomaticDockerCleanup;
         // Pushed explicitly as well as through the property's own change handler: the saved value can equal the
         // property's initial one, and then nothing changed and the handler never ran — leaving the coordinator on
@@ -4501,7 +4497,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             WakeAgentsByDefault = WakeAgentsByDefault,
             MemoryBudgetPercent = MemoryBudgetPercent,
             PluginRestartAdviceAfter = PluginRestartAdviceAfter,
-            SessionMcpGatewayEnabled = SessionMcpGatewayEnabled,
             AutomaticDockerCleanup = AutomaticDockerCleanup,
         });
         SessionBehaviorSettingsStatus = "Saved";
@@ -8134,7 +8129,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         WakeAgentsByDefault = behavior.WakeAgentsByDefault;
         MemoryBudgetPercent = behavior.MemoryBudgetPercent;
         PluginRestartAdviceAfter = behavior.PluginRestartAdviceAfter;
-        SessionMcpGatewayEnabled = behavior.SessionMcpGatewayEnabled;
         AutomaticDockerCleanup = behavior.AutomaticDockerCleanup;
 
         var screenshot = new ScreenshotSettings();

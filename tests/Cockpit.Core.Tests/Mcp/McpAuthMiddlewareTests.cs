@@ -12,9 +12,6 @@ using Cockpit.Core.Assistant;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Mcp;
-using Cockpit.Core.Abstractions.SessionBehavior;
-using Cockpit.Core.SessionBehavior;
-using NSubstitute;
 
 namespace Cockpit.Core.Tests.Mcp;
 
@@ -66,46 +63,54 @@ public class McpAuthMiddlewareTests
         var context = new SessionMcpContext(null, Path.GetTempPath(), null, "agent", SessionMcpManager.Assistant);
         mounts.Bind("pane-a", context);
         mounts.Grant("pane-a", ["cockpit-session"]);
-        var settings = Substitute.For<ISessionBehaviorSettingsStore>();
-        settings.LoadAsync(Arg.Any<CancellationToken>()).Returns(new SessionBehaviorSettings());
-        await using var disabled = new SessionMcpGatewayHost(authKey, keyring, settings, NullLoggerFactory.Instance);
-        await disabled.StartAsync(CancellationToken.None);
-        Assert.Null(disabled.UrlFor("pane-a"));
-        Assert.StartsWith("http://127.0.0.1:", disabled.BoundUrl);
-        await disabled.StopAsync(CancellationToken.None);
+        var configPath = Path.Combine(Path.GetTempPath(), $"gateway-{Guid.NewGuid():N}.json");
+        try
+        {
+            await using var disabled = new SessionMcpGatewayHost(authKey, keyring, NullLoggerFactory.Instance, configPath);
+            await disabled.StartAsync(CancellationToken.None);
+            Assert.Null(disabled.UrlFor("pane-a"));
+            Assert.NotNull(disabled.BoundUrl);
+            Assert.StartsWith("http://127.0.0.1:", disabled.BoundUrl);
+            await disabled.StopAsync(CancellationToken.None);
 
-        settings.LoadAsync(Arg.Any<CancellationToken>()).Returns(new SessionBehaviorSettings { SessionMcpGatewayEnabled = true });
-        await using var gateway = new SessionMcpGatewayHost(authKey, keyring, settings, NullLoggerFactory.Instance);
-        await gateway.StartAsync(CancellationToken.None);
-        var urlA = gateway.UrlFor("pane-a") ?? throw new InvalidOperationException("Gateway did not bind.");
-        var urlB = gateway.UrlFor("pane-b") ?? throw new InvalidOperationException("Gateway did not bind.");
-        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
-        using var wrongPane = await _GatewayRequestAsync(client, urlB, tokenA);
-        Assert.Equal(HttpStatusCode.Forbidden, wrongPane.StatusCode);
-        using var appKey = await _GatewayRequestAsync(client, urlA, authKey.Value);
-        Assert.Equal(HttpStatusCode.Forbidden, appKey.StatusCode);
-        using var node = await _GatewayRequestAsync(client, urlA, keyring.TokenFor(NodeCallerIdentity.PaneId));
-        Assert.Equal(HttpStatusCode.Forbidden, node.StatusCode);
-        using var initializedB = await _GatewayRequestAsync(client, urlB, tokenB);
-        initializedB.EnsureSuccessStatusCode();
-        var sessionB = initializedB.Headers.GetValues("Mcp-Session-Id").Single();
-        using var stolen = await _GatewayRequestAsync(client, urlA, tokenA, sessionB);
-        Assert.Equal(HttpStatusCode.Forbidden, stolen.StatusCode);
-        using var initializedA = await _GatewayRequestAsync(client, urlA, tokenA);
-        initializedA.EnsureSuccessStatusCode();
-        var replacement = keyring.TokenFor("pane-a");
-        Assert.True(string.Equals(replacement, keyring.CurrentToken("pane-a"), StringComparison.Ordinal));
-        Assert.Same(context, mounts.Set("pane-a")?.Context);
-        Assert.True(mounts.IsMounted("pane-a", "cockpit-session"));
-        using var oldToken = await _GatewayRequestAsync(client, urlA, tokenA);
-        Assert.Equal(HttpStatusCode.Unauthorized, oldToken.StatusCode);
-        using var restarted = await _GatewayRequestAsync(client, urlA, replacement);
-        restarted.EnsureSuccessStatusCode();
-        keyring.Revoke("pane-a", replacement);
-        using var closed = await _GatewayRequestAsync(client, urlA, replacement);
-        Assert.Equal(HttpStatusCode.Unauthorized, closed.StatusCode);
-        Assert.Null(keyring.CurrentToken("pane-a"));
-        await gateway.StopAsync(CancellationToken.None);
+            await File.WriteAllTextAsync(configPath, """{"SessionMcpGatewayEnabled":true}""");
+            await using var gateway = new SessionMcpGatewayHost(authKey, keyring, NullLoggerFactory.Instance, configPath);
+            await gateway.StartAsync(CancellationToken.None);
+            var urlA = gateway.UrlFor("pane-a") ?? throw new InvalidOperationException("Gateway did not bind.");
+            var urlB = gateway.UrlFor("pane-b") ?? throw new InvalidOperationException("Gateway did not bind.");
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+            using var wrongPane = await _GatewayRequestAsync(client, urlB, tokenA);
+            Assert.Equal(HttpStatusCode.Forbidden, wrongPane.StatusCode);
+            using var appKey = await _GatewayRequestAsync(client, urlA, authKey.Value);
+            Assert.Equal(HttpStatusCode.Forbidden, appKey.StatusCode);
+            using var node = await _GatewayRequestAsync(client, urlA, keyring.TokenFor(NodeCallerIdentity.PaneId));
+            Assert.Equal(HttpStatusCode.Forbidden, node.StatusCode);
+            using var initializedB = await _GatewayRequestAsync(client, urlB, tokenB);
+            initializedB.EnsureSuccessStatusCode();
+            var sessionB = initializedB.Headers.GetValues("Mcp-Session-Id").Single();
+            using var stolen = await _GatewayRequestAsync(client, urlA, tokenA, sessionB);
+            Assert.Equal(HttpStatusCode.Forbidden, stolen.StatusCode);
+            using var initializedA = await _GatewayRequestAsync(client, urlA, tokenA);
+            initializedA.EnsureSuccessStatusCode();
+            var replacement = keyring.TokenFor("pane-a");
+            var tokenIsCurrent = string.Equals(replacement, keyring.CurrentToken("pane-a"), StringComparison.Ordinal);
+            Assert.True(tokenIsCurrent);
+            Assert.Same(context, mounts.Set("pane-a")?.Context);
+            Assert.True(mounts.IsMounted("pane-a", "cockpit-session"));
+            using var oldToken = await _GatewayRequestAsync(client, urlA, tokenA);
+            Assert.Equal(HttpStatusCode.Unauthorized, oldToken.StatusCode);
+            using var restarted = await _GatewayRequestAsync(client, urlA, replacement);
+            restarted.EnsureSuccessStatusCode();
+            keyring.Revoke("pane-a", replacement);
+            using var closed = await _GatewayRequestAsync(client, urlA, replacement);
+            Assert.Equal(HttpStatusCode.Unauthorized, closed.StatusCode);
+            Assert.Null(keyring.CurrentToken("pane-a"));
+            await gateway.StopAsync(CancellationToken.None);
+        }
+        finally
+        {
+            File.Delete(configPath);
+        }
     }
 
     private static async Task<HttpResponseMessage> _GatewayRequestAsync(HttpClient client, string url, string token, string? sessionId = null)

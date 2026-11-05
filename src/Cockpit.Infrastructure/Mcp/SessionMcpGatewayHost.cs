@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
 using System.Net;
-using Cockpit.Core.Abstractions.SessionBehavior;
+using Cockpit.Infrastructure.Configuration;
 using Cockpit.Core.Mcp;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -17,14 +17,27 @@ using ModelContextProtocol.Server;
 
 namespace Cockpit.Infrastructure.Mcp;
 
-internal sealed class SessionMcpGatewayHost(
-    McpAuthKey authKey,
-    SessionMcpKeyring keyring,
-    ISessionBehaviorSettingsStore settings,
-    ILoggerFactory loggerFactory) : IHostedService, IAsyncDisposable
+internal sealed class SessionMcpGatewayHost : IHostedService, IAsyncDisposable
 {
     private readonly ConcurrentDictionary<string, string> _owners = new(StringComparer.Ordinal);
+    private readonly McpAuthKey _authKey;
+    private readonly SessionMcpKeyring _keyring;
+    private readonly ILoggerFactory _loggerFactory;
+    private readonly CockpitConfigFileAccess _configFile;
     private WebApplication? _app;
+
+    public SessionMcpGatewayHost(McpAuthKey authKey, SessionMcpKeyring keyring, ILoggerFactory loggerFactory)
+        : this(authKey, keyring, loggerFactory, CockpitConfigPath.Default)
+    {
+    }
+
+    internal SessionMcpGatewayHost(McpAuthKey authKey, SessionMcpKeyring keyring, ILoggerFactory loggerFactory, string configPath)
+    {
+        _authKey = authKey;
+        _keyring = keyring;
+        _loggerFactory = loggerFactory;
+        _configFile = new CockpitConfigFileAccess(configPath);
+    }
     internal string? BoundUrl { get; private set; }
     public bool IsEnabled { get; private set; }
 
@@ -34,9 +47,30 @@ internal sealed class SessionMcpGatewayHost(
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        IsEnabled = (await settings.LoadAsync(cancellationToken)).SessionMcpGatewayEnabled;
+        try
+        {
+            IsEnabled = (await _configFile.ReadAsync(cancellationToken))?.SessionMcpGatewayEnabled ?? false;
+            await _StartAsync(cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            BoundUrl = null;
+            _loggerFactory.CreateLogger<SessionMcpGatewayHost>().LogWarning(exception, "Session MCP gateway could not start; it is unavailable for this run.");
+            try
+            {
+                await DisposeAsync();
+            }
+            catch (Exception cleanupException)
+            {
+                _loggerFactory.CreateLogger<SessionMcpGatewayHost>().LogWarning(cleanupException, "Session MCP gateway cleanup failed after startup failure.");
+            }
+        }
+    }
+
+    private async Task _StartAsync(CancellationToken cancellationToken)
+    {
         var builder = WebApplication.CreateSlimBuilder();
-        builder.Services.AddSingleton(loggerFactory);
+        builder.Services.AddSingleton(_loggerFactory);
         builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0));
         builder.Services.AddMcpServer().WithHttpTransport(options =>
         {
@@ -71,7 +105,7 @@ internal sealed class SessionMcpGatewayHost(
 
         var app = builder.Build();
         _app = app;
-        McpAuthMiddleware.Require(app, authKey, keyring, _ => ValueTask.FromResult(true));
+        McpAuthMiddleware.Require(app, _authKey, _keyring, _ => ValueTask.FromResult(true));
         app.Use(async (http, next) =>
         {
             var paneId = McpRequestContext.CurrentPaneId;
@@ -97,7 +131,7 @@ internal sealed class SessionMcpGatewayHost(
     private void _RequirePane(string paneId, string token)
     {
         if (!string.Equals(McpRequestContext.CurrentPaneId, paneId, StringComparison.Ordinal)
-            || !string.Equals(keyring.CurrentToken(paneId), token, StringComparison.Ordinal))
+            || !string.Equals(_keyring.CurrentToken(paneId), token, StringComparison.Ordinal))
         {
             throw new McpException("This MCP session belongs to another pane.");
         }
@@ -118,16 +152,16 @@ internal sealed class SessionMcpGatewayHost(
             {
                 if (!ended && string.Equals(endedPane, paneId, StringComparison.Ordinal))
                 {
-                    lifetime.Cancel();
+                    _ = lifetime.CancelAsync();
                 }
             }
         }
 
-        keyring.RunEnded += EndRun;
+        _keyring.RunEnded += EndRun;
         _owners[sessionId] = paneId;
         try
         {
-            if (!string.Equals(keyring.CurrentToken(paneId), token, StringComparison.Ordinal))
+            if (!string.Equals(_keyring.CurrentToken(paneId), token, StringComparison.Ordinal))
             {
                 return;
             }
@@ -140,7 +174,7 @@ internal sealed class SessionMcpGatewayHost(
         finally
         {
             _owners.TryRemove(sessionId, out _);
-            keyring.RunEnded -= EndRun;
+            _keyring.RunEnded -= EndRun;
             lock (lifetimeLock)
             {
                 ended = true;

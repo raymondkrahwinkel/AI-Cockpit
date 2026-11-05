@@ -26,18 +26,11 @@ internal sealed class SessionBehaviorSettingsStore : ISessionBehaviorSettingsSto
     public async Task<SessionBehaviorSettings> LoadAsync(CancellationToken cancellationToken = default)
     {
         var configFile = await _configFile.ReadAsync(cancellationToken).ConfigureAwait(false);
-        return (configFile?.SessionBehavior?.ToDomain() ?? new SessionBehaviorSettings()) with
-        {
-            SessionMcpGatewayEnabled = configFile?.SessionMcpGatewayEnabled ?? false,
-        };
+        return configFile?.SessionBehavior?.ToDomain() ?? new SessionBehaviorSettings();
     }
 
     public Task SaveAsync(SessionBehaviorSettings settings, CancellationToken cancellationToken = default) =>
         _configFile.UpdateAsync(
-            file =>
-            {
-                file.SessionBehavior = SessionBehaviorSettingsEntry.FromDomain(settings);
-                file.SessionMcpGatewayEnabled = settings.SessionMcpGatewayEnabled;
-            },
+            file => file.SessionBehavior = SessionBehaviorSettingsEntry.FromDomain(settings),
             cancellationToken);
 }
