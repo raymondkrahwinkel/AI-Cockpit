@@ -413,6 +413,12 @@ public sealed partial class ServerAdminViewModel : ObservableObject
         {
             _ChangedPlugins();
         }
+        else if (!string.IsNullOrWhiteSpace(manager.StatusMessage))
+        {
+            NeedsRestart = false;
+            Status = manager.StatusMessage;
+            StatusIsError = manager.StatusIsError;
+        }
     }
 
     private async Task<PluginManagerViewModel?> _CreateStoreManagerAsync(bool quiet = false)

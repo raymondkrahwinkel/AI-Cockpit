@@ -183,6 +183,11 @@ internal sealed class PluginAdministration(
 
         if (await _UpdateBlockerAsync(manager, folderId).ConfigureAwait(false) is { } blocker)
         {
+            if (blocker.Kind == PluginBlockerKind.UserActivity)
+            {
+                _WaitForUsageToEnd(folderId, updateSha256: sha256, runningSha256: running.Sha256);
+            }
+
             return _StateFor(blocker);
         }
 
@@ -204,6 +209,11 @@ internal sealed class PluginAdministration(
         // Asked again: a session can start and a workspace can get unsaved work while the new version is prepared.
         if (await _UpdateBlockerAsync(manager, folderId).ConfigureAwait(false) is { } late)
         {
+            if (late.Kind == PluginBlockerKind.UserActivity)
+            {
+                _WaitForUsageToEnd(folderId, updateSha256: sha256, runningSha256: running.Sha256);
+            }
+
             return _StateFor(late);
         }
 
@@ -396,15 +406,26 @@ internal sealed class PluginAdministration(
 
     private sealed record PluginBlocker(string Reason, PluginBlockerKind Kind);
 
+    private sealed record DeferredPluginUpdate(string TargetSha256, string RunningSha256);
+
     private readonly HashSet<string> _waitingForUsage = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, DeferredPluginUpdate> _updatesWaitingForUsage = new(StringComparer.Ordinal);
     private bool _watchingUsage;
 
     private static PluginLiveState _StateFor(PluginBlocker blocker) =>
         blocker.Kind == PluginBlockerKind.Restart ? PluginLiveState.Restart(blocker.Reason) : PluginLiveState.Blocked(blocker.Reason);
 
-    private void _WaitForUsageToEnd(string folderId)
+    private void _WaitForUsageToEnd(string folderId, string? updateSha256 = null, string? runningSha256 = null)
     {
-        _waitingForUsage.Add(folderId);
+        if (updateSha256 is not null && runningSha256 is not null)
+        {
+            _updatesWaitingForUsage[folderId] = new(updateSha256, runningSha256);
+        }
+        else
+        {
+            _waitingForUsage.Add(folderId);
+        }
+
         if (_watchingUsage)
         {
             return;
@@ -440,6 +461,28 @@ internal sealed class PluginAdministration(
                 {
                     await _DeactivateAsync(folderId).ConfigureAwait(false);
                 }
+
+                foreach (var (folderId, pending) in _updatesWaitingForUsage.ToArray())
+                {
+                    var registration = (await registrations.LoadAllAsync(CancellationToken.None).ConfigureAwait(false)).GetValueOrDefault(folderId);
+                    var running = manager?.LoadedParts.FirstOrDefault(entry => entry.Discovered.FolderId == folderId).Discovered;
+                    var discovered = (await bootstrap.DiscoverAsync(AbstractionsContract.Version, CancellationToken.None).ConfigureAwait(false))
+                        .FirstOrDefault(plugin => plugin.FolderId == folderId);
+                    if (registration is null || !registration.Enabled
+                        || running is null || !string.Equals(running.Sha256, pending.RunningSha256, StringComparison.OrdinalIgnoreCase)
+                        || discovered is null || !string.Equals(discovered.Sha256, pending.TargetSha256, StringComparison.OrdinalIgnoreCase)
+                        || !string.Equals(registration.PinnedSha256, pending.TargetSha256, StringComparison.OrdinalIgnoreCase))
+                    {
+                        _StopWaitingForUsage(folderId);
+                        continue;
+                    }
+
+                    var state = await _UpdateAsync(folderId, pending.TargetSha256, inPlace: true, consentReason: null, replacedSha256: null).ConfigureAwait(false);
+                    if (state is { IsLive: true } or { RestartRequired: true } or { Failed: true } or { RolledBack: true })
+                    {
+                        _StopWaitingForUsage(folderId);
+                    }
+                }
             }
             finally
             {
@@ -455,7 +498,8 @@ internal sealed class PluginAdministration(
     private void _StopWaitingForUsage(string folderId)
     {
         _waitingForUsage.Remove(folderId);
-        if (_waitingForUsage.Count != 0 || !_watchingUsage)
+        _updatesWaitingForUsage.Remove(folderId);
+        if ((_waitingForUsage.Count != 0 || _updatesWaitingForUsage.Count != 0) || !_watchingUsage)
         {
             return;
         }
