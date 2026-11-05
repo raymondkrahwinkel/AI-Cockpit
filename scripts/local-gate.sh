@@ -69,6 +69,17 @@ if [[ $# -ne 0 ]]; then
   exit 2
 fi
 
+if command -v py >/dev/null 2>&1; then
+  gate_python=py
+elif command -v python3 >/dev/null 2>&1; then
+  gate_python=python3
+elif command -v python >/dev/null 2>&1; then
+  gate_python=python
+else
+  echo "Python is required for the local gate (tried py, python3, python)." >&2
+  exit 49
+fi
+
 gate_output=$(mktemp)
 trap 'rm -f "$gate_output"' EXIT
 
@@ -125,27 +136,27 @@ while IFS= read -r plugin; do
   if [ -f "$test_project" ]; then
     gate_test dotnet test "$project" --configuration Release --no-build --logger "console;verbosity=minimal" --blame-hang --blame-hang-timeout 5m --blame-hang-dump-type none
   fi
-done < <(python3 -c 'import json,sys; print("\n".join(json.loads(sys.argv[1])))' "${plugins_json#plugins=}" | tr -d '\r')
+done < <("$gate_python" -c 'import json,sys; print("\n".join(json.loads(sys.argv[1])))' "${plugins_json#plugins=}" | tr -d '\r')
 
 bash scripts/check-plugin-versions.test.sh
 bash scripts/check-plugin-abstractions-version.test.sh
 git fetch origin main
 bash scripts/check-plugin-versions.sh "$(git rev-parse origin/main)" HEAD
 bash scripts/check-plugin-abstractions-version.sh
-python3 scripts/check-xmldoc-scope.py
-python3 scripts/check-xmldoc-scope.test.py
-python3 scripts/check-comment-length.py
-python3 scripts/check-comment-length.test.py
-python3 scripts/check-test-loopback.py
-python3 scripts/check-plugin-ui-sync-waits.py
-python3 scripts/check-plugin-ui-sync-waits.test.py
-python3 scripts/check-test-count.py
-python3 scripts/check-test-count.test.py
-python3 scripts/check-duplicate-test-bodies.py
-python3 scripts/check-duplicate-test-bodies.test.py
-python3 scripts/check-descendant-selector-scope.py
-python3 scripts/check-descendant-selector-scope.test.py
-python3 scripts/store-index-upsert.test.py
+"$gate_python" scripts/check-xmldoc-scope.py
+"$gate_python" scripts/check-xmldoc-scope.test.py
+"$gate_python" scripts/check-comment-length.py
+"$gate_python" scripts/check-comment-length.test.py
+"$gate_python" scripts/check-test-loopback.py
+"$gate_python" scripts/check-plugin-ui-sync-waits.py
+"$gate_python" scripts/check-plugin-ui-sync-waits.test.py
+"$gate_python" scripts/check-test-count.py
+"$gate_python" scripts/check-test-count.test.py
+"$gate_python" scripts/check-duplicate-test-bodies.py
+"$gate_python" scripts/check-duplicate-test-bodies.test.py
+"$gate_python" scripts/check-descendant-selector-scope.py
+"$gate_python" scripts/check-descendant-selector-scope.test.py
+"$gate_python" scripts/store-index-upsert.test.py
 
 if [[ ${#red_tests[@]} -gt 0 ]]; then
   echo
