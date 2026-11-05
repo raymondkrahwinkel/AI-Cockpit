@@ -9,6 +9,9 @@ using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Plugins.Abstractions.Consent;
 using ModelContextProtocol.Server;
+using NSubstitute;
+using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Sessions;
 
 namespace Cockpit.Infrastructure.Tests.Assistant;
 
@@ -49,7 +52,28 @@ public sealed class AssistantActMountRuleTests : IDisposable
 
     private readonly RecordingNodesClient _nodes = new();
 
-    private AssistantAgentMcpTools _Tools() => new(_gateway, _memory, _consent, _nodes);
+    private int _attached;
+
+    private AssistantAgentMcpTools _Tools()
+    {
+        var png = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==");
+        var sessions = Substitute.For<ISessionRegistry>();
+        var session = Substitute.For<ISessionHandle>();
+        var control = Substitute.For<ISessionControl>();
+        sessions.Assistant.Returns(session);
+        session.CurrentTurnImages.Returns([ImageAttachment.FromBytes(png, "image/png")]);
+        session.UseControlAsync(Arg.Any<Func<ISessionControl, Task>>()).Returns(async call =>
+        {
+            await call.Arg<Func<ISessionControl, Task>>()(control);
+            return true;
+        });
+        control.AttachToReply(Arg.Any<ReplyAttachment>()).Returns(call =>
+        {
+            _attached++;
+            return (string?)null;
+        });
+        return new(_gateway, _memory, _consent, _nodes, sessions);
+    }
 
     private static JsonNode _Json(string result) => JsonNode.Parse(result)!;
 
@@ -69,8 +93,10 @@ public sealed class AssistantActMountRuleTests : IDisposable
     /// Calls a tool with a filled-in argument for every parameter — including the optional ones, since a refusal
     /// that only holds when the caller left fields blank is not a refusal.
     /// </summary>
-    private static async Task<JsonNode> _CallAsync(AssistantAgentMcpTools tools, MethodInfo tool) =>
-        _Json(await (Task<string>)tool.Invoke(tools, [.. tool.GetParameters().Select(_Argument)])!);
+    private async Task<JsonNode> _CallAsync(AssistantAgentMcpTools tools, MethodInfo tool) =>
+        _Json(await (Task<string>)tool.Invoke(tools, tool.Name == nameof(AssistantAgentMcpTools.AttachToReplyAsync)
+            ? [null, null, 0]
+            : [.. tool.GetParameters().Select(_Argument)])!);
 
     private static object? _Argument(ParameterInfo parameter) =>
         // AC-1323: `node` sends a start to another machine instead of the gateway this test counts; left blank,
@@ -172,7 +198,7 @@ public sealed class AssistantActMountRuleTests : IDisposable
 
         Assert.Equal(
             tools.Count,
-            _gateway.Calls.Count + _memory.Remembered.Count + _memory.Noted.Count + _memory.Exported.Count + _memory.Imported.Count + _memory.Rewritten.Count + _nodes.Reads.Count);
+            _gateway.Calls.Count + _memory.Remembered.Count + _memory.Noted.Count + _memory.Exported.Count + _memory.Imported.Count + _memory.Rewritten.Count + _nodes.Reads.Count + _attached);
     }
 
 

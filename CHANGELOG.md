@@ -32,6 +32,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- The assistant can attach files from its scratch folder and managed worktrees to replies, with image previews and file downloads in chat.
+- Discord replies now carry files and images on the last message part, and display Markdown tables as aligned code blocks.
 - The assistant can see the active tool and elapsed state for each SDK session it lists.
 
 ### Fixed

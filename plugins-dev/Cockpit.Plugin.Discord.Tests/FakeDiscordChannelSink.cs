@@ -25,7 +25,8 @@ internal sealed class FakeDiscordChannelSink : IDiscordChannelSink
 
     public List<(ulong MessageId, string Emoji)> Reactions { get; } = [];
 
-    public async Task<ulong> PostAsync(string text, Guid? consentPromptId = null, DiscordAnswerButtons? answers = null, CancellationToken cancellationToken = default)
+    public async Task<ulong> PostAsync(string text, Guid? consentPromptId = null, DiscordAnswerButtons? answers = null, CancellationToken cancellationToken = default,
+        IReadOnlyList<Cockpit.Plugins.Abstractions.Channels.AssistantChannelAttachment>? attachments = null)
     {
         if (PostDelay > TimeSpan.Zero)
         {
@@ -61,7 +62,8 @@ internal sealed class FakeDiscordChannelSink : IDiscordChannelSink
         }
     }
 
-    public Task EditAsync(ulong messageId, string text, bool keepButtons = true, CancellationToken cancellationToken = default)
+    public Task EditAsync(ulong messageId, string text, bool keepButtons = true, CancellationToken cancellationToken = default,
+        IReadOnlyList<Cockpit.Plugins.Abstractions.Channels.AssistantChannelAttachment>? attachments = null)
     {
         lock (_gate)
         {

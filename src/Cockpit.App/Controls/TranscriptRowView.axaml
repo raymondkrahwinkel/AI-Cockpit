@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Cockpit.App.ViewModels"
+             xmlns:sessions="using:Cockpit.Core.Sessions"
              xmlns:views="using:Cockpit.App.Views"
              xmlns:controls="using:Cockpit.App.Controls"
              xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
@@ -457,6 +458,14 @@
                                          StartsInsideTable="{Binding StartsInsideTable}"
                                          EndsInsideTable="{Binding EndsInsideTable}"
                                          TableSpanRevision="{Binding TableSpanRevision}"/>
+                    <ItemsControl ItemsSource="{Binding ReplyAttachments}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="sessions:ReplyAttachment">
+                                <Button Classes="Subtle Compact" Content="{Binding Name}" Click="_OnReplyAttachmentClick"
+                                        ToolTip.Tip="Open image or save attachment"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                     <!-- Copy hands over the reply's markdown source verbatim. -->
                     <StackPanel Classes="rowActions" Orientation="Horizontal" Spacing="2"
                                 HorizontalAlignment="Left"

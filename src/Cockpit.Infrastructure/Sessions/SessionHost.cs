@@ -731,6 +731,8 @@ public sealed partial class SessionHost : ISessionTurnGate, ISessionTranscript, 
 
     public void RecordRow(TranscriptSnapshotEntry row) => _transcript.Record(row);
 
+    public string? AttachToReply(ReplyAttachment attachment) => _transcript.AttachToReply(attachment);
+
     // AC-1438: the rows as they stand, for a consumer that missed some of their upserts; read on the consumer's thread.
     public IReadOnlyList<TranscriptSnapshotEntry> Rows => _transcript.Rows;
 

@@ -191,13 +191,13 @@ internal sealed class DiscordChannelBridge : IDisposable
     // Another plugin's message (AC-1544), through the same posting as a row's question: the parts in order, the last
     // with the option buttons. A failure is the result, never a throw, so the sender can hand it to the assistant.
     public Task<OperatorMessageResult> SendOperatorMessageAsync(IDiscordChannelSink sink, OperatorMessage message, CancellationToken cancellationToken = default) =>
-        SendPartsAsync(sink, DiscordSendDmStep.Split(message.Text, DiscordSendDmStep.DiscordLimit), message, cancellationToken);
+        SendPartsAsync(sink, [message.Text], message, cancellationToken);
 
     // The parts as the caller cut them (the DM step chooses its own length), the last carrying the message's question.
     public async Task<OperatorMessageResult> SendPartsAsync(
         IDiscordChannelSink sink, IReadOnlyList<string> parts, OperatorMessage message, CancellationToken cancellationToken = default)
     {
-        if (parts.Count == 0 && message.Question is null)
+        if (parts.All(string.IsNullOrWhiteSpace) && message.Question is null && message.Attachments.Count == 0)
         {
             return OperatorMessageResult.Failed("There is nothing to send.");
         }
@@ -210,7 +210,7 @@ internal sealed class DiscordChannelBridge : IDisposable
             }
 
             var last = parts.Count > 0 ? parts[^1] : message.Question?.Question ?? string.Empty;
-            await _PostAsync(sink, last, message.CorrelationId, message.Question, cancellationToken).ConfigureAwait(false);
+            await _PostAsync(sink, last, message.CorrelationId, message.Question, cancellationToken, message.Attachments).ConfigureAwait(false);
             return OperatorMessageResult.Sent();
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
@@ -221,12 +221,13 @@ internal sealed class DiscordChannelBridge : IDisposable
 
     // The one button mechanism (AC-1544 criterion 5): buttons where Discord can carry them, else the text fallback.
     private async Task<ulong> _PostAsync(
-        IDiscordChannelSink sink, string text, string? correlationId, AssistantChannelQuestion? question, CancellationToken cancellationToken)
+        IDiscordChannelSink sink, string text, string? correlationId, AssistantChannelQuestion? question, CancellationToken cancellationToken,
+        IReadOnlyList<AssistantChannelAttachment>? attachments = null)
     {
         var labels = question?.Options.Select(option => option.Label).ToList() ?? [];
         var buttons = question is null ? null : DiscordAnswerButtons.For(correlationId, labels);
         var shown = question is not null && buttons is null ? $"{text}\n\n{question.FallbackPrompt()}" : text;
-        var posted = await sink.PostAsync(shown, answers: buttons, cancellationToken: cancellationToken).ConfigureAwait(false);
+        var posted = await sink.PostAsync(shown, answers: buttons, cancellationToken: cancellationToken, attachments: attachments).ConfigureAwait(false);
 
         if (buttons is not null)
         {
@@ -387,11 +388,11 @@ internal sealed class DiscordChannelBridge : IDisposable
         {
             if (existing is { } existingMessageId)
             {
-                await _sink.EditAsync(existingMessageId, text).ConfigureAwait(false);
+                await _sink.EditAsync(existingMessageId, text, attachments: row.Attachments).ConfigureAwait(false);
             }
             else
             {
-                var posted = await _PostAsync(_sink, text, row.CorrelationId, row.Questions.FirstOrDefault(), CancellationToken.None).ConfigureAwait(false);
+                var posted = await _PostAsync(_sink, text, row.CorrelationId, row.Questions.FirstOrDefault(), CancellationToken.None, row.Attachments).ConfigureAwait(false);
                 lock (_gate)
                 {
                     _rowMessageIds[row.Id] = posted;
