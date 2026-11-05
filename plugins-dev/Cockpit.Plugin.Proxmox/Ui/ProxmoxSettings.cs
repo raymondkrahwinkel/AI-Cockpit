@@ -14,15 +14,6 @@ internal sealed class ProxmoxSettings(IPluginStorage storage)
         set => storage.Set("mcpEnabled", value);
     }
 
-    public string Host { get => _Current().Host; set => _SaveCurrent(server => server with { Host = value }); }
-    public int Port { get => _Current().Port; set => _SaveCurrent(server => server with { Port = value }); }
-    public string TokenId { get => _Current().TokenId; set => _SaveCurrent(server => server with { TokenId = value }); }
-    public string ApiToken { get => GetApiToken(_Current().Id); set => _SaveCurrent(server => server, value); }
-    public string TrustedCertFingerprint { get => _Current().TrustedCertFingerprint; set => _SaveCurrent(server => server with { TrustedCertFingerprint = value }); }
-    public bool AllowRollback { get => _Current().AllowRollback; set => _SaveCurrent(server => server with { AllowRollback = value }); }
-    public bool AllowDelete { get => _Current().AllowDelete; set => _SaveCurrent(server => server with { AllowDelete = value }); }
-    public bool IsConfigured => Servers.Count == 1 && _Current().IsConfigured && !string.IsNullOrWhiteSpace(ApiToken);
-
     public IReadOnlyList<ProxmoxServer> Servers
     {
         get
@@ -44,34 +35,6 @@ internal sealed class ProxmoxSettings(IPluginStorage storage)
         storage.Set(ServersKey, servers.ToList());
         storage.SetSecret(TokensKey, JsonSerializer.Serialize(tokens.Where(entry => !string.IsNullOrWhiteSpace(entry.Value)).ToDictionary()));
         storage.SetSecret("apiToken", string.Empty);
-    }
-
-    private ProxmoxServer _Current()
-    {
-        var servers = Servers;
-        return servers.Count > 0 ? servers[0] : new ProxmoxServer(Guid.NewGuid().ToString("N"), string.Empty, string.Empty, 8006, string.Empty, string.Empty, false, false);
-    }
-
-    private void _SaveCurrent(Func<ProxmoxServer, ProxmoxServer> change, string? token = null)
-    {
-        var server = change(_Current());
-        var tokens = Servers.ToDictionary(value => value.Id, value => GetApiToken(value.Id));
-        if (token is not null)
-        {
-            tokens[server.Id] = token;
-        }
-
-        var servers = Servers.ToList();
-        if (servers.Count == 0)
-        {
-            servers.Add(server);
-        }
-        else
-        {
-            servers[0] = server;
-        }
-
-        SaveServers(servers, tokens);
     }
 
     private void _MigrateLegacySettings()

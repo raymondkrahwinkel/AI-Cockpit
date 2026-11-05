@@ -8,16 +8,20 @@ namespace Cockpit.Plugin.Proxmox.Mcp;
 
 internal sealed class ProxmoxMcpTools(ProxmoxSettings settings, ProxmoxAccessGate gate, IProxmoxEngine engine)
 {
+    private const string SessionDescription = "Your session id (COCKPIT_PANE_ID).";
+    private const string ServerDescription = "Name from list_servers; omit only when exactly one server is configured.";
+
     [McpServerTool(Name = "list_servers", ReadOnly = true)]
-    [Description("Lists configured Proxmox servers and whether each has complete connection settings. Tokens are never returned.")]
+    [Description("Lists configured Proxmox servers and whether each has complete connection settings. Tokens are never returned; configured does not probe the network.")]
     public string ListServers() => McpText.Ok(new
     {
         ok = true,
-        servers = settings.Servers.Select(server => new { name = server.Name, host = server.Host, reachable = server.IsConfigured && !string.IsNullOrWhiteSpace(settings.GetApiToken(server.Id)) }),
+        servers = settings.Servers.Select(server => new { name = server.Name, host = server.Host, configured = server.IsConfigured && !string.IsNullOrWhiteSpace(settings.GetApiToken(server.Id)) }),
     });
 
     [McpServerTool(Name = "version", ReadOnly = true)]
-    public Task<string> Version(string session, string? server = null, CancellationToken cancellationToken = default) =>
+    [Description("Returns the Proxmox VE API's version and release. This is the first call that touches the selected API, so it asks the operator for consent once per server; after that, reads are free for that server in the session. Start here to confirm the target is reachable.")]
+    public Task<string> Version([Description(SessionDescription)] string session, [Description(ServerDescription)] string? server = null, CancellationToken cancellationToken = default) =>
         _ReadAsync(session, server, "read the Proxmox API version", async selected =>
         {
             var version = await selected.GetVersionAsync(cancellationToken);
@@ -25,7 +29,8 @@ internal sealed class ProxmoxMcpTools(ProxmoxSettings settings, ProxmoxAccessGat
         });
 
     [McpServerTool(Name = "list_nodes", ReadOnly = true)]
-    public Task<string> ListNodes(string session, string? server = null, CancellationToken cancellationToken = default) =>
+    [Description("Lists the nodes in this Proxmox target with their status, CPU usage and memory usage. A read behind the one-time connection consent for the selected server.")]
+    public Task<string> ListNodes([Description(SessionDescription)] string session, [Description(ServerDescription)] string? server = null, CancellationToken cancellationToken = default) =>
         _ReadAsync(session, server, "list nodes", async selected =>
         {
             var nodes = await selected.ListNodesAsync(cancellationToken);
@@ -33,7 +38,8 @@ internal sealed class ProxmoxMcpTools(ProxmoxSettings settings, ProxmoxAccessGat
         });
 
     [McpServerTool(Name = "cluster_status", ReadOnly = true)]
-    public Task<string> ClusterStatus(string session, string? server = null, CancellationToken cancellationToken = default) =>
+    [Description("Reports whether this target is a Proxmox cluster and, if so, its name, quorum state and node count. A single host reports isCluster=false. A read behind the one-time connection consent for the selected server.")]
+    public Task<string> ClusterStatus([Description(SessionDescription)] string session, [Description(ServerDescription)] string? server = null, CancellationToken cancellationToken = default) =>
         _ReadAsync(session, server, "read cluster status", async selected =>
         {
             var info = await selected.GetClusterInfoAsync(cancellationToken);
@@ -41,7 +47,8 @@ internal sealed class ProxmoxMcpTools(ProxmoxSettings settings, ProxmoxAccessGat
         });
 
     [McpServerTool(Name = "list_vms", ReadOnly = true)]
-    public Task<string> ListVms(string session, string? server = null, CancellationToken cancellationToken = default) =>
+    [Description("Lists every QEMU VM across the selected target: id, name, node, status, assigned memory/disk/CPU and uptime. A read behind the one-time connection consent for that server.")]
+    public Task<string> ListVms([Description(SessionDescription)] string session, [Description(ServerDescription)] string? server = null, CancellationToken cancellationToken = default) =>
         _ReadAsync(session, server, "list VMs", async selected =>
         {
             var vms = await selected.ListVmsAsync(cancellationToken);
@@ -49,7 +56,8 @@ internal sealed class ProxmoxMcpTools(ProxmoxSettings settings, ProxmoxAccessGat
         });
 
     [McpServerTool(Name = "list_lxc", ReadOnly = true)]
-    public Task<string> ListLxc(string session, string? server = null, CancellationToken cancellationToken = default) =>
+    [Description("Lists every LXC container across the selected target: id, name, node, status, assigned memory/disk/CPU and uptime. These are Proxmox LXC containers, distinct from Docker containers. A read behind the one-time connection consent for that server.")]
+    public Task<string> ListLxc([Description(SessionDescription)] string session, [Description(ServerDescription)] string? server = null, CancellationToken cancellationToken = default) =>
         _ReadAsync(session, server, "list LXC containers", async selected =>
         {
             var lxc = await selected.ListLxcAsync(cancellationToken);
@@ -57,7 +65,8 @@ internal sealed class ProxmoxMcpTools(ProxmoxSettings settings, ProxmoxAccessGat
         });
 
     [McpServerTool(Name = "list_storage", ReadOnly = true)]
-    public Task<string> ListStorage(string session, string? server = null, CancellationToken cancellationToken = default) =>
+    [Description("Lists storage pools across the selected target with total and used bytes. A read behind the one-time connection consent for that server.")]
+    public Task<string> ListStorage([Description(SessionDescription)] string session, [Description(ServerDescription)] string? server = null, CancellationToken cancellationToken = default) =>
         _ReadAsync(session, server, "list storage pools", async selected =>
         {
             var pools = await selected.ListStorageAsync(cancellationToken);
@@ -65,7 +74,8 @@ internal sealed class ProxmoxMcpTools(ProxmoxSettings settings, ProxmoxAccessGat
         });
 
     [McpServerTool(Name = "list_tasks", ReadOnly = true)]
-    public Task<string> ListTasks(string session, string node, string? server = null, CancellationToken cancellationToken = default) =>
+    [Description("Lists a node's recent tasks — what ran or is running, with its outcome. Use this to follow up on a task that timed out while waiting. A read behind the one-time connection consent for the selected server.")]
+    public Task<string> ListTasks([Description(SessionDescription)] string session, [Description("The node name, as returned by list_nodes.")] string node, [Description(ServerDescription)] string? server = null, CancellationToken cancellationToken = default) =>
         _ReadAsync(session, server, $"list tasks on node \"{node}\"", async selected =>
         {
             var tasks = await selected.ListTasksAsync(node, cancellationToken);
@@ -73,67 +83,83 @@ internal sealed class ProxmoxMcpTools(ProxmoxSettings settings, ProxmoxAccessGat
         });
 
     [McpServerTool(Name = "list_vm_snapshots", ReadOnly = true)]
-    public Task<string> ListVmSnapshots(string session, string node, string vmid, string? server = null, CancellationToken cancellationToken = default) =>
+    [Description("Lists a VM's snapshots: name, description and creation time. A read behind the one-time connection consent for the selected server.")]
+    public Task<string> ListVmSnapshots([Description(SessionDescription)] string session, [Description("The node the VM runs on.")] string node, [Description("The VM id.")] string vmid, [Description(ServerDescription)] string? server = null, CancellationToken cancellationToken = default) =>
         _SnapshotsAsync(session, node, vmid, false, server, cancellationToken);
 
     [McpServerTool(Name = "list_lxc_snapshots", ReadOnly = true)]
-    public Task<string> ListLxcSnapshots(string session, string node, string vmid, string? server = null, CancellationToken cancellationToken = default) =>
+    [Description("Lists an LXC container's snapshots: name, description and creation time. A read behind the one-time connection consent for the selected server.")]
+    public Task<string> ListLxcSnapshots([Description(SessionDescription)] string session, [Description("The node the LXC container runs on.")] string node, [Description("The LXC container id.")] string vmid, [Description(ServerDescription)] string? server = null, CancellationToken cancellationToken = default) =>
         _SnapshotsAsync(session, node, vmid, true, server, cancellationToken);
 
     [McpServerTool(Name = "start_vm", ReadOnly = false, Destructive = true)]
-    public Task<string> StartVm(string session, string node, string vmid, string? server = null, CancellationToken cancellationToken = default) =>
+    [Description("Starts a stopped VM. Waits for the Proxmox task to finish and reports its real outcome. This is a change, so it asks the operator afresh each time and is never remembered.")]
+    public Task<string> StartVm([Description(SessionDescription)] string session, [Description("The node the VM runs on.")] string node, [Description("The VM id.")] string vmid, [Description(ServerDescription)] string? server = null, CancellationToken cancellationToken = default) =>
         _MutateAsync(session, server, ProxmoxActionText.StartVm(node, vmid), selected => selected.StartVmAsync(node, vmid, cancellationToken));
 
     [McpServerTool(Name = "shutdown_vm", ReadOnly = false, Destructive = true)]
-    public Task<string> ShutdownVm(string session, string node, string vmid, string? server = null, CancellationToken cancellationToken = default) =>
+    [Description("Gracefully shuts a VM down (an ACPI shutdown request the guest OS can act on) — distinct from stop_vm, which powers it off immediately. Waits for the Proxmox task to finish and reports its real outcome. Asks the operator afresh each time and is never remembered.")]
+    public Task<string> ShutdownVm([Description(SessionDescription)] string session, [Description("The node the VM runs on.")] string node, [Description("The VM id.")] string vmid, [Description(ServerDescription)] string? server = null, CancellationToken cancellationToken = default) =>
         _MutateAsync(session, server, ProxmoxActionText.ShutdownVm(node, vmid), selected => selected.ShutdownVmAsync(node, vmid, cancellationToken));
 
     [McpServerTool(Name = "stop_vm", ReadOnly = false, Destructive = true)]
-    public Task<string> StopVm(string session, string node, string vmid, string? server = null, CancellationToken cancellationToken = default) =>
+    [Description("Hard-powers a VM off immediately, with no guest cooperation — distinct from shutdown_vm's graceful ACPI request. Like pulling the power cord: unsaved guest state can be lost. Waits for the Proxmox task to finish and reports its real outcome. Asks the operator afresh each time and is never remembered.")]
+    public Task<string> StopVm([Description(SessionDescription)] string session, [Description("The node the VM runs on.")] string node, [Description("The VM id.")] string vmid, [Description(ServerDescription)] string? server = null, CancellationToken cancellationToken = default) =>
         _MutateAsync(session, server, ProxmoxActionText.StopVm(node, vmid), selected => selected.StopVmAsync(node, vmid, cancellationToken));
 
     [McpServerTool(Name = "reboot_vm", ReadOnly = false, Destructive = true)]
-    public Task<string> RebootVm(string session, string node, string vmid, string? server = null, CancellationToken cancellationToken = default) =>
+    [Description("Gracefully reboots a VM (ACPI). Waits for the Proxmox task to finish and reports its real outcome. Asks the operator afresh each time and is never remembered.")]
+    public Task<string> RebootVm([Description(SessionDescription)] string session, [Description("The node the VM runs on.")] string node, [Description("The VM id.")] string vmid, [Description(ServerDescription)] string? server = null, CancellationToken cancellationToken = default) =>
         _MutateAsync(session, server, ProxmoxActionText.RebootVm(node, vmid), selected => selected.RebootVmAsync(node, vmid, cancellationToken));
 
     [McpServerTool(Name = "snapshot_vm", ReadOnly = false, Destructive = false)]
-    public Task<string> SnapshotVm(string session, string node, string vmid, string name, string? description = null, string? server = null, CancellationToken cancellationToken = default) =>
+    [Description("Creates a snapshot of a VM. Waits for the Proxmox task to finish and reports its real outcome. Asks the operator afresh each time and is never remembered.")]
+    public Task<string> SnapshotVm([Description(SessionDescription)] string session, [Description("The node the VM runs on.")] string node, [Description("The VM id.")] string vmid, [Description("The snapshot's name.")] string name, [Description("Optional snapshot description.")] string? description = null, [Description(ServerDescription)] string? server = null, CancellationToken cancellationToken = default) =>
         _MutateAsync(session, server, ProxmoxActionText.SnapshotVm(node, vmid, name), selected => selected.SnapshotVmAsync(node, vmid, name, description, cancellationToken));
 
     [McpServerTool(Name = "start_lxc", ReadOnly = false, Destructive = true)]
-    public Task<string> StartLxc(string session, string node, string vmid, string? server = null, CancellationToken cancellationToken = default) =>
+    [Description("Starts a stopped LXC container. Waits for the Proxmox task to finish and reports its real outcome. Asks the operator afresh each time and is never remembered.")]
+    public Task<string> StartLxc([Description(SessionDescription)] string session, [Description("The node the LXC container runs on.")] string node, [Description("The LXC container id.")] string vmid, [Description(ServerDescription)] string? server = null, CancellationToken cancellationToken = default) =>
         _MutateAsync(session, server, ProxmoxActionText.StartLxc(node, vmid), selected => selected.StartLxcAsync(node, vmid, cancellationToken));
 
     [McpServerTool(Name = "shutdown_lxc", ReadOnly = false, Destructive = true)]
-    public Task<string> ShutdownLxc(string session, string node, string vmid, string? server = null, CancellationToken cancellationToken = default) =>
+    [Description("Gracefully shuts an LXC container down — distinct from stop_lxc, which stops it immediately. Waits for the Proxmox task to finish and reports its real outcome. Asks the operator afresh each time and is never remembered.")]
+    public Task<string> ShutdownLxc([Description(SessionDescription)] string session, [Description("The node the LXC container runs on.")] string node, [Description("The LXC container id.")] string vmid, [Description(ServerDescription)] string? server = null, CancellationToken cancellationToken = default) =>
         _MutateAsync(session, server, ProxmoxActionText.ShutdownLxc(node, vmid), selected => selected.ShutdownLxcAsync(node, vmid, cancellationToken));
 
     [McpServerTool(Name = "stop_lxc", ReadOnly = false, Destructive = true)]
-    public Task<string> StopLxc(string session, string node, string vmid, string? server = null, CancellationToken cancellationToken = default) =>
+    [Description("Stops an LXC container immediately, with no cooperation from the processes inside it — distinct from shutdown_lxc's graceful stop. Waits for the Proxmox task to finish and reports its real outcome. Asks the operator afresh each time and is never remembered.")]
+    public Task<string> StopLxc([Description(SessionDescription)] string session, [Description("The node the LXC container runs on.")] string node, [Description("The LXC container id.")] string vmid, [Description(ServerDescription)] string? server = null, CancellationToken cancellationToken = default) =>
         _MutateAsync(session, server, ProxmoxActionText.StopLxc(node, vmid), selected => selected.StopLxcAsync(node, vmid, cancellationToken));
 
     [McpServerTool(Name = "reboot_lxc", ReadOnly = false, Destructive = true)]
-    public Task<string> RebootLxc(string session, string node, string vmid, string? server = null, CancellationToken cancellationToken = default) =>
+    [Description("Reboots an LXC container. Waits for the Proxmox task to finish and reports its real outcome. Asks the operator afresh each time and is never remembered.")]
+    public Task<string> RebootLxc([Description(SessionDescription)] string session, [Description("The node the LXC container runs on.")] string node, [Description("The LXC container id.")] string vmid, [Description(ServerDescription)] string? server = null, CancellationToken cancellationToken = default) =>
         _MutateAsync(session, server, ProxmoxActionText.RebootLxc(node, vmid), selected => selected.RebootLxcAsync(node, vmid, cancellationToken));
 
     [McpServerTool(Name = "snapshot_lxc", ReadOnly = false, Destructive = false)]
-    public Task<string> SnapshotLxc(string session, string node, string vmid, string name, string? description = null, string? server = null, CancellationToken cancellationToken = default) =>
+    [Description("Creates a snapshot of an LXC container. Waits for the Proxmox task to finish and reports its real outcome. Asks the operator afresh each time and is never remembered.")]
+    public Task<string> SnapshotLxc([Description(SessionDescription)] string session, [Description("The node the LXC container runs on.")] string node, [Description("The LXC container id.")] string vmid, [Description("The snapshot's name.")] string name, [Description("Optional snapshot description.")] string? description = null, [Description(ServerDescription)] string? server = null, CancellationToken cancellationToken = default) =>
         _MutateAsync(session, server, ProxmoxActionText.SnapshotLxc(node, vmid, name), selected => selected.SnapshotLxcAsync(node, vmid, name, description, cancellationToken));
 
     [McpServerTool(Name = "rollback_vm_snapshot", ReadOnly = false, Destructive = true)]
-    public Task<string> RollbackVmSnapshot(string session, string node, string vmid, string name, string? server = null, CancellationToken cancellationToken = default) =>
+    [Description("Rolls a VM back to a snapshot, destroying everything that happened since it was taken. Off unless the operator turned rollback on for the selected server; when on, always asks afresh and is never remembered. Waits for the Proxmox task to finish and reports its real outcome.")]
+    public Task<string> RollbackVmSnapshot([Description(SessionDescription)] string session, [Description("The node the VM runs on.")] string node, [Description("The VM id.")] string vmid, [Description("The snapshot's name to roll back to.")] string name, [Description(ServerDescription)] string? server = null, CancellationToken cancellationToken = default) =>
         _DangerAsync(session, server, DangerCapability.Rollback, target => target.AllowRollback, ProxmoxActionText.RollbackVm(node, vmid, name), selected => selected.RollbackVmSnapshotAsync(node, vmid, name, cancellationToken));
 
     [McpServerTool(Name = "rollback_lxc_snapshot", ReadOnly = false, Destructive = true)]
-    public Task<string> RollbackLxcSnapshot(string session, string node, string vmid, string name, string? server = null, CancellationToken cancellationToken = default) =>
+    [Description("Rolls an LXC container back to a snapshot, destroying everything that happened since it was taken. Off unless the operator turned rollback on for the selected server; when on, always asks afresh and is never remembered. Waits for the Proxmox task to finish and reports its real outcome.")]
+    public Task<string> RollbackLxcSnapshot([Description(SessionDescription)] string session, [Description("The node the LXC container runs on.")] string node, [Description("The LXC container id.")] string vmid, [Description("The snapshot's name to roll back to.")] string name, [Description(ServerDescription)] string? server = null, CancellationToken cancellationToken = default) =>
         _DangerAsync(session, server, DangerCapability.Rollback, target => target.AllowRollback, ProxmoxActionText.RollbackLxc(node, vmid, name), selected => selected.RollbackLxcSnapshotAsync(node, vmid, name, cancellationToken));
 
     [McpServerTool(Name = "delete_vm", ReadOnly = false, Destructive = true)]
-    public Task<string> DeleteVm(string session, string node, string vmid, string? server = null, CancellationToken cancellationToken = default) =>
+    [Description("Deletes a VM outright — irreversible. Off unless the operator turned delete on for the selected server; when on, always asks afresh and is never remembered. Waits for the Proxmox task to finish and reports its real outcome.")]
+    public Task<string> DeleteVm([Description(SessionDescription)] string session, [Description("The node the VM runs on.")] string node, [Description("The VM id.")] string vmid, [Description(ServerDescription)] string? server = null, CancellationToken cancellationToken = default) =>
         _DangerAsync(session, server, DangerCapability.Delete, target => target.AllowDelete, ProxmoxActionText.DeleteVm(node, vmid), selected => selected.DeleteVmAsync(node, vmid, cancellationToken));
 
     [McpServerTool(Name = "delete_lxc", ReadOnly = false, Destructive = true)]
-    public Task<string> DeleteLxc(string session, string node, string vmid, string? server = null, CancellationToken cancellationToken = default) =>
+    [Description("Deletes an LXC container outright — irreversible. Off unless the operator turned delete on for the selected server; when on, always asks afresh and is never remembered. Waits for the Proxmox task to finish and reports its real outcome.")]
+    public Task<string> DeleteLxc([Description(SessionDescription)] string session, [Description("The node the LXC container runs on.")] string node, [Description("The LXC container id.")] string vmid, [Description(ServerDescription)] string? server = null, CancellationToken cancellationToken = default) =>
         _DangerAsync(session, server, DangerCapability.Delete, target => target.AllowDelete, ProxmoxActionText.DeleteLxc(node, vmid), selected => selected.DeleteLxcAsync(node, vmid, cancellationToken));
 
     private async Task<string> _ReadAsync(string session, string? server, string operation, Func<IProxmoxEngine, Task<object>> read)
@@ -144,7 +170,7 @@ internal sealed class ProxmoxMcpTools(ProxmoxSettings settings, ProxmoxAccessGat
             return error!;
         }
 
-        var decision = await gate.AuthorizeConnectionAsync($"{operation} on Proxmox server \"{target.Name}\"", session);
+        var decision = await gate.AuthorizeConnectionAsync($"{operation} on Proxmox server \"{target.Name}\"", session, target.Id);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
@@ -175,7 +201,7 @@ internal sealed class ProxmoxMcpTools(ProxmoxSettings settings, ProxmoxAccessGat
             return error!;
         }
 
-        var decision = await gate.AuthorizeMutationAsync($"{operation} on Proxmox server \"{target.Name}\"", session);
+        var decision = await gate.AuthorizeMutationAsync($"{operation} on Proxmox server \"{target.Name}\"", session, target.Id);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
@@ -199,7 +225,7 @@ internal sealed class ProxmoxMcpTools(ProxmoxSettings settings, ProxmoxAccessGat
             return error!;
         }
 
-        var decision = await gate.AuthorizeDangerAsync(capability, enabled(target), $"{operation} on Proxmox server \"{target.Name}\"", session);
+        var decision = await gate.AuthorizeDangerAsync(capability, enabled(target), $"{operation} on Proxmox server \"{target.Name}\"", session, target.Id);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);

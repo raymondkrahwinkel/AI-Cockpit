@@ -15,15 +15,6 @@ internal sealed class ProxmoxSettings(IPluginStorage storage)
         set => storage.Set("mcpEnabled", value);
     }
 
-    public string Host => _Current().Host;
-    public int Port => _Current().Port;
-    public string TokenId => _Current().TokenId;
-    public string ApiToken => GetApiToken(_Current().Id);
-    public string TrustedCertFingerprint => _Current().TrustedCertFingerprint;
-    public bool AllowRollback => _Current().AllowRollback;
-    public bool AllowDelete => _Current().AllowDelete;
-    public bool IsConfigured => Servers.Count == 1 && _Current().IsConfigured && !string.IsNullOrWhiteSpace(ApiToken);
-
     public IReadOnlyList<ProxmoxServer> Servers
     {
         get
@@ -66,8 +57,6 @@ internal sealed class ProxmoxSettings(IPluginStorage storage)
         return servers.FirstOrDefault(server => string.Equals(server.Name, name, StringComparison.OrdinalIgnoreCase))
             ?? throw new ProxmoxApiException($"Proxmox server \"{name}\" is not configured. Available servers: {string.Join(", ", servers.Select(server => server.Name))}.");
     }
-
-    private ProxmoxServer _Current() => ResolveServer(null);
 
     private void _MigrateLegacySettings()
     {

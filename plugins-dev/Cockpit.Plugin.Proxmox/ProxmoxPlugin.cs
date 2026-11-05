@@ -99,7 +99,7 @@ public sealed class ProxmoxPlugin : ICockpitPlugin
         }
 
         var selected = engine.ForServer(server);
-        var decision = await gate.AuthorizeConnectionAsync($"show the Proxmox overview for server \"{server.Name}\"", paneId: null);
+        var decision = await gate.AuthorizeConnectionAsync($"show the Proxmox overview for server \"{server.Name}\"", paneId: null, server.Id);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return _Serialize(new ProxmoxOverviewAnswer(reason, null, null, null, null, null, null));
@@ -160,7 +160,7 @@ public sealed class ProxmoxPlugin : ICockpitPlugin
         }
 
         var operation = $"{(request.IsLxc ? lxcOperationText(request.Node, request.VmId) : vmOperationText(request.Node, request.VmId))} on Proxmox server \"{server.Name}\"";
-        var decision = await gate.AuthorizeMutationAsync(operation, paneId: null);
+        var decision = await gate.AuthorizeMutationAsync(operation, paneId: null, server.Id);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return _Serialize(new ProxmoxActionAnswer(reason, null, null));
