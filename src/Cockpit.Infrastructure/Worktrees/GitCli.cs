@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.RegularExpressions;
+using Cockpit.Core.Worktrees;
 
 namespace Cockpit.Infrastructure.Worktrees;
 
@@ -79,8 +80,7 @@ internal static class GitCli
         }
         catch (Exception exception)
         {
-            throw new InvalidOperationException(
-                $"Could not run 'git' — is it installed and on PATH? ({exception.Message})", exception);
+            throw new GitUnavailableException(exception);
         }
 
         // A caller on the session-start path can ask for a shorter guard than the default: waiting two minutes on a

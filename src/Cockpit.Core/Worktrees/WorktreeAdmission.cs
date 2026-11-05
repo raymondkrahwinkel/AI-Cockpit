@@ -3,7 +3,11 @@ using Cockpit.Core.Abstractions.Worktrees;
 namespace Cockpit.Core.Worktrees;
 
 // Where a starting session may run, and on which branch (AC-85, AC-938). Decision set: nothing was admitted.
-public sealed record AdmittedDirectory(string? WorkingDirectory, string? WorktreeBranch, NeedsWorktreeDecision? Decision = null);
+public sealed record AdmittedDirectory(
+    string? WorkingDirectory,
+    string? WorktreeBranch,
+    NeedsWorktreeDecision? Decision = null,
+    UnisolatedSessionNotice? Notice = null);
 
 // AC-1448: the one admission rule, run by the desktop's start and by the backend `SessionLauncher` alike. A worktree
 // owned by a live session throws `WorktreeAdmissionException`; whether the owner counts as live (the assistant's own
@@ -65,6 +69,13 @@ public static class WorktreeAdmission
 
             var worktree = await worktrees.CreateForSessionAsync(paneId, sessionLabel, workingDirectory, cancellationToken: cancellationToken).ConfigureAwait(false);
             return new AdmittedDirectory(worktree.Path, worktree.Branch);
+        }
+        catch (GitUnavailableException)
+        {
+            return new AdmittedDirectory(
+                workingDirectory,
+                null,
+                Notice: new UnisolatedSessionNotice("Git is not installed or unavailable on PATH, so this session started directly in the project folder without worktree isolation."));
         }
         catch (WorktreeAdmissionException)
         {
