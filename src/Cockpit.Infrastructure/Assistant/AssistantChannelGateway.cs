@@ -412,6 +412,7 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
             Id = id,
             Kind = _Kind(row.Kind),
             Text = row.Text,
+            Attachments = row.ReplyAttachments?.Select(file => new AssistantChannelAttachment(file.Name, file.Content, file.IsImage)).ToArray() ?? [],
             Timestamp = row.Timestamp,
             ToolName = row.ToolName,
             ResultText = row.ResultText,
@@ -421,7 +422,7 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
         });
     }
 
-    private static int _Content(TranscriptSnapshotEntry row) => HashCode.Combine(row.Text, row.ResultText);
+    private static int _Content(TranscriptSnapshotEntry row) => HashCode.Combine(row.Text, row.ResultText, row.ReplyAttachments);
 
     // The row kinds as a snapshot spells them — `TranscriptEntryKind`'s names.
     private static AssistantChannelRowKind _Kind(string kind) => kind switch

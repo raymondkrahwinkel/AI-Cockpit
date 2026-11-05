@@ -911,6 +911,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     private void _UpdateRow(TranscriptEntryViewModel row, TranscriptSnapshotEntry entry)
     {
+        row.ReplyAttachments = entry.ReplyAttachments ?? [];
         row.Text = entry.Text;
         row.IsResultError = entry.IsResultError;
         row.TruncatedFromChars = entry.TruncatedFromChars;

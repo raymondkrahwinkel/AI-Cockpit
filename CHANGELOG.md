@@ -32,6 +32,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- The assistant can attach files from its scratch folder and managed worktrees to replies, with image previews and file downloads in chat.
 - The assistant can see the active tool and elapsed state for each SDK session it lists.
 
 ### Fixed

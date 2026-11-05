@@ -20,8 +20,94 @@ internal sealed class AssistantAgentMcpTools(
     IAssistantMemory memory,
     IConsentBroker? consent = null,
     // AC-1323: the line to a paired node, for a pane id written as "<node> · <paneId>" or a start with `node`.
-    INodeSessionsClient? nodes = null)
+    INodeSessionsClient? nodes = null,
+    Cockpit.Core.Abstractions.Sessions.ISessionRegistry? sessions = null,
+    Cockpit.Core.Abstractions.Worktrees.IWorktreeManager? worktrees = null)
 {
+    [McpServerTool(Name = "attach_to_reply", ReadOnly = false, Destructive = false)]
+    [Description("Attaches a file to the next assistant reply in Cockpit and open channels. Only the assistant scratch folder, cockpit-managed worktrees or an image supplied by the operator are allowed. Maximum 25 MB per file and 10 files per reply. Refusals include a reason; send the reply text normally.")]
+    public async Task<string> AttachToReplyAsync(string path, string? name = null)
+    {
+        if (_RefuseIfNotTheAssistant() is { } refusal)
+        {
+            return refusal;
+        }
+
+        if (sessions?.Assistant is not { } session)
+        {
+            return _Serialize(new { ok = false, error = "The assistant session is unavailable." });
+        }
+
+        try
+        {
+            var roots = new List<string> { Cockpit.Core.Sessions.SessionScratch.PathFor(AssistantIdentity.PaneId) };
+            if (worktrees is not null)
+            {
+                roots.AddRange((await worktrees.ListAsync().ConfigureAwait(false)).Select(tree => tree.Path));
+            }
+
+            var allowed = ReplyAttachmentPath.TryResolve(path, roots, out var resolved, out var error);
+            if (!allowed && Path.GetFileName(path).Equals("cockpit.json", StringComparison.OrdinalIgnoreCase))
+            {
+                return _Serialize(new { ok = false, error });
+            }
+
+            var imageBytes = session.CurrentTurnImages.Select(image => Convert.FromBase64String(image.Base64Data)).ToArray();
+            if (!allowed && imageBytes.Length == 0)
+            {
+                return _Serialize(new { ok = false, error });
+            }
+
+            var fileName = name ?? Path.GetFileName(path);
+            if (string.IsNullOrWhiteSpace(fileName) || fileName != Path.GetFileName(fileName) || fileName.IndexOfAny(['/', '\\', '\r', '\n']) >= 0)
+            {
+                return _Serialize(new { ok = false, error = "The attachment name must be a file name." });
+            }
+
+            using var stream = new FileStream(allowed ? resolved : Path.GetFullPath(path), FileMode.Open, FileAccess.Read, FileShare.Read);
+            var openedPath = ReplyAttachmentPath.OpenedPath(stream);
+            allowed = ReplyAttachmentPath.TryResolve(openedPath, roots, out _, out error);
+            if (Path.GetFileName(openedPath).Equals("cockpit.json", StringComparison.OrdinalIgnoreCase))
+            {
+                return _Serialize(new { ok = false, error = "cockpit.json may never be attached." });
+            }
+
+            const int maxBytes = 25 * 1024 * 1024;
+            if (stream.Length > maxBytes)
+            {
+                return _Serialize(new { ok = false, error = "The file exceeds the 25 MB attachment limit." });
+            }
+
+            var buffer = new byte[maxBytes + 1];
+            var read = await stream.ReadAtLeastAsync(buffer, buffer.Length, throwOnEndOfStream: false).ConfigureAwait(false);
+            if (read > maxBytes)
+            {
+                return _Serialize(new { ok = false, error = "The file exceeds the 25 MB attachment limit." });
+            }
+
+            var content = buffer[..read];
+            using var imageStream = new SkiaSharp.SKMemoryStream(content);
+            using var codec = SkiaSharp.SKCodec.Create(imageStream);
+            var isImage = codec is not null && codec.Info.Width > 0 && codec.Info.Height > 0;
+            if (!allowed && (!isImage || !imageBytes.Any(image => image.AsSpan().SequenceEqual(content))))
+            {
+                return _Serialize(new { ok = false, error });
+            }
+
+            string? queuedError = "The assistant session is unavailable.";
+            await session.UseControlAsync(control =>
+            {
+                queuedError = control.AttachToReply(new Cockpit.Core.Sessions.ReplyAttachment(fileName, content, isImage));
+                return Task.CompletedTask;
+            }).ConfigureAwait(false);
+            return _Serialize(new { ok = queuedError is null, error = queuedError });
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            return _Serialize(new { ok = false, error = error.Message });
+        }
+    }
+
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
 
     // What a caller that is not the assistant is told. One sentence, and no detail about what it would have got —
