@@ -158,7 +158,7 @@ internal sealed class PluginAdministration(
         var (next, problem) = await _PrepareAsync(folderId).ConfigureAwait(false);
         if (next is null)
         {
-            return await _RollBackAsync(manager, running, problem, stopped: false, restartTo: null).ConfigureAwait(false);
+            return await _RollBackAsync(manager, running, problem, stopped: false, restartTo: null, failed: null).ConfigureAwait(false);
         }
 
         // Asked again: a session can start and a workspace can get unsaved work while the new version is prepared.
@@ -170,7 +170,7 @@ internal sealed class PluginAdministration(
         // Turned away up front, so the running version does not stop for bytes that cannot start.
         if (manager.WouldRefuse(next) is { } refused)
         {
-            return await _RollBackAsync(manager, running, refused.Reason, stopped: false, restartTo: refused.Status == PluginActivationStatus.NeedsHostRestart ? next : null).ConfigureAwait(false);
+            return await _RollBackAsync(manager, running, refused.Reason, stopped: false, restartTo: refused.Status == PluginActivationStatus.NeedsHostRestart ? next : null, failed: next).ConfigureAwait(false);
         }
 
         if (await _LeaveAsync(manager, folderId).ConfigureAwait(false) is { } stuck)
@@ -186,7 +186,7 @@ internal sealed class PluginAdministration(
 
         // These bytes can only start with a restart: the running version comes back, and the files and the pin stay on the
         // new ones (approved when the pin moved), so the restart is the route to them and asks for nothing more.
-        return await _RollBackAsync(manager, running, activated.Reason, stopped: true, restartTo: activated.Status == PluginActivationStatus.NeedsHostRestart ? next : null).ConfigureAwait(false);
+        return await _RollBackAsync(manager, running, activated.Reason, stopped: true, restartTo: activated.Status == PluginActivationStatus.NeedsHostRestart ? next : null, failed: next).ConfigureAwait(false);
     }
 
     // What a live swap would cut off: what a deactivation would, plus services only a restart replaces and unsaved work.
@@ -230,7 +230,7 @@ internal sealed class PluginAdministration(
 
     // The previous version runs again from its verified copy, with its folder and pin put back, so a restart asks for approval
     // rather than load the new bytes. restartTo (bytes only a restart can start): folder and pin stay on it for that restart.
-    private async Task<PluginLiveState> _RollBackAsync(PluginManager loaded, DiscoveredPlugin previous, string? error, bool stopped, DiscoveredPlugin? restartTo)
+    private async Task<PluginLiveState> _RollBackAsync(PluginManager loaded, DiscoveredPlugin previous, string? error, bool stopped, DiscoveredPlugin? restartTo, DiscoveredPlugin? failed)
     {
         var failure = (error ?? "The new version could not be activated.").TrimEnd('.');
         if (stopped)
@@ -249,6 +249,11 @@ internal sealed class PluginAdministration(
         if (restartTo is not null)
         {
             return PluginLiveState.Restart($"Version {restartTo.Manifest.Version} needs a restart to start ({failure}). Version {previous.Manifest.Version} keeps running until then.");
+        }
+
+        if (failed is not null)
+        {
+            PluginShadow.MarkFailed(failed);
         }
 
         await registrations.SaveAsync(previous.FolderId, new PluginRegistration(Enabled: true, PinnedSha256: previous.Sha256), CancellationToken.None).ConfigureAwait(false);

@@ -25,6 +25,13 @@ public sealed class PluginProvisioningService(IPluginStoreClient storeClient, IP
         }
 
         var download = await storeClient.DownloadZipAsync(request.Store, package.Path, package.Sha256, cancellationToken, progress).ConfigureAwait(false);
+        if (download.ChecksumMismatch)
+        {
+            // Names no path or address, so a server may pass it on to its clients.
+            var mismatch = $"The download of '{request.Name}' {request.Version.Version} did not match the store's published checksum (SHA-256 mismatch) and was rejected.";
+            return new PluginProvisionResult(PluginProvisionOutcome.Failed, request.Id, request.Name, mismatch, Warning: null, FolderId: null, Sha256: null, ErrorIsSafeToShow: true);
+        }
+
         if (!download.IsSuccess || download.ZipPath is null)
         {
             return new PluginProvisionResult(PluginProvisionOutcome.Failed, request.Id, request.Name, download.Error ?? "Download failed.", Warning: null, FolderId: null, Sha256: null);
