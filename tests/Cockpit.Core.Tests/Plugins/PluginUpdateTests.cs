@@ -28,9 +28,9 @@ public class PluginUpdateTests : IDisposable
         var installer = new PluginInstaller(pluginsRoot);
         var store = new PluginRegistrationStore(config);
         var bootstrap = new PluginBootstrap(pluginsRoot, config);
-        var v1 = await installer.InstallFromZipAsync(_Zip("1.0.0", "MZ-v1"), AbstractionsContract.Version);
-        Assert.False(v1.Staged);
-        await store.SaveAsync(Id, new PluginRegistration(Enabled: true, PinnedSha256: v1.Sha256!));
+        var initial = await installer.InstallFromZipAsync(_Zip("0.9.0", "MZ-v0"), AbstractionsContract.Version);
+        Assert.False(initial.Staged);
+        await store.SaveAsync(Id, new PluginRegistration(Enabled: true, PinnedSha256: initial.Sha256 ?? throw new InvalidOperationException()));
         var discovered = (await bootstrap.DiscoverAsync(AbstractionsContract.Version)).Single();
 
         var trackers = new TrackerProviderRegistry();
@@ -46,13 +46,43 @@ public class PluginUpdateTests : IDisposable
         }
 
         manager.LoadAndConfigure([discovered], new ServiceCollection(), Activate);
-        manager.Initialize((_, _) => Substitute.For<ICockpitHost>());
+        Assert.NotNull(manager.WouldRefuse(discovered));
         var changes = new List<int>();
-        trackers.Changed += (_, _) => changes.Add(trackers.Providers.Count);
         var admin = new PluginAdministration(
             bootstrap, store, installer, new PluginProvisioningService(Substitute.For<IPluginStoreClient>(), installer), Substitute.For<IPluginStoreClient>(),
             diagnostics, manager, trackers: trackers, startGrace: candidate => candidate.Manifest.Version == "5.0.0" ? TimeSpan.FromMilliseconds(300) : TimeSpan.FromSeconds(30));
         manager.StartUiPart = (candidate, _, _) => Task.FromResult<string?>(candidate.Manifest.Version == "3.0.0" ? "3.0.0 UI cannot start" : null);
+
+        var disabledBeforeStart = await admin.SetEnabledAsync(Id, false, discovered.Sha256);
+        Assert.True(disabledBeforeStart.RestartRequired);
+        Assert.False(instances[0].Disposed);
+        Assert.False((await store.LoadAllAsync())[Id].Enabled);
+        var enabledBeforeStart = await admin.SetEnabledAsync(Id, true, discovered.Sha256);
+        Assert.True(enabledBeforeStart.RestartRequired);
+        Assert.True((await store.LoadAllAsync())[Id].Enabled);
+
+        using var cancelledStartup = new CancellationTokenSource();
+        var waiting = manager.WaitForInitializationAsync(cancelledStartup.Token);
+        Assert.False(waiting.IsCompleted);
+        await cancelledStartup.CancelAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => waiting);
+
+        var updating = admin.InstallFromZipAsync(_Zip("1.0.0", "MZ-v1"));
+        Assert.False(updating.IsCompleted);
+        Assert.False(instances[0].Disposed);
+        Assert.Equal(initial.Sha256, await PluginClosureHash.OfInstalledFolderAsync(Path.Combine(pluginsRoot, Id)));
+        manager.Initialize((_, _) => Substitute.For<ICockpitHost>(), () =>
+        {
+            Assert.False(manager.WaitForInitializationAsync().IsCompleted);
+            Assert.NotNull(manager.WouldRefuse(discovered));
+            Assert.False(updating.IsCompleted);
+            Assert.False(instances[0].Disposed);
+        });
+        var v1 = await updating;
+        Assert.True(v1.Live?.IsLive);
+        Assert.Equal("1.0.0", Assert.Single(manager.Loaded).Manifest.Version);
+        Assert.True(instances[0].Disposed);
+        trackers.Changed += (_, _) => changes.Add(trackers.Providers.Count);
 
         var update = await admin.InstallFromZipAsync(_Zip("2.0.0", "MZ-v2"));
 
@@ -67,14 +97,14 @@ public class PluginUpdateTests : IDisposable
         Assert.Contains("Version 1.0.0 is running", update.Live.RestartReason);
         Assert.Equal(v1.Sha256, Assert.Single(manager.Loaded).Sha256);
         Assert.Equal((await store.LoadAllAsync())[Id].PinnedSha256, v1.Sha256);
-        Assert.Equal(1, manager.RetiredLoadContexts);
+        Assert.Equal(2, manager.RetiredLoadContexts);
 
         // The folder is the old version again, so a restart loads what runs now instead of waiting for approval of the failed one.
         Assert.Equal(v1.Sha256, await PluginClosureHash.OfInstalledFolderAsync(Path.Combine(pluginsRoot, Id)));
         Assert.Equal("MZ-v1", await File.ReadAllTextAsync(Path.Combine(pluginsRoot, Id, "Plugin.dll")));
         Assert.Equal(PluginLoadDecision.Load, (await bootstrap.DiscoverAsync(AbstractionsContract.Version)).Single().Decision);
-        Assert.Equal(["1.0.0", "2.0.0", "1.0.0"], instances.Select(probe => probe.Version));
-        Assert.Equal([true, true, false], instances.Select(probe => probe.Disposed));
+        Assert.Equal(["0.9.0", "1.0.0", "2.0.0", "1.0.0"], instances.Select(probe => probe.Version));
+        Assert.Equal([true, true, true, false], instances.Select(probe => probe.Disposed));
         Assert.True(instances[^1].Initialized);
 
         // The tracker was withdrawn and registered again inside the update; nobody saw it gone.

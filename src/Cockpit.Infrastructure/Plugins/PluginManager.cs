@@ -51,6 +51,7 @@ public sealed class PluginManager(
     private readonly object _lifecycleLock = new();
     private Func<DiscoveredPlugin, ICockpitPlugin?>? _activate;
     private Func<DiscoveredPlugin, ICockpitPlugin, ICockpitHost>? _hostFor;
+    private readonly TaskCompletionSource _initialized = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private bool _disposed;
     // AC-2024: a Dispose that hangs costs the plugin its cleanup, not the operator the Options screen.
     private static readonly TimeSpan _BackendDisposeGrace = TimeSpan.FromSeconds(10);
@@ -357,10 +358,23 @@ public sealed class PluginManager(
             .FirstOrDefault(name => string.Equals(name.Name, "Cockpit.Plugins.Abstractions", StringComparison.Ordinal))?
             .Version;
 
-    // Phase 2, after the container exists: give each loaded plugin the host `hostFor` built for it so
-    // it can register contribution points (a throwing plugin is logged and skipped). `hostFor` also gets the
-    // loaded `ICockpitPlugin` (AC-499), which MCP tool-call resolution scopes a fallback to.
-    public void Initialize(Func<DiscoveredPlugin, ICockpitPlugin, ICockpitHost> hostFor)
+    public async Task<bool> WaitForInitializationAsync(CancellationToken cancellationToken = default, bool allowBeforeStart = false)
+    {
+        lock (_lifecycleLock)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (SafeMode || (allowBeforeStart && _hostFor is null && !_initialized.Task.IsCompleted))
+            {
+                return false;
+            }
+        }
+
+        await _initialized.Task.WaitAsync(TimeSpan.FromSeconds(30), cancellationToken).ConfigureAwait(false);
+        return true;
+    }
+
+    // Live changes must wait for the frontend too, or they can miss UI activation and teardown.
+    public void Initialize(Func<DiscoveredPlugin, ICockpitPlugin, ICockpitHost> hostFor, Action? initializeFrontend = null)
     {
         IReadOnlyList<(DiscoveredPlugin Discovered, ICockpitPlugin? Plugin)> parts;
         lock (_lifecycleLock)
@@ -370,12 +384,23 @@ public sealed class PluginManager(
             parts = [.. _loaded];
         }
 
-        foreach (var (discovered, plugin) in parts)
+        try
         {
-            if (plugin is not null)
+            foreach (var (discovered, plugin) in parts)
             {
-                _InitializeOne(discovered, plugin, hostFor);
+                if (plugin is not null)
+                {
+                    _InitializeOne(discovered, plugin, hostFor);
+                }
             }
+
+            initializeFrontend?.Invoke();
+            _initialized.TrySetResult();
+        }
+        catch (Exception exception)
+        {
+            _initialized.TrySetException(exception);
+            throw;
         }
     }
 
@@ -443,6 +468,11 @@ public sealed class PluginManager(
     {
         lock (_lifecycleLock)
         {
+            if (_LifecycleRefusal() is { } unavailable)
+            {
+                return unavailable;
+            }
+
             if (_restartReasons.TryGetValue(discovered.FolderId, out var held) && held.Sha256 == discovered.Sha256)
             {
                 return new(PluginActivationStatus.NeedsRestart, held.Reason);
@@ -454,6 +484,11 @@ public sealed class PluginManager(
         }
     }
 
+    private PluginActivationResult? _LifecycleRefusal() =>
+        _disposed || SafeMode || !_initialized.Task.IsCompletedSuccessfully || _activate is null || _hostFor is null
+            ? new(PluginActivationStatus.NeedsRestart, "The plugin lifecycle is not available for live activation.")
+            : null;
+
     public PluginActivationResult ActivateOne(DiscoveredPlugin discovered)
     {
         var attempt = new object();
@@ -461,9 +496,9 @@ public sealed class PluginManager(
         Func<DiscoveredPlugin, ICockpitPlugin, ICockpitHost> hostFor;
         lock (_lifecycleLock)
         {
-            if (_disposed || SafeMode || _activate is null || _hostFor is null)
+            if (_LifecycleRefusal() is { } unavailable)
             {
-                return new(PluginActivationStatus.NeedsRestart, "The plugin lifecycle is not available for live activation.");
+                return unavailable;
             }
 
             if (_restartReasons.TryGetValue(discovered.FolderId, out var held) && held.Sha256 == discovered.Sha256)
@@ -491,8 +526,8 @@ public sealed class PluginManager(
 
             _activating.Add(discovered.FolderId);
             _attempts[discovered.FolderId] = attempt;
-            activate = _activate;
-            hostFor = _hostFor;
+            activate = _activate ?? throw new InvalidOperationException("The plugin activator is unavailable.");
+            hostFor = _hostFor ?? throw new InvalidOperationException("The plugin host factory is unavailable.");
         }
 
         ICockpitPlugin? plugin = null;
@@ -820,6 +855,7 @@ public sealed class PluginManager(
         lock (_lifecycleLock)
         {
             _disposed = true;
+            _initialized.TrySetCanceled();
             foreach (var (discovered, plugin) in LoadedParts)
             {
                 if (plugin is not null)

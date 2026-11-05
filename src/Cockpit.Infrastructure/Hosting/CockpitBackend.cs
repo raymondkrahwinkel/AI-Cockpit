@@ -233,7 +233,7 @@ public sealed class CockpitBackend
 
     // AC-1392: plugin phase 2's backend half — before the planners and the restore. Seeds the settings above if the
     // frontend has not, then every plugin's Initialize with the host `hostFor` builds, a windowless one by default.
-    public void InitializePlugins(Func<DiscoveredPlugin, ICockpitPlugin, ICockpitHost>? hostFor = null)
+    public void InitializePlugins(Func<DiscoveredPlugin, ICockpitPlugin, ICockpitHost>? hostFor = null, Action? initializeFrontend = null)
     {
         if (Services.GetService<PluginManager>() is not { } plugins)
         {
@@ -241,7 +241,7 @@ public sealed class CockpitBackend
         }
 
         SeedPluginSettings();
-        plugins.Initialize(hostFor ?? BackendHostFor());
+        plugins.Initialize(hostFor ?? BackendHostFor(), initializeFrontend);
         _pluginsInitialized = true;
     }
 

@@ -975,8 +975,6 @@ public partial class App : Application
             }
         }
 
-        backend.InitializePlugins((discovered, plugin) => HostFor(discovered, plugin.GetType()));
-
         // AC-1389: the UI parts, after every backend part has registered, so a UI part can rely on its backend's
         // registrations (a provider it adds a config view to) being there.
         var uiParts = Program.Services.GetRequiredService<PluginUiManager>();
@@ -995,7 +993,6 @@ public partial class App : Application
                 // a declared secret has to be honoured.
                 discovered.Manifest.SecretKeys ?? [],
                 pluginManager.RuntimeFor(discovered.FolderId));
-        uiParts.InitializeUi(PluginUiManager.ActivateUi, UiHostFor);
         // AC-2025: awaited by the activation, so a UI part that fails fails the update instead of reporting it done.
         pluginManager.StartUiPart = (discovered, plugin, isCurrent) => UiThreadCall.Uncapped(() =>
         {
@@ -1030,6 +1027,9 @@ public partial class App : Application
             Program.Services.GetRequiredService<HelpService>().Invalidate();
             cockpit.ForgetLivePlugin(discovered.FolderId);
         };
+        backend.InitializePlugins(
+            (discovered, plugin) => HostFor(discovered, plugin.GetType()),
+            () => uiParts.InitializeUi(PluginUiManager.ActivateUi, UiHostFor));
         cockpit.FollowRemoteFileWorkspaces(uiParts.RegisterRemoteFileWorkspaces);
 
         // The templates installed from a store (#69) join the ones the plugins ship, in the same registry: to the
