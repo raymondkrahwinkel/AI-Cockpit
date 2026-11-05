@@ -9,7 +9,8 @@ using Cockpit.Infrastructure.Workspaces;
 namespace Cockpit.Infrastructure.Hosting;
 
 // AC-2039: a crashed start, even a native crash (AC-2038), leaves `startup-attempt.json` for the next start to read. A
-// named plugin is turned off; two unnamed crashes in a row mean safe mode (AC-478). Removed once stable or on quit.
+// plugin is turned off only after two consecutive interrupted starts name it; two unnamed crashes in a row mean safe
+// mode (AC-478). Removed once stable or on quit.
 public sealed class StartupAttempt
 {
     public const string FileName = "startup-attempt.json";
@@ -49,15 +50,24 @@ public sealed class StartupAttempt
         try
         {
             var previous = _Read(path);
-            var disabled = previous is { Plugins.Count: > 0 } ? _Disable(previous.Plugins) : [];
+            var disabled = previous is null ? [] : _Disable(_RepeatedPlugins(previous));
 
             // A start that turned its cause off counts afresh; one that could not keeps counting toward safe mode.
             var attempts = previous is null || disabled.Count > 0 ? 1 : previous.Attempts + 1;
             if (previous is not null)
             {
-                logger.LogWarning(
-                    "The previous start did not finish ({Attempts} in a row); turned off: [{Disabled}].",
-                    previous.Attempts, string.Join(", ", disabled.Select(plugin => plugin.Id)));
+                if (disabled.Count > 0)
+                {
+                    logger.LogWarning(
+                        "The previous two starts did not finish while reopening the same plugin; turned off: [{Disabled}].",
+                        string.Join(", ", disabled.Select(plugin => plugin.Id)));
+                }
+                else
+                {
+                    logger.LogWarning(
+                        "The previous start did not finish ({Attempts} in a row); no plugin was turned off without a second matching start.",
+                        previous.Attempts);
+                }
             }
 
             var layout = new LayoutSettingsStore().LoadAsync().GetAwaiter().GetResult();
@@ -65,7 +75,7 @@ public sealed class StartupAttempt
             HashSet<string> restored = [.. new[] { layout.OpenDockPanelId, layout.SimpleOpenDockPanelId }.OfType<string>(),
                 .. layout.FloatingDockPanelIds ?? [], .. desks.Workspaces.Select(desk => desk.Type.Id)];
 
-            var marker = new Marker(attempts, []);
+            var marker = new Marker(attempts, [], previous?.Plugins ?? []);
             CockpitConfigPath.ReplaceAtomicallyPrivate(path, JsonSerializer.Serialize(marker));
             return new StartupAttempt(path, logger, marker, restored, disabled);
         }
@@ -156,7 +166,7 @@ public sealed class StartupAttempt
         {
             if (saved.TryGetValue(plugin.Id, out var registration) && registration.Enabled)
             {
-                registrations.SaveAsync(plugin.Id, registration with { Enabled = false }).GetAwaiter().GetResult();
+                registrations.SaveAsync(plugin.Id, registration with { Enabled = false, DisabledByStartupProtection = true }).GetAwaiter().GetResult();
                 disabled.Add(new DisabledPlugin(plugin.Id, plugin.Name, registration.PinnedSha256));
             }
         }
@@ -164,7 +174,21 @@ public sealed class StartupAttempt
         return disabled;
     }
 
-    private sealed record Marker(int Attempts, IReadOnlyList<NamedPlugin> Plugins);
+    // A plugin is evidence only when the immediately preceding two incomplete starts both named it. Old marker files
+    // have no PreviousPlugins and therefore never turn anything off on their own.
+    private static IReadOnlyList<NamedPlugin> _RepeatedPlugins(Marker marker)
+    {
+        var previous = marker.PreviousPlugins;
+        if (previous is not { Count: > 0 } || marker.Plugins.Count == 0)
+        {
+            return [];
+        }
+
+        var previousIds = previous.Select(plugin => plugin.Id).ToHashSet(StringComparer.Ordinal);
+        return [.. marker.Plugins.Where(plugin => previousIds.Contains(plugin.Id))];
+    }
+
+    private sealed record Marker(int Attempts, IReadOnlyList<NamedPlugin> Plugins, IReadOnlyList<NamedPlugin>? PreviousPlugins = null);
 
     private sealed record NamedPlugin(string Id, string Name);
 }

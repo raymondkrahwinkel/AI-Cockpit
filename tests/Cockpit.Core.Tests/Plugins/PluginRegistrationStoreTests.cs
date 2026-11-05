@@ -22,12 +22,12 @@ public class PluginRegistrationStoreTests : IDisposable
         var store = new PluginRegistrationStore(_configFilePath);
 
         await store.SaveAsync("github-issues", new PluginRegistration(Enabled: true, PinnedSha256: "abc123"));
-        await store.SaveAsync("weather", new PluginRegistration(Enabled: false, PinnedSha256: "def456"));
+        await store.SaveAsync("weather", new PluginRegistration(Enabled: false, PinnedSha256: "def456", DisabledByStartupProtection: true));
 
         var loaded = await store.LoadAllAsync();
         Assert.Equal(2, System.Linq.Enumerable.Count(loaded));
         Assert.Equal(new PluginRegistration(true, "abc123"), loaded["github-issues"]);
-        Assert.Equal(new PluginRegistration(false, "def456"), loaded["weather"]);
+        Assert.Equal(new PluginRegistration(false, "def456", DisabledByStartupProtection: true), loaded["weather"]);
     }
 
     public void Dispose()

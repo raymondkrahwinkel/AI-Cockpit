@@ -1410,14 +1410,14 @@ public partial class App : Application
         _ = attempt?.CompleteAfterAsync(StartupAttempt.StableAfter);
     }
 
-    // AC-2039: the last start crashed while it restored these plugins' panels or desks, so this one turned them off.
+    // AC-2109: the same plugin was being restored in two interrupted starts, so this one turned it off.
     private static void _SayWhatTheLastStartTurnedOff(IReadOnlyList<DisabledPlugin> disabled)
     {
         var names = string.Join(", ", disabled.Select(plugin => plugin.Name));
         var toasts = Program.Services.GetRequiredService<IToastService>();
         var administration = Program.Services.GetRequiredService<IPluginAdministration>();
         toasts.Show(
-            $"Cockpit stopped during its last start while it was opening {names}, so {(disabled.Count == 1 ? "it is" : "they are")} turned off for now.",
+            $"Cockpit stopped during two starts while it was opening {names}, so {(disabled.Count == 1 ? "it is" : "they are")} turned off for now.",
             ToastSeverity.Warning,
             [new ToastAction("Turn back on", () => _ = _TurnBackOnAsync(disabled, administration, toasts))],
             sticky: true,

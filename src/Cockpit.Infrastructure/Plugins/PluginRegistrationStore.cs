@@ -45,6 +45,7 @@ internal sealed class PluginRegistrationStore : IPluginRegistrationStore, ISingl
             var entry = file.Plugins.TryGetValue(folderId, out var existing) ? existing : new PluginRegistrationEntry();
             entry.Enabled = registration.Enabled;
             entry.PinnedSha256 = registration.PinnedSha256;
+            entry.DisabledByStartupProtection = registration.DisabledByStartupProtection;
             file.Plugins[folderId] = entry;
         }, cancellationToken);
 

@@ -15,7 +15,8 @@ public sealed partial class StorePluginRowViewModel(
     bool isEnabled = false,
     bool hasSettings = false,
     int hostAbstractionsMajor = AbstractionsContract.Version,
-    Version? hostVersion = null) : ObservableObject
+    Version? hostVersion = null,
+    bool disabledByStartupProtection = false) : ObservableObject
 {
     private Version EffectiveHostVersion => hostVersion ?? HostVersionInfo.Current;
     public PluginStoreEntry Entry => entry;
@@ -74,6 +75,13 @@ public sealed partial class StorePluginRowViewModel(
             if (installedVersion is null)
             {
                 return IncompatibilityReason ?? "Available";
+            }
+
+            if (!isEnabled)
+            {
+                return disabledByStartupProtection
+                    ? $"Disabled after startup protection — v{installedVersion}"
+                    : $"Disabled — v{installedVersion}";
             }
 
             if (!UpdateAvailable)
@@ -193,17 +201,19 @@ public sealed partial class StorePluginRowViewModel(
     // Whether the primary action button does anything — false once installed and up to date (a disabled badge instead) or when this host cannot take the action at all (AC-181): the store stays a catalogue that shows everything, but a button that would only fail here is disabled rather than clickable.
     public bool CanTakePrimaryAction => !IsIncompatible && (CanInstall || CanUpdate);
 
-    // At-a-glance install-state chip for the catalogue row: "Incompatible" (AC-181, only when nothing is installed — see `IsIncompatible`) takes priority, then "Update"/"Installed", or null when not installed and compatible (nothing shown).
-    public string? StateBadgeText => IsIncompatible ? "Incompatible" : !IsInstalled ? null : UpdateAvailable ? "Update" : "Installed";
+    // At-a-glance install-state chip for the catalogue row: "Incompatible" (AC-181, only when nothing is installed — see `IsIncompatible`) takes priority, then "Disabled"/"Update"/"Installed", or null when not installed and compatible (nothing shown).
+    public string? StateBadgeText => IsIncompatible ? "Incompatible" : !IsInstalled ? null : !isEnabled ? "Disabled" : UpdateAvailable ? "Update" : "Installed";
 
     // Whether to show the `StateBadgeText` chip — once installed, or whenever this host cannot install the plugin at all.
     public bool HasStateBadge => IsIncompatible || IsInstalled;
 
     // Theme brush key for the state chip: red when this host cannot install it at all, amber when a (compatible) update is available, green once up to date — resolved in the view by the status-brush converter.
-    public string StateBadgeBrushKey => IsIncompatible || UpdateUnavailableReason is not null ? "CockpitStatusErrorBrush" : CanUpdate ? "CockpitStatusWaitingBrush" : "CockpitStatusDoneBrush";
+    public string StateBadgeBrushKey => IsIncompatible || UpdateUnavailableReason is not null ? "CockpitStatusErrorBrush" : !isEnabled ? "CockpitTextFaintBrush" : CanUpdate ? "CockpitStatusWaitingBrush" : "CockpitStatusDoneBrush";
 
     // Hover text for the state chip — the reason this host cannot install it fresh, or null (an already-installed plugin's own status line, not this tooltip, explains an update it merely cannot take — see `StatusText`).
-    public string? StateBadgeTooltip => IsIncompatible ? IncompatibilityReason : UpdateUnavailableReason;
+    public string? StateBadgeTooltip => IsIncompatible ? IncompatibilityReason : !isEnabled && IsInstalled
+        ? disabledByStartupProtection ? "Cockpit turned this plugin off after two interrupted starts while opening it." : "This plugin is disabled."
+        : UpdateUnavailableReason;
 
     // AC-181: only an uninstalled plugin is incompatible when the shared install/load gate rejects its latest entry.
     // A running plugin, or one with no declared constraint, is not mislabeled; CanUpdate/StatusText explain updates.

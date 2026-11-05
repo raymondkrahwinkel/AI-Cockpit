@@ -22,6 +22,7 @@ internal static class SettingsCarrierWhitelist
         "Profiles[].Delegation.AllowedAsTarget", "Profiles[].Delegation.MaxConcurrent", "Profiles[].Delegation.PermissionCeiling",
         "Profiles[].Delegation.MayDelegateFurther", "Profiles[].Delegation.TimeoutMinutes", "Profiles[].Delegation.AllowedTaskTypes",
         "Profiles[].Delegation.Purpose", "Profiles[].Delegation.Tags", "Profiles[].Delegation.AllowedTools",
+        // Plugins.*.DisabledByStartupProtection deliberately stays local: it describes a recovery decision for this machine's crash history.
         "Plugins.*.Enabled", "Plugins.*.MenuOrder", "Plugins.*.HiddenInMenu", "Plugins.*.PinnedToSidebar",
         "Notifications.LocalEnabled", "Notifications.NotifyOnSessionFinished", "Notifications.NotifyOnSessionIdle",
         "Notifications.NotificationSoundsEnabled", "Notifications.NotificationSoundOnSessionFinished",
