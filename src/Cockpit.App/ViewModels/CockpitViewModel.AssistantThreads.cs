@@ -31,11 +31,11 @@ public partial class CockpitViewModel
     // The Simple stand has no dock tab and no sidebar chip, so its rail row carries the count; a click on it picks the
     // assistant there, in its own column, and opens Questions for you rather than moving the conversation anywhere.
     [RelayCommand]
-    private void OpenAssistantQuestions(SessionPanelViewModel? assistant)
+    private async Task OpenAssistantQuestionsAsync(SessionPanelViewModel? assistant)
     {
         if (assistant is not null)
         {
-            SelectSimpleSession(assistant);
+            await SelectSimpleSessionAsync(assistant);
         }
 
         AssistantChat?.OpenQuestionsCommand.Execute(null);

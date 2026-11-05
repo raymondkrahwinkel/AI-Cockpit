@@ -468,7 +468,7 @@ internal sealed partial class CockpitUiHost(
         return Task.CompletedTask;
     }
 
-    public Task<bool> FocusSessionAsync(string paneId) => UiThreadCall.RunAsync(() =>
+    public Task<bool> FocusSessionAsync(string paneId) => UiThreadCall.RunAsync(async () =>
     {
         var cockpit = _Service<CockpitViewModel>();
         var session = cockpit?.Sessions.FirstOrDefault(candidate => string.Equals(candidate.PaneId, paneId, StringComparison.Ordinal));
@@ -479,7 +479,8 @@ internal sealed partial class CockpitUiHost(
 
         if (cockpit.SimpleView)
         {
-            cockpit.SelectSimpleSessionCommand.Execute(session);
+            await cockpit.SelectSimpleSessionCommand.ExecuteAsync(session);
+            return cockpit.SimplePage == SimplePage.Conversation && ReferenceEquals(cockpit.SimpleSelectedSession, session);
         }
         else
         {

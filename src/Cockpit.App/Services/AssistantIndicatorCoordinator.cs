@@ -546,9 +546,9 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         // AC-1303: in the Simple stand the dock is a role and not a setting, so this button means "give the main
         // column back" rather than "pop out into a window". It lands in the same state as picking the assistant's
         // own row in the rail, which is the other way back — one state, reached two ways (criterion 4(a)).
-        if (_cockpit.SimpleStandDocksTheAssistant)
+        if (_cockpit.SimpleStandDocksTheAssistant && _cockpit.AssistantRootSession is { } assistant)
         {
-            _cockpit.SimpleSelectedSession = _cockpit.AssistantRootSession;
+            await _cockpit.SelectSimpleSessionCommand.ExecuteAsync(assistant);
             return;
         }
 
