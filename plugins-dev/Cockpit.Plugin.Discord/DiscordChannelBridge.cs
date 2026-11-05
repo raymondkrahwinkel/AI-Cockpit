@@ -31,6 +31,8 @@ internal sealed class DiscordChannelBridge : IDisposable
     private readonly object _gate = new();
 
     private readonly Dictionary<Guid, ulong> _rowMessageIds = new();
+    private Task _relayTail = Task.CompletedTask;
+    private readonly Dictionary<Guid, AssistantChannelRow> _finalAnswerRows = new();
     private readonly Dictionary<Guid, ulong> _promptMessageIds = new();
 
     // FIFO order of prompts currently relayed to this channel, oldest first — what the "type JA/NEE" fallback
@@ -313,12 +315,67 @@ internal sealed class DiscordChannelBridge : IDisposable
 
     private async void _OnRowChanged(object? sender, AssistantChannelRow row)
     {
-        if (_disposed || !DiscordVerbosityFilter.ShouldRelay(row.Kind, _verbosity()))
+        if (_disposed)
         {
             return;
         }
 
-        var text = DiscordVerbosityFilter.Render(row, _verbosity());
+        var verbosity = _verbosity();
+        if (verbosity == AssistantChannelVerbosity.FinalAnswerOnly)
+        {
+            if (row.Kind == AssistantChannelRowKind.AssistantText)
+            {
+                lock (_gate)
+                {
+                    _finalAnswerRows[row.Id] = row;
+                }
+
+                return;
+            }
+
+            _FlushFinalAnswerRows();
+            if (row.Kind == AssistantChannelRowKind.TurnCompleted)
+            {
+                return;
+            }
+        }
+
+        if (!DiscordVerbosityFilter.ShouldRelay(row.Kind, verbosity))
+        {
+            return;
+        }
+
+        _QueueRowRelay(row, verbosity);
+    }
+
+    private void _FlushFinalAnswerRows()
+    {
+        AssistantChannelRow[] rows;
+        lock (_gate)
+        {
+            rows = [.. _finalAnswerRows.Values];
+            _finalAnswerRows.Clear();
+        }
+
+        foreach (var row in rows)
+        {
+            _QueueRowRelay(row, AssistantChannelVerbosity.FinalAnswerOnly);
+        }
+    }
+
+    private void _QueueRowRelay(AssistantChannelRow row, AssistantChannelVerbosity verbosity)
+    {
+        lock (_gate)
+        {
+            _relayTail = _RelayRowAsync(row, verbosity, _relayTail);
+        }
+    }
+
+    private async Task _RelayRowAsync(AssistantChannelRow row, AssistantChannelVerbosity verbosity, Task previous)
+    {
+        await previous.ConfigureAwait(false);
+
+        var text = DiscordVerbosityFilter.Render(row, verbosity);
 
         ulong? existing;
         lock (_gate)
