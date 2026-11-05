@@ -187,6 +187,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly IAudioDeviceProvider? _audioDeviceProvider;
     private readonly IAudioCaptureService? _audioCapture;
 
+    [ObservableProperty]
+    private bool _isAudioAvailable = true;
+
+    [ObservableProperty]
+    private string _audioUnavailableMessage = string.Empty;
+
     // Only for the voice preview in Options (PreviewVoiceCommand). Sessions reach the queue through their own
     // panel; this holds it because Options has no session to borrow one from.
     private readonly IVoicePlaybackQueue? _voicePlaybackQueue;
@@ -3513,6 +3519,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IPluginDialogHost? pluginDialogHost = null,
         IPluginDiagnostics? pluginDiagnostics = null,
         IAudioDeviceProvider? audioDeviceProvider = null,
+        IAudioAvailability? audioAvailability = null,
         IAppRestartService? appRestartService = null,
         IShortcutSettingsStore? shortcutSettingsStore = null,
         DelegatedTasksViewModel? delegatedTasks = null,
@@ -3796,6 +3803,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _ = LoadCloneSettingsAsync();
         _audioDeviceProvider = audioDeviceProvider;
         _audioCapture = audioCapture;
+        IsAudioAvailable = audioAvailability?.IsAvailable ?? true;
+        AudioUnavailableMessage = IsAudioAvailable ? string.Empty : "Audio is unavailable. See Health for details.";
         _voicePlaybackQueue = voicePlaybackQueue;
         if (_voicePlaybackQueue is not null)
         {
@@ -6377,7 +6386,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [RelayCommand]
     private async Task PlayAudioAsync()
     {
-        if (_playbackService is null || _recordedPcm.Count == 0)
+        if (!IsAudioAvailable || _playbackService is null || _recordedPcm.Count == 0)
         {
             AudioStatus = "Nothing recorded yet.";
             return;

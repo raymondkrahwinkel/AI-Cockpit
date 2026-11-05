@@ -178,6 +178,7 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     private void _Refresh()
     {
         Indicator.LeadershipLabel = _cockpit.AssistantLeadershipLabel;
+        Indicator.IsAudioAvailable = _cockpit.IsAudioAvailable;
         Indicator.Activity = _ResolveActivity();
         Indicator.UnavailableReason = _assistant.UnavailableReason;
         Indicator.PreparationStatus = _assistant.PreparationStatus;
@@ -563,7 +564,7 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     // one-line guard keeps the microphone from opening on a filter that doesn't exist yet.
     private async Task _ApplyListeningModeAsync(AssistantListeningMode mode)
     {
-        if (mode == AssistantListeningMode.AlwaysOnWithWakeWord)
+        if (!_cockpit.IsAudioAvailable || mode == AssistantListeningMode.AlwaysOnWithWakeWord)
         {
             return;
         }

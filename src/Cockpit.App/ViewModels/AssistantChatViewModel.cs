@@ -162,6 +162,10 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     // cards — the same source as the panels stand's overview (AC-1304 criterion 1(b)), reached and not copied.
     public CockpitViewModel? Cockpit => _cockpit;
 
+    public bool IsAudioAvailable => _cockpit?.IsAudioAvailable ?? true;
+
+    public string AudioControlTooltip => IsAudioAvailable ? "Audio controls" : _cockpit!.AudioUnavailableMessage;
+
     // The assistant's own session, bound straight through to the existing SDK transcript view.
     public SessionViewModel? Session => _observedSession;
 
@@ -268,6 +272,12 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
             OnPropertyChanged(nameof(IsUnavailable));
             OnPropertyChanged(nameof(UnavailableReason));
             OnPropertyChanged(nameof(IsControlled));
+        }
+
+        if (e.PropertyName is null or nameof(CockpitViewModel.IsAudioAvailable) or nameof(CockpitViewModel.AudioUnavailableMessage))
+        {
+            OnPropertyChanged(nameof(IsAudioAvailable));
+            OnPropertyChanged(nameof(AudioControlTooltip));
         }
     }
 

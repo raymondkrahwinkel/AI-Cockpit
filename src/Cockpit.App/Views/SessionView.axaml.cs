@@ -393,7 +393,7 @@ public partial class SessionView : UserControl
     // No-ops when global push-to-talk is active (PushToTalkKeyGate) to avoid firing twice.
     private void _OnPushToTalkKeyDown(object? sender, KeyEventArgs e)
     {
-        if (DataContext is SessionViewModel { IsReadingChild: false } vm
+        if (DataContext is SessionViewModel { IsReadingChild: false, IsAudioAvailable: true } vm
             && PushToTalkKeyGate.ShouldHandleLocally(e.Key, vm.PushToTalkKeyName, vm.GlobalPushToTalkEnabled)
             && vm.BeginVoiceHold())
         {
