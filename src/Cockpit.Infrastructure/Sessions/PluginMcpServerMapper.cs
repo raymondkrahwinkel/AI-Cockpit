@@ -1,4 +1,5 @@
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Plugins.Abstractions.Sessions;
 
@@ -6,6 +7,10 @@ namespace Cockpit.Infrastructure.Sessions;
 
 internal static class PluginMcpServerMapper
 {
+    internal static McpToolNames? GatewayToolNames(IReadOnlyList<PluginMcpServer> servers, string? paneId, SessionMcpMounts? mounts) =>
+        paneId is not null && servers.Any(server => server.CockpitHosted && server.Name == "cockpit")
+            ? mounts?.Set(paneId)?.ToolNames : null;
+
     internal static PluginMcpServer? ToPluginMcpServer(McpServerConfig server, string? oauthAccessToken, string? oauthProxyUrl, string? agentName = null) => server.Transport switch
     {
         McpTransport.Http when oauthProxyUrl is { Length: > 0 } => new PluginMcpServer

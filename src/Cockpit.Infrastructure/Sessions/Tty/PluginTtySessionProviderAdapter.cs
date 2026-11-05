@@ -56,8 +56,8 @@ internal sealed class PluginTtySessionProviderAdapter(
             context.BaseEnvironment)
         {
             McpServers = mcpServers,
-            TranslateMcpPermissionRule = mcpServers.Any(server => server.Name == "cockpit") && paneId is not null
-                && mcpMounts?.Set(paneId) is { } set ? set.ToolNames.TranslateRule : null,
+            TranslateMcpPermissionRule = PluginMcpServerMapper.GatewayToolNames(mcpServers, paneId, mcpMounts) is { } names
+                ? names.TranslateRule : null,
             DelegationSystemPrompt = canDelegate ? DelegationSystemPrompt.Default : null,
             // No sink or no pane id means nowhere to report to, so the provider gets no callback at all — a
             // provider that always null-checks before calling it (the documented contract) stays correct either way.

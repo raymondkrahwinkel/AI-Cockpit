@@ -134,8 +134,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
             ? await _ResolveMcpServersAsync(selection, projectId, workingDirectory, cancellationToken).ConfigureAwait(false)
             : [];
 
-        _gatewayToolNames = mcpServers.Any(server => server.Name == "cockpit") && paneId is not null
-            ? mcpMounts?.Set(paneId)?.ToolNames : null;
+        _gatewayToolNames = PluginMcpServerMapper.GatewayToolNames(mcpServers, paneId, mcpMounts);
 
         // AC-927: what this session actually mounted, so the header names those servers rather than the checklist
         // it was launched from — which never holds the always-mounted and auto-mounted ones it also just got.
@@ -727,7 +726,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
     {
         await foreach (var incoming in _PluginEventsAsync(cancellationToken).ConfigureAwait(false))
         {
-            var names = _paneId is null ? null : mcpMounts?.Set(_paneId)?.ToolNames;
+            var names = _gatewayToolNames;
             var pluginEvent = incoming switch
             {
                 PluginPermissionRequested request => request with { ToolName = names?.ToCanonical(request.ToolName) ?? request.ToolName },

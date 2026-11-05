@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Cockpit.Plugins.Abstractions.Sessions;
 
@@ -26,16 +27,24 @@ internal static class ClaudeMcpPermissionRules
                 {
                     continue;
                 }
-                var settings = JsonNode.Parse(File.ReadAllText(path));
+                JsonObject? settings;
+                try
+                {
+                    settings = JsonNode.Parse(File.ReadAllText(path)) as JsonObject;
+                }
+                catch (Exception exception) when (exception is JsonException or IOException or UnauthorizedAccessException)
+                {
+                    continue;
+                }
                 foreach (var (kind, rules) in permissions)
                 {
-                    if (settings?["permissions"]?[kind] is not JsonArray saved)
+                    if (settings?["permissions"] is not JsonObject savedPermissions || savedPermissions[kind] is not JsonArray saved)
                     {
                         continue;
                     }
                     foreach (var entry in saved)
                     {
-                        if (entry?.GetValue<string>() is { } rule && rule.StartsWith("mcp__", StringComparison.Ordinal))
+                        if (entry is JsonValue value && value.TryGetValue<string>(out var rule) && rule.StartsWith("mcp__", StringComparison.Ordinal))
                         {
                             rules.UnionWith(translate(rule));
                         }
