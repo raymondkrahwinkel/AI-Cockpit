@@ -27,6 +27,7 @@ internal sealed class PluginAdministration(
     IDelegationService? delegation = null,
     ISessionProfileStore? profiles = null,
     ITrackerProviderRegistry? trackers = null,
+    PluginChannelHub? channels = null,
     Func<DiscoveredPlugin, TimeSpan>? startGrace = null) : IPluginAdministration
 {
     public async Task<IReadOnlyList<InstalledPlugin>> GetInstalledAsync(CancellationToken cancellationToken = default)
@@ -129,6 +130,11 @@ internal sealed class PluginAdministration(
         }
 
         await registrations.SaveAsync(folderId, new PluginRegistration(Enabled: prior.Enabled, PinnedSha256: sha256), CancellationToken.None).ConfigureAwait(false);
+        if (inPlace)
+        {
+            bootstrap.CompleteInPlaceUpdate(folderId);
+        }
+
         if (!inPlace || manager is null)
         {
             return null;
@@ -173,6 +179,7 @@ internal sealed class PluginAdministration(
             return await _RollBackAsync(manager, running, refused.Reason, stopped: false, restartTo: refused.Status == PluginActivationStatus.NeedsHostRestart ? next : null, failed: next).ConfigureAwait(false);
         }
 
+        using var transition = channels?.BeginTransition(running.Manifest.Id);
         if (await _LeaveAsync(manager, folderId).ConfigureAwait(false) is { } stuck)
         {
             return stuck;
