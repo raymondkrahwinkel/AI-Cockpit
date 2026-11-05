@@ -34,6 +34,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 - The assistant can attach files from its scratch folder and managed worktrees to replies, with image previews and file downloads in chat.
 - Discord replies now carry files and images on the last message part, and display Markdown tables as aligned code blocks.
+- The "live notes · Depot" line in the status bar is now a button: it opens a list of the live notes you may open, with the project and who is in them, and one click opens the note and joins it.
 - The assistant can see the active tool and elapsed state for each SDK session it lists.
 
 ### Fixed

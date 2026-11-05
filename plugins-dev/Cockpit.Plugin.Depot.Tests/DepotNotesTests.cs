@@ -126,6 +126,23 @@ public class DepotNotesTests
         Assert.Single(rig.Invokes, call => call.Action == "note-live-close");
         _ = rig.Host.Received(3).OpenFileWorkspaceAsync("depot.markdown", Arg.Is<FileWorkspaceOpenOptions>(options =>
             options.InstanceKey == "depot:a:krahwinkel-it/depot:Meetings/2026-10-19 Sprint review.md" && options.Edit));
+
+        // The status bar's live-notes popup: one click on a row closes it, then opens the note's tab and starts the session.
+        rig.Host.OpenFileWorkspaceAsync("depot.markdown", Arg.Any<FileWorkspaceOpenOptions>()).Returns(Task.CompletedTask);
+        var closed = 0;
+        var popup = new UiAsm::Cockpit.Plugin.Depot.UI.DepotLiveNotesPopup(rig.Host, notes, () => [new UiConnection(second, "Home", "https://home.example.com")], () => closed++);
+        Avalonia.Threading.AvaloniaSynchronizationContext.InstallIfNeeded();
+        new Avalonia.Controls.Window { Content = popup }.Show();
+        var row = Assert.Single(Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(popup).OfType<Avalonia.Controls.Button>(), button => button.Classes.Contains("Ghost"));
+        typeof(Avalonia.Controls.Button).GetMethod("OnClick", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(row, null);
+        for (var wait = 0; wait < 100 && rig.Host.ReceivedCalls().Count(call => call.GetMethodInfo().Name == "OpenFileWorkspaceAsync") < 4; wait++)
+        {
+            await Task.Delay(20);
+        }
+
+        Assert.Equal(1, closed);
+        _ = rig.Host.Received(4).OpenFileWorkspaceAsync("depot.markdown", Arg.Is<FileWorkspaceOpenOptions>(options => options.Edit));
+        Assert.Equal(3, rig.Invokes.Count(call => call.Action == "note-live-open"));
     }
 
     private static DepotBrowserModelTests.Rig _SceneRig()

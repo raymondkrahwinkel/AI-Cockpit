@@ -49,6 +49,25 @@ internal class DepotPanelScene : DispatchProxy
         return panel;
     }
 
+    // The status-bar popup of "N live notes · Depot", on the same fixture channel.
+    public static Control LiveNotesPopup(bool many)
+    {
+        var host = Create<ICockpitUiHost, DepotPanelScene>();
+        if ((object)host is not DepotPanelScene proxy)
+        {
+            throw new InvalidOperationException("The scene host proxy was not created.");
+        }
+
+        proxy._channel = new SceneChannel { ManyNotes = many };
+        var model = new DepotNotesModel(host, new DepotInboxModel(host));
+        if (!model.ListAsync("work").IsCompletedSuccessfully)
+        {
+            throw new InvalidOperationException("The live-notes scene's fixture channel must answer synchronously.");
+        }
+
+        return new Border { Width = 368, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left, Child = new DepotLiveNotesPopup(host, model, () => [], () => { }) };
+    }
+
     protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
     {
         var type = targetMethod?.ReturnType;
@@ -98,6 +117,8 @@ internal class DepotPanelScene : DispatchProxy
 
     private sealed class SceneChannel : IPluginUiChannel
     {
+        public bool ManyNotes { get; init; }
+
         public Task<JsonElement> InvokeAsync(string action, JsonElement payload, CancellationToken cancellationToken = default) =>
             Task.FromResult(JsonSerializer.SerializeToElement<object?>(_Answer(action, payload), DepotChannel.Json));
 
@@ -106,7 +127,7 @@ internal class DepotPanelScene : DispatchProxy
         private static string? _Text(JsonElement payload, string name) =>
             payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty(name, out var value) ? value.GetString() : null;
 
-        private static object? _Answer(string action, JsonElement payload) => action switch
+        private object? _Answer(string action, JsonElement payload) => action switch
         {
             DepotBrowserChannel.Projects => DepotBrowserAnswer<IReadOnlyList<DepotBrowserProject>>.Success(
                 _Text(payload, "connectionId") == "home" ? [_HomeProject] : [_Project, _OtherProject]),
@@ -130,6 +151,11 @@ internal class DepotPanelScene : DispatchProxy
             [
                 new("eve-workbench/eve-workbench", "eve-workbench/eve-workbench", "Meetings/Weekly sync.md", "Weekly sync", "https://depot.krahwinkel-it.nl/n/7Kq3xP", true,
                     [new("Sanne"), new("Joris")]),
+                .. ManyNotes ? (IEnumerable<DepotLiveNote>)
+                [
+                    new("krahwinkel-it/cockpit", "Cockpit", "Plan/AC-1708-dock-panels.md", "Dock panels", "https://depot.krahwinkel-it.nl/n/Zt9mQa", true, [new("Raymond")]),
+                    new("homelab/runbooks", "Homelab runbooks", "Runbooks/restore-nas.md", "Restore the NAS", "https://depot.krahwinkel-it.nl/n/Lp4wRb", false, []),
+                ] : [],
             ]),
             DepotInboxChannel.List => new DepotInboxPage(new("work", DepotInboxState.Ok, 1, new Dictionary<string, int>()),
             [
