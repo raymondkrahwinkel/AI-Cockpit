@@ -1260,7 +1260,16 @@ public class PluginBackendHost(
         // DetectRepositoryAsync returns null both for a true non-repository and for a probe failure on a real
         // one (dubious ownership, permission/lock error) — so "not a repository" is decided from the
         // filesystem (no .git), not from the probe failing, to avoid dropping isolation on a real checkout.
-        var confirmedRepository = await worktrees.DetectRepositoryAsync(directory, cancellationToken).ConfigureAwait(false) is not null;
+        var confirmedRepository = false;
+        try
+        {
+            confirmedRepository = await worktrees.DetectRepositoryAsync(directory, cancellationToken).ConfigureAwait(false) is not null;
+        }
+        catch (Cockpit.Core.Worktrees.GitUnavailableException)
+        {
+            // AC-2114: no git means unconfirmed, the same as a failed probe.
+        }
+
         return GitDirectoryStatusResolver.Resolve(directory, confirmedRepository);
     }
 
