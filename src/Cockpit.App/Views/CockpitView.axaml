@@ -2770,9 +2770,20 @@
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
                             <DataTemplate DataType="plugins:PluginStatusText">
-                                <TextBlock Text="{Binding Text}" FontSize="11" Margin="0,0,12,0"
-                                           Foreground="{Binding Tone, Converter={x:Static conv:BadgeToneBrushConverter.Instance}}"
-                                           VerticalAlignment="Center"/>
+                                <Panel>
+                                    <TextBlock Text="{Binding Text}" FontSize="11" Margin="0,0,12,0"
+                                               IsVisible="{Binding Popup, Converter={x:Static ObjectConverters.IsNull}}"
+                                               Foreground="{Binding Tone, Converter={x:Static conv:BadgeToneBrushConverter.Instance}}"
+                                               VerticalAlignment="Center"/>
+                                    <!-- A plugin that offered a popup (SetStatusText with createPopup): a button like the other meters. -->
+                                    <controls:PluginStatusTextButton Classes="statusMeter" Padding="8,2" Margin="0,0,8,0"
+                                                                     IsVisible="{Binding Popup, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                                                     AutomationProperties.Name="{Binding Text}">
+                                        <TextBlock Text="{Binding Text}" FontSize="11"
+                                                   Foreground="{Binding Tone, Converter={x:Static conv:BadgeToneBrushConverter.Instance}}"
+                                                   VerticalAlignment="Center"/>
+                                    </controls:PluginStatusTextButton>
+                                </Panel>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>

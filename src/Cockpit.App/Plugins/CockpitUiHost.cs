@@ -169,6 +169,9 @@ internal sealed partial class CockpitUiHost(
     public void SetStatusText(string? text, SideMenuButtonBadgeTone tone) =>
         _Service<CockpitViewModel>()?.SetPluginStatusText(pluginId, text, tone);
 
+    public void SetStatusText(string? text, SideMenuButtonBadgeTone tone, Func<Action, Control>? createPopup) =>
+        _Service<CockpitViewModel>()?.SetPluginStatusText(pluginId, text, tone, createPopup);
+
     // Only this plugin's own panels: a plugin cannot pull another's panel into view. Floating stays floating.
     public async Task OpenDockPanelAsync(string panelId)
     {

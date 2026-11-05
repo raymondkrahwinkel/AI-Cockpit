@@ -29,7 +29,7 @@ internal static partial class Screenshotter
         {
             cockpit.Worktrees.Count = 1;
             cockpit.TestRuns.Apply(_SampleRuns());
-            cockpit.SetPluginStatusText("depot", "● 1 live note · Depot", SideMenuButtonBadgeTone.Success);
+            cockpit.SetPluginStatusText("depot", "● 1 live note · Depot", SideMenuButtonBadgeTone.Success, _ => new TextBlock());
         }
 
         return new MainWindow { DataContext = cockpit };
