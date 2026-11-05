@@ -6,6 +6,7 @@ using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Infrastructure.Sessions;
 
@@ -44,6 +45,11 @@ internal sealed class SessionRuntime : ISessionRuntime
     private readonly Lock _visionLock = new();
     private ImageInputFact? _serviceVision;
     private ImageInputFact? _publicVision;
+    private readonly ILogger? _logger;
+    private readonly TimeProvider _clock;
+    private ITimer? _visionTimer;
+    private Task _visionRead = Task.CompletedTask;
+    private TimeSpan _visionRetryDelay = TimeSpan.FromSeconds(30);
     private volatile bool _readOnlyTurn;
 
     public bool SupportsReadOnlyTurns => _driver?.SupportsReadOnlyTurns == true;
@@ -100,7 +106,9 @@ internal sealed class SessionRuntime : ISessionRuntime
         ISessionProcessAnchor? processAnchor = null,
         IOrgPolicy? orgPolicy = null,
         IModelImageInput? imageInput = null,
-        ISessionProfileStore? profiles = null)
+        ISessionProfileStore? profiles = null,
+        ILogger? logger = null,
+        TimeProvider? timeProvider = null)
     {
         _driverFactory = driverFactory;
         Profile = profile;
@@ -109,6 +117,8 @@ internal sealed class SessionRuntime : ISessionRuntime
         _orgPolicy = orgPolicy;
         _imageInput = imageInput;
         _profiles = profiles;
+        _logger = logger;
+        _clock = timeProvider ?? TimeProvider.System;
         if (_profiles is not null)
         {
             _profiles.Saved += _ProfileSavedAsync;
@@ -126,8 +136,7 @@ internal sealed class SessionRuntime : ISessionRuntime
             lock (_visionLock)
             {
                 return _driver?.Capabilities is { } transport
-                    ? transport with { SupportsVision = ImageInput.Resolve(Profile?.ImageInputMode ?? ImageInputMode.Auto, transport.SupportsVision,
-                        _serviceVision?.At(DateTimeOffset.UtcNow), _publicVision?.At(DateTimeOffset.UtcNow)).SupportsVision } : null;
+                    ? transport with { SupportsVision = _VisionDecision(transport).SupportsVision } : null;
             }
         }
     }
@@ -142,27 +151,66 @@ internal sealed class SessionRuntime : ISessionRuntime
         return Task.CompletedTask;
     }
 
-    private void _RefreshVision(string? model)
+    private ImageInputDecision _VisionDecision(SessionCapabilities transport)
+    {
+        if (transport.SupportsVision && Profile is { ImageInputMode: ImageInputMode.Auto, ProviderConfig: PluginProviderConfig } profile
+            && _serviceVision?.SupportsImageInput is null && _publicVision?.SupportsImageInput is null && _imageInput?.HasTransport(profile) == true)
+        {
+            return new(true, "plugin SupportsVision");
+        }
+        return ImageInput.Resolve(Profile?.ImageInputMode ?? ImageInputMode.Auto, transport.SupportsVision,
+            _serviceVision?.SupportsImageInput, _publicVision?.SupportsImageInput);
+    }
+
+    private void _RefreshVision(string? model, bool confirmed = false)
     {
         int revision;
         lock (_visionLock)
         {
+            if (confirmed && model == _model)
+            {
+                return;
+            }
+            if (!confirmed && model != _model)
+            {
+                _serviceVision = null;
+                _publicVision = null;
+            }
             revision = ++_visionRevision;
             _model = model;
-            _serviceVision = null;
-            _publicVision = null;
+            _visionTimer?.Dispose();
+            _visionTimer = null;
         }
         _PublishVision();
         if (_imageInput is not null && Profile is { ImageInputMode: ImageInputMode.Auto } profile
             && _lifetime is { IsCancellationRequested: false } lifetime)
         {
             var cancellationToken = lifetime.Token;
-            _ = Task.Run(() => _ReadVisionAsync(profile, model, revision, cancellationToken));
+            _StartVisionRead(profile, model, revision, cancellationToken);
+        }
+    }
+
+    private void _StartVisionRead(SessionProfile profile, string? model, int revision, CancellationToken cancellationToken)
+    {
+        lock (_visionLock)
+        {
+            if (revision == _visionRevision && !cancellationToken.IsCancellationRequested)
+            {
+                _visionRead = Task.Run(() => _ReadVisionAsync(profile, model, revision, cancellationToken));
+            }
         }
     }
 
     private async Task _ReadVisionAsync(SessionProfile profile, string? model, int revision, CancellationToken cancellationToken)
     {
+        var receivedFact = false;
+        lock (_visionLock)
+        {
+            if (revision != _visionRevision || cancellationToken.IsCancellationRequested || Profile?.ImageInputMode != ImageInputMode.Auto)
+            {
+                return;
+            }
+        }
         try
         {
             if (_imageInput is null)
@@ -176,10 +224,10 @@ internal sealed class SessionRuntime : ISessionRuntime
                 {
                     return;
                 }
-                _serviceVision = facts.Service;
-                _publicVision = facts.OpenRouter;
+                _serviceVision = facts.Service?.SupportsImageInput is not null ? facts.Service : _serviceVision;
+                _publicVision = facts.OpenRouter?.SupportsImageInput is not null ? facts.OpenRouter : _publicVision;
+                receivedFact = facts.Service?.At(_clock.GetUtcNow()) is not null || facts.OpenRouter?.At(_clock.GetUtcNow()) is not null;
             }
-            _PublishVision();
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -187,13 +235,48 @@ internal sealed class SessionRuntime : ISessionRuntime
         }
         catch (Exception)
         {
-            // A failed capability lookup leaves images unknown without interrupting text chat.
+            // Keep the last known fact while a source is unavailable.
+        }
+        _PublishVision();
+        lock (_visionLock)
+        {
+            if (revision != _visionRevision || cancellationToken.IsCancellationRequested || Profile?.ImageInputMode != ImageInputMode.Auto)
+            {
+                return;
+            }
+            if (receivedFact)
+            {
+                _visionRetryDelay = TimeSpan.FromSeconds(30);
+            }
+            var delay = new[] { _serviceVision, _publicVision }.OfType<ImageInputFact>()
+                .Select(fact => fact.TimeToLive - (_clock.GetUtcNow() - fact.AsOf))
+                .Select(remaining => remaining > TimeSpan.Zero ? remaining : _visionRetryDelay)
+                .DefaultIfEmpty(_visionRetryDelay).Min();
+            if (!receivedFact)
+            {
+                _visionRetryDelay = TimeSpan.FromSeconds(Math.Min(_visionRetryDelay.TotalSeconds * 2, TimeSpan.FromMinutes(15).TotalSeconds));
+            }
+            _visionTimer?.Dispose();
+            _visionTimer = _clock.CreateTimer(state => _StartVisionRead(profile, model, revision, cancellationToken),
+                null, delay, Timeout.InfiniteTimeSpan);
         }
     }
 
     private void _PublishVision()
     {
-        if (Capabilities is { } capabilities)
+        SessionCapabilities? capabilities;
+        lock (_visionLock)
+        {
+            capabilities = Capabilities;
+            if (_driver?.Capabilities is { } transport)
+            {
+                var decision = _VisionDecision(transport);
+                _logger?.LogInformation("Session {SessionId} image input for model {Model}: {SupportsVision}; source {Source}; fact {FactSource}",
+                    Id, _model, decision.SupportsVision, decision.Source,
+                    decision.Source == "service API" ? _serviceVision?.Source : decision.Source == "OpenRouter" ? _publicVision?.Source : null);
+            }
+        }
+        if (capabilities is not null)
         {
             _Publish(new SessionCapabilitiesChanged { SessionId = _lastSessionId, Capabilities = capabilities });
         }
@@ -388,6 +471,8 @@ internal sealed class SessionRuntime : ISessionRuntime
         lock (_visionLock)
         {
             ++_visionRevision;
+            _visionTimer?.Dispose();
+            _visionTimer = null;
         }
         if (_profiles is not null)
         {
@@ -414,11 +499,11 @@ internal sealed class SessionRuntime : ISessionRuntime
             await _lifetime.CancelAsync();
         }
 
-        if (_pump is not null)
+        if (_pump is not null || !_visionRead.IsCompletedSuccessfully)
         {
             try
             {
-                await _pump;
+                await Task.WhenAll(_pump ?? Task.CompletedTask, _visionRead);
             }
             catch (Exception)
             {
@@ -542,7 +627,7 @@ internal sealed class SessionRuntime : ISessionRuntime
             {
                 if (evt is SessionInitialized { Model: { } confirmed } && evt.ParentToolUseId is null)
                 {
-                    _RefreshVision(confirmed);
+                    _RefreshVision(confirmed, confirmed: true);
                 }
                 _Publish(evt);
             }

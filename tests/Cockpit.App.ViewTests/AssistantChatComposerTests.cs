@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Threading.Channels;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Threading;
@@ -6,25 +7,22 @@ using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Assistant;
+using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Assistant;
+using Cockpit.Core.ModelIntelligence;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Sessions;
+using Cockpit.Infrastructure.ModelIntelligence;
+using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Tests.Shared;
 using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
 
-/// <summary>
-/// What a message may carry in the assistant's chat window (AC-630): an image with no words, and the queued
-/// message Arrow-Up pulls back to edit.
-/// </summary>
-/// <remarks>
-/// Here rather than in the unit tests because queuing an attachment decodes a preview bitmap, which Avalonia
-/// cannot do without a platform.
-/// </remarks>
+// Attachment previews need Avalonia's bitmap decoder.
 [Collection("avalonia")]
 public class AssistantChatComposerTests
 {
@@ -39,7 +37,70 @@ public class AssistantChatComposerTests
     [Fact]
     public async Task AMessageWithOnlyAnImage_Sends() => await HeadlessAvalonia.RunAsync(async () =>
     {
-        var session = new SessionViewModel();
+        var events = Channel.CreateUnbounded<SessionEvent>();
+        var driver = Substitute.For<ISessionDriver>();
+        driver.Capabilities.Returns(SessionCapabilities.ClaudeCli);
+        driver.Events.Returns(events.Reader.ReadAllAsync());
+        var factory = Substitute.For<ISessionDriverFactory>();
+        factory.Create(Arg.Any<SessionProfile?>()).Returns(driver);
+        var providers = Substitute.For<IProviderModelIntelligence>();
+        providers.ReadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new PluginModelIntelligence
+        {
+            Models = [new("opus") { PublicModelRef = "~anthropic/claude-opus-latest" }],
+        });
+        var catalog = Substitute.For<IModelIntelligence>();
+        var snapshots = new TaskCompletionSource<IReadOnlyList<ModelSnapshot>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        catalog.GetSnapshotsAsync(Arg.Any<CancellationToken>()).Returns(snapshots.Task);
+        var reader = new ModelImageInputReader(catalog, providers, Substitute.For<IPluginProviderRegistry>());
+        var now = DateTimeOffset.UtcNow;
+        var clock = Substitute.For<TimeProvider>();
+        clock.GetUtcNow().Returns(_ => now);
+        var scheduled = new TaskCompletionSource<TimerCallback>(TaskCreationOptions.RunContinuationsAsynchronously);
+        clock.CreateTimer(Arg.Any<TimerCallback>(), Arg.Any<object?>(), Arg.Any<TimeSpan>(), Arg.Any<TimeSpan>()).Returns(call =>
+        {
+            scheduled.TrySetResult(call.ArgAt<TimerCallback>(0));
+            return Substitute.For<ITimer>();
+        });
+        var profiles = Substitute.For<ISessionProfileStore>();
+        await using var runtime = new SessionRuntime(factory, Profile, imageInput: reader, profiles: profiles, timeProvider: clock);
+        var manager = Substitute.For<ISessionManager>();
+        manager.Create(Arg.Any<SessionProfile?>()).Returns(runtime);
+        await using var session = TestSessions.Pane(manager);
+        await session.StartConfiguredAsync(Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.ResolveModel("opus"), SessionOptionCatalog.DefaultEffort);
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var pasteReady = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var confirmed = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        session.PropertyChanged += (_, change) =>
+        {
+            if (change.PropertyName == nameof(SessionViewModel.CanPasteImages) && session.CanPasteImages)
+            {
+                pasteReady.TrySetResult();
+            }
+        };
+        runtime.EventAppended += evt =>
+        {
+            if (evt is SessionCapabilitiesChanged { Capabilities.SupportsVision: true })
+            {
+                ready.TrySetResult();
+            }
+            if (evt is SessionInitialized)
+            {
+                confirmed.TrySetResult(runtime.Capabilities?.SupportsVision == true);
+            }
+        };
+        var snapshot = new ModelSnapshot("~anthropic/claude-opus-latest", "Opus", new(null, null), null, null, new(null, null, null), [], [],
+            "OpenRouter", now, TimeSpan.FromHours(1)) { SupportsImageInput = true, AliasTarget = "anthropic/claude-opus-4.7" };
+        snapshots.SetResult([snapshot]);
+        await ready.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await scheduled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        scheduled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await runtime.SendUserMessageAsync("hello");
+        events.Writer.TryWrite(new SessionInitialized { SessionId = "S1", Cwd = "/repo", Tools = [], Model = "claude-opus-4-7" });
+        Assert.True(await confirmed.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+        var refresh = await scheduled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True((await reader.ReadAsync(Profile, "claude-opus-4-7")).OpenRouter?.SupportsImageInput);
+        await pasteReady.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(session.CanPasteImages);
         var host = _FakeHost(session);
         var vm = new AssistantChatViewModel(host, _FakeSettingsStore(), Substitute.For<IVoicePlaybackQueue>());
         session.PendingAttachments.Add(new ImageAttachmentViewModel(Png, a => session.PendingAttachments.Remove(a)));
@@ -49,6 +110,43 @@ public class AssistantChatComposerTests
         await vm.SendCommand.ExecuteAsync(null);
 
         await host.Received().SendAsync(string.Empty, Arg.Any<CancellationToken>());
+
+        clock.Received().CreateTimer(Arg.Any<TimerCallback>(), Arg.Any<object?>(), TimeSpan.FromHours(1), Timeout.InfiniteTimeSpan);
+        catalog.GetSnapshotsAsync(Arg.Any<CancellationToken>()).Returns(Task.FromException<IReadOnlyList<ModelSnapshot>>(new HttpRequestException("offline")));
+        var retry = await RefreshAsync(refresh, TimeSpan.FromHours(1), TimeSpan.FromSeconds(30));
+        Assert.True(runtime.Capabilities?.SupportsVision);
+        retry = await RefreshAsync(retry, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(60));
+        retry = await RefreshAsync(retry, TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(120));
+        retry = await RefreshAsync(retry, TimeSpan.FromSeconds(120), TimeSpan.FromSeconds(240));
+        retry = await RefreshAsync(retry, TimeSpan.FromSeconds(240), TimeSpan.FromSeconds(480));
+        retry = await RefreshAsync(retry, TimeSpan.FromSeconds(480), TimeSpan.FromMinutes(15));
+        retry = await RefreshAsync(retry, TimeSpan.FromMinutes(15), TimeSpan.FromMinutes(15));
+
+        catalog.GetSnapshotsAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<ModelSnapshot>>([snapshot with { SupportsImageInput = false, FetchedAt = now }]));
+        retry = await RefreshAsync(retry, TimeSpan.FromMinutes(15), TimeSpan.FromMinutes(45));
+        Assert.False(runtime.Capabilities?.SupportsVision);
+        catalog.GetSnapshotsAsync(Arg.Any<CancellationToken>()).Returns(Task.FromException<IReadOnlyList<ModelSnapshot>>(new HttpRequestException("offline")));
+        retry = await RefreshAsync(retry, TimeSpan.FromMinutes(45), TimeSpan.FromSeconds(30));
+
+        clock.ClearReceivedCalls();
+        catalog.ClearReceivedCalls();
+        profiles.Saved += Raise.Event<Func<IReadOnlyList<SessionProfile>, Task>>((object)new[] { Profile with { ImageInputMode = ImageInputMode.Off } });
+        retry(null);
+        profiles.Saved += Raise.Event<Func<IReadOnlyList<SessionProfile>, Task>>((object)new[] { Profile with { ImageInputMode = ImageInputMode.On } });
+        retry(null);
+        clock.DidNotReceive().CreateTimer(Arg.Any<TimerCallback>(), Arg.Any<object?>(), Arg.Any<TimeSpan>(), Arg.Any<TimeSpan>());
+        await catalog.DidNotReceive().GetSnapshotsAsync(Arg.Any<CancellationToken>());
+
+        async Task<TimerCallback> RefreshAsync(TimerCallback callback, TimeSpan elapsed, TimeSpan expected)
+        {
+            now += elapsed;
+            scheduled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            clock.ClearReceivedCalls();
+            callback(null);
+            var next = await scheduled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            clock.Received(1).CreateTimer(Arg.Any<TimerCallback>(), Arg.Any<object?>(), expected, Timeout.InfiniteTimeSpan);
+            return next;
+        }
     });
 
     /// <summary>
