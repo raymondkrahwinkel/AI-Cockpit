@@ -371,30 +371,37 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
 
         foreach (var marker in Directory.EnumerateFiles(_pluginsRoot, UpdateMarkerPrefix + "*"))
         {
-            var hashes = await File.ReadAllLinesAsync(marker, cancellationToken).ConfigureAwait(false);
-            var folderId = Path.GetFileName(marker)[UpdateMarkerPrefix.Length..];
-            if (hashes.Length != 2 || hashes[0].Length != 0 || registrations.GetValueOrDefault(folderId) is not { } prior)
+            try
             {
-                continue;
-            }
+                var hashes = await File.ReadAllLinesAsync(marker, cancellationToken).ConfigureAwait(false);
+                var folderId = Path.GetFileName(marker)[UpdateMarkerPrefix.Length..];
+                if (hashes.Length != 2 || hashes[0].Length != 0 || registrations.GetValueOrDefault(folderId) is not { } prior)
+                {
+                    continue;
+                }
 
-            var folder = Path.Combine(_pluginsRoot, folderId);
-            if (Directory.Exists(folder) && string.Equals(await PluginClosureHash.OfInstalledFolderAsync(folder, cancellationToken).ConfigureAwait(false), prior.PinnedSha256, StringComparison.OrdinalIgnoreCase))
-            {
-                File.Delete(marker);
-                continue;
-            }
-
-            // Only the saved pin authorizes recovery; neither a backup name nor the marker grants consent.
-            var candidates = Directory.EnumerateDirectories(_pluginsRoot, ReplacedPrefix + folderId + ".*")
-                .Append(Path.Combine(PluginShadow.RootFor(_pluginsRoot), folderId, prior.PinnedSha256.ToLowerInvariant()));
-            foreach (var candidate in candidates.ToList())
-            {
-                if (Directory.Exists(candidate) && await RestoreFolderAsync(folderId, candidate, prior.PinnedSha256, cancellationToken).ConfigureAwait(false))
+                var folder = Path.Combine(_pluginsRoot, folderId);
+                if (Directory.Exists(folder) && string.Equals(await PluginClosureHash.OfInstalledFolderAsync(folder, cancellationToken).ConfigureAwait(false), prior.PinnedSha256, StringComparison.OrdinalIgnoreCase))
                 {
                     File.Delete(marker);
-                    break;
+                    continue;
                 }
+
+                // Only the saved pin authorizes recovery; neither a backup name nor the marker grants consent.
+                var candidates = Directory.EnumerateDirectories(_pluginsRoot, ReplacedPrefix + folderId + ".*")
+                    .Append(Path.Combine(PluginShadow.RootFor(_pluginsRoot), folderId, prior.PinnedSha256.ToLowerInvariant()));
+                foreach (var candidate in candidates.ToList())
+                {
+                    if (Directory.Exists(candidate) && await RestoreFolderAsync(folderId, candidate, prior.PinnedSha256, cancellationToken).ConfigureAwait(false))
+                    {
+                        File.Delete(marker);
+                        break;
+                    }
+                }
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                // One unreadable plugin must not prevent the other plugins from starting.
             }
         }
 
@@ -406,15 +413,22 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
 
         foreach (var pending in Directory.EnumerateDirectories(pendingRoot))
         {
-            var folderId = Path.GetFileName(pending);
-            var folder = Path.Combine(_pluginsRoot, folderId);
-            var manifestPath = Path.Combine(pending, "plugin.json");
-            if (Directory.Exists(folder) && registrations.GetValueOrDefault(folderId) is { } prior
-                && PluginManifest.TryParse(await File.ReadAllTextAsync(manifestPath, cancellationToken).ConfigureAwait(false), out var incoming, out _) && incoming is not null
-                && _AddedCapabilities(folder, incoming).Count > 0
-                && string.Equals(await PluginClosureHash.OfInstalledFolderAsync(folder, cancellationToken).ConfigureAwait(false), prior.PinnedSha256, StringComparison.OrdinalIgnoreCase))
+            try
             {
-                _TryDelete(pending);
+                var folderId = Path.GetFileName(pending);
+                var folder = Path.Combine(_pluginsRoot, folderId);
+                var manifestPath = Path.Combine(pending, "plugin.json");
+                if (Directory.Exists(folder) && File.Exists(manifestPath) && registrations.GetValueOrDefault(folderId) is { } prior
+                    && PluginManifest.TryParse(await File.ReadAllTextAsync(manifestPath, cancellationToken).ConfigureAwait(false), out var incoming, out _) && incoming is not null
+                    && _AddedCapabilities(folder, incoming).Count > 0
+                    && string.Equals(await PluginClosureHash.OfInstalledFolderAsync(folder, cancellationToken).ConfigureAwait(false), prior.PinnedSha256, StringComparison.OrdinalIgnoreCase))
+                {
+                    _TryDelete(pending);
+                }
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                // One unreadable plugin must not prevent the other plugins from starting.
             }
         }
     }

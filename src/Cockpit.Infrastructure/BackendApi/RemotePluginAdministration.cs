@@ -45,6 +45,7 @@ internal sealed class RemotePluginAdministration(BackendApiClient client, ILogge
         PluginLiveState? live = response switch
         {
             { RolledBack: true, Notice: { } error } => PluginLiveState.UpdateRolledBack(error),
+            { RolledBack: true, RestartReason: { } error } => PluginLiveState.UpdateRolledBack(error),
             { Failed: true, RestartReason: { } error } => PluginLiveState.UpdateFailed(error),
             { Live: true } => PluginLiveState.Active,
             { RestartReason: { } reason, RestartRequired: true } => PluginLiveState.Restart(reason),

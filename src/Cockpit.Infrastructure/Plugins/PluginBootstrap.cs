@@ -54,20 +54,27 @@ public sealed class PluginBootstrap : ISingletonService
 
         foreach (var marker in Directory.EnumerateFiles(_pluginsRoot, PluginInstaller.UpdateMarkerPrefix + "*"))
         {
-            var folderId = Path.GetFileName(marker)[PluginInstaller.UpdateMarkerPrefix.Length..];
-            var folder = Path.Combine(_pluginsRoot, folderId);
-            var hashes = File.ReadAllLines(marker);
-            if (hashes.Length == 2 && hashes[0].Length > 0 && Directory.Exists(folder)
-                && string.Equals(await PluginClosureHash.OfInstalledFolderAsync(folder, cancellationToken).ConfigureAwait(false), hashes[1], StringComparison.OrdinalIgnoreCase)
-                && (await _registrationStore.LoadAllAsync(cancellationToken).ConfigureAwait(false)).GetValueOrDefault(folderId) is { } prior
-                && string.Equals(prior.PinnedSha256, hashes[0], StringComparison.OrdinalIgnoreCase))
+            try
             {
-                await _registrationStore.SaveAsync(folderId, new PluginRegistration(prior.Enabled, hashes[1]), cancellationToken).ConfigureAwait(false);
-            }
+                var folderId = Path.GetFileName(marker)[PluginInstaller.UpdateMarkerPrefix.Length..];
+                var folder = Path.Combine(_pluginsRoot, folderId);
+                var hashes = File.ReadAllLines(marker);
+                if (hashes.Length == 2 && hashes[0].Length > 0 && Directory.Exists(folder)
+                    && string.Equals(await PluginClosureHash.OfInstalledFolderAsync(folder, cancellationToken).ConfigureAwait(false), hashes[1], StringComparison.OrdinalIgnoreCase)
+                    && (await _registrationStore.LoadAllAsync(cancellationToken).ConfigureAwait(false)).GetValueOrDefault(folderId) is { } prior
+                    && string.Equals(prior.PinnedSha256, hashes[0], StringComparison.OrdinalIgnoreCase))
+                {
+                    await _registrationStore.SaveAsync(folderId, new PluginRegistration(prior.Enabled, hashes[1]), cancellationToken).ConfigureAwait(false);
+                }
 
-            if (hashes.Length != 2 || hashes[0].Length != 0)
+                if (hashes.Length != 2 || hashes[0].Length != 0)
+                {
+                    File.Delete(marker);
+                }
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
-                File.Delete(marker);
+                // One unreadable plugin must not prevent the other plugins from starting.
             }
         }
     }
