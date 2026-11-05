@@ -29,6 +29,7 @@ internal sealed class DiskStorageStatus : Button
     private TextBlock? _history;
     private Button? _cleanup;
     private Button? _compact;
+    private string? _toolTipText;
     private bool _busy;
 
     public DiskStorageStatus()
@@ -88,6 +89,7 @@ internal sealed class DiskStorageStatus : Button
         _headline = _summary = _history = null;
         _rows = null;
         _cleanup = _compact = null;
+        _toolTipText = null;
     }
 
     private void _OnChanged() => Dispatcher.UIThread.Post(_Refresh);
@@ -99,9 +101,14 @@ internal sealed class DiskStorageStatus : Button
         _text.Text = figure;
         _icon.Bind(TemplatedControl.ForegroundProperty, this.GetResourceObservable(brushKey));
         _text.Bind(TextBlock.ForegroundProperty, this.GetResourceObservable(brushKey));
-        ToolTip.SetTip(this, disks.Count == 0
+        var toolTipText = disks.Count == 0
             ? "Disk space and Docker storage — awaiting readings"
-            : string.Join("\n", disks.Select(disk => $"{disk.Name}: {_Bytes(disk.FreeBytes)} free, {_Bytes(Math.Max(0, disk.TotalBytes - disk.FreeBytes))} used, {_Bytes(disk.TotalBytes)} total")));
+            : string.Join("\n", disks.Select(disk => $"{disk.Name}: {_Bytes(disk.FreeBytes)} free, {_Bytes(Math.Max(0, disk.TotalBytes - disk.FreeBytes))} used, {_Bytes(disk.TotalBytes)} total"));
+        if (!string.Equals(_toolTipText, toolTipText, StringComparison.Ordinal))
+        {
+            _toolTipText = toolTipText;
+            ToolTip.SetTip(this, toolTipText);
+        }
         _RefreshPanel();
     }
 
@@ -111,13 +118,7 @@ internal sealed class DiskStorageStatus : Button
         if (disks.Count == 0)
             return ("Disk", "CockpitTextSecondaryBrush");
         var worst = disks.OrderByDescending(disk => disk.Pressure).ThenBy(disk => (double)disk.FreeBytes / Math.Max(1, disk.TotalBytes)).First();
-        var eta = _Eta(worst);
-        var figure = worst.Pressure switch
-        {
-            DiskPressure.Critical when eta is not null => $"{worst.Name} {_Bytes(worst.FreeBytes)} · full in {eta}",
-            DiskPressure.Elevated when eta is not null => $"{worst.Name} full in {eta}",
-            _ => $"{worst.Name} {_Bytes(worst.FreeBytes)}",
-        };
+        var figure = $"{worst.Name} {_Bytes(worst.FreeBytes)} free";
         var others = disks.Count(disk => disk != worst && disk.Pressure != DiskPressure.Normal);
         if (others > 0)
             figure += $" +{others}";
