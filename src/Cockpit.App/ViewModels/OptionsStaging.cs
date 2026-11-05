@@ -44,6 +44,7 @@ internal static class OptionsStaging
         "OpenInSimpleView",
         "OrchestratorMcpEnabled",
         "PluginRestartAdviceAfter",
+        "SessionMcpGatewayEnabled",
         "QuickNoteGlobalHotkeyEnabled",
         "QuickNoteHotkeyKeyName",
         "RenderBackendSelection",

@@ -263,6 +263,10 @@ See the [design note](docs/workspaces-widgets-terminals.md) and the
 
 ## Security
 
+`SessionMcpGatewayEnabled` in `cockpit.json` is the temporary session MCP gateway switch (default `false`).
+It is read at startup and stays local to this machine, outside settings carriers. The loopback gateway
+starts with either value; when off, it offers no session URL. Session routing is introduced in AC-2126.
+
 Your API keys, MCP bearer tokens and the plugins' tokens live in `cockpit.json`. What the cockpit does about that:
 
 - **Owner-only files.** `cockpit.json` and everything beside it is written `0600`, in a `0700` directory. Nothing

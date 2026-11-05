@@ -9,6 +9,8 @@ namespace Cockpit.Infrastructure.Configuration;
 // on-disk shape can evolve independently.
 internal sealed class CockpitConfigFile
 {
+    public bool SessionMcpGatewayEnabled { get; set; }
+
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public JsonObject? SettingsSync { get; set; }
 

@@ -5,6 +5,8 @@ namespace Cockpit.Core.SessionBehavior;
 // User-configurable session behaviour in `cockpit.json`'s `sessionBehavior` section: exit-after-turn (T10) and combined queued messages (AC-145).
 public sealed record SessionBehaviorSettings
 {
+    public bool SessionMcpGatewayEnabled { get; init; }
+
     // When true, sending "exit" closes the session after that turn completes. Off by default.
     public bool AutoCloseOnExit { get; init; }
 
