@@ -16,6 +16,7 @@ internal sealed class GatewayMcpBinding : IAsyncDisposable
     private readonly List<Task> _connections = [];
     private Task _initialWork = Task.CompletedTask;
     private bool _started;
+    private int _disposeStarted;
 
     public GatewayMcpBinding(McpToolProvider provider, SessionMcpMounts mounts, string paneId, string token)
     {
@@ -83,6 +84,10 @@ internal sealed class GatewayMcpBinding : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposeStarted, 1) != 0)
+        {
+            return;
+        }
         _mounts.Changed -= _OnChanged;
         await _lifetime.CancelAsync();
         await _worker;

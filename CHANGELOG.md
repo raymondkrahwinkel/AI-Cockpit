@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Forward HTTP MCP tools through the opt-in session gateway, preserving images and instructions while isolating failed upstream servers.
+
 - Add the opt-in foundation for a separate loopback MCP URL per session, with session-key isolation.
 
 - Take over swarm leadership on this machine from the assistant chat or Options › Swarm, through the reachable current leader.

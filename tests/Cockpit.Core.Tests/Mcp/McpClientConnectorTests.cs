@@ -7,7 +7,7 @@ namespace Cockpit.Core.Tests.Mcp;
 /// <see cref="McpClientConnector.ConnectAsync"/> against real in-process MCP HTTP servers (AC-928).
 /// A server that answers the discover probe with an empty result still connects; a conforming one is untouched.
 /// </summary>
-public class McpClientConnectorTests
+public partial class McpClientConnectorTests
 {
     // The revision the retry pins to — the newest one that still speaks the initialize handshake.
     private const string InitializeHandshakeVersion = "2025-11-25";
@@ -24,6 +24,8 @@ public class McpClientConnectorTests
         // Connected through the retry — on the initialize handshake, with the server's tools actually in hand.
         Assert.Equal(InitializeHandshakeVersion, client.NegotiatedProtocolVersion);
         Assert.Equal("tool_a", Assert.Single(tools).Name);
+
+        await _AssertGatewayContractAsync();
     }
 
     private static HttpClientTransport _TransportTo(InProcessMcpHttpServer server) =>

@@ -11,7 +11,8 @@ internal sealed class ForwardMcpServerTool : McpServerTool
     public ForwardMcpServerTool(string alias, Tool tool, Func<RequestContext<CallToolRequestParams>, CancellationToken, ValueTask<CallToolResult>> invoke)
     {
         var copy = JsonSerializer.SerializeToNode(tool) ?? throw new InvalidOperationException("Tool schema unavailable.");
-        copy["name"] = $"{alias}__{tool.Name}";
+        var foldedAlias = new string(alias.Select(character => char.IsAsciiLetterOrDigit(character) || character is '_' or '-' ? character : '_').ToArray());
+        copy["name"] = $"{foldedAlias}__{tool.Name}";
         ProtocolTool = copy.Deserialize<Tool>() ?? throw new InvalidOperationException("Tool schema unavailable.");
         _invoke = invoke;
     }

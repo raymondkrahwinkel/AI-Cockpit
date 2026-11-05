@@ -96,6 +96,12 @@ internal sealed class SessionMcpGatewayHost : IHostedService, IAsyncDisposable
                 if (_provider?.Invoke() is { } provider && _mounts is not null)
                 {
                     var binding = _bindings.GetOrAdd((paneId, token), _ => new Lazy<GatewayMcpBinding>(() => new GatewayMcpBinding(provider, _mounts, paneId, token))).Value;
+                    if (!string.Equals(_keyring.CurrentToken(paneId), token, StringComparison.Ordinal))
+                    {
+                        _bindings.TryRemove((paneId, token), out _);
+                        await binding.DisposeAsync();
+                        throw new McpException("This MCP run has ended.");
+                    }
                     var live = binding.Session;
                     var collection = session.ToolCollection;
                     void Refresh()

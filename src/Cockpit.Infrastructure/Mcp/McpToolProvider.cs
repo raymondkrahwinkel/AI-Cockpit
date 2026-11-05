@@ -69,8 +69,16 @@ internal sealed partial class McpToolProvider(
         }
 
         var session = new LiveMcpToolSession(this, paneId, sessionToken, projectId, agentName, ownsToken: true);
-        await Task.WhenAll(enabledServers.Select(server => session.AddServerAsync(server, cancellationToken)));
-        return session;
+        try
+        {
+            await Task.WhenAll(enabledServers.Select(server => session.AddServerAsync(server, cancellationToken)));
+            return session;
+        }
+        catch
+        {
+            await session.DisposeAsync();
+            throw;
+        }
     }
 
     internal IMcpToolSession CreateGatewaySession(string paneId, string token, SessionMcpContext? context) =>
@@ -193,7 +201,7 @@ internal sealed partial class McpToolProvider(
                 return (null, NeedsSignIn);
             }
 
-            client = await McpClientConnector.ConnectAsync(_BuildTransport(server, sessionToken, agentName), options: null, cancellationToken).ConfigureAwait(false);
+            client = await McpClientConnector.ConnectAsync(new CancellationForwardingTransport(_BuildTransport(server, sessionToken, agentName)), options: null, cancellationToken).ConfigureAwait(false);
             var serverTools = await client.ListToolsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
 
             // AC-79: classify each tool from its MCP annotations at connect; an absent readOnlyHint stays

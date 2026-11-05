@@ -62,14 +62,26 @@ internal sealed partial class McpToolProvider
 
         public IReadOnlyList<string> ConnectedServerNames
         {
-            get { lock (_sync) { return [.. _servers.Values.Where(server => server.Connection is not null).Select(server => server.Config.Name)]; } }
+            get
+            {
+                lock (_sync)
+                {
+                    return [.. _servers.Values.Where(server => server.Connection is not null).Select(server => server.Config.Name)];
+                }
+            }
         }
 
         public IReadOnlyList<string> ServersNeedingSignIn => [.. ConnectionIssues.Where(issue => issue.Reason == NeedsSignIn).Select(issue => issue.Name)];
 
         public IReadOnlyList<McpServerConnectionIssue> ConnectionIssues
         {
-            get { lock (_sync) { return [.. _servers.Values.Where(server => server.Issue is not null).Select(server => new McpServerConnectionIssue(server.Config.Name, server.Issue ?? "Unavailable"))]; } }
+            get
+            {
+                lock (_sync)
+                {
+                    return [.. _servers.Values.Where(server => server.Issue is not null).Select(server => new McpServerConnectionIssue(server.Config.Name, server.Issue ?? "Unavailable"))];
+                }
+            }
         }
 
         public IReadOnlyDictionary<string, ToolPermissionClass> ToolClasses
@@ -194,7 +206,12 @@ internal sealed partial class McpToolProvider
                     var reconnect = false;
                     while (!reconnect)
                     {
-                        reconnect = await server.Signals.Reader.ReadAsync(ct);
+                        using var waiting = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                        var signal = server.Signals.Reader.WaitToReadAsync(waiting.Token).AsTask();
+                        await Task.WhenAny(signal, client.Completion);
+                        await waiting.CancelAsync();
+                        ct.ThrowIfCancellationRequested();
+                        reconnect = client.Completion.IsCompleted || (server.Signals.Reader.TryRead(out var reset) && reset);
                         if (reconnect)
                         {
                             break;
@@ -216,7 +233,7 @@ internal sealed partial class McpToolProvider
                     }
                     await notification.DisposeAsync();
                     notification = null;
-                    await client.DisposeAsync();
+                    await _DisposeClientAsync(client);
                     client = null;
                     await _RetryDelayAsync(server, 1, ct);
                 }
@@ -236,11 +253,26 @@ internal sealed partial class McpToolProvider
             finally
             {
                 server.Initial.TrySetResult();
-                if (notification is not null) { await notification.DisposeAsync(); }
+                if (notification is not null)
+                {
+                    await notification.DisposeAsync();
+                }
                 if (client is not null)
                 {
-                    await client.DisposeAsync();
+                    await _DisposeClientAsync(client);
                 }
+            }
+        }
+
+        private static async Task _DisposeClientAsync(McpClient client)
+        {
+            try
+            {
+                await client.DisposeAsync();
+            }
+            catch (Exception)
+            {
+                // Teardown of a dead upstream must not interrupt sibling connections.
             }
         }
 
@@ -263,7 +295,7 @@ internal sealed partial class McpToolProvider
             {
                 connection = _servers.ContainsValue(server) ? server.Connection : null;
             }
-            if (connection is null)
+            if (connection is null || (!_ownsToken && _paneId is not null && _provider._mounts?.IsMounted(_paneId, server.Config.Name) != true))
             {
                 return _Error(server.Config.Name, server.Issue ?? "Unavailable");
             }
@@ -345,15 +377,24 @@ internal sealed partial class McpToolProvider
             Upstream[] servers;
             lock (_sync)
             {
-                if (_disposed) { return; }
+                if (_disposed)
+                {
+                    return;
+                }
                 _disposed = true;
                 servers = [.. _servers.Values, .. _retired];
                 _servers.Clear();
             }
             _provider._oauthCoordinator.AccountChanged -= _AccountChanged;
-            foreach (var server in servers) { await server.Lifetime.CancelAsync(); }
+            foreach (var server in servers)
+            {
+                await server.Lifetime.CancelAsync();
+            }
             await Task.WhenAll(servers.Select(server => server.Worker));
-            foreach (var server in servers) { server.Lifetime.Dispose(); }
+            foreach (var server in servers)
+            {
+                server.Lifetime.Dispose();
+            }
             if (_ownsToken && _paneId is not null && PaneToken is not null)
             {
                 _provider._keyring.Revoke(_paneId, PaneToken);
@@ -372,5 +413,3 @@ internal sealed partial class McpToolProvider
         }
     }
 }
-
-
