@@ -90,6 +90,12 @@ internal sealed class PluginAdministration(
         try
         {
             await registrations.SaveAsync(folderId, new PluginRegistration(Enabled: enabled, PinnedSha256: pinnedSha256), cancellationToken).ConfigureAwait(false);
+            await bootstrap.ConfirmPinnedInPlaceUpdateAsync(folderId, pinnedSha256, cancellationToken).ConfigureAwait(false);
+            if (enabled)
+            {
+                _StopWaitingForUsage(folderId);
+            }
+
             return enabled
                 ? await _ActivateAsync(folderId, cancellationToken: cancellationToken).ConfigureAwait(false)
                 : await _DeactivateAsync(folderId).ConfigureAwait(false);
@@ -130,10 +136,7 @@ internal sealed class PluginAdministration(
         }
 
         await registrations.SaveAsync(folderId, new PluginRegistration(Enabled: prior.Enabled, PinnedSha256: sha256), CancellationToken.None).ConfigureAwait(false);
-        if (inPlace)
-        {
-            bootstrap.CompleteInPlaceUpdate(folderId);
-        }
+        await bootstrap.ConfirmPinnedInPlaceUpdateAsync(folderId, sha256).ConfigureAwait(false);
 
         if (!inPlace || manager is null)
         {
@@ -149,7 +152,7 @@ internal sealed class PluginAdministration(
 
         if (await _UpdateBlockerAsync(manager, folderId).ConfigureAwait(false) is { } blocker)
         {
-            return PluginLiveState.Restart(blocker);
+            return _StateFor(blocker);
         }
 
         // Autopilot reads a tracker that is withdrawn as gone; here it is withdrawn and registered again at once.
@@ -170,7 +173,7 @@ internal sealed class PluginAdministration(
         // Asked again: a session can start and a workspace can get unsaved work while the new version is prepared.
         if (await _UpdateBlockerAsync(manager, folderId).ConfigureAwait(false) is { } late)
         {
-            return PluginLiveState.Restart(late);
+            return _StateFor(late);
         }
 
         // Turned away up front, so the running version does not stop for bytes that cannot start.
@@ -197,10 +200,22 @@ internal sealed class PluginAdministration(
     }
 
     // What a live swap would cut off: what a deactivation would, plus services only a restart replaces and unsaved work.
-    private async Task<string?> _UpdateBlockerAsync(PluginManager loaded, string folderId) =>
-        await _DeactivationBlockerAsync(loaded, folderId).ConfigureAwait(false)
-        ?? (loaded.RegistersServices(folderId) ? "The plugin adds services to the host, which only a restart replaces." : null)
-        ?? await loaded.UpdateBlocker(folderId).ConfigureAwait(false);
+    private async Task<PluginBlocker?> _UpdateBlockerAsync(PluginManager loaded, string folderId)
+    {
+        if (await _DeactivationBlockerAsync(loaded, folderId).ConfigureAwait(false) is { } deactivation)
+        {
+            return deactivation;
+        }
+
+        if (loaded.RegistersServices(folderId))
+        {
+            return new("The plugin adds services to the host, which only a restart replaces.", PluginBlockerKind.Restart);
+        }
+
+        return await loaded.UpdateBlocker(folderId).ConfigureAwait(false) is { } unsaved
+            ? new PluginBlocker(unsaved, PluginBlockerKind.UnsavedWork)
+            : null;
+    }
 
     private static async Task<PluginLiveState?> _LeaveAsync(PluginManager loaded, string folderId)
     {
@@ -305,28 +320,35 @@ internal sealed class PluginAdministration(
 
         if (await _DeactivationBlockerAsync(manager, folderId).ConfigureAwait(false) is { } blocker)
         {
-            return PluginLiveState.Restart(blocker);
+            if (blocker.Kind == PluginBlockerKind.UserActivity)
+            {
+                _WaitForUsageToEnd(folderId);
+            }
+
+            return _StateFor(blocker);
         }
 
         var result = await manager.DeactivateAsync(folderId).ConfigureAwait(false);
-        return result.Status is PluginActivationStatus.Deactivated or PluginActivationStatus.NotActive
+        var state = result.Status is PluginActivationStatus.Deactivated or PluginActivationStatus.NotActive
             ? PluginLiveState.Active
             : PluginLiveState.Restart(result.Reason ?? "The plugin could not be deactivated.");
+        _StopWaitingForUsage(folderId);
+        return state;
     }
 
     // What a live deactivation would cut off: a flagged plugin, or a session still running on one of its providers.
-    private async Task<string?> _DeactivationBlockerAsync(PluginManager loaded, string folderId)
+    private async Task<PluginBlocker?> _DeactivationBlockerAsync(PluginManager loaded, string folderId)
     {
         if (loaded.LoadedParts.Any(entry => entry.Discovered.FolderId == folderId && entry.Discovered.Manifest.RequiresRestart))
         {
-            return "The plugin asks for a restart to deactivate.";
+            return new("The plugin asks for a restart to deactivate.", PluginBlockerKind.Restart);
         }
 
         var running = sessions is null ? [] : sessions.All.Concat(sessions.Assistant is { } assistant ? [assistant] : []);
         var user = running.FirstOrDefault(session => session.ProviderId is { } providerId && _Owns(folderId, providerId));
         if (user is not null)
         {
-            return $"Session '{user.Title}' uses this provider.";
+            return new($"Session '{user.Title}' uses this provider.", PluginBlockerKind.UserActivity);
         }
 
         // A delegated task has no pane, so it is not in the registry.
@@ -341,7 +363,86 @@ internal sealed class PluginAdministration(
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var task = delegation.ListTasks().FirstOrDefault(candidate =>
             candidate.Status is DelegatedTaskStatus.Queued or DelegatedTaskStatus.Running && labels.Contains(candidate.ProfileLabel));
-        return task is null ? null : $"Delegated task '{task.Label ?? task.TaskId}' uses this provider.";
+        return task is null
+            ? null
+            : new PluginBlocker($"Delegated task '{task.Label ?? task.TaskId}' uses this provider.", PluginBlockerKind.UserActivity);
+    }
+
+    private enum PluginBlockerKind { Restart, UserActivity, UnsavedWork }
+
+    private sealed record PluginBlocker(string Reason, PluginBlockerKind Kind);
+
+    private readonly HashSet<string> _waitingForUsage = new(StringComparer.Ordinal);
+    private bool _watchingUsage;
+
+    private static PluginLiveState _StateFor(PluginBlocker blocker) =>
+        blocker.Kind == PluginBlockerKind.Restart ? PluginLiveState.Restart(blocker.Reason) : PluginLiveState.Blocked(blocker.Reason);
+
+    private void _WaitForUsageToEnd(string folderId)
+    {
+        _waitingForUsage.Add(folderId);
+        if (_watchingUsage)
+        {
+            return;
+        }
+
+        sessions?.Changed += _OnSessionsChanged;
+        if (delegation is not null)
+        {
+            delegation.TasksChanged += _OnDelegationTasksChanged;
+        }
+
+        _watchingUsage = true;
+    }
+
+    private async void _OnSessionsChanged(object? sender, EventArgs args)
+    {
+        await _RetryUsageBlockedDeactivationsAsync().ConfigureAwait(false);
+    }
+
+    private async void _OnDelegationTasksChanged()
+    {
+        await _RetryUsageBlockedDeactivationsAsync().ConfigureAwait(false);
+    }
+
+    private async Task _RetryUsageBlockedDeactivationsAsync()
+    {
+        try
+        {
+            await _changes.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                foreach (var folderId in _waitingForUsage.ToArray())
+                {
+                    await _DeactivateAsync(folderId).ConfigureAwait(false);
+                }
+            }
+            finally
+            {
+                _changes.Release();
+            }
+        }
+        catch (Exception exception)
+        {
+            diagnostics?.Record("plugins", "Plugins", "deactivate", exception.Message);
+        }
+    }
+
+    private void _StopWaitingForUsage(string folderId)
+    {
+        _waitingForUsage.Remove(folderId);
+        if (_waitingForUsage.Count != 0 || !_watchingUsage)
+        {
+            return;
+        }
+
+        sessions?.Changed -= _OnSessionsChanged;
+        if (delegation is not null)
+        {
+            delegation.TasksChanged -= _OnDelegationTasksChanged;
+        }
+
+        _watchingUsage = false;
     }
 
     private bool _Owns(string folderId, string providerId) =>
