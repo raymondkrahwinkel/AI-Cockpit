@@ -10,4 +10,8 @@ namespace Cockpit.Core.Abstractions.Sessions;
 public interface ISessionDriverFactory
 {
     ISessionDriver Create(SessionProfile? profile);
+
+    // No host, history, tools, logs or native session storage; null means this provider cannot guarantee that.
+    Task<string?> GenerateEphemeralSpeechAsync(SessionProfile profile, string answer, string? context, CancellationToken cancellationToken)
+        => Task.FromResult<string?>(null);
 }
