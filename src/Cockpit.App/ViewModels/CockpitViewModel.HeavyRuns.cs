@@ -1,5 +1,4 @@
 using Cockpit.Core.HeavyRuns;
-using Cockpit.Infrastructure.HeavyRuns;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace Cockpit.App.ViewModels;
@@ -7,7 +6,7 @@ namespace Cockpit.App.ViewModels;
 public partial class CockpitViewModel
 {
     private readonly IHeavyRunSettingsStore? _heavyRunSettingsStore;
-    private readonly HeavyRunQueue? _heavyRunQueue;
+    private readonly IHeavyRunSettingsRefresh? _heavyRunSettingsRefresh;
 
     [ObservableProperty]
     private int _maxParallelRuns;

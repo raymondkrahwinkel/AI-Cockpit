@@ -3678,10 +3678,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ISyncOptions? syncOptions = null,
         ISessionMcpRestore? sessionMcpRestore = null,
         Cockpit.Core.HeavyRuns.IHeavyRunSettingsStore? heavyRunSettingsStore = null,
-        Cockpit.Infrastructure.HeavyRuns.HeavyRunQueue? heavyRunQueue = null)
+        Cockpit.Core.HeavyRuns.IHeavyRunSettingsRefresh? heavyRunSettingsRefresh = null)
     {
         _heavyRunSettingsStore = heavyRunSettingsStore;
-        _heavyRunQueue = heavyRunQueue;
+        _heavyRunSettingsRefresh = heavyRunSettingsRefresh;
         _managedSettingsReader = managedSettings;
         _settingsWriteBatch = settingsWriteBatch;
         _providerConfigViews = providerConfigViews;
@@ -7994,9 +7994,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         measurement.Mark("config");
 
-        if (_heavyRunQueue is not null)
+        if (_heavyRunSettingsRefresh is not null)
         {
-            await _heavyRunQueue.RefreshSettingsAsync();
+            await _heavyRunSettingsRefresh.RefreshSettingsAsync();
         }
 
         // Not blocked, so this Apply is committing: on the closing path the flag is already down and this changes
