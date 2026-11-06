@@ -166,12 +166,13 @@ internal static class FileSourceChannel
     {
         var snapshot = await session.ReadAsync(ct).ConfigureAwait(false);
         var bytes = Encoding.UTF8.GetBytes(snapshot.Text);
-        if (bytes.Length > Wire.MaxContentBytes)
+        if (bytes.Length > Wire.MaxContentBytes || Encoding.UTF8.GetByteCount(snapshot.SerializedText ?? "") > Wire.MaxContentBytes)
         {
             throw new FileSourceException(FileSourceErrorKind.TooLarge, "This file is too large to edit in Cockpit.");
         }
         return new FileSourceLiveSnapshot(id, Convert.ToBase64String(bytes), snapshot.Rev, snapshot.Status)
         {
+            SerializedText = snapshot.SerializedText,
             Peers = (session as ILivePresence)?.Peers,
             OpenUrl = (session as ILivePresence)?.OpenUrl,
         };

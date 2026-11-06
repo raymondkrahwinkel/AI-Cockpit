@@ -12,6 +12,9 @@ namespace Cockpit.Core.Abstractions.Sessions;
 /// </summary>
 public interface ISessionRuntime : IAsyncDisposable
 {
+    /// <summary>The resolved or effective launch model, or null when unknown.</summary>
+    string? Model => null;
+
     /// <summary>Whether the running driver can enforce a read-only tool boundary for one turn.</summary>
     bool SupportsReadOnlyTurns => false;
 

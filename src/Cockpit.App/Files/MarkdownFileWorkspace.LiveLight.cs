@@ -15,7 +15,8 @@ internal sealed partial class MarkdownFileWorkspace
     private int _retrySeconds = 3;
     private bool _liveLightPending;
     private bool _wasLiveLight;
-    private bool _wasSignedOut;
+    private bool _reconcilingLive;
+    private LiveFileStatus? _recoveryStatus;
     private bool _needsFileRefresh;
     private string? _lastLiveText;
     private string? _fallbackOrigin;
@@ -40,15 +41,13 @@ internal sealed partial class MarkdownFileWorkspace
             _fallbackOrigin = _lastLiveText;
         }
         _wasLiveLight = _loaded && _IsLiveLight;
-        // Signed out counts as held too: nothing is written then, but the lines are marked and closing asks first (AC-1754).
-        // Back live after it, the rejoin carried the text, so it is no longer only here.
-        var state = _live?.Status.State;
-        if (_wasSignedOut && state == LiveFileState.Live)
-        {
-            _liveLightPending = false;
-        }
-        _wasSignedOut = state == LiveFileState.SignInNeeded || _wasSignedOut && state != LiveFileState.Live;
         _liveLightPending = Editor.Text != _savedText && (_liveLightPending || _IsHeld && _loaded);
+        if (!_reconcilingLive && (_needsFileRefresh || _liveLightPending) && _CanConfirmLiveRecovery
+            && !ReferenceEquals(_recoveryStatus, _live!.Status))
+        {
+            _recoveryStatus = _live.Status;
+            _ = _ReconcileLiveRecoveryAsync();
+        }
         var local = new List<int>();
         if (_liveLightPending && _loaded)
         {
@@ -81,6 +80,50 @@ internal sealed partial class MarkdownFileWorkspace
         else
         {
             _liveLightTimer.Stop();
+        }
+    }
+
+    private bool _CanConfirmLiveRecovery => _loaded && !_closed && !_saving && !_conflict
+        && _live is { Status.State: LiveFileState.Live, Status.RequiresRejoin: false, HasUnsentText: false, Failed: false };
+
+    private async Task _ReconcileLiveRecoveryAsync()
+    {
+        if (_reconcilingLive || !_CanConfirmLiveRecovery)
+        {
+            return;
+        }
+        _reconcilingLive = true;
+        var confirmed = false;
+        try
+        {
+            var live = _live!;
+            var snapshot = await live.ReadAsync().ConfigureAwait(true);
+            var persisted = await _ReadSnapshotAsync().ConfigureAwait(true);
+            // Room acceptance and Saved attribution do not acknowledge the current persisted text.
+            if (_CanConfirmLiveRecovery && ReferenceEquals(live, _live) && snapshot.Rev == live.Revision
+                && snapshot.Text == Editor.Text && snapshot.Text == live.SourceText
+                && persisted.Text == _WithoutBom(snapshot.SerializedText ?? snapshot.Text))
+            {
+                _liveLightPending = false;
+                _needsFileRefresh = false;
+                _fallbackOrigin = null;
+                _error = null;
+                confirmed = true;
+            }
+        }
+        catch (OperationCanceledException) when (_closed) { }
+        catch (Exception error)
+        {
+            _logger.LogWarning(error, "Confirming live recovery for workspace {WorkspaceId} failed; its text remains protected.", _context.WorkspaceId);
+            _error = "Your text could not be confirmed in the saved note. Retry sync before closing.";
+        }
+        finally
+        {
+            _reconcilingLive = false;
+        }
+        if (confirmed || !ReferenceEquals(_recoveryStatus, _live?.Status))
+        {
+            _UpdateState();
         }
     }
 

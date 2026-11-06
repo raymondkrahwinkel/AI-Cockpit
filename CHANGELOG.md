@@ -2,12 +2,52 @@
 
 ## Unreleased
 
+- AC-2178: keep existing plugins that register host services loading after an app update, and defer changes to those plugins until restart.
+
+- AC-2164: keep opening prompts queued until the Claude or Codex terminal composer is ready, so workspace trust dialogs cannot consume them as delivered turns.
+- AC-2069: Health recognises Codex, Kimi and opencode API keys supplied through session.env, with setup hints for each provider.
+- AC-2103: Clear stale local-only warnings after live note recovery confirms the saved text, and offer Retry sync while unconfirmed edits remain protected.
+- AC-555: remove the unsupported Docker endpoint setting, warn about ignored saved overrides, and require fresh consent when switching from a remote endpoint to the local daemon.
+- AC-2058: preserve graceful SIGTERM shutdown on Linux/macOS when the Browser plugin is active.
+
+- AC-241: Companion remembers a reachable position, uses native window dragging, and separates tools with an explicit empty state.
+
 - AC-2117: reset swarm membership from any state, rejoin with fresh confirmation, show standalone/paused status and explain conflicting histories.
 
 - A local smoke test (`scripts/linux-smoke.sh`, Docker or a VM) starts the packaged Linux AppImage on a screen without a GPU and opens every surface of the shipped plugins once, to catch crashes like the Browser tab one (AC-2038).
 - Session monitoring preserves a closing through bookkeeping and tool-free wake turns, while still reporting abandoned work.
+- Project-sharing checks run on the UI dispatcher, so test order cannot leave catalog updates waiting on an unpumped thread.
 
 - A debug build is recognisable next to the installed one: "DEV" in its own title bar and a DEV bar over its window, taskbar and tray icon.
+- Run Windows executables named with forward-slash paths correctly in tracked, shell and verify commands while preserving their arguments.
+
+- Limit built-in MCP presets to the profile's selected servers; profiles without a selection retain their default servers.
+
+- Start and release the desktop assistant on the UI thread when requested through the admin API, preventing an unusable registered assistant pane.
+
+- Close pending MCP client calls promptly when their session key is revoked, while cancelling the upstream call.
+
+- Refuse local model session starts when their MCP gateway is unavailable, including profile and preset selections, with the same clear error as plugin sessions.
+
+- Keep MCP tools from different servers uniquely named in local model sessions, including after live additions, so calls and permissions reach the intended server.
+
+- Explain exact per-spawn MCP selections and live set changes to the assistant, and report the servers a spawned session actually connected with a confirmation flag.
+
+- Add MCP servers to running operator-managed sessions from the session dialog, with OAuth sign-in and the same audited admin route for remote sessions. Assistant-managed sets keep removal available and explain why additions go through the assistant.
+
+- Enable live MCP tool discovery in Codex sessions and follow unattended profiles' existing permission choice for tool approval on the Cockpit gateway.
+
+- Use one session MCP gateway for every session by default, keeping upstream credentials in Cockpit and showing a start failure when the gateway is unavailable. Remove the temporary switch and legacy direct-server route.
+
+- Run stdio MCP servers behind the opt-in session gateway with their session working directory, environment and process lifetime.
+
+- Update session MCP tools live, with search fallback, graceful removal and restored sets and delegation limits.
+
+- Let the local assistant manage session MCP sets within delegation limits, with audited changes and an operator removal brake.
+
+- Forward HTTP MCP tools through the opt-in session gateway, preserving images and instructions while isolating failed upstream servers.
+
+- Add the opt-in foundation for a separate loopback MCP URL per session, with session-key isolation.
 
 - Take over swarm leadership on this machine from the assistant chat or Options › Swarm, through the reachable current leader.
 
@@ -53,6 +93,15 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- Sessions that start directly in a project folder keep their no-isolation warning visible until an operator closes it.
+- The local gate now uses the available Windows or Unix Python launcher for its guards.
+
+- Plugin changes now require a restart only when the plugin declares it or a lifecycle operation fails; approving new capabilities resumes live updates.
+
+- A plugin update marker now clears as soon as the approved version is confirmed on disk; disabling a provider in use names its session and finishes after it closes without offering an unnecessary restart.
+- A plugin channel call that arrives during a live plugin update now waits for the replacement instead of failing because its action is briefly unavailable.
+- Usage records keep the provider's actual model or effective launch model, including Codex spawn overrides, and leave unknown models unset. Thread tags label unknown projects explicitly.
+
 - Simple sessions now use the same provider instructions as sessions started from Panels.
 - A plugin is now turned off only after it is named in two interrupted starts in a row; Cockpit explains that recovery decision and offers to turn it back on.
 - Discord final-answer relays now send a streamed answer as one message.
@@ -77,6 +126,18 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- "Update all" in the Plugin store now updates the plugins one by one while the cockpit runs; the ones that need a restart are collected in one "restart to finish" message, and one that fails keeps its old version running with the error shown while the others go on. A plugin update leaves the replaced version in memory until the next start: from three of them (Options → Sessions → "Advise a restart when …") the Plugin store and a server's plugin page offer "Restart to free memory".
+- A plugin update that cannot finish starting no longer leaves a half-started version behind: a start that hangs for 30 seconds is given up on and the previous version comes back, a failing plugin screen counts as a failed update, and an update that can only start after a restart keeps the running version until then, with no extra approval. Settings of a server plugin say so when the server runs another version than this desktop, instead of opening against the wrong one.
+- Updating a plugin, in the Plugin store, from a zip or on a server, now takes effect at once: the running version is switched off and the new one switched on, with the same settings and storage. If the new version fails to start, the previous version runs again, its files are put back and the error is shown. A plugin that asks for a restart, whose provider a session is using, or that has a workspace open which asks before it closes, still says "Restart needed" with the reason. An update that asks for more capabilities than the approved version waits for the restart and a new approval. Two plugin changes never run at the same time.
+- Plugins now load from a verified copy in the Cockpit state folder (`plugin-shadow`), so a plugin's installed folder is never locked on Windows and an update to a plugin that does not ask for a restart is written in place at once. The copy is checked against the approved hash before anything loads, and copies of old versions are removed at the next start.
+- Enabling a plugin in Options → Plugins, or on a server, now activates it at once. It says "Restart needed" with the reason when the plugin asks for it (`requiresRestart` in `plugin.json`) or cannot start live. Running sessions get new MCP tools at their next start.
+- Disabling a plugin, in the Plugin store or on a server, now takes effect at once: its widgets, dialogs, panels and menu items go, and enabling it again brings them back. An open workspace of that plugin keeps its tab and says the plugin is disabled, and unsaved work asks first. It only says "Restart needed" when the plugin could not be unloaded.
+- Live plugin activation prepares encrypted settings, runs startup tasks and makes contributed workflow steps available without a restart.
+- Backend support for activating individual plugins while running, with a restart reason when their services need a new host container.
+- Plugin MCP providers can join the running catalog without rebuilding the host container.
+- When a plugin is disabled, a running session that still calls one of its MCP tools gets the error "plugin <name> is uitgeschakeld" and carries on; new sessions are no longer offered those tools.
+- Removing a plugin, in Options → Plugins or on a server, now stops it at once and deletes its files on the next start. Disabling or removing a provider plugin while a session still runs on it asks for a restart and names the session.
+- A workflow that uses a step from a disabled plugin is skipped with that reason, and a scheduled agent task whose provider plugin is disabled is skipped instead of failing.
 - The assistant automatically hears about failed turns, unanswered permissions, abandoned processes and panes disappearing before finishing; reports are bundled and capped per hour.
 - The assistant can consolidate its behaviour memory with a timestamped backup on each destination.
 - Groq, Mistral, Cerebras and a Custom entry with your own base URL as session providers in the OpenAI-compatible plugin, each with a note on what works.
@@ -101,6 +162,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- Disabling a plugin now stops its work right away: workflow and schedule runs, Local CI runs, the pull request poll, and the Slack and Discord connections. A stopped workflow or schedule run says so in its history.
+- A running Autopilot run stops with a clear reason when the plugin behind its tracker is disabled, and a run that starts without its tracker says so.
+- Browser now asks for a restart when you disable it, because its engine cannot start twice in one process.
+- Docker, Kind, Kubernetes and Local CI show their running activities in the status bar again, with the Kill button.
 - The Depot sync no longer warns after one slow check: it waits up to 30 seconds, tries three times within the same round, and only then says so once, without the "Open Depot settings" button. Not being signed in is still reported at once with that button, and an unchanged project logo is no longer downloaded again on every check.
 - Plugin-store downloads now show their current byte progress, and disk status details include free, used and total space.
 

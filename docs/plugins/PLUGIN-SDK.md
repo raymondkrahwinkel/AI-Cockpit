@@ -51,9 +51,25 @@ built from the .NET "app with plugins" pattern:
   `IServiceCollection`, etc. a **single type identity** across the plugin/host boundary. If a plugin shipped
   its own copy of one of these assemblies, the types it implements would be a *different* `ICockpitPlugin`
   from the host's point of view, and the host would silently fail to find a plugin in it.
-- Loading is **non-collectible**: disabling a plugin removes its UI and calls `Dispose()`, but the assembly
-  itself is only actually freed when the process restarts (a loaded assembly cannot be truly unloaded from a
-  non-collectible context). The plugin manager says as much when you disable one.
+- Enabling a plugin activates it **without a restart** (host 0.159.0+) unless it sets `requiresRestart` or its `ConfigureServices` registers services; sessions that are already running get its new MCP tools at their next start.
+- Disabling a plugin takes effect **without a restart** (host 0.160.0+), unless it sets `requiresRestart` or a
+  running session uses its provider. Loading is **non-collectible**, so the assembly itself stays in memory until
+  the process restarts; enabling the same version again reuses it, with a new instance of your plugin class.
+
+### What a live disable stops {#live-disable}
+
+| Who | What |
+|---|---|
+| **The host** | Everything registered through it: contributions and UI, open workspaces and dialogs, registries, MCP endpoints, channel handlers and subscriptions. Store items from `AddMcpServer` stay. |
+| **Your plugin, in `Dispose()`** | Everything it started: timers, pollers, sockets, processes and running work. Also every C# event it subscribed to with `+=` on the host or a host object (`host.Sessions`, `ActiveSessionChanged`, a session context): the host does not track those. |
+
+- The backend part's `Dispose()` runs off the UI thread. A live disable waits for it for 10 seconds and then moves on, so
+  cancel work rather than wait for it.
+- A UI part's `Dispose()` runs on the UI thread, before the backend part's. The host cannot interrupt it, so it must
+  not block: a blocked `Dispose()` hangs the window, and all the host can do is log the plugin's name.
+- Work that cannot stop cleanly, or a process-wide runtime that starts once (CEF), is what `requiresRestart` is for.
+- A tracker can leave while you use it. Watch `ICockpitHost.TrackerProvidersChanged` when you hold on to one for
+  longer than a call.
 
 **Unsandboxed.** A plugin runs with the same rights as the cockpit process. The next section says exactly
 what the host does and does not enforce, and why.
@@ -327,8 +343,9 @@ public sealed record PluginMetadata(string Id, string DisplayName, string Versio
    the next restart** (the container is already built). Keep `ConfigureServices` optional where you can.
 2. **`Initialize(ICockpitHost)`** runs once the host and UI exist. Register your contribution points here —
    at most once each for `AddSettings`, and as many `AddSideMenuButton`/`AddSideMenuSection` calls as you need.
-3. **`Dispose()`** runs when the plugin is disabled or the app exits. Note: the assembly is **not** unloaded
-   until the process restarts (a loaded plugin cannot be truly unloaded) — "disable" means UI off + Dispose.
+3. **`Dispose()`** runs when the plugin is disabled or the app exits. The host has then already withdrawn what you
+   registered; you stop what you started, see [What a live disable stops](#live-disable). The assembly is **not**
+   unloaded until the process restarts.
 
 ### Settings dialog {#settings-dialog}
 
@@ -792,7 +809,7 @@ of Claude; it only knows that *someone* offers a picker. The transcript-search p
 
 A plugin that talks to a service with its own remote MCP server (JetBrains YouTrack's is the shipping
 example) can register it into the **shared MCP registry** with `host.AddMcpServer(...)`, so both session
-worlds — the local-model tool-loop and the Claude Code fan-out — pick up its tools without the user adding the
+worlds — the in-process tool-loop and the session MCP gateway — pick up its tools without the user adding the
 server by hand in the MCP-servers dialog:
 
 ```csharp
@@ -1072,6 +1089,7 @@ version-mismatched manifest is rejected with a message rather than crashing mid-
 | `name` | yes | Display name in the Plugins manager. Non-empty string. |
 | `version` | yes | Your plugin's version. Non-empty string (no particular format enforced). |
 | `entryAssembly` | yes, unless `uiAssembly` is set | The DLL carrying your `ICockpitPlugin`, relative to the plugin folder. The installer refuses the zip if this file is missing. Leave it out for a plugin that is only a UI part (host 0.39.0+). |
+| `requiresRestart` | no | `true` when the plugin cannot start while the cockpit runs (a process-wide native runtime, say). Enabling it then shows "Restart needed" instead of activating it live. Default `false`, host 0.159.0+. Host-container registrations in `ConfigureServices` require this flag explicitly; undeclared registrations are refused. Keep services used only by the plugin inside its own instance to support live changes. |
 | `uiAssembly` | no | The DLL carrying your `ICockpitPluginUi`, relative to the plugin folder — see [the UI part](API-REFERENCE.md#the-ui-part). Checked like `entryAssembly`. A manifest with neither is refused. Host 0.39.0+. |
 | `uiEntryType` | no | Fully-qualified UI entry type; omit to let the host find the single `ICockpitPluginUi` in the UI assembly. |
 | `abstractionsVersion` | yes | The SDK **major** you built against (an integer) — must equal the host's (`AbstractionsContract.Version`), or the host refuses to load the plugin with a clear message. |
@@ -1330,8 +1348,8 @@ What actually happens under the hood, so you can reason about the "restart to ap
     **needs consent again**, same dialog, same pin-on-enable.
   - Previously disabled → **stays disabled** (no dialog) until you re-enable it in the manager.
   - `abstractionsVersion` mismatch → refused outright, regardless of any of the above.
-- **Disable.** Removes its UI contributions and calls `Dispose()`, but the assembly stays loaded (and its
-  folder stays locked) until the process exits — a loaded plugin cannot be truly unloaded.
+- **Disable.** Takes effect at once, see [What a live disable stops](#live-disable), but the assembly stays loaded
+  (and its folder stays locked) until the process exits — a loaded plugin cannot be truly unloaded.
 - **Remove.** Drops a marker file in the plugin's folder; the folder is actually deleted at the **next
   startup** (once the previous process has released the file lock), not immediately.
 - **Restart to apply.** Because of the above, every state change that isn't purely "remove UI" — a fresh
@@ -1652,7 +1670,8 @@ youtrack/youtrack-1.1.0.zip
 youtrack/youtrack-1.2.0.zip
 ```
 
-Note that the catalogue is advertising only: the zip's own `plugin.json` remains the source of truth at
+Note that the catalogue is advertising only (so `requiresRestart` has no index field: it is read from `plugin.json` at
+enable time): the zip's own `plugin.json` remains the source of truth at
 install time, and consent + hash pinning still apply exactly as for a manual zip install. The cockpit's
 plugin-store dialog (categories sidebar, cards, detail panel, search/sort), the pre-seeded default store, and
 the periodic update check all read this same file — see the [README](https://github.com/raymondkrahwinkel/AI-Cockpit/blob/main/README.md#plugins--plugin-store)
@@ -1777,3 +1796,7 @@ they exercise the main contribution points:
 They all ship their `plugin.json`, use `ConfigureServices` as an empty no-op (their state lives in
 `host.Storage` or is minted fresh per session instead of living in the DI container), and the UI-contribution
 plugins fall back to `SetClipboardTextAsync` when `HasActiveSession` is false.
+
+## Live workflow contributions
+
+SDK 3.67.0 adds `ICockpitHost.WorkflowStepsChanged` (host 0.158.0): subscribe to invalidate a cached workflow engine when a plugin contributes a step, and unsubscribe when disposing. An existing run keeps its engine; subsequent runs read `WorkflowSteps` again.

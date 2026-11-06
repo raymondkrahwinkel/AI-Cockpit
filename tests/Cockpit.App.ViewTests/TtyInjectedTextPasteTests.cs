@@ -103,6 +103,7 @@ public class TtyInjectedTextPasteTests
                 .GetMethod("_WriteToPty", BindingFlags.NonPublic | BindingFlags.Instance, [typeof(string)])!
                 .CreateDelegate(typeof(Action<string>), view);
             vm.PromptSink = writeToPty;
+            vm.MarkHostedTuiReady();
 
             if (origin == TtyInputOrigin.Typed)
             {

@@ -40,6 +40,30 @@ internal static partial class Screenshotter
     private const int DefaultWindowWidth = 1100;
     private const int DefaultWindowHeight = 760;
 
+    private static Window _CompanionScene(bool empty)
+    {
+        var window = new CompanionWindow(null);
+        window.SetTools(empty ? [] :
+        [
+            ("Assistant", new AssistantIndicator
+            {
+                ShowWhenDisabled = true,
+                DataContext = new AssistantIndicatorViewModel
+                {
+                    IsFeatureEnabled = true,
+                    Activity = Core.Assistant.AssistantActivity.Listening,
+                    ListeningMode = Core.Assistant.AssistantListeningMode.Off,
+                },
+            }),
+            ("Screenshot", new Button
+            {
+                Content = Controls.CockpitIcons.Icon(Material.Icons.MaterialIconKind.Monitor),
+                Padding = new Thickness(7, 6),
+            }),
+        ]);
+        return window;
+    }
+
     private static Window _ElapsedScene(int width, int height, ReadingLevel level, bool assistant)
     {
         var session = new SessionViewModel { Title = "Session", ReadingLevel = level };
@@ -226,6 +250,8 @@ internal static partial class Screenshotter
     // working from a hand-written list, and a hand-written list is blind to exactly the scene nobody remembered.
     private static readonly Dictionary<string, Func<int, int, Window>> Scenes = _WithProjectScenes(new(StringComparer.Ordinal)
     {
+        ["companion-tools"] = (_, _) => _CompanionScene(empty: false),
+        ["companion-empty"] = (_, _) => _CompanionScene(empty: true),
         ["session-background-work"] = (_, _) => _BackgroundWorkScene(),
         // AC-2028: the status bar at rest and busy, the test-runs dialog, and the disk panel open on a critical drive.
         ["statusbar-rest"] = (_, _) => _StatusBarScene(busy: false),
@@ -291,6 +317,8 @@ internal static partial class Screenshotter
         ["workspace-menu-projects"] = (width, height) => _MarkdownFileScene(width, height, "preview"),
         // AC-1751 (mockup AC-1749 v003, flow 8): a keyed workspace popped out into its own window, with "⇤ Dock back".
         ["workspace-floating"] = (_, _) => _WorkspaceFloatingScene(),
+        // AC-2024: the tab of a workspace whose plugin was just disabled.
+        ["workspace-plugin-disabled"] = (_, _) => _WorkspacePluginDisabledScene(),
         // AC-1753 (mockup AC-1749 v003, flows 6 and 10): the Markdown editor live, with the caret in a table, as source, and read-only.
         ["markdown-editor"] = (width, height) => _MarkdownEditorScene(width, height, editor => editor.EditLine(12, atEnd: true)),
         ["markdown-file-new"] = (width, height) => _MarkdownFileScene(width, height, "new"),
@@ -570,8 +598,15 @@ internal static partial class Screenshotter
         // badge — "● This machine" and "◆ Depot — Work" — now that the old "On this machine" heading is gone.
         ["plugin-store"] = (_, _) => _PluginStore(),
         ["plugin-store-installed"] = (_, _) => _PluginStoreInstalled(),
+        // AC-2024: the list right after a live disable, with no restart banner.
+        ["plugin-store-disabled-live"] = (_, _) => _PluginStoreDisabledLive(),
         ["plugin-store-updates-incompatible"] = (_, _) => _PluginStoreUpdatesWithIncompatible(),
         ["plugin-store-update-failed"] = (_, _) => _PluginStoreUpdateFailed(),
+        // AC-2025: Update all, the plugins updated while the cockpit ran; the mixed batch with its one restart notice and its failure; the memory advice.
+        ["plugin-store-updated-live"] = (_, _) => _PluginStoreUpdatedLive(mixed: false),
+        ["plugin-store-update-all-mixed"] = (_, _) => _PluginStoreUpdatedLive(mixed: true),
+        ["plugin-store-restart-advice"] = (_, _) => _PluginStoreRestartAdvice(),
+        ["server-admin-plugins-advice"] = ServerAdminScene.PluginsAdvice,
         // AC-553: the eleven bundled plugins' real logo tiles — its own scene, not added to `_SampleStorePlugins`,
         // whose row count PluginStoreBusyGateTests asserts on. Height raised past the dialog's own 820: twelve
         // rows do not fit at rest.
@@ -585,6 +620,7 @@ internal static partial class Screenshotter
         // this window is five lists whose failure mode is one of them quietly bound to the wrong collection.
         ["agent-line"] = (_, _) => new AgentLineInspectorDialog { DataContext = _AgentLine() },
         ["set-status"] = (_, _) => new SetStatusDialog { DataContext = new ViewModels.SetStatusDialogViewModel("AC-32 — manual status") },
+        ["session-mcp"] = (_, _) => new SessionMcpDialog { DataContext = new ViewModels.SessionMcpDialogViewModel() },
         // AC-492: the quick-note surface with a failed write, since that is the state the ticket's one hard rule is
         // about — the note stays, and the line under it says why.
         ["quick-note"] = (_, _) => new QuickNoteWindow { DataContext = new ViewModels.QuickNoteViewModel { Note = "Ask finance for the Q3 numbers before Friday.", Message = "Could not save: Depot is unreachable. Your note is kept here." } },
@@ -2151,6 +2187,8 @@ internal static partial class Screenshotter
         public bool Remove(string scheme) => false;
 
         public bool RegisterFamily(Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceFamily family) => false;
+
+        public bool RemoveFamily(string key) => false;
     }
 
     private static ManageProfilesDialog _ManageProfilesEditing(SessionProfile profile, Services.IPluginRegistrations? plugins = null)
@@ -3286,6 +3324,56 @@ internal static partial class Screenshotter
         viewModel.Manager.HasPlugins = true;
         viewModel.SelectedSidebarItem = viewModel.SecondarySidebarItems.First(item => item.Filter == PluginStoreFilter.Installed);
         return new PluginStoreDialog { DataContext = viewModel };
+    }
+
+    private static PluginStoreDialog _PluginStoreDisabledLive()
+    {
+        var dialog = _PluginStoreInstalled();
+        var manager = dialog.DataContext is PluginStoreDialogViewModel { Manager: var found } ? found : throw new InvalidOperationException("The store scene has no view model.");
+        manager.Plugins.Add(new PluginRowViewModel(new InstalledPlugin(
+            new DiscoveredPlugin(Path.Combine("plugins", "clock"), "clock", new PluginManifest("clock", "Clock", "1.0.9", null, 3, null, null, "The time and date, for a Dashboard workspace.", "Cockpit"), "clock-hash", PluginLoadDecision.Disabled),
+            new PluginRegistration(false, "clock-hash"),
+            null,
+            null,
+            null)));
+        manager.StatusMessage = "'Clock' disabled.";
+        return dialog;
+    }
+
+    private static PluginStoreDialog _PluginStoreUpdatedLive(bool mixed)
+    {
+        var dialog = _PluginStoreInstalled();
+        var manager = dialog.DataContext is PluginStoreDialogViewModel { Manager: var found } ? found : throw new InvalidOperationException("The store scene has no view model.");
+        static PluginRowViewModel Row(string id, string name, string version) => new(new InstalledPlugin(
+            new DiscoveredPlugin(Path.Combine("plugins", id), id, new PluginManifest(id, name, version, null, 3, null, null, $"The {name} plugin.", "Cockpit"), $"{id}-hash", PluginLoadDecision.Load),
+            new PluginRegistration(true, $"{id}-hash"),
+            null,
+            null,
+            null));
+
+        manager.Plugins.Add(Row("clock", "Clock", "1.1.0"));
+        manager.Plugins.Add(Row("system-monitor", "System Monitor", "0.9.2"));
+        manager.RetiredLoadContexts = 2;
+        if (mixed)
+        {
+            manager.NeedsRestart = true;
+            manager.StatusIsError = true;
+            manager.StatusMessage = "Updated 2 plugin(s); they are active now. 'Browser' will update after a restart. Restart the cockpit to finish. Failed: 'Depot' (the update could not be activated (Initialize threw). Version 0.11.10 is running).";
+        }
+        else
+        {
+            manager.StatusMessage = "Updated 2 plugin(s); they are active now.";
+        }
+
+        return dialog;
+    }
+
+    private static PluginStoreDialog _PluginStoreRestartAdvice()
+    {
+        var dialog = _PluginStoreUpdatedLive(mixed: false);
+        var manager = dialog.DataContext is PluginStoreDialogViewModel { Manager: var found } ? found : throw new InvalidOperationException("The store scene has no view model.");
+        manager.RetiredLoadContexts = 3;
+        return dialog;
     }
 
     // AC-2013: a runnable update and a host-incompatible one must remain distinguishable in the same list.
@@ -4623,6 +4711,14 @@ internal static partial class Screenshotter
 
         public void Register(Cockpit.Plugins.Abstractions.Sessions.SessionProviderRegistration registration, string? ownerPluginId = null) { }
 
+        public bool Unregister(string providerId, string? ownerPluginId) => false;
+
+        public event EventHandler? Changed
+        {
+            add { }
+            remove { }
+        }
+
         public string? OwnerOf(string providerId) => null;
 
         public IReadOnlyList<Cockpit.Plugins.Abstractions.Sessions.SessionProviderRegistration> Registrations => [Claude];
@@ -4656,6 +4752,14 @@ internal static partial class Screenshotter
         };
 
         public void Register(Cockpit.Plugins.Abstractions.Sessions.SessionProviderRegistration registration, string? ownerPluginId = null) { }
+
+        public bool Unregister(string providerId, string? ownerPluginId) => false;
+
+        public event EventHandler? Changed
+        {
+            add { }
+            remove { }
+        }
 
         public string? OwnerOf(string providerId) => null;
 
@@ -4952,6 +5056,19 @@ internal static partial class Screenshotter
             }
         }
         cockpit.Workspaces.OpenWorkspaceAsync("scene.markdown", new("Ideas/depot-sync.md", "depot-sync.md", Preview: true)).GetAwaiter().GetResult();
+        return new MainWindow { DataContext = cockpit };
+    }
+
+    private static MainWindow _WorkspacePluginDisabledScene()
+    {
+        var registry = new WorkspaceTypeRegistry(new ServiceCollection().BuildServiceProvider());
+        registry.Register(
+            new Cockpit.Plugins.Abstractions.Workspaces.WorkspaceTypeRegistration("scene.autopilot", "Autopilot", _ => new TextBlock { Text = "Autopilot" }),
+            new PluginScenes.SceneStorage(),
+            NullCockpitSessionObserver.Instance);
+        var cockpit = new CockpitViewModel(workspaceTypeRegistry: registry);
+        cockpit.Workspaces.OpenWorkspaceAsync("scene.autopilot").GetAwaiter().GetResult();
+        registry.Unregister("scene.autopilot");
         return new MainWindow { DataContext = cockpit };
     }
 

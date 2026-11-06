@@ -277,9 +277,9 @@ public sealed class RemoteAdminJourney
             Assert.True(admin.Plugins.Any(plugin => plugin.Id == StorePlugin), admin.Status);
             var installed = await setup.GetAsync<JsonArray>("api/v1/plugins");
             var serverEntry = installed.Single(plugin => plugin?["id"]?.GetValue<string>() == StorePlugin);
-            Assert.Equal($"'Echo provider' enabled on {Server}. Restart the server to load it.", installStatus);
+            Assert.Equal($"'Echo provider' is active on {Server}. Running sessions get its new MCP tools when they next start.", installStatus);
             Assert.Equal(serverEntry?["sha256"]?.GetValue<string>(), consent.Sha256);
-            Assert.Equal((true, true), (serverEntry?["takesEffectAfterServerRestarts"]?.GetValue<bool>(), HeadlessAvalonia.Run(() => admin.NeedsRestart)));
+            Assert.Equal((false, false), (serverEntry?["takesEffectAfterServerRestarts"]?.GetValue<bool>(), HeadlessAvalonia.Run(() => admin.NeedsRestart)));
             Assert.Equal(localPluginIds, view.Plugins.Plugins.Select(plugin => plugin.FolderId));
 
             // Restart now: the server stops as on a SIGTERM; the journey is its supervisor and starts it on the same state.
@@ -307,36 +307,6 @@ public sealed class RemoteAdminJourney
                 await admin.LoadCommand.ExecuteAsync(null);
             });
             Assert.Equal((0, "load", false, "Echo from the store"), (restartExit, loaded?["decision"]?.GetValue<string>(), loaded?["takesEffectAfterServerRestarts"]?.GetValue<bool>(), created["label"]?.GetValue<string>()));
-
-            // AC-1650: the store offers a newer echo-provider; the page counts it, the button opens the store on Updates, and
-            // Update all stages it (a restart away from live).
-            var storeDirectory = Path.Combine(root, "fixture-store");
-            File.Copy(Path.Combine(storeDirectory, $"{StorePlugin}-1.0.0.zip"), Path.Combine(storeDirectory, $"{StorePlugin}-1.1.0.zip"));
-            var newerIndex = File.ReadAllText(Path.Combine(storeDirectory, "index.json")).Replace("1.0.0", "1.1.0", StringComparison.Ordinal);
-            File.WriteAllText(Path.Combine(storeDirectory, "index.json"), newerIndex);
-            await HeadlessAvalonia.RunAsync(() => admin.LoadCommand.ExecuteAsync(null));
-            var (updateLabel, rowLabel) = HeadlessAvalonia.Run(() => (admin.HasAvailableUpdates ? admin.UpdateLabel : "", admin.Plugins.Single(plugin => plugin.Id == StorePlugin).UpdateText));
-            var updatesOpened = new TaskCompletionSource<PluginStoreDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
-            using var watchUpdates = Window.WindowOpenedEvent.AddClassHandler<PluginStoreDialog>((storeWindow, _) => updatesOpened.TrySetResult(storeWindow));
-            Task openUpdates = Task.CompletedTask;
-            await HeadlessAvalonia.RunAsync(() =>
-            {
-                openUpdates = admin.UpdatePluginsCommand.ExecuteAsync(null);
-                return Task.CompletedTask;
-            });
-            var updatesDialog = await updatesOpened.Task.WaitAsync(Until.Ceiling);
-            var (onUpdates, staged) = (false, false);
-            await HeadlessAvalonia.RunAsync(async () =>
-            {
-                var updates = Assert.IsType<PluginStoreDialogViewModel>(updatesDialog.DataContext);
-                await Until.CollectionHolds(updates.Manager.AvailablePlugins, () => updates.Manager.AvailablePlugins.Any(plugin => plugin.CanUpdate));
-                onUpdates = updates.SelectedSidebarItem?.Filter.Kind == PluginStoreFilterKind.UpdatesAvailable;
-                await updates.Manager.UpdateAllCommand.ExecuteAsync(null);
-                staged = updates.Manager.NeedsRestart;
-                updatesDialog.Close();
-            });
-            await openUpdates;
-            Assert.Equal(("Update 1", "1.1.0 available", true, true, true), (updateLabel, rowLabel, onUpdates, staged, HeadlessAvalonia.Run(() => admin.NeedsRestart)));
 
             // AC-1534/AC-1585: Admin → Profiles is Options › Profiles' editor on the server. Every field it has, key and secret
             // variable included, is saved there and reopens as saved, each secret only as set; a masked save keeps them, and
@@ -474,33 +444,6 @@ public sealed class RemoteAdminJourney
             Assert.False(echoOnServer.Contains(echoKey, StringComparison.Ordinal), "GET /storage returned the plugin's key.");
             Assert.False((await setup.GetAsync<JsonArray>("api/v1/audit")).ToJsonString().Contains(echoKey, StringComparison.Ordinal), "The audit holds the plugin's key.");
             Assert.False(run.Output.Contains(echoKey, StringComparison.Ordinal), "The server log holds the plugin's key.");
-
-            var removedPlugin = admin.Plugins.Single(plugin => plugin.Id == StorePlugin);
-            await HeadlessAvalonia.RunAsync(() => admin.RemovePluginCommand.ExecuteAsync(removedPlugin));
-            Assert.DoesNotContain(admin.Plugins, plugin => plugin.Id == StorePlugin);
-            var removed = await setup.GetAsync<JsonArray>("api/v1/plugins");
-            Assert.DoesNotContain(removed, plugin => plugin?["id"]?.GetValue<string>() == StorePlugin);
-
-            // AC-1651: a resource 404 stays specific unless the known server semver is older than this desktop's.
-            var remoteServer = view.ServerGroups.Single().Server;
-            Assert.NotNull(remoteServer);
-            var currentAdmin = new ServerAdminViewModel(
-                Server, admin.KeyLabel, remoteServer.Administration, [], [], remoteServer.Plugins,
-                serverVersion: "1.2.3", desktopVersion: "1.2.3");
-            await HeadlessAvalonia.RunAsync(() => currentAdmin.TogglePluginCommand.ExecuteAsync(removedPlugin));
-            var (missingPlugin, missingPluginIsError) = HeadlessAvalonia.Run(() => (currentAdmin.Status, currentAdmin.StatusIsError));
-            Assert.True(missingPluginIsError);
-            Assert.Equal("That plugin is not installed on the server.", missingPlugin);
-
-            var olderAdmin = new ServerAdminViewModel(
-                Server, admin.KeyLabel, remoteServer.Administration, [], [], remoteServer.Plugins,
-                serverVersion: "1.2.2", desktopVersion: "1.2.3-nightly.4");
-            await HeadlessAvalonia.RunAsync(() => olderAdmin.TogglePluginCommand.ExecuteAsync(removedPlugin));
-            var (missingFeature, missingFeatureIsError) = HeadlessAvalonia.Run(() => (olderAdmin.Status, olderAdmin.StatusIsError));
-            Assert.True(missingFeatureIsError);
-            Assert.Contains(olderAdmin.ServerVersion, missingFeature, StringComparison.Ordinal);
-            Assert.Contains(olderAdmin.DesktopVersion, missingFeature, StringComparison.Ordinal);
-            Assert.Contains("update the server", missingFeature, StringComparison.OrdinalIgnoreCase);
 
             // AC-1572 through AC-1571: Depot's own local view over the server. B2: the browser sign-in runs on the server, this
             // desktop's "browser" only follows the link to its loopback; a token signs Work in at a fake Depot, the same token on
@@ -857,7 +800,9 @@ public sealed class RemoteAdminJourney
             Assert.False(Directory.Exists(Path.Combine(stateRoot, "browser-runtimes")));
             await setup.SendAsync<JsonObject>(HttpMethod.Delete, $"api/v1/sessions/{browserPane}", null);
             await setup.SendAsync<JsonObject>(HttpMethod.Put, "api/v1/plugins/browser/storage", new { values = new { agentsUseCockpitBrowser = false }, removed = Array.Empty<string>(), secrets = Array.Empty<string>() });
-            Assert.Equal("none", (await _AskForCdpEndpointAsync(setup)).Endpoint);
+            var (disabledBrowserPane, disabledBrowserEndpoint) = await _AskForCdpEndpointAsync(setup);
+            Assert.Equal("none", disabledBrowserEndpoint);
+            await setup.SendAsync<JsonObject>(HttpMethod.Delete, $"api/v1/sessions/{disabledBrowserPane}", null);
 
             // AC-1475: Assistant → Copy in Echo → turn it on; the server reports it running, and both are in the Audit log.
             var assistant = admin.Assistant ?? throw new InvalidOperationException("Admin opened Options without its Assistant page.");
@@ -956,6 +901,85 @@ public sealed class RemoteAdminJourney
             Assert.True(customLogo.SequenceEqual(defaultLogo));
             Assert.Equal([HttpStatusCode.OK], (await Task.WhenAll(browserVisits)).Select(visit => visit.StatusCode));
             Assert.Contains((Laptop, "plugin_channel"), assistantAudit);
+            // AC-1650/AC-2025: a real newer archive proves the remote update is live, not only advertised by the store.
+            var storeDirectory = Path.Combine(root, "fixture-store");
+            _CreateFixtureUpdate(storeDirectory);
+            await HeadlessAvalonia.RunAsync(() => admin.LoadCommand.ExecuteAsync(null));
+            var (updateLabel, rowLabel) = HeadlessAvalonia.Run(() => (admin.HasAvailableUpdates ? admin.UpdateLabel : "", admin.Plugins.Single(plugin => plugin.Id == StorePlugin).UpdateText));
+            var updatesOpened = new TaskCompletionSource<PluginStoreDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
+            using var watchUpdates = Window.WindowOpenedEvent.AddClassHandler<PluginStoreDialog>((storeWindow, _) => updatesOpened.TrySetResult(storeWindow));
+            Task openUpdates = Task.CompletedTask;
+            await HeadlessAvalonia.RunAsync(() =>
+            {
+                openUpdates = admin.UpdatePluginsCommand.ExecuteAsync(null);
+                return Task.CompletedTask;
+            });
+            var updatesDialog = await updatesOpened.Task.WaitAsync(Until.Ceiling);
+            var (onUpdates, staged, updateFailed, updateStatus) = (false, false, false, "");
+            await HeadlessAvalonia.RunAsync(async () =>
+            {
+                var updates = Assert.IsType<PluginStoreDialogViewModel>(updatesDialog.DataContext);
+                await Until.CollectionHolds(updates.Manager.AvailablePlugins, () => updates.Manager.AvailablePlugins.Any(plugin => plugin.CanUpdate));
+                onUpdates = updates.SelectedSidebarItem?.Filter.Kind == PluginStoreFilterKind.UpdatesAvailable;
+                await updates.Manager.UpdateAllCommand.ExecuteAsync(null);
+                staged = updates.Manager.NeedsRestart;
+                updateFailed = updates.Manager.StatusIsError;
+                updateStatus = updates.Manager.StatusMessage;
+                updatesDialog.Close();
+            });
+            await openUpdates;
+            var waitingUpdate = (await setup.GetAsync<JsonArray>("api/v1/plugins")).Single(plugin => plugin?["id"]?.GetValue<string>() == StorePlugin);
+            Assert.Equal(("Update 1", "1.1.0 available", true, "1.1.0", "1.0.0", false, false, false, false, false),
+                (updateLabel, rowLabel, onUpdates, waitingUpdate?["version"]?.GetValue<string>(), waitingUpdate?["runningVersion"]?.GetValue<string>(),
+                    waitingUpdate?["takesEffectAfterServerRestarts"]?.GetValue<bool>(), updateFailed, staged,
+                    HeadlessAvalonia.Run(() => admin.HasAvailableUpdates), HeadlessAvalonia.Run(() => admin.NeedsRestart)));
+            Assert.Contains("uses this provider", updateStatus, StringComparison.Ordinal);
+            Assert.Contains("uses this provider", HeadlessAvalonia.Run(() => admin.Status), StringComparison.Ordinal);
+
+            await HeadlessAvalonia.RunAsync(async () =>
+            {
+                await assistant.SwitchCommand.ExecuteAsync(false);
+                await Until.Holds(assistant, () => assistant.IsOff);
+            });
+            foreach (var session in new[] { storePane, keyedPane, paneId, sharedPane, echoPane })
+            {
+                await setup.SendAsync<JsonObject>(HttpMethod.Delete, $"api/v1/sessions/{session}", null);
+            }
+
+            JsonNode? updated = null;
+            await Until.ReloadHolds(async () =>
+            {
+                updated = (await setup.GetAsync<JsonArray>("api/v1/plugins")).Single(plugin => plugin?["id"]?.GetValue<string>() == StorePlugin);
+            }, () => updated?["runningVersion"]?.GetValue<string>() == "1.1.0");
+            Assert.Equal(("1.1.0", "1.1.0", false),
+                (updated?["version"]?.GetValue<string>(), updated?["runningVersion"]?.GetValue<string>(), updated?["takesEffectAfterServerRestarts"]?.GetValue<bool>()));
+
+            var removedPlugin = admin.Plugins.Single(plugin => plugin.Id == StorePlugin);
+            await HeadlessAvalonia.RunAsync(() => admin.RemovePluginCommand.ExecuteAsync(removedPlugin));
+            Assert.DoesNotContain(admin.Plugins, plugin => plugin.Id == StorePlugin);
+            var removed = await setup.GetAsync<JsonArray>("api/v1/plugins");
+            Assert.DoesNotContain(removed, plugin => plugin?["id"]?.GetValue<string>() == StorePlugin);
+
+            // AC-1651: a resource 404 stays specific unless the known server semver is older than this desktop's.
+            var remoteServer = view.ServerGroups.Single().Server;
+            Assert.NotNull(remoteServer);
+            var currentAdmin = new ServerAdminViewModel(
+                Server, admin.KeyLabel, remoteServer.Administration, [], [], remoteServer.Plugins,
+                serverVersion: "1.2.3", desktopVersion: "1.2.3");
+            await HeadlessAvalonia.RunAsync(() => currentAdmin.TogglePluginCommand.ExecuteAsync(removedPlugin));
+            var (missingPlugin, missingPluginIsError) = HeadlessAvalonia.Run(() => (currentAdmin.Status, currentAdmin.StatusIsError));
+            Assert.True(missingPluginIsError);
+            Assert.Equal("That plugin is not installed on the server.", missingPlugin);
+
+            var olderAdmin = new ServerAdminViewModel(
+                Server, admin.KeyLabel, remoteServer.Administration, [], [], remoteServer.Plugins,
+                serverVersion: "1.2.2", desktopVersion: "1.2.3-nightly.4");
+            await HeadlessAvalonia.RunAsync(() => olderAdmin.TogglePluginCommand.ExecuteAsync(removedPlugin));
+            var (missingFeature, missingFeatureIsError) = HeadlessAvalonia.Run(() => (olderAdmin.Status, olderAdmin.StatusIsError));
+            Assert.True(missingFeatureIsError);
+            Assert.Contains(olderAdmin.ServerVersion, missingFeature, StringComparison.Ordinal);
+            Assert.Contains(olderAdmin.DesktopVersion, missingFeature, StringComparison.Ordinal);
+            Assert.Contains("update the server", missingFeature, StringComparison.OrdinalIgnoreCase);
             var auditTrail = await File.ReadAllTextAsync(Path.Combine(stateRoot, "node-access-audit.jsonl"));
             Assert.False(
                 new[] { serverState, run.Output, auditTrail }.Any(text => text.Contains(installToken, StringComparison.Ordinal)),
@@ -1564,6 +1588,37 @@ public sealed class RemoteAdminJourney
         var hash = PluginHash.Compute(File.ReadAllBytes(zip));
         File.WriteAllText(Path.Combine(store, "index.json"), $$"""{"name":"Journey store","plugins":[{"id":"{{StorePlugin}}","name":"Echo provider","description":null,"author":null,"latestVersion":"1.0.0","versions":[{"version":"1.0.0","path":"{{StorePlugin}}-1.0.0.zip","abstractionsVersion":3,"minHostVersion":null,"sha256":"{{hash}}","notes":null}]}]}""");
         return PluginStoreConfig.Local(store);
+    }
+
+    private static void _CreateFixtureUpdate(string store)
+    {
+        var currentZip = Path.Combine(store, $"{StorePlugin}-1.0.0.zip");
+        var updatedZip = Path.Combine(store, $"{StorePlugin}-1.1.0.zip");
+        using (var archive = ZipFile.Open(updatedZip, ZipArchiveMode.Create))
+        {
+            foreach (var file in Directory.EnumerateFiles(ServerJourney._Metadata("EchoProviderDirectory")))
+            {
+                var entry = archive.CreateEntry(Path.GetFileName(file));
+                using var destination = entry.Open();
+                if (Path.GetFileName(file).Equals("plugin.json", StringComparison.Ordinal))
+                {
+                    using var writer = new StreamWriter(destination);
+                    writer.Write(File.ReadAllText(file).Replace("1.0.0", "1.1.0", StringComparison.Ordinal));
+                }
+                else
+                {
+                    using var source = File.OpenRead(file);
+                    source.CopyTo(destination);
+                }
+            }
+        }
+
+        var currentHash = PluginHash.Compute(File.ReadAllBytes(currentZip));
+        var updatedHash = PluginHash.Compute(File.ReadAllBytes(updatedZip));
+        var updatedIndex = File.ReadAllText(Path.Combine(store, "index.json"))
+            .Replace("1.0.0", "1.1.0", StringComparison.Ordinal)
+            .Replace(currentHash, updatedHash, StringComparison.Ordinal);
+        File.WriteAllText(Path.Combine(store, "index.json"), updatedIndex);
     }
 
     // Above the offset, so the pairing port below it is a valid one.

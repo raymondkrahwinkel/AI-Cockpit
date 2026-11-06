@@ -16,6 +16,11 @@ public interface IPluginTtyProviderRegistry
     void Register(TtyProviderRegistration registration, string? ownerPluginId = null);
 
     /// <summary>
+    /// Withdraws <paramref name="providerId"/> while <paramref name="ownerPluginId"/> still owns it; a later owner's registration stays.
+    /// </summary>
+    bool Unregister(string providerId, string? ownerPluginId);
+
+    /// <summary>
     /// The plugin the host stamped as registering <paramref name="providerId"/> (AC-289), or <see langword="null"/> when unknown.
     /// </summary>
     string? OwnerOf(string providerId);
@@ -35,18 +40,52 @@ internal sealed class PluginTtyProviderRegistry : IPluginTtyProviderRegistry, IS
 {
     private readonly Dictionary<string, TtyProviderRegistration> _registrations = new(StringComparer.OrdinalIgnoreCase);
 
-    public IReadOnlyList<TtyProviderRegistration> Registrations => [.. _registrations.Values];
+    public IReadOnlyList<TtyProviderRegistration> Registrations
+    {
+        get
+        {
+            lock (_registrations)
+            {
+                return [.. _registrations.Values];
+            }
+        }
+    }
 
     private readonly Dictionary<string, string?> _owners = new(StringComparer.OrdinalIgnoreCase);
 
     public void Register(TtyProviderRegistration registration, string? ownerPluginId = null)
     {
-        _registrations[registration.ProviderId] = registration;
-        _owners[registration.ProviderId] = ownerPluginId;
+        lock (_registrations)
+        {
+            _registrations[registration.ProviderId] = registration;
+            _owners[registration.ProviderId] = ownerPluginId;
+        }
     }
 
-    public string? OwnerOf(string providerId) => _owners.GetValueOrDefault(providerId);
+    public bool Unregister(string providerId, string? ownerPluginId)
+    {
+        lock (_registrations)
+        {
+            return _registrations.ContainsKey(providerId)
+                && string.Equals(_owners.GetValueOrDefault(providerId), ownerPluginId, StringComparison.Ordinal)
+                && _registrations.Remove(providerId)
+                && _owners.Remove(providerId);
+        }
+    }
 
-    public TtyProviderRegistration? Resolve(string providerId) =>
-        _registrations.GetValueOrDefault(providerId);
+    public string? OwnerOf(string providerId)
+    {
+        lock (_registrations)
+        {
+            return _owners.GetValueOrDefault(providerId);
+        }
+    }
+
+    public TtyProviderRegistration? Resolve(string providerId)
+    {
+        lock (_registrations)
+        {
+            return _registrations.GetValueOrDefault(providerId);
+        }
+    }
 }

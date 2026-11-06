@@ -12,6 +12,8 @@ public sealed class PluginSignInStanding(ILogger<PluginSignInStanding> logger) :
 
     internal void Register(string pluginId, Func<CancellationToken, Task<bool>> waitsForSignIn) => _plugins[pluginId] = waitsForSignIn;
 
+    internal void Remove(string pluginId) => _plugins.TryRemove(pluginId, out _);
+
     // False for no plugin, an unknown one, or a question that fails: a real error is never hidden behind a guess.
     public async Task<bool> WaitsAsync(string? pluginId, CancellationToken cancellationToken = default)
     {

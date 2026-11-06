@@ -30,6 +30,9 @@ internal sealed class RemotePluginAdministration(BackendApiClient client, ILogge
             : new PluginStoreFetchResult(false, "That plugin store is not configured on the server.", null, null);
     }
 
+    public async Task<int> GetRetiredLoadContextsAsync(CancellationToken cancellationToken = default) =>
+        (await client.SendAsync<RemoteRetiredLoadContexts>(HttpMethod.Get, "api/v1/plugins/retired", null, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false)).Count;
+
     public Task<IReadOnlyList<PluginStoreCatalogEntry>> GetStoresAsync(CancellationToken cancellationToken = default) =>
         client.SendAsync<IReadOnlyList<PluginStoreCatalogEntry>>(HttpMethod.Get, "api/v1/plugins/store", null, ConnectKeyEndpoints.Json, cancellationToken);
 
@@ -39,17 +42,30 @@ internal sealed class RemotePluginAdministration(BackendApiClient client, ILogge
     public async Task<PluginProvisionResult> InstallFromStoreAsync(PluginProvisionRequest request, CancellationToken cancellationToken = default, IProgress<PluginDownloadProgress>? progress = null)
     {
         var response = await client.SendAsync<RemotePluginInstall>(HttpMethod.Post, "api/v1/plugins", new { storeId = request.Store.Location, pluginId = request.Id, version = request.Version.Version }, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false);
-        return new PluginProvisionResult(response.Outcome, response.Id, response.Name, response.Error, null, response.FolderId, response.Sha256);
+        PluginLiveState? live = response switch
+        {
+            { RolledBack: true, Notice: { } error } => PluginLiveState.UpdateRolledBack(error),
+            { RolledBack: true, RestartReason: { } error } => PluginLiveState.UpdateRolledBack(error),
+            { Failed: true, RestartReason: { } error } => PluginLiveState.UpdateFailed(error),
+            { Live: true } => PluginLiveState.Active,
+            { RestartReason: { } reason, RestartRequired: true } => PluginLiveState.Restart(reason),
+            { Notice: { } reason } => PluginLiveState.Blocked(reason),
+            { RestartReason: { } reason } => PluginLiveState.Blocked(reason),
+            _ => null,
+        };
+        return new PluginProvisionResult(response.Outcome, response.Id, response.Name, response.Error, null, response.FolderId, response.Sha256, Live: live);
     }
 
-    public async Task SetEnabledAsync(string folderId, bool enabled, string pinnedSha256, CancellationToken cancellationToken = default)
+    public async Task<PluginLiveState> SetEnabledAsync(string folderId, bool enabled, string pinnedSha256, CancellationToken cancellationToken = default)
     {
-        await client.SendAsync<JsonObject>(HttpMethod.Put, $"api/v1/plugins/{Uri.EscapeDataString(folderId)}/enabled", new { enabled, sha256 = pinnedSha256 }, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false);
+        var response = await client.SendAsync<RemotePluginEnabled>(HttpMethod.Put, $"api/v1/plugins/{Uri.EscapeDataString(folderId)}/enabled", new { enabled, sha256 = pinnedSha256 }, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false);
+        return response.Live ? PluginLiveState.Active : _NotLive(response.RestartRequired ? response.RestartReason : response.Notice ?? response.RestartReason, response.RestartRequired);
     }
 
-    public async Task RemoveAsync(string folderId, CancellationToken cancellationToken = default)
+    public async Task<PluginLiveState> RemoveAsync(string folderId, CancellationToken cancellationToken = default)
     {
-        await client.SendAsync<JsonObject>(HttpMethod.Delete, $"api/v1/plugins/{Uri.EscapeDataString(folderId)}", null, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false);
+        var response = await client.SendAsync<RemotePluginEnabled>(HttpMethod.Delete, $"api/v1/plugins/{Uri.EscapeDataString(folderId)}", null, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false);
+        return response.Live ? PluginLiveState.Active : _NotLive(response.RestartRequired ? response.RestartReason : response.Notice ?? response.RestartReason, response.RestartRequired);
     }
 
     public Task<JsonElement> InvokeChannelAsync(string folderId, string action, JsonElement payload, CancellationToken cancellationToken = default) =>
@@ -181,13 +197,17 @@ internal sealed class RemotePluginAdministration(BackendApiClient client, ILogge
 
     private async Task<string> _SignInMcpServerAsync(string folderId, string name, CancellationToken cancellationToken)
     {
+        return await SignInMcpAtAsync($"api/v1/plugins/{Uri.EscapeDataString(folderId)}/mcp-servers/{Uri.EscapeDataString(name)}/sign-in", name, cancellationToken).ConfigureAwait(false);
+    }
+
+    internal async Task<string> SignInMcpAtAsync(string path, string name, CancellationToken cancellationToken)
+    {
         using var loopback = McpOAuthLoopback.Open(_logger);
         if (loopback is null)
         {
             return "Unavailable";
         }
 
-        var path = $"api/v1/plugins/{Uri.EscapeDataString(folderId)}/mcp-servers/{Uri.EscapeDataString(name)}/sign-in";
         var flow = await client.SendAsync<RemoteMcpSignIn>(HttpMethod.Post, path, new { port = loopback.Port }, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false);
         var flowPath = $"{path}/{Uri.EscapeDataString(flow.FlowId)}";
         var handedBack = false;
@@ -290,7 +310,16 @@ internal sealed class RemotePluginAdministration(BackendApiClient client, ILogge
         await client.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/server/restart", null, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false);
     }
 
-    private sealed record RemotePluginInstall(PluginProvisionOutcome Outcome, string Id, string Name, string Version, string? Error, string? FolderId, string? Sha256);
+    private sealed record RemotePluginInstall(PluginProvisionOutcome Outcome, string Id, string Name, string Version, string? Error, string? FolderId, string? Sha256, string? RestartReason = null, bool RestartRequired = false, bool Live = false, bool Failed = false, bool RolledBack = false, string? Notice = null);
+
+    private sealed record RemoteRetiredLoadContexts(int Count);
+
+    private static PluginLiveState _NotLive(string? reason, bool restartRequired) =>
+        restartRequired
+            ? PluginLiveState.Restart(reason ?? "The server applies this when it restarts.")
+            : PluginLiveState.Blocked(reason ?? "The plugin change is waiting for its current user to finish.");
+
+    private sealed record RemotePluginEnabled(bool Live, string? RestartReason, bool RestartRequired = false, string? Notice = null);
 
     // AC-1525: the server's decision and its hash of the bytes, so enabling walks the same consent as a local plugin. The
     // folder's path stays on the server.
@@ -307,11 +336,12 @@ internal sealed class RemotePluginAdministration(BackendApiClient client, ILogge
         string? PinnedSha256,
         string? Author,
         string? Description,
-        string? MinHostVersion)
+        string? MinHostVersion,
+        string? RunningVersion = null)
     {
         public static InstalledPlugin ToInstalled(RemotePluginEntry entry) => new(
             new DiscoveredPlugin("", entry.FolderId, new PluginManifest(entry.Id, entry.Name, entry.Version, null, 0, null, entry.MinHostVersion, entry.Description, entry.Author), entry.Sha256, entry.Decision),
-            entry.PinnedSha256 is { } pinned ? new PluginRegistration(entry.Enabled, pinned) : null, null, null, null);
+            entry.PinnedSha256 is { } pinned ? new PluginRegistration(entry.Enabled, pinned) : null, null, null, null, entry.RunningVersion);
     }
 
 }

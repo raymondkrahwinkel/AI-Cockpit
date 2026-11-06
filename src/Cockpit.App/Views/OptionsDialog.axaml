@@ -589,6 +589,16 @@
                                 ToolTip.Tip="One budget over everything the cockpit runs, rather than a separate cap per session — several sessions each staying under their own cap could still promise more memory than the machine has, and then the system picks which one to end. The figure it is measured against is this app plus every process the sessions now open have spawned, including ones whose parent has since gone; what a session left behind after being closed is not in it. Crossing the budget warns you and names the heaviest session; nothing is closed and no session is refused."/>
                         </StackPanel>
 
+                        <StackPanel x:Name="PluginRestartAdviceRow" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <TextBlock Text="Advise a restart when" Width="230" FontSize="11"
+                                       VerticalAlignment="Center"/>
+                            <NumericUpDown Value="{Binding PluginRestartAdviceAfter}" Minimum="1" Maximum="50"
+                                           Increment="1" FormatString="0" Width="104"/>
+                            <TextBlock Text="old plugin versions are in memory" FontSize="11" VerticalAlignment="Center"/>
+                            <materialIcons:MaterialIcon Classes="hint"
+                                ToolTip.Tip="A plugin that is updated while the cockpit runs is active at once, but the version it replaced stays in memory until the next start. Once this many are left, the Plugin store offers to restart so that memory is freed. Nothing restarts by itself."/>
+                        </StackPanel>
+
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <CheckBox x:Name="AutomaticDockerCleanupBox" Content="Automatically clean up Docker"
                                       IsChecked="{Binding AutomaticDockerCleanup}"/>

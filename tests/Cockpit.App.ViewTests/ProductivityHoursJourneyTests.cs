@@ -35,7 +35,11 @@ public sealed class ProductivityHoursJourneyTests
     [Fact]
     public Task OperatorRecordsTimeUsesStopwatchAndNavigatesDays() => HeadlessAvalonia.RunAsync(async () =>
     {
-        var timeEntries = new _TimeEntries();
+        var now = _Local(2026, 11, 5).AddHours(12);
+        var clock = Substitute.For<TimeProvider>();
+        clock.GetUtcNow().Returns(now.ToUniversalTime());
+        clock.LocalTimeZone.Returns(TimeZoneInfo.Local);
+        var timeEntries = new _TimeEntries(now);
         var channel = new _Loopback();
         var backend = Substitute.For<ICockpitHost>();
         var storage = new _Storage();
@@ -47,7 +51,7 @@ public sealed class ProductivityHoursJourneyTests
         backend.Sessions.Returns(sessions);
         backend.Storage.Returns(storage);
         backend.TimeEntries.Returns(timeEntries);
-        backend.Timeline.Returns(new _Timeline());
+        backend.Timeline.Returns(new _Timeline(now));
         backend.GetProjectsAsync().Returns(Task.FromResult<IReadOnlyList<PluginProjectInfo>>(
         [
             new("syn-portal", "Synvolution portal"),
@@ -106,7 +110,7 @@ public sealed class ProductivityHoursJourneyTests
                 workspaces[registration.Id] = registration;
             });
 
-        new UiParts.ProductivityUi().InitializeUi(ui);
+        new UiParts.ProductivityUi(clock).InitializeUi(ui);
         (open ?? throw new InvalidOperationException("No Hours button."))();
         await ui.Received(1).OpenWorkspaceAsync(UiParts.ProductivityUi.WorkspaceTypeId);
         var registration = workspaces[UiParts.ProductivityUi.WorkspaceTypeId];
@@ -168,7 +172,7 @@ public sealed class ProductivityHoursJourneyTests
         _Click(sidebar, "StopStopwatch");
         await _Until(() => timeEntries.Running is null && timeEntries.Entries.Count == 2, "the stopped stopwatch entry");
 
-        var previousDay = DateTimeOffset.Now.Date.AddDays(-1);
+        var previousDay = now.Date.AddDays(-1);
         timeEntries.Seed(
             new CockpitTimeEntry(Guid.NewGuid(), "Aangeboden regel", previousDay.AddHours(9), TimeSpan.FromMinutes(20), "cockpit", CockpitTimeEntrySource.Duration, CockpitTimeEntryStatus.Offered, previousDay.AddHours(12)),
             new CockpitTimeEntry(Guid.NewGuid(), "Geboekte regel", previousDay.AddHours(10), TimeSpan.FromMinutes(40), "cockpit", CockpitTimeEntrySource.Duration, CockpitTimeEntryStatus.Booked));
@@ -239,7 +243,7 @@ public sealed class ProductivityHoursJourneyTests
         Assert.Equal(preview, sentPrompt);
         await _Until(() => _Texts(screen).Any(text => text.Contains("offered", StringComparison.OrdinalIgnoreCase)), "the offered week status");
 
-        var unmarked = await timeEntries.AddAsync("Nog te verwerken", DateTimeOffset.Now, TimeSpan.FromMinutes(15), "cockpit", CockpitTimeEntrySource.Duration);
+        var unmarked = await timeEntries.AddAsync("Nog te verwerken", now, TimeSpan.FromMinutes(15), "cockpit", CockpitTimeEntrySource.Duration);
         timeEntries.MarkFailure = new InvalidOperationException("The time-entry store is unavailable.");
         _Click(screen, "ThisWeek");
         await _Until(() => _Texts(screen).Contains("Nog te verwerken"), "the next open proposal");
@@ -521,7 +525,7 @@ public sealed class ProductivityHoursJourneyTests
         frame.Save(Path.Combine(folder, fileName), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
     }
 
-    private sealed class _TimeEntries : ICockpitTimeEntries
+    private sealed class _TimeEntries(DateTimeOffset now) : ICockpitTimeEntries
     {
         public List<CockpitTimeEntry> Entries { get; } = [];
 
@@ -561,7 +565,7 @@ public sealed class ProductivityHoursJourneyTests
                 throw new InvalidOperationException("A stopwatch is already running.");
             }
 
-            Running = new CockpitRunningStopwatch(Guid.NewGuid(), description, DateTimeOffset.Now.AddMinutes(-25), projectId);
+            Running = new CockpitRunningStopwatch(Guid.NewGuid(), description, now.AddMinutes(-25), projectId);
             return Task.FromResult(Running);
         }
 
@@ -632,7 +636,7 @@ public sealed class ProductivityHoursJourneyTests
 
     // Today: one action three hours ago, ten measured minutes clear of the entries made now. Before today: a
     // morning on two projects, the first half covered by the seeded 09:00 entry, and one agent beside it.
-    private sealed class _Timeline : ICockpitTimelineReader
+    private sealed class _Timeline(DateTimeOffset now) : ICockpitTimelineReader
     {
         public Task<CockpitTimeline> QueryAsync(DateTimeOffset from, DateTimeOffset to, CockpitTimelineFilter? filter = null, CancellationToken cancellationToken = default)
         {
@@ -667,10 +671,10 @@ public sealed class ProductivityHoursJourneyTests
                 return Task.FromResult(_Week43(from, to));
             }
 
-            var now = DateTimeOffset.Now;
+            var current = now;
             var morning = new DateTimeOffset(from.Date.AddHours(9));
-            CockpitTimelineLine[] lines = from <= now && now < to
-                ? [_Act(now.AddHours(-3), "cockpit")]
+            CockpitTimelineLine[] lines = from <= current && current < to
+                ? [_Act(current.AddHours(-3), "cockpit")]
                 : [
                     .. Enumerable.Range(0, 6).Select(step => _Act(morning.AddMinutes(step * 5), "syn-portal")),
                     _Act(morning.AddHours(2), "syn-api"),

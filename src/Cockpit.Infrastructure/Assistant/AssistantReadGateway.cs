@@ -17,7 +17,8 @@ internal sealed class AssistantReadGateway(
     ISharedProjectSourceRegistry sharedProjectSources,
     IProjectStore projectStore,
     IWorkspaceSettingsStore workspaceStore,
-    IMcpServerCatalog? mcpServers = null)
+    IMcpServerCatalog? mcpServers = null,
+    Cockpit.Core.Sessions.SessionMcpMounts? mcpMounts = null)
     : IAssistantReadGateway, ISingletonService
 {
     private const int MaxActivityLength = 120;
@@ -36,7 +37,7 @@ internal sealed class AssistantReadGateway(
         return await Task.WhenAll(panes.Select(session => _RowAsync(session, namesById))).ConfigureAwait(false);
     }
 
-    private static async Task<AssistantSessionRow> _RowAsync(ISessionHandle session, IReadOnlyDictionary<string, string> namesById)
+    private async Task<AssistantSessionRow> _RowAsync(ISessionHandle session, IReadOnlyDictionary<string, string> namesById)
     {
         // AC-1309: what this session still carries that Status does not hold it on — a backgrounded shell,
         // tracked but deliberately not status-pinning (AC-276).
@@ -68,7 +69,7 @@ internal sealed class AssistantReadGateway(
             session.AbandonedProcessCount,
             // AC-1367: what a project-scoped connect key's visibility is decided on.
             session.ProjectId,
-            session.McpServersOverride,
+            mcpMounts?.Set(session.PaneId)?.ServerNames.ToArray() ?? session.McpServersOverride,
             AssistantReadMcpTools.Bounded(activity, MaxActivityLength).Text,
             activityAge);
     }

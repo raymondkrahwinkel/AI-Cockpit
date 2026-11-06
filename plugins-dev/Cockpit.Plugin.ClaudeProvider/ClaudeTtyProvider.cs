@@ -8,8 +8,10 @@ namespace Cockpit.Plugin.ClaudeProvider;
 // The `claude` CLI as a TTY provider (Phase 4, route A) — port of the host's `ClaudeTtySessionProvider`.
 // Never adds `-p`/stream-json: this is the genuine interactive TUI, which owns its own live switching
 // (`/model`, Shift+Tab) since TTY mode has no control channel.
-internal sealed class ClaudeTtyProvider(Func<string, string?>? managedResolver = null) : IPluginTtyProvider
+internal sealed class ClaudeTtyProvider(Func<string, string?>? managedResolver = null) : IPluginTtyProvider, IPluginMcpToolAuthorization
 {
+    private Func<string, bool>? _mayCall;
+    public bool MayCallWithoutPrompt(string canonicalName, string argumentsJson) => _mayCall?.Invoke(canonicalName) == true;
     public const string PermissionModeKey = "permission-mode";
     public const string ModelKey = "model";
     public const string EffortKey = "effort";
@@ -17,6 +19,7 @@ internal sealed class ClaudeTtyProvider(Func<string, string?>? managedResolver =
     public PluginTtyLaunchSpec BuildLaunch(PluginTtyLaunchContext context)
     {
         var config = ClaudeProviderConfig.Parse(context.ConfigJson);
+        _mayCall = name => ClaudeMcpPermissionRules.MayCallWithoutPrompt(config.ConfigDir, context.WorkingDirectory, context.Options.GetValueOrDefault(PermissionModeKey), name);
         var userHome = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var workingDirectory = context.WorkingDirectory;
         var configJsonDirectory = ClaudeConfigPaths.ResolveConfigJsonDirectory(config.ConfigDir, userHome);
@@ -67,6 +70,8 @@ internal sealed class ClaudeTtyProvider(Func<string, string?>? managedResolver =
             context.Resume,
             statusLineSettings);
 
+        ClaudeMcpPermissionRules.Apply(context, config.ConfigDir, userHome, arguments);
+
         var sessionScopedFiles = new List<string>(3);
         if (mcpConfigPath is not null)
         {
@@ -97,6 +102,7 @@ internal sealed class ClaudeTtyProvider(Func<string, string?>? managedResolver =
             sessionScopedFiles)
         {
             StatusFile = statusFile,
+            Model = context.Options.GetValueOrDefault(ModelKey),
         };
     }
 

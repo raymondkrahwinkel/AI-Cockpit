@@ -28,5 +28,6 @@ public interface ITtyLauncher
         IReadOnlySet<string>? enabledMcpServerNames = null,
         SessionResources? contributed = null,
         string? projectId = null,
-        Action<string>? notice = null);
+        Action<string>? notice = null,
+        Action<string?>? reportModel = null);
 }

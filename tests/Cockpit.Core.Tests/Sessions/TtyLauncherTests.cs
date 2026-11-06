@@ -50,7 +50,7 @@ public class TtyLauncherTests
         // back, and it keeps the launcher's own wrapping decisions readable here.
         var limiter = Substitute.For<ISessionMemoryLimiter>();
         limiter.Apply(Arg.Any<int>(), Arg.Any<long>()).Returns((IDisposable?)null);
-        return (new TtyLauncher(ptyHostFactory, limiter, authKey, keyring, logger ?? NullLogger<TtyLauncher>.Instance), ptyHostFactory, authKey, keyring);
+        return (new TtyLauncher(ptyHostFactory, limiter, keyring, logger ?? NullLogger<TtyLauncher>.Instance), ptyHostFactory, authKey, keyring);
     }
 
     // AC-40 regression: the cockpit-hosted MCP endpoints (cockpit-session/-orchestrator/-workflows) 401 without
@@ -60,7 +60,7 @@ public class TtyLauncherTests
     [Fact]
     public void Launch_TheEnvironmentPassedToThePtyHost_CarriesThisRunsMcpAuthKey_WhateverTheProviderOverlaySays()
     {
-        var (launcher, ptyHostFactory, authKey) = CreateLauncherWithKey();
+        var (launcher, ptyHostFactory, authKey, keyring) = CreateLauncherWithKeyring();
         var spec = new TtyLaunchSpec(
             "/usr/bin/cli",
             [],
@@ -72,12 +72,12 @@ public class TtyLauncherTests
         launcher.Launch(provider, profile: null, options: new Dictionary<string, string>(), columns: 80, rows: 24);
 
         provider.Received(1).BuildLaunch(Arg.Is<TtyLaunchContext>(context =>
-            context.BaseEnvironment["COCKPIT_MCP_KEY"] == authKey.Value));
+            context.BaseEnvironment["COCKPIT_MCP_KEY"] != authKey.Value && keyring.PaneFor(context.BaseEnvironment["COCKPIT_MCP_KEY"]) != null));
         ptyHostFactory.Received(1).Start(
             Arg.Any<string>(),
             Arg.Any<IReadOnlyList<string>>(),
             Arg.Any<string>(),
-            Arg.Is<IReadOnlyDictionary<string, string>>(env => env["COCKPIT_MCP_KEY"] == authKey.Value),
+            Arg.Is<IReadOnlyDictionary<string, string>>(env => env["COCKPIT_MCP_KEY"] != authKey.Value && keyring.PaneFor(env["COCKPIT_MCP_KEY"]) != null),
             80,
             24);
     }

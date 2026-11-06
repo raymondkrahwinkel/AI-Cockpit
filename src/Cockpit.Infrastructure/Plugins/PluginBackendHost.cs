@@ -12,6 +12,7 @@ using Cockpit.Core.Assistant;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.ModelIntelligence;
 using Cockpit.Core.Projects;
+using Cockpit.Core.Startup;
 using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Backup;
 using Cockpit.Infrastructure.Consent;
@@ -56,8 +57,18 @@ public class PluginBackendHost(
     PluginDiagnostics diagnostics,
     Type? ownPluginType = null,
     IPluginCache? cache = null,
-    IReadOnlyList<string>? capabilities = null) : ICockpitHost
+    IReadOnlyList<string>? capabilities = null,
+    PluginRuntime? runtime = null) : ICockpitHost
 {
+    // AC-2024: every Add* records its undo here, only after the registry accepted it: a refused id is another plugin's.
+    public PluginRuntime Runtime { get; } = _WithChannel(runtime ?? new PluginRuntime(pluginId), services);
+
+    private static PluginRuntime _WithChannel(PluginRuntime runtime, IServiceProvider services)
+    {
+        runtime.Add(() => services.GetService<PluginChannelHub>()?.Remove(runtime.PluginId));
+        return runtime;
+    }
+
     // Without a cache file behind it — a test host — the plugin still gets a cache, one that lives as long as
     // this host does. `Cache` is never null (AC-1294).
     private readonly IPluginCache _cache = cache ?? new InMemoryPluginCache();
@@ -100,8 +111,12 @@ public class PluginBackendHost(
     // AC-1389: this plugin's slice of the backend's channel hub, which the UI part's CockpitUiHost reaches by the same id.
     public IPluginBackendChannel Channel => services.GetRequiredService<PluginChannelHub>().For(pluginId);
 
-    public IDisposable AddFileSource(Cockpit.Plugins.Abstractions.Files.IFileSourceProvider provider) =>
-        Files.FileSourceChannel.Register(Channel, provider, _Logger());
+    public IDisposable AddFileSource(Cockpit.Plugins.Abstractions.Files.IFileSourceProvider provider)
+    {
+        var registration = Files.FileSourceChannel.Register(Channel, provider, _Logger());
+        Runtime.Add(registration);
+        return registration;
+    }
 
     public ICockpitSessionObserver Sessions => sessions;
 
@@ -178,6 +193,13 @@ public class PluginBackendHost(
             services.GetRequiredService<ILogger<AssistantChannelGateway>>(),
             services.GetService<OperatorMessageRegistry>());
         _assistantChannels[contribution.Id] = gateway;
+        Runtime.Add(() =>
+        {
+            if (_assistantChannels.Remove(contribution.Id, out var open))
+            {
+                open.Dispose();
+            }
+        });
 
         return gateway;
     }
@@ -195,7 +217,12 @@ public class PluginBackendHost(
         // Refused means another plugin already registered this key. That is the agreed case, not a mistake — the
         // GitHub Issues and Pull Requests plugins both offer "which repository" so either one alone still shows the
         // field — so this is logged at debug level, unlike the widget/workspace clashes.
-        if (!services.GetRequiredService<IProjectFieldRegistry>().Register(registration))
+        var registry = services.GetRequiredService<IProjectFieldRegistry>();
+        if (registry.Register(registration))
+        {
+            Runtime.Add(() => registry.Remove(registration.Key));
+        }
+        else
         {
             _Logger()?.LogDebug("Project field '{ProjectFieldKey}' is already contributed; this registration is ignored", registration.Key);
         }
@@ -208,7 +235,12 @@ public class PluginBackendHost(
     {
         // Refused means another plugin already claims this project. That is the agreed case, not a mistake — the
         // same reason AddProjectField logs at debug level rather than warning.
-        if (!services.GetRequiredService<IProjectOwnershipRegistry>().Register(registration))
+        var registry = services.GetRequiredService<IProjectOwnershipRegistry>();
+        if (registry.Register(registration))
+        {
+            Runtime.Add(() => registry.Remove(registration));
+        }
+        else
         {
             _Logger()?.LogDebug(
                 "Project '{ProjectId}' ownership is already claimed by another plugin; this registration is ignored",
@@ -223,7 +255,12 @@ public class PluginBackendHost(
     {
         // Refused means another plugin already contributes this scheme — agreement, not a clash, the same reason
         // AddProjectField logs at debug rather than warning.
-        if (!services.GetRequiredService<IProjectMemorySourceRegistry>().Register(registration))
+        var registry = services.GetRequiredService<IProjectMemorySourceRegistry>();
+        if (registry.Register(registration))
+        {
+            Runtime.Add(() => registry.Remove(registration.Scheme));
+        }
+        else
         {
             _Logger()?.LogDebug("Memory source '{MemorySourceScheme}' is already contributed; this registration is ignored", registration.Scheme);
         }
@@ -272,7 +309,12 @@ public class PluginBackendHost(
     {
         // Refused means another plugin already declared this key — agreement, not a clash, the same reason
         // AddProjectMemorySource logs at debug rather than warning.
-        if (!services.GetRequiredService<IProjectMemorySourceRegistry>().RegisterFamily(family))
+        var registry = services.GetRequiredService<IProjectMemorySourceRegistry>();
+        if (registry.RegisterFamily(family))
+        {
+            Runtime.Add(() => registry.RemoveFamily(family.Key));
+        }
+        else
         {
             _Logger()?.LogDebug("Memory source family '{MemorySourceFamilyKey}' is already declared; this registration is ignored", family.Key);
         }
@@ -282,7 +324,12 @@ public class PluginBackendHost(
     {
         // Refused means another plugin already contributes this key — agreement, not a clash, the same reason
         // AddProjectMemorySource logs at debug rather than warning.
-        if (!services.GetRequiredService<ISharedProjectSourceRegistry>().Register(source))
+        var registry = services.GetRequiredService<ISharedProjectSourceRegistry>();
+        if (registry.Register(source))
+        {
+            Runtime.Add(() => registry.Remove(source.Key));
+        }
+        else
         {
             _Logger()?.LogDebug("Shared-project source '{SharedProjectSourceKey}' is already contributed; this registration is ignored", source.Key);
         }
@@ -294,23 +341,44 @@ public class PluginBackendHost(
     public IReadOnlyList<ISharedProjectSource> SharedProjectSources =>
         services.GetRequiredService<ISharedProjectSourceRegistry>().Sources;
 
-    public void AddHealthSection(IPluginHealthSection section) =>
-        services.GetRequiredService<PluginHealthSections>().Add(pluginId, section);
+    public void AddHealthSection(IPluginHealthSection section)
+    {
+        var sections = services.GetRequiredService<PluginHealthSections>();
+        if (sections.Add(pluginId, section))
+        {
+            Runtime.Add(() => sections.Remove(section));
+        }
+    }
 
     public void AddSettingsCarrier(SettingsCarrierRegistration registration)
     {
         _RegisterSignInStanding();
-        services.GetRequiredService<SettingsCarriers>().Add(pluginId, registration);
+        var carriers = services.GetRequiredService<SettingsCarriers>();
+        if (carriers.Add(pluginId, registration))
+        {
+            Runtime.Add(() => carriers.Remove(registration.Id));
+        }
     }
 
     public void AddBackupTarget(IBackupTarget target)
     {
         _RegisterSignInStanding();
-        services.GetRequiredService<BackupTargets>().Add(pluginId, target);
+        var targets = services.GetRequiredService<BackupTargets>();
+        if (targets.Add(pluginId, target))
+        {
+            Runtime.Add(() => targets.Remove(target.Id));
+        }
     }
 
     // AC-1663: lets a background job of this plugin ask whether the plugin waits for a sign-in.
-    private void _RegisterSignInStanding() => services.GetService<PluginSignInStanding>()?.Register(pluginId, _WaitsForSignInAsync);
+    private void _RegisterSignInStanding()
+    {
+        if (services.GetService<PluginSignInStanding>() is { } standing)
+        {
+            standing.Register(pluginId, _WaitsForSignInAsync);
+            Runtime.Add(() => standing.Remove(pluginId));
+        }
+    }
 
     // True when one of this plugin's own OAuth servers has no usable sign-in; the host names that itself, once (AC-1517).
     private async Task<bool> _WaitsForSignInAsync(CancellationToken cancellationToken)
@@ -334,9 +402,36 @@ public class PluginBackendHost(
     public void RemoveBackupTarget(string id) =>
         services.GetRequiredService<BackupTargets>().Remove(id);
 
-    // A host with no splash (a backend without a frontend) registers no sequence, and the step is simply not run.
-    public void AddStartupStep(string label, Func<CancellationToken, Task> run) =>
-        services.GetService<Cockpit.Core.Startup.StartupSequence>()?.AddPlugin(label, run);
+    // Kept for the host's lifetime so later startup-step registrations also run immediately after live activation.
+    internal bool IsLiveActivation { get; set; }
+
+    public void AddStartupStep(string label, Func<CancellationToken, Task> run)
+    {
+        var sequence = services.GetService<StartupSequence>();
+        if (sequence is null)
+        {
+            return;
+        }
+
+        var step = sequence.AddPlugin(label, run);
+        Runtime.Add(() => sequence.Remove(step));
+        if (IsLiveActivation)
+        {
+            _ = _RunStartupStepAsync(sequence, step, label);
+        }
+    }
+
+    private async Task _RunStartupStepAsync(StartupSequence sequence, StartupStep step, string label)
+    {
+        try
+        {
+            await sequence.RetryAsync(step).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            _Logger()?.LogWarning(exception, "Plugin {PluginId}'s startup step '{Label}' could not run.", pluginId, label);
+        }
+    }
 
     public async Task<string?> GetProjectFieldValueAsync(string key, string? paneId, CancellationToken cancellationToken)
     {
@@ -402,7 +497,12 @@ public class PluginBackendHost(
     public void AddTrackerProvider(ITrackerProvider provider)
     {
         // First registration for a tracker id wins; a later one is logged and ignored rather than added beside it.
-        if (!services.GetRequiredService<ITrackerProviderRegistry>().Register(provider))
+        var registry = services.GetRequiredService<ITrackerProviderRegistry>();
+        if (registry.Register(provider))
+        {
+            Runtime.Add(() => registry.Unregister(provider));
+        }
+        else
         {
             _Logger()?.LogWarning("Tracker '{TrackerId}' is already contributed by another plugin; this registration is ignored", provider.TrackerId);
         }
@@ -411,11 +511,22 @@ public class PluginBackendHost(
     public IReadOnlyList<ITrackerProvider> TrackerProviders =>
         services.GetRequiredService<ITrackerProviderRegistry>().Providers;
 
+    public event EventHandler? TrackerProvidersChanged
+    {
+        add => services.GetRequiredService<ITrackerProviderRegistry>().Changed += value;
+        remove => services.GetRequiredService<ITrackerProviderRegistry>().Changed -= value;
+    }
+
     public void AddSessionResourceProvider(ISessionResourceProvider provider)
     {
         // Refused means this exact provider is already registered — a plugin whose Initialize ran twice, not two
         // plugins clashing. Nothing is lost by ignoring it, so this is a debug line rather than a warning.
-        if (!services.GetRequiredService<ISessionResourceProviderRegistry>().Register(provider))
+        var registry = services.GetRequiredService<ISessionResourceProviderRegistry>();
+        if (registry.Register(provider))
+        {
+            Runtime.Add(() => registry.Unregister(provider));
+        }
+        else
         {
             _Logger()?.LogDebug("Session-resource provider {Provider} is already registered; this registration is ignored", provider.GetType().Name);
         }
@@ -424,17 +535,31 @@ public class PluginBackendHost(
     public IReadOnlyList<ISessionResourceProvider> SessionResourceProviders =>
         services.GetRequiredService<ISessionResourceProviderRegistry>().Providers;
 
-    public void AddWorkflowStep(IWorkflowStep step) =>
-        services.GetRequiredService<IWorkflowStepRegistry>().Register(step);
+    public void AddWorkflowStep(IWorkflowStep step)
+    {
+        var registry = services.GetRequiredService<IWorkflowStepRegistry>();
+        registry.Register(step);
+        Runtime.Add(() => registry.Unregister(step));
+    }
 
     public IReadOnlyList<IWorkflowStep> WorkflowSteps =>
         services.GetRequiredService<IWorkflowStepRegistry>().Steps;
 
+    public event EventHandler? WorkflowStepsChanged
+    {
+        add => services.GetRequiredService<IWorkflowStepRegistry>().Changed += value;
+        remove => services.GetRequiredService<IWorkflowStepRegistry>().Changed -= value;
+    }
+
     // The contributing plugin's own name is the heading a template is filed under, unless it says otherwise: that is
     // where an operator looks for "the YouTrack one".
-    public void AddWorkflowTemplate(WorkflowTemplate template) =>
-        services.GetRequiredService<IWorkflowTemplateRegistry>()
-            .Register(template with { Category = template.Category ?? pluginName });
+    public void AddWorkflowTemplate(WorkflowTemplate template)
+    {
+        var registry = services.GetRequiredService<IWorkflowTemplateRegistry>();
+        var filed = template with { Category = template.Category ?? pluginName };
+        registry.Register(filed);
+        Runtime.Add(() => registry.Unregister(filed));
+    }
 
     public IReadOnlyList<WorkflowTemplate> WorkflowTemplates =>
         services.GetRequiredService<IWorkflowTemplateRegistry>().Templates;
@@ -450,8 +575,12 @@ public class PluginBackendHost(
 
     // The caller's id is stamped here from this host's own pluginId, never taken from the caller — a plugin cannot
     // register a handler as, or send an intent under, another plugin's name (same rule as RequestConsentAsync).
-    public void RegisterIntentHandler(string action, Func<PluginIntent, Task<IReadOnlyDictionary<string, string>>> handler) =>
-        services.GetRequiredService<IPluginIntentRegistry>().Register(pluginId, action, handler);
+    public void RegisterIntentHandler(string action, Func<PluginIntent, Task<IReadOnlyDictionary<string, string>>> handler)
+    {
+        var registry = services.GetRequiredService<IPluginIntentRegistry>();
+        registry.Register(pluginId, action, handler);
+        Runtime.Add(() => registry.Unregister(pluginId, action));
+    }
 
     public Task<IReadOnlyDictionary<string, string>?> SendIntent(string targetPluginId, string action, IReadOnlyDictionary<string, string> data) =>
         services.GetRequiredService<IPluginIntentRegistry>()
@@ -475,17 +604,29 @@ public class PluginBackendHost(
 
     // The owner id is stamped here from this host's own pluginId, never taken from the caller — a plugin cannot
     // register a template under another plugin's name (same rule as RegisterIntentHandler above).
-    public void RegisterAutopilotTemplate(PluginAutopilotTemplate template) =>
-        services.GetRequiredService<IAutopilotTemplateRegistry>().Register(pluginId, template);
+    public void RegisterAutopilotTemplate(PluginAutopilotTemplate template)
+    {
+        var registry = services.GetRequiredService<IAutopilotTemplateRegistry>();
+        registry.Register(pluginId, template);
+        Runtime.Add(() => registry.Unregister(pluginId, template.Id));
+    }
 
     public IReadOnlyList<RegisteredAutopilotTemplate> RegisteredAutopilotTemplates =>
         services.GetRequiredService<IAutopilotTemplateRegistry>().Registrations;
 
-    public void AddSessionProvider(SessionProviderRegistration registration) =>
-        services.GetRequiredService<IPluginProviderRegistry>().Register(registration, pluginId);
+    public void AddSessionProvider(SessionProviderRegistration registration)
+    {
+        var registry = services.GetRequiredService<IPluginProviderRegistry>();
+        registry.Register(registration, pluginId);
+        Runtime.Add(() => registry.Unregister(registration.ProviderId, pluginId));
+    }
 
-    public void AddTtyProvider(TtyProviderRegistration registration) =>
-        services.GetRequiredService<IPluginTtyProviderRegistry>().Register(registration, pluginId);
+    public void AddTtyProvider(TtyProviderRegistration registration)
+    {
+        var registry = services.GetRequiredService<IPluginTtyProviderRegistry>();
+        registry.Register(registration, pluginId);
+        Runtime.Add(() => registry.Unregister(registration.ProviderId, pluginId));
+    }
 
     public void RecordModelObservation(PluginModelObservation observation)
     {
@@ -525,6 +666,7 @@ public class PluginBackendHost(
                     EffortSuggestions = effort?.KnownValues?.Select(value => value.Value).ToList()
                         ?? (profile.Claude is not null ? LegacyClaudeEfforts : []),
                     // The local, free-to-run providers; everything else (Claude, Codex, hosted plugin providers) is a paid API.
+                    ProviderAvailable = profile.ProviderConfig is not Core.Profiles.PluginProviderConfig plugin || registry.Resolve(plugin.ProviderId) is not null,
                     RunsLocally = profile.Provider is Core.Profiles.SessionProvider.Ollama or Core.Profiles.SessionProvider.LmStudio,
                     UsesPersonalLogin = NodeCallerSessionPolicy.UsesPersonalLogin(profile, logins),
                 };
@@ -737,13 +879,15 @@ public class PluginBackendHost(
                 if (!_relayingAccountChanges && services.GetService<IMcpOAuthCoordinator>() is { } coordinator)
                 {
                     _relayingAccountChanges = true;
-                    coordinator.AccountChanged += server =>
+                    Action<McpServerConfig> relay = server =>
                     {
                         if (_OwnOAuthServer(server.Name) is not null)
                         {
                             _RaiseAccountChanged(server.Name);
                         }
                     };
+                    coordinator.AccountChanged += relay;
+                    Runtime.Add(() => coordinator.AccountChanged -= relay);
                 }
             }
         }
@@ -859,7 +1003,7 @@ public class PluginBackendHost(
             return fromRegistry;
         }
 
-        return services.GetServices<IPluginMcpProvider>()
+        return (services.GetService<PluginMcpProviderRegistry>()?.Providers ?? [])
             .SelectMany(_SafeContributionsOf)
             .Select(PluginMcpMapping.ToServerConfig)
             .FirstOrDefault(candidate => string.Equals(candidate.Name, name, StringComparison.Ordinal) && candidate.Auth == McpServerAuth.OAuth);
@@ -879,7 +1023,7 @@ public class PluginBackendHost(
             return true;
         }
 
-        return services.GetServices<IPluginMcpProvider>()
+        return (services.GetService<PluginMcpProviderRegistry>()?.Providers ?? [])
             .SelectMany(_SafeContributionsOf)
             .Any(candidate => string.Equals(candidate.Name, name, StringComparison.Ordinal));
     }
@@ -907,7 +1051,7 @@ public class PluginBackendHost(
             return [];
         }
 
-        return services.GetServices<IPluginMcpProvider>()
+        return (services.GetService<PluginMcpProviderRegistry>()?.Providers ?? [])
             .Where(provider => provider.GetType() == ownPluginType)
             .SelectMany(_SafeContributionsOf)
             .Select(PluginMcpMapping.ToServerConfig)
@@ -947,13 +1091,21 @@ public class PluginBackendHost(
         }
     }
 
-    public Task AddMcpEndpoint(string serverName, object tools, Func<bool>? isEnabled = null, bool isInternal = false) =>
-        services.GetService<ICockpitMcpEndpointHost>() is { } endpointHost
-            ? endpointHost.MountAsync(serverName, tools, isEnabled, isInternal)
-            : Task.CompletedTask;
+    public async Task AddMcpEndpoint(string serverName, object tools, Func<bool>? isEnabled = null, bool isInternal = false)
+    {
+        if (services.GetService<ICockpitMcpEndpointHost>() is { } endpointHost
+            && await endpointHost.MountAsync(serverName, tools, isEnabled, isInternal).ConfigureAwait(false))
+        {
+            Runtime.Add(() => endpointHost.Retire(serverName, $"plugin {pluginName} is uitgeschakeld"));
+        }
+    }
 
-    public void AddManagedCli(ManagedCliDescriptor descriptor) =>
-        services.GetRequiredService<IManagedCliService>().Register(descriptor);
+    public void AddManagedCli(ManagedCliDescriptor descriptor)
+    {
+        var managedClis = services.GetRequiredService<IManagedCliService>();
+        managedClis.Register(descriptor);
+        Runtime.Add(() => managedClis.Unregister(descriptor));
+    }
 
     public string? ResolveManagedCliPath(string cliName) =>
         services.GetService<IManagedCliService>()?.ResolveInstalledPath(cliName);
@@ -1108,7 +1260,16 @@ public class PluginBackendHost(
         // DetectRepositoryAsync returns null both for a true non-repository and for a probe failure on a real
         // one (dubious ownership, permission/lock error) — so "not a repository" is decided from the
         // filesystem (no .git), not from the probe failing, to avoid dropping isolation on a real checkout.
-        var confirmedRepository = await worktrees.DetectRepositoryAsync(directory, cancellationToken).ConfigureAwait(false) is not null;
+        var confirmedRepository = false;
+        try
+        {
+            confirmedRepository = await worktrees.DetectRepositoryAsync(directory, cancellationToken).ConfigureAwait(false) is not null;
+        }
+        catch (Cockpit.Core.Worktrees.GitUnavailableException)
+        {
+            // AC-2114: no git means unconfirmed, the same as a failed probe.
+        }
+
         return GitDirectoryStatusResolver.Resolve(directory, confirmedRepository);
     }
 

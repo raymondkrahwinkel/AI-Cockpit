@@ -345,6 +345,8 @@ internal sealed class NodeSessionMcpTools(
                     name = result.SessionName,
                     resolvedProfile = result.ResolvedProfileLabel,
                     promptDelivered = result.PromptDelivered,
+                    mcpServers = result.McpServers,
+                    mcpServersConfirmed = result.McpServersConfirmed,
                 })
                 : _Serialize(new { ok = false, error = result.Error });
         }

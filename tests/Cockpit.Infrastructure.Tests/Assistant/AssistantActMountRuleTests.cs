@@ -274,6 +274,19 @@ public sealed class AssistantActMountRuleTests : IDisposable
                 [new AssistantProfileRow("Claude Test", "Claude", "sonnet")]);
         }
 
+        public Task<SessionMcpSetResult> GetSessionMcpSetAsync(string paneId, CancellationToken cancellationToken = default)
+        {
+            Calls.Add($"GetSessionMcpSetAsync({paneId})");
+            return Task.FromResult(new SessionMcpSetResult(true, "Assistant", [], null));
+        }
+
+        public Task<SessionMcpSetResult> ChangeSessionMcpServerAsync(string paneId, string name, bool add,
+            bool byOperator = false, CancellationToken cancellationToken = default)
+        {
+            Calls.Add($"ChangeSessionMcpServerAsync({paneId})");
+            return Task.FromResult(new SessionMcpSetResult(true, "Assistant", [], null));
+        }
+
         public Task<AgentMessageResult> SendMessageAsync(string paneId, string kind, string body, CancellationToken cancellationToken = default)
         {
             Calls.Add($"SendMessageAsync({paneId})");

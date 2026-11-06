@@ -35,6 +35,9 @@ internal sealed class ScheduleEngine : IDisposable
     private readonly List<Task> _unscheduled = [];
     private int _active;
 
+    // AC-2024: a consent question waits an hour and a run minutes; neither outlives the plugin.
+    private readonly CancellationTokenSource _stopping = new();
+
     public ScheduleEngine(
         TaskStore tasks,
         MarkStore marks,
@@ -114,7 +117,11 @@ internal sealed class ScheduleEngine : IDisposable
         return Task.WhenAll(started);
     }
 
-    public void Dispose() => _timer.Dispose();
+    public void Dispose()
+    {
+        _timer.Dispose();
+        _stopping.Cancel();
+    }
 
     private async Task _RemindersAsync(DateTimeOffset now)
     {
@@ -257,11 +264,15 @@ internal sealed class ScheduleEngine : IDisposable
             string? refused;
             try
             {
-                refused = await _admit(task, record.Trigger, CancellationToken.None);
+                refused = await _admit(task, record.Trigger, _stopping.Token);
+                if (refused is null)
+                {
+                    await _AcquireSlotAsync().WaitAsync(_stopping.Token);
+                }
             }
             catch (Exception exception)
             {
-                _runs.Replace(record with { Outcome = RunOutcome.Failed, Reason = exception.Message });
+                _runs.Replace(record with { Outcome = RunOutcome.Failed, Reason = _FailureReason(exception) });
                 return;
             }
 
@@ -271,17 +282,16 @@ internal sealed class ScheduleEngine : IDisposable
                 return;
             }
 
-            await _AcquireSlotAsync();
             var started = _time.GetUtcNow();
             RunRecord done;
             try
             {
-                var result = await _execute(task, record.Trigger, CancellationToken.None);
+                var result = await _execute(task, record.Trigger, _stopping.Token);
                 done = record with { Outcome = result.Outcome, Output = result.Output, Reason = result.Reason, DelegatedTaskId = result.DelegatedTaskId };
             }
             catch (Exception exception)
             {
-                done = record with { Outcome = RunOutcome.Failed, Reason = exception.Message };
+                done = record with { Outcome = RunOutcome.Failed, Reason = _FailureReason(exception) };
             }
             finally
             {
@@ -302,6 +312,9 @@ internal sealed class ScheduleEngine : IDisposable
             }
         }
     }
+
+    private string _FailureReason(Exception exception) =>
+        exception is OperationCanceledException && _stopping.IsCancellationRequested ? "Stopped: the Schedules plugin was disabled or closed." : exception.Message;
 
     private Task _AcquireSlotAsync()
     {

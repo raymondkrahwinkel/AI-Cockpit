@@ -26,6 +26,8 @@ internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, st
     private IChatClient? _agent;
     private IReadOnlyList<AITool> _tools = [];
     private IReadOnlyList<AIFunction> _additionalTools = [];
+    private IPluginToolset? _toolset;
+    private FunctionInvokingChatClient? _toolLoop;
 
     // Every tool name this session can reach, which is more than _tools whenever the host kept part of the
     // catalogue behind a search proxy. What the init event reports, so the header's count is the real one.
@@ -59,6 +61,7 @@ internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, st
             .UseFunctionInvocation(configure: client =>
             {
                 ChatTurnLoop.ConfigureToolLoop(client);
+                _toolLoop = client;
                 client.AdditionalTools = [.. _additionalTools];
             })
             .Use(inner => new ContextGuardChatClient(inner, turnLimits ?? ChatTurnLimits.Default, logger, preservePrefix))
@@ -92,7 +95,14 @@ internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, st
     // reachable ones, so a session that keeps most of its catalogue behind a search proxy still counts honestly.
     public Task StartAsync(string? model, string? workingDirectory, string? resumeSessionId, IReadOnlyDictionary<string, string>? options, IReadOnlyList<PluginMcpServer>? mcpServers, IReadOnlyDictionary<string, string>? environment, IPluginToolset? toolset, CancellationToken cancellationToken)
     {
-        if (toolset is { Tools.Count: > 0 })
+        _toolset = toolset;
+        _RefreshTools();
+        return StartAsync(model, workingDirectory, resumeSessionId, options, mcpServers, cancellationToken);
+    }
+
+    private void _RefreshTools()
+    {
+        if (_toolset is { } toolset)
         {
             _tools = [.. toolset.Tools.Select(descriptor => new HostTool(descriptor, toolset))];
             _reachableToolNames = toolset.ReachableToolNames;
@@ -102,10 +112,12 @@ internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, st
             // SupportsPermissions stays false on purpose: it means Claude's permission *modes*, and a session
             // that reports tools without them is what gives the header its per-call "Allow all tools" toggle —
             // the gating this route actually has.
-            Capabilities = Capabilities with { SupportsTools = true };
+            Capabilities = Capabilities with { SupportsTools = _tools.Count > 0 };
+            if (_toolLoop is not null)
+            {
+                _toolLoop.AdditionalTools = [.. _additionalTools];
+            }
         }
-
-        return StartAsync(model, workingDirectory, resumeSessionId, options, mcpServers, cancellationToken);
     }
 
     public Task SendUserMessageAsync(string text, CancellationToken cancellationToken = default) =>
@@ -123,6 +135,7 @@ internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, st
 
     private async Task _RunTurnAsync(ChatMessage message, CancellationToken cancellationToken)
     {
+        _RefreshTools();
         _history.Add(message);
         var options = new ChatOptions { ModelId = _model, Tools = _tools.Count > 0 ? [.. _tools] : null };
         var assistant = new StringBuilder();

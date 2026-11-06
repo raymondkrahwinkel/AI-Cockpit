@@ -103,7 +103,7 @@ public class TtyUsageRecordingTests
         // which is most of them.
         var history = new RecordingUsageHistory();
         var reader = _ReaderYielding(
-            new SessionTranscriptActivity(SessionActivity.Busy, "tool-use line", new TokenUsage(100, 20, 0, 0)),
+            new SessionTranscriptActivity(SessionActivity.Busy, "tool-use line", new TokenUsage(100, 20, 0, 0)) { Model = "claude-opus-4-6" },
             new SessionTranscriptActivity(SessionActivity.TurnComplete, "final line", new TokenUsage(50, 200, 10, 5)));
         var vm = new TtyViewModel(Substitute.For<ITtyLauncher>(), _Resolver(), transcriptReader: reader, usageHistory: history);
         vm.LaunchConfigured(Work, "default", "sonnet", "medium");
@@ -117,6 +117,7 @@ public class TtyUsageRecordingTests
         Assert.Equal(10, snapshot.CacheReadInputTokens);
         Assert.Equal(5, snapshot.CacheCreationInputTokens);
         Assert.Equal(1, snapshot.Turns);
+        Assert.Equal("claude-opus-4-6", snapshot.Model);
     });
 
     [Fact]

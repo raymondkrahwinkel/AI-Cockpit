@@ -163,6 +163,11 @@ public interface ISessionDialogService
     Task<string?> ShowSetStatusDialogAsync(string currentStatusline);
 
     /// <summary>
+    /// Shows a session's live MCP set. The operator can remove a server here; adding remains an assistant action.
+    /// </summary>
+    Task ShowSessionMcpDialogAsync(string paneId, string sessionName);
+
+    /// <summary>
     /// Asks for a moment and a prompt to pick a session up with (AC-231), starting from <paramref name="suggested"/>.
     /// Null when the operator backed out.
     /// </summary>

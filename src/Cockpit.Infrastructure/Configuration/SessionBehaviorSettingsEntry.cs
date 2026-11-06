@@ -20,6 +20,9 @@ internal sealed class SessionBehaviorSettingsEntry
     // which warns on an idle cockpit for every install that predates this setting.
     public int MemoryBudgetPercent { get; set; } = MemoryPressure.DefaultBudgetPercent;
 
+    // AC-2025: absent would read as 0 and advise a restart on an idle cockpit.
+    public int PluginRestartAdviceAfter { get; set; } = SessionBehaviorSettings.DefaultPluginRestartAdviceAfter;
+
     // AC-2044: off on absence — the cockpit prunes Docker only when the user turns this on.
     public bool AutomaticDockerCleanup { get; set; } = false;
 
@@ -30,6 +33,7 @@ internal sealed class SessionBehaviorSettingsEntry
         CombineQueuedMessages = settings.CombineQueuedMessages,
         WakeAgentsByDefault = settings.WakeAgentsByDefault,
         MemoryBudgetPercent = settings.MemoryBudgetPercent,
+        PluginRestartAdviceAfter = settings.PluginRestartAdviceAfter,
     };
 
     public SessionBehaviorSettings ToDomain() => new()
@@ -39,5 +43,6 @@ internal sealed class SessionBehaviorSettingsEntry
         CombineQueuedMessages = CombineQueuedMessages,
         WakeAgentsByDefault = WakeAgentsByDefault,
         MemoryBudgetPercent = MemoryBudgetPercent,
+        PluginRestartAdviceAfter = PluginRestartAdviceAfter,
     };
 }

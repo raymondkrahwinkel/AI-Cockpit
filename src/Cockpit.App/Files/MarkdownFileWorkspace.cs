@@ -467,8 +467,10 @@ internal sealed partial class MarkdownFileWorkspace : UserControl
         var bytes = await FileSourceChannel.ReadContentAsync(content, FileSourceChannel.MaxContentBytes, _lifetime.Token).ConfigureAwait(true);
         var text = new UTF8Encoding(false, true).GetString(bytes);
         var bom = text.StartsWith('\uFEFF');
-        return new Snapshot(bom ? text[1..] : text, bom, read.Version, read.Modified, read.ModifiedBy, read.CanWrite) { Live = live };
+        return new Snapshot(_WithoutBom(text), bom, read.Version, read.Modified, read.ModifiedBy, read.CanWrite) { Live = live };
     }
+
+    private static string _WithoutBom(string text) => text.StartsWith('\uFEFF') ? text[1..] : text;
 
     private void _ClearConflict()
     {
@@ -752,6 +754,7 @@ internal sealed partial class MarkdownFileWorkspace : UserControl
         {
             return;
         }
+        _UpdateLiveLight();
         var text = Editor.Text;
         var dirty = IsDirty;
         var live = _live?.Status;
@@ -796,6 +799,7 @@ internal sealed partial class MarkdownFileWorkspace : UserControl
                 LiveFileState.ReadOnly => live.ReadOnlyReason == LiveReadOnlyReason.Viewer ? "Viewer · read only" : "Read only",
                 LiveFileState.NoSaver => $"Not saved to {_sourceName} yet",
                 LiveFileState.Stale => "Catching up…",
+                LiveFileState.Live when dirty => $"Not confirmed in {_sourceName} yet",
                 LiveFileState.Live when live.Saved is { Name: { } by } saved => saved.At is { } at ? $"Saved by {by} · {at.ToLocalTime():HH:mm}" : $"Saved by {by}",
                 LiveFileState.Live when live.Saved is not null => $"Not saved to {_sourceName} yet",
                 LiveFileState.Live => "Live",
@@ -818,7 +822,7 @@ internal sealed partial class MarkdownFileWorkspace : UserControl
         _reload.IsVisible = _merge.IsVisible = _overwrite.IsVisible = _live is null || _IsLiveLight;
         var saverColor = live is { State: LiveFileState.Live, Saved.Name: not null } && Color.TryParse(live.Saved.Color, out var parsed) ? parsed : (Color?)null;
         _saverDot.Fill = saverColor is { } color ? new SolidColorBrush(color) : null;
-        _saverDot.IsVisible = saverColor is not null && !_loading && !_saving && !_conflict && !notSent;
+        _saverDot.IsVisible = saverColor is not null && !_loading && !_saving && !_conflict && !notSent && !dirty;
         var unsaved = _conflict || (dirty && !_saving) || notSent
             || live?.State is LiveFileState.Offline or LiveFileState.SignInNeeded or LiveFileState.NoSaver
             || live is { State: LiveFileState.Live, Saved: { Name: null } };
@@ -847,7 +851,6 @@ internal sealed partial class MarkdownFileWorkspace : UserControl
         _message.IsVisible = _error is not null;
         var version = !_loaded && !_new ? "" : _version is null ? "New file" : $"Source version {_version[..Math.Min(8, _version.Length)]}";
         _footer.Text = $"{(Editor.ShowSource ? "Markdown source" : "Live")} · {_WordCount(text)} words · {version}";
-        _UpdateLiveLight();
         _UpdateLiveBanner();
         _shortcuts.Text = live?.State == LiveFileState.ReadOnly ? "Read-only"
             : _editing ? (live is null ? "Ctrl+S save · " : "") + "Ctrl+/ source · Ctrl+B / I / K"

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.CliAgentProvider;
 
@@ -21,6 +22,31 @@ internal sealed record CliAgentConfig(
     // Case-insensitive property matching on deserialize — a hand-edited `cockpit.json` should not fail
     // to parse over a casing mismatch, same rationale as `OpenAiCompatConfig.JsonOptions`.
     public static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
+
+    public static PluginCredentialKind CredentialKindOf(string configJson)
+    {
+        try
+        {
+            var config = JsonSerializer.Deserialize<CliAgentConfig>(configJson, JsonOptions);
+            if (config is null || string.IsNullOrWhiteSpace(config.AuthEnvVar))
+            {
+                return PluginCredentialKind.Unknown;
+            }
+
+            if (!string.IsNullOrEmpty(config.ApiKey))
+            {
+                return PluginCredentialKind.ApiKey;
+            }
+
+            return string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(config.AuthEnvVar))
+                ? PluginCredentialKind.Unknown
+                : PluginCredentialKind.ApiKeyFromSecret;
+        }
+        catch (JsonException)
+        {
+            return PluginCredentialKind.Unknown;
+        }
+    }
 
     // Opaque per-profile key: the state directory this profile's CLI uses (pinned ConfigDir, else CODEX_HOME, else ~/.codex).
     public string ProfileKey

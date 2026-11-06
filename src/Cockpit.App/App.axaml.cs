@@ -38,6 +38,7 @@ using Cockpit.Infrastructure.Provisioning;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.StatusBar;
+using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.Plugins.Abstractions.Workflows;
 
 using Cockpit.Core.Abstractions.Mcp;
@@ -562,7 +563,7 @@ public partial class App : Application
         // type. Plugins add theirs later, through ICockpitHost, as they load.
         foreach (var source in Program.Services.GetServices<ISupervisedActivitySource>())
         {
-            cockpitViewModel.PluginSupervisedActivities.Add(source);
+            cockpitViewModel.PluginSupervisedActivities.Add(new PluginSupervisedActivity(null, source));
         }
 
         // ProfileDisplayConverter is x:Static rather than DI-created, so supply the now-populated registry here to
@@ -953,31 +954,33 @@ public partial class App : Application
 
         // AC-1389: one backend host per plugin, shared by its backend part and the UI part's CockpitUiHost that forwards
         // what a backend can do too to it, and built on demand for a plugin that is only a UI part.
+        var pluginManager = Program.Services.GetRequiredService<PluginManager>();
         var hosts = new Dictionary<DiscoveredPlugin, ICockpitHost>();
-        ICockpitHost HostFor(DiscoveredPlugin discovered, Type pluginType) =>
-            hosts.TryGetValue(discovered, out var existing) ? existing : hosts[discovered] = new DesktopBackendHost(
-            discovered.FolderId,
-            discovered.Manifest.Name,
-            Program.Services,
-            actions,
-            PluginStorage.ForPlugin(discovered, registrationStore, secretFieldStore),
-            sessionObserver,
-            diagnostics,
-            // AC-499: this plugin's own runtime type, so the host can tell its own IPluginMcpProvider registration
-            // apart from every other plugin's when it resolves a tool call's caller-scoped fallback.
-            pluginType,
-            pluginCache.CreateFor(discovered.FolderId),
-            discovered.Manifest.Capabilities);
-
-        backend.InitializePlugins((discovered, plugin) => HostFor(discovered, plugin.GetType()));
+        ICockpitHost HostFor(DiscoveredPlugin discovered, Type pluginType)
+        {
+            lock (hosts)
+            {
+                return hosts.TryGetValue(discovered, out var existing) ? existing : hosts[discovered] = new DesktopBackendHost(
+                    discovered.FolderId,
+                    discovered.Manifest.Name,
+                    Program.Services,
+                    actions,
+                    PluginStorage.ForPlugin(discovered, registrationStore, secretFieldStore),
+                    sessionObserver,
+                    diagnostics,
+                    // AC-499: distinguish the plugin's own MCP provider registration from other plugins'.
+                    pluginType,
+                    pluginCache.CreateFor(discovered.FolderId),
+                    discovered.Manifest.Capabilities,
+                    pluginManager.RuntimeFor(discovered.FolderId));
+            }
+        }
 
         // AC-1389: the UI parts, after every backend part has registered, so a UI part can rely on its backend's
         // registrations (a provider it adds a config view to) being there.
         var uiParts = Program.Services.GetRequiredService<PluginUiManager>();
         cockpit.LocalPluginUiPart = uiParts.UiPartOf;
-        uiParts.InitializeUi(
-            PluginUiManager.ActivateUi,
-            (discovered, ui) => new CockpitUiHost(
+        ICockpitUiHost UiHostFor(DiscoveredPlugin discovered, ICockpitPluginUi ui) => new CockpitUiHost(
                 discovered.FolderId,
                 discovered.Manifest.Name,
                 HostFor(discovered, ui.GetType()),
@@ -989,7 +992,45 @@ public partial class App : Application
                 // The keys this plugin says hold a credential. They already gate encryption and the backup scrubber;
                 // handing them to the widget registry lets a dashboard export drop them too, which is the third place
                 // a declared secret has to be honoured.
-                discovered.Manifest.SecretKeys ?? []));
+                discovered.Manifest.SecretKeys ?? [],
+                pluginManager.RuntimeFor(discovered.FolderId));
+        // AC-2025: awaited by the activation, so a UI part that fails fails the update instead of reporting it done.
+        pluginManager.StartUiPart = (discovered, plugin, isCurrent) => UiThreadCall.Uncapped(() =>
+        {
+            if (!isCurrent())
+            {
+                return Task.FromResult<string?>("The activation was abandoned.");
+            }
+
+            var failure = uiParts.InitializeUiOne(discovered, plugin, PluginUiManager.ActivateUi, UiHostFor);
+            Program.Services.GetRequiredService<HelpService>().Invalidate();
+            cockpit.RefreshLivePlugin(discovered.FolderId);
+            return Task.FromResult(failure);
+        });
+        // AC-2024: uncapped, as a timeout here would leave the plugin half gone with its registration already saved.
+        pluginManager.RunOnUiThread = work => UiThreadCall.Uncapped(() =>
+        {
+            work();
+            return Task.CompletedTask;
+        });
+        pluginManager.UpdateBlocker = folderId => UiThreadCall.Uncapped(() => Task.FromResult<string?>(
+            cockpit.Workspaces.HasGuardedPluginWorkspace(folderId) ? "A workspace of this plugin asks before it closes." : null));
+        pluginManager.Deactivated += (discovered, plugin) =>
+        {
+            uiParts.DeactivateUi(discovered, plugin);
+
+            // The host holds the runtime that just closed; the next activation has to build its own.
+            lock (hosts)
+            {
+                hosts.Remove(discovered);
+            }
+
+            Program.Services.GetRequiredService<HelpService>().Invalidate();
+            cockpit.ForgetLivePlugin(discovered.FolderId);
+        };
+        backend.InitializePlugins(
+            (discovered, plugin) => HostFor(discovered, plugin.GetType()),
+            () => uiParts.InitializeUi(PluginUiManager.ActivateUi, UiHostFor));
         cockpit.FollowRemoteFileWorkspaces(uiParts.RegisterRemoteFileWorkspaces);
 
         // The templates installed from a store (#69) join the ones the plugins ship, in the same registry: to the
@@ -1360,7 +1401,7 @@ public partial class App : Application
 
         // AC-237: toggles rather than only shows, since the window's own header has no tray-independent way to
         // reopen it once hidden — this is the DoD's "pops up/hides from the tray" both ways.
-        var companionItem = new NativeMenuItem("Show companion");
+        var companionItem = new NativeMenuItem("Show / hide companion");
         companionItem.Click += (_, _) => Program.Services.GetRequiredService<CompanionWindowPresenter>().Toggle();
 
         var quitItem = new NativeMenuItem("Quit");

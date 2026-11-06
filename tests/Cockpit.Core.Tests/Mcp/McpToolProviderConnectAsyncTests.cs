@@ -1,6 +1,7 @@
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Sessions.Tty;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -30,12 +31,16 @@ public class McpToolProviderConnectAsyncTests
     public async Task ConnectAsync_AlongsideATtySession_BothRevokeAndLeaveTheSharedKeyringEmpty()
     {
         var keyring = new SessionMcpKeyring();
-        var provider = _ProviderFor(_DisableBuiltIns(), keyring);
+        var mounts = new SessionMcpMounts();
+        await using var gateway = new SessionMcpGatewayHost(new McpAuthKey(), keyring, NullLoggerFactory.Instance,
+            Path.Combine(AppContext.BaseDirectory, $"gateway-{Guid.NewGuid():N}.json"), mounts: mounts);
+        await gateway.StartAsync(CancellationToken.None);
+        var provider = _ProviderFor(_DisableBuiltIns(), keyring, mounts: mounts, gateway: gateway);
         var ptyHostFactory = Substitute.For<IPtyHostFactory>();
         ptyHostFactory
             .Start(Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, string>>(), Arg.Any<short>(), Arg.Any<short>())
             .Returns(Substitute.For<IConPtyProcess>());
-        var ttyLauncher = new TtyLauncher(ptyHostFactory, Substitute.For<ISessionMemoryLimiter>(), new McpAuthKey(), keyring, NullLogger<TtyLauncher>.Instance);
+        var ttyLauncher = new TtyLauncher(ptyHostFactory, Substitute.For<ISessionMemoryLimiter>(), keyring, NullLogger<TtyLauncher>.Instance);
         var ttyProvider = Substitute.For<ITtySessionProvider>();
         ttyProvider.ProviderId.Returns("test-provider");
         ttyProvider.BuildLaunch(Arg.Any<TtyLaunchContext>())
@@ -51,9 +56,15 @@ public class McpToolProviderConnectAsyncTests
 
         Assert.Equal(0, keyring.LivePaneCount);
         Assert.Equal(0, keyring.LiveTokenCount);
+
+        // Category A: a stopped gateway must refuse before minting a key or reaching presets/upstreams.
+        await gateway.StopAsync(CancellationToken.None);
+        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => provider.ConnectAsync(paneId: "dead-gateway"));
+        Assert.Contains("gateway is unavailable", refused.Message);
+        Assert.Equal(0, keyring.LivePaneCount);
     }
 
-    private static McpToolProvider _ProviderFor(IEnumerable<McpServerConfig> registry, SessionMcpKeyring? keyring = null, IMcpOAuthAuthorizer? oauthAuthorizer = null, IMcpOAuthCoordinator? oauthCoordinator = null, ILogger<McpToolProvider>? logger = null)
+    private static McpToolProvider _ProviderFor(IEnumerable<McpServerConfig> registry, SessionMcpKeyring? keyring = null, IMcpOAuthAuthorizer? oauthAuthorizer = null, IMcpOAuthCoordinator? oauthCoordinator = null, ILogger<McpToolProvider>? logger = null, SessionMcpMounts? mounts = null, SessionMcpGatewayHost? gateway = null)
     {
         var catalog = Substitute.For<IMcpServerCatalog>();
         catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(registry.ToList());
@@ -63,6 +74,6 @@ public class McpToolProviderConnectAsyncTests
             oauthCoordinator ?? Substitute.For<IMcpOAuthCoordinator>(),
             new McpAuthKey(),
             keyring ?? new SessionMcpKeyring(),
-            logger ?? NullLogger<McpToolProvider>.Instance);
+            logger ?? NullLogger<McpToolProvider>.Instance, mounts: mounts, gateway: gateway);
     }
 }

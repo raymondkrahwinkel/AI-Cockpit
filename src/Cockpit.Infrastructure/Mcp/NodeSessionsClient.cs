@@ -326,7 +326,12 @@ internal sealed class NodeSessionsClient(
                     _Text(result, "resolvedProfile"),
                     result.TryGetProperty("promptDelivered", out var delivered) && delivered.ValueKind is JsonValueKind.True or JsonValueKind.False
                         ? delivered.GetBoolean()
-                        : null);
+                        : null)
+                {
+                    McpServers = result.TryGetProperty("mcpServers", out var servers) && servers.ValueKind == JsonValueKind.Array
+                        ? servers.Deserialize<string[]>() : null,
+                    McpServersConfirmed = result.TryGetProperty("mcpServersConfirmed", out var confirmed) && confirmed.ValueKind == JsonValueKind.True,
+                };
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

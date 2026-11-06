@@ -48,6 +48,9 @@
     </PackageReference>
     <!-- The plugin's own runtime dependency: the Docker Engine API client. Not compile-only — it and its transitive
          deps ship in the plugin folder. netstandard2.0 assembly, loads on net10. -->
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.14">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
     <PackageReference Include="Docker.DotNet" Version="3.125.15" />
   </ItemGroup>
 

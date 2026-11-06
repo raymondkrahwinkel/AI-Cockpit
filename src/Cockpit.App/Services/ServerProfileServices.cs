@@ -23,7 +23,7 @@ public sealed class ServerProfileServices(
     IServerProfiles profiles,
     IServerSignIns? signIns = null,
     IPluginAdministration? plugins = null,
-    Func<string, (Type UiType, ICockpitUiHost Host)?>? localUiPart = null)
+    Func<string, (Type UiType, ICockpitUiHost Host, string Version)?>? localUiPart = null)
     : ISessionProfileStore, IProfileEditStore, IProfileLoginChecker, ISessionLoginFlows, IMcpServerCatalog, IMcpToolTokenEstimator,
         IModelCatalog, IPluginProviderConfigViews, IPluginRegistrations
 {
@@ -44,6 +44,12 @@ public sealed class ServerProfileServices(
 
     // Set when the server's brains could not be read, said where the editor shows its status; the editor opens anyway.
     public string? BrainsUnavailable { get; private set; }
+
+    // AC-2025: a provider whose plugin runs another version here than on the server gets no config view from this desktop.
+    public string? ConfigViewsUnavailable { get; private set; }
+
+    // Both notes, when both apply.
+    public string? Notes => BrainsUnavailable is null ? ConfigViewsUnavailable : ConfigViewsUnavailable is null ? BrainsUnavailable : $"{BrainsUnavailable} {ConfigViewsUnavailable}";
 
     // AC-1995 (review B1): whatever the brain list does, the editor opens, its brain a plain text field holding the value.
     private async Task<IReadOnlyList<ProjectMemorySourceRegistration>> _ListBrainSourcesAsync(CancellationToken cancellationToken)
@@ -115,6 +121,8 @@ public sealed class ServerProfileServices(
     {
     }
 
+    public bool Unregister(string providerId, Func<string?, IPluginProviderConfigView> createView) => false;
+
     public Func<string?, IPluginProviderConfigView>? Find(string providerId) => _views.GetValueOrDefault(providerId);
 
     public IReadOnlyList<SessionProviderRegistration> SessionProviders => _registrations;
@@ -178,12 +186,21 @@ public sealed class ServerProfileServices(
             return views;
         }
 
+        ConfigViewsUnavailable = null;
         var installed = await plugins.GetInstalledAsync();
         foreach (var owner in _providers.Select(provider => provider.Owner).OfType<string>().Distinct(StringComparer.Ordinal))
         {
             if (installed.FirstOrDefault(plugin => plugin.Discovered.FolderId == owner) is not { } plugin
                 || localUiPart(plugin.Discovered.Manifest.Id) is not { } part)
             {
+                continue;
+            }
+
+            var runningOnServer = plugin.RunningVersion ?? plugin.Discovered.Manifest.Version;
+            if (ServerPluginVersions.Differ(part.Version, runningOnServer))
+            {
+                var note = ServerPluginVersions.Message(plugin.Discovered.Manifest.Name, server, runningOnServer, part.Version);
+                ConfigViewsUnavailable = ConfigViewsUnavailable is null ? note : $"{ConfigViewsUnavailable} {note}";
                 continue;
             }
 

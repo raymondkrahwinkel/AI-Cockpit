@@ -776,6 +776,7 @@ public partial class TtyView : UserControl
             // to the thread pool so that wait lands there instead of freezing the UI, same as AC-747's offload.
             // The await marshals the result back onto this thread exactly as before.
             string? policyNotice = null;
+            string? launchModel = null;
             var pty = await Task.Run(() => launch.Launcher.Launch(
                 launch.Provider,
                 launch.Profile,
@@ -793,7 +794,8 @@ public partial class TtyView : UserControl
                 // AC-218: the project this session runs under, so the MCP fan-out resolves against its registry view.
                 launch.ProjectId,
                 // AC-1593: what the organisation's policy changed about this launch, said in the pane rather than silently.
-                notice: message => policyNotice = message));
+                notice: message => policyNotice = message,
+                reportModel: model => launchModel = model));
             // AC-1139: the pane may have closed while its pty started asynchronously.
             if (Parent is null)
             {
@@ -837,6 +839,7 @@ public partial class TtyView : UserControl
                 _viewModel.ProcessId = pty.ProcessId;
             }
             _logger?.LogInformation("pty launched at {Columns}x{Rows}", _ptyColumns, _ptyRows);
+            _viewModel?.SetUsageModel(launchModel);
 
             // AC-34: registers this live terminal under its pane id and operator-facing name (for
             // list_terminals), plus the input sink send_terminal writes through — the same pty stdin
@@ -1120,12 +1123,17 @@ public partial class TtyView : UserControl
         _CheckHostedTuiReadiness();
     }
 
-    // The gate a held opening brief waits behind: `TerminalControl.BracketedPaste` flips true the moment the hosted
-    // CLI sends DECSET 2004, which happens in the CLI's very first output burst (measured ~0.27s after spawn for
-    // `claude` — AC-760 grooming). The fallback covers a CLI that never sends it.
+    // AC-2164: paste mode and elapsed time also occur during native trust/choice questions.
     private void _CheckHostedTuiReadiness()
     {
         if (_hostedTuiReady)
+        {
+            return;
+        }
+
+        var blocked = TtyPromptReadiness.IsBlocked(_LastVisibleLines(Terminal.Buffer.Rows) ?? string.Empty);
+        _viewModel?.SetHostedTuiBlocked(blocked);
+        if (blocked)
         {
             return;
         }

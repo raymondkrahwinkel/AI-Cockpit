@@ -20,4 +20,9 @@ public interface IPluginDialogHost
     /// save keeps the window open with the view's own reason.
     /// </summary>
     Task ShowSettingsDialogAsync(string title, Func<Control> createView, double width, double height, Action? onSaved = null, string? singleInstanceKey = null);
+
+    /// <summary>
+    /// Closes the open dialogs whose <c>singleInstanceKey</c> starts with <paramref name="keyPrefix"/>, for a plugin that left.
+    /// </summary>
+    void CloseDialogs(string keyPrefix);
 }

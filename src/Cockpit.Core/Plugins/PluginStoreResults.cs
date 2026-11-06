@@ -4,7 +4,7 @@ namespace Cockpit.Core.Plugins;
 public sealed record PluginStoreFetchResult(bool IsSuccess, string? Error, PluginStoreIndex? Index, string? IndexUrl);
 
 // Outcome of downloading a store plugin's zip (#14): the temp file path on success (checksum-verified when the index supplied one), or a reason it failed. `Warning` is a non-fatal advisory the caller should surface — e.g. the store published no checksum, so integrity could not be verified (AC-46).
-public sealed record PluginStoreDownloadResult(bool IsSuccess, string? Error, string? ZipPath, string? Warning = null);
+public sealed record PluginStoreDownloadResult(bool IsSuccess, string? Error, string? ZipPath, string? Warning = null, bool ChecksumMismatch = false);
 
 public sealed record PluginDownloadProgress(long BytesReceived, long? TotalBytes);
 

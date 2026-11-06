@@ -54,7 +54,7 @@ internal sealed class PluginStoreClient : IPluginStoreClient, ISingletonService
             var bytes = await _ReadBytesAsync(target, maxBytes: null, cancellationToken, progress).ConfigureAwait(false);
             if (_ChecksumMismatch(bytes, expectedSha256))
             {
-                return new PluginStoreDownloadResult(false, "The downloaded plugin did not match the store's published checksum and was rejected.", null);
+                return new PluginStoreDownloadResult(false, "The downloaded plugin did not match the store's published checksum and was rejected.", null, ChecksumMismatch: true);
             }
 
             var tempPath = Path.Combine(Path.GetTempPath(), "cockpit-store-" + Guid.NewGuid().ToString("N") + ".zip");

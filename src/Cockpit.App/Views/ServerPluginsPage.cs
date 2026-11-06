@@ -32,6 +32,13 @@ public sealed class ServerPluginsPage : UserControl
         restartNow.Bind(Button.CommandProperty, new Avalonia.Data.Binding("RestartServerCommand"));
         restartNow.Bind(IsVisibleProperty, new Avalonia.Data.Binding("NeedsRestart"));
         ToolTip.SetTip(restartNow, "Restarts the server so the plugin changes take effect. Its sessions stop; this cockpit stays open.");
+        var memoryAdvice = new TextBlock { TextWrapping = Avalonia.Media.TextWrapping.Wrap };
+        memoryAdvice.Bind(TextBlock.TextProperty, new Avalonia.Data.Binding("MemoryAdviceDetail"));
+        var memoryRestart = new Button { Content = "Restart to free memory", HorizontalAlignment = HorizontalAlignment.Left };
+        memoryRestart.Bind(Button.CommandProperty, new Avalonia.Data.Binding("RestartServerCommand"));
+        ToolTip.SetTip(memoryRestart, "Restarts the server so the old plugin versions leave its memory. Its sessions stop; this cockpit stays open.");
+        var memoryPrompt = new StackPanel { Spacing = 8, Children = { memoryAdvice, memoryRestart } };
+        memoryPrompt.Bind(IsVisibleProperty, new Avalonia.Data.Binding("ShowMemoryAdvice"));
         var statusText = new TextBlock { TextWrapping = Avalonia.Media.TextWrapping.Wrap };
         statusText.Classes.Add("optionsHint");
         statusText.Bind(TextBlock.TextProperty, new Avalonia.Data.Binding("Status"));
@@ -48,7 +55,7 @@ public sealed class ServerPluginsPage : UserControl
         desktopRestartNow.Bind(Button.CommandProperty, new Avalonia.Data.Binding("RestartDesktopNowCommand"));
         var desktopPrompt = new StackPanel { Spacing = 8, Children = { desktopRestart, desktopRestartNow } };
         desktopPrompt.Bind(IsVisibleProperty, new Avalonia.Data.Binding("DesktopNeedsRestart"));
-        Content = new StackPanel { Margin = new Thickness(24, 20), Spacing = 12, Children = { heading, install, update, unavailableUpdates, status, desktopPrompt, _rows, restart, restartNow } };
+        Content = new StackPanel { Margin = new Thickness(24, 20), Spacing = 12, Children = { heading, install, update, unavailableUpdates, status, memoryPrompt, desktopPrompt, _rows, restart, restartNow } };
         DataContextChanged += (_, _) => _SetAdmin();
     }
 

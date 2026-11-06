@@ -116,6 +116,17 @@ public sealed class SessionLauncher(
                     SessionStartComposer.WithInstructions(request.LaunchOptions, request.SystemPrompt, request.ProjectJobId is not null, brainInstruction),
                     admitted.WorktreeBranch is not null),
             };
+            // AC-2162: establish profile/place before a fast provider reports its conversation id.
+            if (stateRecorder is not null)
+            {
+                var permissionMode = kind == PaneSessionKind.Sdk || request.Profile.Provider is SessionProvider.ClaudeCli
+                    ? request.PermissionMode ?? SessionPermissionModes.Default
+                    : null;
+                await stateRecorder.RecordSessionStartedAsync(
+                    paneId, request.Profile, admitted.WorkingDirectory,
+                    worktreePath: admitted.WorktreeBranch is not null ? admitted.WorkingDirectory : null,
+                    worktreeBranch: admitted.WorktreeBranch, permissionMode).ConfigureAwait(false);
+            }
             await hosted.StartAsync(instructed, admitted.WorkingDirectory).ConfigureAwait(false);
 
             // Stopped while it came up: the stop found no runtime yet, so this one would run with no pane to reach it.
@@ -135,7 +146,7 @@ public sealed class SessionLauncher(
             throw;
         }
 
-        await _RecordStartAsync(hosted, request, kind, admitted).ConfigureAwait(false);
+        await _RecordStartAsync(hosted, request, admitted).ConfigureAwait(false);
 
         bool? promptDelivered = string.IsNullOrWhiteSpace(request.Prompt)
             ? null
@@ -266,17 +277,8 @@ public sealed class SessionLauncher(
 
     // Written once, after the start: which worktree this session owns (AC-409), then the badge for a folder that is a
     // cockpit worktree it does not own (AC-633), then what the frontend keeps about the project (AC-490).
-    private async Task _RecordStartAsync(IHostedSession hosted, SessionLaunchRequest request, PaneSessionKind kind, AdmittedDirectory admitted)
+    private async Task _RecordStartAsync(IHostedSession hosted, SessionLaunchRequest request, AdmittedDirectory admitted)
     {
-        var permissionMode = kind == PaneSessionKind.Sdk || request.Profile.Provider is SessionProvider.ClaudeCli
-            ? request.PermissionMode ?? SessionPermissionModes.Default
-            : null;
-        _ = stateRecorder?.RecordSessionStartedAsync(
-            hosted.PaneId, request.Profile, admitted.WorkingDirectory,
-            worktreePath: admitted.WorktreeBranch is not null ? admitted.WorkingDirectory : null,
-            worktreeBranch: admitted.WorktreeBranch,
-            permissionMode);
-
         if (admitted.WorktreeBranch is null && admitted.WorkingDirectory is { Length: > 0 } directory)
         {
             try

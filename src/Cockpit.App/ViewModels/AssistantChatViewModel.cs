@@ -679,6 +679,7 @@ public sealed record AssistantSpawnLogRowViewModel(
         {
             SpawnCaller.Assistant => "assistant",
             SpawnCaller.Controller => "paired controller",
+            SpawnCaller.Operator => "operator",
             _ => $"coordinator ({entry.CallerPaneId ?? "unknown pane"})",
         },
         entry.WorkspaceName ?? (entry.WorkspaceId.Length > 0 ? entry.WorkspaceId : "—"),

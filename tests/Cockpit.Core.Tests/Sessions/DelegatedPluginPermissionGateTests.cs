@@ -1,5 +1,4 @@
 using Cockpit.Core.Abstractions.Sessions;
-using Cockpit.Infrastructure.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
@@ -12,7 +11,7 @@ namespace Cockpit.Core.Tests.Sessions;
 /// host as a prompt with nobody to answer it — the ceiling bound the host's own tools and nothing else, and a task
 /// told in so many words to only read and report rewrote a repository anyway.
 /// </summary>
-public class DelegatedPluginPermissionGateTests
+public class DelegatedPluginPermissionGateTests : SessionMcpTestFixture
 {
     // Second row: a tool a newer CLI ships that the host has no class for fails closed even at bypass, since here
     // the host's gate is the only gate.
@@ -60,13 +59,13 @@ public class DelegatedPluginPermissionGateTests
         Assert.Null(session.Driver.LastResponse);
     }
 
-    private static async Task<GatedSession> _StartedAsync(string? ceiling, IReadOnlyList<string>? allowedTools = null)
+    private async Task<GatedSession> _StartedAsync(string? ceiling, IReadOnlyList<string>? allowedTools = null)
     {
         var inner = new PermissionAskingDriver();
         var adapter = new PluginSessionDriverAdapter(
             inner,
             new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: true),
-            new McpAuthKey());
+            EmptyCatalog, keyring: Keyring, mcpMounts: Mounts, gateway: Gateway);
 
         await adapter.StartAsync();
         if (ceiling is not null)

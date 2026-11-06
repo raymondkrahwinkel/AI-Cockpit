@@ -19,6 +19,7 @@ internal sealed class HoursWorkspaceBody : UserControl
     private static readonly CultureInfo English = CultureInfo.GetCultureInfo("en-US");
     private readonly ProductivityController _controller;
     private readonly ICockpitUiHost _host;
+    private readonly TimeProvider _time;
     private readonly TextBox _description = new()
     {
         Name = "Description",
@@ -53,11 +54,12 @@ internal sealed class HoursWorkspaceBody : UserControl
     private readonly Action _openOverview;
     private readonly RefreshBar _bar;
 
-    public HoursWorkspaceBody(ProductivityController controller, ICockpitUiHost host, Action openOverview)
+    public HoursWorkspaceBody(ProductivityController controller, ICockpitUiHost host, Action openOverview, TimeProvider time)
     {
         _controller = controller;
         _host = host;
         _openOverview = openOverview;
+        _time = time;
         _bar = new RefreshBar(
             this,
             controller.RefreshAsync,
@@ -688,5 +690,5 @@ internal sealed class HoursWorkspaceBody : UserControl
         }
     }
 
-    private static DateOnly _Today() => DateOnly.FromDateTime(DateTimeOffset.Now.LocalDateTime);
+    private DateOnly _Today() => DateOnly.FromDateTime(_time.GetLocalNow().DateTime);
 }

@@ -85,6 +85,13 @@ public interface ICockpitHost
     /// </summary>
     IReadOnlyList<IWorkflowStep> WorkflowSteps => [];
 
+    /// <summary>Raised after a plugin contributes a workflow step; rebuild cached engines for subsequent runs.</summary>
+    event EventHandler? WorkflowStepsChanged
+    {
+        add { }
+        remove { }
+    }
+
     /// <summary>
     /// Contributes a ready-made flow (#69) — "a ticket you pick becomes a branch, an agent and a status change". A
     /// plugin that contributes steps knows how they fit together; a template is that knowledge, offered instead of an
@@ -911,6 +918,16 @@ public interface ICockpitHost
     /// The trackers every plugin has contributed — what a consumer reads to find the one for an issue's tracker id. Default empty.
     /// </summary>
     IReadOnlyList<Tracking.ITrackerProvider> TrackerProviders => [];
+
+    /// <summary>
+    /// Raised after a tracker joined or left <see cref="TrackerProviders"/>, for instance because its plugin was
+    /// disabled. A consumer that holds on to a tracker for longer than a call watches this. Default never raised.
+    /// </summary>
+    event EventHandler? TrackerProvidersChanged
+    {
+        add { }
+        remove { }
+    }
 
     /// <summary>
     /// Registers a managed-CLI install recipe (#AC-20): the host can then download the provider's CLI, verify it,

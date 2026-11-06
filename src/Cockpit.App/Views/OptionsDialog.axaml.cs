@@ -1,3 +1,4 @@
+using System.Collections.Specialized;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Data;
@@ -143,6 +144,7 @@ public partial class OptionsDialog : Window
                 cockpit.Security.AskHelloPassword = _AskHelloPasswordAsync;
                 cockpit.Security.RefreshHelloCommand.Execute(null);
                 _BuildPluginCategories(cockpit);
+                cockpit.PluginOptionsRows.CollectionChanged += _OnPluginOptionsRowsChanged;
                 _ApplySearch(cockpit.OptionsSearchText);
                 RequestAnimationFrame(_ => RequestAnimationFrame(_ => cockpit.OptionsOpenPresented()));
             }
@@ -155,6 +157,10 @@ public partial class OptionsDialog : Window
             _UnwireSearch();
             _ClearSearchVisibilityOverrides();
             _UnwatchPageLoading();
+            if (DataContext is CockpitViewModel cockpit)
+            {
+                cockpit.PluginOptionsRows.CollectionChanged -= _OnPluginOptionsRowsChanged;
+            }
             (DataContext as CockpitViewModel)?.StopMicTest();
             (DataContext as CockpitViewModel)?.Swarm.StopListening();
             (DataContext as CockpitViewModel)?.OptionsClosed();
@@ -321,6 +327,34 @@ public partial class OptionsDialog : Window
 
     private const string _DefaultPluginCategory = "PLUGINS";
 
+    private void _OnPluginOptionsRowsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.NewItems is null)
+        {
+            return;
+        }
+
+        foreach (PluginOptionsRowViewModel row in e.NewItems)
+        {
+            var tag = $"plugin:{row.PluginId}";
+            if (_pluginRows.ContainsKey(tag))
+            {
+                _pluginRows[tag] = row;
+                var content = CategoryContent.Children.OfType<Control>().FirstOrDefault(child => Equals(child.Tag, tag));
+                if (content is not null)
+                {
+                    CategoryContent.Children.Remove(content);
+                }
+                _EnsurePluginContent();
+            }
+            else
+            {
+                _BuildPluginCategory(row.Category ?? _DefaultPluginCategory, [row]);
+            }
+        }
+        _ApplySearch(_searchCockpit?.OptionsSearchText);
+    }
+
     // Builds one nav group per declared plugin-settings category, appended into the same CategoryNav/
     // CategoryContent the static categories use, so the sidebar stays one scroll region and selection scope.
     // Skipped entirely when no plugin registered a settings view.
@@ -383,19 +417,34 @@ public partial class OptionsDialog : Window
 
     private void _BuildPluginCategory(string category, IEnumerable<PluginOptionsRowViewModel> rows)
     {
-        CategoryNav.Items.Add(new ListBoxItem
+        var categoryTag = $"plugin-category:{category}";
+        var header = CategoryNav.Items.OfType<ListBoxItem>().FirstOrDefault(item => Equals(item.Tag, categoryTag));
+        if (header is null)
         {
-            Classes = { "navGroupHeader" },
-            Focusable = false,
-            IsHitTestVisible = false,
-            Content = new TextBlock { Classes = { "subnavGroup" }, Text = category.ToUpperInvariant() },
-        });
+            header = new ListBoxItem
+            {
+                Tag = categoryTag,
+                Classes = { "navGroupHeader" },
+                Focusable = false,
+                IsHitTestVisible = false,
+                Content = new TextBlock { Classes = { "subnavGroup" }, Text = category.ToUpperInvariant() },
+            };
+            CategoryNav.Items.Add(header);
+        }
+
+        var position = CategoryNav.Items.IndexOf(header) + 1;
+        while (position < CategoryNav.Items.Count
+            && CategoryNav.Items[position] is ListBoxItem { Tag: string tag }
+            && tag.StartsWith("plugin:", StringComparison.Ordinal))
+        {
+            position++;
+        }
 
         foreach (var row in rows)
         {
             var tag = $"plugin:{row.PluginId}";
 
-            CategoryNav.Items.Add(_BuildPluginNavItem(tag, row.DisplayName));
+            CategoryNav.Items.Insert(position++, _BuildPluginNavItem(tag, row.DisplayName));
             _pluginRows.Add(tag, row);
         }
     }

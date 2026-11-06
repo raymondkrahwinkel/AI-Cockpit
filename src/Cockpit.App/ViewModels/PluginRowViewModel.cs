@@ -35,6 +35,8 @@ public sealed class PluginRowViewModel(InstalledPlugin installed, bool hasSettin
     // True when the loaded plugin registered a settings view (#14) — the manager shows a gear to open it.
     public bool HasSettings => hasSettings;
 
+    internal PluginRowViewModel WithSettings() => new(installed, hasSettings: true);
+
     // True when this plugin never became operative (load/configure/initialize), or is flagged for a compatibility concern.
     public bool HasFailure => installed.ActivationFailure is not null || installed.CompatibilityWarning is not null;
 

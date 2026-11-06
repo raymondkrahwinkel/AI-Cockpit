@@ -50,6 +50,11 @@ internal sealed partial class AgentPromptAction(ICockpitHost host, TaskDelivery 
             return new ActionResult(RunOutcome.Failed, Reason: $"The working directory names {string.Join(", ", unset)}, which is not set here.");
         }
 
+        if ((await host.GetProfilesAsync()).FirstOrDefault(candidate => string.Equals(candidate.Label, profile, StringComparison.OrdinalIgnoreCase)) is { ProviderAvailable: false })
+        {
+            return new ActionResult(RunOutcome.Skipped, Reason: $"Profile '{profile}' runs on a provider whose plugin is disabled.");
+        }
+
         string? taskId = null;
         var reported = 0;
         Interlocked.Increment(ref _starting);

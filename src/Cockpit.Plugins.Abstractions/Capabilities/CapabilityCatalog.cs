@@ -348,7 +348,7 @@ public static class CapabilityCatalog
             "Serves the cockpit's issue, comment and stage lookups, so ticket content and the credentials behind it run through the plugin.",
             CapabilityRisk.Sensitive,
             "0.3.0",
-            ["ICockpitHost.AddTrackerProvider", "ICockpitHost.TrackerProviders"],
+            ["ICockpitHost.AddTrackerProvider", "ICockpitHost.TrackerProviders", "ICockpitHost.TrackerProvidersChanged"],
             []),
 
         new(
