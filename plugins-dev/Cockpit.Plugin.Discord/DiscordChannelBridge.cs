@@ -68,6 +68,7 @@ internal sealed class DiscordChannelBridge : IDisposable
         _logRefusal = logRefusal ?? (_ => { });
 
         _gateway.RowChanged += _OnRowChanged;
+        _gateway.TurnEnded += _OnTurnEnded;
         _gateway.ConsentPromptOpened += _OnPromptOpened;
         _gateway.ConsentPromptClosed += _OnPromptClosed;
     }
@@ -349,6 +350,15 @@ internal sealed class DiscordChannelBridge : IDisposable
         _QueueRowRelay(row, verbosity);
     }
 
+    // A successful turn adds no TurnCompleted row, so the held answer is posted when the turn ends (AC-2084).
+    private void _OnTurnEnded(object? sender, EventArgs e)
+    {
+        if (!_disposed)
+        {
+            _FlushFinalAnswerRows();
+        }
+    }
+
     private void _FlushFinalAnswerRows()
     {
         AssistantChannelRow[] rows;
@@ -466,6 +476,7 @@ internal sealed class DiscordChannelBridge : IDisposable
 
         _disposed = true;
         _gateway.RowChanged -= _OnRowChanged;
+        _gateway.TurnEnded -= _OnTurnEnded;
         _gateway.ConsentPromptOpened -= _OnPromptOpened;
         _gateway.ConsentPromptClosed -= _OnPromptClosed;
     }

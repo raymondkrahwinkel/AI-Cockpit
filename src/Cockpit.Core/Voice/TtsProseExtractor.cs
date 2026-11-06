@@ -5,6 +5,8 @@ using Cockpit.Core.Markdown;
 
 namespace Cockpit.Core.Voice;
 
+public sealed record TtsProseStream(IReadOnlyList<string> Sentences, int ConsumedLength);
+
 // Turns an assistant transcript entry's markdown into the sentences worth reading aloud: prose from headings,
 // paragraphs and list items, skipping fenced code and tables — literal syntax and pipe characters read poorly
 // aloud. Pure and testable: no dependency on the TTS engine itself.
@@ -41,6 +43,143 @@ public static partial class TtsProseExtractor
         }
 
         return _SplitSentences(prose.ToString());
+    }
+
+    // A stream may still turn its trailing text into a code block or table, so only hand the stable prefix to TTS.
+    public static TtsProseStream ExtractCompleted(string assistantMarkdown)
+    {
+        var consumedLength = _CompletedPrefixLength(assistantMarkdown);
+        return consumedLength == 0
+            ? new TtsProseStream([], 0)
+            : new TtsProseStream(Extract(assistantMarkdown[..consumedLength]), consumedLength);
+    }
+
+    private static int _CompletedPrefixLength(string markdown)
+    {
+        var completedLength = 0;
+        var lineStart = 0;
+        var insideFence = false;
+        var insideTable = false;
+        (int Start, int End)? possibleTableHeader = null;
+
+        while (lineStart < markdown.Length)
+        {
+            var newline = markdown.IndexOf('\n', lineStart);
+            var lineEnd = newline < 0 ? markdown.Length : newline;
+            var nextLineStart = newline < 0 ? markdown.Length : newline + 1;
+            var line = markdown[lineStart..lineEnd];
+            var lineIsComplete = newline >= 0 || SentenceEndingPunctuation().IsMatch(line) || line.TrimStart().StartsWith("```", StringComparison.Ordinal);
+            if (!lineIsComplete)
+            {
+                break;
+            }
+
+            if (insideFence)
+            {
+                if (line.TrimStart().StartsWith("```", StringComparison.Ordinal))
+                {
+                    insideFence = false;
+                    completedLength = nextLineStart;
+                }
+
+                lineStart = nextLineStart;
+                continue;
+            }
+
+            if (possibleTableHeader is { } header)
+            {
+                if (TableSeparator().IsMatch(line))
+                {
+                    insideTable = true;
+                    possibleTableHeader = null;
+                    lineStart = nextLineStart;
+                    continue;
+                }
+
+                completedLength = _CompletedRegularLine(markdown, header.Start, header.End, completedLength);
+                possibleTableHeader = null;
+            }
+
+            if (insideTable)
+            {
+                if (string.IsNullOrWhiteSpace(line) || !line.Contains('|'))
+                {
+                    insideTable = false;
+                }
+                else
+                {
+                    lineStart = nextLineStart;
+                    continue;
+                }
+            }
+
+            if (line.TrimStart().StartsWith("```", StringComparison.Ordinal))
+            {
+                insideFence = true;
+            }
+            else if (line.Contains('|'))
+            {
+                possibleTableHeader = (lineStart, nextLineStart);
+            }
+            else
+            {
+                completedLength = _CompletedRegularLine(markdown, lineStart, nextLineStart, completedLength);
+            }
+
+            lineStart = nextLineStart;
+        }
+
+        return completedLength;
+    }
+
+    private static int _CompletedRegularLine(string markdown, int lineStart, int lineEnd, int completedLength)
+    {
+        var line = markdown[lineStart..lineEnd];
+        if (string.IsNullOrWhiteSpace(line))
+        {
+            return lineEnd;
+        }
+
+        if ((ListItem().IsMatch(line) || Heading().IsMatch(line)) && line.EndsWith('\n'))
+        {
+            completedLength = lineEnd;
+        }
+
+        for (var index = lineStart; index < lineEnd; index++)
+        {
+            if (markdown[index] is '.' or '!' or '?' && _IsCompletedSentence(markdown, index))
+            {
+                completedLength = index + 1;
+            }
+        }
+
+        return completedLength;
+    }
+
+    private static bool _IsCompletedSentence(string markdown, int index)
+    {
+        if (index + 1 < markdown.Length && !char.IsWhiteSpace(markdown[index + 1]))
+        {
+            return false;
+        }
+
+        if (markdown[index] != '.')
+        {
+            return true;
+        }
+
+        var wordStart = index;
+        while (wordStart > 0 && char.IsLetterOrDigit(markdown[wordStart - 1]))
+        {
+            wordStart--;
+        }
+        var word = markdown[wordStart..index];
+        if (word.Length is <= 2 || word.Equals("e.g", StringComparison.OrdinalIgnoreCase) || word.Equals("i.e", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return index == 0 || !char.IsDigit(markdown[index - 1]) || index + 1 == markdown.Length || !char.IsDigit(markdown[index + 1]);
     }
 
     // Appends a block's plain text, forcing a sentence boundary after it — headings and list items rarely end in punctuation, and without one the next block would run on into the same spoken sentence.
@@ -110,6 +249,15 @@ public static partial class TtsProseExtractor
 
     [GeneratedRegex(@"[.!?]$")]
     private static partial Regex SentenceEndingPunctuation();
+
+    [GeneratedRegex(@"^\s*(?:[-*+]|\d+[.)])\s+")]
+    private static partial Regex ListItem();
+
+    [GeneratedRegex(@"^\s{0,3}#{1,6}\s+")]
+    private static partial Regex Heading();
+
+    [GeneratedRegex(@"^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$", RegexOptions.NonBacktracking)]
+    private static partial Regex TableSeparator();
 
     [GeneratedRegex(@"\s+")]
     private static partial Regex CollapseWhitespace();

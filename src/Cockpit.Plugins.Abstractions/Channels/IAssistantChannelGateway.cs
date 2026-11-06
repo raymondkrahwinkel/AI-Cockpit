@@ -197,6 +197,19 @@ public interface IAssistantChannelGateway : IDisposable
     event EventHandler<AssistantChannelRow>? RowChanged;
 
     /// <summary>
+    /// The assistant stopped working on a turn (busy to idle). A successful turn leaves no row of its own, so a channel
+    /// holding back a final answer posts it on this (AC-2084). Raised after the turn's last row.
+    /// </summary>
+    /// <remarks>
+    /// A default no-op member, so no <c>abstractionsVersion</c> bump is needed (as AC-1049).
+    /// </remarks>
+    event EventHandler? TurnEnded
+    {
+        add { }
+        remove { }
+    }
+
+    /// <summary>
     /// The assistant is waiting on a consent decision. Only its own prompts — another session's never reach a channel.
     /// </summary>
     event EventHandler<AssistantChannelConsentPrompt>? ConsentPromptOpened;

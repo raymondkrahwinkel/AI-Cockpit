@@ -50,11 +50,12 @@ internal static class ProductivityScenes
     {
         MeasuredTimeCard.OpenFolds = true;
         var host = SceneHost.Create(new SceneChannel());
-        var controller = new ProductivityController(host.Channel, new FixedTime());
+        var time = new FixedTime();
+        var controller = new ProductivityController(host.Channel, time);
         controller.UpdateProjectFallback(Cockpit);
         // A scene is built synchronously and rendered at once; the stub channel answers without awaiting.
         _Done(controller.ShowWeekAsync(week));
-        return (new WorkspaceTypeRegistration(ProductivityUi.WorkspaceTypeId, "Hours", _ => new HoursWorkspaceBody(controller, host, () => { })) { IconKind = MaterialIconKind.ClockOutline }, null);
+        return (new WorkspaceTypeRegistration(ProductivityUi.WorkspaceTypeId, "Hours", _ => new HoursWorkspaceBody(controller, host, () => { }, time)) { IconKind = MaterialIconKind.ClockOutline }, null);
     }
 
     // AC-1891: never waits. The stub channel has already answered, so a task still running is a broken scene.

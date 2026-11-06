@@ -28,6 +28,8 @@ internal sealed class SherpaOnnxTextToSpeechService(IVoiceSettingsStore settings
     // Split out from `SynthesizeAsync` so the clamp is unit-testable without the native TTS model.
     internal static float ClampSpeed(double speed) => Math.Clamp((float)speed, MinSpeed, MaxSpeed);
 
+    internal static int ResolveThreadCount(int processorCount) => Math.Clamp(processorCount / 2, 1, 4);
+
     public async Task<TtsAudio> SynthesizeAsync(string text, int speakerId, string language, CancellationToken cancellationToken = default)
     {
         var tts = await _GetOrLoadModelAsync(cancellationToken).ConfigureAwait(false);
@@ -97,7 +99,7 @@ internal sealed class SherpaOnnxTextToSpeechService(IVoiceSettingsStore settings
                         UnicodeIndexer = paths.UnicodeIndexerPath,
                         VoiceStyle = paths.VoiceStylePath,
                     },
-                    NumThreads = 1,
+                    NumThreads = ResolveThreadCount(Environment.ProcessorCount),
                     Provider = "cpu",
                 },
             };
