@@ -95,7 +95,7 @@ public sealed class DockerAccessGateTests
         yield return
         [
             "AC1: ReadFree pre-approves a read-classified tool",
-            (Action<DockerSettings>)(s => s.ConsentMode = DockerConsentMode.ReadFree),
+            (Action<DockerSettings, FakePluginStorage>)((s, _) => s.ConsentMode = DockerConsentMode.ReadFree),
             (Func<DockerAccessGate, Task<GateResult>>)(gate => gate.AuthorizeConnectionAsync("list_containers", "list containers", Session)),
             1,
             true,
@@ -103,7 +103,7 @@ public sealed class DockerAccessGateTests
         yield return
         [
             "AC1 tegenproef: ReadFree still asks for a change-classified tool",
-            (Action<DockerSettings>)(s => s.ConsentMode = DockerConsentMode.ReadFree),
+            (Action<DockerSettings, FakePluginStorage>)((s, _) => s.ConsentMode = DockerConsentMode.ReadFree),
             (Func<DockerAccessGate, Task<GateResult>>)(gate => gate.AuthorizeMutationAsync("stop_container", "stop container", Session)),
             2,
             false,
@@ -111,7 +111,7 @@ public sealed class DockerAccessGateTests
         yield return
         [
             "AC2: an unlisted tool counts as a change and still asks under ReadFree",
-            (Action<DockerSettings>)(s => s.ConsentMode = DockerConsentMode.ReadFree),
+            (Action<DockerSettings, FakePluginStorage>)((s, _) => s.ConsentMode = DockerConsentMode.ReadFree),
             (Func<DockerAccessGate, Task<GateResult>>)(gate => gate.AuthorizeConnectionAsync("some_future_tool", "do something new", Session)),
             1,
             false,
@@ -119,18 +119,19 @@ public sealed class DockerAccessGateTests
         yield return
         [
             "AC3: AllFree pre-approves a change-classified tool too",
-            (Action<DockerSettings>)(s => s.ConsentMode = DockerConsentMode.AllFree),
+            (Action<DockerSettings, FakePluginStorage>)((s, _) => s.ConsentMode = DockerConsentMode.AllFree),
             (Func<DockerAccessGate, Task<GateResult>>)(gate => gate.AuthorizeMutationAsync("stop_container", "stop container", Session)),
             2,
             true,
         ];
         yield return
         [
-            "AC4: an endpoint change after choosing ReadFree falls back to AlwaysAsk",
-            (Action<DockerSettings>)(s =>
+            "AC4: a legacy remote approval falls back to AlwaysAsk on the local daemon",
+            (Action<DockerSettings, FakePluginStorage>)((_, storage) =>
             {
-                s.ConsentMode = DockerConsentMode.ReadFree;
-                s.DaemonEndpoint = "tcp://otherhost:2375";
+                storage.Set("daemonEndpoint", "tcp://otherhost:2375");
+                storage.Set("consentModeEndpoint", "tcp://otherhost:2375");
+                storage.Set("consentMode", DockerConsentMode.ReadFree);
             }),
             (Func<DockerAccessGate, Task<GateResult>>)(gate => gate.AuthorizeConnectionAsync("list_containers", "list containers", Session)),
             1,
@@ -138,18 +139,17 @@ public sealed class DockerAccessGateTests
         ];
     }
 
-    // `configure`/`act` arrive as `object` (boxed `Action<DockerSettings>`/`Func<DockerAccessGate, Task<GateResult>>`)
-    // rather than declared as such: a public [Theory] method cannot itself declare a parameter of a type built
-    // from the internal DockerSettings/DockerAccessGate/GateResult (CS0051) — the cast below is what recovers them.
+    // Public theory parameters cannot expose the internal settings and gate types (CS0051).
     [Theory]
     [MemberData(nameof(ConsentModeCases))]
     public async Task ConsentMode_GatesEachCallByToolClassification(
         string scenario, object configure, object act, int expectedHostCalls, bool expectPreApproved)
     {
-        var configureSettings = (Action<DockerSettings>)configure;
+        var configureSettings = (Action<DockerSettings, FakePluginStorage>)configure;
         var callGate = (Func<DockerAccessGate, Task<GateResult>>)act;
-        var settings = new DockerSettings(new FakePluginStorage());
-        configureSettings(settings);
+        var storage = new FakePluginStorage();
+        var settings = new DockerSettings(storage);
+        configureSettings(settings, storage);
         var (gate, asked) = _GateWithSettings(ConsentOutcome.Approved, settings);
 
         var result = await callGate(gate);
