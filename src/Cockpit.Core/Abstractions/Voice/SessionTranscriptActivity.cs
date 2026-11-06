@@ -9,4 +9,7 @@ public sealed record SessionTranscriptActivity(
     SessionActivity Activity,
     string? RawLine,
     TokenUsage? Usage = null,
-    int OutstandingShells = 0);
+    int OutstandingShells = 0)
+{
+    public string? Model { get; init; }
+}

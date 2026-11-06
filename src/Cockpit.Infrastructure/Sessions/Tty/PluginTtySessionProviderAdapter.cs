@@ -103,7 +103,7 @@ internal sealed class PluginTtySessionProviderAdapter(
             spec.EnvironmentOverlay,
             spec.WorkingDirectory,
             spec.SessionScopedFiles,
-            spec.StatusFile);
+            spec.StatusFile) { Model = spec.Model };
     }
 
     private (IReadOnlyList<PluginMcpServer> McpServers, bool CanDelegate) _ResolveRegistry(IReadOnlySet<string>? enabledServerNames, string? projectId, string? workingDirectory, string? agentName, TtyLaunchContext context, CancellationToken budget)

@@ -249,6 +249,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         if (!string.IsNullOrWhiteSpace(resumeSessionId))
         {
             var resumed = await _connection.SendRequestAsync("thread/resume", new { threadId = resumeSessionId, cwd }, cancellationToken).ConfigureAwait(false);
+            _model = _TryGetString(resumed, "model", out var resumedModel) ? _NullIfBlank(resumedModel) ?? _model : _model;
             threadId = _ExtractThreadId(resumed) ?? resumeSessionId;
         }
         else
@@ -258,6 +259,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
             // Sent only when set; null leaves the thread's own instructions untouched, like sandbox/model above.
             var developerInstructions = _NullIfBlank(CliAgentConfig.ResolveOption(options, WellKnownPluginSessionOptions.AppendSystemPrompt, null));
             var started = await _connection.SendRequestAsync("thread/start", new { cwd, sandbox = _NullIfBlank(sandbox), model = _NullIfBlank(effectiveModel), developerInstructions }, cancellationToken).ConfigureAwait(false);
+            _model = _TryGetString(started, "model", out var startedModel) ? _NullIfBlank(startedModel) ?? _model : _model;
 
             // The thread id may ride the reply or only the thread/started notification — take whichever arrives,
             // so the driver does not depend on which of the two carries it in a given Codex version.
@@ -266,7 +268,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
 
         _threadId = threadId;
         _threadReady.TrySetResult(threadId);
-        _events.Publish(new PluginSessionInitialized { SessionId = threadId, Tools = [], Cwd = _workingDirectory });
+        _events.Publish(new PluginSessionInitialized { SessionId = threadId, Tools = [], Cwd = _workingDirectory, Model = _model });
     }
 
     public Task SendUserMessageAsync(string text, CancellationToken cancellationToken = default) =>

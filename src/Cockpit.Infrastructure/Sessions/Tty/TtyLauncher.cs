@@ -29,7 +29,8 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemory
         IReadOnlySet<string>? enabledMcpServerNames = null,
         SessionResources? contributed = null,
         string? projectId = null,
-        Action<string>? notice = null)
+        Action<string>? notice = null,
+        Action<string?>? reportModel = null)
     {
         if (string.IsNullOrEmpty(paneId))
         {
@@ -133,6 +134,7 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemory
             SessionScratchCleanup.DeleteAsync(scratch, scratchPane, worktreeManager, logger).GetAwaiter().GetResult();
             throw;
         }
+        reportModel?.Invoke(spec.Model);
 
         // A provider that tries to set what the host strips gets ignored, not obeyed — but never silently: this
         // is either a bug in the provider or an attempt to hand the child a credential the operator never chose.

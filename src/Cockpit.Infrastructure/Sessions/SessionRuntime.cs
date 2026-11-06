@@ -41,6 +41,7 @@ internal sealed class SessionRuntime : ISessionRuntime
     private readonly IModelImageInput? _imageInput;
     private readonly ISessionProfileStore? _profiles;
     private string? _model;
+    public string? Model => _model;
     private int _visionRevision;
     private readonly Lock _visionLock = new();
     private ImageInputFact? _serviceVision;
@@ -336,7 +337,9 @@ internal sealed class SessionRuntime : ISessionRuntime
         var clampedTo = _ClampStart(ref permissionMode, ref launchOptions);
         await _driver.StartAsync(profile, permissionMode, model, enabledMcpServerNames, workingDirectory, resume, launchOptions, projectId, _lifetime.Token);
         if (profile is not null) LocalModelImageFacts.Invalidate(profile);
-        _RefreshVision(model ?? (profile is null ? null : ProfileModel.Of(profile) ?? profile.Defaults?.OptionDefaults?.GetValueOrDefault(WellKnownPluginSessionOptions.Model)));
+        var optionModel = launchOptions?.GetValueOrDefault(WellKnownPluginSessionOptions.Model);
+        _RefreshVision(!string.IsNullOrWhiteSpace(optionModel) ? optionModel
+            : model ?? (profile is null ? null : ProfileModel.Of(profile) ?? profile.Defaults?.OptionDefaults?.GetValueOrDefault(WellKnownPluginSessionOptions.Model)));
         if (clampedTo is not null && _policy is not null)
         {
             _Publish(new SessionError { SessionId = _lastSessionId, Message = OrgPolicyCeilings.StartedClamped(_policy, permissionMode ?? clampedTo, clampedTo) });

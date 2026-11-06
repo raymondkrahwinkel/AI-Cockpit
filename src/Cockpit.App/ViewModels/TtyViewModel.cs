@@ -30,6 +30,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     public override string? ProviderId => (_configuredProfile?.ProviderConfig as PluginProviderConfig)?.ProviderId;
     private string? _configuredPermissionMode;
     private string? _configuredModel;
+    private string? _usageModel;
     private string? _configuredEffort;
     private IReadOnlyDictionary<string, string>? _configuredPluginOptions;
     private string? _configuredWorkingDirectory;
@@ -648,6 +649,11 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
                         RaiseOutputText(line);
                     }
 
+                    if (!string.IsNullOrWhiteSpace(reading.Model))
+                    {
+                        SetUsageModel(reading.Model);
+                    }
+
                     // AC-398/AC-1013: Holds tool-turn usage pending so one turn is not counted as many messages.
                     if (reading.Usage is { } usage)
                     {
@@ -763,7 +769,9 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
 
     // AC-1013: Writes the running totals to the usage trail after every turn (AC-398), same as the SDK path
     private protected override (UsageRunKind RunKind, string? RunId, string? RunLabel, string? Model) GetUsageSnapshotMetadata() =>
-        (UsageRunKind.Interactive, null, null, _configuredModel);
+        (UsageRunKind.Interactive, null, null, _usageModel);
+
+    internal void SetUsageModel(string? model) => _usageModel = string.IsNullOrWhiteSpace(model) ? null : model;
 
     // The transcript callback and disposal both run on the UI thread, so a queued callback can replace the write while drain awaits.
     private protected override bool UsageWritesMayBeQueuedDuringDrain => true;

@@ -108,7 +108,7 @@ internal sealed class SessionTranscriptReader(
                 PluginSessionActivity.AwaitingOperator => SessionActivity.AwaitingOperator,
                 _ => SessionActivity.None,
             };
-            yield return new SessionTranscriptActivity(activity, reading.RawLine, _MapUsage(reading.Usage), reading.OutstandingShells);
+            yield return new SessionTranscriptActivity(activity, reading.RawLine, _MapUsage(reading.Usage), reading.OutstandingShells) { Model = reading.Model };
         }
     }
 

@@ -145,7 +145,7 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
                 pendingLine.Clear();
 
                 var activity = ClassifyLine(line);
-                ClaudeTranscriptLineParser.TryExtractUsage(line, out var usage, out var messageId);
+                ClaudeTranscriptLineParser.TryExtractUsage(line, out var usage, out var messageId, out var model);
                 if (messageId is not null)
                 {
                     if (messageId == lastAssistantMessageId)
@@ -209,7 +209,7 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
                     lastEmitted = emit;
                 }
 
-                yield return new PluginTranscriptActivity(emit, line, usage, outstandingShells.Count);
+                yield return new PluginTranscriptActivity(emit, line, usage, outstandingShells.Count) { Model = model };
             }
 
             pendingLine.Append(charBuffer, chunkStart, charCount - chunkStart);
