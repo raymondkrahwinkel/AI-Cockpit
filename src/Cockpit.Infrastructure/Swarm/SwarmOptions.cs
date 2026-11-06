@@ -1,4 +1,5 @@
 using Cockpit.Core.Abstractions;
+using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Swarm;
 
@@ -6,7 +7,7 @@ namespace Cockpit.Infrastructure.Swarm;
 
 internal sealed class SwarmOptions(SwarmSettingsStore settings, SwarmMembershipStore membership,
     SwarmIdentity identity, SwarmReachability reachability, SwarmJoinClient join, SwarmJoinHost host,
-    SwarmManualAddress manual, SwarmHeartbeat heartbeat, SwarmKick kick)
+    SwarmManualAddress manual, SwarmHeartbeat heartbeat, SwarmKick kick, INodeEndpointSettingsStore endpoint)
     : ISwarmOptions, ISingletonService
 {
     public event Action<SwarmMember>? RemovalRequested
@@ -15,6 +16,14 @@ internal sealed class SwarmOptions(SwarmSettingsStore settings, SwarmMembershipS
         remove => kick.RemovalRequested -= value;
     }
     public SwarmJoinPending? Pending => host.Pending;
+    public string ConnectionFailure => heartbeat.Failure;
+    public async Task<bool> ConnectionsEnabledAsync(CancellationToken ct = default) => (await endpoint.LoadAsync(ct)).Enabled;
+    public async Task<string> ResetAsync(CancellationToken ct = default)
+    {
+        var backup = await heartbeat.ResetAsync(ct);
+        await settings.UpdateAsync(current => current with { PairingOrigins = new Dictionary<string, string>(), ManualAddresses = [] }, ct);
+        return backup;
+    }
     public Task<string> RemovalStatusAsync(CancellationToken ct = default) => kick.StatusAsync(ct);
     public Task KickAsync(SwarmMemberId member, CancellationToken ct = default) => kick.RemoveAsync(member, ct);
     public Task<SwarmSettings> LoadSettingsAsync(CancellationToken ct = default) => settings.LoadAsync(ct);

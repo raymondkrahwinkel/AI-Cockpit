@@ -27,6 +27,19 @@ internal sealed class SwarmJoinClient(
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
 
+    internal async Task ResetAsync(Func<Task> reset, CancellationToken ct)
+    {
+        await _gate.WaitAsync(ct);
+        try
+        {
+            await local.ResetAsync(reset, ct);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     public Task<IReadOnlyList<NodeDiscoveryFound>> FindAsync(TimeSpan timeout, CancellationToken ct = default) =>
         discovery.FindAsync(timeout, network.IsAllowedAsync, ct);
 
@@ -79,6 +92,7 @@ internal sealed class SwarmJoinClient(
         try
         {
             var register = await membership.LoadAsync(ct);
+            var standalone = register.Sequence == 0;
             if (register.Sequence == 0)
             {
                 var options = await settings.LoadAsync(ct);
@@ -102,10 +116,10 @@ internal sealed class SwarmJoinClient(
             {
                 throw new InvalidDataException("Empty join proposal.");
             }
-            if (prepared.Log.Count < register.Sequence || !register.Log.Zip(prepared.Log).All(pair =>
-                JsonSerializer.Serialize(pair.First, SwarmRecordJson.Options) == JsonSerializer.Serialize(pair.Second, SwarmRecordJson.Options)))
+            if (!standalone && (prepared.Log.Count < register.Sequence || !register.Log.Zip(prepared.Log).All(pair =>
+                JsonSerializer.Serialize(pair.First, SwarmRecordJson.Options) == JsonSerializer.Serialize(pair.Second, SwarmRecordJson.Options))))
             {
-                throw NodePairingException.For(NodePairingError.InvalidToken, "Join must retain the signed removal history.");
+                throw NodePairingException.For(NodePairingError.InvalidToken, "Swarm histories differ. Choose which swarm to keep, use Leave / reset swarm on the other machine, then pair from that machine again.");
             }
             register = SwarmMembership.Replay(prepared.Log);
             var proposal = prepared.Record;
@@ -152,15 +166,27 @@ internal sealed class SwarmJoinClient(
 
     internal async Task ConnectMembersAsync(CancellationToken ct)
     {
-        var register = await membership.LoadAsync(ct);
-        var self = register.Members.Single(member => member.Id == identity.MemberId);
-        foreach (var member in register.Members.Where(member => member.Id != identity.MemberId && member.Id != self.AddedBy))
+        await _gate.WaitAsync(ct);
+        try
         {
-            try { await ConnectMemberAsync(register, member, ct); }
-            catch (Exception ex) when (!ct.IsCancellationRequested && ex is HttpRequestException or OperationCanceledException or NodePairingException)
+            var register = await membership.LoadAsync(ct);
+            var self = register.Members.SingleOrDefault(member => member.Id == identity.MemberId);
+            if (self is null)
             {
-                logger?.LogWarning(ex, "Swarm member {Member} could not be connected after joining.", member.Id);
+                return;
             }
+            foreach (var member in register.Members.Where(member => member.Id != identity.MemberId && member.Id != self.AddedBy))
+            {
+                try { await ConnectMemberAsync(register, member, ct); }
+                catch (Exception ex) when (!ct.IsCancellationRequested && ex is HttpRequestException or OperationCanceledException or NodePairingException)
+                {
+                    logger?.LogWarning(ex, "Swarm member {Member} could not be connected after joining.", member.Id);
+                }
+            }
+        }
+        finally
+        {
+            _gate.Release();
         }
     }
 
