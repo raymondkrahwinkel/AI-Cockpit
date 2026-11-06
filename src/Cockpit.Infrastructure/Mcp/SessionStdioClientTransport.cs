@@ -8,12 +8,14 @@ using Cockpit.Core.Sessions;
 using ModelContextProtocol.Client;
 using Cockpit.Infrastructure.Sessions;
 using ModelContextProtocol.Protocol;
+using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Infrastructure.Mcp;
 
 internal sealed class SessionStdioClientTransport(
-    McpServerConfig server, SessionMcpContext? context, ISessionProcessAnchor? anchor, string? paneId, SessionStdioProcesses? processes = null) : IClientTransport
+    McpServerConfig server, SessionMcpContext? context, ISessionProcessAnchor? anchor, string? paneId, SessionStdioProcesses? processes = null, ILogger? logger = null) : IClientTransport
 {
+    private static int _warnedAboutLinuxFallback;
     public string Name => server.Name;
 
     public async Task<ITransport> ConnectAsync(CancellationToken cancellationToken = default)
@@ -32,7 +34,12 @@ internal sealed class SessionStdioClientTransport(
             StandardErrorEncoding = new UTF8Encoding(false),
         };
         foreach (var argument in server.Args) { start.ArgumentList.Add(argument); }
-        if (OperatingSystem.IsLinux())
+        var linuxAnchorAvailable = File.Exists("/usr/bin/setpriv") && File.Exists("/usr/bin/setsid") && File.Exists("/bin/kill");
+        if (OperatingSystem.IsLinux() && !linuxAnchorAvailable && Interlocked.Exchange(ref _warnedAboutLinuxFallback, 1) == 0)
+        {
+            logger?.LogWarning("Linux stdio process anchoring is unavailable; install util-linux setpriv/setsid and /bin/kill. Servers start directly and rely on stdin closure when Cockpit exits.");
+        }
+        if (OperatingSystem.IsLinux() && linuxAnchorAvailable)
         {
             // AC-2130: the parent-death signal kills the isolated process group, including servers that ignore stdin EOF.
             start.ArgumentList.Clear();
@@ -43,14 +50,15 @@ internal sealed class SessionStdioClientTransport(
             foreach (var argument in server.Args) { start.ArgumentList.Add(argument); }
             start.FileName = "/usr/bin/setpriv";
         }
+        string? windowsCommand = null;
         if (OperatingSystem.IsWindows())
         {
             // AC-2130: cmd waits for a line before spawning, so descendants are born inside the Job Object.
-            var command = string.Join(" ", new[] { start.FileName }.Concat(server.Args).Select(argument =>
+            windowsCommand = string.Join(" ", new[] { start.FileName }.Concat(server.Args).Select(argument =>
                 Sessions.Tty.ConPtyHostFactory.QuoteArgument(Regex.IsMatch(argument, @"\s") ? argument : Regex.Replace(argument, "[&^><|]", "^$0"))));
             start.ArgumentList.Clear();
             start.FileName = "cmd.exe";
-            start.Arguments = "/d /q /c \"set /p _cockpit_stdio_gate= >nul && " + command + "\"";
+            start.Arguments = "/d /v:off /q /c \"set /p _cockpit_stdio_gate= >nul && %_COCKPIT_STDIO_COMMAND%\"";
         }
         var environment = StdioServerEnvironment.Build();
         foreach (var (key, value) in context?.Environment ?? new Dictionary<string, string?>())
@@ -62,6 +70,8 @@ internal sealed class SessionStdioClientTransport(
         {
             if (value is not null) { start.Environment[key] = value; }
         }
+        // cmd expands a variable's value once, preserving literal percent signs inside the command (AC-2130).
+        if (windowsCommand is not null) { start.Environment["_COCKPIT_STDIO_COMMAND"] = windowsCommand; }
         var process = new Process { StartInfo = start };
         IDisposable? lifetime = null;
         var processId = 0;

@@ -357,7 +357,7 @@ internal sealed partial class McpToolProvider(
 
     private IClientTransport _BuildTransport(McpServerConfig server, string? sessionToken, string? agentName = null, bool gateway = false, string? paneId = null) => server.Transport switch
     {
-        McpTransport.Stdio when gateway => new SessionStdioClientTransport(server, paneId is null ? null : _mounts?.Set(paneId)?.Context, processAnchor, paneId, stdioProcesses),
+        McpTransport.Stdio when gateway => new SessionStdioClientTransport(server, paneId is null ? null : _mounts?.Set(paneId)?.Context, processAnchor, paneId, stdioProcesses, _logger),
         McpTransport.Stdio => new StdioClientTransport(new StdioClientTransportOptions
         {
             Name = server.Name,
