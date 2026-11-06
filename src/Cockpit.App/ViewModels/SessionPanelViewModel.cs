@@ -1573,7 +1573,6 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         // not just suppress future turns.
         if (!value)
         {
-            _readAloudCancelled = true;
             _voicePlaybackQueue?.StopAll();
         }
         else if (IsAudioAvailable && _voicePlaybackQueue is not null)

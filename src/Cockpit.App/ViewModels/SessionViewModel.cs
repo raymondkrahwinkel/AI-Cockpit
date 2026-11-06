@@ -2186,7 +2186,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     [RelayCommand]
     private async Task StopAsync()
     {
-        if (IsTheVoiceAssistant)
+        if (IsTheVoiceAssistant && _turnSpeechMode != SpokenReplyMode.Full)
         {
             CancelReadAloud();
         }
@@ -2510,9 +2510,12 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // below stay on the bare text, so a reply prefix never changes retry or auto-close behaviour.
     private void _OnTurnStarting(QueuedPrompt prompt)
     {
-        if (IsTheVoiceAssistant)
+        if (IsTheVoiceAssistant && _turnSpeechMode != SpokenReplyMode.Full)
         {
             CancelReadAloud();
+        }
+        if (IsTheVoiceAssistant && (_turnSpeechMode != SpokenReplyMode.Full || AssistantSpeechMode != SpokenReplyMode.Full))
+        {
             _currentTurnAssistantEntries.Clear();
             _ResetReadAloudStream();
         }
