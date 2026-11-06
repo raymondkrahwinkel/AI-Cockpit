@@ -2,6 +2,8 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
 using Avalonia.Interactivity;
+using Avalonia.VisualTree;
+using Cockpit.App.Views;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App.ViewModels;
 
@@ -33,6 +35,9 @@ public partial class SessionHeaderBar : UserControl
     {
         Program.Services?.GetService<CockpitViewModel>()?.ShowTestRunsCommand.Execute(null);
     }
+
+    private void OnOpenSessionMcp(object? sender, RoutedEventArgs e) =>
+        this.FindAncestorOfType<CockpitView>()?.OnOpenSessionMcp(sender, e);
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
 }

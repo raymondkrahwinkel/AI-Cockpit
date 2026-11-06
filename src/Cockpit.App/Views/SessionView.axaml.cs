@@ -17,6 +17,13 @@ namespace Cockpit.App.Views;
 
 public partial class SessionView : UserControl
 {
+    private void OnOpenSessionMcp(object? sender, RoutedEventArgs e)
+    {
+        SessionSettingsButton.Flyout?.Hide();
+        SessionSettingsButton.Focus();
+        this.FindAncestorOfType<CockpitView>()?.OnOpenSessionMcp(this, e);
+    }
+
     // AC-1121: the follow lives in TranscriptFollower, shared with AssistantChatView. It ran twice, and every
     // repair since AC-528 has landed on one half.
     private TranscriptFollower? _follower;

@@ -743,6 +743,7 @@ internal static partial class Screenshotter
         // A narrow pane with everything on the header at once: render at --size 720x400 and 520x400.
         ["session-header-crowded"] = (width, height) => new Window { Width = width, Height = height, Content = _CrowdedHeaderSession() },
         ["session-settings-flyout"] = (width, height) => new Window { Width = width, Height = height, Content = _SessionSettingsFlyout(withLiveControls: true) },
+        ["session-mcp-header"] = (width, height) => new Window { Width = width, Height = height, Content = _McpHeader(servers: new HashSet<string> { "youtrack", "depot", "cockpit-local-ci", "github-issues" }) },
         ["session-settings-flyout-no-live-controls"] = (width, height) => new Window { Width = width, Height = height, Content = _SessionSettingsFlyout(withLiveControls: false) },
         // AC-563, staged open by the Hovers table below. See _McpHeader for why each of these four is its own.
         ["session-kind-chip-hover"] = (width, height) => new Window { Width = width, Height = height, Content = _McpHeader(servers: new HashSet<string> { "youtrack", "depot" }) },
@@ -1520,6 +1521,7 @@ internal static partial class Screenshotter
             Dispatcher.UIThread.RunJobs();
         },
         ["session-settings-flyout"] = window => _OpenFlyout(window, "SessionSettingsButton"),
+        ["session-mcp-header"] = window => _Named<Button>(window, "SessionMcpStatusButton").Focus(Avalonia.Input.NavigationMethod.Tab),
         ["statusbar-rest"] = window => _UseDisks(window, critical: false, open: false),
         ["statusbar-busy"] = window => _UseDisks(window, critical: true, open: false),
         ["statusbar-disk-popup"] = window => _UseDisks(window, critical: true, open: true),

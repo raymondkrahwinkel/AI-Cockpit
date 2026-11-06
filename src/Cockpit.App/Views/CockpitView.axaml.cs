@@ -1312,7 +1312,7 @@ public partial class CockpitView : UserControl
 
     private void OnSetSessionStatus(object? sender, RoutedEventArgs e) => _InvokeSessionCommand(sender, (c, s) => c.SetSessionStatusCommand.Execute(s));
 
-    private void OnOpenSessionMcp(object? sender, RoutedEventArgs e) => _InvokeSessionCommand(sender, (c, s) => c.OpenSessionMcpCommand.Execute(s));
+    internal void OnOpenSessionMcp(object? sender, RoutedEventArgs e) => _InvokeSessionCommand(sender, (c, s) => c.OpenSessionMcpCommand.Execute(s));
 
     private void OnScheduleSessionResume(object? sender, RoutedEventArgs e) => _InvokeSessionCommand(sender, (c, s) => c.ScheduleSessionResumeCommand.Execute(s));
 
