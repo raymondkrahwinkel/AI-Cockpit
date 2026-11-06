@@ -96,8 +96,6 @@ public partial class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             _desktop = desktop;
-            // Hidden companion and overlay windows must not keep the app alive after its main window closes.
-            desktop.ShutdownMode = ShutdownMode.OnMainWindowClose;
 
             // The desktop's own route into a shutdown — an OS log-off or restart ending the session — as something
             // distinct from the tray's Quit. Both used to end the process through the same silent teardown, so an
@@ -586,7 +584,14 @@ public partial class App : Application
 
         // Avalonia cannot re-show a closed window; clearing it here makes every show route use its existing null
         // guard instead of crashing from a tray handler.
-        _mainWindow.Closed += (_, _) => _mainWindow = null;
+        _mainWindow.Closed += (_, _) =>
+        {
+            _mainWindow = null;
+            if (!IsQuitting)
+            {
+                RequestQuit();
+            }
+        };
 
         // The onboarding gate owns every creation route (AC-509). Show explicitly because Avalonia will not
         // auto-show a MainWindow that replaces the startup unlock window. AC-1827: behind a splash it is shown at the end.
