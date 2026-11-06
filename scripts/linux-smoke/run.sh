@@ -41,16 +41,18 @@ _crash_files() { find "$state" "$home" "$dumps" \( -name 'crash.log' -o -name '*
 _stat() { convert "$1" -crop "$2" +repage -colorspace Gray -format "%[fx:$3]" info:; }
 
 "$appimage" >"$out/app.log" 2>&1 & launcher=$!
-failures=0; n=0; prev=""; started=$SECONDS; : >"$out/summary.txt"
+failures=0; n=0; prev=""; file=""; started=$SECONDS; : >"$out/summary.txt"
 baseline="$(_crash_files)"
 
-_fail() { failures=$((failures + 1)); echo "FAIL  $1" | tee -a "$out/summary.txt"; }
+# Names the step and its screenshot: a click coordinate that no longer matches the UI fails here, and the first
+# thing to check is the screenshot of that step.
+_fail() { failures=$((failures + 1)); echo "FAIL  $1 [screenshot: shots/$(basename "$file")]" | tee -a "$out/summary.txt"; }
 
 # step <name> <settle-seconds> <action...>: act, wait, then verify. A blank or unchanged screen is a failure even
 # when the process lives: an empty or half-built tab is what this test exists to catch.
 step() {
     local name="$1" settle="$2"; shift 2
-    n=$((n + 1)); local file="$shots/$(printf '%02d' $n)-$name.png" t0=$SECONDS before=$failures
+    n=$((n + 1)); file="$shots/$(printf '%02d' $n)-$name.png"; local t0=$SECONDS before=$failures
     "$@"; sleep "$settle"
     import -window root "$file"
     local pid; pid="$(_app_pid)" || pid=""
