@@ -41,9 +41,9 @@ internal sealed class SessionMcpRestore(SessionMcpMounts mounts, IMcpServerCatal
         {
             ceiling.IntersectWith(profileCeiling);
             mounts.RestrictDelegation(plan.Pane.Id, ceiling);
-            names.IntersectWith(ceiling.Concat(registry.Where(server => server.AlwaysMounted).Select(server => server.Name)));
+            names.IntersectWith(ceiling.Concat(registry.Where(server => server.AlwaysMounted && server.Enabled).Select(server => server.Name)));
         }
-        names.UnionWith(registry.Where(server => server.AlwaysMounted).Select(server => server.Name));
+        names.UnionWith(registry.Where(server => server.AlwaysMounted && server.Enabled).Select(server => server.Name));
         mounts.Grant(plan.Pane.Id, names.ToArray(), preserveSelection: true);
         return names;
     }
