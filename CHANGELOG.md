@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2143: prepare a bounded private connection for the Browser engine host, rejecting stale generations and requests for unregistered tabs.
+
 - AC-2178: keep existing plugins that register host services loading after an app update, and defer changes to those plugins until restart.
 
 - AC-2164: keep opening prompts queued until the Claude or Codex terminal composer is ready, so workspace trust dialogs cannot consume them as delivered turns.
