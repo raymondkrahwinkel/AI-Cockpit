@@ -256,12 +256,16 @@ internal sealed class BrowserIpcConnection : IAsyncDisposable
                 bool reject = false;
                 lock (_gate)
                 {
-                    if (message.Kind != BrowserIpcKind.Request && _retired.TryGetValue((message.TabId, message.SessionId), out long retiredUntil) &&
-                        retiredUntil > DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())
+                    bool retired = _retired.TryGetValue((message.TabId, message.SessionId), out long retiredUntil) &&
+                        retiredUntil > DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                    if (retired && message.Kind != BrowserIpcKind.Request)
                     {
                         continue;
                     }
-                    _CheckTab(message.TabId, message.SessionId);
+                    if (retired == false)
+                    {
+                        _CheckTab(message.TabId, message.SessionId);
+                    }
                     if (message.Kind == BrowserIpcKind.Request)
                     {
                         long remaining = message.Deadline - DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -270,7 +274,7 @@ internal sealed class BrowserIpcConnection : IAsyncDisposable
                             throw new InvalidDataException("IPC request refused.");
                         }
                         _lastReceived = message.RequestId;
-                        reject = remaining <= 0 || _incoming.Count >= BrowserIpcLimits.PendingCalls;
+                        reject = retired || remaining <= 0 || _incoming.Count >= BrowserIpcLimits.PendingCalls;
                         if (reject == false)
                         {
                             var cancel = CancellationTokenSource.CreateLinkedTokenSource(_closed.Token);
@@ -374,6 +378,10 @@ internal sealed class BrowserIpcConnection : IAsyncDisposable
                 {
                     await _RejectAsync(message).ConfigureAwait(false);
                 }
+                catch (Exception) when (handling?.IsFaulted == true)
+                {
+                    await _RejectAsync(message).ConfigureAwait(false);
+                }
                 finally
                 {
                     lock (_gate)
@@ -386,7 +394,7 @@ internal sealed class BrowserIpcConnection : IAsyncDisposable
         }
         catch (Exception)
         {
-            // A failed handler or write invalidates the connection; callers see cancellation, never a partial answer.
+            // A transport or protocol failure invalidates the connection; callers never receive a partial answer.
             _Close();
         }
         finally

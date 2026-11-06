@@ -18,10 +18,14 @@ direction. Invalid framing, versions, bindings or replay close the connection an
 There is no reconnect or grant restoration. Limits: 1 MiB/message, 64 calls (including waiting writers),
 64 incoming requests, 64 tab/session pairs and 30 seconds per request or partial frame. Expired or excess
 requests receive a per-call rejection. Recent retired tabs have a bounded 30-second late-answer/cancel window.
+Requests racing with tab retirement are also rejected per call during that window and still consume their
+request id for replay detection; an unknown tab outside the window remains a protocol error.
 Local retired-tab calls and oversized outgoing messages fail only that call. Idle pipes do not poll.
 Handlers must honor cancellation and must not wait for a nested request on the same connection's worker.
 A cancelled handler gets 500 ms to finish; only an unresponsive handler ends the generation. Sending a
 best-effort Cancel has its own 250 ms bound, including waiting for the writer.
+Ordinary handler failures reject only their call without sending exception details. Protocol errors and
+failed writes still close the connection.
 
 At most two reusable BGRA buffers belong to a connection, each at most 128 MiB and 8192 pixels per axis.
 Their backing directories have a protected current-user ACL on Windows and mode 0700 on Unix (files 0600).
