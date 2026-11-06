@@ -3195,7 +3195,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     private string? _usageModel;
 
     private protected override (UsageRunKind RunKind, string? RunId, string? RunLabel, string? Model) GetUsageSnapshotMetadata() =>
-        (RunKind, RunId, RunLabel, string.IsNullOrWhiteSpace(_usageModel) ? null : _usageModel);
+        (RunKind, RunId, RunLabel, SelectedModel.Value);
 
     public override async Task<bool> SendPromptAsync(string prompt)
     {
