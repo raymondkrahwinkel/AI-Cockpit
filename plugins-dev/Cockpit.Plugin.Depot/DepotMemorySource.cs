@@ -10,7 +10,7 @@ namespace Cockpit.Plugin.Depot;
 // Builds the memory-source registration(s) this plugin hands the host (AC-165/166, AC-501): one per configured
 // Depot connection, so the picker can tell connections apart instead of a single fixed "Depot project". Kept
 // separate from `DepotPlugin` so a test can assert on scheme/title/instruction without a real MCP server.
-internal static class DepotMemorySource
+internal static partial class DepotMemorySource
 {
     // The prefix a project's `MemoryRef` carries this source under — `depot:cockpit`. Never change it: an
     // already-linked project's stored reference is matched against it case-insensitively. Reserved for the
@@ -90,6 +90,8 @@ internal static class DepotMemorySource
             AppendNoteAsync = (value, note, cancellationToken) => _AppendNoteAsync(host, connection, addressing, value, note, cancellationToken),
             ListBrainsAsync = cancellationToken => _ListBrainsAsync(connection, projects, cancellationToken),
             BrainInstruction = value => _BrainInstruction(connection, value),
+            ListRolesAsync = (value, ct) => _ListRolesAsync(host, connection, value, ct),
+            LoadRoleAsync = (value, role, ct) => _LoadRoleAsync(host, connection, value, role, ct),
             FamilyKey = Scheme,
             InstanceTitle = connection.Name,
             Identity = _Identity(connection),

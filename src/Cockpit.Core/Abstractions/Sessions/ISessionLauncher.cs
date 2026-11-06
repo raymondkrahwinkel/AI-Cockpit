@@ -99,6 +99,17 @@ public sealed record SessionLaunchRequest(
 
     public string? Effort { get; init; }
 
+    public string? Role { get; init; }
+
+    // A restore keeps its role choice even if the source is temporarily unavailable.
+    public bool IsRestoring { get; init; }
+
+    public string? RoleWarning { get; init; }
+
+    public string? RoleFailure { get; init; }
+
+    public string? RoleInstruction { get; init; }
+
     public IReadOnlySet<string>? EnabledMcpServerNames { get; init; }
     public IReadOnlyList<string>? McpServersOverride { get; init; }
 
@@ -121,4 +132,5 @@ public sealed record LaunchedSession(
     bool? PromptDelivered,
     NeedsWorktreeDecision? WorktreeDecision = null,
     string? FailureReason = null,
-    UnisolatedSessionNotice? UnisolatedNotice = null);
+    UnisolatedSessionNotice? UnisolatedNotice = null,
+    string? RoleWarning = null);
