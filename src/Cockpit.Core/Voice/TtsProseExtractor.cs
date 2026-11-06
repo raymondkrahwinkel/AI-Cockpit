@@ -12,6 +12,11 @@ public sealed record TtsProseStream(IReadOnlyList<string> Sentences, int Consume
 // aloud. Pure and testable: no dependency on the TTS engine itself.
 public static partial class TtsProseExtractor
 {
+    private static readonly HashSet<string> Abbreviations = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "bv", "bijv", "dr", "mr", "mrs", "ms", "nr", "vs", "ca", "eg", "ie", "etc",
+    };
+
     public static IReadOnlyList<string> Extract(string assistantMarkdown, bool usePlaceholders = true)
     {
         if (string.IsNullOrWhiteSpace(assistantMarkdown))
@@ -169,12 +174,13 @@ public static partial class TtsProseExtractor
         }
 
         var wordStart = index;
-        while (wordStart > 0 && char.IsLetterOrDigit(markdown[wordStart - 1]))
+        while (wordStart > 0 && (char.IsLetterOrDigit(markdown[wordStart - 1]) || markdown[wordStart - 1] == '.'))
         {
             wordStart--;
         }
         var word = markdown[wordStart..index];
-        if (word.Length is <= 2 || word.Equals("e.g", StringComparison.OrdinalIgnoreCase) || word.Equals("i.e", StringComparison.OrdinalIgnoreCase))
+        var dottedAbbreviation = word.Contains('.') && word.Split('.').All(part => part.Length is > 0 and <= 2 && part.All(char.IsLetter));
+        if (word.Length == 0 || word.Length == 1 && char.IsUpper(word[0]) || Abbreviations.Contains(word) || dottedAbbreviation)
         {
             return false;
         }

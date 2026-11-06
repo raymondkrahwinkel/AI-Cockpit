@@ -504,6 +504,9 @@ that cannot be looked at by running the app.
 
 Tests:
 
+Test assemblies initialize one private scratch root per process, replacing any inherited
+`COCKPIT_SCRATCH_ROOT`. Loading a test assembly again as a plugin keeps that root and any active test override.
+
 ```
 dotnet test
 ```
