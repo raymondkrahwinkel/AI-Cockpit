@@ -1123,10 +1123,17 @@ public partial class TtyView : UserControl
         _CheckHostedTuiReadiness();
     }
 
-    // AC-2164: paste mode and elapsed time also occur during onboarding; agent CLIs must show their composer.
+    // AC-2164: paste mode and elapsed time also occur during native trust/choice questions.
     private void _CheckHostedTuiReadiness()
     {
         if (_hostedTuiReady)
+        {
+            return;
+        }
+
+        var blocked = TtyPromptReadiness.IsBlocked(_LastVisibleLines(Terminal.Buffer.Rows) ?? string.Empty);
+        _viewModel?.SetHostedTuiBlocked(blocked);
+        if (blocked)
         {
             return;
         }
@@ -1135,21 +1142,6 @@ public partial class TtyView : UserControl
         if (!Terminal.BracketedPaste && !fallbackElapsed)
         {
             return;
-        }
-
-        var providerId = _pendingLaunch?.Provider.ProviderId;
-        if (providerId is "claude" or "cli-agent-provider.codex")
-        {
-            var screen = _LastVisibleLines(Terminal.Buffer.Rows) ?? string.Empty;
-            var lines = screen.Split('\n', StringSplitOptions.TrimEntries);
-            var composerVisible = providerId == "claude"
-                ? lines.Any(line => line == "❯" || line.StartsWith("❯ Try \"", StringComparison.Ordinal))
-                : lines.Any(line => line.StartsWith("›", StringComparison.Ordinal))
-                  && screen.Contains("context left", StringComparison.Ordinal);
-            if (!composerVisible)
-            {
-                return;
-            }
         }
 
         _hostedTuiReady = true;

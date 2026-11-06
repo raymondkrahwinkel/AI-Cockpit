@@ -6,7 +6,6 @@ using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Sessions;
 using Exclr8.Terminal;
-using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
 
@@ -27,13 +26,14 @@ public class TtyPromptReadinessTests
     public Task ClaudeTrust_HoldsTheBrief_AndRefusesDirectSend_UntilTheComposerAppears() =>
         HeadlessAvalonia.RunAsync(async () =>
         {
-            var (view, viewModel, pty) = _NewLaunchedView("claude");
+            var (view, viewModel, pty) = _NewLaunchedView();
 
             _Terminal(view).Write(Encoding.UTF8.GetBytes("Do you trust the files in this folder?\r\n❯ 1. Yes, I trust this folder\r\n  2. No, exit"));
             _AnnounceBracketedPaste(view);
             _SetFirstPtyOutputAt(view, DateTime.UtcNow - TimeSpan.FromMinutes(1));
             _InvokeCheckReadiness(view);
             Assert.False(await viewModel.SendPromptAsync("must not answer trust"));
+            Assert.Equal(SessionStatus.NeedsAttention, viewModel.SessionStatus);
 
             var deliveredNow = viewModel.SubmitPromptWhenReady("review the migration");
 
@@ -41,7 +41,7 @@ public class TtyPromptReadinessTests
             Assert.True(viewModel.HasPromptWaitingToBeDelivered);
             Assert.Empty(pty.Written);
 
-            _Terminal(view).Write(Encoding.UTF8.GetBytes("\x1b[2J\x1b[H❯ "));
+            _Terminal(view).Write(Encoding.UTF8.GetBytes("\x1b[2J\x1b[H❯ restored draft"));
             _InvokeCheckReadiness(view);
             await _LetPostedWorkRunAsync();
 
@@ -75,7 +75,7 @@ public class TtyPromptReadinessTests
     public Task CodexTrust_HoldsTheBrief_AndDeliversExactlyOnce_WhenTheComposerAppears() =>
         HeadlessAvalonia.RunAsync(async () =>
         {
-            var (view, viewModel, pty) = _NewLaunchedView("cli-agent-provider.codex");
+            var (view, viewModel, pty) = _NewLaunchedView();
             viewModel.SubmitPromptWhenReady("review the migration");
 
             _AnnounceBracketedPaste(view);
@@ -86,7 +86,7 @@ public class TtyPromptReadinessTests
             Assert.True(viewModel.HasPromptWaitingToBeDelivered);
             Assert.Empty(pty.Written);
 
-            _Terminal(view).Write(Encoding.UTF8.GetBytes("\x1b[2J\x1b[H› Explain this codebase\r\n  100% context left"));
+            _Terminal(view).Write(Encoding.UTF8.GetBytes("\x1b[2J\x1b[H» A changed composer hint"));
             _InvokeCheckReadiness(view);
             _InvokeCheckReadiness(view);
             _InvokeCheckReadiness(view);
@@ -100,7 +100,7 @@ public class TtyPromptReadinessTests
     // `TtyInjectedTextPasteTests`.
     private static async Task _LetPostedWorkRunAsync() => await Dispatcher.UIThread.InvokeAsync(() => { });
 
-    private static (TtyView View, TtyViewModel ViewModel, FakePty Pty) _NewLaunchedView(string? providerId = null)
+    private static (TtyView View, TtyViewModel ViewModel, FakePty Pty) _NewLaunchedView()
     {
         var view = new TtyView();
         var window = new Window { Content = view, Width = 800, Height = 400 };
@@ -112,14 +112,6 @@ public class TtyPromptReadinessTests
         // real wait, matching TtyInjectedTextTests/AssistantSendGatewayTests.
         viewModel.SetAutoSubmitScheduler((_, submit) => submit());
         view.DataContext = viewModel; // Triggers OnDataContextChanged -> WireTerminal(), same as production.
-
-        if (providerId is not null)
-        {
-            var provider = Substitute.For<ITtySessionProvider>();
-            provider.ProviderId.Returns(providerId);
-            var launch = new TtyLaunchRequest(Substitute.For<ITtyLauncher>(), provider, null, new Dictionary<string, string>(), null, null);
-            typeof(TtyView).GetField("_pendingLaunch", BindingFlags.NonPublic | BindingFlags.Instance)?.SetValue(view, launch);
-        }
 
         var pty = new FakePty();
         typeof(TtyView).GetField("_pty", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(view, pty);

@@ -712,7 +712,8 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     public override bool CanOpenOriginalTerminal => !_statusTrackingStopped && PromptSink is not null;
 
     private SessionStatus _WithChildStatus(SessionStatus status) =>
-        status is SessionStatus.Idle or SessionStatus.Done && HasBackgroundTasks ? SessionStatus.WorkingBackground : status;
+        _hostedTuiBlocked ? SessionStatus.NeedsAttention
+        : status is SessionStatus.Idle or SessionStatus.Done && HasBackgroundTasks ? SessionStatus.WorkingBackground : status;
 
     protected override Task<ChildTranscriptPage> ReadChildAsync(BackgroundTask reference, string? cursor, CancellationToken cancellationToken) =>
         _transcriptReader is null || _statusTrackingStopped
@@ -830,6 +831,18 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     // `TtyView` measures that gap (bracketed paste / a fallback deadline) and reports it via `MarkHostedTuiReady`.
     // `ResetHostedTuiReadiness` clears it so a relaunched pane does not inherit "ready" from the session before it.
     private bool _hostedTuiReady;
+    private bool _hostedTuiBlocked;
+
+    internal void SetHostedTuiBlocked(bool blocked)
+    {
+        if (_hostedTuiBlocked == blocked)
+        {
+            return;
+        }
+
+        _hostedTuiBlocked = blocked;
+        SessionStatus = _WithChildStatus(_statusTracker.Poll(DateTimeOffset.UtcNow));
+    }
 
     // Called by the view once, from the single place its own readiness answer turns true — mirrors how the
     // `PromptSink` setter above is the one place *its* answer changes. Delivers a brief that was held waiting on
@@ -847,7 +860,11 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
 
     // Called by the view right before it launches a new pty into a pane it is reusing, so the gate above starts
     // closed again rather than carrying over the previous session's answer.
-    public void ResetHostedTuiReadiness() => _hostedTuiReady = false;
+    public void ResetHostedTuiReadiness()
+    {
+        _hostedTuiReady = false;
+        SetHostedTuiBlocked(false);
+    }
 
     // The pty sink is necessary but not sufficient: it exists once the process is spawned, but a prompt written to
     // it before the CLI reads stdin in raw mode is the exact failure AC-760 reports — text lands, Enter does not.
