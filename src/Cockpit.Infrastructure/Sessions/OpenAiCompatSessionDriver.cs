@@ -33,6 +33,8 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
 
     private IChatClient? _agent;
     private IMcpToolSession? _toolSession;
+    private FunctionInvokingChatClient? _toolLoop;
+    private int _toolsChanged;
 
     // Every mounted tool, wrapped in its `GatedTool` — the catalogue `search_tools` reads and `call_tool` runs
     // against (AC-963), and the list of what this session can reach at all.
@@ -163,7 +165,15 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
             // session was launched from — the one route where a missing server is otherwise invisible to the operator.
             if (paneId is { Length: > 0 })
             {
-                _mcpMounts?.Report(paneId, _toolSession.ConnectedServerNames, _toolSession.ConnectionIssues);
+                if (_toolSession.IsLive)
+                {
+                    _mcpMounts?.ReportConnections(paneId, _toolSession.ConnectedServerNames, _toolSession.ConnectionIssues,
+                        exception => _logger.LogWarning(exception, "MCP connection-report handler failed."));
+                }
+                else
+                {
+                    _mcpMounts?.Report(paneId, _toolSession.ConnectedServerNames, _toolSession.ConnectionIssues);
+                }
             }
 
             // AC-500: a server the plugin/registry declared OAuth is a named outcome distinct from an ordinary
@@ -179,6 +189,7 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
             _gate.ToolClasses = _toolSession.ToolClasses;
             _gatedTools = [.. _toolSession.Tools.Select(tool => tool with { Function = new GatedTool(tool.Function, _gate) })];
             _turnTools = _BuildTurnTools();
+            _toolSession.ToolsChanged += _OnToolsChanged;
             var turnLimits = TurnLimitsFrom(config, _logger);
             _logger.LogInformation("Local-model turn guard: context {ContextWindowTokens}, reserve {ReserveTokens}, soft limit {SoftLimitRatio}.",
                 turnLimits.ContextWindowTokens, turnLimits.ReserveTokens, turnLimits.SoftLimitRatio);
@@ -186,6 +197,7 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
                 .UseFunctionInvocation(configure: client =>
                 {
                     ChatTurnLoop.ConfigureToolLoop(client);
+                    _toolLoop = client;
                     client.AdditionalTools = [.. _gatedTools.Select(tool => tool.Function)];
                 })
                 .Use(inner => new HermesToolCallChatClient(inner))
@@ -255,7 +267,34 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
             CockpitToolSearch.SearchToolName,
             McpToolTokenMath.Format(McpToolTokenMath.EstimateTokens(searchable.Select(tool => McpToolTokenEstimator.SerialiseForEstimate(tool.Function)))));
 
-        return [.. preloaded.Select(tool => (AITool)tool.Function), .. CockpitToolSearch.Build(_gatedTools)];
+        return [.. preloaded.Select(tool => (AITool)tool.Function), .. CockpitToolSearch.Build(_LiveGatedTools)];
+    }
+
+    private void _OnToolsChanged() => Interlocked.Exchange(ref _toolsChanged, 1);
+
+    private IReadOnlyList<McpSessionTool> _LiveGatedTools()
+    {
+        if (_toolSession is null)
+        {
+            return [];
+        }
+        _gate.ToolClasses = _toolSession.ToolClasses;
+        return [.. _toolSession.Tools.Select(tool => tool with { Function = new GatedTool(tool.Function, _gate) })];
+    }
+
+    private void _RefreshTools()
+    {
+        if (Interlocked.Exchange(ref _toolsChanged, 0) == 0)
+        {
+            return;
+        }
+        _gatedTools = [.. _LiveGatedTools()];
+        _turnTools = _BuildTurnTools();
+        if (_toolLoop is not null)
+        {
+            _toolLoop.AdditionalTools = [.. _gatedTools.Select(tool => tool.Function)];
+        }
+        Capabilities = Capabilities with { SupportsTools = _turnTools.Count > 0 };
     }
 
     // Local HTTP providers have no native file tools. An explicit profile/project selection must therefore never
@@ -282,6 +321,7 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
 
     private async Task _RunTurnAsync(ChatMessage userMessage, CancellationToken cancellationToken)
     {
+        _RefreshTools();
         _history.Add(userMessage);
         var toolsAvailable = _turnTools.Count > 0;
         _turnHadToolActivity = false;
@@ -586,6 +626,7 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
             {
                 if (_toolSession is not null)
                 {
+                    _toolSession.ToolsChanged -= _OnToolsChanged;
                     await _toolSession.DisposeAsync().ConfigureAwait(false);
                 }
             }

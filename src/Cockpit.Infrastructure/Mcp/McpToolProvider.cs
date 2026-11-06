@@ -27,6 +27,7 @@ internal sealed partial class McpToolProvider(
     SessionMcpGatewayHost? gateway = null)
     : IMcpToolProvider, IMcpToolInvoker, ISingletonService
 {
+    internal TimeSpan RemovedCallDrainTimeout { get; init; } = TimeSpan.FromMinutes(2);
     private readonly IMcpServerCatalog _catalog = catalog;
     private readonly IMcpOAuthCoordinator _oauthCoordinator = oauthCoordinator;
     private readonly SessionMcpMounts? _mounts = mounts;
@@ -52,6 +53,11 @@ internal sealed partial class McpToolProvider(
         // AC-89: a session with a pane id mints one per-session token here (not per server) so every
         // cockpit-hosted endpoint it connects to can attribute requests to this pane; no pane id falls back to the shared app key.
         var sessionToken = string.IsNullOrEmpty(paneId) ? null : _keyring.TokenFor(paneId);
+        var liveGateway = gateway?.UrlFor(paneId ?? "launch") is not null;
+        if (liveGateway && paneId is not null && _mounts?.Set(paneId) is { PreserveSelection: true } desired)
+        {
+            enabledServerNames = new ExactMcpServerSelection(desired.ServerNames) { AssistantManaged = desired.Context?.Manager == SessionMcpManager.Assistant };
+        }
         // AC-11/AC-218: registry plus what active plugins provide, scoped to projectId so a local model
         // sees a plugin's/project's own servers too, not just the unscoped registry.
         var registry = await _catalog.GetServersForSessionAsync(projectId, enabledServerNames, cancellationToken).ConfigureAwait(false);
@@ -62,7 +68,8 @@ internal sealed partial class McpToolProvider(
         var sessionRegistry = McpServerRegistryFilter.ApplySessionSelection(registry, effectiveSelection);
         // Local models host the built-in defaults (#26) overlaid by the registry (a registry entry, including
         // a disabled one, overrides the same-named built-in). #44's per-session selection is already applied above.
-        var enabledServers = _EffectiveServers(sessionRegistry).Where(server => server.Enabled).ToList();
+        var enabledServers = _EffectiveServers(sessionRegistry).Where(server => server.Enabled
+            && (!liveGateway || effectiveSelection is not ExactMcpServerSelection exact || exact.Contains(server.Name) || server.AlwaysMounted)).ToList();
 
         // AC-1962: confine Cockpit's file tools without changing the operator's MCP selection.
         if (!string.IsNullOrWhiteSpace(confineFileToolsToDirectory))
@@ -88,6 +95,10 @@ internal sealed partial class McpToolProvider(
         try
         {
             await Task.WhenAll(enabledServers.Select(server => session.AddServerAsync(server, cancellationToken)));
+            if (liveGateway)
+            {
+                session.WatchMounts(confineFileToolsToDirectory);
+            }
             return session;
         }
         catch

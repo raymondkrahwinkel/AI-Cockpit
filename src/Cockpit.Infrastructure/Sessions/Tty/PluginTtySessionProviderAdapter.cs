@@ -46,7 +46,15 @@ internal sealed class PluginTtySessionProviderAdapter(
         // checklist it was started from — which never holds the always-mounted and auto-mounted ones.
         if (paneId is { Length: > 0 })
         {
-            mcpMounts?.Report(paneId, _gatewayServerNames ?? [.. mcpServers.Select(server => server.Name)]);
+            if (_gatewayServerNames is not null)
+            {
+                mcpMounts?.ReportConnections(paneId, _gatewayServerNames, [],
+                    exception => logger?.LogWarning(exception, "MCP connection-report handler failed."));
+            }
+            else
+            {
+                mcpMounts?.Report(paneId, [.. mcpServers.Select(server => server.Name)]);
+            }
         }
 
         // The base environment is handed straight through: the host (TtyLauncher) has already put this run's MCP
@@ -99,6 +107,10 @@ internal sealed class PluginTtySessionProviderAdapter(
                 : conversation => conversationSink.Report(paneId, conversation.ToCore()),
         });
 
+        if (_gatewayServerNames is not null && paneId is not null)
+        {
+            gateway?.SetToolAuthorization(paneId, (name, input) => inner is IPluginMcpToolAuthorization policy && policy.MayCallWithoutPrompt(name, input));
+        }
         return new TtyLaunchSpec(
             spec.ExecutablePath,
             spec.Arguments,
@@ -120,6 +132,10 @@ internal sealed class PluginTtySessionProviderAdapter(
 
         try
         {
+            if (_PaneId(context.BaseEnvironment) is { } desiredPane && gateway?.UrlFor(desiredPane) is not null && mcpMounts?.Set(desiredPane) is { PreserveSelection: true } desired)
+            {
+                enabledServerNames = new ExactMcpServerSelection(desired.ServerNames) { AssistantManaged = desired.Context?.Manager == SessionMcpManager.Assistant };
+            }
             var registry = mcpServerCatalog.GetServersForSessionAsync(projectId, enabledServerNames, budget).GetAwaiter().GetResult();
             // AC-869: cockpit-github-pull-requests is Internal (hidden from every picker); a git-repo working
             // directory names it explicitly here rather than through operator config. Blocking is consistent with

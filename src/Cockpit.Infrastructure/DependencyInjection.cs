@@ -29,6 +29,7 @@ public static class DependencyInjection
     {
         services.AddSingleton<Func<Mcp.IMcpToolProvider>>(provider => () => provider.GetRequiredService<Mcp.IMcpToolProvider>());
         services.AddSingleton<Mcp.SessionMcpGatewayHost>();
+        services.AddSingleton<Cockpit.Core.Abstractions.Sessions.ISessionMcpGatewayState>(provider => provider.GetRequiredService<Mcp.SessionMcpGatewayHost>());
         services.AddSingleton<Microsoft.Extensions.Hosting.IHostedService>(provider => provider.GetRequiredService<Mcp.SessionMcpGatewayHost>());
         services.AddSingleton<Cockpit.Core.Swarm.SwarmReachability>();
         // AC-1110: handed to DelegationService as a deferred lookup, not as the instance. The catalog reaches that

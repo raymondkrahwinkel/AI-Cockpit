@@ -12,12 +12,17 @@ namespace Cockpit.Infrastructure.Mcp;
 internal interface IMcpToolSession : IAsyncDisposable
 {
     IReadOnlyList<McpSessionTool> Tools { get; }
+    bool IsLive => false;
+
+    IReadOnlyList<McpSessionTool> GatewayTools => Tools;
 
     event Action? ToolsChanged;
 
     Task AddServerAsync(McpServerConfig server, CancellationToken cancellationToken = default);
 
     void RemoveServer(string serverName);
+
+    Task UpdateServersAsync(IReadOnlyList<McpServerConfig> servers);
 
     string CaptureServerInstructions();
 

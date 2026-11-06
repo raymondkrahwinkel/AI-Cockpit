@@ -1,7 +1,9 @@
 using System.Threading.Channels;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions.Permissions;
+using Cockpit.Infrastructure.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.AI;
 using ModelContextProtocol;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
@@ -23,6 +25,12 @@ internal sealed partial class McpToolProvider
         private readonly McpBackgroundTasks _retirements;
         private readonly HashSet<(string Server, string Instructions)> _deliveredInstructions = [];
         private bool _disposed;
+        private int _changeDeferrals;
+        private bool _changePending;
+        private readonly Channel<bool> _mountChanges = Channel.CreateUnbounded<bool>();
+        private readonly CancellationTokenSource _mountLifetime = new();
+        private Task _mountWorker = Task.CompletedTask;
+        public bool IsLive { get; private set; }
         private readonly McpToolNames _toolNames;
 
         public LiveMcpToolSession(McpToolProvider provider, string? paneId, string? token, string? projectId, string? agentName, bool ownsToken)
@@ -44,13 +52,75 @@ internal sealed partial class McpToolProvider
         public event Action? ToolsChanged;
         public string? PaneToken { get; }
 
+        public void WatchMounts(string? confineRoot)
+        {
+            if (_paneId is null || _provider._mounts is null)
+            {
+                return;
+            }
+            _provider._mounts.Changed += _MountChanged;
+            IsLive = true;
+            CockpitConfigFileAccess.Written += _ConfigWritten;
+            _mountWorker = _WatchMountsAsync(confineRoot);
+        }
+
+        private void _MountChanged(string paneId)
+        {
+            if (paneId == _paneId)
+            {
+                _mountChanges.Writer.TryWrite(true);
+            }
+        }
+
+        private void _ConfigWritten(string path)
+        {
+            if (_paneId is not null)
+            {
+                _MountChanged(_paneId);
+            }
+        }
+
+        private async Task _WatchMountsAsync(string? confineRoot)
+        {
+            var ct = _mountLifetime.Token;
+            try
+            {
+                while (await _mountChanges.Reader.WaitToReadAsync(ct))
+                {
+                    while (_mountChanges.Reader.TryRead(out _)) { }
+                    try
+                    {
+                        var set = _paneId is null ? null : _provider._mounts?.Set(_paneId);
+                        if (set is null)
+                        {
+                            continue;
+                        }
+                        var registry = await _provider._catalog.GetServersForSessionAsync(_projectId, new ExactMcpServerSelection(set.ServerNames), ct);
+                        var servers = _EffectiveServers(McpServerRegistryFilter.ApplySessionSelection(registry, new ExactMcpServerSelection(set.ServerNames)))
+                            .Where(server => server.Enabled && (server.AlwaysMounted || set.ServerNames.Contains(server.Name))).ToList();
+                        await UpdateServersAsync(confineRoot is null ? servers : _ConfinedServers(servers, confineRoot));
+                    }
+                    catch (Exception) when (!ct.IsCancellationRequested)
+                    {
+                        _provider._logger.LogWarning("Local MCP set refresh failed.");
+                    }
+                }
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+            }
+            catch (ObjectDisposedException) when (ct.IsCancellationRequested)
+            {
+            }
+        }
+
         public IReadOnlyList<McpSessionTool> Tools
         {
             get
             {
                 lock (_sync)
                 {
-                    return [.. _servers.Values.SelectMany(server => server.Tools.Select(tool => new McpSessionTool(tool, server.Config.Name, server.Config.AlwaysMounted)))];
+                    return [.. _servers.Values.SelectMany(server => server.Tools.Select(tool => new McpSessionTool(new MountedTool(tool, this, server), server.Config.Name, server.Config.AlwaysMounted)))];
                 }
             }
         }
@@ -71,6 +141,18 @@ internal sealed partial class McpToolProvider
                         }
                     }
                     return tools;
+                }
+            }
+        }
+
+        public IReadOnlyList<McpSessionTool> GatewayTools
+        {
+            get
+            {
+                lock (_sync)
+                {
+                    return [.. _servers.Values.SelectMany(server => server.Tools.Select(tool => new McpSessionTool(
+                        new MountedTool(tool, this, server, _toolNames.ForTool(server.Config.Name, tool.Name)), server.Config.Name, server.Config.AlwaysMounted)))];
                 }
             }
         }
@@ -144,18 +226,32 @@ internal sealed partial class McpToolProvider
 
         public Task AddServerAsync(McpServerConfig server, CancellationToken cancellationToken = default)
         {
+            Task connecting;
+            var replaced = false;
             lock (_sync)
             {
                 ObjectDisposedException.ThrowIf(_disposed, this);
                 if (_servers.TryGetValue(server.Name, out var existing))
                 {
-                    return existing.Initial.Task.WaitAsync(cancellationToken);
+                    if ((existing.Config with { Args = server.Args, Headers = server.Headers }) == server
+                        && existing.Config.Args.SequenceEqual(server.Args) && existing.Config.Headers.SequenceEqual(server.Headers))
+                    {
+                        return existing.Initial.Task.WaitAsync(cancellationToken);
+                    }
+                    _servers.Remove(server.Name);
+                    _Retire(existing);
+                    replaced = true;
                 }
                 var upstream = new Upstream(server);
                 _servers.Add(server.Name, upstream);
                 upstream.Worker = Task.Run(() => _ownsToken ? _ConnectLocalAsync(upstream) : _RunGatewayAsync(upstream));
-                return upstream.Initial.Task.WaitAsync(cancellationToken);
+                connecting = upstream.Initial.Task.WaitAsync(cancellationToken);
             }
+            if (replaced)
+            {
+                _Changed(force: true);
+            }
+            return connecting;
         }
 
         public void RemoveServer(string serverName)
@@ -166,15 +262,64 @@ internal sealed partial class McpToolProvider
                 {
                     return;
                 }
-                _retirements.Run(async () =>
-                {
-                    await server.Lifetime.CancelAsync();
-                    await server.Worker;
-                    await _DisposeClientAsync(server.Connection?.Client);
-                    server.Lifetime.Dispose();
-                });
+                _Retire(server);
             }
-            _Changed();
+            _Changed(force: true);
+        }
+
+        private void _Retire(Upstream server)
+        {
+            server.Retired = true;
+            _retirements.Run(async () =>
+            {
+                await server.Lifetime.CancelAsync();
+                await server.Worker;
+                try
+                {
+                    await server.Drained.Task.WaitAsync(_provider.RemovedCallDrainTimeout);
+                }
+                catch (TimeoutException)
+                {
+                    await server.CallLifetime.CancelAsync();
+                }
+                await _DisposeClientAsync(server.RetiringClient ?? server.Connection?.Client);
+                server.CallLifetime.Dispose();
+                server.Lifetime.Dispose();
+            });
+        }
+
+        public async Task UpdateServersAsync(IReadOnlyList<McpServerConfig> servers)
+        {
+            string[] removed;
+            lock (_sync)
+            {
+                _changeDeferrals++;
+                removed = _servers.Keys.Except(servers.Select(server => server.Name), StringComparer.OrdinalIgnoreCase).ToArray();
+            }
+            try
+            {
+                foreach (var name in removed)
+                {
+                    RemoveServer(name);
+                }
+                await Task.WhenAll(servers.Select(server => AddServerAsync(server)));
+            }
+            finally
+            {
+                bool publish;
+                lock (_sync)
+                {
+                    publish = --_changeDeferrals == 0 && _changePending;
+                    if (_changeDeferrals == 0)
+                    {
+                        _changePending = false;
+                    }
+                }
+                if (publish)
+                {
+                    _Changed();
+                }
+            }
         }
 
         private async Task _ConnectLocalAsync(Upstream server)
@@ -224,7 +369,7 @@ internal sealed partial class McpToolProvider
                     {
                         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
                         deadline.CancelAfter(TimeSpan.FromSeconds(15));
-                        var registry = await _provider._catalog.GetServersForSessionAsync(_projectId, new HashSet<string>([server.Config.Name], StringComparer.OrdinalIgnoreCase), deadline.Token);
+                        var registry = await _provider._catalog.GetServersForSessionAsync(_projectId, new ExactMcpServerSelection([server.Config.Name]), deadline.Token);
                         var config = registry.FirstOrDefault(candidate => candidate.Name.Equals(server.Config.Name, StringComparison.OrdinalIgnoreCase)) ?? server.Config with { Enabled = false };
                         var outcome = config.Enabled
                             ? await _provider._ConnectServerAsync(config, PaneToken, deadline.Token, _agentName, gateway: true)
@@ -265,7 +410,14 @@ internal sealed partial class McpToolProvider
                         {
                             await notification.DisposeAsync();
                         }
-                        await _DisposeClientAsync(client);
+                        if (!server.Retired)
+                        {
+                            await _DisposeClientAsync(client);
+                        }
+                        else
+                        {
+                            server.RetiringClient = client;
+                        }
                     }
                 }
             }
@@ -375,12 +527,57 @@ internal sealed partial class McpToolProvider
 
         private async ValueTask<CallToolResult> _CallAsync(Upstream server, string name, RequestContext<CallToolRequestParams> context, CancellationToken ct)
         {
+            if (!_TryAcquire(server))
+            {
+                return _Error(server.Config.Name, "Server removed from this session's MCP set.");
+            }
+            try
+            {
+                using var call = CancellationTokenSource.CreateLinkedTokenSource(ct, server.CallLifetime.Token);
+                return await _CallUpstreamAsync(server, name, context, call.Token);
+            }
+            finally
+            {
+                _Release(server);
+            }
+        }
+
+        private bool _TryAcquire(Upstream server)
+        {
+            lock (_sync)
+            {
+                if (_disposed || !_servers.ContainsValue(server)
+                    || (_paneId is not null && _provider._mounts?.IsMounted(_paneId, server.Config.Name) == false))
+                {
+                    return false;
+                }
+                if (server.ActiveCalls++ == 0)
+                {
+                    server.Drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                }
+                return true;
+            }
+        }
+
+        private void _Release(Upstream server)
+        {
+            lock (_sync)
+            {
+                if (--server.ActiveCalls == 0)
+                {
+                    server.Drained.TrySetResult();
+                }
+            }
+        }
+
+        private async ValueTask<CallToolResult> _CallUpstreamAsync(Upstream server, string name, RequestContext<CallToolRequestParams> context, CancellationToken ct)
+        {
             ServerConnection? connection;
             lock (_sync)
             {
-                connection = _servers.ContainsValue(server) ? server.Connection : null;
+                connection = server.Connection;
             }
-            if (connection is null || connection.Client.Completion.IsCompleted || (_paneId is not null && _provider._mounts?.IsMounted(_paneId, server.Config.Name) != true))
+            if (connection is null || connection.Client.Completion.IsCompleted)
             {
                 return _Error(server.Config.Name, server.Issue ?? "Unavailable");
             }
@@ -490,8 +687,16 @@ internal sealed partial class McpToolProvider
             Content = [new TextContentBlock { Text = $"{server}: {reason}" }],
         };
 
-        private void _Changed()
+        private void _Changed(bool force = false)
         {
+            lock (_sync)
+            {
+                if (_changeDeferrals > 0 && !force)
+                {
+                    _changePending = true;
+                    return;
+                }
+            }
             foreach (var handler in ToolsChanged?.GetInvocationList() ?? [])
             {
                 try
@@ -503,7 +708,7 @@ internal sealed partial class McpToolProvider
                     _provider._logger.LogWarning("MCP tools-changed handler failed.");
                 }
             }
-            if (!_ownsToken && _paneId is not null)
+            if (_paneId is not null && (!_ownsToken || IsLive))
             {
                 _provider._mounts?.ReportConnections(_paneId, ConnectedServerNames, ConnectionIssues,
                     _ => _provider._logger.LogWarning("MCP connection-report handler failed."));
@@ -512,6 +717,11 @@ internal sealed partial class McpToolProvider
 
         public async ValueTask DisposeAsync()
         {
+            if (_provider._mounts is not null)
+            {
+                _provider._mounts.Changed -= _MountChanged;
+            }
+            CockpitConfigFileAccess.Written -= _ConfigWritten;
             Upstream[] servers;
             lock (_sync)
             {
@@ -523,15 +733,20 @@ internal sealed partial class McpToolProvider
                 servers = [.. _servers.Values];
                 _servers.Clear();
             }
+            await _mountLifetime.CancelAsync();
             _provider._oauthCoordinator.AccountChanged -= _AccountChanged;
             foreach (var server in servers)
             {
+                await server.CallLifetime.CancelAsync();
                 await server.Lifetime.CancelAsync();
             }
             await Task.WhenAll(servers.Select(server => server.Worker));
+            await _mountWorker;
+            _mountLifetime.Dispose();
             foreach (var server in servers)
             {
                 await _DisposeClientAsync(server.Connection?.Client);
+                server.CallLifetime.Dispose();
                 server.Lifetime.Dispose();
             }
             await _retirements.DrainAsync();
@@ -541,8 +756,43 @@ internal sealed partial class McpToolProvider
             }
         }
 
+        private sealed class MountedTool(AIFunction inner, LiveMcpToolSession session, Upstream server, string? name = null) : DelegatingAIFunction(inner)
+        {
+            public override string Name => name ?? base.Name;
+
+            protected override async ValueTask<object?> InvokeCoreAsync(AIFunctionArguments arguments, CancellationToken cancellationToken)
+            {
+                if (!session._TryAcquire(server))
+                {
+                    return $"{server.Config.Name}: Server removed from this session's MCP set.";
+                }
+                try
+                {
+                    using var call = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, server.CallLifetime.Token);
+                    return await base.InvokeCoreAsync(arguments, call.Token);
+                }
+                finally
+                {
+                    session._Release(server);
+                }
+            }
+        }
+
         private sealed class Upstream(McpServerConfig config)
         {
+            public int ActiveCalls;
+            public volatile bool Retired;
+            public McpClient? RetiringClient;
+            public CancellationTokenSource CallLifetime { get; } = new();
+            public TaskCompletionSource Drained { get; set; } = _Completed();
+
+            private static TaskCompletionSource _Completed()
+            {
+                var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                completion.SetResult();
+                return completion;
+            }
+
             public McpServerConfig Config { get; set; } = config;
             public ServerConnection? Connection { get; set; }
             public IReadOnlyList<Microsoft.Extensions.AI.AIFunction> Tools { get; set; } = [];

@@ -25,7 +25,7 @@ public sealed class SessionStateRecorder : ISessionStateCache, ISingletonService
     // AC-1531: each state written, in call order, for the conversation index that keeps it after the pane is gone.
     public event Action<SessionStateRecord>? Recorded;
 
-    public SessionStateRecorder(ISessionStateStore store, SessionConversationTracker conversationTracker, ILogger<SessionStateRecorder> logger)
+    public SessionStateRecorder(ISessionStateStore store, SessionConversationTracker conversationTracker, ILogger<SessionStateRecorder> logger, SessionMcpMounts? mounts = null, ISessionMcpGatewayState? gatewayState = null)
     {
         _store = store;
         _logger = logger;
@@ -33,6 +33,41 @@ public sealed class SessionStateRecorder : ISessionStateCache, ISingletonService
         // AC-408's tracker already suppresses a report that repeats the same conversation id, so every invocation
         // here is a real change worth a line — never a per-turn poll.
         conversationTracker.Changed += _OnConversationChanged;
+        if (mounts is not null)
+        {
+            mounts.Changed += paneId =>
+            {
+                if (gatewayState?.IsEnabled == true)
+                {
+                    _OnMcpSetChanged(mounts, paneId);
+                }
+            };
+        }
+    }
+
+    private async void _OnMcpSetChanged(SessionMcpMounts mounts, string paneId)
+    {
+        if (mounts.Set(paneId) is not { Context: { } context } set)
+        {
+            return;
+        }
+        var names = set.ServerNames.ToArray();
+        var ceiling = set.DelegationCeiling?.ToArray();
+        try
+        {
+            await _WriteAsync(paneId, existing => existing with
+            {
+                McpServerNames = names,
+                McpManager = context.Manager,
+                McpDelegationCeiling = ceiling,
+                McpIsDelegated = ceiling is not null ? true : existing.McpIsDelegated,
+                McpPreserveSelection = set.PreserveSelection,
+            }, CancellationToken.None);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Could not persist the MCP set for pane {PaneId}.", paneId);
+        }
     }
 
     // AC-513: primes the cache from records the caller already loaded, avoiding a second store read on the startup path.

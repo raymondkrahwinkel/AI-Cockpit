@@ -5,6 +5,7 @@ using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Agents;
+using Cockpit.Core.Abstractions.Sessions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
@@ -13,6 +14,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.AI;
 using ModelContextProtocol;
 using ModelContextProtocol.AspNetCore;
 using ModelContextProtocol.Protocol;
@@ -20,7 +22,7 @@ using ModelContextProtocol.Server;
 
 namespace Cockpit.Infrastructure.Mcp;
 
-internal sealed class SessionMcpGatewayHost : IHostedService, IAsyncDisposable
+internal sealed partial class SessionMcpGatewayHost : IHostedService, IAsyncDisposable, ISessionMcpGatewayState
 {
     private readonly ConcurrentDictionary<string, string> _owners = new(StringComparer.Ordinal);
     private readonly McpAuthKey _authKey;
@@ -53,6 +55,7 @@ internal sealed class SessionMcpGatewayHost : IHostedService, IAsyncDisposable
     }
     internal string? BoundUrl { get; private set; }
     public bool IsEnabled { get; private set; }
+    bool ISessionMcpGatewayState.IsEnabled => IsEnabled && BoundUrl is not null;
 
     public string? UrlFor(string paneId) => IsEnabled && BoundUrl is { } url
         ? $"{url}/s/{Uri.EscapeDataString(paneId)}/mcp"
@@ -122,6 +125,8 @@ internal sealed class SessionMcpGatewayHost : IHostedService, IAsyncDisposable
                 GatewayMcpBinding? activeBinding = null;
                 SemaphoreSlim? collectionGate = null;
                 Action? refresh = null;
+                var hasNativeSearch = false;
+                var requiresSearchFallback = false;
                 if (_provider?.Invoke() is { } provider && _mounts is not null)
                 {
                     var binding = _bindings.GetOrAdd((paneId, token), _ => new Lazy<GatewayMcpBinding>(() => new GatewayMcpBinding(provider, _mounts, paneId, token, _loggerFactory.CreateLogger<SessionMcpGatewayHost>()))).Value;
@@ -135,6 +140,21 @@ internal sealed class SessionMcpGatewayHost : IHostedService, IAsyncDisposable
                     var live = binding.Session;
                     var collection = session.ToolCollection;
                     var gate = new SemaphoreSlim(1);
+                    var directTools = new ConcurrentDictionary<string, byte>(StringComparer.Ordinal);
+                    Action? exposeRefresh = null;
+                    var searchTools = CockpitToolSearch.Build(() => live.GatewayTools).OfType<AIFunction>().Select(tool =>
+                    {
+                        var proxy = McpServerTool.Create(tool);
+                        return tool.Name == CockpitToolSearch.CallToolName
+                            ? new ForwardMcpServerTool(tool.Name, proxy.ProtocolTool, live, (request, token) => _CallFallbackAsync(paneId, live, request, name =>
+                            {
+                                if (directTools.TryAdd(name, 0))
+                                {
+                                    exposeRefresh?.Invoke();
+                                }
+                            }, token))
+                            : proxy;
+                    }).ToArray();
                     collectionGate = gate;
                     void Refresh()
                     {
@@ -142,11 +162,20 @@ internal sealed class SessionMcpGatewayHost : IHostedService, IAsyncDisposable
                         try
                         {
                             var desired = live.ForwardTools.ToDictionary(tool => tool.ProtocolTool.Name, StringComparer.Ordinal);
+                            if (!hasNativeSearch && (live.GatewayTools.Count > CockpitToolSearch.PreloadThreshold || requiresSearchFallback))
+                            {
+                                var preloaded = live.GatewayTools.Where(tool => tool.AlwaysMounted || directTools.ContainsKey(tool.Function.Name)).Select(tool => tool.Function.Name).ToHashSet(StringComparer.Ordinal);
+                                desired = desired.Where(pair => preloaded.Contains(pair.Key)).ToDictionary(StringComparer.Ordinal);
+                                foreach (var search in searchTools)
+                                {
+                                    desired[search.ProtocolTool.Name] = search;
+                                }
+                            }
                             using var batch = collection.DeferChangedEvents();
                             foreach (var existing in collection.ToArray())
                             {
                                 if (!desired.TryGetValue(existing.ProtocolTool.Name, out var replacement)
-                                    || existing is not ForwardMcpServerTool forward || !forward.Matches(replacement))
+                                    || (!ReferenceEquals(existing, replacement) && (existing is not ForwardMcpServerTool forward || !forward.Matches(replacement))))
                                 {
                                     collection.Remove(existing);
                                 }
@@ -162,6 +191,7 @@ internal sealed class SessionMcpGatewayHost : IHostedService, IAsyncDisposable
                         }
                     }
                     refresh = Refresh;
+                    exposeRefresh = Refresh;
                     live.ToolsChanged += Refresh;
                     http.Items[typeof(GatewayMcpBinding)] = (Action)(() => live.ToolsChanged -= Refresh);
                     await binding.WaitForConnectionsAsync(ct);
@@ -173,12 +203,25 @@ internal sealed class SessionMcpGatewayHost : IHostedService, IAsyncDisposable
                 session.Filters.Request.CallToolFilters.Add(next => async (context, ct) =>
                 {
                     _RequirePane(paneId, token);
+                    if (activeBinding is not null && context.Params?.Name is { } name
+                        && name is not (CockpitToolSearch.SearchToolName or CockpitToolSearch.CallToolName)
+                        && !activeBinding.Session.ForwardTools.Any(tool => tool.ProtocolTool.Name == name))
+                    {
+                        return new CallToolResult
+                        {
+                            IsError = true,
+                            Content = [new TextContentBlock { Text = "This tool is no longer available in this session's MCP set." }],
+                        };
+                    }
                     var result = await next(context, ct);
                     return McpInboxPiggyback.Attach(result, _inbox, _loggerFactory.CreateLogger<SessionMcpGatewayHost>());
                 });
                 session.Filters.Request.ListToolsFilters.Add(next => async (context, ct) =>
                 {
                     _RequirePane(paneId, token);
+                    var clientName = context.Server.ClientInfo?.Name ?? string.Empty;
+                    hasNativeSearch = clientName.Contains("claude", StringComparison.OrdinalIgnoreCase);
+                    requiresSearchFallback = clientName.Contains("codex", StringComparison.OrdinalIgnoreCase);
                     if (activeBinding is null || collectionGate is null)
                     {
                         return await next(context, ct);
@@ -221,6 +264,7 @@ internal sealed class SessionMcpGatewayHost : IHostedService, IAsyncDisposable
         });
         app.MapMcp("/s/{paneId}/mcp");
         _keyring.RunEnded += _EndBindings;
+        CockpitConfigFileAccess.Written += _ConfigWritten;
         await app.StartAsync(cancellationToken);
         var addresses = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()
             ?? throw new InvalidOperationException("Kestrel did not expose its bound addresses.");
@@ -289,8 +333,33 @@ internal sealed class SessionMcpGatewayHost : IHostedService, IAsyncDisposable
     private readonly ConcurrentDictionary<(string Pane, string Token), Lazy<GatewayMcpBinding>> _bindings = new();
     private readonly McpBackgroundTasks _cleanup;
 
+    private void _ConfigWritten(string path)
+    {
+        if (string.Equals(Path.GetFullPath(path), Path.GetFullPath(_configFile.ConfigFilePath), Cockpit.Core.WorkingPaths.DirectoryPath.Comparison))
+        {
+            _cleanup.Run(_RefreshProjectsAsync);
+        }
+    }
+
+    private async Task _RefreshProjectsAsync()
+    {
+        if (_projects is null || _mounts is null)
+        {
+            return;
+        }
+        var projects = await _projects.LoadAsync();
+        foreach (var paneId in _bindings.Keys.Select(key => key.Pane).Distinct(StringComparer.Ordinal))
+        {
+            if (_mounts.Set(paneId)?.Context is { } context)
+            {
+                _mounts.Bind(paneId, context with { Project = projects.Find(context.Project?.Id) });
+            }
+        }
+    }
+
     private void _EndBindings(string paneId)
     {
+        _toolAuthorization.TryRemove(paneId, out _);
         foreach (var pair in _bindings)
         {
             if (pair.Key.Pane == paneId && _bindings.TryRemove(pair.Key, out var binding) && binding.IsValueCreated)
@@ -317,6 +386,7 @@ internal sealed class SessionMcpGatewayHost : IHostedService, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        CockpitConfigFileAccess.Written -= _ConfigWritten;
         _keyring.RunEnded -= _EndBindings;
         if (_app is { } app)
         {
