@@ -121,6 +121,16 @@ public sealed record ProjectMemorySourceRegistration(string Scheme, string Title
     public Func<string, string?>? BrainInstruction { get; init; }
 
     /// <summary>
+    /// Lists the optional roles in a brain value, with an explicit unavailable or no-roles outcome.
+    /// </summary>
+    public Func<string, CancellationToken, Task<RoleListResult>>? ListRolesAsync { get; init; }
+
+    /// <summary>
+    /// Loads a named role from a brain value, with at most 12,000 characters of instructions including its skill list.
+    /// </summary>
+    public Func<string, string, CancellationToken, Task<RoleLoadResult>>? LoadRoleAsync { get; init; }
+
+    /// <summary>
     /// What this registration's delegates are bound to (AC-1992) — the server address of the connection they close
     /// over, say — so a registration rebuilt after that target moved compares unequal and is replaced.
     /// </summary>

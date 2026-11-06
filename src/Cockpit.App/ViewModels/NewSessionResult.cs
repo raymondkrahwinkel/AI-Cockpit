@@ -27,6 +27,10 @@ public sealed record NewSessionResult(
     // profile leaves this false so the launcher resolves the same defaults before it hosts the session.
     public bool IsComposed { get; init; } = true;
 
+    public string? Role { get; init; }
+
+    public bool IsRestoring { get; init; }
+
     // Whether `SessionName` was put together by the cockpit rather than chosen by anybody — "Cockpit 2", "Claude —
     // 14:22", "webshop (copy)" (AC-310, AC-324).
     public bool NameIsComposed { get; init; }
