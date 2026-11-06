@@ -3,6 +3,7 @@
 ## Unreleased
 
 - AC-2187: the assistant can tell which session you have selected: `list_sessions` marks it, following the Simple stand's own selection when that stand is showing.
+- AC-2100: display relative Depot note images in Markdown file previews and editors without rewriting their source.
 
 - AC-2168: keep test scratch isolation stable when plugin probes reload a test assembly.
 

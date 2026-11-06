@@ -1,5 +1,16 @@
 # File sources (AC-1783)
 
+Optional document images (AC-2100) require host 0.161.0, Abstractions 3.72.0 and UI 3.25.0.
+A source can also implement `IFileImageSource.ReadImageAsync(document, target, ct)`. The host forwards
+`FileImageRequest` on `FileImageChannel.Read` and returns `FileSourceAnswer<string>` containing base64
+bytes, bounded to 2 MiB. The source owns path resolution, authorization, bounded/coalesced fetching and
+cache isolation; it must not return credential-bearing URLs. Raise `ConnectionsChanged` on account or
+connection changes to invalidate visible data. Markdown workspaces bind the loader to their `FileRef`.
+Other editor owners may set `IMarkdownEditor.ImageLoader` and call `InvalidateImages` on refresh or
+identity changes. Without a loader the editor keeps image syntax as text. The editor accepts only
+standalone PNG/JPEG/GIF/WebP images, checks a 16 MP header limit before decoding, downsamples, and bounds
+its decoded cache to 32 MiB. Its rendering never changes the source document.
+
 Requires host 0.136.0 and `Cockpit.Plugins.Abstractions` 3.45.0, namespace
 `Cockpit.Plugins.Abstractions.Files`. Abstractions.UI remains 3.16.0; this feature adds no public UI API.
 

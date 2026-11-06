@@ -12,6 +12,21 @@ internal sealed class FileSourceChannelClient(IPluginUiChannel channel)
 {
     public IDisposable Subscribe(string name, Action<PluginChannelEvent> handler) => channel.Subscribe(name, handler);
 
+    public async Task<byte[]> ReadImageAsync(FileRef file, string target, CancellationToken cancellationToken)
+    {
+        var encoded = await _CallAsync<string>(FileImageChannel.Read, new FileImageRequest(file, target), cancellationToken).ConfigureAwait(false);
+        if (encoded.Length > ((FileImageChannel.MaxBytes + 2) / 3) * 4)
+        {
+            throw new FileSourceException(FileSourceErrorKind.TooLarge, "This image is too large.");
+        }
+        var bytes = Convert.FromBase64String(encoded);
+        if (bytes.Length > FileImageChannel.MaxBytes)
+        {
+            throw new FileSourceException(FileSourceErrorKind.TooLarge, "This image is too large.");
+        }
+        return bytes;
+    }
+
     public async Task<IReadOnlyList<FileConnection>> ConnectionsAsync(CancellationToken cancellationToken) =>
         await _RunAsync(() => _CallAsync<FileConnection[]>(FileSourceChannel.Connections, new { }, cancellationToken), cancellationToken).ConfigureAwait(false);
 

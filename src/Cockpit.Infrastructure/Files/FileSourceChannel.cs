@@ -66,6 +66,20 @@ internal static class FileSourceChannel
                 }
                 return result;
             })));
+            registration.Handlers.Add(channel.Handle(FileImageChannel.Read, (payload, ct) => _RunAsync(async () =>
+            {
+                var request = payload.Deserialize<FileImageRequest>(Wire.Json) ?? throw new JsonException();
+                if (_Source(provider, request.File, false) is not IFileImageSource images)
+                {
+                    throw new FileSourceException(FileSourceErrorKind.Unsupported, "Images are unavailable for this source.");
+                }
+                var bytes = await images.ReadImageAsync(request.File, request.Target, ct).ConfigureAwait(false);
+                if (bytes.Length > FileImageChannel.MaxBytes)
+                {
+                    throw new FileSourceException(FileSourceErrorKind.TooLarge, "This image is too large.");
+                }
+                return Convert.ToBase64String(bytes);
+            })));
             _RegisterLive(channel, provider, registration);
             registration.Changed = (_, _) => channel.Publish(Wire.Changed,
                 JsonSerializer.SerializeToElement(provider.Connections, Wire.Json));

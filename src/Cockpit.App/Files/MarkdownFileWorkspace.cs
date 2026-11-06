@@ -46,6 +46,7 @@ internal sealed partial class MarkdownFileWorkspace : UserControl
     private readonly TextBlock _hint = new() { FontSize = 11.5, TextTrimming = TextTrimming.CharacterEllipsis, Text = "Preview: a single click on another file replaces this tab. Double-click the tab, Keep open, Edit or start typing to keep it." };
     private readonly Border _hintStrip;
     private IDisposable? _savedSubscription;
+    private IDisposable? _imageSubscription;
     private readonly CheckBox _source = new() { Name = "MarkdownSourceSwitch", Content = "Markdown source", Classes = { "Switch" }, VerticalAlignment = VerticalAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center, FontSize = 12 };
     private readonly Border _statusChip;
     private readonly MarkdownEditor _compare = new() { IsReadOnly = true, IsVisible = false };
@@ -99,6 +100,9 @@ internal sealed partial class MarkdownFileWorkspace : UserControl
         _sourceName = options.Location.Split(" / ")[0] is { Length: > 0 } name ? name : "the source";
         _reload.Content = $"Reload from {_sourceName}";
         Editor = new MarkdownEditor { IsReadOnly = true };
+        Editor.ImageLoader = (target, ct) => _client.ReadImageAsync(_options.File, target, ct);
+        _imageSubscription = _client.Subscribe(FileSourceChannel.Changed, _ =>
+            Dispatcher.UIThread.Post(() => Editor.InvalidateImages()));
         Editor.UseWorkspaceSourceToggle();
 
         var location = new TextBlock
@@ -708,6 +712,7 @@ internal sealed partial class MarkdownFileWorkspace : UserControl
 
     private async void _OnRefresh(object? sender, EventArgs e)
     {
+        Editor.InvalidateImages();
         // This event has no Task result; keep exceptions inside its boundary.
         try
         {
@@ -740,6 +745,8 @@ internal sealed partial class MarkdownFileWorkspace : UserControl
         _context.Closed -= _OnClosed;
         _context.Pinned -= _OnPinned;
         _savedSubscription?.Dispose();
+        _imageSubscription?.Dispose();
+        Editor.ImageLoader = null;
         _liveLightTimer.Stop();
         _countdown.Stop();
         _presence?.Dispose();
