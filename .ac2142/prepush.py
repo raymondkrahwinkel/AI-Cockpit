@@ -12,8 +12,9 @@ temporary.mkdir(parents=True, exist_ok=True)
 environment = os.environ.copy()
 environment.update(TEMP=str(temporary), TMP=str(temporary), TMPDIR=str(temporary), PYTHONUTF8="1", COCKPIT_STATE_ROOT=str(scratch / "gate-state"), MSYS_NO_PATHCONV="1")
 commands = [
-    ("windows-full-gate", ["C:/Program Files/Git/bin/bash.exe", "scripts/local-gate.sh", "--full"]),
+    ("probe-current-sha", ["py", "-X", "utf8", ".ac2142/build.py", "shared"]),
     ("linux-browser-gate", ["C:/Program Files/Git/bin/bash.exe", "scripts/local-gate.sh", "--linux", "plugins-dev/Cockpit.Plugin.Browser.Tests/Cockpit.Plugin.Browser.Tests.csproj"]),
+    ("windows-full-gate", ["C:/Program Files/Git/bin/bash.exe", "scripts/local-gate.sh", "--full"]),
 ]
 for label, command in commands:
     path = scratch / (label + ".log")
