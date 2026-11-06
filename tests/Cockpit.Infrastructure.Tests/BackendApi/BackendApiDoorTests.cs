@@ -23,7 +23,6 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Plugins;
 using Cockpit.Core.Profiles;
-using Cockpit.Core.Notifications;
 using Cockpit.Core.Projects;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Assistant;
