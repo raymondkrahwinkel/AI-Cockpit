@@ -111,6 +111,9 @@
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
+                                    <Button x:Name="SessionMcpSettingsButton" Content="MCP servers…" Classes="Compact"
+                                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                            IsVisible="{Binding HasMcpServers}" Click="OnOpenSessionMcp" Margin="0,0,0,8"/>
                                     <TextBlock Text="Display" FontSize="10.5" FontWeight="SemiBold" Margin="0,0,0,4"
                                                Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                     <!-- Reading level (AC-138): how much of this SDK session to show — Developer
