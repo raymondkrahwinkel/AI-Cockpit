@@ -14,7 +14,10 @@ public static class CockpitProduct
     // Both halves, for the places that have a single string to put a name in.
     public const string DisplayName = $"{Brand} {Product}";
 
+    // The mark that tells a debug build from the installed one, in the OS title and in our own title bar.
+    public const string DevBadge = "DEV";
+
     public static string WindowTitle => WindowTitleFor(CockpitBuild.IsDevelopment);
 
-    public static string WindowTitleFor(bool isDevelopment) => isDevelopment ? $"{DisplayName} — DEV" : DisplayName;
+    public static string WindowTitleFor(bool isDevelopment) => isDevelopment ? $"{DisplayName} — {DevBadge}" : DisplayName;
 }
