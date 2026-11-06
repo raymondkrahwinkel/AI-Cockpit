@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- AC-2165: prepare bounded short and summary speech per completed assistant reply, while full speech keeps streaming.
 - AC-2164: keep opening prompts queued until the Claude or Codex terminal composer is ready, so workspace trust dialogs cannot consume them as delivered turns.
 - AC-2103: Clear stale local-only warnings after live note recovery confirms the saved text, and offer Retry sync while unconfirmed edits remain protected.
 - AC-555: remove the unsupported Docker endpoint setting, warn about ignored saved overrides, and require fresh consent when switching from a remote endpoint to the local daemon.
