@@ -393,6 +393,13 @@ internal static partial class Screenshotter
         // AC-445: the Layout section (single session / stack vertically / focus + rail) lives on the Sessions
         // tab, not the Notifications tab "options" opens on.
         ["session-layout"] = (_, _) => _OptionsOnTab("Sessions"),
+        ["options-run-limits"] = (width, height) =>
+        {
+            var dialog = _OptionsOnTab("Sessions");
+            dialog.Width = width;
+            dialog.Height = height;
+            return dialog;
+        },
         // AC-445: the workspace ⚙'s own Layout flyout, opened the way session-settings-flyout already proves
         // headless rendering can. Needs a session so `ShowSessionGrid` shows the toolbar the ⚙ lives in.
         ["workspace-layout-flyout"] = (width, height) => _MainWindowWithOneSession(width, height),

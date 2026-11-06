@@ -11,7 +11,6 @@ public class HeavyRunAdmissionTests
 
     // A cost below zero is a kind never measured; a second candidate waited -1 minutes when there is none.
     [Theory]
-    [InlineData(40, true, false, 1, 20, false, -1, 0, null)]
     [InlineData(85, true, false, 1, 0, false, -1, -1, "waiting: CPU 85%")]
     [InlineData(95, false, false, 1, -1, false, -1, 0, null)]
     [InlineData(40, true, false, 1, -1, false, -1, -1, "waiting: journeys has no measured cost yet, so it runs alone")]
@@ -28,8 +27,24 @@ public class HeavyRunAdmissionTests
             waiting.Add(new HeavyRunCandidate("journeys", secondIsPreMerge, Now.AddMinutes(-secondWaitedMinutes), known, 100 * Gigabyte));
         }
 
-        var decision = HeavyRunAdmission.Next(waiting, new MachineLoad(cpu, 8 * Gigabyte, 16 * Gigabyte), new HeavyRunSettings(), isAnyRunning, Now);
+        var decision = HeavyRunAdmission.Next(waiting, new MachineLoad(cpu, 8 * Gigabyte, 16 * Gigabyte), new HeavyRunSettings(), isAnyRunning ? 1 : 0, Now);
 
         Assert.Equal((expectedAdmit < 0 ? null : expectedAdmit, expectedReason), (decision.Admit, decision.WaitReason));
+    }
+
+    // Category C: AC-2174's third run waits for one of two occupied places, even on an idle machine.
+    [Fact]
+    public void AParallelLimitHoldsTheNextRunUntilAPlaceIsReturned_AndZeroKeepsAutomaticAdmission()
+    {
+        List<HeavyRunCandidate> waiting = [new("build", false, Now, new HeavyRunCost(20, Gigabyte, 0), 100 * Gigabyte)];
+        var load = new MachineLoad(40, 8 * Gigabyte, 16 * Gigabyte);
+        var settings = new HeavyRunSettings { MaxParallelRuns = 2 };
+
+        var full = HeavyRunAdmission.Next(waiting, load, settings, 2, Now);
+        Assert.Null(full.Admit);
+        Assert.Contains("maximum 2 parallel runs", full.WaitReason);
+        Assert.Equal(0, HeavyRunAdmission.Next(waiting, load, settings, 1, Now).Admit);
+        Assert.Equal(0, HeavyRunAdmission.Next(waiting, load, settings with { MaxParallelRuns = 0 }, 2, Now).Admit);
+        Assert.Equal(0, HeavyRunAdmission.Next(waiting, load with { CpuPercent = 100 }, settings, 0, Now).Admit);
     }
 }

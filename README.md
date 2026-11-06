@@ -32,6 +32,17 @@ or a provider added by a plugin: they all run as panes in the same cockpit.
 > releases yet. Deliberately still 0.x: under 1.0 semver promises nothing, which is the honest state of a thing
 > whose plugin contract is still moving. Built and tested on Windows and Linux (Fedora).
 
+### Test and build run limits
+
+Options › Sessions stages this machine's maximum parallel heavy runs and CPU/memory ceilings until Apply;
+Cancel discards edits. `heavyRuns` in `cockpit.json` also works on servers without a UI:
+`MaxParallelRuns` defaults to `0` (automatic, the existing resource-based admission),
+`CpuCeilingPercent` to `75`, and `MemoryCeilingPercent` to `85`.
+A positive maximum adds a limit to the existing resource checks. With no run active, the first heavy run
+can start regardless of these limits. Light and operator runs retain their existing admission rules.
+Queued runs show the reason in Test runs. Overload failures can lower the resource ceilings.
+These settings stay on this machine and are excluded from the settings carrier.
+
 ## Why
 
 Claude and Codex TTY child history uses the shared `plugins-dev/_shared/HookRelay` .NET helper.

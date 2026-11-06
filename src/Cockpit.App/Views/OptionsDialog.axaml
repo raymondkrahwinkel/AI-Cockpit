@@ -606,8 +606,28 @@
                                 ToolTip.Tip="Lets the cockpit prune Docker's build cache and old images by itself: daily, and every 15 minutes while a disk is running low. Turn it off to keep Docker as it is; the cockpit still watches the disk and warns when space runs short, and you can still clean up or compact by hand from the storage status in the status bar. A change applies without a restart."/>
                         </StackPanel>
 
+                        <TextBlock Classes="optionsSectionHeader" Text="3. TEST AND BUILD RUNS"/>
+                        <TextBlock Text="Limits for this machine. Runs also wait when measured resources are too busy." Classes="optionsHint"/>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="Maximum parallel runs" Width="230" VerticalAlignment="Center"/>
+                            <NumericUpDown Value="{Binding MaxParallelRuns}" Minimum="0" Maximum="2147483647"
+                                           Increment="1" FormatString="0" Width="104"/>
+                            <TextBlock Text="0 = automatic" Classes="optionsHint" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="CPU ceiling (%)" Width="230" VerticalAlignment="Center"/>
+                            <NumericUpDown Value="{Binding RunCpuCeilingPercent}" Minimum="1" Maximum="100"
+                                           Increment="5" FormatString="0" Width="104"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="Memory ceiling (%)" Width="230" VerticalAlignment="Center"/>
+                            <NumericUpDown Value="{Binding RunMemoryCeilingPercent}" Minimum="1" Maximum="100"
+                                           Increment="5" FormatString="0" Width="104"/>
+                        </StackPanel>
+                        <TextBlock Text="The first heavy run always starts. Light and operator runs keep their existing priority. Overload failures may lower the resource ceilings." Classes="optionsHint"/>
+
                         <StackPanel x:Name="WhereWorkLandsHelp" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <TextBlock Classes="optionsSectionHeader" Text="3. WHERE WORK LANDS"/>
+                            <TextBlock Classes="optionsSectionHeader" Text="4. WHERE WORK LANDS"/>
                         </StackPanel>
                         <!-- Worktree isolation location (AC-85): where new isolated-session worktrees are created. -->
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">

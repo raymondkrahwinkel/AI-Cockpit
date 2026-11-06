@@ -14,6 +14,7 @@
 - AC-2058: preserve graceful SIGTERM shutdown on Linux/macOS when the Browser plugin is active.
 
 - AC-241: Companion remembers a reachable position, uses native window dragging, and separates tools with an explicit empty state.
+- AC-2174: set this machine's maximum parallel test/build runs and CPU/memory queue limits in Options › Sessions; queued runs explain when the parallel maximum is reached.
 
 - Session done and Waiting for you sounds wait three seconds and stay silent if the session has moved on.
 
