@@ -4,6 +4,10 @@
 
 - AC-2117: reset swarm membership from any state, rejoin with fresh confirmation, show standalone/paused status and explain conflicting histories.
 
+- A local smoke test (`scripts/linux-smoke.sh`, Docker or a VM) starts the packaged Linux AppImage on a screen without a GPU and opens every surface of the shipped plugins once, to catch crashes like the Browser tab one (AC-2038).
+
+- A debug build is recognisable next to the installed one: "DEV" in its own title bar and a DEV bar over its window, taskbar and tray icon.
+
 - Take over swarm leadership on this machine from the assistant chat or Options › Swarm, through the reachable current leader.
 
 - Proxmox VE supports multiple named servers; MCP tools and the overview select one explicitly, and their tokens are scrubbed from settings exports.
@@ -51,6 +55,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - Simple sessions now use the same provider instructions as sessions started from Panels.
 - A plugin is now turned off only after it is named in two interrupted starts in a row; Cockpit explains that recovery decision and offers to turn it back on.
 - Discord final-answer relays now send a streamed answer as one message.
+- Discord final-answer relays now post the answer when the assistant's turn ends, not when the next message arrives.
 - Assistant image input stays available after a model is confirmed, including Discord attachments, and model capabilities refresh without restarting the session.
 - Simple view now opens files and plugin workspaces in the main column, with open items to switch between them and guarded Back and Close actions.
 - Files whose live session does not respond now show the saved snapshot after a short timeout instead of staying on Loading; existing files no longer show "New file" while opening.
@@ -60,6 +65,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- Assistant replies now start read-aloud while they stream, prepare a small bounded look-ahead buffer, and keep consecutive spoken pieces seamless.
 - Simple session and assistant views now use the available window width instead of a fixed 720 px column.
 
 ### Removed
