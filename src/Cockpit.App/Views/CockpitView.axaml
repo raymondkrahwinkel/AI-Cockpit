@@ -164,6 +164,7 @@
                                   IsVisible="{Binding SupportsClearContext}"/>
                         <Separator/>
                         <MenuItem Header="Set status…" Click="OnSetSessionStatus"/>
+                        <MenuItem Header="MCP servers…" Click="OnOpenSessionMcp"/>
                         <MenuItem Header="Resume later…" Click="OnScheduleSessionResume"/>
                         <MenuItem Header="Clear status" Click="OnClearSessionStatus"
                                   IsEnabled="{Binding Statusline, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>

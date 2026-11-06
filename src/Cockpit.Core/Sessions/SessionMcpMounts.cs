@@ -11,11 +11,13 @@ namespace Cockpit.Core.Sessions;
 public sealed class SessionMcpMounts : ISingletonService
 {
     private readonly ConcurrentDictionary<string, SessionMcpSet> _mounted = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, SessionMcpConnectionReport> _connections = new(StringComparer.Ordinal);
 
     public event Action<string>? Changed;
 
     public void Bind(string paneId, SessionMcpContext context)
     {
+        _connections.TryRemove(paneId, out _);
         _mounted.AddOrUpdate(paneId,
             _ => new SessionMcpSet(context, Array.Empty<string>().ToFrozenSet(StringComparer.OrdinalIgnoreCase)),
             (_, current) => current with { Context = current.Context?.Manager == SessionMcpManager.Assistant
@@ -24,6 +26,8 @@ public sealed class SessionMcpMounts : ISingletonService
     }
 
     public SessionMcpSet? Set(string paneId) => _mounted.GetValueOrDefault(paneId);
+
+    public SessionMcpConnectionReport? ConnectionReport(string paneId) => _connections.GetValueOrDefault(paneId);
 
     public void RestrictDelegation(string paneId, IReadOnlySet<string> ceiling)
     {
@@ -60,12 +64,15 @@ public sealed class SessionMcpMounts : ISingletonService
 
     public void Report(string paneId, IReadOnlyList<string> connectedServerNames, IReadOnlyList<McpServerConnectionIssue>? issues = null)
     {
+        _connections[paneId] = new([.. connectedServerNames], [.. (issues ?? [])]);
         Grant(paneId, connectedServerNames);
         Reported?.Invoke(paneId, connectedServerNames, issues ?? []);
     }
 
     public void ReportConnections(string paneId, IReadOnlyList<string> connectedServerNames, IReadOnlyList<McpServerConnectionIssue> issues, Action<Exception> onHandlerError)
     {
+        _connections[paneId] = new([.. connectedServerNames], [.. issues]);
+        Changed?.Invoke(paneId);
         foreach (var handler in Reported?.GetInvocationList() ?? [])
         {
             try
@@ -100,3 +107,5 @@ public sealed class SessionMcpMounts : ISingletonService
     public bool IsMounted(string paneId, string serverName) =>
         _mounted.TryGetValue(paneId, out var set) && set.ServerNames.Contains(serverName);
 }
+
+public sealed record SessionMcpConnectionReport(IReadOnlyList<string> ConnectedServerNames, IReadOnlyList<McpServerConnectionIssue> Issues);
