@@ -18,7 +18,7 @@ public static class SpokenReplyGeneration
         }
         if (factory is null || profile is null)
         {
-            return new(fallback, "Rules used: no ephemeral provider route.");
+            return new(fallback, "Using built-in shortening: the selected AI profile is missing or cannot generate speech privately.");
         }
 
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(3));
@@ -37,7 +37,7 @@ public static class SpokenReplyGeneration
                     return new(sentences, null);
                 }
             }
-            return new(fallback, "Rules used: ephemeral output unavailable or invalid.");
+            return new(fallback, "Using built-in shortening: the selected AI could not provide a usable spoken answer.");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -46,7 +46,7 @@ public static class SpokenReplyGeneration
         catch (Exception)
         {
             // Provider exceptions can contain the private payload.
-            return new(fallback, "Rules used: ephemeral generation failed or exceeded its deadline.");
+            return new(fallback, "Using built-in shortening: the selected AI is unavailable, cannot generate speech privately, or took too long.");
         }
     }
 }

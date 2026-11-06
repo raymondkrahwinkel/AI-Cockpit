@@ -102,8 +102,8 @@ public class Ac1090_TranscriptRecordingWiringTests : IDisposable
         control.Folded += Raise.Event<Action<TranscriptFold>>(new TranscriptFold(row, false) { IsReply = true });
         control.TurnEnded += Raise.Event<Action<SessionTurnEnd>>(new SessionTurnEnd(false, false, false, null, "success", null));
         await spoken.Task;
-        playback.Received().Enqueue(Arg.Is<IReadOnlyList<string>>(sentences => string.Join(" ", sentences) == sentinel),
-            Arg.Any<int>(), Arg.Any<string>(), VoicePlaybackSource.Assistant, pane.PaneId);
+        playback.Received().Enqueue(Arg.Is<IReadOnlyList<SpeechSegment>>(segments => string.Join(" ", segments.SelectMany(segment => segment.Sentences)) == sentinel),
+            Arg.Any<int>(), VoicePlaybackSource.Assistant, pane.PaneId);
         var snapshots = pane.Transcript.Select(TranscriptSnapshot.Capture).ToArray();
         Assert.DoesNotContain(snapshots, snapshot => System.Text.Json.JsonSerializer.Serialize(snapshot).Contains(sentinel, StringComparison.Ordinal));
         Assert.Equal(answer, pane.Transcript.Single(entry => entry.Kind == TranscriptEntryKind.AssistantText).Text);

@@ -1,5 +1,19 @@
 # AI-Cockpit
 
+Assistant Options controls spoken answers independently of text chat. `assistant.speechMode`
+(`Full`, `Summary`, `Short`; default `Short`), `assistant.speechMethod` (`Assistant`, `Profile`,
+`Rules`; default `Assistant`) and `assistant.speechProfileLabel` (optional existing profile label)
+are local `cockpit.json` settings, deliberately excluded from the settings carrier. Apply saves
+them; Cancel discards edits. Older configurations without these keys use Short + Assistant.
+Full streams speech; the shorter modes wait for the completed answer. AI shortening sends the
+answer and profile context to the selected profile through a private generation route, with up to
+three seconds of extra waiting. An unavailable, missing or unsafe profile falls back to built-in
+shortening and reports why. The speech text never enters the chat, copy or export. Read full reply
+aloud on an assistant answer stops current speech and private generation, then reads that answer
+in full, regardless of the selected mode. Speech uses sentence language cues for Dutch, English
+and German; short ambiguous sentences use the preceding language, starting each batch with the
+configured read-aloud language. Adjacent sentences in the same language share one segment.
+
 The host checks live sessions every 30 seconds for failed turns, unanswered permissions,
 abandoned processes when a session is neither Busy nor WorkingBackground, and panes that disappear
 before finishing. Plain terminals are excluded. It sends at most one inbox message per tick to the

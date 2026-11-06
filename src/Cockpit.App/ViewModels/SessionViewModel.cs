@@ -426,13 +426,13 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     // A turn pauses on a question/permission and then keeps streaming into the same growing entry afterwards (AC-97).
     private readonly StringBuilder _readAloudPendingProse = new();
-    private SpokenReplyMode _assistantSpeechMode;
+    private SpokenReplyMode _assistantSpeechMode = SpokenReplyMode.Short;
     private SpokenReplyMode _turnSpeechMode;
     private (long Turn, int Generation) _speechTurn;
     private readonly object _speechGenerationLock = new();
     private CancellationTokenSource? _speechGeneration;
     private readonly ISessionDriverFactory? _speechDrivers;
-    private SpokenReplyMethod _assistantSpeechMethod;
+    private SpokenReplyMethod _assistantSpeechMethod = SpokenReplyMethod.Assistant;
     private SessionProfile? _speechProfile;
     private SpokenReplyMethod _turnSpeechMethod;
     private SessionProfile? _turnSpeechProfile;
@@ -462,6 +462,21 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     }
 
     public string? SpeechRulesReason { get; private set; }
+
+    [RelayCommand]
+    private async Task ReadFullReplyAsync(TranscriptEntryViewModel entry)
+    {
+        if (!IsTheVoiceAssistant || !IsAudioAvailable || !ReferenceEquals(entry.Session, this))
+        {
+            return;
+        }
+        CancelReadAloud();
+        ResetReadAloudCancellation();
+        SpeechRulesReason = null;
+        OnPropertyChanged(nameof(SpeechRulesReason));
+        await EnqueueReadAloudAsync(entry.ReplyTextWithImageSuffix);
+        CompleteReadAloudStream();
+    }
 
     protected override void OnReadAloudInvalidated()
     {
@@ -2567,6 +2582,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _speechTurn = CaptureReadAloudTurn();
         _turnSpeechMethod = AssistantSpeechMethod;
         _turnSpeechProfile = _turnSpeechMethod == SpokenReplyMethod.Profile ? SpeechProfile : _profile;
+        SpeechRulesReason = null;
+        OnPropertyChanged(nameof(SpeechRulesReason));
 
         var text = prompt.Text;
         var images = prompt.Images;
@@ -2834,7 +2851,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _readAloudPendingProse.Clear();
         _spokenSomethingThisTurn = true;
         _RestartSignOfLifeClock();
-        _ = EnqueueReadAloudAsync(pending);
+        _ = EnqueueReadAloudAsync(TtsProseExtractor.Extract(pending), IsTheVoiceAssistant ? _speechTurn : CaptureReadAloudTurn());
     }
 
     private void _QueueCompletedProseForReadAloud()
@@ -2858,7 +2875,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _readAloudPendingProse.Remove(0, stream.ConsumedLength);
         _spokenSomethingThisTurn |= stream.Sentences.Count > 0;
         _RestartSignOfLifeClock();
-        _ = EnqueueReadAloudAsync(stream.Sentences);
+        _ = EnqueueReadAloudAsync(stream.Sentences, IsTheVoiceAssistant ? _speechTurn : CaptureReadAloudTurn());
     }
 
     private void _AppendStreamingReadAloudDelta()
@@ -2909,7 +2926,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     }
 
     // True for the cockpit's own voice assistant, the one session that speaks unasked (AC-597/598).
-    private bool IsTheVoiceAssistant =>
+    public bool IsTheVoiceAssistant =>
         string.Equals(PaneId, AssistantIdentity.PaneId, StringComparison.Ordinal);
 
     // Starts the clock that says "still on it" while a turn keeps running (AC-598), and pushes it back every time
