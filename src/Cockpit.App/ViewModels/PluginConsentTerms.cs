@@ -24,9 +24,10 @@ public static class PluginConsentTerms
             PluginTrustDecision.SourceChanged => $"Plugin source changed from {request.PreviousSource ?? "an existing or bundled installation"}. ",
             _ => "",
         };
+        var keyName = request.KeyName is { } name ? new string(name.Where(character => character is >= '!' and <= '~').Take(200).ToArray()) : "not provided";
         var publisher = request.Fingerprint is null ? "Unsigned source" : $"Signed by {request.Fingerprint}";
         return $"{change}{request.Id} {request.Version}\n{publisher}\nOrganization: {request.Organization ?? "none"}\nDepot host: {request.DepotHost}\n"
-            + $"Source: {request.Repository ?? "not provided"} {request.Tag ?? ""}\nKey name (according to Depot): {request.KeyName ?? "not provided"}\n\n"
+            + $"Source: {request.Repository ?? "not provided"} {request.Tag ?? ""}\nKey name (according to Depot): {keyName}\n\n"
             + "The signature identifies the publisher; it does not make the plugin safe. Plugins run in-process with your account's permissions. "
             + "On the first installation, the key comes from the same Depot and does not protect against a compromised Depot.";
     }

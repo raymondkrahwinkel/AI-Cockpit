@@ -72,22 +72,22 @@ public sealed class RestoreIntoATemporaryRootTests : IDisposable
     {
         using (var scenario = new RestoreIntoATemporaryRootTests())
         {
-            await scenario._AssertRestoringCockpitJson_MergesItKeyByKeyAsync(true, "archived");
+            await scenario._AssertRestoringCockpitJson_MergesItKeyByKeyAsync(true, "archived", "archive-key");
         }
         using (var scenario = new RestoreIntoATemporaryRootTests())
         {
-            await scenario._AssertRestoringCockpitJson_MergesItKeyByKeyAsync(false, "current");
+            await scenario._AssertRestoringCockpitJson_MergesItKeyByKeyAsync(false, "current", null);
         }
     }
 
-    private async Task _AssertRestoringCockpitJson_MergesItKeyByKeyAsync(bool settings, string expectedProfiles)
+    private async Task _AssertRestoringCockpitJson_MergesItKeyByKeyAsync(bool settings, string expectedProfiles, string? expectedArchiveKey)
     {
         _Current("""{"Profiles":"current","PluginTrust":{"chosen":{"Source":"local","KeyFingerprint":"new-key"},"kept":{"Source":"local","KeyFingerprint":"kept-key"}},"Plugins":{"kept":{"Data":{"k":"current"}},"chosen":{"Data":{"k":"current"}}}}""");
 
         var archive = _ArchiveWith(
-            ("cockpit.json", """{"Profiles":"archived","PluginTrust":{"chosen":{"Source":"archive","KeyFingerprint":"old-key"},"added":{"Source":"archive","KeyFingerprint":"archive-key"}},"Plugins":{"chosen":{"Data":{"k":"archived"}},"unchosen":{"Data":{"k":"archived"}}}}"""));
+            ("cockpit.json", """{"Profiles":"archived","PluginTrust":{"chosen":{"Source":"archive","KeyFingerprint":"old-key"},"added":{"Source":"archive","KeyFingerprint":"archive-key"},"unchosen":{"Source":"archive","KeyFingerprint":"unselected-key"},"broken":"invalid","malformed":{"Source":123}},"Plugins":{"chosen":{"Data":{"k":"archived"}},"unchosen":{"Data":{"k":"archived"}}}}"""));
 
-        await _Restore(archive, new RestoreOptions(settings, ["chosen"]));
+        await _Restore(archive, new RestoreOptions(settings, ["chosen", "added", "broken", "malformed"]));
 
         var result = _Restored();
         Assert.Equal(expectedProfiles, result["Profiles"]!.GetValue<string>());
@@ -96,7 +96,10 @@ public sealed class RestoreIntoATemporaryRootTests : IDisposable
         Assert.Null(result["Plugins"]!["unchosen"]);
         Assert.Equal("new-key", result["PluginTrust"]?["chosen"]?["KeyFingerprint"]?.GetValue<string>());
         Assert.Equal("kept-key", result["PluginTrust"]?["kept"]?["KeyFingerprint"]?.GetValue<string>());
-        Assert.Equal("archive-key", result["PluginTrust"]?["added"]?["KeyFingerprint"]?.GetValue<string>());
+        Assert.Null(result["PluginTrust"]?["unchosen"]);
+        Assert.Null(result["PluginTrust"]?["broken"]);
+        Assert.Null(result["PluginTrust"]?["malformed"]);
+        Assert.Equal(expectedArchiveKey, result["PluginTrust"]?["added"]?["KeyFingerprint"]?.GetValue<string>());
     }
 
     /// <summary>

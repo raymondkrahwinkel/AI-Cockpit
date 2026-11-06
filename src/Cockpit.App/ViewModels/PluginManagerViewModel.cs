@@ -1400,13 +1400,14 @@ public partial class PluginManagerViewModel : ViewModelBase
         return new InstallOutcome(installResult.IsSuccess, provision.Live);
     }
 
-    private Task<bool> _ConfirmPublisherAsync(PluginKeyConsentRequest request, CancellationToken cancellationToken)
+    private async Task<bool> _ConfirmPublisherAsync(PluginKeyConsentRequest request, CancellationToken cancellationToken)
     {
         if (_dialogService is null)
         {
-            return Task.FromResult(false);
+            return false;
         }
-        return _dialogService.ShowConfirmationDialogAsync("Confirm plugin publisher", PluginConsentTerms.PublisherMessage(request), "Install");
+        return await Dispatcher.UIThread.InvokeAsync(async () =>
+            await _dialogService.ShowConfirmationDialogAsync("Confirm plugin publisher", PluginConsentTerms.PublisherMessage(request), "Install"));
     }
 
     // AC-1500: the "Update" action of the bundle-minimum notice — the store's own update for one plugin, no extra prompt.

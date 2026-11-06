@@ -109,7 +109,7 @@ public sealed class PluginProvisioningService(IPluginStoreClient storeClient, IP
                         return _Refuse(request, "Publisher key not confirmed yet.", PluginProvisionOutcome.KeyNotConfirmed);
                     }
                 }
-                if (state.Exists && !request.AllowDowngrade
+                if (state.Version is not null && !request.AllowDowngrade
                     && (!Version.TryParse(state.Version, out var current) || !Version.TryParse(request.Version.Version, out var incoming) || incoming <= current))
                 {
                     return _Refuse(request, "An update must have a newer version unless an older version was explicitly selected or pinned.");
@@ -117,7 +117,7 @@ public sealed class PluginProvisioningService(IPluginStoreClient storeClient, IP
             }
 
             var installed = await installer.InstallFromZipAsync(download.ZipPath, hostAbstractionsMajor, effectiveHostVersion, cancellationToken,
-                expectedId: required ? request.Id : null, expectedVersion: required ? request.Version.Version : null).ConfigureAwait(false);
+                expectedId: request.Id, expectedVersion: required ? request.Version.Version : null).ConfigureAwait(false);
             if (!installed.IsSuccess)
             {
                 return new PluginProvisionResult(PluginProvisionOutcome.Failed, request.Id, request.Name, installed.Error ?? "Install failed.", Warning: null, FolderId: null, Sha256: null);

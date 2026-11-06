@@ -30,24 +30,34 @@ public sealed class PluginPublisherTrustTests : IDisposable
     }
 
     [Theory]
-    [InlineData("other", "1.0.0", null, false)]
-    [InlineData("acme", "2.0.0", null, false)]
-    [InlineData("acme", "1.0.0", "plugin.json", false)]
-    [InlineData("acme", "1.0.0", "PLUGIN.JSON", false)]
-    [InlineData("acme", "1.0.0", "plugin.json.", false)]
-    [InlineData("acme", "1.0.0", "x/../plugin.json", false)]
-    [InlineData("acme", "1.0.0", null, true)]
-    public async Task SignedZipThatDoesNotBind_CannotWriteAPluginOrChangePins(string manifestId, string manifestVersion, string? alias, bool tamper)
+    [InlineData("other", "1.0.0", null, false, false)]
+    [InlineData("acme", "2.0.0", null, false, false)]
+    [InlineData("acme", "1.0.0", "plugin.json", false, false)]
+    [InlineData("acme", "1.0.0", "PLUGIN.JSON", false, false)]
+    [InlineData("acme", "1.0.0", "plugin.json.", false, false)]
+    [InlineData("acme", "1.0.0", "x/../plugin.json", false, false)]
+    [InlineData("acme", "1.0.0", null, true, false)]
+    [InlineData("acme", "1.0.0", null, false, true)]
+    public async Task SignedZipThatDoesNotBind_CannotWriteAPluginOrChangePins(string manifestId, string manifestVersion, string? alias, bool tamper, bool unsigned)
     {
+        _Package("0.9.0", 1);
+        Assert.True((await _installer.InstallFromZipAsync(_lastZip, 3)).IsSuccess);
+        var manifestPath = Path.Combine(_root, "plugins", "acme", "plugin.json");
+        var before = await File.ReadAllTextAsync(manifestPath);
+        var publisher = new PluginTrustEntry("depot:depot.example/acme", "previous-publisher");
+        await _trust.SaveAsync("acme", publisher);
         await _registrations.SaveAsync("acme", new PluginRegistration(true, "previous-pin"));
         var request = _Package("1.0.0", 1, manifestId, manifestVersion, alias, tamper);
 
+        request = _ForStore(request, unsigned);
         var result = await _service.InstallAsync(request, 3, keyConsent: _AcceptAsync);
 
         Assert.Equal(PluginProvisionOutcome.Failed, result.Outcome);
-        Assert.False(Directory.Exists(Path.Combine(_root, "plugins")));
+        Assert.Equal(before, await File.ReadAllTextAsync(manifestPath));
+        Assert.Equal(new[] { "acme" }, Directory.EnumerateDirectories(Path.Combine(_root, "plugins")).Select(Path.GetFileName));
+        Assert.False(Directory.Exists(Path.Combine(_root, "plugins", "onschuldig")));
         Assert.False(File.Exists(_lastZip));
-        Assert.Null(await _trust.GetAsync("acme"));
+        Assert.Equal(publisher, await _trust.GetAsync("acme"));
         Assert.Equal("previous-pin", (await _registrations.LoadAllAsync())["acme"].PinnedSha256);
     }
 
@@ -102,7 +112,6 @@ public sealed class PluginPublisherTrustTests : IDisposable
         Assert.NotNull(original);
         await _registrations.RemoveAsync("acme");
         await _installer.MarkForRemovalAsync("acme");
-        await _installer.SweepRemovalsAsync();
         Assert.Equal(original, await new PluginTrustStore(Path.Combine(_root, "cockpit.json")).GetAsync("acme"));
         Assert.True((await _service.InstallAsync(_Package("1.0.0", 1), 3)).IsSuccess);
         var revoked = _Package("1.1.0", 1) with { RevokedKeys = [new(original.KeyFingerprint, null, null)] };
@@ -110,10 +119,20 @@ public sealed class PluginPublisherTrustTests : IDisposable
         Assert.Equal(original, await _trust.GetAsync("acme"));
     }
 
-    [Theory]
-    [InlineData("acme.tools", "1.0.0")]
-    [InlineData("acme", "1.0.0-beta")]
-    public async Task InvalidSignedIdentity_IsRejectedBeforeDownloading(string id, string version)
+    [Fact]
+    public async Task InvalidSignedIdentity_IsRejectedBeforeDownloading()
+    {
+        using (var scenario = new PluginPublisherTrustTests())
+        {
+            await scenario._AssertInvalidIdentityAsync("acme.tools", "1.0.0");
+        }
+        using (var scenario = new PluginPublisherTrustTests())
+        {
+            await scenario._AssertInvalidIdentityAsync("acme", "1.0.0-beta");
+        }
+    }
+
+    private async Task _AssertInvalidIdentityAsync(string id, string version)
     {
         var request = _Package("1.0.0", 1);
         request = request with { Id = id, Version = request.Version with { Version = version } };
@@ -157,6 +176,16 @@ public sealed class PluginPublisherTrustTests : IDisposable
         Assert.False(wrongVersion.IsSuccess);
         Assert.Empty(Directory.EnumerateFileSystemEntries(Path.Combine(_root, "plugins")));
         Assert.Null(await _trust.GetAsync("acme"));
+        var folder = Path.Combine(_root, "plugins", "acme");
+        Directory.CreateDirectory(folder);
+        await File.WriteAllTextAsync(Path.Combine(folder, "plugin.json"), "broken manifest");
+        Assert.True((await _service.InstallAsync(_Package("1.0.0", 1), 3, keyConsent: _AcceptAsync)).IsSuccess);
+        var pending = Path.Combine(_root, "plugins", ".pending-updates", "acme");
+        Directory.CreateDirectory(pending);
+        var staged = """{"id":"acme","name":"Acme","version":"3.0.0","entryAssembly":"Plugin.dll","abstractionsVersion":3}""";
+        await File.WriteAllTextAsync(Path.Combine(pending, "plugin.json"), staged);
+        Assert.Equal(PluginProvisionOutcome.Failed, (await _service.InstallAsync(_Package("2.0.0", 1), 3)).Outcome);
+        Assert.Equal(staged, await File.ReadAllTextAsync(Path.Combine(pending, "plugin.json")));
     }
 
     [Fact]
@@ -175,6 +204,17 @@ public sealed class PluginPublisherTrustTests : IDisposable
         Assert.Same(AssemblyLoadContext.Default, AssemblyLoadContext.GetLoadContext(host));
         Assert.Same(context, AssemblyLoadContext.GetLoadContext(plugin));
         Assert.Same(plugin, context.LoadFromAssemblyName(host.GetName()));
+    }
+
+    private PluginProvisionRequest _ForStore(PluginProvisionRequest request, bool unsigned)
+    {
+        if (!unsigned)
+        {
+            return request;
+        }
+        _client.DownloadZipAsync(Arg.Any<PluginStoreConfig>(), Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>(), Arg.Any<IProgress<PluginDownloadProgress>?>())
+            .Returns(new PluginStoreDownloadResult(true, null, _lastZip));
+        return request with { Id = "onschuldig", Store = PluginStoreConfig.Local(_root) };
     }
 
     private PluginProvisionRequest _Package(string version, byte seedByte, string manifestId = "acme", string? manifestVersion = null, string? alias = null, bool tamper = false)

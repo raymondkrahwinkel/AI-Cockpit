@@ -476,11 +476,11 @@ internal sealed class BackupService(
 
         // Local publisher decisions win; an archive may only fill missing rules.
         var publisherTrust = (current["PluginTrust"] as JsonObject)?.DeepClone() as JsonObject ?? new JsonObject();
-        if (incoming["PluginTrust"] is JsonObject archivedTrust)
+        if (options.Settings && incoming["PluginTrust"] is JsonObject archivedTrust)
         {
             foreach (var (id, entry) in archivedTrust)
             {
-                if (!publisherTrust.ContainsKey(id))
+                if (options.Includes(id) && !publisherTrust.ContainsKey(id) && PluginTrustStore.ReadArchiveEntry(entry) is not null)
                 {
                     publisherTrust[id] = entry?.DeepClone();
                 }
@@ -618,7 +618,8 @@ internal sealed class BackupService(
                 ifItLands[request.Id] = note;
             }
 
-            var archivedTrust = (incoming?["PluginTrust"] as JsonObject)?[PluginFolderName.Normalize(request.Id)]?.Deserialize<PluginTrustEntry>();
+            var archivedTrust = options.Settings
+                ? PluginTrustStore.ReadArchiveEntry((incoming?["PluginTrust"] as JsonObject)?[PluginFolderName.Normalize(request.Id)]) : null;
             requests.Add(request with { RestoredTrust = archivedTrust, AllowDowngrade = true });
         }
 
