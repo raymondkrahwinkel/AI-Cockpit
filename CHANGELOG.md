@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Enable live MCP tool discovery in Codex sessions and follow unattended profiles' existing permission choice for tool approval on the Cockpit gateway.
+
+- Use one session MCP gateway for every session by default, keeping upstream credentials in Cockpit and showing a start failure when the gateway is unavailable. Remove the temporary switch and legacy direct-server route.
+
 - Run stdio MCP servers behind the opt-in session gateway with their session working directory, environment and process lifetime.
 
 - Update session MCP tools live, with search fallback, graceful removal and restored sets and delegation limits.
@@ -56,6 +60,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- Sessions that start directly in a project folder keep their no-isolation warning visible until an operator closes it.
+- The local gate now uses the available Windows or Unix Python launcher for its guards.
+
 - Plugin changes now require a restart only when the plugin declares it or a lifecycle operation fails; approving new capabilities resumes live updates.
 
 - A plugin update marker now clears as soon as the approved version is confirmed on disk; disabling a provider in use names its session and finishes after it closes without offering an unnecessary restart.
@@ -63,6 +70,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - Simple sessions now use the same provider instructions as sessions started from Panels.
 - A plugin is now turned off only after it is named in two interrupted starts in a row; Cockpit explains that recovery decision and offers to turn it back on.
 - Discord final-answer relays now send a streamed answer as one message.
+- Discord final-answer relays now post the answer when the assistant's turn ends, not when the next message arrives.
 - Assistant image input stays available after a model is confirmed, including Discord attachments, and model capabilities refresh without restarting the session.
 - Simple view now opens files and plugin workspaces in the main column, with open items to switch between them and guarded Back and Close actions.
 - Files whose live session does not respond now show the saved snapshot after a short timeout instead of staying on Loading; existing files no longer show "New file" while opening.
@@ -72,6 +80,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- Assistant replies now start read-aloud while they stream, prepare a small bounded look-ahead buffer, and keep consecutive spoken pieces seamless.
 - Simple session and assistant views now use the available window width instead of a fixed 720 px column.
 
 ### Removed

@@ -905,8 +905,8 @@ public sealed record EmbeddedSessionRequest
 
 ### `Task AddMcpServer(McpServerContribution contribution)` {#task-addmcpservermcpservercontribution-contribution}
 Registers (or updates) an HTTP MCP server in the **shared registry** (#60) — e.g. a remote MCP endpoint your
-plugin knows how to build a URL/token for — so both session worlds (the local tool-loop and the Claude
-fan-out) can use its tools without the user adding it by hand in the MCP-servers dialog. See
+plugin knows how to build a URL/token for — so the session gateway and the in-process tool-loop
+can use its tools without the user adding it by hand in the MCP-servers dialog. Credentials stay in Cockpit. See
 [`McpServerContribution`](#mcpservercontribution) below.
 - **Parameter** `contribution` — name, URL, optional bearer token, and scope.
 - **Idempotent upsert-by-name:** calling this again with the same `Name` refreshes the URL/token of an

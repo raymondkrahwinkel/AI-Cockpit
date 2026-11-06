@@ -54,10 +54,9 @@ internal sealed partial class SessionMcpGatewayHost : IHostedService, IAsyncDisp
         _cleanup = new(loggerFactory.CreateLogger<SessionMcpGatewayHost>());
     }
     internal string? BoundUrl { get; private set; }
-    public bool IsEnabled { get; private set; }
-    bool ISessionMcpGatewayState.IsEnabled => IsEnabled && BoundUrl is not null;
+    public bool IsEnabled => BoundUrl is not null;
 
-    public string? UrlFor(string paneId) => IsEnabled && BoundUrl is { } url
+    public string? UrlFor(string paneId) => BoundUrl is { } url
         ? $"{url}/s/{Uri.EscapeDataString(paneId)}/mcp"
         : null;
 
@@ -90,7 +89,6 @@ internal sealed partial class SessionMcpGatewayHost : IHostedService, IAsyncDisp
     {
         try
         {
-            IsEnabled = (await _configFile.ReadAsync(cancellationToken))?.SessionMcpGatewayEnabled ?? false;
             await _StartAsync(cancellationToken);
         }
         catch (Exception exception)
@@ -389,6 +387,7 @@ internal sealed partial class SessionMcpGatewayHost : IHostedService, IAsyncDisp
 
     public async ValueTask DisposeAsync()
     {
+        BoundUrl = null;
         CockpitConfigFileAccess.Written -= _ConfigWritten;
         _keyring.RunEnded -= _EndBindings;
         if (_app is { } app)

@@ -6809,7 +6809,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
             if (launched?.UnisolatedNotice is { } notice)
             {
-                ToastHost.Add(notice.Message, ToastSeverity.Warning, null, null);
+                ToastHost.Add(notice.Message, ToastSeverity.Warning, [], sticky: true,
+                    key: $"session.unisolated:{launched.PaneId}");
             }
 
             return launched?.PaneId is { Length: > 0 } started ? started : null;
@@ -9638,11 +9639,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     private sealed class _ChatLeakSimVoiceQueue : Cockpit.Core.Abstractions.Voice.IVoicePlaybackQueue
     {
-        public void Enqueue(IReadOnlyList<string> sentences, int speakerId, string language, Cockpit.Core.Voice.VoicePlaybackSource source = Cockpit.Core.Voice.VoicePlaybackSource.Session) { }
-        public void Enqueue(IReadOnlyList<Cockpit.Core.Voice.SpeechSegment> segments, int speakerId, Cockpit.Core.Voice.VoicePlaybackSource source = Cockpit.Core.Voice.VoicePlaybackSource.Session) { }
-        public void NotifyPreparing(Cockpit.Core.Voice.VoicePlaybackSource source = Cockpit.Core.Voice.VoicePlaybackSource.Session) { }
+        public void Enqueue(IReadOnlyList<string> sentences, int speakerId, string language, Cockpit.Core.Voice.VoicePlaybackSource source = Cockpit.Core.Voice.VoicePlaybackSource.Session, string? ownerId = null) { }
+        public void Enqueue(IReadOnlyList<Cockpit.Core.Voice.SpeechSegment> segments, int speakerId, Cockpit.Core.Voice.VoicePlaybackSource source = Cockpit.Core.Voice.VoicePlaybackSource.Session, string? ownerId = null) { }
+        public void NotifyPreparing(Cockpit.Core.Voice.VoicePlaybackSource source = Cockpit.Core.Voice.VoicePlaybackSource.Session, string? ownerId = null) { }
         public event EventHandler<bool>? PlaybackActiveChanged { add { } remove { } }
         public event EventHandler? SpeakingStarted { add { } remove { } }
+        public event EventHandler<Cockpit.Core.Abstractions.Voice.VoicePlaybackStoppedEventArgs>? PlaybackStopped { add { } remove { } }
         public void StopAll() { }
         public int Generation => 0;
         public Cockpit.Core.Voice.VoicePlaybackSource ActiveSource => Cockpit.Core.Voice.VoicePlaybackSource.Session;

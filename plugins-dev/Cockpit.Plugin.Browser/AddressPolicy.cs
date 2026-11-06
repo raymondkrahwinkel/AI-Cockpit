@@ -1,14 +1,19 @@
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using Cockpit.Plugin.Browser.Contracts;
 
 namespace Cockpit.Plugin.Browser;
 
 internal sealed class AddressPolicy(Func<IReadOnlyList<string>> allowlist,
-    Func<string, CancellationToken, Task<IPAddress[]>>? resolve = null)
+    Func<string, CancellationToken, Task<IPAddress[]>>? resolve = null,
+    Func<IEnumerable<IPAddress>>? ownMachineAddresses = null)
 {
     public async Task<string?> BlockReasonAsync(Uri uri, CancellationToken token)
         => (await ResolveAsync(uri, token).ConfigureAwait(false)).Reason;
+
+    internal bool IsOwnMachineOnly(IEnumerable<IPAddress> addresses) =>
+        addresses.Any() && addresses.All(IsOwnMachineAddress);
 
     public async Task<(IPAddress[] Addresses, string? Reason)> ResolveAsync(Uri uri, CancellationToken token)
     {
@@ -24,10 +29,6 @@ internal sealed class AddressPolicy(Func<IReadOnlyList<string>> allowlist,
         {
             nameCategory = ".local";
         }
-        if (!allowedHost && nameCategory is not null && !entries.Any(NetworkAllowlist.IsNetwork))
-        {
-            return ([], $"Network access blocked: {nameCategory} name.");
-        }
         IPAddress[] addresses;
         try
         {
@@ -42,9 +43,19 @@ internal sealed class AddressPolicy(Func<IReadOnlyList<string>> allowlist,
         {
             return ([], "Network access blocked: DNS returned no addresses.");
         }
-        foreach (var resolved in addresses)
+        var normalized = addresses.Select(address => address.IsIPv4MappedToIPv6 ? address.MapToIPv4() : address).ToArray();
+        var literalOwnMachineAddress = IPAddress.TryParse(host, out var ownMachineLiteral) && IsOwnMachineAddress(Normalize(ownMachineLiteral));
+        if (nameCategory == "localhost" && normalized.All(IsLoopbackAddress)
+            || literalOwnMachineAddress && IsOwnMachineOnly(normalized))
         {
-            var address = resolved.IsIPv4MappedToIPv6 ? resolved.MapToIPv4() : resolved;
+            return (normalized, null);
+        }
+        if (nameCategory == ".local" && IsOwnMachineOnly(normalized))
+        {
+            return (normalized, null);
+        }
+        foreach (var address in normalized)
+        {
             if (allowedHost || entries.Any(entry => NetworkAllowlist.AllowsAddress(entry, address)))
             {
                 continue;
@@ -61,9 +72,20 @@ internal sealed class AddressPolicy(Func<IReadOnlyList<string>> allowlist,
         return (addresses, null);
     }
 
+    private bool IsOwnMachineAddress(IPAddress address) =>
+        IsLoopbackAddress(address) || OwnMachineAddresses().Any(own => Normalize(own).Equals(address));
+
+    private IEnumerable<IPAddress> OwnMachineAddresses() => ownMachineAddresses?.Invoke()
+        ?? NetworkInterface.GetAllNetworkInterfaces().SelectMany(network => network.GetIPProperties().UnicastAddresses.Select(unicast => unicast.Address));
+
+    private static IPAddress Normalize(IPAddress address) => address.IsIPv4MappedToIPv6 ? address.MapToIPv4() : address;
+
+    private static bool IsLoopbackAddress(IPAddress address) =>
+        address.AddressFamily == AddressFamily.InterNetwork ? address.GetAddressBytes()[0] == 127 : IPAddress.IPv6Loopback.Equals(address);
+
     private static string? Category(IPAddress address)
     {
-        if (IPAddress.IsLoopback(address))
+        if (IsLoopbackAddress(address))
         {
             return "loopback";
         }

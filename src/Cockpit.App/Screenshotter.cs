@@ -4790,21 +4790,23 @@ internal static partial class Screenshotter
     // answer — this exists only so AssistantChatViewModel's constructor has something to call StopAll on.
     private sealed class _NullVoicePlaybackQueue : Cockpit.Core.Abstractions.Voice.IVoicePlaybackQueue
     {
-        public void Enqueue(IReadOnlyList<string> sentences, int speakerId, string language, Cockpit.Core.Voice.VoicePlaybackSource source = Cockpit.Core.Voice.VoicePlaybackSource.Session)
+        public void Enqueue(IReadOnlyList<string> sentences, int speakerId, string language, Cockpit.Core.Voice.VoicePlaybackSource source = Cockpit.Core.Voice.VoicePlaybackSource.Session, string? ownerId = null)
         {
         }
 
-        public void Enqueue(IReadOnlyList<Cockpit.Core.Voice.SpeechSegment> segments, int speakerId, Cockpit.Core.Voice.VoicePlaybackSource source = Cockpit.Core.Voice.VoicePlaybackSource.Session)
+        public void Enqueue(IReadOnlyList<Cockpit.Core.Voice.SpeechSegment> segments, int speakerId, Cockpit.Core.Voice.VoicePlaybackSource source = Cockpit.Core.Voice.VoicePlaybackSource.Session, string? ownerId = null)
         {
         }
 
-        public void NotifyPreparing(Cockpit.Core.Voice.VoicePlaybackSource source = Cockpit.Core.Voice.VoicePlaybackSource.Session)
+        public void NotifyPreparing(Cockpit.Core.Voice.VoicePlaybackSource source = Cockpit.Core.Voice.VoicePlaybackSource.Session, string? ownerId = null)
         {
         }
 
         public event EventHandler<bool>? PlaybackActiveChanged { add { } remove { } }
 
         public event EventHandler? SpeakingStarted { add { } remove { } }
+
+        public event EventHandler<Cockpit.Core.Abstractions.Voice.VoicePlaybackStoppedEventArgs>? PlaybackStopped { add { } remove { } }
 
         public void StopAll()
         {

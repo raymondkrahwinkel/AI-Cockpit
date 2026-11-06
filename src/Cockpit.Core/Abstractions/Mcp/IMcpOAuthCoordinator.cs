@@ -30,13 +30,6 @@ public interface IMcpOAuthCoordinator
     Task<McpOAuthAccess> AcquireAsync(McpServerConfig server, bool interactive, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// The credential to bake into a session's config (AC-524). Never interactive; unlike <see cref="AcquireAsync"/>
-    /// (one request), this is held for the session's life, so minutes left on the token is a session whose tools
-    /// disappear minutes in. Separate entry point, not a flag: the TTY spawn path passes its token positionally, so a parameter slid in before it is a trap that compiles.
-    /// </summary>
-    Task<McpOAuthAccess> AcquireForSessionAsync(McpServerConfig server, CancellationToken cancellationToken = default);
-
-    /// <summary>
     /// Reports that <paramref name="rejectedAccessToken"/> was turned away by the server, and answers with whatever
     /// replaces it (AC-524) — only the server knows a token is dead, and without this every later call would repeat
     /// the refusal. At most one round trip per concurrent refusal: a caller whose token is no longer stored just gets the current one, the rest coalesce.

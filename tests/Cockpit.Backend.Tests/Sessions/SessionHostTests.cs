@@ -27,7 +27,7 @@ public class SessionHostTests
         runtime.SupportsReadOnlyTurns.Returns(true);
         var provider = Substitute.For<IPluginSessionDriver>();
         provider.SupportsReadOnlyTurns.Returns(true);
-        var adapter = new PluginSessionDriverAdapter(provider, new PluginSessionCapabilities(true, true), new McpAuthKey());
+        var adapter = new PluginSessionDriverAdapter(provider, new PluginSessionCapabilities(true, true));
         Func<string, bool>? providerFilter = null;
         provider.SetReadOnlyTurnAsync(Arg.Any<Func<string, bool>?>(), Arg.Any<CancellationToken>()).Returns(call =>
         {

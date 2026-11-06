@@ -22,10 +22,14 @@ public sealed class StateRootOverrideTests
     private static readonly string Override =
         Path.Combine(Path.GetTempPath(), "cockpit-state-root-override-test");
 
-    // The one path that must NOT move: it names the root the override replaces, which is how the single-instance
-    // claim tells a shared state directory from a private one (AC-1217). Listed by name rather than skipped by a
-    // rule, so a second path cannot join it without this line being edited.
     private const string DoesNotMoveByDesign = "CockpitBuild.DefaultStateRoot";
+
+    // Scratch fallbacks follow TMP, so a worktree below StateRoot must not make them appear persistent.
+    private static readonly string[] ExternalPaths =
+    [
+        "SessionScratch.FallbackBase",
+        "SessionScratch.LegacyRoot",
+    ];
 
     [Fact]
     public void ARelativeOverride_IsRefusedRatherThanResolvedPerProcess()
@@ -59,7 +63,7 @@ public sealed class StateRootOverrideTests
         // property leaves a dead exemption rather than a quietly widened one.
         Assert.Contains(underRealRoot, path => path.Name == DoesNotMoveByDesign);
 
-        underRealRoot = underRealRoot.Where(path => path.Name != DoesNotMoveByDesign).ToList();
+        underRealRoot = underRealRoot.Where(path => path.Name != DoesNotMoveByDesign && !ExternalPaths.Contains(path.Name)).ToList();
 
         using var _ = new OverrideScope(Override);
 

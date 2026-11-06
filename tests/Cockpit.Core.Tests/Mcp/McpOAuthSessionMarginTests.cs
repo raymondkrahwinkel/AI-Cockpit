@@ -4,16 +4,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cockpit.Core.Tests.Mcp;
 
-/// <summary>
-/// The margin a session's credential is judged by, and the single-flight gate that keeps making it wider from
-/// costing the authorization it protects (AC-524).
-/// <para>
-/// The failure this exists for was measured, not imagined: a session started while its access token still had eleven
-/// minutes to live, the token was written into a config the CLI reads exactly once, and eleven minutes later the
-/// server and all its tools were gone from that session with no way back. The per-request margin is two minutes,
-/// which is right for a token spent immediately and useless for one held for hours.
-/// </para>
-/// </summary>
+// Per-request OAuth token lifetime and coalesced renewal of rotating refresh grants.
 public class McpOAuthSessionMarginTests
 {
     // Port 1 refuses immediately, so the connect after the (faked) renewal fails fast and deterministically.
@@ -37,25 +28,6 @@ public class McpOAuthSessionMarginTests
     };
 
     [Fact]
-    public async Task AcquireForSession_ForATokenWithElevenMinutesLeft_RefusesToHandItToASession()
-    {
-        var store = new FakeMcpOAuthTokenStore();
-        await store.SaveAsync("depot", "depot", _TokenExpiringIn(TimeSpan.FromMinutes(11)));
-        var coordinator = new McpOAuthCoordinator(store, new FakeMcpOAuthAuthorizer(), NullLogger<McpOAuthCoordinator>.Instance);
-
-        var forSession = await coordinator.AcquireForSessionAsync(_Server());
-        var forOneRequest = await coordinator.AcquireAsync(_Server(), interactive: false);
-
-        // The two answers differing is the whole fix. Eleven minutes is plenty for the request that is about to go
-        // out and nowhere near enough for a config a session reads once and then holds — and with no refresh token
-        // there is nothing to renew from, so the session is told up front instead of losing the server later.
-        Assert.Equal(McpAuthState.AuthorizationRequired, forSession.State);
-        Assert.Equal(McpOAuthAttentionReason.SignInExpired, forSession.Reason);
-        Assert.Equal(McpAuthState.Authorized, forOneRequest.State);
-        Assert.Equal(McpOAuthAttentionReason.None, forOneRequest.Reason);
-    }
-
-    [Fact]
     public async Task Acquire_AgainstAServerWhoseTokensAreShorterThanTheRenewalLead_DoesNotRenewOnEveryCall()
     {
         var store = new FakeMcpOAuthTokenStore();
@@ -74,7 +46,7 @@ public class McpOAuthSessionMarginTests
     }
 
     [Fact]
-    public async Task AcquireForSession_WhenSeveralSessionsStartAtOnce_RenewsOnceAndGivesThemAllTheSameToken()
+    public async Task Acquire_WhenSeveralCallsStartAtOnce_RenewsOnceAndGivesThemAllTheSameToken()
     {
         var store = new FakeMcpOAuthTokenStore();
         await store.SaveAsync("depot", "depot", _TokenExpiringIn(TimeSpan.FromMinutes(-1), refreshToken: "refresh"));
@@ -85,7 +57,7 @@ public class McpOAuthSessionMarginTests
         // window the callers would file past one after another and the test would pass on a race that never ran.
         authorizer.Gate.Reset();
         var starts = Enumerable.Range(0, 8)
-            .Select(_ => Task.Run(() => coordinator.AcquireForSessionAsync(_Server())))
+            .Select(_ => Task.Run(() => coordinator.AcquireAsync(_Server(), interactive: false)))
             .ToArray();
 
         Assert.True(authorizer.Started.Wait(TimeSpan.FromSeconds(10)));
