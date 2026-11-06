@@ -1573,6 +1573,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         // not just suppress future turns.
         if (!value)
         {
+            OnReadAloudInvalidated();
             _voicePlaybackQueue?.StopAll();
         }
         else if (IsAudioAvailable && _voicePlaybackQueue is not null)
@@ -1599,6 +1600,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         {
             _playbackStoppedHandler = (_, stopped) =>
             {
+                OnReadAloudInvalidated();
                 if (string.Equals(stopped.OwnerId, PaneId, StringComparison.Ordinal))
                 {
                     _readAloudCancelled = true;
@@ -1682,16 +1684,20 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
     protected void ResetReadAloudCancellation()
     {
+        OnReadAloudInvalidated();
         _readAloudTurn++;
         _readAloudCancelled = false;
     }
 
     protected void CancelReadAloud()
     {
+        OnReadAloudInvalidated();
         _readAloudCancelled = true;
         _readAloudTurn++;
         _voicePlaybackQueue?.StopAll();
     }
+
+    protected virtual void OnReadAloudInvalidated() { }
 
     // Starts a push-to-talk hold (KeyDown on the configured hotkey). Returns false — a no-op the
     // caller should not mark `Handled` for — when voice is off, unwired, or a hold is already in
@@ -2033,6 +2039,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         }
 
         _disposed = true;
+        OnReadAloudInvalidated();
 
         if (_voicePlaybackQueue is not null && _playbackStoppedHandler is not null)
         {

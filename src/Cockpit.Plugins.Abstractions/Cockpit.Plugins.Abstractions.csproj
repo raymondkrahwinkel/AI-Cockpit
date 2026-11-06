@@ -663,7 +663,8 @@
     <!-- 3.68.0 (AC-2024): ICockpitHost.TrackerProvidersChanged and PluginProfileInfo.ProviderAvailable; a plugin that
          uses either requires host 0.160.0, contract stays 3. -->
     <!-- AC-2103: optional file serialization on a live snapshot binds recovery confirmation to its revision. -->
-    <Version>3.70.0</Version>
+    <!-- AC-2166: optional session-less ephemeral speech generation; additive, contract stays 3. -->
+    <Version>3.71.0</Version>
     <AssemblyVersion>1.17.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>
