@@ -13,8 +13,10 @@ namespace Cockpit.Infrastructure.Sessions;
 internal sealed class HostPluginToolset : IPluginToolset, IAsyncDisposable
 {
     private readonly IMcpToolSession _toolSession;
-    private IReadOnlyList<AIFunction> _turnTools;
-    private IReadOnlyList<McpSessionTool> _gatedTools;
+    private sealed record ToolSnapshot(IReadOnlyList<McpSessionTool> Gated, IReadOnlyList<AIFunction> Turn, IReadOnlyList<PluginToolDescriptor> Descriptors, IReadOnlyList<string> Reachable);
+    private ToolSnapshot _snapshot;
+    private readonly Lock _turnGate = new();
+    private bool _turnActive;
     private readonly PluginHostToolLoop _loop;
     private readonly ILogger? _logger;
     private int _toolsChanged;
@@ -26,8 +28,8 @@ internal sealed class HostPluginToolset : IPluginToolset, IAsyncDisposable
         _logger = logger;
         Gate = gate;
         Events = events;
-        _gatedTools = _LiveGatedTools();
-        _turnTools = _BuildTurnTools(_gatedTools, loop, logger);
+        Gate.ToolClasses = _toolSession.ToolClasses;
+        _snapshot = _BuildSnapshot();
         _toolSession.ToolsChanged += _OnToolsChanged;
     }
 
@@ -35,26 +37,50 @@ internal sealed class HostPluginToolset : IPluginToolset, IAsyncDisposable
 
     private IReadOnlyList<McpSessionTool> _LiveGatedTools()
     {
-        Gate.ToolClasses = _toolSession.ToolClasses;
         return [.. _toolSession.Tools.Select(tool => tool with { Function = new GatedTool(tool.Function, Gate) })];
     }
 
     public void RefreshTools()
     {
-        if (Interlocked.Exchange(ref _toolsChanged, 0) != 0)
+        lock (_turnGate)
         {
-            _gatedTools = _LiveGatedTools();
-            _turnTools = _BuildTurnTools(_gatedTools, _loop, _logger);
+            if (!_turnActive && Interlocked.Exchange(ref _toolsChanged, 0) != 0)
+            {
+                var snapshot = _BuildSnapshot();
+                Gate.ToolClasses = _toolSession.ToolClasses;
+                Volatile.Write(ref _snapshot, snapshot);
+            }
         }
     }
 
-    public IReadOnlyList<PluginToolDescriptor> Tools => [.. _turnTools.Select(tool => new PluginToolDescriptor(_ServerOf(_gatedTools, tool.Name), tool.Name, tool.Description, tool.JsonSchema.GetRawText()))];
+    public void BeginTurn()
+    {
+        lock (_turnGate)
+        {
+            RefreshTools();
+            _turnActive = true;
+        }
+    }
 
-    public IReadOnlyList<string> ReachableToolNames =>
-        [
-            .. _gatedTools.Select(tool => tool.Function.Name),
-            .. _turnTools.Select(tool => tool.Name).Where(name => name is CockpitToolSearch.SearchToolName or CockpitToolSearch.CallToolName),
-        ];
+    public void EndTurn()
+    {
+        lock (_turnGate)
+        {
+            _turnActive = false;
+        }
+    }
+
+    private ToolSnapshot _BuildSnapshot()
+    {
+        var gated = _LiveGatedTools();
+        var turn = _BuildTurnTools(gated, _loop, _logger);
+        return new(gated, turn,
+            [.. turn.Select(tool => new PluginToolDescriptor(_ServerOf(gated, tool.Name), tool.Name, tool.Description, tool.JsonSchema.GetRawText()))],
+            [.. gated.Select(tool => tool.Function.Name), .. turn.Select(tool => tool.Name).Where(name => name is CockpitToolSearch.SearchToolName or CockpitToolSearch.CallToolName)]);
+    }
+
+    public IReadOnlyList<PluginToolDescriptor> Tools => Volatile.Read(ref _snapshot).Descriptors;
+    public IReadOnlyList<string> ReachableToolNames => Volatile.Read(ref _snapshot).Reachable;
 
     // The gate every call goes through, and what the adapter answers a permission prompt on.
     public SessionToolApprovalGate Gate { get; }
@@ -156,8 +182,9 @@ internal sealed class HostPluginToolset : IPluginToolset, IAsyncDisposable
 
     public async Task<string> InvokeAsync(string name, string argumentsJson, CancellationToken cancellationToken = default)
     {
-        var tool = _turnTools.FirstOrDefault(candidate => string.Equals(candidate.Name, name, StringComparison.Ordinal))
-            ?? _gatedTools.FirstOrDefault(candidate => string.Equals(candidate.Function.Name, name, StringComparison.Ordinal))?.Function;
+        var snapshot = Volatile.Read(ref _snapshot);
+        var tool = snapshot.Turn.FirstOrDefault(candidate => string.Equals(candidate.Name, name, StringComparison.Ordinal))
+            ?? snapshot.Gated.FirstOrDefault(candidate => string.Equals(candidate.Function.Name, name, StringComparison.Ordinal))?.Function;
         if (tool is null)
         {
             return $"No tool called \"{name}\" is available to this session.";

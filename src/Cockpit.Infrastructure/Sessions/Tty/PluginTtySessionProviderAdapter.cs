@@ -107,6 +107,10 @@ internal sealed class PluginTtySessionProviderAdapter(
                 : conversation => conversationSink.Report(paneId, conversation.ToCore()),
         });
 
+        if (_gatewayServerNames is not null && paneId is not null)
+        {
+            gateway?.SetToolAuthorization(paneId, (name, input) => inner is IPluginMcpToolAuthorization policy && policy.MayCallWithoutPrompt(name, input));
+        }
         return new TtyLaunchSpec(
             spec.ExecutablePath,
             spec.Arguments,
@@ -128,7 +132,7 @@ internal sealed class PluginTtySessionProviderAdapter(
 
         try
         {
-            if (_PaneId(context.BaseEnvironment) is { } desiredPane && mcpMounts?.Set(desiredPane) is { PreserveSelection: true } desired)
+            if (_PaneId(context.BaseEnvironment) is { } desiredPane && gateway?.UrlFor(desiredPane) is not null && mcpMounts?.Set(desiredPane) is { PreserveSelection: true } desired)
             {
                 enabledServerNames = new ExactMcpServerSelection(desired.ServerNames) { AssistantManaged = desired.Context?.Manager == SessionMcpManager.Assistant };
             }

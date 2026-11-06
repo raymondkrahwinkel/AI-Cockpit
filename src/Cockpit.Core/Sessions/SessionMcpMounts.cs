@@ -31,6 +31,7 @@ public sealed class SessionMcpMounts : ISingletonService
         _mounted.AddOrUpdate(paneId,
             _ => new SessionMcpSet(null, Array.Empty<string>().ToFrozenSet(StringComparer.OrdinalIgnoreCase)) { DelegationCeiling = names },
             (_, current) => current with { DelegationCeiling = names });
+        Changed?.Invoke(paneId);
     }
 
     public bool TryChange(string paneId, SessionMcpSet expected, string name, bool add)

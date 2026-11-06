@@ -3983,7 +3983,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     private void _OnSessionMcpSetChanged(string paneId) => _OnUiThread(() =>
     {
-        if (FindSession(paneId) is { } session && _sessionMcpMounts?.Set(paneId) is { Context: { } context } set)
+        if (_sessionMcpRestore?.IsEnabled == true && FindSession(paneId) is { } session && _sessionMcpMounts?.Set(paneId) is { Context: { } context } set)
         {
             session.McpServerSelection = new ExactMcpServerSelection(set.ServerNames) { AssistantManaged = context.Manager == SessionMcpManager.Assistant };
         }
@@ -3997,7 +3997,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             if (FindSession(paneId) is { } session)
             {
-                var set = _sessionMcpMounts?.Set(paneId);
+                var set = _sessionMcpRestore?.IsEnabled == true ? _sessionMcpMounts?.Set(paneId) : null;
                 IEnumerable<string> desiredNames = set is null ? connectedServerNames : set.ServerNames;
                 var selection = new HashSet<string>(desiredNames, StringComparer.OrdinalIgnoreCase);
                 if (set?.Context is null)
@@ -8507,9 +8507,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             SessionOptionCatalog.DefaultModel,
             SessionOptionCatalog.DefaultEffort,
             pane.Title,
-            EnabledMcpServerNames: plan.State?.McpServerNames is { } names
-                ? new ExactMcpServerSelection(names) { AssistantManaged = plan.State.McpManager == SessionMcpManager.Assistant }
-                : null,
             WorkingDirectory: _restoreWorkingDirectories.GetValueOrDefault(pane.Id, pane.WorkingDirectory),
             Resume: resume,
             PluginTtyOptions: isSdk ? null : profile.Defaults?.OptionDefaults,
@@ -8521,6 +8518,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             ProjectId: pane.ProjectId)
         {
             NameIsComposed = !pane.NameIsChosen,
+            StartedByTheAssistant = _sessionRegistry?.Find(pane.Id)?.StartedByTheAssistant == true,
         };
     }
 

@@ -266,6 +266,10 @@ See the [design note](docs/workspaces-widgets-terminals.md) and the
 `SessionMcpGatewayEnabled` in `cockpit.json` is the temporary session MCP gateway switch (default `false`).
 It is read at startup and stays local to this machine, outside settings carriers. The loopback gateway
 starts with either value; when off, it offers no session URL. Session routing is introduced in AC-2126.
+Live refresh and MCP-set restore run only while this gateway is enabled. The gateway's `call_tool`
+uses the provider's canonical-name authorization and the session ceiling; calls needing permission
+are refused and exposed by name for the next turn. Providers can implement `IPluginMcpToolAuthorization`
+to authorize fallback calls without a prompt. Unknown provider policies refuse fallback execution.
 
 Your API keys, MCP bearer tokens and the plugins' tokens live in `cockpit.json`. What the cockpit does about that:
 

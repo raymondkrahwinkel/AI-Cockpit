@@ -25,7 +25,7 @@ public sealed class SessionStateRecorder : ISessionStateCache, ISingletonService
     // AC-1531: each state written, in call order, for the conversation index that keeps it after the pane is gone.
     public event Action<SessionStateRecord>? Recorded;
 
-    public SessionStateRecorder(ISessionStateStore store, SessionConversationTracker conversationTracker, ILogger<SessionStateRecorder> logger, SessionMcpMounts? mounts = null)
+    public SessionStateRecorder(ISessionStateStore store, SessionConversationTracker conversationTracker, ILogger<SessionStateRecorder> logger, SessionMcpMounts? mounts = null, ISessionMcpGatewayState? gatewayState = null)
     {
         _store = store;
         _logger = logger;
@@ -35,7 +35,13 @@ public sealed class SessionStateRecorder : ISessionStateCache, ISingletonService
         conversationTracker.Changed += _OnConversationChanged;
         if (mounts is not null)
         {
-            mounts.Changed += paneId => _OnMcpSetChanged(mounts, paneId);
+            mounts.Changed += paneId =>
+            {
+                if (gatewayState?.IsEnabled == true)
+                {
+                    _OnMcpSetChanged(mounts, paneId);
+                }
+            };
         }
     }
 
@@ -54,7 +60,7 @@ public sealed class SessionStateRecorder : ISessionStateCache, ISingletonService
                 McpServerNames = names,
                 McpManager = context.Manager,
                 McpDelegationCeiling = ceiling,
-                McpIsDelegated = ceiling is not null,
+                McpIsDelegated = ceiling is not null ? true : existing.McpIsDelegated,
                 McpPreserveSelection = set.PreserveSelection,
             }, CancellationToken.None);
         }

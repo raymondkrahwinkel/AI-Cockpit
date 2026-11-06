@@ -15,6 +15,7 @@ internal sealed class GatewayMcpBinding : IAsyncDisposable
     private readonly Task _worker;
     private readonly TaskCompletionSource _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private Task _pendingConnections = Task.CompletedTask;
+    private readonly McpBackgroundTasks _connections;
     private int _disposeStarted;
 
     public GatewayMcpBinding(McpToolProvider provider, SessionMcpMounts mounts, string paneId, string token, ILogger logger)
@@ -23,6 +24,7 @@ internal sealed class GatewayMcpBinding : IAsyncDisposable
         _mounts = mounts;
         _paneId = paneId;
         _logger = logger;
+        _connections = new(logger);
         Session = provider.CreateGatewaySession(paneId, token, mounts.Set(paneId)?.Context);
         _mounts.Changed += _OnChanged;
         _changes.Writer.TryWrite(true);
@@ -67,7 +69,8 @@ internal sealed class GatewayMcpBinding : IAsyncDisposable
                     var registry = await _provider.GatewayServersAsync(_paneId, deadline.Token);
                     _pendingConnections = Session.UpdateServersAsync(registry);
                     _ready.TrySetResult();
-                    await _pendingConnections;
+                    var pending = _pendingConnections;
+                    _connections.Run(() => pending);
                 }
                 catch (Exception) when (!_lifetime.IsCancellationRequested)
                 {
@@ -93,6 +96,7 @@ internal sealed class GatewayMcpBinding : IAsyncDisposable
         await _worker;
         await Session.DisposeAsync();
         await _pendingConnections;
+        await _connections.DrainAsync();
         _lifetime.Dispose();
     }
 }

@@ -5,6 +5,7 @@ using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Agents;
+using Cockpit.Core.Abstractions.Sessions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
@@ -21,7 +22,7 @@ using ModelContextProtocol.Server;
 
 namespace Cockpit.Infrastructure.Mcp;
 
-internal sealed class SessionMcpGatewayHost : IHostedService, IAsyncDisposable
+internal sealed partial class SessionMcpGatewayHost : IHostedService, IAsyncDisposable, ISessionMcpGatewayState
 {
     private readonly ConcurrentDictionary<string, string> _owners = new(StringComparer.Ordinal);
     private readonly McpAuthKey _authKey;
@@ -54,6 +55,7 @@ internal sealed class SessionMcpGatewayHost : IHostedService, IAsyncDisposable
     }
     internal string? BoundUrl { get; private set; }
     public bool IsEnabled { get; private set; }
+    bool ISessionMcpGatewayState.IsEnabled => IsEnabled && BoundUrl is not null;
 
     public string? UrlFor(string paneId) => IsEnabled && BoundUrl is { } url
         ? $"{url}/s/{Uri.EscapeDataString(paneId)}/mcp"
@@ -138,7 +140,21 @@ internal sealed class SessionMcpGatewayHost : IHostedService, IAsyncDisposable
                     var live = binding.Session;
                     var collection = session.ToolCollection;
                     var gate = new SemaphoreSlim(1);
-                    var searchTools = CockpitToolSearch.Build(() => live.GatewayTools).OfType<AIFunction>().Select(tool => McpServerTool.Create(tool)).ToArray();
+                    var directTools = new ConcurrentDictionary<string, byte>(StringComparer.Ordinal);
+                    Action? exposeRefresh = null;
+                    var searchTools = CockpitToolSearch.Build(() => live.GatewayTools).OfType<AIFunction>().Select(tool =>
+                    {
+                        var proxy = McpServerTool.Create(tool);
+                        return tool.Name == CockpitToolSearch.CallToolName
+                            ? new ForwardMcpServerTool(tool.Name, proxy.ProtocolTool, live, (request, token) => _CallFallbackAsync(paneId, live, request, name =>
+                            {
+                                if (directTools.TryAdd(name, 0))
+                                {
+                                    exposeRefresh?.Invoke();
+                                }
+                            }, token))
+                            : proxy;
+                    }).ToArray();
                     collectionGate = gate;
                     void Refresh()
                     {
@@ -148,7 +164,7 @@ internal sealed class SessionMcpGatewayHost : IHostedService, IAsyncDisposable
                             var desired = live.ForwardTools.ToDictionary(tool => tool.ProtocolTool.Name, StringComparer.Ordinal);
                             if (!hasNativeSearch && (live.GatewayTools.Count > CockpitToolSearch.PreloadThreshold || requiresSearchFallback))
                             {
-                                var preloaded = live.GatewayTools.Where(tool => tool.AlwaysMounted).Select(tool => tool.Function.Name).ToHashSet(StringComparer.Ordinal);
+                                var preloaded = live.GatewayTools.Where(tool => tool.AlwaysMounted || directTools.ContainsKey(tool.Function.Name)).Select(tool => tool.Function.Name).ToHashSet(StringComparer.Ordinal);
                                 desired = desired.Where(pair => preloaded.Contains(pair.Key)).ToDictionary(StringComparer.Ordinal);
                                 foreach (var search in searchTools)
                                 {
@@ -175,6 +191,7 @@ internal sealed class SessionMcpGatewayHost : IHostedService, IAsyncDisposable
                         }
                     }
                     refresh = Refresh;
+                    exposeRefresh = Refresh;
                     live.ToolsChanged += Refresh;
                     http.Items[typeof(GatewayMcpBinding)] = (Action)(() => live.ToolsChanged -= Refresh);
                     await binding.WaitForConnectionsAsync(ct);
@@ -342,6 +359,7 @@ internal sealed class SessionMcpGatewayHost : IHostedService, IAsyncDisposable
 
     private void _EndBindings(string paneId)
     {
+        _toolAuthorization.TryRemove(paneId, out _);
         foreach (var pair in _bindings)
         {
             if (pair.Key.Pane == paneId && _bindings.TryRemove(pair.Key, out var binding) && binding.IsValueCreated)

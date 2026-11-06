@@ -12,6 +12,7 @@ namespace Cockpit.Infrastructure.Mcp;
 internal interface IMcpToolSession : IAsyncDisposable
 {
     IReadOnlyList<McpSessionTool> Tools { get; }
+    bool IsLive => false;
 
     IReadOnlyList<McpSessionTool> GatewayTools => Tools;
 
@@ -21,14 +22,7 @@ internal interface IMcpToolSession : IAsyncDisposable
 
     void RemoveServer(string serverName);
 
-    async Task UpdateServersAsync(IReadOnlyList<McpServerConfig> servers)
-    {
-        foreach (var name in ConnectedServerNames.Except(servers.Select(server => server.Name), StringComparer.OrdinalIgnoreCase))
-        {
-            RemoveServer(name);
-        }
-        await Task.WhenAll(servers.Select(server => AddServerAsync(server)));
-    }
+    Task UpdateServersAsync(IReadOnlyList<McpServerConfig> servers);
 
     string CaptureServerInstructions();
 

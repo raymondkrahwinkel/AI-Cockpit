@@ -148,6 +148,10 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
             : [];
 
         _gatewayToolNames = PluginMcpServerMapper.GatewayToolNames(mcpServers, paneId, mcpMounts);
+        if (_gatewayActive && paneId is not null)
+        {
+            gateway?.SetToolAuthorization(paneId, (name, input) => !_readOnlyTurn && inner is IPluginMcpToolAuthorization policy && policy.MayCallWithoutPrompt(name, input));
+        }
 
         // AC-927: what this session actually mounted, so the header names those servers rather than the checklist
         // it was launched from — which never holds the always-mounted and auto-mounted ones it also just got.
@@ -155,7 +159,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
             _hostToolset is { } toolset ? toolset.ConnectedServerNames : _gatewayServerNames ?? [.. mcpServers.Select(server => server.Name)];
         if (paneId is { Length: > 0 })
         {
-            if (_hostToolset is not null || _gatewayActive)
+            if (_gatewayActive || (_hostToolset is not null && gateway?.UrlFor(paneId) is not null))
             {
                 mcpMounts?.ReportConnections(paneId, mountedServerNames, _hostToolset?.ConnectionIssues ?? [],
                     exception => logger?.LogWarning(exception, "MCP connection-report handler failed."));
@@ -437,7 +441,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
 
         try
         {
-            if (_paneId is not null && mcpMounts?.Set(_paneId) is { PreserveSelection: true } desired)
+            if (_paneId is not null && gateway?.UrlFor(_paneId) is not null && mcpMounts?.Set(_paneId) is { PreserveSelection: true } desired)
             {
                 enabledServerNames = new ExactMcpServerSelection(desired.ServerNames) { AssistantManaged = desired.Context?.Manager == SessionMcpManager.Assistant };
             }
@@ -584,13 +588,21 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
     private McpToolNames? _gatewayToolNames;
     private IReadOnlyList<string>? _gatewayServerNames;
 
-    public Task SendUserMessageAsync(string text, IReadOnlyList<ImageAttachment>? images = null, CancellationToken cancellationToken = default)
+    public async Task SendUserMessageAsync(string text, IReadOnlyList<ImageAttachment>? images = null, CancellationToken cancellationToken = default)
     {
-        _hostToolset?.RefreshTools();
-        return inner.SendUserMessageAsync(
+        _hostToolset?.BeginTurn();
+        try
+        {
+            await inner.SendUserMessageAsync(
             _gatewayToolNames?.InBrief(text) ?? text,
             images?.Select(image => new PluginImageAttachment(image.MediaType, image.Base64Data)).ToList(),
             cancellationToken);
+        }
+        catch
+        {
+            _hostToolset?.EndTurn();
+            throw;
+        }
     }
 
     public Task InterruptAsync(CancellationToken cancellationToken = default) =>
@@ -640,6 +652,10 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         // arms the gate, and a null one coerces to empty (armed, most restrictive) rather than to "unarmed".
         _delegatedAllowList = new HashSet<string>(allowedTools, StringComparer.Ordinal);
         _delegatedCeiling = ceiling ?? string.Empty;
+        if (_gatewayActive && _paneId is not null)
+        {
+            gateway?.SetToolCeiling(_paneId, _delegatedCeiling, allowedTools);
+        }
         return Task.CompletedTask;
     }
 
@@ -794,6 +810,10 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
     {
         await foreach (var incoming in _PluginEventsAsync(cancellationToken).ConfigureAwait(false))
         {
+            if (incoming is PluginTurnCompleted)
+            {
+                _hostToolset?.EndTurn();
+            }
             var names = _gatewayToolNames;
             var pluginEvent = incoming switch
             {
