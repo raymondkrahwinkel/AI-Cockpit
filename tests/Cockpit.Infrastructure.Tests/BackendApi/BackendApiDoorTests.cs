@@ -575,7 +575,7 @@ public sealed class BackendApiDoorTests
         Assert.Equal("apiKeyFromSecret", health?["profiles"]?[3]?["credential"]?.GetValue<string>());
         Assert.Equal("apiKeyFromSecret", health?["profiles"]?[4]?["credential"]?.GetValue<string>());
         Assert.Equal("unchecked", health?["profiles"]?[4]?["signIn"]?.GetValue<string>());
-        Assert.Equal("unknown", health?["profiles"]?[5]?["credential"]?.GetValue<string>());
+        Assert.Null(health?["profiles"]?[5]?["credential"]?.GetValue<string>());
         Assert.Equal("unchecked", health?["profiles"]?[5]?["signIn"]?.GetValue<string>());
         Assert.DoesNotContain("@", answer.Body, StringComparison.Ordinal);
         Assert.DoesNotContain("sk-", answer.Body, StringComparison.Ordinal);
