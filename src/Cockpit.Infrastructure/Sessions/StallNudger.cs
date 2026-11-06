@@ -97,12 +97,10 @@ public sealed class StallNudger : ISingletonService, IDisposable
         }
     }
 
-    // Closed only when the turn's last tool call is a notify or a start_run (whose verdict wakes it); any other tool
-    // after it reopens the turn. set_status neither closes nor reopens: AC-1681 notified, set its status, appended to
-    // Depot and stalled.
+    // Administrative bookkeeping preserves a closing; doing real work reopens it.
     private static void _OnTool(Followed followed, string toolName)
     {
-        if (_IsTool(toolName, "set_status"))
+        if (_IsAdministrativeTool(toolName))
         {
             return;
         }
@@ -118,6 +116,15 @@ public sealed class StallNudger : ISingletonService, IDisposable
     private static bool _IsTool(string toolName, string tool) =>
         string.Equals(toolName, tool, StringComparison.Ordinal) || toolName.EndsWith("__" + tool, StringComparison.Ordinal);
 
+    private static bool _IsAdministrativeTool(string toolName) =>
+        _IsTool(toolName, "set_status")
+        || _IsTool(toolName, "run_status")
+        || _IsTool(toolName, "report_job_progress")
+        || _IsTool(toolName, "release")
+        || _IsTool(toolName, "append")
+        || _IsTool(toolName, "patch_section")
+        || _IsTool(toolName, "write_many");
+
     private async Task _OnTurnEndedAsync(ISessionHandle handle, Followed followed, SessionTurnEnd end)
     {
         try
@@ -132,7 +139,6 @@ public sealed class StallNudger : ISingletonService, IDisposable
                 }
 
                 closedByTool = followed.Closed;
-                followed.Closed = false;
             }
 
             // A broken or interrupted turn is not a stall: the error or the operator already said why it stopped.

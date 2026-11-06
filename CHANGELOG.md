@@ -5,6 +5,7 @@
 - AC-2117: reset swarm membership from any state, rejoin with fresh confirmation, show standalone/paused status and explain conflicting histories.
 
 - A local smoke test (`scripts/linux-smoke.sh`, Docker or a VM) starts the packaged Linux AppImage on a screen without a GPU and opens every surface of the shipped plugins once, to catch crashes like the Browser tab one (AC-2038).
+- Session monitoring preserves a closing through bookkeeping and tool-free wake turns, while still reporting abandoned work.
 
 - A debug build is recognisable next to the installed one: "DEV" in its own title bar and a DEV bar over its window, taskbar and tray icon.
 
