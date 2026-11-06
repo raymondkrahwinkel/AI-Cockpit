@@ -24,11 +24,14 @@ internal sealed partial class McpToolProvider(
     ILogger<McpToolProvider> logger,
     IWorktreeManager? worktreeManager = null,
     SessionMcpMounts? mounts = null,
-    SessionMcpGatewayHost? gateway = null)
+    SessionMcpGatewayHost? gateway = null,
+    Cockpit.Core.Abstractions.Sessions.ISessionProcessAnchor? processAnchor = null,
+    SessionStdioProcesses? stdioProcesses = null)
     : IMcpToolProvider, IMcpToolInvoker, ISingletonService
 {
     internal TimeSpan RemovedCallDrainTimeout { get; init; } = TimeSpan.FromMinutes(2);
     private readonly IMcpServerCatalog _catalog = catalog;
+    private bool _UsesGateway(string? paneId) => gateway?.UrlFor(paneId ?? "launch") is not null;
     private readonly IMcpOAuthCoordinator _oauthCoordinator = oauthCoordinator;
     private readonly SessionMcpMounts? _mounts = mounts;
     private readonly SessionMcpKeyring _keyring = keyring;
@@ -116,7 +119,8 @@ internal sealed partial class McpToolProvider(
         var set = _mounts?.Set(paneId);
         if (set is null) { return []; }
         var registry = await _catalog.GetServersForSessionAsync(set.Context?.Project?.Id, set.PreserveSelection ? new ExactMcpServerSelection(set.ServerNames) : set.ServerNames, ct);
-        return [.. registry.Where(server => server.Enabled && server.Transport == McpTransport.Http && set.ServerNames.Contains(server.Name))];
+        var selected = registry.Where(server => server.Enabled && set.ServerNames.Contains(server.Name)).ToList();
+        return set.Context?.ConfineRoot is { } root ? _ConfinedServers(selected, root) : selected;
     }
 
     public async Task<IReadOnlyList<AIFunction>?> EnumerateServerToolsAsync(string serverName, string? projectId = null, CancellationToken cancellationToken = default)
@@ -213,7 +217,7 @@ internal sealed partial class McpToolProvider(
     // The connect result plus, on failure, the operator-facing reason (AC-997) — carried alongside the null
     // ServerConnection rather than thrown, since Task.WhenAll below needs one result per server regardless of
     // which one failed.
-    private async Task<(ServerConnection? Connection, string? FailureReason)> _ConnectServerAsync(McpServerConfig server, string? sessionToken, CancellationToken cancellationToken, string? agentName = null, bool gateway = false)
+    private async Task<(ServerConnection? Connection, string? FailureReason)> _ConnectServerAsync(McpServerConfig server, string? sessionToken, CancellationToken cancellationToken, string? agentName = null, bool gateway = false, string? paneId = null)
     {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(TimeSpan.FromSeconds(gateway ? 15 : 60));
@@ -231,7 +235,7 @@ internal sealed partial class McpToolProvider(
                 return (null, NeedsSignIn);
             }
 
-            var transport = _BuildTransport(server, sessionToken, agentName, gateway);
+            var transport = _BuildTransport(server, sessionToken, agentName, gateway, paneId);
             if (gateway)
             {
                 transport = new CancellationForwardingTransport(transport, _logger);
@@ -342,8 +346,9 @@ internal sealed partial class McpToolProvider(
 
     private const string NeedsSignIn = "Needs a sign-in.";
 
-    private IClientTransport _BuildTransport(McpServerConfig server, string? sessionToken, string? agentName = null, bool gateway = false) => server.Transport switch
+    private IClientTransport _BuildTransport(McpServerConfig server, string? sessionToken, string? agentName = null, bool gateway = false, string? paneId = null) => server.Transport switch
     {
+        McpTransport.Stdio when gateway => new SessionStdioClientTransport(server, paneId is null ? null : _mounts?.Set(paneId)?.Context, processAnchor, paneId, stdioProcesses),
         McpTransport.Stdio => new StdioClientTransport(new StdioClientTransportOptions
         {
             Name = server.Name,

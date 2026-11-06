@@ -326,7 +326,7 @@ internal sealed partial class McpToolProvider
         {
             try
             {
-                var outcome = await _provider._ConnectServerAsync(server.Config, PaneToken, server.Lifetime.Token, _agentName);
+                var outcome = await _provider._ConnectServerAsync(server.Config, PaneToken, server.Lifetime.Token, _agentName, gateway: _provider._UsesGateway(_paneId), paneId: _paneId);
                 _Publish(server, outcome.Connection, outcome.FailureReason);
             }
             finally
@@ -371,8 +371,12 @@ internal sealed partial class McpToolProvider
                         deadline.CancelAfter(TimeSpan.FromSeconds(15));
                         var registry = await _provider._catalog.GetServersForSessionAsync(_projectId, new ExactMcpServerSelection([server.Config.Name]), deadline.Token);
                         var config = registry.FirstOrDefault(candidate => candidate.Name.Equals(server.Config.Name, StringComparison.OrdinalIgnoreCase)) ?? server.Config with { Enabled = false };
+                        if (_paneId is not null && _provider._mounts?.Set(_paneId)?.Context?.ConfineRoot is { } root)
+                        {
+                            config = _ConfinedServers([config], root)[0];
+                        }
                         var outcome = config.Enabled
-                            ? await _provider._ConnectServerAsync(config, PaneToken, deadline.Token, _agentName, gateway: true)
+                            ? await _provider._ConnectServerAsync(config, PaneToken, deadline.Token, _agentName, gateway: true, paneId: _paneId)
                             : (Connection: (ServerConnection?)null, FailureReason: "Server disabled.");
                         client = outcome.Connection?.Client;
                         lock (_sync)

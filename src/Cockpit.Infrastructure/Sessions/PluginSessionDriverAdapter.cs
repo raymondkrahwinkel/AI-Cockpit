@@ -19,7 +19,7 @@ namespace Cockpit.Infrastructure.Sessions;
 // Wraps a plugin's narrow `IPluginSessionDriver` to satisfy the app's real `ISessionDriver`
 // contract (#45), the seam `SessionDriverFactory` uses. Claude-CLI-only live-control members
 // (permission mode/model/thinking-budget switch, always-allow persistence) are deliberate no-ops here.
-internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, PluginSessionCapabilities pluginCapabilities, McpAuthKey authKey, IMcpServerCatalog? mcpServerCatalog = null, ILogger<PluginSessionDriverAdapter>? logger = null, SessionMcpKeyring? keyring = null, ISessionResourceResolver? sessionResources = null, IMcpOAuthCoordinator? oauthCoordinator = null, ISessionConversationSink? conversationSink = null, IMcpOAuthProxy? oauthProxy = null, IWorktreeManager? worktreeManager = null, SessionMcpMounts? mcpMounts = null, IMcpToolProvider? mcpToolProvider = null, SessionMcpGatewayHost? gateway = null) : ISessionDriver
+internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, PluginSessionCapabilities pluginCapabilities, McpAuthKey authKey, IMcpServerCatalog? mcpServerCatalog = null, ILogger<PluginSessionDriverAdapter>? logger = null, SessionMcpKeyring? keyring = null, ISessionResourceResolver? sessionResources = null, IMcpOAuthCoordinator? oauthCoordinator = null, ISessionConversationSink? conversationSink = null, IMcpOAuthProxy? oauthProxy = null, IWorktreeManager? worktreeManager = null, SessionMcpMounts? mcpMounts = null, IMcpToolProvider? mcpToolProvider = null, SessionMcpGatewayHost? gateway = null, SessionStdioProcesses? stdioProcesses = null) : ISessionDriver
 {
     // #45 review finding 3: plan mode/thinking budget have no equivalent on the narrow surface, so always
     // unsupported here. SupportsVision maps straight through (every built-in plugin reports it false today, #64 fase 2).
@@ -139,6 +139,29 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         _gatewayActive = false;
         _launchOptions = launchOptions;
 
+        _scratchPane = string.IsNullOrEmpty(paneId) ? Guid.NewGuid().ToString("N") : paneId;
+        _scratch = SessionScratch.Create(_scratchPane, message => logger?.LogWarning("{Message}", message));
+        var contributed = sessionResources is null
+            ? SessionResources.Empty
+            : await sessionResources.ResolveAsync(paneId, selection, cancellationToken).ConfigureAwait(false);
+        _stdioEnvironment = profile?.EnvironmentVariables?.ToDictionary(variable => variable.Key, variable => (string?)variable.Value, StringComparer.OrdinalIgnoreCase)
+            ?? new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, value) in contributed.EnvironmentVariables)
+        {
+            _stdioEnvironment[key] = value;
+        }
+        foreach (var key in new[] { "COCKPIT_SCRATCH", "TEMP", "TMP", "TMPDIR" })
+        {
+            _stdioEnvironment[key] = _scratch;
+        }
+
+        if (gateway?.UrlFor(candidatePane) is not null)
+        {
+            var confineRoot = launchOptions?.GetValueOrDefault(WellKnownPluginSessionOptions.ConfineFileToolsToWorkingDirectory) == "true" ? workingDirectory : null;
+            await gateway.BindLaunchAsync(candidatePane, projectId, workingDirectory, confineRoot, Profile?.Label,
+                selection is ExactMcpServerSelection { AssistantManaged: true }, cancellationToken, _stdioEnvironment).ConfigureAwait(false);
+        }
+
         // AC-964: a provider that declared a host tool loop gets the tools already connected and gated instead of
         // the endpoints to mount itself — the two are alternatives, so the server list stays empty here rather than
         // handing the same servers over twice.
@@ -170,10 +193,6 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
             }
         }
 
-        var contributed = sessionResources is null
-            ? SessionResources.Empty
-            : await sessionResources.ResolveAsync(paneId, selection, cancellationToken).ConfigureAwait(false);
-
         // The host's typed permission-mode parameter (older than the plugin surface) folds into the options
         // map under the well-known key, but only when launch options carry none (see _MergePermissionMode) — else
         // a Claude session's launch-time "bypassPermissions" silently became "default".
@@ -185,8 +204,6 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         _permissionModeConfines = _PermissionModeConfines(options);
 
         var environment = _SpawnEnvironment(profile, launchOptions, contributed);
-        _scratchPane = string.IsNullOrEmpty(paneId) ? Guid.NewGuid().ToString("N") : paneId;
-        _scratch = SessionScratch.Create(_scratchPane, message => logger?.LogWarning("{Message}", message));
         environment = new Dictionary<string, string>(environment, StringComparer.OrdinalIgnoreCase)
         {
             ["COCKPIT_SCRATCH"] = _scratch,
@@ -202,6 +219,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
             scratchOptions[WellKnownPluginSessionOptions.AppendSystemPrompt] = names.InBrief(scratchOptions[WellKnownPluginSessionOptions.AppendSystemPrompt]);
         }
         await inner.StartAsync(model, workingDirectory, resumeSessionId, scratchOptions, mcpServers, environment, _hostToolset, cancellationToken).ConfigureAwait(false);
+        if (paneId is not null && inner.ProcessId is { } processId) { stdioProcesses?.Bind(paneId, processId); }
     }
 
     // AC-964: the host-run tool loop for a provider that asked for one, null otherwise (the default today).
@@ -464,16 +482,14 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
                     }
                     var confineRoot = _launchOptions?.GetValueOrDefault(WellKnownPluginSessionOptions.ConfineFileToolsToWorkingDirectory) == "true" ? workingDirectory : null;
                     await gateway.BindLaunchAsync(gatewayPane, projectId, workingDirectory, confineRoot, Profile?.Label,
-                        enabledServerNames is ExactMcpServerSelection { AssistantManaged: true }, cancellationToken).ConfigureAwait(false);
+                        enabledServerNames is ExactMcpServerSelection { AssistantManaged: true }, cancellationToken, _stdioEnvironment).ConfigureAwait(false);
                     _minted = new MintedToken(gatewayPane, keyring.TokenFor(gatewayPane));
                     var names = eligible.Select(server => server.Name).ToList();
                     mcpMounts?.Grant(gatewayPane, names);
                     await gateway.PrepareLaunchAsync(gatewayPane, cancellationToken).ConfigureAwait(false);
                     _gatewayServerNames = names;
                     _gatewayActive = true;
-                    return [new PluginMcpServer { Name = "cockpit", Url = url, CockpitHosted = true },
-                        .. eligible.Where(server => server.Transport == McpTransport.Stdio)
-                            .Select(server => PluginMcpServerMapper.ToPluginMcpServer(server, null, null)).OfType<PluginMcpServer>()];
+                    return [new PluginMcpServer { Name = "cockpit", Url = url, CockpitHosted = true }];
                 }
                 catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
                 {
@@ -774,6 +790,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         }
     }
 
+    private Dictionary<string, string?>? _stdioEnvironment;
     private string? _scratch;
     private string? _scratchPane;
 

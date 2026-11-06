@@ -7,4 +7,7 @@ public sealed record SessionMcpContext(
     string WorkingDirectory,
     string? ConfineRoot,
     string? AgentName,
-    SessionMcpManager Manager = SessionMcpManager.Operator);
+    SessionMcpManager Manager = SessionMcpManager.Operator)
+{
+    public IReadOnlyDictionary<string, string?>? Environment { get; init; }
+}

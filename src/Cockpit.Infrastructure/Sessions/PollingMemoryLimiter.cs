@@ -16,6 +16,7 @@ internal sealed class PollingMemoryLimiter : ISessionMemoryLimiter, IDisposable
 
     private readonly IProcessTableReader _reader;
     private readonly ILogger _logger;
+    private readonly SessionStdioProcesses? _stdioProcesses;
     private readonly TimeSpan _pollInterval;
 
     // One loop and one process-table read for every watched session, rather than one `ps` per session per tick.
@@ -29,9 +30,10 @@ internal sealed class PollingMemoryLimiter : ISessionMemoryLimiter, IDisposable
     private Task? _loop;
     private readonly Lock _loopLock = new();
 
-    public PollingMemoryLimiter(IProcessTableReader reader, ILogger<PollingMemoryLimiter> logger)
+    public PollingMemoryLimiter(IProcessTableReader reader, ILogger<PollingMemoryLimiter> logger, SessionStdioProcesses? stdioProcesses = null)
         : this(reader, logger, PollInterval)
     {
+        _stdioProcesses = stdioProcesses;
     }
 
     internal PollingMemoryLimiter(IProcessTableReader reader, ILogger<PollingMemoryLimiter> logger, TimeSpan pollInterval)
@@ -64,7 +66,8 @@ internal sealed class PollingMemoryLimiter : ISessionMemoryLimiter, IDisposable
 
         foreach (var (processId, capBytes) in _watched)
         {
-            var held = ProcessTree.Sum(rows, processId).WorkingSetBytes;
+            var snapshot = ProcessTree.Snapshot(rows);
+            var held = snapshot.SumOf(snapshot.LiveReachableFrom([processId, .. _stdioProcesses?.RootsFor(processId) ?? []])).WorkingSetBytes;
             if (held <= capBytes)
             {
                 _reported.TryRemove(processId, out _);
