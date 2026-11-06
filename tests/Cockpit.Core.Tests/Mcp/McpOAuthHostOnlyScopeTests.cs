@@ -63,7 +63,7 @@ public sealed class McpOAuthHostOnlyScopeTests
         }
 
         var coordinator = new McpOAuthCoordinator(store, new McpOAuthAuthorizer(NullLogger<McpOAuthAuthorizer>.Instance, store, narrower), NullLogger<McpOAuthCoordinator>.Instance);
-        var forSession = await coordinator.AcquireForSessionAsync(Depot);
+        var forSession = await coordinator.AcquireAsync(Depot, interactive: false);
 
         Assert.Equal(expected, forSession.AccessToken);
         Assert.All(tokenEndpoint.Scopes, scope => Assert.Equal("depot offline_access", scope));

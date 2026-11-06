@@ -15,7 +15,7 @@ namespace Cockpit.Infrastructure.Sessions.Tty;
 // Default `ITtyLauncher`: builds the host environment, asks the provider how its CLI starts, and spawns it in a
 // pseudo console (`IPtyHostFactory`, platform-agnostic). Provider-specific pieces (executable, flags, config
 // directory, status relay) live in `ITtySessionProvider`; what's left here is what every TUI needs identically.
-internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemoryLimiter memoryLimiter, McpAuthKey authKey, SessionMcpKeyring keyring, ILogger<TtyLauncher> logger, ISessionProcessAnchor? processAnchor = null, IOrgPolicy? orgPolicy = null, IWorktreeManager? worktreeManager = null, SessionMcpGatewayHost? gateway = null, SessionStdioProcesses? stdioProcesses = null) : ITtyLauncher, ISingletonService
+internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemoryLimiter memoryLimiter, SessionMcpKeyring keyring, ILogger<TtyLauncher> logger, ISessionProcessAnchor? processAnchor = null, IOrgPolicy? orgPolicy = null, IWorktreeManager? worktreeManager = null, SessionStdioProcesses? stdioProcesses = null) : ITtyLauncher, ISingletonService
 {
     public IConPtyProcess Launch(
         ITtySessionProvider provider,
@@ -31,7 +31,7 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemory
         string? projectId = null,
         Action<string>? notice = null)
     {
-        if (string.IsNullOrEmpty(paneId) && gateway?.UrlFor("launch") is not null)
+        if (string.IsNullOrEmpty(paneId))
         {
             paneId = Guid.NewGuid().ToString("N");
         }
@@ -90,10 +90,10 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemory
         // AC-1013: AC-40's MCP auth key must sit on the base environment, not a provider overlay (an overlay value is
         // scrubbed as host-controlled), so no profile/provider can override it and self-lock the session out with a
         // 401. AC-89: a pane id gets its own per-session token instead of the shared key, for attribution; AC-143 keeps it so this route's own teardown (TtyProcessOwningSessionFiles) can revoke it.
-        var mintedToken = string.IsNullOrEmpty(paneId) ? null : keyring.TokenFor(paneId);
+        var mintedToken = keyring.TokenFor(paneId);
         baseEnvironment = new Dictionary<string, string>(baseEnvironment, StringComparer.OrdinalIgnoreCase)
         {
-            [WellKnownSessionEnvironment.CockpitMcpKey] = mintedToken ?? authKey.Value,
+            [WellKnownSessionEnvironment.CockpitMcpKey] = mintedToken,
         };
 
         baseEnvironment = new Dictionary<string, string>(baseEnvironment, StringComparer.OrdinalIgnoreCase)
@@ -119,7 +119,20 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemory
             ProjectId = projectId,
         };
 
-        var spec = provider.BuildLaunch(context);
+        TtyLaunchSpec spec;
+        try
+        {
+            spec = provider.BuildLaunch(context);
+        }
+        catch
+        {
+            if (mintedToken is not null)
+            {
+                keyring.Revoke(scratchPane, mintedToken);
+            }
+            SessionScratchCleanup.DeleteAsync(scratch, scratchPane, worktreeManager, logger).GetAwaiter().GetResult();
+            throw;
+        }
 
         // A provider that tries to set what the host strips gets ignored, not obeyed — but never silently: this
         // is either a bug in the provider or an attempt to hand the child a credential the operator never chose.
@@ -155,7 +168,7 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemory
         // headers, no business surviving the session that ends). AC-143: a minted pane token needs the same
         // wrapping so its revoke runs on dispose, even when the provider itself wrote no session-scoped files.
         return new TtyProcessOwningSessionFiles(
-            process, spec.SessionScopedFiles, spec.StatusFile, mintedToken is null ? null : keyring, paneId, mintedToken, memoryCap, anchor,
+            process, spec.SessionScopedFiles, spec.StatusFile, keyring, paneId, mintedToken, memoryCap, anchor,
             processToWait => SessionScratchCleanup.DeleteAsync(scratch, scratchPane, worktreeManager, logger, processToWait).GetAwaiter().GetResult());
     }
 

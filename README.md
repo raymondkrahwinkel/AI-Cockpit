@@ -263,18 +263,20 @@ See the [design note](docs/workspaces-widgets-terminals.md) and the
 
 ## Security
 
-`SessionMcpGatewayEnabled` in `cockpit.json` is the temporary session MCP gateway switch (default `false`).
-It is read at startup and stays local to this machine, outside settings carriers. The loopback gateway
-starts with either value; when off, it offers no session URL. Session routing is introduced in AC-2126.
-Live refresh and MCP-set restore run only while this gateway is enabled. The gateway's `call_tool`
+Every session uses its own loopback MCP gateway, including a fresh installation without `cockpit.json`.
+Cockpit supplies one `cockpit` endpoint and a session key; upstream credentials and headers stay in Cockpit.
+The in-process tool-loop uses the same live session set. Old gateway-switch settings are ignored.
+If the gateway cannot start or its launch configuration cannot be prepared, the session reports a start
+failure and Cockpit logs the cause. There is no direct-server fallback.
+Live refresh and MCP-set restore use the gateway. The gateway's `call_tool`
 uses the provider's canonical-name authorization and the session ceiling; calls needing permission
 are refused and exposed by name for the next turn. Providers can implement `IPluginMcpToolAuthorization`
 to authorize fallback calls without a prompt. Unknown provider policies refuse fallback execution.
-When enabled, stdio servers also run behind the gateway, with a separate process per session and the
+Stdio servers also run behind the gateway, with a separate process per session and the
 session's working directory, profile variables and scratch directory. Host-controlled credentials are
 removed. Windows uses a kill-on-close Job Object; Linux uses util-linux `setpriv` and `setsid`
 (`/usr/bin`) plus `/bin/kill` to stop the upstream process group if Cockpit dies. Without these tools,
-it logs one warning and starts servers directly, relying on stdin closure. With the switch off, stdio remains direct.
+it logs one warning and starts upstream processes without the OS wrapper, relying on stdin closure.
 
 Your API keys, MCP bearer tokens and the plugins' tokens live in `cockpit.json`. What the cockpit does about that:
 

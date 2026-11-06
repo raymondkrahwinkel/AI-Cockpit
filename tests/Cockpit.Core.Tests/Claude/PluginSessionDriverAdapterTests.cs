@@ -4,7 +4,6 @@ using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Profiles;
-using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using NSubstitute;
@@ -18,15 +17,14 @@ namespace Cockpit.Core.Tests.Claude;
 /// Claude-CLI-only live-control members (permission mode / model / thinking budget) have no equivalent on
 /// the narrow interface and must be safe no-ops rather than throwing.
 /// </summary>
-public class PluginSessionDriverAdapterTests
+public class PluginSessionDriverAdapterTests : SessionMcpTestFixture
 {
-    private static readonly McpAuthKey _authKey = new();
 
     [Fact]
     public async Task StartAsync_AProfileVariableOnAHostControlledKey_NeverCrossesThePluginBoundary()
     {
         var inner = new FakePluginSessionDriver();
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, EmptyCatalog, keyring: Keyring, mcpMounts: Mounts, gateway: Gateway);
         var profile = new SessionProfile("work", new ClaudeConfig("/config/dir"))
         {
             EnvironmentVariables = [new ProfileEnvironmentVariable("ANTHROPIC_API_KEY", "smuggled", IsSecret: true)],
@@ -35,6 +33,13 @@ public class PluginSessionDriverAdapterTests
         await adapter.StartAsync(profile);
 
         Assert.False(inner.LastEnvironment!.ContainsKey("ANTHROPIC_API_KEY"));
+
+        await Gateway.StopAsync(CancellationToken.None);
+        var stopped = new FakePluginSessionDriver();
+        await using var failed = new PluginSessionDriverAdapter(stopped, stopped.Capabilities, EmptyCatalog, keyring: Keyring, mcpMounts: Mounts, gateway: Gateway);
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => failed.StartAsync(profile));
+        Assert.Contains("MCP gateway is unavailable", failure.Message);
+        Assert.Null(stopped.LastEnvironment);
     }
 
     // The same rule the profile's variables meet, applied where the value is put in the driver's environment rather
@@ -47,7 +52,7 @@ public class PluginSessionDriverAdapterTests
     {
         var inner = new FakePluginSessionDriver();
         var adapter = new PluginSessionDriverAdapter(
-            inner, inner.Capabilities, _authKey,
+            inner, inner.Capabilities, EmptyCatalog, keyring: Keyring, mcpMounts: Mounts, gateway: Gateway,
             sessionResources: StubResources(
                 ("ANTHROPIC_API_KEY", "smuggled"), ("COCKPIT_PANE_ID", "someone-elses-pane"), ("GH_REPO", "owner/repo")));
 
@@ -66,9 +71,9 @@ public class PluginSessionDriverAdapterTests
     [Fact]
     public async Task DisposeAsync_RevokesTheTokenItMintedForTheSession()
     {
-        var keyring = new SessionMcpKeyring();
+        var keyring = Keyring;
         var inner = new FakePluginSessionDriver();
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey, keyring: keyring);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, EmptyCatalog, keyring: keyring, mcpMounts: Mounts, gateway: Gateway);
         await adapter.StartAsync(launchOptions: PaneOptions);
         Assert.NotNull(inner.LastEnvironment);
         var token = inner.LastEnvironment[WellKnownSessionEnvironment.CockpitMcpKey];
@@ -87,12 +92,12 @@ public class PluginSessionDriverAdapterTests
     [Fact]
     public async Task DisposeAsync_AfterThePaneHasStartedAgain_LeavesTheLiveSessionsTokenAlone()
     {
-        var keyring = new SessionMcpKeyring();
+        var keyring = Keyring;
         var closing = new FakePluginSessionDriver();
-        var first = new PluginSessionDriverAdapter(closing, closing.Capabilities, _authKey, keyring: keyring);
+        var first = new PluginSessionDriverAdapter(closing, closing.Capabilities, EmptyCatalog, keyring: keyring, mcpMounts: Mounts, gateway: Gateway);
         await first.StartAsync(launchOptions: PaneOptions);
         var second = new FakePluginSessionDriver();
-        var restarted = new PluginSessionDriverAdapter(second, second.Capabilities, _authKey, keyring: keyring);
+        var restarted = new PluginSessionDriverAdapter(second, second.Capabilities, EmptyCatalog, keyring: keyring, mcpMounts: Mounts, gateway: Gateway);
         await restarted.StartAsync(launchOptions: PaneOptions);
         Assert.NotNull(second.LastEnvironment);
         var live = second.LastEnvironment[WellKnownSessionEnvironment.CockpitMcpKey];
@@ -128,7 +133,7 @@ public class PluginSessionDriverAdapterTests
     public async Task Capabilities_StartedInBypass_UnconfinesAPermissionBasedProvider_ButNotASandboxedOne()
     {
         var inner = new FakePluginSessionDriver { Capabilities = _PermissionConfining() };
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, EmptyCatalog, keyring: Keyring, mcpMounts: Mounts, gateway: Gateway);
 
         // bypassPermissions (--dangerously-skip-permissions) disables the permission guard the confinement leans on, so
         // the isolate-in-worktree gate must see this session as NOT confined and refuse it — the AC-190 fail-closed fix.
@@ -140,7 +145,7 @@ public class PluginSessionDriverAdapterTests
         // Codex confines via a real OS sandbox, independent of its permission/approval mode — it must NOT be downgraded
         // by the AC-190 permission-mode check. Regression guard that the fix touches only permission-based providers.
         var sandboxed = new FakePluginSessionDriver { Capabilities = _SandboxConfining() };
-        var sandboxedAdapter = new PluginSessionDriverAdapter(sandboxed, sandboxed.Capabilities, _authKey);
+        var sandboxedAdapter = new PluginSessionDriverAdapter(sandboxed, sandboxed.Capabilities, EmptyCatalog, keyring: Keyring, mcpMounts: Mounts, gateway: Gateway);
         await sandboxedAdapter.StartAsync(permissionMode: "bypassPermissions");
 
         Assert.True(sandboxedAdapter.Capabilities.ConfinesFileAccessToWorkingDirectory);
@@ -150,7 +155,7 @@ public class PluginSessionDriverAdapterTests
     public async Task Capabilities_ForAPermissionBasedConfiningProvider_RecomputesConfinement_OnALivePermissionModeSwitch()
     {
         var inner = new FakePluginSessionDriver { Capabilities = _PermissionConfining() };
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, EmptyCatalog, keyring: Keyring, mcpMounts: Mounts, gateway: Gateway);
 
         // Started in a permission-engaged mode → confined.
         await adapter.StartAsync(permissionMode: "acceptEdits");
@@ -167,28 +172,29 @@ public class PluginSessionDriverAdapterTests
         Assert.True(adapter.Capabilities.ConfinesFileAccessToWorkingDirectory);
     }
 
-    [Theory]
-    [InlineData(true, "Assistant")]
-    [InlineData(false, null)]
-    public async Task StartAsync_ExcludesLocalOnlyAndTheReservedPermissionServer_FromTheFanOut(bool includeAgentName, string? expectedName)
+    [Fact]
+    public async Task StartAsync_ExcludesLocalOnlyAndTheReservedPermissionServer_FromTheGatewaySet()
     {
         var inner = new FakePluginSessionDriver();
         var catalog = Substitute.For<IMcpServerCatalog>();
         catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>
         {
-            new() { Name = "cockpit-orchestrator", Transport = McpTransport.Http, Url = "http://127.0.0.1:8765/mcp", IncludeAgentName = includeAgentName },
+            new() { Name = "cockpit-orchestrator", Transport = McpTransport.Http, Url = "http://127.0.0.1:8765/mcp" },
             new() { Name = "filesystem", Transport = McpTransport.Http, Url = "http://127.0.0.1:1/mcp", Scope = McpServerScope.LocalOnly },
             new() { Name = McpConfigFile.ServerName, Transport = McpTransport.Http, Url = "http://127.0.0.1:2/mcp" },
         });
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey, catalog);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, catalog, keyring: Keyring, mcpMounts: Mounts, gateway: Gateway);
 
         // No per-session selection — every eligible server, but a local-model-only server and the reserved
         // permission-server key (Codex prompts for approvals itself) must never fan out to the agent.
         await adapter.StartAsync(profile: new SessionProfile("Assistant", new PluginProviderConfig("test", "{}")));
 
         var mounted = Assert.Single(inner.LastMcpServers ?? []);
-        Assert.Equal("cockpit-orchestrator", mounted.Name);
-        Assert.Equal(expectedName, mounted.Headers.GetValueOrDefault("X-Cockpit-Agent"));
+        Assert.Equal("cockpit", mounted.Name);
+        Assert.Null(mounted.BearerToken);
+        Assert.Empty(mounted.Headers);
+        var paneId = inner.LastLaunchOptions?.GetValueOrDefault(WellKnownPluginSessionOptions.PaneId) ?? throw new InvalidOperationException("Missing pane.");
+        Assert.Equal(["cockpit-orchestrator"], Mounts.Set(paneId)?.ServerNames);
     }
 
     // AC-378, criterion 3 — the finding this ticket exists for: narrowing a delegated task DOWN to a server the
@@ -206,16 +212,15 @@ public class PluginSessionDriverAdapterTests
         });
 
         var unnarrowedInner = new FakePluginSessionDriver();
-        var unnarrowedAdapter = new PluginSessionDriverAdapter(unnarrowedInner, unnarrowedInner.Capabilities, _authKey, catalog);
+        var unnarrowedAdapter = new PluginSessionDriverAdapter(unnarrowedInner, unnarrowedInner.Capabilities, catalog, keyring: Keyring, mcpMounts: Mounts, gateway: Gateway);
         await unnarrowedAdapter.StartAsync();
 
         var narrowedInner = new FakePluginSessionDriver();
-        var narrowedAdapter = new PluginSessionDriverAdapter(narrowedInner, narrowedInner.Capabilities, _authKey, catalog);
+        var narrowedAdapter = new PluginSessionDriverAdapter(narrowedInner, narrowedInner.Capabilities, catalog, keyring: Keyring, mcpMounts: Mounts, gateway: Gateway);
         await narrowedAdapter.StartAsync(enabledMcpServerNames: new HashSet<string> { "SQL Explorer" });
 
-        // Narrowing to only the unmountable server resolves to nothing here, never to more than the unnarrowed baseline;
-        // the strict headless wiring keeps an empty resolution from being read by the CLI as "no restriction".
-        Assert.Empty(narrowedInner.LastMcpServers!);
-        Assert.True(narrowedInner.LastMcpServers!.Count <= unnarrowedInner.LastMcpServers!.Count);
+        Assert.Equal("cockpit", Assert.Single(narrowedInner.LastMcpServers ?? []).Name);
+        var paneId = narrowedInner.LastLaunchOptions?.GetValueOrDefault(WellKnownPluginSessionOptions.PaneId) ?? throw new InvalidOperationException("Missing pane.");
+        Assert.Equal(["SQL Explorer"], Mounts.Set(paneId)?.ServerNames);
     }
 }

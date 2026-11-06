@@ -1,6 +1,5 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Profiles;
-using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.Workspaces;
@@ -19,9 +18,8 @@ namespace Cockpit.Core.Tests.Claude;
 /// stands in, so the effective mode drives the vouch the isolation gate reads.
 /// Provider-neutral: nothing here is pinned to a brand; the precedence is keyed on the well-known permission-mode option.
 /// </summary>
-public class EmbeddedAutopilotPermissionModeTests
+public class EmbeddedAutopilotPermissionModeTests : SessionMcpTestFixture
 {
-    private static readonly McpAuthKey _authKey = new();
 
     // A provider whose confinement rests on its permission system (Claude): a bypass mode disables the guard, so the
     // effective per-session mode decides whether it vouches confinement.
@@ -64,7 +62,7 @@ public class EmbeddedAutopilotPermissionModeTests
         Assert.Equal("sonnet", launchOptions["model"]);
 
         var inner = new FakePluginSessionDriver { Capabilities = _PermissionConfining() };
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, EmptyCatalog, keyring: Keyring, mcpMounts: Mounts, gateway: Gateway);
 
         await adapter.StartAsync(profile, permissionMode: request.PermissionMode, launchOptions: launchOptions);
 

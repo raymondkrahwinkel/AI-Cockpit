@@ -66,14 +66,6 @@ public class McpAuthMiddlewareTests
         var configPath = Path.Combine(Path.GetTempPath(), $"gateway-{Guid.NewGuid():N}.json");
         try
         {
-            await using var disabled = new SessionMcpGatewayHost(authKey, keyring, NullLoggerFactory.Instance, configPath);
-            await disabled.StartAsync(CancellationToken.None);
-            Assert.Null(disabled.UrlFor("pane-a"));
-            Assert.NotNull(disabled.BoundUrl);
-            Assert.StartsWith("http://127.0.0.1:", disabled.BoundUrl);
-            await disabled.StopAsync(CancellationToken.None);
-
-            await File.WriteAllTextAsync(configPath, """{"SessionMcpGatewayEnabled":true}""");
             await using var gateway = new SessionMcpGatewayHost(authKey, keyring, NullLoggerFactory.Instance, configPath);
             await gateway.StartAsync(CancellationToken.None);
             var urlA = gateway.UrlFor("pane-a") ?? throw new InvalidOperationException("Gateway did not bind.");

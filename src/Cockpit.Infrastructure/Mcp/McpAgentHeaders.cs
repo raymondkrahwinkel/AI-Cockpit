@@ -2,9 +2,7 @@ using Cockpit.Core.Mcp;
 
 namespace Cockpit.Infrastructure.Mcp;
 
-// The operator's own headers (AC-354) as a spawned agent's config should carry them. One rule in one place, for the
-// same reason `CockpitMcpBearer` is: it is applied on both spawn paths, and a precedence rule copied
-// twice is a precedence rule that drifts.
+// Upstream headers composed by Cockpit; these never enter the spawned agent's MCP config.
 internal static class McpAgentHeaders
 {
     // Headers to send, minus the one the cockpit answers for and any half-written row. Authorization is dropped

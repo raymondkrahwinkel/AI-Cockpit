@@ -14,29 +14,27 @@ namespace Cockpit.Core.Tests.Sessions;
 /// into the plugin's two ("resume this one, or the last one" vs. "nothing" — a plugin has no reason to see
 /// the core's own "start fresh" case, since that already reads as no resume at all).
 /// </summary>
-public class PluginTtySessionProviderAdapterTests
+public class PluginTtySessionProviderAdapterTests : SessionMcpTestFixture
 {
-    [Theory]
-    [InlineData(true, "Assistant")]
-    [InlineData(false, null)]
-    public void BuildLaunch_NarrowsTheRegistryToThePerSessionSelection_SoAnUncheckedServerNeverReachesThePlugin(bool includeAgentName, string? expectedName)
+    [Fact]
+    public async Task BuildLaunch_NarrowsTheGatewaySet_SoAnUncheckedServerNeverReachesThePlugin()
     {
         // Two eligible registry servers; the operator's checklist only ticked "docker" for this session. Before the
         // fix the TTY route fanned the whole registry, so "youtrack" reached the CLI despite being unchecked (#44).
         var catalog = Substitute.For<Cockpit.Core.Abstractions.Mcp.IMcpServerCatalog>();
         catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(new List<Cockpit.Core.Mcp.McpServerConfig>
         {
-            new() { Name = "docker", Transport = Cockpit.Core.Mcp.McpTransport.Http, Url = "http://127.0.0.1:1/mcp", IncludeAgentName = includeAgentName },
+            new() { Name = "docker", Transport = Cockpit.Core.Mcp.McpTransport.Http, Url = "http://127.0.0.1:1/mcp" },
             new() { Name = "youtrack", Transport = Cockpit.Core.Mcp.McpTransport.Http, Url = "http://127.0.0.1:2/mcp" },
         });
 
         var inner = Substitute.For<IPluginTtyProvider>();
         inner.BuildLaunch(Arg.Any<PluginTtyLaunchContext>()).Returns(new PluginTtyLaunchSpec(
             "codex", [], new Dictionary<string, string?>(), "/wd", []));
-        var adapter = new PluginTtySessionProviderAdapter("cli-agent-provider.codex", inner, """{"Command":"codex"}""", catalog);
+        var adapter = new PluginTtySessionProviderAdapter("cli-agent-provider.codex", inner, """{"Command":"codex"}""", catalog, mcpMounts: Mounts, gateway: Gateway);
 
         var profile = new Cockpit.Core.Profiles.SessionProfile("Assistant", new Cockpit.Core.Profiles.PluginProviderConfig("test", "{}"));
-        var context = new TtyLaunchContext(profile, new Dictionary<string, string>(), "/wd", null, new Dictionary<string, string>())
+        var context = new TtyLaunchContext(profile, new Dictionary<string, string>(), "/wd", null, new Dictionary<string, string> { ["COCKPIT_PANE_ID"] = "tty", ["COCKPIT_MCP_KEY"] = Keyring.TokenFor("tty") })
         {
             EnabledMcpServerNames = new HashSet<string> { "docker" },
         };
@@ -44,8 +42,15 @@ public class PluginTtySessionProviderAdapterTests
         adapter.BuildLaunch(context);
 
         inner.Received(1).BuildLaunch(Arg.Is<PluginTtyLaunchContext>(pluginContext =>
-            pluginContext.McpServers.Count == 1 && pluginContext.McpServers[0].Name == "docker"
-            && pluginContext.McpServers[0].Headers.GetValueOrDefault("X-Cockpit-Agent") == expectedName));
+            pluginContext.McpServers.Count == 1 && pluginContext.McpServers[0].Name == "cockpit"
+            && pluginContext.McpServers[0].BearerToken == null && pluginContext.McpServers[0].Headers.Count == 0));
+        Assert.Equal(["docker"], Mounts.Set("tty")?.ServerNames);
+
+        await Gateway.StopAsync(CancellationToken.None);
+        inner.ClearReceivedCalls();
+        var failure = Assert.Throws<InvalidOperationException>(() => adapter.BuildLaunch(context));
+        Assert.Contains("MCP gateway is unavailable", failure.Message);
+        inner.DidNotReceive().BuildLaunch(Arg.Any<PluginTtyLaunchContext>());
     }
 
 }

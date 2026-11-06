@@ -66,7 +66,6 @@ public partial class McpClientConnectorTests
         try
         {
             var path = Path.Combine(directory, "cockpit.json");
-            await File.WriteAllTextAsync(path, """{"SessionMcpGatewayEnabled":true}""");
             await using var gateway = new SessionMcpGatewayHost(auth, keyring, NullLoggerFactory.Instance, path, provider, mounts);
             await gateway.StartAsync(CancellationToken.None);
             await using var client = await McpClient.CreateAsync(new HttpClientTransport(new()

@@ -20,10 +20,8 @@ internal sealed class PluginTtySessionProviderAdapter(
     IPluginTtyProvider inner,
     string configJson,
     IMcpServerCatalog? mcpServerCatalog = null,
-    IMcpOAuthCoordinator? oauthCoordinator = null,
     ILogger<PluginTtySessionProviderAdapter>? logger = null,
     ISessionConversationSink? conversationSink = null,
-    IMcpOAuthProxy? oauthProxy = null,
     IWorktreeManager? worktreeManager = null,
     SessionMcpMounts? mcpMounts = null,
     SessionMcpGatewayHost? gateway = null) : ITtySessionProvider
@@ -33,13 +31,11 @@ internal sealed class PluginTtySessionProviderAdapter(
     public TtyLaunchSpec BuildLaunch(TtyLaunchContext context)
     {
         _gatewayServerNames = null;
-        // Registry, credentials and launch-time glob expansion share one UI-thread budget.
+        // Registry lookup and permission-rule preparation share one launch budget.
         using var budget = new CancellationTokenSource(RenewalBudget);
         var (mcpServers, canDelegate) = _ResolveRegistry(context.EnabledMcpServerNames, context.ProjectId, context.WorkingDirectory, context.Profile?.Label, context, budget.Token);
 
-        // AC-408: the same pane id TtyLauncher puts on the base environment as COCKPIT_PANE_ID, read back here
-        // (rather than added to TtyLaunchContext itself) so ReportConversationId below knows which pane a later
-        // report belongs to. Null when the launch carries no pane id (a profile-less quick session).
+        // The launcher owns the pane identity, carried in the base environment.
         var paneId = _PaneId(context.BaseEnvironment);
 
         // AC-927: what this launch actually hands the TUI, so the header names those servers rather than the
@@ -50,10 +46,6 @@ internal sealed class PluginTtySessionProviderAdapter(
             {
                 mcpMounts?.ReportConnections(paneId, _gatewayServerNames, [],
                     exception => logger?.LogWarning(exception, "MCP connection-report handler failed."));
-            }
-            else
-            {
-                mcpMounts?.Report(paneId, [.. mcpServers.Select(server => server.Name)]);
             }
         }
 
@@ -79,16 +71,10 @@ internal sealed class PluginTtySessionProviderAdapter(
         {
             spec = Build();
         }
-        catch (Exception exception) when (_gatewayServerNames is not null)
+        catch (Exception exception)
         {
-            logger?.LogWarning(exception, "Preparing gateway permission rules failed; using the direct MCP servers.");
-            _gatewayServerNames = null;
-            (mcpServers, canDelegate) = _ResolveRegistry(context.EnabledMcpServerNames, context.ProjectId, context.WorkingDirectory, context.Profile?.Label, context, budget.Token, useGateway: false);
-            if (paneId is not null)
-            {
-                mcpMounts?.Report(paneId, [.. mcpServers.Select(server => server.Name)]);
-            }
-            spec = Build();
+            logger?.LogError(exception, "Preparing the MCP launch configuration failed; session launch was stopped.");
+            throw new InvalidOperationException("Session could not start because its MCP launch configuration could not be prepared. See the Cockpit log for the cause.");
         }
         PluginTtyLaunchSpec Build() => inner.BuildLaunch(new PluginTtyLaunchContext(
             configJson,
@@ -98,7 +84,7 @@ internal sealed class PluginTtySessionProviderAdapter(
             context.BaseEnvironment)
         {
             McpServers = mcpServers,
-            TranslateMcpPermissionRule = _gatewayServerNames is not null ? TranslateRule : null,
+            TranslateMcpPermissionRule = TranslateRule,
             DelegationSystemPrompt = canDelegate ? DelegationSystemPrompt.Default : null,
             // No sink or no pane id means nowhere to report to, so the provider gets no callback at all — a
             // provider that always null-checks before calling it (the documented contract) stays correct either way.
@@ -120,170 +106,42 @@ internal sealed class PluginTtySessionProviderAdapter(
             spec.StatusFile);
     }
 
-    // AC-1013: Agent-eligible MCP servers and delegation eligibility, resolved once per launch off the operator's
-    // checklist (AC-218 scopes to the project, resolved host-side — never a paneId→projectId lookup here, which
-    // would need a UI-thread hop this sync spawn path can't take); best-effort — a missing store/read failure yields no servers/delegation, never blocks the launch.
-    private (IReadOnlyList<PluginMcpServer> McpServers, bool CanDelegate) _ResolveRegistry(IReadOnlySet<string>? enabledServerNames, string? projectId, string? workingDirectory, string? agentName, TtyLaunchContext context, CancellationToken budget, bool useGateway = true)
+    private (IReadOnlyList<PluginMcpServer> McpServers, bool CanDelegate) _ResolveRegistry(IReadOnlySet<string>? enabledServerNames, string? projectId, string? workingDirectory, string? agentName, TtyLaunchContext context, CancellationToken budget)
     {
-        if (mcpServerCatalog is null)
-        {
-            return ([], false);
-        }
-
         try
         {
-            if (_PaneId(context.BaseEnvironment) is { } desiredPane && gateway?.UrlFor(desiredPane) is not null && mcpMounts?.Set(desiredPane) is { PreserveSelection: true } desired)
+            var paneId = _PaneId(context.BaseEnvironment) ?? throw new InvalidOperationException("The MCP launch has no pane.");
+            var url = gateway?.UrlFor(paneId) ?? throw new InvalidOperationException("The session MCP gateway is unavailable.");
+            if (mcpServerCatalog is null || mcpMounts is null)
+            {
+                throw new InvalidOperationException("The session MCP services are unavailable.");
+            }
+            if (mcpMounts.Set(paneId) is { PreserveSelection: true } desired)
             {
                 enabledServerNames = new ExactMcpServerSelection(desired.ServerNames) { AssistantManaged = desired.Context?.Manager == SessionMcpManager.Assistant };
             }
             var registry = mcpServerCatalog.GetServersForSessionAsync(projectId, enabledServerNames, budget).GetAwaiter().GetResult();
-            // AC-869: cockpit-github-pull-requests is Internal (hidden from every picker); a git-repo working
-            // directory names it explicitly here rather than through operator config. Blocking is consistent with
-            // the catalog read above — this spawn path is synchronous all the way out to ITtyLauncher.Launch.
             var autoMounted = GitHubPullRequestsAutoMount.NamesAsync(worktreeManager, workingDirectory, budget).GetAwaiter().GetResult();
             var effectiveSelection = McpServerRegistryFilter.WithAutoMountedServers(enabledServerNames, registry, autoMounted);
-            var selected = McpServerRegistryFilter.ApplySessionSelection(registry, effectiveSelection);
-            if (useGateway && _PaneId(context.BaseEnvironment) is { } paneId && gateway?.UrlFor(paneId) is { } url)
-            {
-                try
-                {
-                    var eligible = selected.Where(McpConfigFile.IsAgentEligible).ToList();
-                    var confineRoot = context.Options.GetValueOrDefault(WellKnownPluginSessionOptions.ConfineFileToolsToWorkingDirectory) == "true" ? workingDirectory : null;
-                    Task.Run(() => gateway.BindLaunchAsync(paneId, projectId, workingDirectory, confineRoot, agentName, enabledServerNames is ExactMcpServerSelection { AssistantManaged: true }, budget, context.BaseEnvironment.ToDictionary(pair => pair.Key, pair => (string?)pair.Value)), budget).GetAwaiter().GetResult();
-                    var names = eligible.Select(server => server.Name).ToList();
-                    mcpMounts?.Grant(paneId, names);
-                    gateway.PrepareLaunchAsync(paneId, budget, waitForNames: false).GetAwaiter().GetResult();
-                    _gatewayServerNames = names;
-                    return ([new PluginMcpServer { Name = "cockpit", Url = url, CockpitHosted = true }],
-                        eligible.Any(server => string.Equals(server.Name, DelegationMcp.ServerName, StringComparison.OrdinalIgnoreCase)));
-                }
-                catch (Exception exception)
-                {
-                    logger?.LogWarning(exception, "Preparing the session MCP gateway failed; using the direct MCP servers.");
-                }
-            }
-            else if (useGateway && gateway?.IsEnabled == true)
-            {
-                logger?.LogWarning("The session MCP gateway is unavailable; using the direct MCP servers.");
-            }
-            var servers = new List<PluginMcpServer>();
-
-            var resolved = Task.WhenAll(selected.Where(McpConfigFile.IsAgentEligible).Select(server => Task.Run(() =>
-            {
-                // The endpoint first, for the same reason as on the SDK route: behind it the launch never writes a
-                // token, so it only has to establish that a sign-in exists; without it the token goes into the
-                // config and has to outlast the sitting.
-                var proxyUrl = _ProxyUrl(server, budget);
-                var access = _AcquireCredential(server, theSessionWillHoldIt: proxyUrl is null, budget);
-                if (access.State == McpAuthState.AuthorizationRequired)
-                {
-                    // Same reasoning as the SDK route's PluginSessionDriverAdapter: handing it over anyway would only
-                    // move the refusal into the CLI's own initialize, reading as a broken server rather than an
-                    // absent one — the operator gets the coordinator's line naming the cause and action instead.
-                    return null;
-                }
-
-                if (PluginMcpServerMapper.ToPluginMcpServer(server, access.AccessToken, proxyUrl, agentName) is { } mapped)
-                {
-                    return mapped;
-                }
-                else
-                {
-                    logger?.LogWarning(
-                        "MCP server {Name} is agent-eligible but not mountable (no url for Http / no command for Stdio); it was skipped.",
-                        server.Name);
-                }
-                return null;
-            }))).GetAwaiter().GetResult();
-            servers.AddRange(resolved.OfType<PluginMcpServer>());
-            var canDelegate = selected.Any(server =>
-                server.Enabled && string.Equals(server.Name, DelegationMcp.ServerName, StringComparison.OrdinalIgnoreCase));
-            return (servers, canDelegate);
+            var eligible = McpServerRegistryFilter.ApplySessionSelection(registry, effectiveSelection).Where(McpConfigFile.IsAgentEligible).ToList();
+            var confineRoot = context.Options.GetValueOrDefault(WellKnownPluginSessionOptions.ConfineFileToolsToWorkingDirectory) == "true" ? workingDirectory : null;
+            Task.Run(() => gateway.BindLaunchAsync(paneId, projectId, workingDirectory, confineRoot, agentName, enabledServerNames is ExactMcpServerSelection { AssistantManaged: true }, budget, context.BaseEnvironment.ToDictionary(pair => pair.Key, pair => (string?)pair.Value)), budget).GetAwaiter().GetResult();
+            var names = eligible.Select(server => server.Name).ToList();
+            mcpMounts.Grant(paneId, names);
+            gateway.PrepareLaunchAsync(paneId, budget, waitForNames: false).GetAwaiter().GetResult();
+            _gatewayServerNames = names;
+            return ([new PluginMcpServer { Name = "cockpit", Url = url, CockpitHosted = true }],
+                eligible.Any(server => string.Equals(server.Name, DelegationMcp.ServerName, StringComparison.OrdinalIgnoreCase)));
         }
-        catch (Exception)
+        catch (Exception exception)
         {
-            return ([], false);
+            logger?.LogError(exception, "Preparing the session MCP gateway failed; session launch was stopped.");
+            throw new InvalidOperationException("Session could not start because its MCP gateway is unavailable. See the Cockpit log for the cause.");
         }
     }
 
     private IReadOnlyList<string>? _gatewayServerNames;
-
-    // How long a launch waits, in total, for stale tokens to be renewed. This path runs synchronously out to
-    // `ITtyLauncher.Launch` on the UI thread, so the wait is the window in which the app stops repainting — a
-    // renewal answers well within this or not at all, and running unbounded would trade missing tools for a frozen app.
     private static readonly TimeSpan RenewalBudget = TimeSpan.FromSeconds(5);
-
-    // AC-1013: The credential this launch presents to `server` (AC-353), asked for non-interactively; a server
-    // whose authorization cannot be renewed within the shared launch budget is left out rather than surfacing as a
-    // 401 later. `theSessionWillHoldIt` mirrors the SDK route's same-named parameter — false behind the loopback proxy.
-    private McpOAuthAccess _AcquireCredential(McpServerConfig server, bool theSessionWillHoldIt, CancellationToken budget)
-    {
-        if (oauthCoordinator is null || server.Auth != McpServerAuth.OAuth)
-        {
-            return McpOAuthAccess.NotRequired;
-        }
-
-        McpOAuthAccess access;
-        try
-        {
-            // Run on the pool rather than awaited inline: a continuation that captured this thread's context could
-            // not resume while GetResult() holds it, and a budget cannot lift that deadlock — Cockpit's own chain
-            // configures away from context throughout, but the MCP client's does not answer to us.
-            access = Task.Run(
-                    () => theSessionWillHoldIt
-                        ? oauthCoordinator.AcquireForSessionAsync(server, budget)
-                        : oauthCoordinator.AcquireAsync(server, interactive: false, budget),
-                    budget)
-                .GetAwaiter()
-                .GetResult();
-        }
-        catch (OperationCanceledException)
-        {
-            logger?.LogWarning(
-                "Renewing the authorization for MCP server {Name} took longer than the launch waits for.",
-                server.Name);
-
-            // Carries the cause rather than returning here, so the line below can act on it: a renewal that ran out
-            // of time means the server isn't answering, and the advice is to wait rather than sign in again —
-            // returning early would leave that blank, falling through to the generic "no reason given" message.
-            access = McpOAuthAccess.AuthorizationRequired with { Reason = McpOAuthAttentionReason.ServerUnreachable };
-        }
-
-        if (access.State == McpAuthState.AuthorizationRequired)
-        {
-            // Information for the same reason as on the SDK route: the coordinator already said it once, at the
-            // moment it became true, and a launch is not a new fact.
-            logger?.LogInformation(
-                "This session starts without MCP server {Name}: {Guidance}",
-                server.Name,
-                McpOAuthSignInGuidance.For(server.Name, access.Reason));
-        }
-
-        return access;
-    }
-
-    // The loopback address that stands in for an OAuth server (AC-524), resolved inside the same launch budget as
-    // the credential above (this spawn path is synchronous) rather than its own — the budget is the launch's total
-    // repaint-freeze window. Anything that fails answers `null`, falling back to writing the token into the config.
-    private string? _ProxyUrl(McpServerConfig server, CancellationToken budget)
-    {
-        if (oauthProxy is null)
-        {
-            return null;
-        }
-
-        try
-        {
-            return Task.Run(() => oauthProxy.MountAsync(server, budget), budget).GetAwaiter().GetResult();
-        }
-        catch (OperationCanceledException)
-        {
-            logger?.LogWarning(
-                "Opening the loopback endpoint for MCP server {Name} took longer than the launch waits for; its access token is written into the session config instead.",
-                server.Name);
-            return null;
-        }
-    }
 
     // A plugin says "resume this conversation, or the last one" and nothing else. The core's `SessionResume`
     // also has a "start fresh" case, which is the absence of a resume — so it maps to null rather than to an
