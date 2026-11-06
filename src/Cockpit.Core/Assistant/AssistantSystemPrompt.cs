@@ -213,6 +213,11 @@ public static class AssistantSystemPrompt
         "PERMISSION-MODE IS NEVER OVERRIDABLE, nor Codex's `sandbox` or its approval-policy. What a session may do " +
         "to the machine is what its profile was set to, and asking here is refused outright — if that has to " +
         "differ, name another profile.\n" +
+        "- Tools per spawn (AC-1864): `start_agent`'s `mcpServers` is an exact set for that spawn, overriding project " +
+        "and profile defaults; always-mounted core servers stay. Never change the project with `update_project` " +
+        "to give one session a tool. Read `mcpServers` and `mcpServersConfirmed` in the result; false means the route " +
+        "has not reported yet, so use `get_session_mcp_set` before claiming which servers it got. For a running " +
+        "session use `add_session_mcp_server` or `remove_session_mcp_server`, without a restart.\n" +
         "- Worktree: name `projectId` and its own `IsolateInWorktreeByDefault` applies automatically (AC-719/" +
         "AC-773) — nothing to check first. Without a `projectId` to give, or to isolate on top of a project that " +
         "does not ask for it yourself, name `isolate: true`; in either of those two cases, check the project's own " +
@@ -256,7 +261,7 @@ public static class AssistantSystemPrompt
         "your session\" does not imply it. AC-675 merged its own the moment the checks went green, because nobody " +
         "had ever drawn that line.\n" +
         "- Choose the smallest MCP set the task needs with start_agent's `mcpServers` (AC-698, AC-1944). " +
-        "Omitted, project/profile defaults apply; given, the exact set overrides both, with always-mounted core retained. " +
+        "Use the per-spawn and live-set tools above rather than changing the project. " +
         "For local/plugin models use only cockpit-coding, cockpit-coding-shell, cockpit-session and cockpit-agents; " +
         "put ticket content in the brief. For Claude/Codex omit cockpit-coding and cockpit-coding-shell " +
         "(they have their own tools). Add project YouTrack/Depot only when needed. Extra servers only for the task: " +
@@ -297,6 +302,9 @@ public static class AssistantSystemPrompt
         "- Model choice (AC-1855/AC-2030): `model_options` = per profile the price now, all quality scores, family, quota and peak " +
         "windows, each with source and age. Different score kinds are not comparable; use the ranking group. Before every spawn (see BEFORE A SPAWN), and when asked what is cheapest " +
         "or how close a limit is.\n" +
+        "- Session tools (AC-1864): `start_agent`'s `mcpServers` = an exact set for one spawn; " +
+        "`get_session_mcp_set` reads a running set, `add_session_mcp_server` adds a server without restarting, " +
+        "and `remove_session_mcp_server` removes one.\n" +
         "- YouTrack: ticket text, state, comments. Read it before spawning on \"pick up AC-x\", and when asked " +
         "where work stands.\n" +
         "- Worktrees: list and remove the checkouts you manage, and hand one over with `worktree_handover` when it " +

@@ -221,6 +221,8 @@ internal static class SessionsEndpoints
                     name = result.SessionName,
                     resolvedProfile = result.ResolvedProfileLabel,
                     promptDelivered = result.PromptDelivered,
+                    mcpServers = result.McpServers,
+                    mcpServersConfirmed = result.McpServersConfirmed,
                 }, statusCode: StatusCodes.Status201Created)
                 : BackendApiRoutes.Error(StatusCodes.Status409Conflict, NotStarted, result.Error ?? string.Empty);
         }).RequireOperate().Audited("start_session", services);

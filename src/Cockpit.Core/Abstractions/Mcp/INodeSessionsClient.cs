@@ -140,7 +140,12 @@ public sealed record NodeStartResult(
     string PaneId = "",
     string SessionName = "",
     string ResolvedProfile = "",
-    bool? PromptDelivered = null);
+    bool? PromptDelivered = null)
+{
+    public IReadOnlyList<string>? McpServers { get; init; }
+
+    public bool McpServersConfirmed { get; init; }
+}
 
 // AC-1323: one transcript read on a node. A non-null `Error` means nothing was read; `Transcript` null with no
 // error means the node knows no such session.

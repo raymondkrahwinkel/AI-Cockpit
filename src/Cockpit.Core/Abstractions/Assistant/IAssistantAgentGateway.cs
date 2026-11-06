@@ -494,6 +494,10 @@ public sealed record AgentSpawnResult(
     bool Ok, string? PaneId, string? SessionName, string? WorkingDirectory, string? Error,
     bool? PromptDelivered = null, string? ResolvedProfileLabel = null)
 {
+    public IReadOnlyList<string>? McpServers { get; init; }
+
+    public bool McpServersConfirmed { get; init; }
+
     public static AgentSpawnResult Started(
         string paneId, string sessionName, string? workingDirectory, bool? promptDelivered = null, string? resolvedProfileLabel = null) =>
         new(true, paneId, sessionName, workingDirectory, null, promptDelivered, resolvedProfileLabel);
