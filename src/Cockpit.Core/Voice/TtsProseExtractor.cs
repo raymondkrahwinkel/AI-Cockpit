@@ -14,7 +14,7 @@ public static partial class TtsProseExtractor
 {
     private static readonly HashSet<string> Abbreviations = new(StringComparer.OrdinalIgnoreCase)
     {
-        "bv", "bijv", "dr", "mr", "mrs", "ms", "nr", "vs", "ca", "eg", "ie", "etc", "e.g", "i.e", "z.b",
+        "bv", "bijv", "dr", "mr", "mrs", "ms", "nr", "vs", "ca", "eg", "ie", "etc",
     };
 
     public static IReadOnlyList<string> Extract(string assistantMarkdown, bool usePlaceholders = true)
@@ -179,7 +179,8 @@ public static partial class TtsProseExtractor
             wordStart--;
         }
         var word = markdown[wordStart..index];
-        if (word.Length == 0 || word.Length == 1 && char.IsUpper(word[0]) || Abbreviations.Contains(word))
+        var dottedAbbreviation = word.Contains('.') && word.Split('.').All(part => part.Length is > 0 and <= 2 && part.All(char.IsLetter));
+        if (word.Length == 0 || word.Length == 1 && char.IsUpper(word[0]) || Abbreviations.Contains(word) || dottedAbbreviation)
         {
             return false;
         }
