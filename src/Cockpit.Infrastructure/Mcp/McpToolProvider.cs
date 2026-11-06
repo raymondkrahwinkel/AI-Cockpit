@@ -31,7 +31,6 @@ internal sealed partial class McpToolProvider(
 {
     internal TimeSpan RemovedCallDrainTimeout { get; init; } = TimeSpan.FromMinutes(2);
     private readonly IMcpServerCatalog _catalog = catalog;
-    private bool _UsesGateway(string? paneId) => gateway?.UrlFor(paneId ?? "launch") is not null;
     private readonly IMcpOAuthCoordinator _oauthCoordinator = oauthCoordinator;
     private readonly SessionMcpMounts? _mounts = mounts;
     private readonly SessionMcpKeyring _keyring = keyring;
@@ -39,25 +38,26 @@ internal sealed partial class McpToolProvider(
 
     public async Task<IMcpToolSession> ConnectAsync(IReadOnlySet<string>? enabledServerNames = null, string? paneId = null, string? confineFileToolsToDirectory = null, string? projectId = null, string? workingDirectory = null, CancellationToken cancellationToken = default, string? agentName = null)
     {
-        if (gateway?.UrlFor(paneId ?? "launch") is not null)
+        try
         {
-            try
+            if (gateway?.UrlFor(paneId ?? "launch") is null)
             {
-                var candidatePane = string.IsNullOrEmpty(paneId) ? Guid.NewGuid().ToString("N") : paneId;
-                await gateway.BindLaunchAsync(candidatePane, projectId, workingDirectory, confineFileToolsToDirectory, agentName,
-                    enabledServerNames is ExactMcpServerSelection { AssistantManaged: true }, cancellationToken).ConfigureAwait(false);
-                paneId = candidatePane;
+                throw new InvalidOperationException("The session MCP gateway is unavailable.");
             }
-            catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
-            {
-                _logger.LogWarning(exception, "Binding the session MCP gateway failed; using the direct MCP tools.");
-            }
+            var candidatePane = string.IsNullOrEmpty(paneId) ? Guid.NewGuid().ToString("N") : paneId;
+            await gateway.BindLaunchAsync(candidatePane, projectId, workingDirectory, confineFileToolsToDirectory, agentName,
+                enabledServerNames is ExactMcpServerSelection { AssistantManaged: true }, cancellationToken).ConfigureAwait(false);
+            paneId = candidatePane;
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogError(exception, "Preparing the session MCP gateway failed; session launch was stopped.");
+            throw new InvalidOperationException("Session could not start because its MCP gateway is unavailable. See the Cockpit log for the cause.");
         }
         // AC-89: a session with a pane id mints one per-session token here (not per server) so every
         // cockpit-hosted endpoint it connects to can attribute requests to this pane; no pane id falls back to the shared app key.
         var sessionToken = string.IsNullOrEmpty(paneId) ? null : _keyring.TokenFor(paneId);
-        var liveGateway = gateway?.UrlFor(paneId ?? "launch") is not null;
-        if (liveGateway && paneId is not null && _mounts?.Set(paneId) is { PreserveSelection: true } desired)
+        if (paneId is not null && _mounts?.Set(paneId) is { PreserveSelection: true } desired)
         {
             enabledServerNames = new ExactMcpServerSelection(desired.ServerNames) { AssistantManaged = desired.Context?.Manager == SessionMcpManager.Assistant };
         }
@@ -72,7 +72,7 @@ internal sealed partial class McpToolProvider(
         // Local models host the built-in defaults (#26) overlaid by the registry (a registry entry, including
         // a disabled one, overrides the same-named built-in). #44's per-session selection is already applied above.
         var enabledServers = _EffectiveServers(sessionRegistry).Where(server => server.Enabled
-            && (!liveGateway || effectiveSelection is not ExactMcpServerSelection exact || exact.Contains(server.Name) || server.AlwaysMounted)).ToList();
+            && (enabledServerNames is null || effectiveSelection?.Contains(server.Name) == true || server.AlwaysMounted)).ToList();
 
         // AC-1962: confine Cockpit's file tools without changing the operator's MCP selection.
         if (!string.IsNullOrWhiteSpace(confineFileToolsToDirectory))
@@ -98,19 +98,9 @@ internal sealed partial class McpToolProvider(
         try
         {
             var connecting = Task.WhenAll(enabledServers.Select(server => session.AddServerAsync(server, cancellationToken)));
-            if (liveGateway)
-            {
-                try { await connecting.WaitAsync(TimeSpan.FromSeconds(3), cancellationToken); }
-                catch (TimeoutException) { }
-            }
-            else
-            {
-                await connecting;
-            }
-            if (liveGateway)
-            {
-                session.WatchMounts(confineFileToolsToDirectory);
-            }
+            try { await connecting.WaitAsync(TimeSpan.FromSeconds(3), cancellationToken); }
+            catch (TimeoutException) { }
+            session.WatchMounts(confineFileToolsToDirectory);
             return session;
         }
         catch

@@ -2,6 +2,8 @@ using System.Text.Json;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
+using Cockpit.Core.Sessions.Permissions;
+using Microsoft.Extensions.AI;
 using Cockpit.Infrastructure.Mcp;
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Client;
@@ -39,6 +41,8 @@ public partial class McpClientConnectorTests
         Assert.NotEqual(first, second);
         Assert.Equal(first, names.ForTool("a b", "read"));
         Assert.Equal("mcp__a_b__read", names.ToCanonical("mcp__cockpit__" + first));
+        Assert.Equal("mcp__a_b__read", names.ToCanonical(first));
+        Assert.Equal(first, names.InBrief("mcp__a_b__read", localTools: true));
         Assert.Equal("mcp__a_b_2__read", names.ToCanonical("mcp__cockpit__" + second));
         Assert.Equal("Read", names.ToCanonical("Read"));
         Assert.Equal("mcp__depot__read", names.ToCanonical("mcp__depot__read"));
@@ -52,8 +56,9 @@ public partial class McpClientConnectorTests
     {
         _AssertToolNameRules();
         var config = new McpServerConfig { Name = "depot", Transport = McpTransport.Http, Url = upstream.Url };
+        var registry = new List<McpServerConfig> { config };
         var catalog = Substitute.For<IMcpServerCatalog>();
-        catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns([config]);
+        catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(registry);
         var keyring = new SessionMcpKeyring();
         var auth = new McpAuthKey();
         var mounts = new SessionMcpMounts();
@@ -87,6 +92,30 @@ public partial class McpClientConnectorTests
             Assert.True(System.Text.Json.Nodes.JsonNode.DeepEquals(JsonSerializer.SerializeToNode(expected), JsonSerializer.SerializeToNode(actual)));
             Assert.IsType<ImageContentBlock>(actual.Content[1]);
             Assert.Equal(token, keyring.CurrentToken("contract"));
+
+            // Category A: equal upstream names must retain both routing identity and their own permission class.
+            await using var other = await InProcessMcpHttpServer.StartAsync<GatewayCollisionTool>();
+            var second = config with { Name = "other", Url = other.Url };
+            registry.Add(second);
+            mounts.Grant("contract", ["depot", "other"]);
+            await using var local = provider.CreateGatewaySession("contract", token, mounts.Set("contract")?.Context);
+            await local.AddServerAsync(config);
+            await local.AddServerAsync(second);
+            Assert.Equal(["depot__contract", "other__contract"], local.Tools.Select(tool => tool.Function.Name));
+            Assert.Equal(ToolPermissionClass.ReadOnly, local.ToolClasses["mcp__depot__contract"]);
+            Assert.Equal(ToolPermissionClass.Destructive, local.ToolClasses["mcp__other__contract"]);
+            var routed = await local.Tools.Single(tool => tool.Function.Name == "other__contract").Function.InvokeAsync(new AIFunctionArguments());
+            Assert.Contains("other-upstream", JsonSerializer.Serialize(routed));
+
+            // Category C: revoke during a call must close its client response as well as cancel the upstream.
+            await client.ListToolsAsync();
+            using var callDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            var pending = client.CallToolAsync("other__contract", new Dictionary<string, object?> { ["waitForRevoke"] = true },
+                cancellationToken: callDeadline.Token).AsTask();
+            await GatewayCollisionTool.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            keyring.Revoke("contract", token);
+            await Assert.ThrowsAnyAsync<ModelContextProtocol.McpException>(async () => await pending.WaitAsync(TimeSpan.FromSeconds(2)));
+            await GatewayCollisionTool.Cancelled.Task.WaitAsync(TimeSpan.FromSeconds(5));
         }
         finally
         {

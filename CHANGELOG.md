@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Run Windows executables named with forward-slash paths correctly in tracked, shell and verify commands while preserving their arguments.
+
+- Limit built-in MCP presets to the profile's selected servers; profiles without a selection retain their default servers.
+
+- Start and release the desktop assistant on the UI thread when requested through the admin API, preventing an unusable registered assistant pane.
+
+- Close pending MCP client calls promptly when their session key is revoked, while cancelling the upstream call.
+
+- Refuse local model session starts when their MCP gateway is unavailable, including profile and preset selections, with the same clear error as plugin sessions.
+
+- Keep MCP tools from different servers uniquely named in local model sessions, including after live additions, so calls and permissions reach the intended server.
+
 - Explain exact per-spawn MCP selections and live set changes to the assistant, and report the servers a spawned session actually connected with a confirmation flag.
 
 - Add MCP servers to running operator-managed sessions from the session dialog, with OAuth sign-in and the same audited admin route for remote sessions. Assistant-managed sets keep removal available and explain why additions go through the assistant.

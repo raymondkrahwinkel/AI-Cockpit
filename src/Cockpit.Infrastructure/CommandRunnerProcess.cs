@@ -5,6 +5,9 @@ namespace Cockpit.Infrastructure;
 
 internal static class CommandRunnerProcess
 {
+    // Windows cmd.exe interprets forward slashes in argv[0] as switches, even when CreateProcess found it.
+    internal static string NormalizeExecutablePath(string command) => command.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
+
     // A refused kill can keep a pipe open, so abandon a read after a short grace instead of waiting forever.
     private static readonly TimeSpan ReadGrace = TimeSpan.FromSeconds(5);
 

@@ -51,6 +51,7 @@ internal sealed partial class McpToolProvider
 
         public event Action? ToolsChanged;
         public string? PaneToken { get; }
+        public McpToolNames ToolNames => _toolNames;
 
         public void WatchMounts(string? confineRoot)
         {
@@ -120,7 +121,8 @@ internal sealed partial class McpToolProvider
             {
                 lock (_sync)
                 {
-                    return [.. _servers.Values.SelectMany(server => server.Tools.Select(tool => new McpSessionTool(new MountedTool(tool, this, server), server.Config.Name, server.Config.AlwaysMounted)))];
+                    return [.. _servers.Values.SelectMany(server => server.Tools.Select(tool => new McpSessionTool(
+                        new MountedTool(tool, this, server, _toolNames.ForTool(server.Config.Name, tool.Name)), server.Config.Name, server.Config.AlwaysMounted)))];
                 }
             }
         }
@@ -145,17 +147,7 @@ internal sealed partial class McpToolProvider
             }
         }
 
-        public IReadOnlyList<McpSessionTool> GatewayTools
-        {
-            get
-            {
-                lock (_sync)
-                {
-                    return [.. _servers.Values.SelectMany(server => server.Tools.Select(tool => new McpSessionTool(
-                        new MountedTool(tool, this, server, _toolNames.ForTool(server.Config.Name, tool.Name)), server.Config.Name, server.Config.AlwaysMounted)))];
-                }
-            }
-        }
+        public IReadOnlyList<McpSessionTool> GatewayTools => Tools;
 
         public IReadOnlyList<string> ConnectedServerNames
         {
@@ -188,9 +180,12 @@ internal sealed partial class McpToolProvider
                 lock (_sync)
                 {
                     var classes = new Dictionary<string, ToolPermissionClass>(StringComparer.Ordinal);
-                    foreach (var pair in _servers.Values.SelectMany(server => server.Connection?.ToolClasses ?? new Dictionary<string, ToolPermissionClass>()))
+                    foreach (var server in _servers.Values)
                     {
-                        classes[pair.Key] = classes.TryGetValue(pair.Key, out var previous) ? DelegatedToolPermissionPolicy.MoreRestrictive(previous, pair.Value) : pair.Value;
+                        foreach (var pair in server.Connection?.ToolClasses ?? new Dictionary<string, ToolPermissionClass>())
+                        {
+                            classes[_toolNames.ToCanonical(_toolNames.ForTool(server.Config.Name, pair.Key))] = pair.Value;
+                        }
                     }
                     return classes;
                 }
@@ -326,7 +321,7 @@ internal sealed partial class McpToolProvider
         {
             try
             {
-                var outcome = await _provider._ConnectServerAsync(server.Config, PaneToken, server.Lifetime.Token, _agentName, gateway: _provider._UsesGateway(_paneId), paneId: _paneId);
+                var outcome = await _provider._ConnectServerAsync(server.Config, PaneToken, server.Lifetime.Token, _agentName, gateway: true, paneId: _paneId);
                 _Publish(server, outcome.Connection, outcome.FailureReason);
             }
             finally

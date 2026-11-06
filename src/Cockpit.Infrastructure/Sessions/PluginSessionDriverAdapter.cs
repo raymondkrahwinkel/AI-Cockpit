@@ -172,7 +172,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
             ? await _ResolveMcpServersAsync(selection, projectId, workingDirectory, cancellationToken).ConfigureAwait(false)
             : [];
 
-        _gatewayToolNames = PluginMcpServerMapper.GatewayToolNames(mcpServers, paneId, mcpMounts);
+        _gatewayToolNames = _hostToolset?.ToolNames ?? PluginMcpServerMapper.GatewayToolNames(mcpServers, paneId, mcpMounts);
         if (_gatewayActive && paneId is not null)
         {
             gateway?.SetToolAuthorization(paneId, (name, input) => !_readOnlyTurn && inner is IPluginMcpToolAuthorization policy && policy.MayCallWithoutPrompt(name, input));
@@ -218,7 +218,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
             options?.GetValueOrDefault(WellKnownPluginSessionOptions.AppendSystemPrompt), SessionScratch.Instruction(_scratch)).TrimStart('\n');
         if (_gatewayToolNames is { } names)
         {
-            scratchOptions[WellKnownPluginSessionOptions.AppendSystemPrompt] = names.InBrief(scratchOptions[WellKnownPluginSessionOptions.AppendSystemPrompt]);
+            scratchOptions[WellKnownPluginSessionOptions.AppendSystemPrompt] = names.InBrief(scratchOptions[WellKnownPluginSessionOptions.AppendSystemPrompt], localTools: _hostToolset is not null);
         }
         await inner.StartAsync(model, workingDirectory, resumeSessionId, scratchOptions, mcpServers, environment, _hostToolset, cancellationToken).ConfigureAwait(false);
         if (paneId is not null && inner.ProcessId is { } processId) { stdioProcesses?.Bind(paneId, processId); }
@@ -483,7 +483,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         try
         {
             await inner.SendUserMessageAsync(
-            _gatewayToolNames?.InBrief(text) ?? text,
+            _gatewayToolNames?.InBrief(text, localTools: _hostToolset is not null) ?? text,
             images?.Select(image => new PluginImageAttachment(image.MediaType, image.Base64Data)).ToList(),
             cancellationToken);
         }

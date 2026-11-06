@@ -27,6 +27,7 @@ internal sealed class HostPluginToolset : IPluginToolset, IAsyncDisposable
         _loop = loop;
         _logger = logger;
         Gate = gate;
+        Gate.ToolNames = _toolSession.ToolNames;
         Events = events;
         Gate.ToolClasses = _toolSession.ToolClasses;
         _snapshot = _BuildSnapshot();
@@ -97,6 +98,7 @@ internal sealed class HostPluginToolset : IPluginToolset, IAsyncDisposable
     // The pane token ConnectAsync minted below, so the adapter can hand its plugin the same live token
     // instead of minting a second one for the same pane (AC-994).
     public string? PaneToken => _toolSession.PaneToken;
+    public McpToolNames? ToolNames => _toolSession.ToolNames;
 
     // Connects the session's servers and wraps each tool in its GatedTool, exactly as the built-in
     // OpenAiCompatSessionDriver does — same ConnectAsync call, so the per-session token (AC-89), worktree
@@ -149,6 +151,7 @@ internal sealed class HostPluginToolset : IPluginToolset, IAsyncDisposable
             (toolUseId, content, isError) => events.Publish(new PluginToolResult { SessionId = sessionId(), ToolUseId = toolUseId, Content = content, IsError = isError }))
         {
             ToolClasses = toolSession.ToolClasses,
+            ToolNames = toolSession.ToolNames,
         };
 
         return new HostPluginToolset(toolSession, loop, logger, gate, events);
