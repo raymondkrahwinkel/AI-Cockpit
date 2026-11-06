@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Let the local assistant manage session MCP sets within delegation limits, with audited changes and an operator removal brake.
+
 - Forward HTTP MCP tools through the opt-in session gateway, preserving images and instructions while isolating failed upstream servers.
 
 - Add the opt-in foundation for a separate loopback MCP URL per session, with session-key isolation.

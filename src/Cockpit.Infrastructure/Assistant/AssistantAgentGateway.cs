@@ -24,7 +24,7 @@ namespace Cockpit.Infrastructure.Assistant;
 // AC-545/AC-436: records every spawn/stop outcome, refusals included, and enforces that the named desk can hold a
 // session; which desk (`SpawnTarget`) and consent (an Allow/Deny row) are settled upstream. AC-1375: multi-field
 // decisions run in `ISessionLauncher.RunExclusiveAsync`, and the action after it re-checks its own precondition.
-internal sealed class AssistantAgentGateway(
+internal sealed partial class AssistantAgentGateway(
     ISessionRegistry sessions,
     ISessionLauncher launcher,
     ProjectCatalog projects,
@@ -46,7 +46,8 @@ internal sealed class AssistantAgentGateway(
     IMcpServerCatalog? mcpServers = null,
     IMcpOAuthTokenStore? oauthTokens = null,
     IWorkspaceAgentCoordinator? agentCoordinator = null,
-    ProfileSessionLimit? sessionLimit = null) : IAssistantAgentGateway, ISingletonService
+    ProfileSessionLimit? sessionLimit = null,
+    Cockpit.Core.Sessions.SessionMcpMounts? mcpMounts = null) : IAssistantAgentGateway, ISingletonService
 {
     private static readonly StringComparison _PathComparison =
         OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
@@ -171,31 +172,11 @@ internal sealed class AssistantAgentGateway(
 
         if (request.McpServers is { } requestedServers)
         {
-            if (mcpServers is null)
+            var refusal = await new McpSetPolicy(mcpServers, oauthTokens).RefusalAsync(
+                project?.Id, requestedServers, cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (refusal is not null)
             {
-                return await _RefuseSpawnAsync(request, workspace.Name, "The MCP catalog is unavailable.", cancellationToken).ConfigureAwait(false);
-            }
-
-            var catalog = await mcpServers.GetServersForSessionAsync(project?.Id, new ExactMcpServerSelection(requestedServers), cancellationToken).ConfigureAwait(false);
-            var offered = McpServerRegistryFilter.OfferedToOperator(catalog);
-            foreach (var name in requestedServers)
-            {
-                var server = offered.FirstOrDefault(server => string.Equals(server.Name, name, StringComparison.OrdinalIgnoreCase))
-                    ?? catalog.FirstOrDefault(server => string.Equals(server.Name, name, StringComparison.OrdinalIgnoreCase));
-                var reason = server is null ? "unknown"
-                    : server.Internal ? "internal servers cannot be requested"
-                    : !server.Enabled ? "globally disabled"
-                    : null;
-                if (reason is not null)
-                {
-                    return await _RefuseSpawnAsync(request, workspace.Name, $"MCP server '{name}' refused: {reason}.", cancellationToken).ConfigureAwait(false);
-                }
-                if (server!.Auth == McpServerAuth.OAuth &&
-                    (oauthTokens is null || await oauthTokens.GetAsync(server.IdentityKey, cancellationToken).ConfigureAwait(false) is null))
-                {
-                    return await _RefuseSpawnAsync(request, workspace.Name,
-                        $"MCP server '{name}' needs OAuth authorization. Sign in before starting the session.", cancellationToken).ConfigureAwait(false);
-                }
+                return await _RefuseSpawnAsync(request, workspace.Name, refusal, cancellationToken).ConfigureAwait(false);
             }
             logger?.LogInformation("Session MCP override for project {ProjectId}: [{McpServers}] plus always-mounted core", project?.Id, string.Join(", ", requestedServers));
         }
@@ -207,7 +188,7 @@ internal sealed class AssistantAgentGateway(
             // back out of the spawn trail later — a trail records what happened, not what is still true.
             StartedByTheAssistant: request.Target.Caller == SpawnCaller.Assistant)
         {
-            EnabledMcpServerNames = request.McpServers is null ? null : new ExactMcpServerSelection(request.McpServers),
+            EnabledMcpServerNames = request.McpServers is null ? null : new ExactMcpServerSelection(request.McpServers) { AssistantManaged = request.Target.Caller == SpawnCaller.Assistant },
             McpServersOverride = request.McpServers,
         }).ConfigureAwait(false);
 

@@ -47,4 +47,7 @@ public enum AssistantSpawnAction
 
     // A worktree re-owned from the assistant onto a session — `worktree_handover` (AC-719).
     Handover,
+
+    McpAdd,
+    McpRemove,
 }

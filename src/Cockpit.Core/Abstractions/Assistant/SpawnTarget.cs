@@ -53,4 +53,6 @@ public enum SpawnCaller
     // The cockpit on the other machine this one is paired to as a node (AC-795), whose target was derived from
     // this machine's own active desk.
     Controller,
+
+    Operator,
 }

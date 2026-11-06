@@ -18,6 +18,10 @@ using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Layout;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Sessions;
+using Cockpit.Core.Assistant;
+using Cockpit.Infrastructure.Mcp;
+using Cockpit.Infrastructure.Delegation;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
@@ -110,6 +114,40 @@ public class AssistantSpawnProjectIsolationTests
                 Assert.True(withoutProject.Ok, withoutProject.Error);
             }
         }
+
+        var mounts = new SessionMcpMounts();
+        var managedProfile = new SessionProfile("work", new ClaudeConfig("/fake/.claude"))
+        {
+            EnabledMcpServerNames = ["cockpit-coding", "cockpit-orchestrator", "cockpit-terminal"],
+        };
+        var managedProject = Project.Create("Managed");
+        var (management, _, changes, _) = Dispatcher.UIThread.Invoke(() => _Gateway(
+            managedProfile, managedProject, _WorktreeManagerThatIsolatesCleanly(), mcpMounts: mounts));
+        mounts.Bind("managed", new SessionMcpContext(managedProject, Repository, null, "work", SessionMcpManager.Assistant));
+        mounts.Grant("managed", ["cockpit-session"]);
+        McpRequestContext.Set("ordinary-agent");
+        Assert.False((await management.ChangeSessionMcpServerAsync("managed", "cockpit-coding", true)).Ok);
+        McpRequestContext.Set(AssistantIdentity.PaneId);
+        foreach (var forbidden in new[] { "cockpit-elevated", "unknown", "off-server", "oauth" })
+        {
+            Assert.False((await management.ChangeSessionMcpServerAsync("managed", forbidden, true)).Ok);
+        }
+        Assert.False((await management.ChangeSessionMcpServerAsync("managed", "cockpit-session", false)).Ok);
+        Assert.True((await management.ChangeSessionMcpServerAsync("managed", "other-project-server", true)).Ok);
+        mounts.Bind("managed", new SessionMcpContext(Project.Create("Changed"), Repository, null, "work"));
+        mounts.Grant("managed", ["project-server"]);
+        Assert.True(mounts.IsMounted("managed", "other-project-server"));
+        Assert.Equal(SessionMcpManager.Assistant, mounts.Set("managed")?.Context?.Manager);
+        mounts.RestrictDelegation("managed", DelegationService._NarrowServersFor([
+            new() { Name = "cockpit-orchestrator" }, new() { Name = "cockpit-terminal" }, new() { Name = "cockpit-coding" },
+        ], managedProfile, null));
+        Assert.False((await management.ChangeSessionMcpServerAsync("managed", "cockpit-orchestrator", true)).Ok);
+        Assert.False((await management.ChangeSessionMcpServerAsync("managed", "cockpit-terminal", true)).Ok);
+        Assert.True((await management.ChangeSessionMcpServerAsync("managed", "cockpit-coding", true)).Ok);
+        Assert.True((await management.ChangeSessionMcpServerAsync("managed", "other-project-server", false, byOperator: true)).Ok);
+        Assert.False(mounts.IsMounted("managed", "other-project-server"));
+        Assert.Contains(changes.Entries, entry => entry.Action == AssistantSpawnAction.McpRemove && entry.Caller == SpawnCaller.Operator && entry.Refusal is null);
+        McpRequestContext.Set(null);
     }
 
     [Fact]
@@ -251,7 +289,8 @@ public class AssistantSpawnProjectIsolationTests
         SessionProfile profile, Project project, IWorktreeManager worktreeManager, ISessionDialogService? dialogService = null,
         LiveSessionRegistry? liveSessions = null,
         SessionRegistry? sessionRegistry = null,
-        Action<CockpitViewModel>? whileComposing = null)
+        Action<CockpitViewModel>? whileComposing = null,
+        SessionMcpMounts? mcpMounts = null)
     {
         var sessions = sessionRegistry ?? new SessionRegistry();
         var desk = Workspace.Create("Release", WorkspaceType.Sessions);
@@ -277,6 +316,8 @@ public class AssistantSpawnProjectIsolationTests
                 new() { Name = "cockpit-assistant", Internal = true },
                 new() { Name = "off-server", Enabled = false },
                 new() { Name = "oauth", Auth = McpServerAuth.OAuth },
+                new() { Name = "cockpit-orchestrator" },
+                new() { Name = "cockpit-terminal" },
                 .. call.ArgAt<string?>(0) == project.Id ? new McpServerConfig[] { new() { Name = "project-server", ProjectLinked = true } } : [],
             ]);
         });
@@ -336,7 +377,8 @@ public class AssistantSpawnProjectIsolationTests
                 new SessionWatcher(Substitute.For<IAgentMessageInbox>()),
                 Substitute.For<IAssistantSessionHost>(),
                 worktreeManager,
-                mcpServerCatalog: mcpCatalog),
+                mcpServerCatalog: mcpCatalog,
+                mcpMounts: mcpMounts),
             cockpit,
             trail,
             desk.Id);

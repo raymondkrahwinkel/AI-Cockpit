@@ -73,6 +73,7 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
 
     // AC-2026: the profile's `MaxParallelSessions`, shared with the pane starts. Absent in a test graph without one.
     private readonly ProfileSessionLimit? _limit;
+    private readonly SessionMcpMounts? _mcpMounts;
     private readonly IProjectStore? _projectStore;
     private readonly IProjectMemorySourceRegistry? _memorySources;
 
@@ -97,8 +98,9 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         IOrgPolicy? orgPolicy = null,
         ProfileSessionLimit? limit = null,
         IProjectStore? projectStore = null,
-        IProjectMemorySourceRegistry? memorySources = null)
-        : this(profileStore, sessionManager, mcpServerStore, auditLog, minutes => TimeSpan.FromMinutes(minutes), workspaces, providerRegistry, projects, worktrees, idleWindow: null, consent, mcpServerCatalog: mcpServerCatalog, sessionState: sessionState, orgPolicy: orgPolicy, limit: limit, projectStore: projectStore, memorySources: memorySources)
+        IProjectMemorySourceRegistry? memorySources = null,
+        SessionMcpMounts? mcpMounts = null)
+        : this(profileStore, sessionManager, mcpServerStore, auditLog, minutes => TimeSpan.FromMinutes(minutes), workspaces, providerRegistry, projects, worktrees, idleWindow: null, consent, mcpServerCatalog: mcpServerCatalog, sessionState: sessionState, orgPolicy: orgPolicy, limit: limit, projectStore: projectStore, memorySources: memorySources, mcpMounts: mcpMounts)
     {
     }
 
@@ -122,8 +124,10 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         IOrgPolicy? orgPolicy = null,
         ProfileSessionLimit? limit = null,
         IProjectStore? projectStore = null,
-        IProjectMemorySourceRegistry? memorySources = null)
+        IProjectMemorySourceRegistry? memorySources = null,
+        SessionMcpMounts? mcpMounts = null)
     {
+        _mcpMounts = mcpMounts;
         _profileStore = profileStore;
         _sessionManager = sessionManager;
         _mcpServerStore = mcpServerStore;
@@ -719,6 +723,8 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
                 ? (await _projectStore.LoadAsync()).Projects.FirstOrDefault(p => p.Id == projectId)
                 : null;
             var brainInstruction = SessionStartDefaults.ResolveBrainInstruction(project, entry.Profile, _memorySources?.Sources.ToMemorySources());
+
+            _mcpMounts?.RestrictDelegation(entry.TaskId, await _ToolsForAsync(entry.Profile, projectId: entry.ProjectId));
 
             await runtime.StartAsync(
                 entry.Profile,
