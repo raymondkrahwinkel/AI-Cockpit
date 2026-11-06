@@ -21,6 +21,7 @@ public sealed class PluginUpdateChecker : IPluginUpdateChecker
     private readonly IPluginStoreConfigStore _storeConfigStore;
     private readonly IPluginStoreClient _storeClient;
     private readonly IPluginStoreSources? _storeSources;
+    private readonly IPluginTrustStore? _trust;
     private readonly Action<int> _setUpdateBadgeCount;
     private readonly IToastService _toastService;
     private readonly CockpitViewModel _cockpit;
@@ -43,7 +44,8 @@ public sealed class PluginUpdateChecker : IPluginUpdateChecker
         Version? hostVersion = null,
         IPluginRegistrationStore? registrations = null,
         IPluginStoreSources? storeSources = null,
-        Action<int>? setUpdateBadgeCount = null)
+        Action<int>? setUpdateBadgeCount = null,
+        IPluginTrustStore? trust = null)
     {
         _getInstalledPluginsAsync = getInstalledPluginsAsync;
         _isUpdateStaged = isUpdateStaged ?? ((entryId, latestVersion) => cockpit.Plugins.IsUpdateStaged(entryId, latestVersion));
@@ -55,9 +57,15 @@ public sealed class PluginUpdateChecker : IPluginUpdateChecker
         _hostVersion = hostVersion ?? HostVersionInfo.Current;
         _registrations = registrations;
         _storeSources = storeSources;
+        _trust = trust;
         _setUpdateBadgeCount = setUpdateBadgeCount ?? cockpit.Plugins.SetUpdateBadgeCount;
         cockpit.Plugins.UpdatesCleared += () => Dispatcher.UIThread.Post(() => cockpit.ToastHost.Withdraw(UpdateToastKey));
     }
+
+    private void _WarnRevokedPublisher(string id, string fingerprint) =>
+        _toastService.Show(
+            $"The publisher key for {id} has been revoked ({fingerprint}). The installed plugin keeps running; installation and updates under this key are blocked.",
+            ToastSeverity.Warning);
 
     private const string UpdateToastKey = "plugin-update-available";
 
@@ -162,6 +170,19 @@ public sealed class PluginUpdateChecker : IPluginUpdateChecker
             if (!fetch.IsSuccess || fetch.Index is null)
             {
                 continue;
+            }
+
+            if (_trust is not null && store.Signed is { } signed)
+            {
+                foreach (var plugin in installed)
+                {
+                    var pinned = await _trust.GetAsync(plugin.FolderId, cancellationToken).ConfigureAwait(false);
+                    if (pinned is not null && string.Equals(pinned.Source, signed.SourceKey, StringComparison.Ordinal)
+                        && fetch.Index.RevokedKeys?.Any(key => string.Equals(key.Fingerprint, pinned.KeyFingerprint, StringComparison.Ordinal)) == true)
+                    {
+                        _WarnRevokedPublisher(plugin.FolderId, pinned.KeyFingerprint);
+                    }
+                }
             }
 
             foreach (var entry in fetch.Index.Plugins)

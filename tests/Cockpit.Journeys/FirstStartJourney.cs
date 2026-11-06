@@ -658,14 +658,16 @@ public sealed class FirstStartJourney
             int hostAbstractionsMajor,
             Version? hostVersion = null,
             CancellationToken cancellationToken = default,
-            IProgress<PluginDownloadProgress>? progress = null) =>
+            IProgress<PluginDownloadProgress>? progress = null,
+            Func<PluginKeyConsentRequest, CancellationToken, Task<bool>>? keyConsent = null) =>
             _InstallAsync(request, cancellationToken);
 
         public async Task<PluginProvisionBatchResult> InstallManyAsync(
             IReadOnlyList<PluginProvisionRequest> requests,
             int hostAbstractionsMajor,
             Version? hostVersion = null,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            Func<PluginKeyConsentRequest, CancellationToken, Task<bool>>? keyConsent = null)
         {
             var results = new List<PluginProvisionResult>();
             foreach (var request in requests)

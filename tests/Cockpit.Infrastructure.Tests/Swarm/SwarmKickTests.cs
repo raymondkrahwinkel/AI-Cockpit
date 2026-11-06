@@ -9,10 +9,20 @@ namespace Cockpit.Infrastructure.Tests.Swarm;
 
 public class SwarmKickTests
 {
-    [Theory]
-    [InlineData(2)]
-    [InlineData(3)]
-    public async Task RemovalRevokesEveryPeerRequiresFreshPairingAndRejectsUntrustedRequests(int criterion)
+    [Fact]
+    public async Task RemovalRevokesEveryPeerRequiresFreshPairingAndRejectsUntrustedRequests()
+    {
+        {
+            var scenario = new SwarmKickTests();
+            await scenario._AssertRemovalRevokesEveryPeerRequiresFreshPairingAndRejectsUntrustedRequestsAsync(2);
+        }
+        {
+            var scenario = new SwarmKickTests();
+            await scenario._AssertRemovalRevokesEveryPeerRequiresFreshPairingAndRejectsUntrustedRequestsAsync(3);
+        }
+    }
+
+    private async Task _AssertRemovalRevokesEveryPeerRequiresFreshPairingAndRejectsUntrustedRequestsAsync(int criterion)
     {
         await using var pair = await SwarmJoinFixture.CreateAsync();
         await using var third = await SwarmJoinFixture.Machine.CreateAsync(pair.Time, SwarmHostKind.Desktop);

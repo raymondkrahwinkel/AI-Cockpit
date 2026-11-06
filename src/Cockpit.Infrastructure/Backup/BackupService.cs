@@ -474,6 +474,20 @@ internal sealed class BackupService(
 
         result["Plugins"] = restoredPlugins;
 
+        // Local publisher decisions win; an archive may only fill missing rules.
+        var publisherTrust = (current["PluginTrust"] as JsonObject)?.DeepClone() as JsonObject ?? new JsonObject();
+        if (options.Settings && incoming["PluginTrust"] is JsonObject archivedTrust)
+        {
+            foreach (var (id, entry) in archivedTrust)
+            {
+                if (options.Includes(id) && !publisherTrust.ContainsKey(id) && PluginTrustStore.ReadArchiveEntry(entry) is not null)
+                {
+                    publisherTrust[id] = entry?.DeepClone();
+                }
+            }
+        }
+        result["PluginTrust"] = publisherTrust;
+
         // AC-1507: the applier's record is this machine's, so a restore keeps it, and with it what is managed here.
         result.Remove(nameof(CockpitConfigFile.Provisioning));
         if (current[nameof(CockpitConfigFile.Provisioning)] is { } provisioning)
@@ -604,7 +618,9 @@ internal sealed class BackupService(
                 ifItLands[request.Id] = note;
             }
 
-            requests.Add(request);
+            var archivedTrust = options.Settings
+                ? PluginTrustStore.ReadArchiveEntry((incoming?["PluginTrust"] as JsonObject)?[PluginFolderName.Normalize(request.Id)]) : null;
+            requests.Add(request with { RestoredTrust = archivedTrust, AllowDowngrade = true });
         }
 
         // One plugin per call rather than one batch call for all of them: the batch cannot be stopped between
@@ -641,7 +657,9 @@ internal sealed class BackupService(
             {
                 // The reason the attempt itself produced, not one inferred from a folder that is not there: the
                 // operator is told a checksum was rejected or this cockpit is too old, rather than "not installed".
-                var reason = result.Outcome == PluginProvisionOutcome.Incompatible
+                var reason = result.Outcome == PluginProvisionOutcome.KeyNotConfirmed
+                    ? "not restored: publisher key not confirmed yet"
+                    : result.Outcome == PluginProvisionOutcome.Incompatible
                     ? $"this cockpit cannot run it: {result.Error}"
                     : result.Error ?? "the store could not hand it over.";
 
@@ -763,7 +781,7 @@ internal sealed class BackupService(
         string? archivedVersion)
     {
         var found = catalogue
-            .Select(source => (source.Store, Entry: source.Index.Plugins.FirstOrDefault(plugin => string.Equals(plugin.Id, id, StringComparison.OrdinalIgnoreCase))))
+            .Select(source => (source.Store, Entry: source.Index.Plugins.FirstOrDefault(plugin => string.Equals(plugin.Id, id, StringComparison.OrdinalIgnoreCase)), source.Index.RevokedKeys))
             .Where(candidate => candidate.Entry is not null)
             .ToList();
 
@@ -783,13 +801,13 @@ internal sealed class BackupService(
         // The rule when two stores publish the same id, a decision and not a detail: the first configured store
         // carrying it wins. `PinnedSha256` cannot settle it — that hashes the installed folder, a store's `Sha256`
         // hashes the zip, so the two never compare equal. Order the operator can see beats a comparison that cannot.
-        var (store, entry) = found[0];
+        var (store, entry, revokedKeys) = found[0];
         var wanted = archivedVersion is { Length: > 0 } and not UnknownVersion ? archivedVersion : null;
 
         if (entry!.Versions.FirstOrDefault(version => string.Equals(version.Version, wanted, StringComparison.OrdinalIgnoreCase)) is { } exact)
         {
             // The only outcome with nothing to tell the operator: they get back exactly what they backed up.
-            return (new PluginProvisionRequest(id, entry.Name, store, exact), $"fetching {wanted}, the version it was backed up at.", null);
+            return (new PluginProvisionRequest(id, entry.Name, store, exact, revokedKeys), $"fetching {wanted}, the version it was backed up at.", null);
         }
 
         var missed = wanted is null
@@ -811,7 +829,7 @@ internal sealed class BackupService(
         // what they run. Neither is a thing a restore may decide on its own without saying so.
         var moved = $"{missed}, so it is put back on {newest.Version} instead.";
 
-        return (new PluginProvisionRequest(id, entry.Name, store, newest), moved, moved);
+        return (new PluginProvisionRequest(id, entry.Name, store, newest, revokedKeys), moved, moved);
     }
 
     // Everything the archive carries besides cockpit.json: the MCP permissions, the assistant's memory and state,

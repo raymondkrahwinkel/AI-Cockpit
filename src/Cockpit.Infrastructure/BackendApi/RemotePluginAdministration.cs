@@ -39,7 +39,8 @@ internal sealed class RemotePluginAdministration(BackendApiClient client, ILogge
     public Task<PluginInstallResult> InstallFromZipAsync(string zipFilePath, CancellationToken cancellationToken = default) =>
         throw new InvalidOperationException("Install from the server's store, or copy the zip onto the server.");
 
-    public async Task<PluginProvisionResult> InstallFromStoreAsync(PluginProvisionRequest request, CancellationToken cancellationToken = default, IProgress<PluginDownloadProgress>? progress = null)
+    public async Task<PluginProvisionResult> InstallFromStoreAsync(PluginProvisionRequest request, CancellationToken cancellationToken = default, IProgress<PluginDownloadProgress>? progress = null,
+        Func<PluginKeyConsentRequest, CancellationToken, Task<bool>>? keyConsent = null)
     {
         var response = await client.SendAsync<RemotePluginInstall>(HttpMethod.Post, "api/v1/plugins", new { storeId = request.Store.Location, pluginId = request.Id, version = request.Version.Version }, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false);
         PluginLiveState? live = response switch

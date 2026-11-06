@@ -10,7 +10,8 @@ public sealed record PluginStoreIndex(
     IReadOnlyList<PluginStoreEntry> Plugins,
     IReadOnlyList<WorkflowTemplateStoreEntry>? Templates = null,
     string? Icon = null,
-    string? IconUrl = null)
+    string? IconUrl = null,
+    IReadOnlyList<PluginStoreRevokedKey>? RevokedKeys = null)
 {
     private static readonly JsonSerializerOptions Options = new() { PropertyNameCaseInsensitive = true };
 

@@ -1,3 +1,5 @@
+using Cockpit.Core.Plugins;
+
 namespace Cockpit.App.ViewModels;
 
 // The wording every screen that asks for plugin consent uses (AC-511): the per-plugin consent dialog (#14) and the
@@ -13,4 +15,20 @@ public static class PluginConsentTerms
     // a manifest's capabilities (AC-1730) add to these terms in the per-plugin dialog, they never narrow them.
     public const string PermissionSummary =
         "run with your account's permissions — your files, your network, your shell. Not sandboxed.";
+
+    public static string PublisherMessage(PluginKeyConsentRequest request)
+    {
+        var change = request.Decision switch
+        {
+            PluginTrustDecision.KeyChanged => $"Publisher key changed from {request.PreviousFingerprint}. ",
+            PluginTrustDecision.SourceChanged => $"Plugin source changed from {request.PreviousSource ?? "an existing or bundled installation"}. ",
+            _ => "",
+        };
+        var keyName = request.KeyName is { } name ? new string(name.Where(character => character is >= '!' and <= '~').Take(200).ToArray()) : "not provided";
+        var publisher = request.Fingerprint is null ? "Unsigned source" : $"Signed by {request.Fingerprint}";
+        return $"{change}{request.Id} {request.Version}\n{publisher}\nOrganization: {request.Organization ?? "none"}\nDepot host: {request.DepotHost}\n"
+            + $"Source: {request.Repository ?? "not provided"} {request.Tag ?? ""}\nKey name (according to Depot): {keyName}\n\n"
+            + "The signature identifies the publisher; it does not make the plugin safe. Plugins run in-process with your account's permissions. "
+            + "On the first installation, the key comes from the same Depot and does not protect against a compromised Depot.";
+    }
 }

@@ -77,7 +77,7 @@ internal static class PluginEndpoints
                 return BackendApiRoutes.Error(StatusCodes.Status404NotFound, "no_plugin", "That plugin version is not in the server's store.");
             }
 
-            var result = await plugins().InstallFromStoreAsync(new PluginProvisionRequest(entry.Id, entry.Name, store, version), cancellationToken).ConfigureAwait(false);
+            var result = await plugins().InstallFromStoreAsync(new PluginProvisionRequest(entry.Id, entry.Name, store, version, index.Index?.RevokedKeys, AllowDowngrade: true), cancellationToken).ConfigureAwait(false);
             await _AuditAsync(services, "api:install_plugin", cancellationToken).ConfigureAwait(false);
             return Results.Json(PluginInstallResponse.From(result, install.Version), ConnectKeyEndpoints.Json);
         }).RequireAdmin();

@@ -118,8 +118,12 @@ public class PluginBackendHost(
         return registration;
     }
 
-    public IDisposable AddPluginStoreSource(Cockpit.Plugins.Abstractions.Plugins.IPluginStoreSourceProvider provider) =>
-        services.GetRequiredService<PluginStoreSources>().Add(provider);
+    public IDisposable AddPluginStoreSource(Cockpit.Plugins.Abstractions.Plugins.IPluginStoreSourceProvider provider)
+    {
+        var registration = services.GetRequiredService<PluginStoreSources>().Add(provider);
+        Runtime.Add(registration);
+        return registration;
+    }
 
     public ICockpitSessionObserver Sessions => sessions;
 

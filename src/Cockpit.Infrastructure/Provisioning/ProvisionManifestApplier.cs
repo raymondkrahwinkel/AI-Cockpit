@@ -72,7 +72,7 @@ public static class ProvisionManifestApplier
     {
         var pluginsRoot = Path.Combine(stateRoot, "plugins");
         var storeClient = new PluginStoreClient();
-        var provisioning = new PluginProvisioningService(storeClient, new PluginInstaller(pluginsRoot));
+        var provisioning = new PluginProvisioningService(storeClient, new PluginInstaller(pluginsRoot), new PluginSignatureVerifier(), new PluginTrustStore(Path.Combine(stateRoot, "cockpit.json")));
         return ApplyAsync(outcome, stateRoot, pluginsRoot, storeClient, provisioning, logger, cancellationToken);
     }
 
@@ -597,7 +597,7 @@ public static class ProvisionManifestApplier
                     .Aggregate((PluginStoreVersion?)null, (best, offered) => best is null || PluginVersion.IsNewer(offered.Version, best.Version) ? offered : best);
                 if (entry is not null && version is not null)
                 {
-                    request = new PluginProvisionRequest(id, entry.Name, candidate, version);
+                    request = new PluginProvisionRequest(id, entry.Name, candidate, version, fetched.Index?.RevokedKeys, AllowDowngrade: pin is not null);
                     break;
                 }
             }

@@ -49,7 +49,7 @@ public class PluginUpdateTests : IDisposable
         Assert.NotNull(manager.WouldRefuse(discovered));
         var changes = new List<int>();
         var admin = new PluginAdministration(
-            bootstrap, store, installer, new PluginProvisioningService(Substitute.For<IPluginStoreClient>(), installer), Substitute.For<IPluginStoreClient>(),
+            bootstrap, store, installer, new PluginProvisioningService(Substitute.For<IPluginStoreClient>(), installer, new PluginSignatureVerifier(), Substitute.For<IPluginTrustStore>()), Substitute.For<IPluginStoreClient>(),
             diagnostics, manager, trackers: trackers, startGrace: candidate => candidate.Manifest.Version == "5.0.0" ? TimeSpan.FromMilliseconds(300) : TimeSpan.FromSeconds(30));
         manager.StartUiPart = (candidate, _, _) => Task.FromResult<string?>(candidate.Manifest.Version == "3.0.0" ? "3.0.0 UI cannot start" : null);
 
@@ -149,7 +149,7 @@ public class PluginUpdateTests : IDisposable
         var services = new ServiceCollection();
         manager.LoadAndConfigure([legacy], services, Activate);
         manager.Initialize((_, _) => Substitute.For<ICockpitHost>());
-        admin = new PluginAdministration(bootstrap, store, installer, new PluginProvisioningService(Substitute.For<IPluginStoreClient>(), installer), Substitute.For<IPluginStoreClient>(), diagnostics, manager);
+        admin = new PluginAdministration(bootstrap, store, installer, new PluginProvisioningService(Substitute.For<IPluginStoreClient>(), installer, new PluginSignatureVerifier(), Substitute.For<IPluginTrustStore>()), Substitute.For<IPluginStoreClient>(), diagnostics, manager);
         Assert.Single(services);
         var legacyInstance = instances[^1];
         Assert.True(legacyInstance.Initialized);
@@ -178,7 +178,7 @@ public class PluginUpdateTests : IDisposable
         manager.Initialize((_, _) => Substitute.For<ICockpitHost>());
         Assert.False(Assert.Single(manager.Loaded).RequiresRestart);
         installer = new PluginInstaller(pluginsRoot, manager);
-        admin = new PluginAdministration(bootstrap, store, installer, new PluginProvisioningService(Substitute.For<IPluginStoreClient>(), installer), Substitute.For<IPluginStoreClient>(), diagnostics, manager);
+        admin = new PluginAdministration(bootstrap, store, installer, new PluginProvisioningService(Substitute.For<IPluginStoreClient>(), installer, new PluginSignatureVerifier(), Substitute.For<IPluginTrustStore>()), Substitute.For<IPluginStoreClient>(), diagnostics, manager);
 
         var consent = await admin.InstallFromZipAsync(_Zip("7.0.0", "MZ-v7"));
         Assert.True(consent.InPlace);

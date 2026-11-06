@@ -6,6 +6,7 @@ namespace Cockpit.App.ViewModels;
 
 // This list only answers "has the operator changed anything", for the footer's indicator and the warning on Escape
 // (AC-999).
+// Publisher trust is written by consent; there is no editable Options value to stage.
 internal static class OptionsStaging
 {
     // A character no setting can contain, so two different sets of values cannot join into the same string.

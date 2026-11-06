@@ -105,6 +105,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- Plugin-provided stores now verify publisher signatures before installation, remember publisher consent across removal and restore, and warn when the current feed revokes an installed plugin's key.
+
 - The Depot plugin-store epic now includes the current host changes while retaining runtime stores and their credential protection.
 - Plugins can offer stores with refreshed credentials alongside configured stores. Manage stores can hide these sources; their addresses and credentials stay out of backups.
 
