@@ -809,12 +809,19 @@ internal static partial class Screenshotter
             DataContext = new ViewModels.PasswordDialogViewModel(
                 "Change your password", "Type the password you use now, then the one you want.", requiresCurrent: true),
         },
+        ["plugin-publisher-consent"] = (_, _) => new ConfirmationDialog
+        {
+            DataContext = new ViewModels.ConfirmationDialogViewModel("Confirm plugin publisher",
+                ViewModels.PluginConsentTerms.PublisherMessage(new PluginKeyConsentRequest("acme-tools", "1.2.0", PluginTrustDecision.FirstInstall,
+                    "acme", "depot.example", "SHA256:4dGsEgg14BFnREFGj96+RZpCH8D3lSMJmMkYQ6Pd1cY", "Acme release key",
+                    "github.com/acme/tools", "v1.2.0", null, null)), "Install"),
+        },
         ["plugin-consent"] = (_, _) => new PluginConsentDialog
         {
             DataContext = new ViewModels.PluginConsentInfo(
                 "GitHub Issues", "1.8.0", "Cockpit", "/home/you/.config/Cockpit/plugins/github-issues",
                 "9f2c4b1ea7d05836c1b4e0f9a3d7c25e8b6041fd93a7e2c5b80d1a6a4e37c9b2",
-                [CapabilityCatalog.TimeEntries]),
+                [CapabilityCatalog.TimeEntries]) { Publisher = new PluginTrustEntry("depot:depot.example/acme", "SHA256:4dGsEgg14BFnREFGj96+RZpCH8D3lSMJmMkYQ6Pd1cY") },
         },
         ["restore-selection"] = (_, _) => _RestoreSelection(),
         ["schedule-resume"] = (_, _) => new ScheduleResumeDialog { DataContext = new ViewModels.ScheduleResumeDialogViewModel() },

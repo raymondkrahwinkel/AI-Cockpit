@@ -108,6 +108,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- Plugin-provided stores now verify publisher signatures before installation, remember publisher consent across removal and restore, and warn when the current feed revokes an installed plugin's key.
+
+- The Depot plugin-store epic now includes the current host changes while retaining runtime stores and their credential protection.
+- Plugins can offer stores with refreshed credentials alongside configured stores. Manage stores can hide these sources; their addresses and credentials stay out of backups.
+
 - The assistant can attach files from its scratch folder and managed worktrees to replies, with image previews and file downloads in chat.
 - Discord replies now carry files and images on the last message part, and display Markdown tables as aligned code blocks.
 - The "live notes · Depot" line in the status bar is now a button: it opens a list of the live notes you may open, with the project and who is in them, and one click opens the note and joins it.

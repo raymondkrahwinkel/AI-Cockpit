@@ -16,12 +16,14 @@ public interface IPluginProvisioningService
     /// The running cockpit's plugin-contract major — required, not defaulted: this project does not reference the plugin-abstractions assembly owning the constant, so a caller (which does) always passes it explicitly.
     /// </param>
     Task<PluginProvisionResult> InstallAsync(
-        PluginProvisionRequest request, int hostAbstractionsMajor, Version? hostVersion = null, CancellationToken cancellationToken = default, IProgress<PluginDownloadProgress>? progress = null);
+        PluginProvisionRequest request, int hostAbstractionsMajor, Version? hostVersion = null, CancellationToken cancellationToken = default, IProgress<PluginDownloadProgress>? progress = null,
+        Func<PluginKeyConsentRequest, CancellationToken, Task<bool>>? keyConsent = null);
 
     /// <summary>
     /// Installs several plugins, one plugin failing isolated from the rest so the batch runs to completion — the
     /// same pattern a UI batch-update already follows, available here without one.
     /// </summary>
     Task<PluginProvisionBatchResult> InstallManyAsync(
-        IReadOnlyList<PluginProvisionRequest> requests, int hostAbstractionsMajor, Version? hostVersion = null, CancellationToken cancellationToken = default);
+        IReadOnlyList<PluginProvisionRequest> requests, int hostAbstractionsMajor, Version? hostVersion = null, CancellationToken cancellationToken = default,
+        Func<PluginKeyConsentRequest, CancellationToken, Task<bool>>? keyConsent = null);
 }

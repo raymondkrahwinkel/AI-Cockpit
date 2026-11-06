@@ -50,11 +50,24 @@ public sealed class AssistantCreateProjectConsentTests : IDisposable
 
     // ── Newline/control-character forgery on the single-line fields ────────────────────────────────────────────
 
-    [Theory]
-    [InlineData("Invoices\nfolder: /home/raymond/anything", null, null)]
-    [InlineData("Invoices", "/tmp/x\nfolder: /home/raymond/work/invoices", null)]
-    [InlineData("Invoices", null, "personal[2K")]
-    public async Task AnArgumentThatWouldForgeACardLine_IsRefusedBeforeAnyCardIsRaised(
+    [Fact]
+    public async Task AnArgumentThatWouldForgeACardLine_IsRefusedBeforeAnyCardIsRaised()
+    {
+        using (var scenario = new AssistantCreateProjectConsentTests())
+        {
+            await scenario._AssertAnArgumentThatWouldForgeACardLine_IsRefusedBeforeAnyCardIsRaisedAsync("Invoices\nfolder: /home/raymond/anything", null, null);
+        }
+        using (var scenario = new AssistantCreateProjectConsentTests())
+        {
+            await scenario._AssertAnArgumentThatWouldForgeACardLine_IsRefusedBeforeAnyCardIsRaisedAsync("Invoices", "/tmp/x\nfolder: /home/raymond/work/invoices", null);
+        }
+        using (var scenario = new AssistantCreateProjectConsentTests())
+        {
+            await scenario._AssertAnArgumentThatWouldForgeACardLine_IsRefusedBeforeAnyCardIsRaisedAsync("Invoices", null, "personal[2K");
+        }
+    }
+
+    private async Task _AssertAnArgumentThatWouldForgeACardLine_IsRefusedBeforeAnyCardIsRaisedAsync(
         string name, string? sourceDirectory, string? defaultProfileLabel)
     {
         McpRequestContext.Set(AssistantIdentity.PaneId);

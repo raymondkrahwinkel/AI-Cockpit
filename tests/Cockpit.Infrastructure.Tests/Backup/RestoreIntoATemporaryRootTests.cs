@@ -1,3 +1,4 @@
+using Cockpit.Infrastructure.Plugins;
 using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
@@ -66,23 +67,39 @@ public sealed class RestoreIntoATemporaryRootTests : IDisposable
     /// The merge, in both directions the operator can ask for: settings on takes the archive's own keys, settings
     /// off keeps this cockpit's — and either way only the chosen plugins move, key by key.
     /// </summary>
-    [Theory]
-    [InlineData(true, "archived")]
-    [InlineData(false, "current")]
-    public async Task RestoringCockpitJson_MergesItKeyByKey(bool settings, string expectedProfiles)
+    [Fact]
+    public async Task RestoringCockpitJson_MergesItKeyByKey()
     {
-        _Current("""{"Profiles":"current","Plugins":{"kept":{"Data":{"k":"current"}},"chosen":{"Data":{"k":"current"}}}}""");
+        using (var scenario = new RestoreIntoATemporaryRootTests())
+        {
+            await scenario._AssertRestoringCockpitJson_MergesItKeyByKeyAsync(true, "archived", "archive-key");
+        }
+        using (var scenario = new RestoreIntoATemporaryRootTests())
+        {
+            await scenario._AssertRestoringCockpitJson_MergesItKeyByKeyAsync(false, "current", null);
+        }
+    }
+
+    private async Task _AssertRestoringCockpitJson_MergesItKeyByKeyAsync(bool settings, string expectedProfiles, string? expectedArchiveKey)
+    {
+        _Current("""{"Profiles":"current","PluginTrust":{"chosen":{"Source":"local","KeyFingerprint":"new-key"},"kept":{"Source":"local","KeyFingerprint":"kept-key"}},"Plugins":{"kept":{"Data":{"k":"current"}},"chosen":{"Data":{"k":"current"}}}}""");
 
         var archive = _ArchiveWith(
-            ("cockpit.json", """{"Profiles":"archived","Plugins":{"chosen":{"Data":{"k":"archived"}},"unchosen":{"Data":{"k":"archived"}}}}"""));
+            ("cockpit.json", """{"Profiles":"archived","PluginTrust":{"chosen":{"Source":"archive","KeyFingerprint":"old-key"},"added":{"Source":"archive","KeyFingerprint":"archive-key"},"unchosen":{"Source":"archive","KeyFingerprint":"unselected-key"},"broken":"invalid","malformed":{"Source":123}},"Plugins":{"chosen":{"Data":{"k":"archived"}},"unchosen":{"Data":{"k":"archived"}}}}"""));
 
-        await _Restore(archive, new RestoreOptions(settings, ["chosen"]));
+        await _Restore(archive, new RestoreOptions(settings, ["chosen", "added", "broken", "malformed"]));
 
         var result = _Restored();
         Assert.Equal(expectedProfiles, result["Profiles"]!.GetValue<string>());
         Assert.Equal("current", result["Plugins"]!["kept"]!["Data"]!["k"]!.GetValue<string>());
         Assert.Equal("archived", result["Plugins"]!["chosen"]!["Data"]!["k"]!.GetValue<string>());
         Assert.Null(result["Plugins"]!["unchosen"]);
+        Assert.Equal("new-key", result["PluginTrust"]?["chosen"]?["KeyFingerprint"]?.GetValue<string>());
+        Assert.Equal("kept-key", result["PluginTrust"]?["kept"]?["KeyFingerprint"]?.GetValue<string>());
+        Assert.Null(result["PluginTrust"]?["unchosen"]);
+        Assert.Null(result["PluginTrust"]?["broken"]);
+        Assert.Null(result["PluginTrust"]?["malformed"]);
+        Assert.Equal(expectedArchiveKey, result["PluginTrust"]?["added"]?["KeyFingerprint"]?.GetValue<string>());
     }
 
     /// <summary>
@@ -91,10 +108,20 @@ public sealed class RestoreIntoATemporaryRootTests : IDisposable
     /// exception — the second one threw until the epic's end gate, and the wizard reads an exception as "the restore
     /// failed", which a stop is not. Either way the cockpit and its staging are as they were.
     /// </summary>
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task ARestoreStoppedBeforeTheSettingsAreWritten_ComesBackAsAReport(bool whileTheStoresAreRead)
+    [Fact]
+    public async Task ARestoreStoppedBeforeTheSettingsAreWritten_ComesBackAsAReport()
+    {
+        using (var scenario = new RestoreIntoATemporaryRootTests())
+        {
+            await scenario._AssertARestoreStoppedBeforeTheSettingsAreWritten_ComesBackAsAReportAsync(false);
+        }
+        using (var scenario = new RestoreIntoATemporaryRootTests())
+        {
+            await scenario._AssertARestoreStoppedBeforeTheSettingsAreWritten_ComesBackAsAReportAsync(true);
+        }
+    }
+
+    private async Task _AssertARestoreStoppedBeforeTheSettingsAreWritten_ComesBackAsAReportAsync(bool whileTheStoresAreRead)
     {
         _Current("""{"Profiles":"current"}""");
         _archivedVersions["demo"] = "1.0.0";
@@ -162,10 +189,20 @@ public sealed class RestoreIntoATemporaryRootTests : IDisposable
     /// config root is re-anchored on this machine's root, with this machine's separators; whatever lies outside it and
     /// does exist here is left exactly as it stands.
     /// </summary>
-    [Theory]
-    [InlineData(@"C:\Users\raymond\AppData\Roaming\Cockpit", '\\')]
-    [InlineData("/home/raymond/.config/Cockpit", '/')]
-    public async Task PathsUnderTheBackupMachinesConfigRoot_AreReAnchoredOnThisOne(string sourceConfigRoot, char separator)
+    [Fact]
+    public async Task PathsUnderTheBackupMachinesConfigRoot_AreReAnchoredOnThisOne()
+    {
+        using (var scenario = new RestoreIntoATemporaryRootTests())
+        {
+            await scenario._AssertPathsUnderTheBackupMachinesConfigRoot_AreReAnchoredOnThisOneAsync(@"C:\Users\raymond\AppData\Roaming\Cockpit", '\\');
+        }
+        using (var scenario = new RestoreIntoATemporaryRootTests())
+        {
+            await scenario._AssertPathsUnderTheBackupMachinesConfigRoot_AreReAnchoredOnThisOneAsync("/home/raymond/.config/Cockpit", '/');
+        }
+    }
+
+    private async Task _AssertPathsUnderTheBackupMachinesConfigRoot_AreReAnchoredOnThisOneAsync(string sourceConfigRoot, char separator)
     {
         var ownFolder = Directory.CreateDirectory(Path.Combine(_home, "still-here")).FullName;
         var logo = $"{sourceConfigRoot}{separator}project-logos{separator}acme.svg";
@@ -307,7 +344,7 @@ public sealed class RestoreIntoATemporaryRootTests : IDisposable
                 Substitute.For<ISessionProfileStore>(),
                 stores,
                 storeClient,
-                new PluginProvisioningService(storeClient, new _RecordingInstaller(this)),
+                new PluginProvisioningService(storeClient, new _RecordingInstaller(this), new PluginSignatureVerifier(), Substitute.For<IPluginTrustStore>()),
                 _log)
             .RestoreIntoAsync(archive, _Root, options, stage, cancellationToken);
     }
@@ -324,8 +361,10 @@ public sealed class RestoreIntoATemporaryRootTests : IDisposable
     // install would have landed on, and notes what cockpit.json held while it ran.
     private sealed class _RecordingInstaller(RestoreIntoATemporaryRootTests test) : IPluginInstaller
     {
+        public Task<PluginInstalledState> GetInstalledStateAsync(string folderId, CancellationToken cancellationToken = default) => Task.FromResult(new PluginInstalledState(false, null));
+
         public Task<PluginInstallResult> InstallFromZipAsync(
-            string zipFilePath, int hostAbstractionsMajor, Version? hostVersion = null, CancellationToken cancellationToken = default)
+            string zipFilePath, int hostAbstractionsMajor, Version? hostVersion = null, CancellationToken cancellationToken = default, string? expectedId = null, string? expectedVersion = null)
         {
             var name = Path.GetFileNameWithoutExtension(zipFilePath);
             test._installed.Add(name);

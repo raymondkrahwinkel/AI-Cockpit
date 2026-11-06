@@ -8,6 +8,9 @@ namespace Cockpit.Core.Plugins;
 [JsonConverter(typeof(PluginStoreConfigJsonConverter))]
 public sealed record PluginStoreConfig(PluginStoreKind Kind, string Location, string? Token = null)
 {
+    [JsonIgnore]
+    public PluginStoreSignedSource? Signed { get; init; }
+
     // A remote http(s) store, optionally private (a bearer `token`).
     public static PluginStoreConfig Remote(string url, string? token = null) =>
         new(PluginStoreKind.Remote, url, string.IsNullOrWhiteSpace(token) ? null : token);

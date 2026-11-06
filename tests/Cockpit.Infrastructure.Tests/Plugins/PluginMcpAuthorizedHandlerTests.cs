@@ -32,14 +32,36 @@ public sealed class PluginMcpAuthorizedHandlerTests
 
 
     // The last row repoints the plugin's own request while the credential is fetched (a TOCTOU on RequestUri).
-    [Theory]
-    [InlineData("https://evil.example.com/cockpit/inbox", null)]
-    [InlineData("http://depot.example.com/cockpit/inbox", null)]
-    [InlineData("https://depot.example.com:8443/cockpit/inbox", null)]
-    [InlineData("wss://evil.example.com/hubs/inbox", null)]
-    [InlineData("https://depot.example.com.evil.example.com/cockpit/inbox", null)]
-    [InlineData("https://depot.example.com/cockpit/inbox", "https://evil.example.com/steal")]
-    public async Task Send_TheBearerNeverLeavesTheServersOrigin(string target, string? repointTo)
+    [Fact]
+    public async Task Send_TheBearerNeverLeavesTheServersOrigin()
+    {
+        {
+            var scenario = new PluginMcpAuthorizedHandlerTests();
+            await scenario._AssertSend_TheBearerNeverLeavesTheServersOriginAsync("https://evil.example.com/cockpit/inbox", null);
+        }
+        {
+            var scenario = new PluginMcpAuthorizedHandlerTests();
+            await scenario._AssertSend_TheBearerNeverLeavesTheServersOriginAsync("http://depot.example.com/cockpit/inbox", null);
+        }
+        {
+            var scenario = new PluginMcpAuthorizedHandlerTests();
+            await scenario._AssertSend_TheBearerNeverLeavesTheServersOriginAsync("https://depot.example.com:8443/cockpit/inbox", null);
+        }
+        {
+            var scenario = new PluginMcpAuthorizedHandlerTests();
+            await scenario._AssertSend_TheBearerNeverLeavesTheServersOriginAsync("wss://evil.example.com/hubs/inbox", null);
+        }
+        {
+            var scenario = new PluginMcpAuthorizedHandlerTests();
+            await scenario._AssertSend_TheBearerNeverLeavesTheServersOriginAsync("https://depot.example.com.evil.example.com/cockpit/inbox", null);
+        }
+        {
+            var scenario = new PluginMcpAuthorizedHandlerTests();
+            await scenario._AssertSend_TheBearerNeverLeavesTheServersOriginAsync("https://depot.example.com/cockpit/inbox", "https://evil.example.com/steal");
+        }
+    }
+
+    private async Task _AssertSend_TheBearerNeverLeavesTheServersOriginAsync(string target, string? repointTo)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, target);
         var coordinator = Substitute.For<IMcpOAuthCoordinator>();
@@ -63,11 +85,24 @@ public sealed class PluginMcpAuthorizedHandlerTests
     }
 
     // missing: no usable credential; refused: the server turns the token away; broken: fetching it throws with the token.
-    [Theory]
-    [InlineData("missing", HttpStatusCode.Unauthorized, new string[0])]
-    [InlineData("refused", HttpStatusCode.OK, new[] { $"Bearer {Token}", $"Bearer {RenewedToken}" })]
-    [InlineData("broken", null, new string[0])]
-    public async Task Send_TheCredentialsState_DecidesWhatReachesTheServer(string state, HttpStatusCode? status, string[] sentAuthorizations)
+    [Fact]
+    public async Task Send_TheCredentialsState_DecidesWhatReachesTheServer()
+    {
+        {
+            var scenario = new PluginMcpAuthorizedHandlerTests();
+            await scenario._AssertSend_TheCredentialsState_DecidesWhatReachesTheServerAsync("missing", HttpStatusCode.Unauthorized, new string[0]);
+        }
+        {
+            var scenario = new PluginMcpAuthorizedHandlerTests();
+            await scenario._AssertSend_TheCredentialsState_DecidesWhatReachesTheServerAsync("refused", HttpStatusCode.OK, new[] { $"Bearer {Token}", $"Bearer {RenewedToken}" });
+        }
+        {
+            var scenario = new PluginMcpAuthorizedHandlerTests();
+            await scenario._AssertSend_TheCredentialsState_DecidesWhatReachesTheServerAsync("broken", null, new string[0]);
+        }
+    }
+
+    private async Task _AssertSend_TheCredentialsState_DecidesWhatReachesTheServerAsync(string state, HttpStatusCode? status, string[] sentAuthorizations)
     {
         var coordinator = Substitute.For<IMcpOAuthCoordinator>();
         coordinator.AcquireAsync(Depot, interactive: false, Arg.Any<CancellationToken>()).Returns(_ => state switch

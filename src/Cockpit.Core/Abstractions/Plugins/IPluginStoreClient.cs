@@ -13,6 +13,11 @@ public interface IPluginStoreClient
 
     Task<PluginStoreDownloadResult> DownloadZipAsync(PluginStoreConfig store, string relativePath, string? expectedSha256, CancellationToken cancellationToken = default, IProgress<PluginDownloadProgress>? progress = null);
 
+    Task<PluginStoreDownloadResult> DownloadZipAsync(PluginStoreConfig store, PluginStoreVersion version, string pluginId, CancellationToken cancellationToken = default, IProgress<PluginDownloadProgress>? progress = null) =>
+        version.PackageFor() is { } package && store.Signed is null
+            ? DownloadZipAsync(store, package.Path, package.Sha256, cancellationToken, progress)
+            : Task.FromResult(new PluginStoreDownloadResult(false, "This client cannot download the selected package.", null));
+
     /// <summary>
     /// Fetches a store's logo image (#62) — the <c>iconUrl</c> its <c>index.json</c> advertises, absolute or
     /// relative to the store — as raster image bytes for the store dialogs, an SVG rasterised. Http(s) or, for a local store, a file;

@@ -666,6 +666,23 @@ public void Initialize(ICockpitHost host)
 | `Icon` / `IconKind` | The "+" menu and tab icon; `IconKind` (a bundled vector icon) wins over the `Icon` emoji when set. Defaults: `🧩` / none. |
 | `Description` | One line for the "+" menu. |
 
+### Supplying plugin stores
+
+SDK 3.73.0 / host 0.162.0 adds `ICockpitHost.AddPluginStoreSource(IPluginStoreSourceProvider)`.
+The types are in `Cockpit.Plugins.Abstractions.Plugins`. The default interface method throws
+`NotSupportedException`, so existing hosts compile; a plugin using it sets `minHostVersion` to `0.162.0`.
+Contract `abstractionsVersion` remains 3.
+
+A provider exposes `IReadOnlyList<PluginStoreSourceDescriptor> Sources` and raises `SourcesChanged`
+when that snapshot changes. Each descriptor supplies a stable `SourceKey`, display `Name`, `IndexUrl`,
+`Organization` and `Func<CancellationToken, ValueTask<string?>> GetTokenAsync`. Resolve credentials
+inside that callback: the host calls it for each request. Dispose the registration on plugin unload.
+
+The local store and update checker include these sources. Manage stores can hide them by source key,
+but cannot remove them. The remote administration catalog stays configuration-only. Descriptors and
+credentials are runtime-only; a backup contains neither. Signed sources use validated plugin/version/platform
+fields for package URLs, ignore feed paths, and expose no templates or remote images.
+
 ### Editing a file live {#editing-a-file-live}
 
 A file source that also implements `ILiveFileSource` (SDK 3.46.0, host 0.143.0) gets the host's Markdown
