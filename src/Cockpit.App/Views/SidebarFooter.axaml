@@ -8,10 +8,7 @@
              x:Class="Cockpit.App.Views.SidebarFooter"
              x:DataType="vm:CockpitViewModel">
 
-    <!-- The panels sidebar's footer — Plugin store, Menu and Help — directly above the Simple/Panels switch.
-         AC-1527: the Simple rail has its own (Settings, Help, More options) and shares only `HelpMenu` with this.
-         Secondary "Tools" section — Audio (F0) lives here, out of the way of the primary session overview per
-         AI-Cockpit's design goal (sidebar = sessions, not tools). -->
+    <!-- The panels sidebar's footer: Plugin store, Menu and Help. The Simple rail shares only HelpMenu. -->
     <StackPanel Spacing="4">
         <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}" Margin="0,4"/>
         <!-- The "Open mic" toggle that stood here is gone (AC-543). It drove exactly the command the

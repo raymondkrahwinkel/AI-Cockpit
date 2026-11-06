@@ -775,13 +775,7 @@
                                           IsVisible="{Binding !$parent[UserControl].((vm:CockpitViewModel)DataContext).IsRemoteWindow}"
                                           DataContext="{Binding AssistantIndicator}"/>
 
-                <!-- AC-1301: the stand switch, as low in the column as it can go — the second Dock="Bottom"
-                     child, so it sits directly above the chip rather than under it. The chip's own place at the
-                     very bottom is Raymond's ("linksonder", AC-543) and this does not take it. -->
-                <views:ViewModeSwitch DockPanel.Dock="Bottom" IsVisible="{Binding !IsRemoteWindow}"/>
-
-                <!-- Footer (Plugin store, Menu, Help): its own control, placed in both stands. AC-1487: not in a
-                     remote window, whose Options would be this machine's and which keeps no state here. -->
+                <!-- AC-1487: hide local settings in a remote window, which keeps no state on this machine. -->
                 <views:SidebarFooter DockPanel.Dock="Bottom" IsVisible="{Binding !IsRemoteWindow}"/>
 
                 <!-- Plugin-contributed left-menu cards (#14, AC-1763), docked above the footer and below the session
@@ -1092,8 +1086,6 @@
                 Background="{DynamicResource CockpitSecondaryBgBrush}"
                 BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,0,1,0">
             <DockPanel Margin="8">
-                <!-- AC-1527: no Plugin store, Menu or Simple|Panels switch here — everything for the advanced user
-                     sits behind More options, which is Panels itself. -->
                 <StackPanel DockPanel.Dock="Bottom" Spacing="2">
                     <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}" Margin="0,4,0,6"/>
                     <Button x:Name="SimpleRailSettings" Classes="Subtle" HorizontalAlignment="Stretch"
@@ -1116,24 +1108,6 @@
                                 <views:HelpMenu/>
                             </Flyout>
                         </Button.Flyout>
-                    </Button>
-                    <Button x:Name="SimpleRailMoreOptions" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
-                            Padding="10,8" Margin="0,4,0,0"
-                            Command="{Binding ShowPanelsViewCommand}"
-                            ToolTip.Tip="The sessions grid with the sidebar, the workspace strip and the dock rail">
-                        <DockPanel>
-                            <materialIcons:MaterialIcon DockPanel.Dock="Left" Kind="ViewGridOutline" Width="16" Height="16"
-                                                        Margin="0,0,10,0" VerticalAlignment="Center"
-                                                        Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                            <materialIcons:MaterialIcon DockPanel.Dock="Right" Kind="ArrowRight" Width="14" Height="14"
-                                                        VerticalAlignment="Center"
-                                                        Foreground="{DynamicResource CockpitTextFaintBrush}"/>
-                            <StackPanel Spacing="1">
-                                <TextBlock Text="More options" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                                <TextBlock Text="Go to Panels, for advanced use" FontSize="11" TextWrapping="Wrap"
-                                           Foreground="{DynamicResource CockpitTextFaintBrush}"/>
-                            </StackPanel>
-                        </DockPanel>
                     </Button>
                 </StackPanel>
 
