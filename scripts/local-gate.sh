@@ -3,6 +3,21 @@ set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
+ensure_linux_browser() {
+  if [[ $(uname -s) != Linux || $1 != plugins-dev/Cockpit.Plugin.Browser.Tests/Cockpit.Plugin.Browser.Tests.csproj ]]; then
+    return
+  fi
+
+  apt-get update --quiet
+  apt-get install --yes --no-install-recommends --quiet ca-certificates curl gnupg
+  curl --fail --silent --show-error --location https://dl.google.com/linux/linux_signing_key.pub \
+    | gpg --dearmor --yes --output /usr/share/keyrings/google-chrome.gpg
+  echo 'deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] https://dl.google.com/linux/chrome/deb/ stable main' \
+    > /etc/apt/sources.list.d/google-chrome.list
+  apt-get update --quiet
+  apt-get install --yes --no-install-recommends --quiet google-chrome-stable
+}
+
 # --full names the existing no-argument gate for callers that want to be explicit.
 if [[ ${1:-} == "--full" && $# -eq 1 ]]; then
   shift
@@ -27,12 +42,9 @@ if [[ ${1:-} == "--linux" ]]; then
   fi
 
   shift 2
-  MSYS_NO_PATHCONV=1 docker run --rm --interactive \
-    --volume "$PWD:/source:ro" \
-    --workdir /work \
-    --env DOTNET_CLI_HOME=/tmp/dotnet-home \
-    mcr.microsoft.com/dotnet/sdk:10.0 \
-    bash -s -- "$test_project" "$@" <<'LINUX_GATE'
+  {
+    declare -f ensure_linux_browser
+    cat <<'LINUX_GATE'
 set -euo pipefail
 
 test_project=$1
@@ -46,6 +58,8 @@ tar -C /source --exclude=.git --exclude=.superpowers --exclude=TestResults \
 mkdir -p "$HOME/.config"
 apt-get update --quiet
 apt-get install --yes --no-install-recommends --quiet libfontconfig1
+
+ensure_linux_browser "$test_project"
 
 dotnet build "$test_project" --configuration Release -warnaserror
 
@@ -61,6 +75,12 @@ dotnet test "$test_project" \
   --blame-hang-dump-type none \
   "$@"
 LINUX_GATE
+  } | MSYS_NO_PATHCONV=1 docker run --rm --interactive \
+    --volume "$PWD:/source:ro" \
+    --workdir /work \
+    --env DOTNET_CLI_HOME=/tmp/dotnet-home \
+    mcr.microsoft.com/dotnet/sdk:10.0 \
+    bash -s -- "$test_project" "$@"
   exit
 fi
 
@@ -100,6 +120,7 @@ while IFS= read -r plugin; do
   if [ -f "$test_project" ]; then
     project="$test_project"
   fi
+  ensure_linux_browser "$project"
   dotnet build "$project" --configuration Release -warnaserror
   if [ -f "$test_project" ]; then
     dotnet test "$project" --configuration Release --no-build --logger "console;verbosity=minimal" --blame-hang --blame-hang-timeout 5m --blame-hang-dump-type none
