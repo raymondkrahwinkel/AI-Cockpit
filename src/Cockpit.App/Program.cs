@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Media;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Cockpit.App.Composition;
 using Cockpit.App.Plugins;
@@ -475,6 +476,20 @@ sealed class Program
         if (Services is not IAsyncDisposable disposable)
         {
             return;
+        }
+
+        // BackgroundService.Dispose only cancels; StopAsync also awaits its work and final writes.
+        using var stopping = new CancellationTokenSource(ContainerDisposeBudget);
+        foreach (var service in Services.GetServices<IHostedService>().Reverse())
+        {
+            try
+            {
+                await service.StopAsync(stopping.Token).WaitAsync(stopping.Token).ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                Cockpit.App.Logging.LifecycleLog.Write($"{service.GetType().Name} failed to stop: {exception}");
+            }
         }
 
         try

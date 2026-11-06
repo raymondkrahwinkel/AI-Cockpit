@@ -96,6 +96,8 @@ public partial class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             _desktop = desktop;
+            // Hidden companion and overlay windows must not keep the app alive after its main window closes.
+            desktop.ShutdownMode = ShutdownMode.OnMainWindowClose;
 
             // The desktop's own route into a shutdown — an OS log-off or restart ending the session — as something
             // distinct from the tray's Quit. Both used to end the process through the same silent teardown, so an
