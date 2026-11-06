@@ -152,7 +152,7 @@ internal sealed class LinuxCgroupMemoryLimiter : ISessionMemoryLimiter
 
     // The children of every thread of `processId`, from procfs. A process with no `/proc` entry has exited, which
     // is an ordinary outcome here rather than an error.
-    private static IReadOnlyList<int> _ReadChildren(int processId)
+    internal static IReadOnlyList<int> _ReadChildren(int processId)
     {
         var tasks = $"/proc/{processId}/task";
         if (!Directory.Exists(tasks))

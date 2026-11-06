@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Channels;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Mcp;
@@ -25,18 +27,30 @@ internal sealed class SessionStdioClientTransport(
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            StandardInputEncoding = new UTF8Encoding(false),
+            StandardOutputEncoding = new UTF8Encoding(false),
+            StandardErrorEncoding = new UTF8Encoding(false),
         };
         foreach (var argument in server.Args) { start.ArgumentList.Add(argument); }
         if (OperatingSystem.IsLinux())
         {
             // AC-2130: the parent-death signal kills the isolated process group, including servers that ignore stdin EOF.
             start.ArgumentList.Clear();
-            foreach (var argument in new[] { "--pdeathsig", "TERM", "/usr/bin/setsid", "/bin/sh", "-c", "trap '/bin/kill -KILL -- -$$' TERM; [ \"$PPID\" -eq \"$1\" ] || /bin/kill -KILL -- -$$; shift; \"$@\" <&0 & wait \"$!\"", "cockpit-stdio", Environment.ProcessId.ToString(), start.FileName })
+            foreach (var argument in new[] { "--pdeathsig", "TERM", "/usr/bin/setsid", "/bin/sh", "-c", "trap '/bin/kill -KILL -- -$$' TERM; [ \"$PPID\" -eq \"$1\" ] || /bin/kill -KILL -- -$$; shift; exec 3<&0; \"$@\" <&3 3<&- & wait \"$!\"", "cockpit-stdio", Environment.ProcessId.ToString(), start.FileName })
             {
                 start.ArgumentList.Add(argument);
             }
             foreach (var argument in server.Args) { start.ArgumentList.Add(argument); }
             start.FileName = "/usr/bin/setpriv";
+        }
+        if (OperatingSystem.IsWindows())
+        {
+            // AC-2130: cmd waits for a line before spawning, so descendants are born inside the Job Object.
+            var command = string.Join(" ", new[] { start.FileName }.Concat(server.Args).Select(argument =>
+                Sessions.Tty.ConPtyHostFactory.QuoteArgument(Regex.IsMatch(argument, @"\s") ? argument : Regex.Replace(argument, "[&^><|]", "^$0"))));
+            start.ArgumentList.Clear();
+            start.FileName = "cmd.exe";
+            start.Arguments = "/d /q /c \"set /p _cockpit_stdio_gate= >nul && " + command + "\"";
         }
         var environment = StdioServerEnvironment.Build();
         foreach (var (key, value) in context?.Environment ?? new Dictionary<string, string?>())
@@ -60,6 +74,8 @@ internal sealed class SessionStdioClientTransport(
             {
                 lifetime = anchor?.Anchor(process.Id, paneId)
                     ?? throw new InvalidOperationException("The stdio server could not be anchored to this session.");
+                await process.StandardInput.WriteLineAsync("ready".AsMemory(), cancellationToken);
+                await process.StandardInput.FlushAsync(cancellationToken);
             }
             if (paneId is not null) { processes?.Add(paneId, process.Id); }
             // Drain stderr without logging it: third-party diagnostics may contain credentials.
@@ -105,7 +121,6 @@ internal sealed class SessionStdioClientTransport(
         {
             try
             {
-                await inner.DisposeAsync();
                 process.StandardInput.Close();
                 using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(2));
                 try { await process.WaitForExitAsync(deadline.Token); }
@@ -116,6 +131,7 @@ internal sealed class SessionStdioClientTransport(
                 processes?.Remove(process.Id);
                 anchor?.Dispose();
                 _Kill(process);
+                await inner.DisposeAsync();
                 process.StandardError.Close();
                 await stderr;
                 process.Dispose();

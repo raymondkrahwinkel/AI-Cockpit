@@ -144,8 +144,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         var contributed = sessionResources is null
             ? SessionResources.Empty
             : await sessionResources.ResolveAsync(paneId, selection, cancellationToken).ConfigureAwait(false);
-        _stdioEnvironment = profile?.EnvironmentVariables?.ToDictionary(variable => variable.Key, variable => (string?)variable.Value, StringComparer.OrdinalIgnoreCase)
-            ?? new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        _stdioEnvironment = new Dictionary<string, string?>(ProfileEnvironmentVariable.ToOverlay(profile?.EnvironmentVariables ?? []), StringComparer.OrdinalIgnoreCase);
         foreach (var (key, value) in contributed.EnvironmentVariables)
         {
             _stdioEnvironment[key] = value;

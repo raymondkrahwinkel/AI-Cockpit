@@ -67,7 +67,7 @@ internal sealed partial class SessionMcpGatewayHost : IHostedService, IAsyncDisp
         _mounts?.Bind(paneId, new SessionMcpContext(project, workingDirectory ?? Directory.GetCurrentDirectory(), confineRoot, agentName,
             assistantManaged ? SessionMcpManager.Assistant : SessionMcpManager.Operator)
         {
-            Environment = environment ?? _mounts.Set(paneId)?.Context?.Environment,
+            Environment = environment is null ? _mounts.Set(paneId)?.Context?.Environment : StdioServerEnvironment.Build(environment),
         });
     }
 
