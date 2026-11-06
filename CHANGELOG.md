@@ -12,6 +12,8 @@
 
 - AC-241: Companion remembers a reachable position, uses native window dragging, and separates tools with an explicit empty state.
 
+- Session done and Waiting for you sounds wait three seconds and stay silent if the session has moved on.
+
 - AC-2117: reset swarm membership from any state, rejoin with fresh confirmation, show standalone/paused status and explain conflicting histories.
 
 - A local smoke test (`scripts/linux-smoke.sh`, Docker or a VM) starts the packaged Linux AppImage on a screen without a GPU and opens every surface of the shipped plugins once, to catch crashes like the Browser tab one (AC-2038).
