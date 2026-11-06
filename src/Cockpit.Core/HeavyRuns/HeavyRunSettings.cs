@@ -4,6 +4,8 @@ namespace Cockpit.Core.HeavyRuns;
 // on 13 and 14-10 gates failed on database timeouts with the machine at 70-94% CPU.
 public sealed record HeavyRunSettings
 {
+    public int MaxParallelRuns { get; init; }
+
     public double CpuCeilingPercent { get; init; } = 75;
 
     public double MemoryCeilingPercent { get; init; } = 85;
@@ -29,7 +31,7 @@ public sealed record HeavyRunSettings
 
     public HeavyRunSettings Lowered() => this with
     {
-        CpuCeilingPercent = Math.Max(CeilingFloorPercent, CpuCeilingPercent - CeilingStepPercent),
-        MemoryCeilingPercent = Math.Max(CeilingFloorPercent, MemoryCeilingPercent - CeilingStepPercent),
+        CpuCeilingPercent = Math.Min(CpuCeilingPercent, Math.Max(CeilingFloorPercent, CpuCeilingPercent - CeilingStepPercent)),
+        MemoryCeilingPercent = Math.Min(MemoryCeilingPercent, Math.Max(CeilingFloorPercent, MemoryCeilingPercent - CeilingStepPercent)),
     };
 }

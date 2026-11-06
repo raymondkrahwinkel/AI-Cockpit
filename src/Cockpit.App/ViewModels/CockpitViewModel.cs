@@ -3676,8 +3676,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Cockpit.Core.Swarm.ISwarmLeadership? swarmLeadership = null,
         // AC-1846: Options › Sync. Absent in the design-time/unit-test graph, where the page lists no server.
         ISyncOptions? syncOptions = null,
-        ISessionMcpRestore? sessionMcpRestore = null)
+        ISessionMcpRestore? sessionMcpRestore = null,
+        Cockpit.Core.HeavyRuns.IHeavyRunSettingsStore? heavyRunSettingsStore = null,
+        Cockpit.Infrastructure.HeavyRuns.HeavyRunQueue? heavyRunQueue = null)
     {
+        _heavyRunSettingsStore = heavyRunSettingsStore;
+        _heavyRunQueue = heavyRunQueue;
         _managedSettingsReader = managedSettings;
         _settingsWriteBatch = settingsWriteBatch;
         _providerConfigViews = providerConfigViews;
@@ -7358,6 +7362,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // The plugin list decides which plugin pages the dialog has at all, so it is read before the dialog is built.
         // With the closure hashes cached (AC-2018) that is a directory walk, not a read of every plugin byte.
         await Plugins.LoadAsync();
+        await LoadHeavyRunSettingsAsync();
         _MarkOptionsOpen("plugins");
 
         // AC-2018: the rest is read after the dialog is on screen, each page covered by a loading state until its own
@@ -7713,6 +7718,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await SaveTranscriptDisplaySettingsCommand.ExecuteAsync(null);
         await SaveUsagePillSettingsCommand.ExecuteAsync(null);
         await SaveSessionBehaviorSettingsCommand.ExecuteAsync(null);
+        await SaveHeavyRunSettingsAsync();
         // Before the voice save, which is what raises VoiceSettingsSaved — the hotkey coordinator re-arms on that
         // and reads both sections, so a screenshot key saved after it would not be armed until the next launch.
         await SaveScreenshotSettingsCommand.ExecuteAsync(null);
@@ -7988,6 +7994,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         measurement.Mark("config");
 
+        if (_heavyRunQueue is not null)
+        {
+            await _heavyRunQueue.RefreshSettingsAsync();
+        }
+
         // Not blocked, so this Apply is committing: on the closing path the flag is already down and this changes
         // nothing, and a blocked Apply still writes no update settings, exactly as before.
         _SaveUpdateSettings(flushStaged: !OptionsApplyBlocked);
@@ -8081,6 +8092,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await LoadTranscriptDisplaySettingsAsync();
         await LoadUsagePillSettingsAsync();
         await LoadSessionBehaviorSettingsAsync();
+        await LoadHeavyRunSettingsAsync();
         await LoadScreenshotSettingsAsync();
         await LoadQuickNoteSettingsAsync();
         await LoadLayoutSettingsAsync();
@@ -8158,6 +8170,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         MemoryBudgetPercent = behavior.MemoryBudgetPercent;
         PluginRestartAdviceAfter = behavior.PluginRestartAdviceAfter;
         AutomaticDockerCleanup = behavior.AutomaticDockerCleanup;
+        var heavyRuns = new Cockpit.Core.HeavyRuns.HeavyRunSettings();
+        MaxParallelRuns = heavyRuns.MaxParallelRuns;
+        RunCpuCeilingPercent = heavyRuns.CpuCeilingPercent;
+        RunMemoryCeilingPercent = heavyRuns.MemoryCeilingPercent;
 
         var screenshot = new ScreenshotSettings();
         ScreenshotGlobalHotkeyEnabled = screenshot.GlobalHotkeyEnabled;

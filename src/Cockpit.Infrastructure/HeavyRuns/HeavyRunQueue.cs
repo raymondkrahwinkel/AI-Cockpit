@@ -28,6 +28,7 @@ public sealed class HeavyRunQueue : ISessionRunActivities, ISupervisedActivitySo
     private readonly ILiveSessionRegistry? _live;
     private readonly ILogger<HeavyRunQueue> _logger;
     private HeavyRunSettings _settings = new();
+    private bool _settingsLoaded;
     private Slot? _maintenance;
 
     public HeavyRunQueue(
@@ -80,7 +81,7 @@ public sealed class HeavyRunQueue : ISessionRunActivities, ISupervisedActivitySo
             _logger.LogError(exception, "The heavy-run queue failed to look at its runs after a request.");
         }
 
-        _ = _RefreshSettingsAsync();
+        _ = RefreshSettingsAsync();
         return slot;
     }
 
@@ -303,6 +304,11 @@ public sealed class HeavyRunQueue : ISessionRunActivities, ISupervisedActivitySo
         List<Slot> admitted = [];
         lock (_gate)
         {
+            if (!_settingsLoaded)
+            {
+                return;
+            }
+
             var now = DateTimeOffset.UtcNow;
             while (_waiting.Count > 0)
             {
@@ -334,7 +340,7 @@ public sealed class HeavyRunQueue : ISessionRunActivities, ISupervisedActivitySo
                     slot.FreeDiskBytes)).ToList();
                 var diskReason = _CriticalDiskReason(_Ordered()[0].Request.WorkingDirectory);
                 var decision = diskReason is null
-                    ? HeavyRunAdmission.Next(candidates, _Projected(now), _settings, _running.Count > 0, now)
+                    ? HeavyRunAdmission.Next(candidates, _Projected(now), _settings, _running.Count, now)
                     : new HeavyRunDecision(null, diskReason);
                 if (decision.Admit is not { } index)
                 {
@@ -485,17 +491,25 @@ public sealed class HeavyRunQueue : ISessionRunActivities, ISupervisedActivitySo
         }
     }
 
-    private async Task _RefreshSettingsAsync()
+    public async Task RefreshSettingsAsync()
     {
         await _settingsAccess.WaitAsync().ConfigureAwait(false);
         try
         {
-            _settings = await _settingsStore.LoadAsync().ConfigureAwait(false);
+            var settings = await _settingsStore.LoadAsync().ConfigureAwait(false);
+            lock (_gate)
+            {
+                _settings = settings;
+                _settingsLoaded = true;
+            }
         }
         catch (Exception exception)
         {
             _logger.LogWarning(exception, "Reading the heavy-run settings failed; the queue keeps its current ceilings.");
-            return;
+            lock (_gate)
+            {
+                _settingsLoaded = true;
+            }
         }
         finally
         {
