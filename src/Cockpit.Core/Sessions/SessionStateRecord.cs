@@ -17,4 +17,7 @@ public sealed record SessionStateRecord(
 {
     public IReadOnlyList<string>? McpServerNames { get; init; }
     public SessionMcpManager McpManager { get; init; }
+    public IReadOnlyList<string>? McpDelegationCeiling { get; init; }
+    public bool McpIsDelegated { get; init; }
+    public bool McpPreserveSelection { get; init; }
 }
