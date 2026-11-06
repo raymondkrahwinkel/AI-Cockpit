@@ -2,7 +2,6 @@ using System.IO.MemoryMappedFiles;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using Avalonia;
-using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Threading;
@@ -20,6 +19,7 @@ internal sealed unsafe class SharedFrame : IDisposable
     private readonly int _height;
     private readonly double _scale;
     private readonly bool _suppressSignal;
+    private readonly bool _legacy;
     private readonly byte* _pointer;
     private Thread? _listener;
     private volatile bool _stopping;
@@ -30,17 +30,33 @@ internal sealed unsafe class SharedFrame : IDisposable
     internal long CopiedBytes;
     internal long Skipped;
     internal long Consumed;
+    internal long AllocatedBytes;
+    internal long BufferAllocations;
     internal Action<nint, int, int, int, long>? FrameCopied;
     internal Action? Updated;
 
-    public SharedFrame(string name, int width, int height, double scale, bool create, bool suppressSignal = false)
+    public SharedFrame(string name, int width, int height, double scale, bool create, bool suppressSignal = false, bool legacy = false)
     {
         _width = width;
         _height = height;
         _scale = scale;
         _suppressSignal = suppressSignal;
+        _legacy = legacy;
         long capacity = checked(HeaderSize + (long)width * height * 4);
-        _mapping = create ? MemoryMappedFile.CreateNew(name, capacity) : MemoryMappedFile.OpenExisting(name);
+        if (legacy)
+        {
+            string path = Path.Combine("C:/ck/487726/ac2142", name + ".frame");
+            var file = new FileStream(path, create ? FileMode.Create : FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite);
+            if (create)
+            {
+                file.SetLength(capacity);
+            }
+            _mapping = MemoryMappedFile.CreateFromFile(file, null, capacity, MemoryMappedFileAccess.ReadWrite, HandleInheritability.None, leaveOpen: false);
+        }
+        else
+        {
+            _mapping = create ? MemoryMappedFile.CreateNew(name, capacity) : MemoryMappedFile.OpenExisting(name);
+        }
         _view = _mapping.CreateViewAccessor(0, capacity);
         byte* pointer = null;
         _view.SafeMemoryMappedViewHandle.AcquirePointer(ref pointer);
@@ -60,6 +76,10 @@ internal sealed unsafe class SharedFrame : IDisposable
         foreach (CefRectangle rectangle in rectangles)
         {
             dirty = _Union(dirty, rectangle);
+        }
+        if (_legacy)
+        {
+            dirty = new CefRectangle(0, 0, width, height);
         }
         if (_mutex.WaitOne(0) == false)
         {
@@ -99,7 +119,7 @@ internal sealed unsafe class SharedFrame : IDisposable
         {
             _mutex.ReleaseMutex();
         }
-        if (_suppressSignal == false)
+        if (_suppressSignal == false && _legacy == false)
         {
             _ready.Set();
         }
@@ -107,6 +127,10 @@ internal sealed unsafe class SharedFrame : IDisposable
 
     internal void Listen()
     {
+        if (_legacy)
+        {
+            throw new InvalidOperationException("Legacy polling must use the explicit timer control.");
+        }
         _listener = new Thread(() =>
         {
             while (_stopping == false)
@@ -119,6 +143,11 @@ internal sealed unsafe class SharedFrame : IDisposable
             }
         }) { IsBackground = true };
         _listener.Start();
+    }
+
+    internal void Consume()
+    {
+        _Consume();
     }
 
     private void _Consume()
@@ -137,11 +166,23 @@ internal sealed unsafe class SharedFrame : IDisposable
             int y = *(int*)(_pointer + 20);
             int width = *(int*)(_pointer + 24);
             int height = *(int*)(_pointer + 28);
-            for (int row = y; row < y + height; row++)
+            if (_legacy)
             {
-                int length = width * 4;
-                Buffer.MemoryCopy(_pointer + HeaderSize + (row * _width + x) * 4, (byte*)frame.Address + row * frame.RowBytes + x * 4, length, length);
-                CopiedBytes += length;
+                var copy = new byte[_width * _height * 4];
+                Marshal.Copy((nint)(_pointer + HeaderSize), copy, 0, copy.Length);
+                Marshal.Copy(copy, 0, frame.Address, copy.Length);
+                CopiedBytes += copy.Length * 2L;
+                AllocatedBytes += copy.Length;
+                BufferAllocations++;
+            }
+            else
+            {
+                for (int row = y; row < y + height; row++)
+                {
+                    int length = width * 4;
+                    Buffer.MemoryCopy(_pointer + HeaderSize + (row * _width + x) * 4, (byte*)frame.Address + row * frame.RowBytes + x * 4, length, length);
+                    CopiedBytes += length;
+                }
             }
             Consumed++;
             FrameCopied?.Invoke(frame.Address, _width, _height, frame.RowBytes, *(long*)_pointer);

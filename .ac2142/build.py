@@ -15,3 +15,6 @@ for command in (["py", "-X", "utf8", ".ac2142/prepare.py"], ["dotnet", "build", 
     result = subprocess.run(command, cwd=root, env=environment)
     if result.returncode:
         sys.exit(result.returncode)
+if len(sys.argv) > 1:
+    result = subprocess.run(["py", "-X", "utf8", ".ac2142/run.py", sys.argv[1]], cwd=root, env=environment)
+    sys.exit(result.returncode)

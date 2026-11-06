@@ -77,7 +77,11 @@ internal sealed class ProbeApplication : Application
     private readonly List<CefBrowserView> _views = [];
     private readonly List<SharedFrame> _buffers = [];
     private readonly List<Surface> _surfaces = [];
-    private readonly Dictionary<int, TaskCompletionSource<long>> _waiting = [];
+    private readonly Dictionary<int, TaskCompletionSource<(long FrameId, long Timestamp)>> _waiting = [];
+    private readonly List<DispatcherTimer> _pollers = [];
+    private readonly List<object> _correlations = [];
+    private int _lastWidth;
+    private int _lastHeight;
     private Process? _host;
     private Task? _hostOutput;
     private TaskCompletionSource? _ack;
@@ -129,6 +133,10 @@ internal sealed class ProbeApplication : Application
         }
         finally
         {
+            foreach (DispatcherTimer timer in _pollers)
+            {
+                timer.Stop();
+            }
             foreach (CefBrowserView view in _views)
             {
                 await view.CloseAsync().WaitAsync(TimeSpan.FromSeconds(10));
@@ -181,7 +189,7 @@ internal sealed class ProbeApplication : Application
             view.FrameCopied = _FrameCopied;
             if (host)
             {
-                var buffer = new SharedFrame(_name + "-" + tab, (int)(_width * _scale), (int)(_height * _scale), _scale, false, Program.Arguments.Contains("silent"));
+                var buffer = new SharedFrame(_name + "-" + tab, (int)(_width * _scale), (int)(_height * _scale), _scale, false, Program.Arguments.Contains("silent"), Program.Arguments.Contains("poll"));
                 view.PaintOverride = buffer.Publish;
                 _buffers.Add(buffer);
             }
@@ -195,7 +203,14 @@ internal sealed class ProbeApplication : Application
         while (await Console.In.ReadLineAsync() is { } command && command != "stop")
         {
             string[] parts = command.Split(' ');
-            await _InputAsync(int.Parse(parts[0], CultureInfo.InvariantCulture), int.Parse(parts[1], CultureInfo.InvariantCulture), parts[2]);
+            if (parts[0] == "animate")
+            {
+                await _AnimationAsync(parts[1] == "on");
+            }
+            else
+            {
+                await _InputAsync(int.Parse(parts[0], CultureInfo.InvariantCulture), int.Parse(parts[1], CultureInfo.InvariantCulture), parts[2]);
+            }
             Console.WriteLine("ack");
         }
     }
@@ -210,13 +225,23 @@ internal sealed class ProbeApplication : Application
         {
             for (int tab = 0; tab < _tabs; tab++)
             {
-                var buffer = new SharedFrame(_name + "-" + tab, (int)(_width * _scale), (int)(_height * _scale), _scale, true);
+                var buffer = new SharedFrame(_name + "-" + tab, (int)(_width * _scale), (int)(_height * _scale), _scale, true, legacy: _route == "poll");
                 buffer.FrameCopied = _FrameCopied;
                 var surface = new Surface(buffer);
                 buffer.Updated = surface.InvalidateVisual;
                 _surfaces.Add(surface);
                 _buffers.Add(buffer);
-                buffer.Listen();
+                if (_route == "poll")
+                {
+                    var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
+                    timer.Tick += (_, _) => buffer.Consume();
+                    timer.Start();
+                    _pollers.Add(timer);
+                }
+                else
+                {
+                    buffer.Listen();
+                }
             }
             var start = new ProcessStartInfo(Environment.ProcessPath ?? throw new InvalidOperationException("Executable missing."))
             {
@@ -234,6 +259,10 @@ internal sealed class ProbeApplication : Application
             {
                 start.ArgumentList.Add("silent");
             }
+            if (_route == "poll")
+            {
+                start.ArgumentList.Add("poll");
+            }
             _host = Process.Start(start) ?? throw new InvalidOperationException("Host did not start.");
             _hostOutput = _ReadHostAsync(_host);
         }
@@ -246,7 +275,7 @@ internal sealed class ProbeApplication : Application
             content.Height = _height;
             panel.Children.Add(content);
         }
-        var window = new Window { Title = "AC-2142 disposable transport probe", Width = _width, Height = _height, Content = panel, ShowActivated = false };
+        var window = new Window { Title = "AC-2142 disposable transport probe", Width = _width, Height = _height, WindowDecorations = WindowDecorations.None, CanResize = false, Content = panel, ShowActivated = false };
         window.Show();
         // The scenario scale is explicit, independent of the operator monitor's scaling.
         foreach (CefBrowserView view in _views)
@@ -254,15 +283,27 @@ internal sealed class ProbeApplication : Application
             view.ProbeSize(_width, _height, _scale);
         }
         await Task.Delay(2500);
+        foreach (CefBrowserView view in _views)
+        {
+            view.ProbeSize(_width, _height, _scale);
+        }
+        await Task.Delay(500);
+        ProcessTree.Snapshot startMetrics = ProcessTree.Capture();
+        var memorySamples = new List<ProcessTree.Snapshot> { startMetrics };
+        long measurementStart = Stopwatch.GetTimestamp();
+        long consumedStart = _consumed;
+        long copiedStart = _CopyBytes();
+        long offeredStart = _Offered();
         var latency = new Dictionary<string, List<double>> { ["type"] = [], ["scroll"] = [] };
         int eventId = 10;
         foreach (string kind in latency.Keys)
         {
-            for (int sample = 0; sample < 40; sample++)
+            int samples = Program.Arguments.Contains("--functional") ? 4 : 40;
+            for (int sample = 0; sample < samples; sample++)
             {
                 int tab = sample % _tabs;
                 eventId++;
-                var frame = new TaskCompletionSource<long>(TaskCreationOptions.RunContinuationsAsynchronously);
+                var frame = new TaskCompletionSource<(long FrameId, long Timestamp)>(TaskCreationOptions.RunContinuationsAsynchronously);
                 _waiting.Add(eventId, frame);
                 long started = Stopwatch.GetTimestamp();
                 if (_route == "local")
@@ -275,13 +316,82 @@ internal sealed class ProbeApplication : Application
                     await (_host ?? throw new InvalidOperationException("Host missing.")).StandardInput.WriteLineAsync($"{tab} {eventId} {kind}");
                     await _ack.Task.WaitAsync(TimeSpan.FromSeconds(10));
                 }
-                await frame.Task.WaitAsync(TimeSpan.FromSeconds(3));
-                latency[kind].Add(Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+                (long FrameId, long Timestamp) received;
+                try
+                {
+                    received = await frame.Task.WaitAsync(TimeSpan.FromSeconds(3));
+                }
+                catch (TimeoutException)
+                {
+                    throw new InvalidOperationException($"Missing frame-ready update: event={eventId}, tab={tab}, kind={kind}, consumed={_consumed}, expected={_width * _scale}x{_height * _scale}, actual={_lastWidth}x{_lastHeight}.");
+                }
+                _correlations.Add(new { eventId, frameId = received.FrameId, tab, kind, dispatched = started, copied = received.Timestamp });
+                latency[kind].Add(Stopwatch.GetElapsedTime(started, received.Timestamp).TotalMilliseconds);
                 await Task.Delay(20);
             }
+            memorySamples.Add(ProcessTree.Capture());
         }
-        Console.WriteLine(JsonSerializer.Serialize(new { route = _route, width = _width, height = _height, scale = _scale, tabs = _tabs, latency, consumed = _consumed, hostPid = _host?.Id, parentPid = Environment.ProcessId }));
+        await _SetAnimationAsync(true);
+        long throughputStart = Stopwatch.GetTimestamp();
+        long throughputConsumed = _consumed;
+        long throughputOffered = _Offered();
+        await Task.Delay(3000);
+        double throughputSeconds = Stopwatch.GetElapsedTime(throughputStart).TotalSeconds;
+        long animationConsumed = _consumed - throughputConsumed;
+        long animationOffered = _Offered() - throughputOffered;
+        await _SetAnimationAsync(false);
+        ProcessTree.Snapshot endMetrics = ProcessTree.Capture();
+        memorySamples.Add(endMetrics);
+        double elapsedMs = Stopwatch.GetElapsedTime(measurementStart).TotalMilliseconds;
+        if (startMetrics.Pids.SequenceEqual(endMetrics.Pids) == false)
+        {
+            throw new InvalidOperationException("Owned process tree changed during measurement; CPU delta is invalid.");
+        }
+        if (_lastWidth != (int)(_width * _scale) || _lastHeight != (int)(_height * _scale))
+        {
+            throw new InvalidOperationException($"Incorrect frame size: {_lastWidth}x{_lastHeight}.");
+        }
+        Console.WriteLine(JsonSerializer.Serialize(new
+        {
+            route = _route, width = _width, height = _height, scale = _scale, tabs = _tabs,
+            latency, correlations = _correlations, consumed = _consumed - consumedStart,
+            offered = _Offered() - offeredStart, copyBytes = _CopyBytes() - copiedStart,
+            bufferAllocations = _views.Sum(view => view.BufferAllocations) + _buffers.Sum(buffer => buffer.BufferAllocations),
+            transportAllocatedBytes = _buffers.Sum(buffer => buffer.AllocatedBytes),
+            animation = new { offered = animationOffered, consumed = animationConsumed, seconds = throughputSeconds },
+            cpuCorePercent = (endMetrics.CpuMilliseconds - startMetrics.CpuMilliseconds) / elapsedMs * 100,
+            memorySamples, elapsedMs, hostPid = _host?.Id, parentPid = Environment.ProcessId,
+            frameWidth = _lastWidth, frameHeight = _lastHeight,
+        }));
         window.Close();
+    }
+
+    private long _CopyBytes() => _route == "local"
+        ? _views.Sum(view => Interlocked.Read(ref view.CopyBytes))
+        : _buffers.Sum(buffer => buffer.CopiedBytes + buffer.Counters().HostBytes);
+
+    private long _Offered() => _route == "local"
+        ? _views.Sum(view => Interlocked.Read(ref view.PaintCount))
+        : _buffers.Sum(buffer => buffer.Counters().Offered);
+
+    private async Task _SetAnimationAsync(bool enabled)
+    {
+        if (_route == "local")
+        {
+            await _AnimationAsync(enabled);
+            return;
+        }
+        _ack = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await (_host ?? throw new InvalidOperationException("Host missing.")).StandardInput.WriteLineAsync(enabled ? "animate on" : "animate off");
+        await _ack.Task.WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    private async Task _AnimationAsync(bool enabled)
+    {
+        foreach (CefBrowserView view in _views)
+        {
+            await view.DevToolsAsync("Runtime.evaluate", new Dictionary<string, object> { ["expression"] = enabled ? "window.animating=true" : "window.animating=false" });
+        }
     }
 
     private async Task _ReadHostAsync(Process host)
@@ -330,6 +440,8 @@ internal sealed class ProbeApplication : Application
     private unsafe void _FrameCopied(nint address, int width, int height, int stride, long frameId)
     {
         _consumed++;
+        _lastWidth = width;
+        _lastHeight = height;
         int id = 0;
         for (int bit = 0; bit < 20; bit++)
         {
@@ -340,9 +452,9 @@ internal sealed class ProbeApplication : Application
                 id |= 1 << bit;
             }
         }
-        if (_waiting.Remove(id, out TaskCompletionSource<long>? waiting))
+        if (_waiting.Remove(id, out TaskCompletionSource<(long FrameId, long Timestamp)>? waiting))
         {
-            waiting.TrySetResult(frameId);
+            waiting.TrySetResult((frameId, Stopwatch.GetTimestamp()));
         }
     }
 

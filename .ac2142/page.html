@@ -7,6 +7,7 @@ canvas { position: fixed; top: 0; left: 0; z-index: 2; }
 input { position: fixed; top: 40px; left: 20px; z-index: 2; }
 </style>
 <canvas width="100" height="20"></canvas><input autofocus>
+<div id="motion" style="position:fixed;top:100px;left:0;width:100px;height:100px;background:#e80"></div>
 <script>
 window.probeId = 1;
 const canvas = document.querySelector('canvas');
@@ -22,4 +23,12 @@ function marker() {
 document.querySelector('input').addEventListener('input', marker);
 window.addEventListener('wheel', () => requestAnimationFrame(marker), { passive: true });
 marker();
+window.animating = false;
+function animate(t) {
+    if (window.animating) {
+        document.querySelector('#motion').style.left = ((t / 4) % (innerWidth - 100)) + 'px';
+    }
+    requestAnimationFrame(animate);
+}
+requestAnimationFrame(animate);
 </script>

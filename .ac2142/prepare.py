@@ -24,6 +24,8 @@ def main() -> None:
     internal Action<nint, int, int, CefRectangle[]>? PaintOverride;
     internal Action<nint, int, int, int, long>? FrameCopied;
     internal long PaintCount;
+    internal long CopyBytes;
+    internal long BufferAllocations;
     private long _backFrameId;
     private long _frontFrameId;
     internal CefBrowser? ProbeBrowser => _browser;
@@ -36,10 +38,12 @@ def main() -> None:
     }
 """)
     source = source.replace("            _backSize = new PixelSize(width, height);", "            _backSize = new PixelSize(width, height);\n            _backFrameId = PaintCount;")
+    source = source.replace("                _back = new byte[length];", "                _back = new byte[length];\n                BufferAllocations++;")
+    source = source.replace("            Marshal.Copy(buffer, _back, 0, length);", "            Marshal.Copy(buffer, _back, 0, length);\n            Interlocked.Add(ref CopyBytes, length);")
     source = source.replace("            size = _backSize;", "            size = _backSize;\n            (_frontFrameId, _backFrameId) = (_backFrameId, _frontFrameId);")
     needle = "            Marshal.Copy(_front, 0, frame.Address, Math.Min(size.Width * size.Height * 4, frame.RowBytes * size.Height));"
     assert source.count(needle) == 1
-    source = source.replace(needle, needle + "\n            FrameCopied?.Invoke(frame.Address, size.Width, size.Height, frame.RowBytes, _frontFrameId);")
+    source = source.replace(needle, needle + "\n            Interlocked.Add(ref CopyBytes, size.Width * (long)size.Height * 4);\n            FrameCopied?.Invoke(frame.Address, size.Width, size.Height, frame.RowBytes, _frontFrameId);")
     source = source.replace("                owner._Paint(buffer, width, height);", """                Interlocked.Increment(ref owner.PaintCount);
                 if (owner.PaintOverride is { } paint)
                 {
