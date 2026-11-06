@@ -69,8 +69,40 @@ if [[ $# -ne 0 ]]; then
   exit 2
 fi
 
+if command -v py >/dev/null 2>&1; then
+  gate_python=py
+elif command -v python3 >/dev/null 2>&1; then
+  gate_python=python3
+elif command -v python >/dev/null 2>&1; then
+  gate_python=python
+else
+  echo "Python is required for the local gate (tried py, python3, python)." >&2
+  exit 49
+fi
+
 gate_output=$(mktemp)
 trap 'rm -f "$gate_output"' EXIT
+
+# A red test does not stop the run: every project is run, the red tests are kept per project and listed at the end,
+# and the gate then exits non-zero. No exception list and no filter: a red test stays red.
+red_tests=()
+gate_test() {
+  local log project
+  log=$(mktemp)
+  project=$(basename "${3:-?}" .csproj)
+  if ! "$@" 2>&1 | tee "$log"; then
+    local names
+    names=$(grep -E '^[[:space:]]+Failed ' "$log" | sed -E 's/^[[:space:]]+Failed //; s/ \[[0-9.]+ ?[a-z]+\]$//' || true)
+    if [[ -z $names ]]; then
+      red_tests+=("$project: the run failed without naming a test")
+    else
+      while IFS= read -r name; do
+        red_tests+=("$project: $name")
+      done <<< "$names"
+    fi
+  fi
+  rm -f "$log"
+}
 
 bash scripts/classify-changes.sh --all >> "$gate_output"
 bash scripts/classify-changes.test.sh
@@ -78,10 +110,10 @@ bash scripts/classify-changes.test.sh
 dotnet restore Cockpit.slnx
 dotnet build Cockpit.slnx --configuration Release --no-restore -warnaserror
 dotnet build src/Cockpit.App --configuration Debug --no-restore
-dotnet test tests/Cockpit.Core.Tests/Cockpit.Core.Tests.csproj --configuration Release --no-build --verbosity minimal --blame-hang --blame-hang-timeout 5m --blame-hang-dump-type none
-dotnet test tests/Cockpit.Infrastructure.Tests/Cockpit.Infrastructure.Tests.csproj --configuration Release --no-build --verbosity minimal --blame-hang --blame-hang-timeout 5m --blame-hang-dump-type none
-dotnet test tests/Cockpit.Backend.Tests/Cockpit.Backend.Tests.csproj --configuration Release --no-build --verbosity minimal --blame-hang --blame-hang-timeout 5m --blame-hang-dump-type none
-dotnet test tests/Cockpit.App.ViewTests/Cockpit.App.ViewTests.csproj --configuration Release --no-build --verbosity minimal --blame-hang --blame-hang-timeout 5m --blame-hang-dump-type none
+gate_test dotnet test tests/Cockpit.Core.Tests/Cockpit.Core.Tests.csproj --configuration Release --no-build --verbosity minimal --blame-hang --blame-hang-timeout 5m --blame-hang-dump-type none
+gate_test dotnet test tests/Cockpit.Infrastructure.Tests/Cockpit.Infrastructure.Tests.csproj --configuration Release --no-build --verbosity minimal --blame-hang --blame-hang-timeout 5m --blame-hang-dump-type none
+gate_test dotnet test tests/Cockpit.Backend.Tests/Cockpit.Backend.Tests.csproj --configuration Release --no-build --verbosity minimal --blame-hang --blame-hang-timeout 5m --blame-hang-dump-type none
+gate_test dotnet test tests/Cockpit.App.ViewTests/Cockpit.App.ViewTests.csproj --configuration Release --no-build --verbosity minimal --blame-hang --blame-hang-timeout 5m --blame-hang-dump-type none
 bash scripts/nightly-notes.test.sh
 
 dotnet restore tests/Cockpit.Journeys/Cockpit.Journeys.csproj
@@ -91,7 +123,7 @@ if find out/server -iname 'Avalonia*.dll' -o -iname '*EchoProvider*' | grep .; t
   echo "The Cockpit.Server publish carries a UI assembly or a test fixture." >&2
   exit 1
 fi
-dotnet test tests/Cockpit.Journeys/Cockpit.Journeys.csproj --configuration Release --no-build --verbosity minimal --blame-hang --blame-hang-timeout 2m --blame-hang-dump-type none
+gate_test dotnet test tests/Cockpit.Journeys/Cockpit.Journeys.csproj --configuration Release --no-build --verbosity minimal --blame-hang --blame-hang-timeout 2m --blame-hang-dump-type none
 
 plugins_json=$(grep '^plugins=' "$gate_output" | tail -n 1)
 while IFS= read -r plugin; do
@@ -102,26 +134,33 @@ while IFS= read -r plugin; do
   fi
   dotnet build "$project" --configuration Release -warnaserror
   if [ -f "$test_project" ]; then
-    dotnet test "$project" --configuration Release --no-build --logger "console;verbosity=minimal" --blame-hang --blame-hang-timeout 5m --blame-hang-dump-type none
+    gate_test dotnet test "$project" --configuration Release --no-build --logger "console;verbosity=minimal" --blame-hang --blame-hang-timeout 5m --blame-hang-dump-type none
   fi
-done < <(python3 -c 'import json,sys; print("\n".join(json.loads(sys.argv[1])))' "${plugins_json#plugins=}" | tr -d '\r')
+done < <("$gate_python" -c 'import json,sys; print("\n".join(json.loads(sys.argv[1])))' "${plugins_json#plugins=}" | tr -d '\r')
 
 bash scripts/check-plugin-versions.test.sh
 bash scripts/check-plugin-abstractions-version.test.sh
 git fetch origin main
 bash scripts/check-plugin-versions.sh "$(git rev-parse origin/main)" HEAD
 bash scripts/check-plugin-abstractions-version.sh
-python3 scripts/check-xmldoc-scope.py
-python3 scripts/check-xmldoc-scope.test.py
-python3 scripts/check-comment-length.py
-python3 scripts/check-comment-length.test.py
-python3 scripts/check-test-loopback.py
-python3 scripts/check-plugin-ui-sync-waits.py
-python3 scripts/check-plugin-ui-sync-waits.test.py
-python3 scripts/check-test-count.py
-python3 scripts/check-test-count.test.py
-python3 scripts/check-duplicate-test-bodies.py
-python3 scripts/check-duplicate-test-bodies.test.py
-python3 scripts/check-descendant-selector-scope.py
-python3 scripts/check-descendant-selector-scope.test.py
-python3 scripts/store-index-upsert.test.py
+"$gate_python" scripts/check-xmldoc-scope.py
+"$gate_python" scripts/check-xmldoc-scope.test.py
+"$gate_python" scripts/check-comment-length.py
+"$gate_python" scripts/check-comment-length.test.py
+"$gate_python" scripts/check-test-loopback.py
+"$gate_python" scripts/check-plugin-ui-sync-waits.py
+"$gate_python" scripts/check-plugin-ui-sync-waits.test.py
+"$gate_python" scripts/check-test-count.py
+"$gate_python" scripts/check-test-count.test.py
+"$gate_python" scripts/check-duplicate-test-bodies.py
+"$gate_python" scripts/check-duplicate-test-bodies.test.py
+"$gate_python" scripts/check-descendant-selector-scope.py
+"$gate_python" scripts/check-descendant-selector-scope.test.py
+"$gate_python" scripts/store-index-upsert.test.py
+
+if [[ ${#red_tests[@]} -gt 0 ]]; then
+  echo
+  echo "Red tests:" >&2
+  printf '  %s\n' "${red_tests[@]}" >&2
+  exit 1
+fi

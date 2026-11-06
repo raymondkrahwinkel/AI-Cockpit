@@ -9,10 +9,17 @@ public sealed record PluginInstallResult(
     string? FolderId,
     string? Sha256 = null,
     bool Staged = false,
-    PluginManifest? Manifest = null)
+    PluginManifest? Manifest = null,
+    bool InPlace = false,
+    PluginLiveState? Live = null,
+    string? ConsentReason = null,
+    string? ReplacedSha256 = null)
 {
-    public static PluginInstallResult Success(string folderId, string? sha256 = null, bool staged = false, PluginManifest? manifest = null) =>
-        new(true, null, folderId, sha256, staged, manifest);
+    // AC-2025: `consentReason` says an update asks for more than the approved version had, so it waits for the restart and a new approval.
+    // `replacedSha256` is the hash of the folder an update replaced, which a caller compares with the approved pin.
+    // `inPlace` says the update replaced `plugins/<id>` already, so a live swap can load it; false waits in `.pending-updates`.
+    public static PluginInstallResult Success(string folderId, string? sha256 = null, bool staged = false, PluginManifest? manifest = null, bool inPlace = false, string? consentReason = null, string? replacedSha256 = null) =>
+        new(true, null, folderId, sha256, staged, manifest, inPlace, ConsentReason: consentReason, ReplacedSha256: replacedSha256);
 
     public static PluginInstallResult Failure(string error) => new(false, error, null);
 }

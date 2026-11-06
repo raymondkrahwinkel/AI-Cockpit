@@ -21,6 +21,7 @@ public sealed record PluginManifest(
     string? ExpectedMinVersion = null,
     IReadOnlyList<PluginManifestSessionProvider>? SessionProviders = null,
     IReadOnlyList<string>? Capabilities = null,
+    bool RequiresRestart = false,
     IReadOnlyList<string>? Keywords = null)
 {
     // AC-1013: storage keys the host can't guess as credentials (beyond token/apiKey/secret/password/
@@ -113,6 +114,7 @@ public sealed record PluginManifest(
                 GetOptionalString(root, "expectedMinVersion"),
                 GetSessionProviders(root),
                 GetOptionalStrings(root, "capabilities"),
+                root.TryGetProperty("requiresRestart", out var restart) && restart.ValueKind == JsonValueKind.True,
                 GetOptionalStrings(root, "keywords"));
             return true;
         }

@@ -11,12 +11,16 @@ internal static class PluginClosureHash
     // The closure of the files actually on disk under an installed plugin folder (what the loader will load):
     // every file, recursively, every byte read. This is what startup discovery verifies and what an install pins.
     public static Task<string> OfInstalledFolderAsync(string folder, CancellationToken cancellationToken = default) =>
-        _ComputeAsync(folder, _EnumerateInstalledFiles(folder), reuseUnchanged: false, cancellationToken);
+        _ShaAsync(_ComputeAsync(folder, InstalledFiles(folder), reuseUnchanged: false, cancellationToken));
+
+    // AC-2025: the same closure with the per-file hashes it was made of, so a loader can check each file it opens.
+    public static Task<(string Sha, IReadOnlyList<PluginClosureFile> Files)> OfInstalledFolderWithFilesAsync(string folder, CancellationToken cancellationToken = default) =>
+        _ComputeAsync(folder, InstalledFiles(folder), reuseUnchanged: false, cancellationToken);
 
     // AC-2018: the same closure for a rediscovery that loads and pins nothing (Options, the update check): a file whose
     // size and write time match the last full read keeps that hash. Never for a route that loads or compares a pin.
     public static Task<string> OfInstalledFolderForDisplayAsync(string folder, CancellationToken cancellationToken = default) =>
-        _ComputeAsync(folder, _EnumerateInstalledFiles(folder), reuseUnchanged: true, cancellationToken);
+        _ShaAsync(_ComputeAsync(folder, InstalledFiles(folder), reuseUnchanged: true, cancellationToken));
 
     // The closure of a source folder as it *would be* installed — mirroring
     // `PluginSourceInstaller`'s copy selection (minus the root shared abstractions
@@ -25,7 +29,7 @@ internal static class PluginClosureHash
         string folder,
         CancellationToken cancellationToken = default,
         SearchOption searchOption = SearchOption.TopDirectoryOnly) =>
-        _ComputeAsync(folder, SourceFiles(folder, searchOption), reuseUnchanged: false, cancellationToken);
+        _ShaAsync(_ComputeAsync(folder, SourceFiles(folder, searchOption), reuseUnchanged: false, cancellationToken));
 
     // Whether a source file is copied into the install (and so counts towards the closure). Kept here so
     // `PluginSourceInstaller`'s copy and this hash cannot drift apart.
@@ -37,7 +41,7 @@ internal static class PluginClosureHash
     // Every file under the folder, at any depth (dependency DLLs, native libs under runtimes/, the manifest),
     // except reserved dot-prefixed markers (.remove) — discovery skips dot-prefixed folders for the same reason,
     // and these never load as code.
-    private static IEnumerable<string> _EnumerateInstalledFiles(string folder) =>
+    internal static IEnumerable<string> InstalledFiles(string folder) =>
         Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories)
             .Where(path => !Path.GetFileName(path).StartsWith('.'));
 
@@ -51,7 +55,19 @@ internal static class PluginClosureHash
     private static readonly ConcurrentDictionary<string, (long Length, DateTime WrittenUtc, string Sha)> _fileHashes =
         new(StringComparer.OrdinalIgnoreCase);
 
-    private static async Task<string> _ComputeAsync(string folder, IEnumerable<string> files, bool reuseUnchanged, CancellationToken cancellationToken)
+    // A zip stamps its own write times, so replaced bytes can keep size and time: drop what was remembered for the folder.
+    internal static void Forget(string folder)
+    {
+        var prefix = Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder)) + Path.DirectorySeparatorChar;
+        foreach (var path in _fileHashes.Keys.Where(path => path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+        {
+            _fileHashes.TryRemove(path, out _);
+        }
+    }
+
+    private static async Task<string> _ShaAsync(Task<(string Sha, IReadOnlyList<PluginClosureFile> Files)> closure) => (await closure.ConfigureAwait(false)).Sha;
+
+    private static async Task<(string Sha, IReadOnlyList<PluginClosureFile> Files)> _ComputeAsync(string folder, IEnumerable<string> files, bool reuseUnchanged, CancellationToken cancellationToken)
     {
         var closure = new List<PluginClosureFile>();
         foreach (var path in files)
@@ -61,7 +77,7 @@ internal static class PluginClosureHash
             closure.Add(new PluginClosureFile(relative, await _FileShaAsync(path, reuseUnchanged, cancellationToken).ConfigureAwait(false)));
         }
 
-        return PluginHash.ComputeClosure(closure);
+        return (PluginHash.ComputeClosure(closure), closure);
     }
 
     private static async Task<string> _FileShaAsync(string path, bool reuseUnchanged, CancellationToken cancellationToken)

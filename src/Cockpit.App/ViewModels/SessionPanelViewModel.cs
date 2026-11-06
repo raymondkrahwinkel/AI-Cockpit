@@ -1190,6 +1190,9 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private string? _projectId;
 
+    // The plugin provider this pane was started on, so disabling that plugin can see which sessions it would cut off (AC-2024).
+    public virtual string? ProviderId => null;
+
     // Whether plugin-contributed session-header items show (AC-25/AC-37): true for a real agent session, false for
     // a plain terminal, where a plugin session indicator has nothing to say. On the base so the one SessionHeaderBar
     // gates the shared PluginSessionHeaderHost without needing the TTY-only IsTerminal flag.

@@ -80,6 +80,8 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
                 _RefreshTabCapabilities();
                 OnPropertyChanged(nameof(ActivePluginBody));
                 OnPropertyChanged(nameof(ShowUnknownPluginWorkspace));
+                OnPropertyChanged(nameof(UnknownPluginWorkspaceTitle));
+                OnPropertyChanged(nameof(UnknownPluginWorkspaceHint));
                 OnPropertyChanged(nameof(ActiveHeaderActions));
             };
         }
@@ -220,6 +222,17 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     public bool ShowUnknownPluginWorkspace =>
         IsPluginWorkspaceActive && ActivePluginBody is null;
 
+    // AC-2024: a plugin disabled in this run has a way back the operator can name; one never seen may need installing.
+    private bool _ActivePluginWasDisabled => Active is { } active && _workspaceTypes?.IsWithdrawn(active.Type.Id) == true;
+
+    public string UnknownPluginWorkspaceTitle =>
+        _ActivePluginWasDisabled ? "This workspace's plugin is disabled." : "This workspace's plugin is not installed.";
+
+    public string UnknownPluginWorkspaceHint =>
+        _ActivePluginWasDisabled
+            ? "Enable the plugin in the Plugin store, and this workspace comes back."
+            : "Install or enable the plugin that provides it, and this workspace comes back.";
+
     // AC-1711: the header-row buttons of the active plugin workspace's type, drawn on the tab strip only while a
     // workspace of that type is active. Empty for a host type or a type whose plugin is not installed.
     public IReadOnlyList<ToolbarAction> ActiveHeaderActions =>
@@ -258,6 +271,12 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     internal void RegisterFileWorkspaceType(string id)
     {
         _fileWorkspaceTypes.Add(id);
+        _RefreshTabCapabilities();
+    }
+
+    internal void UnregisterFileWorkspaceType(string id)
+    {
+        _fileWorkspaceTypes.Remove(id);
         _RefreshTabCapabilities();
     }
 
@@ -475,6 +494,29 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
 
     public Task<bool> ConfirmCloseAsync(string workspaceId) =>
         (_pluginContexts.GetValueOrDefault(workspaceId) as WorkspaceContext)?.ConfirmCloseAsync() ?? Task.FromResult(true);
+
+    // AC-2025: whether an open workspace of this plugin asks before it closes. A live update closes them without asking.
+    internal bool HasGuardedPluginWorkspace(string pluginId)
+    {
+        var types = _workspaceTypes?.TypesOf(pluginId) ?? [];
+        return Settings.Workspaces.Any(workspace =>
+            types.Contains(workspace.Type.Id) && (_pluginContexts.GetValueOrDefault(workspace.Id) as WorkspaceContext)?.HasCloseGuard == true);
+    }
+
+    // AC-2024: the guards of every open workspace of this plugin, stopping at the first the operator declines.
+    public async Task<bool> ConfirmPluginWorkspacesCloseAsync(string pluginId)
+    {
+        var types = _workspaceTypes?.TypesOf(pluginId) ?? [];
+        foreach (var workspace in Settings.Workspaces.Where(workspace => types.Contains(workspace.Type.Id)).ToList())
+        {
+            if (!await ConfirmCloseAsync(workspace.Id).ConfigureAwait(true))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     public async Task<bool> ConfirmCloseAllAsync()
     {
@@ -861,6 +903,8 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
         OnPropertyChanged(nameof(IsPluginWorkspaceActive));
         OnPropertyChanged(nameof(ActivePluginBody));
         OnPropertyChanged(nameof(ShowUnknownPluginWorkspace));
+        OnPropertyChanged(nameof(UnknownPluginWorkspaceTitle));
+        OnPropertyChanged(nameof(UnknownPluginWorkspaceHint));
         OnPropertyChanged(nameof(ActiveHeaderActions));
         OnPropertyChanged(nameof(ShowDashboardEmptyState));
         OnPropertyChanged(nameof(DashboardRows));
@@ -883,7 +927,7 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
 
         // AC-1013: Reconcile rather than rebuild. Clearing and re-creating every pane on any change threw away...
         var wanted = dashboard.Panes
-            .Where(pane => pane.WidgetId is not null)
+            .Where(pane => pane.WidgetId is { } widgetId && _widgets.IsInstalled(widgetId))
             .ToList();
 
         foreach (var stale in WidgetPanes.Where(existing => wanted.All(pane => pane.Id != existing.Id)).ToList())
@@ -916,7 +960,7 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     {
         // The embedded sessions of a closed plugin workspace are torn down by the shell's CloseForWorkspace; here
         // we release the cached control so a reused id cannot show a stale body.
-        foreach (var staleId in _pluginBodies.Keys.Where(id => Settings.Workspaces.All(workspace => workspace.Id != id)).ToList())
+        foreach (var staleId in _pluginBodies.Keys.Where(_BodyIsStale).ToList())
         {
             // The workspace is really gone (not just switched away from): tell its body so a long-running job (Autopilot's
             // autonomous run) is cancelled and torn down, before the cached control is released.
@@ -935,6 +979,11 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
             _EnsureBody(active);
         }
     }
+
+    // AC-2024: a workspace can stay while its plugin left; the body then goes, and the tab shows the placeholder.
+    private bool _BodyIsStale(string workspaceId) =>
+        Settings.Workspaces.FirstOrDefault(workspace => workspace.Id == workspaceId) is not { } workspace
+        || _workspaceTypes?.IsRegistered(workspace.Type.Id) == false;
 
     // Builds a plugin workspace's body once; false while the plugin of its type is not registered.
     private bool _EnsureBody(Workspace workspace)

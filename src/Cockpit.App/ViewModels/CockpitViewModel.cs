@@ -317,11 +317,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // What plugins can *do* to one session (#: session actions) — gathered into the single menu in every session's
     // header, rather than a button each.
-    public ObservableCollection<PluginSessionAction> PluginSessionHeaderActions { get; } = [];
+    public ObservableCollection<PluginSessionHeaderAction> PluginSessionHeaderActions { get; } = [];
 
     // Plugin-registered sources of supervised background activities (AC-82) — the status bar shows a counter per source
     // (only while it has activities) and a panel with a Kill per item.
-    public ObservableCollection<ISupervisedActivitySource> PluginSupervisedActivities { get; } = [];
+    public ObservableCollection<PluginSupervisedActivity> PluginSupervisedActivities { get; } = [];
 
     // AC-1711: at most one line of text per plugin in the status bar, in the order the plugins first set one.
     public ObservableCollection<PluginStatusText> PluginStatusTexts { get; } = [];
@@ -432,7 +432,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private sealed record PluginMenuPreference(int Order, bool Hidden, bool Pinned);
 
     // Keyboard shortcuts contributed by plugins (#: shortcuts), dispatched alongside the built-in app-action shortcuts.
-    public ObservableCollection<PluginShortcut> PluginShortcuts { get; } = [];
+    public ObservableCollection<PluginKeyboardShortcut> PluginShortcuts { get; } = [];
 
     // The currently-active shortcuts (app actions + plugin shortcuts) the view matches key presses against.
     public IReadOnlyList<ShortcutBinding> ActiveShortcuts { get; private set; } = [];
@@ -843,23 +843,53 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         MaterialIconKind iconKind) =>
         _OnUiThread(() => PluginSideButtons.Add(new PluginSideButton(pluginId, title, onInvoke, badge, iconKind)));
 
-    void IPluginContributionSink.AddPluginSessionHeaderItem(Func<IPluginSessionContext, Control> createView) =>
-        _OnUiThread(() => PluginSessionHeaderItems.Add(new PluginSessionHeaderItem(createView)));
+    void IPluginContributionSink.AddPluginSessionHeaderItem(string pluginId, Func<IPluginSessionContext, Control> createView) =>
+        _OnUiThread(() => PluginSessionHeaderItems.Add(new PluginSessionHeaderItem(pluginId, createView)));
 
-    void IPluginContributionSink.AddPluginSessionBannerItem(Func<IPluginSessionContext, Control> createView) =>
-        _OnUiThread(() => PluginSessionBanners.Add(new PluginSessionBannerItem(createView)));
+    void IPluginContributionSink.AddPluginSessionBannerItem(string pluginId, Func<IPluginSessionContext, Control> createView) =>
+        _OnUiThread(() => PluginSessionBanners.Add(new PluginSessionBannerItem(pluginId, createView)));
 
-    void IPluginContributionSink.AddPluginSessionHeaderAction(PluginSessionAction action) =>
-        _OnUiThread(() => PluginSessionHeaderActions.Add(action));
+    void IPluginContributionSink.AddPluginSessionHeaderAction(string pluginId, PluginSessionAction action) =>
+        _OnUiThread(() => PluginSessionHeaderActions.Add(new PluginSessionHeaderAction(pluginId, action)));
 
-    void IPluginContributionSink.AddSupervisedActivityProvider(ISupervisedActivitySource source) =>
-        _OnUiThread(() => PluginSupervisedActivities.Add(source));
+    void IPluginContributionSink.AddSupervisedActivityProvider(string pluginId, ISupervisedActivitySource source) =>
+        _OnUiThread(() => PluginSupervisedActivities.Add(new PluginSupervisedActivity(pluginId, source)));
 
     void IPluginContributionSink.AddToolbarAction(string pluginId, ToolbarAction action) =>
         _OnUiThread(() => PluginToolbarActions.Add(new PluginToolbarAction(pluginId, action)));
 
-    void IPluginContributionSink.AddPluginShortcut(PluginShortcut shortcut) =>
-        _OnUiThread(() => PluginShortcuts.Add(shortcut));
+    void IPluginContributionSink.AddPluginShortcut(string pluginId, PluginShortcut shortcut) =>
+        _OnUiThread(() => PluginShortcuts.Add(new PluginKeyboardShortcut(pluginId, shortcut)));
+
+    void IPluginContributionSink.RemovePluginContributions(string pluginId) => _OnUiThread(() =>
+    {
+        _RemoveWhere(PluginSideSections, entry => entry.PluginId == pluginId);
+        _RemoveWhere(PluginSideButtons, entry => entry.PluginId == pluginId);
+        _RemoveWhere(PluginSessionHeaderItems, entry => entry.PluginId == pluginId);
+        _RemoveWhere(PluginSessionBanners, entry => entry.PluginId == pluginId);
+        _RemoveWhere(PluginSessionHeaderActions, entry => entry.PluginId == pluginId);
+        _RemoveWhere(PluginSupervisedActivities, entry => entry.PluginId == pluginId);
+        _RemoveWhere(PluginStatusTexts, entry => entry.PluginId == pluginId);
+        _RemoveWhere(PluginToolbarActions, entry => entry.PluginId == pluginId);
+        _RemoveWhere(PluginShortcuts, entry => entry.PluginId == pluginId);
+        PluginSettings.Remove(pluginId);
+        PluginServerSettings.Remove(pluginId);
+        _settingsSavedHandlers.Remove(pluginId);
+    });
+
+    Task<bool> IPluginContributionSink.ConfirmPluginWorkspacesCloseAsync(string pluginId) =>
+        Workspaces.ConfirmPluginWorkspacesCloseAsync(pluginId);
+
+    private static void _RemoveWhere<T>(ObservableCollection<T> items, Func<T, bool> match)
+    {
+        for (var index = items.Count - 1; index >= 0; index--)
+        {
+            if (match(items[index]))
+            {
+                items.RemoveAt(index);
+            }
+        }
+    }
 
     // Registration touches only this plain dictionary — never a bound ObservableCollection — and every caller is an
     // Avalonia UI-thread callback in practice (a plugin's Initialize).
@@ -904,7 +934,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             onSaved: pane.Refresh,
             // Per widget, and not optional here (AC-367): the form is built once above and handed to the window as
             // a captured instance, so a second window would try to adopt a control that already has a parent.
-            singleInstanceKey: $"widget:{pane.Id}");
+            singleInstanceKey: $"{CockpitUiHost.WidgetDialogKeyPrefix(pane.WidgetId)}{pane.Id}");
     }
 
     // Unlike the three contributions above, registration here touches only this private dictionary — never a bound
@@ -1662,6 +1692,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             OnPropertyChanged(nameof(HasRailTabs));
             OnPropertyChanged(nameof(HasDockPanels));
             OnPropertyChanged(nameof(ShowDockRail));
+            OnPropertyChanged(nameof(EffectiveOpenDockPanelId));
         };
     }
 
@@ -2216,6 +2247,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // its own and nothing ever added them up, so several well-behaved sessions could still promise more than exists.
     [ObservableProperty]
     private int _memoryBudgetPercent = MemoryPressure.DefaultBudgetPercent;
+
+    // AC-2025: how many plugin versions a live update may leave in memory before the plugin screens advise a restart.
+    [ObservableProperty]
+    private int _pluginRestartAdviceAfter = SessionBehaviorSettings.DefaultPluginRestartAdviceAfter;
+
+    partial void OnPluginRestartAdviceAfterChanged(int value) => Plugins.RestartAdviceAfter = value;
 
     // AC-2035: whether Docker's build cache and old images are pruned by the cockpit itself. Read afresh by the storage
     // maintenance on every tick, so a saved change applies without a restart.
@@ -4215,7 +4252,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             ShortcutRows.Add(new ShortcutRowViewModel(descriptor.Label, descriptor.Action, _shortcutSettings.GestureFor(descriptor.Action)));
         }
 
-        foreach (var shortcut in PluginShortcuts)
+        foreach (var shortcut in PluginShortcuts.Select(entry => entry.Shortcut))
         {
             ShortcutRows.Add(new ShortcutRowViewModel(
                 $"{shortcut.Title} (plugin)",
@@ -4279,7 +4316,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             }
         }
 
-        foreach (var shortcut in PluginShortcuts)
+        foreach (var shortcut in PluginShortcuts.Select(entry => entry.Shortcut))
         {
             var gesture = _shortcutSettings.GestureForPlugin(shortcut.Id, shortcut.DefaultGesture);
             if (!string.IsNullOrWhiteSpace(gesture))
@@ -4436,6 +4473,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         CombineQueuedMessages = settings.CombineQueuedMessages;
         WakeAgentsByDefault = settings.WakeAgentsByDefault;
         MemoryBudgetPercent = settings.MemoryBudgetPercent;
+        PluginRestartAdviceAfter = settings.PluginRestartAdviceAfter;
         AutomaticDockerCleanup = settings.AutomaticDockerCleanup;
         // Pushed explicitly as well as through the property's own change handler: the saved value can equal the
         // property's initial one, and then nothing changed and the handler never ran — leaving the coordinator on
@@ -4458,6 +4496,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             CombineQueuedMessages = CombineQueuedMessages,
             WakeAgentsByDefault = WakeAgentsByDefault,
             MemoryBudgetPercent = MemoryBudgetPercent,
+            PluginRestartAdviceAfter = PluginRestartAdviceAfter,
             AutomaticDockerCleanup = AutomaticDockerCleanup,
         });
         SessionBehaviorSettingsStatus = "Saved";
@@ -6747,7 +6786,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
             if (launched?.UnisolatedNotice is { } notice)
             {
-                ToastHost.Add(notice.Message, ToastSeverity.Warning, null, null);
+                ToastHost.Add(notice.Message, ToastSeverity.Warning, [], sticky: true,
+                    key: $"session.unisolated:{launched.PaneId}");
             }
 
             return launched?.PaneId is { Length: > 0 } started ? started : null;
@@ -7595,7 +7635,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 () => _InvokeAppAction(descriptor.Action)));
         }
 
-        foreach (var shortcut in PluginShortcuts)
+        foreach (var shortcut in PluginShortcuts.Select(entry => entry.Shortcut))
         {
             commands.Add(new PaletteCommand(
                 shortcut.Title,
@@ -7702,9 +7742,43 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _RebuildPluginOptionsRows();
     }
 
-    // One row per plugin that has ever registered a settings view (`PluginRowViewModel.HasSettings`, backed by the
-    // persisted settings registry — true even for a plugin disabled this session, which never called `AddSettings` at
-    // all) (AC-1005).
+    public void RefreshLivePlugin(string pluginId)
+    {
+        var index = Plugins.Plugins.ToList().FindIndex(row => row.FolderId == pluginId);
+        if (index >= 0 && PluginSettings.ContainsKey(pluginId))
+        {
+            Plugins.Plugins[index] = Plugins.Plugins[index].WithSettings();
+        }
+
+        if (!_optionsStaged || !PluginSettings.TryGetValue(pluginId, out var registration))
+        {
+            return;
+        }
+
+        var row = new PluginOptionsRowViewModel(pluginId, registration.PluginName, registration.CreateView, null, registration.Category, _logger);
+        var rowIndex = PluginOptionsRows.ToList().FindIndex(existing => existing.PluginId == pluginId);
+        if (rowIndex >= 0)
+        {
+            PluginOptionsRows[rowIndex] = row;
+        }
+        else
+        {
+            PluginOptionsRows.Add(row);
+        }
+    }
+
+    // AC-2024: what a departed plugin leaves here. Its toasts keep their text, and an Options row stops offering its view.
+    public void ForgetLivePlugin(string pluginId)
+    {
+        ToastHost.RetireSource(pluginId);
+        var rowIndex = PluginOptionsRows.ToList().FindIndex(existing => existing.PluginId == pluginId);
+        if (rowIndex >= 0)
+        {
+            PluginOptionsRows[rowIndex] = new PluginOptionsRowViewModel(pluginId, PluginOptionsRows[rowIndex].DisplayName, createView: null, "Disabled");
+        }
+    }
+
+    // AC-1005: the persisted settings registry keeps a row for plugins disabled this session.
     private void _RebuildPluginOptionsRows()
     {
         // `ShowOptionsDialogAsync` calls `BeginOptionsEdit` unconditionally even when the dialog is merely activated
@@ -8055,6 +8129,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         CombineQueuedMessages = behavior.CombineQueuedMessages;
         WakeAgentsByDefault = behavior.WakeAgentsByDefault;
         MemoryBudgetPercent = behavior.MemoryBudgetPercent;
+        PluginRestartAdviceAfter = behavior.PluginRestartAdviceAfter;
         AutomaticDockerCleanup = behavior.AutomaticDockerCleanup;
 
         var screenshot = new ScreenshotSettings();

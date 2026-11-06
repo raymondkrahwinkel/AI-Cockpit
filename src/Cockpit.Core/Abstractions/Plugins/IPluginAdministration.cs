@@ -2,8 +2,7 @@ using Cockpit.Core.Plugins;
 
 namespace Cockpit.Core.Abstractions.Plugins;
 
-// AC-1434: what the plugin screens do to the installed plugins, and nothing more. Every change takes effect at the
-// next start; the host's plugin contract version is the implementation's to know, not the caller's.
+// AC-1434: what the plugin screens do to the installed plugins; enabling can be live, every other change waits for the next start.
 public interface IPluginAdministration
 {
     /// <summary>
@@ -27,12 +26,18 @@ public interface IPluginAdministration
     Task<PluginProvisionResult> InstallFromStoreAsync(PluginProvisionRequest request, CancellationToken cancellationToken = default, IProgress<PluginDownloadProgress>? progress = null);
 
     /// <summary>
-    /// Enables or disables a plugin; enabling trusts exactly the bytes <paramref name="pinnedSha256"/> names.
+    /// Enables or disables a plugin; enabling trusts exactly the bytes <paramref name="pinnedSha256"/> names. Enabling
+    /// activates the plugin in the running host when it can, and says otherwise why a restart is needed.
     /// </summary>
-    Task SetEnabledAsync(string folderId, bool enabled, string pinnedSha256, CancellationToken cancellationToken = default);
+    Task<PluginLiveState> SetEnabledAsync(string folderId, bool enabled, string pinnedSha256, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Uninstalls a plugin at the next start and forgets its registration.
+    /// How many plugin versions are held in memory that no longer run: a live update leaves the old one until the next start.
     /// </summary>
-    Task RemoveAsync(string folderId, CancellationToken cancellationToken = default);
+    Task<int> GetRetiredLoadContextsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Forgets a plugin's registration, deactivates it in the running host when it can, and deletes its folder at the next start.
+    /// </summary>
+    Task<PluginLiveState> RemoveAsync(string folderId, CancellationToken cancellationToken = default);
 }

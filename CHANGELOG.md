@@ -53,6 +53,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- Sessions that start directly in a project folder keep their no-isolation warning visible until an operator closes it.
+- The local gate now uses the available Windows or Unix Python launcher for its guards.
+
+- Plugin changes now require a restart only when the plugin declares it or a lifecycle operation fails; approving new capabilities resumes live updates.
+
+- A plugin update marker now clears as soon as the approved version is confirmed on disk; disabling a provider in use names its session and finishes after it closes without offering an unnecessary restart.
+- A plugin channel call that arrives during a live plugin update now waits for the replacement instead of failing because its action is briefly unavailable.
 - Simple sessions now use the same provider instructions as sessions started from Panels.
 - A plugin is now turned off only after it is named in two interrupted starts in a row; Cockpit explains that recovery decision and offers to turn it back on.
 - Discord final-answer relays now send a streamed answer as one message.
@@ -77,6 +84,18 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- "Update all" in the Plugin store now updates the plugins one by one while the cockpit runs; the ones that need a restart are collected in one "restart to finish" message, and one that fails keeps its old version running with the error shown while the others go on. A plugin update leaves the replaced version in memory until the next start: from three of them (Options → Sessions → "Advise a restart when …") the Plugin store and a server's plugin page offer "Restart to free memory".
+- A plugin update that cannot finish starting no longer leaves a half-started version behind: a start that hangs for 30 seconds is given up on and the previous version comes back, a failing plugin screen counts as a failed update, and an update that can only start after a restart keeps the running version until then, with no extra approval. Settings of a server plugin say so when the server runs another version than this desktop, instead of opening against the wrong one.
+- Updating a plugin, in the Plugin store, from a zip or on a server, now takes effect at once: the running version is switched off and the new one switched on, with the same settings and storage. If the new version fails to start, the previous version runs again, its files are put back and the error is shown. A plugin that asks for a restart, whose provider a session is using, or that has a workspace open which asks before it closes, still says "Restart needed" with the reason. An update that asks for more capabilities than the approved version waits for the restart and a new approval. Two plugin changes never run at the same time.
+- Plugins now load from a verified copy in the Cockpit state folder (`plugin-shadow`), so a plugin's installed folder is never locked on Windows and an update to a plugin that does not ask for a restart is written in place at once. The copy is checked against the approved hash before anything loads, and copies of old versions are removed at the next start.
+- Enabling a plugin in Options → Plugins, or on a server, now activates it at once. It says "Restart needed" with the reason when the plugin asks for it (`requiresRestart` in `plugin.json`) or cannot start live. Running sessions get new MCP tools at their next start.
+- Disabling a plugin, in the Plugin store or on a server, now takes effect at once: its widgets, dialogs, panels and menu items go, and enabling it again brings them back. An open workspace of that plugin keeps its tab and says the plugin is disabled, and unsaved work asks first. It only says "Restart needed" when the plugin could not be unloaded.
+- Live plugin activation prepares encrypted settings, runs startup tasks and makes contributed workflow steps available without a restart.
+- Backend support for activating individual plugins while running, with a restart reason when their services need a new host container.
+- Plugin MCP providers can join the running catalog without rebuilding the host container.
+- When a plugin is disabled, a running session that still calls one of its MCP tools gets the error "plugin <name> is uitgeschakeld" and carries on; new sessions are no longer offered those tools.
+- Removing a plugin, in Options → Plugins or on a server, now stops it at once and deletes its files on the next start. Disabling or removing a provider plugin while a session still runs on it asks for a restart and names the session.
+- A workflow that uses a step from a disabled plugin is skipped with that reason, and a scheduled agent task whose provider plugin is disabled is skipped instead of failing.
 - The assistant automatically hears about failed turns, unanswered permissions, abandoned processes and panes disappearing before finishing; reports are bundled and capped per hour.
 - The assistant can consolidate its behaviour memory with a timestamped backup on each destination.
 - Groq, Mistral, Cerebras and a Custom entry with your own base URL as session providers in the OpenAI-compatible plugin, each with a note on what works.
@@ -101,6 +120,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- Disabling a plugin now stops its work right away: workflow and schedule runs, Local CI runs, the pull request poll, and the Slack and Discord connections. A stopped workflow or schedule run says so in its history.
+- A running Autopilot run stops with a clear reason when the plugin behind its tracker is disabled, and a run that starts without its tracker says so.
+- Browser now asks for a restart when you disable it, because its engine cannot start twice in one process.
+- Docker, Kind, Kubernetes and Local CI show their running activities in the status bar again, with the Kill button.
 - The Depot sync no longer warns after one slow check: it waits up to 30 seconds, tries three times within the same round, and only then says so once, without the "Open Depot settings" button. Not being signed in is still reported at once with that button, and an unchanged project logo is no longer downloaded again on every check.
 - Plugin-store downloads now show their current byte progress, and disk status details include free, used and total space.
 

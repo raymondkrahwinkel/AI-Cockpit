@@ -13,6 +13,8 @@ internal sealed class PluginProviderRegistry : IPluginProviderRegistry, ISinglet
     private readonly List<SessionProviderRegistration> _ordered = [];
     private readonly Dictionary<string, string?> _owners = [];
 
+    public event EventHandler? Changed;
+
     public void Register(SessionProviderRegistration registration, string? ownerPluginId = null)
     {
         lock (_gate)
@@ -26,6 +28,27 @@ internal sealed class PluginProviderRegistry : IPluginProviderRegistry, ISinglet
             _byProviderId[registration.ProviderId] = registration;
             _ordered.Add(registration);
         }
+
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    public bool Unregister(string providerId, string? ownerPluginId)
+    {
+        lock (_gate)
+        {
+            var owned = string.Equals(_owners.GetValueOrDefault(providerId), ownerPluginId, StringComparison.Ordinal);
+            if (!owned || !_byProviderId.TryGetValue(providerId, out var registration))
+            {
+                return false;
+            }
+
+            _byProviderId.Remove(providerId);
+            _owners.Remove(providerId);
+            _ordered.Remove(registration);
+        }
+
+        Changed?.Invoke(this, EventArgs.Empty);
+        return true;
     }
 
     public IReadOnlyList<SessionProviderRegistration> Registrations

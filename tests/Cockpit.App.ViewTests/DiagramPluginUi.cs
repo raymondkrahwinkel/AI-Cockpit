@@ -13,6 +13,33 @@ internal static class DiagramPluginUi
 {
     public const string PluginId = "diagram";
 
+    private static readonly Dictionary<string, string> _installed = [];
+
+    // AC-2025: the plugin loads from a copy of an installed folder that is hashed against the pin, so the build output
+    // is installed under a temp `plugins/diagram` once per process and pinned with the closure hash a real install gets.
+    public static DiscoveredPlugin Discover(string buildOutput, PluginManifest manifest)
+    {
+        string folder;
+        lock (_installed)
+        {
+            if (!_installed.TryGetValue(buildOutput, out folder!))
+            {
+                folder = Path.Combine(Path.GetTempPath(), "cockpit-viewtests-plugins", Guid.NewGuid().ToString("N"), "plugins", PluginId);
+                foreach (var file in Directory.EnumerateFiles(buildOutput, "*", SearchOption.AllDirectories))
+                {
+                    var target = Path.Combine(folder, Path.GetRelativePath(buildOutput, file));
+                    Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                    File.Copy(file, target);
+                }
+
+                _installed[buildOutput] = folder;
+            }
+        }
+
+        var hash = PluginClosureHash.OfInstalledFolderAsync(folder).GetAwaiter().GetResult();
+        return new DiscoveredPlugin(folder, PluginId, manifest, hash, PluginLoadDecision.Load);
+    }
+
     public static void Initialize(DiscoveredPlugin discovered, ICockpitPlugin plugin, ICockpitHost host, PluginChannelHub hub, RecordingUiSurfaces surfaces)
     {
         var ui = PluginUiManager.ActivateUi(discovered, plugin) ?? throw new InvalidOperationException("Diagram's UI part did not activate.");

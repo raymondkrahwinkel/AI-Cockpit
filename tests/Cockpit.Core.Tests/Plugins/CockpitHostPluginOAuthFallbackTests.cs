@@ -58,7 +58,7 @@ public class CockpitHostPluginOAuthFallbackTests
         var services = new ServiceCollection()
             .AddSingleton(store)
             .AddSingleton(coordinator)
-            .AddSingleton(provider)
+            .AddSingleton(new PluginMcpProviderRegistry(provider))
             .BuildServiceProvider();
         return new DesktopBackendHost(
             "depot",

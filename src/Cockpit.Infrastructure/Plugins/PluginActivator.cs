@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Reflection;
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Plugins;
@@ -10,12 +11,15 @@ namespace Cockpit.Infrastructure.Plugins;
 // AC-1403: `withoutFrontend` loads each plugin with the load context's guard against Avalonia.
 public sealed class PluginActivator(ILogger<PluginActivator> logger, bool withoutFrontend = false)
 {
+    // AC-2024: non-collectible, so the same bytes enabled again reuse their context rather than load a second copy.
+    private readonly ConcurrentDictionary<(string FolderId, string Sha256), PluginLoadContext> _contexts = new();
+
     public ICockpitPlugin? Activate(DiscoveredPlugin discovered)
     {
         // AC-1159: discovery already checked this, but the activator loads in-process with full trust and
         // must not trust that a manifest read back off disk still resolves the same way.
         if (discovered.Manifest.EntryAssembly is not { } entryAssembly
-            || !PluginEntryPath.TryResolve(discovered.FolderPath, entryAssembly, out var entryPath))
+            || !PluginEntryPath.TryResolve(discovered.FolderPath, entryAssembly, out _))
         {
             logger.LogWarning(
                 "Plugin {PluginId} has an entry assembly path outside its folder ({EntryAssembly}); refusing to load it.",
@@ -23,8 +27,17 @@ public sealed class PluginActivator(ILogger<PluginActivator> logger, bool withou
             return null;
         }
 
-        var context = new PluginLoadContext(entryPath, withoutFrontend ? discovered.Manifest.Name : null);
-        var assembly = context.LoadFromAssemblyPath(entryPath);
+        // AC-2025: the copy is hashed against the pin, and the plugin loads from the copy and nowhere else.
+        var shadow = PluginShadow.GetOrPrepare(discovered);
+        if (!PluginEntryPath.TryResolve(shadow.Folder, entryAssembly, out var entryPath))
+        {
+            return null;
+        }
+
+        var context = _contexts.GetOrAdd(
+            (discovered.FolderId, discovered.Sha256),
+            _ => new PluginLoadContext(entryPath, withoutFrontend ? discovered.Manifest.Name : null, shadow));
+        var assembly = context.LoadOnce(entryPath);
 
         var entryType = _ResolveEntryType(assembly, discovered.Manifest.EntryType);
         if (entryType is null)

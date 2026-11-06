@@ -125,6 +125,8 @@ internal sealed partial class SessionPanelHandle : IHostedSession
 
     public string? ProjectId => _pane?.ProjectId;
 
+    public string? ProviderId => _pane?.ProviderId;
+
     public string? RunId => (_pane as SessionViewModel)?.RunId;
 
     // The flag the gateways filter on as "no agent here" is `ShowPluginHeaderItems`; a plain terminal is the only

@@ -37,7 +37,7 @@ public sealed class DepotSignalRTests
             .Returns(McpOAuthAccess.Authorized("test-host-only"));
         using var services = new ServiceCollection()
             .AddSingleton(coordinator)
-            .AddSingleton<IPluginMcpProvider>(new OwnProvider(origin))
+            .AddSingleton(new PluginMcpProviderRegistry(new OwnProvider(origin)))
             .BuildServiceProvider();
         var host = new PluginBackendHost(
             "depot", "Depot", services, Substitute.For<IPluginStorage>(),

@@ -87,8 +87,7 @@ public class WhiteboardCollabWindowTests
         Assert.True(PluginManifest.TryParse(manifestJson, out var manifest, out _));
 
         // F2.13/AC-1401: the entry (backend) assembly specifically — manifest.Assemblies now also yields UiAssembly.
-        var hash = PluginHash.Compute(File.ReadAllBytes(Path.Combine(folder, manifest!.EntryAssembly!)));
-        var discovered = new DiscoveredPlugin(folder, "diagram", manifest, hash, PluginLoadDecision.Load);
+        var discovered = DiagramPluginUi.Discover(folder, manifest!);
         var plugin = new PluginActivator(NullLogger<PluginActivator>.Instance).Activate(discovered);
         Assert.NotNull(plugin);
 

@@ -78,6 +78,11 @@ public interface ISessionHandle
     string? ProjectId => null;
 
     /// <summary>
+    /// The plugin provider the session runs on, null for a plain terminal or a handle that cannot tell (AC-2024).
+    /// </summary>
+    string? ProviderId => null;
+
+    /// <summary>
     /// True when the assistant started this session rather than the operator (AC-1300); what AC-1706's stall nudge is limited to.
     /// </summary>
     bool StartedByTheAssistant => false;

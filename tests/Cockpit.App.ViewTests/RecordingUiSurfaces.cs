@@ -55,23 +55,33 @@ internal sealed class RecordingUiSurfaces : IPluginContributionSink, IPluginDial
     {
     }
 
-    public void AddPluginSessionHeaderItem(Func<IPluginSessionContext, Control> createView)
+    public void AddPluginSessionHeaderItem(string pluginId, Func<IPluginSessionContext, Control> createView)
     {
     }
 
-    public void AddPluginSessionBannerItem(Func<IPluginSessionContext, Control> createView)
+    public void AddPluginSessionBannerItem(string pluginId, Func<IPluginSessionContext, Control> createView)
     {
     }
 
-    public void AddPluginSessionHeaderAction(PluginSessionAction action)
+    public void AddPluginSessionHeaderAction(string pluginId, PluginSessionAction action)
     {
     }
 
-    public void AddSupervisedActivityProvider(ISupervisedActivitySource source)
+    public void AddSupervisedActivityProvider(string pluginId, ISupervisedActivitySource source)
     {
     }
 
-    public void AddPluginShortcut(PluginShortcut shortcut)
+    public void AddPluginShortcut(string pluginId, PluginShortcut shortcut)
+    {
+    }
+
+    public Task<bool> ConfirmPluginWorkspacesCloseAsync(string pluginId) => Task.FromResult(true);
+
+    public void CloseDialogs(string keyPrefix)
+    {
+    }
+
+    public void RemovePluginContributions(string pluginId)
     {
     }
 

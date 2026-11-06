@@ -35,10 +35,68 @@ public sealed class PluginBootstrap : ISingletonService
     // rediscovery (enable/disable/remove, 15-min update timer) swapped files under a still-running plugin.
     public async Task<IReadOnlyList<DiscoveredPlugin>> ApplyPendingChangesAndDiscoverAsync(int hostAbstractionsMajor, CancellationToken cancellationToken = default)
     {
+        await _installer.RestoreUnapprovedUpdatesAsync(await _registrationStore.LoadAllAsync(cancellationToken).ConfigureAwait(false), cancellationToken).ConfigureAwait(false);
         await _installer.SweepPendingUpdatesAsync(cancellationToken).ConfigureAwait(false);
         await _installer.SweepRemovalsAsync(cancellationToken).ConfigureAwait(false);
+        await ReconcileUpdatesAsync(cancellationToken).ConfigureAwait(false);
 
         return await DiscoverAsync(hostAbstractionsMajor, cancellationToken).ConfigureAwait(false);
+    }
+
+    // AC-2096: an in-place update killed between the folder swap and the re-pin leaves its marker. New bytes on disk and the
+    // pin still on the bytes the marker says were replaced: the capability check passed, so the pin moves. Else only the marker goes.
+    internal async Task ReconcileUpdatesAsync(CancellationToken cancellationToken = default)
+    {
+        if (!Directory.Exists(_pluginsRoot))
+        {
+            return;
+        }
+
+        foreach (var marker in Directory.EnumerateFiles(_pluginsRoot, PluginInstaller.UpdateMarkerPrefix + "*"))
+        {
+            try
+            {
+                var folderId = Path.GetFileName(marker)[PluginInstaller.UpdateMarkerPrefix.Length..];
+                var folder = Path.Combine(_pluginsRoot, folderId);
+                var hashes = File.ReadAllLines(marker);
+                if (hashes.Length == 2 && hashes[0].Length > 0 && Directory.Exists(folder)
+                    && string.Equals(await PluginClosureHash.OfInstalledFolderAsync(folder, cancellationToken).ConfigureAwait(false), hashes[1], StringComparison.OrdinalIgnoreCase)
+                    && (await _registrationStore.LoadAllAsync(cancellationToken).ConfigureAwait(false)).GetValueOrDefault(folderId) is { } prior
+                    && string.Equals(prior.PinnedSha256, hashes[0], StringComparison.OrdinalIgnoreCase))
+                {
+                    await _registrationStore.SaveAsync(folderId, new PluginRegistration(prior.Enabled, hashes[1]), cancellationToken).ConfigureAwait(false);
+                }
+
+                if (hashes.Length != 2 || hashes[0].Length != 0)
+                {
+                    File.Delete(marker);
+                }
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                // One unreadable plugin must not prevent the other plugins from starting.
+            }
+        }
+    }
+
+    // The marker is recovery evidence until the pin names the bytes that are actually on disk.
+    internal async Task ConfirmPinnedInPlaceUpdateAsync(string folderId, string pinnedSha256, CancellationToken cancellationToken = default)
+    {
+        var marker = Path.Combine(_pluginsRoot, PluginInstaller.UpdateMarkerPrefix + folderId);
+        if (!File.Exists(marker))
+        {
+            return;
+        }
+
+        var hashes = await File.ReadAllLinesAsync(marker, cancellationToken).ConfigureAwait(false);
+        var folder = Path.Combine(_pluginsRoot, folderId);
+        if (hashes.Length == 2
+            && string.Equals(hashes[1], pinnedSha256, StringComparison.OrdinalIgnoreCase)
+            && Directory.Exists(folder)
+            && string.Equals(await PluginClosureHash.OfInstalledFolderAsync(folder, cancellationToken).ConfigureAwait(false), pinnedSha256, StringComparison.OrdinalIgnoreCase))
+        {
+            File.Delete(marker);
+        }
     }
 
     // Scans the plugins root this instance was built with, parses each manifest, hashes each entry assembly

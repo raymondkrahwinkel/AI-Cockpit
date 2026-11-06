@@ -56,6 +56,15 @@ public sealed class SurfaceWindows : ISingletonService
         });
     }
 
+    // AC-2024: closes every open surface whose key matches. Over a copy, since a closing window leaves the registry.
+    public void Close(Func<object, bool> matches)
+    {
+        foreach (var key in _open.Keys.Where(matches).ToList())
+        {
+            _Surface(key)?.Window.Close();
+        }
+    }
+
     // Shows a surface that answers nothing; the task completes when it closes. Only surfaces come through here —
     // a modal question goes to Window.ShowDialog and never touches this class, which DialogModalitySplitTests pins.
     public Task ShowAsync(object key, Window surface, Window owner)

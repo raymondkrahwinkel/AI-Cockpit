@@ -24,6 +24,8 @@ internal sealed class SharedProjectSourceRegistry : ISharedProjectSourceRegistry
 
     public event Action<ISharedProjectSource>? Registered;
 
+    public event Action<string>? Removed;
+
     public bool Register(ISharedProjectSource source)
     {
         lock (_sources)
@@ -42,7 +44,12 @@ internal sealed class SharedProjectSourceRegistry : ISharedProjectSourceRegistry
     {
         lock (_sources)
         {
-            _sources.Remove(key);
+            if (!_sources.Remove(key))
+            {
+                return;
+            }
         }
+
+        Removed?.Invoke(key);
     }
 }

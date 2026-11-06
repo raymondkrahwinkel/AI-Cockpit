@@ -233,7 +233,7 @@ public sealed class CockpitBackend
 
     // AC-1392: plugin phase 2's backend half — before the planners and the restore. Seeds the settings above if the
     // frontend has not, then every plugin's Initialize with the host `hostFor` builds, a windowless one by default.
-    public void InitializePlugins(Func<DiscoveredPlugin, ICockpitPlugin, ICockpitHost>? hostFor = null)
+    public void InitializePlugins(Func<DiscoveredPlugin, ICockpitPlugin, ICockpitHost>? hostFor = null, Action? initializeFrontend = null)
     {
         if (Services.GetService<PluginManager>() is not { } plugins)
         {
@@ -241,7 +241,7 @@ public sealed class CockpitBackend
         }
 
         SeedPluginSettings();
-        plugins.Initialize(hostFor ?? BackendHostFor());
+        plugins.Initialize(hostFor ?? BackendHostFor(), initializeFrontend);
         _pluginsInitialized = true;
     }
 
@@ -578,6 +578,12 @@ public sealed class CockpitBackend
             var discovered = new PluginBootstrap()
                 .ApplyPendingChangesAndDiscoverAsync(AbstractionsContract.Version).GetAwaiter().GetResult();
             manager.LoadAndConfigure(discovered, services, new PluginActivator(loggerFactory.CreateLogger<PluginActivator>(), withoutFrontend).Activate);
+
+            // AC-2025: copies of versions that are no longer installed, and of plugins that are off, are dropped.
+            if (!safeMode)
+            {
+                PluginShadow.Sweep(PluginBootstrap.PluginsRoot, discovered.Where(plugin => plugin.Decision == PluginLoadDecision.Load));
+            }
         }
         catch (Exception exception)
         {
@@ -585,6 +591,7 @@ public sealed class CockpitBackend
         }
 
         services.AddSingleton(manager);
+        services.AddSingleton(manager.McpProviders);
     }
 
     private static void _InstallBundledPlugins(ILoggerFactory loggerFactory)
@@ -650,6 +657,7 @@ public sealed class CockpitBackend
             Services.GetService<ISessionLauncher>(),
             Services.GetService<Cockpit.Core.Abstractions.Agents.IWorkspaceAgentCoordinator>());
         var diagnostics = Services.GetRequiredService<PluginDiagnostics>();
+        var plugins = Services.GetService<PluginManager>();
 
         return (discovered, plugin) => new PluginBackendHost(
             discovered.FolderId,
@@ -661,7 +669,8 @@ public sealed class CockpitBackend
             diagnostics,
             plugin.GetType(),
             cache.CreateFor(discovered.FolderId),
-            discovered.Manifest.Capabilities);
+            discovered.Manifest.Capabilities,
+            plugins?.RuntimeFor(discovered.FolderId));
     }
 
     // AC-1378/AC-1439: the one launcher everywhere; without a frontend it keeps the desks as saved and hosts its sessions
