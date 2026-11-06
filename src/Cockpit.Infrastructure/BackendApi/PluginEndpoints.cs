@@ -658,7 +658,7 @@ internal static class PluginEndpoints
                 discovered.Manifest.Version,
                 plugin.Registration?.Enabled ?? false,
                 null,
-                discovered.Manifest.RequiresRestart && !isLoaded,
+                discovered.RequiresRestart && !isLoaded,
                 discovered.Decision,
                 discovered.Sha256,
                 plugin.Registration?.PinnedSha256,
