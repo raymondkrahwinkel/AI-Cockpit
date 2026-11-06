@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2168: keep test scratch isolation stable when plugin probes reload a test assembly.
+
 - AC-2168: keep private speech out of synthesis and playback error logs, and stream completed sentences ending in short words without mistaking them for abbreviations.
 
 - AC-2167: choose Full, Summary or Short assistant speech and its shortening method in Options, with Short + Assistant as the default, clear fallback notices and a Read full reply aloud action on each answer. Ambiguous speech keeps the configured read-aloud language.
