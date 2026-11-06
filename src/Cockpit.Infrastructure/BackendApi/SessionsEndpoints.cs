@@ -121,6 +121,7 @@ internal static class SessionsEndpoints
                 {
                     ok = true,
                     manager = result.Manager,
+                    availableServers = result.AvailableServers.Select(server => new { name = server.Name, status = server.Status }),
                     servers = result.Servers.Select(server => new { name = server.Name, status = server.Status, reason = server.Reason, canRemove = server.CanRemove }),
                 })
                 : Results.NotFound();
@@ -134,10 +135,56 @@ internal static class SessionsEndpoints
                 {
                     ok = true,
                     manager = result.Manager,
+                    availableServers = result.AvailableServers.Select(server => new { name = server.Name, status = server.Status }),
                     servers = result.Servers.Select(server => new { name = server.Name, status = server.Status, reason = server.Reason, canRemove = server.CanRemove }),
                 })
                 : BackendApiRoutes.Error(StatusCodes.Status409Conflict, "mcp_change_refused", result.Error ?? "The MCP set could not be changed.");
         }).RequireAdmin().Audited("change_session_mcp_set", services);
+
+        const string signInPath = "/sessions/{paneId}/mcp/{name}/sign-in";
+        api.MapPost(signInPath, async (string paneId, string name, McpSignInStartBody body, CancellationToken cancellationToken) =>
+        {
+            if (body.Port is < 1024 or > 65535)
+            {
+                return BackendApiRoutes.Error(400, "invalid_request", "A loopback port from 1024 to 65535 is required.");
+            }
+            var set = await gateway().GetSessionMcpSetAsync(paneId, cancellationToken).ConfigureAwait(false);
+            if (!set.Ok || !set.Servers.Concat(set.AvailableServers).Any(server => string.Equals(server.Name, name, StringComparison.OrdinalIgnoreCase)))
+            {
+                return Results.NotFound();
+            }
+            var context = services.GetRequiredService<SessionMcpMounts>().Set(paneId)?.Context;
+            var catalog = await services.GetRequiredService<IMcpServerCatalog>().GetServersForSessionAsync(
+                context?.Project?.Id, new ExactMcpServerSelection([name]), cancellationToken).ConfigureAwait(false);
+            var server = catalog.FirstOrDefault(candidate => string.Equals(candidate.Name, name, StringComparison.OrdinalIgnoreCase));
+            if (server is not { Auth: McpServerAuth.OAuth })
+            {
+                return Results.NotFound();
+            }
+            var signIn = await services.GetRequiredService<McpServerSignIns>().StartAsync(
+                $"session:{paneId}", name, body.Port, async ct =>
+                {
+                    var access = await services.GetRequiredService<IMcpOAuthCoordinator>().AcquireAsync(server, interactive: true, ct).ConfigureAwait(false);
+                    return access.State == McpAuthState.Authorized
+                        ? Cockpit.Plugins.Abstractions.Mcp.PluginMcpSignInOutcome.Authorized
+                        : Cockpit.Plugins.Abstractions.Mcp.PluginMcpSignInOutcome.Declined;
+                }, _ => Task.CompletedTask, cancellationToken).ConfigureAwait(false);
+            return Results.Json(PluginEndpoints.McpSignInView(signIn), ConnectKeyEndpoints.Json);
+        }).RequireAdmin().Audited("start_session_mcp_sign_in", services);
+
+        api.MapPost(signInPath + "/{flowId}/input", (string paneId, string name, string flowId, SignInInputBody body) =>
+            services.GetRequiredService<McpServerSignIns>().Find($"session:{paneId}", name, flowId) is { } signIn && signIn.Submit(body.Text)
+                ? Results.Json(PluginEndpoints.McpSignInView(signIn), ConnectKeyEndpoints.Json)
+                : Results.NotFound()).RequireAdmin().Audited("send_session_mcp_sign_in_redirect", services);
+        api.MapGet(signInPath + "/{flowId}", (string paneId, string name, string flowId) =>
+            services.GetRequiredService<McpServerSignIns>().Find($"session:{paneId}", name, flowId) is { } signIn
+                ? Results.Json(PluginEndpoints.McpSignInView(signIn), ConnectKeyEndpoints.Json)
+                : Results.NotFound()).RequireAdmin();
+        api.MapDelete(signInPath + "/{flowId}", (string paneId, string name, string flowId) =>
+        {
+            services.GetRequiredService<McpServerSignIns>().Find($"session:{paneId}", name, flowId)?.End("cancelled");
+            return Results.Json(new { });
+        }).RequireAdmin().Audited("end_session_mcp_sign_in", services);
 
         api.MapPost("/sessions", async (StartSessionBody body) =>
         {
