@@ -120,18 +120,36 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [NotifyPropertyChangedFor(nameof(ShowMcpStatusButton))]
     private IReadOnlyList<McpServerConnectionIssue> _mcpServerConnectionIssues = [];
 
+    partial void OnMcpServerSelectionChanged(IReadOnlySet<string>? oldValue, IReadOnlySet<string>? newValue)
+    {
+        if (Status == _ConnectedStatusLineFor(oldValue, McpServerConnectionIssues))
+        {
+            Status = ConnectedStatusLine;
+        }
+    }
+
+    partial void OnMcpServerConnectionIssuesChanged(IReadOnlyList<McpServerConnectionIssue>? oldValue, IReadOnlyList<McpServerConnectionIssue> newValue)
+    {
+        if (Status == _ConnectedStatusLineFor(McpServerSelection, oldValue))
+        {
+            Status = ConnectedStatusLine;
+        }
+    }
+
     public bool HasMcpServers => McpServerSelection is { Count: > 0 };
     public bool ShowMcpStatusButton => HasMcpServers && Status == ConnectedStatusLine;
 
     // An unknown selection is left unsaid rather than reported as zero — the count is the one figure here that
     // describes the session's own setup, and a wrong one is worse than none (AC-537, AC-997).
-    public string ConnectedStatusLine => McpServerSelection is { Count: > 0 } servers
-        ? $"Connected ({servers.Count} MCP server{(servers.Count == 1 ? string.Empty : "s")}{McpConnectionIssuesSuffix})."
-        : "Connected.";
+    public string ConnectedStatusLine => _ConnectedStatusLineFor(McpServerSelection, McpServerConnectionIssues);
 
-    private string McpConnectionIssuesSuffix => McpServerConnectionIssues is { Count: > 0 } issues
-        ? $", {issues.Count} could not connect"
-        : string.Empty;
+    private static string _ConnectedStatusLineFor(IReadOnlySet<string>? servers, IReadOnlyList<McpServerConnectionIssue>? issues)
+    {
+        var suffix = issues is { Count: > 0 } ? $", {issues.Count} could not connect" : string.Empty;
+        return servers is { Count: > 0 }
+            ? $"Connected ({servers.Count} MCP server{(servers.Count == 1 ? string.Empty : "s")}{suffix})."
+            : "Connected.";
+    }
 
     // It hangs on the column rather than on the text inside it, so an agent's `set_status` line cannot carry the list
     // off with the words it replaces — the list would otherwise be unreachable exactly while a session is working
