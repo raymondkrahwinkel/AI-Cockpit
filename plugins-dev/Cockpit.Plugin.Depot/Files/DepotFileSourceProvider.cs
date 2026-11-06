@@ -16,13 +16,20 @@ internal sealed class DepotFileSourceProvider(ICockpitHost host,
     public IReadOnlyList<FileConnection> Connections =>
         [.. connections().Select(c => new FileConnection(c.Id, c.Name, "depot", false))];
     public event EventHandler? ConnectionsChanged;
-    public void NotifyChanged() => ConnectionsChanged?.Invoke(this, EventArgs.Empty);
-    public IFileSource Open(string connectionId) => new DepotFileSource(host, connections, connectionId, noteLive);
+    private readonly DepotNoteImages _images = new(host, connections);
+    public void NotifyChanged()
+    {
+        _images.Clear();
+        ConnectionsChanged?.Invoke(this, EventArgs.Empty);
+    }
+    public IFileSource Open(string connectionId) => new DepotFileSource(host, connections, connectionId, noteLive, _images);
 
     private sealed class DepotFileSource(ICockpitHost host,
         Func<IReadOnlyList<DepotConnectionRegistration>> connections, string connectionId,
-        Func<DepotNoteLive?>? noteLive) : IFileSource, ILiveFileSource
+        Func<DepotNoteLive?>? noteLive, DepotNoteImages images) : IFileSource, ILiveFileSource, IFileImageSource
     {
+        public Task<byte[]> ReadImageAsync(FileRef document, string target, CancellationToken cancellationToken) =>
+            images.ReadAsync(document, target, cancellationToken);
         public FileSourceCapabilities Capabilities { get; } = new(true, FileSourceChannel.MaxContentBytes);
         public Task<FileReadResult> ReadAsync(FileRef file, CancellationToken cancellationToken) =>
             _RunAsync(async () =>

@@ -118,6 +118,12 @@ draft in the chosen folder. Save or Ctrl+S writes with the original checksum. Po
 keep the same text and undo history. Closing warns about unsaved changes; unsaved text is not restored
 after restart. A source conflict preserves local text for the later conflict-resolution flow.
 
+Depot notes also display standalone relative Markdown images in previews, pinned tabs and the live
+editor. Paths are relative to the note's folder in its project; source mode and saving preserve the
+original Markdown. PNG, JPEG, GIF and WebP previews support up to 2 MiB and 16 megapixels per image.
+Unavailable images show their alt text. Reload checks for replacements; signing out or changing a
+connection clears private previews. This requires Depot's authenticated artifact-byte endpoint.
+
 The cockpit does not talk to any model API of its own accord. A session is a driver: it spawns the provider's own
 client, or speaks to the provider's own endpoint, under your own login and your own credentials — which the
 cockpit never reads, stores or transmits.
