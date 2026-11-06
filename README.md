@@ -11,7 +11,8 @@ three seconds of extra waiting. An unavailable, missing or unsafe profile falls 
 shortening and reports why. The speech text never enters the chat, copy or export. Read full reply
 aloud on an assistant answer stops current speech and private generation, then reads that answer
 in full, regardless of the selected mode. Speech uses sentence language cues for Dutch, English
-and German; short ambiguous sentences use the preceding language, initially English.
+and German; short ambiguous sentences use the preceding language, starting each batch with the
+configured read-aloud language. Adjacent sentences in the same language share one segment.
 
 The host checks live sessions every 30 seconds for failed turns, unanswered permissions,
 abandoned processes when a session is neither Busy nor WorkingBackground, and panes that disappear

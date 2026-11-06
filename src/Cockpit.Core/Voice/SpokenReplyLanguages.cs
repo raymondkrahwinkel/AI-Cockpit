@@ -4,10 +4,10 @@ namespace Cockpit.Core.Voice;
 
 public static class SpokenReplyLanguages
 {
-    public static IReadOnlyList<SpeechSegment> Segment(IReadOnlyList<string> sentences)
+    public static IReadOnlyList<SpeechSegment> Segment(IReadOnlyList<string> sentences, string language)
     {
         var segments = new List<SpeechSegment>();
-        string language = "en";
+        List<string>? current = null;
         foreach (string sentence in sentences)
         {
             string[] words = Regex.Matches(sentence.ToLowerInvariant(), @"\p{L}+").Select(match => match.Value).ToArray();
@@ -27,7 +27,12 @@ public static class SpokenReplyLanguages
             {
                 language = "en";
             }
-            segments.Add(new SpeechSegment([sentence], language));
+            if (current is null || segments[^1].Language != language)
+            {
+                current = [];
+                segments.Add(new SpeechSegment(current, language));
+            }
+            current.Add(sentence);
         }
         return segments;
     }

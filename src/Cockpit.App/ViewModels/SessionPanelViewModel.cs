@@ -1671,7 +1671,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
         if (source == VoicePlaybackSource.Assistant)
         {
-            _voicePlaybackQueue.Enqueue(SpokenReplyLanguages.Segment(sentences), TtsVoiceSid, source, PaneId);
+            _voicePlaybackQueue.Enqueue(SpokenReplyLanguages.Segment(sentences, ReadAloudLanguage), TtsVoiceSid, source, PaneId);
         }
         else
         {
