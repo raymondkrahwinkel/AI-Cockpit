@@ -75,6 +75,7 @@ public sealed class LiveFileWorkspaceTests
         await _ReadOnlyJoinAsync(LiveReadOnlyReason.Viewer, "Viewer · read only", false);
         await _OutsideMarks_KeepUntouchedLinesAsync();
         await _Offline_MergesSeparateLinesAsync();
+        await _Offline_RecoveryConfirmsOnlyPersistedTextAsync();
         await _Offline_BlocksOverlappingLinesAsync();
         await _Offline_RevertingToTheInitialTextStillSavesAsync();
         await _Offline_FailedSaveStaysDirtyAfterSignInExpiresAsync();
@@ -296,6 +297,73 @@ public sealed class LiveFileWorkspaceTests
         }
     }
 
+    // Category C: a delayed recovery read must not retire newer typing or an unpersisted room acknowledgement.
+    private static async Task _Offline_RecoveryConfirmsOnlyPersistedTextAsync()
+    {
+        var (source, body, marker, window) = await _OpenAsync();
+        try
+        {
+            source.Status = new LiveFileStatus(LiveFileState.Offline);
+            source.PublishStatus();
+            await HeadlessAvalonia.SettleAsync();
+            body.Editor.TextEditor.Document.Insert(0, "OFFLINE\n");
+            await HeadlessAvalonia.SettleAsync();
+            source.Remote(source.Text.Length, "\nOTHER EDITOR");
+            await HeadlessAvalonia.SettleAsync();
+            source.Status = new LiveFileStatus(LiveFileState.Live) { Saved = new LiveFileSave("Old saver") };
+            source.PublishStatus();
+            await HeadlessAvalonia.SettleAsync();
+            Assert.True(body.IsDirty);
+            Assert.False(await source.ConfirmClose());
+
+            source.FileText = source.Text.ToString();
+            var read = new TaskCompletionSource<FileReadResult>();
+            source.FileReadReply = read;
+            source.PublishStatus();
+            await HeadlessAvalonia.SettleAsync();
+            var confirmed = source.FileText;
+            var hold = new TaskCompletionSource();
+            source.Hold = hold.Task;
+            body.Editor.TextEditor.Document.Insert(0, "NEWER\n");
+            read.SetResult(new FileReadResult(new MemoryStream(Encoding.UTF8.GetBytes(confirmed)), "recovered") { CanWrite = true });
+            await HeadlessAvalonia.SettleAsync();
+            Assert.True(body.IsDirty);
+            Assert.Equal(WorkspaceMarker.Unsaved, marker());
+            Assert.False(await source.ConfirmClose());
+
+            source.FileReadReply = null;
+            source.FailEdits = true;
+            hold.SetResult();
+            await HeadlessAvalonia.SettleAsync();
+            Assert.True(body.IsDirty);
+            var retry = body.GetLogicalDescendants().OfType<Button>().Single(button => button.IsVisible && Equals(button.Content, "Retry sync"));
+            retry.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await HeadlessAvalonia.SettleAsync();
+            Assert.True(body.IsDirty);
+            Assert.False(await source.ConfirmClose());
+            Assert.Equal(confirmed, source.FileText);
+            source.FailEdits = false;
+            retry.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await HeadlessAvalonia.SettleAsync();
+            Assert.True(body.IsDirty);
+            Assert.Equal(source.EditIds[^1], source.EditIds[^2]);
+            source.FileText = source.Text.ToString();
+            retry.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await HeadlessAvalonia.SettleAsync();
+            Assert.Equal("NEWER\nOFFLINE\n" + Lines + "\nOTHER EDITOR", source.FileText);
+            Assert.Equal(source.FileText, body.Editor.Text);
+            Assert.False(body.IsDirty);
+            Assert.Equal(WorkspaceMarker.Live, marker());
+            Assert.False(body.GetLogicalDescendants().OfType<TextBlock>().Single(block => block.Name == "LocalLineCount").IsVisible);
+            Assert.True(await source.ConfirmClose());
+            Assert.Equal(0, source.Writes);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     private static string _BannerText(MarkdownFileWorkspace body) => string.Concat(
         body.GetLogicalDescendants().OfType<TextBlock>().Single(block => block.Name == "LiveBannerText").Inlines?.OfType<Run>().Select(run => run.Text) ?? []);
 
@@ -485,6 +553,7 @@ public sealed class LiveFileWorkspaceTests
         Cockpit.Infrastructure.Files.FileSourceChannel.Register(hub.For("files"), source);
         WorkspaceMarker? marker = null;
         var context = new WorkspaceContext("live", new NoStorage(), NullCockpitSessionObserver.Instance, null) { MarkerSet = set => marker = set };
+        source.ConfirmClose = context.ConfirmCloseAsync;
         var options = new FileWorkspaceOpenOptions(new FileRef("c1", "note", "note.md"), "note", "note.md", "Depot / Work", Edit: true);
         var body = new MarkdownFileWorkspace(context, options, new FileSourceChannelClient(new Channel(hub)), () => Task.FromResult(false), timeProvider: timeProvider);
         var window = new Window { Content = body, Width = 900, Height = 700 };
@@ -514,6 +583,8 @@ public sealed class LiveFileWorkspaceTests
         public List<string?> WriteVersions { get; } = [];
         public TaskCompletionSource Saved { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public bool FailWrites { get; set; }
+        public Func<Task<bool>> ConfirmClose { get; set; } = () => Task.FromResult(true);
+        public TaskCompletionSource<FileReadResult>? FileReadReply { get; set; }
         public List<bool> Reconnects { get; } = [];
         public int OpenCount { get; private set; }
         public int DisposeCount { get; private set; }
@@ -524,6 +595,8 @@ public sealed class LiveFileWorkspaceTests
         public int PatchGap { get; set; }
         public Task? Hold { get; set; }
         public bool Refuse { get; set; }
+        public bool FailEdits { get; set; }
+        public List<string> EditIds { get; } = [];
         public TaskCompletionSource Refused { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public LiveFileStatus Status { get; set; } = new(LiveFileState.Live);
         public TaskCompletionSource Landed { get; private set; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -536,7 +609,7 @@ public sealed class LiveFileWorkspaceTests
         public void PublishStatus() => StatusChanged?.Invoke(this, Status);
         public IFileSource Open(string connectionId) => this;
         public Task<FileReadResult> ReadAsync(FileRef file, CancellationToken cancellationToken) =>
-            Task.FromResult(new FileReadResult(new MemoryStream(Encoding.UTF8.GetBytes(FileText)), FileVersion) { CanWrite = true });
+            FileReadReply?.Task ?? Task.FromResult(new FileReadResult(new MemoryStream(Encoding.UTF8.GetBytes(FileText)), FileVersion) { CanWrite = true });
         public Task<FileWriteResult> WriteAsync(FileRef target, Stream content, string? ifVersion, bool mustNotExist, CancellationToken cancellationToken)
         {
             Writes++;
@@ -581,9 +654,14 @@ public sealed class LiveFileWorkspaceTests
         }
         public async Task<LiveEditResult> EditAsync(string editId, long baseRev, IReadOnlyList<TextOp> ops, CancellationToken cancellationToken)
         {
+            EditIds.Add(editId);
             if (Hold is { } hold)
             {
                 await hold;
+            }
+            if (FailEdits)
+            {
+                throw new FileSourceException(FileSourceErrorKind.Unavailable, "The disposable room is unreachable.");
             }
             if (baseRev != Rev)
             {

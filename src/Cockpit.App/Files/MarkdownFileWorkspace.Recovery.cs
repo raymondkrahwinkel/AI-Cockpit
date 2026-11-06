@@ -60,15 +60,25 @@ internal sealed partial class MarkdownFileWorkspace
     {
         try
         {
+            _error = null;
             if (_live is { } live)
             {
                 await live.ReconnectAsync(signIn).ConfigureAwait(true);
+                if (!signIn && !_IsHeld && !await live.FlushAsync().ConfigureAwait(true))
+                {
+                    _error = $"Your text could not be sent to {_sourceName}. Retry sync before closing.";
+                }
+                if (!signIn)
+                {
+                    await _ReconcileLiveRecoveryAsync().ConfigureAwait(true);
+                }
             }
             if (!signIn && _IsLiveLight && IsDirty)
             {
                 _liveLightTimer.Stop();
                 await SaveAsync().ConfigureAwait(true);
             }
+            _UpdateState();
         }
         catch (OperationCanceledException) when (_closed) { }
         catch (Exception error)
@@ -107,9 +117,11 @@ internal sealed partial class MarkdownFileWorkspace
         {
             _heldLines = Math.Max(_heldLines, _localCount);
         }
-        var back = state == LiveFileState.Live && _backLive is not null;
-        _liveBanner.IsVisible = _theirs is null && (held || back);
-        _retry.IsVisible = state == LiveFileState.Offline;
+        var stalled = state == LiveFileState.Live && (IsDirty || _live?.Failed == true);
+        var back = state == LiveFileState.Live && _backLive is not null && !stalled;
+        _liveBanner.IsVisible = _theirs is null && (held || back || stalled);
+        _retry.IsVisible = state == LiveFileState.Offline || stalled;
+        _retry.Content = stalled ? "Retry sync" : "Retry";
         _signIn.IsVisible = state == LiveFileState.SignInNeeded;
         _dismiss.IsVisible = back && !held;
         _liveIcon.IsVisible = state == LiveFileState.Offline || back;
@@ -138,6 +150,10 @@ internal sealed partial class MarkdownFileWorkspace
             var account = live?.Account is { Length: > 0 } name ? $" as {name}" : "";
             _liveText.Inlines?.Add(new Run($"Your {_sourceName} sign-in has expired") { FontWeight = FontWeight.SemiBold });
             _liveText.Inlines?.Add(new Run($" — {_sourceName} stopped the live session at {at}. Nothing was lost; your text is still here. Sign in again{account} to rejoin the note."));
+        }
+        else if (stalled)
+        {
+            _liveText.Inlines?.Add(new Run("Your text has not been confirmed in the saved note. Retry sync before closing."));
         }
         else if (back && _backLive is { } lines)
         {
