@@ -9920,7 +9920,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         try
         {
-            await _sessionLauncher!.Invoke()!.StartSessionAsync(_RequestOf(launch, Workspaces.EnsureSessionWorkspace()) with { PaneId = record.PaneId });
+            var launched = await _sessionLauncher!.Invoke()!.StartSessionAsync(_RequestOf(launch, Workspaces.EnsureSessionWorkspace()) with { PaneId = record.PaneId });
+            if (launched?.RoleWarning is { } warning)
+            {
+                ToastHost.Add(warning, ToastSeverity.Warning, [], sticky: true);
+            }
         }
         catch (ProfileSessionLimitException exception)
         {
