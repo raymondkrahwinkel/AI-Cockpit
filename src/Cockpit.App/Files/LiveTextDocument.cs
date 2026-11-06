@@ -54,6 +54,13 @@ internal sealed class LiveTextDocument : IDisposable
     public bool Failed => _failed;
     public bool HasUnsentText => Status.UnsentSourceText is not null || _inflight is { Count: > 0 } || _queue.Any(item => item.Ops.Count > 0);
     public string SourceText => Status.UnsentSourceText ?? _base.ToString();
+    public long Revision => _rev;
+
+    public async Task<LiveFileSnapshot> ReadAsync()
+    {
+        var (_, snapshot) = await _client.ReadLiveAsync(_id ?? "", _lifetime.Token).ConfigureAwait(true);
+        return snapshot;
+    }
 
     public event EventHandler? Changed;
 

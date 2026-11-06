@@ -16,6 +16,7 @@ internal sealed partial class MarkdownFileWorkspace
     private bool _liveLightPending;
     private bool _wasLiveLight;
     private bool _reconcilingLive;
+    private LiveFileStatus? _recoveryStatus;
     private bool _needsFileRefresh;
     private string? _lastLiveText;
     private string? _fallbackOrigin;
@@ -41,8 +42,10 @@ internal sealed partial class MarkdownFileWorkspace
         }
         _wasLiveLight = _loaded && _IsLiveLight;
         _liveLightPending = Editor.Text != _savedText && (_liveLightPending || _IsHeld && _loaded);
-        if (!_reconcilingLive && (_needsFileRefresh || _liveLightPending) && _CanConfirmLiveRecovery)
+        if (!_reconcilingLive && (_needsFileRefresh || _liveLightPending) && _CanConfirmLiveRecovery
+            && !ReferenceEquals(_recoveryStatus, _live!.Status))
         {
+            _recoveryStatus = _live.Status;
             _ = _ReconcileLiveRecoveryAsync();
         }
         var local = new List<int>();
@@ -93,9 +96,13 @@ internal sealed partial class MarkdownFileWorkspace
         var confirmed = false;
         try
         {
+            var live = _live!;
+            var snapshot = await live.ReadAsync().ConfigureAwait(true);
             var persisted = await _ReadSnapshotAsync().ConfigureAwait(true);
             // Room acceptance and Saved attribution do not acknowledge the current persisted text.
-            if (_CanConfirmLiveRecovery && persisted.Text == Editor.Text && persisted.Text == _live!.SourceText)
+            if (_CanConfirmLiveRecovery && ReferenceEquals(live, _live) && snapshot.Rev == live.Revision
+                && snapshot.Text == Editor.Text && snapshot.Text == live.SourceText
+                && persisted.Text == _WithoutBom(snapshot.SerializedText ?? snapshot.Text))
             {
                 _liveLightPending = false;
                 _needsFileRefresh = false;
@@ -114,7 +121,7 @@ internal sealed partial class MarkdownFileWorkspace
         {
             _reconcilingLive = false;
         }
-        if (confirmed)
+        if (confirmed || !ReferenceEquals(_recoveryStatus, _live?.Status))
         {
             _UpdateState();
         }

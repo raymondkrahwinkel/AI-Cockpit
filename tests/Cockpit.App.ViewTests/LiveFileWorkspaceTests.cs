@@ -315,6 +315,12 @@ public sealed class LiveFileWorkspaceTests
             await HeadlessAvalonia.SettleAsync();
             Assert.True(body.IsDirty);
             Assert.False(await source.ConfirmClose());
+            var reads = source.FileReads;
+            body.Editor.TextEditor.Document.Insert(0, "TYPING\n");
+            await HeadlessAvalonia.SettleAsync();
+            body.Editor.TextEditor.Document.Remove(0, "TYPING\n".Length);
+            await HeadlessAvalonia.SettleAsync();
+            Assert.Equal(reads, source.FileReads);
 
             source.FileText = source.Text.ToString();
             var read = new TaskCompletionSource<FileReadResult>();
@@ -357,6 +363,20 @@ public sealed class LiveFileWorkspaceTests
             Assert.False(body.GetLogicalDescendants().OfType<TextBlock>().Single(block => block.Name == "LocalLineCount").IsVisible);
             Assert.True(await source.ConfirmClose());
             Assert.Equal(0, source.Writes);
+
+            source.Status = new LiveFileStatus(LiveFileState.Offline);
+            source.PublishStatus();
+            await HeadlessAvalonia.SettleAsync();
+            body.Editor.TextEditor.Document.Insert(0, "SERIALIZED\n");
+            await HeadlessAvalonia.SettleAsync();
+            source.SerializedText = "\uFEFF" + source.Text.ToString().Replace("\n", "\r\n", StringComparison.Ordinal) + "\r\n";
+            source.FileText = source.SerializedText;
+            source.Status = new LiveFileStatus(LiveFileState.Live);
+            source.PublishStatus();
+            await HeadlessAvalonia.SettleAsync();
+            Assert.False(body.IsDirty);
+            Assert.True(await source.ConfirmClose());
+            Assert.Equal(WorkspaceMarker.Live, marker());
         }
         finally
         {
@@ -585,6 +605,8 @@ public sealed class LiveFileWorkspaceTests
         public bool FailWrites { get; set; }
         public Func<Task<bool>> ConfirmClose { get; set; } = () => Task.FromResult(true);
         public TaskCompletionSource<FileReadResult>? FileReadReply { get; set; }
+        public int FileReads { get; private set; }
+        public string? SerializedText { get; set; }
         public List<bool> Reconnects { get; } = [];
         public int OpenCount { get; private set; }
         public int DisposeCount { get; private set; }
@@ -608,8 +630,11 @@ public sealed class LiveFileWorkspaceTests
         public event EventHandler<LiveFileStatus>? StatusChanged;
         public void PublishStatus() => StatusChanged?.Invoke(this, Status);
         public IFileSource Open(string connectionId) => this;
-        public Task<FileReadResult> ReadAsync(FileRef file, CancellationToken cancellationToken) =>
-            FileReadReply?.Task ?? Task.FromResult(new FileReadResult(new MemoryStream(Encoding.UTF8.GetBytes(FileText)), FileVersion) { CanWrite = true });
+        public Task<FileReadResult> ReadAsync(FileRef file, CancellationToken cancellationToken)
+        {
+            FileReads++;
+            return FileReadReply?.Task ?? Task.FromResult(new FileReadResult(new MemoryStream(Encoding.UTF8.GetBytes(FileText)), FileVersion) { CanWrite = true });
+        }
         public Task<FileWriteResult> WriteAsync(FileRef target, Stream content, string? ifVersion, bool mustNotExist, CancellationToken cancellationToken)
         {
             Writes++;
@@ -650,7 +675,7 @@ public sealed class LiveFileWorkspaceTests
                 ReadStarted.TrySetResult();
                 return reply.Task;
             }
-            return Task.FromResult(new LiveFileSnapshot(Text.ToString(), Rev, Status));
+            return Task.FromResult(new LiveFileSnapshot(Text.ToString(), Rev, Status) { SerializedText = SerializedText });
         }
         public async Task<LiveEditResult> EditAsync(string editId, long baseRev, IReadOnlyList<TextOp> ops, CancellationToken cancellationToken)
         {

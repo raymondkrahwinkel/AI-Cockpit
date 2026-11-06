@@ -467,8 +467,10 @@ internal sealed partial class MarkdownFileWorkspace : UserControl
         var bytes = await FileSourceChannel.ReadContentAsync(content, FileSourceChannel.MaxContentBytes, _lifetime.Token).ConfigureAwait(true);
         var text = new UTF8Encoding(false, true).GetString(bytes);
         var bom = text.StartsWith('\uFEFF');
-        return new Snapshot(bom ? text[1..] : text, bom, read.Version, read.Modified, read.ModifiedBy, read.CanWrite) { Live = live };
+        return new Snapshot(_WithoutBom(text), bom, read.Version, read.Modified, read.ModifiedBy, read.CanWrite) { Live = live };
     }
+
+    private static string _WithoutBom(string text) => text.StartsWith('\uFEFF') ? text[1..] : text;
 
     private void _ClearConflict()
     {

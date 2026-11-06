@@ -67,7 +67,11 @@ public sealed record LiveFileSave(string? Name, string? Color = null, DateTimeOf
 }
 
 /// <summary>The whole text at revision <see cref="Rev"/>.</summary>
-public sealed record LiveFileSnapshot(string Text, long Rev, LiveFileStatus Status);
+public sealed record LiveFileSnapshot(string Text, long Rev, LiveFileStatus Status)
+{
+    /// <summary>The source's file serialization of this revision; null when it saves Text verbatim.</summary>
+    public string? SerializedText { get; init; }
+}
 
 /// <summary>
 /// A change the host did not type: another editor's, or the result of <see cref="ILiveFileSession.UndoAsync"/>.
