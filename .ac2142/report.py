@@ -34,6 +34,7 @@ def main() -> None:
         result = [json.loads(line) for line in (state / "stdout.log").read_text(encoding="utf-8").splitlines() if line.startswith('{')]
         assert len(result) == 1
         result = result[0]
+        assert all(not sample["UnobservedPids"] for sample in result["memorySamples"][1:])
         assert all(len(result["latency"][kind]) == 40 for kind in ("type", "scroll"))
         assert len(result["correlations"]) == 80
         assert len({row["eventId"] for row in result["correlations"]}) == 80
@@ -88,7 +89,7 @@ def main() -> None:
         lines += ["", "[gemeten] Geen volledig gescheiden ongunstige kandidaatspreiding gevonden. Dit beschrijft de gemeten spreiding; het is geen zelfgekozen marge of productiegoedkeuring. Resultaat eerst naar cockpit-assistant voordat code behouden wordt."]
     lines += ["", "## Meetdefinities en grenzen", "",
               "[gelezen] Latency: opdracht vóór DevTools-arming/inputdispatch tot BGRA-bitmapkopie met hetzelfde 20-bit pixel-event-ID; QPC eindtijd wordt in de kopiecallback vastgelegd. Geen input-to-photon. P50/p95 zijn nearest rank van 40 samples per soort/run. De animatiefase duurt 3 seconden en produceert dezelfde RAF-paginawijzigingen. Meerdere tabs zijn allemaal actief, input roteert over tabs; het venster toont de bovenste surface.",
-              "[gelezen] CPU is som van eigen ouder/host/CEF-procesboom, met 100% voor één volle core. RSS/private zijn maxima van vier momentopnamen; geen echte high-watermark, gedeelde RSS-pagina's kunnen dubbel tellen. PID-set moet tijdens de meetperiode gelijk blijven. Kopieën tellen payloadbytes op beide benen; vaste shared-map/bitmapallocaties zijn niet in payload-allocaties opgenomen. Managed GC-totalen en GPU-interne kopieën worden niet gemeten.",
+              "[gelezen] CPU is som van eigen ouder/host/CEF-procesboom, met 100% voor één volle core. Proceshandles blijven open zodat de eind-CPU van vertrokken kinderen meetelt. Een nieuw kind dat tijdens de meetperiode vóór uitlezing verdwijnt maakt de meting ongeldig. RSS/private zijn maxima van vier momentopnamen van levende processen; geen echte high-watermark, gedeelde RSS-pagina's kunnen dubbel tellen. Kopieën tellen payloadbytes op beide benen; vaste shared-map/bitmapallocaties zijn niet in payload-allocaties opgenomen. Managed GC-totalen en GPU-interne kopieën worden niet gemeten.",
               "[gelezen] local gebruikt de bestaande volledige _Paint/_Blit-route met meethaken in een bronkopie. shared kopieert dirty boundingrects in hergebruikte mapping, coalescet en signaleert met event; bij mutexcontentie worden dirty gebieden doorgeschoven naar een volgende paint. poll reconstrueert de beschreven oude file-backed/16ms-polling/full-frame/allocatieroute; de oorspronkelijke weggegooide proefbron is niet beschikbaar. Geen claim van bit-identieke oude implementatie.",
               "[gelezen] De afzonderlijke verse frame-ready-mutatie faalde op event 11 zonder pixels, daarna git reset --hard naar WIP en verse build/sharedrun groen. Geen nieuwe testmethodes/cases/journeys. Geen productiecode, requiresRestart, workflows of nightly gewijzigd.",
               "[vermoeden] Deze transportproef bewijst geen volledige plugin-, security-, crash-, IPC- of Linux-GPU-pariteit. Named probe-objecten en registratie/policystubs zijn geen productiecontract.", "",

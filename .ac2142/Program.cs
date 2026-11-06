@@ -172,6 +172,7 @@ internal sealed class ProbeApplication : Application
             {
                 buffer.Dispose();
             }
+            ProcessTree.Dispose();
             _desktop?.Shutdown(exitCode);
         }
     }
@@ -343,9 +344,9 @@ internal sealed class ProbeApplication : Application
         ProcessTree.Snapshot endMetrics = ProcessTree.Capture();
         memorySamples.Add(endMetrics);
         double elapsedMs = Stopwatch.GetElapsedTime(measurementStart).TotalMilliseconds;
-        if (startMetrics.Pids.SequenceEqual(endMetrics.Pids) == false)
+        if (memorySamples.Skip(1).Any(sample => sample.UnobservedPids.Length != 0))
         {
-            throw new InvalidOperationException("Owned process tree changed during measurement; CPU delta is invalid.");
+            throw new InvalidOperationException("A new owned process exited before its CPU time could be observed; measurement is invalid.");
         }
         if (_lastWidth != (int)(_width * _scale) || _lastHeight != (int)(_height * _scale))
         {

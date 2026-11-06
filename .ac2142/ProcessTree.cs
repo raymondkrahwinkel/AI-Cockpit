@@ -5,7 +5,8 @@ using System.Runtime.Versioning;
 [SupportedOSPlatform("windows")]
 internal static class ProcessTree
 {
-    internal sealed record Snapshot(int[] Pids, double CpuMilliseconds, long WorkingSetBytes, long PrivateBytes);
+    internal sealed record Snapshot(int[] Pids, int[] ExitedPids, int[] UnobservedPids, double CpuMilliseconds, long WorkingSetBytes, long PrivateBytes);
+    private static readonly List<Process> Observed = [];
 
     internal static Snapshot Capture()
     {
@@ -45,14 +46,67 @@ internal static class ProcessTree
         double cpu = 0;
         long workingSet = 0;
         long privateBytes = 0;
+        var unobserved = new List<int>();
         foreach (int pid in owned)
         {
-            using Process process = Process.GetProcessById(pid);
-            cpu += process.TotalProcessorTime.TotalMilliseconds;
-            workingSet += process.WorkingSet64;
-            privateBytes += process.PrivateMemorySize64;
+            if (Observed.Any(process => process.Id == pid && process.HasExited == false))
+            {
+                continue;
+            }
+            try
+            {
+                Process process = Process.GetProcessById(pid);
+                // Retain the handle so a child's final CPU time remains readable after it exits.
+                _ = process.Handle;
+                Observed.Add(process);
+            }
+            catch (ArgumentException)
+            {
+                unobserved.Add(pid);
+            }
         }
-        return new Snapshot(owned.Order().ToArray(), cpu, workingSet, privateBytes);
+        var exited = new List<int>();
+        foreach (Process process in Observed)
+        {
+            process.Refresh();
+            long rss = 0;
+            long privateMemory = 0;
+            try
+            {
+                if (process.HasExited == false)
+                {
+                    rss = process.WorkingSet64;
+                    privateMemory = process.PrivateMemorySize64;
+                }
+            }
+            catch (InvalidOperationException) when (process.HasExited)
+            {
+                rss = 0;
+                privateMemory = 0;
+            }
+            catch (System.ComponentModel.Win32Exception) when (process.HasExited)
+            {
+                rss = 0;
+                privateMemory = 0;
+            }
+            if (process.HasExited)
+            {
+                exited.Add(process.Id);
+            }
+            cpu += process.TotalProcessorTime.TotalMilliseconds;
+            workingSet += rss;
+            privateBytes += privateMemory;
+        }
+        return new Snapshot(Observed.Select(process => process.Id).Order().ToArray(), exited.ToArray(), unobserved.ToArray(), cpu, workingSet, privateBytes);
+    }
+
+    internal static void Dispose()
+    {
+        foreach (Process process in Observed)
+        {
+            process.Dispose();
+        }
+        Observed.Clear();
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
