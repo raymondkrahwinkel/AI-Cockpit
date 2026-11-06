@@ -318,6 +318,7 @@ internal sealed partial class SessionMcpGatewayHost : IHostedService, IAsyncDisp
             ?? throw new InvalidOperationException("The gateway route has no pane.");
         var token = _Bearer(http);
         var sessionId = server.SessionId ?? throw new InvalidOperationException("The gateway session has no id.");
+        var unsubscribe = http.Items[typeof(GatewayMcpBinding)] as Action;
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var lifetimeLock = new Lock();
         var ended = false;
@@ -348,10 +349,7 @@ internal sealed partial class SessionMcpGatewayHost : IHostedService, IAsyncDisp
         }
         finally
         {
-            if (http.Items[typeof(GatewayMcpBinding)] is Action unsubscribe)
-            {
-                unsubscribe();
-            }
+            unsubscribe?.Invoke();
             _owners.TryRemove(sessionId, out _);
             _keyring.RunEnded -= EndRun;
             lock (lifetimeLock)

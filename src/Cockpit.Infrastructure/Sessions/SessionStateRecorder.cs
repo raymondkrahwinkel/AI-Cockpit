@@ -135,8 +135,7 @@ public sealed class SessionStateRecorder : ISessionStateCache, ISingletonService
         _WriteAsync(paneId, existing => existing with { PermissionMode = permissionMode }, cancellationToken);
 
     private void _OnConversationChanged(SessionConversationReported reported) =>
-        // Fire-and-forget like every other write here: the tracker's event is synchronous, and a session must not
-        // stall on a state-file append just because its conversation id changed.
+        // The synchronous tracker event queues its write without delaying the provider.
         _ = _WriteAsync(reported.PaneId, existing =>
             // AC-513: Unknown means "no id yet", not "gone" — every session, including a deliberate "start fresh",
             // reports Unknown before reporting anything real, so it must not clobber an already-Known id. Unsupported
@@ -152,9 +151,7 @@ public sealed class SessionStateRecorder : ISessionStateCache, ISingletonService
 
     private async Task _WriteAsync(string paneId, Func<SessionStateRecord, SessionStateRecord> mutate, CancellationToken cancellationToken)
     {
-        // AC-1013: a real caller token cancelling here can throw OperationCanceledException out of WaitAsync/RecordAsync;
-        // unreachable today since both call sites are fire-and-forget with a default token, but a deliberate boundary —
-        // unlike a failed seed, which _EnsureSeededAsync always turns into a clean `false` instead of an exception.
+        // Explicit caller cancellation may propagate; session starts use the default token and the store logs write failures.
         await _writeGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {

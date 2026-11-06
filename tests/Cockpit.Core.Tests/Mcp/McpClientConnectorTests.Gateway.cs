@@ -93,6 +93,31 @@ public partial class McpClientConnectorTests
             Assert.IsType<ImageContentBlock>(actual.Content[1]);
             Assert.Equal(token, keyring.CurrentToken("contract"));
 
+            using var http = new HttpClient();
+            using var initialize = new HttpRequestMessage(HttpMethod.Post, gateway.UrlFor("contract"));
+            initialize.Headers.Authorization = new("Bearer", token);
+            initialize.Headers.Accept.ParseAdd("application/json, text/event-stream");
+            // AC-2163: termination must also work after the initialize request's context is disposed.
+            initialize.Headers.ConnectionClose = true;
+            initialize.Content = System.Net.Http.Json.JsonContent.Create(new { jsonrpc = "2.0", id = 1, method = "initialize", @params = new { protocolVersion = "2025-11-25", capabilities = new { }, clientInfo = new { name = "termination-contract", version = "1" } } });
+            using var initialized = await http.SendAsync(initialize);
+            initialized.EnsureSuccessStatusCode();
+            string sessionId = initialized.Headers.GetValues("Mcp-Session-Id").Single();
+            using var ready = new HttpRequestMessage(HttpMethod.Post, gateway.UrlFor("contract"));
+            ready.Headers.Authorization = new("Bearer", token);
+            ready.Headers.Accept.ParseAdd("application/json, text/event-stream");
+            ready.Headers.Add("Mcp-Session-Id", sessionId);
+            ready.Headers.Add("MCP-Protocol-Version", "2025-11-25");
+            ready.Content = System.Net.Http.Json.JsonContent.Create(new { jsonrpc = "2.0", method = "notifications/initialized" });
+            using var readyResponse = await http.SendAsync(ready);
+            readyResponse.EnsureSuccessStatusCode();
+            using var terminate = new HttpRequestMessage(HttpMethod.Delete, gateway.UrlFor("contract"));
+            terminate.Headers.Authorization = new("Bearer", token);
+            terminate.Headers.Add("Mcp-Session-Id", sessionId);
+            terminate.Headers.Add("MCP-Protocol-Version", "2025-11-25");
+            using var terminated = await http.SendAsync(terminate);
+            Assert.True(terminated.IsSuccessStatusCode, $"DELETE returned {terminated.StatusCode}: {await terminated.Content.ReadAsStringAsync()}");
+
             // Category A: equal upstream names must retain both routing identity and their own permission class.
             await using var other = await InProcessMcpHttpServer.StartAsync<GatewayCollisionTool>();
             var second = config with { Name = "other", Url = other.Url };
