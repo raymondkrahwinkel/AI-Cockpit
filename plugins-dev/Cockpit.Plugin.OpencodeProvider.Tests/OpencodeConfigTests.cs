@@ -1,4 +1,7 @@
 
+using System.Text.Json;
+using Cockpit.Plugins.Abstractions.Sessions;
+
 namespace Cockpit.Plugin.OpencodeProvider.Tests;
 
 // `OpencodeConfig`'s `ToString()` override (AC-783, mirroring Cockpit.Plugin.KimiProvider.Tests'
@@ -7,14 +10,30 @@ namespace Cockpit.Plugin.OpencodeProvider.Tests;
 public class OpencodeConfigTests
 {
     [Fact]
-    public void ToString_RedactsTheApiKey()
+    public void Credentials_ReportOnlyTheirSource_WithoutExposingKeys()
     {
-        var config = new OpencodeConfig(ApiKey: "sk-super-secret-key");
+        var secret = Guid.NewGuid().ToString();
+        var variable = "AC2069_" + Guid.NewGuid().ToString("N");
+        var config = new OpencodeConfig(AuthEnvVar: variable, ApiKey: secret);
 
         var text = config.ToString();
 
-        Assert.DoesNotContain("sk-super-secret-key", text);
+        Assert.False(text.Contains(secret, StringComparison.Ordinal));
         Assert.Contains("***", text);
+
+        var withoutKey = JsonSerializer.Serialize(config with { ApiKey = null });
+        Assert.Equal(PluginCredentialKind.Unknown, OpencodeConfig.CredentialKindOf(withoutKey));
+        try
+        {
+            Environment.SetEnvironmentVariable(variable, secret);
+            Assert.Equal(PluginCredentialKind.ApiKeyFromSecret, OpencodeConfig.CredentialKindOf(withoutKey));
+            Assert.Equal(PluginCredentialKind.ApiKey, OpencodeConfig.CredentialKindOf(JsonSerializer.Serialize(config)));
+            Assert.False((config with { ApiKey = null }).ToString().Contains(secret, StringComparison.Ordinal));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(variable, null);
+        }
     }
 
     [Fact]

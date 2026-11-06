@@ -34,15 +34,18 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
 
     private readonly string _pluginsRoot;
 
-    public PluginInstaller()
-        : this(CockpitConfigPath.PluginsRoot)
+    private readonly PluginManager? _manager;
+
+    public PluginInstaller(PluginManager? manager = null)
+        : this(CockpitConfigPath.PluginsRoot, manager)
     {
     }
 
     // Test seam: point the installer at an arbitrary plugins root.
-    internal PluginInstaller(string pluginsRoot)
+    internal PluginInstaller(string pluginsRoot, PluginManager? manager = null)
     {
         _pluginsRoot = pluginsRoot;
+        _manager = manager;
     }
 
     public async Task<PluginInstallResult> InstallFromZipAsync(
@@ -125,7 +128,7 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
                 // The marker goes down before the swap: a kill between the swap and the caller's re-pin leaves the new bytes
                 // under the old pin, and only the marker lets the next start tell that from an unapproved swap.
                 var markerPath = Path.Combine(_pluginsRoot, UpdateMarkerPrefix + folderId);
-                var inPlace = !manifest.RequiresRestart;
+                var inPlace = !(_manager?.RequiresRestart(folderId, manifest, newSha256) ?? manifest.RequiresRestart);
                 if (inPlace)
                 {
                     // An empty prior hash prevents recovery from approving added capabilities.

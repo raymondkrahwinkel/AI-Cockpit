@@ -8,6 +8,7 @@ internal sealed class HeavyRunSettingsEntry
 {
     private static readonly HeavyRunSettings Defaults = new();
 
+    public int MaxParallelRuns { get; set; } = Defaults.MaxParallelRuns;
     public double CpuCeilingPercent { get; set; } = Defaults.CpuCeilingPercent;
     public double MemoryCeilingPercent { get; set; } = Defaults.MemoryCeilingPercent;
     public double CeilingStepPercent { get; set; } = Defaults.CeilingStepPercent;
@@ -21,6 +22,7 @@ internal sealed class HeavyRunSettingsEntry
 
     public static HeavyRunSettingsEntry FromDomain(HeavyRunSettings settings) => new()
     {
+        MaxParallelRuns = settings.MaxParallelRuns,
         CpuCeilingPercent = settings.CpuCeilingPercent,
         MemoryCeilingPercent = settings.MemoryCeilingPercent,
         CeilingStepPercent = settings.CeilingStepPercent,
@@ -35,6 +37,7 @@ internal sealed class HeavyRunSettingsEntry
 
     public HeavyRunSettings ToDomain() => new()
     {
+        MaxParallelRuns = Math.Max(0, MaxParallelRuns),
         CpuCeilingPercent = CpuCeilingPercent,
         MemoryCeilingPercent = MemoryCeilingPercent,
         CeilingStepPercent = CeilingStepPercent,

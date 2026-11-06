@@ -10,7 +10,7 @@ using NSubstitute;
 
 namespace Cockpit.Core.Tests.Plugins;
 
-// A failed live update restores the approved version; only an explicit manifest flag requires a restart.
+// A failed live update restores the approved version; host services defer changes until restart.
 public class PluginUpdateTests : IDisposable
 {
     private const string Id = "update-probe";
@@ -131,9 +131,54 @@ public class PluginUpdateTests : IDisposable
 
         var undeclared = await admin.InstallFromZipAsync(_Zip("6.0.0", "MZ-v6"));
         var refused = Assert.IsType<PluginLiveState>(undeclared.Live);
-        Assert.True(refused.RolledBack);
-        Assert.False(refused.RestartRequired);
+        Assert.False(refused.RolledBack);
+        Assert.False(refused.Failed);
+        Assert.True(refused.RestartRequired);
         Assert.Equal(v1.Sha256, Assert.Single(manager.Loaded).Sha256);
+        var awaitingStart = Assert.Single(await admin.GetInstalledAsync());
+        Assert.True(awaitingStart.Discovered.RequiresRestart);
+        Assert.Equal(PluginActivationStatus.NeedsHostRestart, manager.WouldRefuse(awaitingStart.Discovered)?.Status);
+
+        manager.Dispose();
+        diagnostics = new PluginDiagnostics();
+        manager = new PluginManager(NullLogger<PluginManager>.Instance, diagnostics);
+        installer = new PluginInstaller(pluginsRoot, manager);
+        var legacy = Assert.Single(await bootstrap.ApplyPendingChangesAndDiscoverAsync(AbstractionsContract.Version));
+        Assert.Equal(undeclared.Sha256, legacy.Sha256);
+        Assert.False(legacy.Manifest.RequiresRestart);
+        var services = new ServiceCollection();
+        manager.LoadAndConfigure([legacy], services, Activate);
+        manager.Initialize((_, _) => Substitute.For<ICockpitHost>());
+        admin = new PluginAdministration(bootstrap, store, installer, new PluginProvisioningService(Substitute.For<IPluginStoreClient>(), installer), Substitute.For<IPluginStoreClient>(), diagnostics, manager);
+        Assert.Single(services);
+        var legacyInstance = instances[^1];
+        Assert.True(legacyInstance.Initialized);
+        Assert.Null(Assert.Single(await admin.GetInstalledAsync()).ActivationFailure);
+        Assert.True(Assert.Single(await admin.GetInstalledAsync()).Discovered.RequiresRestart);
+        Assert.True((await admin.SetEnabledAsync(Id, false, legacy.Sha256)).RestartRequired);
+        Assert.True((await admin.SetEnabledAsync(Id, true, legacy.Sha256)).RestartRequired);
+        Assert.False(legacyInstance.Disposed);
+        Assert.Equal(PluginActivationStatus.NeedsHostRestart, (await manager.DeactivateAsync(Id)).Status);
+        Assert.True((await admin.RemoveAsync(Id)).RestartRequired);
+        Assert.False(legacyInstance.Disposed);
+        Assert.Single(manager.Loaded);
+        // Reinstall after cancelling removal: the registered services still belong to the old version.
+        File.Delete(Path.Combine(pluginsRoot, Id, PluginInstaller.RemovalMarker));
+        await store.SaveAsync(Id, new PluginRegistration(Enabled: true, PinnedSha256: legacy.Sha256));
+        var replacement = await admin.InstallFromZipAsync(_Zip("1.0.0", "MZ-v1"));
+        Assert.False(replacement.InPlace);
+        Assert.True(Assert.IsType<PluginLiveState>(replacement.Live).RestartRequired);
+        Assert.Equal(legacy.Sha256, Assert.Single(manager.Loaded).Sha256);
+        Assert.Equal(replacement.Sha256, (await store.LoadAllAsync())[Id].PinnedSha256);
+        manager.Dispose();
+        manager = new PluginManager(NullLogger<PluginManager>.Instance, diagnostics);
+        var next = Assert.Single(await bootstrap.ApplyPendingChangesAndDiscoverAsync(AbstractionsContract.Version));
+        Assert.Equal(replacement.Sha256, next.Sha256);
+        manager.LoadAndConfigure([next], new ServiceCollection(), Activate);
+        manager.Initialize((_, _) => Substitute.For<ICockpitHost>());
+        Assert.False(Assert.Single(manager.Loaded).RequiresRestart);
+        installer = new PluginInstaller(pluginsRoot, manager);
+        admin = new PluginAdministration(bootstrap, store, installer, new PluginProvisioningService(Substitute.For<IPluginStoreClient>(), installer), Substitute.For<IPluginStoreClient>(), diagnostics, manager);
 
         var consent = await admin.InstallFromZipAsync(_Zip("7.0.0", "MZ-v7"));
         Assert.True(consent.InPlace);
@@ -174,6 +219,14 @@ public class PluginUpdateTests : IDisposable
         Assert.Equal(consent.Sha256, Assert.Single(manager.Loaded).Sha256);
         Assert.Equal(restart.Sha256, (await store.LoadAllAsync())[Id].PinnedSha256);
         Assert.Equal(restart.Sha256, await PluginClosureHash.OfInstalledFolderAsync(Path.Combine(pluginsRoot, ".pending-updates", Id)));
+        manager.Dispose();
+        manager = new PluginManager(NullLogger<PluginManager>.Instance, new PluginDiagnostics());
+        var declared = Assert.Single(await bootstrap.ApplyPendingChangesAndDiscoverAsync(AbstractionsContract.Version));
+        manager.LoadAndConfigure([declared], new ServiceCollection(), Activate);
+        manager.Initialize((_, _) => Substitute.For<ICockpitHost>());
+        Assert.True(Assert.Single(manager.Loaded).RequiresRestart);
+        Assert.True(instances[^1].Initialized);
+        manager.Dispose();
     }
 
     private string _Zip(string version, string dll)
@@ -181,7 +234,7 @@ public class PluginUpdateTests : IDisposable
         Directory.CreateDirectory(_root);
         var zipPath = Path.Combine(_root, Guid.NewGuid().ToString("N") + ".zip");
         using var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create);
-        var manifest = $$"""{"id":"{{Id}}","name":"{{Id}}","version":"{{version}}","requiresRestart":{{(version == "4.0.0" ? "true" : "false")}},"capabilities":{{(version == "7.0.0" ? "[\"time.entries\"]" : "[]")}},"entryAssembly":"Plugin.dll","abstractionsVersion":{{AbstractionsContract.Version}},"sessionProviders":[{"id":"{{Id}}.provider","name":"Probe"}]}""";
+        var manifest = $$"""{"id":"{{Id}}","name":"{{Id}}","version":"{{version}}",{{(version == "4.0.0" ? "\"requiresRestart\":true," : "")}}"capabilities":{{(version == "7.0.0" ? "[\"time.entries\"]" : "[]")}},"entryAssembly":"Plugin.dll","abstractionsVersion":{{AbstractionsContract.Version}},"sessionProviders":[{"id":"{{Id}}.provider","name":"Probe"}]}""";
         foreach (var (name, content) in new Dictionary<string, string> { ["plugin.json"] = manifest, ["Plugin.dll"] = dll })
         {
             using var writer = new StreamWriter(archive.CreateEntry(name).Open());

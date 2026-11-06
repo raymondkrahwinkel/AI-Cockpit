@@ -182,7 +182,7 @@ internal sealed class ProfileLoginHealthMonitor : BackgroundService, IProfileLog
             next.Add(new ProfileLoginHealth(profile.Label, signedIn, now, signIn == ProfileSignInKind.Expired ? before?.ExpiredSince ?? now : null)
             {
                 Provider = plugin.ProviderId,
-                Credential = signedIn && hasCheck ? _Credential(profile) : ProfileCredentialKind.Unknown,
+                Credential = _Credential(profile),
                 SignIn = signIn,
                 AnnouncedAt = signIn == ProfileSignInKind.Expired ? expires ? now : before?.AnnouncedAt : null,
             });

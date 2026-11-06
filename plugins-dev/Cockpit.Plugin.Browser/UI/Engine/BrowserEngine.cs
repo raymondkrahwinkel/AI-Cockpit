@@ -174,6 +174,7 @@ internal sealed class BrowserEngine
 
     private void _Initialize(string runtimeDir)
     {
+        using var terminationHandler = OperatingSystem.IsWindows() ? null : new PosixTerminationHandler();
         var subprocess = _subprocessPath;
         if (File.Exists(subprocess) == false)
         {

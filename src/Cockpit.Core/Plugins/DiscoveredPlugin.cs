@@ -8,4 +8,7 @@ public sealed record DiscoveredPlugin(
     string FolderId,
     PluginManifest Manifest,
     string Sha256,
-    PluginLoadDecision Decision);
+    PluginLoadDecision Decision)
+{
+    public bool RequiresRestart { get; init; } = Manifest.RequiresRestart;
+}
