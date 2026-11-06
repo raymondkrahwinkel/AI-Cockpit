@@ -85,14 +85,18 @@ public sealed class McpToolNames
         }
     }
 
-    public string InBrief(string text) => System.Text.RegularExpressions.Regex.Replace(text,
-        @"mcp__[A-Za-z0-9_-]+", match => match.Value.StartsWith(GatewayPrefix, StringComparison.Ordinal) ? match.Value : ToGateway(match.Value));
+    public string InBrief(string text, bool localTools = false) => System.Text.RegularExpressions.Regex.Replace(text,
+        @"mcp__[A-Za-z0-9_-]+", match =>
+        {
+            var name = match.Value.StartsWith(GatewayPrefix, StringComparison.Ordinal) ? match.Value : ToGateway(match.Value);
+            return localTools ? name[GatewayPrefix.Length..] : name;
+        });
 
     public string ToCanonical(string name)
     {
         lock (_sync)
         {
-            return _canonical.TryGetValue(name, out var canonical) ? canonical
+            return _canonical.TryGetValue(name, out var canonical) || _canonical.TryGetValue(GatewayPrefix + name, out canonical) ? canonical
                 : name.StartsWith(GatewayPrefix, StringComparison.Ordinal) ? "mcp__" + name[GatewayPrefix.Length..] : name;
         }
     }

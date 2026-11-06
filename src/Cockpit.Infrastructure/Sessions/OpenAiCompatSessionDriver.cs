@@ -200,6 +200,7 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
                     string.Join(", ", _toolSession.ServersNeedingSignIn));
             }
 
+            _gate.ToolNames = _toolSession.ToolNames;
             _gate.ToolClasses = _toolSession.ToolClasses;
             _gatedTools = [.. _toolSession.Tools.Select(tool => tool with { Function = new GatedTool(tool.Function, _gate) })];
             _turnTools = _BuildTurnTools();
@@ -232,7 +233,7 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
                 toolsOffered: _turnTools.Count > 0);
             if (!string.IsNullOrWhiteSpace(systemPrompt))
             {
-                _history.Add(new ChatMessage(ChatRole.System, systemPrompt));
+                _history.Add(new ChatMessage(ChatRole.System, _toolSession.ToolNames?.InBrief(systemPrompt, localTools: true) ?? systemPrompt));
             }
 
             // Report the actual tool names (not server names) so the session's "N tools" count is real and verifiable —
@@ -327,7 +328,8 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
 
         // Run the turn in the background so the caller returns immediately and consumes the reply through
         // Events, mirroring how the Claude-CLI driver's send returns before the response streams back.
-        ChatMessage message = ChatTurnLoop.UserMessage(text, images?.Select(image => (image.MediaType, image.Base64Data)));
+        ChatMessage message = ChatTurnLoop.UserMessage(_toolSession?.ToolNames?.InBrief(text, localTools: true) ?? text,
+            images?.Select(image => (image.MediaType, image.Base64Data)));
         _turnCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _turnTask = _RunTurnAsync(message, _turnCancellation.Token);
         return Task.CompletedTask;

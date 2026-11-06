@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep MCP tools from different servers uniquely named in local model sessions, including after live additions, so calls and permissions reach the intended server.
+
 - Explain exact per-spawn MCP selections and live set changes to the assistant, and report the servers a spawned session actually connected with a confirmation flag.
 
 - Add MCP servers to running operator-managed sessions from the session dialog, with OAuth sign-in and the same audited admin route for remote sessions. Assistant-managed sets keep removal available and explain why additions go through the assistant.

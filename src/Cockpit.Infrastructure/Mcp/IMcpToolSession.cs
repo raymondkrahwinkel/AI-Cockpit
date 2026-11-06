@@ -15,6 +15,7 @@ internal interface IMcpToolSession : IAsyncDisposable
     bool IsLive => false;
 
     IReadOnlyList<McpSessionTool> GatewayTools => Tools;
+    McpToolNames? ToolNames => null;
 
     event Action? ToolsChanged;
 
