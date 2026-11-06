@@ -53,6 +53,11 @@ internal static class CodexLoginStatus
         Func<string, string?>? managedResolver,
         Func<string, string?, CancellationToken, Task<LoginStatus?>> ask)
     {
+        if (CliAgentConfig.CredentialKindOf(configJson) != PluginCredentialKind.Unknown)
+        {
+            return true;
+        }
+
         var config = _ParseConfig(configJson);
         var entry = _Cache.GetOrAdd(config.ConfigDir ?? string.Empty, _ => new _Entry());
         var reading = entry.Reading;
@@ -72,6 +77,12 @@ internal static class CodexLoginStatus
     // Never blocks; Unknown until the CLI has answered.
     public static PluginCredentialKind CredentialKind(string configJson)
     {
+        PluginCredentialKind keyKind = CliAgentConfig.CredentialKindOf(configJson);
+        if (keyKind != PluginCredentialKind.Unknown)
+        {
+            return keyKind;
+        }
+
         var entry = _Cache.TryGetValue(_ParseConfig(configJson).ConfigDir ?? string.Empty, out var found) ? found : null;
         return entry?.Reading?.Status is { LoggedIn: true } status ? status.Kind : PluginCredentialKind.Unknown;
     }

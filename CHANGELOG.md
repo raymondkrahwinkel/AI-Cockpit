@@ -6,11 +6,21 @@
 
 - AC-2166: prepare private short speech through the assistant or a selected profile, with a three-second deadline and rule-based fallback for providers without an ephemeral route.
 - AC-2165: prepare bounded short and summary speech per completed assistant reply, while full speech keeps streaming.
+- Closing the main window exits Cockpit even after hiding the Companion or another helper window; closing to the tray still keeps it running.
+- Desktop shutdown stops background services and awaits their final writes before disposing their dependencies.
+- Enabling an installed plugin without consent now explains that permission for its current SHA is required instead of reporting it as missing.
+- AC-2178: keep existing plugins that register host services loading after an app update, and defer changes to those plugins until restart.
+
 - AC-2164: keep opening prompts queued until the Claude or Codex terminal composer is ready, so workspace trust dialogs cannot consume them as delivered turns.
+- AC-2069: Health recognises Codex, Kimi and opencode API keys supplied through session.env, with setup hints for each provider.
 - AC-2103: Clear stale local-only warnings after live note recovery confirms the saved text, and offer Retry sync while unconfirmed edits remain protected.
 - AC-555: remove the unsupported Docker endpoint setting, warn about ignored saved overrides, and require fresh consent when switching from a remote endpoint to the local daemon.
+- AC-2058: preserve graceful SIGTERM shutdown on Linux/macOS when the Browser plugin is active.
 
 - AC-241: Companion remembers a reachable position, uses native window dragging, and separates tools with an explicit empty state.
+- AC-2174: set this machine's maximum parallel test/build runs and CPU/memory queue limits in Options › Sessions; queued runs explain when the parallel maximum is reached.
+
+- Session done and Waiting for you sounds wait three seconds and stay silent if the session has moved on.
 
 - AC-2117: reset swarm membership from any state, rejoin with fresh confirmation, show standalone/paused status and explain conflicting histories.
 

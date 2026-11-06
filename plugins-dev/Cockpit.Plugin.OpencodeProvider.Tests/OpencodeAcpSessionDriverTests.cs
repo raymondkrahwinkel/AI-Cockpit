@@ -1,5 +1,7 @@
 using System.Text.Json;
+using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
+using NSubstitute;
 
 namespace Cockpit.Plugin.OpencodeProvider.Tests;
 
@@ -16,6 +18,9 @@ public class OpencodeAcpSessionDriverTests
     [Fact]
     public async Task Start_WithNoPermissionModeOption_ForcesAskEverythingViaOpencodeConfigContent()
     {
+        var host = Substitute.For<ICockpitHost>();
+        new OpencodeProviderPlugin().Initialize(host);
+        host.Received(1).AddSessionProvider(Arg.Is<SessionProviderRegistration>(registration => registration.IsLoggedIn == null));
         var fake = new FakeCliSubprocess();
         await using var driver = new OpencodeAcpSessionDriver(() => fake, _DefaultConfig(), "opencode");
 

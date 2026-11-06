@@ -138,6 +138,11 @@ internal sealed class PluginAdministration(
     // Null: there is no approved registration to update.
     private async Task<PluginLiveState?> _UpdateAsync(string? folderId, string? sha256, bool inPlace, string? consentReason, string? replacedSha256, bool requiresRestart = false)
     {
+        if (folderId is not null && manager?.Loaded.FirstOrDefault(plugin => plugin.FolderId == folderId) is { RequiresRestart: true })
+        {
+            requiresRestart = true;
+        }
+
         // New capabilities wait unpinned for explicit approval.
         if (consentReason is not null)
         {
@@ -373,7 +378,7 @@ internal sealed class PluginAdministration(
     // What a live deactivation would cut off: a flagged plugin, or a session still running on one of its providers.
     private async Task<PluginBlocker?> _DeactivationBlockerAsync(PluginManager loaded, string folderId)
     {
-        if (loaded.LoadedParts.Any(entry => entry.Discovered.FolderId == folderId && entry.Discovered.Manifest.RequiresRestart))
+        if (loaded.LoadedParts.Any(entry => entry.Discovered.FolderId == folderId && entry.Discovered.RequiresRestart))
         {
             return new("The plugin asks for a restart to deactivate.", PluginBlockerKind.Restart);
         }
@@ -575,6 +580,7 @@ internal sealed class PluginAdministration(
     {
         var failures = diagnostics?.AllForFolder(plugin.FolderId) ?? [];
 
+        plugin = plugin with { RequiresRestart = manager?.RequiresRestart(plugin.FolderId, plugin.Manifest, plugin.Sha256) ?? plugin.RequiresRestart };
         return new InstalledPlugin(
             plugin,
             registration,

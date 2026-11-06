@@ -36,6 +36,7 @@ public sealed class KimiProviderPlugin : ICockpitPlugin
             // despite the driver already supporting it (ClaudeProviderPlugin.cs warns of exactly this trap).
             Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true) { SupportsEnvVars = true, SupportsLiveModelSwitch = true, SupportsVision = true })
         {
+            CredentialKind = KimiConfig.CredentialKindOf,
             ReadModelIntelligenceAsync = (config, _) => Task.FromResult(_imageFacts.Read(config)),
             TermsNotice = new TermsNotice("Kimi Code (Moonshot AI): use is governed by your agreement with Kimi.", new Uri("https://www.kimi.com/user/agreement/en/modelUse"), "Subscription login: personal and individual; do not share it. For shared use, use an API-key profile under an appropriate business agreement.", "API-key use is billed to the key owner; the API service's terms apply."),
         });

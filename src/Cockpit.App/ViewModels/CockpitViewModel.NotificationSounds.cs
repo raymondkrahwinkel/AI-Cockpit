@@ -1,6 +1,8 @@
 using Avalonia.Platform;
+using Avalonia.Threading;
 using Cockpit.App.Services;
 using Cockpit.Core.Notifications;
+using Cockpit.Core.Abstractions.Sessions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
@@ -16,6 +18,7 @@ public partial class CockpitViewModel
 
     private static readonly TimeSpan NotificationSoundMinimumInterval = TimeSpan.FromSeconds(3);
     private readonly Dictionary<string, DateTimeOffset> _lastNotificationSounds = new(StringComparer.Ordinal);
+    private readonly PendingNotificationSounds _pendingNotificationSounds = new((play, delay) => DispatcherTimer.RunOnce(play, delay));
     private readonly object _notificationSoundLock = new();
     private CancellationTokenSource? _notificationSoundCancellation;
     private volatile bool _isVoicePlaybackActive;
@@ -63,10 +66,22 @@ public partial class CockpitViewModel
     private Task TestNeedsAttentionSoundAsync() =>
         _PlaySelectedNotificationSoundAsync(NeedsAttentionSound, NeedsAttentionCustomSoundPath, NotificationSoundVolume);
 
-    private void _NotifyWithSound(SessionPanelViewModel session, NotificationSoundEvent soundEvent) =>
-        _ = _NotifyWithSoundAsync(session, soundEvent);
+    private void _NotifyWithSound(SessionPanelViewModel session, NotificationSoundEvent soundEvent)
+    {
+        var status = soundEvent == NotificationSoundEvent.SessionFinished ? SessionStatus.Done : SessionStatus.NeedsAttention;
+        _pendingNotificationSounds.Schedule(session.PaneId, status,
+            () => _SoundStillEligible(session, soundEvent),
+            stillCurrent => _NotifyWithSoundAsync(session, soundEvent, stillCurrent));
+    }
 
-    private async Task _NotifyWithSoundAsync(SessionPanelViewModel session, NotificationSoundEvent soundEvent)
+    private bool _SoundStillEligible(SessionPanelViewModel session, NotificationSoundEvent soundEvent) =>
+        !_disposed
+        && ReferenceEquals(FindSession(session.PaneId), session)
+        && (soundEvent == NotificationSoundEvent.SessionFinished
+            ? session.SessionStatus == SessionStatus.Done && !session.HasOutstandingBackgroundShells
+            : session.SessionStatus == SessionStatus.NeedsAttention);
+
+    private async Task _NotifyWithSoundAsync(SessionPanelViewModel session, NotificationSoundEvent soundEvent, Func<bool> stillCurrent)
     {
         try
         {
@@ -76,6 +91,11 @@ public partial class CockpitViewModel
             }
 
             var settings = await _notificationSettingsStore.LoadAsync();
+            if (!stillCurrent())
+            {
+                return;
+            }
+
             var eventEnabled = soundEvent == NotificationSoundEvent.SessionFinished
                 ? settings.NotificationSoundOnSessionFinished
                 : settings.NotificationSoundOnNeedsAttention;
