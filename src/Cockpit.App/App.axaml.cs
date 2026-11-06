@@ -8,6 +8,7 @@ using Avalonia.Rendering.Composition;
 using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Cockpit.App.Controls;
 using Cockpit.App.Logging;
 using Cockpit.App.Diagnostics;
 using Cockpit.App.Plugins;
@@ -1408,7 +1409,7 @@ public partial class App : Application
 
         var tray = new TrayIcon
         {
-            Icon = new WindowIcon(AssetLoader.Open(new Uri("avares://Cockpit.App/Assets/AppIcon.ico"))),
+            Icon = CockpitWindowChrome.CreateAppIcon(),
             ToolTipText = CockpitProduct.DisplayName,
             Menu = new NativeMenu { Items = { showItem, companionItem, quitItem } },
         };

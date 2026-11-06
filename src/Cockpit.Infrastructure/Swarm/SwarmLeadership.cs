@@ -1,11 +1,12 @@
 using Cockpit.Core.Abstractions;
+using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Swarm;
 using System.Text.Json;
 
 namespace Cockpit.Infrastructure.Swarm;
 
 internal sealed class SwarmLeadership(SwarmMembershipStore store, SwarmSettingsStore settings,
-    SwarmIdentity identity, SwarmReachability reachability, SwarmClaimClient? claims = null) : ISwarmLeadership, ISingletonService
+    SwarmIdentity identity, SwarmReachability reachability, SwarmClaimClient? claims = null, INodeEndpointSettingsStore? endpoint = null) : ISwarmLeadership, ISingletonService
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private volatile SwarmLeadershipState _state = new();
@@ -161,14 +162,25 @@ internal sealed class SwarmLeadership(SwarmMembershipStore store, SwarmSettingsS
         return result;
     }
 
-    internal async Task RefreshAsync(SwarmTakeoverAction action = SwarmTakeoverAction.Wait, CancellationToken ct = default, bool asleep = false)
+    internal async Task RefreshAsync(SwarmTakeoverAction action = SwarmTakeoverAction.Wait, CancellationToken ct = default, bool asleep = false, bool available = true)
     {
         bool changed;
         await _gate.WaitAsync(ct);
         try
         {
             var register = await store.LoadAsync(ct);
-            var active = register.PublicKeyOf(identity.MemberId) is not null;
+            var enabled = endpoint is null || (await endpoint.LoadAsync(ct)).Enabled;
+            var active = available && enabled && register.PublicKeyOf(identity.MemberId) is not null;
+            if (!active)
+            {
+                _honoredClaim = null;
+                _leaders.Clear();
+                register = new();
+                lock (_decisionGate)
+                {
+                    _decision = null;
+                }
+            }
             var mode = (await settings.LoadAsync(ct)).WhenALowerRankComesBack;
             var now = Time.GetUtcNow();
             SwarmMemberPresence Presence(SwarmMemberId id) => id == identity.MemberId
@@ -246,6 +258,10 @@ internal sealed class SwarmLeadership(SwarmMembershipStore store, SwarmSettingsS
                     store.Gate.Release();
                 }
                 next = SwarmLeaderElection.Evaluate(register, Presence, now, previous, mode);
+            }
+            if (!active)
+            {
+                next = new();
             }
             changed = active != _active || next.Current?.Id != _state.Current?.Id || next.Current?.Rank != _state.Current?.Rank
                 || next.Pending?.Member.Id != _state.Pending?.Member.Id || next.Pending?.At != _state.Pending?.At;

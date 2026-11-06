@@ -566,3 +566,29 @@ Folder notifications say "Creator unknown"; filesystem events do not identify th
 `ToastTimeoutSeconds` defaults to 5; positive values set the timeout for ordinary informational
 and condition toasts. Nonpositive values fall back to 5. Timed-out messages remain in the bell.
 Condition messages also close when resolved, and their actions become unavailable.
+
+
+## Swarm recovery
+
+Options > Swarm > **Leave / reset swarm** makes this machine standalone, including when it
+was removed or has no reachable peers. It backs up `swarm-members.json` beside the original,
+revokes swarm access keys and forgets swarm addresses. Sessions, projects, the node certificate
+and other settings stay in place. Other machines keep their signed membership history.
+
+When two machines have different swarm histories, choose which swarm to keep. Reset the
+machine abandoning its history, then initiate pairing from that machine toward the retained
+swarm. Compare the six digits and confirm on both screens. Pairing retains the receiver's
+signed history and assigns the joining machine a fresh rank; it never silently replaces a
+persisted local history. All participating machines need this lifecycle fix.
+
+Turning **Accept connections** off and applying pauses swarm participation and leadership,
+while keeping membership for later. Restart to change the listener itself. Use reset to leave.
+
+For recovery on an older build: save work and exit Cockpit on **both** machines, including the
+tray, before restarting either. In each instance's state root (`%APPDATA%\Cockpit` on Windows,
+unless `COCKPIT_STATE_ROOT` overrides it), copy `cockpit.json` to a private backup and move only
+`swarm-members.json` and its optional `.bak` to that backup. Retain `node-certificate.pfx`,
+`node-discovery-id.txt` and all other files. Restart both, enable accepting connections on both,
+and pair again. The older panel may still incorrectly label standalone as leader. Do not restore
+the old membership log after pairing. This manual recovery keeps old node connections and keys;
+the reset action in the fixed build also revokes swarm access.
