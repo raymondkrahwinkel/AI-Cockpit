@@ -8,6 +8,7 @@ using Avalonia.LogicalTree;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
+using Avalonia.VisualTree;
 using Cockpit.Core.Configuration;
 using Material.Icons;
 
@@ -199,7 +200,7 @@ internal static class CockpitWindowChrome
         // and a press on a caption button is left to the button.
         wrapper.PointerPressed += (_, e) =>
         {
-            if (e.Source is Button)
+            if (e.Source is Visual source && captionButtons.IsVisualAncestorOf(source))
             {
                 return;
             }
