@@ -3,6 +3,31 @@
 A web browser inside Cockpit on CEF (Chromium Embedded Framework). This README covers the engine delivery
 (AC-1727) and the browser itself (AC-1711).
 
+## Engine IPC foundation (AC-2143)
+
+`Ipc/` is compiled into the UI and Subprocess assemblies; Core does not know this protocol.
+It is not wired into the browser yet (AC-2144/AC-2147). `requiresRestart` remains true.
+The launcher supplies a fresh generation and two inherited anonymous pipe handles, restricts inheritance
+to its own child, then calls `ChildStarted` to close the parent's client copies. Handles are capabilities,
+not credentials to put in logs. Register trusted tab/session pairs on each endpoint before sending requests.
+Registration is routing only: CEF-thread consent, origin and focus checks remain the handler's responsibility.
+
+Version 1 uses a four-byte little-endian JSON byte length, followed by one UTF-8 `BrowserIpcMessage`.
+Every message binds generation, tab, session, request id, operation and deadline. Request ids increase per
+direction. Invalid framing, versions, bindings, replay or queue overflow close the connection and cancel calls.
+There is no reconnect or grant restoration. Limits: 1 MiB/message, 64 calls (including waiting writers),
+8 incoming requests, 64 tab/session pairs and 30 seconds per request or partial frame. Idle pipes do not poll.
+Handlers must honor cancellation and must not wait for a nested request on the same connection's worker.
+A cancelled running handler ends the generation, so non-cooperative handlers cannot accumulate there.
+
+At most two reusable BGRA buffers belong to a connection, each at most 128 MiB and 8192 pixels per axis.
+Their backing directories have a protected current-user ACL on Windows and mode 0700 on Unix (files 0600).
+Choose the same trusted private parent directory at both endpoints; peer messages supply only descriptors,
+never paths. Opening derives the path from generation/id and validates exact size; disconnect closes mappings
+and removes owned files. Transmit descriptors only over the inherited pipe.
+Frame-ready/ack and dirty-region copying are connected in AC-2147: never reuse a published buffer before ack.
+This process boundary is not a sandbox against another process running as the same OS user.
+
 ## The browser
 
 - **One CEF per Cockpit process**, started on the first opening, shut down on the UI thread after every browser

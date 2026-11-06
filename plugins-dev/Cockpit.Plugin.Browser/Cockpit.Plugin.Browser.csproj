@@ -9,7 +9,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
-    <DefaultItemExcludes>$(DefaultItemExcludes);UI\**;Subprocess\**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);UI\**;Subprocess\**;Ipc\**</DefaultItemExcludes>
     <ShouldUnsetParentConfigurationAndPlatform>false</ShouldUnsetParentConfigurationAndPlatform>
   </PropertyGroup>
 
