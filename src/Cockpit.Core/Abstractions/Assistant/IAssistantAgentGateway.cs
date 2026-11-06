@@ -14,7 +14,7 @@ public interface IAssistantAgentGateway
         Task.FromResult(new SessionMcpSetResult(false, null, [], "Session MCP management is unavailable."));
 
     /// <summary>
-    /// Changes a local set; the operator may only remove, while additions require the local assistant.
+    /// Changes a local set; the operator may add unless the assistant manages the set.
     /// </summary>
     Task<SessionMcpSetResult> ChangeSessionMcpServerAsync(string paneId, string name, bool add, bool byOperator = false, CancellationToken cancellationToken = default) =>
         Task.FromResult(new SessionMcpSetResult(false, null, [], "Session MCP management is unavailable."));

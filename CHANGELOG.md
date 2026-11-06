@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add MCP servers to running operator-managed sessions from the session dialog, with OAuth sign-in and the same audited admin route for remote sessions. Assistant-managed sets keep removal available and explain why additions go through the assistant.
+
 - Enable live MCP tool discovery in Codex sessions and follow unattended profiles' existing permission choice for tool approval on the Cockpit gateway.
 
 - Use one session MCP gateway for every session by default, keeping upstream credentials in Cockpit and showing a start failure when the gateway is unavailable. Remove the temporary switch and legacy direct-server route.

@@ -907,14 +907,33 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         }
 
         var remote = _sessions.Find(paneId) as ISessionMcpSetClient;
-        var viewModel = new SessionMcpDialogViewModel(
+        using var viewModel = new SessionMcpDialogViewModel(
             sessionName,
             cancellationToken => remote is not null
                 ? remote.GetMcpSetAsync(cancellationToken)
                 : _assistantGateway.GetSessionMcpSetAsync(paneId, cancellationToken),
             (name, cancellationToken) => remote is not null
                 ? remote.RemoveMcpServerAsync(name, cancellationToken)
-                : _assistantGateway.ChangeSessionMcpServerAsync(paneId, name, add: false, byOperator: true, cancellationToken));
+                : _assistantGateway.ChangeSessionMcpServerAsync(paneId, name, add: false, byOperator: true, cancellationToken),
+            (name, cancellationToken) => remote is not null
+                ? remote.AddMcpServerAsync(name, cancellationToken)
+                : _assistantGateway.ChangeSessionMcpServerAsync(paneId, name, add: true, byOperator: true, cancellationToken),
+            async (name, cancellationToken) =>
+            {
+                if (remote is not null)
+                {
+                    return await remote.SignInMcpServerAsync(name, cancellationToken);
+                }
+                var context = _mcpMounts.Set(paneId)?.Context;
+                var registry = await _mcpServerCatalog.GetServersForSessionAsync(context?.Project?.Id, new ExactMcpServerSelection([name]), cancellationToken);
+                var server = registry.FirstOrDefault(candidate => string.Equals(candidate.Name, name, StringComparison.OrdinalIgnoreCase));
+                if (server is not { Auth: McpServerAuth.OAuth })
+                {
+                    return "Unavailable";
+                }
+                var access = await _oauthCoordinator.AcquireAsync(server, interactive: true, cancellationToken);
+                return access.State.ToString();
+            });
         var dialog = new SessionMcpDialog { DataContext = viewModel };
         using var refresh = new CancellationTokenSource();
         void OnChanged(string changedPaneId)

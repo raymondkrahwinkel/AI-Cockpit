@@ -17,6 +17,16 @@ internal sealed partial class AssistantAgentGateway
         }
         IReadOnlyList<McpServerConfig> registry = mcpServers is null ? [] : await mcpServers.GetServersForSessionAsync(
             context.Project?.Id, new ExactMcpServerSelection(set.ServerNames), cancellationToken).ConfigureAwait(false);
+        var offered = mcpServers is null || context.Manager == SessionMcpManager.Assistant ? []
+            : McpServerRegistryFilter.OfferedToOperator(await mcpServers.GetServersForSessionAsync(
+                context.Project?.Id, null, cancellationToken).ConfigureAwait(false));
+        var available = new List<SessionMcpServerState>();
+        foreach (var server in offered.Where(server => !set.ServerNames.Contains(server.Name)))
+        {
+            var needsSignIn = server.Auth == McpServerAuth.OAuth && (oauthTokens is null ||
+                await oauthTokens.GetAsync(server.IdentityKey, cancellationToken).ConfigureAwait(false) is null);
+            available.Add(new(server.Name, needsSignIn ? "sign-in needed" : "available"));
+        }
         var report = mcpMounts?.ConnectionReport(paneId);
         return new(true, context.Manager.ToString(), [.. set.ServerNames.Order(StringComparer.OrdinalIgnoreCase).Select(name =>
         {
@@ -28,21 +38,22 @@ internal sealed partial class AssistantAgentGateway
                 : server is null ? "unknown" : server.Enabled ? "selected" : "disabled";
             var reason = issue?.Reason ?? (server?.AlwaysMounted == true ? "Always mounted servers cannot be removed." : null);
             return new SessionMcpServerState(name, status, reason, server?.AlwaysMounted != true);
-        })], null);
+        })], null) { AvailableServers = available };
     }
 
     public async Task<SessionMcpSetResult> ChangeSessionMcpServerAsync(string paneId, string name, bool add,
         bool byOperator = false, CancellationToken cancellationToken = default)
     {
         // AC-2129: a controller or HoldsAssistant claim never substitutes for this machine's assistant identity.
-        if ((!byOperator && !string.Equals(McpRequestContext.CurrentPaneId, AssistantIdentity.PaneId, StringComparison.Ordinal)) || (byOperator && add))
+        if (!byOperator && !string.Equals(McpRequestContext.CurrentPaneId, AssistantIdentity.PaneId, StringComparison.Ordinal))
         {
-            return new(false, null, [], "Only the local assistant may add servers; the operator may remove them.");
+            return new(false, null, [], "Only the local assistant may manage servers on behalf of an agent.");
         }
         var session = paneId == AssistantIdentity.PaneId ? sessions.Assistant : sessions.Find(paneId);
         var set = mcpMounts?.Set(paneId);
         var error = NodeSessionAddress.Split(paneId) is not null ? "MCP set management on nodes is outside v1."
             : set?.Context is null ? "No local MCP set exists for that session."
+            : byOperator && add && set.Context.Manager == SessionMcpManager.Assistant ? "The assistant manages this set. Ask it to add a server."
             : await new McpSetPolicy(mcpServers, oauthTokens).RefusalAsync(set.Context.Project?.Id, [name], add,
                 set.DelegationCeiling, cancellationToken).ConfigureAwait(false);
         if (error is null && set is not null && set.ServerNames.Contains(name) == add)

@@ -321,6 +321,12 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl, ISess
     public Task<SessionMcpSetResult> GetMcpSetAsync(CancellationToken cancellationToken = default) =>
         _client.GetAsync<SessionMcpSetResult>($"{_Path}/mcp", cancellationToken);
 
+    public Task<string> SignInMcpServerAsync(string name, CancellationToken cancellationToken = default) =>
+        new RemotePluginAdministration(_client).SignInMcpAtAsync($"{_Path}/mcp/{Uri.EscapeDataString(name)}/sign-in", name, cancellationToken);
+
+    public Task<SessionMcpSetResult> AddMcpServerAsync(string name, CancellationToken cancellationToken = default) =>
+        _client.SendAsync<SessionMcpSetResult>(HttpMethod.Put, $"{_Path}/mcp", new { name, add = true }, cancellationToken);
+
     public Task<SessionMcpSetResult> RemoveMcpServerAsync(string name, CancellationToken cancellationToken = default) =>
         _client.SendAsync<SessionMcpSetResult>(HttpMethod.Put, $"{_Path}/mcp", new { name, add = false }, cancellationToken);
 
