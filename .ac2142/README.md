@@ -6,7 +6,8 @@ All commands run from this worktree via `cockpit-session start_run`, using `py -
 
 - `build.py functional`: verify pinned CEF archive, generate instrumented source copies, Release build with `-warnaserror`, then four functional scenarios across current/shared/poll routes. These results are not performance evidence.
 - `mutation.py`: requires a committed clean WIP; disable frame-ready, build and detect missing updates, `git reset --hard` to that WIP in finally, rebuild and prove shared updates return. Do not edit the worktree while this runs.
-- `prepush.py`: existing full Windows local gate, then the required .NET 10 Linux Browser gate. No workflows or nightly changes.
+- `prepush.py`: required .NET 10 Linux Browser gate and existing full Windows local gate. The `windows` argument resumes only the latter. No workflows or nightly changes.
+- `verify_state_root.py`: rerun only the original read-only StateRootOverrideTests class in a separate process without an inherited COCKPIT_STATE_ROOT; no repository test changes.
 - `run.py measure --quiet-confirmed`: only after cockpit-assistant's explicit quiet-machine send_prompt. Does no builds. Runs 36 comparisons: 4 scenarios × 3 routes × 3 repeats, alternating order. Active build executables invalidate the comparison. Record the actual message authorizing the window in Depot before running this.
 - `report.py <manifest.json>`: validates complete definitive evidence and writes a compact README beside it. Copy its results to Depot `krahwinkel-it/cockpit`, `Reviews/2026-11-06-AC-2142-prestatiepoort/README.md`; do not upload binaries or large raw traces.
 
