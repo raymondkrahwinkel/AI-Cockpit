@@ -9,7 +9,7 @@ KERNEL.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
 KERNEL.OpenProcess.restype = wintypes.HANDLE
 KERNEL.CloseHandle.argtypes = [wintypes.HANDLE]
 KERNEL.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.POINTER(wintypes.FILETIME)] * 4
-BUILDERS = {"dotnet.exe", "msbuild.exe", "vbcsccompiler.exe", "csc.exe", "cl.exe", "ninja.exe", "cmake.exe", "node.exe", "npm.exe", "pnpm.exe", "cargo.exe", "rustc.exe", "java.exe", "gradle.exe", "make.exe"}
+BUILDERS = {"dotnet.exe", "msbuild.exe", "vbcscompiler.exe", "testhost.exe", "testhost.x86.exe", "vboxheadless.exe", "csc.exe", "cl.exe", "ninja.exe", "cmake.exe", "npm.exe", "pnpm.exe", "cargo.exe", "rustc.exe", "java.exe", "gradle.exe", "make.exe"}
 
 
 class Entry(ctypes.Structure):
