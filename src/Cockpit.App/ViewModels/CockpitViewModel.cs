@@ -9746,6 +9746,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         session.RestoreDecided -= OnSessionRestoreDecided;
         session.NameChanged -= OnSessionNameChanged;
         _lastStatus.Remove(session);
+        _pendingNotificationSounds.RemoveSession(session.PaneId);
+        _lastNotificationSounds.Remove(session.PaneId);
 
         // Deterministic teardown on a real close (a tab-switch never reaches here): empty the transcript while the pane
         // is still attached, so its realised rows dematerialise and their heavy control trees leave the tree now.
@@ -10524,6 +10526,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     private async Task _TeardownEmbeddedSessionAsync(SessionPanelViewModel session, string? endReason = null)
     {
+        _pendingNotificationSounds.RemoveSession(session.PaneId);
+        _lastNotificationSounds.Remove(session.PaneId);
         _sessionRegistry?.Unregister(session.PaneId);
         _embeddedSessionViews.Remove(session.PaneId);
         session.PropertyChanged -= OnSessionPropertyChanged;
@@ -10629,6 +10633,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         _disposed = true;
+        _pendingNotificationSounds.Dispose();
         _StopSwarmSidebar();
         if (_voicePlaybackQueue is not null)
         {
