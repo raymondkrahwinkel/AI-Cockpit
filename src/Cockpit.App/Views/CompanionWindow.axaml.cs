@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Threading;
 using Cockpit.App.Controls;
 using Cockpit.Core.Abstractions.Layout;
 using Cockpit.Core.Configuration;
@@ -17,8 +18,7 @@ public partial class CompanionWindow : Window
     private const string BoundsKey = "companion";
 
     private readonly IWindowBoundsStore? _windowBoundsStore;
-    private PixelPoint _dragGrabOffset;
-    private bool _dragging;
+    private readonly DispatcherTimer _positionSaveTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
 
     public CompanionWindow()
         : this(Program.Services?.GetService<IWindowBoundsStore>())
@@ -33,15 +33,26 @@ public partial class CompanionWindow : Window
         Title = $"{CockpitProduct.DisplayName} companion";
 
         HeaderBar.PointerPressed += _OnHeaderPressed;
-        HeaderBar.PointerMoved += _OnHeaderMoved;
-        HeaderBar.PointerReleased += _OnHeaderReleased;
-        HeaderBar.PointerCaptureLost += (_, _) => _EndDrag();
+        PositionChanged += (_, _) =>
+        {
+            if (IsVisible)
+            {
+                _positionSaveTimer.Stop();
+                _positionSaveTimer.Start();
+            }
+        };
+        _positionSaveTimer.Tick += (_, _) =>
+        {
+            _positionSaveTimer.Stop();
+            _ = SavePositionAsync();
+        };
         CloseButton.Click += (_, _) => CloseRequested?.Invoke(this, EventArgs.Empty);
 
         // Only the position is worth restoring: this window is SizeToContent, so a saved width/height would
         // never apply the way AssistantChatWindow's HasUsableSize gate expects for its own resizable window.
         var saved = _windowBoundsStore?.LoadAsync(BoundsKey).GetAwaiter().GetResult();
-        if (saved is not null && RestoredWindowBounds.IsOnAScreen(saved, Screens.All.Select(s => s.WorkingArea)))
+        // AC-241: the header must remain reachable, not just the bottom of a tall tool list.
+        if (saved is not null && RestoredWindowBounds.IsOnAScreen(saved with { Height = 32 }, Screens.All.Select(s => s.WorkingArea)))
         {
             WindowStartupLocation = WindowStartupLocation.Manual;
             Position = new PixelPoint(saved.X, saved.Y);
@@ -68,73 +79,49 @@ public partial class CompanionWindow : Window
     // per-frame update.
     public void SetTools(IReadOnlyList<(string Title, Control View)> tools)
     {
+        EmptyState.IsVisible = tools.Count == 0;
+        ToolsHost.IsVisible = tools.Count > 0;
         ToolsHost.Items.Clear();
         foreach (var (title, view) in tools)
         {
+            var label = new TextBlock { Text = title, FontSize = 11 };
+            label.Bind(TextBlock.ForegroundProperty, this.GetResourceObservable("CockpitTextSecondaryBrush"));
             ToolsHost.Items.Add(new StackPanel
             {
                 Spacing = 4,
                 Children =
                 {
-                    new TextBlock { Text = title, FontSize = 11, Foreground = _ToolTitleBrush },
+                    label,
                     view,
                 },
             });
         }
     }
 
-    // AC-334: looked up rather than a literal — these labels are built in code, not XAML, but the token still
-    // has to come from Theme.axaml's single source of truth like every other cockpit colour.
-    private static Avalonia.Media.IBrush _ToolTitleBrush =>
-        (Avalonia.Media.IBrush)Avalonia.Application.Current!.FindResource("CockpitTextSecondaryBrush")!;
-
-    // Absolute-position drag, the same technique AssistantChatWindow uses for its header — without that
-    // window's drop-to-dock zone, which is a feature of the assistant, not of a borderless draggable window.
+    // AC-241: let the window manager move it, including compositors that do not allow absolute positioning.
     private void _OnHeaderPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (e.Source is Button)
+        if (!e.GetCurrentPoint(HeaderBar).Properties.IsLeftButtonPressed || CloseButton.IsPointerOver)
         {
             return;
         }
 
-        _dragging = true;
-        _dragGrabOffset = this.PointToScreen(e.GetPosition(this)) - Position;
-        e.Pointer.Capture(HeaderBar);
+        BeginMoveDrag(e);
+        e.Handled = true;
     }
 
-    private void _OnHeaderMoved(object? sender, PointerEventArgs e)
+    internal async Task SavePositionAsync()
     {
-        if (!_dragging)
-        {
-            return;
-        }
-
-        Position = this.PointToScreen(e.GetPosition(this)) - _dragGrabOffset;
-    }
-
-    private void _OnHeaderReleased(object? sender, PointerReleasedEventArgs e) => _EndDrag();
-
-    private void _EndDrag()
-    {
-        if (!_dragging)
-        {
-            return;
-        }
-
-        _dragging = false;
-        _ = _SavePositionAsync();
-    }
-
-    private async Task _SavePositionAsync()
-    {
-        if (_windowBoundsStore is null)
+        _positionSaveTimer.Stop();
+        if (_windowBoundsStore is null || Bounds.Width <= 0 || Bounds.Height <= 0)
         {
             return;
         }
 
         try
         {
-            await _windowBoundsStore.SaveAsync(BoundsKey, new WindowBounds(Position.X, Position.Y, (int)Width, (int)Height, IsMaximized: false))
+            await _windowBoundsStore.SaveAsync(BoundsKey, new WindowBounds(Position.X, Position.Y,
+                (int)(Bounds.Width * RenderScaling), (int)(Bounds.Height * RenderScaling), IsMaximized: false))
                 .ConfigureAwait(false);
         }
         catch (Exception)

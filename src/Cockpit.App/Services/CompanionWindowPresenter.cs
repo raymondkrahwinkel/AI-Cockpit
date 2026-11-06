@@ -44,6 +44,11 @@ internal sealed class CompanionWindowPresenter : ISingletonService
 
     public void Hide()
     {
+        if (_window is { } window)
+        {
+            _ = window.SavePositionAsync();
+        }
+
         _window?.Hide();
         _ = _SaveVisibleAsync(false);
     }

@@ -1360,7 +1360,7 @@ public partial class App : Application
 
         // AC-237: toggles rather than only shows, since the window's own header has no tray-independent way to
         // reopen it once hidden — this is the DoD's "pops up/hides from the tray" both ways.
-        var companionItem = new NativeMenuItem("Show companion");
+        var companionItem = new NativeMenuItem("Show / hide companion");
         companionItem.Click += (_, _) => Program.Services.GetRequiredService<CompanionWindowPresenter>().Toggle();
 
         var quitItem = new NativeMenuItem("Quit");
