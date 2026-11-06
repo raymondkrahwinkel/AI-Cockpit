@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Project-sharing checks run on the UI dispatcher, so test order cannot leave catalog updates waiting on an unpumped thread.
+
 - A debug build is recognisable next to the installed one: "DEV" in its own title bar and a DEV bar over its window, taskbar and tray icon.
 
 - Take over swarm leadership on this machine from the assistant chat or Options › Swarm, through the reachable current leader.
