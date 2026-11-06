@@ -486,6 +486,8 @@ internal sealed class BrowserIpcConnection : IAsyncDisposable
         await _output.FlushAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    internal void Close() => _Close();
+
     private void _Close()
     {
         lock (_gate)

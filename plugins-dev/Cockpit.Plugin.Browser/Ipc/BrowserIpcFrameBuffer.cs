@@ -42,13 +42,13 @@ internal sealed class BrowserIpcFrameBuffer : IDisposable
 
     private BrowserIpcFrameBuffer(string directory, BrowserIpcFrameDescriptor descriptor, bool create, Action<BrowserIpcFrameBuffer>? released)
     {
+        directory = BrowserIpcStorage.ValidateDirectory(directory);
         Descriptor = descriptor;
         DirectoryPath = directory;
         long length = descriptor.ByteLength;
         _ownedDirectory = create ? directory : null;
         _released = released;
         string path = Path.Combine(directory, descriptor.BufferId.ToString("N") + ".bgra");
-        BrowserIpcStorage.ValidateDirectory(directory);
         if (new FileInfo(path).LinkTarget is not null || (File.Exists(path) && (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0))
         {
             throw new UnauthorizedAccessException("IPC buffers cannot be links or reparse points.");
@@ -112,7 +112,7 @@ internal sealed class BrowserIpcFrameBuffer : IDisposable
     {
         var descriptor = new BrowserIpcFrameDescriptor(generation, Guid.NewGuid(), width, height);
         _ = descriptor.ByteLength;
-        BrowserIpcStorage.ValidateDirectory(trustedParent);
+        trustedParent = BrowserIpcStorage.ValidateDirectory(trustedParent);
         CleanupAbandoned(trustedParent);
         string directory = Path.Combine(trustedParent, $"browser-{generation:N}-{descriptor.BufferId:N}");
         if (OperatingSystem.IsWindows())
@@ -143,7 +143,7 @@ internal sealed class BrowserIpcFrameBuffer : IDisposable
         {
             throw new InvalidDataException("Stale IPC frame buffer generation.");
         }
-        BrowserIpcStorage.ValidateDirectory(trustedParent);
+        trustedParent = BrowserIpcStorage.ValidateDirectory(trustedParent);
         string directory = Path.Combine(trustedParent, $"browser-{generation:N}-{descriptor.BufferId:N}");
         return new BrowserIpcFrameBuffer(directory, descriptor, false, released);
     }
@@ -154,7 +154,7 @@ internal sealed class BrowserIpcFrameBuffer : IDisposable
         {
             return;
         }
-        BrowserIpcStorage.ValidateDirectory(trustedParent);
+        trustedParent = BrowserIpcStorage.ValidateDirectory(trustedParent);
         foreach (string directory in Directory.EnumerateDirectories(trustedParent, "browser-*"))
         {
             string name = Path.GetFileName(directory);
@@ -165,7 +165,10 @@ internal sealed class BrowserIpcFrameBuffer : IDisposable
             }
             try
             {
-                BrowserIpcStorage.ValidateDirectory(directory);
+                if (BrowserIpcStorage.ValidateDirectory(directory) != directory)
+                {
+                    continue;
+                }
                 string path = Path.Combine(directory, id.ToString("N") + ".bgra");
                 if (new FileInfo(path).LinkTarget is not null || (File.Exists(path) && (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0))
                 {

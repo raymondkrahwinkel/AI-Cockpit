@@ -28,11 +28,19 @@ internal static class LinuxBrowserHostProcess
             }
             _Check(_AddDup2(ref actions, input, 3));
             _Check(_AddDup2(ref actions, output, 4));
-            _Check(_AddClose(ref actions, 0));
-            _Check(_AddClose(ref actions, 1));
-            _Check(_AddClose(ref actions, 2));
+            for (int descriptor = 0; descriptor < 3; descriptor++)
+            {
+                _Check(_AddOpen(ref actions, descriptor, "/dev/null", 2, 0));
+            }
             // glibc closefrom is performed in the child only, excluding every unrelated inherited descriptor.
-            _Check(_AddCloseFrom(ref actions, 5));
+            try
+            {
+                _Check(_AddCloseFrom(ref actions, 5));
+            }
+            catch (EntryPointNotFoundException exception)
+            {
+                throw new PlatformNotSupportedException("The browser host needs glibc 2.34 or newer to inherit only its own pipe handles.", exception);
+            }
             string[] childArguments = arguments.Select(argument =>
                 argument.StartsWith("--cockpit-input=", StringComparison.Ordinal) ? "--cockpit-input=3" :
                 argument.StartsWith("--cockpit-output=", StringComparison.Ordinal) ? "--cockpit-output=4" : argument).ToArray();
@@ -118,8 +126,8 @@ internal static class LinuxBrowserHostProcess
     private static extern int _ActionsDestroy(ref FileActions actions);
     [DllImport("libc", EntryPoint = "posix_spawn_file_actions_adddup2")]
     private static extern int _AddDup2(ref FileActions actions, int source, int destination);
-    [DllImport("libc", EntryPoint = "posix_spawn_file_actions_addclose")]
-    private static extern int _AddClose(ref FileActions actions, int descriptor);
+    [DllImport("libc", EntryPoint = "posix_spawn_file_actions_addopen")]
+    private static extern int _AddOpen(ref FileActions actions, int descriptor, [MarshalAs(UnmanagedType.LPUTF8Str)] string path, int flags, uint mode);
     [DllImport("libc", EntryPoint = "posix_spawn_file_actions_addclosefrom_np")]
     private static extern int _AddCloseFrom(ref FileActions actions, int first);
     [DllImport("libc", EntryPoint = "posix_spawn", CharSet = CharSet.Ansi)]

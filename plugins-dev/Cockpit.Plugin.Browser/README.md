@@ -37,9 +37,13 @@ Cleanup attempts every resource independently and retains failures in `CleanupEr
 DeleteOnClose; creation also sweeps abandoned pixel files with an exclusive open, skipping live mappings.
 On Linux, producers and readers hold shared `flock` leases; cleanup requires an exclusive lease.
 The launcher creates a private storage parent and validates existing ownership and access before using it.
-Both endpoints reject links/reparse points, untrusted ancestors, another owner and non-owner access.
+Both endpoints resolve directory symlinks/junctions first and validate the resulting real ancestor chain.
+Untrusted targets, unresolved reparse points, another buffer owner and non-owner buffer access are rejected.
+Sticky temporary directories are allowed; an ordinary writable ancestor is not.
 Existing buffer files are inspected before opening and their open handles are checked before mapping;
-Linux also rejects hard links. Existing insecure permissions are refused rather than repaired.
+Linux also rejects hard links. Buffer storage remains strictly private. An existing Windows cache may belong
+to and grant access to the current user, SYSTEM, Administrators or TrustedInstaller; other principals are refused.
+An existing Linux cache owned by the current user is tightened to 0700 automatically; another owner is refused.
 Frame-ready/ack and dirty-region copying are connected in AC-2147: never reuse a published buffer before ack.
 This process boundary is not a sandbox against another process running as the same OS user.
 
@@ -53,11 +57,13 @@ Linux retains argv[0], and every native CEF child receives `--cockpit-cef-runtim
 
 Windows uses a CreateProcess handle list containing exactly the two child pipe handles. Linux uses glibc
 `posix_spawn` file actions to duplicate those endpoints to descriptors 3/4 and close all other descriptors;
+standard input/output/error are attached to `/dev/null` so native diagnostics cannot corrupt a reused descriptor.
 this requires glibc's `posix_spawn_file_actions_addclosefrom_np` (2.34 or newer). There is no broad-inheritance
 fallback. The host marks both received handles non-inheritable before it starts CEF children.
 The generation is registered before the IPC reader starts. `engine.ready` returns initialization status and
 the actual host PID; it makes no nested request. Startup is bounded by the existing 30-second call deadline.
 Missing runtime, pipe failure and host crash fail the caller; another start can use a fresh process.
+Host exit also closes IPC directly, independently of EOF, so an accidentally inherited pipe cannot delay failure.
 Disposal closes IPC, waits up to five seconds and then stops only that client's own host PID if necessary.
 Process-tree lifetime containment belongs to AC-2145/AC-2146, and the existing in-process UI remains active
 until AC-2147 connects the views. Use this launcher only from the explicit local development harness meanwhile.

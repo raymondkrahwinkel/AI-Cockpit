@@ -9,9 +9,9 @@ namespace Cockpit.Plugin.Browser.Ipc;
 
 internal static class BrowserIpcStorage
 {
-    internal static void Prepare(string trustedParent)
+    internal static string Prepare(string trustedParent)
     {
-        ValidateAncestors(trustedParent);
+        trustedParent = ValidateAncestors(trustedParent);
         if (Directory.Exists(trustedParent) == false)
         {
             if (OperatingSystem.IsWindows())
@@ -31,15 +31,88 @@ internal static class BrowserIpcStorage
                 Directory.CreateDirectory(trustedParent, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
             }
         }
-        ValidateDirectory(trustedParent);
+        return ValidateDirectory(trustedParent);
     }
 
-    internal static void ValidateAncestors(string path)
+    internal static string PrepareCache(string path)
     {
-        if (Path.IsPathFullyQualified(path) == false || Path.GetFullPath(path) != Path.TrimEndingDirectorySeparator(path) || path.StartsWith("\\\\", StringComparison.Ordinal))
+        path = _ResolveDirectory(path);
+        ValidateAncestors(Path.GetDirectoryName(path) ?? path);
+        if (Directory.Exists(path) == false)
         {
-            throw new UnauthorizedAccessException("IPC storage needs a canonical absolute path.");
+            return Prepare(path);
         }
+        if (OperatingSystem.IsWindows())
+        {
+            _ValidateWindows(new DirectoryInfo(path).GetAccessControl(), cache: true);
+        }
+        else if (OperatingSystem.IsLinux())
+        {
+            var status = _LinuxStatus(path, null);
+            if ((status.Mask & 0xf) != 0xf || status.Owner != _GetEffectiveUserId() || (status.Mode & 0xf000) != 0x4000)
+            {
+                throw new UnauthorizedAccessException("The browser cache belongs to another owner.");
+            }
+            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+        else
+        {
+            throw new PlatformNotSupportedException("IPC storage is supported on Windows and Linux.");
+        }
+        return path;
+    }
+
+    private static string _ResolveDirectory(string path)
+    {
+        if (Path.IsPathFullyQualified(path) == false)
+        {
+            throw new UnauthorizedAccessException("IPC storage needs an absolute local path.");
+        }
+        for (int links = 0; links < 40; links++)
+        {
+            path = Path.GetFullPath(path);
+            if (OperatingSystem.IsWindows() && path.StartsWith("\\\\?\\", StringComparison.Ordinal))
+            {
+                path = path[4..];
+            }
+            if (path.StartsWith("\\\\", StringComparison.Ordinal) || Path.IsPathFullyQualified(path) == false)
+            {
+                throw new UnauthorizedAccessException("IPC storage needs an absolute local path.");
+            }
+            string root = Path.GetPathRoot(path) ?? throw new UnauthorizedAccessException("IPC storage has no filesystem root.");
+            string resolved = root;
+            var components = path[root.Length..].Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries);
+            bool followed = false;
+            for (int index = 0; index < components.Length; index++)
+            {
+                resolved = Path.Combine(resolved, components[index]);
+                var directory = new DirectoryInfo(resolved);
+                if (directory.LinkTarget is not null)
+                {
+                    path = directory.ResolveLinkTarget(false)?.FullName ?? throw new UnauthorizedAccessException("IPC storage has an unresolved link.");
+                    foreach (string component in components.Skip(index + 1))
+                    {
+                        path = Path.Combine(path, component);
+                    }
+                    followed = true;
+                    break;
+                }
+                if (directory.Exists && (directory.Attributes & FileAttributes.ReparsePoint) != 0)
+                {
+                    throw new UnauthorizedAccessException("IPC storage has an unsupported reparse point.");
+                }
+            }
+            if (followed == false)
+            {
+                return Path.TrimEndingDirectorySeparator(resolved);
+            }
+        }
+        throw new UnauthorizedAccessException("IPC storage has a link cycle.");
+    }
+
+    internal static string ValidateAncestors(string path)
+    {
+        path = _ResolveDirectory(path);
         for (var directory = new DirectoryInfo(path); directory is not null; directory = directory.Parent)
         {
             if (directory.LinkTarget is not null || (directory.Exists && (directory.Attributes & FileAttributes.ReparsePoint) != 0))
@@ -49,7 +122,8 @@ internal static class BrowserIpcStorage
             if (directory.Exists && OperatingSystem.IsLinux())
             {
                 var status = _LinuxStatus(directory.FullName, null);
-                if ((status.Mask & 0xf) != 0xf || (status.Owner != _GetEffectiveUserId() && status.Owner != 0) || (status.Mode & 0x12) != 0)
+                bool sticky = (status.Mode & 0x200) != 0;
+                if ((status.Mask & 0xf) != 0xf || (status.Owner != _GetEffectiveUserId() && status.Owner != 0) || ((status.Mode & 0x12) != 0 && sticky == false))
                 {
                     throw new UnauthorizedAccessException("IPC storage has an untrusted ancestor.");
                 }
@@ -59,11 +133,12 @@ internal static class BrowserIpcStorage
                 _ValidateWindowsAncestor(directory);
             }
         }
+        return path;
     }
 
-    internal static void ValidateDirectory(string path)
+    internal static string ValidateDirectory(string path)
     {
-        ValidateAncestors(path);
+        path = ValidateAncestors(path);
         if (OperatingSystem.IsWindows())
         {
             _ValidateWindows(new DirectoryInfo(path).GetAccessControl());
@@ -76,6 +151,7 @@ internal static class BrowserIpcStorage
         {
             throw new PlatformNotSupportedException("IPC storage is supported on Windows and Linux.");
         }
+        return path;
     }
 
     internal static void ValidateFile(string path, FileStream file)
@@ -119,14 +195,23 @@ internal static class BrowserIpcStorage
     }
 
     [SupportedOSPlatform("windows")]
-    private static void _ValidateWindowsAncestor(DirectoryInfo directory)
+    private static SecurityIdentifier[] _TrustedWindowsPrincipals()
     {
         using var identity = WindowsIdentity.GetCurrent();
-        var owner = identity.User ?? throw new UnauthorizedAccessException("IPC storage owner is unavailable.");
-        var system = new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null);
-        var administrators = new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null);
-        var installer = new NTAccount("NT SERVICE", "TrustedInstaller").Translate(typeof(SecurityIdentifier));
-        bool Trusted(IdentityReference? principal) => owner.Equals(principal) || system.Equals(principal) || administrators.Equals(principal) || installer.Equals(principal);
+        return
+        [
+            identity.User ?? throw new UnauthorizedAccessException("IPC storage owner is unavailable."),
+            new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null),
+            new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null),
+            (SecurityIdentifier)new NTAccount("NT SERVICE", "TrustedInstaller").Translate(typeof(SecurityIdentifier)),
+        ];
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static void _ValidateWindowsAncestor(DirectoryInfo directory)
+    {
+        var trusted = _TrustedWindowsPrincipals();
+        bool Trusted(IdentityReference? principal) => trusted.Any(identity => identity.Equals(principal));
         var security = directory.GetAccessControl();
         if (Trusted(security.GetOwner(typeof(SecurityIdentifier))) == false)
         {
@@ -147,7 +232,12 @@ internal static class BrowserIpcStorage
             {
                 continue;
             }
-            if ((rule.FileSystemRights & (FileSystemRights.Delete | FileSystemRights.DeleteSubdirectoriesAndFiles | FileSystemRights.ChangePermissions | FileSystemRights.TakeOwnership)) != 0)
+            var forbidden = FileSystemRights.DeleteSubdirectoriesAndFiles | FileSystemRights.ChangePermissions | FileSystemRights.TakeOwnership;
+            if (directory.Parent is not null)
+            {
+                forbidden |= FileSystemRights.Delete;
+            }
+            if ((rule.FileSystemRights & forbidden) != 0)
             {
                 throw new UnauthorizedAccessException("IPC storage has a replaceable ancestor.");
             }
@@ -155,22 +245,22 @@ internal static class BrowserIpcStorage
     }
 
     [SupportedOSPlatform("windows")]
-    private static void _ValidateWindows(FileSystemSecurity security)
+    private static void _ValidateWindows(FileSystemSecurity security, bool cache = false)
     {
-        using var identity = WindowsIdentity.GetCurrent();
-        var owner = identity.User ?? throw new UnauthorizedAccessException("IPC storage owner is unavailable.");
+        var principals = _TrustedWindowsPrincipals();
+        var trusted = cache ? principals : [principals[0]];
         var descriptor = new RawSecurityDescriptor(security.GetSecurityDescriptorBinaryForm(), 0);
         if (descriptor.DiscretionaryAcl is null)
         {
             throw new UnauthorizedAccessException("IPC storage has no restrictive access control list.");
         }
-        if (owner.Equals(security.GetOwner(typeof(SecurityIdentifier))) == false)
+        if (trusted.Any(principal => principal.Equals(security.GetOwner(typeof(SecurityIdentifier)))) == false)
         {
             throw new UnauthorizedAccessException("IPC storage belongs to another owner.");
         }
         foreach (FileSystemAccessRule rule in security.GetAccessRules(true, true, typeof(SecurityIdentifier)))
         {
-            if (rule.AccessControlType == AccessControlType.Allow && rule.FileSystemRights != 0 && owner.Equals(rule.IdentityReference) == false)
+            if (rule.AccessControlType == AccessControlType.Allow && rule.FileSystemRights != 0 && trusted.Any(principal => principal.Equals(rule.IdentityReference)) == false)
             {
                 throw new UnauthorizedAccessException("IPC storage is accessible to another principal.");
             }

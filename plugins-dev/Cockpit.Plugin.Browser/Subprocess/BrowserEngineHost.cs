@@ -13,8 +13,8 @@ internal static class BrowserEngineHost
         var generation = Guid.ParseExact(Argument("--cockpit-generation="), "N");
         string storage = Argument("--cockpit-buffer-root=");
         string cache = Argument("--cockpit-cache-root=");
-        BrowserIpcStorage.ValidateDirectory(storage);
-        BrowserIpcStorage.ValidateDirectory(cache);
+        storage = BrowserIpcStorage.ValidateDirectory(storage);
+        cache = BrowserIpcStorage.PrepareCache(cache);
         var pipes = BrowserIpcPipes.OpenChild(Argument("--cockpit-input="), Argument("--cockpit-output="));
         bool initialized = false;
         BrowserIpcConnection? connection = null;

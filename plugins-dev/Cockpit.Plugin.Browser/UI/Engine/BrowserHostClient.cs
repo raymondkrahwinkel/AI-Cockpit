@@ -10,6 +10,7 @@ internal sealed class BrowserHostClient : IAsyncDisposable
     private readonly Process _process;
     private readonly BrowserIpcPipes _pipes;
     private readonly Task _exited;
+    private readonly Task _closeOnExit;
     private int _disposed;
 
     private BrowserHostClient(Process process, BrowserIpcPipes pipes, Guid generation)
@@ -20,6 +21,7 @@ internal sealed class BrowserHostClient : IAsyncDisposable
         Generation = generation;
         Connection = new BrowserIpcConnection(pipes.Input, pipes.Output, generation,
             (_, _) => throw new InvalidDataException("Unknown engine client operation."), (generation, "enginehost"));
+        _closeOnExit = _CloseOnExitAsync();
     }
 
     internal Guid Generation { get; }
@@ -35,8 +37,8 @@ internal sealed class BrowserHostClient : IAsyncDisposable
         }
         executable = Path.GetFullPath(executable);
         runtimeDirectory = Path.GetFullPath(runtimeDirectory);
-        BrowserIpcStorage.Prepare(cacheDirectory);
-        BrowserIpcStorage.Prepare(bufferDirectory);
+        cacheDirectory = BrowserIpcStorage.PrepareCache(cacheDirectory);
+        bufferDirectory = BrowserIpcStorage.Prepare(bufferDirectory);
         var generation = Guid.NewGuid();
         var pipes = new BrowserIpcPipes();
         BrowserHostClient? client = null;
@@ -94,6 +96,18 @@ internal sealed class BrowserHostClient : IAsyncDisposable
     [SupportedOSPlatform("linux")]
     private static Task _ReapLinuxAsync(int processId) => Task.Run(() => LinuxBrowserHostProcess.Reap(processId));
 
+    private async Task _CloseOnExitAsync()
+    {
+        try
+        {
+            await _exited.ConfigureAwait(false);
+        }
+        finally
+        {
+            Connection.Close();
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0)
@@ -128,9 +142,21 @@ internal sealed class BrowserHostClient : IAsyncDisposable
                 errors.Add(exception);
             }
         }
+        catch (Exception exception)
+        {
+            errors.Add(exception);
+        }
         finally
         {
             _process.Dispose();
+        }
+        try
+        {
+            await _closeOnExit.ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            errors.Add(exception);
         }
         if (errors.Count != 0)
         {
