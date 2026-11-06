@@ -261,7 +261,37 @@ internal sealed partial class SessionMcpGatewayHost : IHostedService, IAsyncDisp
                 return;
             }
 
-            await next(http);
+            var token = _Bearer(http);
+            var requestLock = new Lock();
+            var finished = false;
+            void EndRequest(string endedPane)
+            {
+                lock (requestLock)
+                {
+                    if (!finished && string.Equals(endedPane, paneId, StringComparison.Ordinal))
+                    {
+                        http.Abort();
+                    }
+                }
+            }
+            _keyring.RunEnded += EndRequest;
+            try
+            {
+                if (!string.Equals(_keyring.CurrentToken(paneId), token, StringComparison.Ordinal))
+                {
+                    http.Abort();
+                    return;
+                }
+                await next(http);
+            }
+            finally
+            {
+                lock (requestLock)
+                {
+                    finished = true;
+                }
+                _keyring.RunEnded -= EndRequest;
+            }
         });
         app.MapMcp("/s/{paneId}/mcp");
         _keyring.RunEnded += _EndBindings;

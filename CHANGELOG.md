@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Close pending MCP client calls promptly when their session key is revoked, while cancelling the upstream call.
+
 - Refuse local model session starts when their MCP gateway is unavailable, including profile and preset selections, with the same clear error as plugin sessions.
 
 - Keep MCP tools from different servers uniquely named in local model sessions, including after live additions, so calls and permissions reach the intended server.

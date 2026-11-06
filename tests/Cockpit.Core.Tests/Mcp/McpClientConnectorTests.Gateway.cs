@@ -106,6 +106,16 @@ public partial class McpClientConnectorTests
             Assert.Equal(ToolPermissionClass.Destructive, local.ToolClasses["mcp__other__contract"]);
             var routed = await local.Tools.Single(tool => tool.Function.Name == "other__contract").Function.InvokeAsync(new AIFunctionArguments());
             Assert.Contains("other-upstream", JsonSerializer.Serialize(routed));
+
+            // Category C: revoke during a call must close its client response as well as cancel the upstream.
+            await client.ListToolsAsync();
+            using var callDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            var pending = client.CallToolAsync("other__contract", new Dictionary<string, object?> { ["waitForRevoke"] = true },
+                cancellationToken: callDeadline.Token).AsTask();
+            await GatewayCollisionTool.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            keyring.Revoke("contract", token);
+            await Assert.ThrowsAnyAsync<ModelContextProtocol.McpException>(async () => await pending.WaitAsync(TimeSpan.FromSeconds(2)));
+            await GatewayCollisionTool.Cancelled.Task.WaitAsync(TimeSpan.FromSeconds(5));
         }
         finally
         {
