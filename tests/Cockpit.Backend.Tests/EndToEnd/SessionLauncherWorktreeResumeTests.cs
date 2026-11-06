@@ -74,12 +74,16 @@ public sealed class SessionLauncherWorktreeResumeTests : IDisposable
         var folder = Directory.CreateDirectory(Path.Combine(_stateRoot, "project")).FullName;
         var first = new EchoDriver();
         string paneId;
+        SessionStateRecord saved;
         await using (var before = _Build(first))
         {
             var launcher = before.GetRequiredService<ISessionLauncher>();
             paneId = (await launcher.StartSessionAsync(await _RequestAsync(launcher, folder) with { Prompt = "hello" }))?.PaneId ?? "";
             await first.Answered;
             await launcher.StopSessionAsync(paneId);
+            saved = Assert.Single(await before.GetRequiredService<ISessionStateStore>().LoadAsync());
+            Assert.Equal(SessionConversationIdState.Known, saved.ConversationState);
+            Assert.Equal(first.SessionId, saved.ConversationId);
         }
 
         var second = new EchoDriver();
@@ -88,7 +92,7 @@ public sealed class SessionLauncherWorktreeResumeTests : IDisposable
         await relaunched.StartSessionAsync(await _RequestAsync(relaunched, folder) with
         {
             PaneId = paneId,
-            Resume = SessionResume.BySessionId(first.SessionId ?? ""),
+            Resume = SessionResume.BySessionId(saved.ConversationId ?? ""),
         });
         var handle = (SessionHostHandle?)after.GetRequiredService<SessionRegistry>().Find(paneId);
 
@@ -99,7 +103,10 @@ public sealed class SessionLauncherWorktreeResumeTests : IDisposable
     private static ServiceProvider _Build(EchoDriver driver) =>
         CockpitBackend.Build(
             NullLoggerFactory.Instance,
-            services => services.AddSingleton<ISessionDriverFactory>(new EchoDriverFactory(driver))).Services;
+            services => services.AddSingleton<ISessionDriverFactory>(provider => new EchoDriverFactory(driver)
+            {
+                Conversations = provider.GetRequiredService<ISessionConversationSink>(),
+            })).Services;
 
     private async Task<SessionLaunchRequest> _RequestAsync(ISessionLauncher launcher, string folder)
     {
