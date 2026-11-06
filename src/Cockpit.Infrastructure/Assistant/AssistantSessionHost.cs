@@ -577,6 +577,13 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         // ("No such file or directory"), and nothing guarantees another writer reached this root first.
         Directory.CreateDirectory(workingDirectory);
 
+        // AC-2162: persist the new context before the provider can report its conversation id.
+        await _sessionStateRecorder.RecordSessionStartedAsync(
+            AssistantPaneId, profile, workingDirectory,
+            worktreePath: null, worktreeBranch: null,
+            permissionMode: SessionPermissionModes.Default,
+            forgetConversation: startFresh).ConfigureAwait(true);
+
         // AC-1013: the session's own defaults are only the floor — the profile's own permission mode/model/effort ride
         // the launch options below (the driver prefers those). See _LaunchOptions for what bypassPermissions means here.
         await session.StartAsync(new AssistantLaunch(
@@ -618,20 +625,6 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
             _SetUnavailable("Waiting for the swarm leader.");
             return null;
         }
-
-        // AC-1089: the assistant never came through here, so its record carried no ProfileId/WorkingDirectory and a
-        // profile or working-directory switch read as "nothing changed", leaving a stale conversation id standing.
-        // Fire-and-forget like the same call in CockpitViewModel — a started session must not wait on a state write.
-        _ = _sessionStateRecorder.RecordSessionStartedAsync(
-            AssistantPaneId,
-            profile,
-            workingDirectory,
-            worktreePath: null,
-            worktreeBranch: null,
-            permissionMode: SessionPermissionModes.Default,
-            // AC-1261 criterion 3: `startFresh` covers both AC-596's hand-over and a clear, and neither changes
-            // profile or working directory — the guard this forces needs telling, not inferring.
-            forgetConversation: startFresh);
 
         // AC-638/AC-596: say why in the transcript, since the hand-over note only reaches the system prompt.
         // `startFreshBecause` lets AC-684's failed-resume recovery use its own reason instead of this default.

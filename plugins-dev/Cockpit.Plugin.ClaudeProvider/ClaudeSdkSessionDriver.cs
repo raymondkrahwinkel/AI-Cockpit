@@ -17,8 +17,11 @@ namespace Cockpit.Plugin.ClaudeProvider;
 // shape Codex's app-server route uses for `item/*/requestApproval`. No logged-in `claude` exists in this
 // sandbox, so the live end (the CLI emitting `can_use_tool` for this spawn) needs a manual eyeball check; the
 // turn-taking and the parse/respond round-trip are unit-tested against a fake subprocess.
-internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
+internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver, IPluginMcpToolAuthorization
 {
+    private string? _lastPermissionMode;
+    public bool MayCallWithoutPrompt(string canonicalName, string argumentsJson) => _readOnlyToolFilter is null
+        && ClaudeMcpPermissionRules.MayCallWithoutPrompt(_config.ConfigDir, _childWorkingDirectory, _lastPermissionMode, canonicalName);
     // Option key for the per-session permission mode (also a live control) — the well-known key the host's driver
     // adapter folds its typed permission-mode selection into, so a launch-time choice (bypass, plan, …) actually
     // reaches this driver instead of falling back to the default.
@@ -164,6 +167,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         // A per-session option the operator picked in the New-session dialog wins over the model parameter, which wins
         // over the profile's own default; likewise the permission mode.
         var permissionMode = _ResolveOption(options, PermissionModeOptionKey, defaultValue: "default") ?? "default";
+        _lastPermissionMode = permissionMode;
         var effectiveModel = _ResolveOption(options, ModelOptionKey, model);
         _model = effectiveModel;
         _effort = _ResolveOption(options, EffortOptionKey, _effort) ?? _effort;
@@ -413,6 +417,10 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
 
     public Task SetLiveOptionAsync(string key, string value, CancellationToken cancellationToken = default)
     {
+        if (key == PermissionModeOptionKey)
+        {
+            _lastPermissionMode = null;
+        }
         if (_readOnlyToolFilter is not null && string.Equals(key, PermissionModeOptionKey, StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException("Permissions cannot be widened during a read-only turn.");

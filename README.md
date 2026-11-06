@@ -263,6 +263,24 @@ See the [design note](docs/workspaces-widgets-terminals.md) and the
 
 ## Security
 
+Every session uses its own loopback MCP gateway, including a fresh installation without `cockpit.json`.
+Codex SDK and TTY launches enable live MCP tool-list updates. For the `cockpit` gateway only,
+profiles choosing `approvalPolicy=never` or `bypassPermissions` also approve native MCP tools;
+stricter profiles keep Codex's approval prompts. Sandbox and approval-policy are unchanged.
+Cockpit supplies one `cockpit` endpoint and a session key; upstream credentials and headers stay in Cockpit.
+The in-process tool-loop uses the same live session set. Old gateway-switch settings are ignored.
+If the gateway cannot start or its launch configuration cannot be prepared, the session reports a start
+failure and Cockpit logs the cause. There is no direct-server fallback.
+Live refresh and MCP-set restore use the gateway. The gateway's `call_tool`
+uses the provider's canonical-name authorization and the session ceiling; calls needing permission
+are refused and exposed by name for the next turn. Providers can implement `IPluginMcpToolAuthorization`
+to authorize fallback calls without a prompt. Unknown provider policies refuse fallback execution.
+Stdio servers also run behind the gateway, with a separate process per session and the
+session's working directory, profile variables and scratch directory. Host-controlled credentials are
+removed. Windows uses a kill-on-close Job Object; Linux uses util-linux `setpriv` and `setsid`
+(`/usr/bin`) plus `/bin/kill` to stop the upstream process group if Cockpit dies. Without these tools,
+it logs one warning and starts upstream processes without the OS wrapper, relying on stdin closure.
+
 Your API keys, MCP bearer tokens and the plugins' tokens live in `cockpit.json`. What the cockpit does about that:
 
 - **Owner-only files.** `cockpit.json` and everything beside it is written `0600`, in a `0700` directory. Nothing

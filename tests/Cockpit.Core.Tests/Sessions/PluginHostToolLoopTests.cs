@@ -150,7 +150,6 @@ public class PluginHostToolLoopTests
         new PluginSessionDriverAdapter(
             inner,
             new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false) { HostToolLoop = loop },
-            new McpAuthKey(),
             mcpToolProvider: toolProvider);
 
     private static Task<StartedSession> _StartAsync(PluginHostToolLoop loop, params AIFunction[] tools) =>

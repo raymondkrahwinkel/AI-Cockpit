@@ -767,8 +767,6 @@ public sealed class FirstStartJourney
             return McpOAuthAccess.Authorized(_AccountSpace.Bearer);
         }
 
-        public Task<McpOAuthAccess> AcquireForSessionAsync(McpServerConfig server, CancellationToken cancellationToken = default) =>
-            Task.FromResult(McpOAuthAccess.Authorized(_AccountSpace.Bearer));
 
         public Task<McpOAuthAccess> RenewRejectedAsync(McpServerConfig server, string rejectedAccessToken, CancellationToken cancellationToken = default) =>
             Task.FromResult(McpOAuthAccess.AuthorizationRequired);

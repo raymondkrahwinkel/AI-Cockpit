@@ -31,11 +31,6 @@ internal sealed class McpOAuthCoordinator(
     // in hand while the renewal is retried — so a token endpoint that is briefly down costs nothing.
     private static readonly TimeSpan RequestRenewalLead = TimeSpan.FromMinutes(10);
 
-    // AC-524: session margin held for 55 minutes rather than the CLI's one-hour token, so a session always starts
-    // on a just-renewed token — fixed since the store keeps only the expiry. A server whose tokens never live
-    // this long reports McpOAuthAttentionReason.TokenTooShortLived rather than a token that dies mid-session.
-    private static readonly TimeSpan SessionExpiryMargin = TimeSpan.FromMinutes(55);
-
     // AC-524: last unusable-reason per server, so the proxy (which runs this on every request) reports a
     // transition once instead of logging the same line per request.
     private readonly Dictionary<string, McpOAuthAttentionReason> _reported = new(StringComparer.Ordinal);
@@ -102,19 +97,6 @@ internal sealed class McpOAuthCoordinator(
         // The credential is spent on one call and asked for again on the next, so a renewal that did not happen is
         // not a reason to refuse a token that still covers this call — it is a reason to try again next time.
         return await _RenewIfNeededAsync(server, OneCall, cancellationToken).ConfigureAwait(false);
-    }
-
-    public async Task<McpOAuthAccess> AcquireForSessionAsync(McpServerConfig server, CancellationToken cancellationToken = default)
-    {
-        if (server.Auth != McpServerAuth.OAuth)
-        {
-            return McpOAuthAccess.NotRequired;
-        }
-
-        // No such grace here, and that asymmetry is the point: this answer is written into a config the session
-        // reads once and holds for hours. Serving a token that is merely good *now* is precisely the session that
-        // loses its server an hour in — the defect AC-524 exists for.
-        return await _RenewIfNeededAsync(server, AWholeSession, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<McpOAuthAccess> RenewRejectedAsync(McpServerConfig server, string rejectedAccessToken, CancellationToken cancellationToken = default)
@@ -588,8 +570,6 @@ internal sealed class McpOAuthCoordinator(
     private static readonly RenewalPolicy OneCall = new(RequestRenewalLead, RequestExpiryMargin, ServeTheHeldTokenInstead: true);
 
     private static readonly RenewalPolicy OneCallWithoutFallingBack = new(RequestRenewalLead, RequestExpiryMargin, ServeTheHeldTokenInstead: false);
-
-    private static readonly RenewalPolicy AWholeSession = new(SessionExpiryMargin, SessionExpiryMargin, ServeTheHeldTokenInstead: false);
 
     // The lead this server's own tokens can actually clear. One that issues tokens shorter than the lead would
     // otherwise be renewed on every call — each renewal succeeds, the fresh token still falls inside the lead, and

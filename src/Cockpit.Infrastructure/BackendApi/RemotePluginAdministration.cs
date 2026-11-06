@@ -197,13 +197,17 @@ internal sealed class RemotePluginAdministration(BackendApiClient client, ILogge
 
     private async Task<string> _SignInMcpServerAsync(string folderId, string name, CancellationToken cancellationToken)
     {
+        return await SignInMcpAtAsync($"api/v1/plugins/{Uri.EscapeDataString(folderId)}/mcp-servers/{Uri.EscapeDataString(name)}/sign-in", name, cancellationToken).ConfigureAwait(false);
+    }
+
+    internal async Task<string> SignInMcpAtAsync(string path, string name, CancellationToken cancellationToken)
+    {
         using var loopback = McpOAuthLoopback.Open(_logger);
         if (loopback is null)
         {
             return "Unavailable";
         }
 
-        var path = $"api/v1/plugins/{Uri.EscapeDataString(folderId)}/mcp-servers/{Uri.EscapeDataString(name)}/sign-in";
         var flow = await client.SendAsync<RemoteMcpSignIn>(HttpMethod.Post, path, new { port = loopback.Port }, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false);
         var flowPath = $"{path}/{Uri.EscapeDataString(flow.FlowId)}";
         var handedBack = false;

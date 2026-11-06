@@ -809,7 +809,7 @@ of Claude; it only knows that *someone* offers a picker. The transcript-search p
 
 A plugin that talks to a service with its own remote MCP server (JetBrains YouTrack's is the shipping
 example) can register it into the **shared MCP registry** with `host.AddMcpServer(...)`, so both session
-worlds — the local-model tool-loop and the Claude Code fan-out — pick up its tools without the user adding the
+worlds — the in-process tool-loop and the session MCP gateway — pick up its tools without the user adding the
 server by hand in the MCP-servers dialog:
 
 ```csharp

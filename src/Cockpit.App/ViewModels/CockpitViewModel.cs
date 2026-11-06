@@ -3675,7 +3675,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Cockpit.Core.Swarm.ISwarmOptions? swarmOptions = null,
         Cockpit.Core.Swarm.ISwarmLeadership? swarmLeadership = null,
         // AC-1846: Options › Sync. Absent in the design-time/unit-test graph, where the page lists no server.
-        ISyncOptions? syncOptions = null)
+        ISyncOptions? syncOptions = null,
+        ISessionMcpRestore? sessionMcpRestore = null)
     {
         _managedSettingsReader = managedSettings;
         _settingsWriteBatch = settingsWriteBatch;
@@ -3968,11 +3969,25 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             consentPrompts.Closed += _OnConsentPromptClosed;
         }
 
+        _sessionMcpMounts = sessionMcpMounts;
+        _sessionMcpRestore = sessionMcpRestore;
         if (sessionMcpMounts is not null)
         {
             sessionMcpMounts.Reported += _OnSessionMcpMounted;
+            sessionMcpMounts.Changed += _OnSessionMcpSetChanged;
         }
     }
+
+    private readonly SessionMcpMounts? _sessionMcpMounts;
+    private readonly ISessionMcpRestore? _sessionMcpRestore;
+
+    private void _OnSessionMcpSetChanged(string paneId) => _OnUiThread(() =>
+    {
+        if (_sessionMcpRestore?.IsEnabled == true && FindSession(paneId) is { } session && _sessionMcpMounts?.Set(paneId) is { Context: { } context } set)
+        {
+            session.McpServerSelection = new ExactMcpServerSelection(set.ServerNames) { AssistantManaged = context.Manager == SessionMcpManager.Assistant };
+        }
+    });
 
     // AC-997: the selection stays the full set this route tried, not only the ones that answered — a server that fell
     // over stays present instead of reading as one the operator never checked; the issues ride along for the header's
@@ -3982,14 +3997,22 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             if (FindSession(paneId) is { } session)
             {
-                var selection = new HashSet<string>(connectedServerNames, StringComparer.OrdinalIgnoreCase);
-                foreach (var issue in issues)
+                var set = _sessionMcpRestore?.IsEnabled == true ? _sessionMcpMounts?.Set(paneId) : null;
+                IEnumerable<string> desiredNames = set is null ? connectedServerNames : set.ServerNames;
+                var selection = new HashSet<string>(desiredNames, StringComparer.OrdinalIgnoreCase);
+                if (set?.Context is null)
                 {
-                    selection.Add(issue.Name);
+                    foreach (var issue in issues)
+                    {
+                        selection.Add(issue.Name);
+                    }
                 }
 
                 // AC-2083: stays exact, so Clear context re-mounts an override's other-project server instead of narrowing to the project's.
-                session.McpServerSelection = session.McpServerSelection is ExactMcpServerSelection ? new ExactMcpServerSelection(selection) : selection;
+                session.McpServerSelection = set?.Context is { } context
+                    ? new ExactMcpServerSelection(selection) { AssistantManaged = context.Manager == SessionMcpManager.Assistant }
+                    : session.McpServerSelection is ExactMcpServerSelection exact
+                        ? new ExactMcpServerSelection(selection) { AssistantManaged = exact.AssistantManaged } : selection;
                 session.McpServerConnectionIssues = issues;
             }
         });
@@ -7090,6 +7113,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
+    [RelayCommand]
+    private Task OpenSessionMcpAsync(SessionPanelViewModel session) =>
+        _dialogService?.ShowSessionMcpDialogAsync(session.PaneId, session.Title) ?? Task.CompletedTask;
+
     // Context-menu "Resume later…" (AC-231): schedules one prompt for this session at a moment of the operator's
     // choosing, the route that does not start from a warning. Silently unavailable where nothing can be scheduled.
     [RelayCommand]
@@ -8496,6 +8523,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             ProjectId: pane.ProjectId)
         {
             NameIsComposed = !pane.NameIsChosen,
+            StartedByTheAssistant = _sessionRegistry?.Find(pane.Id)?.StartedByTheAssistant == true,
         };
     }
 
@@ -8522,6 +8550,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // pane id names this pane, so it starts in place rather than as a second one.
         try
         {
+            if (_sessionMcpRestore is not null && await _sessionMcpRestore.RestoreAsync(plan) is { } restoredSelection)
+            {
+                result = result with { EnabledMcpServerNames = restoredSelection };
+            }
             if (await launcher.StartSessionAsync(_RequestOf(result, session.WorkspaceId) with { PaneId = session.PaneId }) is { PaneId.Length: > 0 })
             {
                 session.RestoreOffer = null;

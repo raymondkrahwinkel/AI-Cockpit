@@ -50,7 +50,7 @@ public class OrgPolicyCeilingTests
             var pty = Substitute.For<IPtyHostFactory>();
             pty.Start(Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, string>>(), Arg.Any<short>(), Arg.Any<short>())
                 .Returns(Substitute.For<IConPtyProcess>());
-            var launcher = new TtyLauncher(pty, Substitute.For<ISessionMemoryLimiter>(), new McpAuthKey(), new SessionMcpKeyring(), NullLogger<TtyLauncher>.Instance, orgPolicy: _Org());
+            var launcher = new TtyLauncher(pty, Substitute.For<ISessionMemoryLimiter>(), new SessionMcpKeyring(), NullLogger<TtyLauncher>.Instance, orgPolicy: _Org());
             string? notice = null;
 
             launcher.Launch(provider, profile: null, bypass, 80, 24, notice: message => notice = message);
@@ -293,7 +293,7 @@ public class OrgPolicyCeilingTests
             Runtime = new SessionRuntime(factory, profile: null, orgPolicy: org);
             Pty.Start(Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, string>>(), Arg.Any<short>(), Arg.Any<short>())
                 .Returns(Substitute.For<IConPtyProcess>());
-            _launcher = new TtyLauncher(Pty, Substitute.For<ISessionMemoryLimiter>(), new McpAuthKey(), new SessionMcpKeyring(), NullLogger<TtyLauncher>.Instance, orgPolicy: org);
+            _launcher = new TtyLauncher(Pty, Substitute.For<ISessionMemoryLimiter>(), new SessionMcpKeyring(), NullLogger<TtyLauncher>.Instance, orgPolicy: org);
         }
 
         public ISessionDriver Driver { get; } = Substitute.For<ISessionDriver>();

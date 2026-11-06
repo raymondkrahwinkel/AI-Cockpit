@@ -24,6 +24,39 @@ internal sealed class AssistantAgentMcpTools(
     Cockpit.Core.Abstractions.Sessions.ISessionRegistry? sessions = null,
     Cockpit.Core.Abstractions.Worktrees.IWorktreeManager? worktrees = null)
 {
+    [McpServerTool(Name = "get_session_mcp_set", ReadOnly = true, Destructive = false)]
+    [Description("Reads a local session's current MCP servers, availability and manager. Node and remote controller management are outside v1.")]
+    public async Task<string> GetSessionMcpSetAsync(string paneId)
+    {
+        if (_RefuseIfNotTheAssistant() is { } refusal)
+        {
+            return refusal;
+        }
+        return _SerializeMcpSet(await gateway.GetSessionMcpSetAsync(paneId).ConfigureAwait(false));
+    }
+
+    [McpServerTool(Name = "add_session_mcp_server", ReadOnly = false, Destructive = false)]
+    [Description("Adds a server to a local session, including your own, without consent. Internal, disabled, unknown, unsigned-in OAuth servers and names outside a delegation's profile ceiling are refused.")]
+    public async Task<string> AddSessionMcpServerAsync(string paneId, string name)
+    {
+        if (_RefuseIfNotTheAssistant() is { } refusal)
+        {
+            return refusal;
+        }
+        return _SerializeMcpSet(await gateway.ChangeSessionMcpServerAsync(paneId, name, add: true).ConfigureAwait(false));
+    }
+
+    [McpServerTool(Name = "remove_session_mcp_server", ReadOnly = false, Destructive = false)]
+    [Description("Removes a server from a local session without consent. Always-mounted core servers cannot be removed. The assistant receives a change notification.")]
+    public async Task<string> RemoveSessionMcpServerAsync(string paneId, string name)
+    {
+        if (_RefuseIfNotTheAssistant() is { } refusal)
+        {
+            return refusal;
+        }
+        return _SerializeMcpSet(await gateway.ChangeSessionMcpServerAsync(paneId, name, add: false).ConfigureAwait(false));
+    }
+
     [McpServerTool(Name = "attach_to_reply", ReadOnly = false, Destructive = false)]
     [Description("Attaches a file or an operator-provided image to the next assistant reply in Cockpit and open channels. Supply exactly one of path (inside the assistant scratch folder or a cockpit-managed worktree) or operatorImage (zero-based index into this turn's operator images, without file access). Maximum 25 MB per file and 10 files per reply. Refusals include a reason; send the reply text normally.")]
     public async Task<string> AttachToReplyAsync(
@@ -144,7 +177,7 @@ internal sealed class AssistantAgentMcpTools(
         "This tool is the cockpit assistant's own. It is not available to an agent session.";
 
     [McpServerTool(Name = "start_agent", ReadOnly = false, Destructive = false)]
-    [Description("Starts an AI session and returns its paneId, resolvedProfile and promptDelivered. Locally, workspaceId from list_workspaces is required; profile is required unless projectId supplies a default. Unknown profiles or projects are refused. projectId applies the project's folder, profile default, isolation, prompt, resources and MCP selection. options changes only named provider keys; unknown keys or values are refused. Permission-mode is never overridable, nor Codex sandbox or approval-policy. isolate:false is always refused; omitted inherits project isolation. On a paired node, use its name from list_sessions and fetch its catalog through list_profiles/list_projects or list_sessions(includeNodeCatalog:true). Only profile (required), projectId, prompt and name travel; workspaceId, workingDirectory, kind, options and isolate are refused. Node grants restrict profiles/projects. Node paneIds are addressed as \"<node> · <paneId>\". An omitted node with a projectId also seen on a node is refused using cached snapshots; node:\"local\" selects this machine explicitly. Unread nodes cannot be detected by that check. promptDelivered:false means queued for automatic delivery exactly once: never retry the start or resend that prompt. null means no prompt was supplied. Delegated tasks have no pane and cannot be started here.")]
+    [Description("Starts an AI session and returns its paneId, resolvedProfile, promptDelivered, mcpServers and mcpServersConfirmed. Locally, workspaceId from list_workspaces is required; profile is required unless projectId supplies a default. Unknown profiles or projects are refused. projectId applies the project's folder, profile default, isolation, prompt, resources and MCP selection. options changes only named provider keys; unknown keys or values are refused. Permission-mode is never overridable, nor Codex sandbox or approval-policy. isolate:false is always refused; omitted inherits project isolation. On a paired node, use its name from list_sessions and fetch its catalog through list_profiles/list_projects or list_sessions(includeNodeCatalog:true). Only profile (required), projectId, prompt and name travel; workspaceId, workingDirectory, kind, options and isolate are refused. Node grants restrict profiles/projects. Node paneIds are addressed as \"<node> · <paneId>\". An omitted node with a projectId also seen on a node is refused using cached snapshots; node:\"local\" selects this machine explicitly. Unread nodes cannot be detected by that check. promptDelivered:false means queued for automatic delivery exactly once: never retry the start or resend that prompt. null means no prompt was supplied. mcpServersConfirmed:false means the route has not reported its MCP set yet; use get_session_mcp_set to read it later. Use add_session_mcp_server to add a server to a running local session without restarting. Delegated tasks have no pane and cannot be started here.")]
     public async Task<string> StartAgentAsync(
         [Description("The desk id from list_workspaces or list_sessions, never its tab label. Required locally and refused on a node.")] string? workspaceId = null,
         [Description("An exact profile label from list_profiles. Overrides the project's default; required when no project default exists. Unknown labels are refused. The result reports resolvedProfile.")] string? profile = null,
@@ -219,6 +252,8 @@ internal sealed class AssistantAgentMcpTools(
                     // argument back and said nothing when that argument was left out.
                     resolvedProfile = result.ResolvedProfileLabel,
                     promptDelivered = result.PromptDelivered,
+                    mcpServers = result.McpServers,
+                    mcpServersConfirmed = result.McpServersConfirmed,
                 })
                 : _Serialize(new { ok = false, error = result.Error });
         }
@@ -302,6 +337,8 @@ internal sealed class AssistantAgentMcpTools(
                 projectId,
                 resolvedProfile = started.ResolvedProfile,
                 promptDelivered = started.PromptDelivered,
+                mcpServers = started.McpServers,
+                mcpServersConfirmed = started.McpServersConfirmed,
                 machine = new { name = node, local = false },
             });
     }
@@ -1851,6 +1888,9 @@ internal sealed class AssistantAgentMcpTools(
         string.Equals(McpRequestContext.CurrentPaneId, AssistantIdentity.PaneId, StringComparison.Ordinal)
             ? null
             : _Serialize(new { ok = false, error = NotTheAssistant });
+
+    private static string _SerializeMcpSet(SessionMcpSetResult result) =>
+        _Serialize(new { ok = result.Ok, manager = result.Manager, servers = result.Servers.Select(server => new { name = server.Name, status = server.Status }), error = result.Error });
 
     private static string _Serialize(object value) => JsonSerializer.Serialize(value, SerializerOptions);
 }

@@ -8,6 +8,35 @@
 - Session monitoring preserves a closing through bookkeeping and tool-free wake turns, while still reporting abandoned work.
 
 - A debug build is recognisable next to the installed one: "DEV" in its own title bar and a DEV bar over its window, taskbar and tray icon.
+- Run Windows executables named with forward-slash paths correctly in tracked, shell and verify commands while preserving their arguments.
+
+- Limit built-in MCP presets to the profile's selected servers; profiles without a selection retain their default servers.
+
+- Start and release the desktop assistant on the UI thread when requested through the admin API, preventing an unusable registered assistant pane.
+
+- Close pending MCP client calls promptly when their session key is revoked, while cancelling the upstream call.
+
+- Refuse local model session starts when their MCP gateway is unavailable, including profile and preset selections, with the same clear error as plugin sessions.
+
+- Keep MCP tools from different servers uniquely named in local model sessions, including after live additions, so calls and permissions reach the intended server.
+
+- Explain exact per-spawn MCP selections and live set changes to the assistant, and report the servers a spawned session actually connected with a confirmation flag.
+
+- Add MCP servers to running operator-managed sessions from the session dialog, with OAuth sign-in and the same audited admin route for remote sessions. Assistant-managed sets keep removal available and explain why additions go through the assistant.
+
+- Enable live MCP tool discovery in Codex sessions and follow unattended profiles' existing permission choice for tool approval on the Cockpit gateway.
+
+- Use one session MCP gateway for every session by default, keeping upstream credentials in Cockpit and showing a start failure when the gateway is unavailable. Remove the temporary switch and legacy direct-server route.
+
+- Run stdio MCP servers behind the opt-in session gateway with their session working directory, environment and process lifetime.
+
+- Update session MCP tools live, with search fallback, graceful removal and restored sets and delegation limits.
+
+- Let the local assistant manage session MCP sets within delegation limits, with audited changes and an operator removal brake.
+
+- Forward HTTP MCP tools through the opt-in session gateway, preserving images and instructions while isolating failed upstream servers.
+
+- Add the opt-in foundation for a separate loopback MCP URL per session, with session-key isolation.
 
 - Take over swarm leadership on this machine from the assistant chat or Options › Swarm, through the reachable current leader.
 

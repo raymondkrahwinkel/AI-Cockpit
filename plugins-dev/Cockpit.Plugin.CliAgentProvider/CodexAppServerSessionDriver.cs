@@ -206,7 +206,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
 
         // The session's MCP servers (#26) become -c config overrides on the app-server spawn; any bearer token
         // rides the process environment, never the command line (see CodexMcpConfig).
-        var mcpLaunch = CodexMcpConfig.Build(mcpServers);
+        var mcpLaunch = CodexMcpConfig.Build(mcpServers, options);
         _passedMcpServers = mcpLaunch.ServerNames;
         var environmentVariables = _config.BuildEnvironmentVariables();
 

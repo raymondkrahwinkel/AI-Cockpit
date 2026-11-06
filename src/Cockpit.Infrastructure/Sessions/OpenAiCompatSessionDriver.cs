@@ -27,12 +27,17 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
     private readonly ILogger<OpenAiCompatSessionDriver> _logger;
     private readonly SessionMcpMounts? _mcpMounts;
     private readonly ILocalModelContextManager _localModelContext;
+    private readonly SessionMcpGatewayHost? _gateway;
+    private string? _scratch;
+    private string? _scratchPane;
 
     private readonly Channel<SessionEvent> _events = Channel.CreateUnbounded<SessionEvent>();
     private readonly List<ChatMessage> _history = [];
 
     private IChatClient? _agent;
     private IMcpToolSession? _toolSession;
+    private FunctionInvokingChatClient? _toolLoop;
+    private int _toolsChanged;
 
     // Every mounted tool, wrapped in its `GatedTool` — the catalogue `search_tools` reads and `call_tool` runs
     // against (AC-963), and the list of what this session can reach at all.
@@ -61,12 +66,13 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
         IMcpToolProvider mcpToolProvider,
         ILogger<OpenAiCompatSessionDriver> logger,
         ILocalModelContextManager localModelContext,
-        SessionMcpMounts? mcpMounts = null)
+        SessionMcpMounts? mcpMounts = null, SessionMcpGatewayHost? gateway = null)
     {
         _chatClientFactory = chatClientFactory;
         _mcpToolProvider = mcpToolProvider;
         _logger = logger;
         _mcpMounts = mcpMounts;
+        _gateway = gateway;
         _localModelContext = localModelContext;
         _gate = new SessionToolApprovalGate(
             (toolUseId, toolName, inputJson) =>
@@ -138,6 +144,16 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
             // selection, so fall back to the profile's saved one rather than reaching every enabled server — the same
             // fix the plugin-driver adapter applies, so the local-model tool loop honours the checklist too.
             var selection = _WithCoding(McpServerRegistryFilter.EffectiveSessionSelection(enabledMcpServerNames, profile?.EnabledMcpServerNames));
+            if (_gateway?.UrlFor(paneId ?? "launch") is not null)
+            {
+                paneId ??= Guid.NewGuid().ToString("N");
+                _scratchPane = paneId;
+                _scratch = SessionScratch.Create(paneId, message => _logger.LogWarning("{Message}", message));
+                var environment = new Dictionary<string, string?>(ProfileEnvironmentVariable.ToOverlay(profile?.EnvironmentVariables ?? []), StringComparer.OrdinalIgnoreCase);
+                foreach (var key in new[] { "COCKPIT_SCRATCH", "TEMP", "TMP", "TMPDIR" }) { environment[key] = _scratch; }
+                await _gateway.BindLaunchAsync(paneId, projectId, workingDirectory, confineRoot, profile?.Label,
+                    selection is ExactMcpServerSelection { AssistantManaged: true }, cancellationToken, environment).ConfigureAwait(false);
+            }
             _toolSession = await _mcpToolProvider.ConnectAsync(selection, paneId, confineRoot, projectId, workingDirectory, cancellationToken, profile?.Label).ConfigureAwait(false);
 
             // Symmetric with the plugin-driver adapter (#44): say which servers the tool loop connected and against
@@ -163,7 +179,15 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
             // session was launched from — the one route where a missing server is otherwise invisible to the operator.
             if (paneId is { Length: > 0 })
             {
-                _mcpMounts?.Report(paneId, _toolSession.ConnectedServerNames, _toolSession.ConnectionIssues);
+                if (_toolSession.IsLive)
+                {
+                    _mcpMounts?.ReportConnections(paneId, _toolSession.ConnectedServerNames, _toolSession.ConnectionIssues,
+                        exception => _logger.LogWarning(exception, "MCP connection-report handler failed."));
+                }
+                else
+                {
+                    _mcpMounts?.Report(paneId, _toolSession.ConnectedServerNames, _toolSession.ConnectionIssues);
+                }
             }
 
             // AC-500: a server the plugin/registry declared OAuth is a named outcome distinct from an ordinary
@@ -176,9 +200,11 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
                     string.Join(", ", _toolSession.ServersNeedingSignIn));
             }
 
+            _gate.ToolNames = _toolSession.ToolNames;
             _gate.ToolClasses = _toolSession.ToolClasses;
             _gatedTools = [.. _toolSession.Tools.Select(tool => tool with { Function = new GatedTool(tool.Function, _gate) })];
             _turnTools = _BuildTurnTools();
+            _toolSession.ToolsChanged += _OnToolsChanged;
             var turnLimits = TurnLimitsFrom(config, _logger);
             _logger.LogInformation("Local-model turn guard: context {ContextWindowTokens}, reserve {ReserveTokens}, soft limit {SoftLimitRatio}.",
                 turnLimits.ContextWindowTokens, turnLimits.ReserveTokens, turnLimits.SoftLimitRatio);
@@ -186,6 +212,7 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
                 .UseFunctionInvocation(configure: client =>
                 {
                     ChatTurnLoop.ConfigureToolLoop(client);
+                    _toolLoop = client;
                     client.AdditionalTools = [.. _gatedTools.Select(tool => tool.Function)];
                 })
                 .Use(inner => new HermesToolCallChatClient(inner))
@@ -206,7 +233,7 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
                 toolsOffered: _turnTools.Count > 0);
             if (!string.IsNullOrWhiteSpace(systemPrompt))
             {
-                _history.Add(new ChatMessage(ChatRole.System, systemPrompt));
+                _history.Add(new ChatMessage(ChatRole.System, _toolSession.ToolNames?.InBrief(systemPrompt, localTools: true) ?? systemPrompt));
             }
 
             // Report the actual tool names (not server names) so the session's "N tools" count is real and verifiable —
@@ -255,7 +282,34 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
             CockpitToolSearch.SearchToolName,
             McpToolTokenMath.Format(McpToolTokenMath.EstimateTokens(searchable.Select(tool => McpToolTokenEstimator.SerialiseForEstimate(tool.Function)))));
 
-        return [.. preloaded.Select(tool => (AITool)tool.Function), .. CockpitToolSearch.Build(_gatedTools)];
+        return [.. preloaded.Select(tool => (AITool)tool.Function), .. CockpitToolSearch.Build(_LiveGatedTools)];
+    }
+
+    private void _OnToolsChanged() => Interlocked.Exchange(ref _toolsChanged, 1);
+
+    private IReadOnlyList<McpSessionTool> _LiveGatedTools()
+    {
+        if (_toolSession is null)
+        {
+            return [];
+        }
+        _gate.ToolClasses = _toolSession.ToolClasses;
+        return [.. _toolSession.Tools.Select(tool => tool with { Function = new GatedTool(tool.Function, _gate) })];
+    }
+
+    private void _RefreshTools()
+    {
+        if (Interlocked.Exchange(ref _toolsChanged, 0) == 0)
+        {
+            return;
+        }
+        _gatedTools = [.. _LiveGatedTools()];
+        _turnTools = _BuildTurnTools();
+        if (_toolLoop is not null)
+        {
+            _toolLoop.AdditionalTools = [.. _gatedTools.Select(tool => tool.Function)];
+        }
+        Capabilities = Capabilities with { SupportsTools = _turnTools.Count > 0 };
     }
 
     // Local HTTP providers have no native file tools. An explicit profile/project selection must therefore never
@@ -274,7 +328,8 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
 
         // Run the turn in the background so the caller returns immediately and consumes the reply through
         // Events, mirroring how the Claude-CLI driver's send returns before the response streams back.
-        ChatMessage message = ChatTurnLoop.UserMessage(text, images?.Select(image => (image.MediaType, image.Base64Data)));
+        ChatMessage message = ChatTurnLoop.UserMessage(_toolSession?.ToolNames?.InBrief(text, localTools: true) ?? text,
+            images?.Select(image => (image.MediaType, image.Base64Data)));
         _turnCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _turnTask = _RunTurnAsync(message, _turnCancellation.Token);
         return Task.CompletedTask;
@@ -282,6 +337,7 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
 
     private async Task _RunTurnAsync(ChatMessage userMessage, CancellationToken cancellationToken)
     {
+        _RefreshTools();
         _history.Add(userMessage);
         var toolsAvailable = _turnTools.Count > 0;
         _turnHadToolActivity = false;
@@ -586,6 +642,7 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
             {
                 if (_toolSession is not null)
                 {
+                    _toolSession.ToolsChanged -= _OnToolsChanged;
                     await _toolSession.DisposeAsync().ConfigureAwait(false);
                 }
             }
@@ -600,6 +657,10 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
                     if (_sessionId is not null)
                     {
                         await _localModelContext.ReleaseAsync(_sessionId).ConfigureAwait(false);
+                        if (_scratch is not null && _scratchPane is not null)
+                        {
+                            await SessionScratchCleanup.DeleteAsync(_scratch, _scratchPane, null, _logger).ConfigureAwait(false);
+                        }
                     }
                 }
             }
