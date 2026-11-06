@@ -26,6 +26,8 @@ def main() -> None:
     runs = [(route, scenario) for scenario in scenarios for route in ("local", "shared", "poll")]
     if mode == "silent":
         runs = [("silent", scenarios[0])]
+    if mode == "shared":
+        runs = [("shared", scenarios[0])]
     for route, (width, height, scale, tabs) in runs:
         name = "ac2142-" + uuid.uuid4().hex
         state = SCRATCH / mode / name
