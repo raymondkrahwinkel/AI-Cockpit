@@ -112,10 +112,6 @@ public sealed partial class MarkdownEditor
         {
             if (!ct.IsCancellationRequested)
             {
-                if (_images.GetValueOrDefault(target) == load)
-                {
-                    _images.Remove(target);
-                }
                 control.Content = new TextBlock { Text = alt.Length > 0 ? alt : "Image unavailable", Foreground = TextSecondary };
             }
         }
