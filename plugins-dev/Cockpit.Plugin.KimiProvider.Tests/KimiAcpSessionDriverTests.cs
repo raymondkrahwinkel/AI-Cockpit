@@ -1,5 +1,7 @@
 using System.Text.Json;
+using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
+using NSubstitute;
 
 namespace Cockpit.Plugin.KimiProvider.Tests;
 
@@ -43,20 +45,46 @@ public class KimiAcpSessionDriverTests
     // the servers it hands kimi authenticate with exactly that key, so scrubbing it would lock the session out
     // of the tools it was just given.
     [Fact]
-    public async Task Start_KeepsTheCockpitMcpKey_ForTheServersItHandsTheChild()
+    public async Task Start_KeepsOwnCredentials_AndReportsOnlyTheirSource()
     {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
-        var environment = new Dictionary<string, string> { ["COCKPIT_MCP_KEY"] = "mcp-key" };
+        var host = Substitute.For<ICockpitHost>();
+        new KimiProviderPlugin().Initialize(host);
+        host.Received(1).AddSessionProvider(Arg.Is<SessionProviderRegistration>(registration => registration.IsLoggedIn == null));
+        var secret = Guid.NewGuid().ToString();
+        var config = _DefaultConfig();
+        var previous = Environment.GetEnvironmentVariable("KIMI_API_KEY");
+        try
+        {
+            Environment.SetEnvironmentVariable("KIMI_API_KEY", null);
+            Assert.Equal(PluginCredentialKind.Unknown, KimiConfig.CredentialKindOf(JsonSerializer.Serialize(config)));
+            Environment.SetEnvironmentVariable("KIMI_API_KEY", secret);
+            Assert.Equal(PluginCredentialKind.ApiKeyFromSecret, KimiConfig.CredentialKindOf(JsonSerializer.Serialize(config)));
+            Assert.Equal(PluginCredentialKind.ApiKey, KimiConfig.CredentialKindOf(JsonSerializer.Serialize(config with { ApiKey = secret })));
+            Assert.False(config.ToString().Contains(secret, StringComparison.Ordinal));
+            Assert.False((config with { ApiKey = secret }).ToString().Contains(secret, StringComparison.Ordinal));
 
-        var startTask = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: null, options: null, mcpServers: null, environment, CancellationToken.None);
-        await _RespondAsync(fake, "initialize", "{}");
-        await _RespondAsync(fake, "session/new", """{"sessionId":"session_1","configOptions":[]}""");
-        await startTask;
+            var fake = new FakeCliSubprocess();
+            await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
+            var environment = new Dictionary<string, string> { ["COCKPIT_MCP_KEY"] = "mcp-key" };
 
-        var environmentVariables = fake.EnvironmentVariables;
-        Assert.NotNull(environmentVariables);
-        Assert.Equal("mcp-key", environmentVariables["COCKPIT_MCP_KEY"]);
+            var startTask = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: null, options: null, mcpServers: null, environment, CancellationToken.None);
+            await _RespondAsync(fake, "initialize", "{}");
+            await _RespondAsync(fake, "session/new", """{"sessionId":"session_1","configOptions":[]}""");
+            await startTask;
+
+            var environmentVariables = fake.EnvironmentVariables;
+            Assert.NotNull(environmentVariables);
+            Assert.Equal("mcp-key", environmentVariables["COCKPIT_MCP_KEY"]);
+            Assert.False(environmentVariables.TryGetValue("KIMI_API_KEY", out var key) && key is null);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("KIMI_API_KEY", previous);
+        }
+
+        var account = new FakeCliSubprocess();
+        await using var accountDriver = new KimiAcpSessionDriver(() => account, config with { AuthEnvVar = null }, "kimi");
+        await _StartAsync(accountDriver, account);
     }
 
     // Layer 2, provider protocol contract (AC-1992): the brain is Kimi's first visible turn, alone and exactly once,

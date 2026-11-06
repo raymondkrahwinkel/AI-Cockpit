@@ -1382,7 +1382,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         }
         else
         {
-            var restartRequired = installed?.Discovered.Manifest.RequiresRestart == true;
+            var restartRequired = installed?.Discovered.RequiresRestart == true;
             StatusMessage = restartRequired ? $"{installedMessage} {_Restart} to activate it." : installedMessage;
             _SetRestartPending(result.FolderId ?? "", restartRequired);
         }

@@ -143,7 +143,10 @@ rights, disk encryption, and encrypted backups. A state with encrypted credentia
 encryption off on the desktop before copying it to the server, or start from an empty `/state`.
 
 That makes `session.env` the container secret for provider API keys (`OPENROUTER_API_KEY`, `GEMINI_API_KEY`,
-`GITHUB_MODELS_TOKEN`, `XAI_API_KEY`): a profile with an empty key then uses the variable and shows "API key from secret", as long as its base URL is the provider's own host (`GITHUB_MODELS_TOKEN` is separate from the `GITHUB_TOKEN` that `gh` and `git` use). A key
+`GITHUB_MODELS_TOKEN`, `XAI_API_KEY`): a profile with an empty key then uses the variable and shows "API key from secret", as long as its base URL is the provider's own host (`GITHUB_MODELS_TOKEN` is separate from the `GITHUB_TOKEN` that `gh` and `git` use).
+Codex, Kimi and opencode use `CODEX_API_KEY`, `KIMI_API_KEY` and `OPENCODE_API_KEY` respectively (or the profile's
+configured `AuthEnvVar`), without a base-URL restriction. An explicit profile key takes precedence over the environment;
+Health reports only the credential source, never its value. A key
 typed into a profile lives in its `ConfigJson` on this unencrypted volume, so there it is not a secret.
 
 ## Agent sessions run as `agent`
