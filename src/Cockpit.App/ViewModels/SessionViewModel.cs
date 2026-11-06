@@ -426,6 +426,21 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     // A turn pauses on a question/permission and then keeps streaming into the same growing entry afterwards (AC-97).
     private readonly StringBuilder _readAloudPendingProse = new();
+    private SpokenReplyMode _assistantSpeechMode;
+    private SpokenReplyMode _turnSpeechMode;
+    private (long Turn, int Generation) _speechTurn;
+
+    public SpokenReplyMode AssistantSpeechMode
+    {
+        get => _assistantSpeechMode;
+        set
+        {
+            if (SetProperty(ref _assistantSpeechMode, value) && IsTheVoiceAssistant)
+            {
+                CancelReadAloud();
+            }
+        }
+    }
     private readonly Dictionary<TranscriptEntryViewModel, string> _readAloudObservedEntries = [];
     private int _readAloudObservedEntryCount;
 
@@ -2171,6 +2186,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     [RelayCommand]
     private async Task StopAsync()
     {
+        if (IsTheVoiceAssistant)
+        {
+            CancelReadAloud();
+        }
         if (!_control.IsRunning)
         {
             return;
@@ -2491,7 +2510,15 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // below stay on the bare text, so a reply prefix never changes retry or auto-close behaviour.
     private void _OnTurnStarting(QueuedPrompt prompt)
     {
+        if (IsTheVoiceAssistant)
+        {
+            CancelReadAloud();
+            _currentTurnAssistantEntries.Clear();
+            _ResetReadAloudStream();
+        }
         ResetReadAloudCancellation();
+        _turnSpeechMode = IsTheVoiceAssistant ? AssistantSpeechMode : SpokenReplyMode.Full;
+        _speechTurn = CaptureReadAloudTurn();
 
         var text = prompt.Text;
         var images = prompt.Images;
@@ -2743,7 +2770,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // answers (AC-97).
     private void _FlushPendingProseForReadAloud()
     {
-        if (!ReadResponsesAloud)
+        if (!ReadResponsesAloud || _turnSpeechMode != SpokenReplyMode.Full)
         {
             return;
         }
@@ -2770,6 +2797,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
 
         _AppendStreamingReadAloudDelta();
+        if (_turnSpeechMode != SpokenReplyMode.Full)
+        {
+            return;
+        }
         var stream = TtsProseExtractor.ExtractCompleted(_readAloudPendingProse.ToString());
         if (stream.ConsumedLength == 0)
         {
@@ -2972,6 +3003,13 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // arrive after this, in `_OnLiveStateChanged`.
     private void _DrawTurnEnd(SessionTurnEnd end)
     {
+        if (_turnSpeechMode != SpokenReplyMode.Full && (end.IsError || end.WasInterrupted || end.BySessionError))
+        {
+            CancelReadAloud();
+            _ResetReadAloudStream();
+            _StopSignOfLifeClock();
+            CompleteReadAloudStream();
+        }
         var failedRow = end.FailedRowId is { } failedRowId && _rowsById.TryGetValue(failedRowId, out var row) ? row : null;
         if (end.BySessionError)
         {
@@ -3026,7 +3064,16 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.TurnResult, result.Title) { TurnResult = result });
         }
 
-        _FlushPendingProseForReadAloud();
+        if (_turnSpeechMode == SpokenReplyMode.Full)
+        {
+            _FlushPendingProseForReadAloud();
+        }
+        else if (ReadResponsesAloud && !end.IsError && !end.WasInterrupted)
+        {
+            _AppendStreamingReadAloudDelta();
+            IReadOnlyList<string> spoken = SpokenReply.Select(_readAloudPendingProse.ToString(), _turnSpeechMode);
+            _ = EnqueueReadAloudAsync(spoken, _speechTurn);
+        }
         CompleteReadAloudStream();
 
         _currentTurnAssistantEntries.Clear();
