@@ -48,6 +48,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- Usage records keep the provider's actual model or effective launch model, including Codex spawn overrides, and leave unknown models unset. Thread tags label unknown projects explicitly.
+
 - Simple sessions now use the same provider instructions as sessions started from Panels.
 - A plugin is now turned off only after it is named in two interrupted starts in a row; Cockpit explains that recovery decision and offers to turn it back on.
 - Discord final-answer relays now send a streamed answer as one message.

@@ -180,7 +180,14 @@ public sealed partial class SessionHost : ISessionTurnGate, ISessionTranscript, 
     // What the consumer knows of the provider before its runtime says so; the runtime's own word otherwise.
     public SessionCapabilities? Capabilities { get; set; }
 
-    public SessionLiveState LiveState => _liveState.Snapshot(IsBusy) with { Capabilities = Runtime?.Capabilities ?? Capabilities };
+    public SessionLiveState LiveState
+    {
+        get
+        {
+            var state = _liveState.Snapshot(IsBusy);
+            return state with { Capabilities = Runtime?.Capabilities ?? Capabilities, Model = state.Model ?? Runtime?.Model };
+        }
+    }
 
     // Whether this host can launch at all; the design-time graph builds one without a manager.
     public bool CanLaunch => _manager is not null;
