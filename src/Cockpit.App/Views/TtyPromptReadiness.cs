@@ -11,6 +11,6 @@ internal static partial class TtyPromptReadiness
         || screen.Contains("Do you trust the contents", StringComparison.OrdinalIgnoreCase)
         || screen.Contains("Yes, I trust this folder", StringComparison.OrdinalIgnoreCase);
 
-    [GeneratedRegex(@"^\s*[❯›>]\s*\d+[.)]\s", RegexOptions.Multiline | RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^\s*[❯›>]\s*(?:\d+[.)]|[✔●])\s", RegexOptions.Multiline | RegexOptions.CultureInvariant)]
     private static partial Regex ChoiceLine();
 }

@@ -41,6 +41,12 @@ public class TtyPromptReadinessTests
             Assert.True(viewModel.HasPromptWaitingToBeDelivered);
             Assert.Empty(pty.Written);
 
+            _Terminal(view).Write(Encoding.UTF8.GetBytes("\x1b[2J\x1b[HChoose the text style\r\n❯ ✔ Dark mode\r\n  Light mode"));
+            _InvokeCheckReadiness(view);
+            Assert.False(viewModel.CanTakeAPrompt);
+            Assert.True(viewModel.HasPromptWaitingToBeDelivered);
+            Assert.Empty(pty.Written);
+
             _Terminal(view).Write(Encoding.UTF8.GetBytes("\x1b[2J\x1b[H❯ restored draft"));
             _InvokeCheckReadiness(view);
             await _LetPostedWorkRunAsync();
