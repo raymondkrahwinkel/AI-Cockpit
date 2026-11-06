@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Run Windows executables named with forward-slash paths correctly in tracked, shell and verify commands while preserving their arguments.
+
 - Limit built-in MCP presets to the profile's selected servers; profiles without a selection retain their default servers.
 
 - Start and release the desktop assistant on the UI thread when requested through the admin API, preventing an unusable registered assistant pane.

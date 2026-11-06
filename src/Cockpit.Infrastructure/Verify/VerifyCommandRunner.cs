@@ -15,7 +15,7 @@ internal sealed class VerifyCommandRunner : IVerifyCommandRunner, ISingletonServ
 
     public async Task<VerifyRunResult> RunAsync(VerifyRunner runner, CancellationToken cancellationToken = default)
     {
-        var startInfo = new ProcessStartInfo(runner.Command)
+        var startInfo = new ProcessStartInfo(CommandRunnerProcess.NormalizeExecutablePath(runner.Command))
         {
             WorkingDirectory = runner.WorkingDirectory,
             UseShellExecute = false,
