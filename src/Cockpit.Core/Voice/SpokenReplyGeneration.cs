@@ -9,8 +9,7 @@ public static class SpokenReplyGeneration
 {
     public static async Task<SpokenReplyResult> GenerateAsync(
         ISessionDriverFactory? factory, SessionProfile? profile, string answer, string? context,
-        SpokenReplyMode mode, SpokenReplyMethod method, CancellationToken cancellationToken = default,
-        TimeProvider? timeProvider = null)
+        SpokenReplyMode mode, SpokenReplyMethod method, CancellationToken cancellationToken = default)
     {
         var fallback = SpokenReply.Select(answer, mode);
         if (mode == SpokenReplyMode.Full || method == SpokenReplyMethod.Rules || fallback.Count == 0)
@@ -22,7 +21,7 @@ public static class SpokenReplyGeneration
             return new(fallback, "Rules used: no ephemeral provider route.");
         }
 
-        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(3), timeProvider ?? TimeProvider.System);
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(3));
         using var pending = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
         try
         {

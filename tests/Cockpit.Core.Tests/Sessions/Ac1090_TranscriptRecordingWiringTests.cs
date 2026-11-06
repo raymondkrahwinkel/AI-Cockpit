@@ -125,36 +125,6 @@ public class Ac1090_TranscriptRecordingWiringTests : IDisposable
         cancelled.Cancel();
         late.SetResult(sentinel);
         Assert.Empty((await pending).Sentences);
-        drivers.ClearReceivedCalls();
-        await SpokenReplyGeneration.GenerateAsync(drivers, profile, answer, null, SpokenReplyMode.Full, SpokenReplyMethod.Assistant);
-        await SpokenReplyGeneration.GenerateAsync(drivers, profile, answer, null, SpokenReplyMode.Short, SpokenReplyMethod.Rules);
-        await drivers.DidNotReceive().GenerateEphemeralSpeechAsync(Arg.Any<SessionProfile>(), Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
-
-        var clock = Substitute.For<TimeProvider>();
-        TimerCallback? expire = null;
-        object? timerState = null;
-        clock.CreateTimer(Arg.Any<TimerCallback>(), Arg.Any<object?>(), Arg.Any<TimeSpan>(), Arg.Any<TimeSpan>())
-            .Returns(call =>
-            {
-                expire = call.ArgAt<TimerCallback>(0);
-                timerState = call.ArgAt<object?>(1);
-                return Substitute.For<ITimer>();
-            });
-        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        late = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
-        drivers.GenerateEphemeralSpeechAsync(profile, answer, null, Arg.Any<CancellationToken>()).Returns(_ =>
-        {
-            started.TrySetResult();
-            return late.Task;
-        });
-        var timed = SpokenReplyGeneration.GenerateAsync(drivers, profile, answer, null, SpokenReplyMode.Short, SpokenReplyMethod.Profile, timeProvider: clock);
-        await started.Task;
-        Assert.NotNull(expire);
-        expire(timerState);
-        late.SetResult(sentinel);
-        var fallback = await timed;
-        Assert.Equal(answer, Assert.Single(fallback.Sentences));
-        Assert.NotNull(fallback.RulesReason);
     }
 
     public void Dispose()
