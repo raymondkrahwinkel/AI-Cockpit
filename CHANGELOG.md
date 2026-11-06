@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Move the Simple/Panels switch to the title bar in both views and remove the Simple rail's More options shortcut.
+- Keep connected sessions' MCP counts and status buttons current after live server or connection-issue changes, preserving other session statuses.
 - AC-2187: the assistant can tell which session you have selected: `list_sessions` marks it, following the Simple stand's own selection when that stand is showing.
 - AC-2100: display relative Depot note images in Markdown file previews and editors without rewriting their source.
 
