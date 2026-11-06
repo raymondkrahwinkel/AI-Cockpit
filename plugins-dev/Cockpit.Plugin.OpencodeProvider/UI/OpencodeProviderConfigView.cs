@@ -55,6 +55,7 @@ internal sealed class OpencodeProviderConfigView : IPluginProviderConfigView
                 _commandStatus,
                 _LabelRow("API key (optional)", host.CreateHelpHint("setup", "authenticate")),
                 _apiKey,
+                _Hint("Or set OPENCODE_API_KEY in session.env on the server."),
                 _LabelRow("Default model (optional)", host.CreateHelpHint("setup", "default-model")),
                 _defaultModel,
                 _Hint("opencode routes by provider/model, e.g. anthropic/claude-sonnet-4-5, openai/gpt-5.1 — or leave blank to use opencode's own free-tier default and change it live from the session's model picker."),

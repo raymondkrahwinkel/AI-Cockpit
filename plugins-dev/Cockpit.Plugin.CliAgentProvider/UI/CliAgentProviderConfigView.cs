@@ -53,6 +53,7 @@ internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
                 _workingDirectoryStatus,
                 _LabelRow("API key (optional)", host.CreateHelpHint("setup", "api-key")),
                 _apiKey,
+                new TextBlock { Text = "Or set CODEX_API_KEY in session.env on the server.", FontSize = 11, TextWrapping = Avalonia.Media.TextWrapping.Wrap },
             },
         };
 
