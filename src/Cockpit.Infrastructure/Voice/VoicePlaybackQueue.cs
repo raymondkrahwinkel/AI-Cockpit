@@ -284,7 +284,7 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Read-aloud playback failed for a queued sentence; skipping it and continuing.");
+                _logger.LogWarning("Read-aloud playback failed ({ErrorType}) for a queued sentence; skipping it and continuing.", ex.GetType().Name);
                 _Complete(sentence, played: false, aborted: false);
             }
         }
@@ -316,7 +316,7 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "TTS synthesis failed for a queued sentence; skipping it.");
+            _logger.LogWarning("TTS synthesis failed ({ErrorType}) for a queued sentence; skipping it.", ex.GetType().Name);
             return null;
         }
     }
