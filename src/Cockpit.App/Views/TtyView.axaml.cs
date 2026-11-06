@@ -1123,12 +1123,17 @@ public partial class TtyView : UserControl
         _CheckHostedTuiReadiness();
     }
 
-    // The gate a held opening brief waits behind: `TerminalControl.BracketedPaste` flips true the moment the hosted
-    // CLI sends DECSET 2004, which happens in the CLI's very first output burst (measured ~0.27s after spawn for
-    // `claude` — AC-760 grooming). The fallback covers a CLI that never sends it.
+    // AC-2164: paste mode and elapsed time also occur during native trust/choice questions.
     private void _CheckHostedTuiReadiness()
     {
         if (_hostedTuiReady)
+        {
+            return;
+        }
+
+        var blocked = TtyPromptReadiness.IsBlocked(_LastVisibleLines(Terminal.Buffer.Rows) ?? string.Empty);
+        _viewModel?.SetHostedTuiBlocked(blocked);
+        if (blocked)
         {
             return;
         }
