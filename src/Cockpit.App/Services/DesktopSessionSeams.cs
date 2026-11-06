@@ -20,6 +20,11 @@ internal sealed class DesktopSessionSeams(Func<CockpitViewModel> cockpit)
 
     public WorkspaceSettings Workspaces => cockpit().Workspaces.Settings;
 
+    // The Simple stand keeps its own selection (AC-1301), so the stand on screen decides which one counts.
+    public string? SelectedPaneId => cockpit() is { SimpleView: var simple } desktop
+        ? (simple ? desktop.SimpleSelectedSession : desktop.SelectedSession)?.PaneId
+        : null;
+
     public bool CanCloseWorkspace(string workspaceId) => cockpit().Workspaces.CanClose(workspaceId);
 
     public Task<Workspace> CreateSessionsWorkspaceAsync(string name) =>
