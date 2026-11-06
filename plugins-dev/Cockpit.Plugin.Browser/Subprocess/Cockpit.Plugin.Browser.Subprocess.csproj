@@ -17,6 +17,7 @@
 
   <ItemGroup>
     <Compile Include="..\Ipc\*.cs" Link="Ipc\%(Filename)%(Extension)" />
+    <Compile Include="..\Host\*.cs" Link="Host\%(Filename)%(Extension)" />
     <PackageReference Include="CefGlue.Next.Core" Version="154.8037.98" />
   </ItemGroup>
 

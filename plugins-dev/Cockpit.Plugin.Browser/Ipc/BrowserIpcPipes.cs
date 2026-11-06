@@ -1,4 +1,7 @@
 using System.IO.Pipes;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
 
 namespace Cockpit.Plugin.Browser.Ipc;
 
@@ -20,7 +23,18 @@ internal sealed class BrowserIpcPipes : IDisposable
         var input = new AnonymousPipeClientStream(PipeDirection.In, inputHandle);
         try
         {
-            return (input, new AnonymousPipeClientStream(PipeDirection.Out, outputHandle));
+            var output = new AnonymousPipeClientStream(PipeDirection.Out, outputHandle);
+            try
+            {
+                _StopInheritance(input.SafePipeHandle);
+                _StopInheritance(output.SafePipeHandle);
+                return (input, output);
+            }
+            catch
+            {
+                output.Dispose();
+                throw;
+            }
         }
         catch
         {
@@ -28,6 +42,29 @@ internal sealed class BrowserIpcPipes : IDisposable
             throw;
         }
     }
+
+    private static void _StopInheritance(SafePipeHandle handle)
+    {
+        bool success;
+        if (OperatingSystem.IsWindows())
+        {
+            success = _SetHandleInformation(handle, 1, 0);
+        }
+        else
+        {
+            success = _Fcntl(handle, 2, 1) == 0;
+        }
+        if (success == false)
+        {
+            throw new Win32Exception(Marshal.GetLastPInvokeError());
+        }
+    }
+
+    [DllImport("kernel32.dll", EntryPoint = "SetHandleInformation", SetLastError = true)]
+    private static extern bool _SetHandleInformation(SafePipeHandle handle, uint mask, uint flags);
+
+    [DllImport("libc", EntryPoint = "fcntl", SetLastError = true)]
+    private static extern int _Fcntl(SafePipeHandle handle, int command, int value);
 
     public void Dispose()
     {

@@ -70,7 +70,7 @@ internal sealed class BrowserIpcConnection : IAsyncDisposable
     }
 
     internal BrowserIpcConnection(Stream input, Stream output, Guid generation,
-        Func<BrowserIpcMessage, CancellationToken, Task<JsonElement>> handle)
+        Func<BrowserIpcMessage, CancellationToken, Task<JsonElement>> handle, (Guid Tab, string Session)? initialTab = null)
     {
         if (generation == Guid.Empty)
         {
@@ -80,6 +80,10 @@ internal sealed class BrowserIpcConnection : IAsyncDisposable
         _output = output;
         _generation = generation;
         _handle = handle;
+        if (initialTab is { } tab)
+        {
+            RegisterTab(tab.Tab, tab.Session);
+        }
         _worker = _WorkAsync();
         _reader = _ReadAsync();
     }

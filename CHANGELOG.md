@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2144: add an isolated Browser engine launcher for the upcoming host-backed tabs, with private storage checks and restricted pipe inheritance.
+
 - AC-2143: prepare a bounded private connection for the Browser engine host, rejecting stale generations and requests for unregistered tabs.
 
 - AC-2178: keep existing plugins that register host services loading after an app update, and defer changes to those plugins until restart.
