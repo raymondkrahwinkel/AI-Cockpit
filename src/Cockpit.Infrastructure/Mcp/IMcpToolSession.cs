@@ -13,11 +13,22 @@ internal interface IMcpToolSession : IAsyncDisposable
 {
     IReadOnlyList<McpSessionTool> Tools { get; }
 
+    IReadOnlyList<McpSessionTool> GatewayTools => Tools;
+
     event Action? ToolsChanged;
 
     Task AddServerAsync(McpServerConfig server, CancellationToken cancellationToken = default);
 
     void RemoveServer(string serverName);
+
+    async Task UpdateServersAsync(IReadOnlyList<McpServerConfig> servers)
+    {
+        foreach (var name in ConnectedServerNames.Except(servers.Select(server => server.Name), StringComparer.OrdinalIgnoreCase))
+        {
+            RemoveServer(name);
+        }
+        await Task.WhenAll(servers.Select(server => AddServerAsync(server)));
+    }
 
     string CaptureServerInstructions();
 

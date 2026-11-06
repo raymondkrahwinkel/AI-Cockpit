@@ -88,6 +88,7 @@ internal sealed partial class McpToolProvider(
         try
         {
             await Task.WhenAll(enabledServers.Select(server => session.AddServerAsync(server, cancellationToken)));
+            session.WatchMounts(confineFileToolsToDirectory);
             return session;
         }
         catch

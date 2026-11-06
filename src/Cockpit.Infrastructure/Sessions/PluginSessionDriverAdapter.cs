@@ -572,11 +572,14 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
     private McpToolNames? _gatewayToolNames;
     private IReadOnlyList<string>? _gatewayServerNames;
 
-    public Task SendUserMessageAsync(string text, IReadOnlyList<ImageAttachment>? images = null, CancellationToken cancellationToken = default) =>
-        inner.SendUserMessageAsync(
+    public Task SendUserMessageAsync(string text, IReadOnlyList<ImageAttachment>? images = null, CancellationToken cancellationToken = default)
+    {
+        _hostToolset?.RefreshTools();
+        return inner.SendUserMessageAsync(
             _gatewayToolNames?.InBrief(text) ?? text,
             images?.Select(image => new PluginImageAttachment(image.MediaType, image.Base64Data)).ToList(),
             cancellationToken);
+    }
 
     public Task InterruptAsync(CancellationToken cancellationToken = default) =>
         inner.InterruptAsync(cancellationToken);

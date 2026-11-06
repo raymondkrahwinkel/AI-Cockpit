@@ -13,6 +13,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.AI;
 using ModelContextProtocol;
 using ModelContextProtocol.AspNetCore;
 using ModelContextProtocol.Protocol;
@@ -122,6 +123,8 @@ internal sealed class SessionMcpGatewayHost : IHostedService, IAsyncDisposable
                 GatewayMcpBinding? activeBinding = null;
                 SemaphoreSlim? collectionGate = null;
                 Action? refresh = null;
+                var hasNativeSearch = false;
+                var requiresSearchFallback = false;
                 if (_provider?.Invoke() is { } provider && _mounts is not null)
                 {
                     var binding = _bindings.GetOrAdd((paneId, token), _ => new Lazy<GatewayMcpBinding>(() => new GatewayMcpBinding(provider, _mounts, paneId, token, _loggerFactory.CreateLogger<SessionMcpGatewayHost>()))).Value;
@@ -135,6 +138,7 @@ internal sealed class SessionMcpGatewayHost : IHostedService, IAsyncDisposable
                     var live = binding.Session;
                     var collection = session.ToolCollection;
                     var gate = new SemaphoreSlim(1);
+                    var searchTools = CockpitToolSearch.Build(() => live.GatewayTools).OfType<AIFunction>().Select(tool => McpServerTool.Create(tool)).ToArray();
                     collectionGate = gate;
                     void Refresh()
                     {
@@ -142,11 +146,20 @@ internal sealed class SessionMcpGatewayHost : IHostedService, IAsyncDisposable
                         try
                         {
                             var desired = live.ForwardTools.ToDictionary(tool => tool.ProtocolTool.Name, StringComparer.Ordinal);
+                            if (!hasNativeSearch && (live.GatewayTools.Count > CockpitToolSearch.PreloadThreshold || requiresSearchFallback))
+                            {
+                                var preloaded = live.GatewayTools.Where(tool => tool.AlwaysMounted).Select(tool => tool.Function.Name).ToHashSet(StringComparer.Ordinal);
+                                desired = desired.Where(pair => preloaded.Contains(pair.Key)).ToDictionary(StringComparer.Ordinal);
+                            }
+                            foreach (var search in searchTools)
+                            {
+                                desired[search.ProtocolTool.Name] = search;
+                            }
                             using var batch = collection.DeferChangedEvents();
                             foreach (var existing in collection.ToArray())
                             {
                                 if (!desired.TryGetValue(existing.ProtocolTool.Name, out var replacement)
-                                    || existing is not ForwardMcpServerTool forward || !forward.Matches(replacement))
+                                    || (!ReferenceEquals(existing, replacement) && (existing is not ForwardMcpServerTool forward || !forward.Matches(replacement))))
                                 {
                                     collection.Remove(existing);
                                 }
@@ -179,6 +192,9 @@ internal sealed class SessionMcpGatewayHost : IHostedService, IAsyncDisposable
                 session.Filters.Request.ListToolsFilters.Add(next => async (context, ct) =>
                 {
                     _RequirePane(paneId, token);
+                    var clientName = context.Server.ClientInfo?.Name ?? string.Empty;
+                    hasNativeSearch = clientName.Contains("claude", StringComparison.OrdinalIgnoreCase);
+                    requiresSearchFallback = clientName.Contains("codex", StringComparison.OrdinalIgnoreCase);
                     if (activeBinding is null || collectionGate is null)
                     {
                         return await next(context, ct);

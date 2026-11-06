@@ -13,4 +13,8 @@ public sealed record SessionStateRecord(
     string? WorktreePath,
     string? WorktreeBranch,
     string? PermissionMode,
-    DateTimeOffset RecordedAt);
+    DateTimeOffset RecordedAt)
+{
+    public IReadOnlyList<string>? McpServerNames { get; init; }
+    public SessionMcpManager McpManager { get; init; }
+}

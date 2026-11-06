@@ -14,7 +14,6 @@ internal sealed class GatewayMcpBinding : IAsyncDisposable
     private readonly Channel<bool> _changes = Channel.CreateUnbounded<bool>();
     private readonly Task _worker;
     private readonly TaskCompletionSource _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private readonly HashSet<string> _desired = new(StringComparer.OrdinalIgnoreCase);
     private Task _pendingConnections = Task.CompletedTask;
     private int _disposeStarted;
 
@@ -66,18 +65,9 @@ internal sealed class GatewayMcpBinding : IAsyncDisposable
                     using var deadline = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
                     deadline.CancelAfter(TimeSpan.FromSeconds(15));
                     var registry = await _provider.GatewayServersAsync(_paneId, deadline.Token);
-                    var desired = registry.Select(server => server.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
-                    foreach (var name in _desired)
-                    {
-                        if (!desired.Contains(name))
-                        {
-                            Session.RemoveServer(name);
-                        }
-                    }
-                    _desired.Clear();
-                    _desired.UnionWith(desired);
-                    _pendingConnections = Task.WhenAll(registry.Select(server => Session.AddServerAsync(server)));
+                    _pendingConnections = Session.UpdateServersAsync(registry);
                     _ready.TrySetResult();
+                    await _pendingConnections;
                 }
                 catch (Exception) when (!_lifetime.IsCancellationRequested)
                 {
