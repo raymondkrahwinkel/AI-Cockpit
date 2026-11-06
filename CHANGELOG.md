@@ -8,6 +8,7 @@
 
 - A local smoke test (`scripts/linux-smoke.sh`, Docker or a VM) starts the packaged Linux AppImage on a screen without a GPU and opens every surface of the shipped plugins once, to catch crashes like the Browser tab one (AC-2038).
 - Session monitoring preserves a closing through bookkeeping and tool-free wake turns, while still reporting abandoned work.
+- Project-sharing checks run on the UI dispatcher, so test order cannot leave catalog updates waiting on an unpumped thread.
 
 - A debug build is recognisable next to the installed one: "DEV" in its own title bar and a DEV bar over its window, taskbar and tray icon.
 - Run Windows executables named with forward-slash paths correctly in tracked, shell and verify commands while preserving their arguments.
