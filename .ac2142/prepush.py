@@ -10,11 +10,14 @@ scratch = Path("C:/ck/487726/ac2142")
 temporary = scratch / "t"
 temporary.mkdir(parents=True, exist_ok=True)
 environment = os.environ.copy()
-environment.update(TEMP=str(temporary), TMP=str(temporary), TMPDIR=str(temporary), PYTHONUTF8="1", COCKPIT_STATE_ROOT=str(scratch / "gate-state"), MSYS_NO_PATHCONV="1")
+environment.update(TEMP=str(temporary), TMP=str(temporary), TMPDIR=str(temporary), PYTHONUTF8="1", COCKPIT_STATE_ROOT=str(scratch / "gate-state"))
+environment.pop("MSYS_NO_PATHCONV", None)
 commands = [
     ("linux-browser-gate", ["C:/Program Files/Git/bin/bash.exe", "scripts/local-gate.sh", "--linux", "plugins-dev/Cockpit.Plugin.Browser.Tests/Cockpit.Plugin.Browser.Tests.csproj"]),
     ("windows-full-gate", ["C:/Program Files/Git/bin/bash.exe", "scripts/local-gate.sh", "--full"]),
 ]
+if sys.argv[1:] == ["windows"]:
+    commands = commands[-1:]
 for label, command in commands:
     path = scratch / (label + ".log")
     with path.open("w", encoding="utf-8") as log:
