@@ -99,6 +99,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // header's activity text when no `Statusline` is set. On the shared base so the one SessionHeaderBar
     // reads it for every session kind.
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowMcpStatusButton))]
     private string _status = "Not started.";
 
     // The MCP servers this session has: seeded with the merged session/profile selection at launch (#44/AC-130),
@@ -107,6 +108,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ConnectedStatusLine))]
     [NotifyPropertyChangedFor(nameof(McpServersTooltip))]
+    [NotifyPropertyChangedFor(nameof(HasMcpServers), nameof(ShowMcpStatusButton))]
     private IReadOnlySet<string>? _mcpServerSelection;
 
     // Servers in the selection above that never got tools this session — unreachable, crashed at start, or
@@ -115,7 +117,11 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ConnectedStatusLine))]
     [NotifyPropertyChangedFor(nameof(McpServersTooltip))]
+    [NotifyPropertyChangedFor(nameof(ShowMcpStatusButton))]
     private IReadOnlyList<McpServerConnectionIssue> _mcpServerConnectionIssues = [];
+
+    public bool HasMcpServers => McpServerSelection is { Count: > 0 };
+    public bool ShowMcpStatusButton => HasMcpServers && Status == ConnectedStatusLine;
 
     // An unknown selection is left unsaid rather than reported as zero — the count is the one figure here that
     // describes the session's own setup, and a wrong one is worse than none (AC-537, AC-997).
