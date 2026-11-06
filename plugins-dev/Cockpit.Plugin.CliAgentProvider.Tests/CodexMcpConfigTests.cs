@@ -33,6 +33,10 @@ public class CodexMcpConfigTests
             {
                 var configured = CodexMcpConfig.Build([new PluginMcpServer { Name = name, Url = "http://127.0.0.1:8765/mcp", CockpitHosted = hosted }], options);
                 Assert.Equal(automatic && hosted && name == "cockpit", configured.ConfigArgs.Any(arg => arg.Contains("default_tools_approval_mode")));
+                if (automatic && hosted && name == "cockpit")
+                {
+                    Assert.Contains("default_tools_approval_mode = \"approve\"", Assert.Single(configured.ConfigArgs, arg => arg.StartsWith("mcp_servers.cockpit=")));
+                }
                 Assert.Equal(hosted && name == "cockpit", configured.ConfigArgs.Contains("features.mcp_tool_list_changed=true"));
                 Assert.DoesNotContain(configured.ConfigArgs, arg => arg.StartsWith("sandbox=") || arg.StartsWith("approval_policy="));
             }
