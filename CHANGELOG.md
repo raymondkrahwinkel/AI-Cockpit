@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Refuse local model session starts when their MCP gateway is unavailable, including profile and preset selections, with the same clear error as plugin sessions.
+
 - Keep MCP tools from different servers uniquely named in local model sessions, including after live additions, so calls and permissions reach the intended server.
 
 - Explain exact per-spawn MCP selections and live set changes to the assistant, and report the servers a spawned session actually connected with a confirmation flag.

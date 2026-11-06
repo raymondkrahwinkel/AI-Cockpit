@@ -321,7 +321,7 @@ internal sealed partial class McpToolProvider
         {
             try
             {
-                var outcome = await _provider._ConnectServerAsync(server.Config, PaneToken, server.Lifetime.Token, _agentName, gateway: _provider._UsesGateway(_paneId), paneId: _paneId);
+                var outcome = await _provider._ConnectServerAsync(server.Config, PaneToken, server.Lifetime.Token, _agentName, gateway: true, paneId: _paneId);
                 _Publish(server, outcome.Connection, outcome.FailureReason);
             }
             finally
