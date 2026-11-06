@@ -256,7 +256,10 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
                     _MessageFor(DepotNoteLiveState.DocumentError) ?? "This note could not be opened safely."), _rev, _LiveStatus());
             }
             var text = _loaded ? await _room.ReadAsync(cancellationToken).ConfigureAwait(false) : _previous;
-            return new LiveFileSnapshot(text, _rev, _LiveStatus());
+            return new LiveFileSnapshot(text, _rev, _LiveStatus())
+            {
+                SerializedText = _loaded ? await _room.SerializeAsync(cancellationToken).ConfigureAwait(false) : null,
+            };
         }
         finally
         {

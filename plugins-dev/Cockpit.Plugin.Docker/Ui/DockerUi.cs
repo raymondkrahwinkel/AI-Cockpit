@@ -1,6 +1,4 @@
-using System.Text.Json;
 using Material.Icons;
-using Cockpit.Plugin.Docker.Contracts;
 using Cockpit.Plugin.Docker.Settings;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.UI;
@@ -14,12 +12,7 @@ public sealed class DockerUi : ICockpitPluginUi
     public void InitializeUi(ICockpitUiHost host)
     {
         var settings = new DockerSettings(host.Storage);
-        host.AddSettings(() => new DockerSettingsControl(host, settings));
+        host.AddSettings(() => new DockerSettingsControl(settings));
         host.AddToolbarAction(new ToolbarAction("Docker settings", MaterialIconKind.Docker, () => host.ShowSettingsAsync()));
-
-        // A saved endpoint may have moved; tell the backend part to drop its cached daemon client (DockerEngine)
-        // so the next call rebuilds against it. The host awaits it (AC-1891).
-        host.OnSettingsSaved(() =>
-            host.Channel.InvokeAsync(DockerChannel.SettingsSaved, JsonSerializer.SerializeToElement(true, DockerChannel.Json)));
     }
 }

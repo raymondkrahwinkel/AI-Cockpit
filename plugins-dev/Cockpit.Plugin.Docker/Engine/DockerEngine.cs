@@ -1,14 +1,11 @@
 using System.Text;
 using Docker.DotNet;
 using Docker.DotNet.Models;
-using Cockpit.Plugin.Docker.Settings;
 
 namespace Cockpit.Plugin.Docker.Engine;
 
-// `IDockerEngine` backed by `Docker.DotNet`. The client is built lazily from the configured
-// endpoint (blank = the local default socket: npipe on Windows, unix socket elsewhere) and cached; a settings save
-// calls `Invalidate` so the next call rebuilds against the new endpoint.
-internal sealed class DockerEngine(DockerSettings settings) : IDockerEngine, IDisposable
+// Docker.DotNet always uses the local default socket; remote hosts need AC-556.
+internal sealed class DockerEngine : IDockerEngine, IDisposable
 {
     private readonly object _lock = new();
     private DockerClient? _client;
@@ -22,16 +19,12 @@ internal sealed class DockerEngine(DockerSettings settings) : IDockerEngine, IDi
                 return _client;
             }
 
-            var endpoint = settings.DaemonEndpoint;
-            var config = string.IsNullOrWhiteSpace(endpoint)
-                ? new DockerClientConfiguration()
-                : new DockerClientConfiguration(new Uri(endpoint));
-            _client = config.CreateClient();
+            _client = new DockerClientConfiguration().CreateClient();
             return _client;
         }
     }
 
-    public void Invalidate()
+    public void Dispose()
     {
         lock (_lock)
         {
@@ -424,6 +417,4 @@ internal sealed class DockerEngine(DockerSettings settings) : IDockerEngine, IDi
 
         return (exposed, bindings);
     }
-
-    public void Dispose() => Invalidate();
 }
