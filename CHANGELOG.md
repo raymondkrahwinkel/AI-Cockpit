@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Run stdio MCP servers behind the opt-in session gateway with their session working directory, environment and process lifetime.
+
 - Update session MCP tools live, with search fallback, graceful removal and restored sets and delegation limits.
 
 - Let the local assistant manage session MCP sets within delegation limits, with audited changes and an operator removal brake.

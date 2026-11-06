@@ -61,11 +61,14 @@ internal sealed partial class SessionMcpGatewayHost : IHostedService, IAsyncDisp
         ? $"{url}/s/{Uri.EscapeDataString(paneId)}/mcp"
         : null;
 
-    internal async Task BindLaunchAsync(string paneId, string? projectId, string? workingDirectory, string? confineRoot, string? agentName, bool assistantManaged, CancellationToken ct)
+    internal async Task BindLaunchAsync(string paneId, string? projectId, string? workingDirectory, string? confineRoot, string? agentName, bool assistantManaged, CancellationToken ct, IReadOnlyDictionary<string, string?>? environment = null)
     {
         var project = _projects is null ? null : (await _projects.LoadAsync(ct).ConfigureAwait(false)).Find(projectId);
         _mounts?.Bind(paneId, new SessionMcpContext(project, workingDirectory ?? Directory.GetCurrentDirectory(), confineRoot, agentName,
-            assistantManaged ? SessionMcpManager.Assistant : SessionMcpManager.Operator));
+            assistantManaged ? SessionMcpManager.Assistant : SessionMcpManager.Operator)
+        {
+            Environment = environment is null ? _mounts.Set(paneId)?.Context?.Environment : StdioServerEnvironment.Build(environment),
+        });
     }
 
     internal async Task PrepareLaunchAsync(string paneId, CancellationToken ct, bool waitForNames = true)

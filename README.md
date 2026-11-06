@@ -270,6 +270,11 @@ Live refresh and MCP-set restore run only while this gateway is enabled. The gat
 uses the provider's canonical-name authorization and the session ceiling; calls needing permission
 are refused and exposed by name for the next turn. Providers can implement `IPluginMcpToolAuthorization`
 to authorize fallback calls without a prompt. Unknown provider policies refuse fallback execution.
+When enabled, stdio servers also run behind the gateway, with a separate process per session and the
+session's working directory, profile variables and scratch directory. Host-controlled credentials are
+removed. Windows uses a kill-on-close Job Object; Linux uses util-linux `setpriv` and `setsid`
+(`/usr/bin`) plus `/bin/kill` to stop the upstream process group if Cockpit dies. Without these tools,
+it logs one warning and starts servers directly, relying on stdin closure. With the switch off, stdio remains direct.
 
 Your API keys, MCP bearer tokens and the plugins' tokens live in `cockpit.json`. What the cockpit does about that:
 

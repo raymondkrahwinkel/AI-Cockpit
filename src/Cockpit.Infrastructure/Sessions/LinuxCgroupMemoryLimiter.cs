@@ -23,12 +23,14 @@ internal sealed class LinuxCgroupMemoryLimiter : ISessionMemoryLimiter
     internal const string GroupPrefix = "cockpit-session-";
 
     private readonly ILogger _logger;
+    private readonly SessionStdioProcesses? _stdioProcesses;
     private readonly Func<string?> _findWritableParent;
     private readonly Func<int, IReadOnlyList<int>> _readChildren;
 
-    public LinuxCgroupMemoryLimiter(ILogger<LinuxCgroupMemoryLimiter> logger)
+    public LinuxCgroupMemoryLimiter(ILogger<LinuxCgroupMemoryLimiter> logger, SessionStdioProcesses? stdioProcesses = null)
         : this(logger, FindWritableParent, _ReadChildren)
     {
+        _stdioProcesses = stdioProcesses;
     }
 
     // Test seam: real `/proc/self/cgroup` discovery and `/proc/<pid>/task/*/children` need actual cgroupfs and a
@@ -65,6 +67,7 @@ internal sealed class LinuxCgroupMemoryLimiter : ISessionMemoryLimiter
             File.AppendAllText(procs, processId + "\n");
 
             var adopted = _AdoptExistingDescendants(procs, processId);
+            _stdioProcesses?.Enroll(processId);
 
             _logger.LogInformation("Session {ProcessId} throttled past {CapBytes} bytes by cgroup {Group}.", processId, capBytes, group);
             if (adopted > 0)
@@ -149,7 +152,7 @@ internal sealed class LinuxCgroupMemoryLimiter : ISessionMemoryLimiter
 
     // The children of every thread of `processId`, from procfs. A process with no `/proc` entry has exited, which
     // is an ordinary outcome here rather than an error.
-    private static IReadOnlyList<int> _ReadChildren(int processId)
+    internal static IReadOnlyList<int> _ReadChildren(int processId)
     {
         var tasks = $"/proc/{processId}/task";
         if (!Directory.Exists(tasks))

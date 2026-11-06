@@ -15,7 +15,7 @@ namespace Cockpit.Infrastructure.Sessions.Tty;
 // Default `ITtyLauncher`: builds the host environment, asks the provider how its CLI starts, and spawns it in a
 // pseudo console (`IPtyHostFactory`, platform-agnostic). Provider-specific pieces (executable, flags, config
 // directory, status relay) live in `ITtySessionProvider`; what's left here is what every TUI needs identically.
-internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemoryLimiter memoryLimiter, McpAuthKey authKey, SessionMcpKeyring keyring, ILogger<TtyLauncher> logger, ISessionProcessAnchor? processAnchor = null, IOrgPolicy? orgPolicy = null, IWorktreeManager? worktreeManager = null, SessionMcpGatewayHost? gateway = null) : ITtyLauncher, ISingletonService
+internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemoryLimiter memoryLimiter, McpAuthKey authKey, SessionMcpKeyring keyring, ILogger<TtyLauncher> logger, ISessionProcessAnchor? processAnchor = null, IOrgPolicy? orgPolicy = null, IWorktreeManager? worktreeManager = null, SessionMcpGatewayHost? gateway = null, SessionStdioProcesses? stdioProcesses = null) : ITtyLauncher, ISingletonService
 {
     public IConPtyProcess Launch(
         ITtySessionProvider provider,
@@ -146,6 +146,7 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemory
         // AC-661: the OS ceiling around this session's tree, applied before the CLI has spawned anything of its own,
         // so everything it starts later is born inside it.
         var memoryCap = memoryLimiter.Apply(process.ProcessId, SessionMemoryCap.ResolveBytes(profile, options));
+        if (paneId is not null) { stdioProcesses?.Bind(paneId, process.ProcessId); }
 
         // AC-1519: launch-time, so the TTY route gets the same anchor as the SDK route and dies with the Cockpit.
         var anchor = processAnchor?.Anchor(process.ProcessId, paneId);
