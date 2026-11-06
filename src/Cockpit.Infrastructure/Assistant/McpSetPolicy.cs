@@ -5,6 +5,16 @@ namespace Cockpit.Infrastructure.Assistant;
 
 internal sealed class McpSetPolicy(IMcpServerCatalog? catalog, IMcpOAuthTokenStore? tokens)
 {
+    internal async Task<IReadOnlyList<string>> OutsideProjectAsync(string? projectId, IReadOnlyList<string> names, CancellationToken ct)
+    {
+        if (catalog is null)
+        {
+            return [];
+        }
+        var scoped = await catalog.GetServersForProjectAsync(projectId, ct).ConfigureAwait(false);
+        return [.. names.Where(name => !scoped.Any(server => string.Equals(server.Name, name, StringComparison.OrdinalIgnoreCase)))];
+    }
+
     internal async Task<string?> RefusalAsync(string? projectId, IReadOnlyList<string> names,
         bool add = true, IReadOnlySet<string>? delegationCeiling = null, CancellationToken cancellationToken = default)
     {

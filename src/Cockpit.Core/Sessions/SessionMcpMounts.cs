@@ -44,8 +44,7 @@ public sealed class SessionMcpMounts : ISingletonService
         {
             names.Remove(name);
         }
-        var context = expected.Context;
-        if (!_mounted.TryUpdate(paneId, expected with { Context = context, PreserveSelection = true, ServerNames = names.ToFrozenSet(StringComparer.OrdinalIgnoreCase) }, expected))
+        if (!_mounted.TryUpdate(paneId, expected with { PreserveSelection = true, ServerNames = names.ToFrozenSet(StringComparer.OrdinalIgnoreCase) }, expected))
         {
             return false;
         }

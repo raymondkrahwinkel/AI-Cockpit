@@ -1,5 +1,4 @@
 using Cockpit.Core.Abstractions.Assistant;
-using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
@@ -39,16 +38,30 @@ internal sealed partial class AssistantAgentGateway
             : set?.Context is null ? "No local MCP set exists for that session."
             : await new McpSetPolicy(mcpServers, oauthTokens).RefusalAsync(set.Context.Project?.Id, [name], add,
                 set.DelegationCeiling, cancellationToken).ConfigureAwait(false);
-        if (error is null && set is not null && mcpMounts is not null)
+        if (error is null && set is not null && set.ServerNames.Contains(name) == add)
         {
-            if (!mcpMounts.TryChange(paneId, set, name, add))
+            return await GetSessionMcpSetAsync(paneId, cancellationToken).ConfigureAwait(false);
+        }
+        var outsideProject = add && error is null
+            ? await new McpSetPolicy(mcpServers, oauthTokens).OutsideProjectAsync(set?.Context?.Project?.Id, [name], cancellationToken).ConfigureAwait(false)
+            : [];
+        if (error is null && set is not null && mcpMounts is not null && !mcpMounts.TryChange(paneId, set, name, add))
+        {
+            error = "The MCP set changed concurrently. Read it again before retrying.";
+        }
+        await _RecordAsync(new AssistantSpawnAuditEntry(DateTimeOffset.Now,
+            add ? AssistantSpawnAction.McpAdd : AssistantSpawnAction.McpRemove,
+            byOperator ? SpawnCaller.Operator : SpawnCaller.Assistant,
+            byOperator ? null : McpRequestContext.CurrentPaneId, session?.WorkspaceId ?? string.Empty, null,
+            session?.ActiveProfileLabel, null, paneId, session?.Title, error, set?.Context?.Project?.Id, [name], outsideProject), CancellationToken.None).ConfigureAwait(false);
+        if (error is null)
+        {
+            var text = $"MCP {(add ? "added" : "removed")}: {name}; project {set?.Context?.Project?.Id ?? "none"}; by {(byOperator ? "operator" : "assistant")}; outside project catalog: [{string.Join(", ", outsideProject)}]";
+            logger?.LogInformation("Session {PaneId}: {McpChange}", paneId, text);
+            inbox.Deliver("cockpit", AssistantIdentity.PaneId, "mcp-set-changed", text, subjectPaneId: paneId);
+            if (session is not null)
             {
-                error = "The MCP set changed concurrently. Read it again before retrying.";
-            }
-            else
-            {
-                var text = $"MCP {(add ? "added" : "removed")}: {name}; project {set.Context?.Project?.Id ?? "none"}; by {(byOperator ? "operator" : "assistant")}";
-                if (session is not null)
+                try
                 {
                     await session.UseControlAsync(control =>
                     {
@@ -57,15 +70,12 @@ internal sealed partial class AssistantAgentGateway
                         return Task.CompletedTask;
                     }).ConfigureAwait(false);
                 }
-                logger?.LogInformation("Session {PaneId}: {McpChange}", paneId, text);
-                inbox.Deliver("cockpit", AssistantIdentity.PaneId, "mcp-set-changed", text, subjectPaneId: paneId);
+                catch (Exception exception)
+                {
+                    logger?.LogWarning(exception, "MCP set changed for {PaneId}, but its transcript divider could not be recorded", paneId);
+                }
             }
         }
-        await _RecordAsync(new AssistantSpawnAuditEntry(DateTimeOffset.Now,
-            add ? AssistantSpawnAction.McpAdd : AssistantSpawnAction.McpRemove,
-            byOperator ? SpawnCaller.Operator : SpawnCaller.Assistant,
-            byOperator ? null : McpRequestContext.CurrentPaneId, session?.WorkspaceId ?? string.Empty, null,
-            session?.ActiveProfileLabel, null, paneId, session?.Title, error, set?.Context?.Project?.Id, [name]), cancellationToken).ConfigureAwait(false);
         return error is null ? await GetSessionMcpSetAsync(paneId, cancellationToken).ConfigureAwait(false) : new(false, null, [], error);
     }
 }

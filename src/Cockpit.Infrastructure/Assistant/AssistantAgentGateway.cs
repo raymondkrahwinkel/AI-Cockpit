@@ -170,6 +170,7 @@ internal sealed partial class AssistantAgentGateway(
                 cancellationToken).ConfigureAwait(false);
         }
 
+        IReadOnlyList<string> outsideProject = [];
         if (request.McpServers is { } requestedServers)
         {
             var refusal = await new McpSetPolicy(mcpServers, oauthTokens).RefusalAsync(
@@ -178,7 +179,9 @@ internal sealed partial class AssistantAgentGateway(
             {
                 return await _RefuseSpawnAsync(request, workspace.Name, refusal, cancellationToken).ConfigureAwait(false);
             }
-            logger?.LogInformation("Session MCP override for project {ProjectId}: [{McpServers}] plus always-mounted core", project?.Id, string.Join(", ", requestedServers));
+            outsideProject = await new McpSetPolicy(mcpServers, oauthTokens).OutsideProjectAsync(project?.Id, requestedServers, cancellationToken).ConfigureAwait(false);
+            logger?.LogInformation("Session MCP override for project {ProjectId}: [{McpServers}] plus always-mounted core; outside project catalog: [{OutsideProject}]",
+                project?.Id, string.Join(", ", requestedServers), string.Join(", ", outsideProject));
         }
 
         var started = await launcher.StartSessionAsync(new SessionLaunchRequest(
@@ -226,7 +229,8 @@ internal sealed partial class AssistantAgentGateway(
             pane.Name,
             Refusal: null,
             ProjectId: project?.Id,
-            McpServers: request.McpServers), cancellationToken).ConfigureAwait(false);
+            McpServers: request.McpServers,
+            McpServersOutsideProject: outsideProject), cancellationToken).ConfigureAwait(false);
 
         return AgentSpawnResult.Started(pane.PaneId, pane.Name, request.WorkingDirectory, pane.PromptDelivered, resolvedProfileLabel: profile.Label);
     }

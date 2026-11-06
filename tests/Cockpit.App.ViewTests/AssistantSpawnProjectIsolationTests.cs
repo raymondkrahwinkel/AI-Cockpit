@@ -134,6 +134,8 @@ public class AssistantSpawnProjectIsolationTests
         }
         Assert.False((await management.ChangeSessionMcpServerAsync("managed", "cockpit-session", false)).Ok);
         Assert.True((await management.ChangeSessionMcpServerAsync("managed", "other-project-server", true)).Ok);
+        Assert.Contains(changes.Entries, entry => entry.Action == AssistantSpawnAction.McpAdd &&
+            entry.McpServersOutsideProject is { } outside && outside.Contains("other-project-server"));
         mounts.Bind("managed", new SessionMcpContext(Project.Create("Changed"), Repository, null, "work"));
         mounts.Grant("managed", ["project-server"]);
         Assert.True(mounts.IsMounted("managed", "other-project-server"));
