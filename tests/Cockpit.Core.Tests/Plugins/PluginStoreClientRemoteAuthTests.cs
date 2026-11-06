@@ -32,7 +32,7 @@ public class PluginStoreClientRemoteAuthTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task FetchIndexAsync_PrivateStore_SendsBearerToken()
+    public async Task PrivateStore_SendsBearerOnlyToItsOriginAndRejectsTraversal()
     {
         var store = PluginStoreConfig.Remote($"{_prefix}mystore/", "s3cr3t");
 
@@ -40,10 +40,11 @@ public class PluginStoreClientRemoteAuthTests : IAsyncLifetime
 
         Assert.True(result.IsSuccess);
         Assert.Equal("Bearer s3cr3t", _authByPath["/mystore/index.json"]);
+        await _AssertForeignDownloadsDoNotSendTokenAsync();
+        await _AssertGitHubTraversalIsRejectedAsync();
     }
 
-    [Fact]
-    public async Task DownloadZipOrImage_AbsoluteUrlToForeignHost_DoesNotSendTheToken()
+    private async Task _AssertForeignDownloadsDoNotSendTokenAsync()
     {
         // A store-controlled index that lists a zip or an icon on another origin must not exfiltrate the token.
         var store = PluginStoreConfig.Remote($"{_prefix}mystore/", "s3cr3t");
@@ -55,8 +56,7 @@ public class PluginStoreClientRemoteAuthTests : IAsyncLifetime
         Assert.Null(_authByPath["/logo.png"]);
     }
 
-    [Fact]
-    public async Task DownloadZipAsync_PrivateGitHub_RejectsATraversalPath()
+    private async Task _AssertGitHubTraversalIsRejectedAsync()
     {
         // No network: an unsafe path is refused before any request is built.
         var store = PluginStoreConfig.Remote("https://github.com/owner/repo", "token");

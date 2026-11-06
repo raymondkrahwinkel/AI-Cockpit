@@ -269,6 +269,12 @@ public sealed partial class MarkdownEditor
         private void _Line(DocumentLine line, MarkdownLine kind)
         {
             var at = line.Offset;
+            if (kind.Kind == MarkdownLineKind.Paragraph && line.Length <= 2048 && owner._imagesAttached && owner.ImageLoader is not null
+                && ImageLine.Match(owner.LineText(line.LineNumber)) is { Success: true } image)
+            {
+                _Add(at, line.Length, () => owner._Image(image.Groups[2].Value, image.Groups[1].Value));
+                return;
+            }
             switch (kind.Kind)
             {
                 case MarkdownLineKind.Heading1 or MarkdownLineKind.Heading2 or MarkdownLineKind.Heading3 or MarkdownLineKind.Quote:

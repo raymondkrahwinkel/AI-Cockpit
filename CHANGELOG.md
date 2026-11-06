@@ -3,6 +3,7 @@
 ## Unreleased
 
 - AC-2187: the assistant can tell which session you have selected: `list_sessions` marks it, following the Simple stand's own selection when that stand is showing.
+- AC-2100: display relative Depot note images in Markdown file previews and editors without rewriting their source.
 
 - AC-2168: keep test scratch isolation stable when plugin probes reload a test assembly.
 
@@ -104,6 +105,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- The Depot plugin-store epic now includes the current host changes while retaining runtime stores and their credential protection.
 - Plugins can offer stores with refreshed credentials alongside configured stores. Manage stores can hide these sources; their addresses and credentials stay out of backups.
 
 - The assistant can attach files from its scratch folder and managed worktrees to replies, with image previews and file downloads in chat.

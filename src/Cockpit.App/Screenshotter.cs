@@ -330,6 +330,7 @@ internal static partial class Screenshotter
         ["markdown-file-conflict"] = (width, height) => _MarkdownFileScene(width, height, "conflict"),
         ["markdown-file-conflict-compare"] = (width, height) => _MarkdownFileScene(width, height, "conflict-compare"),
         ["markdown-file-readonly"] = (width, height) => _MarkdownFileScene(width, height, "readonly"),
+        ["markdown-file-images"] = (width, height) => _MarkdownFileScene(width, height, "images"),
         ["markdown-file-live"] = (width, height) => _MarkdownFileScene(width, height, "live"),
         ["markdown-file-live-timeout"] = (width, height) => _MarkdownFileScene(width, height, "live-timeout"),
         ["markdown-file-live-light"] = (width, height) => _MarkdownFileScene(width, height, "live-light"),
@@ -1500,6 +1501,7 @@ internal static partial class Screenshotter
     // they are opened here rather than built into the scene.
     private static readonly Dictionary<string, Action<Window>> Hovers = new(StringComparer.Ordinal)
     {
+        ["markdown-file-images"] = _ExerciseNoteImages,
         ["session-file-drop"] = _LightFileDropOverlay,
         ["assistant-chat-file-drop"] = _LightFileDropOverlay,
         ["workspace-menu-preview"] = window => _OpenWorkspaceTabMenu(window, true),

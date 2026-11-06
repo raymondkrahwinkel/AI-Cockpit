@@ -17,6 +17,12 @@ public interface IMarkdownEditor
     /// <summary>Shows the plain Markdown source instead of the live view (Ctrl+/).</summary>
     bool ShowSource { get; set; }
 
+    /// <summary>Optional loader bound by the owner to this document's source.</summary>
+    Func<string, CancellationToken, Task<byte[]>>? ImageLoader { get => null; set { } }
+
+    /// <summary>Discards private image data and cancels obsolete loads.</summary>
+    void InvalidateImages() { }
+
     /// <summary>The text changed through the editor.</summary>
     event EventHandler? TextChanged;
 

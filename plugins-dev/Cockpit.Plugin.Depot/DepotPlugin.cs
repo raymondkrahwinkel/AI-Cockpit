@@ -78,6 +78,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
         // AC-1665: signing in as someone else must not leave the previous account's project list to be shown.
         EventHandler<string> accountChanged = (_, serverName) =>
         {
+            _fileSources?.NotifyChanged();
             foreach (var connection in settings.Connections.Where(candidate => candidate.McpServerName == serverName))
             {
                 DepotProjectListingSource.Forget(host, connection);
@@ -607,6 +608,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
     public void Dispose()
     {
         _stopWatchingAccounts?.Invoke();
+        _fileSources?.NotifyChanged();
         foreach (var handler in _handlers)
         {
             handler.Dispose();
