@@ -1,4 +1,5 @@
 using Cockpit.Core.Assistant;
+using Cockpit.Core.Voice;
 
 namespace Cockpit.Infrastructure.Configuration;
 
@@ -8,6 +9,10 @@ internal sealed class AssistantSettingsEntry
     public bool IsEnabled { get; set; }
 
     public bool SpeakReplies { get; set; } = true;
+
+    public string? SpeechMode { get; set; }
+    public string? SpeechMethod { get; set; }
+    public string? SpeechProfileLabel { get; set; }
 
     public string PushToTalkKeyName { get; set; } = "F10";
 
@@ -36,6 +41,9 @@ internal sealed class AssistantSettingsEntry
     {
         IsEnabled = settings.IsEnabled,
         SpeakReplies = settings.SpeakReplies,
+        SpeechMode = settings.SpeechMode.ToString(),
+        SpeechMethod = settings.SpeechMethod.ToString(),
+        SpeechProfileLabel = settings.SpeechProfileLabel,
         PushToTalkKeyName = settings.PushToTalkKeyName,
         AlwaysOnCostAcknowledged = settings.AlwaysOnCostAcknowledged,
         AlwaysOnTop = settings.AlwaysOnTop,
@@ -50,6 +58,9 @@ internal sealed class AssistantSettingsEntry
     {
         IsEnabled = IsEnabled,
         SpeakReplies = SpeakReplies,
+        SpeechMode = Enum.TryParse<SpokenReplyMode>(SpeechMode, out var mode) && Enum.IsDefined(mode) ? mode : SpokenReplyMode.Short,
+        SpeechMethod = Enum.TryParse<SpokenReplyMethod>(SpeechMethod, out var method) && Enum.IsDefined(method) ? method : SpokenReplyMethod.Assistant,
+        SpeechProfileLabel = SpeechProfileLabel,
         PushToTalkKeyName = PushToTalkKeyName,
         AlwaysOnCostAcknowledged = AlwaysOnCostAcknowledged,
         AlwaysOnTop = AlwaysOnTop,

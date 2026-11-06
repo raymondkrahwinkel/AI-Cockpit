@@ -426,6 +426,77 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     // A turn pauses on a question/permission and then keeps streaming into the same growing entry afterwards (AC-97).
     private readonly StringBuilder _readAloudPendingProse = new();
+    private SpokenReplyMode _assistantSpeechMode = SpokenReplyMode.Short;
+    private SpokenReplyMode _turnSpeechMode;
+    private (long Turn, int Generation) _speechTurn;
+    private readonly object _speechGenerationLock = new();
+    private CancellationTokenSource? _speechGeneration;
+    private readonly ISessionDriverFactory? _speechDrivers;
+    private SpokenReplyMethod _assistantSpeechMethod = SpokenReplyMethod.Assistant;
+    private SessionProfile? _speechProfile;
+    private SpokenReplyMethod _turnSpeechMethod;
+    private SessionProfile? _turnSpeechProfile;
+
+    public SpokenReplyMethod AssistantSpeechMethod
+    {
+        get => _assistantSpeechMethod;
+        set
+        {
+            if (SetProperty(ref _assistantSpeechMethod, value) && IsTheVoiceAssistant)
+            {
+                CancelReadAloud();
+            }
+        }
+    }
+
+    public SessionProfile? SpeechProfile
+    {
+        get => _speechProfile;
+        set
+        {
+            if (SetProperty(ref _speechProfile, value) && IsTheVoiceAssistant)
+            {
+                CancelReadAloud();
+            }
+        }
+    }
+
+    public string? SpeechRulesReason { get; private set; }
+
+    [RelayCommand]
+    private async Task ReadFullReplyAsync(TranscriptEntryViewModel entry)
+    {
+        if (!IsTheVoiceAssistant || !IsAudioAvailable || !ReferenceEquals(entry.Session, this))
+        {
+            return;
+        }
+        CancelReadAloud();
+        ResetReadAloudCancellation();
+        SpeechRulesReason = null;
+        OnPropertyChanged(nameof(SpeechRulesReason));
+        await EnqueueReadAloudAsync(entry.ReplyTextWithImageSuffix);
+        CompleteReadAloudStream();
+    }
+
+    protected override void OnReadAloudInvalidated()
+    {
+        lock (_speechGenerationLock)
+        {
+            _speechGeneration?.Cancel();
+        }
+    }
+
+    public SpokenReplyMode AssistantSpeechMode
+    {
+        get => _assistantSpeechMode;
+        set
+        {
+            if (SetProperty(ref _assistantSpeechMode, value) && IsTheVoiceAssistant)
+            {
+                CancelReadAloud();
+            }
+        }
+    }
     private readonly Dictionary<TranscriptEntryViewModel, string> _readAloudObservedEntries = [];
     private int _readAloudObservedEntryCount;
 
@@ -1477,10 +1548,12 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         ILogger<SessionViewModel>? logger = null,
         IBackendEventLog? eventLog = null,
         ISessionRunActivities? heavyRuns = null,
-        IAudioAvailability? audioAvailability = null)
+        IAudioAvailability? audioAvailability = null,
+        ISessionDriverFactory? speechDrivers = null)
         : base(usageHistory, heavyRuns)
     {
         _transcriptReader = transcriptReader;
+        _speechDrivers = speechDrivers;
         // AC-1090: every pane but the design-time/unit-test graph gets the store from the container, which
         // `APaneTakenFromTheContainer_RecordsItsRowsToDisk` holds this to; the control writes it (AC-1377, AC-1449).
         _control = _BindControl(sessionControls);
@@ -2171,6 +2244,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     [RelayCommand]
     private async Task StopAsync()
     {
+        if (IsTheVoiceAssistant && _turnSpeechMode != SpokenReplyMode.Full)
+        {
+            CancelReadAloud();
+        }
         if (!_control.IsRunning)
         {
             return;
@@ -2491,7 +2568,22 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // below stay on the bare text, so a reply prefix never changes retry or auto-close behaviour.
     private void _OnTurnStarting(QueuedPrompt prompt)
     {
+        if (IsTheVoiceAssistant && _turnSpeechMode != SpokenReplyMode.Full)
+        {
+            CancelReadAloud();
+        }
+        if (IsTheVoiceAssistant && (_turnSpeechMode != SpokenReplyMode.Full || AssistantSpeechMode != SpokenReplyMode.Full))
+        {
+            _currentTurnAssistantEntries.Clear();
+            _ResetReadAloudStream();
+        }
         ResetReadAloudCancellation();
+        _turnSpeechMode = IsTheVoiceAssistant ? AssistantSpeechMode : SpokenReplyMode.Full;
+        _speechTurn = CaptureReadAloudTurn();
+        _turnSpeechMethod = AssistantSpeechMethod;
+        _turnSpeechProfile = _turnSpeechMethod == SpokenReplyMethod.Profile ? SpeechProfile : _profile;
+        SpeechRulesReason = null;
+        OnPropertyChanged(nameof(SpeechRulesReason));
 
         var text = prompt.Text;
         var images = prompt.Images;
@@ -2743,7 +2835,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // answers (AC-97).
     private void _FlushPendingProseForReadAloud()
     {
-        if (!ReadResponsesAloud)
+        if (!ReadResponsesAloud || _turnSpeechMode != SpokenReplyMode.Full)
         {
             return;
         }
@@ -2759,7 +2851,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _readAloudPendingProse.Clear();
         _spokenSomethingThisTurn = true;
         _RestartSignOfLifeClock();
-        _ = EnqueueReadAloudAsync(pending);
+        _ = EnqueueReadAloudAsync(TtsProseExtractor.Extract(pending), IsTheVoiceAssistant ? _speechTurn : CaptureReadAloudTurn());
     }
 
     private void _QueueCompletedProseForReadAloud()
@@ -2770,6 +2862,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
 
         _AppendStreamingReadAloudDelta();
+        if (_turnSpeechMode != SpokenReplyMode.Full)
+        {
+            return;
+        }
         var stream = TtsProseExtractor.ExtractCompleted(_readAloudPendingProse.ToString());
         if (stream.ConsumedLength == 0)
         {
@@ -2779,7 +2875,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _readAloudPendingProse.Remove(0, stream.ConsumedLength);
         _spokenSomethingThisTurn |= stream.Sentences.Count > 0;
         _RestartSignOfLifeClock();
-        _ = EnqueueReadAloudAsync(stream.Sentences);
+        _ = EnqueueReadAloudAsync(stream.Sentences, IsTheVoiceAssistant ? _speechTurn : CaptureReadAloudTurn());
     }
 
     private void _AppendStreamingReadAloudDelta()
@@ -2830,7 +2926,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     }
 
     // True for the cockpit's own voice assistant, the one session that speaks unasked (AC-597/598).
-    private bool IsTheVoiceAssistant =>
+    public bool IsTheVoiceAssistant =>
         string.Equals(PaneId, AssistantIdentity.PaneId, StringComparison.Ordinal);
 
     // Starts the clock that says "still on it" while a turn keeps running (AC-598), and pushes it back every time
@@ -2972,6 +3068,13 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // arrive after this, in `_OnLiveStateChanged`.
     private void _DrawTurnEnd(SessionTurnEnd end)
     {
+        if (_turnSpeechMode != SpokenReplyMode.Full && (end.IsError || end.WasInterrupted || end.BySessionError))
+        {
+            CancelReadAloud();
+            _ResetReadAloudStream();
+            _StopSignOfLifeClock();
+            CompleteReadAloudStream();
+        }
         var failedRow = end.FailedRowId is { } failedRowId && _rowsById.TryGetValue(failedRowId, out var row) ? row : null;
         if (end.BySessionError)
         {
@@ -3026,8 +3129,20 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.TurnResult, result.Title) { TurnResult = result });
         }
 
-        _FlushPendingProseForReadAloud();
-        CompleteReadAloudStream();
+        if (_turnSpeechMode == SpokenReplyMode.Full)
+        {
+            _FlushPendingProseForReadAloud();
+            CompleteReadAloudStream();
+        }
+        else if (ReadResponsesAloud && !end.IsError && !end.WasInterrupted)
+        {
+            _AppendStreamingReadAloudDelta();
+            _ = _SpeakCompletedReplyAsync(_readAloudPendingProse.ToString(), _turnSpeechMode, _turnSpeechMethod, _turnSpeechProfile, _speechTurn);
+        }
+        else
+        {
+            CompleteReadAloudStream();
+        }
 
         _currentTurnAssistantEntries.Clear();
         _ResetReadAloudStream();
@@ -3036,6 +3151,47 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         // This turn's images belong to this turn only (AC-116): a later image-less turn's tool call attaches nothing stale.
         ClearCurrentTurnImages();
         _turnCompletedInFold = true;
+    }
+
+    private async Task _SpeakCompletedReplyAsync(string answer, SpokenReplyMode mode, SpokenReplyMethod method, SessionProfile? profile, (long Turn, int Generation) expected)
+    {
+        if (CaptureReadAloudTurn() != expected || !ReadResponsesAloud)
+        {
+            return;
+        }
+        using var cancellation = new CancellationTokenSource();
+        lock (_speechGenerationLock)
+        {
+            _speechGeneration = cancellation;
+        }
+        try
+        {
+            if (CaptureReadAloudTurn() != expected || !ReadResponsesAloud)
+            {
+                return;
+            }
+            var spoken = await SpokenReplyGeneration.GenerateAsync(_speechDrivers, profile, answer, profile?.SystemPrompt, mode, method, cancellation.Token);
+            if (!cancellation.IsCancellationRequested && ReadResponsesAloud && CaptureReadAloudTurn() == expected)
+            {
+                SpeechRulesReason = spoken.RulesReason;
+                OnPropertyChanged(nameof(SpeechRulesReason));
+                await EnqueueReadAloudAsync(spoken.Sentences, expected);
+                if (CaptureReadAloudTurn() == expected)
+                {
+                    CompleteReadAloudStream();
+                }
+            }
+        }
+        finally
+        {
+            lock (_speechGenerationLock)
+            {
+                if (ReferenceEquals(_speechGeneration, cancellation))
+                {
+                    _speechGeneration = null;
+                }
+            }
+        }
     }
 
     // AC-1437: the host's fold, drawn. Status last, as it always came after what it weighs.

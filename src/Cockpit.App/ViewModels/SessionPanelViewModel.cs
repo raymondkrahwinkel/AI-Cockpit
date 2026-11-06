@@ -1507,6 +1507,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     private IVoiceSettingsStore? _voiceSettingsStore;
     private IVoicePlaybackQueue? _voicePlaybackQueue;
     private bool _readAloudCancelled;
+    private long _readAloudTurn;
     private EventHandler<VoicePlaybackStoppedEventArgs>? _playbackStoppedHandler;
     private IOpenMicState? _openMicState;
 
@@ -1578,6 +1579,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         // not just suppress future turns.
         if (!value)
         {
+            OnReadAloudInvalidated();
             _voicePlaybackQueue?.StopAll();
         }
         else if (IsAudioAvailable && _voicePlaybackQueue is not null)
@@ -1604,6 +1606,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         {
             _playbackStoppedHandler = (_, stopped) =>
             {
+                OnReadAloudInvalidated();
                 if (string.Equals(stopped.OwnerId, PaneId, StringComparison.Ordinal))
                 {
                     _readAloudCancelled = true;
@@ -1637,8 +1640,14 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         => EnqueueReadAloudAsync(TtsProseExtractor.Extract(text));
 
     protected Task EnqueueReadAloudAsync(IReadOnlyList<string> sentences)
+        => EnqueueReadAloudAsync(sentences, CaptureReadAloudTurn());
+
+    protected (long Turn, int Generation) CaptureReadAloudTurn()
+        => (_readAloudTurn, _voicePlaybackQueue?.Generation ?? 0);
+
+    protected Task EnqueueReadAloudAsync(IReadOnlyList<string> sentences, (long Turn, int Generation) expected)
     {
-        if (_voicePlaybackQueue is null || _readAloudCancelled)
+        if (_voicePlaybackQueue is null || _readAloudCancelled || CaptureReadAloudTurn() != expected)
         {
             return Task.CompletedTask;
         }
@@ -1659,14 +1668,21 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         // heard, and that gap otherwise reads as nothing happening.
         _voicePlaybackQueue.NotifyPreparing(source, PaneId);
 
-        if (_voicePlaybackQueue.Generation != generation)
+        if (_voicePlaybackQueue.Generation != generation || CaptureReadAloudTurn() != expected || _readAloudCancelled)
         {
             // Read-aloud was cancelled while this batch was being prepared — drop it instead of speaking over the
             // interrupt the operator just made.
             return Task.CompletedTask;
         }
 
-        _voicePlaybackQueue.Enqueue(sentences, TtsVoiceSid, ReadAloudLanguage, source, PaneId);
+        if (source == VoicePlaybackSource.Assistant)
+        {
+            _voicePlaybackQueue.Enqueue(SpokenReplyLanguages.Segment(sentences, ReadAloudLanguage), TtsVoiceSid, source, PaneId);
+        }
+        else
+        {
+            _voicePlaybackQueue.Enqueue(sentences, TtsVoiceSid, ReadAloudLanguage, source, PaneId);
+        }
         return Task.CompletedTask;
     }
 
@@ -1679,7 +1695,22 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         }
     }
 
-    protected void ResetReadAloudCancellation() => _readAloudCancelled = false;
+    protected void ResetReadAloudCancellation()
+    {
+        OnReadAloudInvalidated();
+        _readAloudTurn++;
+        _readAloudCancelled = false;
+    }
+
+    protected void CancelReadAloud()
+    {
+        OnReadAloudInvalidated();
+        _readAloudCancelled = true;
+        _readAloudTurn++;
+        _voicePlaybackQueue?.StopAll();
+    }
+
+    protected virtual void OnReadAloudInvalidated() { }
 
     // Starts a push-to-talk hold (KeyDown on the configured hotkey). Returns false — a no-op the
     // caller should not mark `Handled` for — when voice is off, unwired, or a hold is already in
@@ -2021,6 +2052,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         }
 
         _disposed = true;
+        OnReadAloudInvalidated();
 
         if (_voicePlaybackQueue is not null && _playbackStoppedHandler is not null)
         {

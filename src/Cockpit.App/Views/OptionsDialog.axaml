@@ -1486,6 +1486,26 @@
                             <TextBlock Text="{Binding AudioUnavailableMessage}" Classes="optionsHint"
                                        IsVisible="{Binding AudioUnavailableMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
 
+                            <StackPanel Spacing="6" IsEnabled="{Binding IsAudioAvailable}">
+                                <TextBlock Text="Spoken answer" FontWeight="SemiBold"/>
+                                <ComboBox x:Name="AssistantSpeechMode" ItemsSource="{Binding AssistantOptions.SpeechModes}"
+                                          SelectedItem="{Binding AssistantOptions.SelectedSpeechMode}"
+                                          DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Left" MinWidth="180"/>
+                                <StackPanel Spacing="6" IsEnabled="{Binding AssistantOptions.CanChooseSpeechMethod}">
+                                    <TextBlock Text="Shortening method" FontWeight="SemiBold"/>
+                                    <ComboBox x:Name="AssistantSpeechMethod" ItemsSource="{Binding AssistantOptions.SpeechMethods}"
+                                              SelectedItem="{Binding AssistantOptions.SelectedSpeechMethod}"
+                                              DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Left" MinWidth="180"/>
+                                    <ComboBox ItemsSource="{Binding AssistantOptions.SpeechProfileLabels}"
+                                              SelectedItem="{Binding AssistantOptions.SelectedSpeechProfileLabel}"
+                                              IsVisible="{Binding AssistantOptions.UsesSpeechProfile}"
+                                              PlaceholderText="Choose a profile" HorizontalAlignment="Left" MinWidth="220"/>
+                                    <TextBlock Classes="optionsHint" IsVisible="{Binding AssistantOptions.UsesSpeechAi}"
+                                               Text="Short and Summary wait until the answer is finished, then may take up to 3 extra seconds. The answer and context go to the selected AI profile (Assistant uses the assistant's profile). If private speech generation is unavailable, including for a missing profile, built-in rules shorten the answer instead."/>
+                                </StackPanel>
+                                <TextBlock Classes="optionsHint" Text="Full reads the answer as it arrives. Without AI uses built-in shortening rules. Only the full answer appears in chat; the shorter speech text is never shown."/>
+                            </StackPanel>
+
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <TextBlock Text="Keep chat window on top" FontWeight="SemiBold"/>
                                 <materialIcons:MaterialIcon Classes="hint"

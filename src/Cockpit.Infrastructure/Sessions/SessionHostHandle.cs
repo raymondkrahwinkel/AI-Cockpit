@@ -1,6 +1,7 @@
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Core.Assistant;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
@@ -732,7 +733,7 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
     }
 
     // Speech is the desktop's: nothing plays a headless session's replies.
-    public void ApplySpeech(bool speakReplies)
+    public void ApplySpeech(AssistantSettings settings, Cockpit.Core.Profiles.SessionProfile? speechProfile = null)
     {
     }
 

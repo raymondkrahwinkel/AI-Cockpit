@@ -388,6 +388,9 @@
                                Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                 </StackPanel>
             </Border>
+            <TextBlock DockPanel.Dock="Top" Margin="10,6,10,0" Text="{Binding Session.SpeechRulesReason}"
+                       TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"
+                       IsVisible="{Binding Session.SpeechRulesReason, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
             <WrapPanel DockPanel.Dock="Top" Margin="10,6,10,0" ItemSpacing="8" LineSpacing="6">
                 <Panel>
                     <Panel.IsVisible>

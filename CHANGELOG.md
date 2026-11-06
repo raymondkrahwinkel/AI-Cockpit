@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- AC-2168: keep test scratch isolation stable when plugin probes reload a test assembly.
+
+- AC-2168: keep private speech out of synthesis and playback error logs, and stream completed sentences ending in short words without mistaking them for abbreviations.
+
+- AC-2167: choose Full, Summary or Short assistant speech and its shortening method in Options, with Short + Assistant as the default, clear fallback notices and a Read full reply aloud action on each answer. Ambiguous speech keeps the configured read-aloud language.
+
+- AC-2166: prepare private short speech through the assistant or a selected profile, with a three-second deadline and rule-based fallback for providers without an ephemeral route.
+- AC-2165: prepare bounded short and summary speech per completed assistant reply, while full speech keeps streaming.
 - Closing the main window exits Cockpit even after hiding the Companion or another helper window; closing to the tray still keeps it running.
 - Desktop shutdown stops background services and awaits their final writes before disposing their dependencies.
 - Enabling an installed plugin without consent now explains that permission for its current SHA is required instead of reporting it as missing.

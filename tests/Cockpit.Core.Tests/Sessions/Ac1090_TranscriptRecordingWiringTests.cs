@@ -5,6 +5,13 @@ using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Infrastructure;
 using Cockpit.Infrastructure.Sessions;
+using Cockpit.App.Services;
+using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Core.Assistant;
+using Cockpit.Core.Profiles;
+using Cockpit.Core.Sessions;
+using Cockpit.Core.Voice;
+using NSubstitute;
 
 namespace Cockpit.Core.Tests.Sessions;
 
@@ -66,6 +73,58 @@ public class Ac1090_TranscriptRecordingWiringTests : IDisposable
         await store.FlushAsync(CancellationToken.None);
 
         Assert.Equal(afterRecording, new FileInfo(store.LogPath(pane.PaneId)).Length);
+        await _EphemeralSpeechDoesNotBecomeRecordedRowsAsync(store);
+    }
+
+    private static async Task _EphemeralSpeechDoesNotBecomeRecordedRowsAsync(SessionTranscriptLog store)
+    {
+        const string sentinel = "Private sentinel spoken only.";
+        const string answer = "Het volledige antwoord blijft hier staan.";
+        var profile = new SessionProfile("private", new OllamaConfig("http://unused.invalid", "fake"));
+        var drivers = Substitute.For<ISessionDriverFactory>();
+        drivers.GenerateEphemeralSpeechAsync(profile, answer, Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<string?>(sentinel));
+        var control = Substitute.For<ISessionControl>();
+        var controls = Substitute.For<ISessionControlFactory>();
+        controls.Create(Arg.Any<Func<string>>()).Returns(control);
+        var playback = Substitute.For<IVoicePlaybackQueue>();
+        var spoken = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        playback.When(queue => queue.CompleteStream(VoicePlaybackSource.Assistant, AssistantIdentity.PaneId)).Do(_ => spoken.TrySetResult());
+        await using var pane = new SessionViewModel(controls, voicePlaybackQueue: playback, speechDrivers: drivers);
+        pane.AdoptPaneId(AssistantIdentity.PaneId);
+        pane.ReadResponsesAloud = true;
+        pane.AssistantSpeechMode = SpokenReplyMode.Short;
+        pane.AssistantSpeechMethod = SpokenReplyMethod.Profile;
+        pane.SpeechProfile = profile;
+        control.TurnStarting += Raise.Event<Action<QueuedPrompt>>(new QueuedPrompt("status", []));
+        var row = TranscriptSnapshot.Capture(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, answer));
+        control.RowUpserted += Raise.Event<Action<TranscriptRowUpsert>>(new TranscriptRowUpsert(1, 1, row));
+        control.Folded += Raise.Event<Action<TranscriptFold>>(new TranscriptFold(row, false) { IsReply = true });
+        control.TurnEnded += Raise.Event<Action<SessionTurnEnd>>(new SessionTurnEnd(false, false, false, null, "success", null));
+        await spoken.Task;
+        playback.Received().Enqueue(Arg.Is<IReadOnlyList<SpeechSegment>>(segments => string.Join(" ", segments.SelectMany(segment => segment.Sentences)) == sentinel),
+            Arg.Any<int>(), VoicePlaybackSource.Assistant, pane.PaneId);
+        var snapshots = pane.Transcript.Select(TranscriptSnapshot.Capture).ToArray();
+        Assert.DoesNotContain(snapshots, snapshot => System.Text.Json.JsonSerializer.Serialize(snapshot).Contains(sentinel, StringComparison.Ordinal));
+        Assert.Equal(answer, pane.Transcript.Single(entry => entry.Kind == TranscriptEntryKind.AssistantText).Text);
+        await store.AppendAsync("ephemeral-proof", snapshots.Single(snapshot => snapshot.Kind == nameof(TranscriptEntryKind.AssistantText)));
+        await store.FlushAsync(CancellationToken.None);
+        Assert.Equal(answer, Assert.Single((await store.TryLoadAsync("ephemeral-proof")) ?? []).Text);
+        drivers.DidNotReceive().Create(Arg.Any<SessionProfile?>());
+
+        using var cancelled = new CancellationTokenSource();
+        var late = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        drivers.GenerateEphemeralSpeechAsync(profile, answer, null, Arg.Any<CancellationToken>()).Returns(_ =>
+        {
+            entered.TrySetResult();
+            return late.Task;
+        });
+        var pending = SpokenReplyGeneration.GenerateAsync(drivers, profile, answer, null, SpokenReplyMode.Short, SpokenReplyMethod.Assistant, cancelled.Token);
+        await entered.Task;
+        cancelled.Cancel();
+        late.SetResult(sentinel);
+        Assert.Empty((await pending).Sentences);
     }
 
     public void Dispose()
