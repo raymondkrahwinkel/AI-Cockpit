@@ -796,7 +796,18 @@ public sealed partial class SessionHost : ISessionTurnGate, ISessionTranscript, 
     public Task SetMaxThinkingTokensAsync(int maxThinkingTokens) =>
         Runtime?.SetMaxThinkingTokensAsync(maxThinkingTokens) ?? Task.CompletedTask;
 
-    public Task SetLiveOptionAsync(string key, string value) => Runtime?.SetLiveOptionAsync(key, value) ?? Task.CompletedTask;
+    public async Task SetLiveOptionAsync(string key, string value)
+    {
+        if (Runtime is { } runtime)
+        {
+            await runtime.SetLiveOptionAsync(key, value);
+            if (string.Equals(key, WellKnownPluginSessionOptions.Model, StringComparison.OrdinalIgnoreCase))
+            {
+                _liveState.SetModel(value);
+                _RaiseLiveStateIfChanged();
+            }
+        }
+    }
 
     public Task SetAutoApproveToolsAsync(bool autoApprove) => Runtime?.SetAutoApproveToolsAsync(autoApprove) ?? Task.CompletedTask;
 

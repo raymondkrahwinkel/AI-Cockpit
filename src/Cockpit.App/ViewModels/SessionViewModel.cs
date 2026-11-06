@@ -1872,6 +1872,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         // The model dropdown lists Claude aliases (opus/sonnet/…), which are meaningless to a local provider — it uses
         // the model set on its profile, so only a Claude session is handed the selected one.
         var launchModel = profile?.Provider is null or SessionProvider.ClaudeCli ? SelectedModel.Value : null;
+        _usageModel = _launchOptions?.GetValueOrDefault(WellKnownPluginSessionOptions.Model)
+            ?? launchModel ?? (profile is null ? null : ProfileModel.Of(profile));
 
         // AC-218: ProjectId is set on this panel by CockpitViewModel before this runs, so the driver's MCP fan-out
         // resolves this project's registry view. Pre-approved tools (AC-215) are for a self-driving run.
@@ -3039,6 +3041,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // AC-1437: the host's fold, drawn. Status last, as it always came after what it weighs.
     private void _OnLiveStateChanged(SessionLiveState state)
     {
+        if (!string.IsNullOrWhiteSpace(state.Model))
+        {
+            _usageModel = state.Model;
+        }
         if (state.Capabilities is { } capabilities)
         {
             Capabilities = capabilities;
@@ -3186,8 +3192,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     // Write the running totals to the usage trail after every turn (AC-251), so they outlive the session and the app —
     // recording only at the end would lose exactly the run that crashed, which is the case worth measuring.
+    private string? _usageModel;
+
     private protected override (UsageRunKind RunKind, string? RunId, string? RunLabel, string? Model) GetUsageSnapshotMetadata() =>
-        (RunKind, RunId, RunLabel, SelectedModel.Value);
+        (RunKind, RunId, RunLabel, string.IsNullOrWhiteSpace(_usageModel) ? null : _usageModel);
 
     public override async Task<bool> SendPromptAsync(string prompt)
     {

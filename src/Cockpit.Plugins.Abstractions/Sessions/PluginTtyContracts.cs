@@ -104,6 +104,9 @@ public sealed record PluginTtyLaunchSpec(
     string WorkingDirectory,
     IReadOnlyList<string> SessionScopedFiles)
 {
+    /// <summary>The effective launch model, or null when the provider leaves it to its CLI.</summary>
+    public string? Model { get; init; }
+
     /// <summary>
     /// The status/limits snapshot file the provider's CLI writes to — Claude's statusline relay is the only
     /// machine-readable route to its context/usage limits — which the host polls to fill the session header's

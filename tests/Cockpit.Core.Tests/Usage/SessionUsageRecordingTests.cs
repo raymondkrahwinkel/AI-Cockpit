@@ -87,7 +87,8 @@ public class SessionUsageRecordingTests
         var history = new RecordingUsageHistory();
         var session = _Session(history);
         session.ActiveProfileLabel = "raymond";
-        session.SelectedModel = new ModelOption("Opus", "opus");
+        session.SelectedModel = new ModelOption("Sonnet", "sonnet");
+        session.Apply(new SessionInitialized { SessionId = "s-1", Cwd = ".", Tools = [], Model = "claude-opus-4-6" });
 
         session.Apply(_Turn(new TokenUsage(120, 40, 9_000, 300), 0.25));
 
@@ -100,7 +101,7 @@ public class SessionUsageRecordingTests
         Assert.Equal(0.25, snapshot.TotalCostUsd);
         Assert.Equal(1, snapshot.Turns);
         Assert.Equal("raymond", snapshot.ProfileLabel);
-        Assert.Equal("opus", snapshot.Model);
+        Assert.Equal("claude-opus-4-6", snapshot.Model);
         Assert.NotEqual(default, snapshot.StartedAt);
         Assert.NotEqual(default, snapshot.RecordedAt);
         Assert.Empty(UsageSnapshotContract.CommonFieldDifferences(new UsageSnapshot
@@ -109,7 +110,7 @@ public class SessionUsageRecordingTests
             StartedAt = snapshot.StartedAt,
             RecordedAt = snapshot.RecordedAt,
             ProfileLabel = "raymond",
-            Model = "opus",
+            Model = "claude-opus-4-6",
             InputTokens = 120,
             OutputTokens = 40,
             CacheReadInputTokens = 9_000,
@@ -139,6 +140,7 @@ public class SessionUsageRecordingTests
         Assert.Equal(UsageRunKind.Embedded, snapshot.RunKind);
         Assert.Equal("run-7", snapshot.RunId);
         Assert.Equal("AC-251 - persist usage", snapshot.RunLabel);
+        Assert.Null(snapshot.Model);
     }
 
     [Fact]

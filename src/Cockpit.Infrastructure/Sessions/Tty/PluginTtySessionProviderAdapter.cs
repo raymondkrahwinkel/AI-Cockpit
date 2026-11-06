@@ -70,7 +70,7 @@ internal sealed class PluginTtySessionProviderAdapter(
             spec.EnvironmentOverlay,
             spec.WorkingDirectory,
             spec.SessionScopedFiles,
-            spec.StatusFile);
+            spec.StatusFile) { Model = spec.Model };
     }
 
     // AC-1013: Agent-eligible MCP servers and delegation eligibility, resolved once per launch off the operator's

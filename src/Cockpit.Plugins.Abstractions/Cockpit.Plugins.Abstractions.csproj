@@ -659,7 +659,7 @@
          A plugin reading the profile member requires host 0.156.0. Additive; still v3. -->
     <!-- 3.64.0: read-only assistant turn admission/receipts and a provider tool filter; additive, contract stays 3. -->
     <!-- 3.65.0 (AC-1865): ICockpitSessionObserver.HasMcpServer; additive, contract stays 3. -->
-    <Version>3.66.0</Version>
+    <Version>3.67.0</Version>
     <AssemblyVersion>1.17.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

@@ -9,4 +9,7 @@ public sealed record TtyLaunchSpec(
     IReadOnlyDictionary<string, string?> EnvironmentOverlay,
     string WorkingDirectory,
     IReadOnlyList<string> SessionScopedFiles,
-    string? StatusFile = null);
+    string? StatusFile = null)
+{
+    public string? Model { get; init; }
+}

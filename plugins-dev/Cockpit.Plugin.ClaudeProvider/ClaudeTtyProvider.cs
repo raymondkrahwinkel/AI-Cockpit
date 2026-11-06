@@ -97,6 +97,7 @@ internal sealed class ClaudeTtyProvider(Func<string, string?>? managedResolver =
             sessionScopedFiles)
         {
             StatusFile = statusFile,
+            Model = context.Options.GetValueOrDefault(ModelKey),
         };
     }
 

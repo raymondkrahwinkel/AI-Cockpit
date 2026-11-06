@@ -77,7 +77,11 @@ internal sealed class CodexTtyProvider(Func<string, string?>? managedResolver = 
             BuildArguments(config, context.Options, context.Resume, hookArguments),
             environment,
             context.WorkingDirectory,
-            SessionScopedFiles: files) { StatusFile = statusFile };
+            SessionScopedFiles: files)
+        {
+            StatusFile = statusFile,
+            Model = CliAgentConfig.ResolveOption(context.Options, ModelOptionKey, config.Model),
+        };
     }
 
     private static string _TomlGroups(JsonElement groups) => "[" + string.Join(",", groups.EnumerateArray().Select(group =>
