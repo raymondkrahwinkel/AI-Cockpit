@@ -21,7 +21,10 @@ public partial class SessionView : UserControl
     {
         SessionSettingsButton.Flyout?.Hide();
         SessionSettingsButton.Focus();
-        this.FindAncestorOfType<CockpitView>()?.OnOpenSessionMcp(this, e);
+        if (DataContext is SessionPanelViewModel session)
+        {
+            Program.Services?.GetService<CockpitViewModel>()?.OpenSessionMcpCommand.Execute(session);
+        }
     }
 
     // AC-1121: the follow lives in TranscriptFollower, shared with AssistantChatView. It ran twice, and every

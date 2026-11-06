@@ -130,7 +130,7 @@
                            Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                            IsVisible="{Binding !ShowMcpStatusButton}"/>
                 <Button x:Name="SessionMcpStatusButton" Classes="Ghost Compact" Click="OnOpenSessionMcp"
-                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                        HorizontalAlignment="Left" HorizontalContentAlignment="Left"
                         IsVisible="{Binding ShowMcpStatusButton}" ToolTip.Tip="Open this session's MCP servers">
                     <TextBlock Text="{Binding Status}" FontSize="11" TextTrimming="CharacterEllipsis"/>
                 </Button>
