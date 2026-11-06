@@ -35,6 +35,32 @@ internal sealed class SwarmHeartbeat(
     private readonly Dictionary<SwarmMemberId, SwarmHeartbeatUpdate> _updates = [];
     private volatile bool _asleep;
     internal TimeProvider Time { get; set; } = TimeProvider.System;
+    internal string Failure { get; private set; } = "";
+
+    internal async Task<string> ResetAsync(CancellationToken ct)
+    {
+        await _tick.WaitAsync(ct);
+        try
+        {
+            var backup = "";
+            await join.ResetAsync(async () =>
+            {
+                var removal = kick ?? throw new InvalidOperationException("Swarm reset is unavailable.");
+                backup = await removal.ResetAsync(ct);
+                lock (_gate)
+                {
+                    _updates.Clear();
+                }
+                await leadership.RefreshAsync(ct: ct);
+                Failure = "";
+            }, ct);
+            return backup;
+        }
+        finally
+        {
+            _tick.Release();
+        }
+    }
 
     internal SwarmHeartbeatUpdate? Latest(SwarmMemberId member)
     {
@@ -109,7 +135,7 @@ internal sealed class SwarmHeartbeat(
     {
         kick?.MapRoutes(routes, services);
         var group = SwarmNetworkPolicy.MapGroup(routes, services);
-        group.MapPost("/claim", (Delegate)((HttpContext context) => HandleAsync(context, async peer =>
+        group.MapPost("/claim", (Delegate)((HttpContext context) => HandleAsync(context, async (peer, generation) =>
         {
             var record = await context.Request.ReadFromJsonAsync<SwarmRecord>(SwarmRecordJson.Options, context.RequestAborted);
             if (record is null || record.Signatures is null)
@@ -119,7 +145,7 @@ internal sealed class SwarmHeartbeat(
             var delta = await leadership.AcceptClaimAsync(peer, record, context.RequestAborted);
             return Results.Json(delta, SwarmRecordJson.Options);
         })));
-        group.MapPost("/heartbeat", (Delegate)((HttpContext context) => HandleAsync(context, async peer =>
+        group.MapPost("/heartbeat", (Delegate)((HttpContext context) => HandleAsync(context, async (peer, generation) =>
         {
             var record = await context.Request.ReadFromJsonAsync<SwarmRecord>(SwarmRecordJson.Options, context.RequestAborted);
             var pin = NodeCertificatePin.FingerprintOf(await context.Connection.GetClientCertificateAsync(context.RequestAborted)
@@ -130,7 +156,7 @@ internal sealed class SwarmHeartbeat(
             }
             return Results.Json(await OwnAsync(_asleep, context.RequestAborted), SwarmRecordJson.Options);
         })));
-        group.MapGet("/records", (Delegate)((HttpContext context) => HandleAsync(context, async _ =>
+        group.MapGet("/records", (Delegate)((HttpContext context) => HandleAsync(context, async (_, generation) =>
         {
             if (!long.TryParse(context.Request.Query["since"], out var since))
             {
@@ -139,21 +165,26 @@ internal sealed class SwarmHeartbeat(
             var delta = await propagation.RecordsAsync(since, context.Request.Query["prefix"], context.RequestAborted);
             return Results.Json(delta, SwarmRecordJson.Options);
         })));
-        group.MapPost("/records", (Delegate)((HttpContext context) => HandleAsync(context, async _ =>
+        group.MapPost("/records", (Delegate)((HttpContext context) => HandleAsync(context, async (_, generation) =>
         {
             var delta = await context.Request.ReadFromJsonAsync<SwarmRecords>(SwarmRecordJson.Options, context.RequestAborted);
             if (delta is null)
             {
                 return Results.BadRequest();
             }
-            await propagation.ApplyAsync(delta, context.RequestAborted);
+            await propagation.ApplyAsync(delta, context.RequestAborted, generation);
             return Results.Ok();
         })));
     }
 
-    private async Task<IResult> HandleAsync(HttpContext context, Func<SwarmMemberId, Task<IResult>> action)
+    private async Task<IResult> HandleAsync(HttpContext context, Func<SwarmMemberId, long, Task<IResult>> action)
     {
+        var generation = store.Generation;
         var ct = context.RequestAborted;
+        if (!(await settings.LoadAsync(ct)).Enabled)
+        {
+            return Results.Conflict(new { error = "Swarm is paused: Accept connections is off." });
+        }
         var peer = await context.Connection.GetClientCertificateAsync(ct);
         if (peer is null)
         {
@@ -163,9 +194,11 @@ internal sealed class SwarmHeartbeat(
         var membership = await store.LoadAsync(ct);
         var member = membership.Members.FirstOrDefault(item => item.Id == id);
         var pin = NodeCertificatePin.FingerprintOf(peer);
-        if (member is null || !(await servers.LoadAsync(ct)).Any(server =>
+        if (membership.PublicKeyOf(identity.MemberId) is null || member is null || !(await servers.LoadAsync(ct)).Any(server =>
             server.Name.StartsWith(NodeServerName.PrefixFor(member.Name), StringComparison.Ordinal) && server.PinnedCertificateFingerprint == pin))
+        {
             return Results.StatusCode(403);
+        }
         var token = context.Request.Headers.Authorization.ToString();
         if (!token.StartsWith("Bearer ", StringComparison.Ordinal))
         {
@@ -178,7 +211,7 @@ internal sealed class SwarmHeartbeat(
         }
         try
         {
-            return await action(id);
+            return await action(id, generation);
         }
         catch (InvalidDataException ex)
         {
@@ -196,6 +229,12 @@ internal sealed class SwarmHeartbeat(
         await _tick.WaitAsync(ct);
         try
         {
+            Failure = "";
+            if (!(await settings.LoadAsync(ct)).Enabled)
+            {
+                await leadership.RefreshAsync(ct: ct, available: false);
+                return;
+            }
             if (kick is not null)
             {
                 await kick.DeliverAsync(ct);
@@ -203,8 +242,10 @@ internal sealed class SwarmHeartbeat(
             var membership = await store.LoadAsync(ct);
             if (membership.PublicKeyOf(identity.MemberId) is null && membership.Sequence > 0)
             {
+                await leadership.RefreshAsync(ct: ct);
                 return;
             }
+            var failures = new System.Collections.Concurrent.ConcurrentBag<string>();
             await Task.WhenAll(membership.Members.Where(member => member.Id != identity.MemberId).Select(async member =>
             {
                 try
@@ -286,8 +327,14 @@ internal sealed class SwarmHeartbeat(
                         await manual.RememberAsync(uri.ToString(), member.Id.Value, ex, ct: ct);
                     }
                     logger.LogWarning(ex, "Swarm heartbeat or synchronization failed for {Member}.", member.Id);
+                    failures.Add($"{member.Name}: {ex.Message}");
                 }
             }));
+            Failure = string.Join(Environment.NewLine, failures);
+            if (!failures.IsEmpty)
+            {
+                Failure += " Choose which swarm to keep if histories differ; use Leave / reset swarm on the other machine before pairing again.";
+            }
             await leadership.RefreshAsync(ct: ct, asleep: asleep);
             if (merge is not null && !asleep)
             {
@@ -328,7 +375,15 @@ internal sealed class SwarmHeartbeat(
             {
                 if (!_asleep)
                 {
-                    await TickAsync(ct: stoppingToken);
+                    try
+                    {
+                        await TickAsync(ct: stoppingToken);
+                    }
+                    catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
+                    {
+                        Failure = $"Swarm refresh failed: {ex.Message}";
+                        logger.LogWarning(ex, "Swarm refresh failed; retrying on the next heartbeat.");
+                    }
                 }
             }
             while (await timer.WaitForNextTickAsync(stoppingToken));
