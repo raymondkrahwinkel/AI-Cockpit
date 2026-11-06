@@ -5,6 +5,7 @@
 - AC-2164: keep opening prompts queued until the Claude or Codex terminal composer is ready, so workspace trust dialogs cannot consume them as delivered turns.
 - AC-2103: Clear stale local-only warnings after live note recovery confirms the saved text, and offer Retry sync while unconfirmed edits remain protected.
 - AC-555: remove the unsupported Docker endpoint setting, warn about ignored saved overrides, and require fresh consent when switching from a remote endpoint to the local daemon.
+- AC-2058: preserve graceful SIGTERM shutdown on Linux/macOS when the Browser plugin is active.
 
 - AC-241: Companion remembers a reachable position, uses native window dragging, and separates tools with an explicit empty state.
 
