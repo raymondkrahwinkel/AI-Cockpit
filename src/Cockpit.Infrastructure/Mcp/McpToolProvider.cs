@@ -97,7 +97,16 @@ internal sealed partial class McpToolProvider(
         var session = new LiveMcpToolSession(this, paneId, sessionToken, projectId, agentName, ownsToken: true);
         try
         {
-            await Task.WhenAll(enabledServers.Select(server => session.AddServerAsync(server, cancellationToken)));
+            var connecting = Task.WhenAll(enabledServers.Select(server => session.AddServerAsync(server, cancellationToken)));
+            if (liveGateway)
+            {
+                try { await connecting.WaitAsync(TimeSpan.FromSeconds(3), cancellationToken); }
+                catch (TimeoutException) { }
+            }
+            else
+            {
+                await connecting;
+            }
             if (liveGateway)
             {
                 session.WatchMounts(confineFileToolsToDirectory);

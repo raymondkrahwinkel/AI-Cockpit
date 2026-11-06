@@ -27,6 +27,9 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
     private readonly ILogger<OpenAiCompatSessionDriver> _logger;
     private readonly SessionMcpMounts? _mcpMounts;
     private readonly ILocalModelContextManager _localModelContext;
+    private readonly SessionMcpGatewayHost? _gateway;
+    private string? _scratch;
+    private string? _scratchPane;
 
     private readonly Channel<SessionEvent> _events = Channel.CreateUnbounded<SessionEvent>();
     private readonly List<ChatMessage> _history = [];
@@ -63,12 +66,13 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
         IMcpToolProvider mcpToolProvider,
         ILogger<OpenAiCompatSessionDriver> logger,
         ILocalModelContextManager localModelContext,
-        SessionMcpMounts? mcpMounts = null)
+        SessionMcpMounts? mcpMounts = null, SessionMcpGatewayHost? gateway = null)
     {
         _chatClientFactory = chatClientFactory;
         _mcpToolProvider = mcpToolProvider;
         _logger = logger;
         _mcpMounts = mcpMounts;
+        _gateway = gateway;
         _localModelContext = localModelContext;
         _gate = new SessionToolApprovalGate(
             (toolUseId, toolName, inputJson) =>
@@ -140,6 +144,16 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
             // selection, so fall back to the profile's saved one rather than reaching every enabled server — the same
             // fix the plugin-driver adapter applies, so the local-model tool loop honours the checklist too.
             var selection = _WithCoding(McpServerRegistryFilter.EffectiveSessionSelection(enabledMcpServerNames, profile?.EnabledMcpServerNames));
+            if (_gateway?.UrlFor(paneId ?? "launch") is not null)
+            {
+                paneId ??= Guid.NewGuid().ToString("N");
+                _scratchPane = paneId;
+                _scratch = SessionScratch.Create(paneId, message => _logger.LogWarning("{Message}", message));
+                var environment = new Dictionary<string, string?>(ProfileEnvironmentVariable.ToOverlay(profile?.EnvironmentVariables ?? []), StringComparer.OrdinalIgnoreCase);
+                foreach (var key in new[] { "COCKPIT_SCRATCH", "TEMP", "TMP", "TMPDIR" }) { environment[key] = _scratch; }
+                await _gateway.BindLaunchAsync(paneId, projectId, workingDirectory, confineRoot, profile?.Label,
+                    selection is ExactMcpServerSelection { AssistantManaged: true }, cancellationToken, environment).ConfigureAwait(false);
+            }
             _toolSession = await _mcpToolProvider.ConnectAsync(selection, paneId, confineRoot, projectId, workingDirectory, cancellationToken, profile?.Label).ConfigureAwait(false);
 
             // Symmetric with the plugin-driver adapter (#44): say which servers the tool loop connected and against
@@ -641,6 +655,10 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
                     if (_sessionId is not null)
                     {
                         await _localModelContext.ReleaseAsync(_sessionId).ConfigureAwait(false);
+                        if (_scratch is not null && _scratchPane is not null)
+                        {
+                            await SessionScratchCleanup.DeleteAsync(_scratch, _scratchPane, null, _logger).ConfigureAwait(false);
+                        }
                     }
                 }
             }
