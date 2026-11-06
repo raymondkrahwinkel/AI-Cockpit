@@ -48,6 +48,10 @@ internal static class CockpitWindowChrome
     public static void Apply(Window window, string? title = null, string? subtitle = null, CockpitTitleBar titleBar = CockpitTitleBar.Dialog, bool includeMinimize = false, bool includeMaximize = false, bool closeOnEscape = true, Action? onSettings = null, string? remoteServer = null, Control? captionAction = null)
     {
         window.ExtendClientAreaToDecorationsHint = true;
+        if (CockpitBuild.IsDevelopment)
+        {
+            window.Icon = CreateAppIcon();
+        }
         WindowResizeGrip.Apply(window);
         if (_Brush("CockpitPanelBgBrush") is { } background)
         {
@@ -314,8 +318,16 @@ internal static class CockpitWindowChrome
             new Run(CockpitProduct.Brand),
             new Run($" {CockpitProduct.Product}") { Foreground = _Brush("CockpitTextFaintBrush") },
         ];
+        if (CockpitBuild.IsDevelopment)
+        {
+            line.Inlines.Add(new Run($" {CockpitProduct.DevBadge}") { Foreground = _Brush("CockpitAccentBrush") });
+        }
         return line;
     }
+
+    // The icon every window and the tray carry; a debug build gets the one with the DEV bar over it.
+    internal static WindowIcon CreateAppIcon() => new(AssetLoader.Open(new Uri(
+        CockpitBuild.IsDevelopment ? "avares://Cockpit.App/Assets/AppIconDev.ico" : "avares://Cockpit.App/Assets/AppIcon.ico")));
 
     // The window's name, on exactly one line. A title is not always the app's own: a plugin supplies the one on
     // its dialog, and a title carrying newlines would otherwise make the bar as tall as it liked — the bar used to
