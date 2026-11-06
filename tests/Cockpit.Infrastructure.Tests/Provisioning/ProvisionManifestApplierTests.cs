@@ -1,3 +1,4 @@
+using Cockpit.Infrastructure.Plugins;
 using System.Globalization;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -95,10 +96,20 @@ public sealed class ProvisionManifestApplierTests : IDisposable
 
     // AC-1507, manifest-v1 §4.2: the rows where a local value could be lost. Each applies `first`, lets the operator
     // set 11 through the Options route, then applies `second` (null: the key left the manifest).
-    [Theory]
-    [InlineData("default", "default", 16, "11", ProvisionManifestApplier.KeptLocal)]
-    [InlineData("locked", null, 0, "11", ProvisionManifestApplier.RestoredUnmanaged)]
-    public async Task A_local_choice_outlives_a_new_default_and_comes_back_when_a_lock_is_lifted(string first, string? second, int secondValue, string expected, string outcome)
+    [Fact]
+    public async Task A_local_choice_outlives_a_new_default_and_comes_back_when_a_lock_is_lifted()
+    {
+        using (var scenario = new ProvisionManifestApplierTests())
+        {
+            await scenario._AssertA_local_choice_outlives_a_new_default_and_comes_back_when_a_lock_is_liftedAsync("default", "default", 16, "11", ProvisionManifestApplier.KeptLocal);
+        }
+        using (var scenario = new ProvisionManifestApplierTests())
+        {
+            await scenario._AssertA_local_choice_outlives_a_new_default_and_comes_back_when_a_lock_is_liftedAsync("locked", null, 0, "11", ProvisionManifestApplier.RestoredUnmanaged);
+        }
+    }
+
+    private async Task _AssertA_local_choice_outlives_a_new_default_and_comes_back_when_a_lock_is_liftedAsync(string first, string? second, int secondValue, string expected, string outcome)
     {
         var store = new TerminalSettingsStore(ConfigPath);
         if (first == ProvisionManifestReader.LockedMode)
@@ -222,7 +233,7 @@ public sealed class ProvisionManifestApplierTests : IDisposable
                 return new PluginStoreDownloadResult(true, null, zip);
             });
         var installer = Substitute.For<IPluginInstaller>();
-        installer.InstallFromZipAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<Version?>(), Arg.Any<CancellationToken>())
+        installer.InstallFromZipAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<Version?>(), Arg.Any<CancellationToken>(), Arg.Any<string?>(), Arg.Any<string?>())
             .Returns(call =>
             {
                 var id = Path.GetFileNameWithoutExtension(call.ArgAt<string>(0));
@@ -236,7 +247,7 @@ public sealed class ProvisionManifestApplierTests : IDisposable
             _stateRoot,
             PluginsRoot,
             storeClient,
-            new PluginProvisioningService(storeClient, installer),
+            new PluginProvisioningService(storeClient, installer, new PluginSignatureVerifier(), Substitute.For<IPluginTrustStore>()),
             NullLogger.Instance,
             CancellationToken.None);
     }

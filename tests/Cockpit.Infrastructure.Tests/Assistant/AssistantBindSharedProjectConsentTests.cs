@@ -27,11 +27,24 @@ public sealed class AssistantBindSharedProjectConsentTests : IDisposable
     private static JsonNode _Json(string result) => JsonNode.Parse(result)!;
 
 
-    [Theory]
-    [InlineData("depot:handbook\nfolder: /home/raymond/anything", "/home/raymond/work/handbook", "Zyra")]
-    [InlineData("depot:handbook", "/tmp/x\nfolder: /home/raymond/work/handbook", "Zyra")]
-    [InlineData("depot:handbook", "/home/raymond/work/handbook", "Zyra\u001b[2K")]
-    public async Task AnArgumentThatWouldWriteALineOfItsOwn_IsRefusedBeforeAnyCardIsRaised(
+    [Fact]
+    public async Task AnArgumentThatWouldWriteALineOfItsOwn_IsRefusedBeforeAnyCardIsRaised()
+    {
+        using (var scenario = new AssistantBindSharedProjectConsentTests())
+        {
+            await scenario._AssertAnArgumentThatWouldWriteALineOfItsOwn_IsRefusedBeforeAnyCardIsRaisedAsync("depot:handbook\nfolder: /home/raymond/anything", "/home/raymond/work/handbook", "Zyra");
+        }
+        using (var scenario = new AssistantBindSharedProjectConsentTests())
+        {
+            await scenario._AssertAnArgumentThatWouldWriteALineOfItsOwn_IsRefusedBeforeAnyCardIsRaisedAsync("depot:handbook", "/tmp/x\nfolder: /home/raymond/work/handbook", "Zyra");
+        }
+        using (var scenario = new AssistantBindSharedProjectConsentTests())
+        {
+            await scenario._AssertAnArgumentThatWouldWriteALineOfItsOwn_IsRefusedBeforeAnyCardIsRaisedAsync("depot:handbook", "/home/raymond/work/handbook", "Zyra\u001b[2K");
+        }
+    }
+
+    private async Task _AssertAnArgumentThatWouldWriteALineOfItsOwn_IsRefusedBeforeAnyCardIsRaisedAsync(
         string sharedProjectId, string folder, string profile)
     {
         // The card is three labelled lines rendered verbatim, so an argument carrying a newline forges the very line

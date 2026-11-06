@@ -17,10 +17,20 @@ public class DiagramObjectEditTests
 
     // One refusal, two reasons an id can be unusable: it is already in the diagram, or it is not one word and would
     // otherwise be written into the source as its own arrow. Neither may produce text.
-    [Theory]
-    [InlineData("B", "already in this diagram")]
-    [InlineData("C --> D", "one word")]
-    public void AddNode_WithAnIdThatCannotBeUsed_IsRefused_RatherThanWrittenIntoTheSource(string id, string expected)
+    [Fact]
+    public void AddNode_WithAnIdThatCannotBeUsed_IsRefused_RatherThanWrittenIntoTheSource()
+    {
+        {
+            var scenario = new DiagramObjectEditTests();
+            scenario._AssertAddNode_WithAnIdThatCannotBeUsed_IsRefused_RatherThanWrittenIntoTheSource("B", "already in this diagram");
+        }
+        {
+            var scenario = new DiagramObjectEditTests();
+            scenario._AssertAddNode_WithAnIdThatCannotBeUsed_IsRefused_RatherThanWrittenIntoTheSource("C --> D", "one word");
+        }
+    }
+
+    private void _AssertAddNode_WithAnIdThatCannotBeUsed_IsRefused_RatherThanWrittenIntoTheSource(string id, string expected)
     {
         var edit = DiagramObjectEdit.AddNode(Source, id, "Other");
 

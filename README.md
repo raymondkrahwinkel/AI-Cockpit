@@ -649,3 +649,11 @@ unless `COCKPIT_STATE_ROOT` overrides it), copy `cockpit.json` to a private back
 and pair again. The older panel may still incorrectly label standalone as leader. Do not restore
 the old membership log after pairing. This manual recovery keeps old node connections and keys;
 the reset action in the fixed build also revokes swarm access.
+
+### Publisher trust for plugin-provided stores
+
+Plugin-provided stores require SSHSIG Ed25519 signatures (`cockpit-plugin-v1@krahwinkel-it.nl`, SHA-512), verified before extraction or consent. Signed downloads keep the HTTP client's timeout for their complete body and are limited to 512 MiB and the archive manifest must match the signed id and version. Ordinary unsigned stores keep their existing behavior.
+
+`cockpit.json` holds publisher decisions in `PluginTrust`, keyed by normalized plugin id: each entry has `Source` and `KeyFingerprint`. This is consent metadata with no editable Options value; it is saved immediately and is excluded from automatic settings-carrier sync. Removing a plugin keeps its rule. Restore keeps local rules and fills missing rules from the archive. An unattended install proceeds only for a known source and key. A source or key change requires confirmation; changing to an unsigned source removes the rule only after a successful install.
+
+Revoked keys block installations and updates. Installed plugins keep running and receive a warning on each readable source-feed check. Revocations are not stored permanently: Cockpit follows the current feed (contract decision C remains open). A manually selected zip bypasses publisher verification and keeps the remembered publisher rule. A signature identifies its publisher, not whether code is safe; plugins run in-process, and on a first install the key comes from the same Depot.

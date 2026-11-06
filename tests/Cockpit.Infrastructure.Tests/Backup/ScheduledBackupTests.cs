@@ -42,10 +42,20 @@ public sealed class ScheduledBackupTests : IDisposable
     /// the ids are laid out so that the oldest sorts last by name, the newest first, and sorting by id would delete a newer one. A target
     /// that cannot delete keeps all four and says so once. A manual backup and another installation's stay either way, even above Keep.
     /// </summary>
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task Retention_RemovesTheOldestByAge_OrKeepsAllWhenTheTargetCannotDelete(bool canDelete)
+    [Fact]
+    public async Task Retention_RemovesTheOldestByAge_OrKeepsAllWhenTheTargetCannotDelete()
+    {
+        using (var scenario = new ScheduledBackupTests())
+        {
+            await scenario._AssertRetention_RemovesTheOldestByAge_OrKeepsAllWhenTheTargetCannotDeleteAsync(true);
+        }
+        using (var scenario = new ScheduledBackupTests())
+        {
+            await scenario._AssertRetention_RemovesTheOldestByAge_OrKeepsAllWhenTheTargetCannotDeleteAsync(false);
+        }
+    }
+
+    private async Task _AssertRetention_RemovesTheOldestByAge_OrKeepsAllWhenTheTargetCannotDeleteAsync(bool canDelete)
     {
         _target.CanDelete = canDelete;
         _target.Entries["z-oldest"] = Start.AddDays(-3);

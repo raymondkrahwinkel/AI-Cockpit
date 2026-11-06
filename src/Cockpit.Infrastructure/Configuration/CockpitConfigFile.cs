@@ -9,6 +9,8 @@ namespace Cockpit.Infrastructure.Configuration;
 // on-disk shape can evolve independently.
 internal sealed class CockpitConfigFile
 {
+    public Dictionary<string, PluginTrustEntry> PluginTrust { get; set; } = new(StringComparer.Ordinal);
+
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public JsonObject? SettingsSync { get; set; }
 

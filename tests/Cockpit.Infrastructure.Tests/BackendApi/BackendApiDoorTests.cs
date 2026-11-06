@@ -49,6 +49,8 @@ namespace Cockpit.Infrastructure.Tests.BackendApi;
 // secret and that session's token through: a refusal of either can only come from the API's own door.
 public sealed class BackendApiDoorTests
 {
+
+
     private const string Bootstrap = "ck_bootstrapKeyForTheBackendApiDoorTests0123456";
 
     private const string PairingSecret = "the-pairing-secret";
@@ -66,12 +68,28 @@ public sealed class BackendApiDoorTests
 
     // Criteria 1 and 2, the counter-proof: the app key or a session token over loopback pass the middleware and meet
     // the API's forbidden; a key nobody issued, and since AC-1985 the old pairing secret, meet the MCP door's 401.
-    [Theory]
-    [InlineData("pairing secret over HTTPS", HttpStatusCode.Unauthorized, InvalidTokenBody)]
-    [InlineData("app key over loopback", HttpStatusCode.Forbidden, ForbiddenBody)]
-    [InlineData("session token over loopback", HttpStatusCode.Forbidden, ForbiddenBody)]
-    [InlineData("unknown key over HTTPS", HttpStatusCode.Unauthorized, InvalidTokenBody)]
-    public async Task Whoami_RefusesEveryCallerButAConnectKeyOverHttps(string caller, HttpStatusCode expected, string expectedBody)
+    [Fact]
+    public async Task Whoami_RefusesEveryCallerButAConnectKeyOverHttps()
+    {
+        {
+            var scenario = new BackendApiDoorTests();
+            await scenario._AssertWhoami_RefusesEveryCallerButAConnectKeyOverHttpsAsync("pairing secret over HTTPS", HttpStatusCode.Unauthorized, InvalidTokenBody);
+        }
+        {
+            var scenario = new BackendApiDoorTests();
+            await scenario._AssertWhoami_RefusesEveryCallerButAConnectKeyOverHttpsAsync("app key over loopback", HttpStatusCode.Forbidden, ForbiddenBody);
+        }
+        {
+            var scenario = new BackendApiDoorTests();
+            await scenario._AssertWhoami_RefusesEveryCallerButAConnectKeyOverHttpsAsync("session token over loopback", HttpStatusCode.Forbidden, ForbiddenBody);
+        }
+        {
+            var scenario = new BackendApiDoorTests();
+            await scenario._AssertWhoami_RefusesEveryCallerButAConnectKeyOverHttpsAsync("unknown key over HTTPS", HttpStatusCode.Unauthorized, InvalidTokenBody);
+        }
+    }
+
+    private async Task _AssertWhoami_RefusesEveryCallerButAConnectKeyOverHttpsAsync(string caller, HttpStatusCode expected, string expectedBody)
     {
         await using var door = new _Door();
         await door.StartAsync();
@@ -283,12 +301,28 @@ public sealed class BackendApiDoorTests
     // AC-1446 criterion 2: the full key crosses once, in its issue's answer. No admin read carries it or its hash, nor
     // does the audit file, and no field is named for a credential. F5.6b2–b4 add their reads as rows here. The key
     // list also carries list_connect_keys' fields, and reading it is audited (scope items 5 and 6).
-    [Theory]
-    [InlineData("/api/v1/keys")]
-    [InlineData("/api/v1/audit")]
-    [InlineData("/api/v1/audit, a line per page")]
-    [InlineData("audit file")]
-    public async Task AnAdminRead_NeverCarriesAKeyOrItsHash_WhichOnlyItsIssueAnswerCarriesOnce(string read)
+    [Fact]
+    public async Task AnAdminRead_NeverCarriesAKeyOrItsHash_WhichOnlyItsIssueAnswerCarriesOnce()
+    {
+        {
+            var scenario = new BackendApiDoorTests();
+            await scenario._AssertAnAdminRead_NeverCarriesAKeyOrItsHash_WhichOnlyItsIssueAnswerCarriesOnceAsync("/api/v1/keys");
+        }
+        {
+            var scenario = new BackendApiDoorTests();
+            await scenario._AssertAnAdminRead_NeverCarriesAKeyOrItsHash_WhichOnlyItsIssueAnswerCarriesOnceAsync("/api/v1/audit");
+        }
+        {
+            var scenario = new BackendApiDoorTests();
+            await scenario._AssertAnAdminRead_NeverCarriesAKeyOrItsHash_WhichOnlyItsIssueAnswerCarriesOnceAsync("/api/v1/audit, a line per page");
+        }
+        {
+            var scenario = new BackendApiDoorTests();
+            await scenario._AssertAnAdminRead_NeverCarriesAKeyOrItsHash_WhichOnlyItsIssueAnswerCarriesOnceAsync("audit file");
+        }
+    }
+
+    private async Task _AssertAnAdminRead_NeverCarriesAKeyOrItsHash_WhichOnlyItsIssueAnswerCarriesOnceAsync(string read)
     {
         await using var door = new _Door();
         await door.StartAsync();
@@ -373,14 +407,36 @@ public sealed class BackendApiDoorTests
         Assert.Equal(new _Answer(HttpStatusCode.Unauthorized, InvalidTokenBody), after);
     }
 
-    [Theory]
-    [InlineData("file.txt", "project-a", HttpStatusCode.OK, "text/plain; charset=utf-8", "hello")]
-    [InlineData("file.txt", "project-b", HttpStatusCode.NotFound, null, "")]
-    [InlineData("../../x", "project-a", HttpStatusCode.BadRequest, "application/json", "The path leaves the project root.")]
-    [InlineData("folder", "project-a", HttpStatusCode.BadRequest, "application/json", "The path names a directory.")]
-    [InlineData("large.txt", "project-a", HttpStatusCode.RequestEntityTooLarge, "application/json", "The file exceeds 1 MiB.")]
-    [InlineData("binary.bin", "project-a", HttpStatusCode.OK, "application/octet-stream", "")]
-    public async Task ProjectFile_IsReadOnlyInsideTheKeyScope(string path, string allowedProject, HttpStatusCode status, string? contentType, string bodyPart)
+    [Fact]
+    public async Task ProjectFile_IsReadOnlyInsideTheKeyScope()
+    {
+        {
+            var scenario = new BackendApiDoorTests();
+            await scenario._AssertProjectFile_IsReadOnlyInsideTheKeyScopeAsync("file.txt", "project-a", HttpStatusCode.OK, "text/plain; charset=utf-8", "hello");
+        }
+        {
+            var scenario = new BackendApiDoorTests();
+            await scenario._AssertProjectFile_IsReadOnlyInsideTheKeyScopeAsync("file.txt", "project-b", HttpStatusCode.NotFound, null, "");
+        }
+        {
+            var scenario = new BackendApiDoorTests();
+            await scenario._AssertProjectFile_IsReadOnlyInsideTheKeyScopeAsync("../../x", "project-a", HttpStatusCode.BadRequest, "application/json", "The path leaves the project root.");
+        }
+        {
+            var scenario = new BackendApiDoorTests();
+            await scenario._AssertProjectFile_IsReadOnlyInsideTheKeyScopeAsync("folder", "project-a", HttpStatusCode.BadRequest, "application/json", "The path names a directory.");
+        }
+        {
+            var scenario = new BackendApiDoorTests();
+            await scenario._AssertProjectFile_IsReadOnlyInsideTheKeyScopeAsync("large.txt", "project-a", HttpStatusCode.RequestEntityTooLarge, "application/json", "The file exceeds 1 MiB.");
+        }
+        {
+            var scenario = new BackendApiDoorTests();
+            await scenario._AssertProjectFile_IsReadOnlyInsideTheKeyScopeAsync("binary.bin", "project-a", HttpStatusCode.OK, "application/octet-stream", "");
+        }
+    }
+
+    private async Task _AssertProjectFile_IsReadOnlyInsideTheKeyScopeAsync(string path, string allowedProject, HttpStatusCode status, string? contentType, string bodyPart)
     {
         await using var door = new _Door();
         var verifier = await door.StartAsync();
@@ -500,10 +556,20 @@ public sealed class BackendApiDoorTests
     // AC-1470 criterion 2, with criterion 3 as the rows: nothing in /health or an action's answer is a token, a
     // credential or a key prefix; a 500-character label with control characters arrives cut and clean, and a section
     // without IPluginHealthActions offers no action.
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task Health_CarriesNoSecretOrKeyPrefix_AndAPluginLabelArrivesCutAndClean(bool sectionHasActions)
+    [Fact]
+    public async Task Health_CarriesNoSecretOrKeyPrefix_AndAPluginLabelArrivesCutAndClean()
+    {
+        {
+            var scenario = new BackendApiDoorTests();
+            await scenario._AssertHealth_CarriesNoSecretOrKeyPrefix_AndAPluginLabelArrivesCutAndCleanAsync(true);
+        }
+        {
+            var scenario = new BackendApiDoorTests();
+            await scenario._AssertHealth_CarriesNoSecretOrKeyPrefix_AndAPluginLabelArrivesCutAndCleanAsync(false);
+        }
+    }
+
+    private async Task _AssertHealth_CarriesNoSecretOrKeyPrefix_AndAPluginLabelArrivesCutAndCleanAsync(bool sectionHasActions)
     {
         await using var door = new _Door();
         var verifier = await door.StartAsync();

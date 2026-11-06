@@ -104,22 +104,37 @@ internal sealed partial class PluginStoreClient : IPluginStoreClient, ISingleton
 
     private static async Task<PluginStoreDownloadResult> _DownloadZipAsync(PluginStoreConfig store, StoreTarget target, string? expectedSha256, CancellationToken cancellationToken, IProgress<PluginDownloadProgress>? progress)
     {
+        using var deadline = store.Signed is null ? null : CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline?.CancelAfter(Http.Timeout);
+        var downloadToken = deadline?.Token ?? cancellationToken;
+        string? tempPath = null;
         try
         {
-            target = await _WithSignedTokenAsync(store, target, cancellationToken).ConfigureAwait(false);
-            var bytes = await _ReadBytesAsync(target, maxBytes: null, cancellationToken, progress).ConfigureAwait(false);
+            target = await _WithSignedTokenAsync(store, target, downloadToken).ConfigureAwait(false);
+            var bytes = await _ReadBytesAsync(target, maxBytes: store.Signed is null ? null : 512L * 1024 * 1024, downloadToken, progress).ConfigureAwait(false);
             if (_ChecksumMismatch(bytes, expectedSha256))
             {
                 return new PluginStoreDownloadResult(false, "The downloaded plugin did not match the store's published checksum and was rejected.", null, ChecksumMismatch: true);
             }
 
-            var tempPath = Path.Combine(Path.GetTempPath(), "cockpit-store-" + Guid.NewGuid().ToString("N") + ".zip");
-            await File.WriteAllBytesAsync(tempPath, bytes, cancellationToken).ConfigureAwait(false);
+            tempPath = Path.Combine(Path.GetTempPath(), "cockpit-store-" + Guid.NewGuid().ToString("N") + ".zip");
+            await File.WriteAllBytesAsync(tempPath, bytes, downloadToken).ConfigureAwait(false);
 
             return new PluginStoreDownloadResult(true, null, tempPath, _UnverifiedWarning(expectedSha256, "plugin"));
         }
         catch (Exception exception)
         {
+            if (tempPath is not null)
+            {
+                try
+                {
+                    File.Delete(tempPath);
+                }
+                catch (Exception cleanup) when (cleanup is IOException or UnauthorizedAccessException)
+                {
+                    return new PluginStoreDownloadResult(false, $"Could not download the plugin or remove its partial download: {exception.Message}; {cleanup.Message}", null);
+                }
+            }
             return new PluginStoreDownloadResult(false, $"Could not download the plugin: {exception.Message}", null);
         }
     }
@@ -417,7 +432,7 @@ internal sealed partial class PluginStoreClient : IPluginStoreClient, ISingleton
             var bytes = await _ReadStreamAsync(stream, stream.Length, maxBytes, cancellationToken, progress).ConfigureAwait(false);
             if (maxBytes is { } localCap && bytes.Length > localCap)
             {
-                throw new InvalidOperationException("The store icon is too large.");
+                throw new InvalidOperationException("The store download is too large.");
             }
 
             return bytes;
@@ -429,7 +444,7 @@ internal sealed partial class PluginStoreClient : IPluginStoreClient, ISingleton
 
         if (maxBytes is { } cap && response.Content.Headers.ContentLength > cap)
         {
-            throw new InvalidOperationException("The store icon is too large.");
+            throw new InvalidOperationException("The store download is too large.");
         }
 
         await using var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
@@ -438,7 +453,7 @@ internal sealed partial class PluginStoreClient : IPluginStoreClient, ISingleton
 
     private static async Task<byte[]> _ReadStreamAsync(Stream stream, long? totalBytes, long? maxBytes, CancellationToken cancellationToken, IProgress<PluginDownloadProgress>? progress)
     {
-        await using var buffer = new MemoryStream(totalBytes is > 0 and <= int.MaxValue ? (int)totalBytes.Value : 0);
+        await using var buffer = new MemoryStream(totalBytes is > 0 and <= int.MaxValue && (maxBytes is null || totalBytes <= maxBytes) ? (int)totalBytes.Value : 0);
         var chunk = new byte[81920];
         long read = 0;
         int count;
@@ -446,7 +461,7 @@ internal sealed partial class PluginStoreClient : IPluginStoreClient, ISingleton
         {
             read += count;
             if (maxBytes is { } limit && read > limit)
-                throw new InvalidOperationException("The store icon is too large.");
+                throw new InvalidOperationException("The store download is too large.");
             await buffer.WriteAsync(chunk.AsMemory(0, count), cancellationToken).ConfigureAwait(false);
             progress?.Report(new PluginDownloadProgress(read, totalBytes));
         }

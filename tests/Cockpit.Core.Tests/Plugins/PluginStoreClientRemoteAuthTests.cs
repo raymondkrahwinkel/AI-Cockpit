@@ -21,6 +21,7 @@ public class PluginStoreClientRemoteAuthTests : IAsyncLifetime
     private LoopbackHttpServer? _foreign;
     private string _prefix = string.Empty;
     private string _foreignPrefix = string.Empty;
+    private bool _oversizedDownload;
     private string _indexJson = """{ "name": "s", "plugins": [] }""";
 
     public async Task InitializeAsync()
@@ -110,6 +111,12 @@ public class PluginStoreClientRemoteAuthTests : IAsyncLifetime
         Assert.False(template.IsSuccess);
         Assert.False(legacy.IsSuccess);
         Assert.NotNull(downloaded.ZipPath);
+        _oversizedDownload = true;
+        var oversized = await client.DownloadZipAsync(store, version, "tools");
+        Assert.False(oversized.IsSuccess);
+        Assert.Null(oversized.ZipPath);
+        Assert.Contains("too large", oversized.Error, StringComparison.Ordinal);
+
     }
 
     private async Task _RecordAndAnswerAsync(HttpContext context)
@@ -119,6 +126,12 @@ public class PluginStoreClientRemoteAuthTests : IAsyncLifetime
         _authByPath[context.Request.Path.ToString()] =
             context.Request.Headers.TryGetValue("Authorization", out var authorization) ? authorization.ToString() : null;
 
+        if (_oversizedDownload && context.Request.Path.Value?.EndsWith(".zip", StringComparison.Ordinal) == true)
+        {
+            context.Response.ContentLength = 513L * 1024 * 1024;
+            await context.Response.StartAsync();
+            return;
+        }
         await context.Response.WriteAsync(_indexJson);
     }
 

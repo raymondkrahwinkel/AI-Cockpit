@@ -28,7 +28,8 @@ internal sealed class PluginAdministration(
     ISessionProfileStore? profiles = null,
     ITrackerProviderRegistry? trackers = null,
     PluginChannelHub? channels = null,
-    Func<DiscoveredPlugin, TimeSpan>? startGrace = null) : IPluginAdministration
+    Func<DiscoveredPlugin, TimeSpan>? startGrace = null,
+    IPluginTrustStore? trust = null) : IPluginAdministration
 {
     public async Task<IReadOnlyList<InstalledPlugin>> GetInstalledAsync(CancellationToken cancellationToken = default)
     {
@@ -52,6 +53,9 @@ internal sealed class PluginAdministration(
     // ponytail: one gate for every plugin, so a download holds up a disable; per folder if that is ever felt.
     private readonly SemaphoreSlim _changes = new(1, 1);
 
+    public Task<PluginTrustEntry?> GetPublisherTrustAsync(string folderId, CancellationToken cancellationToken = default) =>
+        trust?.GetAsync(folderId, cancellationToken) ?? Task.FromResult<PluginTrustEntry?>(null);
+
     public async Task<PluginInstallResult> InstallFromZipAsync(string zipFilePath, CancellationToken cancellationToken = default)
     {
         await _changes.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -68,14 +72,15 @@ internal sealed class PluginAdministration(
         }
     }
 
-    public async Task<PluginProvisionResult> InstallFromStoreAsync(PluginProvisionRequest request, CancellationToken cancellationToken = default, IProgress<PluginDownloadProgress>? progress = null)
+    public async Task<PluginProvisionResult> InstallFromStoreAsync(PluginProvisionRequest request, CancellationToken cancellationToken = default, IProgress<PluginDownloadProgress>? progress = null,
+        Func<PluginKeyConsentRequest, CancellationToken, Task<bool>>? keyConsent = null)
     {
         await _changes.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             await _WaitForInitializationAsync(cancellationToken).ConfigureAwait(false);
             await bootstrap.ReconcileUpdatesAsync(cancellationToken).ConfigureAwait(false);
-            var result = await provisioning.InstallAsync(request, AbstractionsContract.Version, cancellationToken: cancellationToken, progress: progress).ConfigureAwait(false);
+            var result = await provisioning.InstallAsync(request, AbstractionsContract.Version, cancellationToken: cancellationToken, progress: progress, keyConsent: keyConsent).ConfigureAwait(false);
             return result.Outcome == PluginProvisionOutcome.Staged
                 ? result with { Live = await _UpdateAsync(result.FolderId, result.Sha256, result.InPlace, result.ConsentReason, result.ReplacedSha256, result.Manifest?.RequiresRestart == true).ConfigureAwait(false) ?? PluginLiveState.Blocked("Approve the installed plugin in Plugin Manager to activate it.") }
                 : result;

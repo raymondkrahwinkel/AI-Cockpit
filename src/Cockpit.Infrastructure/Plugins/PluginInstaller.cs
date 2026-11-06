@@ -48,8 +48,21 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
         _manager = manager;
     }
 
+    public async Task<PluginInstalledState> GetInstalledStateAsync(string folderId, CancellationToken cancellationToken = default)
+    {
+        var folder = Path.Combine(_pluginsRoot, folderId);
+        var manifestPath = Path.Combine(folder, "plugin.json");
+        var bundledPath = Path.Combine(AppContext.BaseDirectory, BundledPluginInstaller.BundledFolderName, folderId, "plugin.json");
+        var json = File.Exists(manifestPath)
+            ? await File.ReadAllTextAsync(manifestPath, cancellationToken).ConfigureAwait(false)
+            : File.Exists(bundledPath) ? await File.ReadAllTextAsync(bundledPath, cancellationToken).ConfigureAwait(false)
+            : BundledPluginResources.TryRead(Path.Join(folderId, "plugin.json").Replace(Path.DirectorySeparatorChar, '/'));
+        var manifest = json is not null && PluginManifest.TryParse(json, out var parsed, out _) ? parsed : null;
+        return new PluginInstalledState(Directory.Exists(folder) || json is not null, manifest?.Version);
+    }
+
     public async Task<PluginInstallResult> InstallFromZipAsync(
-        string zipFilePath, int hostAbstractionsMajor, Version? hostVersion = null, CancellationToken cancellationToken = default)
+        string zipFilePath, int hostAbstractionsMajor, Version? hostVersion = null, CancellationToken cancellationToken = default, string? expectedId = null, string? expectedVersion = null)
     {
         hostVersion ??= HostVersionInfo.Current;
 
@@ -79,6 +92,12 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
             if (!PluginManifest.TryParse(json, out var manifest, out var parseError) || manifest is null)
             {
                 return PluginInstallResult.Failure($"Invalid plugin.json: {parseError}");
+            }
+
+            if ((expectedId is not null && !string.Equals(manifest.Id, expectedId, StringComparison.Ordinal))
+                || (expectedVersion is not null && !string.Equals(manifest.Version, expectedVersion, StringComparison.Ordinal)))
+            {
+                return PluginInstallResult.Failure("The extracted plugin does not match the verified identity and version.");
             }
 
             if (manifest.AbstractionsVersion != hostAbstractionsMajor)

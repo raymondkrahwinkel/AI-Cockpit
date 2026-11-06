@@ -87,10 +87,20 @@ public class SessionStatusToolsTests
 
     // AC-1335 criterion 1, both halves on the same code: the card carries the literal command line the runner is
     // handed, the audit line carries the decision with that same text, and a denial starts nothing.
-    [Theory]
-    [InlineData(ConsentOutcome.Approved, ConsentAuditAction.Approved, 1, true)]
-    [InlineData(ConsentOutcome.Denied, ConsentAuditAction.Denied, 0, false)]
-    public async Task RunElevated_ShowsTheExactCommandLine_AndStartsOnlyWhatTheOperatorApproved(
+    [Fact]
+    public async Task RunElevated_ShowsTheExactCommandLine_AndStartsOnlyWhatTheOperatorApproved()
+    {
+        {
+            var scenario = new SessionStatusToolsTests();
+            await scenario._AssertRunElevated_ShowsTheExactCommandLine_AndStartsOnlyWhatTheOperatorApprovedAsync(ConsentOutcome.Approved, ConsentAuditAction.Approved, 1, true);
+        }
+        {
+            var scenario = new SessionStatusToolsTests();
+            await scenario._AssertRunElevated_ShowsTheExactCommandLine_AndStartsOnlyWhatTheOperatorApprovedAsync(ConsentOutcome.Denied, ConsentAuditAction.Denied, 0, false);
+        }
+    }
+
+    private async Task _AssertRunElevated_ShowsTheExactCommandLine_AndStartsOnlyWhatTheOperatorApprovedAsync(
         ConsentOutcome answer, ConsentAuditAction audited, int starts, bool ok)
     {
         var plan = new ElevatedCommandPlan(@"C:\ps\powershell.exe", @"-NoProfile -NonInteractive -Command ""& { Get-Date } *> 'C:\t\out.txt'""", @"C:\t\out.txt");

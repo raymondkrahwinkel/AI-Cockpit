@@ -673,7 +673,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 
         var files = await owner.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = "Install plugin from zip",
+            Title = "Install plugin from zip (publisher verification is bypassed)",
             AllowMultiple = false,
             FileTypeFilter = [new FilePickerFileType("Plugin package (*.zip)") { Patterns = ["*.zip"] }],
         });

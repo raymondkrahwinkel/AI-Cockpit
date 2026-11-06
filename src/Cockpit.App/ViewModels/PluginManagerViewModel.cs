@@ -467,7 +467,8 @@ public partial class PluginManagerViewModel : ViewModelBase
 
         // Enabling always requires consent to the current bytes: the operator sees what they are trusting
         // and the shown SHA-256 is what gets pinned.
-        var consented = await _dialogService.ShowPluginConsentAsync(row.ToConsentInfo());
+        var publisher = await _administration.GetPublisherTrustAsync(row.FolderId);
+        var consented = await _dialogService.ShowPluginConsentAsync(row.ToConsentInfo() with { Publisher = publisher });
         if (!consented)
         {
             return;
@@ -854,7 +855,7 @@ public partial class PluginManagerViewModel : ViewModelBase
                         installedVersion,
                         isEnabled: installedRow?.CanDisable ?? false,
                         hasSettings: installedRow?.HasSettings ?? false,
-                        disabledByStartupProtection: installedRow?.DisabledByStartupProtection ?? false);
+                        disabledByStartupProtection: installedRow?.DisabledByStartupProtection ?? false) { RevokedKeys = fetch.Index.RevokedKeys };
                     var insertionIndex = AvailablePlugins.TakeWhile(candidate => sourceOrder.IndexOf(candidate.Store) <= sourcePriority).Count();
                     AvailablePlugins.Insert(insertionIndex, row);
 
@@ -1366,7 +1367,8 @@ public partial class PluginManagerViewModel : ViewModelBase
                 ? $"Downloading '{row.Name}' v{version.Version}… {downloaded:0.0} / {total / 1_000_000d:0.0} MB"
                 : $"Downloading '{row.Name}' v{version.Version}… {downloaded:0.0} MB";
         });
-        var provision = await _administration.InstallFromStoreAsync(new PluginProvisionRequest(row.Id, row.Name, row.Store, version), progress: progress);
+        var provision = await _administration.InstallFromStoreAsync(new PluginProvisionRequest(row.Id, row.Name, row.Store, version, row.RevokedKeys, AllowDowngrade: explicitVersion is not null),
+            progress: progress, keyConsent: _ConfirmPublisherAsync);
 
         // Surface an unverified-checksum advisory ahead of the installed message (AC-46): a store that publishes
         // no per-artifact hash still installs, but the operator is told the download could not be verified.
@@ -1396,6 +1398,15 @@ public partial class PluginManagerViewModel : ViewModelBase
         }
 
         return new InstallOutcome(installResult.IsSuccess, provision.Live);
+    }
+
+    private Task<bool> _ConfirmPublisherAsync(PluginKeyConsentRequest request, CancellationToken cancellationToken)
+    {
+        if (_dialogService is null)
+        {
+            return Task.FromResult(false);
+        }
+        return _dialogService.ShowConfirmationDialogAsync("Confirm plugin publisher", PluginConsentTerms.PublisherMessage(request), "Install");
     }
 
     // AC-1500: the "Update" action of the bundle-minimum notice — the store's own update for one plugin, no extra prompt.

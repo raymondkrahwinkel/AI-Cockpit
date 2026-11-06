@@ -43,7 +43,8 @@ internal static class DesktopComposition
                 provider.GetRequiredService<CockpitViewModel>(),
                 provider.GetRequiredService<ILogger<PluginUpdateChecker>>(),
                 registrations: provider.GetService<IPluginRegistrationStore>(),
-                storeSources: provider.GetRequiredService<IPluginStoreSources>());
+                storeSources: provider.GetRequiredService<IPluginStoreSources>(),
+                trust: provider.GetRequiredService<IPluginTrustStore>());
         });
         services.AddSingleton<IPluginUpdateChecker>(provider => provider.GetRequiredService<PluginUpdateChecker>());
 

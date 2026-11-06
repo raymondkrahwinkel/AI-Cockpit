@@ -21,6 +21,8 @@ public sealed partial class StorePluginRowViewModel(
     private Version EffectiveHostVersion => hostVersion ?? HostVersionInfo.Current;
     public PluginStoreEntry Entry => entry;
 
+    public IReadOnlyList<PluginStoreRevokedKey>? RevokedKeys { get; init; }
+
     // Whether the installed plugin is currently enabled (false when not installed) — drives the card's enable/disable toggle.
     public bool IsEnabled => isEnabled;
 

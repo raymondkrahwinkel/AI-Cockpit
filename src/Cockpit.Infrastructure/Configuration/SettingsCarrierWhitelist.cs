@@ -46,6 +46,7 @@ internal static class SettingsCarrierWhitelist
     // Codex's `Command` lives in PluginConfigJson; KubeconfigPath and the git-status repos in a plugin's Data.
     public static readonly IReadOnlyList<string> NeverCarried =
     [
+        "PluginTrust",
         "HiddenPluginStoreSources",
         "HeavyRuns.MaxParallelRuns", "HeavyRuns.CpuCeilingPercent", "HeavyRuns.MemoryCeilingPercent",
         "Projects[].Id", "Projects[].Name", "Projects[].Description", "Projects[].Category", "Projects[].GitUrl", "Projects[].SharedSourceKey",
