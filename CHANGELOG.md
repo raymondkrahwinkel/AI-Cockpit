@@ -3,6 +3,7 @@
 ## Unreleased
 
 - AC-2164: keep opening prompts queued until the Claude or Codex terminal composer is ready, so workspace trust dialogs cannot consume them as delivered turns.
+- AC-2069: Health recognises Codex, Kimi and opencode API keys supplied through session.env, with setup hints for each provider.
 - AC-2103: Clear stale local-only warnings after live note recovery confirms the saved text, and offer Retry sync while unconfirmed edits remain protected.
 - AC-555: remove the unsupported Docker endpoint setting, warn about ignored saved overrides, and require fresh consent when switching from a remote endpoint to the local daemon.
 

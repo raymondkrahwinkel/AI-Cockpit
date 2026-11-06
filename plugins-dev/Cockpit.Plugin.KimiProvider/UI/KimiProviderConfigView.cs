@@ -62,6 +62,7 @@ internal sealed class KimiProviderConfigView : IPluginProviderConfigView
                 _commandStatus,
                 _LabelRow("API key (optional)", host.CreateHelpHint("setup", "authenticate")),
                 _apiKey,
+                new TextBlock { Text = "Or set KIMI_API_KEY in session.env on the server.", FontSize = 11, TextWrapping = TextWrapping.Wrap },
                 _LabelRow("Default model (optional)", host.CreateHelpHint("setup", "default-model")),
                 _defaultModel,
                 _Label("Sign in without an API key"),

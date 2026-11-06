@@ -10,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Cockpit.Core.Abstractions.Agents;
+using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Clones;
 using Cockpit.Core.Clones;
@@ -22,6 +23,7 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Plugins;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Notifications;
 using Cockpit.Core.Projects;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Assistant;
@@ -507,18 +509,30 @@ public sealed class BackendApiDoorTests
         await using var door = new _Door();
         var verifier = await door.StartAsync();
         var key = await verifier.IssueAsync("reader", ConnectKeyCapability.Operate, 30, Operator);
+        var envSecret = Guid.NewGuid().ToString();
+        var secretProfile = new SessionProfile("subprocess secret", new PluginProviderConfig("kimi-provider.acp", JsonSerializer.Serialize(new { ApiKey = envSecret })));
+        var keylessProfile = new SessionProfile("free", new PluginProviderConfig("opencode-provider.acp", "{}"));
+        var profiles = Substitute.For<ISessionProfileStore>();
+        profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns([secretProfile, keylessProfile]);
+        var checker = Substitute.For<IProfileLoginChecker>();
+        checker.CheckAsync(Arg.Any<SessionProfile>(), Arg.Any<CancellationToken>()).Returns(true);
+        checker.CredentialKind(secretProfile).Returns(ProfileCredentialKind.ApiKeyFromSecret);
+        using var monitor = new ProfileLoginHealthMonitor(profiles, checker, Substitute.For<IModelCatalog>(),
+            Substitute.For<IAttentionNotifier>(), Substitute.For<IAgentMessageInbox>(), Substitute.For<INotificationSettingsStore>(),
+            Substitute.For<IPresenceDetector>());
+        await monitor.CheckAsync(CancellationToken.None);
         door.LoginHealth.Current.Returns([
             new ProfileLoginHealth("mine", true, DateTimeOffset.UnixEpoch, null) { Provider = "claude", SignIn = ProfileSignInKind.SignedIn, Credential = ProfileCredentialKind.RenewingLogin },
             new ProfileLoginHealth("local", true, DateTimeOffset.UnixEpoch, null) { Provider = "Ollama", SignIn = ProfileSignInKind.Reachable },
             new ProfileLoginHealth("offline", false, DateTimeOffset.UnixEpoch, null) { Provider = "LM Studio", SignIn = ProfileSignInKind.Unreachable },
             new ProfileLoginHealth("secret", true, DateTimeOffset.UnixEpoch, null) { Provider = "openrouter-provider.openrouter", SignIn = ProfileSignInKind.SignedIn, Credential = ProfileCredentialKind.ApiKeyFromSecret },
+            .. monitor.Current,
         ]);
         var label = "a\nb\u0007\u202E\u2028\U000E0001\uD800" + new string('x', 491);
         var row = new PluginHealthRow(label, PluginHealthStatus.Ok) { ActionId = "run" };
         door.Health.Add("test", sectionHasActions ? new _ActionSection(row) : new _Section("workflows", row));
 
         // AC-1484: a key from the process environment is a secret; only the kind of credential may cross, never the value.
-        const string envSecret = "env-secret-value-for-the-health-test";
         var before = Environment.GetEnvironmentVariable("OPENROUTER_API_KEY");
         Environment.SetEnvironmentVariable("OPENROUTER_API_KEY", envSecret);
         _Answer answer;
@@ -549,7 +563,7 @@ public sealed class BackendApiDoorTests
             Assert.All(keys, entry => Assert.DoesNotContain($"\"{entry.Key.Prefix}\"", body, StringComparison.Ordinal));
             Assert.DoesNotContain("token", body, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("prefix", body, StringComparison.OrdinalIgnoreCase);
-            Assert.DoesNotContain(envSecret, body, StringComparison.Ordinal);
+            Assert.False(body.Contains(envSecret, StringComparison.Ordinal));
         }
 
         Assert.All(health?["server"]?["keys"]?.AsArray() ?? [], shownKey => Assert.Equal(["label", "capability", "lastUsedAt"], shownKey?.AsObject().Select(property => property.Key) ?? []));
@@ -560,6 +574,10 @@ public sealed class BackendApiDoorTests
         Assert.Equal(sectionHasActions ? "run" : null, shown?["actionId"]?.GetValue<string>());
         Assert.Equal("renewingLogin", health?["profiles"]?[0]?["credential"]?.GetValue<string>());
         Assert.Equal("apiKeyFromSecret", health?["profiles"]?[3]?["credential"]?.GetValue<string>());
+        Assert.Equal("apiKeyFromSecret", health?["profiles"]?[4]?["credential"]?.GetValue<string>());
+        Assert.Equal("unchecked", health?["profiles"]?[4]?["signIn"]?.GetValue<string>());
+        Assert.Equal("unknown", health?["profiles"]?[5]?["credential"]?.GetValue<string>());
+        Assert.Equal("unchecked", health?["profiles"]?[5]?["signIn"]?.GetValue<string>());
         Assert.DoesNotContain("@", answer.Body, StringComparison.Ordinal);
         Assert.DoesNotContain("sk-", answer.Body, StringComparison.Ordinal);
     }

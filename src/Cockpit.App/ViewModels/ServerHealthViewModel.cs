@@ -384,10 +384,11 @@ public sealed class ProfileHealthRowViewModel
         Provider = profile.Provider;
         LastCheck = HealthTime.Clock(profile.LastCheck, now);
         IsExpired = profile.SignIn == "expired";
-        IsSignedIn = profile.SignIn == "signedIn";
+        IsSignedIn = profile.SignIn == "signedIn" || profile.SignIn == "unchecked"
+            && profile.Credential is "renewingLogin" or "login" or "apiKey" or "apiKeyFromSecret";
         IsReachable = profile.SignIn == "reachable";
         IsUnreachable = profile.SignIn == "unreachable";
-        SignIn = profile.SignIn switch
+        SignIn = (IsSignedIn ? "signedIn" : profile.SignIn) switch
         {
             "signedIn" => profile.Credential switch
             {
