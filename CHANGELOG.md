@@ -3,6 +3,7 @@
 ## Unreleased
 
 - AC-2103: Clear stale local-only warnings after live note recovery confirms the saved text, and offer Retry sync while unconfirmed edits remain protected.
+- AC-555: remove the unsupported Docker endpoint setting, warn about ignored saved overrides, and require fresh consent when switching from a remote endpoint to the local daemon.
 
 - AC-241: Companion remembers a reachable position, uses native window dragging, and separates tools with an explicit empty state.
 
