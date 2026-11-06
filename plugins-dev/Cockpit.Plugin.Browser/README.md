@@ -14,17 +14,25 @@ Registration is routing only: CEF-thread consent, origin and focus checks remain
 
 Version 1 uses a four-byte little-endian JSON byte length, followed by one UTF-8 `BrowserIpcMessage`.
 Every message binds generation, tab, session, request id, operation and deadline. Request ids increase per
-direction. Invalid framing, versions, bindings, replay or queue overflow close the connection and cancel calls.
+direction. Invalid framing, versions, bindings or replay close the connection and cancel calls.
 There is no reconnect or grant restoration. Limits: 1 MiB/message, 64 calls (including waiting writers),
-8 incoming requests, 64 tab/session pairs and 30 seconds per request or partial frame. Idle pipes do not poll.
+64 incoming requests, 64 tab/session pairs and 30 seconds per request or partial frame. Expired or excess
+requests receive a per-call rejection. Recent retired tabs have a bounded 30-second late-answer/cancel window.
+Local retired-tab calls and oversized outgoing messages fail only that call. Idle pipes do not poll.
 Handlers must honor cancellation and must not wait for a nested request on the same connection's worker.
-A cancelled running handler ends the generation, so non-cooperative handlers cannot accumulate there.
+A cancelled handler gets 500 ms to finish; only an unresponsive handler ends the generation. Sending a
+best-effort Cancel has its own 250 ms bound, including waiting for the writer.
 
 At most two reusable BGRA buffers belong to a connection, each at most 128 MiB and 8192 pixels per axis.
 Their backing directories have a protected current-user ACL on Windows and mode 0700 on Unix (files 0600).
 Choose the same trusted private parent directory at both endpoints; peer messages supply only descriptors,
 never paths. Opening derives the path from generation/id and validates exact size; disconnect closes mappings
 and removes owned files. Transmit descriptors only over the inherited pipe.
+Readers map read-only. Disposing a buffer returns its connection slot, including after a cleanup failure.
+Cleanup attempts every resource independently and retains failures in `CleanupErrors`. Producer files use
+DeleteOnClose; creation also sweeps abandoned pixel files with an exclusive open, skipping live mappings.
+On Linux, producers and readers hold shared `flock` leases; cleanup requires an exclusive lease.
+The launcher must validate the parent's trust and existing owners/ACLs before using storage (AC-2144).
 Frame-ready/ack and dirty-region copying are connected in AC-2147: never reuse a published buffer before ack.
 This process boundary is not a sandbox against another process running as the same OS user.
 
