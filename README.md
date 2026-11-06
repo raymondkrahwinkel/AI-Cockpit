@@ -264,6 +264,9 @@ See the [design note](docs/workspaces-widgets-terminals.md) and the
 ## Security
 
 Every session uses its own loopback MCP gateway, including a fresh installation without `cockpit.json`.
+Codex SDK and TTY launches enable live MCP tool-list updates. For the `cockpit` gateway only,
+profiles choosing `approvalPolicy=never` or `bypassPermissions` also approve native MCP tools;
+stricter profiles keep Codex's approval prompts. Sandbox and approval-policy are unchanged.
 Cockpit supplies one `cockpit` endpoint and a session key; upstream credentials and headers stay in Cockpit.
 The in-process tool-loop uses the same live session set. Old gateway-switch settings are ignored.
 If the gateway cannot start or its launch configuration cannot be prepared, the session reports a start

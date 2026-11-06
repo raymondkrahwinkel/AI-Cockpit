@@ -24,7 +24,7 @@ internal static class CodexMcpConfig
     // defaults to 30 s (measured); a cold-started remote server can need more. Servers start concurrently.
     internal const int StartupTimeoutSeconds = 60;
 
-    public static CodexMcpLaunch Build(IReadOnlyList<PluginMcpServer>? servers)
+    public static CodexMcpLaunch Build(IReadOnlyList<PluginMcpServer>? servers, IReadOnlyDictionary<string, string>? options = null)
     {
         if (servers is null || servers.Count == 0)
         {
@@ -47,6 +47,17 @@ internal static class CodexMcpConfig
 
             var codexName = _CodexServerName(server.Name, index, usedNames);
             serverNames[codexName] = server.Name;
+            if (server.CockpitHosted && server.Name == "cockpit")
+            {
+                configArgs.Add("-c");
+                configArgs.Add("features.mcp_tool_list_changed=true");
+                if (options?.GetValueOrDefault(CodexAppServerSessionDriver.ApprovalOptionKey) == "never"
+                    || options?.GetValueOrDefault(WellKnownPluginSessionOptions.PermissionMode) == "bypassPermissions")
+                {
+                    configArgs.Add("-c");
+                    configArgs.Add($"mcp_servers.{codexName}.default_tools_approval_mode=\"approve\"");
+                }
+            }
             configArgs.Add("-c");
             configArgs.Add($"mcp_servers.{codexName}={inlineTable}");
         }

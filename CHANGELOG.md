@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Enable live MCP tool discovery in Codex sessions and follow unattended profiles' existing permission choice for tool approval on the Cockpit gateway.
+
 - Use one session MCP gateway for every session by default, keeping upstream credentials in Cockpit and showing a start failure when the gateway is unavailable. Remove the temporary switch and legacy direct-server route.
 
 - Run stdio MCP servers behind the opt-in session gateway with their session working directory, environment and process lifetime.
