@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.Text;
 using System.Text.Json.Nodes;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -14,6 +15,7 @@ using Cockpit.Core.Abstractions.Mentions;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
@@ -21,8 +23,10 @@ using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Provisioning;
 using Cockpit.Core.Usage;
+using Cockpit.Core.Voice;
 using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Shared;
 using Microsoft.Extensions.Logging;
 
 namespace Cockpit.App.ViewModels;
@@ -34,6 +38,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // AC-1376/1449: the backend half of this pane — runtime, turn gate and queue, the send funnel and the clocks. This
     // view model draws what it reports and hands it what the operator does.
     private readonly ISessionControl _control;
+    private QueuedPrompt? _submittingPrompt;
+    private bool _submissionFailed;
 
     // True only while `ReplayRecordedTranscriptAsync` is repainting rows that came out of the log — recording them
     // straight back would append a second version of every row on every restart.
@@ -72,6 +78,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     // AC-713: the profile this session started under — what an auth error or the poll timer below check against.
     private SessionProfile? _profile;
+
+    public override string? ProviderId => (_profile?.ProviderConfig as PluginProviderConfig)?.ProviderId;
 
     // AC-1088: reads a clamped tool result back in full from the provider's own transcript. Null in tests and
     // wherever the host was built without one — the row then says the full result is unavailable, which it is.
@@ -130,6 +138,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // header's plain words instead (AC-1533).
     public string ActiveToolActivityLabel => _ShownReadingLevel == ReadingLevel.Simple ? SimpleActivityLabel : _CurrentActiveToolCall()?.Label ?? string.Empty;
 
+    public string AssistantToolActivityLabel => _CurrentActiveToolCall()?.Label ?? string.Empty;
+
     // While that call is paused on a permission prompt this reads "waiting for permission" instead: the tool is not
     // running, it is blocked on the operator, and a still-climbing number under a "running" label would misreport a
     // human wait as tool work.
@@ -155,23 +165,81 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
     }
 
-    // Re-raises the age text's change notification (AC-532) — called on a view-owned tick so the composer's elapsed time counts up instead of freezing at whatever it read on first render.
-    public void RefreshActiveToolActivityAge() => OnPropertyChanged(nameof(ActiveToolActivityAgeText));
+    // Re-raises the age text for the composer and active transcript rows.
+    public void RefreshActiveToolActivityAge()
+    {
+        OnPropertyChanged(nameof(ActiveToolActivityAgeText));
+        OnPropertyChanged(nameof(ThinkingAgeText));
+        foreach (var call in _activeToolCalls)
+        {
+            Transcript.LastOrDefault(row => row.ToolUseId == call.ToolUseId)?.RefreshActivityAge();
+        }
+    }
 
     // "m:ss", matching the approved mockup's notation (e.g. "0:12", "1:05") — the composer band is the first place this ships, so this is the notation a later background-task pop-out (AC-531) follows rather than inventing its own.
     internal static string _FormatElapsed(TimeSpan elapsed)
     {
         var totalSeconds = Math.Max(0, (int)elapsed.TotalSeconds);
-        return $"{totalSeconds / 60}:{totalSeconds % 60:00}";
+        return totalSeconds >= 3600
+            ? $"{totalSeconds / 3600}:{totalSeconds / 60 % 60:00}:{totalSeconds % 60:00}"
+            : $"{totalSeconds / 60}:{totalSeconds % 60:00}";
     }
 
     // The two bands occupy the same composer slot and are never both visible — the activity band replaces "Thinking…"
     // for the span it is active, rather than stacking on top (composer height must not grow) (AC-532).
     public bool ShowThinkingIndicator => IsBusy && !HasActiveToolActivity;
 
+    private DateTimeOffset? _thinkingStartedAt;
+    private DispatcherTimer? _activityAgeTicker;
+    private volatile bool _activityClockDisposed;
+    public string ThinkingAgeText => _thinkingStartedAt is { } started ? _FormatElapsed(DateTimeOffset.Now - started) : string.Empty;
+
+    internal string ToolActivityAge(string? toolUseId)
+    {
+        var call = _activeToolCalls.FindIndex(item => item.ToolUseId == toolUseId);
+        return call >= 0 && !_IsAwaitingPermission(_activeToolCalls[call].ToolUseId)
+            ? _FormatElapsed(DateTimeOffset.Now - _activeToolCalls[call].StartedAt)
+            : string.Empty;
+    }
+
+    private void _UpdateActivityClock()
+    {
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            Dispatcher.UIThread.Post(_UpdateActivityClock);
+            return;
+        }
+
+        if (_activityClockDisposed)
+        {
+            return;
+        }
+
+        _thinkingStartedAt = ShowThinkingIndicator ? _thinkingStartedAt ?? DateTimeOffset.Now : null;
+        OnPropertyChanged(nameof(ThinkingAgeText));
+        if (IsBusy || HasActiveToolActivity || HasBackgroundTasks || ChildAgents.Any(child => child.Reference.State == "running"))
+        {
+            if (_activityAgeTicker is null)
+            {
+                _activityAgeTicker = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+                _activityAgeTicker.Tick += (_, _) =>
+                {
+                    RefreshActiveToolActivityAge();
+                    RefreshBackgroundTaskAges();
+                };
+            }
+            _activityAgeTicker.Start();
+        }
+        else
+        {
+            _activityAgeTicker?.Stop();
+        }
+    }
+
     // Raises every notification the active-tool-activity fields need after `_activeToolCalls` changes.
     private void _RaiseActiveToolActivityChanged()
     {
+        _UpdateActivityClock();
         OnPropertyChanged(nameof(HasActiveToolActivity));
         OnPropertyChanged(nameof(ActiveToolActivityLabel));
         OnPropertyChanged(nameof(ActiveToolActivityAgeText));
@@ -198,6 +266,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     private void _OnHostBusyChanged()
     {
+        _UpdateActivityClock();
         OnPropertyChanged(nameof(ShowThinkingIndicator));
         OnPropertyChanged(nameof(IsBusy));
         OnPropertyChanged(nameof(ShowsSimpleStop));
@@ -273,6 +342,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _SyncBackgroundGroup(BackgroundShells, _backgroundTasks.Where(task => task.Kind == BackgroundTaskKind.Shell));
         _SyncBackgroundGroup(BackgroundOtherTasks, _backgroundTasks.Where(task => task.Kind == BackgroundTaskKind.Unknown));
 
+        _UpdateActivityClock();
+
         OnPropertyChanged(nameof(HasBackgroundSubAgents));
         OnPropertyChanged(nameof(HasBackgroundShells));
         OnPropertyChanged(nameof(HasBackgroundOtherTasks));
@@ -334,9 +405,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
     }
 
-    // Re-raises AgeText's change notification for every row currently listed (AC-531 #8) — called on
-    // the same view-owned tick `RefreshActiveToolActivityAge` uses, so the pop-out's elapsed times
-    // count up instead of freezing at whatever they read on first render. A no-op with nothing outstanding.
+    // Re-raises AgeText for the background work shown by the same session clock.
     public void RefreshBackgroundTaskAges()
     {
         foreach (var child in ChildAgents)
@@ -356,7 +425,80 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _transcriptReader?.ReadToolResult(_profile, _cliSessionId, toolUseId);
 
     // A turn pauses on a question/permission and then keeps streaming into the same growing entry afterwards (AC-97).
-    private int _readAloudFlushedLength;
+    private readonly StringBuilder _readAloudPendingProse = new();
+    private SpokenReplyMode _assistantSpeechMode = SpokenReplyMode.Short;
+    private SpokenReplyMode _turnSpeechMode;
+    private (long Turn, int Generation) _speechTurn;
+    private readonly object _speechGenerationLock = new();
+    private CancellationTokenSource? _speechGeneration;
+    private readonly ISessionDriverFactory? _speechDrivers;
+    private SpokenReplyMethod _assistantSpeechMethod = SpokenReplyMethod.Assistant;
+    private SessionProfile? _speechProfile;
+    private SpokenReplyMethod _turnSpeechMethod;
+    private SessionProfile? _turnSpeechProfile;
+
+    public SpokenReplyMethod AssistantSpeechMethod
+    {
+        get => _assistantSpeechMethod;
+        set
+        {
+            if (SetProperty(ref _assistantSpeechMethod, value) && IsTheVoiceAssistant)
+            {
+                CancelReadAloud();
+            }
+        }
+    }
+
+    public SessionProfile? SpeechProfile
+    {
+        get => _speechProfile;
+        set
+        {
+            if (SetProperty(ref _speechProfile, value) && IsTheVoiceAssistant)
+            {
+                CancelReadAloud();
+            }
+        }
+    }
+
+    public string? SpeechRulesReason { get; private set; }
+
+    [RelayCommand]
+    private async Task ReadFullReplyAsync(TranscriptEntryViewModel entry)
+    {
+        if (!IsTheVoiceAssistant || !IsAudioAvailable || !ReferenceEquals(entry.Session, this))
+        {
+            return;
+        }
+        CancelReadAloud();
+        ResetReadAloudCancellation();
+        SpeechRulesReason = null;
+        OnPropertyChanged(nameof(SpeechRulesReason));
+        await EnqueueReadAloudAsync(entry.ReplyTextWithImageSuffix);
+        CompleteReadAloudStream();
+    }
+
+    protected override void OnReadAloudInvalidated()
+    {
+        lock (_speechGenerationLock)
+        {
+            _speechGeneration?.Cancel();
+        }
+    }
+
+    public SpokenReplyMode AssistantSpeechMode
+    {
+        get => _assistantSpeechMode;
+        set
+        {
+            if (SetProperty(ref _assistantSpeechMode, value) && IsTheVoiceAssistant)
+            {
+                CancelReadAloud();
+            }
+        }
+    }
+    private readonly Dictionary<TranscriptEntryViewModel, string> _readAloudObservedEntries = [];
+    private int _readAloudObservedEntryCount;
 
     // AC-597/598: whether anything has actually been spoken this turn. What decides both fillers — a lead-in is
     // only owed when the model gave none, and a sign of life only when the operator has heard nothing since.
@@ -491,8 +633,12 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     private bool _isInputEnabled = true;
 
     // AC-1456: what the composer says while it is empty; a remote pane says why it cannot send yet.
-    [ObservableProperty]
-    private string _composerPlaceholder = "Send a message...  (Enter = send, Shift+Enter = new line, Ctrl+V = paste text or image)";
+    private string? _composerPlaceholder;
+    public string ComposerPlaceholder
+    {
+        get => _composerPlaceholder ?? $"Send a message...  (Enter = send, Shift+Enter = new line, Ctrl+V = paste text{(CanPasteImages ? " or image" : "")})";
+        set => SetProperty(ref _composerPlaceholder, value);
+    }
 
     // AC-1469: false while the line to this pane's server is down, so Send and the permission buttons are off with it.
     [ObservableProperty]
@@ -634,10 +780,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     [ObservableProperty]
     private ReadingLevel _readingLevel = ReadingLevel.Developer;
 
-    // Only Simple hides the standalone "$" token/cost meter unconditionally (AC-138: "no cost" is that level's
-    // plain-language promise) (AC-105, AC-536).
-    protected override bool SuppressCostMeter => _ShownReadingLevel == ReadingLevel.Simple;
-
     // Simple drops the model/provider kind chip (AC-138) — a tag that is jargon the level exists to hide.
     public override bool ShowKindChip => _ShownReadingLevel != ReadingLevel.Simple && !string.IsNullOrEmpty(KindLabel);
 
@@ -669,9 +811,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
 
         _RebuildVisibleTranscript();
-        // Rebuild rather than just re-announce: the token/cost figure is a pill segment now, and Simple drops it
-        // (SuppressCostMeter), so switching level changes which segments exist rather than one visibility flag.
-        RebuildUsagePillItems();
         OnPropertyChanged(nameof(ShowKindChip));
         OnPropertyChanged(nameof(ActiveToolActivityLabel));
     }
@@ -850,6 +989,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     private void _UpdateRow(TranscriptEntryViewModel row, TranscriptSnapshotEntry entry)
     {
+        row.ReplyAttachments = entry.ReplyAttachments ?? [];
         row.Text = entry.Text;
         row.IsResultError = entry.IsResultError;
         row.TruncatedFromChars = entry.TruncatedFromChars;
@@ -1407,10 +1547,13 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         ISessionTranscriptReader? transcriptReader = null,
         ILogger<SessionViewModel>? logger = null,
         IBackendEventLog? eventLog = null,
-        ISessionRunActivities? heavyRuns = null)
+        ISessionRunActivities? heavyRuns = null,
+        IAudioAvailability? audioAvailability = null,
+        ISessionDriverFactory? speechDrivers = null)
         : base(usageHistory, heavyRuns)
     {
         _transcriptReader = transcriptReader;
+        _speechDrivers = speechDrivers;
         // AC-1090: every pane but the design-time/unit-test graph gets the store from the container, which
         // `APaneTakenFromTheContainer_RecordsItsRowsToDisk` holds this to; the control writes it (AC-1377, AC-1449).
         _control = _BindControl(sessionControls);
@@ -1425,7 +1568,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _logger = logger;
         MentionPicker = new MentionPickerViewModel(_MentionPathsAsync, () => WorkingDirectory);
         _TrackPendingAttachments();
-        InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, openMicState, voiceOverlay);
+        InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, openMicState, voiceOverlay, audioAvailability);
         CloseRequested += (_, _) => _control.StopPolling();
     }
 
@@ -1898,7 +2041,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _control.ClearQueue();
         _control.ResetTranscriptStreaming();
         _currentTurnAssistantEntries.Clear();
-        _readAloudFlushedLength = 0;
+        _ResetReadAloudStream();
         _spokenSomethingThisTurn = false;
         _StopSignOfLifeClock();
         ClearCurrentTurnImages();
@@ -2000,6 +2143,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             _PopulateLiveControls(launched.LiveOptions);
 
             OnPropertyChanged(nameof(CanPasteImages));
+            OnPropertyChanged(nameof(ComposerPlaceholder));
             // A local tool session gates via the per-call approval prompt (not Claude's permission modes), so it
             // gets the "Allow all tools" convenience toggle; Claude uses its own permission mode dropdown.
             var isLocalToolSession = Capabilities is { SupportsTools: true, SupportsPermissions: false };
@@ -2100,6 +2244,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     [RelayCommand]
     private async Task StopAsync()
     {
+        if (IsTheVoiceAssistant && _turnSpeechMode != SpokenReplyMode.Full)
+        {
+            CancelReadAloud();
+        }
         if (!_control.IsRunning)
         {
             return;
@@ -2267,26 +2415,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         PendingAttachments.Add(new ImageAttachmentViewModel(pngBytes, _RemovePendingAttachment));
     }
 
-    // The single per-chip removal path: drop the attachment from the list, then free its decoded
-    // bitmap. Disposal happens here (genuine removal) and in the send-path Clear — never on a mere
-    // reorder or from a getter, which would blank the still-visible thumbnail.
     private void _RemovePendingAttachment(ImageAttachmentViewModel attachment)
     {
         PendingAttachments.Remove(attachment);
         attachment.Dispose();
-    }
-
-    // Empties the pending list on send, freeing each decoded thumbnail as its chip leaves the UI rather
-    // than waiting on the GC finalizer. Called only from the send path, once the wire images have already
-    // been copied out of PngBytes — never while a chip is still shown.
-    private void _ClearPendingAttachments()
-    {
-        foreach (var attachment in PendingAttachments)
-        {
-            attachment.Dispose();
-        }
-
-        PendingAttachments.Clear();
     }
 
     // Appends a finished voice transcript to the input box rather than sending it straight away, so
@@ -2355,20 +2487,57 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             return;
         }
 
+        if (PendingAttachments.Count > 0 && !CanPasteImages)
+        {
+            Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Error, "This model does not support image input; the attachments were kept."));
+            return;
+        }
+
+        if (PendingAttachments.Count > ImageInputLimits.MaxCount || PendingAttachments.Sum(image => (long)image.PngBytes.Length) > ImageInputLimits.MaxBytes)
+        {
+            Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Error, "At most 10 images and 20 MB can be sent; the attachments were kept."));
+            return;
+        }
+
         var text = InputText;
         var images = PendingAttachments
             .Select(a => Core.Sessions.ImageAttachment.FromBytes(a.PngBytes, a.MediaType))
             .ToList();
         var replyTo = PendingReplyTo;
 
-        InputText = string.Empty;
-        // The wire images are already copied from PngBytes above, so the decoded thumbnails are done.
-        _ClearPendingAttachments();
-        PendingReplyTo = null;
+        var attachments = PendingAttachments.ToArray();
+        var prompt = new QueuedPrompt(text, images, replyTo?.Id);
+        _submittingPrompt = prompt;
+        _submissionFailed = false;
+        try
+        {
+            await _control.SubmitAsync(prompt, Capabilities.SupportsMidTurnInput);
+            if (_submissionFailed)
+            {
+                return;
+            }
 
-        // AC-739: measured 3x that the CLI delivers a mid-turn message to the model. SupportsMidTurnInput gates
-        // straight-through writing versus the local send-queue chip (T8), driver by driver.
-        await _control.SubmitAsync(new QueuedPrompt(text, images, replyTo?.Id), Capabilities.SupportsMidTurnInput);
+            if (InputText == text)
+            {
+                InputText = string.Empty;
+            }
+            foreach (var attachment in attachments)
+            {
+                _RemovePendingAttachment(attachment);
+            }
+            if (PendingReplyTo == replyTo)
+            {
+                PendingReplyTo = null;
+            }
+        }
+        catch (Exception ex)
+        {
+            Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Error, SendFailureMessage(ex, _control.IsRunning)));
+        }
+        finally
+        {
+            _submittingPrompt = null;
+        }
     }
 
     // Pulls the most recently queued message back into the input for editing (Arrow Up on an empty
@@ -2399,6 +2568,23 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // below stay on the bare text, so a reply prefix never changes retry or auto-close behaviour.
     private void _OnTurnStarting(QueuedPrompt prompt)
     {
+        if (IsTheVoiceAssistant && _turnSpeechMode != SpokenReplyMode.Full)
+        {
+            CancelReadAloud();
+        }
+        if (IsTheVoiceAssistant && (_turnSpeechMode != SpokenReplyMode.Full || AssistantSpeechMode != SpokenReplyMode.Full))
+        {
+            _currentTurnAssistantEntries.Clear();
+            _ResetReadAloudStream();
+        }
+        ResetReadAloudCancellation();
+        _turnSpeechMode = IsTheVoiceAssistant ? AssistantSpeechMode : SpokenReplyMode.Full;
+        _speechTurn = CaptureReadAloudTurn();
+        _turnSpeechMethod = AssistantSpeechMethod;
+        _turnSpeechProfile = _turnSpeechMethod == SpokenReplyMethod.Profile ? SpeechProfile : _profile;
+        SpeechRulesReason = null;
+        OnPropertyChanged(nameof(SpeechRulesReason));
+
         var text = prompt.Text;
         var images = prompt.Images;
         var replyTo = _RowOf(prompt.ReplyToRowId);
@@ -2442,6 +2628,17 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     private void _OnTurnFailedToStart(QueuedPrompt prompt, Exception exception)
     {
         ClearCurrentTurnImages();
+        if (ReferenceEquals(prompt, _submittingPrompt))
+        {
+            _submissionFailed = true;
+        }
+        else
+        {
+            foreach (var image in prompt.Images)
+            {
+                PendingAttachments.Add(new ImageAttachmentViewModel(Convert.FromBase64String(image.Base64Data), _RemovePendingAttachment));
+            }
+        }
         Transcript.Add(new TranscriptEntryViewModel(
             TranscriptEntryKind.Error, SendFailureMessage(exception, _control.IsRunning)));
     }
@@ -2638,7 +2835,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // answers (AC-97).
     private void _FlushPendingProseForReadAloud()
     {
-        if (!ReadResponsesAloud)
+        if (!ReadResponsesAloud || _turnSpeechMode != SpokenReplyMode.Full)
         {
             return;
         }
@@ -2648,18 +2845,65 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         // AC-1238: a reply split at its own blank lines already carries them, so a continuation is concatenated
         // rather than separated — inserting a separator there would shift every index past it by two characters
         // and re-speak or skip that much. Rows separated by a tool call still get theirs.
-        var prose = string.Concat(_currentTurnAssistantEntries.Select(
-            (entry, index) => index == 0 || entry.IsReplyContinuation ? entry.Text : "\n\n" + entry.Text));
-        if (_readAloudFlushedLength >= prose.Length)
+        _AppendStreamingReadAloudDelta();
+        if (_readAloudPendingProse.Length == 0) return;
+        var pending = _readAloudPendingProse.ToString();
+        _readAloudPendingProse.Clear();
+        _spokenSomethingThisTurn = true;
+        _RestartSignOfLifeClock();
+        _ = EnqueueReadAloudAsync(TtsProseExtractor.Extract(pending), IsTheVoiceAssistant ? _speechTurn : CaptureReadAloudTurn());
+    }
+
+    private void _QueueCompletedProseForReadAloud()
+    {
+        if (!ReadResponsesAloud)
         {
             return;
         }
 
-        var pending = prose[_readAloudFlushedLength..];
-        _readAloudFlushedLength = prose.Length;
-        _spokenSomethingThisTurn = true;
+        _AppendStreamingReadAloudDelta();
+        if (_turnSpeechMode != SpokenReplyMode.Full)
+        {
+            return;
+        }
+        var stream = TtsProseExtractor.ExtractCompleted(_readAloudPendingProse.ToString());
+        if (stream.ConsumedLength == 0)
+        {
+            return;
+        }
+
+        _readAloudPendingProse.Remove(0, stream.ConsumedLength);
+        _spokenSomethingThisTurn |= stream.Sentences.Count > 0;
         _RestartSignOfLifeClock();
-        _ = EnqueueReadAloudAsync(pending);
+        _ = EnqueueReadAloudAsync(stream.Sentences, IsTheVoiceAssistant ? _speechTurn : CaptureReadAloudTurn());
+    }
+
+    private void _AppendStreamingReadAloudDelta()
+    {
+        for (var index = _readAloudObservedEntryCount; index < _currentTurnAssistantEntries.Count; index++)
+        {
+            var entry = _currentTurnAssistantEntries[index];
+            if (index > 0 && !entry.IsReplyContinuation) _readAloudPendingProse.Append("\n\n");
+            _readAloudObservedEntries[entry] = entry.Text;
+            _readAloudPendingProse.Append(entry.Text);
+        }
+        _readAloudObservedEntryCount = _currentTurnAssistantEntries.Count;
+        if (_currentTurnAssistantEntries.LastOrDefault() is not { } current
+            || !_readAloudObservedEntries.TryGetValue(current, out var observed)
+            || string.Equals(observed, current.Text, StringComparison.Ordinal)) return;
+
+        _readAloudObservedEntries[current] = current.Text;
+        if (current.Text.StartsWith(observed, StringComparison.Ordinal))
+        {
+            _readAloudPendingProse.Append(current.Text.AsSpan(observed.Length));
+        }
+    }
+
+    private void _ResetReadAloudStream()
+    {
+        _readAloudPendingProse.Clear();
+        _readAloudObservedEntries.Clear();
+        _readAloudObservedEntryCount = 0;
     }
 
     // Says out loud that it is about to go and look, when the model went straight to a tool without saying so (AC-597).
@@ -2682,7 +2926,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     }
 
     // True for the cockpit's own voice assistant, the one session that speaks unasked (AC-597/598).
-    private bool IsTheVoiceAssistant =>
+    public bool IsTheVoiceAssistant =>
         string.Equals(PaneId, AssistantIdentity.PaneId, StringComparison.Ordinal);
 
     // Starts the clock that says "still on it" while a turn keeps running (AC-598), and pushes it back every time
@@ -2754,7 +2998,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         // AC-146: a sub-agent's text, in its lane or orphaned, is never the reply that is read aloud.
         if (fold.IsReply)
         {
-            _currentTurnAssistantEntries.AddRange(_addedByFold);
+            foreach (var entry in _addedByFold.Append(landed).OfType<TranscriptEntryViewModel>())
+            {
+                if (!_currentTurnAssistantEntries.Contains(entry))
+                {
+                    _currentTurnAssistantEntries.Add(entry);
+                }
+            }
+            _QueueCompletedProseForReadAloud();
         }
 
         // A result coupled to its call (L14) is where a backgrounded call learns its task id, in any lane.
@@ -2817,6 +3068,13 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // arrive after this, in `_OnLiveStateChanged`.
     private void _DrawTurnEnd(SessionTurnEnd end)
     {
+        if (_turnSpeechMode != SpokenReplyMode.Full && (end.IsError || end.WasInterrupted || end.BySessionError))
+        {
+            CancelReadAloud();
+            _ResetReadAloudStream();
+            _StopSignOfLifeClock();
+            CompleteReadAloudStream();
+        }
         var failedRow = end.FailedRowId is { } failedRowId && _rowsById.TryGetValue(failedRowId, out var row) ? row : null;
         if (end.BySessionError)
         {
@@ -2871,10 +3129,23 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.TurnResult, result.Title) { TurnResult = result });
         }
 
-        _FlushPendingProseForReadAloud();
+        if (_turnSpeechMode == SpokenReplyMode.Full)
+        {
+            _FlushPendingProseForReadAloud();
+            CompleteReadAloudStream();
+        }
+        else if (ReadResponsesAloud && !end.IsError && !end.WasInterrupted)
+        {
+            _AppendStreamingReadAloudDelta();
+            _ = _SpeakCompletedReplyAsync(_readAloudPendingProse.ToString(), _turnSpeechMode, _turnSpeechMethod, _turnSpeechProfile, _speechTurn);
+        }
+        else
+        {
+            CompleteReadAloudStream();
+        }
 
         _currentTurnAssistantEntries.Clear();
-        _readAloudFlushedLength = 0;
+        _ResetReadAloudStream();
         _spokenSomethingThisTurn = false;
         _StopSignOfLifeClock();
         // This turn's images belong to this turn only (AC-116): a later image-less turn's tool call attaches nothing stale.
@@ -2882,10 +3153,59 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _turnCompletedInFold = true;
     }
 
+    private async Task _SpeakCompletedReplyAsync(string answer, SpokenReplyMode mode, SpokenReplyMethod method, SessionProfile? profile, (long Turn, int Generation) expected)
+    {
+        if (CaptureReadAloudTurn() != expected || !ReadResponsesAloud)
+        {
+            return;
+        }
+        using var cancellation = new CancellationTokenSource();
+        lock (_speechGenerationLock)
+        {
+            _speechGeneration = cancellation;
+        }
+        try
+        {
+            if (CaptureReadAloudTurn() != expected || !ReadResponsesAloud)
+            {
+                return;
+            }
+            var spoken = await SpokenReplyGeneration.GenerateAsync(_speechDrivers, profile, answer, profile?.SystemPrompt, mode, method, cancellation.Token);
+            if (!cancellation.IsCancellationRequested && ReadResponsesAloud && CaptureReadAloudTurn() == expected)
+            {
+                SpeechRulesReason = spoken.RulesReason;
+                OnPropertyChanged(nameof(SpeechRulesReason));
+                await EnqueueReadAloudAsync(spoken.Sentences, expected);
+                if (CaptureReadAloudTurn() == expected)
+                {
+                    CompleteReadAloudStream();
+                }
+            }
+        }
+        finally
+        {
+            lock (_speechGenerationLock)
+            {
+                if (ReferenceEquals(_speechGeneration, cancellation))
+                {
+                    _speechGeneration = null;
+                }
+            }
+        }
+    }
+
     // AC-1437: the host's fold, drawn. Status last, as it always came after what it weighs.
     private void _OnLiveStateChanged(SessionLiveState state)
     {
+        _usageModel = state.Model;
+        if (state.Capabilities is { } capabilities)
+        {
+            Capabilities = capabilities;
+            OnPropertyChanged(nameof(CanPasteImages));
+            OnPropertyChanged(nameof(ComposerPlaceholder));
+        }
         UpdateChildAgents(state.Children);
+        _UpdateActivityClock();
         _cliSessionId = state.CliSessionId;
         if (state.Connection is { } connection && !ReferenceEquals(connection, _shownConnection))
         {
@@ -2895,7 +3215,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
         if (!ReferenceEquals(state.ActiveToolCalls, _shownToolCalls))
         {
-            _ShowActiveToolCalls(state.ActiveToolCalls);
+            ShowActiveToolCalls(state.ActiveToolCalls);
         }
 
         // Replaced wholesale, an empty list included, which is how the last task ending arrives (AC-276).
@@ -2963,7 +3283,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     }
 
     // AC-532: a call keeps the label its row had when it surfaced ("Bash  ·  dotnet build"), the row's own ToolHeader.
-    private void _ShowActiveToolCalls(IReadOnlyList<SessionActiveToolCall> calls)
+    internal void ShowActiveToolCalls(IReadOnlyList<SessionActiveToolCall> calls)
     {
         var surfaced = calls.Any(call => _activeToolCalls.TrueForAll(shown => shown.ToolUseId != call.ToolUseId));
         var shown = _activeToolCalls.ToList();
@@ -2976,6 +3296,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 call.ToolUseId,
                 Transcript.LastOrDefault(row => row.ToolUseId == call.ToolUseId)?.ToolHeader ?? call.ToolName,
                 call.StartedAt)));
+        foreach (var call in shown.Concat(_activeToolCalls))
+        {
+            Transcript.LastOrDefault(row => row.ToolUseId == call.ToolUseId)?.RefreshActivityAge();
+        }
         _RaiseActiveToolActivityChanged();
         if (!surfaced)
         {
@@ -3021,8 +3345,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     // Write the running totals to the usage trail after every turn (AC-251), so they outlive the session and the app —
     // recording only at the end would lose exactly the run that crashed, which is the case worth measuring.
+    private string? _usageModel;
+
     private protected override (UsageRunKind RunKind, string? RunId, string? RunLabel, string? Model) GetUsageSnapshotMetadata() =>
-        (RunKind, RunId, RunLabel, SelectedModel.Value);
+        (RunKind, RunId, RunLabel, string.IsNullOrWhiteSpace(_usageModel) ? null : _usageModel);
 
     public override async Task<bool> SendPromptAsync(string prompt)
     {
@@ -3155,6 +3481,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     protected override async ValueTask DisposeCoreAsync()
     {
+        _activityClockDisposed = true;
+        _OnUiThread(() => _activityAgeTicker?.Stop());
         // It was left unawaited so the turn could settle without waiting on a file, and a session closing right behind
         // it would otherwise take the process down before the record reached disk (AC-251).
         await _DrainUsageWritesAsync();

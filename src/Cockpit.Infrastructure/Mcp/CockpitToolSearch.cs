@@ -27,13 +27,15 @@ internal static class CockpitToolSearch
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
 
     // The two proxy tools over `catalog` — the session's gated tools, origin included.
-    public static IReadOnlyList<AITool> Build(IReadOnlyList<McpSessionTool> catalog) =>
+    public static IReadOnlyList<AITool> Build(IReadOnlyList<McpSessionTool> catalog) => Build(() => catalog);
+
+    public static IReadOnlyList<AITool> Build(Func<IReadOnlyList<McpSessionTool>> catalog) =>
     [
         AIFunctionFactory.Create(
             ([Description("What the tool should do or be called, in words — e.g. \"set status\", \"youtrack comment\", \"read file\". Every word must appear in a tool's name or description, so fewer words find more. Leave empty to list what is mounted.")] string query,
              [Description("Optional. Only search this MCP server, e.g. \"cockpit-session\".")] string? server = null,
              [Description("Optional. How many matches to return (default 10, max 50). The reply always says how many matched in total, so a truncated list is never mistaken for a complete one.")] int? limit = null)
-                => _Search(catalog, query, server, limit),
+                => _Search(catalog(), query, server, limit),
             SearchToolName,
             "Finds the tools this session can reach that are not already loaded in your tool list. Returns each hit's server, name, description and JSON input schema — pass the arguments that schema describes to `call_tool` to run it. Search first whenever a capability you need is not among the tools you can see; the catalogue is kept out of your prompt precisely so it does not cost you context you are not using."),
 
@@ -44,7 +46,7 @@ internal static class CockpitToolSearch
              [Description("The MCP server the tool lives on, as `search_tools` reported it. Optional only while the name is unique across the mounted servers.")] string? server = null,
              [Description("The tool's arguments as a JSON object, matching the `input_schema` from `search_tools` — e.g. {\"session\": \"abc\", \"status\": \"AC-963\"}.")] JsonElement? arguments = null,
              CancellationToken cancellationToken = default)
-                => _CallAsync(catalog, server, name, arguments, cancellationToken),
+                => _CallAsync(catalog(), server, name, arguments, cancellationToken),
             CallToolName,
             "Runs a tool found with `search_tools` and returns its result. Permissions are unchanged by going through here: the call is approved, refused or auto-allowed exactly as the same tool called directly would be."),
     ];
@@ -173,7 +175,7 @@ internal static class CockpitToolSearch
         // tool class and AC-79 ceiling check under the real tool's name — a direct call would go through. A refusal
         // comes back as the tool result the gate wrote, which is what the model should see.
         var result = await candidates[0].Function.InvokeAsync(new AIFunctionArguments(parsed), cancellationToken).ConfigureAwait(false);
-        return result?.ToString() ?? string.Empty;
+        return GatedTool.TextOf(result);
     }
 
     // Null when the value is present but not an object. A local model that puts the object in a JSON *string* is

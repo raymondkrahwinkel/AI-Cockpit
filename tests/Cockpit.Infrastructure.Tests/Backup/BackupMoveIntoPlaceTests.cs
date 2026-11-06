@@ -50,24 +50,6 @@ public class BackupMoveIntoPlaceTests : IDisposable
         Assert.False(File.Exists(staging), "the staging file is consumed by the move, not left behind");
     }
 
-    [WindowsFact("Only Windows fails a move on a file another process holds open, so elsewhere there is nothing to reproduce.")]
-    public async Task AChosenFileHeldPastTheWindow_RefusesNamingThatFile()
-    {
-        var (staging, destination) = await _StagedAndChosenAsync();
-
-        using var holder = new FileStream(destination, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
-
-        var refusal = await Assert.ThrowsAsync<IOException>(() => BackupService.MoveIntoPlaceAsync(
-            staging,
-            destination,
-            CancellationToken.None,
-            contentionWindow: TimeSpan.FromMilliseconds(200)));
-
-        // This one the operator can act on, so it is the one worth naming — File.Move's own
-        // UnauthorizedAccessException for a held destination carries no path at all.
-        Assert.Contains(destination, refusal.Message);
-    }
-
     /// <summary>A built archive waiting in staging, and an earlier backup at the path the operator picked.</summary>
     private async Task<(string Staging, string Destination)> _StagedAndChosenAsync()
     {

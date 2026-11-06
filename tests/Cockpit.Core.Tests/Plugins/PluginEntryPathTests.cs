@@ -13,53 +13,18 @@ public class PluginEntryPathTests : IDisposable
         Directory.CreateDirectory(_root);
     }
 
-    // Positive control: without this, a check that rejects everything would read the same as a correct one.
-    [Fact]
-    public void TryResolve_EntryInOwnFolder_Accepted()
+    // The second row is the edge case a lexical prefix comparison gets wrong: "foo-evil" reads as a match for root
+    // "foo" without a separator on the end of the comparison.
+    [Theory]
+    [InlineData("victim", "approved-plugin")]
+    [InlineData("foo", "foo-evil")]
+    public void TryResolve_EntryEscapesViaDotDot_Rejected(string pluginFolder, string sibling)
     {
-        var folder = Directory.CreateDirectory(Path.Combine(_root, "plugin")).FullName;
-        File.WriteAllText(Path.Combine(folder, "Plugin.dll"), "bytes");
+        var folder = Directory.CreateDirectory(Path.Combine(_root, pluginFolder)).FullName;
+        Directory.CreateDirectory(Path.Combine(_root, sibling));
+        File.WriteAllText(Path.Combine(_root, sibling, "entry.dll"), "other-bytes");
 
-        var accepted = PluginEntryPath.TryResolve(folder, "Plugin.dll", out var resolved);
-
-        Assert.True(accepted);
-        Assert.Equal(Path.Combine(folder, "Plugin.dll"), resolved);
-    }
-
-    [Fact]
-    public void TryResolve_EntryEscapesViaDotDot_Rejected()
-    {
-        var folder = Directory.CreateDirectory(Path.Combine(_root, "victim")).FullName;
-        Directory.CreateDirectory(Path.Combine(_root, "approved-plugin"));
-        File.WriteAllText(Path.Combine(_root, "approved-plugin", "entry.dll"), "real-approved-bytes");
-
-        var accepted = PluginEntryPath.TryResolve(folder, "../approved-plugin/entry.dll", out _);
-
-        Assert.False(accepted);
-    }
-
-    [Fact]
-    public void TryResolve_EntryIsRooted_Rejected()
-    {
-        var folder = Directory.CreateDirectory(Path.Combine(_root, "plugin")).FullName;
-        var outside = Path.Combine(_root, "elsewhere.dll");
-        File.WriteAllText(outside, "elsewhere-bytes");
-
-        var accepted = PluginEntryPath.TryResolve(folder, outside, out _);
-
-        Assert.False(accepted);
-    }
-
-    // The edge case a lexical prefix comparison gets wrong: "foo-evil" reads as a match for root "foo"
-    // without a separator on the end of the comparison.
-    [Fact]
-    public void TryResolve_SiblingFolderSharesPrefixWithoutSeparator_Rejected()
-    {
-        var folder = Directory.CreateDirectory(Path.Combine(_root, "foo")).FullName;
-        Directory.CreateDirectory(Path.Combine(_root, "foo-evil"));
-        File.WriteAllText(Path.Combine(_root, "foo-evil", "entry.dll"), "evil-bytes");
-
-        var accepted = PluginEntryPath.TryResolve(folder, "../foo-evil/entry.dll", out _);
+        var accepted = PluginEntryPath.TryResolve(folder, $"../{sibling}/entry.dll", out _);
 
         Assert.False(accepted);
     }

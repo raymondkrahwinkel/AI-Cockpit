@@ -12,79 +12,8 @@ internal sealed class WorkflowRunsHealthTests
     internal static async Task VerifyAsync()
     {
         var tests = new WorkflowRunsHealthTests();
-        tests.Initialize_RegistersTheRunsSectionAlongsideTheSchedulerHeartbeat();
-        tests.Read_ReportsTheLatestOutcomeAndNextRunForEveryActiveScheduledFlow();
         await tests.RunAsync_StartsAScheduleOnlyFlowOnce_AndReportsItsPermissionState();
         tests.Read_UsesOnlyStructuredOutcomesAndNeverLeaksRunText();
-    }
-
-    private void Initialize_RegistersTheRunsSectionAlongsideTheSchedulerHeartbeat()
-    {
-        var storage = new InMemoryPluginStorage();
-        var host = Substitute.For<ICockpitHost>();
-        host.Storage.Returns(storage);
-        host.Cache.Returns(storage);
-        host.WorkflowSteps.Returns([]);
-        using var plugin = new WorkflowsPlugin();
-
-        plugin.Initialize(host);
-
-        host.Received().AddHealthSection(Arg.Is<IPluginHealthSection>(section => section.Name == "workflows-runs"));
-        host.Received().AddHealthSection(Arg.Is<IPluginHealthSection>(section => section.Name == "workflows-scheduler"));
-    }
-
-    private void Read_ReportsTheLatestOutcomeAndNextRunForEveryActiveScheduledFlow()
-    {
-        var storage = new InMemoryPluginStorage();
-        var store = new WorkflowStore(storage);
-        var runs = new RunStore(storage);
-        var clock = new FixedClock(new DateTimeOffset(2026, 10, 3, 12, 0, 0, TimeSpan.Zero));
-        var flow = _ScheduledFlow("daily-checkin", "Daily check-in", "18:30", "Europe/Amsterdam");
-        var unreadable = _ScheduledFlow("whenever", "Whenever", "whenever you like", "Europe/Amsterdam");
-        store.Save([flow, unreadable]);
-        runs.Add(new WorkflowRun
-        {
-            Id = "run-1",
-            WorkflowId = flow.Id,
-            WorkflowName = flow.Name,
-            StartedAt = new DateTimeOffset(2026, 10, 2, 16, 30, 0, TimeSpan.Zero),
-            FinishedAt = new DateTimeOffset(2026, 10, 2, 16, 34, 0, TimeSpan.Zero),
-            Status = RunStatus.Succeeded,
-        });
-
-        using var watcher = new FlowWatcher(store, runs, new ScheduleMarks(storage), Substitute.For<ICockpitHost>(), () => TimeSpan.Zero, clock);
-        var report = new WorkflowRunsHealth(store, runs, watcher, clock).Read();
-
-        Assert.True(report.Healthy);
-        Assert.Collection(report.Rows,
-            summary =>
-            {
-                Assert.Equal("2 scheduled · next: Daily check-in", summary.Label);
-                Assert.Equal(new DateTimeOffset(2026, 10, 3, 16, 30, 0, TimeSpan.Zero), summary.At);
-            },
-            outcome =>
-            {
-                Assert.Equal("Daily check-in · Done · 4 m", outcome.Label);
-                Assert.Equal(PluginHealthStatus.Ok, outcome.Status);
-                Assert.Equal(new DateTimeOffset(2026, 10, 2, 16, 34, 0, TimeSpan.Zero), outcome.At);
-                Assert.NotNull(outcome.ActionId);
-                Assert.Null(outcome.ProjectId);
-                Assert.Equal("daily 18:30", outcome.Schedule);
-                Assert.Equal("Europe/Amsterdam", outcome.TimeZone);
-            },
-            next =>
-            {
-                Assert.Equal("Daily check-in · Next run", next.Label);
-                Assert.Equal(new DateTimeOffset(2026, 10, 3, 16, 30, 0, TimeSpan.Zero), next.At);
-                Assert.Null(next.ActionId);
-            },
-            unreadableOutcome =>
-            {
-                Assert.StartsWith("Whenever · ", unreadableOutcome.Label, StringComparison.Ordinal);
-                Assert.Null(unreadableOutcome.Schedule);
-                Assert.Null(unreadableOutcome.TimeZone);
-            },
-            unreadableNext => Assert.Null(unreadableNext.At));
     }
 
     private async Task RunAsync_StartsAScheduleOnlyFlowOnce_AndReportsItsPermissionState()

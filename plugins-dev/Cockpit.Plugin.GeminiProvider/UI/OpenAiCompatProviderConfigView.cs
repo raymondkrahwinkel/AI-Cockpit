@@ -7,7 +7,7 @@ using Cockpit.Plugins.Abstractions.UI;
 
 namespace Cockpit.Plugin.GeminiProvider.UI;
 
-// The "add/edit profile" config panel for this plugin's Gemini/OpenAI providers (#45): an API key, a model
+// The "add/edit profile" config panel for this plugin's OpenAI-compatible providers (#45): an API key, a model
 // id and the base URL (pre-filled with the provider's default, editable for a custom OpenAI-compatible
 // gateway). Built in code, mirroring the other example plugins' settings views.
 internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
@@ -20,15 +20,19 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
 
     // AC-1489: no field of its own; kept from the loaded config so a save does not drop it.
     private readonly JsonElement? _turnLimits;
+    private readonly bool _isSelfHosted;
     private readonly TextBox _timeoutSeconds;
     private readonly Button _fetchModels;
     private readonly TextBlock _modelStatus = ProviderConfigStatus.CreateLine();
     private readonly TextBlock _timeoutStatus = ProviderConfigStatus.CreateLine();
+    private readonly TextBlock _baseUrlStatus = ProviderConfigStatus.CreateLine();
 
     public Control View { get; }
 
-    public OpenAiCompatProviderConfigView(string? existingConfigJson, string defaultBaseUrl, string? apiKeyEnvVar, ICockpitUiHost host)
+    public OpenAiCompatProviderConfigView(string? existingConfigJson, OpenAiCompatProvider provider, ICockpitUiHost host)
     {
+        var apiKeyEnvVar = provider.ApiKeyEnvVar;
+        var defaultBaseUrl = provider.BaseUrl;
         _apiKeyEnvVar = apiKeyEnvVar;
         _defaultBaseUrl = defaultBaseUrl;
         var existing = string.IsNullOrWhiteSpace(existingConfigJson)
@@ -49,8 +53,9 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
             MinimumPrefixLength = 0,
             IsTextCompletionEnabled = false,
         };
-        _baseUrl = new TextBox { Text = existing?.BaseUrl ?? defaultBaseUrl };
+        _baseUrl = new TextBox { Text = existing?.BaseUrl ?? defaultBaseUrl, PlaceholderText = "https://your-endpoint.example/v1" };
         _turnLimits = existing?.TurnLimits;
+        _isSelfHosted = existing?.IsSelfHosted ?? false;
         _timeoutSeconds = new TextBox
         {
             Text = existing?.TimeoutSeconds?.ToString() ?? string.Empty,
@@ -61,13 +66,13 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
         _fetchModels.Click += (_, _) => _ = _FetchModelsAsync();
         _modelStatus.IsVisible = false;
         _timeoutStatus.IsVisible = false;
+        _baseUrlStatus.IsVisible = false;
+        var baseUrlFields = new StackPanel { Spacing = 8, Children = { _Label("Base URL"), _baseUrl, _baseUrlStatus } };
         var advancedFields = new StackPanel
         {
             Spacing = 8,
             Children =
             {
-                _Label("Base URL"),
-                _baseUrl,
                 _Label("Timeout (seconds)"),
                 _timeoutSeconds,
                 _timeoutStatus,
@@ -75,17 +80,25 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
         };
         advancedFields.Classes.Add("advanced-provider-field");
 
+        // The first-run wizard hides advanced fields, and a custom endpoint has no default to fall back on.
+        if (!provider.IsCustom)
+        {
+            baseUrlFields.Classes.Add("advanced-provider-field");
+        }
+
         View = new StackPanel
         {
             Spacing = 8,
             Children =
             {
+                _Hint(provider.Supports),
                 _LabelRow("API key", host.CreateHelpHint("setup", "api-key")),
                 _apiKey,
                 apiKeyHint,
                 _Label("Model"),
                 _ModelRow(),
                 _modelStatus,
+                baseUrlFields,
                 advancedFields,
             },
         };
@@ -96,9 +109,18 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
         // Cleared up front, not only on the success path — otherwise a timeout error from a previous attempt
         // stays on screen through an unrelated failure (e.g. the API key was blanked afterwards).
         _timeoutStatus.IsVisible = false;
+        _baseUrlStatus.IsVisible = false;
 
         if ((string.IsNullOrWhiteSpace(_apiKey.Text) && !(_apiKeyEnvVar is not null && OpenAiCompatConfig.UsesDefaultHost(_baseUrl.Text, _defaultBaseUrl))) || string.IsNullOrWhiteSpace(_model.Text) || string.IsNullOrWhiteSpace(_baseUrl.Text))
         {
+            configJson = string.Empty;
+            return false;
+        }
+
+        if (!Uri.TryCreate(_baseUrl.Text.Trim(), UriKind.Absolute, out var baseUrl) || baseUrl.Scheme is not ("http" or "https"))
+        {
+            _baseUrlStatus.IsVisible = true;
+            ProviderConfigStatus.Set(_baseUrlStatus, "Base URL must be a full http(s) address.", isOk: false);
             configJson = string.Empty;
             return false;
         }
@@ -111,7 +133,7 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
             return false;
         }
 
-        configJson = JsonSerializer.Serialize(new OpenAiCompatConfig((_apiKey.Text ?? string.Empty).Trim(), _model.Text.Trim(), _baseUrl.Text.Trim(), timeoutSeconds, _turnLimits));
+        configJson = JsonSerializer.Serialize(new OpenAiCompatConfig((_apiKey.Text ?? string.Empty).Trim(), _model.Text.Trim(), _baseUrl.Text.Trim(), timeoutSeconds, _turnLimits, _isSelfHosted));
         return true;
     }
 

@@ -65,6 +65,11 @@ public sealed record PluginTtyLaunchContext(
     /// Called whenever the provider learns this session's conversation id, and again when it changes (AC-408).
     /// </summary>
     public Action<PluginConversationId>? ReportConversationId { get; init; }
+
+    /// <summary>
+    /// Translates a saved MCP permission rule to the names exposed by this session's gateway.
+    /// </summary>
+    public Func<string, IReadOnlyList<string>>? TranslateMcpPermissionRule { get; init; }
 }
 
 /// <summary>
@@ -104,6 +109,9 @@ public sealed record PluginTtyLaunchSpec(
     string WorkingDirectory,
     IReadOnlyList<string> SessionScopedFiles)
 {
+    /// <summary>The effective launch model, or null when the provider leaves it to its CLI.</summary>
+    public string? Model { get; init; }
+
     /// <summary>
     /// The status/limits snapshot file the provider's CLI writes to — Claude's statusline relay is the only
     /// machine-readable route to its context/usage limits — which the host polls to fill the session header's

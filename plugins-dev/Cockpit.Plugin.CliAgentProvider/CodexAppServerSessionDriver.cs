@@ -108,7 +108,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         _model = config.Model;
     }
 
-    public PluginSessionCapabilities Capabilities { get; } = new(SupportsTools: true, SupportsPermissions: true)
+    public PluginSessionCapabilities Capabilities { get; } = new(SupportsTools: true, SupportsPermissions: true, SupportsVision: true)
     {
         SupportsEnvVars = true,
         // Codex spawns its app-server in the session's working directory and edits within that cwd, so an isolated
@@ -206,7 +206,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
 
         // The session's MCP servers (#26) become -c config overrides on the app-server spawn; any bearer token
         // rides the process environment, never the command line (see CodexMcpConfig).
-        var mcpLaunch = CodexMcpConfig.Build(mcpServers);
+        var mcpLaunch = CodexMcpConfig.Build(mcpServers, options);
         _passedMcpServers = mcpLaunch.ServerNames;
         var environmentVariables = _config.BuildEnvironmentVariables();
 
@@ -249,6 +249,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         if (!string.IsNullOrWhiteSpace(resumeSessionId))
         {
             var resumed = await _connection.SendRequestAsync("thread/resume", new { threadId = resumeSessionId, cwd }, cancellationToken).ConfigureAwait(false);
+            _model = _TryGetString(resumed, "model", out var resumedModel) ? _NullIfBlank(resumedModel) ?? _model : _model;
             threadId = _ExtractThreadId(resumed) ?? resumeSessionId;
         }
         else
@@ -258,6 +259,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
             // Sent only when set; null leaves the thread's own instructions untouched, like sandbox/model above.
             var developerInstructions = _NullIfBlank(CliAgentConfig.ResolveOption(options, WellKnownPluginSessionOptions.AppendSystemPrompt, null));
             var started = await _connection.SendRequestAsync("thread/start", new { cwd, sandbox = _NullIfBlank(sandbox), model = _NullIfBlank(effectiveModel), developerInstructions }, cancellationToken).ConfigureAwait(false);
+            _model = _TryGetString(started, "model", out var startedModel) ? _NullIfBlank(startedModel) ?? _model : _model;
 
             // The thread id may ride the reply or only the thread/started notification — take whichever arrives,
             // so the driver does not depend on which of the two carries it in a given Codex version.
@@ -266,10 +268,13 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
 
         _threadId = threadId;
         _threadReady.TrySetResult(threadId);
-        _events.Publish(new PluginSessionInitialized { SessionId = threadId, Tools = [], Cwd = _workingDirectory });
+        _events.Publish(new PluginSessionInitialized { SessionId = threadId, Tools = [], Cwd = _workingDirectory, Model = _model });
     }
 
-    public Task SendUserMessageAsync(string text, CancellationToken cancellationToken = default)
+    public Task SendUserMessageAsync(string text, CancellationToken cancellationToken = default) =>
+        SendUserMessageAsync(text, images: null, cancellationToken);
+
+    public Task SendUserMessageAsync(string text, IReadOnlyList<PluginImageAttachment>? images, CancellationToken cancellationToken)
     {
         if (_threadId is not { Length: > 0 } threadId)
         {
@@ -279,12 +284,25 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         // Fire-and-forget: turn/start's reply lands only when the turn ends, so awaiting it would block the
         // caller; output streams via the notification pump instead, closed by turn/completed. Live model/
         // effort/approval/sandbox (#45 D4) are captured on the caller's thread so same-thread switches are picked up next turn.
-        var input = new object[] { new { type = "text", text } };
+        var input = new List<object> { new { type = "text", text } };
+        if (images is { Count: > 0 })
+        {
+            // The text-only spark model rejects image input, so say so and let the text through.
+            if (_model?.Contains("spark", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                _events.Publish(new PluginSessionError { SessionId = threadId, Message = $"{_model} cannot read images; sending the text only." });
+            }
+            else
+            {
+                input.AddRange(images.Select(image => new { type = "image", url = $"data:{image.MediaType};base64,{image.Base64Data}" }));
+            }
+        }
+
         _ = _SendTurnAsync(threadId, input, _model, _effort, _approval, _sandbox, cancellationToken);
         return Task.CompletedTask;
     }
 
-    private async Task _SendTurnAsync(string threadId, object[] input, string? model, string? effort, string? approval, string? sandbox, CancellationToken cancellationToken)
+    private async Task _SendTurnAsync(string threadId, IReadOnlyList<object> input, string? model, string? effort, string? approval, string? sandbox, CancellationToken cancellationToken)
     {
         try
         {
@@ -503,6 +521,11 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
                 if (isChild)
                 {
                     _FinishChild(source, "failed");
+                    break;
+                }
+                if (_TryGetBoolean(notification.Params, "willRetry", out var willRetry) && willRetry)
+                {
+                    _logger?.LogInformation("Codex session {SessionId} status: {Message}", _threadId, _ExtractErrorMessage(notification.Params));
                     break;
                 }
                 if (_IsRateLimitRefusal(notification.Params))
@@ -955,6 +978,20 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         }
 
         value = string.Empty;
+        return false;
+    }
+
+    private static bool _TryGetBoolean(JsonElement parent, string property, out bool value)
+    {
+        if (parent.ValueKind == JsonValueKind.Object
+            && parent.TryGetProperty(property, out var element)
+            && element.ValueKind is JsonValueKind.True or JsonValueKind.False)
+        {
+            value = element.GetBoolean();
+            return true;
+        }
+
+        value = false;
         return false;
     }
 

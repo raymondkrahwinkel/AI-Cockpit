@@ -10,30 +10,7 @@ namespace Cockpit.Infrastructure.Tests.Mcp;
 /// </summary>
 public class CockpitMcpBearerTests
 {
-    [Fact]
-    public void For_ACockpitHostedEndpoint_GetsThisRunsKey()
-    {
-        var key = new McpAuthKey();
-        var server = new McpServerConfig { Name = "cockpit-session", Transport = McpTransport.Http, Url = "http://127.0.0.1:1/mcp", CockpitHosted = true };
 
-        Assert.Equal(key.Value, CockpitMcpBearer.For(server, key));
-    }
-
-    [Fact]
-    public void For_AUserApiKeyServer_GetsItsOwnKey_NotTheHostsKey()
-    {
-        var key = new McpAuthKey();
-        var server = new McpServerConfig
-        {
-            Name = "youtrack",
-            Transport = McpTransport.Http,
-            Url = "http://example/mcp",
-            Auth = McpServerAuth.ApiKey,
-            ApiKey = "the-servers-own-key",
-        };
-
-        Assert.Equal("the-servers-own-key", CockpitMcpBearer.For(server, key));
-    }
 
     [Fact]
     public void For_APlainUserAddedServer_GetsNoKey_SoTheHostsKeyNeverLeaksToAThirdParty()

@@ -20,6 +20,11 @@ public interface IManagedCliService
     void Register(ManagedCliDescriptor descriptor);
 
     /// <summary>
+    /// Withdraws <paramref name="descriptor"/>, unless a later registration replaced it. What is installed on disk stays.
+    /// </summary>
+    bool Unregister(ManagedCliDescriptor descriptor);
+
+    /// <summary>
     /// The path to the newest installed version of <paramref name="cliName"/> on disk, or <see langword="null"/> when
     /// none is installed. A pure filesystem lookup — it does not download; that keeps it safe to call on the hot path
     /// of resolving an executable at session spawn, where "not installed" must mean "fall back to PATH", never a stall.

@@ -187,6 +187,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly IAudioDeviceProvider? _audioDeviceProvider;
     private readonly IAudioCaptureService? _audioCapture;
 
+    [ObservableProperty]
+    private bool _isAudioAvailable = true;
+
+    [ObservableProperty]
+    private string _audioUnavailableMessage = string.Empty;
+
     // Only for the voice preview in Options (PreviewVoiceCommand). Sessions reach the queue through their own
     // panel; this holds it because Options has no session to borrow one from.
     private readonly IVoicePlaybackQueue? _voicePlaybackQueue;
@@ -311,17 +317,17 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // What plugins can *do* to one session (#: session actions) — gathered into the single menu in every session's
     // header, rather than a button each.
-    public ObservableCollection<PluginSessionAction> PluginSessionHeaderActions { get; } = [];
+    public ObservableCollection<PluginSessionHeaderAction> PluginSessionHeaderActions { get; } = [];
 
     // Plugin-registered sources of supervised background activities (AC-82) — the status bar shows a counter per source
     // (only while it has activities) and a panel with a Kill per item.
-    public ObservableCollection<ISupervisedActivitySource> PluginSupervisedActivities { get; } = [];
+    public ObservableCollection<PluginSupervisedActivity> PluginSupervisedActivities { get; } = [];
 
     // AC-1711: at most one line of text per plugin in the status bar, in the order the plugins first set one.
     public ObservableCollection<PluginStatusText> PluginStatusTexts { get; } = [];
 
     // Replaced in place, so a plugin's text keeps its spot; null or blank removes it. Long text is cut, not wrapped.
-    internal void SetPluginStatusText(string pluginId, string? text, SideMenuButtonBadgeTone? tone = null) => _OnUiThread(() =>
+    internal void SetPluginStatusText(string pluginId, string? text, SideMenuButtonBadgeTone? tone = null, Func<Action, Control>? popup = null) => _OnUiThread(() =>
     {
         var existing = PluginStatusTexts.FirstOrDefault(entry => entry.PluginId == pluginId);
         var index = existing is null ? -1 : PluginStatusTexts.IndexOf(existing);
@@ -335,7 +341,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        var entry = new PluginStatusText(pluginId, text.Length > PluginStatusTextMaxLength ? text[..PluginStatusTextMaxLength] + "…" : text, tone);
+        var entry = new PluginStatusText(pluginId, text.Length > PluginStatusTextMaxLength ? text[..PluginStatusTextMaxLength] + "…" : text, tone, popup);
         // AC-1764: the same line again is no change. A Replace builds a new item container that must be measured, so a
         // plugin repeating its text in a loop would otherwise keep the status bar in layout for as long as it repeats.
         if (entry == existing)
@@ -426,7 +432,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private sealed record PluginMenuPreference(int Order, bool Hidden, bool Pinned);
 
     // Keyboard shortcuts contributed by plugins (#: shortcuts), dispatched alongside the built-in app-action shortcuts.
-    public ObservableCollection<PluginShortcut> PluginShortcuts { get; } = [];
+    public ObservableCollection<PluginKeyboardShortcut> PluginShortcuts { get; } = [];
 
     // The currently-active shortcuts (app actions + plugin shortcuts) the view matches key presses against.
     public IReadOnlyList<ShortcutBinding> ActiveShortcuts { get; private set; } = [];
@@ -452,6 +458,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // The delegated-tasks view (#67): work other sessions handed to a profile, which has no tab of its own.
     public DelegatedTasksViewModel DelegatedTasks { get; }
+
+    // AC-2028: the test runs behind the status bar's "Test runs: N".
+    public TestRunsViewModel TestRuns { get; }
     private AgentsOverviewViewModel? _agentsOverview;
     public AgentsOverviewViewModel AgentsOverview => _agentsOverview ??= new(this);
     internal AgentsOverviewFilters AgentsFilters { get; private set; } = new();
@@ -834,23 +843,53 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         MaterialIconKind iconKind) =>
         _OnUiThread(() => PluginSideButtons.Add(new PluginSideButton(pluginId, title, onInvoke, badge, iconKind)));
 
-    void IPluginContributionSink.AddPluginSessionHeaderItem(Func<IPluginSessionContext, Control> createView) =>
-        _OnUiThread(() => PluginSessionHeaderItems.Add(new PluginSessionHeaderItem(createView)));
+    void IPluginContributionSink.AddPluginSessionHeaderItem(string pluginId, Func<IPluginSessionContext, Control> createView) =>
+        _OnUiThread(() => PluginSessionHeaderItems.Add(new PluginSessionHeaderItem(pluginId, createView)));
 
-    void IPluginContributionSink.AddPluginSessionBannerItem(Func<IPluginSessionContext, Control> createView) =>
-        _OnUiThread(() => PluginSessionBanners.Add(new PluginSessionBannerItem(createView)));
+    void IPluginContributionSink.AddPluginSessionBannerItem(string pluginId, Func<IPluginSessionContext, Control> createView) =>
+        _OnUiThread(() => PluginSessionBanners.Add(new PluginSessionBannerItem(pluginId, createView)));
 
-    void IPluginContributionSink.AddPluginSessionHeaderAction(PluginSessionAction action) =>
-        _OnUiThread(() => PluginSessionHeaderActions.Add(action));
+    void IPluginContributionSink.AddPluginSessionHeaderAction(string pluginId, PluginSessionAction action) =>
+        _OnUiThread(() => PluginSessionHeaderActions.Add(new PluginSessionHeaderAction(pluginId, action)));
 
-    void IPluginContributionSink.AddSupervisedActivityProvider(ISupervisedActivitySource source) =>
-        _OnUiThread(() => PluginSupervisedActivities.Add(source));
+    void IPluginContributionSink.AddSupervisedActivityProvider(string pluginId, ISupervisedActivitySource source) =>
+        _OnUiThread(() => PluginSupervisedActivities.Add(new PluginSupervisedActivity(pluginId, source)));
 
     void IPluginContributionSink.AddToolbarAction(string pluginId, ToolbarAction action) =>
         _OnUiThread(() => PluginToolbarActions.Add(new PluginToolbarAction(pluginId, action)));
 
-    void IPluginContributionSink.AddPluginShortcut(PluginShortcut shortcut) =>
-        _OnUiThread(() => PluginShortcuts.Add(shortcut));
+    void IPluginContributionSink.AddPluginShortcut(string pluginId, PluginShortcut shortcut) =>
+        _OnUiThread(() => PluginShortcuts.Add(new PluginKeyboardShortcut(pluginId, shortcut)));
+
+    void IPluginContributionSink.RemovePluginContributions(string pluginId) => _OnUiThread(() =>
+    {
+        _RemoveWhere(PluginSideSections, entry => entry.PluginId == pluginId);
+        _RemoveWhere(PluginSideButtons, entry => entry.PluginId == pluginId);
+        _RemoveWhere(PluginSessionHeaderItems, entry => entry.PluginId == pluginId);
+        _RemoveWhere(PluginSessionBanners, entry => entry.PluginId == pluginId);
+        _RemoveWhere(PluginSessionHeaderActions, entry => entry.PluginId == pluginId);
+        _RemoveWhere(PluginSupervisedActivities, entry => entry.PluginId == pluginId);
+        _RemoveWhere(PluginStatusTexts, entry => entry.PluginId == pluginId);
+        _RemoveWhere(PluginToolbarActions, entry => entry.PluginId == pluginId);
+        _RemoveWhere(PluginShortcuts, entry => entry.PluginId == pluginId);
+        PluginSettings.Remove(pluginId);
+        PluginServerSettings.Remove(pluginId);
+        _settingsSavedHandlers.Remove(pluginId);
+    });
+
+    Task<bool> IPluginContributionSink.ConfirmPluginWorkspacesCloseAsync(string pluginId) =>
+        Workspaces.ConfirmPluginWorkspacesCloseAsync(pluginId);
+
+    private static void _RemoveWhere<T>(ObservableCollection<T> items, Func<T, bool> match)
+    {
+        for (var index = items.Count - 1; index >= 0; index--)
+        {
+            if (match(items[index]))
+            {
+                items.RemoveAt(index);
+            }
+        }
+    }
 
     // Registration touches only this plain dictionary — never a bound ObservableCollection — and every caller is an
     // Avalonia UI-thread callback in practice (a plugin's Initialize).
@@ -895,7 +934,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             onSaved: pane.Refresh,
             // Per widget, and not optional here (AC-367): the form is built once above and handed to the window as
             // a captured instance, so a second window would try to adopt a control that already has a parent.
-            singleInstanceKey: $"widget:{pane.Id}");
+            singleInstanceKey: $"{CockpitUiHost.WidgetDialogKeyPrefix(pane.WidgetId)}{pane.Id}");
     }
 
     // Unlike the three contributions above, registration here touches only this private dictionary — never a bound
@@ -1102,29 +1141,24 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // every pane then carries the drag-reorder grip, and the column/row gutters between them are resizable (AC-696).
     public bool StackSessionsInStack => !ShowSinglePane && !ShowFocusRail && VisibleSessions.Count() >= 2;
 
-    // The Agents palette (AC-1933) and its two entry points. Switched off, the shortcut, the title-bar button and the
-    // rail icon do nothing and the button and icon are hidden, whatever their own switches say.
+    // The Agents palette (AC-1933) and its rail entry point. Switched off, the shortcut and the rail icon do nothing
+    // and the icon is hidden, whatever its own switch says.
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ShowAgentsPaletteButton), nameof(ShowAgentsPaletteRailIcon))]
+    [NotifyPropertyChangedFor(nameof(ShowAgentsPaletteRailIcon))]
     private bool _agentsPaletteEnabled = true;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ShowAgentsPaletteButton))]
-    private bool _agentsPaletteTitleButton = true;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowAgentsPaletteRailIcon))]
     private bool _agentsPaletteRailIcon;
 
-    // "Agents · Ctrl + Shift + A": the title-bar button names the key that is bound now, and only "Agents" when none is.
-    public string AgentsPaletteButtonLabel => _shortcutSettings.GestureFor(ShortcutAction.AgentsPalette) is { Length: > 0 } gesture
-        ? $"Agents · {_PrettifyGesture(gesture)}"
-        : "Agents";
+    // The key the palette is bound to now, "Ctrl + Shift + A" in the Agents panel's head, blank while none is.
+    public string AgentsPaletteHeaderShortcutLabel => _shortcutSettings.GestureFor(ShortcutAction.AgentsPalette) is { Length: > 0 } gesture
+        ? _PrettifyGesture(gesture)
+        : string.Empty;
 
     // The palette's own row in the shortcut list, so Options › Agents overview can rebind it without a second store.
     public ShortcutRowViewModel? AgentsPaletteShortcut => ShortcutRows.FirstOrDefault(row => row.Action == ShortcutAction.AgentsPalette);
 
-    public bool ShowAgentsPaletteButton => AgentsPaletteEnabled && AgentsPaletteTitleButton;
     public bool ShowAgentsPaletteRailIcon => AgentsPaletteEnabled && AgentsPaletteRailIcon;
 
     // When true, closing the window hides it to the system tray and keeps the app running (#33).
@@ -1276,6 +1310,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [NotifyPropertyChangedFor(nameof(SimpleStandShowsTheStartScreen))]
     [NotifyPropertyChangedFor(nameof(ShowSessionEmptyState))]
     [NotifyPropertyChangedFor(nameof(ShowSessionsSkeleton))]
+    [NotifyPropertyChangedFor(nameof(SimpleStandShowsTheWorkspace))]
+    [NotifyPropertyChangedFor(nameof(ShowWorkspaceContent))]
     private bool _simpleView;
 
     // AC-1527: the Simple stand's navigation — what its main column shows and which rail entry is marked. One state
@@ -1283,16 +1319,22 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SimpleStandShowsTheStartScreen))]
     [NotifyPropertyChangedFor(nameof(SimpleStandShowsTheProjects))]
+    [NotifyPropertyChangedFor(nameof(SimpleStandShowsTheWorkspace))]
+    [NotifyPropertyChangedFor(nameof(ShowWorkspaceContent))]
+    [NotifyPropertyChangedFor(nameof(SimpleStandDocksTheAssistant))]
+    [NotifyPropertyChangedFor(nameof(EffectiveOpenDockPanelId))]
+    [NotifyPropertyChangedFor(nameof(ShowDockRail))]
     private SimplePage _simplePage = SimplePage.Home;
 
     // Raised only when it can have changed: the view rebuilds the chat host on it, and Home -> Conversation must keep
     // the same composer (and its caret) on screen (AC-1316).
     partial void OnSimplePageChanged(SimplePage oldValue, SimplePage newValue)
     {
-        if (oldValue == SimplePage.Projects || newValue == SimplePage.Projects)
+        if (oldValue is SimplePage.Projects or SimplePage.Workspace || newValue is SimplePage.Projects or SimplePage.Workspace)
         {
             OnPropertyChanged(nameof(SimpleStandShowsTheAssistantInTheMainColumn));
         }
+        RefreshPaneVisibility();
     }
 
     // AC-1321: the paired controller holding the line to this node right now, or null while it is on its own —
@@ -1348,8 +1390,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     public bool SimpleStandDocksTheAssistant =>
         SimpleView
         && AssistantRootSession is not null
-        && SimpleSelectedSession is not null
-        && !ReferenceEquals(SimpleSelectedSession, AssistantRootSession);
+        && (SimplePage == SimplePage.Workspace
+            || SimpleSelectedSession is not null && !ReferenceEquals(SimpleSelectedSession, AssistantRootSession));
 
     // The other half of the same answer. With no assistant session there is nothing to put in either place: a
     // picked session then takes the column on its own, there is no dock, and no way back is drawn to it
@@ -1360,7 +1402,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // itself and starts the assistant on the first message, so the column holds it whenever nothing else is picked.
     public bool SimpleStandShowsTheAssistantInTheMainColumn =>
         SimpleView
-        && SimplePage != SimplePage.Projects
+        && SimplePage is not (SimplePage.Projects or SimplePage.Workspace)
         && (SimpleSelectedSession is null || ReferenceEquals(SimpleSelectedSession, AssistantRootSession));
 
     // AC-1316: the screen is the empty state of the assistant's own conversation, drawn inside the chat view.
@@ -1420,16 +1462,24 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // dialog. The selection goes first, so the stand lands in one state — the question in the column, nothing
     // docked beside it — rather than the screen laid over a conversation still marked as picked.
     [RelayCommand]
-    private void ShowSimpleStartScreen()
+    private async Task ShowSimpleStartScreenAsync()
     {
+        if (!await _CanLeaveSimpleWorkspaceAsync())
+        {
+            return;
+        }
         SimpleSelectedSession = null;
         SimplePage = SimplePage.Home;
         _simpleHome?.Refresh();
     }
 
     [RelayCommand]
-    private void ShowSimpleProjects()
+    private async Task ShowSimpleProjectsAsync()
     {
+        if (!await _CanLeaveSimpleWorkspaceAsync())
+        {
+            return;
+        }
         SimpleSelectedSession = null;
         SimplePage = SimplePage.Projects;
     }
@@ -1437,7 +1487,18 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // AC-1302: the rail's producer for the Simple stand's own selection. Separate from `SelectSession`, which
     // moves the panels stand's selection — the two stands deliberately do not share one choice (AC-1301).
     [RelayCommand]
-    private void SelectSimpleSession(SessionPanelViewModel session) => SimpleSelectedSession = session;
+    private async Task SelectSimpleSessionAsync(SessionPanelViewModel session)
+    {
+        if (await _CanLeaveSimpleWorkspaceAsync())
+        {
+            SimpleSelectedSession = session;
+            SimplePage = SimplePage.Conversation;
+            if (SessionWorkspacePlacement.Resolve(session, SessionWorkspacePlacement.FirstSessionsWorkspaceId(Workspaces.Settings)) is { } workspaceId)
+            {
+                await Workspaces.SelectWorkspaceCommand.ExecuteAsync(workspaceId);
+            }
+        }
+    }
 
     // Marks the picked row in the rail, the way `OnSelectedSessionChanged` marks it in the sidebar. Without this
     // a click in the rail changes nothing you can see, which reads as a list that does not work.
@@ -1451,6 +1512,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         if (newValue is not null)
         {
             newValue.IsSelectedInSimpleStand = true;
+
+            if (SimpleView
+                && !newValue.BelongsToNoWorkspace
+                && !BelongsToActiveWorkspace(newValue)
+                && SessionWorkspacePlacement.Resolve(newValue, SessionWorkspacePlacement.FirstSessionsWorkspaceId(Workspaces.Settings)) is { } workspaceId)
+            {
+                Workspaces.SelectWorkspaceCommand.Execute(workspaceId);
+            }
 
             // AC-1304: picking a conversation is the answer to the question the start screen asks, so the screen
             // stands down here rather than at each of the places that can pick one — the rail, `Go there`, and a
@@ -1558,10 +1627,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // parameter would be a string to parse, and there are exactly two stands.
     // AC-1527 criterion 5: coming back from Panels lands on Home, not on the conversation left there.
     [RelayCommand]
-    private void ShowSimpleView()
+    private async Task ShowSimpleViewAsync()
     {
         SimpleView = true;
-        ShowSimpleStartScreen();
+        await ShowSimpleStartScreenAsync();
     }
 
     [RelayCommand]
@@ -1623,6 +1692,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             OnPropertyChanged(nameof(HasRailTabs));
             OnPropertyChanged(nameof(HasDockPanels));
             OnPropertyChanged(nameof(ShowDockRail));
+            OnPropertyChanged(nameof(EffectiveOpenDockPanelId));
         };
     }
 
@@ -2109,6 +2179,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private bool _notifyOnCiFailure = true;
 
+    [ObservableProperty]
+    private int _monitorMessagesPerHour = NotificationSettings.DefaultMonitorMessagesPerHour;
+
     // Whether the cockpit window is the focused one. Set by the window itself (it is the only thing that knows),
     // and read by the finished-session notification: a session you are looking at does not need to announce itself.
     [ObservableProperty]
@@ -2174,6 +2247,17 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // its own and nothing ever added them up, so several well-behaved sessions could still promise more than exists.
     [ObservableProperty]
     private int _memoryBudgetPercent = MemoryPressure.DefaultBudgetPercent;
+
+    // AC-2025: how many plugin versions a live update may leave in memory before the plugin screens advise a restart.
+    [ObservableProperty]
+    private int _pluginRestartAdviceAfter = SessionBehaviorSettings.DefaultPluginRestartAdviceAfter;
+
+    partial void OnPluginRestartAdviceAfterChanged(int value) => Plugins.RestartAdviceAfter = value;
+
+    // AC-2035: whether Docker's build cache and old images are pruned by the cockpit itself. Read afresh by the storage
+    // maintenance on every tick, so a saved change applies without a restart.
+    [ObservableProperty]
+    private bool _automaticDockerCleanup = false;
 
     [ObservableProperty]
     private string _sessionBehaviorSettingsStatus = string.Empty;
@@ -3099,7 +3183,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             var here = BelongsToActiveWorkspace(session);
             session.IsOnActiveDesk = here;
             session.IsPaneVisible = here && (simple
-                ? ReferenceEquals(session, SimpleSelectedSession)
+                ? SimplePage == SimplePage.Conversation && ReferenceEquals(session, SimpleSelectedSession)
                 : !single || session.IsSelected);
             session.IsShownInSimpleStand = simple && session.IsPaneVisible;
         }
@@ -3317,12 +3401,19 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // Called from both constructors, right after `Workspaces` is built — the design-time/test graph needs this exactly
     // as much as the real one, and wiring it in only one of them is how the two quietly drift apart.
-    private void _WireWorkspaceVisibility() =>
-        Workspaces.PropertyChanged += (_, e) =>
+    private void _WireWorkspaceVisibility()
+    {
+        Workspaces.WorkspaceOpened += (_, _) => _ShowSimpleWorkspace();
+        Workspaces.PropertyChanged += async (_, e) =>
         {
             if (e.PropertyName is not (nameof(WorkspacesViewModel.IsSessionsActive) or nameof(WorkspacesViewModel.Settings)))
             {
                 return;
+            }
+
+            if (SimpleStandShowsTheWorkspace && (Workspaces.IsSessionsActive || Workspaces.IsProjectsActive))
+            {
+                await _RestoreSimplePageAsync();
             }
 
             OnPropertyChanged(nameof(ShowSessionGrid));
@@ -3339,6 +3430,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             // It ends in RefreshPaneVisibility, which is also what keeps the other desks' sessions alive but unshown.
             _OnEffectiveLayoutChanged();
         };
+    }
 
     // Parameterless constructor kept for the Avalonia previewer/Screenshotter design-time context — seeds three sample
     // sessions across different providers and statuses so the render shows the overview + grid without a real DI-backed
@@ -3384,6 +3476,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         Plugins = new PluginManagerViewModel();
         DelegatedTasks = new DelegatedTasksViewModel();
+        TestRuns = new TestRunsViewModel();
         Worktrees = new WorktreesViewModel();
         Projects = new ProjectsViewModel();
         Security = new SecurityOptionsViewModel(new UnprotectedSecrets());
@@ -3463,9 +3556,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IPluginDialogHost? pluginDialogHost = null,
         IPluginDiagnostics? pluginDiagnostics = null,
         IAudioDeviceProvider? audioDeviceProvider = null,
+        IAudioAvailability? audioAvailability = null,
         IAppRestartService? appRestartService = null,
         IShortcutSettingsStore? shortcutSettingsStore = null,
         DelegatedTasksViewModel? delegatedTasks = null,
+        TestRunsViewModel? testRuns = null,
         IDebugSettingsStore? debugSettingsStore = null,
         IDelegationMcpToggle? delegationMcpToggle = null,
         IRenderingSettingsStore? renderingSettingsStore = null,
@@ -3581,8 +3676,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Cockpit.Core.Swarm.ISwarmLeadership? swarmLeadership = null,
         // AC-1846: Options › Sync. Absent in the design-time/unit-test graph, where the page lists no server.
         ISyncOptions? syncOptions = null,
-        IPluginStoreSources? pluginStoreSources = null)
+        IPluginStoreSources? pluginStoreSources = null,
+        ISessionMcpRestore? sessionMcpRestore = null,
+        Cockpit.Core.HeavyRuns.IHeavyRunSettingsStore? heavyRunSettingsStore = null,
+        Cockpit.Core.HeavyRuns.IHeavyRunSettingsRefresh? heavyRunSettingsRefresh = null)
     {
+        _heavyRunSettingsStore = heavyRunSettingsStore;
+        _heavyRunSettingsRefresh = heavyRunSettingsRefresh;
         _managedSettingsReader = managedSettings;
         _settingsWriteBatch = settingsWriteBatch;
         _providerConfigViews = providerConfigViews;
@@ -3627,7 +3727,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         // Options → Voice → Assistant (AC-543). Absent in the design-time/unit-test graph the same way Security is,
         // where the page renders its defaults rather than the dialog failing to open.
-        AssistantOptions = new AssistantOptionsViewModel(assistantSettingsStore, assistantProfileStore, consentAuditLog, assistantMemory);
+        AssistantOptions = new AssistantOptionsViewModel(assistantSettingsStore, assistantProfileStore, consentAuditLog, assistantMemory, sessionProfileStore);
         _ = AssistantOptions.RefreshAsync();
         ModelIntelligence = new ModelIntelligenceOptionsViewModel(modelIntelligenceOptions);
         Sync = new SyncOptionsViewModel(syncOptions);
@@ -3663,6 +3763,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // switch with — not a second source of truth for a fact that must agree with what happened to plugin loading.
         _safeMode = pluginDiagnostics?.SafeMode ?? false;
         DelegatedTasks = delegatedTasks ?? new DelegatedTasksViewModel();
+        TestRuns = testRuns ?? new TestRunsViewModel();
+        TestRuns.SessionName = paneId => _SessionNames().GetValueOrDefault(paneId);
         _worktreeManager = worktreeManager;
         _sessionStateRecorder = sessionStateRecorder;
         _sessionStateStore = sessionStateStore;
@@ -3713,8 +3815,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             WatchController(controllerPresence);
         }
 
-        // Before the first load below, so every card it builds carries them (AC-772) — these are what let one
-        // ProjectCardView serve both the Projects workspace and the Manage-projects window.
+        // Before the first load below, so every card it builds carries them (AC-772).
         Projects.CardActions = new ProjectCardActions(
             StartProjectSessionCommand,
             NewSessionForProjectCommand,
@@ -3723,7 +3824,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             OpenProjectFolderCommand,
             ShareProjectCommand,
             SyncProjectNowCommand,
-            SelectSessionCommand);
+            OpenProjectSessionCommand);
 
         // The sidebar's Projects section (AC-164) is on screen from startup, so the list is read now rather than
         // when Options opens — which used to be the only thing that needed it. Fire-and-forget like every other
@@ -3745,6 +3846,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _ = LoadCloneSettingsAsync();
         _audioDeviceProvider = audioDeviceProvider;
         _audioCapture = audioCapture;
+        IsAudioAvailable = audioAvailability?.IsAvailable ?? true;
+        AudioUnavailableMessage = IsAudioAvailable ? string.Empty : "Audio is unavailable. See Health for details.";
         _voicePlaybackQueue = voicePlaybackQueue;
         if (_voicePlaybackQueue is not null)
         {
@@ -3871,11 +3974,25 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             consentPrompts.Closed += _OnConsentPromptClosed;
         }
 
+        _sessionMcpMounts = sessionMcpMounts;
+        _sessionMcpRestore = sessionMcpRestore;
         if (sessionMcpMounts is not null)
         {
             sessionMcpMounts.Reported += _OnSessionMcpMounted;
+            sessionMcpMounts.Changed += _OnSessionMcpSetChanged;
         }
     }
+
+    private readonly SessionMcpMounts? _sessionMcpMounts;
+    private readonly ISessionMcpRestore? _sessionMcpRestore;
+
+    private void _OnSessionMcpSetChanged(string paneId) => _OnUiThread(() =>
+    {
+        if (_sessionMcpRestore?.IsEnabled == true && FindSession(paneId) is { } session && _sessionMcpMounts?.Set(paneId) is { Context: { } context } set)
+        {
+            session.McpServerSelection = new ExactMcpServerSelection(set.ServerNames) { AssistantManaged = context.Manager == SessionMcpManager.Assistant };
+        }
+    });
 
     // AC-997: the selection stays the full set this route tried, not only the ones that answered — a server that fell
     // over stays present instead of reading as one the operator never checked; the issues ride along for the header's
@@ -3885,13 +4002,22 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             if (FindSession(paneId) is { } session)
             {
-                var selection = new HashSet<string>(connectedServerNames, StringComparer.OrdinalIgnoreCase);
-                foreach (var issue in issues)
+                var set = _sessionMcpRestore?.IsEnabled == true ? _sessionMcpMounts?.Set(paneId) : null;
+                IEnumerable<string> desiredNames = set is null ? connectedServerNames : set.ServerNames;
+                var selection = new HashSet<string>(desiredNames, StringComparer.OrdinalIgnoreCase);
+                if (set?.Context is null)
                 {
-                    selection.Add(issue.Name);
+                    foreach (var issue in issues)
+                    {
+                        selection.Add(issue.Name);
+                    }
                 }
 
-                session.McpServerSelection = selection;
+                // AC-2083: stays exact, so Clear context re-mounts an override's other-project server instead of narrowing to the project's.
+                session.McpServerSelection = set?.Context is { } context
+                    ? new ExactMcpServerSelection(selection) { AssistantManaged = context.Manager == SessionMcpManager.Assistant }
+                    : session.McpServerSelection is ExactMcpServerSelection exact
+                        ? new ExactMcpServerSelection(selection) { AssistantManaged = exact.AssistantManaged } : selection;
                 session.McpServerConnectionIssues = issues;
             }
         });
@@ -4057,6 +4183,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         NotifyOnSessionIdle = settings.NotifyOnSessionIdle;
         NotifyWhenAllSessionsIdle = settings.NotifyWhenAllSessionsIdle;
         NotifyOnCiFailure = settings.NotifyOnCiFailure;
+        MonitorMessagesPerHour = settings.MonitorMessagesPerHour;
         _remoteHealthWatchedInterval = settings.RemoteHealthWatchedInterval;
         _remoteHealthBackgroundInterval = settings.RemoteHealthBackgroundInterval;
     }
@@ -4092,6 +4219,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             NotifyOnSessionIdle = NotifyOnSessionIdle,
             NotifyWhenAllSessionsIdle = NotifyWhenAllSessionsIdle,
             NotifyOnCiFailure = NotifyOnCiFailure,
+            MonitorMessagesPerHour = MonitorMessagesPerHour > 0 ? MonitorMessagesPerHour : NotificationSettings.DefaultMonitorMessagesPerHour,
             // 0 is a real choice here ("never let a session go idle"), so it is saved as written rather than
             // being nudged back to the default the way the away-threshold is.
             SessionIdleThreshold = SessionIdleMinutes > 0 ? TimeSpan.FromMinutes(SessionIdleMinutes) : TimeSpan.Zero,
@@ -4152,7 +4280,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             ShortcutRows.Add(new ShortcutRowViewModel(descriptor.Label, descriptor.Action, _shortcutSettings.GestureFor(descriptor.Action)));
         }
 
-        foreach (var shortcut in PluginShortcuts)
+        foreach (var shortcut in PluginShortcuts.Select(entry => entry.Shortcut))
         {
             ShortcutRows.Add(new ShortcutRowViewModel(
                 $"{shortcut.Title} (plugin)",
@@ -4198,7 +4326,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // every plugin shortcut, each paired with the action to run.
     private void _RebuildActiveShortcuts()
     {
-        OnPropertyChanged(nameof(AgentsPaletteButtonLabel));
+        OnPropertyChanged(nameof(AgentsPaletteHeaderShortcutLabel));
         var bindings = new List<ShortcutBinding>();
         foreach (var descriptor in ShortcutCatalog.All)
         {
@@ -4216,7 +4344,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             }
         }
 
-        foreach (var shortcut in PluginShortcuts)
+        foreach (var shortcut in PluginShortcuts.Select(entry => entry.Shortcut))
         {
             var gesture = _shortcutSettings.GestureForPlugin(shortcut.Id, shortcut.DefaultGesture);
             if (!string.IsNullOrWhiteSpace(gesture))
@@ -4373,6 +4501,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         CombineQueuedMessages = settings.CombineQueuedMessages;
         WakeAgentsByDefault = settings.WakeAgentsByDefault;
         MemoryBudgetPercent = settings.MemoryBudgetPercent;
+        PluginRestartAdviceAfter = settings.PluginRestartAdviceAfter;
+        AutomaticDockerCleanup = settings.AutomaticDockerCleanup;
         // Pushed explicitly as well as through the property's own change handler: the saved value can equal the
         // property's initial one, and then nothing changed and the handler never ran — leaving the coordinator on
         // its own default rather than on the operator's, which happen to agree today and need not tomorrow.
@@ -4394,6 +4524,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             CombineQueuedMessages = CombineQueuedMessages,
             WakeAgentsByDefault = WakeAgentsByDefault,
             MemoryBudgetPercent = MemoryBudgetPercent,
+            PluginRestartAdviceAfter = PluginRestartAdviceAfter,
+            AutomaticDockerCleanup = AutomaticDockerCleanup,
         });
         SessionBehaviorSettingsStatus = "Saved";
     }
@@ -4577,13 +4709,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         // Raised on the host this view model owns: ToastService is built *from* it, and injecting the service back in
         // is a circle the container walks forever.
-        ToastHost.Add(
+        ToastHost.AddCondition(
+            "memory-budget",
             $"The cockpit and its sessions are holding {_Megabytes(usage.MemoryBytes)} of {_Megabytes(machine)} — over the {MemoryBudgetPercent}% shared budget. "
             + "That figure is this app plus every process the sessions now open have spawned, including ones they have lost the parent of. "
             + $"Nothing is closed automatically; when memory runs out the system ends a session for you instead.{advice}{abandoned}",
             ToastSeverity.Warning,
-            actionLabel: null,
-            onAction: null);
+            [],
+            () => _warnedAboutMemory);
     }
 
     // The sessions the diagnostics panel weighs (AC-58): title, kind and process id, built here so the collector
@@ -5046,7 +5179,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         UpdateStatus = "Restarting…";
-        try { updates.ApplyDownloadedUpdateAndRestart(); }
+        try
+        {
+            // Velopack stops this instance itself, bypassing AppRestartService's RequestQuit path.
+            Program.CompleteStartupAttempt();
+            updates.ApplyDownloadedUpdateAndRestart();
+        }
         finally
         {
             // A refused/no-op apply returns normally; the operator must still be able to use this process.
@@ -5701,7 +5839,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _dockHost?.RestoreIfStarted();
         OpenInSimpleView = settings.OpenInSimpleView;
         AgentsPaletteEnabled = settings.AgentsPaletteEnabled;
-        AgentsPaletteTitleButton = settings.AgentsPaletteTitleButton;
         AgentsPaletteRailIcon = settings.AgentsPaletteRailIcon;
         ThemeMode = settings.ThemeMode;
         AssistantThreadRailWindow = settings.AssistantThreadRailWindow;
@@ -5735,7 +5872,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         FloatingDockPanelIds = [.. _floatingDockPanelIds.Order(StringComparer.Ordinal)],
         OpenInSimpleView = OpenInSimpleView,
         AgentsPaletteEnabled = AgentsPaletteEnabled,
-        AgentsPaletteTitleButton = AgentsPaletteTitleButton,
         AgentsPaletteRailIcon = AgentsPaletteRailIcon,
         ThemeMode = ThemeMode,
         AssistantThreadRailWindow = AssistantThreadRailWindow,
@@ -6322,7 +6458,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [RelayCommand]
     private async Task PlayAudioAsync()
     {
-        if (_playbackService is null || _recordedPcm.Count == 0)
+        if (!IsAudioAvailable || _playbackService is null || _recordedPcm.Count == 0)
         {
             AudioStatus = "Nothing recorded yet.";
             return;
@@ -6523,23 +6659,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // sidebar's ▶ and the launcher's Start. What it opens with is `ProjectQuickStart`'s to answer; this
     // only launches it, through the same path the dialog's result takes.
     [RelayCommand]
-    private Task StartProjectSessionAsync(Project? project) => _QuickStartProjectAsync(project, job: null);
-
-    // AC-1304 criterion 2(a) and 3(a): a job started straight away, the way Start above already is — the start
-    // screen's own answer for a job. `StartProjectJobAsync` keeps the dialog it has offered since AC-491; which of
-    // the two a surface wants is the surface's to say (`ProjectCardView.JobCommand`), not this command's to guess.
-    [RelayCommand]
-    private Task StartProjectJobNowAsync(ProjectJobChoice? choice) =>
-        _QuickStartProjectAsync(choice?.Project, choice?.Job);
+    private Task StartProjectSessionAsync(Project? project) => _QuickStartProjectAsync(project);
 
     // AC-492's "save and start": the same dialog-free start as the sidebar's ▶, with the note in the composer.
     internal Task StartProjectSessionWithPromptAsync(Project project, string prompt) =>
-        _QuickStartProjectAsync(project, job: null, prompt);
+        _QuickStartProjectAsync(project, prompt);
 
-    // The dialog-free start, carrying `job` when one was picked, or a bare `prompt` (AC-492). Whichever it is goes
-    // into the composer once the session exists, through the same seam the dialog route uses — nothing is sent,
-    // which is the promise the start screen makes out loud (criterion 3).
-    private async Task _QuickStartProjectAsync(Project? project, ProjectJob? job, string? prompt = null)
+    // The dialog-free start, carrying a bare `prompt` when given (AC-492). It goes into the composer once the
+    // session exists, through the same seam the dialog route uses — nothing is sent.
+    private async Task _QuickStartProjectAsync(Project? project, string? prompt = null)
     {
         if (project is null)
         {
@@ -6551,9 +6679,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             // Only the name changes; that it is composed came with the result, and stays with it (#AC-324) — and being
             // composed is also what gets it numbered against the sessions already open, in
             // _LaunchSessionFromResultAsync.
-            var paneId = await _LaunchSessionFromResultAsync(result with { SessionName = project.Name, ProjectJobId = job?.Id });
+            var paneId = await _LaunchSessionFromResultAsync(result with { SessionName = project.Name });
             var started = Sessions.FirstOrDefault(session => session.PaneId == paneId);
-            if ((prompt ?? job?.Prompt) is { } composerText)
+            if (prompt is { } composerText)
             {
                 started?.InjectText(composerText);
             }
@@ -6572,7 +6700,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // The project names no profile that still exists, so there is nothing to start it on. Ask rather than fail
         // quietly: the dialog opens on the project, leaving the operator only the choice the project cannot make.
         // Criterion 4 rests on exactly this: `ComposeAsync` says whether it can start, and nothing here re-asks.
-        await _NewSessionForProjectAsync(project, job);
+        await _NewSessionForProjectAsync(project, job: null);
     }
 
     // Opens the New-session dialog on `project` (AC-164) — the "New session…" next to the quick
@@ -6602,9 +6730,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         var paneId = await _LaunchSessionFromResultAsync(result with { ProjectJobId = job?.Id });
+        var started = Sessions.FirstOrDefault(session => session.PaneId == paneId);
         if (paneId is not null && prefill?.InitialPrompt is { } initialPrompt)
         {
-            Sessions.FirstOrDefault(session => session.PaneId == paneId)?.InjectText(initialPrompt);
+            started?.InjectText(initialPrompt);
+        }
+
+        // The Simple stand draws what it has picked, so the dialog route needs the same pick as the quick start.
+        if (SimpleView && started is not null)
+        {
+            SimpleSelectedSession = started;
         }
     }
 
@@ -6677,6 +6812,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 launched = await launcher.StartSessionAsync(request with { WorkingDirectory = decision.WorkingDirectory, RunUnisolated = true });
             }
 
+            if (launched?.UnisolatedNotice is { } notice)
+            {
+                ToastHost.Add(notice.Message, ToastSeverity.Warning, [], sticky: true,
+                    key: $"session.unisolated:{launched.PaneId}");
+            }
+
             return launched?.PaneId is { Length: > 0 } started ? started : null;
         }
         catch (Exception exception) when (exception is WorktreeAdmissionException || (exception is ProfileSessionLimitException && !refuseLoudly))
@@ -6717,7 +6858,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             result.Mode.Value,
             PaneId: Guid.NewGuid().ToString("n"))
         {
-            IsComposed = true,
+            IsComposed = result.IsComposed,
             NameIsComposed = result.NameIsComposed,
             Effort = result.Effort.Value,
             EnabledMcpServerNames = result.EnabledMcpServerNames,
@@ -6977,6 +7118,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
+    [RelayCommand]
+    private Task OpenSessionMcpAsync(SessionPanelViewModel session) =>
+        _dialogService?.ShowSessionMcpDialogAsync(session.PaneId, session.Title) ?? Task.CompletedTask;
+
     // Context-menu "Resume later…" (AC-231): schedules one prompt for this session at a moment of the operator's
     // choosing, the route that does not start from a warning. Silently unavailable where nothing can be scheduled.
     [RelayCommand]
@@ -7218,6 +7363,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // The plugin list decides which plugin pages the dialog has at all, so it is read before the dialog is built.
         // With the closure hashes cached (AC-2018) that is a directory walk, not a read of every plugin byte.
         await Plugins.LoadAsync();
+        await LoadHeavyRunSettingsAsync();
         _MarkOptionsOpen("plugins");
 
         // AC-2018: the rest is read after the dialog is on screen, each page covered by a loading state until its own
@@ -7388,6 +7534,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // Opens the delegated-tasks view (#67): the work other sessions handed to a profile. Those tasks run as
     // sessions with no tab of their own, so this is where they stay visible — and stoppable.
     [RelayCommand]
+    private async Task ShowTestRunsAsync()
+    {
+        if (_dialogService is not null)
+        {
+            await _dialogService.ShowTestRunsDialogAsync();
+        }
+    }
+
+    [RelayCommand]
     private async Task ShowDelegatedTasksAsync()
     {
         if (_dialogService is null)
@@ -7513,7 +7668,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 () => _InvokeAppAction(descriptor.Action)));
         }
 
-        foreach (var shortcut in PluginShortcuts)
+        foreach (var shortcut in PluginShortcuts.Select(entry => entry.Shortcut))
         {
             commands.Add(new PaletteCommand(
                 shortcut.Title,
@@ -7564,6 +7719,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await SaveTranscriptDisplaySettingsCommand.ExecuteAsync(null);
         await SaveUsagePillSettingsCommand.ExecuteAsync(null);
         await SaveSessionBehaviorSettingsCommand.ExecuteAsync(null);
+        await SaveHeavyRunSettingsAsync();
         // Before the voice save, which is what raises VoiceSettingsSaved — the hotkey coordinator re-arms on that
         // and reads both sections, so a screenshot key saved after it would not be armed until the next launch.
         await SaveScreenshotSettingsCommand.ExecuteAsync(null);
@@ -7620,9 +7776,43 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _RebuildPluginOptionsRows();
     }
 
-    // One row per plugin that has ever registered a settings view (`PluginRowViewModel.HasSettings`, backed by the
-    // persisted settings registry — true even for a plugin disabled this session, which never called `AddSettings` at
-    // all) (AC-1005).
+    public void RefreshLivePlugin(string pluginId)
+    {
+        var index = Plugins.Plugins.ToList().FindIndex(row => row.FolderId == pluginId);
+        if (index >= 0 && PluginSettings.ContainsKey(pluginId))
+        {
+            Plugins.Plugins[index] = Plugins.Plugins[index].WithSettings();
+        }
+
+        if (!_optionsStaged || !PluginSettings.TryGetValue(pluginId, out var registration))
+        {
+            return;
+        }
+
+        var row = new PluginOptionsRowViewModel(pluginId, registration.PluginName, registration.CreateView, null, registration.Category, _logger);
+        var rowIndex = PluginOptionsRows.ToList().FindIndex(existing => existing.PluginId == pluginId);
+        if (rowIndex >= 0)
+        {
+            PluginOptionsRows[rowIndex] = row;
+        }
+        else
+        {
+            PluginOptionsRows.Add(row);
+        }
+    }
+
+    // AC-2024: what a departed plugin leaves here. Its toasts keep their text, and an Options row stops offering its view.
+    public void ForgetLivePlugin(string pluginId)
+    {
+        ToastHost.RetireSource(pluginId);
+        var rowIndex = PluginOptionsRows.ToList().FindIndex(existing => existing.PluginId == pluginId);
+        if (rowIndex >= 0)
+        {
+            PluginOptionsRows[rowIndex] = new PluginOptionsRowViewModel(pluginId, PluginOptionsRows[rowIndex].DisplayName, createView: null, "Disabled");
+        }
+    }
+
+    // AC-1005: the persisted settings registry keeps a row for plugins disabled this session.
     private void _RebuildPluginOptionsRows()
     {
         // `ShowOptionsDialogAsync` calls `BeginOptionsEdit` unconditionally even when the dialog is merely activated
@@ -7805,6 +7995,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         measurement.Mark("config");
 
+        if (_heavyRunSettingsRefresh is not null)
+        {
+            await _heavyRunSettingsRefresh.RefreshSettingsAsync();
+        }
+
         // Not blocked, so this Apply is committing: on the closing path the flag is already down and this changes
         // nothing, and a blocked Apply still writes no update settings, exactly as before.
         _SaveUpdateSettings(flushStaged: !OptionsApplyBlocked);
@@ -7898,6 +8093,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await LoadTranscriptDisplaySettingsAsync();
         await LoadUsagePillSettingsAsync();
         await LoadSessionBehaviorSettingsAsync();
+        await LoadHeavyRunSettingsAsync();
         await LoadScreenshotSettingsAsync();
         await LoadQuickNoteSettingsAsync();
         await LoadLayoutSettingsAsync();
@@ -7959,6 +8155,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         NotifyOnSessionIdle = notifications.NotifyOnSessionIdle;
         NotifyWhenAllSessionsIdle = notifications.NotifyWhenAllSessionsIdle;
         NotifyOnCiFailure = notifications.NotifyOnCiFailure;
+        MonitorMessagesPerHour = notifications.MonitorMessagesPerHour;
 
         ShowTimestamps = new TranscriptDisplaySettings().ShowTimestamps;
 
@@ -7972,6 +8169,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         CombineQueuedMessages = behavior.CombineQueuedMessages;
         WakeAgentsByDefault = behavior.WakeAgentsByDefault;
         MemoryBudgetPercent = behavior.MemoryBudgetPercent;
+        PluginRestartAdviceAfter = behavior.PluginRestartAdviceAfter;
+        AutomaticDockerCleanup = behavior.AutomaticDockerCleanup;
+        var heavyRuns = new Cockpit.Core.HeavyRuns.HeavyRunSettings();
+        MaxParallelRuns = heavyRuns.MaxParallelRuns;
+        RunCpuCeilingPercent = heavyRuns.CpuCeilingPercent;
+        RunMemoryCeilingPercent = heavyRuns.MemoryCeilingPercent;
 
         var screenshot = new ScreenshotSettings();
         ScreenshotGlobalHotkeyEnabled = screenshot.GlobalHotkeyEnabled;
@@ -7989,7 +8192,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         MinimizeToTrayOnClose = layout.MinimizeToTrayOnClose;
         OpenInSimpleView = layout.OpenInSimpleView;
         AgentsPaletteEnabled = layout.AgentsPaletteEnabled;
-        AgentsPaletteTitleButton = layout.AgentsPaletteTitleButton;
         AgentsPaletteRailIcon = layout.AgentsPaletteRailIcon;
         ThemeMode = layout.ThemeMode;
 
@@ -8338,6 +8540,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             ProjectId: pane.ProjectId)
         {
             NameIsComposed = !pane.NameIsChosen,
+            StartedByTheAssistant = _sessionRegistry?.Find(pane.Id)?.StartedByTheAssistant == true,
         };
     }
 
@@ -8364,6 +8567,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // pane id names this pane, so it starts in place rather than as a second one.
         try
         {
+            if (_sessionMcpRestore is not null && await _sessionMcpRestore.RestoreAsync(plan) is { } restoredSelection)
+            {
+                result = result with { EnabledMcpServerNames = restoredSelection };
+            }
             if (await launcher.StartSessionAsync(_RequestOf(result, session.WorkspaceId) with { PaneId = session.PaneId }) is { PaneId.Length: > 0 })
             {
                 session.RestoreOffer = null;
@@ -8965,6 +9172,20 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         child.Owner.OpenChild(child);
     }
 
+    // The Projects list is hosted by both stands; "Open" on a running session lands in the stand's own selection.
+    [RelayCommand]
+    private void OpenProjectSession(SessionPanelViewModel session)
+    {
+        if (SimpleView)
+        {
+            SimpleSelectedSession = session;
+        }
+        else
+        {
+            SelectSession(session);
+        }
+    }
+
     [RelayCommand]
     private void SelectSession(SessionPanelViewModel session)
     {
@@ -9435,11 +9656,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     private sealed class _ChatLeakSimVoiceQueue : Cockpit.Core.Abstractions.Voice.IVoicePlaybackQueue
     {
-        public void Enqueue(IReadOnlyList<string> sentences, int speakerId, string language, Cockpit.Core.Voice.VoicePlaybackSource source = Cockpit.Core.Voice.VoicePlaybackSource.Session) { }
-        public void Enqueue(IReadOnlyList<Cockpit.Core.Voice.SpeechSegment> segments, int speakerId, Cockpit.Core.Voice.VoicePlaybackSource source = Cockpit.Core.Voice.VoicePlaybackSource.Session) { }
-        public void NotifyPreparing(Cockpit.Core.Voice.VoicePlaybackSource source = Cockpit.Core.Voice.VoicePlaybackSource.Session) { }
+        public void Enqueue(IReadOnlyList<string> sentences, int speakerId, string language, Cockpit.Core.Voice.VoicePlaybackSource source = Cockpit.Core.Voice.VoicePlaybackSource.Session, string? ownerId = null) { }
+        public void Enqueue(IReadOnlyList<Cockpit.Core.Voice.SpeechSegment> segments, int speakerId, Cockpit.Core.Voice.VoicePlaybackSource source = Cockpit.Core.Voice.VoicePlaybackSource.Session, string? ownerId = null) { }
+        public void NotifyPreparing(Cockpit.Core.Voice.VoicePlaybackSource source = Cockpit.Core.Voice.VoicePlaybackSource.Session, string? ownerId = null) { }
         public event EventHandler<bool>? PlaybackActiveChanged { add { } remove { } }
         public event EventHandler? SpeakingStarted { add { } remove { } }
+        public event EventHandler<Cockpit.Core.Abstractions.Voice.VoicePlaybackStoppedEventArgs>? PlaybackStopped { add { } remove { } }
         public void StopAll() { }
         public int Generation => 0;
         public Cockpit.Core.Voice.VoicePlaybackSource ActiveSource => Cockpit.Core.Voice.VoicePlaybackSource.Session;
@@ -9541,6 +9763,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         session.RestoreDecided -= OnSessionRestoreDecided;
         session.NameChanged -= OnSessionNameChanged;
         _lastStatus.Remove(session);
+        _pendingNotificationSounds.RemoveSession(session.PaneId);
+        _lastNotificationSounds.Remove(session.PaneId);
 
         // Deterministic teardown on a real close (a tab-switch never reaches here): empty the transcript while the pane
         // is still attached, so its realised rows dematerialise and their heavy control trees leave the tree now.
@@ -10319,6 +10543,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     private async Task _TeardownEmbeddedSessionAsync(SessionPanelViewModel session, string? endReason = null)
     {
+        _pendingNotificationSounds.RemoveSession(session.PaneId);
+        _lastNotificationSounds.Remove(session.PaneId);
         _sessionRegistry?.Unregister(session.PaneId);
         _embeddedSessionViews.Remove(session.PaneId);
         session.PropertyChanged -= OnSessionPropertyChanged;
@@ -10424,6 +10650,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         _disposed = true;
+        _pendingNotificationSounds.Dispose();
         _StopSwarmSidebar();
         if (_voicePlaybackQueue is not null)
         {

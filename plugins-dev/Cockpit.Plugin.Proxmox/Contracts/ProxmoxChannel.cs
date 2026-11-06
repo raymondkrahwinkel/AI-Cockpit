@@ -32,7 +32,9 @@ internal static class ProxmoxChannel
 
 internal sealed record ProxmoxEmptyRequest();
 
-internal sealed record ProxmoxGuestActionRequest(string Node, string VmId, bool IsLxc);
+internal sealed record ProxmoxOverviewRequest(string? Server);
+
+internal sealed record ProxmoxGuestActionRequest(string Node, string VmId, bool IsLxc, string? Server);
 
 internal sealed record ProxmoxFingerprintRequest(string Host, int Port);
 
@@ -48,7 +50,9 @@ internal sealed record ProxmoxOverviewAnswer(
     IReadOnlyList<ProxmoxNodeData>? Nodes,
     IReadOnlyList<ProxmoxGuestData>? Vms,
     IReadOnlyList<ProxmoxGuestData>? Lxc,
-    IReadOnlyList<ProxmoxStorageData>? Storage);
+    IReadOnlyList<ProxmoxStorageData>? Storage,
+    IReadOnlyList<PbsDatastoreData>? PbsDatastores = null,
+    IReadOnlyList<PbsTaskData>? PbsTasks = null);
 
 internal sealed record ProxmoxClusterData(bool IsCluster, string? Name, bool Quorate, int NodeCount);
 
@@ -58,6 +62,10 @@ internal sealed record ProxmoxNodeData(string Node, string Status, double CpuUsa
 internal sealed record ProxmoxGuestData(string VmId, string Name, string Node, string Status, long MaxMem, long MaxDisk, double MaxCpu, long Uptime);
 
 internal sealed record ProxmoxStorageData(string Storage, string Node, string Type, long TotalBytes, long UsedBytes, bool Enabled);
+
+internal sealed record PbsDatastoreData(string Name, long TotalBytes, long UsedBytes, string? GcStatus, string? VerifyStatus);
+
+internal sealed record PbsTaskData(string Type, string? Status, long StartTime);
 
 // The result of a start/shutdown/stop click. DeniedReason or ErrorMessage is set instead of Outcome when the gate
 // refused or the Proxmox API call failed.

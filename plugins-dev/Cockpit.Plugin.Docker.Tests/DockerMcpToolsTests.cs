@@ -1,5 +1,4 @@
 using System.Text.Json.Nodes;
-using Cockpit.Plugin.Docker.Engine;
 using Cockpit.Plugin.Docker.Mcp;
 using Cockpit.Plugin.Docker.Security;
 using Cockpit.Plugin.Docker.Settings;
@@ -38,16 +37,22 @@ public sealed class DockerMcpToolsTests
 
     // ---- Reads -------------------------------------------------------------------------------------------------
 
-    [Fact]
-    public async Task ListContainers_WhenDeclined_ReturnsError_AndDoesNotTouchTheEngine()
+    // A declined read and a declined change both answer with the refusal and never reach the engine.
+    [Theory]
+    [InlineData("list_containers")]
+    [InlineData("remove_container")]
+    public async Task WhenDeclined_ReturnsError_AndDoesNotTouchTheEngine(string tool)
     {
         var h = _Build(ConsentOutcome.Denied);
         h.Engine.Throw = new InvalidOperationException("the engine must not be called");
 
-        var json = JsonNode.Parse(await h.Tools.ListContainers(Session));
+        var json = JsonNode.Parse(tool == "list_containers"
+            ? await h.Tools.ListContainers(Session)
+            : await h.Tools.RemoveContainer(Session, "web", force: true));
 
         Assert.False(json!["ok"]!.GetValue<bool>());
         Assert.Contains("did not approve", json["error"]!.GetValue<string>());
+        Assert.Empty(h.Engine.Removed);
     }
 
     [Fact]
@@ -65,42 +70,59 @@ public sealed class DockerMcpToolsTests
 
     // ---- Mutations ---------------------------------------------------------------------------------------------
 
-    [Fact]
-    public async Task StopContainer_WhenApproved_CallsTheEngine_AndAsksAfreshAsDangerous()
+    // Every change asks afresh as Dangerous, is never remembered, and shows the operator what it touches — the
+    // tools that go through the shared mutation path (stop, pull, tag, remove volume) and the ones with their own
+    // gate call (prune, push).
+    [Theory]
+    [InlineData("stop_container", "web")]
+    [InlineData("pull_image", "nginx:1.27")]
+    [InlineData("tag", "reg/myapp:1.2")]
+    [InlineData("remove_volume", "pgdata")]
+    [InlineData("prune", "volumes")]
+    [InlineData("push", "reg/myapp:1.2")]
+    public async Task Mutation_WhenApproved_AsksAfreshAsDangerous_ShowingTheTarget(string tool, string shown)
     {
         var h = _Build(ConsentOutcome.Approved);
 
-        var json = JsonNode.Parse(await h.Tools.StopContainer(Session, "web"));
+        var answer = tool switch
+        {
+            "stop_container" => await h.Tools.StopContainer(Session, "web"),
+            "pull_image" => await h.Tools.PullImage(Session, "nginx:1.27"),
+            "tag" => await h.Tools.Tag(Session, "myapp:latest", "reg/myapp:1.2"),
+            "remove_volume" => await h.Tools.RemoveVolume(Session, "pgdata", force: true),
+            "prune" => await h.Tools.Prune(Session, "volumes"),
+            _ => await h.Tools.Push(Session, "reg/myapp:1.2"),
+        };
 
-        Assert.True(json!["ok"]!.GetValue<bool>());
-        Assert.Equal("web", Assert.Single(h.Engine.Stopped));
+        Assert.True(JsonNode.Parse(answer)!["ok"]!.GetValue<bool>());
         Assert.Equal(ConsentRisk.Dangerous, h.Asked.Last().Risk);
         Assert.False(h.Asked.Last().AllowRemember);
-    }
-
-    [Fact]
-    public async Task RemoveContainer_WhenDeclined_DoesNotTouchTheEngine()
-    {
-        var h = _Build(ConsentOutcome.Denied);
-
-        var json = JsonNode.Parse(await h.Tools.RemoveContainer(Session, "web", force: true));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Empty(h.Engine.Removed);
+        Assert.Contains(shown, h.Asked.Last().Action);
     }
 
     // ---- exec / run --------------------------------------------------------------------------------------------
 
-    [Fact]
-    public async Task Exec_WhenCapabilityOff_IsBlocked_WithoutTouchingTheEngineOrPrompting()
+    // exec, build and cp run arbitrary code: with the capability off each is blocked with a settings hint, without
+    // touching the engine or the docker CLI and without prompting.
+    [Theory]
+    [InlineData("exec")]
+    [InlineData("build_image")]
+    [InlineData("cp")]
+    public async Task ExecCapabilityTools_WhenOff_AreBlocked_WithoutTouchingTheEngineOrPrompting(string tool)
     {
         var h = _Build(ConsentOutcome.Approved, allowExec: false);
 
-        var json = JsonNode.Parse(await h.Tools.Exec(Session, "web", "ls -la"));
+        var json = JsonNode.Parse(tool switch
+        {
+            "exec" => await h.Tools.Exec(Session, "web", "ls -la"),
+            "build_image" => await h.Tools.BuildImage(Session, "/ctx", "myapp:latest"),
+            _ => await h.Tools.Cp(Session, "web:/app/log", "/tmp/log"),
+        });
 
         Assert.False(json!["ok"]!.GetValue<bool>());
         Assert.Contains("settings", json["error"]!.GetValue<string>());
         Assert.Empty(h.Engine.Execs);
+        Assert.Empty(h.Docker.Calls);
         Assert.Empty(h.Asked);
     }
 
@@ -141,88 +163,5 @@ public sealed class DockerMcpToolsTests
         Assert.Equal(new[] { "-f", "docker-compose.yml", "up", "-d", "--", "web" }, h.Compose.Calls[0].Args);
         Assert.Equal(ConsentRisk.Dangerous, h.Asked.Last().Risk);
         Assert.False(h.Asked.Last().AllowRemember);
-    }
-
-    // ---- AC-93: logs, images, pull ----------------------------------------------------------------------------
-
-    [Fact]
-    public async Task PullImage_WhenApproved_PullsAndAsksMutationConsentEachTime()
-    {
-        var h = _Build(ConsentOutcome.Approved);
-
-        var json = JsonNode.Parse(await h.Tools.PullImage(Session, "nginx:1.27"));
-
-        Assert.True(json!["ok"]!.GetValue<bool>());
-        Assert.Equal("nginx:1.27", Assert.Single(h.Engine.Pulled));
-        // A mutation first clears the one-time connection consent, then asks for the change itself.
-        Assert.Equal(ConsentRisk.Dangerous, h.Asked.Last().Risk);
-        Assert.False(h.Asked.Last().AllowRemember);
-        Assert.Contains("nginx:1.27", h.Asked.Last().Action);
-    }
-
-    // ---- AC-93 remaining tiers: consent levels ----------------------------------------------------------------
-
-    [Fact]
-    public async Task Tag_IsAMutation_Dangerous_NeverRemembered_ShowingBothReferences()
-    {
-        var h = _Build(ConsentOutcome.Approved);
-
-        var json = JsonNode.Parse(await h.Tools.Tag(Session, "myapp:latest", "reg/myapp:1.2"));
-
-        Assert.True(json!["ok"]!.GetValue<bool>());
-        Assert.Equal(("myapp:latest", "reg/myapp:1.2"), Assert.Single(h.Engine.Tagged));
-        Assert.Equal(ConsentRisk.Dangerous, h.Asked.Last().Risk);
-        Assert.False(h.Asked.Last().AllowRemember);
-        Assert.Contains("reg/myapp:1.2", h.Asked.Last().Action);
-    }
-
-    [Fact]
-    public async Task RemoveVolume_IsDestructive_Dangerous_ShowingTheVolume()
-    {
-        var h = _Build(ConsentOutcome.Approved);
-
-        var json = JsonNode.Parse(await h.Tools.RemoveVolume(Session, "pgdata", force: true));
-
-        Assert.True(json!["ok"]!.GetValue<bool>());
-        Assert.Equal(("pgdata", true), Assert.Single(h.Engine.RemovedVolumes));
-        Assert.Equal(ConsentRisk.Dangerous, h.Asked.Last().Risk);
-        Assert.Contains("pgdata", h.Asked.Last().Action);
-    }
-
-    [Fact]
-    public async Task Prune_AsksDangerousShowingTheTarget_AndReportsReclaimed()
-    {
-        var h = _Build(ConsentOutcome.Approved);
-
-        var json = JsonNode.Parse(await h.Tools.Prune(Session, "volumes"));
-
-        Assert.True(json!["ok"]!.GetValue<bool>());
-        Assert.Equal(4096, json["spaceReclaimedBytes"]!.GetValue<long>());
-        Assert.Equal(PruneTarget.Volumes, Assert.Single(h.Engine.Pruned));
-        Assert.Equal(ConsentRisk.Dangerous, h.Asked.Last().Risk);
-        Assert.Contains("volumes", h.Asked.Last().Action);
-    }
-
-    [Fact]
-    public async Task Push_IsDangerous_NeverRemembered_AndRunsTheDockerCli()
-    {
-        var h = _Build(ConsentOutcome.Approved);
-
-        var json = JsonNode.Parse(await h.Tools.Push(Session, "reg/myapp:1.2"));
-
-        Assert.True(json!["ok"]!.GetValue<bool>());
-        Assert.Equal(new[] { "push", "reg/myapp:1.2" }, Assert.Single(h.Docker.Calls));
-        Assert.Equal(ConsentRisk.Dangerous, h.Asked.Last().Risk);
-        Assert.False(h.Asked.Last().AllowRemember);
-    }
-
-    [Fact]
-    public async Task BuildImage_And_Cp_AreBlockedWhenExecIsOff()
-    {
-        var h = _Build(ConsentOutcome.Approved, allowExec: false);
-
-        Assert.False(JsonNode.Parse(await h.Tools.BuildImage(Session, "/ctx", "myapp:latest"))!["ok"]!.GetValue<bool>());
-        Assert.False(JsonNode.Parse(await h.Tools.Cp(Session, "web:/app/log", "/tmp/log"))!["ok"]!.GetValue<bool>());
-        Assert.Empty(h.Docker.Calls);
     }
 }

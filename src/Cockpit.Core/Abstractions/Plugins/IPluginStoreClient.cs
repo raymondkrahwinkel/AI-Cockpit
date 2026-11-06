@@ -11,11 +11,11 @@ public interface IPluginStoreClient
 {
     Task<PluginStoreFetchResult> FetchIndexAsync(PluginStoreConfig store, CancellationToken cancellationToken = default);
 
-    Task<PluginStoreDownloadResult> DownloadZipAsync(PluginStoreConfig store, string relativePath, string? expectedSha256, CancellationToken cancellationToken = default);
+    Task<PluginStoreDownloadResult> DownloadZipAsync(PluginStoreConfig store, string relativePath, string? expectedSha256, CancellationToken cancellationToken = default, IProgress<PluginDownloadProgress>? progress = null);
 
-    Task<PluginStoreDownloadResult> DownloadZipAsync(PluginStoreConfig store, PluginStoreVersion version, string pluginId, CancellationToken cancellationToken = default) =>
+    Task<PluginStoreDownloadResult> DownloadZipAsync(PluginStoreConfig store, PluginStoreVersion version, string pluginId, CancellationToken cancellationToken = default, IProgress<PluginDownloadProgress>? progress = null) =>
         version.PackageFor() is { } package && store.Signed is null
-            ? DownloadZipAsync(store, package.Path, package.Sha256, cancellationToken)
+            ? DownloadZipAsync(store, package.Path, package.Sha256, cancellationToken, progress)
             : Task.FromResult(new PluginStoreDownloadResult(false, "This client cannot download the selected package.", null));
 
     /// <summary>

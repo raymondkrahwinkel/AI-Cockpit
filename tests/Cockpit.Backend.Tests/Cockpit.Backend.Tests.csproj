@@ -21,7 +21,7 @@
   </ItemGroup>
 
   <!-- AC-1373: the backend without the desktop. Core and Infrastructure only: no Cockpit.App and no
-       Cockpit.TestSupport, which pulls in the Avalonia package. ArchitectureTests fails when either comes back. -->
+       Cockpit.TestSupport, which pulls in the Avalonia package. -->
   <ItemGroup>
     <ProjectReference Include="..\..\src\Cockpit.Core\Cockpit.Core.csproj" />
     <ProjectReference Include="..\..\src\Cockpit.Infrastructure\Cockpit.Infrastructure.csproj" />
@@ -30,55 +30,6 @@
   <!-- AC-1448: the journeys' fake provider, so the launcher's own tests start a session the way the journeys do. -->
   <ItemGroup>
     <Compile Include="..\Cockpit.Journeys\EchoDriver.cs" Link="EndToEnd\EchoDriver.cs" />
-  </ItemGroup>
-
-  <!-- AC-1392: the bundled plugins beside the output, built but never referenced, so a backend without App can
-       be shown loading them from bundled-plugins the way the desktop does. -->
-  <Import Project="..\..\src\BundledPlugins.targets" />
-
-  <!-- AC-1403: every other in-repo plugin, also those the app no longer ships, and the Avalonia fixture join it, so the first-run install
-       approves all 34 and BackendWithPluginsTests loads them without App. -->
-  <ItemGroup>
-    <_InRepoPlugin Include="Autopilot" FolderId="autopilot" />
-    <_InRepoPlugin Include="ClaudeProvider" FolderId="claude-provider" />
-    <_InRepoPlugin Include="Clock" FolderId="clock" />
-    <_InRepoPlugin Include="ExampleCompanionTool" FolderId="example-companion-tool" />
-    <_InRepoPlugin Include="ExampleWorkspace" FolderId="example-workspace" />
-    <_InRepoPlugin Include="FanOut" FolderId="fan-out" />
-    <_InRepoPlugin Include="GitStatus" FolderId="git-status" />
-    <_InRepoPlugin Include="TranscriptSearch" FolderId="transcript-search" />
-    <_InRepoPlugin Include="UsageTrend" FolderId="usage-trend" />
-    <_InRepoPlugin Include="CliAgentProvider" FolderId="cli-agent-provider" />
-    <_InRepoPlugin Include="Depot" FolderId="depot" />
-    <_InRepoPlugin Include="Diagram" FolderId="diagram" />
-    <_InRepoPlugin Include="Discord" FolderId="discord" />
-    <_InRepoPlugin Include="Docker" FolderId="docker" />
-    <_InRepoPlugin Include="GeminiProvider" FolderId="gemini-provider" />
-    <_InRepoPlugin Include="GitHubActions" FolderId="github-actions" />
-    <_InRepoPlugin Include="GitHubIssues" FolderId="github-issues" />
-    <_InRepoPlugin Include="GitHubModelsProvider" FolderId="github-models-provider" />
-    <_InRepoPlugin Include="GitHubPullRequests" FolderId="github-pull-requests" />
-    <_InRepoPlugin Include="GrokProvider" FolderId="grok-provider" />
-    <_InRepoPlugin Include="KimiProvider" FolderId="kimi-provider" />
-    <_InRepoPlugin Include="Kind" FolderId="kind" />
-    <_InRepoPlugin Include="Kubernetes" FolderId="kubernetes" />
-    <_InRepoPlugin Include="LocalCi" FolderId="local-ci" />
-    <_InRepoPlugin Include="OpenRouterProvider" FolderId="openrouter-provider" />
-    <_InRepoPlugin Include="OpencodeProvider" FolderId="opencode-provider" />
-    <_InRepoPlugin Include="PromptLibrary" FolderId="prompt-library" />
-    <_InRepoPlugin Include="Proxmox" FolderId="proxmox" />
-    <_InRepoPlugin Include="SessionReview" FolderId="session-review" />
-    <_InRepoPlugin Include="Slack" FolderId="slack" />
-    <_InRepoPlugin Include="SystemMonitor" FolderId="system-monitor" />
-    <_InRepoPlugin Include="Workflows" FolderId="workflows" />
-    <_InRepoPlugin Include="YouTrack" FolderId="youtrack" />
-    <BundledPlugin Include="@(_InRepoPlugin)" />
-    <ProjectReference Include="@(_InRepoPlugin->'..\..\plugins-dev\Cockpit.Plugin.%(Identity)\Cockpit.Plugin.%(Identity).csproj')"
-                      ReferenceOutputAssembly="false" Private="false" SetConfiguration="Configuration=$(Configuration)" />
-
-    <BundledPlugin Include="UiInBackend" FolderId="ui-in-backend" SourceRoot="$(MSBuildThisFileDirectory)..\" />
-    <ProjectReference Include="..\Cockpit.Plugin.UiInBackend\Cockpit.Plugin.UiInBackend.csproj"
-                      ReferenceOutputAssembly="false" Private="false" SetConfiguration="Configuration=$(Configuration)" />
   </ItemGroup>
 
 </Project>

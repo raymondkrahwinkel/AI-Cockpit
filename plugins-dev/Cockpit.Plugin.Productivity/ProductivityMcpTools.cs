@@ -20,7 +20,7 @@ internal sealed class ProductivityMcpTools(HoursResultReporter reporter)
         {
             if (!DateOnly.TryParseExact(week, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var monday))
             {
-                throw new ArgumentException("Geef week op als de maandag in yyyy-MM-dd.");
+                throw new ArgumentException("Give the week as the Monday in yyyy-MM-dd.");
             }
 
             var report = await reporter.ReportAsync(new HoursResultRequest(monday, items, alreadyBooked ?? []), cancellationToken).ConfigureAwait(false);

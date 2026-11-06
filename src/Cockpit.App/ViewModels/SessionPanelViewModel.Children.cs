@@ -164,6 +164,15 @@ public abstract partial class SessionPanelViewModel
                 row.Update(child);
             }
         }
+        ChildAgentViewModel[] orderedRows = [.. ChildAgents.OrderBy(row => row.Reference.State == "running" ? 0 : 1)];
+        for (int index = 0; index < orderedRows.Length; index++)
+        {
+            int currentIndex = ChildAgents.IndexOf(orderedRows[index]);
+            if (currentIndex != index)
+            {
+                ChildAgents.Move(currentIndex, index);
+            }
+        }
         OnPropertyChanged(nameof(HasChildAgents));
         _NotifySidebarChildren();
         OnPropertyChanged(nameof(HasBackgroundWorkEntries));

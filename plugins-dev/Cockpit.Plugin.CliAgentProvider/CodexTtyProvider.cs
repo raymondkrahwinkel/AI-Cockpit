@@ -51,7 +51,7 @@ internal sealed class CodexTtyProvider(Func<string, string?>? managedResolver = 
         // built by CodexMcpConfig, with any bearer token riding the process environment rather than the command
         // line. Claude's TTY provider does the equivalent via --mcp-config; without this the Codex TUI only ever
         // sees its own ~/.codex servers, never the cockpit's. Empty when the session resolved no servers.
-        var mcpLaunch = CodexMcpConfig.Build(context.McpServers);
+        var mcpLaunch = CodexMcpConfig.Build(context.McpServers, context.Options);
         string statusFile = Path.Combine(Path.GetTempPath(), "cockpit-codex-" + Guid.NewGuid().ToString("N") + ".json");
         if (context.Resume?.SessionId is { Length: > 0 } ownerId)
         {
@@ -77,7 +77,11 @@ internal sealed class CodexTtyProvider(Func<string, string?>? managedResolver = 
             BuildArguments(config, context.Options, context.Resume, hookArguments),
             environment,
             context.WorkingDirectory,
-            SessionScopedFiles: files) { StatusFile = statusFile };
+            SessionScopedFiles: files)
+        {
+            StatusFile = statusFile,
+            Model = CliAgentConfig.ResolveOption(context.Options, ModelOptionKey, config.Model),
+        };
     }
 
     private static string _TomlGroups(JsonElement groups) => "[" + string.Join(",", groups.EnumerateArray().Select(group =>

@@ -1,12 +1,16 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions;
+using Cockpit.Core.Abstractions.Audio;
 
 namespace Cockpit.App.Services;
 
 // The one thing that decides what the voice overlay says. Three sources (push-to-talk, open-mic, read-aloud) report
 // into it rather than writing the pill directly, since left to themselves they overwrite each other. Rule: STT owns
 // the pill over TTS (a hold during read-aloud is the barge-in case and must win), and a hold owns it over open-mic.
-public sealed class VoiceOverlayCoordinator(VoiceOverlayViewModel overlay, IVoiceOverlayPresenter presenter) : ISingletonService
+public sealed class VoiceOverlayCoordinator(
+    VoiceOverlayViewModel overlay,
+    IVoiceOverlayPresenter presenter,
+    IAudioAvailability? audioAvailability = null) : ISingletonService
 {
     private VoiceOverlayState? _pushToTalk;
     private VoiceOverlayState? _openMic;
@@ -24,6 +28,11 @@ public sealed class VoiceOverlayCoordinator(VoiceOverlayViewModel overlay, IVoic
     // What the push-to-talk hold has to say, or null once the hold is over.
     public void SetPushToTalk(VoiceOverlayState? state, string? status = null, double? progress = null)
     {
+        if (audioAvailability?.IsAvailable == false)
+        {
+            return;
+        }
+
         _pushToTalkGeneration++;
         _pushToTalk = state;
         _Remember(state, status, progress);
@@ -58,6 +67,11 @@ public sealed class VoiceOverlayCoordinator(VoiceOverlayViewModel overlay, IVoic
     // appears only once the VAD hears speech start.
     public void SetOpenMic(VoiceOverlayState? state)
     {
+        if (audioAvailability?.IsAvailable == false)
+        {
+            return;
+        }
+
         _openMic = state;
         _Remember(state, status: null, progress: null);
         _Apply();
@@ -68,6 +82,11 @@ public sealed class VoiceOverlayCoordinator(VoiceOverlayViewModel overlay, IVoic
     // once audio is actually playing. Shown only when no dictation is in progress — see the class remarks.
     public void SetReadAloud(VoiceOverlayState? state, string? status = null)
     {
+        if (audioAvailability?.IsAvailable == false)
+        {
+            return;
+        }
+
         _readAloud = state;
         _Remember(state, status, progress: null);
         _Apply();
@@ -78,6 +97,11 @@ public sealed class VoiceOverlayCoordinator(VoiceOverlayViewModel overlay, IVoic
     // listening, which is what keeps a late frame from a finished hold out of the next one.
     public void PushLevel(double level)
     {
+        if (audioAvailability?.IsAvailable == false)
+        {
+            return;
+        }
+
         overlay.PushLevel(level);
         LevelSampled?.Invoke(this, level);
     }

@@ -36,4 +36,9 @@ public interface ISharedProjectSourceRegistry
     /// race has already been lost is otherwise never retried until the operator opens Manage projects.
     /// </summary>
     event Action<ISharedProjectSource>? Registered;
+
+    /// <summary>
+    /// Raised right after a source is withdrawn, with its key: a plugin leaving, whose cards must not wait for a refresh.
+    /// </summary>
+    event Action<string>? Removed;
 }

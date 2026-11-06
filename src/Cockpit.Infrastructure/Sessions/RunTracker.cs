@@ -7,7 +7,7 @@ namespace Cockpit.Infrastructure.Sessions;
 // AC-1094: what a tracked run is doing right now, or last did — the status-bar source (AC-82) and the backing
 // store for `run_status`. Unlike LocalCi's tracker, nothing serialises these runs, so more than one can be in
 // flight together.
-internal sealed class RunTracker : ISupervisedActivitySource, ISingletonService
+internal sealed class RunTracker : ISupervisedActivitySource, ITestRunSource, ISingletonService
 {
     // ponytail: unbounded run ids would grow this dictionary for the life of the cockpit process; a session that
     // starts thousands of runs is not the case this exists for. Raise this, or evict on read, if that changes.
@@ -17,6 +17,7 @@ internal sealed class RunTracker : ISupervisedActivitySource, ISingletonService
     private readonly Dictionary<string, InFlight> _running = new(StringComparer.Ordinal);
     private readonly Dictionary<string, RunRecord> _finished = new(StringComparer.Ordinal);
     private readonly Queue<string> _finishedOrder = new();
+    private readonly HashSet<string> _stopped = new(StringComparer.Ordinal);
 
     public string Label => "Test runs";
 
@@ -26,7 +27,15 @@ internal sealed class RunTracker : ISupervisedActivitySource, ISingletonService
     {
         lock (_gate)
         {
-            _running[runId] = new InFlight(runId, command, startedAt, stopAsync);
+            _running[runId] = new InFlight(runId, command, startedAt, () =>
+            {
+                lock (_gate)
+                {
+                    _stopped.Add(runId);
+                }
+
+                return stopAsync();
+            });
         }
 
         Changed?.Invoke();
@@ -36,12 +45,13 @@ internal sealed class RunTracker : ISupervisedActivitySource, ISingletonService
     {
         lock (_gate)
         {
-            _running.Remove(runId);
-            _finished[runId] = new RunRecord(runId, result, finishedAt);
+            var command = _running.Remove(runId, out var run) ? run.Command : string.Empty;
+            _finished[runId] = new RunRecord(runId, result, finishedAt, command, _stopped.Remove(runId));
             _finishedOrder.Enqueue(runId);
             while (_finishedOrder.Count > MaxFinished)
             {
-                _finished.Remove(_finishedOrder.Dequeue());
+                var evicted = _finishedOrder.Dequeue();
+                _finished.Remove(evicted);
             }
         }
 
@@ -61,6 +71,23 @@ internal sealed class RunTracker : ISupervisedActivitySource, ISingletonService
         lock (_gate)
         {
             return _running.ContainsKey(runId);
+        }
+    }
+
+    // Newest first.
+    public IReadOnlyList<RunRecord> Finished()
+    {
+        lock (_gate)
+        {
+            return [.. _finishedOrder.Reverse().Where(_finished.ContainsKey).Select(id => _finished[id])];
+        }
+    }
+
+    public IReadOnlyList<RunningRun> Running()
+    {
+        lock (_gate)
+        {
+            return [.. _running.Values.Select(run => new RunningRun(run.RunId, run.Command, run.StartedAt, run.StopAsync))];
         }
     }
 
@@ -91,4 +118,6 @@ internal sealed class RunTracker : ISupervisedActivitySource, ISingletonService
 }
 
 // AC-1094: one finished run, kept so `run_status` and the inbox delivery it may have missed cannot disagree.
-internal sealed record RunRecord(string RunId, TrackedRunResult Result, DateTimeOffset FinishedAt);
+internal sealed record RunRecord(string RunId, TrackedRunResult Result, DateTimeOffset FinishedAt, string Command = "", bool Stopped = false);
+
+internal sealed record RunningRun(string RunId, string Command, DateTimeOffset StartedAt, Func<Task> StopAsync);

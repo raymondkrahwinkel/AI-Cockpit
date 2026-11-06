@@ -17,8 +17,8 @@ internal static class OptionsStaging
     [
         "AgentsPaletteEnabled",
         "AgentsPaletteRailIcon",
-        "AgentsPaletteTitleButton",
         "AutoCloseOnExit",
+        "AutomaticDockerCleanup",
         "CheckForUpdatesOnStartup",
         "CloneRoot",
         "CombineQueuedMessages",
@@ -31,8 +31,12 @@ internal static class OptionsStaging
         "LocalNotificationsEnabled",
         "LogDiagnosticSnapshots",
         "MemoryBudgetPercent",
+        "MaxParallelRuns",
+        "RunCpuCeilingPercent",
+        "RunMemoryCeilingPercent",
         "MinimizeToTrayOnClose",
         "NotifyOnCiFailure",
+        "MonitorMessagesPerHour",
         "NotificationSoundOnNeedsAttention",
         "NotificationSoundOnSessionFinished",
         "NotificationSoundsEnabled",
@@ -42,6 +46,7 @@ internal static class OptionsStaging
         "NotifyWhenAllSessionsIdle",
         "OpenInSimpleView",
         "OrchestratorMcpEnabled",
+        "PluginRestartAdviceAfter",
         "QuickNoteGlobalHotkeyEnabled",
         "QuickNoteHotkeyKeyName",
         "RenderBackendSelection",
@@ -95,6 +100,9 @@ internal static class OptionsStaging
         "AssistantOptions.PushToTalkKeyName",
         "AssistantOptions.SelectedReadingLevel",
         "AssistantOptions.SpeakReplies",
+        "AssistantOptions.SelectedSpeechMode",
+        "AssistantOptions.SelectedSpeechMethod",
+        "AssistantOptions.SelectedSpeechProfileLabel",
     ];
 
     // Cancel does not undo what these feed, which is exactly why each one has to be named here rather than simply left
@@ -193,6 +201,7 @@ internal static class OptionsStaging
     }
 
     private static string _ProfileFingerprint(Cockpit.Core.Profiles.SessionProfile profile) =>
+        // ImageInputMode is staged with the complete profile, so Cancel also discards that choice.
         JsonSerializer.Serialize(profile) + Separator + JsonSerializer.Serialize(profile.ProviderConfig, profile.ProviderConfig.GetType());
 
     private static object? _Read(object? root, string path)

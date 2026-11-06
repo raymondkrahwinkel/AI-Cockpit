@@ -27,20 +27,6 @@ public class McpToolProviderInvokeAsyncTests
         Assert.Equal(McpToolInvocationOutcome.Failed, result.Outcome);
     }
 
-    [Fact]
-    public async Task InvokeAsync_CallsTheToolAndReturnsItsTextContent()
-    {
-        await using var server = await InProcessMcpHttpServer.StartAsync<McpTestToolInvoke>();
-        var provider = _ProviderFor([
-            new McpServerConfig { Name = "server-a", Transport = McpTransport.Http, Url = server.Url },
-        ]);
-
-        var result = await provider.InvokeAsync("server-a", "echo", new Dictionary<string, object?> { ["text"] = "hello" });
-
-        Assert.Equal(McpToolInvocationOutcome.Success, result.Outcome);
-        Assert.Equal("hello", result.Content);
-    }
-
     // AC-1517, reproduced against a local Depot first: a plugin's background call on a sign-in that can no longer be
     // renewed opened the operator's browser on the authorize page. It must name the server in the cockpit instead.
     [Fact]

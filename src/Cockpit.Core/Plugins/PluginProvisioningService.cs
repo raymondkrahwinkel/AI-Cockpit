@@ -10,7 +10,7 @@ public sealed class PluginProvisioningService(IPluginStoreClient storeClient, IP
     : IPluginProvisioningService, ISingletonService
 {
     public async Task<PluginProvisionResult> InstallAsync(
-        PluginProvisionRequest request, int hostAbstractionsMajor, Version? hostVersion = null, CancellationToken cancellationToken = default)
+        PluginProvisionRequest request, int hostAbstractionsMajor, Version? hostVersion = null, CancellationToken cancellationToken = default, IProgress<PluginDownloadProgress>? progress = null)
     {
         var effectiveHostVersion = hostVersion ?? HostVersionInfo.Current;
 
@@ -25,8 +25,15 @@ public sealed class PluginProvisioningService(IPluginStoreClient storeClient, IP
         }
 
         var download = request.Store.Signed is null
-            ? await storeClient.DownloadZipAsync(request.Store, package.Path, package.Sha256, cancellationToken).ConfigureAwait(false)
-            : await storeClient.DownloadZipAsync(request.Store, request.Version, request.Id, cancellationToken).ConfigureAwait(false);
+            ? await storeClient.DownloadZipAsync(request.Store, package.Path, package.Sha256, cancellationToken, progress).ConfigureAwait(false)
+            : await storeClient.DownloadZipAsync(request.Store, request.Version, request.Id, cancellationToken, progress).ConfigureAwait(false);
+        if (download.ChecksumMismatch)
+        {
+            // Names no path or address, so a server may pass it on to its clients.
+            var mismatch = $"The download of '{request.Name}' {request.Version.Version} did not match the store's published checksum (SHA-256 mismatch) and was rejected.";
+            return new PluginProvisionResult(PluginProvisionOutcome.Failed, request.Id, request.Name, mismatch, Warning: null, FolderId: null, Sha256: null, ErrorIsSafeToShow: true);
+        }
+
         if (!download.IsSuccess || download.ZipPath is null)
         {
             return new PluginProvisionResult(PluginProvisionOutcome.Failed, request.Id, request.Name, download.Error ?? "Download failed.", Warning: null, FolderId: null, Sha256: null);
@@ -41,7 +48,7 @@ public sealed class PluginProvisioningService(IPluginStoreClient storeClient, IP
             }
 
             var outcome = installed.Staged ? PluginProvisionOutcome.Staged : PluginProvisionOutcome.Installed;
-            return new PluginProvisionResult(outcome, request.Id, request.Name, Error: null, download.Warning, installed.FolderId, installed.Sha256, installed.Manifest);
+            return new PluginProvisionResult(outcome, request.Id, request.Name, Error: null, download.Warning, installed.FolderId, installed.Sha256, installed.Manifest, InPlace: installed.InPlace, ConsentReason: installed.ConsentReason, ReplacedSha256: installed.ReplacedSha256);
         }
         finally
         {

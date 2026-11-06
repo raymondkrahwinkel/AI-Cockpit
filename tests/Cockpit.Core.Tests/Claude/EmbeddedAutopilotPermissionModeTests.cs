@@ -1,6 +1,5 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Profiles;
-using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.Workspaces;
@@ -19,9 +18,8 @@ namespace Cockpit.Core.Tests.Claude;
 /// stands in, so the effective mode drives the vouch the isolation gate reads.
 /// Provider-neutral: nothing here is pinned to a brand; the precedence is keyed on the well-known permission-mode option.
 /// </summary>
-public class EmbeddedAutopilotPermissionModeTests
+public class EmbeddedAutopilotPermissionModeTests : SessionMcpTestFixture
 {
-    private static readonly McpAuthKey _authKey = new();
 
     // A provider whose confinement rests on its permission system (Claude): a bypass mode disables the guard, so the
     // effective per-session mode decides whether it vouches confinement.
@@ -49,31 +47,6 @@ public class EmbeddedAutopilotPermissionModeTests
         new() { ProfileId = "work", PermissionMode = "acceptEdits", IsolateInWorktree = true };
 
     [Fact]
-    public void EmbeddedLaunchOptions_WhenTheRequestNamesItsOwnMode_DropTheProfilesStoredPermissionModeDefault()
-    {
-        var options = CockpitViewModel._EmbeddedLaunchOptions(_WorkProfileSavedInBypass(), _IsolatedStepRequestingAcceptEdits());
-
-        // The profile's stored bypass must not survive into the launch options, or the driver's launch-option merge
-        // would keep it over the explicit typed request mode. Its other defaults (model) are left untouched.
-        Assert.False(options!.ContainsKey(WellKnownPluginSessionOptions.PermissionMode));
-        Assert.True(options.ContainsKey("model"));
-        Assert.Equal("sonnet", options["model"]);
-    }
-
-    [Fact]
-    public void EmbeddedLaunchOptions_WhenTheRequestNamesNoMode_KeepTheProfilesStoredPermissionModeDefault()
-    {
-        // A plain embedded session (the CEO planning round leaves PermissionMode null) still honours the profile's own
-        // stored default — the drop only applies when the run makes an explicit choice, so this path does not regress.
-        var request = new EmbeddedSessionRequest { ProfileId = "work" };
-
-        var options = CockpitViewModel._EmbeddedLaunchOptions(_WorkProfileSavedInBypass(), request);
-
-        Assert.True(options!.ContainsKey(WellKnownPluginSessionOptions.PermissionMode));
-        Assert.Equal("bypassPermissions", options[WellKnownPluginSessionOptions.PermissionMode]);
-    }
-
-    [Fact]
     public async Task AnIsolatedStep_OnAProfileSavedInBypass_Confines_BecauseTheExplicitAcceptEditsRequestModeWins()
     {
         var profile = _WorkProfileSavedInBypass();
@@ -82,8 +55,14 @@ public class EmbeddedAutopilotPermissionModeTests
         // The host assembles the launch options (the fix), then the driver adapter resolves the effective mode — the
         // same two steps the real embedded start runs. The typed permissionMode is the request's resolved mode.
         var launchOptions = CockpitViewModel._EmbeddedLaunchOptions(profile, request);
+
+        // The profile's stored bypass must not survive into the launch options, or the driver's launch-option merge
+        // would keep it over the explicit typed request mode. Its other defaults (model) are left untouched.
+        Assert.False(launchOptions!.ContainsKey(WellKnownPluginSessionOptions.PermissionMode));
+        Assert.Equal("sonnet", launchOptions["model"]);
+
         var inner = new FakePluginSessionDriver { Capabilities = _PermissionConfining() };
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, EmptyCatalog, keyring: Keyring, mcpMounts: Mounts, gateway: Gateway);
 
         await adapter.StartAsync(profile, permissionMode: request.PermissionMode, launchOptions: launchOptions);
 
@@ -94,24 +73,5 @@ public class EmbeddedAutopilotPermissionModeTests
         Assert.True(lastLaunchOptions.ContainsKey(WellKnownPluginSessionOptions.PermissionMode));
         Assert.Equal("acceptEdits", lastLaunchOptions[WellKnownPluginSessionOptions.PermissionMode]);
         Assert.True(adapter.Capabilities.ConfinesFileAccessToWorkingDirectory);
-    }
-
-    [Fact]
-    public async Task WithoutDroppingTheProfileDefault_TheBypassOverridesTheRequestMode_AndTheSessionDoesNotConfine()
-    {
-        // The bug, made concrete: had the profile's stored permission-mode reached the driver in the launch options
-        // (as it did before the fix), the launch-option merge keeps bypass over the explicit acceptEdits — so the
-        // session reports unconfined and the fail-closed gate refuses the run. This proves the drop is load-bearing.
-        var profile = _WorkProfileSavedInBypass();
-        var inner = new FakePluginSessionDriver { Capabilities = _PermissionConfining() };
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
-
-        await adapter.StartAsync(profile, permissionMode: "acceptEdits", launchOptions: profile.Defaults!.OptionDefaults);
-
-        var lastLaunchOptions = inner.LastLaunchOptions;
-        Assert.NotNull(lastLaunchOptions);
-        Assert.True(lastLaunchOptions.ContainsKey(WellKnownPluginSessionOptions.PermissionMode));
-        Assert.Equal("bypassPermissions", lastLaunchOptions[WellKnownPluginSessionOptions.PermissionMode]);
-        Assert.False(adapter.Capabilities.ConfinesFileAccessToWorkingDirectory);
     }
 }

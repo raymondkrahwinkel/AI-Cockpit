@@ -90,11 +90,19 @@ internal sealed class WorkspaceWindowHost
         var workspaces = _workspaces.Settings.Workspaces;
         foreach (var (workspaceId, window) in _windows.ToList())
         {
-            if (!workspaces.Any(workspace => workspace.Id == workspaceId && workspace.IsFloating))
+            var workspace = workspaces.FirstOrDefault(candidate => candidate.Id == workspaceId && candidate.IsFloating);
+            var pluginLeft = workspace is not null && _workspaces.AvailablePluginWorkspaceTypes.All(type => type.Id != workspace.Type.Id);
+            if (workspace is null || pluginLeft)
             {
                 _windows.Remove(workspaceId);
                 window.ReleaseView();
                 window.Close();
+            }
+
+            // AC-2024: its body is gone, so the placeholder belongs on the strip, where the operator can still close it.
+            if (pluginLeft)
+            {
+                _ = _LoggedAsync(() => _workspaces.DockBackAsync(workspaceId), "Docking back a workspace whose plugin left failed.");
             }
         }
 

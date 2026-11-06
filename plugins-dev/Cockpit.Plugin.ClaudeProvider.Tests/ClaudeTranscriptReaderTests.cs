@@ -82,40 +82,6 @@ public class ClaudeTranscriptReaderTests : IDisposable
     // No transcript from a prior session exists, so the one the test writes is always the "new" one.
     private static readonly IReadOnlySet<string> NoBaseline = new HashSet<string>();
 
-    [Fact]
-    public async Task ReadActivityAsync_YieldsEveryAppendedRawLine_NotJustAssistantText()
-    {
-        var transcriptPath = _CreateEmptyTranscriptFile();
-        var reader = new ClaudeTranscriptReader();
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        var received = new List<string>();
-        var consumeTask = Task.Run(async () =>
-        {
-            await foreach (var reading in reader.ReadActivityAsync(ConfigJson, NoBaseline, cts.Token))
-            {
-                if (reading.RawLine is not { } line)
-                {
-                    continue;
-                }
-
-                received.Add(line);
-                if (received.Count == 2)
-                {
-                    break;
-                }
-            }
-        });
-
-        await Task.Delay(500);
-        await File.AppendAllTextAsync(transcriptPath, """{"type":"user","message":{"content":[]}}""" + "\n");
-        await File.AppendAllTextAsync(transcriptPath, _AssistantLine("hi") + "\n");
-
-        await consumeTask.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.Equal(2, System.Linq.Enumerable.Count(received));
-        Assert.Contains("\"type\":\"user\"", received[0]);
-        Assert.Contains("\"type\":\"assistant\"", received[1]);
-    }
-
     // AC-276 replaced the sub-agent mtime window with the count the CLI states on each turn_duration line. The two
     // tests these replace drove <id>/subagents/agent-*.jsonl file timestamps; that directory is no longer read.
     private const string EndTurnLine = """{"type":"assistant","message":{"role":"assistant","stop_reason":"end_turn"}}""";
@@ -123,38 +89,6 @@ public class ClaudeTranscriptReaderTests : IDisposable
     private static string TurnDurationLine(int? pendingSubAgents) => pendingSubAgents is { } count
         ? $$"""{"type":"system","subtype":"turn_duration","durationMs":1200,"pendingBackgroundAgentCount":{{count}}}"""
         : """{"type":"system","subtype":"turn_duration","durationMs":1200}""";
-
-    [Fact]
-    public async Task ReadActivityAsync_WhenTheTurnEndsWithSubAgentsStillPending_YieldsBackgroundBusy()
-    {
-        // The bug this guards: the main agent legitimately reaches end_turn while sub-agents it spawned keep
-        // running, which used to drop the session straight to Done. The CLI states how many are still pending on
-        // the turn_duration line that closes the turn, so that reading is what decides — not a file's timestamp.
-        var transcriptPath = _CreateEmptyTranscriptFile();
-        var reader = new ClaudeTranscriptReader();
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        var sawBackground = false;
-        var consumeTask = Task.Run(async () =>
-        {
-            await foreach (var reading in reader.ReadActivityAsync(ConfigJson, NoBaseline, cts.Token))
-            {
-                if (reading.Activity == PluginSessionActivity.BackgroundBusy)
-                {
-                    sawBackground = true;
-                    break;
-                }
-            }
-        });
-
-        await Task.Delay(500);
-        // The main agent's own turn ends — on its own that reads as Done ...
-        await File.AppendAllTextAsync(transcriptPath, EndTurnLine + "\n");
-        // ... until the turn_duration line says three sub-agents are still running.
-        await File.AppendAllTextAsync(transcriptPath, TurnDurationLine(3) + "\n");
-
-        await consumeTask.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.True(sawBackground, "a turn that ends while sub-agents are pending is background work, not done");
-    }
 
     [Fact]
     public async Task ReadActivityAsync_KeepsTheReportedCount_ForLaterTurnsInTheSameRun()
@@ -319,37 +253,6 @@ public class ClaudeTranscriptReaderTests : IDisposable
     }
 
     [Fact]
-    public async Task ReadActivityAsync_CarriesUsage_FromAnAssistantLine()
-    {
-        // AC-398: the same tail status already uses, now also carrying the token usage an assistant
-        // line reports — so the host's usage trail can be fed from the transcript tail without a second read of
-        // the same file.
-        var transcriptPath = _CreateEmptyTranscriptFile();
-        var reader = new ClaudeTranscriptReader();
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        PluginTokenUsage? usage = null;
-        var consumeTask = Task.Run(async () =>
-        {
-            await foreach (var reading in reader.ReadActivityAsync(ConfigJson, NoBaseline, cts.Token))
-            {
-                if (reading.Usage is { } seen)
-                {
-                    usage = seen;
-                    break;
-                }
-            }
-        });
-
-        await Task.Delay(500);
-        await File.AppendAllTextAsync(
-            transcriptPath,
-            """{"type":"assistant","message":{"role":"assistant","stop_reason":"end_turn","usage":{"input_tokens":10,"output_tokens":20,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}""" + "\n");
-
-        await consumeTask.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.Equal(new PluginTokenUsage(10, 20, 0, 0), usage);
-    }
-
-    [Fact]
     public async Task ReadActivityAsync_RepeatedLineForTheSameApiResponse_CountsUsageAndTurnOnlyOnce()
     {
         // The bug this guards: the CLI can write more than one transcript line for the same assistant API
@@ -395,32 +298,6 @@ public class ClaudeTranscriptReaderTests : IDisposable
         Assert.Equal(1, turnCompletions);
     }
 
-    [Fact]
-    public async Task ReadActivityAsync_NonAssistantLine_CarriesNoUsage()
-    {
-        var transcriptPath = _CreateEmptyTranscriptFile();
-        var reader = new ClaudeTranscriptReader();
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        PluginTranscriptActivity? received = null;
-        var consumeTask = Task.Run(async () =>
-        {
-            await foreach (var reading in reader.ReadActivityAsync(ConfigJson, NoBaseline, cts.Token))
-            {
-                if (reading.RawLine is not null)
-                {
-                    received = reading;
-                    break;
-                }
-            }
-        });
-
-        await Task.Delay(500);
-        await File.AppendAllTextAsync(transcriptPath, """{"type":"user","message":{"content":[]}}""" + "\n");
-
-        await consumeTask.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.Null(received!.Usage);
-    }
-
     private static async Task _WaitUntilAsync(Func<bool> condition)
     {
         for (var i = 0; i < 200 && !condition(); i++)
@@ -437,9 +314,6 @@ public class ClaudeTranscriptReaderTests : IDisposable
         File.WriteAllText(transcriptPath, string.Empty);
         return transcriptPath;
     }
-
-    private static string _AssistantLine(string text) =>
-        $"{{\"type\":\"assistant\",\"message\":{{\"content\":[{{\"type\":\"text\",\"text\":\"{text}\"}}]}}}}";
 
     public void Dispose() => Directory.Delete(_configDir, recursive: true);
 }

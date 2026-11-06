@@ -180,7 +180,14 @@ public sealed partial class SessionHost : ISessionTurnGate, ISessionTranscript, 
     // What the consumer knows of the provider before its runtime says so; the runtime's own word otherwise.
     public SessionCapabilities? Capabilities { get; set; }
 
-    public SessionLiveState LiveState => _liveState.Snapshot(IsBusy);
+    public SessionLiveState LiveState
+    {
+        get
+        {
+            var state = _liveState.Snapshot(IsBusy);
+            return state with { Capabilities = Runtime?.Capabilities ?? Capabilities, Model = state.Model ?? Runtime?.Model };
+        }
+    }
 
     // Whether this host can launch at all; the design-time graph builds one without a manager.
     public bool CanLaunch => _manager is not null;
@@ -533,7 +540,7 @@ public sealed partial class SessionHost : ISessionTurnGate, ISessionTranscript, 
 
         try
         {
-            await _SendWithWaitingMessagesAsync(runtime, OutgoingText(prompt), prompt.Images, noteMail: true);
+            await _SendWithWaitingMessagesAsync(runtime, OutgoingText(prompt), prompt.Images);
         }
         catch (Exception ex)
         {
@@ -552,7 +559,7 @@ public sealed partial class SessionHost : ISessionTurnGate, ISessionTranscript, 
     public Task SendPromptAsync(string prompt) => _readOnlyTurn is not null
         ? SubmitForTheAgentAsync(new QueuedPrompt(prompt, []))
         : Runtime is { } runtime
-            ? _SendWithWaitingMessagesAsync(runtime, prompt, images: null, noteMail: false)
+            ? _SendWithWaitingMessagesAsync(runtime, prompt, images: null)
             : Task.CompletedTask;
 
     // The one place a turn is handed to the runtime, so that turn-start delivery (AC-394) cannot be reached by one send
@@ -560,8 +567,7 @@ public sealed partial class SessionHost : ISessionTurnGate, ISessionTranscript, 
     private async Task _SendWithWaitingMessagesAsync(
         ISessionRuntime runtime,
         string text,
-        IReadOnlyList<ImageAttachment>? images,
-        bool noteMail)
+        IReadOnlyList<ImageAttachment>? images)
     {
         if (TurnsHeldBecause is { } held)
         {
@@ -592,11 +598,7 @@ public sealed partial class SessionHost : ISessionTurnGate, ISessionTranscript, 
 
         if (waiting is not null)
         {
-            if (noteMail)
-            {
-                MailDelivered?.Invoke(waiting);
-            }
-
+            MailDelivered?.Invoke(waiting);
             _turnInboxDelivery?.ConfirmDelivered(waiting);
         }
     }
@@ -736,6 +738,8 @@ public sealed partial class SessionHost : ISessionTurnGate, ISessionTranscript, 
 
     public void RecordRow(TranscriptSnapshotEntry row) => _transcript.Record(row);
 
+    public string? AttachToReply(ReplyAttachment attachment) => _transcript.AttachToReply(attachment);
+
     // AC-1438: the rows as they stand, for a consumer that missed some of their upserts; read on the consumer's thread.
     public IReadOnlyList<TranscriptSnapshotEntry> Rows => _transcript.Rows;
 
@@ -799,7 +803,18 @@ public sealed partial class SessionHost : ISessionTurnGate, ISessionTranscript, 
     public Task SetMaxThinkingTokensAsync(int maxThinkingTokens) =>
         Runtime?.SetMaxThinkingTokensAsync(maxThinkingTokens) ?? Task.CompletedTask;
 
-    public Task SetLiveOptionAsync(string key, string value) => Runtime?.SetLiveOptionAsync(key, value) ?? Task.CompletedTask;
+    public async Task SetLiveOptionAsync(string key, string value)
+    {
+        if (Runtime is { } runtime)
+        {
+            await runtime.SetLiveOptionAsync(key, value);
+            if (string.Equals(key, WellKnownPluginSessionOptions.Model, StringComparison.OrdinalIgnoreCase))
+            {
+                _liveState.SetModel(value);
+                _RaiseLiveStateIfChanged();
+            }
+        }
+    }
 
     public Task SetAutoApproveToolsAsync(bool autoApprove) => Runtime?.SetAutoApproveToolsAsync(autoApprove) ?? Task.CompletedTask;
 

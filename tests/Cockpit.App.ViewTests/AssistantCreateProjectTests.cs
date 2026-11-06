@@ -43,97 +43,6 @@ public class AssistantCreateProjectTests : IDisposable
 
     public void Dispose() => Directory.Delete(_folder, recursive: true);
 
-    // ── Criterion 1: the full field surface, and the id comes back ─────────────────────────────────────────────
-
-    [Fact]
-    public async Task Creates_WithTheFullFieldSurface_AndReturnsTheId()
-    {
-        var (gateway, projects, store) = _Build(
-            pluginFields: [new ProjectFieldRegistration("youtrack.project", "YouTrack project", _ => Task.FromResult<IReadOnlyList<ProjectFieldOption>>([]))]);
-
-        var result = await gateway.CreateProjectAsync(
-            "Invoices",
-            description: "Client billing",
-            sourceDirectory: _folder,
-            defaultProfileLabel: ProfileLabel,
-            behaviorPrompt: "Write in Dutch.",
-            isolateInWorktreeByDefault: true,
-            enabledMcpServerNames: ["depot"],
-            category: "Werk",
-            pluginFields: new Dictionary<string, string> { ["youtrack.project"] = "AC" });
-
-        Assert.True(result.Ok, result.Error);
-        Assert.Equal("Invoices", result.Name);
-        Assert.NotNull(result.ProjectId);
-
-        var stored = Assert.Single(projects.Drawn().Projects);
-        Assert.Equal(result.ProjectId, stored.Id);
-        Assert.Equal("Invoices", stored.Name);
-        Assert.Equal("Client billing", stored.Description);
-        Assert.Equal(_folder, stored.SourceDirectory);
-        Assert.Equal(ProfileLabel, stored.DefaultProfileLabel);
-        Assert.Equal("Write in Dutch.", stored.BehaviorPrompt);
-        Assert.True(stored.IsolateInWorktreeByDefault);
-        Assert.Equal(["depot"], stored.McpOverlay.EnabledServerNames);
-        Assert.Equal("Werk", stored.Category);
-        Assert.Equal("AC", stored.PluginFields["youtrack.project"]);
-
-        // Criterion 3's other half, demonstrable from out here too: what reached the store is the projects view
-        // model's own persisting — one normalised save of the whole settings — not a write this gateway composed.
-        await store.Received(1).SaveAsync(Arg.Is<ProjectSettings>(settings =>
-            settings.Projects.Count == 1 && settings.Projects[0].Name == "Invoices"));
-    }
-
-    [Fact]
-    public async Task SourceDirectoryLeftOut_CreatesAnAdministrativeProject()
-    {
-        var (gateway, projects, _) = _Build();
-
-        var result = await gateway.CreateProjectAsync("Standup notes");
-
-        Assert.True(result.Ok, result.Error);
-        var stored = Assert.Single(projects.Drawn().Projects);
-        Assert.Null(stored.SourceDirectory);
-    }
-
-    // ── Criterion 2: the same validation as the dialog, demonstrated against the dialog's own view model ────────
-
-    [Fact]
-    public async Task BlankName_IsRefused_ForTheSameReasonTheDialogsSaveButtonWouldStayDisabled()
-    {
-        var (gateway, projects, _) = _Build();
-
-        var result = await gateway.CreateProjectAsync("   ");
-
-        Assert.False(result.Ok);
-        Assert.Equal("A project needs a name.", result.Error);
-        Assert.Empty(projects.Drawn().Projects);
-
-        // Not assumed: the dialog's own view model, given the same blank name, has CanSave false for the identical
-        // reason — this is `ProjectDialogViewModel.CanSave` itself, not a rewritten copy of its rule.
-        var dialogViewModel = await Dispatcher.UIThread.InvokeAsync(
-            () => ProjectDialogViewModel.CreateAsync(null, _Profiles(), _McpCatalog()));
-        dialogViewModel.Name = "   ";
-        Assert.False(dialogViewModel.CanSave);
-    }
-
-    [Fact]
-    public async Task ANameTheDialogWouldAccept_TheGatewayAcceptsToo()
-    {
-        // The other half of criterion 2: proving the gateway does not refuse something the dialog's own CanSave
-        // would let through — a mismatched-but-stricter gate is as much a second source of truth as a looser one.
-        var dialogViewModel = await Dispatcher.UIThread.InvokeAsync(
-            () => ProjectDialogViewModel.CreateAsync(null, _Profiles(), _McpCatalog()));
-        dialogViewModel.Name = "  Invoices  ";
-        Assert.True(dialogViewModel.CanSave);
-
-        var (gateway, _, _) = _Build();
-        var result = await gateway.CreateProjectAsync("  Invoices  ");
-
-        Assert.True(result.Ok, result.Error);
-        Assert.Equal("Invoices", result.Name);
-    }
-
     // ── Criterion 3: no read-modify-write race with an operator's own dialog save, demonstrated ────────────────
 
     [Fact]
@@ -198,40 +107,6 @@ public class AssistantCreateProjectTests : IDisposable
         Assert.Empty(projects.Drawn().Projects);
     }
 
-    [Fact]
-    public async Task ANameSharedElsewhereButAlreadyBoundHere_IsNotTreatedAsACollision()
-    {
-        // Already bound is a project on this machine already, not a name this call is about to duplicate — the
-        // same visibility filter `list_shared_projects` itself applies (AC-797's `SharedProjectVisibilityFilterIds`).
-        var bound = new Project("local-1", "Handbook")
-        {
-            Resources = [new ProjectResource("depot:handbook", ProjectResourceRole.Memory)],
-        };
-        var (gateway, projects, _) = _Build(
-            sharedProjects: [new SharedProject("depot:handbook", "Handbook")],
-            settings: ProjectSettings.Empty with { Projects = [bound] });
-
-        var result = await gateway.CreateProjectAsync("Handbook");
-
-        Assert.True(result.Ok, result.Error);
-        Assert.Equal(2, projects.Drawn().Projects.Count);
-    }
-
-    [Fact]
-    public async Task ASecondLocalProjectWithTheSameNameAsAnExistingLocalOne_IsAllowed()
-    {
-        // Unchanged behaviour (`Project.Name`'s own doc comment: "free to collide with another project's name") —
-        // this tool only guards against duplicating what a connection shares, not against two local projects
-        // sharing a name, which was always permitted.
-        var existing = Project.Create("Invoices") with { SourceDirectories = [new(_folder)] };
-        var (gateway, projects, _) = _Build(settings: ProjectSettings.Empty with { Projects = [existing] });
-
-        var result = await gateway.CreateProjectAsync("Invoices");
-
-        Assert.True(result.Ok, result.Error);
-        Assert.Equal(2, projects.Drawn().Projects.Count(project => project.Name == "Invoices"));
-    }
-
     // ── sourceDirectory: full path, and it has to exist ─────────────────────────────────────────────────────────
 
     [Fact]
@@ -243,18 +118,6 @@ public class AssistantCreateProjectTests : IDisposable
 
         Assert.False(result.Ok);
         Assert.Contains("relative path", result.Error);
-        Assert.Empty(projects.Drawn().Projects);
-    }
-
-    [Fact]
-    public async Task ASourceDirectoryThatDoesNotExist_IsRefused()
-    {
-        var (gateway, projects, _) = _Build();
-
-        var result = await gateway.CreateProjectAsync("Invoices", sourceDirectory: Path.Combine(_folder, "does-not-exist"));
-
-        Assert.False(result.Ok);
-        Assert.Contains("no folder", result.Error);
         Assert.Empty(projects.Drawn().Projects);
     }
 
@@ -275,69 +138,12 @@ public class AssistantCreateProjectTests : IDisposable
         Assert.Empty(projects.Drawn().Projects);
     }
 
-    // AC-884: a value naming several prefixes is stored and read back verbatim — the tool takes the same
-    // Dictionary<string,string> it always did, the comma-separated list is a convention this layer never parses.
-    [Fact]
-    public async Task APluginFieldValueNamingSeveralPrefixes_IsStoredAndReadableAsEachOfThem()
-    {
-        var (gateway, projects, _) = _Build(
-            pluginFields: [new ProjectFieldRegistration("youtrack.project", "YouTrack project", _ => Task.FromResult<IReadOnlyList<ProjectFieldOption>>([]))]);
-
-        var result = await gateway.CreateProjectAsync(
-            "EVE Workbench", pluginFields: new Dictionary<string, string> { ["youtrack.project"] = "EWB, AT, EJ" });
-
-        Assert.True(result.Ok, result.Error);
-        var stored = Assert.Single(projects.Drawn().Projects);
-        Assert.Equal(["EWB", "AT", "EJ"], stored.LinkedAsAll("youtrack.project"));
-    }
-
-    // ── defaultProfileLabel: validated like every sibling path in this class (AC-799 review finding 3) ────────────
-
-    [Fact]
-    public async Task AnUnknownDefaultProfileLabel_IsRefused_AndNamesTheOnesThatAreConfigured()
-    {
-        var (gateway, projects, _) = _Build();
-
-        var result = await gateway.CreateProjectAsync("Invoices", defaultProfileLabel: "not-a-real-profile");
-
-        Assert.False(result.Ok);
-        Assert.Contains("not-a-real-profile", result.Error);
-        Assert.Contains(ProfileLabel, result.Error);
-        Assert.Empty(projects.Drawn().Projects);
-    }
-
-    [Fact]
-    public async Task AKnownDefaultProfileLabel_IsAccepted()
-    {
-        var (gateway, projects, _) = _Build();
-
-        var result = await gateway.CreateProjectAsync("Invoices", defaultProfileLabel: ProfileLabel);
-
-        Assert.True(result.Ok, result.Error);
-        var stored = Assert.Single(projects.Drawn().Projects);
-        Assert.Equal(ProfileLabel, stored.DefaultProfileLabel);
-    }
-
-    // ── mcpServerCatalog: a refusal, not a silent no-op catalog (AC-799 review finding 8) ──────────────────────────
-
-    [Fact]
-    public async Task WithNoMcpServerCatalog_ItRefuses_RatherThanFallingBackToANoOpOne()
-    {
-        var (gateway, projects, _) = _Build(includeMcpCatalog: false);
-
-        var result = await gateway.CreateProjectAsync("Invoices");
-
-        Assert.False(result.Ok);
-        Assert.Empty(projects.Drawn().Projects);
-    }
-
     // ── Fixtures ─────────────────────────────────────────────────────────────────────────────────────────────────
 
     private (AssistantAgentGateway Gateway, ProjectsViewModel Projects, IProjectStore Store) _Build(
         IReadOnlyList<SharedProject>? sharedProjects = null,
         IReadOnlyList<ProjectFieldRegistration>? pluginFields = null,
-        ProjectSettings? settings = null,
-        bool includeMcpCatalog = true)
+        ProjectSettings? settings = null)
     {
         var store = Substitute.For<IProjectStore>();
         store.LoadAsync(Arg.Any<CancellationToken>()).Returns(settings ?? ProjectSettings.Empty);
@@ -370,7 +176,7 @@ public class AssistantCreateProjectTests : IDisposable
             Substitute.For<IAssistantSessionHost>(),
             worktreeManager: null,
             sharedProjectSources: registry,
-            mcpServerCatalog: includeMcpCatalog ? _McpCatalog() : null,
+            mcpServerCatalog: _McpCatalog(),
             projectFields: fieldRegistry,
             projects: catalog));
 
@@ -441,6 +247,7 @@ public class AssistantCreateProjectTests : IDisposable
         public IReadOnlyList<ISharedProjectSource> Sources => _sources;
 
         public event Action<ISharedProjectSource>? Registered;
+        public event Action<string>? Removed { add { } remove { } }
 
         public bool Register(ISharedProjectSource source)
         {

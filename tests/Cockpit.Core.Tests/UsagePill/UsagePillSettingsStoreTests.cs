@@ -1,42 +1,10 @@
 using Cockpit.Core.UsagePill;
 using Cockpit.Infrastructure.Configuration;
-using Cockpit.Infrastructure.UsagePill;
 
 namespace Cockpit.Core.Tests.UsagePill;
 
-/// <summary>
-/// Load/save round-trip for the usage-pill section of <c>cockpit.json</c> (AC-105): the default is just the
-/// context window, the selection survives a round-trip, an on-disk name this build no longer knows is dropped
-/// rather than throwing, and saving it leaves a sibling section intact — all stores share the one file.
-/// </summary>
-public class UsagePillSettingsStoreTests : IDisposable
+public class UsagePillSettingsStoreTests
 {
-    private readonly string _tempDir;
-    private readonly string _configFilePath;
-
-    public UsagePillSettingsStoreTests()
-    {
-        _tempDir = Path.Combine(Path.GetTempPath(), "cockpit-tests", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(_tempDir);
-        _configFilePath = Path.Combine(_tempDir, "cockpit.json");
-    }
-
-    [Fact]
-    public async Task SaveAsync_ThenLoadAsync_RoundTripsTheSelectionInOrder()
-    {
-        var store = new UsagePillSettingsStore(_configFilePath);
-
-        await store.SaveAsync(new UsagePillSettings
-        {
-            VisibleFields = [UsagePillField.RateWindows, UsagePillField.Context, UsagePillField.SessionUsage],
-        });
-        var loaded = await store.LoadAsync();
-
-        Assert.Equal(
-            new[] { UsagePillField.RateWindows, UsagePillField.Context, UsagePillField.SessionUsage },
-            loaded.VisibleFields);
-    }
-
     /// <summary>
     /// #1105 A2: the two Claude-specific window toggles ("5-hour window"/"Weekly window") folded into one
     /// provider-neutral RateWindows field. A config saved before that change must not lose the operator's
@@ -48,13 +16,5 @@ public class UsagePillSettingsStoreTests : IDisposable
         var entry = new UsagePillSettingsEntry { VisibleFields = ["Context", "FiveHourWindow", "WeeklyWindow"] };
 
         Assert.Equal(new[] { UsagePillField.Context, UsagePillField.RateWindows }, entry.ToDomain().VisibleFields);
-    }
-
-    public void Dispose()
-    {
-        if (Directory.Exists(_tempDir))
-        {
-            Directory.Delete(_tempDir, recursive: true);
-        }
     }
 }

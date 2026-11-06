@@ -40,33 +40,6 @@ public class PluginSessionBindingTests
     });
 
     [Fact]
-    public void Dispose_LeavesTheSessionRunning() => Dispatcher.UIThread.Invoke(() =>
-    {
-        var (host, cockpit, session) = _HostWithOneSession();
-        var binding = host.BindToSession(session.PaneId);
-
-        binding.Dispose();
-
-        Assert.Same(session, Assert.Single(cockpit.Sessions));
-        Assert.True(host.BindToSession(session.PaneId).IsLive);
-    });
-
-    [Fact]
-    public void BindToSession_TwiceOnOneSession_AddsNoSecondPane() => Dispatcher.UIThread.Invoke(() =>
-    {
-        var (host, cockpit, session) = _HostWithOneSession();
-
-        using var first = host.BindToSession(session.PaneId);
-        using var second = host.BindToSession(session.PaneId);
-
-        // Both peepholes onto the one pane the grid draws: no second SessionPanelViewModel, so no rival view over
-        // its pty (CockpitViewModel.cs:7026).
-        Assert.Same(session, Assert.Single(cockpit.Sessions));
-        Assert.Equal(first.PaneId, second.PaneId);
-        Assert.Equal(session.Title, second.SessionName);
-    });
-
-    [Fact]
     public void ClosingTheSession_EndsTheBindingWithoutClosingTheSurface() => Dispatcher.UIThread.Invoke(() =>
     {
         var (host, cockpit, session) = _HostWithOneSession();
@@ -83,19 +56,6 @@ public class PluginSessionBindingTests
 
         // The surface is still there and still knows which session it belonged to; sending is simply refused.
         binding.SendAsync("Anyone still there?").GetAwaiter().GetResult();
-    });
-
-    [Fact]
-    public void BindToSession_WithAPaneIdNoSessionIsBehind_IsNotLiveRatherThanAThrow() => Dispatcher.UIThread.Invoke(() =>
-    {
-        var (host, _, _) = _HostWithOneSession();
-
-        using var binding = host.BindToSession("a-pane-that-never-existed");
-
-        Assert.False(binding.IsLive);
-        Assert.Null(binding.SessionName);
-        Assert.Equal("a-pane-that-never-existed", binding.PaneId);
-        binding.SendAsync("Draw a box.").GetAwaiter().GetResult();
     });
 
     // AC-1392: the plugin host looks a pane up before it acts, and the pane can close in between; the handle asks

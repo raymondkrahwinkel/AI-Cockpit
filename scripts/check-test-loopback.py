@@ -17,6 +17,17 @@ FORBIDDEN = (
 )
 
 
+def allowed_browser_fixture_prefix(source: Path, lines: list[str], index: int) -> bool:
+    # AC-2029's DNS-rebinding fixture needs an unresolved Host header on Linux; allow only its opt-in prefix.
+    if source.relative_to(ROOT).as_posix() != "plugins-dev/Cockpit.Plugin.Browser.Tests/AgentOwnedTabTests.cs":
+        return False
+    if lines[index].strip() != '_listener.Prefixes.Add(acceptAnyHost && !OperatingSystem.IsWindows() ? $"http://*:{new Uri(Url).Port}/" : Url);':
+        return False
+    constructor = "    public OwnedTabFixture(bool acceptAnyHost = false)"
+    start = next((i for i, line in enumerate(lines[:index]) if line == constructor), None)
+    return start is not None and not any(line.lstrip().startswith("}") for line in lines[start:index])
+
+
 def test_sources() -> list[Path]:
     sources = list((ROOT / "tests").rglob("*.cs"))
     sources.extend(
@@ -30,12 +41,13 @@ def test_sources() -> list[Path]:
 def main() -> int:
     violations: list[str] = []
     for source in test_sources():
-        for line_number, line in enumerate(source.read_text(encoding="utf-8").splitlines(), 1):
+        lines = source.read_text(encoding="utf-8").splitlines()
+        for index, line in enumerate(lines):
             code = line.lstrip()
             if code.startswith("//"):
                 continue
-            if any(pattern.search(code) for pattern in FORBIDDEN):
-                violations.append(f"{source.relative_to(ROOT)}:{line_number}: {code.strip()}")
+            if any(pattern.search(code) for pattern in FORBIDDEN) and not allowed_browser_fixture_prefix(source, lines, index):
+                violations.append(f"{source.relative_to(ROOT)}:{index + 1}: {code.strip()}")
 
     if violations:
         print("Test listeners must bind to loopback, not every network interface:", file=sys.stderr)

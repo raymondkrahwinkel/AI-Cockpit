@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugin.Shared;
 
 namespace Cockpit.Plugin.KimiProvider;
 
@@ -10,6 +11,7 @@ namespace Cockpit.Plugin.KimiProvider;
 // rather than doubling the surface with a second, parallel interactive pane.
 public sealed class KimiProviderPlugin : ICockpitPlugin
 {
+    private readonly AcpImageFacts _imageFacts = new();
     public PluginMetadata Metadata { get; } = new(
         Id: "kimi-provider",
         DisplayName: "Kimi Code Provider (ACP)",
@@ -27,13 +29,15 @@ public sealed class KimiProviderPlugin : ICockpitPlugin
         host.AddSessionProvider(new SessionProviderRegistration(
             ProviderId: "kimi-provider.acp",
             DisplayName: "Kimi Code (ACP)",
-            CreateDriverFactory: _ => new KimiAcpSessionDriverFactory(host.ResolveManagedCliPath),
+            CreateDriverFactory: _ => new KimiAcpSessionDriverFactory(host.ResolveManagedCliPath, _imageFacts),
             // P1-4: SessionDriverFactory builds the PluginSessionDriverAdapter from registration.Capabilities,
             // not from the driver instance's own Capabilities property — SupportsLiveModelSwitch must be
             // declared here too, or the host's live-model-switch wiring never reaches SetLiveOptionAsync
             // despite the driver already supporting it (ClaudeProviderPlugin.cs warns of exactly this trap).
-            Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true) { SupportsEnvVars = true, SupportsLiveModelSwitch = true })
+            Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true) { SupportsEnvVars = true, SupportsLiveModelSwitch = true, SupportsVision = true })
         {
+            CredentialKind = KimiConfig.CredentialKindOf,
+            ReadModelIntelligenceAsync = (config, _) => Task.FromResult(_imageFacts.Read(config)),
             TermsNotice = new TermsNotice("Kimi Code (Moonshot AI): use is governed by your agreement with Kimi.", new Uri("https://www.kimi.com/user/agreement/en/modelUse"), "Subscription login: personal and individual; do not share it. For shared use, use an API-key profile under an appropriate business agreement.", "API-key use is billed to the key owner; the API service's terms apply."),
         });
     }

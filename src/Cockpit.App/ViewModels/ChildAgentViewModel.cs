@@ -11,19 +11,43 @@ public sealed class ChildAgentViewModel(SessionPanelViewModel owner, BackgroundT
     public RelayCommand OpenCommand => _openCommand ??= new(() => Owner.OpenChild(this));
     private BackgroundTask _reference = reference;
     public BackgroundTask Reference => _reference;
-    public string Title => string.IsNullOrWhiteSpace(_reference.Description) ? _reference.AgentId ?? _reference.TaskId : _reference.Description;
+    public string Title => !string.IsNullOrWhiteSpace(_reference.Description)
+        ? _reference.Description
+        : _reference.State switch
+        {
+            "completed" => $"Completed sub-agent · {_reference.AgentId ?? _reference.TaskId}",
+            "failed" => $"Failed sub-agent · {_reference.AgentId ?? _reference.TaskId}",
+            "stopped" or "cancelled" or "interrupted" => $"Stopped sub-agent · {_reference.AgentId ?? _reference.TaskId}",
+            _ => _reference.AgentId ?? _reference.TaskId,
+        };
     public string Detail => $"{Owner.UsageProviderId ?? "Provider"} · {_reference.State}";
     public string StatusText => _reference.State switch { "completed" => "Done", "running" => "Running", "failed" => "Failed", "stopped" or "cancelled" or "interrupted" => "Stopped", _ => "Status unknown" };
     public string TypeText => string.IsNullOrWhiteSpace(_reference.AgentType) ? "unknown" : _reference.AgentType;
     public string StatusBrushKey => _reference.State switch
     {
         "running" => "CockpitStatusBackgroundBrush",
-        "completed" => "CockpitStatusDoneBrush",
+        "completed" => "CockpitTextFaintBrush",
         "failed" => "CockpitStatusErrorBrush",
         _ => "CockpitTextFaintBrush",
     };
     public bool HasFilledStatus => _reference.State is "running" or "completed" or "failed";
     public double DotFillOpacity => HasFilledStatus ? 1 : 0;
+    public string StatusChipTintBrushKey => _reference.State switch
+    {
+        "running" => "CockpitStatusBackgroundChipTintBrush",
+        "completed" => "CockpitStatusDoneChipTintBrush",
+        "failed" => "CockpitStatusErrorChipTintBrush",
+        _ => "CockpitInsetBgBrush",
+    };
+    public string StatusChipForegroundBrushKey => _reference.State switch
+    {
+        "running" => "CockpitStatusBackgroundBrush",
+        "completed" => "CockpitTextSecondaryBrush",
+        "failed" => "CockpitStatusErrorBrush",
+        _ => "CockpitTextFaintBrush",
+    };
+    public string RowForegroundBrushKey => _reference.State == "running" ? "CockpitTextPrimaryBrush" : "CockpitTextSecondaryBrush";
+    public double RowOpacity => _reference.State == "running" ? 1 : 0.72;
     public string TimeText
     {
         get
@@ -68,6 +92,10 @@ public sealed class ChildAgentViewModel(SessionPanelViewModel owner, BackgroundT
         OnPropertyChanged(nameof(TimeText));
         OnPropertyChanged(nameof(StatusBrushKey));
         OnPropertyChanged(nameof(DotFillOpacity));
+        OnPropertyChanged(nameof(StatusChipTintBrushKey));
+        OnPropertyChanged(nameof(StatusChipForegroundBrushKey));
+        OnPropertyChanged(nameof(RowForegroundBrushKey));
+        OnPropertyChanged(nameof(RowOpacity));
         OnPropertyChanged(nameof(LastToolText));
         OnPropertyChanged(nameof(TokensText));
         OnPropertyChanged(nameof(IsFinished));

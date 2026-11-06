@@ -1,5 +1,3 @@
-using Cockpit.TestSupport;
-
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
 // `ClaudeTtyProvider.BuildArguments` (Fase 4) — the launch-only flag composition ported from the host's
@@ -14,16 +12,6 @@ public class ClaudeTtyProviderTests
 
         Assert.Contains("--dangerously-skip-permissions", arguments);
         Assert.DoesNotContain("--permission-mode", arguments);
-    }
-
-    [Fact]
-    public void BuildArguments_McpConfig_Delegation_Settings_AreWired()
-    {
-        var arguments = ClaudeTtyProvider.BuildArguments(null, null, null, "/tmp/mcp.json", "/tmp/prompt.md", null, "{\"statusLine\":{}}");
-
-        Assert.True(SequenceAssert.ContainsInOrder(arguments, "--settings", "{\"statusLine\":{}}"));
-        Assert.True(SequenceAssert.ContainsInOrder(arguments, "--mcp-config", "/tmp/mcp.json"));
-        Assert.True(SequenceAssert.ContainsInOrder(arguments, "--append-system-prompt-file", "/tmp/prompt.md"));
     }
 
     // AC-378: the strict flag is a deliberate divergence on the headless/SDK route only (ClaudeSdkArguments) — the

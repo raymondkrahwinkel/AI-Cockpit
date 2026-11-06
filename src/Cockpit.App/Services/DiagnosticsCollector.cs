@@ -1,5 +1,6 @@
 using System.Reflection;
 using Cockpit.Core.Abstractions;
+using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Diagnostics;
 using Cockpit.Core.Diagnostics;
 
@@ -8,7 +9,10 @@ namespace Cockpit.App.Services;
 // AC-58: Assembles the diagnostics snapshot the Debug tab shows and the tester copies; lives in App because
 // only that layer can name the render backend and toolkit version, and reuses the resource monitor's own
 // readers (#78) so the panel and the status bar cannot disagree about what a session weighs.
-public sealed class DiagnosticsCollector(IProcessTableReader processTable, ICrashLogReader crashLogReader) : ISingletonService
+public sealed class DiagnosticsCollector(
+    IProcessTableReader processTable,
+    ICrashLogReader crashLogReader,
+    IAudioAvailability? audioAvailability = null) : ISingletonService
 {
     private const int MaxCrashEntries = 3;
 
@@ -31,6 +35,7 @@ public sealed class DiagnosticsCollector(IProcessTableReader processTable, ICras
         {
             Sessions = sessionDiagnostics,
             CrashLogs = crashLogReader.RecentEntries(MaxCrashEntries),
+            Audio = new AudioDiagnostics(audioAvailability?.IsAvailable ?? true, audioAvailability?.UnavailableReason),
         };
     }
 
@@ -45,7 +50,8 @@ public sealed class DiagnosticsCollector(IProcessTableReader processTable, ICras
         ManagedHeapInfo.Current(),
         MachineMemory.TotalBytes(),
         [],
-        []);
+        [],
+        new AudioDiagnostics(true, null));
 
     private static string _ToolkitVersion() => _InformationalVersion(typeof(Avalonia.Application).Assembly);
 

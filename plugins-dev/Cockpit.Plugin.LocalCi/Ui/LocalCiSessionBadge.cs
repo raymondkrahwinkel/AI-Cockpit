@@ -49,7 +49,11 @@ internal sealed class LocalCiSessionBadge : UserControl
         _runChanged = null;
     }
 
-    private void _OnWorkingDirectoryChanged(object? sender, EventArgs e) => _ = _ShowAsync();
+    private void _OnWorkingDirectoryChanged(object? sender, EventArgs e)
+    {
+        LocalCiUi.RememberCheckout(_host, _session);
+        _ = _ShowAsync();
+    }
 
     // Raised on the backend's publishing thread, not the UI thread — marshal before touching a control.
     private void _OnRunChanged(PluginChannelEvent channelEvent) => Dispatcher.UIThread.Post(() => _ = _ShowAsync());

@@ -77,6 +77,10 @@ public sealed class EchoDriver : ISessionDriver
         Resume = resume;
         LaunchOptions = launchOptions;
         _paneId = launchOptions?.GetValueOrDefault(WellKnownPluginSessionOptions.PaneId);
+        if (_paneId is not null && SessionId is { } conversationId)
+        {
+            Conversations?.Report(_paneId, SessionConversationId.Known(conversationId));
+        }
         if (_wedged)
         {
             Child = Process.Start(OperatingSystem.IsWindows()
@@ -138,11 +142,6 @@ public sealed class EchoDriver : ISessionDriver
 
             var fails = prompt == FailingPrompt;
             var echoed = prompt == "working-directory" ? WorkingDirectory : prompt;
-            if (_paneId is not null)
-            {
-                Conversations?.Report(_paneId, SessionConversationId.Known(SessionId!));
-            }
-
             yield return new AssistantTextCompleted { SessionId = SessionId, Text = $"echo: {echoed}" };
             yield return new TurnCompleted
             {

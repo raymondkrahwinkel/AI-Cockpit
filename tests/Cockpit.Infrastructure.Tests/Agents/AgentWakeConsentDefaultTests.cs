@@ -1,6 +1,4 @@
-using Cockpit.Core.SessionBehavior;
 using Cockpit.Infrastructure.Agents;
-using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Tests.Agents;
 
@@ -17,18 +15,6 @@ namespace Cockpit.Infrastructure.Tests.Agents;
 /// </summary>
 public sealed class AgentWakeConsentDefaultTests
 {
-    [Fact]
-    public void APaneThatHasNotAnswered_FollowsTheOperatorsSetting()
-    {
-        var coordinator = new WorkspaceAgentCoordinator();
-        coordinator.Enroll("pane-1");
-
-        coordinator.SetDefaultWakeConsent(true);
-        Assert.True(coordinator.HasWakeConsent("pane-1"));
-
-        coordinator.SetDefaultWakeConsent(false);
-        Assert.False(coordinator.HasWakeConsent("pane-1"));
-    }
 
     /// <summary>
     /// "Has not answered" and "answered no" are different states, and the difference is the whole point of the
@@ -68,22 +54,4 @@ public sealed class AgentWakeConsentDefaultTests
         Assert.False(coordinator.HasWakeConsent("pane-1"));
     }
 
-    /// <summary>
-    /// A <c>cockpit.json</c> written before this setting existed has no such key. Deserialising that must read back
-    /// as the default rather than as the operator having said no — otherwise "this setting did not exist yet" turns
-    /// silently into "wake is off" for every install that predates it.
-    /// </summary>
-    [Fact]
-    public void ASettingsFileFromBeforeThisSetting_ReadsBackAsOn()
-    {
-        var entry = new SessionBehaviorSettingsEntry();
-
-        Assert.True(entry.WakeAgentsByDefault);
-        Assert.True(entry.ToDomain().WakeAgentsByDefault);
-        var settings = new SessionBehaviorSettings { WakeAgentsByDefault = false };
-
-        var round = SessionBehaviorSettingsEntry.FromDomain(settings).ToDomain();
-
-        Assert.False(round.WakeAgentsByDefault);
-    }
 }

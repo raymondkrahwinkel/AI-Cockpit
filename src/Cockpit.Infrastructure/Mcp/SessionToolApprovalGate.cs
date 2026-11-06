@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions.Permissions;
 
 namespace Cockpit.Infrastructure.Mcp;
@@ -34,9 +35,11 @@ internal sealed class SessionToolApprovalGate(
     // Set once the tool session is up; an unset map grades every tool Unknown, which is the restrictive end.
     public IReadOnlyDictionary<string, ToolPermissionClass> ToolClasses { get; set; } =
         new Dictionary<string, ToolPermissionClass>(StringComparer.Ordinal);
+    public McpToolNames? ToolNames { get; set; }
 
     public async Task<ToolApprovalResult> RequestApprovalAsync(string toolUseId, string toolName, string inputJson, CancellationToken cancellationToken)
     {
+        toolName = ToolNames?.ToCanonical(toolName) ?? toolName;
         // Surface the call in the transcript, then either auto-allow (an always-allow rule this session), decide
         // it non-interactively (a delegated session), or prompt and await the operator's decision.
         reportToolUse(toolUseId, toolName, inputJson);
@@ -99,7 +102,7 @@ internal sealed class SessionToolApprovalGate(
 
     public bool AllowAlways(string toolUseId, string toolName)
     {
-        _alwaysAllowedTools.TryAdd(toolName, 0);
+        _alwaysAllowedTools.TryAdd(ToolNames?.ToCanonical(toolName) ?? toolName, 0);
         return Respond(toolUseId, allow: true);
     }
 
@@ -129,7 +132,7 @@ internal sealed class SessionToolApprovalGate(
     {
         // Set the allow-list before the ceiling, since a non-null ceiling is what arms the gate; coerce null to
         // empty so a caller always gets it armed, never falling through to a prompt that hangs a headless session.
-        _delegatedGateAllowList = new HashSet<string>(allowedTools, StringComparer.Ordinal);
+        _delegatedGateAllowList = new HashSet<string>(allowedTools.Select(name => ToolNames?.ToCanonical(name) ?? name), StringComparer.Ordinal);
         _delegatedGateCeiling = ceiling ?? string.Empty;
     }
 

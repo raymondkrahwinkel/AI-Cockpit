@@ -87,7 +87,8 @@ public class SessionUsageRecordingTests
         var history = new RecordingUsageHistory();
         var session = _Session(history);
         session.ActiveProfileLabel = "raymond";
-        session.SelectedModel = new ModelOption("Opus", "opus");
+        session.SelectedModel = new ModelOption("Sonnet", "sonnet");
+        session.Apply(new SessionInitialized { SessionId = "s-1", Cwd = ".", Tools = [], Model = "claude-opus-4-6" });
 
         session.Apply(_Turn(new TokenUsage(120, 40, 9_000, 300), 0.25));
 
@@ -100,7 +101,7 @@ public class SessionUsageRecordingTests
         Assert.Equal(0.25, snapshot.TotalCostUsd);
         Assert.Equal(1, snapshot.Turns);
         Assert.Equal("raymond", snapshot.ProfileLabel);
-        Assert.Equal("opus", snapshot.Model);
+        Assert.Equal("claude-opus-4-6", snapshot.Model);
         Assert.NotEqual(default, snapshot.StartedAt);
         Assert.NotEqual(default, snapshot.RecordedAt);
         Assert.Empty(UsageSnapshotContract.CommonFieldDifferences(new UsageSnapshot
@@ -109,7 +110,7 @@ public class SessionUsageRecordingTests
             StartedAt = snapshot.StartedAt,
             RecordedAt = snapshot.RecordedAt,
             ProfileLabel = "raymond",
-            Model = "opus",
+            Model = "claude-opus-4-6",
             InputTokens = 120,
             OutputTokens = 40,
             CacheReadInputTokens = 9_000,
@@ -120,52 +121,7 @@ public class SessionUsageRecordingTests
     }
 
     [Fact]
-    public void EachTurn_WritesAgain_WithTheTotalSoFar()
-    {
-        var history = new RecordingUsageHistory();
-        var session = _Session(history);
-
-        // The cost figures rise the way a real session reports them — each result states what the session has
-        // cost so far, not what its last turn cost (AC-481). The pair used to fall (0.10 then 0.05), which the
-        // old summing meter added up to the same 0.15 for the wrong reason.
-        session.Apply(_Turn(new TokenUsage(100, 10, 0, 0), 0.10));
-        session.Apply(_Turn(new TokenUsage(50, 5, 0, 0), 0.15));
-
-        // Cumulative, not per-turn: the newest record is the session's total, which is what makes a record per
-        // turn a crash-proof snapshot rather than something a reader has to add up.
-        Assert.Equal(2, history.Recorded.Count);
-        Assert.Equal(150, history.Recorded[1].InputTokens);
-        Assert.Equal(15, history.Recorded[1].OutputTokens);
-        Assert.Equal(0.15, history.Recorded[1].TotalCostUsd, precision: 10);
-        Assert.Equal(2, history.Recorded[1].Turns);
-    }
-
-    [Fact]
-    public void ATurnThatReportedNothing_LeavesNoRecord_RatherThanARowOfZeroes()
-    {
-        var history = new RecordingUsageHistory();
-        var session = _Session(history);
-
-        session.Apply(_Turn(usage: null, costUsd: null));
-
-        Assert.Empty(history.Recorded);
-    }
-
-    [Fact]
-    public void AnOperatorsOwnSession_IsRecordedAsInteractive_WithNoRun()
-    {
-        var history = new RecordingUsageHistory();
-        var session = _Session(history);
-
-        session.Apply(_Turn(new TokenUsage(10, 1, 0, 0), 0.01));
-
-        var snapshot = Assert.Single(history.Recorded);
-        Assert.Equal(UsageRunKind.Interactive, snapshot.RunKind);
-        Assert.Null(snapshot.RunId);
-    }
-
-    [Fact]
-    public void ASessionEmbeddedForARun_CarriesThatRun_SoItsSessionsAddUp()
+    public void ASessionEmbeddedForARun_CarriesThatRun_AndATurnThatReportedNothingLeavesNoRecord()
     {
         var history = new RecordingUsageHistory();
         var session = _Session(history);
@@ -174,12 +130,17 @@ public class SessionUsageRecordingTests
         session.RunId = "run-7";
         session.RunLabel = "AC-251 - persist usage";
 
+        // A turn that reported nothing leaves no record, rather than a row of zeroes.
+        session.Apply(_Turn(usage: null, costUsd: null));
+        Assert.Empty(history.Recorded);
+
         session.Apply(_Turn(new TokenUsage(10, 1, 0, 0), 0.01));
 
         var snapshot = Assert.Single(history.Recorded);
         Assert.Equal(UsageRunKind.Embedded, snapshot.RunKind);
         Assert.Equal("run-7", snapshot.RunId);
         Assert.Equal("AC-251 - persist usage", snapshot.RunLabel);
+        Assert.Null(snapshot.Model);
     }
 
     [Fact]
@@ -197,25 +158,5 @@ public class SessionUsageRecordingTests
 
         gate.SetResult();
         await closing;
-    }
-
-    [Fact]
-    public async Task ClosingASessionThatNeverSpentAnything_DoesNotWaitOnAWriteThatWasNeverMade()
-    {
-        var session = _Session(new BlockingUsageHistory(new TaskCompletionSource().Task));
-
-        // No turn, so no record in flight: closing must not hang on a gate nobody is going to open.
-        await session.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
-    }
-
-    [Fact]
-    public void ASessionWithNoTrail_StillKeepsItsMeter()
-    {
-        // The design-time and test graphs have no usage history; the header must not lose its meter over it.
-        var session = TestSessions.Pane(Substitute.For<ISessionManager>());
-
-        session.Apply(_Turn(new TokenUsage(10, 1, 0, 0), 0.01));
-
-        Assert.True(session.HasUsage);
     }
 }

@@ -8,4 +8,7 @@ public sealed record HeavyRunRequest(
     HeavyRunPurpose Purpose,
     string PaneId,
     string Label,
-    string WorkingDirectory);
+    string WorkingDirectory)
+{
+    public string Command { get; init; } = string.Empty;
+}

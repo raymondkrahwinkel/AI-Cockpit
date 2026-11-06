@@ -1,7 +1,6 @@
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.App.Composition;
 using Cockpit.App.Services;
-using Cockpit.App.ViewModels;
 using Cockpit.Core.Projects;
 using Cockpit.Core.Tests.Hotkeys;
 using Cockpit.Core.Tests.Voice;
@@ -13,32 +12,6 @@ namespace Cockpit.Core.Tests.QuickNotes;
 public class QuickNoteTests
 {
     private static readonly Project Recent = new("recent", "Recent") { MemoryRef = "depot:recent", LastOpenedAt = DateTimeOffset.Now.AddHours(-1) };
-    private static readonly Project Older = new("older", "Older") { MemoryRef = "depot:older", LastOpenedAt = DateTimeOffset.Now.AddDays(-2) };
-
-    [Fact]
-    public async Task Save_WritesTheNote_StartsNothing_AndLeavesNoDraftBehind()
-    {
-        var writer = new FakeNoteWriter("recent") { Pending = new TaskCompletionSource() };
-        var started = new List<Project>();
-        var note = new QuickNoteViewModel([Recent], writer.AppendAsync, (project, _) => { started.Add(project); return Task.CompletedTask; }) { Note = "call finance" };
-        var saved = 0;
-        note.Saved += (_, _) => saved++;
-
-        var save = note.SaveCommand.ExecuteAsync(null);
-
-        // While the write is in flight the box is locked, so nothing typed can diverge from what the writer holds.
-        Assert.True(note.IsSaving);
-        Assert.False(note.CanEdit);
-        writer.Pending.SetResult();
-        await save;
-
-        Assert.True(note.CanEdit);
-        Assert.Equal([(Recent, "call finance")], writer.Appended);
-        Assert.Empty(started);
-        Assert.Equal(1, saved);
-        // What landed is no longer a draft, so the next window opens empty rather than offering it a second time.
-        Assert.Equal(string.Empty, note.Note);
-    }
 
     // The one hard rule: a failed write keeps the note in the box, says why, starts nothing and survives Escape to the next window.
     [Theory]

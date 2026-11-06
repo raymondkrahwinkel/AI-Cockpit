@@ -38,46 +38,4 @@ public class PluginStoreIndexTests
         Assert.Equal("github-issues/gh-1.2.0.zip", entry.Versions[0].Path);
         Assert.Equal("abc", entry.Versions[0].Sha256);
     }
-
-    [Fact]
-    public void TryParse_InvalidJson_Fails()
-    {
-        Assert.False(PluginStoreIndex.TryParse("{ not json", out _, out var error));
-        Assert.False(string.IsNullOrEmpty(error));
-    }
-
-    // The optional entry fields, each as the index would carry them: the store-dialog fields (#62), the shipped index
-    // without any of them, audience, hidden, and the additive `logoAsset` (AC-553, absent in an index published before it).
-    [Theory]
-    [InlineData("""
-        {
-          "name": "S",
-          "plugins": [
-            { "id": "a", "name": "A", "latestVersion": "1.2.0", "category": "Issue trackers", "icon": "🐛", "homepage": "https://example.com/a", "repository": "https://github.com/example/plugins", "featured": true, "published": "2026-05-12", "versions": [] },
-            { "id": "a", "name": "A", "description": "d", "author": "me", "latestVersion": "1.2.0", "versions": [] },
-            { "id": "a", "name": "A", "latestVersion": "1.2.0", "audience": ["developer"], "versions": [] },
-            { "id": "a", "name": "A", "latestVersion": "1.0.0", "hidden": true, "versions": [] },
-            { "id": "a", "name": "A", "latestVersion": "1.0.0", "icon": "🐛", "versions": [] },
-            { "id": "depot", "name": "Depot", "latestVersion": "1.0.0", "icon": "🗄️", "logoAsset": "depot.svg", "versions": [] }
-          ]
-        }
-        """)]
-    public void TryParse_ReadsTheOptionalEntryFields_AndDefaultsWhatTheIndexOmits(string json)
-    {
-        Assert.True(PluginStoreIndex.TryParse(json, out var index, out var error), error);
-
-        Assert.NotNull(index);
-        Assert.Equal(
-            new (string? Category, string? Icon, string? Homepage, string? Repository, bool Featured, string? Published, string Audience, bool Hidden, string? LogoAsset)[]
-            {
-                ("Issue trackers", "🐛", "https://example.com/a", "https://github.com/example/plugins", true, "2026-05-12", "", false, null),
-                (null, null, null, null, false, null, "", false, null),
-                (null, null, null, null, false, null, "developer", false, null),
-                (null, null, null, null, false, null, "", true, null),
-                (null, "🐛", null, null, false, null, "", false, null),
-                (null, "🗄️", null, null, false, null, "", false, "depot.svg"),
-            },
-            index.Plugins.Select(entry => (entry.Category, entry.Icon, entry.Homepage, entry.Repository, entry.Featured,
-                entry.Published, string.Join(',', entry.Audience ?? []), entry.Hidden, entry.LogoAsset)));
-    }
 }

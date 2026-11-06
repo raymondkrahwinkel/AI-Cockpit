@@ -13,7 +13,7 @@ public sealed class HoursResultTests
     private static readonly Guid EntryId = Guid.Parse("11111111-1111-1111-1111-111111111111");
 
     [Theory]
-    [InlineData(480, 60, 0, true, "⚠ overschrijding")]
+    [InlineData(480, 60, 0, true, "⚠ overrun")]
     public async Task BookedAboveTheSchedule_IsAnOverrunAndNeverGreen(int minutes, int alreadyBooked, int priorBooked, bool overrun, string expectedStatus)
     {
         var (host, entries, storage) = _Rig("receiver", minutes, priorBooked);
@@ -46,7 +46,7 @@ public sealed class HoursResultTests
 
         var error = await Assert.ThrowsAsync<UnauthorizedAccessException>(() => reporter.ReportAsync(new HoursResultRequest(Monday, [new(WeekOfferMarker.Format(43, Monday, 1), "booked")], [])));
 
-        Assert.Contains("ontvanger", error.Message, StringComparison.Ordinal);
+        Assert.Contains("recipient", error.Message, StringComparison.Ordinal);
         await entries.DidNotReceive().SetOutcomeAsync(Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<CockpitTimeEntryOutcome>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
         var saved = storage.Get<WeekReport>(WeekReport.StorageKey(Monday));
         Assert.NotNull(saved);

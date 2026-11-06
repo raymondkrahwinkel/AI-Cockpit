@@ -7,4 +7,4 @@ public enum DiskPressure
     Critical,
 }
 
-public sealed record DiskSpaceSnapshot(string Name, long TotalBytes, long FreeBytes, TimeSpan? TimeToFull, DiskPressure Pressure);
+public sealed record DiskSpaceSnapshot(string Name, long TotalBytes, long FreeBytes, TimeSpan? TimeToFull, DiskPressure Pressure, string? PressureReason = null);

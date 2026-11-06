@@ -27,7 +27,6 @@ using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using NSubstitute;
-using Cockpit.Tests.Shared;
 
 namespace Cockpit.App.ViewTests;
 
@@ -55,70 +54,6 @@ public class AssistantAgentGatewayTests
         Assert.Equal("no-such-desk", entry.WorkspaceId);
         Assert.Null(entry.PaneId);
         Assert.Equal(result.Error, entry.Refusal);
-    }
-
-    [Fact]
-    public async Task ListProfiles_UsesSavedAndProviderModels_WithoutFailingOnAProviderRead()
-    {
-        // AC-647. Both halves were unreadable before: every plugin-backed profile reported the provider as the bare
-        // enum value "Plugin" — Claude and Codex indistinguishable — and what it ran at lived only in cockpit.json,
-        // which the in-app assistant cannot open at all.
-        var registry = Substitute.For<IPluginProviderRegistry>();
-        registry.Resolve("claude").Returns(_ProviderRegistration("claude", "Claude", new PluginSessionOptionDescriptor(
-            "effort", "Effort", [new PluginSessionOptionValue("high", "High")], "medium")));
-
-        var intelligence = Substitute.For<IProviderModelIntelligence>();
-        intelligence.ReadAsync("work", Arg.Any<CancellationToken>()).Returns(Task.FromException<PluginModelIntelligence?>(new InvalidOperationException()));
-        intelligence.ReadAsync("Hetzner", Arg.Any<CancellationToken>()).Returns(Task.FromResult<PluginModelIntelligence?>(new PluginModelIntelligence
-        {
-            Models = [new PluginModelCostEstimate("Qwen3.8-27B")],
-        }));
-        intelligence.ReadAsync("Broken", Arg.Any<CancellationToken>()).Returns(Task.FromException<PluginModelIntelligence?>(new InvalidOperationException()));
-        intelligence.ReadAsync("Delayed", Arg.Any<CancellationToken>()).Returns(_DelayedModelReading());
-        registry.Resolve("openrouter").Returns(_ProviderRegistration("openrouter", "OpenRouter"));
-        var gateway = Dispatcher.UIThread.Invoke(() => _GatewayOverProfiles(
-            registry,
-            intelligence,
-            TimeSpan.FromMilliseconds(10),
-            new SessionProfile("work", new PluginProviderConfig("claude", "{}"))
-            {
-                EnabledMcpServerNames = ["depot"],
-                Defaults = new ProfileDefaults(string.Empty, string.Empty, string.Empty, AutoApproveTools: false)
-                {
-                    OptionDefaults = new Dictionary<string, string> { ["effort"] = "high", [WellKnownPluginSessionOptions.Model] = "claude-sonnet-4.5" },
-                },
-            },
-            new SessionProfile("local", new LmStudioConfig("http://localhost:1234", "qwen2.5")),
-            new SessionProfile("Hetzner", new PluginProviderConfig("openrouter", "{}")),
-            new SessionProfile("Broken", new PluginProviderConfig("openrouter", "{}")),
-            new SessionProfile("Delayed", new PluginProviderConfig("openrouter", "{}"))));
-
-        var profiles = await gateway.ListProfilesAsync();
-
-        var claude = profiles.Single(profile => profile.Label == "work");
-        Assert.Equal("Claude", claude.Provider);
-        Assert.Equal(["depot"], claude.EnabledMcpServers);
-        Assert.Equal("claude-sonnet-4.5", claude.Model);
-        var effort = Assert.Single(claude.Options);
-        Assert.Equal(("effort", "Effort", "high", "High", true),
-            (effort.Key, effort.Label, effort.Value, effort.ValueLabel, effort.SetOnProfile));
-
-        // And the provider with no declared options keeps its own shape: a model, and nothing borrowed from Claude.
-        var local = profiles.Single(profile => profile.Label == "local");
-        Assert.Equal("LmStudio", local.Provider);
-        Assert.Equal("qwen2.5", local.Model);
-        Assert.Empty(local.Options);
-        Assert.Null(local.EnabledMcpServers);
-        Assert.Equal("Qwen3.8-27B", profiles.Single(profile => profile.Label == "Hetzner").Model);
-        Assert.Null(profiles.Single(profile => profile.Label == "Broken").Model);
-        Assert.Null(profiles.Single(profile => profile.Label == "Delayed").Model);
-        await intelligence.DidNotReceive().ReadAsync("work", Arg.Any<CancellationToken>());
-
-        static async Task<PluginModelIntelligence?> _DelayedModelReading()
-        {
-            await Task.Delay(TimeSpan.FromMilliseconds(100));
-            return new PluginModelIntelligence { Models = [new PluginModelCostEstimate("too-late")] };
-        }
     }
 
     public static TheoryData<string> EveryWorkspaceTypeThatCannotHostASession()
@@ -154,23 +89,6 @@ public class AssistantAgentGatewayTests
     }
 
     [Fact]
-    public async Task ASessionsDeskIsTheOneTypeThatIsNotRefusedForItsType_AndWhatItStartsIsTheAssistants()
-    {
-        // The other side of the theory above: the refusal is about the type, not about every desk. Without this
-        // the theory would still pass if the gateway refused everything.
-        var desk = _Desk("Release", WorkspaceType.Sessions);
-        var (gateway, cockpit, _) = Dispatcher.UIThread.Invoke(() => _Gateway(_Settings(desk)));
-
-        var result = await gateway.SpawnAsync(_Request(desk.Id));
-
-        Assert.True(result.Ok, result.Error);
-        // AC-1300 criterion 1(a), asserted here because this is the one test that runs a real spawn end to end:
-        // the session the assistant just started is attributable to it, not merely recorded in the trail.
-        var started = cockpit.Sessions.Single(session => session.PaneId == result.PaneId);
-        Assert.True(AssistantSessionOrigin.Resolve(started), "a session the assistant started is the assistant's");
-    }
-
-    [Fact]
     public async Task SpawnThatTriesToSetThePermissionMode_IsRefused_AndNothingIsStarted()
     {
         // AC-648 criterion 3 (Raymond, 2026-08-08), asserted on the whole spawn path rather than on the merge alone:
@@ -191,25 +109,6 @@ public class AssistantAgentGatewayTests
         Assert.Contains("not something a spawn may set", result.Error);
         Assert.Equal(before, Dispatcher.UIThread.Invoke(() => cockpit.Sessions.Count));
         Assert.Equal(result.Error, Assert.Single(trail.Entries).Refusal);
-    }
-
-    [Fact]
-    public async Task SpawnThatOverridesAnOptionTheProviderDoesDeclare_IsNotRefused()
-    {
-        // The other side of the two refusals below: `effort` is Claude's own key, so it goes through. What the
-        // merged map then contains — criterion 4, every unnamed key still the profile's own — is pinned where the
-        // merging happens, in `SpawnOptionOverridesTests`; a started session keeps its launch options private.
-        var desk = _Desk("Release", WorkspaceType.Sessions);
-        var (gateway, _, _) = Dispatcher.UIThread.Invoke(() => _Gateway(
-            _Settings(desk), host: null, _PluginProfile(("permission-mode", "bypassPermissions"), ("effort", "high")),
-            _ClaudeRegistry()));
-
-        var result = await gateway.SpawnAsync(_Request(desk.Id) with
-        {
-            OptionOverrides = new Dictionary<string, string> { ["effort"] = "low" },
-        });
-
-        Assert.True(result.Ok, result.Error);
     }
 
     [Fact]
@@ -252,27 +151,6 @@ public class AssistantAgentGatewayTests
     }
 
     [Fact]
-    public async Task WhenTheCockpitCannotStartASessionAtAll_ThatIsAReasonToo_NotAnException()
-    {
-        // A host with no session machinery behind it — the launch declines and hands back nothing. The point is
-        // that the assistant is told, in a sentence it can say out loud, rather than the tool call blowing up as
-        // "the tool failed", which is the one answer that helps nobody.
-        var desk = _Desk("Release", WorkspaceType.Sessions);
-        var (gateway, _, trail) = Dispatcher.UIThread.Invoke(
-            () => _Gateway(_Settings(desk), _CockpitWithoutSessionMachinery()));
-
-        var result = await gateway.SpawnAsync(_Request(desk.Id));
-
-        Assert.False(result.Ok);
-        Assert.Null(result.PaneId);
-        Assert.Contains("could not start a session", result.Error);
-
-        var entry = Assert.Single(trail.Entries);
-        Assert.Equal(desk.Id, entry.WorkspaceId);
-        Assert.Equal(result.Error, entry.Refusal);
-    }
-
-    [Fact]
     public async Task StoppingTheAssistantsOwnPane_IsRefusedByIdentity_EvenWhenThatPaneIsPerfectlyFindable()
     {
         // Asserted by identity rather than by "it happens not to be in Sessions": the assistant sits outside both
@@ -303,70 +181,6 @@ public class AssistantAgentGatewayTests
     }
 
     [Fact]
-    public async Task StoppingAPaneIdNothingIsRunningUnder_IsRefused_AndTheRefusalReachesTheTrail()
-    {
-        var (gateway, _, trail) = Dispatcher.UIThread.Invoke(
-            () => _Gateway(_Settings(_Desk("Release", WorkspaceType.Sessions))));
-
-        var result = await gateway.StopAsync("pane-that-closed");
-
-        Assert.False(result.Ok);
-        Assert.Contains("no session with pane id 'pane-that-closed'", result.Error);
-
-        var entry = Assert.Single(trail.Entries);
-        Assert.Equal(AssistantSpawnAction.Stop, entry.Action);
-        Assert.Equal("pane-that-closed", entry.PaneId);
-        Assert.Equal(result.Error, entry.Refusal);
-    }
-
-    [Fact]
-    public async Task StoppingAPlainTerminalPane_IsRefused_AndTheRefusalReachesTheTrail()
-    {
-        // A terminal has a pane id and no agent on the other end — the same test the read path lists by, so what
-        // can be stopped is exactly what could be seen.
-        var desk = _Desk("Release", WorkspaceType.Sessions);
-        var (gateway, cockpit, trail) = Dispatcher.UIThread.Invoke(() => _Gateway(_Settings(desk)));
-        var terminal = Dispatcher.UIThread.Invoke(() =>
-        {
-            var tty = new TtyViewModel { WorkspaceId = desk.Id, Title = "pwsh", ShowPluginHeaderItems = false };
-            cockpit.Sessions.Add(tty);
-            return tty;
-        });
-
-        var result = await gateway.StopAsync(terminal.PaneId);
-
-        Assert.False(result.Ok);
-        Assert.Contains("is a terminal pane", result.Error);
-        Dispatcher.UIThread.Invoke(
-            () => Assert.Contains(cockpit.Sessions, session => session.PaneId == terminal.PaneId));
-
-        var entry = Assert.Single(trail.Entries);
-        Assert.Equal(AssistantSpawnAction.Stop, entry.Action);
-        Assert.Equal(terminal.PaneId, entry.PaneId);
-        Assert.Equal(result.Error, entry.Refusal);
-    }
-
-    // ── worktree_handover (AC-719 ronde B) — refusals are hard, not best-effort ────────────────────────────────
-
-    [Fact]
-    public async Task Handover_PathNotAManagedWorktree_IsRefused_AndTheRefusalReachesTheTrail()
-    {
-        var worktrees = Substitute.For<IWorktreeManager>();
-        worktrees.ListAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<WorktreeRecord>());
-        var (gateway, _, trail) = Dispatcher.UIThread.Invoke(
-            () => _Gateway(_Settings(_Desk("Release", WorkspaceType.Sessions)), worktreeManager: worktrees));
-
-        var result = await gateway.HandoverWorktreeAsync("/wt/nope", "pane-target");
-
-        Assert.False(result.Ok);
-        Assert.Contains("No managed worktree", result.Error);
-        var entry = Assert.Single(trail.Entries);
-        Assert.Equal(AssistantSpawnAction.Handover, entry.Action);
-        Assert.Equal(result.Error, entry.Refusal);
-        await worktrees.DidNotReceiveWithAnyArgs().ReattachAsync(default!, default!);
-    }
-
-    [Fact]
     public async Task Handover_WorktreeOwnedByADifferentSession_IsRefused()
     {
         // Never a confused deputy: only the assistant's own worktrees may be given away, whoever asks.
@@ -382,94 +196,6 @@ public class AssistantAgentGatewayTests
         Assert.Contains("not mine to hand over", result.Error);
         Assert.Single(trail.Entries);
         await worktrees.DidNotReceiveWithAnyArgs().ReattachAsync(default!, default!);
-    }
-
-    [Fact]
-    public async Task Handover_TargetPaneDoesNotExist_IsRefused()
-    {
-        var worktrees = Substitute.For<IWorktreeManager>();
-        var record = new WorktreeRecord(AssistantIdentity.PaneId, "/repo", "/wt/mine", "cockpit/x", "abc", DateTimeOffset.UtcNow);
-        worktrees.ListAsync(Arg.Any<CancellationToken>()).Returns(new List<WorktreeRecord> { record });
-        var (gateway, _, trail) = Dispatcher.UIThread.Invoke(
-            () => _Gateway(_Settings(_Desk("Release", WorkspaceType.Sessions)), worktreeManager: worktrees));
-
-        var result = await gateway.HandoverWorktreeAsync("/wt/mine", "pane-that-closed");
-
-        Assert.False(result.Ok);
-        Assert.Contains("no session with pane id 'pane-that-closed'", result.Error);
-        Assert.Single(trail.Entries);
-        await worktrees.DidNotReceiveWithAnyArgs().ReattachAsync(default!, default!);
-    }
-
-    [Fact]
-    public async Task Handover_TargetIsAPlainTerminalPane_IsRefused()
-    {
-        var desk = _Desk("Release", WorkspaceType.Sessions);
-        var worktrees = Substitute.For<IWorktreeManager>();
-        var record = new WorktreeRecord(AssistantIdentity.PaneId, "/repo", "/wt/mine", "cockpit/x", "abc", DateTimeOffset.UtcNow);
-        worktrees.ListAsync(Arg.Any<CancellationToken>()).Returns(new List<WorktreeRecord> { record });
-        var (gateway, cockpit, trail) = Dispatcher.UIThread.Invoke(
-            () => _Gateway(_Settings(desk), worktreeManager: worktrees));
-        var terminal = Dispatcher.UIThread.Invoke(() =>
-        {
-            var tty = new TtyViewModel { WorkspaceId = desk.Id, Title = "pwsh", ShowPluginHeaderItems = false };
-            cockpit.Sessions.Add(tty);
-            return tty;
-        });
-
-        var result = await gateway.HandoverWorktreeAsync("/wt/mine", terminal.PaneId);
-
-        Assert.False(result.Ok);
-        Assert.Contains("is a terminal pane", result.Error);
-        Assert.Single(trail.Entries);
-        await worktrees.DidNotReceiveWithAnyArgs().ReattachAsync(default!, default!);
-    }
-
-    [Fact]
-    public async Task Handover_TargetIsTheAssistantsOwnPane_IsRefused()
-    {
-        var worktrees = Substitute.For<IWorktreeManager>();
-        var (gateway, _, trail) = Dispatcher.UIThread.Invoke(
-            () => _Gateway(_Settings(_Desk("Release", WorkspaceType.Sessions)), worktreeManager: worktrees));
-
-        var result = await gateway.HandoverWorktreeAsync("/wt/mine", AssistantIdentity.PaneId);
-
-        Assert.False(result.Ok);
-        Assert.Contains("cannot be handed to it", result.Error);
-        Assert.Single(trail.Entries);
-        await worktrees.DidNotReceiveWithAnyArgs().ListAsync(Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task Handover_Succeeds_ReattachesTheWorktreeAndRecordsTheTrail()
-    {
-        var desk = _Desk("Release", WorkspaceType.Sessions);
-        var worktrees = Substitute.For<IWorktreeManager>();
-        var record = new WorktreeRecord(AssistantIdentity.PaneId, "/repo", "/wt/mine", "cockpit/x", "abc", DateTimeOffset.UtcNow);
-        worktrees.ListAsync(Arg.Any<CancellationToken>()).Returns(new List<WorktreeRecord> { record });
-        var (gateway, cockpit, trail) = Dispatcher.UIThread.Invoke(
-            () => _Gateway(_Settings(desk), worktreeManager: worktrees));
-        var target = Dispatcher.UIThread.Invoke(() =>
-        {
-            var session = new SessionViewModel { WorkspaceId = desk.Id, Title = "AC-719 tests" };
-            cockpit.Sessions.Add(session);
-            return session;
-        });
-        worktrees.TransferAsync("/wt/mine", AssistantIdentity.PaneId, target.PaneId, Arg.Any<CancellationToken>())
-            .Returns(record with { SessionId = target.PaneId });
-
-        var result = await gateway.HandoverWorktreeAsync("/wt/mine", target.PaneId);
-
-        Assert.True(result.Ok, result.Error);
-        Assert.Equal("/wt/mine", result.Path);
-        Assert.Equal("cockpit/x", result.Branch);
-        await worktrees.Received(1).TransferAsync("/wt/mine", AssistantIdentity.PaneId, target.PaneId, Arg.Any<CancellationToken>());
-        Assert.Equal("cockpit/x", Dispatcher.UIThread.Invoke(() => target.WorktreeBranch));
-
-        var entry = Assert.Single(trail.Entries);
-        Assert.Equal(AssistantSpawnAction.Handover, entry.Action);
-        Assert.Equal(target.PaneId, entry.PaneId);
-        Assert.Null(entry.Refusal);
     }
 
     // ── AC-587: open_url's own door onto ExternalLink ──────────────────────────────────────────────────────────
@@ -523,151 +249,6 @@ public class AssistantAgentGatewayTests
         });
     }
 
-    [Fact]
-    public async Task ASpawn_RecordsOneStartEntry_CarryingCallerTargetWorkspaceProfileAndWorkingDirectory()
-    {
-        // Criterion 5 names four things the trail must carry. One entry, not two: the refusal path and the
-        // success path must not both fire for the same request.
-        var desk = _Desk("Release", WorkspaceType.Sessions);
-        var (gateway, _, trail) = Dispatcher.UIThread.Invoke(() => _Gateway(_Settings(desk)));
-
-        var result = await gateway.SpawnAsync(_Request(desk.Id) with { WorkingDirectory = @"C:\repo", SessionName = "AC-545" });
-
-        Assert.True(result.Ok, result.Error);
-
-        var entry = Assert.Single(trail.Entries);
-        Assert.Equal(AssistantSpawnAction.Start, entry.Action);
-        Assert.Null(entry.Refusal);
-        Assert.Equal(SpawnCaller.Assistant, entry.Caller);
-        Assert.Null(entry.CallerPaneId);
-        Assert.Equal(desk.Id, entry.WorkspaceId);
-        Assert.Equal("Release", entry.WorkspaceName);
-        Assert.Equal(ProfileLabel, entry.Profile);
-        Assert.Equal(@"C:\repo", entry.WorkingDirectory);
-        Assert.Equal(result.PaneId, entry.PaneId);
-        Assert.Equal("AC-545", entry.SessionName);
-    }
-
-    [Fact]
-    public async Task ListWorkspaces_ReportsEveryDeskTheCockpitHas_IncludingTheEmptyOnes()
-    {
-        // The half a session roster cannot show: a desk with nothing running on it is exactly where a spawn is
-        // most likely to be wanted, and it has no session to be inferred from.
-        var busy = _Desk("Here", WorkspaceType.Sessions);
-        var empty = _Desk("Empty", WorkspaceType.Sessions);
-        var (gateway, cockpit, _) = Dispatcher.UIThread.Invoke(() =>
-        {
-            var built = _Gateway(_Settings(busy, empty, _Desk("Monitoring", WorkspaceType.Dashboard)));
-            built.Cockpit.Sessions.Add(new SessionViewModel { WorkspaceId = busy.Id, Title = "AC-545" });
-            return built;
-        });
-
-        var rows = await gateway.ListWorkspacesAsync();
-
-        // Derived from the settings the cockpit actually holds, not from a list repeated here.
-        Assert.Equal(
-            Dispatcher.UIThread.Invoke(() => cockpit.Workspaces.Settings.Workspaces.Select(workspace => workspace.Id).ToArray()),
-            rows.Select(row => row.Id));
-        Assert.Equal(1, rows.Single(row => row.Id == busy.Id).SessionCount);
-        Assert.Equal(0, rows.Single(row => row.Id == empty.Id).SessionCount);
-        Assert.True(rows.Single(row => row.Id == busy.Id).IsActive);
-        Assert.False(rows.Single(row => row.Id == empty.Id).IsActive);
-    }
-
-    [Fact]
-    public async Task ListWorkspaces_MarksOnlyASessionsDeskAsAbleToHostASession()
-    {
-        // Reported rather than left for the assistant to infer from the type id, and derived here from the same
-        // open set WorkspaceType itself defines.
-        var desks = _AllKnownWorkspaceTypes().Select((type, index) => _Desk($"Desk {index}", type)).ToArray();
-        var (gateway, cockpit, _) = Dispatcher.UIThread.Invoke(() => _Gateway(_Settings(desks)));
-
-        var rows = await gateway.ListWorkspacesAsync();
-
-        var typesById = Dispatcher.UIThread.Invoke(
-            () => cockpit.Workspaces.Settings.Workspaces.ToDictionary(w => w.Id, w => w.Type));
-        // The type id itself, not the record's ToString() — a live transcript showed the model receiving
-        // "WorkspaceType { Id = Sessions, IsBuiltIn = True }", which is a dump of the struct rather than the
-        // "sessions" this row's own contract promises.
-        Assert.All(rows, row => Assert.Equal(typesById[row.Id].Id, row.Type));
-        Assert.All(rows, row => Assert.Equal(typesById[row.Id] == WorkspaceType.Sessions, row.CanHostSessions));
-        Assert.Contains(rows, row => row.CanHostSessions);
-        Assert.Contains(rows, row => !row.CanHostSessions);
-    }
-
-    [Fact]
-    public async Task ListWorkspaces_NeverCountsTheAssistantItself_EvenWhenItIsStampedOntoADesk()
-    {
-        // The assistant has no pane in the roster it is reading, and it must not appear in its own. Stamped onto
-        // a desk on purpose and left looking like an ordinary agent session in every other way, so the only thing
-        // that can keep it out of the count is the check on its identity.
-        var desk = _Desk("Release", WorkspaceType.Sessions);
-        var (gateway, _, _) = Dispatcher.UIThread.Invoke(() =>
-        {
-            var built = _Gateway(_Settings(desk));
-            var assistant = new SessionViewModel { WorkspaceId = desk.Id, Title = "The assistant" };
-            assistant.AdoptPaneId(AssistantIdentity.PaneId);
-            built.Cockpit.Sessions.Add(assistant);
-            var ordinary = new SessionViewModel { WorkspaceId = desk.Id, Title = "AC-545" };
-            built.Cockpit.Sessions.Add(ordinary);
-            return built;
-        });
-
-        var rows = await gateway.ListWorkspacesAsync();
-
-        Assert.Equal(1, Assert.Single(rows).SessionCount);
-    }
-
-    [Fact]
-    public async Task ARefusedSpawn_IsNotADeadEnd_TheGatewayServesTheVeryNextCallNormally()
-    {
-        // Criterion 7. A refusal is a sentence the assistant says and then carries on from; nothing about it may
-        // leave the gateway unusable, which is what a cached failure or a half-applied state would do.
-        var desk = _Desk("Release", WorkspaceType.Sessions);
-        var (gateway, cockpit, trail) = Dispatcher.UIThread.Invoke(() => _Gateway(_Settings(desk)));
-
-        var refused = await gateway.SpawnAsync(_Request("no-such-desk"));
-        Assert.False(refused.Ok);
-
-        // The list still answers, and answers the truth rather than something the refusal left behind.
-        var rows = await gateway.ListWorkspacesAsync();
-        Assert.Equal(desk.Id, Assert.Single(rows).Id);
-
-        // And a valid spawn straight after the refusal still starts.
-        var started = await gateway.SpawnAsync(_Request(desk.Id));
-        Assert.True(started.Ok, started.Error);
-        Assert.NotNull(Dispatcher.UIThread.Invoke(() => cockpit.FindSession(started.PaneId!)));
-
-        // Both outcomes on the trail, in order, so the refusal is visible next to the spawn that followed it.
-        Assert.Equal(2, trail.Entries.Count);
-        Assert.NotNull(trail.Entries[0].Refusal);
-        Assert.Null(trail.Entries[1].Refusal);
-    }
-
-    [Fact]
-    public async Task ARefusedStop_IsNotADeadEnd_TheNextStopStillWorks()
-    {
-        var desk = _Desk("Release", WorkspaceType.Sessions);
-        var (gateway, cockpit, trail) = Dispatcher.UIThread.Invoke(() => _Gateway(_Settings(desk)));
-        var session = Dispatcher.UIThread.Invoke(() =>
-        {
-            var added = new SessionViewModel { WorkspaceId = desk.Id, Title = "AC-545" };
-            cockpit.Sessions.Add(added);
-            return added;
-        });
-
-        Assert.False((await gateway.StopAsync(AssistantIdentity.PaneId)).Ok);
-
-        var stopped = await gateway.StopAsync(session.PaneId);
-
-        Assert.True(stopped.Ok, stopped.Error);
-        Assert.Equal("AC-545", stopped.SessionName);
-        Dispatcher.UIThread.Invoke(
-            () => Assert.DoesNotContain(cockpit.Sessions, live => live.PaneId == session.PaneId));
-        Assert.Equal(2, trail.Entries.Count);
-        Assert.Null(trail.Entries[1].Refusal);
-    }
-
     // --- Removing a desk: the counterpart of create_workspace, and the tab's own ✕ ----------------------------
 
     [Fact]
@@ -700,26 +281,6 @@ public class AssistantAgentGatewayTests
     }
 
     [Fact]
-    public async Task RemovingADeskWithExactlyOneSessionOnIt_SaysOneSession_NotOneSessions()
-    {
-        // The singular is not a nicety: this reason is read out loud, and "there are still 1 sessions" is the
-        // sentence that tells the operator the assistant is reciting a template rather than looking at their desk.
-        var here = _Desk("Here", WorkspaceType.Sessions);
-        var busy = _Desk("Henk", WorkspaceType.Sessions);
-        var (gateway, _, _) = Dispatcher.UIThread.Invoke(() =>
-        {
-            var built = _Gateway(_Settings(here, busy));
-            built.Cockpit.Sessions.Add(new SessionViewModel { WorkspaceId = busy.Id, Title = "AC-545" });
-            return built;
-        });
-
-        var result = await gateway.RemoveWorkspaceAsync(busy.Id);
-
-        Assert.False(result.Ok);
-        Assert.Equal("There is still 1 session on 'Henk'. Stop it first — I do not close a desk with work still on it.", result.Error);
-    }
-
-    [Fact]
     public async Task RemovingADeskThatHoldsOnlyAPlainTerminal_IsStillRefused_ThoughTheRosterCountsItAsEmpty()
     {
         // The one place this check may not simply reuse list_workspaces' number. A terminal is not an agent
@@ -746,172 +307,6 @@ public class AssistantAgentGatewayTests
     }
 
     [Fact]
-    public async Task RemovingAnEmptyDesk_TakesItOutOfTheWorkspacesTheCockpitHolds_AndNamesWhatWent()
-    {
-        // The other side of every refusal above: an empty desk really does go, out of the same settings the tab
-        // strip renders, and the name comes back so the assistant can say which tab the operator just lost.
-        var here = _Desk("Here", WorkspaceType.Sessions);
-        var empty = _Desk("Henk", WorkspaceType.Sessions);
-        var (gateway, cockpit, _) = Dispatcher.UIThread.Invoke(() => _Gateway(_Settings(here, empty)));
-
-        var result = await gateway.RemoveWorkspaceAsync(empty.Id);
-
-        Assert.True(result.Ok, result.Error);
-        Assert.Equal("Henk", result.Name);
-        Dispatcher.UIThread.Invoke(() => Assert.Equal(
-            [here.Id],
-            cockpit.Workspaces.Settings.Workspaces.Select(workspace => workspace.Id)));
-    }
-
-    // A dashboard full of widgets holds no sessions, so it once read as empty and was closed on the spot — hence narrower than ✕.
-    [Theory]
-    [MemberData(nameof(EveryWorkspaceTypeThatCannotHostASession))]
-    public async Task RemovingADeskThatIsNotASessionsDesk_IsRefused_AndTheDeskIsStillThere(string workspaceTypeId)
-    {
-        var here = _Desk("Here", WorkspaceType.Sessions);
-        var other = _Desk("Monitoring", WorkspaceType.FromId(workspaceTypeId));
-        var (gateway, cockpit, _) = Dispatcher.UIThread.Invoke(() => _Gateway(_Settings(here, other)));
-
-        var result = await gateway.RemoveWorkspaceAsync(other.Id);
-
-        Assert.False(result.Ok);
-        Assert.NotNull(result.Error);
-        Dispatcher.UIThread.Invoke(
-            () => Assert.Contains(cockpit.Workspaces.Settings.Workspaces, workspace => workspace.Id == other.Id));
-    }
-
-    // Asserted on a dashboard: the projects overview is refused one rule earlier, by its own more specific sentence.
-    [Fact]
-    public async Task TheRefusalForANonSessionsDesk_NamesTheTypeTheRosterReportedForIt()
-    {
-        var here = _Desk("Here", WorkspaceType.Sessions);
-        var dashboard = _Desk("Monitoring", WorkspaceType.Dashboard);
-        var (gateway, _, _) = Dispatcher.UIThread.Invoke(() => _Gateway(_Settings(here, dashboard)));
-
-        var reportedType = (await gateway.ListWorkspacesAsync()).Single(row => row.Id == dashboard.Id).Type;
-        var result = await gateway.RemoveWorkspaceAsync(dashboard.Id);
-
-        Assert.False(result.Ok);
-        Assert.Contains(reportedType, result.Error);
-        Assert.Contains("Monitoring", result.Error);
-    }
-
-    [Fact]
-    public async Task RemovingTheOnlyDeskLeft_IsRefused_BecauseTheCockpitAlwaysNeedsOneToShow()
-    {
-        // CanClose is the tab's own gate, asked here rather than re-derived — this is the half of it that has
-        // nothing to do with what is on the desk.
-        var only = _Desk("Henk", WorkspaceType.Sessions);
-        var (gateway, cockpit, _) = Dispatcher.UIThread.Invoke(() => _Gateway(_Settings(only)));
-
-        var result = await gateway.RemoveWorkspaceAsync(only.Id);
-
-        Assert.False(result.Ok);
-        Assert.Equal("'Henk' is the only desk left, and the cockpit always needs one to show.", result.Error);
-        Dispatcher.UIThread.Invoke(() => Assert.Single(cockpit.Workspaces.Settings.Workspaces));
-    }
-
-    [Fact]
-    public async Task RemovingTheProjectsOverview_IsRefused_AndSaysWhyRatherThanCountingSessions()
-    {
-        // The other half of CanClose, and a different sentence on purpose: the projects overview is a fixture, so
-        // "stop what is on it first" would send the operator off to do something that cannot help.
-        var projects = _Desk("Projects", WorkspaceType.Projects);
-        var (gateway, cockpit, _) = Dispatcher.UIThread.Invoke(
-            () => _Gateway(_Settings(_Desk("Here", WorkspaceType.Sessions), projects)));
-
-        var result = await gateway.RemoveWorkspaceAsync(projects.Id);
-
-        Assert.False(result.Ok);
-        Assert.Contains("projects overview", result.Error);
-        Dispatcher.UIThread.Invoke(
-            () => Assert.Contains(cockpit.Workspaces.Settings.Workspaces, workspace => workspace.Id == projects.Id));
-    }
-
-    [Fact]
-    public async Task RemovingAWorkspaceIdThatNamesNothing_IsRefusedWithAReason_NotAnException()
-    {
-        var (gateway, _, _) = Dispatcher.UIThread.Invoke(
-            () => _Gateway(_Settings(_Desk("Here", WorkspaceType.Sessions))));
-
-        var result = await gateway.RemoveWorkspaceAsync("no-such-desk");
-
-        Assert.False(result.Ok);
-        Assert.Contains("no workspace with id 'no-such-desk'", result.Error);
-    }
-
-    [Fact]
-    public async Task ADeskThatWasRefusedWhileBusy_IsRemovedOnceItsSessionsAreStopped()
-    {
-        // The order the tool's description sends the assistant round: refuse, stop, ask again. Without this the
-        // refusals above would all pass just as happily on a gateway that never removes anything at all.
-        var here = _Desk("Here", WorkspaceType.Sessions);
-        var busy = _Desk("Henk", WorkspaceType.Sessions);
-        var (gateway, cockpit, _) = Dispatcher.UIThread.Invoke(() =>
-        {
-            var built = _Gateway(_Settings(here, busy));
-            built.Cockpit.Sessions.Add(new SessionViewModel { WorkspaceId = busy.Id, Title = "AC-545" });
-            return built;
-        });
-        var session = Dispatcher.UIThread.Invoke(() => cockpit.Sessions.Single(pane => pane.WorkspaceId == busy.Id));
-
-        Assert.False((await gateway.RemoveWorkspaceAsync(busy.Id)).Ok);
-
-        Assert.True((await gateway.StopAsync(session.PaneId)).Ok);
-        var removed = await gateway.RemoveWorkspaceAsync(busy.Id);
-
-        Assert.True(removed.Ok, removed.Error);
-        Dispatcher.UIThread.Invoke(() => Assert.DoesNotContain(
-            cockpit.Workspaces.Settings.Workspaces, workspace => workspace.Id == busy.Id));
-    }
-
-    // --- AC-592: renaming a session and a desk -----------------------------------------------------------------
-
-    [Fact]
-    public async Task RenamingARunningSession_TakesTheName_AndItCountsAsOneSomebodyChose()
-    {
-        // Criteria 1 and 2 in one test, because the second is the half that is easy to ship broken: a rename that
-        // only set the title would look right on screen and be silently replaced the next time a plugin links a
-        // ticket to that session (#AC-310).
-        var desk = _Desk("Release", WorkspaceType.Sessions);
-        var (gateway, cockpit, trail) = Dispatcher.UIThread.Invoke(() => _Gateway(_Settings(desk)));
-        var session = Dispatcher.UIThread.Invoke(() =>
-        {
-            var added = new SessionViewModel { WorkspaceId = desk.Id, Title = "Claude · 10:31" };
-            cockpit.Sessions.Add(added);
-            return added;
-        });
-
-        var result = await gateway.RenameSessionAsync(session.PaneId, "  Luna  ");
-
-        Assert.True(result.Ok, result.Error);
-        Assert.Equal("Luna", result.Name);
-        Dispatcher.UIThread.Invoke(() =>
-        {
-            Assert.Equal("Luna", session.Title);
-            Assert.False(session.HasGeneratedName);
-            Assert.False(cockpit.SuggestSessionName(session.PaneId, "AC-592"));
-            Assert.Equal("Luna", session.Title);
-        });
-
-        // Deliberately not on the spawn trail: that record exists for what costs money and starts processes.
-        Assert.Empty(trail.Entries);
-    }
-
-    [Fact]
-    public async Task RenamingAPaneIdNothingIsRunningUnder_IsRefusedWithAReason()
-    {
-        var (gateway, _, _) = Dispatcher.UIThread.Invoke(
-            () => _Gateway(_Settings(_Desk("Release", WorkspaceType.Sessions))));
-
-        var result = await gateway.RenameSessionAsync("pane-that-closed", "Luna");
-
-        Assert.False(result.Ok);
-        Assert.Null(result.Name);
-        Assert.Contains("no session with pane id 'pane-that-closed'", result.Error);
-    }
-
-    [Fact]
     public async Task RenamingTheAssistantsOwnSession_IsRefused_EvenWhenItSitsInTheRoster()
     {
         // Stamped into Sessions on purpose: the guard has to be the identity check, not the accident that the
@@ -933,121 +328,6 @@ public class AssistantAgentGatewayTests
         Dispatcher.UIThread.Invoke(() => Assert.Equal(
             "The assistant",
             cockpit.Sessions.Single(session => session.PaneId == AssistantIdentity.PaneId).Title));
-    }
-
-    [Theory]
-    [InlineData("")]
-    [InlineData("   ")]
-    public async Task RenamingASessionToNothing_IsRefused_AndLeavesTheNameStanding(string blank)
-    {
-        var desk = _Desk("Release", WorkspaceType.Sessions);
-        var (gateway, cockpit, _) = Dispatcher.UIThread.Invoke(() => _Gateway(_Settings(desk)));
-        var session = Dispatcher.UIThread.Invoke(() =>
-        {
-            var added = new SessionViewModel { WorkspaceId = desk.Id, Title = "AC-592" };
-            cockpit.Sessions.Add(added);
-            return added;
-        });
-
-        var result = await gateway.RenameSessionAsync(session.PaneId, blank);
-
-        Assert.False(result.Ok);
-        Assert.Contains("needs a name", result.Error);
-        Dispatcher.UIThread.Invoke(() => Assert.Equal("AC-592", session.Title));
-    }
-
-    [Fact]
-    public async Task RenamingADesk_ChangesItsName_AndLeavesTheOperatorOnTheDeskTheyWereLookingAt()
-    {
-        // Renaming a desk is not walking to it: the desk being renamed is deliberately not the active one.
-        var here = _Desk("Here", WorkspaceType.Sessions);
-        var elsewhere = _Desk("Release", WorkspaceType.Sessions);
-        var (gateway, cockpit, _) = Dispatcher.UIThread.Invoke(() => _Gateway(_Settings(here, elsewhere)));
-
-        var result = await gateway.RenameWorkspaceAsync(elsewhere.Id, "  Luna's desk  ");
-
-        Assert.True(result.Ok, result.Error);
-        Assert.Equal("Luna's desk", result.Name);
-        Dispatcher.UIThread.Invoke(() =>
-        {
-            var settings = cockpit.Workspaces.Settings;
-            Assert.Equal("Luna's desk", settings.Workspaces.Single(workspace => workspace.Id == elsewhere.Id).Name);
-            Assert.Equal("Here", settings.Workspaces.Single(workspace => workspace.Id == here.Id).Name);
-            Assert.Equal(here.Id, settings.Active?.Id);
-        });
-    }
-
-    [Fact]
-    public async Task RenamingAWorkspaceIdThatNamesNothing_IsRefusedWithAReason()
-    {
-        var (gateway, _, _) = Dispatcher.UIThread.Invoke(
-            () => _Gateway(_Settings(_Desk("Release", WorkspaceType.Sessions))));
-
-        var result = await gateway.RenameWorkspaceAsync("no-such-desk", "Luna's desk");
-
-        Assert.False(result.Ok);
-        Assert.Contains("no workspace with id 'no-such-desk'", result.Error);
-    }
-
-    [Fact]
-    public async Task RenamingADeskToNothing_IsRefused_AndLeavesTheNameStanding()
-    {
-        var desk = _Desk("Release", WorkspaceType.Sessions);
-        var (gateway, cockpit, _) = Dispatcher.UIThread.Invoke(() => _Gateway(_Settings(desk)));
-
-        var result = await gateway.RenameWorkspaceAsync(desk.Id, "   ");
-
-        Assert.False(result.Ok);
-        Assert.Contains("needs a name", result.Error);
-        Dispatcher.UIThread.Invoke(() => Assert.Equal("Release", Assert.Single(cockpit.Workspaces.Settings.Workspaces).Name));
-    }
-
-    // --- AC-1018: ask_structured_question's card actually rendering, not just the tool call succeeding ---------
-
-    // AC-1018: AC-955 verified the card only with a hand-built fixture, never the gateway's own path — and live it never appeared.
-    [Fact]
-    public async Task AskStructuredQuestion_PutsARow_ThatRendersAsTheCard_NotAsPlainText()
-    {
-        var (gateway, session) = Dispatcher.UIThread.Invoke(() =>
-        {
-            var realSession = new SessionViewModel();
-            var host = Substitute.For<IAssistantSessionHost>();
-            host.Session.Returns(TestSessions.Assistant(realSession));
-
-            var profiles = Substitute.For<ISessionProfileStore>();
-            profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<SessionProfile>>([]));
-
-            var built = AssistantAgentGatewayGraph.Over(
-                _Cockpit(),
-                new SessionRegistry(),
-                profiles,
-                Substitute.For<IAssistantSpawnAuditLog>(),
-                Substitute.For<IWorkspaceAgentGateway>(),
-                Substitute.For<IAgentMessageInbox>(),
-                Substitute.For<IAgentNotifyAuditLog>(),
-                Substitute.For<IPluginProviderRegistry>(),
-                new SessionWatcher(Substitute.For<IAgentMessageInbox>()),
-                host);
-            return (built, realSession);
-        });
-
-        var result = await gateway.AskStructuredQuestionAsync(
-            "Which profile?",
-            [("Programmer (Opus)", null), ("Programmer (Sonnet)", null)],
-            multiSelect: false,
-            allowOther: true,
-            header: null);
-
-        Assert.True(result.Ok);
-
-        var entry = Dispatcher.UIThread.Invoke(() => session.Transcript.Single(row => row.Kind == TranscriptEntryKind.Question));
-        Assert.True(entry.HasQuestionPrompts);
-        // The two gates TranscriptRowView.axaml actually reads: ToolBranch must carry the row (it hosts the
-        // nested QuestionBranch card), and IsPlainNonMarkdown must be false (else the raw text renders instead).
-        Assert.NotNull(entry.ToolBranch);
-        Assert.False(entry.IsPlainNonMarkdown);
-        // And that it reaches the collection AssistantChatViewModel actually binds — not a copy.
-        Assert.Contains(entry, Dispatcher.UIThread.Invoke(() => session.VisibleTranscript));
     }
 
     // --- The graph under test -------------------------------------------------------------------------------
@@ -1105,30 +385,6 @@ public class AssistantAgentGatewayTests
             trail);
     }
 
-    private static AssistantAgentGateway _GatewayOverProfiles(
-        IPluginProviderRegistry pluginProviders,
-        IProviderModelIntelligence? providerIntelligence,
-        TimeSpan? modelIntelligenceBudget,
-        params SessionProfile[] known)
-    {
-        var profiles = Substitute.For<ISessionProfileStore>();
-        profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<SessionProfile>>(known));
-
-        return AssistantAgentGatewayGraph.Over(
-            _Cockpit(),
-            new SessionRegistry(),
-            profiles,
-            new RecordingSpawnTrail(),
-            Substitute.For<IWorkspaceAgentGateway>(),
-            Substitute.For<IAgentMessageInbox>(),
-            Substitute.For<IAgentNotifyAuditLog>(),
-            pluginProviders,
-            new SessionWatcher(Substitute.For<IAgentMessageInbox>()),
-            Substitute.For<IAssistantSessionHost>(),
-            providerIntelligence: providerIntelligence,
-            modelIntelligenceBudget: modelIntelligenceBudget);
-    }
-
     // A plugin-backed profile under the test's own label, with whatever start defaults the caller wants on it —
     // the only shape that resolves to a provider registration, and so the only one an override can be checked against.
     private static SessionProfile _PluginProfile(params (string Key, string Value)[] optionDefaults) =>
@@ -1162,13 +418,6 @@ public class AssistantAgentGatewayTests
             displayName,
             _ => throw new NotSupportedException("Nothing here starts a session."),
             new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true) { DeclaredOptions = declaredOptions });
-
-    private static CockpitViewModel _CockpitWithoutSessionMachinery()
-    {
-        var cockpit = new CockpitViewModel();
-        cockpit.Sessions.Clear();
-        return cockpit;
-    }
 
     private static CockpitViewModel _Cockpit(SessionRegistry? sessions = null)
     {

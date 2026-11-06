@@ -47,10 +47,7 @@ public class CockpitHostProbeMcpToolFallbackScopingTests
     private static DesktopBackendHost _BuildHost(IMcpToolProbe probe, IReadOnlyList<IPluginMcpProvider> providers, Type? ownPluginType)
     {
         var collection = new ServiceCollection().AddSingleton(probe);
-        foreach (var provider in providers)
-        {
-            collection.AddSingleton(provider);
-        }
+        collection.AddSingleton(new PluginMcpProviderRegistry([.. providers]));
 
         var services = collection.BuildServiceProvider();
         return new DesktopBackendHost(

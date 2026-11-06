@@ -36,8 +36,6 @@ internal sealed class LayoutSettingsEntry
 
     public bool AgentsPaletteEnabled { get; set; } = true;
 
-    public bool AgentsPaletteTitleButton { get; set; } = true;
-
     public bool AgentsPaletteRailIcon { get; set; }
 
     public ThemeMode ThemeMode { get; set; } = ThemeMode.Dark;
@@ -67,7 +65,6 @@ internal sealed class LayoutSettingsEntry
         CompanionWindowVisible = settings.CompanionWindowVisible,
         OpenInSimpleView = settings.OpenInSimpleView,
         AgentsPaletteEnabled = settings.AgentsPaletteEnabled,
-        AgentsPaletteTitleButton = settings.AgentsPaletteTitleButton,
         AgentsPaletteRailIcon = settings.AgentsPaletteRailIcon,
         ThemeMode = settings.ThemeMode,
         AssistantThreadRailWindow = settings.AssistantThreadRailWindow,
@@ -93,7 +90,6 @@ internal sealed class LayoutSettingsEntry
         CompanionWindowVisible = CompanionWindowVisible,
         OpenInSimpleView = OpenInSimpleView,
         AgentsPaletteEnabled = AgentsPaletteEnabled,
-        AgentsPaletteTitleButton = AgentsPaletteTitleButton,
         AgentsPaletteRailIcon = AgentsPaletteRailIcon,
         ThemeMode = ThemeMode,
         AssistantThreadRailWindow = AssistantThreadRailWindow,

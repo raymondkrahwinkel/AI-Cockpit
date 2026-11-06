@@ -10,7 +10,7 @@ namespace Cockpit.Core.Tests.Sessions;
 public class UsageThresholdSettingsTests
 {
     [Fact]
-    public void OverridesFollowProfileThenProvider_AndClearingFallsBackToTheDeclaration()
+    public void OverridesFollowAssistantThenProfileThenProvider_AndClearingFallsBackToTheDeclaration()
     {
         var settings = new UsageThresholdSettings();
 
@@ -24,34 +24,10 @@ public class UsageThresholdSettingsTests
 
         Assert.Equal(90, settings.Resolve("claude", null, "weekly", declared: 90, isAssistant: false));
         Assert.DoesNotContain("claude", settings.ByProvider);
-    }
 
-    [Fact]
-    public void AnOutOfRangeValue_IsClampedRatherThanStored()
-    {
-        var settings = new UsageThresholdSettings();
-
-        settings.Set(settings.ByProvider, "claude", "context", 140);
-
-        Assert.Equal(100, settings.Resolve("claude", null, "context", declared: 50, isAssistant: false));
-    }
-
-    [Fact]
-    public void OneSignalsOverride_LeavesTheOthersFollowing()
-    {
-        var settings = new UsageThresholdSettings();
-        settings.Set(settings.ByProvider, "claude", "context", 40);
-
-        Assert.Equal(40, settings.Resolve("claude", null, "context", declared: 50, isAssistant: false));
-        Assert.Equal(90, settings.Resolve("claude", null, "weekly", declared: 90, isAssistant: false));
-    }
-
-    [Fact]
-    public void TheAssistantFollowsTheProfileUntilItsOwnOverrideBeatsTheProfileAndProvider()
-    {
-        // AC-805: the override hangs off the Assistant's role rather than its profile — a profile the Assistant
-        // shares with ordinary sessions must not carry the lower number along for those sessions too.
-        var settings = new UsageThresholdSettings();
+        // AC-805: the Assistant follows the profile until its own override beats the profile and provider — the
+        // override hangs off the Assistant's role rather than its profile, so a profile the Assistant shares with
+        // ordinary sessions must not carry the lower number along for those sessions too.
         settings.Set(settings.ByProfile, "personal", "context", 60);
 
         Assert.Equal(60, settings.Resolve("claude", "personal", "context", declared: 50, isAssistant: true));
@@ -63,5 +39,4 @@ public class UsageThresholdSettingsTests
         Assert.Equal(25, settings.Resolve("claude", "personal", "context", declared: 50, isAssistant: true));
         Assert.Equal(75, settings.Resolve("claude", "personal", "context", declared: 50, isAssistant: false));
     }
-
 }

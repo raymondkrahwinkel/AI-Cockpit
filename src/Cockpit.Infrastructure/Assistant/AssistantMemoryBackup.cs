@@ -60,7 +60,7 @@ internal static class AssistantMemoryBackup
 
             if (File.Exists(target))
             {
-                File.Copy(target, $"{target}.replaced-{DateTimeOffset.Now:yyyyMMdd-HHmmss}", overwrite: true);
+                CopyAside(target);
             }
 
             entry.ExtractToFile(target, overwrite: true);
@@ -74,5 +74,12 @@ internal static class AssistantMemoryBackup
         }
 
         return restored;
+    }
+
+    internal static string CopyAside(string path)
+    {
+        var backup = $"{path}.replaced-{DateTimeOffset.Now:yyyyMMdd-HHmmss-fffffff}";
+        File.Copy(path, backup);
+        return backup;
     }
 }

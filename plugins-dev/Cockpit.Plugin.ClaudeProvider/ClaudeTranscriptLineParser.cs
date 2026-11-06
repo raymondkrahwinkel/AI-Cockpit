@@ -146,10 +146,11 @@ internal static class ClaudeTranscriptLineParser
     // Extracts the `usage` object off an assistant transcript line (AC-398). `messageId` (`message.id`) is
     // needed because the CLI can write more than one line for the same API response, each repeating the
     // identical usage figure — the caller must dedupe on this id before summing, or double-counts a call (AC-481).
-    public static bool TryExtractUsage(string transcriptLine, out PluginTokenUsage? usage, out string? messageId)
+    public static bool TryExtractUsage(string transcriptLine, out PluginTokenUsage? usage, out string? messageId, out string? model)
     {
         usage = null;
         messageId = null;
+        model = null;
         if (string.IsNullOrWhiteSpace(transcriptLine))
         {
             return false;
@@ -171,8 +172,14 @@ internal static class ClaudeTranscriptLineParser
             if (!root.TryGetProperty("type", out var typeProperty)
                 || typeProperty.GetString() != "assistant"
                 || !root.TryGetProperty("message", out var message)
-                || !message.TryGetProperty("usage", out var usageElement)
-                || usageElement.ValueKind != JsonValueKind.Object)
+                || message.ValueKind != JsonValueKind.Object)
+            {
+                return false;
+            }
+
+            model = message.TryGetProperty("model", out var modelElement) && modelElement.ValueKind == JsonValueKind.String
+                ? modelElement.GetString() : null;
+            if (!message.TryGetProperty("usage", out var usageElement) || usageElement.ValueKind != JsonValueKind.Object)
             {
                 return false;
             }

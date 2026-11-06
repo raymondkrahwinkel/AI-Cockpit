@@ -17,6 +17,7 @@ public sealed partial class WidgetPaneViewModel : ObservableObject
     {
         _pane = pane;
         _context = context;
+        WidgetId = registration.Id;
         Title = registration.Title;
         Icon = registration.Icon;
         IconKind = registration.IconKind;
@@ -35,6 +36,8 @@ public sealed partial class WidgetPaneViewModel : ObservableObject
     private WorkspacePane _pane;
 
     public string Id => Pane.Id;
+
+    public string WidgetId { get; }
 
     public string Title { get; }
 

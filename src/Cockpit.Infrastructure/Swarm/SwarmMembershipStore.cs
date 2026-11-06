@@ -12,6 +12,23 @@ internal sealed class SwarmMembershipStore : ISingletonService
     private readonly string _path;
     internal SemaphoreSlim Gate { get; } = new(1, 1);
     private readonly Lock _writeGate = new();
+    private long _generation;
+    internal long Generation => Interlocked.Read(ref _generation);
+
+    internal string Reset()
+    {
+        lock (_writeGate)
+        {
+            var backup = $"{_path}.reset-{Guid.NewGuid():N}.bak";
+            if (File.Exists(_path))
+            {
+                CockpitConfigPath.WriteAllTextPrivate(backup, File.ReadAllText(_path), flushToDisk: true);
+            }
+            CockpitConfigPath.ReplaceAtomicallyPrivate(_path, "[]");
+            Interlocked.Increment(ref _generation);
+            return backup;
+        }
+    }
 
     public SwarmMembershipStore()
         : this(CockpitConfigPath.SwarmMembers)

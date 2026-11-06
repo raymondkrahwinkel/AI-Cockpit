@@ -24,6 +24,11 @@ public interface IProjectOwnershipRegistry
     bool RegisterOrRefresh(ProjectOwnershipRegistration registration, string sourceName);
 
     /// <summary>
+    /// Withdraws <paramref name="registration"/>'s claim, also after its source refreshed it; another source's claim stays.
+    /// </summary>
+    bool Remove(ProjectOwnershipRegistration registration);
+
+    /// <summary>
     /// Every <see cref="HostProjectField"/> the claiming registration resolves for <paramref name="projectId"/>,
     /// or null when nothing ever claimed this project (AC-604 acceptance criterion 4).
     /// </summary>
@@ -69,6 +74,16 @@ public sealed class ProjectOwnershipRegistry : IProjectOwnershipRegistry, ISingl
 
             _claims[registration.ProjectId] = registration;
             return true;
+        }
+    }
+
+    public bool Remove(ProjectOwnershipRegistration registration)
+    {
+        lock (_claims)
+        {
+            return _claims.TryGetValue(registration.ProjectId, out var current)
+                && string.Equals(current.Default?.SourceName, registration.Default?.SourceName, StringComparison.Ordinal)
+                && _claims.Remove(registration.ProjectId);
         }
     }
 

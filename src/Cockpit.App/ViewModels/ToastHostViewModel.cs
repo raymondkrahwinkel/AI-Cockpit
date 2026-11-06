@@ -59,6 +59,10 @@ public sealed class ToastHostViewModel
             _startupToasts?.RemoveAll(queued => ReferenceEquals(queued.Toast, toast));
         };
         item = Notifications.Post(toast, source, key, sourceId);
+        if (key is not null)
+        {
+            _keyedToasts[key] = toast;
+        }
 
         if (_startupToasts is not null)
         {
@@ -74,6 +78,19 @@ public sealed class ToastHostViewModel
         _Show(toast, sticky);
 
         return toast;
+    }
+
+    private readonly Dictionary<string, ToastViewModel> _keyedToasts = [];
+
+    // Takes down a keyed toast and its notification once what it announced no longer holds.
+    internal void Withdraw(string key)
+    {
+        if (_keyedToasts.Remove(key, out var toast))
+        {
+            toast.CloseCommand.Execute(null);
+        }
+
+        Notifications.Items.FirstOrDefault(item => item.Key == key && item.SourceId is null)?.DismissCommand.Execute(null);
     }
 
     internal ToastViewModel AddCondition(string key, string message, ToastSeverity severity,
@@ -134,14 +151,27 @@ public sealed class ToastHostViewModel
         }
     }
 
-    private static void _Resolve(ConditionToast condition)
+    // AC-2024: the buttons of a plugin that left would call into it; what it said stays readable.
+    internal void RetireSource(string sourceId)
     {
-        foreach (var action in condition.Toast.Actions)
+        foreach (var item in Notifications.Items.Where(item => item.SourceId == sourceId))
+        {
+            _DisableActions(item.Actions);
+        }
+    }
+
+    private static void _DisableActions(IReadOnlyList<ToastActionViewModel> actions)
+    {
+        foreach (var action in actions)
         {
             action.StillApplies = static () => false;
             action.InvokeCommand.NotifyCanExecuteChanged();
         }
+    }
 
+    private static void _Resolve(ConditionToast condition)
+    {
+        _DisableActions(condition.Toast.Actions);
         condition.Item.MarkResolved();
         condition.Toast.CloseCommand.Execute(null);
     }
@@ -155,6 +185,8 @@ public sealed class ToastHostViewModel
             sticky: notification.Actions.Count > 0, source, notification.Key, sourceId, notification.Title);
 
     internal void AddNotificationSource(string sourceId, Func<string, Task<PluginNotification?>> recheck) => _sources[sourceId] = recheck;
+
+    internal void RemoveNotificationSource(string sourceId) => _sources.TryRemove(sourceId, out _);
 
     // AC-1804: after the plugins registered, each kept item is asked again: still standing comes back live, else resolved.
     internal async Task RestoreNotificationsAsync(string path)
@@ -254,9 +286,12 @@ public sealed class ToastHostViewModel
     {
         Toasts.Add(toast);
 
-        if (!sticky && toast.Actions.Count == 0 && toast.Severity is ToastSeverity.Information or ToastSeverity.Success)
+        if (!sticky && toast.Actions.Count == 0)
         {
-            _scheduleAutoDismiss(toast, AutoDismissDelay);
+            var delay = toast.Severity is ToastSeverity.Warning or ToastSeverity.Error
+                ? AutoDismissDelay + AutoDismissDelay
+                : AutoDismissDelay;
+            _scheduleAutoDismiss(toast, delay);
         }
     }
 

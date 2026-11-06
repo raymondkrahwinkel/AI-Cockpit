@@ -49,6 +49,10 @@ public sealed class DepotFirstStartTests
         // A Depot without /cockpit/manifest answers 404: C2 is not offered, and that is not reported as a problem.
         Assert.Null(answer?.Manifest);
         Assert.DoesNotContain(answer?.Notes ?? [], note => note.Contains("profile", StringComparison.Ordinal));
+
+        // AC-243: the outcome's zero value is Unavailable, never Authorized; an unstubbed fake, a missed switch arm or a
+        // deserialization gap all produce the default, and none of them signed anything in.
+        Assert.Equal(PluginMcpSignInOutcome.Unavailable, default(PluginMcpSignInOutcome));
     }
 
     [Theory]

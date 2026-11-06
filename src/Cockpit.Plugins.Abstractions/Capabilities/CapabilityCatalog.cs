@@ -176,7 +176,7 @@ public static class CapabilityCatalog
             "Offering plugin stores",
             "Offers plugin stores with request-time credentials; the operator can hide each source.",
             CapabilityRisk.Sensitive,
-            "0.158.0",
+            "0.162.0",
             ["ICockpitHost.AddPluginStoreSource"],
             []),
 
@@ -357,7 +357,7 @@ public static class CapabilityCatalog
             "Serves the cockpit's issue, comment and stage lookups, so ticket content and the credentials behind it run through the plugin.",
             CapabilityRisk.Sensitive,
             "0.3.0",
-            ["ICockpitHost.AddTrackerProvider", "ICockpitHost.TrackerProviders"],
+            ["ICockpitHost.AddTrackerProvider", "ICockpitHost.TrackerProviders", "ICockpitHost.TrackerProvidersChanged"],
             []),
 
         new(

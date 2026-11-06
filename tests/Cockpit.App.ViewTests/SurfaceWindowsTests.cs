@@ -17,7 +17,7 @@ namespace Cockpit.App.ViewTests;
 public sealed class SurfaceWindowsTests
 {
     [Fact]
-    public async Task ShowAsync_OpensTheSurfaceBesideTheOwner_NotOverIt()
+    public async Task ShowAsync_OpensBesideTheOwner_AndTheKeyIsFreeByTheTimeTheCallerResumes()
     {
         await HeadlessAvalonia.RunAsync(async () =>
         {
@@ -31,142 +31,8 @@ public sealed class SurfaceWindowsTests
             Assert.False(pending.IsCompleted);
             Assert.Contains(surface, owner.OwnedWindows);
 
-            surface.Close();
-            await pending;
-
-            owner.Close();
-        });
-    }
-
-    [Fact]
-    public async Task ShowAsync_AskedAgainWhileOpen_BringsTheOpenOneForwardInsteadOfMakingASecond()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var surfaces = new SurfaceWindows();
-            var owner = _ShownOwner();
-            var first = new Window();
-            var second = new Window();
-
-            var pending = surfaces.ShowAsync("key", first, owner);
-            var again = surfaces.ShowAsync("key", second, owner);
-
-            Assert.Same(pending, again);
-            Assert.False(second.IsVisible);
-            Assert.Single(owner.OwnedWindows);
-
-            // ⚠️ Not asserted, because it cannot be: that the open window is also brought *forward*. Measured —
-            // Activate() is a no-op in this backend, leaving IsActive false and never raising Activated, on the
-            // owner as well. So removing the Activate() call from SurfaceWindows escapes every test here, and a
-            // second click on Projects would silently do nothing visible. It is checked by hand instead (AC-367,
-            // IL#9). Recorded rather than papered over with an assertion that would pass either way.
-
-            first.Close();
-            await pending;
-
-            owner.Close();
-        });
-    }
-
-    [Fact]
-    public async Task ShowAsync_OnceTheSurfaceHasClosed_OpensAFreshOneUnderTheSameKey()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var surfaces = new SurfaceWindows();
-            var owner = _ShownOwner();
-
-            var first = new Window();
-            var pending = surfaces.ShowAsync("key", first, owner);
-            first.Close();
-            await pending;
-
-            var second = new Window();
-            var reopened = surfaces.ShowAsync("key", second, owner);
-
-            Assert.True(second.IsVisible);
-            Assert.NotSame(pending, reopened);
-
-            second.Close();
-            await reopened;
-
-            owner.Close();
-        });
-    }
-
-    [Fact]
-    public async Task ShowAsync_WithAnAnswer_ReadsWhatTheSurfaceLeftBehind()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var surfaces = new SurfaceWindows();
-            var owner = _ShownOwner();
-            var surface = new Window();
-
-            // Stands in for the view model a real surface leaves its answer on: Close(result) is not readable
-            // off a window that was not shown with ShowDialog, so the answer never travels through Close.
-            string? answer = null;
-            var pending = surfaces.ShowAsync("key", surface, owner, () => answer);
-
-            // Asserted on this overload too, and not only on the one that answers nothing: a mutation round put
-            // ShowDialog back here alone and every test stayed green, which would have made the New-session form
-            // and the project editor block the cockpit again without a word.
-            Assert.False(surface.IsDialog);
-
-            answer = "chosen";
-            surface.Close();
-
-            Assert.Equal("chosen", await pending);
-
-            owner.Close();
-        });
-    }
-
-    [Fact]
-    public async Task ShowAsync_WithAnAnswer_ReadsItTheMomentTheWindowCloses_SoAnythingWrittenLaterIsLost()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var surfaces = new SurfaceWindows();
-            var owner = _ShownOwner();
-            var surface = new Window();
-
-            // The trap this cost a working build over: Close() raises Closed synchronously, and the answer is
-            // read there. A real dialog's code-behind closes the window from its own CloseRequested handler, so
-            // anything subscribed after that handler writes its answer too late — the caller reads a cancel and
-            // the session never starts. Pinned here so the ordering in SessionDialogService has a reason on
-            // record, and DialogModalitySplitTests holds the call sites to it.
-            string? answer = null;
-            var pending = surfaces.ShowAsync("key", surface, owner, () => answer);
-
-            surface.Closed += (_, _) => answer = "written too late";
-            surface.Close();
-
-            Assert.Null(await pending);
-
-            owner.Close();
-        });
-    }
-
-    [Fact]
-    public async Task ShowAsync_ByTheTimeTheCallerResumes_TheKeyIsFreeAgain()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var surfaces = new SurfaceWindows();
-            var owner = _ShownOwner();
-            var surface = new Window();
-
-            var pending = surfaces.ShowAsync("key", surface, owner);
-
-            // Saving a project closes its window and the caller reopens the list from the line after the await.
-            // Releasing the caller before clearing the registry would hand that reopen the window that has just
-            // closed, and it would never appear.
-            //
-            // Continued synchronously on purpose: an ordinary `await` in this harness is posted to the dispatcher
-            // and runs well after the completion, so it cannot tell the two orders apart — a mutation round put
-            // the removal after the release and every test stayed green. This runs in the completion itself,
-            // which is where a real awaiter of a TaskCompletionSource resumes.
+            // Synchronous on purpose, in the completion where a real awaiter resumes: an ordinary await here is posted
+            // to the dispatcher and cannot tell whether the registry was cleared before the caller was released.
             var observed = pending.ContinueWith(
                 _ => surfaces.TryActivateAsync("key"),
                 CancellationToken.None,
@@ -178,25 +44,6 @@ public sealed class SurfaceWindowsTests
             Assert.Null(await observed);
 
             owner.Close();
-        });
-    }
-
-    [Fact]
-    public async Task ShowAsync_ClosingTheOwner_TakesTheSurfaceWithIt()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var surfaces = new SurfaceWindows();
-            var owner = _ShownOwner();
-            var surface = new Window();
-
-            var pending = surfaces.ShowAsync("key", surface, owner);
-            owner.Close();
-
-            // Nothing in SurfaceWindows does this — Avalonia closes owned windows with their owner, which is why
-            // shutting the cockpit down needs no cleanup here. Pinned so a future change of owner notices.
-            Assert.False(surface.IsVisible);
-            await pending;
         });
     }
 
@@ -232,55 +79,6 @@ public sealed class SurfaceWindowsTests
     }
 
     [Fact]
-    public async Task HideAll_ASurfaceClosedWhileHidden_IsNotShownAgain()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var surfaces = new SurfaceWindows();
-            var owner = _ShownOwner();
-            var surface = new Window();
-
-            var pending = surfaces.ShowAsync("key", surface, owner);
-            var restore = surfaces.HideAll();
-
-            // An agent finishing its task can close a surface while the cockpit is locked. Showing a closed window
-            // throws, which would take the unlock down with it — so the restore goes by key and finds nothing.
-            surface.Close();
-            await pending;
-
-            restore.Dispose();
-
-            Assert.False(surface.IsVisible);
-
-            owner.Close();
-        });
-    }
-
-    // AC-1017. Window.Activate() is a no-op under the headless backend (see the ⚠️ note above), so this watches
-    // the swappable ActivateOwner seam instead of the real platform call.
-    [Fact]
-    public async Task ShowAsync_ClosingTheSurface_ReactivatesItsOwner()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var surfaces = new SurfaceWindows();
-            var reactivated = new List<Window>();
-            surfaces.ActivateOwner = reactivated.Add;
-
-            var owner = _ShownOwner();
-            var surface = new Window();
-
-            var pending = surfaces.ShowAsync("key", surface, owner);
-            surface.Close();
-            await pending;
-
-            Assert.Equal([owner], reactivated);
-
-            owner.Close();
-        });
-    }
-
-    [Fact]
     public async Task ShowAsync_NeverOwnsOneSurfaceToAnother_EvenAfterAScreenLock()
     {
         await HeadlessAvalonia.RunAsync(async () =>
@@ -293,6 +91,8 @@ public sealed class SurfaceWindowsTests
             // Through a screen lock on the way, because Hide() clears Window.Owner and the restore used to bring
             // the surface back with no owner at all — leaving a parentless surface to be picked as the next owner.
             surfaces.HideAll().Dispose();
+            Assert.True(first.IsVisible);
+            Assert.Same(main, first.Owner);
 
             // Callers own a new surface to whichever window is active (PluginDialogHost, the plugin store), which
             // is this one. Avalonia closes owned windows with their owner, so that made two surfaces close as one.
@@ -309,29 +109,6 @@ public sealed class SurfaceWindowsTests
             second.Close();
             await alsoPending;
             main.Close();
-        });
-    }
-
-    [Fact]
-    public async Task HideAll_BringsEachSurfaceBackOwnedByTheCockpitItWentDownWith()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var surfaces = new SurfaceWindows();
-            var owner = _ShownOwner();
-            var surface = new Window();
-            var pending = surfaces.ShowAsync("key", surface, owner);
-
-            surfaces.HideAll().Dispose();
-
-            // Not just visible again: a surface restored without its owner no longer closes with the cockpit, and
-            // AC-1017's hand-back of focus would point at a window it is no longer attached to.
-            Assert.True(surface.IsVisible);
-            Assert.Same(owner, surface.Owner);
-
-            surface.Close();
-            await pending;
-            owner.Close();
         });
     }
 

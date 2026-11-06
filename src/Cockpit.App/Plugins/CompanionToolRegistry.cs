@@ -21,7 +21,12 @@ public interface ICompanionToolRegistry
     bool Register(CompanionToolRegistration tool, IPluginStorage pluginStorage, ICockpitSessionObserver sessions);
 
     /// <summary>
-    /// Raised when a plugin contributes a companion tool. Plugins initialize after the view models are built, so
+    /// Withdraws the tool <paramref name="toolId"/>; false when none is registered.
+    /// </summary>
+    bool Unregister(string toolId);
+
+    /// <summary>
+    /// Raised when a plugin contributes or withdraws a companion tool. Plugins initialize after the view models are built, so
     /// anything reading <see cref="Tools"/> would otherwise read an empty list once and never hear about tools
     /// that arrived later.
     /// </summary>
@@ -59,6 +64,17 @@ internal sealed class CompanionToolRegistry : ICompanionToolRegistry, ISingleton
         _tools.Add(new RegisteredCompanionTool(tool, pluginStorage, sessions));
         Changed?.Invoke(this, EventArgs.Empty);
 
+        return true;
+    }
+
+    public bool Unregister(string toolId)
+    {
+        if (_tools.RemoveAll(tool => tool.Registration.Id == toolId) == 0)
+        {
+            return false;
+        }
+
+        Changed?.Invoke(this, EventArgs.Empty);
         return true;
     }
 

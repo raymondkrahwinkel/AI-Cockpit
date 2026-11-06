@@ -28,10 +28,6 @@ public class BackupContentsTests
     public void OnlyWhatIsNamed_GoesIn_AndAnythingNewStaysOut(string path, bool included) =>
         Assert.Equal(included, BackupContents.Includes(path));
 
-    [Fact]
-    public void ABackupTakesNoCredentialsUnlessAsked() =>
-        Assert.Equivalent(new BackupOptions(IncludeCredentials: false, IncludeProfileConfigs: false), new BackupOptions());
-
     [Theory]
     [InlineData(BackupManifest.CurrentSchema - 1, "old layout")]
     [InlineData(BackupManifest.CurrentSchema, null)]

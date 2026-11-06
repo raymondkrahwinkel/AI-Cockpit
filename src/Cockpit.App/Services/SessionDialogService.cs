@@ -4,6 +4,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Platform.Storage;
+using Avalonia.Threading;
 using Cockpit.App.Controls;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
@@ -12,6 +13,7 @@ using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Clones;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Shell;
@@ -24,6 +26,7 @@ using Cockpit.Core.Sessions;
 using Cockpit.Core.Updates;
 using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Microsoft.Extensions.Logging;
 
 namespace Cockpit.App.Services;
 
@@ -44,6 +47,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     private readonly IShellAccessSwitch _shellAccessSwitch;
     private readonly IWorkingPathHistoryStore _workingPathStore;
     private readonly DelegatedTasksViewModel _delegatedTasks;
+    private readonly TestRunsViewModel _testRuns;
     private readonly ITtySessionProviderResolver _ttyProviderResolver;
     private readonly IWorktreeManager _worktreeManager;
     private readonly IRepositoryCloneManager _cloneManager;
@@ -51,6 +55,11 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     private readonly IProjectStore _projectStore;
     private readonly IProjectDefinitionBuilder<SharedProjectPublishDefinition> _projectDefinitionBuilder;
     private readonly SurfaceWindows _surfaces;
+    private readonly ILogger<SessionDialogService> _logger;
+    private readonly ISessionRegistry _sessions;
+    private readonly IAssistantAgentGateway _assistantGateway;
+    private readonly SessionMcpMounts _mcpMounts;
+    private AgentsPaletteDialog? _agentsPaletteDialog;
 
     // The assistant's own profile slot (AC-543) — its own section of the config, not an entry in `_profileStore`.
     private readonly IAssistantProfileStore _assistantProfileStore;
@@ -68,6 +77,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         IShellAccessSwitch shellAccessSwitch,
         IWorkingPathHistoryStore workingPathStore,
         DelegatedTasksViewModel delegatedTasks,
+        TestRunsViewModel testRuns,
         ITtySessionProviderResolver ttyProviderResolver,
         IWorktreeManager worktreeManager,
         IRepositoryCloneManager cloneManager,
@@ -79,8 +89,13 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         IPluginProviderConfigViews pluginConfigViews,
         IOrgPolicy orgPolicy,
         IProfileSessionLimits sessionLimit,
-        IProjectDefinitionBuilder<SharedProjectPublishDefinition> projectDefinitionBuilder)
+        IProjectDefinitionBuilder<SharedProjectPublishDefinition> projectDefinitionBuilder,
+        ISessionRegistry sessions,
+        IAssistantAgentGateway assistantGateway,
+        SessionMcpMounts mcpMounts,
+        ILogger<SessionDialogService> logger)
     {
+        _logger = logger;
         _sessionLimit = sessionLimit;
         _orgPolicy = orgPolicy;
         _projectDefinitionBuilder = projectDefinitionBuilder;
@@ -88,6 +103,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         _assistantProfileStore = assistantProfileStore;
         _surfaces = surfaces;
         _delegatedTasks = delegatedTasks;
+        _testRuns = testRuns;
         _profileStore = profileStore;
         _loginChecker = loginChecker;
         _loginFlows = loginFlows;
@@ -103,6 +119,9 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         _cloneManager = cloneManager;
         _verifyRunnerRegistry = verifyRunnerRegistry;
         _projectStore = projectStore;
+        _sessions = sessions;
+        _assistantGateway = assistantGateway;
+        _mcpMounts = mcpMounts;
     }
 
     public async Task<NewSessionResult?> ShowNewSessionDialogAsync(NewSessionPrefill? prefill = null, bool isolateInWorktree = false, Project? project = null)
@@ -704,6 +723,17 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         await _ShowSurfaceAsync(typeof(DelegatedTasksDialog), owner, () => new DelegatedTasksDialog { DataContext = _delegatedTasks });
     }
 
+    public async Task ShowTestRunsDialogAsync()
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+        {
+            return;
+        }
+
+        _testRuns.Refresh();
+        await _ShowSurfaceAsync(typeof(TestRunsDialog), owner, () => new TestRunsDialog { DataContext = _testRuns });
+    }
+
     public async Task ShowAgentLineInspectorDialogAsync(AgentLineInspectorViewModel inspector)
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
@@ -791,20 +821,58 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         viewModel.Chosen?.Invoke();
     }
 
-    public async Task ShowAgentsPaletteDialogAsync(AgentsOverviewViewModel agents)
+    public Task ShowAgentsPaletteDialogAsync(AgentsOverviewViewModel agents)
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
         {
-            return;
+            return Task.CompletedTask;
+        }
+
+        if (_agentsPaletteDialog is { } existing)
+        {
+            existing.Activate();
+            return Task.CompletedTask;
         }
 
         var viewModel = new AgentsPaletteViewModel(agents);
-        await new AgentsPaletteDialog { DataContext = viewModel }.ShowDialog(owner);
+        var dialog = new AgentsPaletteDialog { DataContext = viewModel };
+        dialog.Position = _CenterOn(owner, dialog);
+        EventHandler mainClosed = (_, _) => dialog.Close();
+        owner.Closed += mainClosed;
+        dialog.Closed += (_, _) =>
+        {
+            owner.Closed -= mainClosed;
+            _agentsPaletteDialog = null;
 
-        // Open the pick after the palette has closed, like the command palette does.
-        if (viewModel.Chosen is { } chosen)
+            // Open the pick after the palette has closed, like the command palette does.
+            if (viewModel.Chosen is { } chosen)
+            {
+                _ = _RunAgentsPaletteChoiceAsync(chosen);
+            }
+        };
+        _agentsPaletteDialog = dialog;
+        dialog.Show();
+        return Task.CompletedTask;
+    }
+
+    private static PixelPoint _CenterOn(Window owner, Window window)
+    {
+        var origin = owner.PointToScreen(default);
+        var size = PixelSize.FromSize(owner.ClientSize, owner.RenderScaling);
+        return new PixelPoint(
+            origin.X + (int)((size.Width - window.Width * owner.RenderScaling) / 2),
+            origin.Y + (int)((size.Height - window.Height * owner.RenderScaling) / 2));
+    }
+
+    private async Task _RunAgentsPaletteChoiceAsync(Func<Task> chosen)
+    {
+        try
         {
             await chosen();
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Opening the selected agent from the palette failed.");
         }
     }
 
@@ -829,5 +897,91 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 
         var dialog = new SetStatusDialog { DataContext = new SetStatusDialogViewModel(currentStatusline) };
         return await dialog.ShowDialog<string?>(owner);
+    }
+
+    public async Task ShowSessionMcpDialogAsync(string paneId, string sessionName)
+    {
+        if (OwnerWindow() is not { } owner)
+        {
+            return;
+        }
+
+        var remote = _sessions.Find(paneId) as ISessionMcpSetClient;
+        using var viewModel = new SessionMcpDialogViewModel(
+            sessionName,
+            cancellationToken => remote is not null
+                ? remote.GetMcpSetAsync(cancellationToken)
+                : _assistantGateway.GetSessionMcpSetAsync(paneId, cancellationToken),
+            (name, cancellationToken) => remote is not null
+                ? remote.RemoveMcpServerAsync(name, cancellationToken)
+                : _assistantGateway.ChangeSessionMcpServerAsync(paneId, name, add: false, byOperator: true, cancellationToken),
+            (name, cancellationToken) => remote is not null
+                ? remote.AddMcpServerAsync(name, cancellationToken)
+                : _assistantGateway.ChangeSessionMcpServerAsync(paneId, name, add: true, byOperator: true, cancellationToken),
+            async (name, cancellationToken) =>
+            {
+                if (remote is not null)
+                {
+                    return await remote.SignInMcpServerAsync(name, cancellationToken);
+                }
+                var context = _mcpMounts.Set(paneId)?.Context;
+                var registry = await _mcpServerCatalog.GetServersForSessionAsync(context?.Project?.Id, new ExactMcpServerSelection([name]), cancellationToken);
+                var server = registry.FirstOrDefault(candidate => string.Equals(candidate.Name, name, StringComparison.OrdinalIgnoreCase));
+                if (server is not { Auth: McpServerAuth.OAuth })
+                {
+                    return "Unavailable";
+                }
+                var access = await _oauthCoordinator.AcquireAsync(server, interactive: true, cancellationToken);
+                return access.State.ToString();
+            });
+        var dialog = new SessionMcpDialog { DataContext = viewModel };
+        using var refresh = new CancellationTokenSource();
+        void OnChanged(string changedPaneId)
+        {
+            if (changedPaneId == paneId)
+            {
+                Dispatcher.UIThread.Post(() => _ = viewModel.LoadAsync());
+            }
+        }
+
+        void OnReported(string changedPaneId, IReadOnlyList<string> _, IReadOnlyList<McpServerConnectionIssue> __) => OnChanged(changedPaneId);
+        if (remote is null)
+        {
+            _mcpMounts.Changed += OnChanged;
+            _mcpMounts.Reported += OnReported;
+        }
+
+        var shown = dialog.ShowDialog(owner);
+        try
+        {
+            await viewModel.LoadAsync();
+            if (remote is not null)
+            {
+                _ = _RefreshRemoteMcpSetAsync(viewModel, refresh.Token);
+            }
+
+            await shown;
+        }
+        finally
+        {
+            refresh.Cancel();
+            _mcpMounts.Changed -= OnChanged;
+            _mcpMounts.Reported -= OnReported;
+        }
+    }
+
+    private static async Task _RefreshRemoteMcpSetAsync(SessionMcpDialogViewModel viewModel, CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
+            {
+                Dispatcher.UIThread.Post(() => _ = viewModel.LoadAsync());
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
     }
 }

@@ -55,6 +55,11 @@ public sealed class PluginDiagnostics(bool safeMode = false) : IPluginDiagnostic
     {
         lock (_gate)
         {
+            if (_pendingApprovals.Any(pending => pending.FolderId == folderId))
+            {
+                return;
+            }
+
             _pendingApprovals.Add(new PluginPendingApproval(folderId, displayName));
         }
 

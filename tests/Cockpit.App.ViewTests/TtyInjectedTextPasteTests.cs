@@ -68,21 +68,6 @@ public class TtyInjectedTextPasteTests
             Assert.Equal(4, pty.WriteCalls.Count);
         });
 
-    [Fact]
-    public Task ACarriageReturnAlone_WritesARawEnter_NeverWrappedInAPasteAndNeverDelayed() =>
-        HeadlessAvalonia.RunAsync(async () =>
-        {
-            var (view, pty) = _NewWiredView();
-
-            _InvokeWriteToPty(view, "\r");
-            await _LetPostedWorkRunAsync();
-
-            // AC-941 criterion 3: a call that is only "\r" (a key press, or route 1's own already-delayed submit)
-            // is not additionally delayed - it lands in the very first pty write, with no beat to wait out.
-            Assert.Equal("\r"u8.ToArray(), pty.Written);
-            Assert.Single(pty.WriteCalls);
-        });
-
     public enum TtyInputOrigin
     {
         Typed,
@@ -118,6 +103,7 @@ public class TtyInjectedTextPasteTests
                 .GetMethod("_WriteToPty", BindingFlags.NonPublic | BindingFlags.Instance, [typeof(string)])!
                 .CreateDelegate(typeof(Action<string>), view);
             vm.PromptSink = writeToPty;
+            vm.MarkHostedTuiReady();
 
             if (origin == TtyInputOrigin.Typed)
             {

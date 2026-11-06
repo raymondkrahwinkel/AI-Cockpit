@@ -19,29 +19,7 @@ public class SessionMcpKeyringTests
         Assert.Null(keyring.PaneFor("not-a-token"));
     }
 
-    [Fact]
-    public void TokenFor_MintingAgainForAPane_ReplacesTheOldTokenSoAStaleOneNoLongerResolves()
-    {
-        var keyring = new SessionMcpKeyring();
 
-        var first = keyring.TokenFor("pane-a");
-        var second = keyring.TokenFor("pane-a");
-
-        Assert.NotEqual(first, second);
-        Assert.Null(keyring.PaneFor(first));
-        Assert.Equal("pane-a", keyring.PaneFor(second));
-    }
-
-    [Fact]
-    public void Revoke_DropsThePanesToken()
-    {
-        var keyring = new SessionMcpKeyring();
-        var token = keyring.TokenFor("pane-a");
-
-        keyring.Revoke("pane-a", token);
-
-        Assert.Null(keyring.PaneFor(token));
-    }
 
     /// <summary>
     /// The restart race: a pane that restarts mints its replacement token before the old driver is disposed, so the

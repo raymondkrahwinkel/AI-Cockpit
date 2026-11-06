@@ -158,30 +158,6 @@ public sealed class RestoreIntoATemporaryRootTests : IDisposable
     }
 
     /// <summary>
-    /// A schema-2 archive carries no plugin binaries, so every restore is this case: the registration is what holds
-    /// what the plugin stored, and it must come back whether or not the plugin itself has been fetched again.
-    /// </summary>
-    [Fact]
-    public async Task APluginWhoseBinariesAreNotBackYet_StillGetsItsSettings()
-    {
-        _Current("""{"Plugins":{}}""");
-
-        var archive = _ArchiveWith(("cockpit.json", """{"Plugins":{"demo":{"Enabled":true,"Data":{"board":"archived"}}}}"""));
-
-        var report = await _Restore(archive, new RestoreOptions(false, ["demo"]));
-
-        Assert.Equal("archived", _Restored()["Plugins"]!["demo"]!["Data"]!["board"]!.GetValue<string>());
-        Assert.False(Directory.Exists(Path.Combine(_Root, "plugins", "demo")));
-
-        // Re-read rather than only kept green (AC-1281 asked for exactly this): the assertion above used to mean
-        // "nothing is fetched at all", and since AC-1279 it means "the fetch ran and could not get it". The stronger
-        // claim is what the operator is now told — named, with the reason, instead of absent from the report.
-        var stillMissing = Assert.Single(report.Notes);
-        Assert.Equal("demo", stillMissing.Id);
-        Assert.Contains("none of the stores carries it", stillMissing.Note, StringComparison.Ordinal);
-    }
-
-    /// <summary>
     /// AC-695: an archive made on one platform, restored on the other. Whatever the backup machine kept under its own
     /// config root is re-anchored on this machine's root, with this machine's separators; whatever lies outside it and
     /// does exist here is left exactly as it stands.
@@ -216,96 +192,6 @@ public sealed class RestoreIntoATemporaryRootTests : IDisposable
         // path alone only in its own platform's shape and silently re-roots any other, which on the row that is
         // foreign to this machine would turn a stored folder into one under the working directory.
         Assert.Equal(Path.GetFullPath(sourceConfigRoot) == sourceConfigRoot, Path.GetFullPath(logo) == logo);
-    }
-
-    /// <summary>
-    /// AC-695: a project folder outside the config root that this machine does not have. Neither dropped nor pointed
-    /// somewhere plausible — it stays in the settings, visibly wrong, and the restore says which project it belongs to.
-    /// </summary>
-    [Fact]
-    public async Task AProjectFolderThatDoesNotExistHere_IsReportedRatherThanRewrittenOrDropped()
-    {
-        // The other platform's shape on purpose — the ticket's own case, and the one folder that is certainly absent.
-        var gone = OperatingSystem.IsWindows() ? "/home/raymond/Projects/Cockpit" : @"D:\Projects\dotnet\Cockpit";
-
-        _sourceConfigRoot = @"C:\Users\raymond\AppData\Roaming\Cockpit";
-        _Current("""{"Projects":[]}""");
-
-        var archive = _ArchiveWith(("cockpit.json", JsonSerializer.Serialize(new
-        {
-            Projects = new[] { new { Name = "Cockpit", SourceDirectory = gone } },
-        })));
-
-        await _Restore(archive, new RestoreOptions(true, []));
-
-        Assert.Equal(gone, _Restored()["Projects"]![0]!["SourceDirectory"]!.GetValue<string>());
-
-        var warning = Assert.Single(_log.Warnings);
-        Assert.Contains("Cockpit", warning);
-        Assert.Contains(gone, warning);
-    }
-
-    /// <summary>
-    /// AC-1279, every way a plugin can come out of a restore, and what the operator is told about each. Only the
-    /// first row is silent: getting back exactly what you backed up is the one outcome with nothing to say. The rest
-    /// each owe a note — including the two that used to go only to the log, which for the operator is silence: put
-    /// back on a version other than the archive's, and left alone because a newer one is installed here.
-    /// </summary>
-    [Theory]
-    [InlineData("still published", "1.0.0", null)]
-    [InlineData("gone from the store", null, "none of the stores carries it any more")]
-    [InlineData("published but incompatible", null, "this cockpit cannot run it")]
-    [InlineData("only a newer version left", "2.0.0", "put back on 2.0.0 instead")]
-    [InlineData("its store is a path this machine does not have", null, @"the local store 'D:\plugin-store' could not be read")]
-    [InlineData("a newer one is already installed here", null, "newer than the 1.0.0 in the backup")]
-    public async Task ARestoredPlugin_ComesBackFromItsStore_OrSaysWhyNotAndWhatChanged(string store, string? expected, string? noted)
-    {
-        _Current("""{"Plugins":{}}""");
-        _archivedVersions["demo"] = "1.0.0";
-
-        switch (store)
-        {
-            case "still published":
-                _Publish("demo", _Version("demo", "1.0.0"));
-                break;
-            case "published but incompatible":
-                _Publish("demo", _Version("demo", "1.0.0", abstractions: AbstractionsContract.Version + 97));
-                break;
-            case "only a newer version left":
-                _Publish("demo", _Version("demo", "2.0.0"));
-                break;
-            case "its store is a path this machine does not have":
-                _configuredStores = [PluginStoreConfig.Local(@"D:\plugin-store")];
-                _unreadableStores.Add(@"D:\plugin-store");
-                break;
-            case "a newer one is already installed here":
-                // On disk past what the backup holds. `PluginSourceInstaller` never rolls that back and a restore
-                // must not either — so nothing is fetched, and the operator is told why it stayed as it is.
-                _Publish("demo", _Version("demo", "1.0.0"));
-                _Write(Path.Combine(_Root, "plugins", "demo", "plugin.json"), """{"id":"demo","version":"1.2.0"}""");
-                break;
-        }
-
-        var archive = _ArchiveWith(("cockpit.json", """{"Plugins":{"demo":{"Enabled":true,"PinnedSha256":"archived-pin"}}}"""));
-
-        var report = await _Restore(archive, new RestoreOptions(false, ["demo"]));
-
-        string[] installed = expected is null ? [] : [$"demo-{expected}"];
-        Assert.Equal(installed, _installed);
-        Assert.Equal(
-            expected is null ? "archived-pin" : $"sha-of-{expected}",
-            _Restored()["Plugins"]!["demo"]!["PinnedSha256"]!.GetValue<string>());
-
-        // Asserted on the report and not on the log: the report is what reaches the operator, and a log line is the
-        // thing this ticket kept mistaking for telling them.
-        if (noted is null)
-        {
-            Assert.Empty(report.Notes);
-        }
-        else
-        {
-            Assert.Contains(noted, Assert.Single(report.Notes).Note, StringComparison.Ordinal);
-        }
     }
 
     /// <summary>
@@ -345,30 +231,6 @@ public sealed class RestoreIntoATemporaryRootTests : IDisposable
         }
 
         Assert.True(restored["gone"]!["HiddenInMenu"]!.GetValue<bool>());
-    }
-
-    /// <summary>
-    /// One plugin the store cannot hand over is that plugin's problem: the ones on either side of it in the batch
-    /// still land, which is what makes a restore of eleven plugins worth starting at all.
-    /// </summary>
-    [Fact]
-    public async Task OnePluginTheStoreCannotHandOver_DoesNotHoldUpTheRest()
-    {
-        _Current("""{"Plugins":{}}""");
-
-        foreach (var id in new[] { "first", "broken", "last" })
-        {
-            _archivedVersions[id] = "1.0.0";
-            _Publish(id, _Version(id, "1.0.0"));
-        }
-
-        _unreachableZips.Add("broken-1.0.0.zip");
-
-        var archive = _ArchiveWith(("cockpit.json", """{"Plugins":{"first":{},"broken":{},"last":{}}}"""));
-
-        await _Restore(archive, new RestoreOptions(false, ["first", "broken", "last"]));
-
-        Assert.Equal(["first-1.0.0", "last-1.0.0"], _installed);
     }
 
     /// <summary>

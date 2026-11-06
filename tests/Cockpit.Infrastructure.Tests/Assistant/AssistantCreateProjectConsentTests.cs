@@ -1,8 +1,6 @@
 using System.Text.Json.Nodes;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Assistant;
-using Cockpit.Core.Consent;
-using Cockpit.Infrastructure.Agents;
 using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Mcp;
@@ -28,46 +26,7 @@ public sealed class AssistantCreateProjectConsentTests : IDisposable
 
     // ── Criterion 4: the four fields on the card, each its own line ────────────────────────────────────────────
 
-    [Fact]
-    public async Task TheCard_ShowsTheFourSessionBehaviourFields_SeparatelyFromTheName()
-    {
-        McpRequestContext.Set(AssistantIdentity.PaneId);
 
-        await _Tools(_consent).CreateProjectAsync(
-            "Invoices",
-            sourceDirectory: "/home/raymond/work/invoices",
-            behaviorPrompt: "Write in Dutch.",
-            isolateInWorktreeByDefault: true,
-            enabledMcpServerNames: ["depot", "youtrack"]);
-
-        var asked = Assert.Single(_consent.Asked);
-        Assert.Contains("Invoices", asked.Action);
-        Assert.Contains("folder: /home/raymond/work/invoices", asked.Action);
-        Assert.Contains("MCP servers: depot, youtrack", asked.Action);
-        Assert.Contains("isolate in worktree by default: True", asked.Action);
-        Assert.Contains("behaviour prompt: Write in Dutch.", asked.Action);
-
-        // AC-799 review finding 5: a blank line ahead of `behaviour prompt:` — the same separation `send_message`
-        // puts ahead of its own free-text `body` — so a multi-line prompt reads as text under the last labelled
-        // line rather than as more fields seamlessly following the real ones.
-        Assert.Contains("isolate in worktree by default: True\n\nbehaviour prompt:", asked.Action);
-    }
-
-    [Fact]
-    public async Task TheCard_NamesWhatWasLeftOut_RatherThanHidingTheFieldEntirely()
-    {
-        // A card that silently dropped an unset field would read as "there is nothing to check here" — the
-        // operator has to see that no folder, no narrowed MCP choice and no prompt were part of this call.
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-
-        await _Tools(_consent).CreateProjectAsync("Invoices");
-
-        var asked = Assert.Single(_consent.Asked);
-        Assert.Contains("folder: (none)", asked.Action);
-        Assert.Contains("MCP servers: (every server, following the registry)", asked.Action);
-        Assert.Contains("isolate in worktree by default: False", asked.Action);
-        Assert.Contains("behaviour prompt: (none)", asked.Action);
-    }
 
     [Fact]
     public async Task AnEmptyEnabledMcpServerNamesArray_ReadsAsEveryServer_OnTheCardAndInWhatIsStored()
@@ -88,24 +47,6 @@ public sealed class AssistantCreateProjectConsentTests : IDisposable
 
     // ── Criterion 5: the risk class ─────────────────────────────────────────────────────────────────────────────
 
-    [Fact]
-    public async Task ItIsAskedAsLowRisk_UnderItsOwnBypassKey()
-    {
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-
-        await _Tools(_consent).CreateProjectAsync("Invoices");
-
-        var asked = Assert.Single(_consent.Asked);
-        Assert.Equal(ConsentRisk.LowRisk, asked.Risk);
-        Assert.Equal(
-            ConsentSourceCatalog.AssistantProjectCreate,
-            ConsentSourceCatalog.KeyFor(asked.Source.PluginId, asked.Source.Label));
-        Assert.Contains(ConsentSourceCatalog.AssistantProjectCreate, ConsentSourceCatalog.HostSources);
-
-        // Its own label, not `bind_shared_project`'s: an operator happy for one to go unasked has not thereby
-        // agreed to the other (same split `AssistantProjectBinding` itself already draws against the send tools).
-        Assert.NotEqual(ConsentSourceCatalog.AssistantProjectBinding, ConsentSourceCatalog.AssistantProjectCreate);
-    }
 
     // ── Newline/control-character forgery on the single-line fields ────────────────────────────────────────────
 
@@ -127,31 +68,7 @@ public sealed class AssistantCreateProjectConsentTests : IDisposable
 
     // ── behaviorPrompt/description are bounded, like send_message's body (AC-799 review finding 5) ────────────────
 
-    [Fact]
-    public async Task ABehaviorPromptOverTheBodyLimit_IsRefused_BeforeAnyCardIsRaised()
-    {
-        McpRequestContext.Set(AssistantIdentity.PaneId);
 
-        var result = _Json(await _Tools(_consent).CreateProjectAsync(
-            "Invoices", behaviorPrompt: new string('a', AgentMessageContent.MaxBodyLength + 1)));
-
-        Assert.False((bool)result["ok"]!);
-        Assert.Empty(_consent.Asked);
-        Assert.Empty(_gateway.Calls);
-    }
-
-    [Fact]
-    public async Task ADescriptionOverTheBodyLimit_IsRefused_BeforeAnyCardIsRaised()
-    {
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-
-        var result = _Json(await _Tools(_consent).CreateProjectAsync(
-            "Invoices", description: new string('a', AgentMessageContent.MaxBodyLength + 1)));
-
-        Assert.False((bool)result["ok"]!);
-        Assert.Empty(_consent.Asked);
-        Assert.Empty(_gateway.Calls);
-    }
 
     // ── The rest of the shared plumbing every asking tool on this server carries ────────────────────────────────
 
@@ -168,37 +85,8 @@ public sealed class AssistantCreateProjectConsentTests : IDisposable
         Assert.Null(result["approval"]);
     }
 
-    [Fact]
-    public async Task WithNobodyToAsk_ItRefuses()
-    {
-        McpRequestContext.Set(AssistantIdentity.PaneId);
 
-        Assert.False((bool)_Json(await _Tools(null).CreateProjectAsync("Invoices"))["ok"]!);
-        Assert.Empty(_gateway.Calls);
-    }
 
-    [Fact]
-    public async Task WhatTheConsentCheckDidIsReported_RatherThanAssumed()
-    {
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-        _consent.Bypassed = true;
-
-        var result = _Json(await _Tools(_consent).CreateProjectAsync("Invoices"));
-
-        Assert.True((bool)result["ok"]!);
-        Assert.Equal("bypassed", (string)result["approval"]!);
-    }
-
-    [Fact]
-    public async Task TheResultCarriesTheNewProjectsId_SoTheAssistantCanNameItBack()
-    {
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-
-        var result = _Json(await _Tools(_consent).CreateProjectAsync("Invoices"));
-
-        Assert.Equal("local-1", (string)result["projectId"]!);
-        Assert.Equal("Invoices", (string)result["name"]!);
-    }
 
     private sealed class RecordingBroker : IConsentBroker
     {

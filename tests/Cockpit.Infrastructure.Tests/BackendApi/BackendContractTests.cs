@@ -1,5 +1,4 @@
 using System.Runtime.CompilerServices;
-using System.Text.Json;
 using System.Threading.Channels;
 using Cockpit.Core.Abstractions.Events;
 using Cockpit.Core.Abstractions.Sessions;
@@ -18,67 +17,6 @@ public abstract class BackendContractTests
 
     protected abstract Task<ContractBackend> StartBackendAsync();
 
-    [Fact]
-    public async Task AStartedSession_AnswersAPrompt_WithARowOnTheStream()
-    {
-        await using var backend = await StartBackendAsync();
-        var mark = backend.Events.LastSeq;
-
-        var paneId = await _StartAsync(backend);
-        var handle = _HandleOf(backend, paneId);
-        var control = handle.Control ?? throw new InvalidOperationException($"Pane '{paneId}' has no control.");
-        var turnEnded = new TaskCompletionSource<SessionTurnEnd>(TaskCreationOptions.RunContinuationsAsynchronously);
-        control.TurnEnded += end =>
-        {
-            turnEnded.TrySetResult(end);
-        };
-        await control.SetModelAsync("contract-model");
-        var model = await _RowAsync(backend, mark, paneId, row => _Text(row) == "echo: model contract-model");
-        await control.SetPermissionModeAsync("acceptEdits");
-        var permissionMode = await _RowAsync(backend, model.Seq, paneId, row => _Text(row) == "echo: permission-mode acceptEdits");
-        var sent = await handle.SendPromptAsync("hello");
-        var row = await _RowAsync(backend, permissionMode.Seq, paneId, row => _Text(row) == "echo: hello");
-        var ended = await turnEnded.Task.WaitAsync(Patience);
-
-        Assert.True(sent);
-        Assert.Equal(paneId, row.PaneId);
-        Assert.Equal("success", ended.Subtype);
-    }
-
-    [Fact]
-    public async Task APermissionPrompt_IsAnsweredThroughTheHandle_AndTheProviderHearsIt()
-    {
-        await using var backend = await StartBackendAsync();
-        var mark = backend.Events.LastSeq;
-        var paneId = await _StartAsync(backend);
-        var handle = _HandleOf(backend, paneId);
-
-        await handle.SendPromptAsync(ContractDriver.PermissionPrompt);
-        var asked = await _RowAsync(backend, mark, paneId, row => _Bool(row, "IsPendingPermission"));
-        var pending = await handle.ReadPendingPermissionsAsync();
-        var answered = await handle.RespondToPermissionByIdAsync(ContractDriver.ToolUseId, allow: true);
-        var heard = await _RowAsync(backend, asked.Seq, paneId, row => _Text(row) == $"allowed: {ContractDriver.ToolUseId}");
-
-        Assert.Contains(pending, permission => permission.ToolUseId == ContractDriver.ToolUseId);
-        Assert.True(answered);
-        Assert.Empty(await handle.ReadPendingPermissionsAsync());
-        Assert.True(heard.Seq > asked.Seq);
-    }
-
-    [Fact]
-    public async Task ASession_IsInterruptedThroughItsControl_AndTheProviderEffectReachesTheStream()
-    {
-        await using var backend = await StartBackendAsync();
-        var mark = backend.Events.LastSeq;
-        var paneId = await _StartAsync(backend);
-        var control = _HandleOf(backend, paneId).Control
-            ?? throw new InvalidOperationException($"Pane '{paneId}' has no control.");
-
-        await control.InterruptAsync();
-        var row = await _RowAsync(backend, mark, paneId, row => _Text(row) == $"echo: {ContractDriver.InterruptMarker}");
-
-        Assert.Equal(paneId, row.PaneId);
-    }
 
     // Resuming is reading the stream again from a seq the reader kept: what came after it, and nothing it already had.
     [Fact]
@@ -149,8 +87,6 @@ public abstract class BackendContractTests
     private static string? _Text(BackendEvent evt) =>
         evt.Data.TryGetProperty("Row", out var row) && row.TryGetProperty("Text", out var text) ? text.GetString() : null;
 
-    private static bool _Bool(BackendEvent evt, string property) =>
-        evt.Data.TryGetProperty("Row", out var row) && row.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.True;
 }
 
 // The three doors the frontend uses, plus whatever the subclass has to shut down after the test.

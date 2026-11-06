@@ -65,16 +65,16 @@ internal static class Ui
     public static string Duration(TimeSpan duration)
     {
         var minutes = (long)duration.TotalMinutes;
-        return $"{minutes / 60}u{minutes % 60:00}";
+        return $"{minutes / 60}h{minutes % 60:00}";
     }
 
     public static string Source(CockpitTimeEntrySource source) =>
-        source == CockpitTimeEntrySource.Stopwatch ? "stopwatch" : "duur";
+        source == CockpitTimeEntrySource.Stopwatch ? "stopwatch" : "duration";
 
     public static string Status(CockpitTimeEntry entry) => entry.Status switch
     {
         CockpitTimeEntryStatus.Open => "open",
-        CockpitTimeEntryStatus.Offered => $"aangeboden op {entry.OfferedAt?.ToLocalTime():d MMM}",
-        _ => "geboekt",
+        CockpitTimeEntryStatus.Offered => $"offered on {entry.OfferedAt?.ToLocalTime():d MMM}",
+        _ => "booked",
     };
 }

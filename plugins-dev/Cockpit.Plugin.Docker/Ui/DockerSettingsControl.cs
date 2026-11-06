@@ -1,6 +1,5 @@
 using Avalonia.Controls;
 using Cockpit.Plugins.Abstractions;
-using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.Plugin.Docker.Settings;
 
 namespace Cockpit.Plugin.Docker.UI;
@@ -12,11 +11,9 @@ internal sealed class DockerSettingsControl : UserControl, IPluginSettingsView
     private readonly DockerSettings _settings;
     private readonly CheckBox _mcpEnabled;
     private readonly CheckBox _allowExec;
-    private readonly TextBox _endpoint;
     private readonly ComboBox _consentMode;
-    private readonly string _originalEndpoint;
 
-    public DockerSettingsControl(ICockpitUiHost host, DockerSettings settings)
+    public DockerSettingsControl(DockerSettings settings)
     {
         _settings = settings;
 
@@ -32,37 +29,11 @@ internal sealed class DockerSettingsControl : UserControl, IPluginSettingsView
             IsChecked = settings.AllowExec,
         };
 
-        _originalEndpoint = settings.DaemonEndpoint;
-        _endpoint = new TextBox
-        {
-            PlaceholderText = "Blank = local default socket",
-            Text = settings.DaemonEndpoint,
-        };
-
-        // AC-1033: the `?` beside the heading, pointing at this plugin's own settings page — the endpoint format
-        // and the pitfall of an endpoint that quietly resolves to the wrong daemon.
-        var endpointHeading = new StackPanel
-        {
-            Orientation = Avalonia.Layout.Orientation.Horizontal,
-            Margin = new(0, 8, 0, 0),
-            Children = { new TextBlock { Text = "Docker daemon endpoint" }, host.CreateHelpHint("docker", "endpoint") },
-        };
-
         // AC-1348: index matches DockerConsentMode's declaration order (AlwaysAsk/ReadFree/AllFree).
         _consentMode = new ComboBox
         {
             ItemsSource = new[] { "Always ask", "Read-free (reads skip the card; changes still ask)", "All-free (nothing asks on this daemon)" },
             SelectedIndex = (int)settings.ConsentMode,
-        };
-
-        // Mirrors DockerSettings.ConsentMode's own endpoint tie live: editing the endpoint in this same dialog,
-        // before Save, must not let a mode chosen for the old endpoint ride along to a new one.
-        _endpoint.TextChanged += (_, _) =>
-        {
-            if ((_endpoint.Text ?? string.Empty).Trim() != _originalEndpoint)
-            {
-                _consentMode.SelectedIndex = (int)DockerConsentMode.AlwaysAsk;
-            }
         };
 
         Content = new StackPanel
@@ -72,11 +43,9 @@ internal sealed class DockerSettingsControl : UserControl, IPluginSettingsView
             {
                 _mcpEnabled,
                 _allowExec,
-                endpointHeading,
-                _endpoint,
                 new TextBlock
                 {
-                    Text = "e.g. npipe://./pipe/docker_engine (Windows) or unix:///var/run/docker.sock. Leave blank to use the local default.",
+                    Text = "Remote Docker hosts are not supported yet. SDK operations use the local default socket; CLI operations use your Docker CLI environment and context. Saved endpoint overrides are ignored.",
                     Opacity = 0.7,
                     TextWrapping = Avalonia.Media.TextWrapping.Wrap,
                 },
@@ -84,7 +53,7 @@ internal sealed class DockerSettingsControl : UserControl, IPluginSettingsView
                 _consentMode,
                 new TextBlock
                 {
-                    Text = "Tied to the endpoint above — changing it resets this daemon to Always ask.",
+                    Text = "Approvals saved for a previous remote endpoint do not apply to the local daemon.",
                     Opacity = 0.7,
                     TextWrapping = Avalonia.Media.TextWrapping.Wrap,
                 },
@@ -92,10 +61,6 @@ internal sealed class DockerSettingsControl : UserControl, IPluginSettingsView
         };
     }
 
-    // AC-1004, criterion 3: the old `Save()` was these three property writes and nothing else. The side effect a
-    // saved endpoint needs — the Docker engine's cached client being dropped (`DockerPlugin` wires
-    // `engine.Invalidate`) — hangs on `ICockpitHost.OnSettingsSaved`, which the host raises after this write, so
-    // the rebuilt client reads the new endpoint rather than the one it just replaced.
     public bool TryStage(out Action? commit, out string? error)
     {
         commit = _Commit;
@@ -107,9 +72,6 @@ internal sealed class DockerSettingsControl : UserControl, IPluginSettingsView
     {
         _settings.McpEnabled = _mcpEnabled.IsChecked ?? true;
         _settings.AllowExec = _allowExec.IsChecked ?? false;
-        _settings.DaemonEndpoint = (_endpoint.Text ?? string.Empty).Trim();
-
-        // Must follow DaemonEndpoint: ConsentMode's setter stamps the endpoint it was chosen for (AC-1348).
         _settings.ConsentMode = (DockerConsentMode)_consentMode.SelectedIndex;
     }
 }

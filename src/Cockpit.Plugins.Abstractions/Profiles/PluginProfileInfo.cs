@@ -52,6 +52,11 @@ public sealed record PluginProfileInfo(string Label, string Provider, string Con
     public IReadOnlyList<string> EffortSuggestions { get; init; } = [];
 
     /// <summary>
+    /// False when the plugin that registers this profile's provider is disabled or not loaded, so a session on it cannot start.
+    /// </summary>
+    public bool ProviderAvailable { get; init; } = true;
+
+    /// <summary>
     /// Whether this profile runs a model on local hardware rather than a paid hosted API — a cost signal for a
     /// consumer that routes work across profiles.
     /// </summary>

@@ -36,7 +36,11 @@ public sealed class DockPanelHost
 
         if (registry is not null)
         {
-            registry.Changed += (_, _) => RestoreIfStarted();
+            registry.Changed += (_, _) =>
+            {
+                _CloseWindowsOfWithdrawnPanels();
+                RestoreIfStarted();
+            };
         }
     }
 
@@ -118,6 +122,15 @@ public sealed class DockPanelHost
         }
     }
 
+    // AC-2024: closing one docks its id back, which is where a re-enabled plugin's panel starts.
+    private void _CloseWindowsOfWithdrawnPanels()
+    {
+        foreach (var panelId in _windows.Keys.Where(id => _registry?.Panels.All(panel => panel.Id != id) == true).ToList())
+        {
+            _CloseWindow(panelId);
+        }
+    }
+
     private void _ShowWindow(string panelId)
     {
         if (_ownWindows.TryGetValue(panelId, out var own))
@@ -137,7 +150,11 @@ public sealed class DockPanelHost
             return;
         }
 
-        var window = new DockPanelWindow(registration, _registry.ViewFor(registration), _boundsStore());
+        var window = new DockPanelWindow(
+            registration,
+            _registry.ViewFor(registration),
+            _boundsStore(),
+            subtitle: registration.Id == AgentsOverviewViewModel.DockPanelId ? _cockpit.AgentsPaletteHeaderShortcutLabel : null);
         window.DockBackRequested += async (_, _) =>
             await _LoggedAsync(() => ShowInAsync(panelId, floating: false), "Docking a panel back from its window failed.").ConfigureAwait(true);
         window.Closed += async (_, _) =>

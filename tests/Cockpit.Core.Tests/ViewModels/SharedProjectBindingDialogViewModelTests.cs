@@ -23,7 +23,6 @@ public class SharedProjectBindingDialogViewModelTests
     // POSIX path is fully qualified on this repo's Linux CI and not on a Windows dev box. Same seam as
     // `ProjectResourcePathPortabilityTests`.
     private static readonly string _OtherMachineHome = OperatingSystem.IsWindows() ? @"C:\Users\erik" : "/home/erik";
-    private static readonly string _ThisMachineHome = OperatingSystem.IsWindows() ? @"C:\Users\raymond" : "/home/raymond";
 
     private static ISessionProfileStore _ProfileStoreWith(params string[] labels)
     {
@@ -38,26 +37,6 @@ public class SharedProjectBindingDialogViewModelTests
         var source = Substitute.For<ISharedProjectSource>();
         source.PrepareBindingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(result);
         return source;
-    }
-
-    // True only while a Posted delegate is running — the only way to tell "resumed via the captured context"
-    // (ConfigureAwait(true)) apart from "resumed inline on the thread pool" (false) without real thread identity.
-    private sealed class _RecordingSyncContext : SynchronizationContext
-    {
-        internal bool InsidePost { get; private set; }
-
-        public override void Post(SendOrPostCallback d, object? state)
-        {
-            InsidePost = true;
-            try
-            {
-                d(state);
-            }
-            finally
-            {
-                InsidePost = false;
-            }
-        }
     }
 
     /// <summary>
@@ -75,19 +54,6 @@ public class SharedProjectBindingDialogViewModelTests
         viewModel!.SelectedProfileLabel = "Vex";
 
         Assert.Null(viewModel.ToProject().Assistant);
-    }
-
-    /// <summary>
-    /// The same rule one type earlier: the binding a plugin hands the host structurally cannot carry an assistant,
-    /// so no source can reintroduce one behind the dialog's back.
-    /// </summary>
-    [Fact]
-    public void SharedProjectBinding_CarriesNoAssistant_SinceTheAssistantNeverTravels()
-    {
-        var names = new[] { typeof(SharedProjectBinding), typeof(SharedProjectDefinitionEdit), typeof(SharedProjectPublishDefinition) }
-            .SelectMany(type => type.GetProperties()).Select(property => property.Name).ToArray();
-
-        Assert.DoesNotContain(names, name => name.Contains("Assistant", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -116,37 +82,6 @@ public class SharedProjectBindingDialogViewModelTests
     }
 
     [Fact]
-    public async Task ResourceRows_TenPlaceholderRows_TheRealWritePipelineCaseNow_AreAllAskedAboutWithNoOriginalReferenceToShow()
-    {
-        // AC-246 (Raymond, 2026-08-02): this is the normal case now, not a hypothetical — CockpitProjectResourceEntry.Create
-        // writes role + label with a blank reference for a machine-scope row. The abstractions-level invariant this
-        // reader leans on: a blank SharedProjectBindingResource.Reference IS the placeholder signal (see that
-        // record's own remarks) — Create() never produces a non-placeholder row with a blank reference, so there is
-        // nothing else a blank Reference here could mean.
-        var resources = Enumerable.Range(1, 10)
-            .Select(i => new SharedProjectBindingResource("Reference", string.Empty) { Label = $"Note {i}" })
-            .ToList();
-        var binding = new SharedProjectBinding("Ten Placeholders") { Resources = resources };
-        var source = _SourceReturning(SharedProjectBindingResult.Success(binding));
-
-        var (viewModel, _) = await SharedProjectBindingDialogViewModel.CreateAsync(
-            "depot:ten-placeholders", "Work", source, _ProfileStoreWith("Zyra"));
-        viewModel!.SelectedProfileLabel = "Zyra";
-
-        Assert.Equal(10, viewModel.ResourceRows.Count);
-        Assert.True(viewModel.HasResourceRows);
-        // Nothing to show as "was: …" — the writer's own reference never reached this build at all, unlike the
-        // defensive non-blank case above.
-        Assert.All(viewModel.ResourceRows, row => Assert.Null(row.OriginalReference));
-        Assert.Equal(
-            Enumerable.Range(1, 10).Select(i => $"Note {i}").OrderBy(l => l, StringComparer.Ordinal),
-            viewModel.ResourceRows.Select(row => row.Label).OrderBy(l => l, StringComparer.Ordinal));
-
-        var project = viewModel.ToProject();
-        Assert.Single(project.Resources); // only the binding marker — every placeholder skipped, none saved blank
-    }
-
-    [Fact]
     public async Task ResourceRows_ASecretShapedHomeAnchoredReference_IsNeverAskedAbout_AutoIncludedWithContentNeverSent()
     {
         // AC-612 verification (AC-246 harness): a row a real writer would already have kept out of the shared
@@ -155,7 +90,11 @@ public class SharedProjectBindingDialogViewModelTests
         // model's own SendsContent guard (ProjectResource.cs) still refuses its content regardless of what is stored.
         var binding = new SharedProjectBinding("Sneaky")
         {
-            Resources = [new SharedProjectBindingResource("Instructions", "~/.ssh/id_rsa") { Label = "oops" }],
+            Resources =
+            [
+                new SharedProjectBindingResource("Instructions", "~/.ssh/id_rsa") { Label = "oops" },
+                new SharedProjectBindingResource("SomeFutureRole", "docs/x.md"),
+            ],
         };
         var source = _SourceReturning(SharedProjectBindingResult.Success(binding));
 
@@ -168,21 +107,8 @@ public class SharedProjectBindingDialogViewModelTests
         var project = viewModel.ToProject();
         var row = Assert.Single(project.Resources, resource => resource.Reference == "~/.ssh/id_rsa");
         Assert.False(row.SendsContent); // enforced by the domain model itself, whatever the wire said
+
+        // A row with a role this build does not know falls back to Reference, the least powerful role.
+        Assert.Equal(ProjectResourceRole.Reference, Assert.Single(project.Resources, resource => resource.Reference == "docs/x.md").Role);
     }
-
-    [Fact]
-    public async Task ResourceRows_ARowWithAnUnrecognisedRole_FallsBackToReference_TheLeastPowerfulRole()
-    {
-        var binding = new SharedProjectBinding("Weird") { Resources = [new SharedProjectBindingResource("SomeFutureRole", "docs/x.md")] };
-        var source = _SourceReturning(SharedProjectBindingResult.Success(binding));
-
-        var (viewModel, _) = await SharedProjectBindingDialogViewModel.CreateAsync(
-            "depot:weird", "Work", source, _ProfileStoreWith("Zyra"));
-        viewModel!.SelectedProfileLabel = "Zyra";
-
-        var project = viewModel.ToProject();
-        var row = Assert.Single(project.Resources, resource => resource.Reference == "docs/x.md");
-        Assert.Equal(ProjectResourceRole.Reference, row.Role);
-    }
-
 }

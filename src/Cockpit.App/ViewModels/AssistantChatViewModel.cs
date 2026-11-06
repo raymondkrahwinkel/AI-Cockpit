@@ -87,7 +87,7 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     // host's edge and hairline are its frame, and a rounded one of its own would stand inside that square edge.
     public bool DrawsOwnFrame => Host == AssistantChatHost.Floating;
 
-    // AC-1529: the Simple stand, in its column or its dock — the header leaves rights and usage to ⋯ → Details there.
+    // AC-1529: the Simple stand, in its column or its dock — the header leaves rights to ⋯ → Details there.
     public bool IsInSimpleStand => _cockpit?.SimpleView ?? false;
 
     // Everything else the operator had in flight (input text, attachments, the mention picker) is already on this view
@@ -161,6 +161,10 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     // AC-1316: the Simple stand's start offer is drawn inside this conversation, off the cockpit's own project
     // cards — the same source as the panels stand's overview (AC-1304 criterion 1(b)), reached and not copied.
     public CockpitViewModel? Cockpit => _cockpit;
+
+    public bool IsAudioAvailable => _cockpit?.IsAudioAvailable ?? true;
+
+    public string AudioControlTooltip => IsAudioAvailable ? "Audio controls" : _cockpit!.AudioUnavailableMessage;
 
     // The assistant's own session, bound straight through to the existing SDK transcript view.
     public SessionViewModel? Session => _observedSession;
@@ -244,6 +248,8 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
         if (e.PropertyName is nameof(CockpitViewModel.AssistantLeadershipLabel))
         {
             OnPropertyChanged(nameof(LeadershipLabel));
+            OnPropertyChanged(nameof(CanClaimLeadership));
+            ClaimLeadershipCommand.NotifyCanExecuteChanged();
             OnPropertyChanged(nameof(IsUnavailable));
             OnPropertyChanged(nameof(LocationLabel));
             OnPropertyChanged(nameof(LeaderIsServer));
@@ -266,6 +272,12 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
             OnPropertyChanged(nameof(IsUnavailable));
             OnPropertyChanged(nameof(UnavailableReason));
             OnPropertyChanged(nameof(IsControlled));
+        }
+
+        if (e.PropertyName is null or nameof(CockpitViewModel.IsAudioAvailable) or nameof(CockpitViewModel.AudioUnavailableMessage))
+        {
+            OnPropertyChanged(nameof(IsAudioAvailable));
+            OnPropertyChanged(nameof(AudioControlTooltip));
         }
     }
 
@@ -667,6 +679,7 @@ public sealed record AssistantSpawnLogRowViewModel(
         {
             SpawnCaller.Assistant => "assistant",
             SpawnCaller.Controller => "paired controller",
+            SpawnCaller.Operator => "operator",
             _ => $"coordinator ({entry.CallerPaneId ?? "unknown pane"})",
         },
         entry.WorkspaceName ?? (entry.WorkspaceId.Length > 0 ? entry.WorkspaceId : "—"),

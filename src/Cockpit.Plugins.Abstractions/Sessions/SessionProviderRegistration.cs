@@ -30,6 +30,9 @@ public sealed record SessionProviderRegistration(
     PluginSessionCapabilities Capabilities,
     string DefaultBaseUrl = "")
 {
+    // Arguments: config JSON, system instruction, JSON data; opt in only without tools, payload logging, history or native session storage.
+    public Func<string, string, string, CancellationToken, Task<string?>>? GenerateEphemeralSpeechAsync { get; init; }
+
     /// <summary>
     /// Optional provider terms guidance; absent for providers that publish no notice.
     /// </summary>

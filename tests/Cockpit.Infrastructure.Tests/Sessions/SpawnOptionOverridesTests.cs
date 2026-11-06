@@ -35,16 +35,16 @@ public class SpawnOptionOverridesTests
         ["effort"] = "high",
     };
 
-    public static TheoryData<IReadOnlyDictionary<string, string>?> NoOverrides() =>
-        [null, new Dictionary<string, string>()];
+    [Fact]
+    public void ThePermissionModeKey_IsRefused_HoweverItIsSpelledAndWhateverTheProviderDeclares()
+    {
+        foreach (var key in new[] { "permission-mode", "Permission-Mode", " permission-mode ", "sandbox", "approvalPolicy" })
+        {
+            _AssertPermissionKeyRefused(key);
+        }
+    }
 
-    [Theory]
-    [InlineData("permission-mode")]
-    [InlineData("Permission-Mode")]
-    [InlineData(" permission-mode ")]
-    [InlineData("sandbox")]
-    [InlineData("approvalPolicy")]
-    public void ThePermissionModeKey_IsRefused_HoweverItIsSpelledAndWhateverTheProviderDeclares(string key)
+    private static void _AssertPermissionKeyRefused(string key)
     {
         // Criterion 3 (Raymond, 2026-08-08; approvalPolicy added AC-1101). Asserted as a refusal rather than as "the
         // mode stayed default": a merge that quietly dropped the key would pass that second assertion while the

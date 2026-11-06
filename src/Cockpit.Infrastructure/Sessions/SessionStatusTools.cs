@@ -168,7 +168,10 @@ internal sealed class SessionStatusTools(
         var unreachable = await _UnreachableAtStartAsync(caller).ConfigureAwait(false);
 
         var label = effectiveArguments.Length is 0 ? command : $"{command} {string.Join(' ', effectiveArguments)}";
-        var slot = queue?.Request(new HeavyRunRequest(runId, runKind, runPurpose, caller, label, workingDirectory))
+        var slot = queue?.Request(new HeavyRunRequest(runId, runKind, runPurpose, caller, label, workingDirectory)
+        {
+            Command = label,
+        })
             ?? AdmittedHeavyRunSlot.Instance;
 
         // Fire-and-forget by design: the whole point is that the caller does not wait on this. The slot is given back

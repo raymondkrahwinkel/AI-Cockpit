@@ -17,18 +17,7 @@ public class PluginStoreClientLocalTests : IDisposable
     }
 
     [Fact]
-    public async Task FetchIndexAsync_LocalFolder_ReadsAndParsesTheIndex()
-    {
-        await File.WriteAllTextAsync(Path.Combine(_tempDir, "index.json"), """{ "name": "My store", "plugins": [] }""");
-
-        var result = await _client.FetchIndexAsync(PluginStoreConfig.Local(_tempDir));
-
-        Assert.True(result.IsSuccess);
-        Assert.Equal("My store", result.Index!.Name);
-    }
-
-    [Fact]
-    public async Task DownloadZipAsync_LocalFolder_RejectsAChecksumMismatch()
+    public async Task DownloadZipAsync_LocalFolder_RejectsAChecksumMismatch_AndAPathOutsideTheStore()
     {
         await File.WriteAllBytesAsync(Path.Combine(_tempDir, "plugin.zip"), Encoding.UTF8.GetBytes("the real bytes"));
 
@@ -36,16 +25,12 @@ public class PluginStoreClientLocalTests : IDisposable
 
         Assert.False(result.IsSuccess);
         Assert.Null(result.ZipPath);
-    }
 
-    [Fact]
-    public async Task DownloadZipAsync_LocalFolder_RefusesAPathOutsideTheStore()
-    {
         // A malicious index.json must not be able to read a file outside its own folder.
-        var result = await _client.DownloadZipAsync(PluginStoreConfig.Local(_tempDir), "../../etc/passwd", null);
+        var outside = await _client.DownloadZipAsync(PluginStoreConfig.Local(_tempDir), "../../etc/passwd", null);
 
-        Assert.False(result.IsSuccess);
-        Assert.Contains("outside", result.Error);
+        Assert.False(outside.IsSuccess);
+        Assert.Contains("outside", outside.Error);
     }
 
     public void Dispose()

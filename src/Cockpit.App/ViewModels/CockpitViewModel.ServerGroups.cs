@@ -206,7 +206,6 @@ public partial class CockpitViewModel
                 group.State = server.State;
                 _ReconcileServerGroup(group);
                 _ApplyServerLink(group);
-                OnPropertyChanged(nameof(ServerStatusLabels));
                 OnPropertyChanged(nameof(RemoteWindowStatus));
             });
             Follow();
@@ -218,7 +217,6 @@ public partial class CockpitViewModel
 
         OnPropertyChanged(nameof(HasServerGroups));
         OnPropertyChanged(nameof(ShowLocalMachineHeading));
-        OnPropertyChanged(nameof(ServerStatusLabels));
         OnPropertyChanged(nameof(RemoteWindowStatus));
         _OnOpenServerGroupsChanged();
         foreach (var session in Sessions)
@@ -290,9 +288,6 @@ public partial class CockpitViewModel
             OpenServerSessionCommand.Execute(row);
         }
     }
-
-    // "huis-cockpit: connected · 38 ms" in the status bar, one per server.
-    public IEnumerable<string> ServerStatusLabels => ServerGroups.Select(group => group.StatusBarLabel).ToList();
 
     [RelayCommand]
     private async Task OpenServerSessionAsync(ServerSessionRowViewModel row)
@@ -467,10 +462,12 @@ public partial class CockpitViewModel
         await Plugins.LoadAsync();
         var admin = new ServerAdminViewModel(group.Name, key.Label, group.Server.Administration, profiles, projects, plugins, group.Server.Projects, dialogService: _dialogService, runningSessions: () => group.Sessions.Count, logger: _logger, serverVersion: key.Version)
         {
+            RestartAdviceAfter = PluginRestartAdviceAfter,
             InitialCategory = category,
             GitHubCredentials = Composition.RemoteServerGitHubCredentials.For(group.Server),
             Profiles = new ServerProfilesViewModel(new ServerProfileServices(group.Name, group.Server.Profiles, _serverSignIns, plugins, LocalPluginUiPart)),
             Assistant = assistant,
+            Storage = group.Server.StorageSettings is { } storage ? new ServerStorageViewModel(storage) : null,
             HasPluginSettings = row => plugins is IPluginChannelRelay && (_ServerSettingsFor(row) is not null || _LocalSettingsPartFor(row) is not null),
             OpenPluginSettings = row => _OpenServerPluginSettingsAsync(group.Name, plugins, group.Server.Profiles, group.Server.Projects, row),
             IsPluginOnDesktop = row => Plugins.Plugins.Any(local => local.FolderId == PluginFolderName.Normalize(row.Id)),
@@ -498,7 +495,7 @@ public partial class CockpitViewModel
 
     // AC-1571: the UI part of the same plugin on this desktop, for opening its own settings view against the server.
     // Set once the UI parts have initialized.
-    internal Func<string, (Type UiType, ICockpitUiHost Host)?> LocalPluginUiPart { get; set; } = _ => null;
+    internal Func<string, (Type UiType, ICockpitUiHost Host, string Version)?> LocalPluginUiPart { get; set; } = _ => null;
     private Action<IRemoteServer>? _registerRemoteFileWorkspaces;
 
     internal void FollowRemoteFileWorkspaces(Action<IRemoteServer> register)
@@ -510,7 +507,7 @@ public partial class CockpitViewModel
         }
     }
 
-    private (Type UiType, ICockpitUiHost Host)? _LocalSettingsPartFor(ServerPluginRowViewModel row) =>
+    private (Type UiType, ICockpitUiHost Host, string Version)? _LocalSettingsPartFor(ServerPluginRowViewModel row) =>
         LocalPluginUiPart(row.Id) is { Host.HasSettings: true } part ? part : null;
 
     // Opened beside the Admin dialog, with a channel that goes to the plugin's backend part on that server. The plugin's
@@ -525,6 +522,12 @@ public partial class CockpitViewModel
 
         if (_LocalSettingsPartFor(row) is { } part)
         {
+            // Shown by the admin dialog as the error of the click.
+            if (ServerPluginVersions.Differ(part.Version, row.RunningVersion))
+            {
+                throw new InvalidOperationException(ServerPluginVersions.Message(row.Name, server, row.RunningVersion, part.Version));
+            }
+
             if (await ServerPluginSettings.OpenAsync(part.UiType, part.Host, relay, row.FolderId, () => ServerPluginTargets.ProfilesAsync(profiles), () => ServerPluginTargets.ProjectsAsync(projects), server) is { } remote)
             {
                 await _dialogService.ShowServerPluginSettingsAsync($"{row.Name} on {server}", remote.CreateView, remote.PersistAsync);

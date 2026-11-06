@@ -69,7 +69,7 @@ internal sealed class FileSourceChannelClient(IPluginUiChannel channel)
         string.IsNullOrWhiteSpace(live.SessionId) || live.ContentBase64 is null || live.Status is null
             ? throw new FileSourceException(FileSourceErrorKind.Unavailable, "The source returned an invalid live file.")
             : (live.SessionId, new LiveFileSnapshot(new UTF8Encoding(false, true).GetString(FileSourceChannel.DecodeContent(live.ContentBase64)),
-                live.Rev, live.Status));
+                live.Rev, live.Status) { SerializedText = live.SerializedText });
 
     public Task<FileWriteResult> WriteAsync(FileRef file, Stream content, string? ifVersion,
         bool mustNotExist, CancellationToken cancellationToken) => _RunAsync(async () =>

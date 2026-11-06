@@ -15,6 +15,9 @@ namespace Cockpit.Core.Abstractions.Sessions;
 /// </summary>
 public interface ISessionControl : IAsyncDisposable
 {
+    /// <summary>Queues a file for the next assistant reply, returning a refusal when unavailable or full.</summary>
+    string? AttachToReply(ReplyAttachment attachment) => "Reply attachments are unavailable in this session.";
+
     /// <summary>
     /// Claims an idle session on its owner thread, refusing providers without an enforced read-only turn boundary.
     /// Cancellation before Started removes the pending prompt; Completion settles at the turn's end.

@@ -20,6 +20,9 @@ public interface ICockpitSessionObserver
     /// </remarks>
     IReadOnlyList<OpenCockpitSession> OpenSessions => [];
 
+    /// <summary>Whether the session mounted the named MCP server; older hosts default to true for compatibility.</summary>
+    bool HasMcpServer(string paneId, string serverName) => true;
+
     /// <summary>
     /// Raised for each chunk of text a session produces (assistant text and tool output), carrying the
     /// text and the producing session's working directory. Substring-scan it for an output signal — the

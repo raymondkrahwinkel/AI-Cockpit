@@ -2,6 +2,7 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Consent;
@@ -13,6 +14,7 @@ using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Sessions;
@@ -71,6 +73,9 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
 
     // AC-2026: the profile's `MaxParallelSessions`, shared with the pane starts. Absent in a test graph without one.
     private readonly ProfileSessionLimit? _limit;
+    private readonly SessionMcpMounts? _mcpMounts;
+    private readonly IProjectStore? _projectStore;
+    private readonly IProjectMemorySourceRegistry? _memorySources;
 
     private readonly Func<int, TimeSpan> _timeout;
     private readonly TimeSpan _idleWindow;
@@ -91,8 +96,11 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         Func<IMcpServerCatalog?>? mcpServerCatalog = null,
         ISessionStateStore? sessionState = null,
         IOrgPolicy? orgPolicy = null,
-        ProfileSessionLimit? limit = null)
-        : this(profileStore, sessionManager, mcpServerStore, auditLog, minutes => TimeSpan.FromMinutes(minutes), workspaces, providerRegistry, projects, worktrees, idleWindow: null, consent, mcpServerCatalog: mcpServerCatalog, sessionState: sessionState, orgPolicy: orgPolicy, limit: limit)
+        ProfileSessionLimit? limit = null,
+        IProjectStore? projectStore = null,
+        IProjectMemorySourceRegistry? memorySources = null,
+        SessionMcpMounts? mcpMounts = null)
+        : this(profileStore, sessionManager, mcpServerStore, auditLog, minutes => TimeSpan.FromMinutes(minutes), workspaces, providerRegistry, projects, worktrees, idleWindow: null, consent, mcpServerCatalog: mcpServerCatalog, sessionState: sessionState, orgPolicy: orgPolicy, limit: limit, projectStore: projectStore, memorySources: memorySources, mcpMounts: mcpMounts)
     {
     }
 
@@ -114,8 +122,12 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         Func<IMcpServerCatalog?>? mcpServerCatalog = null,
         ISessionStateStore? sessionState = null,
         IOrgPolicy? orgPolicy = null,
-        ProfileSessionLimit? limit = null)
+        ProfileSessionLimit? limit = null,
+        IProjectStore? projectStore = null,
+        IProjectMemorySourceRegistry? memorySources = null,
+        SessionMcpMounts? mcpMounts = null)
     {
+        _mcpMounts = mcpMounts;
         _profileStore = profileStore;
         _sessionManager = sessionManager;
         _mcpServerStore = mcpServerStore;
@@ -132,6 +144,8 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         _orgPolicy = orgPolicy;
         _taskRetention = taskRetention ?? TaskRetention;
         _limit = limit;
+        _projectStore = projectStore;
+        _memorySources = memorySources;
         limit?.CountDelegationsWith(_CountActive);
     }
 
@@ -705,6 +719,13 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
 
             runtime.EventAppended += evt => _OnTaskEvent(entry, evt);
 
+            var project = entry.ProjectId is { Length: > 0 } projectId && _projectStore is not null
+                ? (await _projectStore.LoadAsync()).Projects.FirstOrDefault(p => p.Id == projectId)
+                : null;
+            var brainInstruction = SessionStartDefaults.ResolveBrainInstruction(project, entry.Profile, _memorySources?.Sources.ToMemorySources());
+
+            _mcpMounts?.RestrictDelegation(entry.TaskId, await _ToolsForAsync(entry.Profile, projectId: entry.ProjectId));
+
             await runtime.StartAsync(
                 entry.Profile,
                 effectiveCeiling,
@@ -714,14 +735,14 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
                 // AC-128/AC-89: give the delegated session its own verified MCP identity, keyed on the task id, so
                 // the driver mints it a per-session token instead of the shared app key. Without this a sub-agent's
                 // own orchestrator calls arrive unscoped and could reach every session's tasks (confused deputy).
-                launchOptions: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                launchOptions: SessionStartComposer.WithInstructions(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                 {
                     [WellKnownPluginSessionOptions.PaneId] = entry.TaskId,
                     // AC-378: nobody is watching a delegated task, so its narrowing must be authoritative — the
                     // driver hands the CLI exactly the servers _ToolsForAsync resolved, never the operator's own
                     // user/project config. A server resolving to nothing used to yield every account connector instead.
                     [WellKnownPluginSessionOptions.Unattended] = "true",
-                },
+                }, entry.Profile.SystemPrompt, isJobRun: false, brainInstruction),
                 // The project this task inherited from the session that delegated it (AC-320), so its MCP fan-out
                 // resolves the registry as that project sees it (AC-218) rather than unscoped. A value, never a
                 // lookup: this runs where the driver may resolve synchronously.

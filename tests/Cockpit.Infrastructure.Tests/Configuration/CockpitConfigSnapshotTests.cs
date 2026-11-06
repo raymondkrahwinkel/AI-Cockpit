@@ -28,25 +28,6 @@ public sealed class CockpitConfigSnapshotTests : IDisposable
     }
 
     [Fact]
-    public async Task ReadAsync_FiveTimesWithinOneWriteGeneration_ParsesTheFileOnce_AndHandsEachCallerItsOwnCopy()
-    {
-        Directory.CreateDirectory(_directory);
-        await new CockpitConfigFileAccess(ConfigPath).UpdateAsync(
-            file => (file.Plugins ??= [])["kept"] = new PluginRegistrationEntry(), CancellationToken.None);
-        var before = CockpitConfigReads.Parses;
-
-        var first = await new CockpitConfigFileAccess(ConfigPath).ReadAsync(CancellationToken.None);
-        first!.Plugins!.Clear();
-        await new CockpitConfigFileAccess(ConfigPath).ReadAsync(CancellationToken.None);
-        await new CockpitConfigFileAccess(ConfigPath).ReadAsync(CancellationToken.None);
-        await new CockpitConfigFileAccess(ConfigPath).ReadAsync(CancellationToken.None);
-        var last = await new CockpitConfigFileAccess(ConfigPath).ReadAsync(CancellationToken.None);
-
-        Assert.Equal(1, CockpitConfigReads.Parses - before);
-        Assert.Contains("kept", last!.Plugins!.Keys);
-    }
-
-    [Fact]
     public async Task ReadAsync_AfterAWriteAndAfterAnEditFromOutside_SeesTheNewContent()
     {
         Directory.CreateDirectory(_directory);

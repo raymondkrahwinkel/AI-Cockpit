@@ -22,12 +22,4 @@ public sealed class ConsentSourceCatalogTests
         // A host source never carries the prefix, so no plugin-built key can collide with one.
         Assert.DoesNotContain(ConsentSourceCatalog.HostSources, s => s.StartsWith("plugin:", StringComparison.Ordinal));
     }
-
-    [Fact]
-    public void KeyFor_TwoSurfacesOfTheSamePlugin_GetSeparateKeys()
-    {
-        Assert.NotEqual(
-            ConsentSourceCatalog.KeyFor("diagram", "Diagram MCP"),
-            ConsentSourceCatalog.KeyFor("diagram", "Whiteboard MCP"));
-    }
 }

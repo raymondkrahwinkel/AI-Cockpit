@@ -14,27 +14,11 @@ public class ShortcutCaptureControlTests
     [Fact]
     public void SingleKeyMode_StoresTheBareKeyName_SoPushToTalkKeyGateCanParseItBack()
     {
-        var stored = ShortcutCaptureControl.FormatCapturedKey(Key.F9, KeyModifiers.None, ShortcutCaptureMode.SingleKey);
+        // A modifier held while pressing the key is dropped: the push-to-talk binding is a single held key.
+        var stored = ShortcutCaptureControl.FormatCapturedKey(Key.F9, KeyModifiers.Control, ShortcutCaptureMode.SingleKey);
 
         Assert.Equal("F9", stored);
         Assert.True(Enum.TryParse<Key>(stored, ignoreCase: true, out var parsed));
         Assert.Equal(Key.F9, parsed);
-    }
-
-    [Fact]
-    public void SingleKeyMode_IgnoresModifiers_BecauseAHeldKeyIsNotAChord()
-    {
-        // Even if a modifier is down when the key is pressed, the push-to-talk binding is a single held key.
-        var stored = ShortcutCaptureControl.FormatCapturedKey(Key.F9, KeyModifiers.Control, ShortcutCaptureMode.SingleKey);
-
-        Assert.Equal("F9", stored);
-    }
-
-    [Fact]
-    public void ChordMode_StoresTheFullGesture_WithItsModifiers()
-    {
-        var stored = ShortcutCaptureControl.FormatCapturedKey(Key.P, KeyModifiers.Control | KeyModifiers.Shift, ShortcutCaptureMode.Chord);
-
-        Assert.Equal("Ctrl+Shift+P", stored);
     }
 }

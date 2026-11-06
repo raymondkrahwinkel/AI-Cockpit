@@ -110,21 +110,115 @@ internal sealed class CockpitMcpEndpointHost
 
     // A plugin's endpoint is never NodeOnly: that flag exists for this cockpit's own node-control endpoint, and a
     // plugin has no way to ask for a listener the operator's switches do not govern.
-    public Task MountAsync(string serverName, object tools, Func<bool>? isEnabled = null, bool isInternal = false, bool alwaysMounted = false, CancellationToken cancellationToken = default) =>
+    public Task<bool> MountAsync(string serverName, object tools, Func<bool>? isEnabled = null, bool isInternal = false, bool alwaysMounted = false, CancellationToken cancellationToken = default) =>
         _MountAsync(serverName, tools, isEnabled, isInternal, alwaysMounted, nodeOnly: false, cancellationToken);
 
-    private async Task _MountAsync(string serverName, object tools, Func<bool>? isEnabled, bool isInternal, bool alwaysMounted, bool nodeOnly, CancellationToken cancellationToken)
+    // AC-2024: the undo of a plugin's mount. The listener stays, so a session that still holds the URL gets a tool
+    // error naming the plugin instead of a refused connection; a later mount of the name replaces it.
+    public void Retire(string serverName, string reason)
+    {
+        lock (_mountedLock)
+        {
+            if (_mounted.FirstOrDefault(endpoint => endpoint.Name == serverName) is { } endpoint)
+            {
+                endpoint.Retired = reason;
+            }
+        }
+    }
+
+    public async Task UnmountAsync(string serverName, CancellationToken cancellationToken = default)
+    {
+        await _mountGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await _UnmountLockedAsync(serverName).ConfigureAwait(false);
+        }
+        finally
+        {
+            _mountGate.Release();
+        }
+    }
+
+    private async Task _UnmountLockedAsync(string serverName)
+    {
+        MountedEndpoint? endpoint;
+        lock (_mountedLock)
+        {
+            endpoint = _mounted.FirstOrDefault(mounted => mounted.Name == serverName);
+            if (endpoint is not null)
+            {
+                _mounted.Remove(endpoint);
+                _apps.Remove(endpoint.App);
+            }
+        }
+
+        if (endpoint is not null)
+        {
+            await endpoint.App.StopAsync().ConfigureAwait(false);
+            await endpoint.App.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
+    private int _MountedPort(string serverName)
+    {
+        lock (_mountedLock)
+        {
+            return _mounted.FirstOrDefault(endpoint => endpoint.Name == serverName) is { } endpoint ? new Uri(endpoint.Url).Port : 0;
+        }
+    }
+
+    // The old listener has just stopped; give the OS a moment to release the port, else fall back to a fresh one.
+    private static async Task<int> _WaitUntilFreeAsync(int port)
+    {
+        for (var attempt = 0; port != 0 && attempt < 20; attempt++)
+        {
+            try
+            {
+                var probe = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, port);
+                probe.Start();
+                probe.Stop();
+
+                return port;
+            }
+            catch (System.Net.Sockets.SocketException)
+            {
+                await Task.Delay(100).ConfigureAwait(false);
+            }
+        }
+
+        return 0;
+    }
+
+    private string? _RetiredReason(string serverName)
+    {
+        lock (_mountedLock)
+        {
+            return _mounted.FirstOrDefault(endpoint => endpoint.Name == serverName)?.Retired;
+        }
+    }
+
+    private async Task<bool> _MountAsync(string serverName, object tools, Func<bool>? isEnabled, bool isInternal, bool alwaysMounted, bool nodeOnly, CancellationToken cancellationToken)
     {
         await _mountGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             // Idempotent per name: a plugin re-initialised, or two racing to mount, must not bind a second listener
             // for the same MCP server.
+            var loopbackPort = 0;
             if (_IsMounted(serverName))
             {
-                return;
+                if (_RetiredReason(serverName) is null)
+                {
+                    return false;
+                }
+
+                // A session started before the update still holds the old URL, so the replacement takes its port.
+                loopbackPort = _MountedPort(serverName);
+                await _UnmountLockedAsync(serverName).ConfigureAwait(false);
+                loopbackPort = await _WaitUntilFreeAsync(loopbackPort).ConfigureAwait(false);
             }
 
+        build:
             var builder = WebApplication.CreateSlimBuilder();
             builder.Services.AddSingleton(_loggerFactory);
 
@@ -141,6 +235,11 @@ internal sealed class CockpitMcpEndpointHost
                 CallToolResult result;
                 try
                 {
+                    if (_RetiredReason(serverName) is { } retired)
+                    {
+                        return new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = retired }] };
+                    }
+
                     var expectedParameters = _ExpectedParameterNames(context.MatchedPrimitive);
                     var unknownParameters = context.MatchedPrimitive is McpServerTool tool && context.Params.Arguments is { } arguments
                         ? UnknownParameterNames(tool.ProtocolTool.InputSchema, arguments.Keys)
@@ -198,7 +297,7 @@ internal sealed class CockpitMcpEndpointHost
             {
                 // Port 0 lets the OS pick a free loopback port. IPv4 specifically, not ListenLocalhost — that binds
                 // both families on one shared dynamic port, which Kestrel refuses.
-                options.Listen(System.Net.IPAddress.Loopback, 0);
+                options.Listen(System.Net.IPAddress.Loopback, loopbackPort);
                 if (bindNodeListener)
                 {
                     // A second, network-reachable listener next to the loopback one (AC-790), guarded by connect keys
@@ -251,7 +350,19 @@ internal sealed class CockpitMcpEndpointHost
 
             _apps.Add(app);
 
-            await app.StartAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await app.StartAsync(cancellationToken).ConfigureAwait(false);
+            }
+            // The port was free when probed but taken before Kestrel bound it: mount on a fresh one rather than not at all.
+            catch (IOException) when (loopbackPort != 0)
+            {
+                _logger.LogWarning("Port {Port} of the {ServerName} MCP endpoint was taken before it could be reused; it starts on a new port, so sessions that started earlier need a new session for its tools.", loopbackPort, serverName);
+                _apps.Remove(app);
+                await app.DisposeAsync().ConfigureAwait(false);
+                loopbackPort = 0;
+                goto build;
+            }
 
             var addresses = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()
                 ?? throw new InvalidOperationException("Kestrel did not expose its bound addresses.");
@@ -280,7 +391,7 @@ internal sealed class CockpitMcpEndpointHost
 
             lock (_mountedLock)
             {
-                _mounted.Add(new MountedEndpoint(serverName, url, enabled, isInternal, alwaysMounted, nodeUrl, nodeOnly));
+                _mounted.Add(new MountedEndpoint(serverName, url, enabled, isInternal, alwaysMounted, nodeUrl, nodeOnly, app));
             }
 
             _logger.LogInformation("Cockpit MCP endpoint {ServerName} listening at {McpUrl}.", serverName, url);
@@ -290,6 +401,8 @@ internal sealed class CockpitMcpEndpointHost
             {
                 _logger.LogInformation("Node listener for {ServerName} presents certificate fingerprint {Fingerprint}.", serverName, _nodeCertificate.Fingerprint);
             }
+
+            return true;
         }
         finally
         {
@@ -314,7 +427,7 @@ internal sealed class CockpitMcpEndpointHost
                     Url = endpoint.Url,
                     // AC-1148: a NodeOnly endpoint is never offered to a session — it exists for the paired
                     // controller, which does not read this list.
-                    Enabled = endpoint.IsEnabled() && !endpoint.NodeOnly,
+                    Enabled = endpoint.IsEnabled() && !endpoint.NodeOnly && endpoint.Retired is null,
                     CockpitHosted = true,
                     Internal = endpoint.Internal,
                     AlwaysMounted = endpoint.AlwaysMounted,
@@ -562,5 +675,8 @@ internal sealed class CockpitMcpEndpointHost
         }
     }
 
-    private sealed record MountedEndpoint(string Name, string Url, Func<bool> IsEnabled, bool Internal, bool AlwaysMounted = false, string? NodeUrl = null, bool NodeOnly = false);
+    private sealed record MountedEndpoint(string Name, string Url, Func<bool> IsEnabled, bool Internal, bool AlwaysMounted = false, string? NodeUrl = null, bool NodeOnly = false, WebApplication App = null!)
+    {
+        public string? Retired { get; set; }
+    }
 }

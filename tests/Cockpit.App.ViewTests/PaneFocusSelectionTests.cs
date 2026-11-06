@@ -1,9 +1,11 @@
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Cockpit.App.Controls;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
+using Cockpit.Core.Abstractions.Assistant;
 
 namespace Cockpit.App.ViewTests;
 
@@ -18,42 +20,6 @@ namespace Cockpit.App.ViewTests;
 [Collection("avalonia")]
 public class PaneFocusSelectionTests
 {
-    [Fact]
-    public void AnElementDeepInsideAPane_ResolvesToThatPanesContainerAndSession() => HeadlessAvalonia.Run(() =>
-    {
-        var sessionA = new SessionViewModel();
-        var sessionB = new SessionViewModel();
-
-        // A control nested a couple of levels down in pane B, as a focused terminal or header button would be.
-        var deepInB = new Button();
-        var paneA = new Border { DataContext = sessionA, Child = new Decorator() };
-        var paneB = new Border { DataContext = sessionB, Child = new Decorator { Child = deepInB } };
-
-        var panel = new SessionTilePanel();
-        panel.Children.Add(paneA);
-        panel.Children.Add(paneB);
-
-        var window = new Window { Content = panel, Width = 400, Height = 300 };
-        window.Show();
-        window.UpdateLayout();
-
-        var container = CockpitView._PaneContainerFromSource(deepInB);
-
-        Assert.Same(paneB, container);
-        Assert.Same(sessionB, container!.DataContext);
-    });
-
-    [Fact]
-    public void AnElementOutsideAnyPane_ResolvesToNothing() => HeadlessAvalonia.Run(() =>
-    {
-        var loose = new Button();
-        var window = new Window { Content = new Decorator { Child = loose }, Width = 200, Height = 100 };
-        window.Show();
-        window.UpdateLayout();
-
-        Assert.Null(CockpitView._PaneContainerFromSource(loose));
-    });
-
     /// <summary>
     /// Reported by Raymond (2026-08-01): switching the active session to an SDK pane moved the selection but
     /// left keyboard focus on the session just left, so the next keystroke went to the wrong session. The helper
@@ -97,5 +63,47 @@ public class PaneFocusSelectionTests
 
         Assert.True(startedOnB, "the test needs focus to start on the other pane, or it proves nothing");
         Assert.True(movedToA, "selecting an SDK pane must put the caret in its own composer");
+        _SessionMcpDialogKeyboard();
     });
+
+    // F: a nested ItemsControl must not hide the session MCP actions from keyboard traversal (AC-2133).
+    private static void _SessionMcpDialogKeyboard()
+    {
+        var removed = false;
+        var result = new SessionMcpSetResult(true, "Assistant", [new SessionMcpServerState("Depot", "connected")], null);
+        var viewModel = new SessionMcpDialogViewModel(
+            "Session",
+            _ => Task.FromResult(result),
+            (_, _) =>
+            {
+                removed = true;
+                return Task.FromResult(result);
+            });
+        viewModel.LoadAsync().GetAwaiter().GetResult();
+        var window = new SessionMcpDialog { DataContext = viewModel };
+        window.Show();
+        window.UpdateLayout();
+
+        try
+        {
+            var remove = window.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "Remove"));
+            var close = window.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "Close"));
+
+            Assert.True(remove.IsFocused);
+            remove.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Tab });
+            Assert.True(close.IsFocused);
+            close.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Tab, KeyModifiers = KeyModifiers.Shift });
+            Assert.True(remove.IsFocused);
+            remove.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Enter });
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(removed);
+
+            close.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Escape });
+            Assert.False(window.IsVisible);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
 }

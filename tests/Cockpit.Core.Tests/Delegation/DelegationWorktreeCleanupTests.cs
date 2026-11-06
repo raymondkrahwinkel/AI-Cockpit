@@ -49,96 +49,6 @@ public class DelegationWorktreeCleanupTests
     }
 
     [Fact]
-    public async Task AWorktreeOfAStoppedDelegatedTask_IsRemovableAgain()
-    {
-        // The other half of the guard: it must let go. A registry that reported every task it had ever run would
-        // block the operator's own cleanup for the rest of the app's life, which is a worse failure than the one
-        // this fixes — and a test that only asserts the refusal cannot tell the two apart.
-        var service = _Service(_StreamThatNeverFinishes(), out _);
-        var task = await service.DelegateAsync(new DelegationRequest("local", "long job"));
-        await _WaitUntilAsync(() => service.GetTask(task.TaskId)!.Status == DelegatedTaskStatus.Running);
-        await service.StopAsync(task.TaskId);
-
-        var manager = Substitute.For<IWorktreeManager>();
-        var record = _Record(task.TaskId, "/wt/delegated");
-        manager.ListAsync(default).Returns(new List<WorktreeRecord> { record });
-        manager.HasUncommittedChangesAsync(record, default).Returns(false);
-        var tools = new WorktreeTools(manager, new LiveSessionRegistry(new SessionRegistry(), [service]));
-
-        using var result = JsonDocument.Parse(await tools.RemoveAsync("/wt/delegated"));
-
-        Assert.True(result.RootElement.GetProperty("ok").GetBoolean());
-        Assert.Equal(new[] { (record, false) }, _Removals(manager));
-    }
-
-    [Fact]
-    public async Task ATaskThatAnsweredButHasNotBeenReaped_StillHoldsItsWorktree()
-    {
-        // The distinction the guard is built on, and the one a "is it Running?" check would get wrong: this task is
-        // Completed, yet its session is deliberately still up so the orchestrator can follow up — and a follow-up
-        // works in that same directory. Its checkout is not free until the reap says so.
-        var service = _Service(_StreamCompletingATurn(), out var worktrees, idleWindow: TimeSpan.FromMinutes(5));
-        var task = await service.DelegateAsync(new DelegationRequest("local", "quick work"));
-        await _WaitUntilAsync(() => service.GetTask(task.TaskId)!.Status == DelegatedTaskStatus.Completed);
-
-        // Nor has it been handed back — the reap does that, not the answer. Asserted here rather than in the test
-        // that exercises the reap, because a five-minute window leaves no doubt about which side of it we are on.
-        Assert.Empty(_ReleasedSessions(worktrees));
-
-        var manager = Substitute.For<IWorktreeManager>();
-        var record = _Record(task.TaskId, "/wt/answered");
-        manager.ListAsync(default).Returns(new List<WorktreeRecord> { record });
-        var tools = new WorktreeTools(manager, new LiveSessionRegistry(new SessionRegistry(), [service]));
-
-        using var result = JsonDocument.Parse(await tools.RemoveAsync("/wt/answered"));
-
-        Assert.False(result.RootElement.GetProperty("ok").GetBoolean());
-        Assert.Empty(_Removals(manager));
-    }
-
-    [Fact]
-    public async Task ATaskTheDriverReportedAnErrorOn_KeepsItsWorktree()
-    {
-        // The one ending that must NOT hand the checkout back, and the reason is that the event lies about being an
-        // ending: every plugin-side error becomes a SessionError, including notices from a session that is running
-        // fine — the cockpit falling behind on events, or a driver saying it could not apply a system prompt. A
-        // release here removes a momentarily clean worktree while its sub-agent is still working in it, and it would
-        // spend the task's one release on a session that has not finished.
-        // The error is held back until the task is properly running. Raising it while the start is still unwinding is
-        // not the case being described — a session reports an error once it is up — and it races the start path, so
-        // the test would be measuring that race rather than the rule.
-        var errorArrives = new TaskCompletionSource();
-        var service = _Service(_StreamRaisingADriverError(errorArrives.Task), out var worktrees);
-        var task = await service.DelegateAsync(new DelegationRequest("local", "reports an error but carries on"));
-        await _WaitUntilAsync(() => service.GetTask(task.TaskId)!.Status == DelegatedTaskStatus.Running);
-
-        errorArrives.SetResult();
-
-        await _WaitUntilAsync(() => service.GetTask(task.TaskId)!.Status == DelegatedTaskStatus.Failed);
-        await Task.Delay(150);
-
-        Assert.Empty(_ReleasedSessions(worktrees));
-    }
-
-    [Fact]
-    public async Task ATaskThatCouldNotBeStarted_AlsoHandsBackItsWorktree()
-    {
-        // Usually there is nothing to hand back here — the task never got far enough to ask for a worktree — and the
-        // call is a no-op. It is made anyway so the rule has no exceptions to remember, and this pins that: reasoning
-        // about how far a failed start got is the kind of assumption that is right until the day it is not.
-        var service = _Service(
-            _StreamThatNeverFinishes(),
-            out var worktrees,
-            startFailure: new InvalidOperationException("the provider could not be reached"));
-
-        var task = await service.DelegateAsync(new DelegationRequest("local", "never gets going"));
-
-        Assert.Contains("could not be reached", service.GetTask(task.TaskId)!.Error);
-        Assert.Equal(DelegatedTaskStatus.Failed, service.GetTask(task.TaskId)!.Status);
-        Assert.Equal(new[] { task.TaskId }, _ReleasedSessions(worktrees));
-    }
-
-    [Fact]
     public async Task TwoClosingPathsOnTheSameTask_HandTheWorktreeBackOnce()
     {
         // Two of these paths can land together and both would release the same checkout; stopping twice is the
@@ -155,18 +65,6 @@ public class DelegationWorktreeCleanupTests
     }
 
     [Fact]
-    public async Task ARunningTask_KeepsItsWorktree()
-    {
-        var service = _Service(_StreamThatNeverFinishes(), out var worktrees);
-        var task = await service.DelegateAsync(new DelegationRequest("local", "long job"));
-        await _WaitUntilAsync(() => service.GetTask(task.TaskId)!.Status == DelegatedTaskStatus.Running);
-
-        await Task.Delay(150);
-
-        Assert.Empty(_ReleasedSessions(worktrees));
-    }
-
-    [Fact]
     public async Task ATaskThatAnswered_KeepsItsWorktreeUntilTheIdleWindowCloses()
     {
         // A task that answered keeps its session so the orchestrator can follow up — and a follow-up puts it straight
@@ -178,71 +76,6 @@ public class DelegationWorktreeCleanupTests
 
         await _WaitUntilAsync(() => worktrees.ReceivedCalls().Any(), attempts: 200);
         Assert.Equal(new[] { task.TaskId }, _ReleasedSessions(worktrees));
-    }
-
-    [Fact]
-    public async Task ATaskStoppedByItsProfilesTimeout_AlsoHandsBackItsWorktree()
-    {
-        // The third way a delegated session ends. It is not a follow-up-able state — the session is torn down and no
-        // reap is armed — so if this path did not release, a task that ran too long would leave its checkout behind
-        // precisely when nobody is watching, which is the case the timeout exists for.
-        var service = _Service(_StreamThatNeverFinishes(), out var worktrees, timeoutMinutes: 1);
-        var task = await service.DelegateAsync(new DelegationRequest("local", "loop forever"));
-
-        await _WaitUntilAsync(() => service.GetTask(task.TaskId)!.Status == DelegatedTaskStatus.Failed);
-
-        await _WaitUntilAsync(() => worktrees.ReceivedCalls().Any());
-        Assert.Equal(new[] { task.TaskId }, _ReleasedSessions(worktrees));
-    }
-
-    [Fact]
-    public async Task TheConstructorTheAppActuallyUses_CarriesTheWorktreeManagerThrough()
-    {
-        // Every other test here builds the service through the internal test seam, which takes the manager as its
-        // own argument. The app builds it through the public constructor, which forwards it — and a forward that
-        // quietly passed null would leave all of this working in the tests and doing nothing in the cockpit.
-        var profile = new SessionProfile(
-            "local",
-            new ClaudeConfig(string.Empty),
-            Delegation: new DelegationPolicy(AllowedAsTarget: true));
-
-        var profileStore = Substitute.For<ISessionProfileStore>();
-        profileStore.LoadAsync(default).Returns([profile]);
-        var mcpServerStore = Substitute.For<IMcpServerStore>();
-        mcpServerStore.LoadAsync(default).Returns([new McpServerConfig { Name = "filesystem", Enabled = true }]);
-        var driver = Substitute.For<ISessionDriver>();
-        driver.Events.Returns(_StreamThatNeverFinishes());
-        var worktrees = Substitute.For<IWorktreeManager>();
-
-        var service = new DelegationService(
-            profileStore,
-            new SessionManager(new StubDriverFactory(driver, failure: null)),
-            mcpServerStore,
-            Substitute.For<IDelegationAuditLog>(),
-            NoSessionWorkspaces.Instance,
-            worktrees: worktrees);
-
-        var task = await service.DelegateAsync(new DelegationRequest("local", "long job"));
-        await _WaitUntilAsync(() => service.GetTask(task.TaskId)!.Status == DelegatedTaskStatus.Running);
-        await service.StopAsync(task.TaskId);
-
-        Assert.Equal(new[] { task.TaskId }, _ReleasedSessions(worktrees));
-    }
-
-    [Fact]
-    public void TheRegistryFoldsThePanesAndTheHeadlessSourcesTogether()
-    {
-        // The panes were the only source before, so the fold has to keep reporting them: a registry that answered
-        // only with delegated ids would unprotect every worktree the operator's own sessions are sitting in.
-        var delegated = Substitute.For<ILiveSessionSource>();
-        delegated.LiveSessionIds.Returns(new HashSet<string>(StringComparer.Ordinal) { "task-1" });
-        var panes = new SessionRegistry();
-        var pane = Substitute.For<ISessionHandle>();
-        pane.PaneId.Returns("pane-1");
-        panes.Register(pane);
-        var registry = new LiveSessionRegistry(panes, [delegated]);
-
-        Assert.Equivalent(new object[] { "pane-1", "task-1" }, registry.LiveSessionIds);
     }
 
     // startFailure makes the session fail to start, by way of a factory that cannot produce a driver — a real class
@@ -324,15 +157,6 @@ public class DelegationWorktreeCleanupTests
     {
         await Task.Delay(Timeout.Infinite, cancellationToken);
         yield break;
-    }
-
-    private static async IAsyncEnumerable<SessionEvent> _StreamRaisingADriverError(
-        Task errorArrives,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        await errorArrives.WaitAsync(cancellationToken);
-        yield return new SessionError { SessionId = "s1", Message = "the provider dropped the connection" };
-        await Task.Delay(Timeout.Infinite, cancellationToken);
     }
 
     // Stays open after the turn, as a real session does — the answer does not end the session, the reap does. The

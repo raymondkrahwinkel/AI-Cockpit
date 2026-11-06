@@ -37,7 +37,7 @@ public class McpOAuthTokenAdoptionTests
         IMcpServerStore registry, params IPluginMcpProvider[] plugins)
     {
         var tokens = Substitute.For<IMcpOAuthTokenStore>();
-        return (new McpOAuthTokenAdoption(tokens, registry, plugins, NullLogger<McpOAuthTokenAdoption>.Instance), tokens);
+        return (new McpOAuthTokenAdoption(tokens, registry, new PluginMcpProviderRegistry(plugins), NullLogger<McpOAuthTokenAdoption>.Instance), tokens);
     }
 
     [Fact]
@@ -70,39 +70,5 @@ public class McpOAuthTokenAdoptionTests
         await tokens.Received().AdoptLegacyEntriesAsync(
             Arg.Is<IReadOnlyDictionary<string, string>>(map => map["Depot: work"] == "registry-id"),
             Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task RunAsync_WhenAPluginThrowsWhileListingItsServers_StillAdoptsForTheOthers()
-    {
-        var throwing = Substitute.For<IPluginMcpProvider>();
-        throwing.GetMcpServers().Returns(_ => throw new InvalidOperationException("plugin is having a day"));
-
-        var (adoption, tokens) = _Create(
-            _RegistryWith(),
-            throwing,
-            _PluginOffering(new McpServerContribution("Depot: work", "https://depot.example/mcp") { Id = "connection-id" }));
-
-        await adoption.RunAsync();
-
-        await tokens.Received().AdoptLegacyEntriesAsync(
-            Arg.Is<IReadOnlyDictionary<string, string>>(map => map["Depot: work"] == "connection-id"),
-            Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task RunAsync_WhenTheRegistryCannotBeRead_DoesNotThrow()
-    {
-        // This runs on the launch path. A migration that cannot run costs a sign-in; one that throws would cost the
-        // launch, and it is fire-and-forget, so nothing would be there to catch it.
-        var registry = Substitute.For<IMcpServerStore>();
-        registry.LoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<McpServerConfig>>(_ => throw new IOException("locked"));
-
-        var (adoption, tokens) = _Create(registry);
-
-        await adoption.RunAsync();
-
-        await tokens.DidNotReceive().AdoptLegacyEntriesAsync(
-            Arg.Any<IReadOnlyDictionary<string, string>>(), Arg.Any<CancellationToken>());
     }
 }

@@ -32,8 +32,7 @@ public class DiagramPluginLoadTests
         Assert.NotNull(manifest);
 
         // F2.13/AC-1401: the entry (backend) assembly specifically — manifest.Assemblies now also yields UiAssembly.
-        var hash = PluginHash.Compute(File.ReadAllBytes(Path.Combine(folder, manifest!.EntryAssembly!)));
-        var discovered = new DiscoveredPlugin(folder, "diagram", manifest, hash, PluginLoadDecision.Load);
+        var discovered = DiagramPluginUi.Discover(folder, manifest!);
 
         var activator = new PluginActivator(NullLogger<PluginActivator>.Instance);
         var plugin = activator.Activate(discovered);

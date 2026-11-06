@@ -4,6 +4,11 @@ using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Voice;
+using Cockpit.App.Docking;
+using Cockpit.Core.Abstractions.Plugins;
+using Cockpit.Core.Plugins;
+using Cockpit.Infrastructure.Hosting;
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.Core.Abstractions.Workspaces;
 using Cockpit.Plugins.Abstractions.Notifications;
 
@@ -76,6 +81,8 @@ public sealed class RestartJourney
                 }
             });
 
+            // AC-2109: the two incomplete starts in between both restored Depot's panel; that is enough evidence to turn it off.
+            File.WriteAllText(Path.Combine(stateRoot, StartupAttempt.FileName), """{"Attempts":2,"Plugins":[{"Id":"depot","Name":"Depot"}],"PreviousPlugins":[{"Id":"depot","Name":"Depot"}]}""");
             await using var after = JourneyHost.Desktop(stateRoot: stateRoot, configure: _TwoGpus);
             // AC-1804: a plugin notification nobody answered is asked again at the restart: live if it stands, else resolved.
             var doneAfterRestart = false;
@@ -133,6 +140,17 @@ public sealed class RestartJourney
                 Assert.Contains(("handled-elsewhere", false, "Resolved meanwhile"), items);
                 Assert.DoesNotContain(items, kept => kept.Key == "just-info");
                 return Task.CompletedTask;
+            });
+
+            await Step.Run("the plugin the crashed start was opening is off, its panel is not back, and Turn back on turns it on", async () =>
+            {
+                Assert.DoesNotContain(after.Services.GetRequiredService<PluginManager>().Loaded, plugin => plugin.FolderId == "depot");
+                Assert.DoesNotContain(HeadlessAvalonia.Run(() => after.Services.GetRequiredService<IDockPanelRegistry>().Panels), panel => panel.Id == "depot-browser");
+                var item = HeadlessAvalonia.Run(() => after.Cockpit.ToastHost.Notifications.Items.Single(kept => kept.Key == StartupAttempt.FileName));
+                HeadlessAvalonia.Run(() => item.Actions.Single().InvokeCommand.Execute(null));
+                var registrations = after.Services.GetRequiredService<IPluginRegistrationStore>();
+                IReadOnlyDictionary<string, PluginRegistration> saved = new Dictionary<string, PluginRegistration>();
+                await Until.ReloadHolds(async () => saved = await registrations.LoadAllAsync(), () => saved["depot"].Enabled);
             });
         }
         finally

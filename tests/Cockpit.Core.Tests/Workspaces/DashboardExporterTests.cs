@@ -30,24 +30,16 @@ public class DashboardExporterTests
         Assert.DoesNotContain("apiKey", exportedConfig);
         Assert.DoesNotContain("token", exportedConfig);
         Assert.DoesNotContain(exportedConfig.Values, value => value.Contains("live-"));
-    }
 
-    [Fact]
-    public void ToExport_DropsAKeyOnlyThePluginKnowsIsSecret()
-    {
         // The name rule cannot guess "pat"; the plugin declares it, and the exporter has to honour that or the
         // declaration only protects the backup and not the thing you hand to someone.
-        var dashboard = _Dashboard(("p1", "tracker.issues", 0, 0));
-        var config = new Dictionary<string, string> { ["pat"] = "\"ghp-live\"", ["repo"] = "\"cockpit\"" };
+        var declared = new Dictionary<string, string> { ["pat"] = "\"ghp-live\"", ["repo"] = "\"cockpit\"" };
 
-        var export = DashboardExporter.ToExport(dashboard, _ => config, new SecretFields(["pat"]));
+        var declaredExport = DashboardExporter.ToExport(dashboard, _ => declared, new SecretFields(["pat"]));
 
-        Assert.Contains("repo", export.Panes[0].Config);
-        Assert.DoesNotContain("pat", export.Panes[0].Config);
+        Assert.Contains("repo", declaredExport.Panes[0].Config);
+        Assert.DoesNotContain("pat", declaredExport.Panes[0].Config);
     }
-
-    /// <summary>Every widget is installed — for the tests that are about something other than what is missing.</summary>
-    private static readonly Func<string, bool> _Anything = _ => true;
 
     private static Workspace _Dashboard(params (string Id, string WidgetId, int Column, int Row)[] panes)
     {

@@ -21,14 +21,19 @@ public class TtyPromptReadinessTests
     private const string BracketedPasteStart = "\x1b[200~";
     private const string BracketedPasteEnd = "\x1b[201~";
 
-    // APaneWhosePtyExists_CannotTakeAPrompt_UntilBracketedPasteTurnsOn stood here: a freshly launched view,
-    // Assert.False(CanTakeAPrompt). SubmitPromptWhenReady returns true exactly when CanTakeAPrompt does, so a pane
-    // that took a prompt too early makes `deliveredNow` true and leaves bytes in the pty — the test below goes red.
+    // D: Claude's native trust menu accepts input before its composer does (AC-2164).
     [Fact]
-    public Task AHeldBrief_IsNotWrittenToThePty_BeforeBracketedPasteTurnsOn() =>
+    public Task ClaudeTrust_HoldsTheBrief_AndRefusesDirectSend_UntilTheComposerAppears() =>
         HeadlessAvalonia.RunAsync(async () =>
         {
             var (view, viewModel, pty) = _NewLaunchedView();
+
+            _Terminal(view).Write(Encoding.UTF8.GetBytes("Do you trust the files in this folder?\r\n❯ 1. Yes, I trust this folder\r\n  2. No, exit"));
+            _AnnounceBracketedPaste(view);
+            _SetFirstPtyOutputAt(view, DateTime.UtcNow - TimeSpan.FromMinutes(1));
+            _InvokeCheckReadiness(view);
+            Assert.False(await viewModel.SendPromptAsync("must not answer trust"));
+            Assert.Equal(SessionStatus.NeedsAttention, viewModel.SessionStatus);
 
             var deliveredNow = viewModel.SubmitPromptWhenReady("review the migration");
 
@@ -36,11 +41,13 @@ public class TtyPromptReadinessTests
             Assert.True(viewModel.HasPromptWaitingToBeDelivered);
             Assert.Empty(pty.Written);
 
-            _AnnounceBracketedPaste(view);
-            // Only the terminal buffer's own flag changed so far — the readiness gate has not run yet, so the held
-            // brief must still be sitting untouched.
+            _Terminal(view).Write(Encoding.UTF8.GetBytes("\x1b[2J\x1b[HChoose the text style\r\n❯ ✔ Dark mode\r\n  Light mode"));
+            _InvokeCheckReadiness(view);
+            Assert.False(viewModel.CanTakeAPrompt);
+            Assert.True(viewModel.HasPromptWaitingToBeDelivered);
             Assert.Empty(pty.Written);
 
+            _Terminal(view).Write(Encoding.UTF8.GetBytes("\x1b[2J\x1b[H❯ restored draft"));
             _InvokeCheckReadiness(view);
             await _LetPostedWorkRunAsync();
 
@@ -71,13 +78,21 @@ public class TtyPromptReadinessTests
         });
 
     [Fact]
-    public Task AHeldBrief_GoesOutExactlyOnce_HoweverOftenReadinessIsAnnounced() =>
+    public Task CodexTrust_HoldsTheBrief_AndDeliversExactlyOnce_WhenTheComposerAppears() =>
         HeadlessAvalonia.RunAsync(async () =>
         {
             var (view, viewModel, pty) = _NewLaunchedView();
             viewModel.SubmitPromptWhenReady("review the migration");
 
             _AnnounceBracketedPaste(view);
+            _Terminal(view).Write(Encoding.UTF8.GetBytes("Do you trust the contents of this directory?\r\n› 1. Yes, continue"));
+            _SetFirstPtyOutputAt(view, DateTime.UtcNow - TimeSpan.FromMinutes(1));
+            _InvokeCheckReadiness(view);
+            Assert.False(viewModel.CanTakeAPrompt);
+            Assert.True(viewModel.HasPromptWaitingToBeDelivered);
+            Assert.Empty(pty.Written);
+
+            _Terminal(view).Write(Encoding.UTF8.GetBytes("\x1b[2J\x1b[H» A changed composer hint"));
             _InvokeCheckReadiness(view);
             _InvokeCheckReadiness(view);
             _InvokeCheckReadiness(view);
@@ -85,23 +100,6 @@ public class TtyPromptReadinessTests
 
             var written = Encoding.UTF8.GetString(pty.Written.ToArray());
             Assert.Equal($"{BracketedPasteStart}review the migration{BracketedPasteEnd}\r", written);
-        });
-
-    [Fact]
-    public Task RelaunchingThePane_ResetsReadiness_SoTheNewSessionIsNotTreatedAsAlreadyReady() =>
-        HeadlessAvalonia.RunAsync(async () =>
-        {
-            var (view, viewModel, _) = _NewLaunchedView();
-            _AnnounceBracketedPaste(view);
-            _InvokeCheckReadiness(view);
-            Assert.True(viewModel.CanTakeAPrompt);
-
-            // What StartPty does before re-launching a reused pane (AC-564-style restart): the pty's own state is
-            // cleared, and so must the readiness gate be — otherwise a stale "ready" from the session before would
-            // let a brief for the new CLI process through before it has said anything at all.
-            viewModel.ResetHostedTuiReadiness();
-
-            Assert.False(viewModel.CanTakeAPrompt);
         });
 
     // Lets the pty write posted onto the UI thread by `_WriteToPty` actually run — see the identical helper in

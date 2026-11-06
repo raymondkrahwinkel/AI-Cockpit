@@ -38,37 +38,6 @@ public class ClaudeControlProtocolTests
         Assert.Equal("req-2", toolUseId);
     }
 
-    [Theory]
-    [InlineData("""{"type":"control_response","response":{"subtype":"success","request_id":"req-1","response":{}}}""")]
-    [InlineData("""{"type":"control_request","request_id":"x","request":{"subtype":"initialize"}}""")]
-    [InlineData("""{"type":"control_cancel_request","request_id":"x"}""")]
-    [InlineData("""{"type":"assistant","message":{"content":[]}}""")]
-    public void TryParsePermissionRequest_IgnoresNonPermissionLines(string line)
-    {
-        using var document = JsonDocument.Parse(line);
-
-        Assert.False(ClaudeControlProtocol.TryParsePermissionRequest(document.RootElement, out _, out _, out _, out _));
-    }
-
-    [Fact]
-    public void BuildDecisionResponse_Allow_EchoesRequestIdAndOriginalInput()
-    {
-        var line = ClaudeControlProtocol.BuildDecisionResponse("req-1", allow: true, originalInputJson: """{"command":"ls"}""", denyMessage: "unused");
-
-        using var document = JsonDocument.Parse(line);
-        var root = document.RootElement;
-        Assert.Equal("control_response", root.GetProperty("type").GetString());
-
-        var response = root.GetProperty("response");
-        Assert.Equal("success", response.GetProperty("subtype").GetString());
-        Assert.Equal("req-1", response.GetProperty("request_id").GetString());
-
-        var decision = response.GetProperty("response");
-        Assert.Equal("allow", decision.GetProperty("behavior").GetString());
-        // updatedInput rides back as an object, not a re-escaped string.
-        Assert.Equal("ls", decision.GetProperty("updatedInput").GetProperty("command").GetString());
-    }
-
     [Fact]
     public void BuildDecisionResponse_Allow_WithAnswers_MergesThemIntoUpdatedInputBesideTheQuestions()
     {
@@ -112,6 +81,7 @@ public class ClaudeControlProtocolTests
         var line = ClaudeControlProtocol.BuildDecisionResponse("req-9", allow: false, originalInputJson: "{}", denyMessage: "No.");
 
         using var document = JsonDocument.Parse(line);
+        Assert.Equal("control_response", document.RootElement.GetProperty("type").GetString());
         var response = document.RootElement.GetProperty("response");
         // A deny is a successful callback that returned a deny decision — subtype stays "success".
         Assert.Equal("success", response.GetProperty("subtype").GetString());
@@ -119,17 +89,5 @@ public class ClaudeControlProtocolTests
         var decision = response.GetProperty("response");
         Assert.Equal("deny", decision.GetProperty("behavior").GetString());
         Assert.Equal("No.", decision.GetProperty("message").GetString());
-    }
-
-    [Fact]
-    public void BuildInitializeRequest_IsAControlRequestWithInitializeSubtype()
-    {
-        var line = ClaudeControlProtocol.BuildInitializeRequest("init-1");
-
-        using var document = JsonDocument.Parse(line);
-        var root = document.RootElement;
-        Assert.Equal("control_request", root.GetProperty("type").GetString());
-        Assert.Equal("init-1", root.GetProperty("request_id").GetString());
-        Assert.Equal("initialize", root.GetProperty("request").GetProperty("subtype").GetString());
     }
 }

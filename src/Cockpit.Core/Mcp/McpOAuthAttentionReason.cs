@@ -18,14 +18,8 @@ public enum McpOAuthAttentionReason
     // The renewal never got an answer — the server or its authorization server could not be reached.
     ServerUnreachable,
 
-    // The renewal worked but the token expires sooner than the use it was asked for needs. Nothing is expired and
-    // signing in again yields the same short-lived token — what the operator can act on is the endpoint that would
-    // have made the lifetime irrelevant, not the sign-in.
+    // The renewed token cannot survive even one upstream request.
     TokenTooShortLived,
-
-    // A call could not be relayed because its body was too large to hold on to, and the credential it went out with
-    // was refused — so the retry that would have fixed it could not repeat the request.
-    CallCouldNotBeRepeated,
 
     // AC-550: server refused a credential just renewed for it. Deliberately not `SignInExpired` — a revoked grant
     // and a server refusing one live token look identical here, so it is reported as unconfirmed instead.

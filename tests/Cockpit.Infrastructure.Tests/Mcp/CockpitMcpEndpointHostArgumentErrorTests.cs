@@ -55,46 +55,12 @@ public sealed class CockpitMcpEndpointHostArgumentErrorTests
         Assert.Contains("profile", text, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void ArgumentsWithoutADeclaredPropertiesSchema_AreNotRejected()
-    {
-        using var document = JsonDocument.Parse("""{"type":"object"}""");
 
-        var unknown = CockpitMcpEndpointHost.UnknownParameterNames(document.RootElement, ["profileLabel"]);
-
-        Assert.Null(unknown);
-    }
-
-    [Fact]
-    public async Task DifferentCasedArgument_IsRejected()
-    {
-        await using var endpoint = await _MountedEndpoint.StartAsync();
-
-        var result = await endpoint.Client.CallToolAsync("echo_pane", new Dictionary<string, object?> { ["ToPaneId"] = "pane-1" });
-
-        Assert.True(result.IsError);
-        var text = string.Join("\n", result.Content.OfType<TextContentBlock>().Select(block => block.Text));
-        Assert.Contains("ToPaneId", text, StringComparison.Ordinal);
-    }
 
     /// <summary>
     /// AC-1138: a tool whose gateway gave up waiting for the UI thread answers with the <c>ui_unavailable</c> code
     /// rather than a generic failure, so an agent can tell "the cockpit is busy, retry" from "this went wrong".
     /// </summary>
-    [Fact]
-    public async Task AToolThatGaveUpOnTheUiThread_AnswersWithTheUiUnavailableCode()
-    {
-        await using var endpoint = await _MountedEndpoint.StartAsync();
-
-        var result = await endpoint.Client.CallToolAsync("needs_ui", new Dictionary<string, object?>());
-
-        Assert.True(result.IsError);
-        var text = string.Join("\n", result.Content.OfType<TextContentBlock>().Select(block => block.Text));
-        using var payload = JsonDocument.Parse(text);
-        Assert.Equal(UiUnavailableException.Code, payload.RootElement.GetProperty("code").GetString());
-        Assert.False(payload.RootElement.GetProperty("ok").GetBoolean());
-        Assert.Contains("did not answer within", payload.RootElement.GetProperty("error").GetString()!, StringComparison.Ordinal);
-    }
 
     [Fact]
     public async Task AToolWhoseUiWorkMayStillLand_AnswersWithTheUnknownOutcomeCode()

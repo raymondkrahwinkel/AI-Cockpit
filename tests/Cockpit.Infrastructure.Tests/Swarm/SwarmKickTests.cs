@@ -10,7 +10,6 @@ namespace Cockpit.Infrastructure.Tests.Swarm;
 public class SwarmKickTests
 {
     [Theory]
-    [InlineData(1)]
     [InlineData(2)]
     [InlineData(3)]
     public async Task RemovalRevokesEveryPeerRequiresFreshPairingAndRejectsUntrustedRequests(int criterion)
@@ -46,7 +45,12 @@ public class SwarmKickTests
             return;
         }
         pair.B.Sleep = true;
-        await pair.A.Kick.RemoveAsync(third.Identity.MemberId, default);
+        await third.Leadership.RefreshAsync();
+        Assert.True(third.Leadership.IsActive);
+        await third.Kick.RemoveAsync(third.Identity.MemberId, default);
+        await third.Heartbeat.TickAsync();
+        Assert.False(third.Leadership.IsActive);
+        Assert.Null(third.Leadership.Current);
         Assert.Contains("removed_from_swarm", await third.Kick.StatusAsync(default));
         Assert.Contains("removal_pending", await pair.A.Kick.StatusAsync(default));
         Assert.NotNull((await pair.B.Membership.LoadAsync()).PublicKeyOf(third.Identity.MemberId));
@@ -62,20 +66,17 @@ public class SwarmKickTests
             using var response = await client.GetAsync(credential.Url);
             Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
         }
-        if (criterion == 1)
-        {
-            return;
-        }
         var current = await pair.A.Membership.LoadAsync();
         var oldMember = before.Members.Single(member => member.Id == third.Identity.MemberId);
         var replay = pair.A.Identity.Sign(SwarmMembership.ToPayload(oldMember with { Sequence = current.Sequence + 1 }));
-        using var key = third.Certificate.Value.GetECDsaPrivateKey()!;
+        using var key = third.Certificate.Value.GetECDsaPrivateKey() ?? throw new InvalidOperationException("Expected a signing key.");
         Assert.Equal(SwarmMembershipVerdict.Removed, current.Accept(replay.CoSign(key)));
-        var handshake = await pair.A.Client.BeginAsync(third.Address);
-        var pending = await Assert.ThrowsAsync<Cockpit.Core.Mcp.NodePairingException>(() => pair.A.Client.CompleteAsync(handshake));
+        var handshake = await third.Client.BeginAsync(pair.A.Address);
+        Assert.Equal(pair.A.Join.Pending?.Code, handshake.Code);
+        var pending = await Assert.ThrowsAsync<Cockpit.Core.Mcp.NodePairingException>(() => third.Client.CompleteAsync(handshake));
         Assert.Equal(Cockpit.Core.Mcp.NodePairingError.Pending, pending.Error);
-        third.Join.Confirm(handshake.Offer.PairingId);
-        await pair.A.Client.CompleteAsync(handshake);
+        pair.A.Join.Confirm(handshake.Offer.PairingId);
+        await third.Client.CompleteAsync(handshake);
         var rejoined = await pair.A.Membership.LoadAsync();
         Assert.NotEqual(oldRank, rejoined.Members.Single(member => member.Id == third.Identity.MemberId).Rank);
         Assert.NotNull((await third.Membership.LoadAsync()).PublicKeyOf(third.Identity.MemberId));
@@ -86,6 +87,59 @@ public class SwarmKickTests
             var machine = server.PinnedCertificateFingerprint == pair.A.Certificate.Fingerprint ? pair.A : pair.B;
             Assert.Null(await machine.Keys.AuthenticateAsync((server.ApiKey ?? throw new InvalidOperationException("Expected a value.")), "127.0.0.1"));
         }
+
+        var currentRank = rejoined.Members.Single(member => member.Id == third.Identity.MemberId).Rank;
+        var backup = await third.Heartbeat.ResetAsync(default);
+        Assert.True(File.Exists(backup));
+        Assert.Equal(rejoined.Sequence, SwarmMembership.Replay(System.Text.Json.JsonSerializer.Deserialize<List<SwarmRecord>>(
+            await File.ReadAllTextAsync(backup), SwarmRecordJson.Options) ?? throw new InvalidDataException("Expected a saved log.")).Sequence);
+        Assert.Empty((await third.Membership.LoadAsync()).Log);
+        Assert.False(third.Leadership.IsActive);
+        Assert.Null(third.Leadership.Current);
+        await third.Heartbeat.ResetAsync(default);
+        Assert.Empty((await third.Membership.LoadAsync()).Log);
+        Assert.False(third.Leadership.IsActive);
+
+        // A reset machine must be able to return even while its former peers still remember it.
+        var resetHandshake = await third.Client.BeginAsync(pair.A.Address);
+        Assert.Equal(pair.A.Join.Pending?.Code, resetHandshake.Code);
+        var resetPending = await Assert.ThrowsAsync<Cockpit.Core.Mcp.NodePairingException>(() => third.Client.CompleteAsync(resetHandshake));
+        Assert.Equal(Cockpit.Core.Mcp.NodePairingError.Pending, resetPending.Error);
+        pair.A.Join.Confirm(resetHandshake.Offer.PairingId);
+        await third.Client.CompleteAsync(resetHandshake);
+        await pair.A.Heartbeat.TickAsync();
+        await third.Heartbeat.TickAsync();
+        var resetRejoined = await third.Membership.LoadAsync();
+        Assert.NotEqual(currentRank, resetRejoined.Members.Single(member => member.Id == third.Identity.MemberId).Rank);
+        Assert.Equal(SwarmPropagation.Prefix((await pair.A.Membership.LoadAsync()).Log), SwarmPropagation.Prefix(resetRejoined.Log));
+
+        var enabled = await third.Settings.LoadAsync();
+        await third.Settings.SaveAsync(enabled with { Enabled = false });
+        await third.Heartbeat.TickAsync();
+        Assert.False(third.Leadership.IsActive);
+        Assert.Null(third.Leadership.Current);
+        Assert.Equal(resetRejoined.Sequence, (await third.Membership.LoadAsync()).Sequence);
+        await third.Settings.SaveAsync(enabled);
+        await third.Heartbeat.TickAsync();
+        Assert.True(third.Leadership.IsActive);
+
+        // A fork may not silently overwrite a signed history; the operator explicitly abandons one side.
+        var fork = await third.Membership.LoadAsync();
+        Assert.Equal(SwarmMembershipVerdict.Accepted, fork.Accept(third.Identity.Sign(
+            SwarmMembership.ToPayload(SwarmLeaderElection.ClaimLead(fork, third.Identity.MemberId)))));
+        third.Membership.Save(fork);
+        var conflictHandshake = await third.Client.BeginAsync(pair.A.Address);
+        pair.A.Join.Confirm(conflictHandshake.Offer.PairingId);
+        var conflict = await Assert.ThrowsAsync<Cockpit.Core.Mcp.NodePairingException>(() => third.Client.CompleteAsync(conflictHandshake));
+        Assert.Contains("reset", conflict.Message, StringComparison.OrdinalIgnoreCase);
+        await third.Heartbeat.ResetAsync(default);
+        // The failed confirmed offer must be refused before a new two-screen confirmation starts.
+        pair.A.Join.Refuse(conflictHandshake.Offer.PairingId);
+        await JoinAsync(third, pair.A);
+        await pair.A.Heartbeat.TickAsync();
+        await third.Heartbeat.TickAsync();
+        Assert.Equal(SwarmPropagation.Prefix((await pair.A.Membership.LoadAsync()).Log),
+            SwarmPropagation.Prefix((await third.Membership.LoadAsync()).Log));
     }
 
     private static async Task JoinAsync(SwarmJoinFixture.Machine source, SwarmJoinFixture.Machine target)

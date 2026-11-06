@@ -20,8 +20,155 @@ internal sealed class AssistantAgentMcpTools(
     IAssistantMemory memory,
     IConsentBroker? consent = null,
     // AC-1323: the line to a paired node, for a pane id written as "<node> · <paneId>" or a start with `node`.
-    INodeSessionsClient? nodes = null)
+    INodeSessionsClient? nodes = null,
+    Cockpit.Core.Abstractions.Sessions.ISessionRegistry? sessions = null,
+    Cockpit.Core.Abstractions.Worktrees.IWorktreeManager? worktrees = null)
 {
+    [McpServerTool(Name = "get_session_mcp_set", ReadOnly = true, Destructive = false)]
+    [Description("Reads a local session's current MCP servers, availability and manager. Node and remote controller management are outside v1.")]
+    public async Task<string> GetSessionMcpSetAsync(string paneId)
+    {
+        if (_RefuseIfNotTheAssistant() is { } refusal)
+        {
+            return refusal;
+        }
+        return _SerializeMcpSet(await gateway.GetSessionMcpSetAsync(paneId).ConfigureAwait(false));
+    }
+
+    [McpServerTool(Name = "add_session_mcp_server", ReadOnly = false, Destructive = false)]
+    [Description("Adds a server to a local session, including your own, without consent. Internal, disabled, unknown, unsigned-in OAuth servers and names outside a delegation's profile ceiling are refused.")]
+    public async Task<string> AddSessionMcpServerAsync(string paneId, string name)
+    {
+        if (_RefuseIfNotTheAssistant() is { } refusal)
+        {
+            return refusal;
+        }
+        return _SerializeMcpSet(await gateway.ChangeSessionMcpServerAsync(paneId, name, add: true).ConfigureAwait(false));
+    }
+
+    [McpServerTool(Name = "remove_session_mcp_server", ReadOnly = false, Destructive = false)]
+    [Description("Removes a server from a local session without consent. Always-mounted core servers cannot be removed. The assistant receives a change notification.")]
+    public async Task<string> RemoveSessionMcpServerAsync(string paneId, string name)
+    {
+        if (_RefuseIfNotTheAssistant() is { } refusal)
+        {
+            return refusal;
+        }
+        return _SerializeMcpSet(await gateway.ChangeSessionMcpServerAsync(paneId, name, add: false).ConfigureAwait(false));
+    }
+
+    [McpServerTool(Name = "attach_to_reply", ReadOnly = false, Destructive = false)]
+    [Description("Attaches a file or an operator-provided image to the next assistant reply in Cockpit and open channels. Supply exactly one of path (inside the assistant scratch folder or a cockpit-managed worktree) or operatorImage (zero-based index into this turn's operator images, without file access). Maximum 25 MB per file and 10 files per reply. Refusals include a reason; send the reply text normally.")]
+    public async Task<string> AttachToReplyAsync(
+        [Description("File in the assistant scratch folder or a cockpit-managed worktree; omit when selecting operatorImage.")] string? path = null,
+        [Description("Optional file name shown with the attachment.")] string? name = null,
+        [Description("Zero-based index of an operator image in the current turn; omit path. This selection never opens a file.")] int? operatorImage = null)
+    {
+        if (_RefuseIfNotTheAssistant() is { } refusal)
+        {
+            return refusal;
+        }
+
+        if (sessions?.Assistant is not { } session)
+        {
+            return _Serialize(new { ok = false, error = "The assistant session is unavailable." });
+        }
+
+        if ((path is null) == (operatorImage is null))
+        {
+            return _Serialize(new { ok = false, error = "Supply exactly one of path or operatorImage." });
+        }
+
+        try
+        {
+            const int maxBytes = 25 * 1024 * 1024;
+            var fileName = name ?? (path is not null ? Path.GetFileName(path) : $"operator-image-{operatorImage + 1}.png");
+            if (string.IsNullOrWhiteSpace(fileName) || fileName != Path.GetFileName(fileName) || fileName.IndexOfAny(['/', '\\', '\r', '\n']) >= 0)
+            {
+                return _Serialize(new { ok = false, error = "The attachment name must be a file name." });
+            }
+
+            byte[] content;
+            if (path is { } filePath)
+            {
+                var roots = new List<string> { Cockpit.Core.Sessions.SessionScratch.PathFor(AssistantIdentity.PaneId) };
+                if (worktrees is not null)
+                {
+                    roots.AddRange((await worktrees.ListAsync().ConfigureAwait(false)).Select(tree => tree.Path));
+                }
+
+                if (!ReplyAttachmentPath.TryResolve(filePath, roots, out var resolved, out var error))
+                {
+                    return _Serialize(new { ok = false, error });
+                }
+
+                using var stream = new FileStream(resolved, FileMode.Open, FileAccess.Read, FileShare.Read);
+                if (!ReplyAttachmentPath.TryResolve(ReplyAttachmentPath.OpenedPath(stream), roots, out _, out error))
+                {
+                    return _Serialize(new { ok = false, error });
+                }
+
+                var length = stream.Length;
+                if (length > maxBytes)
+                {
+                    return _Serialize(new { ok = false, error = "The file exceeds the 25 MB attachment limit." });
+                }
+
+                content = new byte[(int)length];
+                await stream.ReadExactlyAsync(content).ConfigureAwait(false);
+                if (stream.ReadByte() != -1)
+                {
+                    return _Serialize(new { ok = false, error = "The file grew while it was being read; nothing was attached." });
+                }
+            }
+            else
+            {
+                var images = session.CurrentTurnImages;
+                if (operatorImage is not { } index || index < 0 || index >= images.Count)
+                {
+                    return _Serialize(new { ok = false, error = "operatorImage must name an image in the current turn (zero-based)." });
+                }
+
+                var selected = images[index];
+                if (selected.Base64Data.Length > ((maxBytes + 2) / 3) * 4)
+                {
+                    return _Serialize(new { ok = false, error = "The image exceeds the 25 MB attachment limit." });
+                }
+
+                content = Convert.FromBase64String(selected.Base64Data);
+                if (content.Length > maxBytes)
+                {
+                    return _Serialize(new { ok = false, error = "The image exceeds the 25 MB attachment limit." });
+                }
+
+                if (name is null)
+                {
+                    fileName = Path.ChangeExtension(fileName, selected.MediaType.Split('/').Last().Split(';', '+')[0]);
+                }
+            }
+
+            using var imageStream = new SkiaSharp.SKMemoryStream(content);
+            using var codec = SkiaSharp.SKCodec.Create(imageStream);
+            var isImage = codec is not null && codec.Info.Width > 0 && codec.Info.Height > 0;
+            if (operatorImage is not null && !isImage)
+            {
+                return _Serialize(new { ok = false, error = "The selected operator attachment is not an image." });
+            }
+
+            string? queuedError = "The assistant session is unavailable.";
+            await session.UseControlAsync(control =>
+            {
+                queuedError = control.AttachToReply(new Cockpit.Core.Sessions.ReplyAttachment(fileName, content, isImage));
+                return Task.CompletedTask;
+            }).ConfigureAwait(false);
+            return _Serialize(new { ok = queuedError is null, error = queuedError });
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException or FormatException)
+        {
+            return _Serialize(new { ok = false, error = error.Message });
+        }
+    }
+
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
 
     // What a caller that is not the assistant is told. One sentence, and no detail about what it would have got —
@@ -30,7 +177,7 @@ internal sealed class AssistantAgentMcpTools(
         "This tool is the cockpit assistant's own. It is not available to an agent session.";
 
     [McpServerTool(Name = "start_agent", ReadOnly = false, Destructive = false)]
-    [Description("Starts an AI session and returns its paneId, resolvedProfile and promptDelivered. Locally, workspaceId from list_workspaces is required; profile is required unless projectId supplies a default. Unknown profiles or projects are refused. projectId applies the project's folder, profile default, isolation, prompt, resources and MCP selection. options changes only named provider keys; unknown keys or values are refused. Permission-mode is never overridable, nor Codex sandbox or approval-policy. isolate:false is always refused; omitted inherits project isolation. On a paired node, use its name from list_sessions and fetch its catalog through list_profiles/list_projects or list_sessions(includeNodeCatalog:true). Only profile (required), projectId, prompt and name travel; workspaceId, workingDirectory, kind, options and isolate are refused. Node grants restrict profiles/projects. Node paneIds are addressed as \"<node> · <paneId>\". An omitted node with a projectId also seen on a node is refused using cached snapshots; node:\"local\" selects this machine explicitly. Unread nodes cannot be detected by that check. promptDelivered:false means queued for automatic delivery exactly once: never retry the start or resend that prompt. null means no prompt was supplied. Delegated tasks have no pane and cannot be started here.")]
+    [Description("Starts an AI session and returns its paneId, resolvedProfile, promptDelivered, mcpServers and mcpServersConfirmed. Locally, workspaceId from list_workspaces is required; profile is required unless projectId supplies a default. Unknown profiles or projects are refused. projectId applies the project's folder, profile default, isolation, prompt, resources and MCP selection. options changes only named provider keys; unknown keys or values are refused. Permission-mode is never overridable, nor Codex sandbox or approval-policy. isolate:false is always refused; omitted inherits project isolation. On a paired node, use its name from list_sessions and fetch its catalog through list_profiles/list_projects or list_sessions(includeNodeCatalog:true). Only profile (required), projectId, prompt and name travel; workspaceId, workingDirectory, kind, options and isolate are refused. Node grants restrict profiles/projects. Node paneIds are addressed as \"<node> · <paneId>\". An omitted node with a projectId also seen on a node is refused using cached snapshots; node:\"local\" selects this machine explicitly. Unread nodes cannot be detected by that check. promptDelivered:false means queued for automatic delivery exactly once: never retry the start or resend that prompt. null means no prompt was supplied. mcpServersConfirmed:false means the route has not reported its MCP set yet; use get_session_mcp_set to read it later. Use add_session_mcp_server to add a server to a running local session without restarting. Delegated tasks have no pane and cannot be started here.")]
     public async Task<string> StartAgentAsync(
         [Description("The desk id from list_workspaces or list_sessions, never its tab label. Required locally and refused on a node.")] string? workspaceId = null,
         [Description("An exact profile label from list_profiles. Overrides the project's default; required when no project default exists. Unknown labels are refused. The result reports resolvedProfile.")] string? profile = null,
@@ -42,7 +189,7 @@ internal sealed class AssistantAgentMcpTools(
         [Description("Overrides only named keys from the profile's Options in list_profiles. Unknown keys/values, permission-mode, sandbox and approval-policy are refused. Omitted keys retain profile values. Refused on nodes.")] Dictionary<string, string>? options = null,
         [Description("true requests a git worktree; omitted inherits project isolation, otherwise unisolated. false is always refused. Refused on nodes.")] bool? isolate = null,
         [Description("An exact paired-node name from list_sessions, or local to select this machine explicitly. Omitted means local unless projectId is ambiguous with a cached node project. Nodes accept only profile, projectId, prompt and name.")] string? node = null,
-        [Description("Exact MCP server names for this session, overriding project and profile selection. Omitted preserves defaults; [] keeps only always-mounted servers. Internal, unknown or unavailable names are refused. Global switches still apply. Refused on nodes.")] string[]? mcpServers = null)
+        [Description("Exact MCP server names for this session, overriding project and profile selection. Any registered server may be named, also one that belongs to another project. Omitted preserves defaults (the project's brain server included); [] keeps only always-mounted servers. Internal, unknown, globally disabled or not-yet-authorized names are refused. Global switches still apply. Refused on nodes.")] string[]? mcpServers = null)
     {
         try
         {
@@ -105,6 +252,8 @@ internal sealed class AssistantAgentMcpTools(
                     // argument back and said nothing when that argument was left out.
                     resolvedProfile = result.ResolvedProfileLabel,
                     promptDelivered = result.PromptDelivered,
+                    mcpServers = result.McpServers,
+                    mcpServersConfirmed = result.McpServersConfirmed,
                 })
                 : _Serialize(new { ok = false, error = result.Error });
         }
@@ -188,6 +337,8 @@ internal sealed class AssistantAgentMcpTools(
                 projectId,
                 resolvedProfile = started.ResolvedProfile,
                 promptDelivered = started.PromptDelivered,
+                mcpServers = started.McpServers,
+                mcpServersConfirmed = started.McpServersConfirmed,
                 machine = new { name = node, local = false },
             });
     }
@@ -1362,7 +1513,7 @@ internal sealed class AssistantAgentMcpTools(
     }
 
     [McpServerTool(Name = "remember", ReadOnly = false, Destructive = false)]
-    [Description("Persists one fact without approval. scope is required: behaviour writes locally and relays to every paired node, awaiting each result; machines is refused for that scope. machine requires machines containing \"local\", node names, or both, and writes only there. Check destinations for failures even when ok is true; unreachable writes are not queued. Behavior and machine memories remain separate. Use note_state for transient progress. No tool removes a remembered line; the operator must edit the file.")]
+    [Description("Persists one fact without approval. scope is required: behaviour writes locally and relays to every paired node, awaiting each result; machines is refused for that scope. machine requires machines containing \"local\", node names, or both, and writes only there. Check destinations for failures even when ok is true; unreachable writes are not queued. Behavior and machine memories remain separate. Use note_state for transient progress.")]
     public async Task<string> RememberAsync(
         [Description("The one thing to remember, in a full sentence that will still make sense on its own with no conversation around it.")] string text,
         [Description("Either behaviour or machine. A behaviour rule is something you are told and belongs everywhere; machine knowledge is learned by doing, when a command fails or a path differs, and belongs only where it holds.")] string? scope = null,
@@ -1479,6 +1630,44 @@ internal sealed class AssistantAgentMcpTools(
         }
 
         return new { ok = true, remembered = text.Trim(), scope, destinations };
+    }
+
+    [McpServerTool(Name = "rewrite_assistant_memory", ReadOnly = false, Destructive = false)]
+    [Description("Replace behaviour memory with consolidated text, after making a timestamped backup locally and on every paired node. Check each destination for failures. The heading and at least one non-empty bullet are required.")]
+    public async Task<string> RewriteAssistantMemoryAsync(string text)
+    {
+        try
+        {
+            if (_RefuseIfNotTheAssistant() is { } refusal)
+            {
+                return refusal;
+            }
+            var result = await memory.RewriteAsync(text).ConfigureAwait(false);
+            var destinations = new List<object> { new { machine = "local", succeeded = true, error = (string?)null } };
+            if (nodes is not null)
+            {
+                IReadOnlyList<string> nodeNames;
+                try
+                {
+                    nodeNames = await nodes.ListNodesAsync().ConfigureAwait(false);
+                }
+                catch (Exception exception)
+                {
+                    destinations.Add(new { machine = "(paired nodes)", succeeded = false, error = exception.Message });
+                    nodeNames = [];
+                }
+                foreach (var node in nodeNames)
+                {
+                    var error = await nodes.RewriteMemoryOnNodeAsync(node, text).ConfigureAwait(false);
+                    destinations.Add(new { machine = node, succeeded = error is null, error });
+                }
+            }
+            return _Serialize(new { ok = true, result, destinations });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
     }
 
     [McpServerTool(Name = "read_node_memory", ReadOnly = true)]
@@ -1699,6 +1888,9 @@ internal sealed class AssistantAgentMcpTools(
         string.Equals(McpRequestContext.CurrentPaneId, AssistantIdentity.PaneId, StringComparison.Ordinal)
             ? null
             : _Serialize(new { ok = false, error = NotTheAssistant });
+
+    private static string _SerializeMcpSet(SessionMcpSetResult result) =>
+        _Serialize(new { ok = result.Ok, manager = result.Manager, servers = result.Servers.Select(server => new { name = server.Name, status = server.Status }), error = result.Error });
 
     private static string _Serialize(object value) => JsonSerializer.Serialize(value, SerializerOptions);
 }

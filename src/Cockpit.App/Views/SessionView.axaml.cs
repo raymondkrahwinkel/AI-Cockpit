@@ -17,6 +17,16 @@ namespace Cockpit.App.Views;
 
 public partial class SessionView : UserControl
 {
+    private void OnOpenSessionMcp(object? sender, RoutedEventArgs e)
+    {
+        SessionSettingsButton.Flyout?.Hide();
+        SessionSettingsButton.Focus();
+        if (DataContext is SessionPanelViewModel session)
+        {
+            Program.Services?.GetService<CockpitViewModel>()?.OpenSessionMcpCommand.Execute(session);
+        }
+    }
+
     // AC-1121: the follow lives in TranscriptFollower, shared with AssistantChatView. It ran twice, and every
     // repair since AC-528 has landed on one half.
     private TranscriptFollower? _follower;
@@ -43,10 +53,6 @@ public partial class SessionView : UserControl
     // see _ResolveDiagnostics. Null leaves this pane on exactly the pre-AC-883 behaviour: minimising, nothing else.
     internal DiagnosticsBackgroundService? Diagnostics { get; set; }
 
-    // AC-532: ticks the composer's tool-activity elapsed time each second so "running 0:12" counts
-    // up (and, AC-531, the background-work pop-out's per-task times). Lives here, not the view
-    // model, since the derived state must stay dispatcher-free for platform-less unit tests.
-    private DispatcherTimer? _activityAgeTicker;
 
     private ScrollViewer? _transcriptScroll;
 
@@ -82,7 +88,7 @@ public partial class SessionView : UserControl
 
         _composerInput = new TranscriptComposerInput(
             InputBox,
-            ComposerBorder,
+            DropOverlay,
             tryGetPastedBitmap: () => TopLevel.GetTopLevel(this)?.Clipboard?.TryGetBitmapAsync() ?? Task.FromResult<Bitmap?>(null),
             tryGetPastedText: () => TopLevel.GetTopLevel(this)?.Clipboard?.TryGetTextAsync() ?? Task.FromResult<string?>(null),
             hasComposer: () => DataContext is SessionViewModel { IsReadingChild: false },
@@ -90,7 +96,8 @@ public partial class SessionView : UserControl
             recallLastQueuedMessage: () => DataContext is SessionViewModel recallVm && recallVm.RecallLastQueuedMessage(),
             resolveStopIfBusy: () => DataContext is SessionViewModel { IsBusy: true } busyVm ? busyVm.StopCommand : null,
             sendCommand: () => (DataContext as SessionViewModel)?.SendCommand,
-            resolvePastedImageSink: () => DataContext is SessionViewModel vm ? vm.AddPastedImage : null);
+            resolvePastedImageSink: () => DataContext is SessionViewModel vm ? vm.AddPastedImage : null,
+            canPasteImages: () => DataContext is SessionViewModel { CanPasteImages: true });
 
         // Enter sends the message; Shift+Enter inserts a newline. Tunnel so we pre-empt the
         // TextBox's own Enter handling (which would otherwise insert a newline).
@@ -104,13 +111,12 @@ public partial class SessionView : UserControl
         // pane, not just the box, so the drop works wherever the operator lets go — and a drag carrying no
         // files is left entirely unhandled, so nothing here claims a gesture it has no answer for.
         DragDrop.SetAllowDrop(this, true);
-        // DragEnter as well as DragOver: AllowDrop inherits, so the target changes at every inner control
-        // boundary and Avalonia answers that with DragLeave + DragEnter — without the enter the highlight
-        // would blink off on each crossing.
-        AddHandler(DragDrop.DragEnterEvent, _composerInput.OnDragOver, RoutingStrategies.Tunnel);
-        AddHandler(DragDrop.DragOverEvent, _composerInput.OnDragOver, RoutingStrategies.Tunnel);
-        AddHandler(DragDrop.DragLeaveEvent, _composerInput.OnDragLeave, RoutingStrategies.Tunnel);
-        AddHandler(DragDrop.DropEvent, _composerInput.OnDrop, RoutingStrategies.Tunnel);
+        // AC-2059: Bubble, as the drag events are Bubble-only. DragEnter too: AllowDrop inherits, so every inner
+        // control boundary is a DragLeave + DragEnter, and without the enter the highlight blinks off.
+        AddHandler(DragDrop.DragEnterEvent, _composerInput.OnDragOver, RoutingStrategies.Bubble, handledEventsToo: true);
+        AddHandler(DragDrop.DragOverEvent, _composerInput.OnDragOver, RoutingStrategies.Bubble, handledEventsToo: true);
+        AddHandler(DragDrop.DragLeaveEvent, _composerInput.OnDragLeave, RoutingStrategies.Bubble, handledEventsToo: true);
+        AddHandler(DragDrop.DropEvent, _composerInput.OnDrop, RoutingStrategies.Bubble, handledEventsToo: true);
 
         // Push-to-talk (F9 by default): tunnel on the whole panel, not just the input box, so it fires
         // regardless of which control inside the panel has focus — the operator should not have to
@@ -158,9 +164,6 @@ public partial class SessionView : UserControl
         _WatchSession(DataContext as SessionViewModel);
         Dispatcher.UIThread.Post(_UpdateJumpAffordance, DispatcherPriority.Background);
 
-        _activityAgeTicker = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-        _activityAgeTicker.Tick += _OnActivityAgeTick;
-        _activityAgeTicker.Start();
 
         if (TopLevel.GetTopLevel(this) is Window window)
         {
@@ -181,8 +184,6 @@ public partial class SessionView : UserControl
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
-        _activityAgeTicker?.Stop();
-        _activityAgeTicker = null;
 
         _WatchSession(null);
 
@@ -272,19 +273,6 @@ public partial class SessionView : UserControl
 
         // Rows dematerialise while paused, so what is reachable changed even though nothing scrolled (AC-996).
         Dispatcher.UIThread.Post(_UpdateJumpAffordance, DispatcherPriority.Background);
-    }
-
-    private void _OnActivityAgeTick(object? sender, EventArgs e)
-    {
-        if (DataContext is not SessionViewModel vm)
-        {
-            return;
-        }
-
-        vm.RefreshActiveToolActivityAge();
-        // AC-531: same ticker, one more thing to re-tick — the background-work pop-out's elapsed times need to
-        // count up too, and a second DispatcherTimer for the same one-second cadence would be pure duplication.
-        vm.RefreshBackgroundTaskAges();
     }
 
     // AC-1121: no follow from here. Avalonia raises this from LayoutUpdated, so the ScrollIntoView the old
@@ -415,7 +403,7 @@ public partial class SessionView : UserControl
     // No-ops when global push-to-talk is active (PushToTalkKeyGate) to avoid firing twice.
     private void _OnPushToTalkKeyDown(object? sender, KeyEventArgs e)
     {
-        if (DataContext is SessionViewModel { IsReadingChild: false } vm
+        if (DataContext is SessionViewModel { IsReadingChild: false, IsAudioAvailable: true } vm
             && PushToTalkKeyGate.ShouldHandleLocally(e.Key, vm.PushToTalkKeyName, vm.GlobalPushToTalkEnabled)
             && vm.BeginVoiceHold())
         {

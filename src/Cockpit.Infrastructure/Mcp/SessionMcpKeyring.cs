@@ -13,6 +13,8 @@ internal sealed class SessionMcpKeyring : ISingletonService
     private readonly ConcurrentDictionary<string, string> _paneToToken = new(StringComparer.Ordinal);
     internal event Action<string>? RunEnded;
 
+    public string? CurrentToken(string paneId) => _paneToToken.GetValueOrDefault(paneId);
+
     // Mints (or replaces) the token for a session's pane and returns it. The token becomes that session's `COCKPIT_MCP_KEY`.
     public string TokenFor(string paneId)
     {

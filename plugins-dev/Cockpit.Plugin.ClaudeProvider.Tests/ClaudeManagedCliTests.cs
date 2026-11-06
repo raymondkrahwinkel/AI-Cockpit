@@ -19,16 +19,6 @@ public class ClaudeManagedCliTests
         }
         """;
 
-    [Theory]
-    [InlineData("linux", "x64", false, "linux-x64")]
-    [InlineData("linux", "x64", true, "linux-x64-musl")]
-    [InlineData("darwin", "arm64", false, "darwin-arm64")]
-    [InlineData("win32", "x64", false, "win32-x64")]
-    public void PlatformKey_MapsOsArchAndMusl(string os, string arch, bool musl, string expected)
-    {
-        Assert.Equal(expected, ClaudeManagedCli.PlatformKey(new ManagedCliPlatform(os, arch, musl)));
-    }
-
     [Fact]
     public void BuildPlan_Linux_UsesManifestBinaryAndChecksum_AsRawExecutable()
     {

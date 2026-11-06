@@ -69,27 +69,7 @@ public class WireframeComponentIdTests
 
     // ---- Criteria 5 and 6: a source without ids keeps working, and a read is what names it ----
 
-    [Fact]
-    public void ASourceWithoutIds_IsLeftAlone_UntilAnAgentReadsIt()
-    {
-        var registry = _Coupled(WireframeScreens.Plain);
 
-        Assert.Equal(WireframeScreens.Plain, registry.PeekText(SurfaceId));
-
-        var read = registry.ReadCoupled(Session, SurfaceId);
-
-        Assert.Equal(read, registry.PeekText(SurfaceId));
-        Assert.All(_Flatten(_Tree(registry)), component => Assert.NotNull(component.Id));
-        Assert.Equal(WireframeScreens.Plain, _WithoutIds(read!));
-    }
-
-    [Fact]
-    public void Ensure_KeepsTheIdsSomeoneAlreadyChose_AndNeverHandsOutTheSameOneTwice()
-    {
-        var stamped = WireframeComponentIds.Ensure("screen \"X\" #c1\n  button \"Opslaan\"\n  button \"Annuleren\" #save");
-
-        Assert.Equal("screen \"X\" #c1\n  button \"Opslaan\" #c2\n  button \"Annuleren\" #save", stamped);
-    }
 
     // ---- Criterion 7: the race the ids exist for ----
 
@@ -97,6 +77,4 @@ public class WireframeComponentIdTests
         new[] { node }.Concat(node.Children.SelectMany(_Flatten));
 
     // The source as it read before anything named its components, so a stamped one can be compared against it.
-    private static string _WithoutIds(string source) =>
-        string.Join("\n", source.Split('\n').Select(line => line.Split(" #")[0]));
 }

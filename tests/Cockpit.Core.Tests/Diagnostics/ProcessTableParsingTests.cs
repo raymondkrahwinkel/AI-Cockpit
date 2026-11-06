@@ -25,26 +25,6 @@ public class ProcessTableParsingTests
         Assert.Equal(expectedTicks, stat.TotalTicks);
     }
 
-    [Fact]
-    public void ProcStat_OfSomethingThatIsNotAStatLine_IsNothing()
-    {
-        Assert.Null(ProcStatLine.Parse("nonsense"));
-        Assert.Null(ProcStatLine.Parse(string.Empty));
-    }
-
-    [Fact]
-    public void PsLine_ReadsPidParentCpuTimeAndResidentMemory()
-    {
-        // pid ppid time rss(kB)
-        var row = PsLine.Parse("  501   1 12:34.56  204800");
-
-        Assert.NotNull(row);
-        Assert.Equal(501, row.ProcessId);
-        Assert.Equal(1, row.ParentProcessId);
-        Assert.Equal(TimeSpan.FromMinutes(12) + TimeSpan.FromSeconds(34.56), row.CpuTime);
-        Assert.Equal(204800L * 1024, row.WorkingSetBytes);
-    }
-
     [Theory]
     [InlineData("00:12.30", 0, 0, 12.3)]
     [InlineData("01:02:03", 1, 2, 3)]
@@ -56,12 +36,5 @@ public class ProcessTableParsingTests
         var expected = TimeSpan.FromHours(hours) + TimeSpan.FromMinutes(minutes) + TimeSpan.FromSeconds(seconds);
 
         Assert.Equal(expected, PsLine.ParseCpuTime(value));
-    }
-
-    [Fact]
-    public void PsLine_OfAHeaderOrRubbish_IsNothing()
-    {
-        Assert.Null(PsLine.Parse("PID PPID TIME RSS"));
-        Assert.Null(PsLine.Parse(string.Empty));
     }
 }

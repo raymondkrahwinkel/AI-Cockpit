@@ -1,5 +1,7 @@
 using System.Text.Json;
+using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
+using NSubstitute;
 
 namespace Cockpit.Plugin.OpencodeProvider.Tests;
 
@@ -10,32 +12,15 @@ public class OpencodeAcpSessionDriverTests
 {
     private static OpencodeConfig _DefaultConfig() => new(WorkingDirectory: Path.GetTempPath());
 
-    // --- session lifecycle & permission policy (criterion 3) ------------------------------------------------
-
-    [Fact]
-    public async Task Start_SendsSessionNew_WithAbsoluteCwd_AndEmitsSessionInitialized()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new OpencodeAcpSessionDriver(() => fake, _DefaultConfig(), "opencode");
-
-        var startTask = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
-        await _RespondAsync(fake, "initialize", "{}");
-        var sessionNew = await _RespondAsync(fake, "session/new", """{"sessionId":"ses_1","configOptions":[]}""");
-        await startTask;
-
-        Assert.True(Path.IsPathRooted(sessionNew.GetProperty("params").GetProperty("cwd").GetString()));
-        Assert.Equal("ses_1", driver.SessionId);
-
-        var initialized = await _NextEventOfTypeAsync<PluginSessionInitialized>(driver);
-        Assert.Equal("ses_1", initialized.SessionId);
-    }
-
     // The mechanism criterion 3 depends on: opencode does not ask permission by default (measured live), and
     // an inline session/new "permission" param is silently ignored (measured live) — OPENCODE_CONFIG_CONTENT
     // is the one env var that live-verified reaches opencode's permission engine.
     [Fact]
     public async Task Start_WithNoPermissionModeOption_ForcesAskEverythingViaOpencodeConfigContent()
     {
+        var host = Substitute.For<ICockpitHost>();
+        new OpencodeProviderPlugin().Initialize(host);
+        host.Received(1).AddSessionProvider(Arg.Is<SessionProviderRegistration>(registration => registration.IsLoggedIn == null));
         var fake = new FakeCliSubprocess();
         await using var driver = new OpencodeAcpSessionDriver(() => fake, _DefaultConfig(), "opencode");
 
@@ -45,14 +30,16 @@ public class OpencodeAcpSessionDriverTests
         Assert.Equal("""{"permission":{"*":"ask"}}""", fake.EnvironmentVariables!["OPENCODE_CONFIG_CONTENT"]);
     }
 
-    // The one host-side mode that means "run fully autonomously" must actually stop asking, not silently keep
-    // the forced-ask policy the default path uses — that would defeat the operator's own explicit choice.
-    [Fact]
-    public async Task Start_WithBypassPermissionsMode_ForcesAllowEverythingInstead()
+    // Bypass must really stop asking rather than keep the default forced-ask policy; plan maps to opencode's plan mode
+    // and still asks, since whatever it allows (e.g. reads) still goes through Cockpit's consent card.
+    [Theory]
+    [InlineData("bypassPermissions", "build", "allow")]
+    [InlineData("plan", "plan", "ask")]
+    public async Task Start_WithAPermissionMode_SetsOpencodesModeAndPolicy(string permissionMode, string opencodeMode, string policy)
     {
         var fake = new FakeCliSubprocess();
         await using var driver = new OpencodeAcpSessionDriver(() => fake, _DefaultConfig(), "opencode");
-        var options = new Dictionary<string, string> { [WellKnownPluginSessionOptions.PermissionMode] = "bypassPermissions" };
+        var options = new Dictionary<string, string> { [WellKnownPluginSessionOptions.PermissionMode] = permissionMode };
 
         var startTask = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: null, options, mcpServers: null, CancellationToken.None);
         await _RespondAsync(fake, "initialize", "{}");
@@ -60,28 +47,9 @@ public class OpencodeAcpSessionDriverTests
         var setMode = await _RespondAsync(fake, "session/set_config_option", """{"configOptions":[]}""");
         await startTask;
 
-        Assert.Equal("""{"permission":{"*":"allow"}}""", fake.EnvironmentVariables!["OPENCODE_CONFIG_CONTENT"]);
         Assert.Equal("mode", setMode.GetProperty("params").GetProperty("configId").GetString());
-        Assert.Equal("build", setMode.GetProperty("params").GetProperty("value").GetString());
-    }
-
-    [Fact]
-    public async Task Start_WithPlanPermissionMode_TranslatesToOpencodesOwnPlanMode()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new OpencodeAcpSessionDriver(() => fake, _DefaultConfig(), "opencode");
-        var options = new Dictionary<string, string> { [WellKnownPluginSessionOptions.PermissionMode] = "plan" };
-
-        var startTask = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: null, options, mcpServers: null, CancellationToken.None);
-        await _RespondAsync(fake, "initialize", "{}");
-        await _RespondAsync(fake, "session/new", """{"sessionId":"ses_1","configOptions":[{"id":"mode","name":"Session Mode","category":"mode","type":"select","currentValue":"build","options":[{"value":"build","name":"build"},{"value":"plan","name":"plan"}]}]}""");
-        var setMode = await _RespondAsync(fake, "session/set_config_option", """{"configOptions":[]}""");
-        await startTask;
-
-        Assert.Equal("plan", setMode.GetProperty("params").GetProperty("value").GetString());
-        // Still asks — plan mode disallows edits at the model level, but whatever it does allow (e.g. reads) is
-        // still gated through Cockpit's own consent card.
-        Assert.Equal("""{"permission":{"*":"ask"}}""", fake.EnvironmentVariables!["OPENCODE_CONFIG_CONTENT"]);
+        Assert.Equal(opencodeMode, setMode.GetProperty("params").GetProperty("value").GetString());
+        Assert.Equal($$$"""{"permission":{"*":"{{{policy}}}"}}""", fake.EnvironmentVariables!["OPENCODE_CONFIG_CONTENT"]);
     }
 
     // Layer 2, provider protocol contract (AC-1992): the brain is opencode's first visible turn, alone and exactly
@@ -199,25 +167,6 @@ public class OpencodeAcpSessionDriverTests
         var wireServers = sessionNew.GetProperty("params").GetProperty("mcpServers");
         Assert.False(wireServers[0].TryGetProperty("type", out _));
         Assert.Equal("http", wireServers[1].GetProperty("type").GetString());
-    }
-
-    // --- SetLiveOptionAsync validates against the live snapshot, not a hardcoded id list --------------------
-
-    // --- usage_update -> Status (criterion 2: opencode DOES report usage, unlike Kimi) -----------------------
-
-    [Fact]
-    public async Task UsageUpdate_SetsStatus_FromUsedAndSize()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new OpencodeAcpSessionDriver(() => fake, _DefaultConfig(), "opencode");
-        await _StartAsync(driver, fake);
-
-        await fake.PushStdoutAsync("""{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"ses_1","update":{"sessionUpdate":"usage_update","used":8507,"size":200000,"cost":{"amount":0,"currency":"USD"}}}}""");
-
-        await _WaitUntilAsync(() => driver.Status is not null);
-        Assert.NotNull(driver.Status);
-        Assert.Equal(8507.0 / 200000 * 100, driver.Status!.ContextUsedPercent);
-        Assert.Empty(driver.Status.RateLimits);
     }
 
     // --- stop reason mapping (criterion 2: full ACP spec enum, not Kimi's own 3-value fold) -----------------

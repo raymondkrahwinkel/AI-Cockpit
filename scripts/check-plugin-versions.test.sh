@@ -91,7 +91,7 @@ printf 'int shared = 1;\n' >plugins-dev/_shared/Loop.cs
 manifest plugins-dev/Cockpit.Plugin.Eta 1.0.0
 printf '<Project><Compile Include="..\\_shared\\Loop.cs" /></Project>\n' >plugins-dev/Cockpit.Plugin.Eta/Eta.csproj
 manifest plugins-dev/Cockpit.Plugin.Theta 1.0.0
-printf '<Project></Project>\n' >plugins-dev/Cockpit.Plugin.Theta/Theta.csproj
+printf '<Project><Compile Include="..\\_shared\\Other.cs" /></Project>\n' >plugins-dev/Cockpit.Plugin.Theta/Theta.csproj
 git add -A
 git commit --quiet -m base
 base="$(git rev-parse HEAD)"

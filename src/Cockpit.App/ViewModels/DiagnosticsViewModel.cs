@@ -50,6 +50,13 @@ public sealed partial class DiagnosticsViewModel(
         builder.AppendLine($"  Mode          : {snapshot.Rendering.Mode}");
         builder.AppendLine($"  {snapshot.Rendering.Detail}");
 
+        builder.AppendLine().AppendLine("Audio");
+        builder.AppendLine($"  Status        : {(snapshot.Audio.IsAvailable ? "available" : "unavailable")}");
+        if (!snapshot.Audio.IsAvailable && !string.IsNullOrWhiteSpace(snapshot.Audio.UnavailableReason))
+        {
+            builder.AppendLine($"  Reason        : {snapshot.Audio.UnavailableReason}");
+        }
+
         var memory = snapshot.Memory;
         builder.AppendLine().AppendLine("Memory (process)");
         builder.AppendLine($"  Resident      : {ByteSize.Human(memory.ResidentBytes)}   ← physical memory in use (the figure that matters)");

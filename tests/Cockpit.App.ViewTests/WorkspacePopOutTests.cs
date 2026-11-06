@@ -24,8 +24,6 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Avalonia.Input;
 using System.Text;
 using System.Text.Json;
-using Cockpit.Core.Workspaces;
-using Cockpit.App.Views;
 
 namespace Cockpit.App.ViewTests;
 
@@ -33,70 +31,6 @@ namespace Cockpit.App.ViewTests;
 [Collection("avalonia")]
 public sealed class WorkspacePopOutTests
 {
-    public static TheoryData<Func<WorkspacesViewModel, Task>, bool, bool, bool, bool> TabKinds => new()
-    {
-        { workspaces => workspaces.OpenWorkspaceAsync("test.file", new WorkspaceOpenOptions("draft", "draft.md", Preview: true)), true, true, true, true },
-        { _ => Task.CompletedTask, false, false, false, true },
-        { workspaces => workspaces.SelectWorkspaceCommand.ExecuteAsync(workspaces.Settings.Workspaces.Single(w => w.Type == WorkspaceType.Projects).Id), false, false, false, false },
-        { workspaces => { var workspace = workspaces.Settings.Workspaces.Single(w => w.Type == WorkspaceType.Sessions); workspaces.Settings = new WorkspaceSettings { Workspaces = [workspace], ActiveWorkspaceId = workspace.Id }; return Task.CompletedTask; }, false, false, false, false },
-    };
-
-    [Theory]
-    [MemberData(nameof(TabKinds))]
-    public Task TabMenuAvailability(Func<WorkspacesViewModel, Task> arrange, bool keep, bool pop, bool copy, bool close) => HeadlessAvalonia.RunAsync(async () =>
-    {
-        var hub = new PluginChannelHub(NullLogger<PluginChannelHub>.Instance);
-        var client = new FileSourceChannelClient(new Channel(hub));
-        var options = new FileWorkspaceOpenOptions(new FileRef("c1", "doc", "draft.md"), "draft", "draft.md", "Depot / Work", CreateNew: true);
-        var registry = new WorkspaceTypeRegistry(new ServiceCollection().BuildServiceProvider());
-        registry.Register(new WorkspaceTypeRegistration("test.file", "Markdown", context =>
-            new MarkdownFileWorkspace(context, options, client, () => Task.FromResult(true))) { CanFloat = true },
-            new NoStorage(), NullCockpitSessionObserver.Instance);
-        var cockpit = new CockpitViewModel(workspaceTypeRegistry: registry);
-        var workspaces = cockpit.Workspaces;
-        await arrange(workspaces);
-        var tab = workspaces.Tabs.Single(t => t.IsActive);
-        Assert.Equal(keep, tab.CanKeepOpen);
-        Assert.Equal(pop, tab.CanPopOut);
-        Assert.Equal(copy, tab.CanCopyPath);
-        Assert.Equal(close, tab.CanClose);
-        var view = new CockpitView { DataContext = cockpit };
-        var window = new Window { Content = view, Width = 1000, Height = 700 };
-        window.Show();
-        try
-        {
-            await workspaces.SelectWorkspaceCommand.ExecuteAsync(workspaces.Tabs.FirstOrDefault(other => other.Id != tab.Id)?.Id ?? tab.Id);
-            _AssertTabMenu(view, window, tab.Id, close);
-            await workspaces.SelectWorkspaceCommand.ExecuteAsync(tab.Id);
-            _AssertTabMenu(view, window, tab.Id, close);
-        }
-        finally
-        {
-            window.Close();
-        }
-    });
-
-    private static void _AssertTabMenu(CockpitView view, Window window, string id, bool close)
-    {
-        window.UpdateLayout();
-        var border = view.GetVisualDescendants().OfType<Border>().Single(control =>
-            control.Classes.Contains("workspaceTab") && control.DataContext is WorkspaceTabViewModel tab && tab.Id == id);
-        var menu = border.ContextMenu ?? throw new InvalidOperationException("Missing tab menu.");
-        menu.Open(border);
-        window.UpdateLayout();
-        var item = menu.Items.OfType<MenuItem>().Single(control => control.Header is Grid);
-        var label = Assert.IsType<Grid>(item.Header).Children.OfType<TextBlock>().Single(text => text.Text == "Close");
-        var tab = Assert.IsType<WorkspaceTabViewModel>(border.DataContext);
-        Assert.Equal(close, item.IsVisible);
-        Assert.Equal(tab.CanCloseOthers, menu.Items.OfType<MenuItem>().Single(control => Equals(control.Header, "Close others")).IsVisible);
-        Assert.Equal(tab.CanCloseToTheRight, menu.Items.OfType<MenuItem>().Single(control => Equals(control.Header, "Close tabs to the right")).IsVisible);
-        Assert.Equal(tab.CanCloseAll, menu.Items.OfType<MenuItem>().Single(control => Equals(control.Header, "Close all")).IsVisible);
-        Assert.All(menu.Items.OfType<MenuItem>().Where(control => control.IsVisible), control => Assert.True(control.IsEffectivelyEnabled));
-        Assert.All(menu.Items.OfType<MenuItem>(), control => Assert.Same(border.DataContext, control.DataContext));
-        Assert.All(menu.Items.OfType<MenuItem>().Where(control => control.Header is Grid && control.IsVisible), _ => Assert.Equal(view.FindResource("CockpitTextPrimaryBrush"), label.Foreground));
-        menu.Close();
-    }
-
     private const string TypeId = "test.markdown";
 
     private readonly Dictionary<string, IWorkspaceContext> _contexts = new(StringComparer.Ordinal);

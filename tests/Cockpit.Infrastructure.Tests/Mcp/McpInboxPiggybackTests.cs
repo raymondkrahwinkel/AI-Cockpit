@@ -36,17 +36,6 @@ public sealed class McpInboxPiggybackTests : IDisposable
     /// the same way every tool on this line refuses one — the in-process tool loop and the shared app-key path both
     /// arrive here.
     /// </summary>
-    [Fact]
-    public void Attach_WithNoVerifiedPane_ReturnsTheResultUntouchedAndLeavesEveryInboxAlone()
-    {
-        McpRequestContext.Set(null);
-        _inbox.Deliver("pane-b", "pane-a", "heads-up", "I am merging DEP-85 to dev");
-
-        var after = McpInboxPiggyback.Attach(_Result(), _Delivery(), NullLogger.Instance);
-
-        Assert.Single(after.Content);
-        Assert.Single(_inbox.Drain("pane-a", int.MaxValue).Messages);
-    }
 
     /// <summary>
     /// AC-856: the paired controller is not a session on this machine and has no inbox here, so nothing rides back

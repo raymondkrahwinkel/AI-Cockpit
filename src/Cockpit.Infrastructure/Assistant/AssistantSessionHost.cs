@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Assistant;
+using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Assistant;
@@ -33,6 +34,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
     private readonly INodeControllerPresence _presence;
     private readonly IAssistantSettingsStore _settings;
     private readonly IAssistantProfileStore _profiles;
+    private readonly ISessionProfileStore? _speechProfiles;
     private readonly ISessionStateStore _sessionState;
     private readonly SessionStateRecorder _sessionStateRecorder;
     private readonly IMcpServerCatalog _mcpServers;
@@ -45,6 +47,17 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
     internal Task StandbyPublication { get; private set; } = Task.CompletedTask;
     internal Task LeadershipTransition { get; private set; } = Task.CompletedTask;
     private double _contextCompactionPercent = AssistantSettings.DefaultCompactionPercent;
+
+    private async Task _ApplySpeechAsync(IAssistantSession session, AssistantSettings settings, CancellationToken cancellationToken)
+    {
+        Cockpit.Core.Profiles.SessionProfile? profile = null;
+        if (settings.SpeechMethod == Cockpit.Core.Voice.SpokenReplyMethod.Profile && _speechProfiles is not null)
+        {
+            var profiles = await _speechProfiles.LoadAsync(cancellationToken).ConfigureAwait(true);
+            profile = profiles.FirstOrDefault(candidate => candidate.Label == settings.SpeechProfileLabel);
+        }
+        session.ApplySpeech(settings, profile);
+    }
 
     // Serializes starts: a hotkey hold and a chip click landing together must not each build an instance.
     private readonly SemaphoreSlim _startGate = new(1, 1);
@@ -74,12 +87,22 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         ISwarmAssistantRelay? swarmRelay = null,
         ISwarmLeadership? leadership = null,
         SwarmTakeoverCoordinator? takeover = null,
-        IProjectMemorySourceRegistry? memorySources = null)
+        IProjectMemorySourceRegistry? memorySources = null,
+        ISessionProfileStore? speechProfiles = null)
     {
         _sessions = sessions;
         _presence = presence;
         _settings = settings;
         _profiles = profiles;
+        _speechProfiles = speechProfiles;
+        if (speechProfiles is not null)
+        {
+            speechProfiles.Saved += _ => _sessions.OnOwnerThreadAsync(async () =>
+            {
+                await ApplySettingsAsync().ConfigureAwait(true);
+                return true;
+            });
+        }
         _sessionState = sessionState;
         _sessionStateRecorder = sessionStateRecorder;
         _mcpServers = mcpServers;
@@ -451,7 +474,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         if (Session is { } live)
         {
             live.ReadingLevel = settings.ReadingLevel;
-            live.ApplySpeech(settings.SpeakReplies);
+            await _ApplySpeechAsync(live, settings, cancellationToken).ConfigureAwait(true);
         }
 
         var current = Session;
@@ -577,6 +600,13 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         // ("No such file or directory"), and nothing guarantees another writer reached this root first.
         Directory.CreateDirectory(workingDirectory);
 
+        // AC-2162: persist the new context before the provider can report its conversation id.
+        await _sessionStateRecorder.RecordSessionStartedAsync(
+            AssistantPaneId, profile, workingDirectory,
+            worktreePath: null, worktreeBranch: null,
+            permissionMode: SessionPermissionModes.Default,
+            forgetConversation: startFresh).ConfigureAwait(true);
+
         // AC-1013: the session's own defaults are only the floor — the profile's own permission mode/model/effort ride
         // the launch options below (the driver prefers those). See _LaunchOptions for what bypassPermissions means here.
         await session.StartAsync(new AssistantLaunch(
@@ -619,20 +649,6 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
             return null;
         }
 
-        // AC-1089: the assistant never came through here, so its record carried no ProfileId/WorkingDirectory and a
-        // profile or working-directory switch read as "nothing changed", leaving a stale conversation id standing.
-        // Fire-and-forget like the same call in CockpitViewModel — a started session must not wait on a state write.
-        _ = _sessionStateRecorder.RecordSessionStartedAsync(
-            AssistantPaneId,
-            profile,
-            workingDirectory,
-            worktreePath: null,
-            worktreeBranch: null,
-            permissionMode: SessionPermissionModes.Default,
-            // AC-1261 criterion 3: `startFresh` covers both AC-596's hand-over and a clear, and neither changes
-            // profile or working directory — the guard this forces needs telling, not inferring.
-            forgetConversation: startFresh);
-
         // AC-638/AC-596: say why in the transcript, since the hand-over note only reaches the system prompt.
         // `startFreshBecause` lets AC-684's failed-resume recovery use its own reason instead of this default.
         if (startFresh)
@@ -646,7 +662,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
             _WatchForUnresolvableResume(session);
         }
 
-        session.ApplySpeech(settings.SpeakReplies);
+        await _ApplySpeechAsync(session, settings, cancellationToken).ConfigureAwait(true);
 
         // A new instance has a new context, and a provider that reports no fill until its first turn would otherwise
         // never take the below-the-line reset — leaving the ask spent before this conversation had used anything.

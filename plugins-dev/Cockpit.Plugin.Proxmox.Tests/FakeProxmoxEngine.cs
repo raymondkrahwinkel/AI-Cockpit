@@ -1,4 +1,5 @@
 using Cockpit.Plugin.Proxmox.Engine;
+using Cockpit.Plugin.Proxmox.Settings;
 
 namespace Cockpit.Plugin.Proxmox.Tests;
 
@@ -8,8 +9,8 @@ internal sealed class FakeProxmoxEngine : IProxmoxEngine
 {
     public Exception? Throw;
     public ProxmoxTaskOutcome NextOutcome = new("UPID:node:0:0:0:task:0:root@pam:", IsSuccess: true, ExitStatus: "OK", TimedOut: false);
-    public IReadOnlyList<ProxmoxGuest> Guests = [];
-    public IReadOnlyList<ProxmoxSnapshot> Snapshots = [];
+
+    public IProxmoxEngine ForServer(ProxmoxServer server) => this;
 
     private void _MaybeThrow()
     {
@@ -40,13 +41,13 @@ internal sealed class FakeProxmoxEngine : IProxmoxEngine
     public Task<IReadOnlyList<ProxmoxGuest>> ListVmsAsync(CancellationToken cancellationToken)
     {
         _MaybeThrow();
-        return Task.FromResult(Guests.Where(guest => guest.Type == "qemu").ToList() as IReadOnlyList<ProxmoxGuest>);
+        return Task.FromResult<IReadOnlyList<ProxmoxGuest>>([]);
     }
 
     public Task<IReadOnlyList<ProxmoxGuest>> ListLxcAsync(CancellationToken cancellationToken)
     {
         _MaybeThrow();
-        return Task.FromResult(Guests.Where(guest => guest.Type == "lxc").ToList() as IReadOnlyList<ProxmoxGuest>);
+        return Task.FromResult<IReadOnlyList<ProxmoxGuest>>([]);
     }
 
     private Task<ProxmoxTaskOutcome> _Outcome()
@@ -78,13 +79,13 @@ internal sealed class FakeProxmoxEngine : IProxmoxEngine
     public Task<IReadOnlyList<ProxmoxSnapshot>> ListVmSnapshotsAsync(string node, string vmId, CancellationToken cancellationToken)
     {
         _MaybeThrow();
-        return Task.FromResult(Snapshots);
+        return Task.FromResult<IReadOnlyList<ProxmoxSnapshot>>([]);
     }
 
     public Task<IReadOnlyList<ProxmoxSnapshot>> ListLxcSnapshotsAsync(string node, string vmId, CancellationToken cancellationToken)
     {
         _MaybeThrow();
-        return Task.FromResult(Snapshots);
+        return Task.FromResult<IReadOnlyList<ProxmoxSnapshot>>([]);
     }
 
     public Task<ProxmoxTaskOutcome> SnapshotVmAsync(string node, string vmId, string name, string? description, CancellationToken cancellationToken) => _Outcome();
@@ -106,4 +107,32 @@ internal sealed class FakeProxmoxEngine : IProxmoxEngine
         _MaybeThrow();
         return Task.FromResult<IReadOnlyList<ProxmoxTaskSummary>>([]);
     }
+
+    public Task<IReadOnlyList<PbsDatastore>> ListPbsDatastoresAsync(CancellationToken cancellationToken)
+    {
+        _MaybeThrow();
+        return Task.FromResult<IReadOnlyList<PbsDatastore>>([]);
+    }
+
+    public Task<IReadOnlyList<PbsBackup>> ListPbsBackupsAsync(string datastore, string? type, string? id, CancellationToken cancellationToken)
+    {
+        _MaybeThrow();
+        return Task.FromResult<IReadOnlyList<PbsBackup>>([]);
+    }
+
+    public Task<IReadOnlyList<PbsTask>> ListPbsTasksAsync(CancellationToken cancellationToken)
+    {
+        _MaybeThrow();
+        return Task.FromResult<IReadOnlyList<PbsTask>>([]);
+    }
+
+    public Task<IReadOnlyList<PbsJob>> ListPbsJobsAsync(CancellationToken cancellationToken)
+    {
+        _MaybeThrow();
+        return Task.FromResult<IReadOnlyList<PbsJob>>([]);
+    }
+
+    public Task<ProxmoxTaskOutcome> StartPbsVerifyJobAsync(string id, CancellationToken cancellationToken) => _Outcome();
+
+    public Task<ProxmoxTaskOutcome> StartPbsGcAsync(string datastore, CancellationToken cancellationToken) => _Outcome();
 }

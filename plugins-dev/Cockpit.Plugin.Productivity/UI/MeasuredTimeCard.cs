@@ -12,13 +12,13 @@ using Material.Icons.Avalonia;
 
 namespace Cockpit.Plugin.Productivity.UI;
 
-// The context column of Uren · Dag (AC-1731): the strip, the measured time per project, your time and the agents.
+// The context column of Hours · Day (AC-1731): the strip, the measured time per project, your time and the agents.
 internal static class MeasuredTimeCard
 {
     public const string Own = "CockpitStatusWaitingBrush";
     public const string Agents = "CockpitStatusBusyBrush";
 
-    // The theme has no solid lavender; mockup v3 01 draws "jij, gemeten" in it.
+    // The theme has no solid lavender; mockup v3 01 draws "you, measured" in it.
     public static IBrush You { get; } = new ImmutableSolidColorBrush(Color.Parse("#B79CF0"));
 
     // Set by the screenshot scenes, so a render shows the folds open.
@@ -46,13 +46,13 @@ internal static class MeasuredTimeCard
     {
         var heading = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
         heading.Children.Add(new TextBlock { Text = title, FontSize = 15, FontWeight = FontWeight.SemiBold });
-        var hint = Ui.Hint("context, niet te bewerken");
+        var hint = Ui.Hint("context, not editable");
         Grid.SetColumn(hint, 1);
         heading.Children.Add(hint);
         var body = new StackPanel { Spacing = 10, Children = { heading } };
         if (day is null || (day.You.Count == 0 && day.OwnEntries.Count == 0 && day.Agents.Count == 0 && day.AgentTime == TimeSpan.Zero))
         {
-            body.Children.Add(Ui.Hint("Geen tijdlijndata voor deze dag."));
+            body.Children.Add(Ui.Hint("No timeline data for this day."));
             return Ui.Card(body, 14);
         }
 
@@ -61,14 +61,14 @@ internal static class MeasuredTimeCard
         {
             Orientation = Orientation.Horizontal,
             Spacing = 14,
-            Children = { _Legend(_Dot(You), "jij, gemeten"), _Legend(Ui.Dot(Own), "eigen regels"), _Legend(Ui.Dot(Agents), "agents") },
+            Children = { _Legend(_Dot(You), "you, measured"), _Legend(Ui.Dot(Own), "own rows"), _Legend(Ui.Dot(Agents), "agents") },
         });
 
         var longest = day.MeasuredPerProject.Count == 0 ? 1 : day.MeasuredPerProject.Max(project => project.Time.TotalMinutes);
         var byPane = sessions.ToDictionary(session => session.PaneId, StringComparer.Ordinal);
         string Session(string? pane, bool withProject) => pane is not null && byPane.TryGetValue(pane, out var session)
             ? names.Describe(session, withProject)
-            : "zonder sessie";
+            : "no session";
         foreach (var project in day.MeasuredPerProject)
         {
             var perSession = day.You.Where(span => span.Owner == project.ProjectId)
@@ -78,11 +78,11 @@ internal static class MeasuredTimeCard
         }
 
         var measured = day.Measured - day.Overlap;
-        body.Children.Add(_Summary("Jouw tijd", Ui.Duration(day.YourTime), $"= gemeten {Ui.Duration(measured)} + eigen {Ui.Duration(day.Own)}"));
+        body.Children.Add(_Summary("Your time", Ui.Duration(day.YourTime), $"= measured {Ui.Duration(measured)} + own {Ui.Duration(day.Own)}"));
         var agents = day.Agents.GroupBy(span => span.Owner)
             .Select(group => (Session(group.Key, true), TimeSpan.FromTicks(group.Sum(span => span.Duration.Ticks))));
-        body.Children.Add(_Fold(_Summary("Agents actief", Ui.Duration(day.AgentTime), "· naast jou, niet erbij"), agents));
-        body.Children.Add(Ui.Hint("Regels en gemeten tijd op hetzelfde moment tellen één keer; de regel wint het project."));
+        body.Children.Add(_Fold(_Summary("Agents active", Ui.Duration(day.AgentTime), "· beside you, not added"), agents));
+        body.Children.Add(Ui.Hint("A row and measured time at the same moment count once; the row wins the project."));
         return Ui.Card(body, 14);
     }
 

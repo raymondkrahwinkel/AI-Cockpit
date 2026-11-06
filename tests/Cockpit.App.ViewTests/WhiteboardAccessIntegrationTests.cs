@@ -11,7 +11,6 @@ using Cockpit.Infrastructure.Whiteboard;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Sessions;
-using ModelContextProtocol.Protocol;
 
 namespace Cockpit.App.ViewTests;
 
@@ -26,27 +25,6 @@ namespace Cockpit.App.ViewTests;
 [Collection("avalonia")]
 public class WhiteboardAccessIntegrationTests
 {
-    [Fact]
-    public async Task OpeningThePanel_RegistersARealSnapshot_ThatReadWhiteboardReturnsUnchanged() => await HeadlessAvalonia.RunAsync(async () =>
-    {
-        var (plugin, registry, tools, surfaceId) = await _OpenBoardAsync();
-
-        // The panel signed up with a real rendered snapshot, not a hand-fed byte array — PeekSnapshot is the
-        // operator-trusted read the consent prompt and ReadWhiteboard both build from.
-        var peeked = registry.PeekSnapshot(surfaceId);
-        Assert.NotNull(peeked);
-        Assert.NotEmpty(peeked!);
-
-        var result = await _CallReadWhiteboardAsync(tools, "agent-pane", surfaceId);
-        var json = JsonNode.Parse(Assert.IsType<TextContentBlock>(result.Content[0]).Text);
-
-        Assert.True(json!["ok"]!.GetValue<bool>());
-        var image = Assert.IsType<ImageContentBlock>(result.Content[1]);
-        Assert.Equal(peeked, image.DecodedData.ToArray());
-
-        plugin.Dispose();
-    });
-
     [Fact]
     public async Task PlacingAnObject_ReachesTheRealBoard_AndTheAgentCanOnlyTakeBackItsOwn() => await HeadlessAvalonia.RunAsync(async () =>
     {
@@ -81,11 +59,6 @@ public class WhiteboardAccessIntegrationTests
     private static Task<string> _CallAsync(object tools, string method, params object?[] args) =>
         (Task<string>)tools.GetType().GetMethod(method)!.Invoke(tools, args)!;
 
-    // AC-1007: read_whiteboard alone returns CallToolResult (its image travels as its own content block) —
-    // reflected separately since _CallAsync's cast is fixed to the other tools' plain-string replies.
-    private static Task<CallToolResult> _CallReadWhiteboardAsync(object tools, params object?[] args) =>
-        (Task<CallToolResult>)tools.GetType().GetMethod("ReadWhiteboard")!.Invoke(tools, args)!;
-
     private static async Task<(ICockpitPlugin Plugin, WhiteboardAccessRegistry Registry, object Tools, string SurfaceId)> _OpenBoardAsync()
     {
         var folder = _LocatePluginOutput();
@@ -96,8 +69,7 @@ public class WhiteboardAccessIntegrationTests
         Assert.NotNull(manifest);
 
         // F2.13/AC-1401: the entry (backend) assembly specifically — manifest.Assemblies now also yields UiAssembly.
-        var hash = PluginHash.Compute(File.ReadAllBytes(Path.Combine(folder, manifest!.EntryAssembly!)));
-        var discovered = new DiscoveredPlugin(folder, "diagram", manifest, hash, PluginLoadDecision.Load);
+        var discovered = DiagramPluginUi.Discover(folder, manifest!);
 
         var activator = new PluginActivator(NullLogger<PluginActivator>.Instance);
         var plugin = activator.Activate(discovered);

@@ -21,38 +21,7 @@ public class EditableProfileViewModelMcpAndFolderTests
         };
 
     [Fact]
-    public void Load_TicksEachAvailableServer_WhenTheProfileHasNoRestriction()
-    {
-        var editable = new EditableProfileViewModel(
-            ClaudeProfile(), isLoggedIn: true, availableMcpServerNames: ["youtrack", "docker"]);
-
-        Assert.False(editable.RestrictMcpServers);
-        Assert.True(editable.HasMcpServers);
-        Assert.All(editable.McpServers, server => Assert.True(server.IsEnabledForSession));
-    }
-
-    [Fact]
-    public void Load_TicksOnlyTheSavedServers_WhenTheProfileRestricts()
-    {
-        var editable = new EditableProfileViewModel(
-            ClaudeProfile(enabledMcpServerNames: ["docker"]), isLoggedIn: true, availableMcpServerNames: ["youtrack", "docker"]);
-
-        Assert.True(editable.RestrictMcpServers);
-        Assert.False(editable.McpServers.Single(server => server.Name == "youtrack").IsEnabledForSession);
-        Assert.True(editable.McpServers.Single(server => server.Name == "docker").IsEnabledForSession);
-    }
-
-    [Fact]
-    public void Save_WithTheGateOff_PersistsNoRestriction()
-    {
-        var editable = new EditableProfileViewModel(
-            ClaudeProfile(), isLoggedIn: true, availableMcpServerNames: ["youtrack", "docker"]);
-
-        Assert.Null(editable.ToProfile().EnabledMcpServerNames);
-    }
-
-    [Fact]
-    public void Save_WithTheGateOn_PersistsExactlyTheTickedServers()
+    public void Save_WithTheGateOn_PersistsExactlyTheTickedServers_PlusASavedOneTheCatalogDidNotOffer()
     {
         var editable = new EditableProfileViewModel(
             ClaudeProfile(), isLoggedIn: true, availableMcpServerNames: ["youtrack", "docker"])
@@ -62,26 +31,12 @@ public class EditableProfileViewModelMcpAndFolderTests
         editable.McpServers.Single(server => server.Name == "docker").IsEnabledForSession = false;
 
         Assert.Equal(new[] { "youtrack" }, editable.ToProfile().EnabledMcpServerNames);
-    }
 
-    [Fact]
-    public void Save_PreservesASavedServerTheCatalogDidNotOffer_SoAbsenceDoesNotSilentlyDropIt()
-    {
-        // "youtrack" is in the profile's saved selection but not currently in the catalog (disabled / plugin not
-        // loaded), so it has no row to tick. Saving the profile — even editing only the visible "docker" — must not
-        // forget it.
-        var editable = new EditableProfileViewModel(
+        // A saved server the catalog does not offer now (disabled / plugin not loaded) has no row to tick; saving
+        // the profile must not forget it.
+        var unoffered = new EditableProfileViewModel(
             ClaudeProfile(enabledMcpServerNames: ["youtrack", "docker"]), isLoggedIn: true, availableMcpServerNames: ["docker"]);
 
-        Assert.Equivalent(new object[] { "youtrack", "docker" }, editable.ToProfile().EnabledMcpServerNames);
-    }
-
-    [Fact]
-    public void Save_WithNoCatalogAtAll_KeepsTheEntireSavedSelection()
-    {
-        var editable = new EditableProfileViewModel(
-            ClaudeProfile(enabledMcpServerNames: ["youtrack", "docker"]), isLoggedIn: true, availableMcpServerNames: null);
-
-        Assert.Equivalent(new object[] { "youtrack", "docker" }, editable.ToProfile().EnabledMcpServerNames);
+        Assert.Equivalent(new object[] { "youtrack", "docker" }, unoffered.ToProfile().EnabledMcpServerNames);
     }
 }

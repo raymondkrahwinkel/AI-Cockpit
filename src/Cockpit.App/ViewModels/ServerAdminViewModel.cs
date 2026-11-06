@@ -68,6 +68,9 @@ public sealed partial class ServerAdminViewModel : ObservableObject
     // AC-1475: the Assistant page, when this dialog was given the server's assistant.
     public ServerAssistantViewModel? Assistant { get; init; }
 
+    // AC-2035: the Storage page, when this server can offer the setting.
+    public ServerStorageViewModel? Storage { get; init; }
+
     // AC-1511: whether a plugin offers its own view for this server, and what opens it. That view comes from the
     // plugin installed here, in this window, and reaches the plugin's backend part on the server.
     public Func<ServerPluginRowViewModel, bool> HasPluginSettings { get; init; } = _ => false;
@@ -113,7 +116,19 @@ public sealed partial class ServerAdminViewModel : ObservableObject
 
     // AC-1525: a plugin change on the server waits for its restart, which this dialog offers once there is one.
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowMemoryAdvice))]
     private bool _needsRestart;
+
+    // AC-2025: the server holds the plugin versions its live updates replaced until it restarts, the same as the desktop.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowMemoryAdvice), nameof(MemoryAdviceDetail))]
+    private int _retiredLoadContexts;
+
+    public int RestartAdviceAfter { get; init; } = Cockpit.Core.SessionBehavior.SessionBehaviorSettings.DefaultPluginRestartAdviceAfter;
+
+    public bool ShowMemoryAdvice => !NeedsRestart && PluginMemoryAdvice.IsDue(RetiredLoadContexts, RestartAdviceAfter);
+
+    public string MemoryAdviceDetail => PluginMemoryAdvice.Detail(RetiredLoadContexts);
 
     // AC-1650: installed plugins the server's stores have a newer, runnable version of.
     [ObservableProperty]
@@ -365,10 +380,10 @@ public sealed partial class ServerAdminViewModel : ObservableObject
             return;
         }
 
-        await _plugins.SetEnabledAsync(row.FolderId, !row.Enabled, row.Sha256);
+        var state = await _plugins.SetEnabledAsync(row.FolderId, !row.Enabled, row.Sha256);
         row.Enabled = !row.Enabled;
         row.Refresh();
-        _ChangedPlugins();
+        _ChangedPlugins(state);
     });
 
     // AC-1525: the server stops as on a SIGTERM and its supervisor starts it again; its running sessions stop with it,
@@ -397,6 +412,12 @@ public sealed partial class ServerAdminViewModel : ObservableObject
         if (manager.NeedsRestart)
         {
             _ChangedPlugins();
+        }
+        else if (!string.IsNullOrWhiteSpace(manager.StatusMessage))
+        {
+            NeedsRestart = false;
+            Status = manager.StatusMessage;
+            StatusIsError = manager.StatusIsError;
         }
     }
 
@@ -528,10 +549,16 @@ public sealed partial class ServerAdminViewModel : ObservableObject
             return;
         }
 
-        await _plugins.RemoveAsync(row.FolderId);
+        var state = await _plugins.RemoveAsync(row.FolderId);
         Plugins.Remove(row);
         OnPropertyChanged(nameof(PluginsCount));
-        _ChangedPlugins();
+        if (state is { IsLive: true })
+        {
+            Status = "Removed. The plugin has stopped; its files are deleted when the server next starts.";
+            return;
+        }
+
+        _ChangedPlugins(state);
     });
 
     // Done forgets the key: after this nothing in the cockpit holds it.
@@ -571,10 +598,18 @@ public sealed partial class ServerAdminViewModel : ObservableObject
         }
     }
 
-    private void _ChangedPlugins()
+    private void _ChangedPlugins(PluginLiveState? state = null)
     {
-        NeedsRestart = _plugins is IServerRestart;
-        Status = "This change takes effect after the server restarts.";
+        if (state is { IsLive: true })
+        {
+            Status = "Active on the server. Running sessions get its new MCP tools when they next start.";
+            return;
+        }
+
+        NeedsRestart = state?.RestartRequired == true && _plugins is IServerRestart;
+        Status = (state?.Notice ?? state?.RestartReason) is { } reason
+            ? state?.RestartRequired == true ? $"Restart needed: {reason.TrimEnd('.')}." : reason
+            : "This change is waiting for the current session to close.";
     }
 
     // False when the operator kept the sessions running.
@@ -598,6 +633,7 @@ public sealed partial class ServerAdminViewModel : ObservableObject
 
         await server.RestartAsync();
         NeedsRestart = false;
+        RetiredLoadContexts = 0;
         Status = $"{Server} is restarting; it reconnects when it is back.";
         return true;
     }
@@ -619,6 +655,7 @@ public sealed partial class ServerAdminViewModel : ObservableObject
         }
 
         OnPropertyChanged(nameof(PluginsCount));
+        RetiredLoadContexts = await _plugins.GetRetiredLoadContextsAsync();
         await _ShowAvailableUpdatesAsync();
     }
 
@@ -755,6 +792,9 @@ public sealed partial class ServerPluginRowViewModel(InstalledPlugin plugin) : O
     public string Id { get; } = plugin.Discovered.Manifest.Id;
 
     public string Version { get; } = plugin.Discovered.Manifest.Version;
+
+    // AC-2025: what the server runs, which after a live update or a pending restart is not what its disk holds.
+    public string RunningVersion { get; } = plugin.RunningVersion ?? plugin.Discovered.Manifest.Version;
 
     public string? Author { get; } = plugin.Discovered.Manifest.Author;
 

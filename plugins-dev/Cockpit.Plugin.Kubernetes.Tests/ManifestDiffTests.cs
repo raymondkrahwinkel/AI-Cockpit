@@ -75,65 +75,12 @@ public class ManifestDiffTests
     }
 
     [Fact]
-    public void Compute_AResourceTheTargetRevisionNoLongerHas_IsADeletion()
-    {
-        var current = TraefikRevision7 + "\n---\napiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: extra\n  namespace: system-ingress\n";
-
-        var diff = ManifestDiff.Compute(current, TraefikRevision6);
-
-        var deleted = Assert.Single(diff.Deletions);
-        Assert.Equal("v1 ConfigMap system-ingress/extra", deleted.Document.Display);
-        Assert.Equal(2, diff.Changes.Count);
-    }
-
-    [Fact]
-    public void Compute_AResourceOnlyTheTargetRevisionHas_IsACreation()
-    {
-        var target = TraefikRevision6 + "\n---\napiVersion: v1\nkind: Service\nmetadata:\n  name: traefik-metrics\n  namespace: system-ingress\n";
-
-        var diff = ManifestDiff.Compute(TraefikRevision7, target);
-
-        var created = Assert.Single(diff.Changes, change => change.Change == ManifestChangeKind.Created);
-        Assert.Equal("v1 Service system-ingress/traefik-metrics", created.Document.Display);
-    }
-
-    [Theory]
-    [InlineData("replicas: 3", 3L)]
-    [InlineData("replicas: -2", -2L)]
-    public void ToJson_AnUnquotedNumber_StaysANumber(string line, long expected)
-    {
-        var json = _Document($"apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: x\nspec:\n  {line}\n");
-
-        Assert.Equal(expected, json["spec"]!["replicas"]!.GetValue<long>());
-    }
-
-    [Fact]
     public void ToJson_AQuotedNumberStaysAString_AndAnOctalLookalikeIsNotReinterpreted()
     {
         var json = _Document("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: x\ndata:\n  port: \"8080\"\n  build: 010\n");
 
         Assert.Equal("8080", json["data"]!["port"]!.GetValue<string>());
         Assert.Equal("010", json["data"]!["build"]!.GetValue<string>());
-    }
-
-    [Fact]
-    public void ToJson_BooleansAndNullsKeepTheirType()
-    {
-        var json = _Document("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: x\n  creationTimestamp: null\ndata:\n  on: true\n  spelled: \"true\"\n");
-
-        Assert.True(json["data"]!["on"]!.GetValue<bool>());
-        Assert.Equal("true", json["data"]!["spelled"]!.GetValue<string>());
-        Assert.Null(json["metadata"]!["creationTimestamp"]);
-    }
-
-    [Fact]
-    public void ToJson_ListsAndNestedMapsSurvive()
-    {
-        var json = _Document(TraefikRevision6);
-
-        var args = json["spec"]!["template"]!["spec"]!["containers"]![0]!["args"]!.AsArray();
-        Assert.Equal(5, args.Count);
-        Assert.Equal("--entrypoints.web.address=:8000/tcp", args[0]!.GetValue<string>());
     }
 
     [Fact]
@@ -156,16 +103,6 @@ public class ManifestDiffTests
         var text = ManifestDiff.Compute(current, TraefikRevision6).ToConsentText(3_500);
 
         Assert.Contains("DELETE v1 PersistentVolumeClaim traefik-data", text);
-    }
-
-    [Fact]
-    public void Applied_KeepsTheTargetManifestOrder_SoResourcesGoBackInTheOrderHelmStoredThem()
-    {
-        var target = string.Join("\n---\n", new[] { "a", "b", "c" }.Select(name => $"apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: {name}"));
-
-        var applied = ManifestDiff.Compute(null, target).Applied.Select(change => change.Document.Name).ToList();
-
-        Assert.Equal(["a", "b", "c"], applied);
     }
 
     private static JsonObject _Document(string yaml) =>

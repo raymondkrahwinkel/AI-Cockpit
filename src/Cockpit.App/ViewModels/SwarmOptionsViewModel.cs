@@ -24,8 +24,27 @@ public sealed partial class SwarmOptionsViewModel(ISwarmOptions? options = null,
     public ObservableCollection<NodeDiscoveryFound> Found { get; } = [];
     public bool NoOtherMachineOnline => !Machines.Any(machine => !machine.IsSelf && machine.IsOnline);
     public IReadOnlyList<string> ReturnChoices { get; } = ["Take over after a wait", "Join at the back"];
+    public bool CanClaimLeadership => leadership is { IsActive: true, IsSelf: false };
 
-    [ObservableProperty] private string _leaderLine = "Leader: this machine · No other machine online";
+    [RelayCommand(CanExecute = nameof(CanClaimLeadership))]
+    private async Task ClaimLeadershipAsync()
+    {
+        try
+        {
+            if (leadership is not null)
+            {
+                await leadership.ClaimLeadershipAsync();
+                Status = "This machine will lead while reachable. The next machine by rank takes over when it is unreachable.";
+            }
+        }
+        catch (Exception ex)
+        {
+            Status = $"Could not take over. {ex.Message}";
+        }
+        await RefreshAsync();
+    }
+
+    [ObservableProperty] private string _leaderLine = "Standalone · No swarm membership";
     [ObservableProperty] private string _rankOrder = "Ranks are assigned when your machines join.";
     [ObservableProperty] private string _address = "";
     [ObservableProperty] private string _extraInternalCidrsText = "";
@@ -33,7 +52,9 @@ public sealed partial class SwarmOptionsViewModel(ISwarmOptions? options = null,
     [ObservableProperty] private string _cidrError = "";
     [ObservableProperty] private string _persistError = "";
     [ObservableProperty] private string _status = "";
+    [ObservableProperty] private string _pairingError = "";
     [ObservableProperty] private string _removalStatus = "";
+    [ObservableProperty] private string _connectionFailure = "";
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private string _pairingCode = "";
     [ObservableProperty] private string _pairingCaption = "";
@@ -135,6 +156,8 @@ public sealed partial class SwarmOptionsViewModel(ISwarmOptions? options = null,
         {
             var machines = await options.MachinesAsync();
             RemovalStatus = await options.RemovalStatusAsync();
+            ConnectionFailure = options.ConnectionFailure;
+            var enabled = await options.ConnectionsEnabledAsync();
             var manual = (await options.LoadSettingsAsync()).ManualAddresses;
             var leader = machines.Any(machine => machine.IsSelf) ? leadership?.Current : null;
             Machines.Clear();
@@ -163,7 +186,8 @@ public sealed partial class SwarmOptionsViewModel(ISwarmOptions? options = null,
                 { ErrorCode = entry.ErrorCode, ErrorMessage = entry.ErrorMessage });
             }
             var reachable = machines.Count(machine => machine.Presence.Status == SwarmPresence.Online);
-            LeaderLine = leader is null ? "Leader: this machine · No other machine online"
+            LeaderLine = !enabled ? "Swarm paused · Accept connections is off. Membership is kept; use Leave / reset swarm to leave."
+                : leader is null ? "Standalone · No swarm membership"
                 : leadership?.PendingTakeover is { } pendingLeader
                     ? $"Leader: {leader.Name} · Lower rank returning: {pendingLeader.Member.Name}"
                     : $"Leader: {leader.Name} · Lowest rank of the {reachable} reachable";
@@ -171,9 +195,42 @@ public sealed partial class SwarmOptionsViewModel(ISwarmOptions? options = null,
                 : string.Join(" → ", machines.OrderBy(machine => machine.Member.Rank).Select(machine => $"{machine.Member.Name} ({machine.Member.Rank.ToString(CultureInfo.InvariantCulture)})"));
             Incoming = options.Pending is { } pending && pending.PairingId != _answeredPairing ? pending : null;
             OnPropertyChanged(nameof(NoOtherMachineOnline));
+            OnPropertyChanged(nameof(CanClaimLeadership));
+            ClaimLeadershipCommand.NotifyCanExecuteChanged();
         }
         catch (Exception ex) { Status = $"Could not refresh the swarm. {ex.Message}"; }
         finally { _refreshing = false; }
+    }
+
+    [RelayCommand]
+    private async Task ResetAsync()
+    {
+        if (options is null || IsBusy)
+        {
+            return;
+        }
+        if (confirm is null || !await confirm("Leave / reset swarm?",
+            "This machine becomes standalone, even if it is removed or alone. Its swarm log is backed up and swarm access keys are revoked. Other machines keep their history. Sessions, projects and settings stay here. To resolve different histories, reset the machine whose swarm you are abandoning, then pair from it toward the swarm you keep.", "Leave / reset swarm"))
+        {
+            return;
+        }
+        IsBusy = true;
+        CancelPairing();
+        try
+        {
+            var backup = await options.ResetAsync();
+            PairingError = "";
+            Status = $"Standalone. Swarm log backup: {backup}";
+        }
+        catch (Exception ex)
+        {
+            PairingError = $"Could not reset the swarm. {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+            await RefreshAsync();
+        }
     }
 
     [RelayCommand]
@@ -247,6 +304,7 @@ public sealed partial class SwarmOptionsViewModel(ISwarmOptions? options = null,
         }
         IsBusy = true;
         CancelPairing();
+        PairingError = "";
         try
         {
             _handshake = discovered ? await options.BeginAsync(address.Trim()) : await options.BeginManualAsync(address.Trim());
@@ -255,7 +313,7 @@ public sealed partial class SwarmOptionsViewModel(ISwarmOptions? options = null,
             PairingCode = _handshake.Code;
             Status = "Pairing expires after two minutes. Only continue if both screens show the same six digits.";
         }
-        catch (Exception ex) { Status = $"Could not start pairing. {ex.Message}"; }
+        catch (Exception ex) { PairingError = $"Could not start pairing. {ex.Message}"; }
         finally { IsBusy = false; await RefreshAsync(); }
     }
 
@@ -267,6 +325,7 @@ public sealed partial class SwarmOptionsViewModel(ISwarmOptions? options = null,
             return;
         }
         IsBusy = true;
+        PairingError = "";
         try
         {
             await options.CompleteAsync(_handshake, _discovered);
@@ -274,7 +333,7 @@ public sealed partial class SwarmOptionsViewModel(ISwarmOptions? options = null,
             CancelPairing();
             await RefreshAsync();
         }
-        catch (Exception ex) { Status = $"Pairing not completed. {ex.Message} Confirm on the other machine, then try again."; }
+        catch (Exception ex) { PairingError = $"Pairing not completed. {ex.Message}"; }
         finally { IsBusy = false; }
     }
 

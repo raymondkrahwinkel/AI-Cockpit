@@ -22,7 +22,7 @@ public class BrowserEngineTests
 
             Assert.Equal(0, settings.RemoteDebuggingPort);
             Assert.True(settings.CommandLineArgsDisabled);
-            Assert.DoesNotContain(BrowserEngine.Switches, entry => entry.Key.StartsWith("remote-debugging", StringComparison.Ordinal));
+            Assert.DoesNotContain(BrowserEngine.Shared.Switches, entry => entry.Key.StartsWith("remote-debugging", StringComparison.Ordinal));
 
             var view = CefBrowserView.ForScene(BrowserEngine.ForScene(BrowserEngineState.Ready));
             bool Handled(Key key, string? symbol, KeyModifiers modifiers = KeyModifiers.None)

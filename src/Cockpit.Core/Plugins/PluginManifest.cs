@@ -20,7 +20,9 @@ public sealed record PluginManifest(
     string? UiEntryType = null,
     string? ExpectedMinVersion = null,
     IReadOnlyList<PluginManifestSessionProvider>? SessionProviders = null,
-    IReadOnlyList<string>? Capabilities = null)
+    IReadOnlyList<string>? Capabilities = null,
+    bool RequiresRestart = false,
+    IReadOnlyList<string>? Keywords = null)
 {
     // AC-1013: storage keys the host can't guess as credentials (beyond token/apiKey/secret/password/
     // webhook); read before load so matching values decrypt on the way in instead of reaching the plugin
@@ -32,6 +34,9 @@ public sealed record PluginManifest(
     // AC-1730: what the plugin asks the host for, as written. An unknown name is kept so the load policy can refuse
     // the plugin with that name in the reason, rather than the folder vanishing as an unparsable manifest.
     public IReadOnlyList<string> Capabilities { get; } = Capabilities ?? [];
+
+    // Store search terms; the publish workflow copies them to the index, where the catalogue search reads them.
+    public IReadOnlyList<string> Keywords { get; } = Keywords ?? [];
 
     // AC-1389: the assemblies the loader reads, backend part first. A UI-only plugin (a clock) has no entryAssembly,
     // and a plugin not yet split in two has no uiAssembly; parsing refuses one with neither.
@@ -108,7 +113,9 @@ public sealed record PluginManifest(
                 uiEntryType,
                 GetOptionalString(root, "expectedMinVersion"),
                 GetSessionProviders(root),
-                GetOptionalStrings(root, "capabilities"));
+                GetOptionalStrings(root, "capabilities"),
+                root.TryGetProperty("requiresRestart", out var restart) && restart.ValueKind == JsonValueKind.True,
+                GetOptionalStrings(root, "keywords"));
             return true;
         }
     }

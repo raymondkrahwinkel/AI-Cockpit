@@ -16,7 +16,8 @@ internal sealed class ModelPictureReader(
     ISessionProfileStore profiles,
     TimeProvider? clock = null,
     IModelObservationStore? observations = null,
-    TimeZoneInfo? zone = null) : ISingletonService
+    TimeZoneInfo? zone = null,
+    IModelImageInput? imageInput = null) : ISingletonService
 {
     // Quota moves minute by minute, and the assistant asks before every spawn: one provider read per minute is enough.
     internal static readonly TimeSpan ProviderCacheFor = TimeSpan.FromSeconds(60);
@@ -66,7 +67,7 @@ internal sealed class ModelPictureReader(
     private static string?[] _ModelsOf(SessionProfile profile, PluginModelIntelligence? reading) =>
         ProfileModel.Of(profile) is { } pinned ? [pinned] : reading?.Models.Count > 0 ? [.. reading.Models.Select(estimate => estimate.Model)] : [null];
 
-    private static ModelPictureRow _Row(
+    private ModelPictureRow _Row(
         SessionProfile profile,
         string? model,
         PluginModelIntelligence? reading,
@@ -76,7 +77,7 @@ internal sealed class ModelPictureReader(
     {
         var estimate = model is null ? null : reading?.Models.FirstOrDefault(candidate => string.Equals(candidate.Model, model, StringComparison.Ordinal));
         var reference = estimate?.PublicModelRef ?? model;
-        var match = _Match(reference, snapshots);
+        var match = Match(reference, snapshots);
         var snapshot = match.Snapshot;
         var publicRef = snapshot?.AliasTarget is { } target
             ? $"{target} via {snapshot.Id}"
@@ -148,10 +149,18 @@ internal sealed class ModelPictureReader(
             publicSource,
             own,
             reading?.IsSelfHosted == true || profile.ProviderConfig is LmStudioConfig or OllamaConfig,
-            unmatched);
+            unmatched)
+        {
+            ImageInputMode = profile.ImageInputMode,
+            HasImageTransport = imageInput?.HasTransport(profile) == true,
+            ServiceImageInput = (estimate?.ImageInputSource ?? reading?.ImageInputSource) is { } imageSource
+                ? new ImageInputFact(estimate?.SupportsImageInput ?? reading?.SupportsImageInput, imageSource.Name, imageSource.AsOf, imageSource.ValidFor) : null,
+            OpenRouterImageInput = reference is not null && snapshots.TryGetValue(reference, out var exactSnapshot)
+                ? new ImageInputFact(exactSnapshot.SupportsImageInput, exactSnapshot.Source, exactSnapshot.FetchedAt, exactSnapshot.TimeToLive) : null,
+        };
     }
 
-    private static ModelMatch _Match(string? reference, IReadOnlyDictionary<string, ModelSnapshot> snapshots)
+    internal static ModelMatch Match(string? reference, IReadOnlyDictionary<string, ModelSnapshot> snapshots)
     {
         if (string.IsNullOrWhiteSpace(reference))
         {
@@ -183,7 +192,7 @@ internal sealed class ModelPictureReader(
     }
 
     private static IEnumerable<string> _Keys(ModelSnapshot snapshot) =>
-        new[] { snapshot.Id, snapshot.CanonicalSlug, snapshot.HuggingFaceId }
+        new[] { snapshot.Id, snapshot.CanonicalSlug, snapshot.HuggingFaceId, snapshot.AliasTarget }
             .OfType<string>()
             .Select(_Normalize);
 
@@ -273,6 +282,12 @@ internal sealed record ModelPictureRow(
     Sourced? PublicSource,
     IReadOnlyList<ModelDerivedFact> Derived,
     bool SelfHosted,
-    string? Unmatched = null);
+    string? Unmatched = null)
+{
+    public ImageInputMode ImageInputMode { get; init; }
+    public bool HasImageTransport { get; init; }
+    public ImageInputFact? ServiceImageInput { get; init; }
+    public ImageInputFact? OpenRouterImageInput { get; init; }
+}
 
 internal sealed record ModelDerivedFact(DerivedPattern Pattern, Sourced Source);

@@ -12,6 +12,7 @@ using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Notifications;
 using Avalonia;
 using Avalonia.Threading;
+using Cockpit.Infrastructure.Hosting;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions;
@@ -45,8 +46,22 @@ internal sealed partial class CockpitUiHost(
     IPluginDialogHost dialogHost,
     IPluginWindowActions actions,
     IPluginActiveSession activeSession,
-    IReadOnlyList<string> declaredSecretKeys) : ICockpitUiHost
+    IReadOnlyList<string> declaredSecretKeys,
+    PluginRuntime? runtime = null) : ICockpitUiHost
 {
+    // AC-2024: the same rule as PluginBackendHost.Runtime. What the sink holds is keyed by plugin, so one undo covers it.
+    private readonly PluginRuntime _runtime = _WithContributions(runtime ?? new PluginRuntime(pluginId), contributionSink, dialogHost);
+
+    private static PluginRuntime _WithContributions(PluginRuntime runtime, IPluginContributionSink sink, IPluginDialogHost dialogs)
+    {
+        runtime.Add(() => sink.RemovePluginContributions(runtime.PluginId));
+        runtime.Add(() => dialogs.CloseDialogs($"{runtime.PluginId}:"));
+        return runtime;
+    }
+
+    // AC-2024: a widget's settings dialog is the host's, so it is found by widget type rather than by plugin.
+    internal static string WidgetDialogKeyPrefix(string widgetId) => $"widget:{widgetId}:";
+
     public IPluginUiChannel Channel { get; } = new UiChannel(services.GetRequiredService<PluginChannelHub>(), pluginId);
 
     private readonly HashSet<string> _ownDockPanelIds = [];
@@ -103,22 +118,26 @@ internal sealed partial class CockpitUiHost(
         contributionSink.AddPluginSideSection(pluginId, title, createView);
 
     public void AddSessionHeaderItem(Func<IPluginSessionContext, Control> createView) =>
-        contributionSink.AddPluginSessionHeaderItem(createView);
+        contributionSink.AddPluginSessionHeaderItem(pluginId, createView);
 
     public void AddSessionBanner(Func<IPluginSessionContext, Control> createView) =>
-        contributionSink.AddPluginSessionBannerItem(createView);
+        contributionSink.AddPluginSessionBannerItem(pluginId, createView);
 
     public void AddSessionHeaderAction(PluginSessionAction action) =>
-        contributionSink.AddPluginSessionHeaderAction(action);
+        contributionSink.AddPluginSessionHeaderAction(pluginId, action);
 
     public void AddToolbarAction(ToolbarAction action) =>
         contributionSink.AddToolbarAction(pluginId, action);
 
     public void AddShortcut(PluginShortcut shortcut) =>
-        contributionSink.AddPluginShortcut(shortcut);
+        contributionSink.AddPluginShortcut(pluginId, shortcut);
 
-    public void AddConversationPicker(ConversationPickerRegistration picker) =>
-        services.GetRequiredService<IConversationPickerRegistry>().Register(picker);
+    public void AddConversationPicker(ConversationPickerRegistration picker)
+    {
+        var registry = services.GetRequiredService<IConversationPickerRegistry>();
+        registry.Register(picker);
+        _runtime.Add(() => registry.Unregister(picker));
+    }
 
     public void AddProviderConfigView(string providerId, Func<string?, IPluginProviderConfigView> createView)
     {
@@ -128,7 +147,9 @@ internal sealed partial class CockpitUiHost(
                 $"Plugin '{pluginId}' registered a config view for provider '{providerId}', which no plugin registered as a session provider.");
         }
 
-        services.GetRequiredService<IPluginProviderConfigViews>().Register(providerId, createView);
+        var views = services.GetRequiredService<IPluginProviderConfigViews>();
+        views.Register(providerId, createView);
+        _runtime.Add(() => views.Unregister(providerId, createView));
     }
 
     // This plugin's own storage, observe surface and declared secret keys travel with the registration: a placed
@@ -139,7 +160,16 @@ internal sealed partial class CockpitUiHost(
         // Refused means another plugin already contributes this type id. Logged rather than thrown: a plugin
         // cannot know what else is installed, and taking the cockpit down over a name clash is a worse answer
         // than the widget being the one that was already there.
-        if (!services.GetRequiredService<IWidgetRegistry>().Register(registration, host.Storage, host.Sessions, declaredSecretKeys))
+        var registry = services.GetRequiredService<IWidgetRegistry>();
+        if (registry.Register(registration, host.Storage, host.Sessions, declaredSecretKeys))
+        {
+            _runtime.Add(() =>
+            {
+                dialogHost.CloseDialogs(WidgetDialogKeyPrefix(registration.Id));
+                registry.Unregister(registration.Id);
+            });
+        }
+        else
         {
             _Logger()?.LogWarning("Widget type '{WidgetId}' is already contributed by another plugin; this registration is ignored", registration.Id);
         }
@@ -150,13 +180,17 @@ internal sealed partial class CockpitUiHost(
     // host.Sessions already give it.
     public void AddDockPanel(DockPanelRegistration registration)
     {
-        if (!services.GetRequiredService<IDockPanelRegistry>().Register(registration))
+        // AC-2039: before the rail can show it, in case showing it is what crashes this start.
+        services.GetService<StartupAttempt>()?.NoteSurface(registration.Id, pluginId, pluginName);
+        var registry = services.GetRequiredService<IDockPanelRegistry>();
+        if (!registry.Register(registration))
         {
             _Logger()?.LogWarning("Dock panel '{DockPanelId}' is already contributed by another plugin; this registration is ignored", registration.Id);
             return;
         }
 
         _ownDockPanelIds.Add(registration.Id);
+        _runtime.Add(() => registry.Unregister(registration.Id));
     }
 
     // Keyed by this plugin's id, so a plugin can only ever replace its own line.
@@ -165,6 +199,9 @@ internal sealed partial class CockpitUiHost(
 
     public void SetStatusText(string? text, SideMenuButtonBadgeTone tone) =>
         _Service<CockpitViewModel>()?.SetPluginStatusText(pluginId, text, tone);
+
+    public void SetStatusText(string? text, SideMenuButtonBadgeTone tone, Func<Action, Control>? createPopup) =>
+        _Service<CockpitViewModel>()?.SetPluginStatusText(pluginId, text, tone, createPopup);
 
     // Only this plugin's own panels: a plugin cannot pull another's panel into view. Floating stays floating.
     public async Task OpenDockPanelAsync(string panelId)
@@ -189,7 +226,12 @@ internal sealed partial class CockpitUiHost(
     // tool's context is built long after load, and by then the tool id is the only thing linking it back here.
     public void AddCompanionTool(CompanionToolRegistration registration)
     {
-        if (!services.GetRequiredService<ICompanionToolRegistry>().Register(registration, host.Storage, host.Sessions))
+        var registry = services.GetRequiredService<ICompanionToolRegistry>();
+        if (registry.Register(registration, host.Storage, host.Sessions))
+        {
+            _runtime.Add(() => registry.Unregister(registration.Id));
+        }
+        else
         {
             _Logger()?.LogWarning("Companion tool '{CompanionToolId}' is already contributed by another plugin; this registration is ignored", registration.Id);
         }
@@ -199,7 +241,13 @@ internal sealed partial class CockpitUiHost(
     // clash is logged rather than thrown.
     public void AddWorkspaceType(WorkspaceTypeRegistration registration)
     {
-        if (!services.GetRequiredService<IWorkspaceTypeRegistry>().Register(registration, host.Storage, host.Sessions))
+        services.GetService<StartupAttempt>()?.NoteSurface(registration.Id, pluginId, pluginName);
+        var registry = services.GetRequiredService<IWorkspaceTypeRegistry>();
+        if (registry.Register(registration, host.Storage, host.Sessions, pluginId))
+        {
+            _runtime.Add(() => registry.Unregister(registration.Id));
+        }
+        else
         {
             _Logger()?.LogWarning("Workspace type '{WorkspaceTypeId}' is already contributed by another plugin; this registration is ignored", registration.Id);
         }
@@ -209,7 +257,12 @@ internal sealed partial class CockpitUiHost(
     // route itself (a plugin's own type) cannot be trusted to name its owner.
     public void AddFirstStartRoute(FirstStartRoute route)
     {
-        if (!services.GetRequiredService<IFirstStartRouteRegistry>().Register(route, pluginName))
+        var registry = services.GetRequiredService<IFirstStartRouteRegistry>();
+        if (registry.Register(route, pluginName))
+        {
+            _runtime.Add(() => registry.Unregister(route.Id));
+        }
+        else
         {
             _Logger()?.LogWarning("First-start route '{RouteId}' is already contributed by another plugin; this registration is ignored", route.Id);
         }
@@ -254,8 +307,9 @@ internal sealed partial class CockpitUiHost(
 
     // A plugin's dialog gets a gear in its title bar when the plugin has settings to open — checked when the
     // dialog opens, not when the plugin is built, since settings and dialogs can register in any order.
+    // AC-2024: every dialog gets a key under this plugin, a unique one when it folds with nothing, so its leaving finds them.
     public Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560) =>
-        _ShowPluginDialogAsync(title, createContent, width, height, singleInstanceKey: null);
+        _ShowPluginDialogAsync(title, createContent, width, height, $"{pluginId}:{Guid.NewGuid():n}");
 
     public Task ShowDialogAsync(string title, Func<Control> createContent, string singleInstanceKey, double width = 720, double height = 560) =>
         // Scoped to the plugin, so a plugin only has to be unique within itself: two plugins picking "issues"
@@ -263,7 +317,7 @@ internal sealed partial class CockpitUiHost(
         // for the other, and the operator would act on the wrong repository.
         _ShowPluginDialogAsync(title, createContent, width, height, $"{pluginId}:{singleInstanceKey}");
 
-    private Task _ShowPluginDialogAsync(string title, Func<Control> createContent, double width, double height, string? singleInstanceKey) =>
+    private Task _ShowPluginDialogAsync(string title, Func<Control> createContent, double width, double height, string singleInstanceKey) =>
         dialogHost.ShowDialogAsync(
             title,
             createContent,
@@ -320,7 +374,7 @@ internal sealed partial class CockpitUiHost(
     // Delegates to the cockpit's own `MarkdownView` — no second parser, one markdown idiom for both the transcript and every plugin dialog.
     public Control CreateMarkdownView(string markdown) => new MarkdownView { Markdown = _CapForRendering(markdown) };
 
-    public void AddLinkHandler(LinkHandlerRegistration registration) => MarkdownView.RegisterLinkHandler(registration);
+    public void AddLinkHandler(LinkHandlerRegistration registration) => _runtime.Add(MarkdownView.RegisterLinkHandler(registration));
 
     // AC-1753: not capped like the view above, an editor that drops the tail of a file would save it truncated.
     public IMarkdownEditor CreateMarkdownEditor(string markdown) => new Views.Editor.MarkdownEditor { Text = markdown };
@@ -464,7 +518,7 @@ internal sealed partial class CockpitUiHost(
         return Task.CompletedTask;
     }
 
-    public Task<bool> FocusSessionAsync(string paneId) => UiThreadCall.RunAsync(() =>
+    public Task<bool> FocusSessionAsync(string paneId) => UiThreadCall.RunAsync(async () =>
     {
         var cockpit = _Service<CockpitViewModel>();
         var session = cockpit?.Sessions.FirstOrDefault(candidate => string.Equals(candidate.PaneId, paneId, StringComparison.Ordinal));
@@ -475,7 +529,8 @@ internal sealed partial class CockpitUiHost(
 
         if (cockpit.SimpleView)
         {
-            cockpit.SelectSimpleSessionCommand.Execute(session);
+            await cockpit.SelectSimpleSessionCommand.ExecuteAsync(session);
+            return cockpit.SimplePage == SimplePage.Conversation && ReferenceEquals(cockpit.SimpleSelectedSession, session);
         }
         else
         {

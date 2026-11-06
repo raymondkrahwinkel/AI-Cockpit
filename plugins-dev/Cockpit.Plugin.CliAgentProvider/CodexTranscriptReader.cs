@@ -82,10 +82,28 @@ internal sealed class CodexTranscriptReader : IPluginTranscriptReader
                 var line = pendingLine.ToString();
                 pendingLine.Clear();
 
-                yield return new PluginTranscriptActivity(ClassifyLine(line), line);
+                yield return new PluginTranscriptActivity(ClassifyLine(line), line) { Model = _ReadModel(line) };
             }
 
             pendingLine.Append(charBuffer, chunkStart, charCount - chunkStart);
+        }
+    }
+
+    private static string? _ReadModel(string line)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(JsonLineText.ReplaceLoneSurrogateEscapes(line));
+            var root = document.RootElement;
+            return root.ValueKind == JsonValueKind.Object
+                && root.TryGetProperty("type", out var type) && type.ValueKind == JsonValueKind.String && type.GetString() == "turn_context"
+                && root.TryGetProperty("payload", out var payload) && payload.ValueKind == JsonValueKind.Object
+                && payload.TryGetProperty("model", out var model) && model.ValueKind == JsonValueKind.String
+                ? model.GetString() : null;
+        }
+        catch (JsonException)
+        {
+            return null;
         }
     }
 

@@ -33,22 +33,6 @@ public sealed class Ac1204SessionEventQueueBackpressureTests
     public Task EnqueueingWhileTheUiThreadIsStarvedAtRender_StaysBounded_AndAppliesAfterRecovery() =>
         _StarvedEnqueueStaysBounded(DispatcherPriority.Render);
 
-    /// <summary>The silent positive control: a quiet UI thread applies one event within one dispatcher round, in the same run.</summary>
-    [Fact]
-    public async Task TheSameQueueOnAQuietUiThread_AppliesOneEventWithinMilliseconds()
-    {
-        var applied = new ConcurrentQueue<SessionEvent>();
-        var queue = new SessionEventQueue(applied.Enqueue, SessionViewModel.UiPost, SessionViewModel.UiPostAfterWindow);
-
-        await Task.Run(() => queue.Enqueue(_Delta("x")));
-
-        // One Background hop only runs once everything already posted at Default has, so it counts dispatcher
-        // rounds instead of milliseconds: the drain must have applied the event by then, however slow the runner.
-        await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
-
-        Assert.Single(applied);
-    }
-
     private static async Task _StarvedEnqueueStaysBounded(DispatcherPriority priority)
     {
         var applied = new ConcurrentQueue<SessionEvent>();

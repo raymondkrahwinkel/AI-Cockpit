@@ -17,6 +17,7 @@ internal sealed class BrowserEngineInfoControl : UserControl, IPluginSettingsVie
     private readonly IPluginStorage _storage;
     private readonly BrowserSettings _settings;
     private readonly CheckBox _agentsUseCockpitBrowser;
+    private readonly CheckBox _hardwareAcceleration;
     private readonly BrowserTabSession _tabSession;
     private readonly ComboBox _startupMode;
     private readonly TextBox _startPage;
@@ -27,6 +28,12 @@ internal sealed class BrowserEngineInfoControl : UserControl, IPluginSettingsVie
         _storage = storage;
         _settings = new BrowserSettings(storage);
         _tabSession = tabSession;
+        _hardwareAcceleration = new CheckBox
+        {
+            Content = "Hardware acceleration",
+            IsChecked = _settings.IsHardwareAccelerationEnabled,
+        };
+        ToolTip.SetTip(_hardwareAcceleration, "Use the GPU for the browser. Off by default on Linux. Restart Cockpit after changing this setting.");
         _agentsUseCockpitBrowser = new CheckBox
         {
             Content = "Agents use the Cockpit browser",
@@ -65,6 +72,8 @@ internal sealed class BrowserEngineInfoControl : UserControl, IPluginSettingsVie
             panel.Children.Add(new TextBlock { Text = "Engine outdated · update the plugin", Foreground = Brushes.OrangeRed });
         }
 
+        panel.Children.Add(_hardwareAcceleration);
+        panel.Children.Add(new TextBlock { Text = "Restart Cockpit to apply changes to hardware acceleration.", TextWrapping = TextWrapping.Wrap });
         panel.Children.Add(new TextBlock { Text = "Agents", FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, 10, 0, 0) });
         panel.Children.Add(_agentsUseCockpitBrowser);
         panel.Children.Add(new TextBlock { Text = "Agent network allowlist (one host, host:port or CIDR per line)", TextWrapping = TextWrapping.Wrap });
@@ -85,6 +94,7 @@ internal sealed class BrowserEngineInfoControl : UserControl, IPluginSettingsVie
             return false;
         }
         var useCockpitBrowser = _agentsUseCockpitBrowser.IsChecked ?? true;
+        var hardwareAcceleration = _hardwareAcceleration.IsChecked == true;
         var startupMode = Enum.IsDefined(typeof(BrowserStartupMode), _startupMode.SelectedIndex)
             ? (BrowserStartupMode)_startupMode.SelectedIndex
             : BrowserStartupMode.RestorePreviousTabs;
@@ -92,6 +102,7 @@ internal sealed class BrowserEngineInfoControl : UserControl, IPluginSettingsVie
         commit = () =>
         {
             _storage.Set(AgentsUseCockpitBrowserKey, useCockpitBrowser);
+            _settings.IsHardwareAccelerationEnabled = hardwareAcceleration;
             _settings.SaveAgentNetworkAllowlist(entries);
             _tabSession.Configure(startupMode, startPage);
         };

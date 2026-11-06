@@ -36,6 +36,7 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
     private readonly OperatorMessageRegistry? _messages;
 
     private IAssistantSession? _observed;
+    private bool _wasBusy;
     private bool _disposed;
 
     public AssistantChannelGateway(
@@ -64,6 +65,8 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
     }
 
     public event EventHandler<AssistantChannelRow>? RowChanged;
+
+    public event EventHandler? TurnEnded;
 
     public event EventHandler<AssistantChannelConsentPrompt>? ConsentPromptOpened;
 
@@ -324,6 +327,7 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
             if (_observed is not null)
             {
                 _observed.RowUpserted -= _OnRowUpserted;
+                _observed.StateChanged -= _OnStateChanged;
             }
 
             _relayedRows.Clear();
@@ -337,11 +341,13 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
             }
 
             next.RowUpserted += _OnRowUpserted;
+            next.StateChanged += _OnStateChanged;
         }
 
         // Taken as already said, never replayed. Read outside the lock, since the pane answers on its UI thread; a row
         // that arrived in between was relayed already and keeps its identity.
         var baseline = next.Rows;
+        var busyNow = next.IsBusy;
         lock (_relayedRows)
         {
             if (!ReferenceEquals(_observed, next))
@@ -353,6 +359,31 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
             {
                 _relayedRows.TryAdd(row.Id, (Guid.NewGuid(), _Content(row)));
             }
+
+            _wasBusy = busyNow;
+        }
+    }
+
+    // Busy to idle is a turn ending; a successful one adds no row, so this is the only signal a channel gets (AC-2084).
+    private void _OnStateChanged(object? sender, bool contextFillMoved)
+    {
+        var session = _observed;
+        if (_disposed || session is null)
+        {
+            return;
+        }
+
+        var busy = session.IsBusy;
+        bool ended;
+        lock (_relayedRows)
+        {
+            ended = _wasBusy && !busy;
+            _wasBusy = busy;
+        }
+
+        if (ended)
+        {
+            TurnEnded?.Invoke(this, EventArgs.Empty);
         }
     }
 
@@ -411,7 +442,8 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
         {
             Id = id,
             Kind = _Kind(row.Kind),
-            Text = row.Text,
+            Text = _ChannelText(row),
+            Attachments = row.ReplyAttachments?.Select(file => new AssistantChannelAttachment(file.Name, file.Content, file.IsImage)).ToArray() ?? [],
             Timestamp = row.Timestamp,
             ToolName = row.ToolName,
             ResultText = row.ResultText,
@@ -421,7 +453,19 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
         });
     }
 
-    private static int _Content(TranscriptSnapshotEntry row) => HashCode.Combine(row.Text, row.ResultText);
+    private static int _Content(TranscriptSnapshotEntry row) => HashCode.Combine(row.Text, row.ResultText, row.ReplyAttachments);
+
+    private string _ChannelText(TranscriptSnapshotEntry row)
+    {
+        if (!row.StartsInsideTable || _observed is null)
+        {
+            return row.Text;
+        }
+
+        var opening = _observed.Rows.TakeWhile(previous => previous.Id != row.Id)
+            .LastOrDefault(previous => previous.Kind == "AssistantText" && !previous.StartsInsideTable && previous.EndsInsideTable);
+        return opening is null ? row.Text : string.Join('\n', opening.Text.Split('\n').Take(2)) + "\n" + row.Text;
+    }
 
     // The row kinds as a snapshot spells them — `TranscriptEntryKind`'s names.
     private static AssistantChannelRowKind _Kind(string kind) => kind switch

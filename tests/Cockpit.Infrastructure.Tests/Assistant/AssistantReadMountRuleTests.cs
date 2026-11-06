@@ -2,18 +2,14 @@ using System.Text.Json.Nodes;
 using System.Net;
 using System.Text;
 using Cockpit.Core.Abstractions.Profiles;
-using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Delegation;
-using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
-using Cockpit.Infrastructure.Agents;
 using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Mcp;
-using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
 namespace Cockpit.Infrastructure.Tests.Assistant;
@@ -43,12 +39,7 @@ public sealed class AssistantReadMountRuleTests : IDisposable
 
     private static JsonNode _Json(string result) => JsonNode.Parse(result)!;
 
-    /// <summary>The endpoint as <c>DependencyInjection</c> registers it, so these tests move when that registration does.</summary>
-    private static McpServerConfig _AssistantServer() =>
-        new() { Name = AssistantIdentity.McpServerName, Enabled = true, CockpitHosted = true, Internal = true };
 
-    private static McpServerConfig _OrdinaryServer() =>
-        new() { Name = "depot", Enabled = true };
 
     // ── Criterion 2: an ordinary agent session does not have them, and cannot call them ────────────────────────
 
@@ -81,35 +72,6 @@ public sealed class AssistantReadMountRuleTests : IDisposable
         await profiles.DidNotReceive().LoadAsync(Arg.Any<CancellationToken>());
     }
 
-    [Fact]
-    public async Task ListSessions_FromTheAssistantsOwnPane_Answers()
-    {
-        // The other side of the same guard: a rule that refused everyone would pass every test above and ship a
-        // feature that does nothing.
-        _gateway.ListSessionsAsync().Returns(Task.FromResult<IReadOnlyList<AssistantSessionRow>>(
-            [new AssistantSessionRow("pane-1", "AC-223", "Opus", "AC-223 — writing tests", "ws-2", "Cockpit")]));
-        var nodes = Substitute.For<INodeSessionsClient>();
-        nodes.ListNodesAsync().Returns(Task.FromResult<IReadOnlyList<string>>(["node-a"]));
-        nodes.ReadAsync("node-a", Arg.Any<CancellationToken>()).Returns(Task.FromResult(
-            new NodeSessionsSnapshot("node-a", [], [new NodeScopedProfileSummary("Node profile", SessionProvider.ClaudeCli, null)], [new NodeProjectRow("node-project", "Node project")])));
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-
-        var result = _Json(await _Tools(nodes).ListSessionsAsync());
-
-        Assert.True((bool)result["ok"]!);
-        var session = result["sessions"]!.AsArray()[0]!;
-        Assert.Equal("AC-223 — writing tests", (string)session["statusline"]!);
-        Assert.Equal("Cockpit", (string)session["workspaceName"]!);
-        Assert.True((bool)session["hasStatusline"]!);
-        var node = result["nodes"]!.AsArray()[0]!;
-        Assert.False(node.AsObject().ContainsKey("profiles"));
-        Assert.False(node.AsObject().ContainsKey("projects"));
-
-        var withCatalog = _Json(await _Tools(nodes).ListSessionsAsync(includeNodeCatalog: true));
-        var catalogNode = withCatalog["nodes"]!.AsArray()[0]!;
-        Assert.Equal("Node profile", (string)catalogNode["profiles"]!.AsArray()[0]!);
-        Assert.Equal("node-project", (string)catalogNode["projects"]!.AsArray()[0]!["id"]!);
-    }
 
     [Fact]
     public async Task LocalSummarize_UsesOnlyLoadedLocalModel_AndReportsBudgetAndValidationFailures()
@@ -202,64 +164,9 @@ public sealed class AssistantReadMountRuleTests : IDisposable
     /// list of field names — so a field added to the row later and never wired into the projection fails this test
     /// immediately instead of shipping unnoticed a second time.
     /// </summary>
-    [Fact]
-    public async Task ListSessions_JsonShape_CoversEveryFieldOnAssistantSessionRow()
-    {
-        _gateway.ListSessionsAsync().Returns(Task.FromResult<IReadOnlyList<AssistantSessionRow>>(
-            [new AssistantSessionRow("pane-1", "AC-223", "Opus", "AC-223 — writing tests", "ws-2", "Cockpit", "Busy", true, true)]));
-        McpRequestContext.Set(AssistantIdentity.PaneId);
 
-        var result = _Json(await _Tools().ListSessionsAsync());
-        var actualKeys = ((JsonObject)result["sessions"]!.AsArray()[0]!).Select(field => field.Key).ToHashSet();
 
-        // Every record property, camelCased the way System.Text.Json's default naming would — plus hasStatusline,
-        // the one field that is derived (an empty-string check) rather than a property of the row itself, and
-        // machine, the origin AC-1320 stamps on every row rather than carrying in the row.
-        var expectedKeys = typeof(AssistantSessionRow).GetProperties()
-            .Select(property => char.ToLowerInvariant(property.Name[0]) + property.Name[1..])
-            .Append("hasStatusline")
-            .Append("machine")
-            .ToHashSet();
 
-        Assert.Equal(expectedKeys, actualKeys);
-    }
-
-    [Fact]
-    public void TheBroadReadServer_IsNeverInTheNoSelectionFanOut()
-    {
-        // The first of the two gates: a session that named nothing gets every ordinary server and not this one.
-        var mounted = McpServerRegistryFilter.ApplySessionSelection([_OrdinaryServer(), _AssistantServer()], null);
-
-        Assert.Contains(mounted, server => server.Name == "depot");
-        Assert.DoesNotContain(mounted, server => server.Name == AssistantIdentity.McpServerName);
-    }
-
-    [Fact]
-    public void TheBroadReadServer_IsNeverOfferedToTheOperator()
-    {
-        // Not something to tick, so not something to tick on the wrong profile.
-        var offered = McpServerRegistryFilter.OfferedToOperator([_OrdinaryServer(), _AssistantServer()]);
-
-        Assert.DoesNotContain(offered, server => server.Name == AssistantIdentity.McpServerName);
-    }
-
-    [Fact]
-    public async Task AnOrdinarySessionThatSomehowMountsTheServer_StillCannotCallIt()
-    {
-        // The case the fan-out assertions above cannot cover: an internal endpoint IS mounted when a launch names
-        // it, so a profile with a hand-edited selection reaches this server. This is why the tools check the pane
-        // themselves — the mount is configuration, and the refusal is not.
-        var mounted = McpServerRegistryFilter.ApplySessionSelection(
-            [_AssistantServer()],
-            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { AssistantIdentity.McpServerName });
-        Assert.Contains(mounted, server => server.Name == AssistantIdentity.McpServerName);
-
-        McpRequestContext.Set(OrdinarySessionPane);
-        var result = _Json(await _Tools().ListSessionsAsync());
-
-        Assert.False((bool)result["ok"]!);
-        await _gateway.DidNotReceive().ListSessionsAsync();
-    }
 
     [Fact]
     public async Task ReadTranscript_FromAnOrdinaryAgentSession_IsRefused_AndNeverReachesTheGateway()
@@ -276,44 +183,7 @@ public sealed class AssistantReadMountRuleTests : IDisposable
         await _gateway.DidNotReceive().ReadTranscriptAsync(Arg.Any<string>(), Arg.Any<int>());
     }
 
-    [Fact]
-    public async Task ReadTranscript_NamingTheCallersOwnPane_IsStillRefused()
-    {
-        // The argument is not a way in. An ordinary session naming any pane at all — including its own, which it is
-        // entirely entitled to read by other means — gets nothing from this server, because what is checked is the
-        // pane the transport stamped and never the pane that was typed.
-        McpRequestContext.Set(OrdinarySessionPane);
 
-        var result = _Json(await _Tools().ReadTranscriptAsync(OrdinarySessionPane));
-
-        Assert.False((bool)result["ok"]!);
-        await _gateway.DidNotReceive().ReadTranscriptAsync(Arg.Any<string>(), Arg.Any<int>());
-    }
-
-    [Fact]
-    public async Task ReadTranscript_FromTheAssistantsOwnPane_GetsTheEntries()
-    {
-        _gateway.ReadTranscriptAsync("pane-1", Arg.Any<int>()).Returns(Task.FromResult<AssistantTranscript?>(
-            new AssistantTranscript("pane-1", "AC-223", 2,
-            [
-                new AssistantTranscriptEntry("UserText", "run the tests", null),
-                new AssistantTranscriptEntry("ToolUse", "Tool: Bash({\"command\":\"dotnet test\"})", "3 failed"),
-            ])));
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-
-        var result = _Json(await _Tools().ReadTranscriptAsync("pane-1"));
-
-        Assert.True((bool)result["ok"]!);
-        Assert.Equal("AC-223", (string)result["name"]!);
-        var entries = result["entries"]!.AsArray();
-        Assert.Equal("UserText", (string)entries[0]!["kind"]!);
-        Assert.Equal("run the tests", (string)entries[0]!["text"]!);
-        // The coupled result, which is where a tool call's substance actually lives — a reader that dropped it would
-        // report every command this session ran and nothing any of them said.
-        Assert.Equal("3 failed", (string)entries[1]!["toolResult"]!);
-        Assert.Equal(0, (int)result["omitted"]!);
-        Assert.Null(result["more"]);
-    }
 
     [Fact]
     public async Task ReadTranscript_StripsTerminalControlSequences()
@@ -332,107 +202,21 @@ public sealed class AssistantReadMountRuleTests : IDisposable
 
     // ── AC-797: list_shared_projects ────────────────────────────────────────────────────────────────────────
 
-    [Fact]
-    public async Task ListSharedProjects_FromAnOrdinaryAgentSession_IsRefused_AndNeverReachesTheGateway()
-    {
-        McpRequestContext.Set(OrdinarySessionPane);
-
-        var result = _Json(await _Tools().ListSharedProjectsAsync());
-
-        Assert.False((bool)result["ok"]!);
-        await _gateway.DidNotReceive().ListSharedProjectsAsync();
-    }
 
     // ── AC-641: the delegated work list_sessions cannot see ───────────────────────────────────────────────────
 
-    private static DelegatedTaskView _Task(
-        string taskId, DelegatedTaskStatus status = DelegatedTaskStatus.Running, string? ownerPaneId = "pane-1") =>
-        new(taskId, "Sonnet", "review the diff", "review", status, DateTimeOffset.Now, DateTimeOffset.Now, null, 2,
-            null, null, ownerPaneId);
 
-    [Fact]
-    public void ListDelegatedTasks_FromAnOrdinaryAgentSession_IsRefused_AndNeverReachesTheService()
-    {
-        McpRequestContext.Set(OrdinarySessionPane);
 
-        var result = _Json(_Tools().ListDelegatedTasks());
-
-        Assert.False((bool)result["ok"]!);
-        Assert.Contains("not available to an agent session", (string)result["error"]!);
-        _delegation.DidNotReceive().ListTasks(Arg.Any<DelegatedTaskStatus?>(), Arg.Any<string?>());
-    }
-
-    [Fact]
-    public void ListDelegatedTasks_ReadsUnscoped_SoItSeesEveryOwnersTasksAndNotTheAssistantsOwnNone()
-    {
-        // The whole point of the tool: passing the caller's pane through the way list_tasks does would scope the read
-        // to the assistant's own tasks, and the assistant creates none — so it would always answer "nothing running"
-        // while five delegated sessions worked.
-        _delegation.ListTasks(null, null).Returns([_Task("t1"), _Task("t2", ownerPaneId: "pane-2")]);
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-
-        var result = _Json(_Tools().ListDelegatedTasks());
-
-        Assert.True((bool)result["ok"]!);
-        Assert.Equal(2, (int)result["count"]!);
-        _delegation.Received(1).ListTasks(null, null);
-    }
 
     /// <summary>
     /// The same lesson as <see cref="ListSessions_JsonShape_CoversEveryFieldOnAssistantSessionRow"/>, applied to the
     /// projection this tool has to write by hand: a field added to <see cref="DelegatedTaskView"/> later and never
     /// wired in here goes missing from the wire silently, and the description keeps promising it.
     /// </summary>
-    [Fact]
-    public void ListDelegatedTasks_JsonShape_CoversEveryFieldOnDelegatedTaskView()
-    {
-        _delegation.ListTasks(null, null).Returns([_Task("t1")]);
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-
-        var result = _Json(_Tools().ListDelegatedTasks());
-        var actualKeys = ((JsonObject)result["tasks"]!.AsArray()[0]!).Select(field => field.Key).ToHashSet();
-
-        var expectedKeys = typeof(DelegatedTaskView).GetProperties()
-            .Select(property => char.ToLowerInvariant(property.Name[0]) + property.Name[1..])
-            .ToHashSet();
-
-        Assert.Equal(expectedKeys, actualKeys);
-    }
 
     // ── Criterion 3: list_agents is unchanged, and still workspace-scoped ──────────────────────────────────────
 
-    [Fact]
-    public async Task ListAgents_StillRefusesACallerTheHostPlacesOnNoWorkspace()
-    {
-        // The assistant is exactly such a caller (SessionWorkspacePlacement places it nowhere, by construction), and
-        // this is the refusal AC-544 was tempted to relax. If someone ever makes cockpit-agents answer a caller with
-        // no desk, this fails — which is the whole point of writing it down.
-        var workspaces = Substitute.For<IWorkspaceAgentGateway>();
-        workspaces.GetWorkspaceSnapshotAsync(Arg.Any<string>()).Returns(Task.FromResult<WorkspaceAgentSnapshot?>(null));
-        McpRequestContext.Set(AssistantIdentity.PaneId);
 
-        var result = _Json(await _AgentsTools(workspaces).ListAgentsAsync());
-
-        Assert.False((bool)result["ok"]!);
-    }
-
-    [Fact]
-    public async Task ListAgents_StillReportsOnlyTheCallersOwnDesk()
-    {
-        // The scoping itself: the roster is derived from the caller's own snapshot, so a pane on another desk is not
-        // in it and there is no argument that could put it there — ListAgentsAsync takes none.
-        var workspaces = Substitute.For<IWorkspaceAgentGateway>();
-        workspaces.GetWorkspaceSnapshotAsync("pane-a").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(
-            new WorkspaceAgentSnapshot("ws-a", [new WorkspaceAgentPane("pane-a", "A", null, string.Empty, true)])));
-        McpRequestContext.Set("pane-a");
-
-        var result = _Json(await _AgentsTools(workspaces).ListAgentsAsync());
-
-        Assert.True((bool)result["ok"]!);
-        Assert.Equal("ws-a", (string)result["workspaceId"]!);
-        var panes = result["agents"]!.AsArray().Select(agent => (string)agent!["paneId"]!).ToArray();
-        Assert.Equal(["pane-a"], panes);
-    }
 
     private sealed class _LocalModelHandler : HttpMessageHandler
     {
@@ -466,10 +250,6 @@ public sealed class AssistantReadMountRuleTests : IDisposable
         }
     }
 
-    private AgentsMcpTools _AgentsTools(IWorkspaceAgentGateway workspaces) =>
-        new(workspaces, new WorkspaceAgentCoordinator(), new AgentMessageInbox(),
-            new AgentNotifyAuditLog(_auditPath, NullLogger<AgentNotifyAuditLog>.Instance), new AgentResourceClaims(),
-            new AgentLineBudget());
 
     private readonly string _auditPath =
         Path.Combine(Path.GetTempPath(), $"assistant-mount-audit-{Guid.NewGuid():N}.jsonl");

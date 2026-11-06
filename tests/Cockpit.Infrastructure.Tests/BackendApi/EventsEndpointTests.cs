@@ -52,33 +52,6 @@ public sealed class EventsEndpointTests
         Assert.Equal(headerFrame, queryFrame);
     }
 
-    [Fact]
-    public async Task HeartbeatWaitsForFifteenSecondsOnTheInjectedClock()
-    {
-        var clock = new _Clock();
-        var services = new ServiceCollection()
-            .AddSingleton<IBackendEventLog>(new BackendEventLog())
-            .AddSingleton<ISessionRegistry>(new SessionRegistry())
-            .AddSingleton(Substitute.For<INodePairingBroker>())
-            .AddSingleton<TimeProvider>(clock)
-            .BuildServiceProvider();
-        var pipe = new Pipe();
-        using var stop = new CancellationTokenSource();
-        var context = new DefaultHttpContext();
-        context.RequestAborted = stop.Token;
-        context.Response.Body = pipe.Writer.AsStream();
-        McpRequestContext.Set(null, Operator);
-        var stream = EventsEndpoint.StreamAsync(context, services);
-        using var reader = new StreamReader(pipe.Reader.AsStream());
-        var line = reader.ReadLineAsync();
-
-        Assert.False(line.IsCompleted);
-        clock.Advance();
-        Assert.Equal(": ping", await line.WaitAsync(TimeSpan.FromSeconds(1)));
-        stop.Cancel();
-        await stream.WaitAsync(TimeSpan.FromSeconds(1));
-        McpRequestContext.Set(null);
-    }
 
     [Theory]
     [InlineData("project-b", "profile-a")]

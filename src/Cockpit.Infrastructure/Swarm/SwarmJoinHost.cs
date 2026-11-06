@@ -25,6 +25,19 @@ internal sealed class SwarmJoinHost(
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private State? _state;
+    internal async Task ResetAsync(Func<Task> reset, CancellationToken ct)
+    {
+        await _gate.WaitAsync(ct);
+        try
+        {
+            _state = null;
+            await reset();
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
     internal TimeProvider Time { get; set; } = TimeProvider.System;
     internal string Name { get; set; } = Environment.MachineName;
     public SwarmJoinPending? Pending => _state is { Used: false, Refused: false } state && state.Offer.ExpiresAtUtc > Time.GetUtcNow()
@@ -63,7 +76,11 @@ internal sealed class SwarmJoinHost(
         group.MapPost("/request", (Delegate)((HttpContext context) => _HandleAsync(context, async () =>
             await RequestAsync(await _ReadAsync<SwarmJoinRequest>(context), context.RequestAborted))));
         group.MapPost("/join", (Delegate)((HttpContext context) => _HandleAsync(context, async () =>
-            await PrepareAsync(await _ReadAsync<SwarmJoinPrepare>(context), context.RequestAborted))));
+        {
+            var request = await _ReadAsync<SwarmJoinPrepare>(context);
+            var prepared = await PrepareAsync(request, context.RequestAborted);
+            return request.IncludeLog ? (object)prepared : prepared.Record;
+        })));
         group.MapPost("/join/commit", (Delegate)((HttpContext context) => _HandleAsync(context, async () =>
         {
             var transport = await CommitAsync(await _ReadAsync<SwarmJoinCommit>(context), context.RequestAborted);
@@ -72,7 +89,7 @@ internal sealed class SwarmJoinHost(
         })));
         group.MapPost("/connect", (Delegate)((HttpContext context) => _HandleAsync(context, async () =>
         {
-            _Desktop();
+            await _DesktopAsync(context.RequestAborted);
             using var peer = await context.Connection.GetClientCertificateAsync(context.RequestAborted);
             if (peer is null)
             {
@@ -85,10 +102,12 @@ internal sealed class SwarmJoinHost(
                 var current = await membership.LoadAsync(context.RequestAborted);
                 var incoming = SwarmMembership.Replay(request.Log);
                 var peerId = SwarmMemberId.FromPublicKey(peer.PublicKey.ExportSubjectPublicKeyInfo());
-                if (current.Sequence == 0 || incoming.Sequence < current.Sequence || incoming.PublicKeyOf(peerId) is null
+                if (current.PublicKeyOf(identity.MemberId) is null || incoming.Sequence < current.Sequence || incoming.PublicKeyOf(peerId) is null
                     || request.Transport.Pin != NodeCertificatePin.FingerprintOf(peer)
                     || !_ExtendsLog(current, incoming))
+                {
                     throw NodePairingException.For(NodePairingError.InvalidToken, "Not a member of this swarm.");
+                }
                 var name = incoming.Members.Single(member => member.Id == peerId).Name;
                 await StoreTransportAsync(name, request.Transport, context.RequestAborted);
                 var transport = await IssueTransportAsync(incoming.Members.Single(member => member.Id == peerId), context.RequestAborted);
@@ -104,29 +123,32 @@ internal sealed class SwarmJoinHost(
             System.Text.Json.JsonSerializer.Serialize(pair.First, SwarmRecordJson.Options)
             == System.Text.Json.JsonSerializer.Serialize(pair.Second, SwarmRecordJson.Options));
 
-    private void _Desktop()
+    private async Task _DesktopAsync(CancellationToken ct)
     {
         if (host.Kind == SwarmHostKind.Server)
         {
             throw NodePairingException.For(SwarmJoinError.IsAServer, "A server keeps its existing connection.");
         }
+        if (!(await settings.LoadAsync(ct)).Enabled)
+        {
+            throw NodePairingException.For(NodePairingError.NotVisible, "Accept connections is off on this machine. Enable it before pairing.");
+        }
     }
 
     internal async Task<NodePairingOffer> RequestAsync(SwarmJoinRequest request, CancellationToken ct)
     {
-        _Desktop();
+        await _DesktopAsync(ct);
         using var peer = X509CertificateLoader.LoadCertificate(request.Certificate);
         await _gate.WaitAsync(ct);
         try
         {
-            if (Pending is not null)
+            if (SwarmMemberId.FromPublicKey(peer.PublicKey.ExportSubjectPublicKeyInfo()) == identity.MemberId)
+            {
+                throw NodePairingException.For(NodePairingError.InvalidToken, "Choose another machine to pair with.");
+            }
+            if (Pending is not null && _state is { } waiting && !waiting.Request.Certificate.SequenceEqual(request.Certificate))
             {
                 throw NodePairingException.For(NodePairingError.PairingInProgress, "Another join is waiting.");
-            }
-            var current = await membership.LoadAsync(ct);
-            if (current.Sequence != 0 && !current.Tombstones.Any(item => item.Member == identity.MemberId))
-            {
-                throw NodePairingException.For(NodePairingError.AlreadyPaired, "This machine is already a swarm member.");
             }
             var offer = new NodePairingOffer(Guid.NewGuid().ToString("N"), Convert.ToHexString(RandomNumberGenerator.GetBytes(32)),
                 Convert.ToHexString(RandomNumberGenerator.GetBytes(16)), Name, Time.GetUtcNow() + NodePairingBroker.Lifetime);
@@ -172,40 +194,68 @@ internal sealed class SwarmJoinHost(
         return state;
     }
 
-    internal async Task<SwarmRecord> PrepareAsync(SwarmJoinPrepare request, CancellationToken ct)
+    internal async Task<SwarmJoinProposal> PrepareAsync(SwarmJoinPrepare request, CancellationToken ct)
     {
-        _Desktop();
+        await _DesktopAsync(ct);
         await _gate.WaitAsync(ct);
         try
         {
             var state = _Claim(request.Claim);
             var register = SwarmMembership.Replay(request.Log);
             var previous = await membership.LoadAsync(ct);
-            if (!_ExtendsLog(previous, register) || register.Sequence < previous.Sequence)
-            {
-                throw NodePairingException.For(NodePairingError.InvalidToken, "Join must retain the signed removal history.");
-            }
             using var peer = X509CertificateLoader.LoadCertificate(state.Request.Certificate);
-            var peerId = SwarmMemberId.FromPublicKey(peer.PublicKey.ExportSubjectPublicKeyInfo());
-            if (register.PublicKeyOf(peerId) is null)
+            var peerKey = peer.PublicKey.ExportSubjectPublicKeyInfo();
+            var peerId = SwarmMemberId.FromPublicKey(peerKey);
+            // A former member may initiate its own return. The remaining member supplies the authoritative log.
+            var returning = previous.PublicKeyOf(identity.MemberId) is not null;
+            if (returning)
+            {
+                if (register.Sequence > 1 && (register.Sequence > previous.Sequence || !_ExtendsLog(register, previous)))
+                {
+                    throw NodePairingException.For(NodePairingError.InvalidToken, "Swarm histories differ. Use Leave / reset swarm on the machine abandoning its swarm, then pair from that machine again.");
+                }
+                register = previous;
+                if (register.PublicKeyOf(peerId) is not null)
+                {
+                    var removal = identity.Sign(SwarmMembership.ToPayload(new SwarmTombstone(peerId,
+                        identity.MemberId, Time.GetUtcNow(), register.Sequence + 1)));
+                    if (register.Accept(removal) != SwarmMembershipVerdict.Accepted)
+                    {
+                        throw NodePairingException.For(NodePairingError.InvalidToken, "Cannot renew this membership. Reset the joining machine first.");
+                    }
+                }
+            }
+            else if (!_ExtendsLog(previous, register) || register.Sequence < previous.Sequence)
+            {
+                throw NodePairingException.For(NodePairingError.InvalidToken, "This machine has a different swarm history. Use Leave / reset swarm here before pairing again.");
+            }
+            if (!returning && register.PublicKeyOf(peerId) is null)
             {
                 throw NodePairingException.For(NodePairingError.InvalidToken, "The adding machine is not a member.");
             }
             var local = await settings.LoadAsync(ct);
-            var rank = SwarmRank.Draw(register.Log.Select(record => record.Payload.Deserialize<SwarmChange>(SwarmRecordJson.Options))
-                .OfType<SwarmMember>().Select(member => member.Rank));
-            var member = new SwarmMember(certificate.Value.PublicKey.ExportSubjectPublicKeyInfo(), Name,
-                rank, [NodeReachableAddress.Resolve() ?? "127.0.0.1"], local.Port, peerId, Time.GetUtcNow(), register.Sequence + 1);
+            var ranks = register.Log.Select(record => record.Payload.Deserialize<SwarmChange>(SwarmRecordJson.Options))
+                .SelectMany(change => change switch
+                {
+                    SwarmMember added => new[] { added.Rank },
+                    SwarmRankChange changed => new[] { changed.Rank },
+                    _ => Array.Empty<long>(),
+                });
+            var member = new SwarmMember(returning ? peerKey : certificate.Value.PublicKey.ExportSubjectPublicKeyInfo(),
+                returning ? state.Request.Name : Name, SwarmRank.Draw(ranks),
+                returning ? state.Request.Addresses : [NodeReachableAddress.Resolve() ?? "127.0.0.1"],
+                returning ? state.Request.Port : local.Port, returning ? identity.MemberId : peerId,
+                Time.GetUtcNow(), register.Sequence + 1);
             state.Register = register;
             state.Proposal = identity.Sign(SwarmMembership.ToPayload(member));
-            return state.Proposal;
+            return new(state.Proposal, register.Log);
         }
         finally { _gate.Release(); }
     }
 
     internal async Task<SwarmTransport> CommitAsync(SwarmJoinCommit request, CancellationToken ct)
     {
-        _Desktop();
+        await _DesktopAsync(ct);
         await _gate.WaitAsync(ct);
         try
         {

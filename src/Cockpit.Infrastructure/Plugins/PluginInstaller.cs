@@ -7,9 +7,9 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Plugins;
 
-// Installs a plugin from a `.zip` and schedules removals (#14). Unpacked via the `PluginInstallPath`
-// zip-slip guard into same-volume staging, validated, then moved into `plugins/&lt;id&gt;/`. Removal and
-// update are both deferred to next startup, since a loaded plugin's assembly stays locked until exit.
+// Installs a plugin from a `.zip` (zip-slip guarded, staged, validated, moved into `plugins/&lt;id&gt;/`) and schedules removals (#14).
+// AC-2025: plugins load from a copy, so an update replaces its folder at once; `.pending-updates` is the fallback
+// for a plugin that asks for a restart or a folder that cannot be replaced.
 internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
 {
     // The file dropped into a plugin's folder to have it deleted at the next start. Discovery reads it too, so a plugin the operator removed is out of the list from that moment rather than at the restart.
@@ -20,23 +20,32 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
     // delete a locked, loaded assembly mid-session; the swap happens at startup before any plugin loads.
     private const string PendingUpdatesFolder = ".pending-updates";
 
+    // AC-2025: where the folder an update replaced waits for its deletion.
+    private const string ReplacedPrefix = ".replaced-";
+
     // Whether a folder under the plugins root is an installed plugin at all. Dot-prefixed ones are this installer's
     // own reserved areas — a leftover `.staging-*` extraction, `.pending-updates` — and one carrying the marker is
     // already removed. One rule for everything that reads the folders: discovery, and the backup's plugin index.
     internal static bool IsInstalledPlugin(string folder) =>
         !Path.GetFileName(folder).StartsWith('.') && !File.Exists(Path.Combine(folder, RemovalMarker));
 
+    // `<UpdateMarkerPrefix><folderId>` in the plugins root: "<replaced sha256>\n<new sha256>" of an in-place update past the capability check.
+    internal const string UpdateMarkerPrefix = ".updating-";
+
     private readonly string _pluginsRoot;
 
-    public PluginInstaller()
-        : this(CockpitConfigPath.PluginsRoot)
+    private readonly PluginManager? _manager;
+
+    public PluginInstaller(PluginManager? manager = null)
+        : this(CockpitConfigPath.PluginsRoot, manager)
     {
     }
 
     // Test seam: point the installer at an arbitrary plugins root.
-    internal PluginInstaller(string pluginsRoot)
+    internal PluginInstaller(string pluginsRoot, PluginManager? manager = null)
     {
         _pluginsRoot = pluginsRoot;
+        _manager = manager;
     }
 
     public async Task<PluginInstallResult> InstallFromZipAsync(
@@ -110,9 +119,31 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
             var finalDir = Path.Combine(_pluginsRoot, folderId);
             if (Directory.Exists(finalDir))
             {
-                // Updating an existing install: a loaded assembly's file is locked until process exit (on
-                // Windows), so stage the new version and let SweepPendingUpdatesAsync swap it in at next
-                // startup, before any plugin loads — same restart-deferred contract removal uses.
+                // An update. `Staged` keeps meaning "the new bytes take effect at the next start", whether they are
+                // already in place or waiting in `.pending-updates`; the caller re-pins them either way.
+                // Extra capabilities keep the new bytes unapproved until the operator accepts them.
+                var added = _AddedCapabilities(finalDir, manifest);
+                // What the folder held before it is replaced: the caller pins the update only over bytes that were approved.
+                var replacedSha256 = await PluginClosureHash.OfInstalledFolderAsync(finalDir, cancellationToken).ConfigureAwait(false);
+                // The marker goes down before the swap: a kill between the swap and the caller's re-pin leaves the new bytes
+                // under the old pin, and only the marker lets the next start tell that from an unapproved swap.
+                var markerPath = Path.Combine(_pluginsRoot, UpdateMarkerPrefix + folderId);
+                var inPlace = !(_manager?.RequiresRestart(folderId, manifest, newSha256) ?? manifest.RequiresRestart);
+                if (inPlace)
+                {
+                    // An empty prior hash prevents recovery from approving added capabilities.
+                    await File.WriteAllTextAsync(markerPath, (added.Count == 0 ? replacedSha256 : "") + "\n" + newSha256, cancellationToken).ConfigureAwait(false);
+                    if (_TryReplaceInPlace(stagingDir, finalDir, folderId, keepPrevious: added.Count > 0))
+                    {
+                        return PluginInstallResult.Success(folderId, newSha256, staged: true, manifest: manifest, inPlace: true, replacedSha256: replacedSha256,
+                            consentReason: added.Count == 0 ? null : $"The update asks for new capabilities ({string.Join(", ", added)}). Approve it in Plugin Manager to activate it.");
+                    }
+
+                    File.Delete(markerPath);
+                }
+
+                // The fallback: stage the new version and let SweepPendingUpdatesAsync swap it in at next
+                // startup, before any plugin loads — the restart-deferred contract removal uses.
                 var pendingDir = Path.Combine(_pluginsRoot, PendingUpdatesFolder, folderId);
                 Directory.CreateDirectory(Path.Combine(_pluginsRoot, PendingUpdatesFolder));
                 if (Directory.Exists(pendingDir))
@@ -121,10 +152,13 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
                 }
 
                 Directory.Move(stagingDir, pendingDir);
-                return PluginInstallResult.Success(folderId, newSha256, staged: true, manifest: manifest);
+                return PluginInstallResult.Success(
+                    folderId, newSha256, staged: true, manifest: manifest, replacedSha256: replacedSha256,
+                    consentReason: added.Count == 0 ? null : $"The update asks for new capabilities ({string.Join(", ", added)}). Approve it in Plugin Manager after the restart, or the plugin stays off.");
             }
 
             Directory.Move(stagingDir, finalDir);
+            PluginClosureHash.Forget(finalDir);
             return PluginInstallResult.Success(folderId, newSha256, staged: false, manifest: manifest);
         }
         catch (Exception exception)
@@ -144,6 +178,96 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
                     // Best-effort staging cleanup; a leftover staging folder is harmless and swept on reinstall.
                 }
             }
+        }
+    }
+
+    // The old folder is renamed aside first, so a failure leaves it as it was; discovery skips the dot-prefixed name.
+    private bool _TryReplaceInPlace(string stagingDir, string finalDir, string folderId, bool keepPrevious = false)
+    {
+        var aside = Path.Combine(_pluginsRoot, ReplacedPrefix + folderId + "." + Guid.NewGuid().ToString("N"));
+        try
+        {
+            if (Directory.Exists(finalDir))
+            {
+                Directory.Move(finalDir, aside);
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+
+        try
+        {
+            Directory.Move(stagingDir, finalDir);
+        }
+        catch
+        {
+            if (Directory.Exists(aside))
+            {
+                Directory.Move(aside, finalDir);
+            }
+            throw;
+        }
+        finally
+        {
+            PluginClosureHash.Forget(finalDir);
+        }
+
+        // An update staged earlier would otherwise be swapped in at the next start, over this newer one.
+        _TryDelete(Path.Combine(_pluginsRoot, PendingUpdatesFolder, folderId));
+        if (!keepPrevious)
+        {
+            _TryDelete(aside);
+        }
+        return true;
+    }
+
+    // What the new manifest asks for beyond the installed one; everything when the installed one cannot be read.
+    private static List<string> _AddedCapabilities(string installedFolder, PluginManifest incoming)
+    {
+        var manifestPath = Path.Combine(installedFolder, "plugin.json");
+        var known = File.Exists(manifestPath) && PluginManifest.TryParse(File.ReadAllText(manifestPath), out var installed, out _) && installed is not null
+            ? installed.Capabilities
+            : [];
+        return [.. incoming.Capabilities.Except(known, StringComparer.OrdinalIgnoreCase)];
+    }
+
+    public async Task<bool> RestoreFolderAsync(string folderId, string sourceFolder, string expectedSha256, CancellationToken cancellationToken = default)
+    {
+        var staging = Path.Combine(_pluginsRoot, ".staging-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            foreach (var path in PluginClosureHash.InstalledFiles(sourceFolder))
+            {
+                var target = Path.Combine(staging, Path.GetRelativePath(sourceFolder, path));
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                File.Copy(path, target);
+            }
+
+            Directory.CreateDirectory(staging);
+            return string.Equals(await PluginClosureHash.OfInstalledFolderAsync(staging, cancellationToken).ConfigureAwait(false), expectedSha256, StringComparison.OrdinalIgnoreCase)
+                && _TryReplaceInPlace(staging, Path.Combine(_pluginsRoot, folderId), folderId);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+        finally
+        {
+            _TryDelete(staging);
+        }
+    }
+
+    private static void _TryDelete(string folder)
+    {
+        try
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // Best-effort, like the other deletions here; a leftover `.replaced-*` folder is swept at the next start.
         }
     }
 
@@ -209,8 +333,121 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
         return Task.CompletedTask;
     }
 
+    // A start that finds `.replaced-<id>.<guid>` next to a missing `<id>` is a crash between the two renames of an
+    // in-place update: the old version goes back instead of the plugin vanishing. Otherwise it is only left-over.
+    private void _RecoverReplaced()
+    {
+        if (!Directory.Exists(_pluginsRoot))
+        {
+            return;
+        }
+
+        foreach (var aside in Directory.EnumerateDirectories(_pluginsRoot, ReplacedPrefix + "*"))
+        {
+            var name = Path.GetFileName(aside)[ReplacedPrefix.Length..];
+            var dot = name.LastIndexOf('.');
+            var original = dot > 0 ? Path.Combine(_pluginsRoot, name[..dot]) : null;
+            try
+            {
+                if (original is not null && !Directory.Exists(original))
+                {
+                    Directory.Move(aside, original);
+                }
+                else
+                {
+                    Directory.Delete(aside, recursive: true);
+                }
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                // Still locked: it is dealt with at the next start.
+            }
+        }
+    }
+
+    internal async Task RestoreUnapprovedUpdatesAsync(IReadOnlyDictionary<string, PluginRegistration> registrations, CancellationToken cancellationToken)
+    {
+        if (!Directory.Exists(_pluginsRoot))
+        {
+            return;
+        }
+
+        foreach (var marker in Directory.EnumerateFiles(_pluginsRoot, UpdateMarkerPrefix + "*"))
+        {
+            try
+            {
+                var hashes = await File.ReadAllLinesAsync(marker, cancellationToken).ConfigureAwait(false);
+                var folderId = Path.GetFileName(marker)[UpdateMarkerPrefix.Length..];
+                if (hashes.Length != 2 || hashes[0].Length != 0 || registrations.GetValueOrDefault(folderId) is not { } prior)
+                {
+                    continue;
+                }
+
+                var folder = Path.Combine(_pluginsRoot, folderId);
+                if (Directory.Exists(folder) && string.Equals(await PluginClosureHash.OfInstalledFolderAsync(folder, cancellationToken).ConfigureAwait(false), prior.PinnedSha256, StringComparison.OrdinalIgnoreCase))
+                {
+                    File.Delete(marker);
+                    continue;
+                }
+
+                // Only the saved pin authorizes recovery; neither a backup name nor the marker grants consent.
+                var candidates = Directory.EnumerateDirectories(_pluginsRoot, ReplacedPrefix + folderId + ".*")
+                    .Append(Path.Combine(PluginShadow.RootFor(_pluginsRoot), folderId, prior.PinnedSha256.ToLowerInvariant()));
+                foreach (var candidate in candidates.ToList())
+                {
+                    if (Directory.Exists(candidate) && await RestoreFolderAsync(folderId, candidate, prior.PinnedSha256, cancellationToken).ConfigureAwait(false))
+                    {
+                        File.Delete(marker);
+                        break;
+                    }
+                }
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                // One unreadable plugin must not prevent the other plugins from starting.
+            }
+        }
+
+        var pendingRoot = Path.Combine(_pluginsRoot, PendingUpdatesFolder);
+        if (!Directory.Exists(pendingRoot))
+        {
+            return;
+        }
+
+        foreach (var pending in Directory.EnumerateDirectories(pendingRoot))
+        {
+            try
+            {
+                var folderId = Path.GetFileName(pending);
+                var folder = Path.Combine(_pluginsRoot, folderId);
+                var manifestPath = Path.Combine(pending, "plugin.json");
+                if (Directory.Exists(folder) && File.Exists(manifestPath) && registrations.GetValueOrDefault(folderId) is { } prior
+                    && PluginManifest.TryParse(await File.ReadAllTextAsync(manifestPath, cancellationToken).ConfigureAwait(false), out var incoming, out _) && incoming is not null
+                    && _AddedCapabilities(folder, incoming).Count > 0
+                    && string.Equals(await PluginClosureHash.OfInstalledFolderAsync(folder, cancellationToken).ConfigureAwait(false), prior.PinnedSha256, StringComparison.OrdinalIgnoreCase))
+                {
+                    _TryDelete(pending);
+                }
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                // One unreadable plugin must not prevent the other plugins from starting.
+            }
+        }
+    }
+
     public Task SweepPendingUpdatesAsync(CancellationToken cancellationToken = default)
     {
+        _RecoverReplaced();
+        if (Directory.Exists(_pluginsRoot))
+        {
+            // Nothing installs while the host starts, so every `.staging-*` here is left by a kill.
+            foreach (var orphan in Directory.EnumerateDirectories(_pluginsRoot, ".staging-*"))
+            {
+                _TryDelete(orphan);
+            }
+        }
+
         var pendingRoot = Path.Combine(_pluginsRoot, PendingUpdatesFolder);
         if (!Directory.Exists(pendingRoot))
         {

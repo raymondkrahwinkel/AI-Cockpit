@@ -905,8 +905,8 @@ public sealed record EmbeddedSessionRequest
 
 ### `Task AddMcpServer(McpServerContribution contribution)` {#task-addmcpservermcpservercontribution-contribution}
 Registers (or updates) an HTTP MCP server in the **shared registry** (#60) — e.g. a remote MCP endpoint your
-plugin knows how to build a URL/token for — so both session worlds (the local tool-loop and the Claude
-fan-out) can use its tools without the user adding it by hand in the MCP-servers dialog. See
+plugin knows how to build a URL/token for — so the session gateway and the in-process tool-loop
+can use its tools without the user adding it by hand in the MCP-servers dialog. Credentials stay in Cockpit. See
 [`McpServerContribution`](#mcpservercontribution) below.
 - **Parameter** `contribution` — name, URL, optional bearer token, and scope.
 - **Idempotent upsert-by-name:** calling this again with the same `Name` refreshes the URL/token of an
@@ -1915,9 +1915,9 @@ public PluginMetadata Metadata { get; } =
 
 Everything under `Cockpit.Plugins.Abstractions.Sessions`, used with `ICockpitHost.AddSessionProvider` (#45) to
 register a plugin as a **new selectable session provider** — the same picker slot as the built-in Claude
-CLI / Ollama / LM Studio providers. Three real plugins in [`plugins-dev/`](https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/plugins-dev) exercise this:
-**Gemini/OpenAI Provider** and **GitHub Models** (both a persistent `IChatClient` over an OpenAI-compatible
-endpoint) and **CLI Agent Provider** (a subprocess-per-turn driver around the `codex` CLI).
+CLI / Ollama / LM Studio providers. Plugins in [`plugins-dev/`](https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/plugins-dev) exercise this:
+**OpenAI-compatible** (a persistent `IChatClient` over an OpenAI-compatible endpoint) and
+**CLI Agent Provider** (a subprocess-per-turn driver around the `codex` CLI).
 
 This is a deliberately **narrow** contract — a trimmed mirror of the host's own internal `ISessionDriver` —
 covering only what a third-party HTTP or subprocess provider can realistically support. There is no
@@ -1956,7 +1956,7 @@ What you hand to `host.AddSessionProvider(...)` in `Initialize`.
 | `CreateConfigView` | Builds the "add/edit profile" config view; argument is the existing config JSON (edit) or `null` (add). |
 | `DefaultBaseUrl` | Pre-filled default base URL for your config view, when you have one. |
 
-A plugin can register **more than one** provider from a single `Initialize` — the Gemini/OpenAI plugin
+A plugin can register **more than one** provider from a single `Initialize` — the OpenAI-compatible plugin
 registers `"gemini-provider.gemini"` and `"gemini-provider.openai"` from the same `CreateDriverFactory`
 implementation, differing only in `DefaultBaseUrl`:
 

@@ -60,6 +60,7 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
     };
 
     private readonly KimiAcpConnection _connection;
+    private readonly Action<JsonElement?>? _recordCapabilities;
     private readonly KimiConfig _config;
     private readonly string _executablePath;
     private readonly PluginSessionEventPublisher _events = new();
@@ -141,9 +142,10 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
     // StartAsync/SetLiveOptionAsync/the notification pump, each on its own task.
     private volatile IReadOnlyList<PluginSessionLaunchOption> _liveOptions = [];
 
-    public KimiAcpSessionDriver(Func<ICliSubprocess> subprocessFactory, KimiConfig config, string executablePath)
+    public KimiAcpSessionDriver(Func<ICliSubprocess> subprocessFactory, KimiConfig config, string executablePath, Action<JsonElement?>? recordCapabilities = null)
     {
         _connection = new KimiAcpConnection(subprocessFactory());
+        _recordCapabilities = recordCapabilities;
         _config = config;
         _executablePath = executablePath;
         _model = config.DefaultModel;
@@ -151,6 +153,7 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
 
     public PluginSessionCapabilities Capabilities { get; } = new(SupportsTools: true, SupportsPermissions: true)
     {
+        SupportsVision = true,
         SupportsEnvVars = true,
 
         // WellKnownPluginSessionOptions.Model is the literal string "model" — the same id Kimi's own
@@ -248,6 +251,7 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
         }, cancellationToken).ConfigureAwait(false);
 
         _agentCapabilities = initializeResult.TryGetProperty("agentCapabilities", out var agentCapabilities) ? agentCapabilities.Clone() : null;
+        _recordCapabilities?.Invoke(_agentCapabilities);
         _authMethods = initializeResult.TryGetProperty("authMethods", out var authMethods) ? authMethods.Clone() : null;
 
         // cwd must be absolute (protocol §2) — normalising here means a caller-supplied relative path is still
@@ -351,7 +355,10 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
             ? model
             : modelOption.Choices.FirstOrDefault(choice => string.Equals(choice, model, StringComparison.OrdinalIgnoreCase));
 
-    public Task SendUserMessageAsync(string text, CancellationToken cancellationToken = default)
+    public Task SendUserMessageAsync(string text, CancellationToken cancellationToken = default) =>
+        SendUserMessageAsync(text, null, cancellationToken);
+
+    public Task SendUserMessageAsync(string text, IReadOnlyList<PluginImageAttachment>? images, CancellationToken cancellationToken)
     {
         if (_sessionId is not { Length: > 0 } sessionId)
         {
@@ -361,11 +368,11 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
         // Fire-and-forget: session/prompt only settles at turn end (protocol §3), so awaiting it here would
         // block the caller for the whole turn. The turn's content streams through the notification pump instead.
         // Tracked (P1-6) so DisposeAsync can await it before disposing _promptGate.
-        _launchedTasks.Add(_SendPromptAsync(sessionId, text, cancellationToken));
+        _launchedTasks.Add(_SendPromptAsync(sessionId, text, cancellationToken, images: images));
         return Task.CompletedTask;
     }
 
-    private async Task _SendPromptAsync(string sessionId, string text, CancellationToken cancellationToken, bool operatorTurn = true)
+    private async Task _SendPromptAsync(string sessionId, string text, CancellationToken cancellationToken, bool operatorTurn = true, IReadOnlyList<PluginImageAttachment>? images = null)
     {
         var queuedAtGeneration = Volatile.Read(ref _stopGeneration);
         try
@@ -387,7 +394,11 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
 
                 // A prompt going out reopens the door the cancel closed: a permission request is a real question again.
                 _cancelling = false;
-                var prompt = new object[] { new { type = "text", text } };
+                var prompt = new List<object> { new { type = "text", text } };
+                if (images is not null)
+                {
+                    prompt.AddRange(images.Select(image => new { type = "image", mimeType = image.MediaType, data = image.Base64Data }));
+                }
                 result = await _connection.SendRequestAsync("session/prompt", new { sessionId, prompt }, cancellationToken).ConfigureAwait(false);
             }
             finally

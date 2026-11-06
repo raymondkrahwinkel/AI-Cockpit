@@ -16,6 +16,7 @@ internal sealed class SlackGatewayConnection : IDisposable, IEventHandler<Messag
     private readonly Action<string> _reportRefusal;
     private SlackChannelBridge? _bridge;
     private string? _channelId;
+    private readonly CancellationTokenSource _stopping = new();
     private bool _disposed;
 
     public SlackGatewayConnection(
@@ -52,12 +53,7 @@ internal sealed class SlackGatewayConnection : IDisposable, IEventHandler<Messag
     {
         try
         {
-            var channelId = await api.Conversations.Open([ownerUserId]).ConfigureAwait(false);
-            if (_disposed)
-            {
-                return;
-            }
-
+            var channelId = await api.Conversations.Open([ownerUserId], _stopping.Token).ConfigureAwait(false);
             _channelId = channelId;
             _bridge = new SlackChannelBridge(
                 gateway,
@@ -68,7 +64,11 @@ internal sealed class SlackGatewayConnection : IDisposable, IEventHandler<Messag
                 reportError,
                 channelId,
                 _reportRefusal);
-            await _client.Connect().ConfigureAwait(false);
+            await _client.Connect(cancellationToken: _stopping.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (_stopping.IsCancellationRequested)
+        {
+            // The channel closed under the connect; nothing is wrong and nobody is left to tell.
         }
         catch (Exception exception)
         {
@@ -172,6 +172,7 @@ internal sealed class SlackGatewayConnection : IDisposable, IEventHandler<Messag
         }
 
         _disposed = true;
+        _stopping.Cancel();
         _bridge?.Dispose();
         _files.Dispose();
         _client.Disconnect();

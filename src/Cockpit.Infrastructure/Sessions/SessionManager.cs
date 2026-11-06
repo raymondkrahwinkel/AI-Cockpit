@@ -2,6 +2,9 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Provisioning;
+using Cockpit.Core.ModelIntelligence;
+using Cockpit.Core.Abstractions.Profiles;
+using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Infrastructure.Sessions;
 
@@ -14,6 +17,9 @@ internal sealed class SessionManager : ISessionManager, ISingletonService
     private readonly ISessionMemoryLimiter? _memoryLimiter;
     private readonly ISessionProcessAnchor? _processAnchor;
     private readonly IOrgPolicy? _orgPolicy;
+    private readonly IModelImageInput? _imageInput;
+    private readonly ISessionProfileStore? _profiles;
+    private readonly ILogger<SessionManager>? _logger;
     private readonly List<ISessionRuntime> _sessions = [];
     private readonly Lock _sessionsLock = new();
 
@@ -23,12 +29,18 @@ internal sealed class SessionManager : ISessionManager, ISingletonService
         ISessionDriverFactory driverFactory,
         ISessionMemoryLimiter? memoryLimiter = null,
         ISessionProcessAnchor? processAnchor = null,
-        IOrgPolicy? orgPolicy = null)
+        IOrgPolicy? orgPolicy = null,
+        IModelImageInput? imageInput = null,
+        ISessionProfileStore? profiles = null,
+        ILogger<SessionManager>? logger = null)
     {
         _driverFactory = driverFactory;
         _memoryLimiter = memoryLimiter;
         _processAnchor = processAnchor;
         _orgPolicy = orgPolicy;
+        _imageInput = imageInput;
+        _profiles = profiles;
+        _logger = logger;
     }
 
     public IReadOnlyList<ISessionRuntime> Sessions
@@ -46,7 +58,7 @@ internal sealed class SessionManager : ISessionManager, ISingletonService
 
     public ISessionRuntime Create(SessionProfile? profile)
     {
-        var runtime = new SessionRuntime(_driverFactory, profile, _memoryLimiter, _processAnchor, _orgPolicy);
+        var runtime = new SessionRuntime(_driverFactory, profile, _memoryLimiter, _processAnchor, _orgPolicy, _imageInput, _profiles, _logger);
         lock (_sessionsLock)
         {
             _sessions.Add(runtime);

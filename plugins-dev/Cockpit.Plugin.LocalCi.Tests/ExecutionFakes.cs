@@ -81,18 +81,6 @@ internal sealed class FakeStreamingCliRunner(Func<Action<string>, CancellationTo
             return Task.FromResult(new StreamedRun(Started: true, exitCode));
         });
 
-    public static FakeStreamingCliRunner NeverStarts() =>
-        new((_, _) => Task.FromResult(StreamedRun.NotStarted));
-
-    // Runs until cancelled, signalling `running` once it is under way.
-    public static FakeStreamingCliRunner Blocking(TaskCompletionSource running) =>
-        new(async (_, cancellationToken) =>
-        {
-            running.TrySetResult();
-            await Task.Delay(Timeout.Infinite, cancellationToken);
-            return new StreamedRun(Started: true, ExitCode: 0);
-        });
-
     public Task<StreamedRun> RunAsync(
         string fileName,
         IReadOnlyList<string> arguments,
@@ -123,14 +111,6 @@ internal sealed class FakeLocalCiRuntime(LocalCiRuntimeStatus status) : ILocalCi
             new DockerRuntimeStatus(DockerRuntimeState.Usable, "linux", "29.5.3"),
             new ActRuntimeStatus(IsInstalled: true, "0.2.89")));
 
-    public static FakeLocalCiRuntime WithoutDocker() =>
-        new(new LocalCiRuntimeStatus(DockerRuntimeStatus.NotInstalled, new ActRuntimeStatus(IsInstalled: true, "0.2.89")));
-
-    public static FakeLocalCiRuntime WithoutAct() =>
-        new(new LocalCiRuntimeStatus(
-            new DockerRuntimeStatus(DockerRuntimeState.Usable, "linux", "29.5.3"),
-            ActRuntimeStatus.NotInstalled));
-
     public Task<LocalCiRuntimeStatus> GetStatusAsync(CancellationToken cancellationToken = default) =>
         Task.FromResult(status);
 
@@ -148,35 +128,6 @@ internal sealed class TemporaryProject : IDisposable
         jobs:
           build:
             runs-on: ubuntu-latest
-            steps:
-              - run: echo building
-        """;
-
-    // A job whose steps include the two actions the classifier allows — the setup half of a real run (AC-617).
-    public const string JobWithSetupActions = """
-        name: CI
-        on: push
-        jobs:
-          build:
-            runs-on: ubuntu-latest
-            steps:
-              - uses: actions/checkout@v7
-              - uses: actions/setup-dotnet@v6
-              - name: Build
-                run: dotnet build
-        """;
-
-    public const string MatrixJob = """
-        name: CI
-        on: push
-        jobs:
-          spread:
-            runs-on: ubuntu-latest
-            strategy:
-              matrix:
-                include:
-                  - os: ubuntu-latest
-                  - os: windows-latest
             steps:
               - run: echo building
         """;

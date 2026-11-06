@@ -15,6 +15,11 @@ public interface IPluginProviderConfigViews
     void Register(string providerId, Func<string?, IPluginProviderConfigView> createView);
 
     /// <summary>
+    /// Withdraws <paramref name="createView"/>, unless a later registration replaced it.
+    /// </summary>
+    bool Unregister(string providerId, Func<string?, IPluginProviderConfigView> createView);
+
+    /// <summary>
     /// The config view factory of <paramref name="providerId"/>, or null when its UI part registered none.
     /// </summary>
     Func<string?, IPluginProviderConfigView>? Find(string providerId);
@@ -26,6 +31,9 @@ internal sealed class PluginProviderConfigViews : IPluginProviderConfigViews, IS
 
     public void Register(string providerId, Func<string?, IPluginProviderConfigView> createView) =>
         _views[providerId] = createView;
+
+    public bool Unregister(string providerId, Func<string?, IPluginProviderConfigView> createView) =>
+        _views.TryRemove(new KeyValuePair<string, Func<string?, IPluginProviderConfigView>>(providerId, createView));
 
     public Func<string?, IPluginProviderConfigView>? Find(string providerId) =>
         _views.GetValueOrDefault(providerId);

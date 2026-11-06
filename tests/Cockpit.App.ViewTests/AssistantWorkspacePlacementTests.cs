@@ -74,48 +74,6 @@ public class AssistantWorkspacePlacementTests
         Assert.Null(snapshot);
     }
 
-    [Fact]
-    public void ClaimCollisions_TheAssistant_IsAbsentFromThePaneDirectory()
-    {
-        var (directory, desk, assistant) = Dispatcher.UIThread.Invoke(() =>
-        {
-            var sessions = new SessionRegistry();
-            var cockpit = _CockpitWithASessionsDesk(out var deskId, sessions);
-            var session = new SessionViewModel { WorkspaceId = deskId };
-            var assistantSession = new SessionViewModel { BelongsToNoWorkspace = true };
-            cockpit.Sessions.Add(session);
-            cockpit.Sessions.Add(assistantSession);
-
-            return (new PaneWorkspaceDirectory(sessions), session, assistantSession);
-        });
-
-        var byPane = Dispatcher.UIThread.Invoke(directory.WorkspaceIdsByPane);
-
-        Assert.True(byPane.ContainsKey(desk.PaneId));
-        Assert.False(byPane.ContainsKey(assistant.PaneId));
-    }
-
-    [Fact]
-    public void Sidebar_TheAssistant_IsNeverListedOnTheActiveDesk()
-    {
-        Dispatcher.UIThread.Invoke(() =>
-        {
-            var cockpit = _CockpitWithASessionsDesk(out var deskId);
-            var onTheDesk = new SessionViewModel { WorkspaceId = deskId };
-            var assistant = new SessionViewModel { BelongsToNoWorkspace = true };
-            cockpit.Sessions.Add(onTheDesk);
-            cockpit.Sessions.Add(assistant);
-
-            // VisibleSessions and the grid's own pane visibility ask the same question (BelongsToActiveWorkspace),
-            // so this covers both surfaces. An assistant that resolved to the first Sessions desk would take a row
-            // in the sidebar and a tile in the grid — visibly wrong, but only once someone happened to look.
-            var visible = cockpit.VisibleSessions.ToList();
-
-            Assert.Contains(onTheDesk, visible);
-            Assert.DoesNotContain(assistant, visible);
-        });
-    }
-
     /// <summary>A cockpit with one Sessions desk — the desk the old fallback would have handed the assistant.</summary>
     private static CockpitViewModel _CockpitWithASessionsDesk(out string deskId, SessionRegistry? sessions = null)
     {

@@ -7,6 +7,7 @@ using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Cockpit.App.ViewModels;
+using Cockpit.Core.Abstractions.Shell;
 using Cockpit.Plugins.Abstractions.StatusBar;
 
 namespace Cockpit.App.Controls;
@@ -23,7 +24,6 @@ internal sealed class PluginStatusBarHost : StackPanel
     {
         Orientation = Orientation.Horizontal;
         VerticalAlignment = VerticalAlignment.Center;
-        Children.Add(new DiskStorageStatus());
 
         AttachedToVisualTree += (_, _) => _Build();
         DetachedFromVisualTree += (_, _) => _Clear();
@@ -40,9 +40,9 @@ internal sealed class PluginStatusBarHost : StackPanel
         }
 
         _cockpit.PluginSupervisedActivities.CollectionChanged += _OnSourcesChanged;
-        foreach (var source in _cockpit.PluginSupervisedActivities)
+        foreach (var entry in _cockpit.PluginSupervisedActivities)
         {
-            _Add(source);
+            _Add(entry.Source);
         }
     }
 
@@ -55,14 +55,20 @@ internal sealed class PluginStatusBarHost : StackPanel
             return;
         }
 
-        foreach (var source in _cockpit.PluginSupervisedActivities)
+        foreach (var entry in _cockpit.PluginSupervisedActivities)
         {
-            _Add(source);
+            _Add(entry.Source);
         }
     }
 
     private void _Add(ISupervisedActivitySource source)
     {
+        // The test-runs item and its dialog (AC-2028) show these.
+        if (source is ITestRunSource)
+        {
+            return;
+        }
+
         var text = new TextBlock { FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
         var button = new Button
         {

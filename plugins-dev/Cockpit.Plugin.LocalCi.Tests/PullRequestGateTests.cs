@@ -19,88 +19,66 @@ public class PullRequestGateTests
 
     public PullRequestGateTests() => _settings = new PullRequestGateSettings(_host.Storage);
 
+    // A pass on the commit that is checked out is the one thing that opens it; every other ending is refused.
     [Fact]
-    public async Task EveryEndingThatIsNotAPassIsRefused()
+    public async Task OnlyAPassOnTheCommitThatIsCheckedOutOpensIt()
     {
         _settings.Set(Checkout, on: true);
 
-        foreach (var outcome in Enum.GetValues<LocalRunOutcome>().Where(o => o != LocalRunOutcome.Passed))
+        foreach (var outcome in Enum.GetValues<LocalRunOutcome>())
         {
             _tracker.Complete(Checkout, _Result(outcome), Head, Noon);
 
             var verdict = await _Gate().JudgeAsync(Checkout, CancellationToken.None);
 
-            Assert.False(verdict.AllowsWithoutAsking, $"{outcome} was allowed through.");
+            Assert.Equal(outcome == LocalRunOutcome.Passed, verdict.AllowsWithoutAsking);
+            if (outcome == LocalRunOutcome.Passed)
+            {
+                Assert.Equal(GateStatus.Passed, verdict.Status);
+            }
         }
     }
 
-    [Fact]
-    public async Task APassOnTheCommitThatIsCheckedOutIsTheOneThingThatOpensIt()
+    // A pass on an earlier commit is not a pass on this one — otherwise the gate waves through everything committed
+    // after the last green run, which is most of the work, a guard that is green because it stopped looking. And an
+    // unreadable commit is not evidence of anything.
+    [Theory]
+    [InlineData(Older, true)]
+    [InlineData(Head, false)]
+    public async Task APassThatCannotBeTiedToTheCheckedOutCommit_IsNotRun(string passedOn, bool gitAnswers)
     {
         _settings.Set(Checkout, on: true);
-        _tracker.Complete(Checkout, _Result(LocalRunOutcome.Passed), Head, Noon);
+        _tracker.Complete(Checkout, _Result(LocalRunOutcome.Passed), passedOn, Noon);
 
-        var verdict = await _Gate().JudgeAsync(Checkout, CancellationToken.None);
-
-        Assert.Equal(GateStatus.Passed, verdict.Status);
-        Assert.True(verdict.AllowsWithoutAsking);
-    }
-
-    [Fact]
-    public async Task APassOnAnEarlierCommitIsNotAPassOnThisOne()
-    {
-        _settings.Set(Checkout, on: true);
-        _tracker.Complete(Checkout, _Result(LocalRunOutcome.Passed), Older, Noon);
-
-        var verdict = await _Gate().JudgeAsync(Checkout, CancellationToken.None);
-
-        // Otherwise the gate waves through everything committed after the last green run, which is most of the
-        // work — a guard that is green because it stopped looking.
-        Assert.Equal(GateStatus.NotRun, verdict.Status);
-        Assert.Contains("22222222", verdict.Reason);
-        Assert.Contains("11111111", verdict.Reason);
-    }
-
-    [Fact]
-    public async Task AnUnreadableCommitIsNotEvidenceOfAnything()
-    {
-        _settings.Set(Checkout, on: true);
-        _tracker.Complete(Checkout, _Result(LocalRunOutcome.Passed), Head, Noon);
-
-        var verdict = await _Gate(gitAnswers: false).JudgeAsync(Checkout, CancellationToken.None);
+        var verdict = await _Gate(gitAnswers).JudgeAsync(Checkout, CancellationToken.None);
 
         Assert.Equal(GateStatus.NotRun, verdict.Status);
         Assert.False(verdict.AllowsWithoutAsking);
+        if (gitAnswers)
+        {
+            Assert.Contains("22222222", verdict.Reason);
+            Assert.Contains("11111111", verdict.Reason);
+        }
     }
 
-    [Fact]
-    public async Task ARefusedCheckoutOffersTheOperatorTheWayPastAndRecordsWhy()
+    // The bypass exists, it is explicit, and it goes through the host's consent — which is what puts it in the
+    // consent trail with the reason attached. That trail is the only reason a bypass is allowed at all. Declining it
+    // leaves the pull request closed.
+    [Theory]
+    [InlineData(ConsentOutcome.Approved, "true", "bypassed")]
+    [InlineData(ConsentOutcome.Denied, "false", "notrun")]
+    public async Task ARefusedCheckoutOffersTheOperatorTheWayPastAndRecordsWhy(ConsentOutcome answer, string allowed, string status)
     {
         _settings.Set(Checkout, on: true);
-        _host.Answer = ConsentOutcome.Approved;
+        _host.Answer = answer;
 
-        var answer = await _Intent().HandleAsync(_IntentWith(new Dictionary<string, string> { ["repository"] = Checkout }));
+        var result = await _Intent().HandleAsync(_IntentWith(new Dictionary<string, string> { ["repository"] = Checkout }));
 
-        // The bypass exists, it is explicit, and it goes through the host's consent — which is what puts it in the
-        // consent trail with the reason attached. That trail is the only reason a bypass is allowed at all.
         var asked = Assert.Single(_host.Asked);
         Assert.Contains("nothing has been run", asked.Action);
         Assert.Equal(ConsentRisk.Dangerous, asked.Risk);
-        Assert.Equal("true", answer[PullRequestGateIntent.AllowedKey]);
-        Assert.Equal("bypassed", answer[PullRequestGateIntent.StatusKey]);
-    }
-
-    [Fact]
-    public async Task DecliningTheWayPastLeavesThePullRequestClosed()
-    {
-        _settings.Set(Checkout, on: true);
-        _host.Answer = ConsentOutcome.Denied;
-
-        var answer = await _Intent().HandleAsync(_IntentWith(new Dictionary<string, string> { ["repository"] = Checkout }));
-
-        Assert.Equal("false", answer[PullRequestGateIntent.AllowedKey]);
-        Assert.Equal("notrun", answer[PullRequestGateIntent.StatusKey]);
-        Assert.NotEmpty(answer[PullRequestGateIntent.ReasonKey]);
+        Assert.Equal((allowed, status), (result[PullRequestGateIntent.AllowedKey], result[PullRequestGateIntent.StatusKey]));
+        Assert.NotEmpty(result[PullRequestGateIntent.ReasonKey]);
     }
 
     private PullRequestGate _Gate(bool gitAnswers = true)

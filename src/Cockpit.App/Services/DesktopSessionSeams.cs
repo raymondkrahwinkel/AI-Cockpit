@@ -20,6 +20,11 @@ internal sealed class DesktopSessionSeams(Func<CockpitViewModel> cockpit)
 
     public WorkspaceSettings Workspaces => cockpit().Workspaces.Settings;
 
+    // The Simple stand keeps its own selection (AC-1301), so the stand on screen decides which one counts.
+    public string? SelectedPaneId => cockpit() is { SimpleView: var simple } desktop
+        ? (simple ? desktop.SimpleSelectedSession : desktop.SelectedSession)?.PaneId
+        : null;
+
     public bool CanCloseWorkspace(string workspaceId) => cockpit().Workspaces.CanClose(workspaceId);
 
     public Task<Workspace> CreateSessionsWorkspaceAsync(string name) =>
@@ -77,14 +82,14 @@ internal sealed class DesktopSessionSeams(Func<CockpitViewModel> cockpit)
             desktop.NoteSessionStarted(paneId, projectId, projectJobId);
         });
 
-    // AC-1379: the assistant's host calls these on the UI thread, as it always called the cockpit, so they do not hop.
-    public IAssistantSession? CreateAssistantSession() => cockpit().CreateAssistantHandle(AssistantIdentity.PaneId);
+    public IAssistantSession? CreateAssistantSession() =>
+        UiThreadCall.Run(() => cockpit().CreateAssistantHandle(AssistantIdentity.PaneId));
 
-    public void ReleaseAssistantSession(IAssistantSession session)
+    public void ReleaseAssistantSession(IAssistantSession session) => UiThreadCall.Run(() =>
     {
         if (session is SessionPanelHandle { Pane: { } pane })
         {
             cockpit().ReleaseAssistantSession(pane);
         }
-    }
+    });
 }

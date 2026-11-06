@@ -119,20 +119,19 @@ internal sealed partial class SessionPanelHandle : IAssistantSession
         }
     }
 
-    // AC-1013: seeds speech (decision 2's "TTS erna") since nothing else does; read-aloud is always verbatim (AC-546).
-    // One synthesis for the whole reply: sentence by sentence, every full stop came with an audible hole in it.
-    void IAssistantSession.ApplySpeech(bool speakReplies)
+    void IAssistantSession.ApplySpeech(Cockpit.Core.Assistant.AssistantSettings settings, Cockpit.Core.Profiles.SessionProfile? speechProfile)
     {
         var pane = _Assistant;
-        pane.ReadAloudAsOneUtterance = true;
-
         if (AssistantVoice?.Invoke() is { } voice)
         {
             pane.TtsVoiceSid = voice.VoiceSid;
             pane.ReadAloudLanguage = voice.Language;
         }
 
-        pane.ReadResponsesAloud = speakReplies;
+        pane.AssistantSpeechMode = settings.SpeechMode;
+        pane.AssistantSpeechMethod = settings.SpeechMethod;
+        pane.SpeechProfile = speechProfile;
+        pane.ReadResponsesAloud = settings.SpeakReplies;
     }
 
     void IAssistantSession.SpeakReplies(bool speak) => _Assistant.ReadResponsesAloud = speak;

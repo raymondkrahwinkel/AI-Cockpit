@@ -25,8 +25,7 @@ public sealed class LocalCiUi : ICockpitPluginUi
         // Sessions/SessionCheckouts on the backend part).
         host.AddSessionHeaderItem(session =>
         {
-            _RememberCheckout(host, session);
-            session.WorkingDirectoryChanged += (_, _) => _RememberCheckout(host, session);
+            RememberCheckout(host, session);
             return new LocalCiSessionBadge(host, session);
         });
 
@@ -61,7 +60,7 @@ public sealed class LocalCiUi : ICockpitPluginUi
 
     // Best-effort: the checkout map is only what the MCP tools' pane-to-checkout lookup falls back to, so a failed
     // send here means one tool call later reports "no checkout" — not a fault this header item can show.
-    private static void _RememberCheckout(ICockpitUiHost host, IPluginSessionContext session)
+    internal static void RememberCheckout(ICockpitUiHost host, IPluginSessionContext session)
     {
         if (session.PaneId is not { Length: > 0 } paneId)
         {
@@ -81,7 +80,7 @@ public sealed class LocalCiUi : ICockpitPluginUi
         }
         catch (Exception)
         {
-            // Best-effort bookkeeping — see _RememberCheckout.
+            // Best-effort bookkeeping — see RememberCheckout.
         }
     }
 }

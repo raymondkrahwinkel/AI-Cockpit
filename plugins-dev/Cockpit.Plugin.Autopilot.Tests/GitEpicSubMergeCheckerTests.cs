@@ -30,37 +30,14 @@ public sealed class GitEpicSubMergeCheckerTests : IDisposable
         return checker;
     }
 
-    [Fact]
-    public async Task IsMerged_ForAnIssueWithACommitOnOriginMain_ReturnsTrue()
-    {
-        var checker = await _Refreshed(_clone);
-
-        Assert.True(checker.IsMerged("AC-1"));
-    }
-
     // AC-346 review, BLOCKING finding #2: `git log --grep="^AC-3"` also matches "AC-34 - …" / "AC-350 - …" — a prefix
-    // collision that would read a sibling sub as already merged. Reproduced here with both colliding ids actually
-    // present in history, on the same clone AC-1 (the seed commit) already lives in.
+    // collision that would read a sibling sub as already merged. And only the commit subject (first line) counts —
+    // a ticket id mentioned in passing in the body must not count as "this sub is merged".
     [Fact]
-    public async Task IsMerged_DoesNotMatchALongerIdSharingTheSamePrefix()
+    public async Task IsMerged_MatchesOnlyTheExactIdInTheSubjectLine()
     {
         await _Commit("AC-34 - unrelated commit that happens to start with the same digits as AC-3");
         await _Commit("AC-350 - another unrelated commit with a colliding numeric prefix");
-        await _Run(_clone, "push", "origin", "main");
-
-        var checker = await _Refreshed(_clone);
-
-        Assert.False(checker.IsMerged("AC-3"));
-        // The longer ids themselves are still found correctly — this is a precision fix, not a recall regression.
-        Assert.True(checker.IsMerged("AC-34"));
-        Assert.True(checker.IsMerged("AC-350"));
-    }
-
-    // AC-346 review, BLOCKING finding #2 (second half): only the commit subject (first line) counts — a ticket id
-    // mentioned in passing somewhere in the body must not count as "this sub is merged".
-    [Fact]
-    public async Task IsMerged_IgnoresAnIdThatOnlyAppearsInTheCommitBody_NotTheSubjectLine()
-    {
         await _Run(
             _clone,
             "-c", "user.name=Test", "-c", "user.email=test@example.com", "-c", "commit.gpgsign=false",
@@ -71,6 +48,10 @@ public sealed class GitEpicSubMergeCheckerTests : IDisposable
 
         var checker = await _Refreshed(_clone);
 
+        Assert.False(checker.IsMerged("AC-3"));
+        // The longer ids themselves are still found correctly — this is a precision fix, not a recall regression.
+        Assert.True(checker.IsMerged("AC-34"));
+        Assert.True(checker.IsMerged("AC-350"));
         Assert.True(checker.IsMerged("AC-77"));
         Assert.False(checker.IsMerged("AC-88"));
     }

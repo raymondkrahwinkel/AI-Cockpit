@@ -50,7 +50,7 @@ public class OrgPolicyCeilingTests
             var pty = Substitute.For<IPtyHostFactory>();
             pty.Start(Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, string>>(), Arg.Any<short>(), Arg.Any<short>())
                 .Returns(Substitute.For<IConPtyProcess>());
-            var launcher = new TtyLauncher(pty, Substitute.For<ISessionMemoryLimiter>(), new McpAuthKey(), new SessionMcpKeyring(), NullLogger<TtyLauncher>.Instance, orgPolicy: _Org());
+            var launcher = new TtyLauncher(pty, Substitute.For<ISessionMemoryLimiter>(), new SessionMcpKeyring(), NullLogger<TtyLauncher>.Instance, orgPolicy: _Org());
             string? notice = null;
 
             launcher.Launch(provider, profile: null, bypass, 80, 24, notice: message => notice = message);
@@ -232,30 +232,6 @@ public class OrgPolicyCeilingTests
         rig.Pty.DidNotReceive().Start(Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, string>>(), Arg.Any<short>(), Arg.Any<short>());
     }
 
-    // A start that names no model runs on the first listed one rather than the provider's own default, on both routes and
-    // in the listed spelling. The operator's own shell terminal runs no provider, so the provider list leaves it alone.
-    [Theory]
-    [InlineData("sdk", "gpt-5")]
-    [InlineData("sdk-spelling", "gpt-5-mini")]
-    [InlineData("tty", "gpt-5")]
-    [InlineData("shell", null)]
-    public async Task AStartWithinTheAllowedProviders_RunsOnAListedModel(string route, string? expected)
-    {
-        var rig = new ProviderRig();
-        var acts = new Dictionary<string, Func<Task>>
-        {
-            ["sdk"] = () => rig.Runtime.StartAsync(ProviderRig.OpenRouter("{}")),
-            ["sdk-spelling"] = () => rig.Runtime.StartAsync(ProviderRig.OpenRouter("{}"), launchOptions: ProviderRig.Model("GPT-5-Mini")),
-            ["tty"] = () => Task.FromResult(rig.Launch(rig.Provider(ProviderRig.OpenRouterId), ProviderRig.OpenRouter("{}"))),
-            ["shell"] = () => Task.FromResult(rig.Launch(new Cockpit.Core.Terminal.ShellTtySessionProvider(new("bash", "Bash", "/bin/bash", [])), profile: null)),
-        };
-
-        await acts[route]();
-
-        Assert.Equal(expected, rig.LaunchedOptions?.GetValueOrDefault(WellKnownPluginSessionOptions.Model));
-        Assert.All(rig.StartedModels, model => Assert.Equal(expected, model));
-    }
-
     // Never-send is a promise in the instructions (AC-494), so it has to reach every start: the sdk one and the tty one,
     // after what the session already appends of its own.
     [Fact]
@@ -317,7 +293,7 @@ public class OrgPolicyCeilingTests
             Runtime = new SessionRuntime(factory, profile: null, orgPolicy: org);
             Pty.Start(Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, string>>(), Arg.Any<short>(), Arg.Any<short>())
                 .Returns(Substitute.For<IConPtyProcess>());
-            _launcher = new TtyLauncher(Pty, Substitute.For<ISessionMemoryLimiter>(), new McpAuthKey(), new SessionMcpKeyring(), NullLogger<TtyLauncher>.Instance, orgPolicy: org);
+            _launcher = new TtyLauncher(Pty, Substitute.For<ISessionMemoryLimiter>(), new SessionMcpKeyring(), NullLogger<TtyLauncher>.Instance, orgPolicy: org);
         }
 
         public ISessionDriver Driver { get; } = Substitute.For<ISessionDriver>();

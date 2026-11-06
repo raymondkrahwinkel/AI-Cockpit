@@ -1,5 +1,6 @@
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Worktrees;
 
 namespace Cockpit.Infrastructure.Mcp;
 
@@ -15,8 +16,16 @@ internal static class GitHubPullRequestsAutoMount
             return NoNames;
         }
 
-        var repository = await worktreeManager.DetectRepositoryAsync(workingDirectory, cancellationToken).ConfigureAwait(false);
-        return repository is null ? NoNames : new HashSet<string>(StringComparer.OrdinalIgnoreCase) { GitHubPullRequestsMcp.ServerName };
+        try
+        {
+            var repository = await worktreeManager.DetectRepositoryAsync(workingDirectory, cancellationToken).ConfigureAwait(false);
+            return repository is null ? NoNames : new HashSet<string>(StringComparer.OrdinalIgnoreCase) { GitHubPullRequestsMcp.ServerName };
+        }
+        catch (GitUnavailableException)
+        {
+            // AC-2114: without git there is no repository to mount for; the session still starts.
+            return NoNames;
+        }
     }
 
     private static readonly IReadOnlySet<string> NoNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

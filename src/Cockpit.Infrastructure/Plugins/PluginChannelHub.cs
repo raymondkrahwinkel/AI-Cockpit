@@ -14,6 +14,7 @@ public sealed class PluginChannelHub(ILogger<PluginChannelHub> logger) : ISingle
     private readonly object _gate = new();
     private readonly Dictionary<(string PluginId, string Action), Func<JsonElement, CancellationToken, Task<JsonElement>>> _handlers = [];
     private readonly Dictionary<(string PluginId, string Name), List<Action<PluginChannelEvent>>> _subscribers = [];
+    private readonly Dictionary<string, TaskCompletionSource<object?>> _transitions = new(StringComparer.Ordinal);
 
     // AC-1547: every event of every plugin, after its own subscribers, so the event log can carry it to a remote desktop.
     public event Action<string, PluginChannelEvent>? Published;
@@ -34,23 +35,48 @@ public sealed class PluginChannelHub(ILogger<PluginChannelHub> logger) : ISingle
         return new Registration(() => _Unhandle((pluginId, action), handler));
     }
 
-    public Task<JsonElement> InvokeAsync(string pluginId, string action, JsonElement payload, CancellationToken cancellationToken)
+    public async Task<JsonElement> InvokeAsync(string pluginId, string action, JsonElement payload, CancellationToken cancellationToken)
     {
-        Func<JsonElement, CancellationToken, Task<JsonElement>>? handler;
+        var owned = _Own(payload);
+        while (true)
+        {
+            Func<JsonElement, CancellationToken, Task<JsonElement>>? handler;
+            Task? transition;
+            lock (_gate)
+            {
+                transition = _transitions.GetValueOrDefault(pluginId)?.Task;
+                _handlers.TryGetValue((pluginId, action), out handler);
+            }
+
+            if (transition is not null)
+            {
+                await transition.WaitAsync(cancellationToken).ConfigureAwait(false);
+                continue;
+            }
+
+            // AC-1891: never inline. A UI control calling in would otherwise run the backend's I/O on the UI thread
+            // up to the handler's first real await, and that await would capture the UI context.
+            if (handler is null)
+            {
+                throw new PluginChannelUnknownActionException(pluginId, action);
+            }
+
+            return await Task.Run(() => handler(owned, cancellationToken), cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    internal IDisposable BeginTransition(string pluginId)
+    {
         lock (_gate)
         {
-            _handlers.TryGetValue((pluginId, action), out handler);
-        }
+            var transition = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            if (!_transitions.TryAdd(pluginId, transition))
+            {
+                throw new InvalidOperationException($"Plugin '{pluginId}' is already transitioning.");
+            }
 
-        // AC-1891: never inline. A UI control calling in would otherwise run the backend's I/O on the UI thread
-        // up to the handler's first real await, and that await would capture the UI context.
-        if (handler is null)
-        {
-            return Task.FromException<JsonElement>(new PluginChannelUnknownActionException(pluginId, action));
+            return new Registration(() => _EndTransition(pluginId, transition));
         }
-
-        var owned = _Own(payload);
-        return Task.Run(() => handler(owned, cancellationToken), cancellationToken);
     }
 
     public void Publish(string pluginId, string name, JsonElement payload)
@@ -104,6 +130,23 @@ public sealed class PluginChannelHub(ILogger<PluginChannelHub> logger) : ISingle
         return new Registration(() => _Unsubscribe((pluginId, name), handler));
     }
 
+    // AC-2024: everything of one plugin on the hub, so its next activation can take the same actions again.
+    public void Remove(string pluginId)
+    {
+        lock (_gate)
+        {
+            foreach (var key in _handlers.Keys.Where(key => key.PluginId == pluginId).ToList())
+            {
+                _handlers.Remove(key);
+            }
+
+            foreach (var key in _subscribers.Keys.Where(key => key.PluginId == pluginId).ToList())
+            {
+                _subscribers.Remove(key);
+            }
+        }
+    }
+
     // A copy the receiver may keep past an await, after the sender disposed the document it came from, as a
     // remote receiver always can. `default` (no payload) has no document to copy.
     private static JsonElement _Own(JsonElement payload) =>
@@ -117,6 +160,17 @@ public sealed class PluginChannelHub(ILogger<PluginChannelHub> logger) : ISingle
             if (_handlers.TryGetValue(key, out var current) && current == handler)
             {
                 _handlers.Remove(key);
+            }
+        }
+    }
+
+    private void _EndTransition(string pluginId, TaskCompletionSource<object?> transition)
+    {
+        lock (_gate)
+        {
+            if (_transitions.Remove(pluginId, out var current) && ReferenceEquals(current, transition))
+            {
+                transition.TrySetResult(null);
             }
         }
     }

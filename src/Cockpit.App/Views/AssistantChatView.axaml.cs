@@ -83,7 +83,7 @@ public partial class AssistantChatView : UserControl
 
         _composerInput = new TranscriptComposerInput(
             InputBox,
-            ComposerBorder,
+            DropOverlay,
             tryGetPastedBitmap: () => TopLevel.GetTopLevel(this)?.Clipboard?.TryGetBitmapAsync() ?? Task.FromResult<Bitmap?>(null),
             tryGetPastedText: () => TopLevel.GetTopLevel(this)?.Clipboard?.TryGetTextAsync() ?? Task.FromResult<string?>(null),
             hasComposer: () => DataContext is AssistantChatViewModel,
@@ -91,7 +91,8 @@ public partial class AssistantChatView : UserControl
             recallLastQueuedMessage: () => DataContext is AssistantChatViewModel recallVm && recallVm.RecallLastQueuedMessage(),
             resolveStopIfBusy: () => DataContext is AssistantChatViewModel { Session.IsBusy: true } busyVm ? busyVm.StopCommand : null,
             sendCommand: () => (DataContext as AssistantChatViewModel)?.SendCommand,
-            resolvePastedImageSink: () => DataContext is AssistantChatViewModel { Session: { } session } ? session.AddPastedImage : null);
+            resolvePastedImageSink: () => DataContext is AssistantChatViewModel { Session: { } session } ? session.AddPastedImage : null,
+            canPasteImages: () => DataContext is AssistantChatViewModel { Session.CanPasteImages: true });
 
         // Enter sends; Shift+Enter inserts a newline — the same convention as the main session composer
         // (SessionView's own TranscriptComposerInput). Tunnel so this pre-empts the TextBox's own Enter handling.
@@ -104,13 +105,12 @@ public partial class AssistantChatView : UserControl
         // AC-726: a dropped file lands as its absolute path at the caret — wired on the view, so it reaches the
         // floating window and the docked rail alike (AC-952/AC-953). Same shape as SessionView's.
         DragDrop.SetAllowDrop(this, true);
-        // DragEnter as well as DragOver: AllowDrop inherits, so the target changes at every inner control
-        // boundary and Avalonia answers that with DragLeave + DragEnter — without the enter the highlight
-        // would blink off on each crossing.
-        AddHandler(DragDrop.DragEnterEvent, _composerInput.OnDragOver, RoutingStrategies.Tunnel);
-        AddHandler(DragDrop.DragOverEvent, _composerInput.OnDragOver, RoutingStrategies.Tunnel);
-        AddHandler(DragDrop.DragLeaveEvent, _composerInput.OnDragLeave, RoutingStrategies.Tunnel);
-        AddHandler(DragDrop.DropEvent, _composerInput.OnDrop, RoutingStrategies.Tunnel);
+        // AC-2059: Bubble, as the drag events are Bubble-only. DragEnter too: AllowDrop inherits, so every inner
+        // control boundary is a DragLeave + DragEnter, and without the enter the highlight blinks off.
+        AddHandler(DragDrop.DragEnterEvent, _composerInput.OnDragOver, RoutingStrategies.Bubble, handledEventsToo: true);
+        AddHandler(DragDrop.DragOverEvent, _composerInput.OnDragOver, RoutingStrategies.Bubble, handledEventsToo: true);
+        AddHandler(DragDrop.DragLeaveEvent, _composerInput.OnDragLeave, RoutingStrategies.Bubble, handledEventsToo: true);
+        AddHandler(DragDrop.DropEvent, _composerInput.OnDrop, RoutingStrategies.Bubble, handledEventsToo: true);
 
         // Assistant threads: the rail stands on this view's own width, the same in the window and the dock (§ 7.3).
         SizeChanged += (_, e) =>

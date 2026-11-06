@@ -29,7 +29,8 @@
         </Button>
         <Button x:Name="MicButton" Grid.Column="3" Classes="Subtle" Padding="7" VerticalAlignment="Center"
                 IsVisible="{Binding #Root.Target.VoiceEnabled, FallbackValue=False}"
-                ToolTip.Tip="Hold to dictate into this box">
+                IsEnabled="{Binding #Root.Target.IsAudioAvailable, FallbackValue=True}"
+                ToolTip.Tip="{Binding #Root.Target.VoiceTooltip, FallbackValue='Hold to dictate into this box'}">
             <materialIcons:MaterialIcon Kind="MicrophoneOutline" Width="15" Height="15"/>
         </Button>
     </Grid>

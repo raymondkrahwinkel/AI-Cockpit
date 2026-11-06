@@ -22,7 +22,7 @@ public class AutopilotRunHistoryCompatibilityTests
     }
 
     [Fact]
-    public void RunRecord_WithTheNewFields_RoundTripsThroughStorage_Identically()
+    public void RunRecord_RoundTripsThroughStorage_AndPreAC347JsonStillDeserializesWithDefaults()
     {
         var storage = new FakeStorage();
         var history = new AutopilotRunHistory(storage);
@@ -54,11 +54,7 @@ public class AutopilotRunHistoryCompatibilityTests
         Assert.Equal(1, restoredStep.Reworks);
         Assert.Equal(AutopilotCorrectionKind.ReviewFinding, restoredStep.Correction);
         Assert.Equal(AutopilotCorrectionSource.Operator, restoredStep.CorrectionSource);
-    }
 
-    [Fact]
-    public void PreAC347Json_WithNoneOfTheNewFields_StillDeserializes_WithDefaults()
-    {
         // The exact shape these records had before AC-347: no Attempts, Correction, CorrectionSource, RunId,
         // Ticket or BlockadeAnswers anywhere. Enum values are the pre-existing underlying ints — System.Text.Json's
         // default numeric enum encoding, the same one Set<T> above writes with.
@@ -80,20 +76,20 @@ public class AutopilotRunHistoryCompatibilityTests
         var records = JsonSerializer.Deserialize<List<AutopilotRunRecord>>(legacyJson);
 
         Assert.NotNull(records);
-        var record = Assert.Single(records);
-        Assert.Equal("legacy-run", record.Name);
-        Assert.Equal(AutopilotPlanPhase.MergeReady, record.Outcome);
-        Assert.Equal(string.Empty, record.RunId);
-        Assert.Equal(string.Empty, record.Ticket);
-        Assert.Equal(0, record.BlockadeAnswers);
-        Assert.False(record.PullRequestMissing);
+        var legacyRecord = Assert.Single(records);
+        Assert.Equal("legacy-run", legacyRecord.Name);
+        Assert.Equal(AutopilotPlanPhase.MergeReady, legacyRecord.Outcome);
+        Assert.Equal(string.Empty, legacyRecord.RunId);
+        Assert.Equal(string.Empty, legacyRecord.Ticket);
+        Assert.Equal(0, legacyRecord.BlockadeAnswers);
+        Assert.False(legacyRecord.PullRequestMissing);
 
-        var step = Assert.Single(record.Steps);
-        Assert.Equal("Code", step.Title);
-        Assert.Equal(AutopilotStepStatus.Passed, step.Status);
-        Assert.Equal(0, step.Attempts);
-        Assert.Equal(0, step.Reworks);
-        Assert.Equal(AutopilotCorrectionKind.None, step.Correction);
-        Assert.Equal(AutopilotCorrectionSource.Automatic, step.CorrectionSource);
+        var legacyStep = Assert.Single(legacyRecord.Steps);
+        Assert.Equal("Code", legacyStep.Title);
+        Assert.Equal(AutopilotStepStatus.Passed, legacyStep.Status);
+        Assert.Equal(0, legacyStep.Attempts);
+        Assert.Equal(0, legacyStep.Reworks);
+        Assert.Equal(AutopilotCorrectionKind.None, legacyStep.Correction);
+        Assert.Equal(AutopilotCorrectionSource.Automatic, legacyStep.CorrectionSource);
     }
 }

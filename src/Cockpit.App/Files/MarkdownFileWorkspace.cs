@@ -373,9 +373,11 @@ internal sealed partial class MarkdownFileWorkspace : UserControl
     private async Task<bool> _OpenLiveAsync(Snapshot read)
     {
         var live = new LiveTextDocument(Editor.TextEditor.Document, _client, _logger);
+        using var openingLife = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        var opening = _client.OpenLiveAsync(_options.File, openingLife.Token);
         try
         {
-            var (id, snapshot, wire) = await _client.OpenLiveAsync(_options.File, _lifetime.Token).ConfigureAwait(true);
+            var (id, snapshot, wire) = await opening.WaitAsync(TimeSpan.FromSeconds(15), _lifetime.Token).ConfigureAwait(true);
             if (_closed)
             {
                 live.Dispose();
@@ -394,11 +396,41 @@ internal sealed partial class MarkdownFileWorkspace : UserControl
             }
             return true;
         }
+        catch (Exception error) when (error is TimeoutException or OperationCanceledException)
+        {
+            live.Dispose();
+            openingLife.Cancel();
+            _ = CloseLateAsync();
+            if (_lifetime.IsCancellationRequested)
+            {
+                throw;
+            }
+            _error = "Live editing did not connect in time. Showing the saved file instead.";
+            _logger.LogWarning(error, "Markdown workspace {WorkspaceId} timed out opening its file live; it saves snapshots instead.", _context.WorkspaceId);
+            return false;
+        }
         catch (FileSourceException error)
         {
             live.Dispose();
             _logger.LogWarning(error, "Markdown workspace {WorkspaceId} could not open its file live; it saves snapshots instead.", _context.WorkspaceId);
             return false;
+        }
+
+        // A source may ignore cancellation and return an id later; it must never attach to this editor.
+        async Task CloseLateAsync()
+        {
+            try
+            {
+                var (id, _, _) = await opening.ConfigureAwait(false);
+                await _client.CloseLiveAsync(id, CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception error)
+            {
+                _logger.LogWarning(error, "Closing the abandoned live open for markdown workspace {WorkspaceId} failed.", _context.WorkspaceId);
+            }
         }
     }
 
@@ -435,8 +467,10 @@ internal sealed partial class MarkdownFileWorkspace : UserControl
         var bytes = await FileSourceChannel.ReadContentAsync(content, FileSourceChannel.MaxContentBytes, _lifetime.Token).ConfigureAwait(true);
         var text = new UTF8Encoding(false, true).GetString(bytes);
         var bom = text.StartsWith('\uFEFF');
-        return new Snapshot(bom ? text[1..] : text, bom, read.Version, read.Modified, read.ModifiedBy, read.CanWrite) { Live = live };
+        return new Snapshot(_WithoutBom(text), bom, read.Version, read.Modified, read.ModifiedBy, read.CanWrite) { Live = live };
     }
+
+    private static string _WithoutBom(string text) => text.StartsWith('\uFEFF') ? text[1..] : text;
 
     private void _ClearConflict()
     {
@@ -720,6 +754,7 @@ internal sealed partial class MarkdownFileWorkspace : UserControl
         {
             return;
         }
+        _UpdateLiveLight();
         var text = Editor.Text;
         var dirty = IsDirty;
         var live = _live?.Status;
@@ -764,6 +799,7 @@ internal sealed partial class MarkdownFileWorkspace : UserControl
                 LiveFileState.ReadOnly => live.ReadOnlyReason == LiveReadOnlyReason.Viewer ? "Viewer · read only" : "Read only",
                 LiveFileState.NoSaver => $"Not saved to {_sourceName} yet",
                 LiveFileState.Stale => "Catching up…",
+                LiveFileState.Live when dirty => $"Not confirmed in {_sourceName} yet",
                 LiveFileState.Live when live.Saved is { Name: { } by } saved => saved.At is { } at ? $"Saved by {by} · {at.ToLocalTime():HH:mm}" : $"Saved by {by}",
                 LiveFileState.Live when live.Saved is not null => $"Not saved to {_sourceName} yet",
                 LiveFileState.Live => "Live",
@@ -786,7 +822,7 @@ internal sealed partial class MarkdownFileWorkspace : UserControl
         _reload.IsVisible = _merge.IsVisible = _overwrite.IsVisible = _live is null || _IsLiveLight;
         var saverColor = live is { State: LiveFileState.Live, Saved.Name: not null } && Color.TryParse(live.Saved.Color, out var parsed) ? parsed : (Color?)null;
         _saverDot.Fill = saverColor is { } color ? new SolidColorBrush(color) : null;
-        _saverDot.IsVisible = saverColor is not null && !_loading && !_saving && !_conflict && !notSent;
+        _saverDot.IsVisible = saverColor is not null && !_loading && !_saving && !_conflict && !notSent && !dirty;
         var unsaved = _conflict || (dirty && !_saving) || notSent
             || live?.State is LiveFileState.Offline or LiveFileState.SignInNeeded or LiveFileState.NoSaver
             || live is { State: LiveFileState.Live, Saved: { Name: null } };
@@ -813,9 +849,8 @@ internal sealed partial class MarkdownFileWorkspace : UserControl
         Editor.IsVisible = !_comparing;
         _message.Text = _error;
         _message.IsVisible = _error is not null;
-        var version = _version is null ? "New file" : $"Source version {_version[..Math.Min(8, _version.Length)]}";
+        var version = !_loaded && !_new ? "" : _version is null ? "New file" : $"Source version {_version[..Math.Min(8, _version.Length)]}";
         _footer.Text = $"{(Editor.ShowSource ? "Markdown source" : "Live")} · {_WordCount(text)} words · {version}";
-        _UpdateLiveLight();
         _UpdateLiveBanner();
         _shortcuts.Text = live?.State == LiveFileState.ReadOnly ? "Read-only"
             : _editing ? (live is null ? "Ctrl+S save · " : "") + "Ctrl+/ source · Ctrl+B / I / K"

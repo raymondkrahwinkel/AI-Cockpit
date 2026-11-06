@@ -2,7 +2,7 @@ using System.Globalization;
 
 namespace Cockpit.Core.HeavyRuns;
 
-// AC-1535: who may start next, decided on the measured load rather than a fixed count. A run gets in when the load
+// AC-1535: who may start next, within the operator's maximum and the measured load. A run gets in when the load
 // plus what its kind is known to add stays under the ceilings; with no heavy run of the cockpit's going, the head of
 // the line always gets in, whatever else loads the machine, so nothing waits forever.
 public static class HeavyRunAdmission
@@ -15,7 +15,7 @@ public static class HeavyRunAdmission
 
     // Only the head of the line is considered: a smaller run behind it never overtakes, or a gate could starve.
     public static HeavyRunDecision Next(
-        IReadOnlyList<HeavyRunCandidate> waiting, MachineLoad load, HeavyRunSettings settings, bool isAnyHeavyRunning, DateTimeOffset now)
+        IReadOnlyList<HeavyRunCandidate> waiting, MachineLoad load, HeavyRunSettings settings, int runningCount, DateTimeOffset now)
     {
         if (waiting.Count == 0)
         {
@@ -23,15 +23,20 @@ public static class HeavyRunAdmission
         }
 
         var head = Order(waiting, settings, now)[0];
-        var reason = WaitReason(waiting[head], load, settings, isAnyHeavyRunning);
+        var reason = WaitReason(waiting[head], load, settings, runningCount);
         return reason is null ? new HeavyRunDecision(head, null) : new HeavyRunDecision(null, reason);
     }
 
-    public static string? WaitReason(HeavyRunCandidate candidate, MachineLoad load, HeavyRunSettings settings, bool isAnyHeavyRunning)
+    public static string? WaitReason(HeavyRunCandidate candidate, MachineLoad load, HeavyRunSettings settings, int runningCount)
     {
-        if (!isAnyHeavyRunning)
+        if (runningCount == 0)
         {
             return null;
+        }
+
+        if (settings.MaxParallelRuns > 0 && runningCount >= settings.MaxParallelRuns)
+        {
+            return $"waiting: maximum {settings.MaxParallelRuns} parallel runs reached";
         }
 
         var cost = candidate.Cost;

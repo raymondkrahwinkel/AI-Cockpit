@@ -19,6 +19,12 @@ public interface ISessionDesks
     WorkspaceSettings Workspaces { get; }
 
     /// <summary>
+    /// The pane id of the session the operator has selected on screen (AC-2187); read inside <see cref="RunExclusiveAsync{T}"/>.
+    /// Null when nothing is selected, and always null without a frontend.
+    /// </summary>
+    string? SelectedPaneId => null;
+
+    /// <summary>
     /// Whether the desk may be closed at all.
     /// </summary>
     bool CanCloseWorkspace(string workspaceId);

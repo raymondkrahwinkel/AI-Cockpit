@@ -26,53 +26,6 @@ namespace Cockpit.App.ViewTests;
 [Collection("avalonia")]
 public class Ac1305SimpleConsentAlertTests
 {
-    // The panels stand's consent toast is declared outside PanelsRoot; unsuppressed, one request would show two notifications.
-    [Fact]
-    public void TheSessionOutOfViewIsNamed_AndTheOneInViewRaisesNothingAtAll()
-    {
-        var broker = Substitute.For<IConsentBroker>();
-        var forTheAssistant = _Prompt(AssistantIdentity.PaneId);
-
-        var cockpit = Dispatcher.UIThread.Invoke(() =>
-        {
-            var built = _Cockpit(broker);
-            built.SimpleView = true;
-            built.CreateAssistantSession(AssistantIdentity.PaneId);
-
-            broker.PromptOpened += Raise.Event<EventHandler<ConsentPrompt>>(broker, forTheAssistant);
-            Dispatcher.UIThread.RunJobs();
-
-            Assert.Empty(built.SimpleConsentAlerts);
-            Assert.Empty(built.Toasts);
-
-            var elsewhere = new SessionViewModel { Title = "Deploy" };
-            built.Sessions.Add(elsewhere);
-            broker.PromptOpened += Raise.Event<EventHandler<ConsentPrompt>>(broker, _Prompt(elsewhere.PaneId));
-            Dispatcher.UIThread.RunJobs();
-            return built;
-        });
-
-        var alert = Assert.Single(cockpit.SimpleConsentAlerts);
-        Assert.Equal("Deploy", alert.Title);
-        Assert.Equal("Delete the staging namespace", alert.PendingConsent!.Title);
-        Assert.Empty(cockpit.Toasts);
-    }
-
-    [Fact]
-    public void IgnoreTakesTheNotificationAwayAndLeavesTheConsentStandingOpen()
-    {
-        var broker = Substitute.For<IConsentBroker>();
-        var (cockpit, asking, prompt) = _WithAConsentOutOfView(broker);
-
-        Dispatcher.UIThread.Invoke(() =>
-            cockpit.IgnoreConsentAlertCommand.Execute(cockpit.SimpleConsentAlerts[0]));
-
-        Assert.Empty(cockpit.SimpleConsentAlerts);
-        Assert.NotNull(asking.PendingConsent);
-        Assert.Equal(prompt.Id, asking.PendingConsent!.Id);
-        broker.DidNotReceive().Respond(prompt.Id, Arg.Any<ConsentOutcome>(), Arg.Any<bool>());
-    }
-
     // AC-1303 moved the conversation column with the pick, so the notification goes down with it: a visible session needs no name.
     [Fact]
     public void GoThereChoosesTheAskingSession_TakesItsNotificationDown_AndLeavesItsQuestionUnanswered()

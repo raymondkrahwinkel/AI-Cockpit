@@ -10,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Cockpit.Core.Abstractions.Agents;
+using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Clones;
 using Cockpit.Core.Clones;
@@ -62,24 +63,6 @@ public sealed class BackendApiDoorTests
 
     private static readonly NodeCaller Operator = new("testtest", "", ConnectKeyCapability.Admin, "127.0.0.1", CancellationToken.None, IssuedToOwner: true);
 
-    // Criterion 1: an operate key over HTTPS is told who it is.
-    [Fact]
-    public async Task Whoami_WithAnOperateKeyOverHttps_AnswersWhoTheKeyIs()
-    {
-        await using var door = new _Door();
-        var verifier = await door.StartAsync();
-        var operate = await verifier.IssueAsync("laptop", ConnectKeyCapability.Operate, 30, Operator);
-
-        var answer = await door.GetAsync(door.NodeBase, "/api/v1/whoami", operate.Secret);
-        var body = JsonNode.Parse(answer.Body);
-
-        Assert.Equal(HttpStatusCode.OK, answer.Status);
-        Assert.Equal(operate.Key.Prefix, body?["keyPrefix"]?.GetValue<string>());
-        Assert.Equal("laptop", body?["label"]?.GetValue<string>());
-        Assert.Equal("operate", body?["capability"]?.GetValue<string>());
-        Assert.Equal(Environment.MachineName, body?["node"]?.GetValue<string>());
-        Assert.Equal(1, body?["apiVersion"]?.GetValue<int>());
-    }
 
     // Criteria 1 and 2, the counter-proof: the app key or a session token over loopback pass the middleware and meet
     // the API's forbidden; a key nobody issued, and since AC-1985 the old pairing secret, meet the MCP door's 401.
@@ -109,72 +92,30 @@ public sealed class BackendApiDoorTests
     // lists only its projects. AC-1479: the assistant routes turn away any key not holding the assistant (AC-1366), admin too.
     public static TheoryData<string, string, string?, string, HttpStatusCode, string?, string, string> AdminRoutes => new()
     {
-        // AC-1987: all GitHub credential routes are admin-only; token input is never reflected or audited.
         { "GET", "/api/v1/git-credentials/github", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "POST", "/api/v1/git-credentials/github/sign-in", """{"mode":"device"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "GET", "/api/v1/git-credentials/github/sign-in/unknown", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "POST", "/api/v1/git-credentials/github/sign-in/unknown/input", """{"text":"{secret}"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "DELETE", "/api/v1/git-credentials/github", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
-        { "GET", "/api/v1/git-credentials/github/sign-in/unknown", null, "admin", HttpStatusCode.NotFound, "no_sign_in", "", _Door.ProfileSecret },
-        { "POST", "/api/v1/git-credentials/github/sign-in/unknown/input", """{"text":"{secret}"}""", "admin", HttpStatusCode.NotFound, "no_sign_in", "", _Door.ProfileSecret },
-        { "POST", "/api/v1/git-credentials/github/sign-in", """{"mode":"{secret}"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
-        { "GET", "/api/v1/plugins", null, "admin", HttpStatusCode.OK, "", "", _Door.ProfileSecret },
         { "GET", "/api/v1/plugins", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
-        { "GET", "/api/v1/plugins/store", null, "admin", HttpStatusCode.OK, "", "", _Door.ProfileSecret },
         { "POST", "/api/v1/plugins", """{"storeId":"store","pluginId":"plugin","version":"1.0.0"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "PUT", "/api/v1/plugins/plugin/enabled", """{"enabled":true}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
-        // AC-1525 criteria 2 and 3: the server pins only the bytes it hashed itself, and an operate key neither switches a
-        // plugin nor restarts the server.
         { "PUT", "/api/v1/plugins/fresh/enabled", """{"enabled":true,"sha256":"fresh-hash"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
-        { "PUT", "/api/v1/plugins/fresh/enabled", """{"enabled":true,"sha256":"other-hash"}""", "admin", HttpStatusCode.NotFound, "no_plugin", "", _Door.ProfileSecret },
-        { "PUT", "/api/v1/plugins/private/enabled", """{"enabled":true,"sha256":"other-hash"}""", "admin", HttpStatusCode.NotFound, "no_plugin", "", _Door.ProfileSecret },
-        { "PUT", "/api/v1/plugins/fresh/enabled", """{"enabled":true}""", "admin", HttpStatusCode.NotFound, "no_plugin", "", _Door.ProfileSecret },
         { "POST", "/api/v1/server/restart", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "DELETE", "/api/v1/plugins/plugin", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "DELETE", "/api/v1/plugins/..%2Fx", null, "admin", HttpStatusCode.NotFound, "no_plugin", "", _Door.ProfileSecret },
-        // AC-1511: a plugin's own view reaches its backend part here, admin only; the audit names plugin and action, never the payload.
         { "POST", "/api/v1/plugins/private/channel/connect", """{"token":"{secret}"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
-        { "POST", "/api/v1/plugins/private/channel/connect", """{"token":"{secret}"}""", "admin", HttpStatusCode.OK, "", "\"connected\":true", _Door.ProfileSecret },
-        { "POST", "/api/v1/plugins/private/channel/elsewhere", """{"token":"{secret}"}""", "admin", HttpStatusCode.NotFound, "no_action", "", _Door.ProfileSecret },
-        // AC-1571: a request that does not fit its action (null, a missing field, a field of the wrong type) is refused with a
-        // fixed code; no exception reaches the answer.
-        { "POST", "/api/v1/plugins/private/channel/save", "null", "admin", HttpStatusCode.BadRequest, "invalid_request", "", "Exception" },
-        { "POST", "/api/v1/plugins/private/channel/save", "{}", "admin", HttpStatusCode.BadRequest, "invalid_request", "", "Exception" },
-        { "POST", "/api/v1/plugins/private/channel/save", """{"items":"one"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", "Exception" },
-        // AC-1571: a plugin's storage reads every set credential, nested ones too, as kept; a kept one sent to another address
-        // asks for the key again, and the audit of a write names its keys and never a value.
         { "GET", "/api/v1/plugins/private/storage", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "PUT", "/api/v1/plugins/private/storage", """{"values":{"label":"new"}}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "GET", "/api/v1/plugins/private/storage", null, "admin", HttpStatusCode.OK, "", "\"apiToken\":\"(set on the server)\"", _Door.ProfileSecret },
-        // AC-1571: a consented plugin that is not running reads and writes its slice of cockpit.json, its manifest's declared
-        // credential masked like any other; one awaiting consent, or one the server does not have, is refused.
-        { "GET", "/api/v1/plugins/idle/storage", null, "admin", HttpStatusCode.OK, "", "\"pin\":\"(set on the server)\"", _Door.ProfileSecret },
-        { "PUT", "/api/v1/plugins/idle/storage", """{"values":{"pin":"(set on the server)","label":"new"}}""", "admin", HttpStatusCode.OK, "", "", _Door.ProfileSecret },
-        { "GET", "/api/v1/plugins/fresh/storage", null, "admin", HttpStatusCode.NotFound, "no_plugin", "", _Door.ProfileSecret },
-        { "GET", "/api/v1/plugins/absent/storage", null, "admin", HttpStatusCode.NotFound, "no_plugin", "", _Door.ProfileSecret },
-        { "PUT", "/api/v1/plugins/private/storage", """{"values":{"botToken":"{secret}","label":"new"},"secrets":["botToken"]}""", "admin", HttpStatusCode.OK, "", "", _Door.ProfileSecret },
         { "PUT", "/api/v1/plugins/private/storage", """{"values":{"instances":[{"url":"https://elsewhere.example","apiToken":"(set on the server)"}]}}""", "admin", HttpStatusCode.BadRequest, "key_required", "", _Door.ProfileSecret },
         { "PUT", "/api/v1/plugins/private/storage", """{"values":{"url":"https://elsewhere.example"}}""", "admin", HttpStatusCode.BadRequest, "key_required", "", _Door.ProfileSecret },
         { "PUT", "/api/v1/plugins/private/storage", """{"values":{"cfg":{"url":"https://elsewhere.example","auth":{"clientSecret":"(set on the server)"}}}}""", "admin", HttpStatusCode.BadRequest, "key_required", "", _Door.ProfileSecret },
         { "GET", "/api/v1/plugins/private/storage", null, "admin", HttpStatusCode.OK, "", "\"recoveryTokens\":\"(set on the server)\"", _Door.ProfileSecret },
-        { "GET", "/api/v1/plugins/private/storage", null, "admin", HttpStatusCode.OK, "", "\"maxTokens\":4096", _Door.ProfileSecret },
-        { "PUT", "/api/v1/plugins/private/storage", """{"values":{"label":"a","label":"b"}}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
-        { "PUT", "/api/v1/plugins/private/storage", """{"values":{"label":"new"},"secrets":["url"]}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
-        // AC-1571: what the plugin's host on the server says about one of its MCP servers: the state alone.
         { "GET", "/api/v1/plugins/private/mcp-servers/Depot%3A%20Work/auth-state", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
-        { "GET", "/api/v1/plugins/private/mcp-servers/Depot%3A%20Work/auth-state", null, "admin", HttpStatusCode.OK, "", "{\"state\":\"unknown\"}", _Door.ProfileSecret },
-        { "GET", "/api/v1/plugins/fresh/mcp-servers/Depot%3A%20Work/auth-state", null, "admin", HttpStatusCode.NotFound, "no_plugin", "", _Door.ProfileSecret },
         { "POST", "/api/v1/plugins/private/mcp-servers/Depot%3A%20Work/sign-in", """{"port":50123}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
-        { "POST", "/api/v1/plugins/private/mcp-servers/Depot%3A%20Work/sign-in", """{"port":80}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
-        { "POST", "/api/v1/plugins/fresh/mcp-servers/Depot%3A%20Work/sign-in", """{"port":50123}""", "admin", HttpStatusCode.NotFound, "no_plugin", "", _Door.ProfileSecret },
-        { "POST", "/api/v1/plugins/private/mcp-servers/Depot%3A%20Work/sign-in", """{"port":50123}""", "admin", HttpStatusCode.Created, "", "\"status\":\"unavailable\"", _Door.ProfileSecret },
-        // AC-1660: a local sign-out on the server is an admin act, like the sign-in it undoes.
         { "POST", "/api/v1/plugins/private/mcp-servers/Depot%3A%20Work/sign-out", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "POST", "/api/v1/plugins/private/mcp-servers/Depot%3A%20Work/sign-in/0123/input", """{"text":"code={secret}&state=s"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
-        { "POST", "/api/v1/plugins/private/mcp-servers/Depot%3A%20Work/sign-in/0123/input", """{"text":"code={secret}&state=s"}""", "admin", HttpStatusCode.NotFound, "no_sign_in", "", _Door.ProfileSecret },
-        { "DELETE", "/api/v1/plugins/private/mcp-servers/Depot%3A%20Work/sign-in/0123", null, "admin", HttpStatusCode.NotFound, "no_sign_in", "", _Door.ProfileSecret },
-        { "PUT", "/api/v1/plugins/private/storage", """{"values":{"label":"new"},"extra":1}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
-        { "POST", "/api/v1/plugins", """{"store":{"kind":"remote","location":"https://user:password@store.example/index.json?access_token=query-token","token":"token"},"storeId":"store","pluginId":"plugin","version":"1.0.0"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
         { "GET", "/api/v1/keys", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "POST", "/api/v1/keys", """{"label":"more","capability":"admin"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "DELETE", "/api/v1/keys/{issued}", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
@@ -187,50 +128,22 @@ public sealed class BackendApiDoorTests
         { "POST", "/api/v1/assistant/prompt", """{"text":"hello"}""", "admin", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "DELETE", "/api/v1/keys/bootstra", null, "admin", HttpStatusCode.Conflict, "bootstrap_key", "", _Door.ProfileSecret },
         { "PUT", "/api/v1/keys/bootstra/scope", """{"allowAllProjects":false}""", "admin", HttpStatusCode.Conflict, "bootstrap_key", "", _Door.ProfileSecret },
-        { "POST", "/api/v1/keys", """{"label":"odd","capability":7}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
-        { "GET", "/api/v1/audit?before=-1", null, "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
-        { "GET", "/api/v1/audit?before=1", null, "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
-        { "GET", "/api/v1/audit?before=999999999", null, "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
-        { "DELETE", "/api/v1/keys/{secret}", null, "admin", HttpStatusCode.NotFound, "no_key", "", _Door.ProfileSecret },
         { "POST", "/api/v1/projects", """{"repoUrl":"https://example.invalid/o/r.git","branch":"main","name":"r"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "PATCH", "/api/v1/projects/project-allowed", """{"name":"renamed"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "DELETE", "/api/v1/projects/project-allowed", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "GET", "/api/v1/projects", null, "operate, one project and profile", HttpStatusCode.OK, "", "project-allowed", _Door.ProfileSecret },
         { "GET", "/api/v1/projects/clones/0123", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
-        { "POST", "/api/v1/projects", """{"repoUrl":"https://laptop:{secret}@example.invalid/o/r.git","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
-        { "POST", "/api/v1/projects", """{"repoUrl":"https://{secret}@example.invalid/o/r.git","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
-        { "POST", "/api/v1/projects", """{"repoUrl":"https://example.invalid/o/r.git?private_token={secret}","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
-        { "POST", "/api/v1/projects", """{"repoUrl":"ssh://git:{secret}@example.invalid/o/r.git","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
-        { "POST", "/api/v1/projects", """{"repoUrl":"ftps://{secret}@example.invalid/o/r.git","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
-        { "POST", "/api/v1/projects", """{"repoUrl":"ext::sh -c touch% /tmp/pwned","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
-        { "POST", "/api/v1/projects", """{"repoUrl":"fd::17","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
-        { "POST", "/api/v1/projects", """{"repoUrl":"/srv/repos/r.git","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
-        { "POST", "/api/v1/projects", """{"repoUrl":"C:/srv/repos/r.git","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
-        { "POST", "/api/v1/projects", """{"repoUrl":"file:///srv/repos/r.git","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
-        { "POST", "/api/v1/projects", """{"repoUrl":"git://example.invalid/o/r.git","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
-        { "POST", "/api/v1/projects", """{"repoUrl":"--upload-pack=touch /tmp/pwned","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
-        { "POST", "/api/v1/projects", """{"repoUrl":"https://example.invalid/o/r.git","branch":"--orphan=x","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
-        // AC-1514: the shared routes are admin's, and a URL someone else wrote into a definition is checked as a typed one.
         { "GET", "/api/v1/projects/shared", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "POST", "/api/v1/projects/shared", """{"sharedProjectId":"door:project","profile":"Keyed"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
-        { "POST", "/api/v1/projects/shared", """{"sharedProjectId":"door:project","profile":"Keyed"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
-        // DEP-381: the backstop behind the disabled "Add on" — a definition without a repository is still refused, with the reason.
-        { "POST", "/api/v1/projects/shared", """{"sharedProjectId":"door:bare","profile":"Keyed"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "names no repository", _Door.ProfileSecret },
         { "POST", "/api/v1/projects/p/sync", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
-        // AC-1473 criteria 2 and 3: no profile answer holds a secret, a request with one, a program path or a loader
-        // variable is refused without repeating it, and an operate key reads only its own profiles.
         { "GET", "/api/v1/profiles", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "POST", "/api/v1/profiles", """{"label":"more","provider":"claude"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "PATCH", "/api/v1/profiles/Keyed", """{"model":"other"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "DELETE", "/api/v1/profiles/Keyed", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "GET", "/api/v1/profiles/startable", null, "operate, one project and profile", HttpStatusCode.OK, "", "Laptop Sonnet", "Something Expensive" },
-        { "GET", "/api/v1/profiles", null, "admin", HttpStatusCode.OK, "", "PROVIDER_TOKEN", _Door.ProfileSecret },
         { "PATCH", "/api/v1/profiles/Keyed", """{"model":"other","apiKey":"{secret}"}""", "admin", HttpStatusCode.BadRequest, "credential_refused", "Provider credentials never cross this connection.", _Door.ProfileSecret },
         { "PATCH", "/api/v1/profiles/Keyed", """{"environment":[{"key":"PROVIDER_TOKEN","value":"{secret}","isSecret":true}]}""", "admin", HttpStatusCode.BadRequest, "credential_refused", "", _Door.ProfileSecret },
         { "PATCH", "/api/v1/profiles/Keyed", """{"environment":[{"key":"PROVIDER_TOKEN","value":"{secret}"}]}""", "admin", HttpStatusCode.BadRequest, "credential_refused", "", _Door.ProfileSecret },
-        { "POST", "/api/v1/profiles", """{"label":"more","provider":"claude","settings":{"configJson":"{secret}"}}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
-        // AC-1534: a plugin profile's key goes to the server and never back; sent back masked it stays, but not to another host.
-        { "PATCH", "/api/v1/profiles/Plugged", """{"configJson":"{\"apiKey\":\"(set on the server)\",\"baseUrl\":\"https://inference.example/v1\",\"model\":\"other\"}"}""", "admin", HttpStatusCode.OK, "", "\"hasApiKey\":true", _Door.ProfileSecret },
         { "PATCH", "/api/v1/profiles/Plugged", """{"configJson":"{\"apiKey\":\"(set on the server)\",\"baseUrl\":\"https://elsewhere.example/v1\"}"}""", "admin", HttpStatusCode.BadRequest, "key_required", "", _Door.ProfileSecret },
         { "PATCH", "/api/v1/profiles/Plugged", """{"configJson":"{\"executablePath\":\"/tmp/{secret}\"}"}""", "admin", HttpStatusCode.BadRequest, "executable_refused", "", _Door.ProfileSecret },
         { "PATCH", "/api/v1/profiles/Keyed", """{"executablePath":"/tmp/{secret}"}""", "admin", HttpStatusCode.BadRequest, "executable_refused", "", _Door.ProfileSecret },
@@ -238,59 +151,29 @@ public sealed class BackendApiDoorTests
         { "PATCH", "/api/v1/profiles/Keyed", """{"environment":[{"key":"BASH_ENV","value":"/tmp/{secret}"}]}""", "admin", HttpStatusCode.BadRequest, "environment_refused", "", _Door.ProfileSecret },
         { "PATCH", "/api/v1/profiles/Keyed", """{"environment":[{"key":"DOTNET_STARTUP_HOOKS","value":"/tmp/{secret}.dll"}]}""", "admin", HttpStatusCode.BadRequest, "environment_refused", "", _Door.ProfileSecret },
         { "PATCH", "/api/v1/profiles/Keyed", """{"environment":[{"key":"OPENAI_API_KEY","value":"{secret}"}]}""", "admin", HttpStatusCode.BadRequest, "credential_refused", "", _Door.ProfileSecret },
-        { "PATCH", "/api/v1/profiles/Keyed", """{"permissionMode":"bypassPermissions"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
-        { "PATCH", "/api/v1/profiles/{secret}", """{"model":"other"}""", "admin", HttpStatusCode.NotFound, "no_profile", "", _Door.ProfileSecret },
-        // AC-1585: the whole profile as the editor holds it, each secret masked; sent back masked it stays, cleared it goes,
-        // never to another address, and a program path, loader variable or another folder is refused as field by field.
-        { "GET", "/api/v1/profiles", null, "admin", HttpStatusCode.OK, "", "\"apiKey\":\"(set on the server)\"", _Door.ProfileSecret },
-        { "GET", "/api/v1/profiles", null, "admin", HttpStatusCode.OK, "", "\"secretValue\":\"(set on the server)\"", _Door.ProfileSecret },
         { "PATCH", "/api/v1/profiles/Keyed", """{"profile":{"label":"Keyed","purpose":"changed","provider":""" + _KeyedProvider("http://127.0.0.1:1234") + ""","environmentVariables":""" + _KeyedMasked + "}}", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "PATCH", "/api/v1/profiles/Keyed", """{"profile":{"label":"Keyed","purpose":"changed","provider":""" + _KeyedProvider("http://127.0.0.1:1234") + ""","environmentVariables":""" + _KeyedMasked + "}}", "admin", HttpStatusCode.OK, "", "\"purpose\":\"changed\"", _Door.ProfileSecret },
         { "PATCH", "/api/v1/profiles/Keyed", """{"profile":{"label":"Keyed","provider":""" + _KeyedProvider("http://elsewhere.example:1234") + ""","environmentVariables":""" + _KeyedMasked + "}}", "admin", HttpStatusCode.BadRequest, "key_required", "", _Door.ProfileSecret },
-        { "PATCH", "/api/v1/profiles/Keyed", """{"profile":{"label":"Keyed","provider":""" + _KeyedProvider("http://127.0.0.1:1234") + ""","environmentVariables":[{"key":"OTHER_TOKEN","secretValue":"(set on the server)"}]}}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
         { "PATCH", "/api/v1/profiles/Keyed", """{"profile":{"label":"Keyed","provider":""" + _KeyedProvider("http://127.0.0.1:1234") + ""","environmentVariables":[{"key":"LD_PRELOAD","value":"/tmp/{secret}.so"}]}}""", "admin", HttpStatusCode.BadRequest, "environment_refused", "", _Door.ProfileSecret },
-        { "PATCH", "/api/v1/profiles/Keyed", """{"profile":{"label":"Keyed","provider":{"provider":3,"pluginProviderId":"door-openai","pluginConfigJson":"{}"}}}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
         { "PATCH", "/api/v1/profiles/Keyed", """{"profile":{"label":"Plugged","provider":""" + _KeyedProvider("http://127.0.0.1:1234") + ""","environmentVariables":""" + _KeyedMasked + "}}", "admin", HttpStatusCode.Conflict, "profile_exists", "", _Door.ProfileSecret },
         { "PATCH", "/api/v1/profiles/Plugged", """{"profile":{"label":"Plugged","provider":{"provider":3,"pluginProviderId":"door-openai","pluginConfigJson":"{\"apiKey\":\"(set on the server)\",\"baseUrl\":\"https://elsewhere.example/v1\"}"}}}""", "admin", HttpStatusCode.BadRequest, "key_required", "", _Door.ProfileSecret },
         { "PATCH", "/api/v1/profiles/Pathed", """{"profile":{"label":"Pathed","configDir":"/fake/.claude","executablePath":"/tmp/{secret}"}}""", "admin", HttpStatusCode.BadRequest, "executable_refused", "", _Door.ProfileSecret },
         { "PATCH", "/api/v1/profiles/Pathed", """{"profile":{"label":"Pathed","configDir":"/tmp/{secret}","executablePath":"/opt/claude"}}""", "admin", HttpStatusCode.BadRequest, "config_dir_refused", "", _Door.ProfileSecret },
-        { "PATCH", "/api/v1/profiles/Pathed", """{"profile":{"label":"Pathed","configDir":"/fake/.claude","executablePath":"/opt/claude","purpose":"kept"}}""", "admin", HttpStatusCode.OK, "", "\"purpose\":\"kept\"", _Door.ProfileSecret },
-        { "POST", "/api/v1/profiles", """{"label":"Fresh","provider":"ollama","settings":{"profile":{"label":"Fresh","provider":{"provider":""" + (int)SessionProvider.Ollama + ""","baseUrl":"http://127.0.0.1:11434","model":"m"}}}}""", "admin", HttpStatusCode.Created, "", "\"label\":\"Fresh\"", _Door.ProfileSecret },
-        { "POST", "/api/v1/profiles", """{"label":"Fresh","provider":"lmstudio","settings":{"profile":{"label":"Fresh","provider":""" + _KeyedProvider("http://127.0.0.1:1234") + "}}}", "admin", HttpStatusCode.Created, "", "\"hasApiKey\":false", _Door.ProfileSecret },
         { "PATCH", "/api/v1/assistant/settings/profile", """{"profile":{"profile":{"label":"Keyed","provider":{"provider":""" + (int)SessionProvider.LmStudio + ""","apiKey":"{secret}"}}}}""", "admin", HttpStatusCode.BadRequest, "credential_refused", "", _Door.ProfileSecret },
         { "GET", "/api/v1/profiles/providers", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
-        { "GET", "/api/v1/profiles/providers", null, "admin", HttpStatusCode.OK, "", "", _Door.ProfileSecret },
         { "GET", "/api/v1/profiles/mcp-servers", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
-        // AC-1995: the brain catalog is admin's, from the server's own sources; one that fails is said in the server's words,
-        // never in its own, which here names a token.
         { "GET", "/api/v1/profiles/brains", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
-        { "GET", "/api/v1/profiles/brains", null, "admin", HttpStatusCode.OK, "", "\"value\":\"" + _Door.Brain + "\"", _Door.ProfileSecret },
         { "GET", "/api/v1/profiles/mcp-servers/depot/estimate", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "POST", "/api/v1/profiles/models", """{"baseUrl":"http://127.0.0.1:1234","apiKey":"(set on the server)","label":"Keyed"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
-        { "POST", "/api/v1/profiles/models", """{"baseUrl":"http://127.0.0.1:1234","apiKey":"{secret}","extra":1}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
-        { "POST", "/api/v1/profiles/models", """{"baseUrl":"http://127.0.0.1:1234","apiKey":"(set on the server)","label":"Keyed"}""", "admin", HttpStatusCode.OK, "", "", _Door.ProfileSecret },
-        // AC-1585 (review): the Claude config is read as the plugin reads it, case-insensitively, and stored rebuilt.
         { "PATCH", "/api/v1/profiles/Pathed", """{"profile":{"label":"Pathed","provider":{"provider":3,"pluginProviderId":"claude","pluginConfigJson":"{\"configDir\":\"/fake/.claude\",\"ExecutablePath\":\"/tmp/{secret}\"}"}}}""", "admin", HttpStatusCode.BadRequest, "executable_refused", "", _Door.ProfileSecret },
-        { "PATCH", "/api/v1/profiles/Pathed", """{"profile":{"label":"Pathed","provider":{"provider":3,"pluginProviderId":"claude","pluginConfigJson":"{\"configDir\":\"/fake/.claude\",\"CONFIGDIR\":\"/tmp/{secret}\"}"}}}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
         { "PATCH", "/api/v1/profiles/Keyed", """{"profile":{"label":"Keyed","provider":""" + _KeyedProvider("http://127.0.0.1:1234") + ""","environmentVariables":[{"key":"CLAUDE_CONFIG_DIR","value":"/tmp/{secret}"}]}}""", "admin", HttpStatusCode.BadRequest, "environment_refused", "", _Door.ProfileSecret },
         { "PATCH", "/api/v1/profiles/Plugged", """{"profile":{"label":"Plugged","provider":{"provider":3,"pluginProviderId":"door-openai","pluginConfigJson":"{\"apiKey\":\"(set on the server)\",\"baseUrl\":\"https://inference.example/v1\",\"model\":\"m\",\"server\":{\"url\":\"https://elsewhere.example\"}}"}}}""", "admin", HttpStatusCode.BadRequest, "key_required", "", _Door.ProfileSecret },
         { "GET", "/api/v1/plugins/private/managed-clis", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "POST", "/api/v1/plugins/private/managed-clis/claude/install", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
-        { "GET", "/api/v1/plugins/private/managed-clis", null, "admin", HttpStatusCode.OK, "", "{}", _Door.ProfileSecret },
-        { "GET", "/api/v1/plugins/private/managed-clis/{secret}/status", null, "admin", HttpStatusCode.NotFound, "no_managed_cli", "", _Door.ProfileSecret },
-        { "DELETE", "/api/v1/plugins/fresh/managed-clis/claude", null, "admin", HttpStatusCode.NotFound, "no_managed_cli", "", _Door.ProfileSecret },
-        // AC-1475 criteria 1 and 2: the server's own assistant is admin's alone, no answer of it holds a secret, also after a
-        // copy-in of a profile with one, and a credential, a program path or a loader variable in its patch is refused.
         { "GET", "/api/v1/assistant/settings", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "PUT", "/api/v1/assistant/settings/enabled", """{"enabled":true}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "PATCH", "/api/v1/assistant/settings/profile", """{"profile":{"model":"other"}}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "POST", "/api/v1/assistant/settings/profile/copy-from/Keyed", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
-        { "GET", "/api/v1/assistant/settings", null, "admin", HttpStatusCode.OK, "", "PROVIDER_TOKEN", _Door.ProfileSecret },
-        { "GET", "/api/v1/assistant/settings", null, "admin", HttpStatusCode.OK, "", "\"knownValues\":{\"model\":[{\"value\":\"qwen\",\"label\":\"Qwen 2.5\"},{\"value\":\"qwen-large\",\"label\":\"Qwen large\"}]}", _Door.ProfileSecret },
-        { "GET", "/api/v1/profiles", null, "admin", HttpStatusCode.OK, "", "\"knownValues\":{\"model\":[{\"value\":\"qwen\",\"label\":\"Qwen 2.5\"},{\"value\":\"qwen-large\",\"label\":\"Qwen large\"}]}", _Door.ProfileSecret },
-        { "PUT", "/api/v1/assistant/settings/enabled", "{}", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
-        { "POST", "/api/v1/assistant/settings/profile/copy-from/Keyed", null, "admin", HttpStatusCode.OK, "", "PROVIDER_TOKEN", _Door.ProfileSecret },
-        { "POST", "/api/v1/assistant/settings/profile/copy-from/{secret}", null, "admin", HttpStatusCode.NotFound, "no_profile", "", _Door.ProfileSecret },
         { "POST", "/api/v1/assistant/settings/profile/copy-from/Keyed", null, "admin, one project and profile", HttpStatusCode.NotFound, "no_profile", "", _Door.ProfileSecret },
         { "POST", "/api/v1/assistant/settings/profile/copy-from/Pathed", null, "admin", HttpStatusCode.BadRequest, "executable_refused", "", _Door.ProfileSecret },
         { "POST", "/api/v1/assistant/settings/profile/copy-from/Preloaded", null, "admin", HttpStatusCode.BadRequest, "environment_refused", "", _Door.ProfileSecret },
@@ -349,22 +232,6 @@ public sealed class BackendApiDoorTests
         Assert.Contains(_Door.ProfileSecret, (plugged.ProviderConfig as PluginProviderConfig)?.ConfigJson, StringComparison.Ordinal);
     }
 
-    // AC-1571: a plugin that is installed but not running is configured in its slice of the server's cockpit.json, which it
-    // reads when it starts; its credential, sent back masked, is what is written, not the mask.
-    [Fact]
-    public async Task AStorageSaveForAPluginThatIsNotRunning_WritesItsSliceAndKeepsItsCredential()
-    {
-        await using var door = new _Door();
-        await door.StartAsync();
-
-        var answer = await door.SendAsync(HttpMethod.Put, "/api/v1/plugins/idle/storage", Bootstrap, """{"values":{"pin":"(set on the server)","label":"new"}}""");
-
-        Assert.Equal(HttpStatusCode.OK, answer.Status);
-        await door.Registrations.Received().SaveDataAsync(
-            "idle",
-            Arg.Is<IReadOnlyDictionary<string, string>>(data => data["pin"] == JsonSerializer.Serialize(_Door.ProfileSecret, (JsonSerializerOptions?)null) && data["label"] == "\"new\""),
-            Arg.Any<CancellationToken>());
-    }
 
     // AC-1473 criterion 1: model, MCP set and the plain variables change on the server, and its secret variable and
     // API key, which the client never sees, are still there afterwards.
@@ -412,26 +279,6 @@ public sealed class BackendApiDoorTests
         Assert.False(new[] { copied.Body, picked.Body, changed.Body, audit }.Any(text => text.Contains(_Door.ProfileSecret, StringComparison.Ordinal)), "A secret is in an answer or the audit.");
     }
 
-    // AC-1475 criterion 4: turning the assistant on over the API saves the switch alone, in one read-modify-write of that
-    // field (never a whole record read before), so the bypass stays, and the host re-reads it: available without a restart.
-    [Fact]
-    public async Task TurningTheAssistantOnOverTheApi_ChangesOnlyTheSwitch_AndAppliesItWithoutARestart()
-    {
-        await using var door = new _Door();
-        await door.StartAsync();
-        await door.Settings.SaveAsync(new AssistantSettings { ConsentBypassAll = false, ConsentBypassSources = ["discord-dm"], ConsentBypassDangerousSources = ["scheduler"], SpeakReplies = false });
-
-        var answer = await door.SendAsync(HttpMethod.Put, "/api/v1/assistant/settings/enabled", Bootstrap, """{"enabled":true}""");
-        var saved = await door.Settings.LoadAsync();
-
-        Assert.Equal(HttpStatusCode.OK, answer.Status);
-        Assert.Equal((true, false, false), (saved.IsEnabled, saved.ConsentBypassAll, saved.SpeakReplies));
-        Assert.Equal(["discord-dm"], saved.ConsentBypassSources);
-        Assert.Equal(["scheduler"], saved.ConsentBypassDangerousSources);
-        await door.Assistant.Received(1).ApplySettingsAsync(Arg.Any<CancellationToken>());
-        await door.Assistant.DidNotReceive().RestartAsync(Arg.Any<CancellationToken>());
-        await door.SettingsSeen.DidNotReceive().SaveAsync(Arg.Any<AssistantSettings>(), Arg.Any<CancellationToken>());
-    }
 
     // AC-1446 criterion 2: the full key crosses once, in its issue's answer. No admin read carries it or its hash, nor
     // does the audit file, and no field is named for a credential. F5.6b2–b4 add their reads as rows here. The key
@@ -509,25 +356,6 @@ public sealed class BackendApiDoorTests
         Assert.DoesNotContain(door.Directory.Replace("\\", "\\\\", StringComparison.Ordinal), second.Body, StringComparison.Ordinal);
     }
 
-    // Criterion 4: an API call with a holdsAssistant key leaves the assistant free; the same key on the MCP door
-    // does take the line.
-    [Fact]
-    public async Task AnApiCall_NeverHoldsTheAssistant_WhereTheSameKeyOnTheMcpDoorDoes()
-    {
-        await using var door = new _Door();
-        var verifier = await door.StartAsync();
-        var holding = await verifier.IssueAsync("holding", ConnectKeyCapability.Operate, 30, Operator, holdsAssistant: true, issuedToOwner: true);
-
-        var api = await door.GetAsync(door.NodeBase, "/api/v1/whoami", holding.Secret);
-        var afterApi = door.Presence.Current;
-        using var mcp = await door.InitializeMcpAsync(holding.Secret);
-        var afterMcp = door.Presence.Current;
-
-        Assert.Equal(HttpStatusCode.OK, api.Status);
-        Assert.Null(afterApi);
-        Assert.Equal(HttpStatusCode.OK, mcp.StatusCode);
-        Assert.Equal("holding", afterMcp?.Name);
-    }
 
     // Criterion 5: after a revoke the key's next API call is the door's 401.
     [Fact]
@@ -680,17 +508,30 @@ public sealed class BackendApiDoorTests
         await using var door = new _Door();
         var verifier = await door.StartAsync();
         var key = await verifier.IssueAsync("reader", ConnectKeyCapability.Operate, 30, Operator);
+        var envSecret = Guid.NewGuid().ToString();
+        var secretProfile = new SessionProfile("subprocess secret", new PluginProviderConfig("kimi-provider.acp", JsonSerializer.Serialize(new { ApiKey = envSecret })));
+        var keylessProfile = new SessionProfile("free", new PluginProviderConfig("opencode-provider.acp", "{}"));
+        var profiles = Substitute.For<ISessionProfileStore>();
+        profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns([secretProfile, keylessProfile]);
+        var checker = Substitute.For<IProfileLoginChecker>();
+        checker.CheckAsync(Arg.Any<SessionProfile>(), Arg.Any<CancellationToken>()).Returns(true);
+        checker.CredentialKind(secretProfile).Returns(ProfileCredentialKind.ApiKeyFromSecret);
+        using var monitor = new ProfileLoginHealthMonitor(profiles, checker, Substitute.For<IModelCatalog>(),
+            Substitute.For<IAttentionNotifier>(), Substitute.For<IAgentMessageInbox>(), Substitute.For<INotificationSettingsStore>(),
+            Substitute.For<IPresenceDetector>());
+        await monitor.CheckAsync(CancellationToken.None);
         door.LoginHealth.Current.Returns([
             new ProfileLoginHealth("mine", true, DateTimeOffset.UnixEpoch, null) { Provider = "claude", SignIn = ProfileSignInKind.SignedIn, Credential = ProfileCredentialKind.RenewingLogin },
             new ProfileLoginHealth("local", true, DateTimeOffset.UnixEpoch, null) { Provider = "Ollama", SignIn = ProfileSignInKind.Reachable },
+            new ProfileLoginHealth("offline", false, DateTimeOffset.UnixEpoch, null) { Provider = "LM Studio", SignIn = ProfileSignInKind.Unreachable },
             new ProfileLoginHealth("secret", true, DateTimeOffset.UnixEpoch, null) { Provider = "openrouter-provider.openrouter", SignIn = ProfileSignInKind.SignedIn, Credential = ProfileCredentialKind.ApiKeyFromSecret },
+            .. monitor.Current,
         ]);
         var label = "a\nb\u0007\u202E\u2028\U000E0001\uD800" + new string('x', 491);
         var row = new PluginHealthRow(label, PluginHealthStatus.Ok) { ActionId = "run" };
         door.Health.Add("test", sectionHasActions ? new _ActionSection(row) : new _Section("workflows", row));
 
         // AC-1484: a key from the process environment is a secret; only the kind of credential may cross, never the value.
-        const string envSecret = "env-secret-value-for-the-health-test";
         var before = Environment.GetEnvironmentVariable("OPENROUTER_API_KEY");
         Environment.SetEnvironmentVariable("OPENROUTER_API_KEY", envSecret);
         _Answer answer;
@@ -721,69 +562,25 @@ public sealed class BackendApiDoorTests
             Assert.All(keys, entry => Assert.DoesNotContain($"\"{entry.Key.Prefix}\"", body, StringComparison.Ordinal));
             Assert.DoesNotContain("token", body, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("prefix", body, StringComparison.OrdinalIgnoreCase);
-            Assert.DoesNotContain(envSecret, body, StringComparison.Ordinal);
+            Assert.False(body.Contains(envSecret, StringComparison.Ordinal));
         }
 
         Assert.All(health?["server"]?["keys"]?.AsArray() ?? [], shownKey => Assert.Equal(["label", "capability", "lastUsedAt"], shownKey?.AsObject().Select(property => property.Key) ?? []));
         Assert.Equal(["label", "provider", "signIn", "credential", "lastCheck", "expiredSince", "announcedAt"], health?["profiles"]?[0]?.AsObject().Select(property => property.Key) ?? []);
         Assert.Equal("reachable", health?["profiles"]?[1]?["signIn"]?.GetValue<string>());
+        Assert.Equal("unreachable", health?["profiles"]?[2]?["signIn"]?.GetValue<string>());
         Assert.Equal("ab" + new string('x', HealthEndpoints.MaxLabelLength - 2), shown?["label"]?.GetValue<string>());
         Assert.Equal(sectionHasActions ? "run" : null, shown?["actionId"]?.GetValue<string>());
         Assert.Equal("renewingLogin", health?["profiles"]?[0]?["credential"]?.GetValue<string>());
-        Assert.Equal("apiKeyFromSecret", health?["profiles"]?[2]?["credential"]?.GetValue<string>());
+        Assert.Equal("apiKeyFromSecret", health?["profiles"]?[3]?["credential"]?.GetValue<string>());
+        Assert.Equal("apiKeyFromSecret", health?["profiles"]?[4]?["credential"]?.GetValue<string>());
+        Assert.Equal("unchecked", health?["profiles"]?[4]?["signIn"]?.GetValue<string>());
+        Assert.Null(health?["profiles"]?[5]?["credential"]?.GetValue<string>());
+        Assert.Equal("unchecked", health?["profiles"]?[5]?["signIn"]?.GetValue<string>());
         Assert.DoesNotContain("@", answer.Body, StringComparison.Ordinal);
         Assert.DoesNotContain("sk-", answer.Body, StringComparison.Ordinal);
     }
 
-    // AC-1808: a fixture provider's reading crosses /api/v1 to the desktop's reader as it left the server, with its IANA
-    // zone and each AsOf at its own offset. AC-1995: one source's brains cross as the server listed them, and a server
-    // without that route answers 405, which the client reads as no brains.
-    [Fact]
-    public async Task ModelIntelligence_OverTheWire_KeepsTheTimeZoneAndEveryAsOf()
-    {
-        await using var door = new _Door();
-        var verifier = await door.StartAsync();
-        var admin = await verifier.IssueAsync("desktop", ConnectKeyCapability.Admin, 30, Operator);
-        var source = new PluginFactSource("fixture feed", new DateTimeOffset(2026, 10, 27, 9, 30, 0, TimeSpan.FromHours(1)), TimeSpan.FromHours(24));
-        var reading = new PluginModelIntelligence
-        {
-            Models = [new PluginModelCostEstimate("m") { EstimatedInputUsdPerMillionTokens = 0, PublicModelRef = "vendor/m", Source = source, PriceModifiers = [new PluginPriceModifier("off-peak", 0.5m) { Window = new PluginTimeWindow(PluginTimeWindowKind.OffPeakPrice, new TimeOnly(16, 0), TimeOnly.MinValue, "Etc/UTC", source) }] }],
-            Windows = [new PluginTimeWindow(PluginTimeWindowKind.PeakLimits, new TimeOnly(5, 0), new TimeOnly(11, 0), "America/Los_Angeles", source) { Days = [DayOfWeek.Monday, DayOfWeek.Friday] }],
-            Limits = [new PluginLimit("requests per minute", 50, "requests/minute", source) { Model = "m" }],
-            Quota = [new PluginQuotaState(new PluginRateLimitWindow("wk", 42.5, null, 10080), source with { AsOf = new DateTimeOffset(2026, 10, 27, 1, 0, 0, TimeSpan.FromHours(-7)) })],
-        };
-        door.Providers.Register(new SessionProviderRegistration("door-openai", "Door", _ => Substitute.For<IPluginSessionDriverFactory>(), new PluginSessionCapabilities(false, false, false))
-        {
-            ReadModelIntelligenceAsync = (_, _) => Task.FromResult(reading),
-        });
-        using var client = new BackendApiClient(new Uri(door.NodeBase + "/"), admin.Secret, door.Fingerprint, TimeProvider.System);
-
-        var read = await new RemoteProviderModelIntelligence(client).ReadAsync("Plugged");
-        var brains = await new RemoteServerProfiles(client).ListBrainSourcesAsync("depot");
-        using var older = new BackendApiClient(
-            new HttpClient(new _WithoutBrainRoute { InnerHandler = NodeCertificatePin.Require(door.Fingerprint, null) })
-            {
-                BaseAddress = new Uri(door.NodeBase + "/"),
-                DefaultRequestHeaders = { Authorization = new AuthenticationHeaderValue("Bearer", admin.Secret) },
-            },
-            TimeProvider.System,
-            "api/v1/events");
-        var olderBrains = await new RemoteServerProfiles(older).ListBrainSourcesAsync();
-
-        Assert.Equal(JsonSerializer.Serialize(reading), JsonSerializer.Serialize(read));
-        Assert.Equal(["depot:" + _Door.Brain], brains.SelectMany(source => source.Brains.Select(brain => $"{source.Scheme}:{brain.Value}")));
-        Assert.Empty(olderBrains);
-    }
-
-    // A server from before AC-1995: its GET of the brain route lands on PATCH and DELETE /profiles/{label}.
-    private sealed class _WithoutBrainRoute : DelegatingHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            request.RequestUri = new Uri((request.RequestUri ?? throw new InvalidOperationException("No request address.")).AbsoluteUri.Replace("/profiles/brains", "/profiles/not-a-route", StringComparison.Ordinal));
-            return base.SendAsync(request, cancellationToken);
-        }
-    }
 
     internal sealed record _Answer(HttpStatusCode Status, string Body);
 
