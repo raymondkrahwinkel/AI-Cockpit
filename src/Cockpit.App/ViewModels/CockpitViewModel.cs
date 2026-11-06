@@ -3994,8 +3994,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 }
 
                 // AC-2083: stays exact, so Clear context re-mounts an override's other-project server instead of narrowing to the project's.
-                session.McpServerSelection = set?.Context?.Manager == SessionMcpManager.Assistant || session.McpServerSelection is ExactMcpServerSelection
-                    ? new ExactMcpServerSelection(selection) : selection;
+                session.McpServerSelection = set?.Context is { } context
+                    ? new ExactMcpServerSelection(selection, context.Manager)
+                    : session.McpServerSelection is ExactMcpServerSelection exact
+                        ? new ExactMcpServerSelection(selection, exact.Manager) : selection;
                 session.McpServerConnectionIssues = issues;
             }
         });
@@ -8491,9 +8493,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             SessionOptionCatalog.DefaultEffort,
             pane.Title,
             EnabledMcpServerNames: plan.State?.McpServerNames is { } names
-                ? plan.State.McpManager == SessionMcpManager.Assistant
-                    ? new ExactMcpServerSelection(names)
-                    : names.ToHashSet(StringComparer.OrdinalIgnoreCase)
+                ? new ExactMcpServerSelection(names, plan.State.McpManager)
                 : null,
             WorkingDirectory: _restoreWorkingDirectories.GetValueOrDefault(pane.Id, pane.WorkingDirectory),
             Resume: resume,

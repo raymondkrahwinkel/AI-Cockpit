@@ -1,6 +1,7 @@
 using System.Threading.Channels;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions.Permissions;
+using Cockpit.Infrastructure.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.AI;
 using ModelContextProtocol;
@@ -57,6 +58,7 @@ internal sealed partial class McpToolProvider
                 return;
             }
             _provider._mounts.Changed += _MountChanged;
+            CockpitConfigFileAccess.Written += _ConfigWritten;
             _mountWorker = _WatchMountsAsync(confineRoot);
         }
 
@@ -65,6 +67,14 @@ internal sealed partial class McpToolProvider
             if (paneId == _paneId)
             {
                 _mountChanges.Writer.TryWrite(true);
+            }
+        }
+
+        private void _ConfigWritten(string path)
+        {
+            if (_paneId is not null)
+            {
+                _MountChanged(_paneId);
             }
         }
 
@@ -80,7 +90,7 @@ internal sealed partial class McpToolProvider
                     {
                         var set = _paneId is null ? null : _provider._mounts?.Set(_paneId);
                         if (set is null) { continue; }
-                        var registry = await _provider._catalog.GetServersForSessionAsync(_projectId, set.ServerNames, ct);
+                        var registry = await _provider._catalog.GetServersForSessionAsync(_projectId, new ExactMcpServerSelection(set.ServerNames), ct);
                         var servers = registry.Where(server => server.Enabled && set.ServerNames.Contains(server.Name)).ToList();
                         await UpdateServersAsync(confineRoot is null ? servers : _ConfinedServers(servers, confineRoot));
                     }
@@ -212,7 +222,12 @@ internal sealed partial class McpToolProvider
                 ObjectDisposedException.ThrowIf(_disposed, this);
                 if (_servers.TryGetValue(server.Name, out var existing))
                 {
-                    return existing.Initial.Task.WaitAsync(cancellationToken);
+                    if ((existing.Config with { Args = server.Args, Headers = server.Headers }) == server
+                        && existing.Config.Args.SequenceEqual(server.Args) && existing.Config.Headers.SequenceEqual(server.Headers))
+                    {
+                        return existing.Initial.Task.WaitAsync(cancellationToken);
+                    }
+                    RemoveServer(server.Name);
                 }
                 var upstream = new Upstream(server);
                 _servers.Add(server.Name, upstream);
@@ -319,7 +334,7 @@ internal sealed partial class McpToolProvider
                     {
                         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
                         deadline.CancelAfter(TimeSpan.FromSeconds(15));
-                        var registry = await _provider._catalog.GetServersForSessionAsync(_projectId, new HashSet<string>([server.Config.Name], StringComparer.OrdinalIgnoreCase), deadline.Token);
+                        var registry = await _provider._catalog.GetServersForSessionAsync(_projectId, new ExactMcpServerSelection([server.Config.Name]), deadline.Token);
                         var config = registry.FirstOrDefault(candidate => candidate.Name.Equals(server.Config.Name, StringComparison.OrdinalIgnoreCase)) ?? server.Config with { Enabled = false };
                         var outcome = config.Enabled
                             ? await _provider._ConnectServerAsync(config, PaneToken, deadline.Token, _agentName, gateway: true)
@@ -663,7 +678,7 @@ internal sealed partial class McpToolProvider
             {
                 _provider._mounts.Changed -= _MountChanged;
             }
-            await _mountLifetime.CancelAsync();
+            CockpitConfigFileAccess.Written -= _ConfigWritten;
             Upstream[] servers;
             lock (_sync)
             {
@@ -675,6 +690,7 @@ internal sealed partial class McpToolProvider
                 servers = [.. _servers.Values];
                 _servers.Clear();
             }
+            await _mountLifetime.CancelAsync();
             _provider._oauthCoordinator.AccountChanged -= _AccountChanged;
             foreach (var server in servers)
             {

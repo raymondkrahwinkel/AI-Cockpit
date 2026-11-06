@@ -155,7 +155,15 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
             _hostToolset is { } toolset ? toolset.ConnectedServerNames : _gatewayServerNames ?? [.. mcpServers.Select(server => server.Name)];
         if (paneId is { Length: > 0 })
         {
-            mcpMounts?.Report(paneId, mountedServerNames, _hostToolset?.ConnectionIssues);
+            if (_hostToolset is not null || _gatewayActive)
+            {
+                mcpMounts?.ReportConnections(paneId, mountedServerNames, _hostToolset?.ConnectionIssues ?? [],
+                    exception => logger?.LogWarning(exception, "MCP connection-report handler failed."));
+            }
+            else
+            {
+                mcpMounts?.Report(paneId, mountedServerNames, _hostToolset?.ConnectionIssues);
+            }
         }
 
         var contributed = sessionResources is null

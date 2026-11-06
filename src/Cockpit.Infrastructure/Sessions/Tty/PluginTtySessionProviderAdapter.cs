@@ -46,7 +46,15 @@ internal sealed class PluginTtySessionProviderAdapter(
         // checklist it was started from — which never holds the always-mounted and auto-mounted ones.
         if (paneId is { Length: > 0 })
         {
-            mcpMounts?.Report(paneId, _gatewayServerNames ?? [.. mcpServers.Select(server => server.Name)]);
+            if (_gatewayServerNames is not null)
+            {
+                mcpMounts?.ReportConnections(paneId, _gatewayServerNames, [],
+                    exception => logger?.LogWarning(exception, "MCP connection-report handler failed."));
+            }
+            else
+            {
+                mcpMounts?.Report(paneId, [.. mcpServers.Select(server => server.Name)]);
+            }
         }
 
         // The base environment is handed straight through: the host (TtyLauncher) has already put this run's MCP

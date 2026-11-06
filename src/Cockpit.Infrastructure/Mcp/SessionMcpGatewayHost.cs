@@ -150,10 +150,10 @@ internal sealed class SessionMcpGatewayHost : IHostedService, IAsyncDisposable
                             {
                                 var preloaded = live.GatewayTools.Where(tool => tool.AlwaysMounted).Select(tool => tool.Function.Name).ToHashSet(StringComparer.Ordinal);
                                 desired = desired.Where(pair => preloaded.Contains(pair.Key)).ToDictionary(StringComparer.Ordinal);
-                            }
-                            foreach (var search in searchTools)
-                            {
-                                desired[search.ProtocolTool.Name] = search;
+                                foreach (var search in searchTools)
+                                {
+                                    desired[search.ProtocolTool.Name] = search;
+                                }
                             }
                             using var batch = collection.DeferChangedEvents();
                             foreach (var existing in collection.ToArray())
@@ -186,6 +186,16 @@ internal sealed class SessionMcpGatewayHost : IHostedService, IAsyncDisposable
                 session.Filters.Request.CallToolFilters.Add(next => async (context, ct) =>
                 {
                     _RequirePane(paneId, token);
+                    if (activeBinding is not null && context.Params?.Name is { } name
+                        && name is not (CockpitToolSearch.SearchToolName or CockpitToolSearch.CallToolName)
+                        && !activeBinding.Session.ForwardTools.Any(tool => tool.ProtocolTool.Name == name))
+                    {
+                        return new CallToolResult
+                        {
+                            IsError = true,
+                            Content = [new TextContentBlock { Text = "This tool is no longer available in this session's MCP set." }],
+                        };
+                    }
                     var result = await next(context, ct);
                     return McpInboxPiggyback.Attach(result, _inbox, _loggerFactory.CreateLogger<SessionMcpGatewayHost>());
                 });
@@ -237,6 +247,7 @@ internal sealed class SessionMcpGatewayHost : IHostedService, IAsyncDisposable
         });
         app.MapMcp("/s/{paneId}/mcp");
         _keyring.RunEnded += _EndBindings;
+        CockpitConfigFileAccess.Written += _ConfigWritten;
         await app.StartAsync(cancellationToken);
         var addresses = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()
             ?? throw new InvalidOperationException("Kestrel did not expose its bound addresses.");
@@ -305,6 +316,30 @@ internal sealed class SessionMcpGatewayHost : IHostedService, IAsyncDisposable
     private readonly ConcurrentDictionary<(string Pane, string Token), Lazy<GatewayMcpBinding>> _bindings = new();
     private readonly McpBackgroundTasks _cleanup;
 
+    private void _ConfigWritten(string path)
+    {
+        if (string.Equals(Path.GetFullPath(path), Path.GetFullPath(_configFile.ConfigFilePath), Cockpit.Core.WorkingPaths.DirectoryPath.Comparison))
+        {
+            _cleanup.Run(_RefreshProjectsAsync);
+        }
+    }
+
+    private async Task _RefreshProjectsAsync()
+    {
+        if (_projects is null || _mounts is null)
+        {
+            return;
+        }
+        var projects = await _projects.LoadAsync();
+        foreach (var paneId in _bindings.Keys.Select(key => key.Pane).Distinct(StringComparer.Ordinal))
+        {
+            if (_mounts.Set(paneId)?.Context is { } context)
+            {
+                _mounts.Bind(paneId, context with { Project = projects.Find(context.Project?.Id) });
+            }
+        }
+    }
+
     private void _EndBindings(string paneId)
     {
         foreach (var pair in _bindings)
@@ -333,6 +368,7 @@ internal sealed class SessionMcpGatewayHost : IHostedService, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        CockpitConfigFileAccess.Written -= _ConfigWritten;
         _keyring.RunEnded -= _EndBindings;
         if (_app is { } app)
         {

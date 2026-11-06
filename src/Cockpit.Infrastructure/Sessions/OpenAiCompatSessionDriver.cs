@@ -165,7 +165,8 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
             // session was launched from — the one route where a missing server is otherwise invisible to the operator.
             if (paneId is { Length: > 0 })
             {
-                _mcpMounts?.Report(paneId, _toolSession.ConnectedServerNames, _toolSession.ConnectionIssues);
+                _mcpMounts?.ReportConnections(paneId, _toolSession.ConnectedServerNames, _toolSession.ConnectionIssues,
+                    exception => _logger.LogWarning(exception, "MCP connection-report handler failed."));
             }
 
             // AC-500: a server the plugin/registry declared OAuth is a named outcome distinct from an ordinary
