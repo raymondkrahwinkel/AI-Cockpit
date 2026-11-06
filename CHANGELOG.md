@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Start and release the desktop assistant on the UI thread when requested through the admin API, preventing an unusable registered assistant pane.
+
 - Close pending MCP client calls promptly when their session key is revoked, while cancelling the upstream call.
 
 - Refuse local model session starts when their MCP gateway is unavailable, including profile and preset selections, with the same clear error as plugin sessions.
