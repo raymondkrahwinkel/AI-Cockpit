@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- The nightly starts the packaged Linux AppImage on a screen without a GPU and opens every surface of the shipped plugins once, so a crash like the Browser tab one (AC-2038) fails the nightly instead of reaching users.
+- A local smoke test (`scripts/linux-smoke.sh`, Docker or a VM) starts the packaged Linux AppImage on a screen without a GPU and opens every surface of the shipped plugins once, to catch crashes like the Browser tab one (AC-2038).
 
 - Take over swarm leadership on this machine from the assistant chat or Options › Swarm, through the reachable current leader.
 

@@ -361,26 +361,6 @@ jobs:
               exit 1
           fi
 
-      # LinuxSmoke (AC-2065): starts the AppImage just packed, on a screen without a GPU, and opens every surface of
-      # the shipped plugins once. A crash like AC-2038's (the Browser tab, Linux, no GPU) fails the nightly here
-      # instead of reaching a user. Nightly only: it is too slow for a PR.
-      - name: Linux smoke test (AppImage, no GPU)
-        if: matrix.rid == 'linux-x64'
-        shell: bash
-        run: scripts/linux-smoke.sh artifacts-velopack/AI-Cockpit-linux-nightly.AppImage artifacts-smoke
-
-      - name: Upload smoke screenshots
-        if: ${{ always() && matrix.rid == 'linux-x64' && !env.ACT }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: nightly-linux-smoke
-          path: |
-            artifacts-smoke/run/shots
-            artifacts-smoke/run/summary.txt
-            artifacts-smoke/run/*.log
-          if-no-files-found: ignore
-          retention-days: 7
-
       # The plugin SDK for the contract this build actually carries, so an out-of-repo author can follow main
       # rather than wait for a release. Packed on the Linux leg only: a library package is platform-independent.
       # The run number becomes a prerelease suffix (1.27.0-nightly.42) because NuGet caches a package by

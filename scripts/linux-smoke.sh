@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Linux smoke test of the packaged AppImage (AC-2065, journey "LinuxSmoke"). Nightly only, not per PR; run it by hand
+# Local Linux smoke test of the packaged AppImage (AC-2065). Not part of any GitHub workflow: run it by hand (Docker or a VM)
 # before merging anything that touches a surface.
 #
 #   scripts/linux-smoke.sh <AppImage> [out-dir]            stage the Browser plugin, run in a container
