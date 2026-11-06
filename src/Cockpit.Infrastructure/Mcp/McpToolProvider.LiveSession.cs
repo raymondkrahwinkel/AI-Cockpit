@@ -103,6 +103,9 @@ internal sealed partial class McpToolProvider
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
             }
+            catch (ObjectDisposedException) when (ct.IsCancellationRequested)
+            {
+            }
         }
 
         public IReadOnlyList<McpSessionTool> Tools
@@ -278,7 +281,10 @@ internal sealed partial class McpToolProvider
                 lock (_sync)
                 {
                     publish = --_changeDeferrals == 0 && _changePending;
-                    _changePending = false;
+                    if (_changeDeferrals == 0)
+                    {
+                        _changePending = false;
+                    }
                 }
                 if (publish)
                 {

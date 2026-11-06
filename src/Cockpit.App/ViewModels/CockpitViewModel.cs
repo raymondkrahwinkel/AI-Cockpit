@@ -3972,10 +3972,19 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         if (sessionMcpMounts is not null)
         {
             sessionMcpMounts.Reported += _OnSessionMcpMounted;
+            sessionMcpMounts.Changed += _OnSessionMcpSetChanged;
         }
     }
 
     private readonly SessionMcpMounts? _sessionMcpMounts;
+
+    private void _OnSessionMcpSetChanged(string paneId) => _OnUiThread(() =>
+    {
+        if (FindSession(paneId) is { } session && _sessionMcpMounts?.Set(paneId) is { Context: { } context } set)
+        {
+            session.McpServerSelection = new ExactMcpServerSelection(set.ServerNames, context.Manager);
+        }
+    });
 
     // AC-997: the selection stays the full set this route tried, not only the ones that answered — a server that fell
     // over stays present instead of reading as one the operator never checked; the issues ride along for the header's
@@ -3988,9 +3997,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 var set = _sessionMcpMounts?.Set(paneId);
                 IEnumerable<string> desiredNames = set is null ? connectedServerNames : set.ServerNames;
                 var selection = new HashSet<string>(desiredNames, StringComparer.OrdinalIgnoreCase);
-                foreach (var issue in issues)
+                if (set?.Context is null)
                 {
-                    selection.Add(issue.Name);
+                    foreach (var issue in issues)
+                    {
+                        selection.Add(issue.Name);
+                    }
                 }
 
                 // AC-2083: stays exact, so Clear context re-mounts an override's other-project server instead of narrowing to the project's.

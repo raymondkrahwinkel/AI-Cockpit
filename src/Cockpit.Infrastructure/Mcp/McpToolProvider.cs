@@ -62,7 +62,8 @@ internal sealed partial class McpToolProvider(
         var sessionRegistry = McpServerRegistryFilter.ApplySessionSelection(registry, effectiveSelection);
         // Local models host the built-in defaults (#26) overlaid by the registry (a registry entry, including
         // a disabled one, overrides the same-named built-in). #44's per-session selection is already applied above.
-        var enabledServers = _EffectiveServers(sessionRegistry).Where(server => server.Enabled).ToList();
+        var enabledServers = _EffectiveServers(sessionRegistry).Where(server => server.Enabled
+            && (effectiveSelection is not ExactMcpServerSelection exact || exact.Contains(server.Name) || server.AlwaysMounted)).ToList();
 
         // AC-1962: confine Cockpit's file tools without changing the operator's MCP selection.
         if (!string.IsNullOrWhiteSpace(confineFileToolsToDirectory))
