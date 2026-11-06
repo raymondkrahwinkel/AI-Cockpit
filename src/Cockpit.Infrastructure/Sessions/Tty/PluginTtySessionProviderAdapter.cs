@@ -25,13 +25,17 @@ internal sealed class PluginTtySessionProviderAdapter(
     ISessionConversationSink? conversationSink = null,
     IMcpOAuthProxy? oauthProxy = null,
     IWorktreeManager? worktreeManager = null,
-    SessionMcpMounts? mcpMounts = null) : ITtySessionProvider
+    SessionMcpMounts? mcpMounts = null,
+    SessionMcpGatewayHost? gateway = null) : ITtySessionProvider
 {
     public string ProviderId => providerId;
 
     public TtyLaunchSpec BuildLaunch(TtyLaunchContext context)
     {
-        var (mcpServers, canDelegate) = _ResolveRegistry(context.EnabledMcpServerNames, context.ProjectId, context.WorkingDirectory, context.Profile?.Label);
+        _gatewayServerNames = null;
+        // Registry, credentials and launch-time glob expansion share one UI-thread budget.
+        using var budget = new CancellationTokenSource(RenewalBudget);
+        var (mcpServers, canDelegate) = _ResolveRegistry(context.EnabledMcpServerNames, context.ProjectId, context.WorkingDirectory, context.Profile?.Label, context, budget.Token);
 
         // AC-408: the same pane id TtyLauncher puts on the base environment as COCKPIT_PANE_ID, read back here
         // (rather than added to TtyLaunchContext itself) so ReportConversationId below knows which pane a later
@@ -42,13 +46,43 @@ internal sealed class PluginTtySessionProviderAdapter(
         // checklist it was started from — which never holds the always-mounted and auto-mounted ones.
         if (paneId is { Length: > 0 })
         {
-            mcpMounts?.Report(paneId, [.. mcpServers.Select(server => server.Name)]);
+            mcpMounts?.Report(paneId, _gatewayServerNames ?? [.. mcpServers.Select(server => server.Name)]);
         }
 
         // The base environment is handed straight through: the host (TtyLauncher) has already put this run's MCP
         // auth key on it (COCKPIT_MCP_KEY, AC-40) so a cockpit-hosted server's config can reference the env var
         // rather than embed a literal — it is not the adapter's to add, only to relay.
-        var spec = inner.BuildLaunch(new PluginTtyLaunchContext(
+        var warmedNames = false;
+        IReadOnlyList<string> TranslateRule(string rule)
+        {
+            if (PluginMcpServerMapper.GatewayToolNames(mcpServers, paneId, mcpMounts) is not { } names)
+            {
+                return [rule];
+            }
+            if (!warmedNames && (rule.Contains('*') || !rule[5..].Contains("__", StringComparison.Ordinal)) && paneId is not null && gateway is not null)
+            {
+                Task.Run(() => gateway.PrepareLaunchAsync(paneId, budget.Token), budget.Token).GetAwaiter().GetResult();
+                warmedNames = true;
+            }
+            return names.TranslateRule(rule);
+        }
+        PluginTtyLaunchSpec spec;
+        try
+        {
+            spec = Build();
+        }
+        catch (Exception exception) when (_gatewayServerNames is not null)
+        {
+            logger?.LogWarning(exception, "Preparing gateway permission rules failed; using the direct MCP servers.");
+            _gatewayServerNames = null;
+            (mcpServers, canDelegate) = _ResolveRegistry(context.EnabledMcpServerNames, context.ProjectId, context.WorkingDirectory, context.Profile?.Label, context, budget.Token, useGateway: false);
+            if (paneId is not null)
+            {
+                mcpMounts?.Report(paneId, [.. mcpServers.Select(server => server.Name)]);
+            }
+            spec = Build();
+        }
+        PluginTtyLaunchSpec Build() => inner.BuildLaunch(new PluginTtyLaunchContext(
             configJson,
             context.Options,
             context.WorkingDirectory,
@@ -56,8 +90,7 @@ internal sealed class PluginTtySessionProviderAdapter(
             context.BaseEnvironment)
         {
             McpServers = mcpServers,
-            TranslateMcpPermissionRule = PluginMcpServerMapper.GatewayToolNames(mcpServers, paneId, mcpMounts) is { } names
-                ? names.TranslateRule : null,
+            TranslateMcpPermissionRule = _gatewayServerNames is not null ? TranslateRule : null,
             DelegationSystemPrompt = canDelegate ? DelegationSystemPrompt.Default : null,
             // No sink or no pane id means nowhere to report to, so the provider gets no callback at all — a
             // provider that always null-checks before calling it (the documented contract) stays correct either way.
@@ -78,7 +111,7 @@ internal sealed class PluginTtySessionProviderAdapter(
     // AC-1013: Agent-eligible MCP servers and delegation eligibility, resolved once per launch off the operator's
     // checklist (AC-218 scopes to the project, resolved host-side — never a paneId→projectId lookup here, which
     // would need a UI-thread hop this sync spawn path can't take); best-effort — a missing store/read failure yields no servers/delegation, never blocks the launch.
-    private (IReadOnlyList<PluginMcpServer> McpServers, bool CanDelegate) _ResolveRegistry(IReadOnlySet<string>? enabledServerNames, string? projectId, string? workingDirectory, string? agentName)
+    private (IReadOnlyList<PluginMcpServer> McpServers, bool CanDelegate) _ResolveRegistry(IReadOnlySet<string>? enabledServerNames, string? projectId, string? workingDirectory, string? agentName, TtyLaunchContext context, CancellationToken budget, bool useGateway = true)
     {
         if (mcpServerCatalog is null)
         {
@@ -87,27 +120,47 @@ internal sealed class PluginTtySessionProviderAdapter(
 
         try
         {
-            var registry = mcpServerCatalog.GetServersForSessionAsync(projectId, enabledServerNames).GetAwaiter().GetResult();
+            var registry = mcpServerCatalog.GetServersForSessionAsync(projectId, enabledServerNames, budget).GetAwaiter().GetResult();
             // AC-869: cockpit-github-pull-requests is Internal (hidden from every picker); a git-repo working
             // directory names it explicitly here rather than through operator config. Blocking is consistent with
             // the catalog read above — this spawn path is synchronous all the way out to ITtyLauncher.Launch.
-            var autoMounted = GitHubPullRequestsAutoMount.NamesAsync(worktreeManager, workingDirectory, CancellationToken.None).GetAwaiter().GetResult();
+            var autoMounted = GitHubPullRequestsAutoMount.NamesAsync(worktreeManager, workingDirectory, budget).GetAwaiter().GetResult();
             var effectiveSelection = McpServerRegistryFilter.WithAutoMountedServers(enabledServerNames, registry, autoMounted);
             var selected = McpServerRegistryFilter.ApplySessionSelection(registry, effectiveSelection);
+            if (useGateway && _PaneId(context.BaseEnvironment) is { } paneId && gateway?.UrlFor(paneId) is { } url)
+            {
+                try
+                {
+                    var eligible = selected.Where(McpConfigFile.IsAgentEligible).ToList();
+                    var confineRoot = context.Options.GetValueOrDefault(WellKnownPluginSessionOptions.ConfineFileToolsToWorkingDirectory) == "true" ? workingDirectory : null;
+                    Task.Run(() => gateway.BindLaunchAsync(paneId, projectId, workingDirectory, confineRoot, agentName, enabledServerNames is ExactMcpServerSelection, budget), budget).GetAwaiter().GetResult();
+                    var names = eligible.Select(server => server.Name).ToList();
+                    mcpMounts?.Grant(paneId, names);
+                    gateway.PrepareLaunchAsync(paneId, budget, waitForNames: false).GetAwaiter().GetResult();
+                    _gatewayServerNames = names;
+                    return ([new PluginMcpServer { Name = "cockpit", Url = url, CockpitHosted = true },
+                        .. eligible.Where(server => server.Transport == McpTransport.Stdio)
+                            .Select(server => PluginMcpServerMapper.ToPluginMcpServer(server, null, null)).OfType<PluginMcpServer>()],
+                        eligible.Any(server => string.Equals(server.Name, DelegationMcp.ServerName, StringComparison.OrdinalIgnoreCase)));
+                }
+                catch (Exception exception)
+                {
+                    logger?.LogWarning(exception, "Preparing the session MCP gateway failed; using the direct MCP servers.");
+                }
+            }
+            else if (useGateway && gateway?.IsEnabled == true)
+            {
+                logger?.LogWarning("The session MCP gateway is unavailable; using the direct MCP servers.");
+            }
             var servers = new List<PluginMcpServer>();
-
-            // One budget for the whole launch, not one per server: this is the window in which the application stops
-            // repainting, and four stale servers against an unreachable host would otherwise add up to four times the
-            // wait the budget promises.
-            using var budget = new CancellationTokenSource(RenewalBudget);
 
             var resolved = Task.WhenAll(selected.Where(McpConfigFile.IsAgentEligible).Select(server => Task.Run(() =>
             {
                 // The endpoint first, for the same reason as on the SDK route: behind it the launch never writes a
                 // token, so it only has to establish that a sign-in exists; without it the token goes into the
                 // config and has to outlast the sitting.
-                var proxyUrl = _ProxyUrl(server, budget.Token);
-                var access = _AcquireCredential(server, theSessionWillHoldIt: proxyUrl is null, budget.Token);
+                var proxyUrl = _ProxyUrl(server, budget);
+                var access = _AcquireCredential(server, theSessionWillHoldIt: proxyUrl is null, budget);
                 if (access.State == McpAuthState.AuthorizationRequired)
                 {
                     // Same reasoning as the SDK route's PluginSessionDriverAdapter: handing it over anyway would only
@@ -138,6 +191,8 @@ internal sealed class PluginTtySessionProviderAdapter(
             return ([], false);
         }
     }
+
+    private IReadOnlyList<string>? _gatewayServerNames;
 
     // How long a launch waits, in total, for stale tokens to be renewed. This path runs synchronously out to
     // `ITtyLauncher.Launch` on the UI thread, so the wait is the window in which the app stops repainting — a

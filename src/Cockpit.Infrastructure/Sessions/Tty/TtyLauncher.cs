@@ -15,7 +15,7 @@ namespace Cockpit.Infrastructure.Sessions.Tty;
 // Default `ITtyLauncher`: builds the host environment, asks the provider how its CLI starts, and spawns it in a
 // pseudo console (`IPtyHostFactory`, platform-agnostic). Provider-specific pieces (executable, flags, config
 // directory, status relay) live in `ITtySessionProvider`; what's left here is what every TUI needs identically.
-internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemoryLimiter memoryLimiter, McpAuthKey authKey, SessionMcpKeyring keyring, ILogger<TtyLauncher> logger, ISessionProcessAnchor? processAnchor = null, IOrgPolicy? orgPolicy = null, IWorktreeManager? worktreeManager = null) : ITtyLauncher, ISingletonService
+internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemoryLimiter memoryLimiter, McpAuthKey authKey, SessionMcpKeyring keyring, ILogger<TtyLauncher> logger, ISessionProcessAnchor? processAnchor = null, IOrgPolicy? orgPolicy = null, IWorktreeManager? worktreeManager = null, SessionMcpGatewayHost? gateway = null) : ITtyLauncher, ISingletonService
 {
     public IConPtyProcess Launch(
         ITtySessionProvider provider,
@@ -31,6 +31,10 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemory
         string? projectId = null,
         Action<string>? notice = null)
     {
+        if (string.IsNullOrEmpty(paneId) && gateway?.UrlFor("launch") is not null)
+        {
+            paneId = Guid.NewGuid().ToString("N");
+        }
         options = _ClampToPolicy(provider, profile, options, notice);
         var scratchPane = string.IsNullOrEmpty(paneId) ? Guid.NewGuid().ToString("N") : paneId;
         var scratch = SessionScratch.Create(scratchPane, message => logger.LogWarning("{Message}", message));
