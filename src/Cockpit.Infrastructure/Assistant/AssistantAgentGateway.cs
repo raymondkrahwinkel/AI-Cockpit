@@ -232,7 +232,12 @@ internal sealed partial class AssistantAgentGateway(
             McpServers: request.McpServers,
             McpServersOutsideProject: outsideProject), cancellationToken).ConfigureAwait(false);
 
-        return AgentSpawnResult.Started(pane.PaneId, pane.Name, request.WorkingDirectory, pane.PromptDelivered, resolvedProfileLabel: profile.Label);
+        var mcpReport = mcpMounts?.ConnectionReport(pane.PaneId);
+        return AgentSpawnResult.Started(pane.PaneId, pane.Name, request.WorkingDirectory, pane.PromptDelivered, resolvedProfileLabel: profile.Label) with
+        {
+            McpServers = mcpReport?.ConnectedServerNames,
+            McpServersConfirmed = mcpReport is not null,
+        };
     }
 
     public async Task<AgentStopResult> StopAsync(
