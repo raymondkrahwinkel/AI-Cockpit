@@ -1,4 +1,5 @@
 using Cockpit.Core.Sessions;
+using Cockpit.Core.Voice;
 
 namespace Cockpit.Core.Assistant;
 
@@ -23,6 +24,10 @@ public sealed record AssistantSettings
     // machine with no working audio can still want a text assistant. Switching off mid-sentence cuts it
     // off — whoever clicks off wants silence, not one more paragraph (criterion 9).
     public bool SpeakReplies { get; init; } = true;
+
+    public SpokenReplyMode SpeechMode { get; init; } = SpokenReplyMode.Short;
+    public SpokenReplyMethod SpeechMethod { get; init; } = SpokenReplyMethod.Assistant;
+    public string? SpeechProfileLabel { get; init; }
 
     // Avalonia `Key` enum name for the assistant push-to-talk hotkey. F10, next to dictation's F9, and rebindable.
     public string PushToTalkKeyName { get; init; } = "F10";

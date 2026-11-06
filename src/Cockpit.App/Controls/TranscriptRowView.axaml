@@ -489,6 +489,12 @@
                                 ToolTip.Tip="Reply to this message">
                             <materialIcons:MaterialIcon Kind="CommentArrowLeftOutline" Width="13" Height="13"/>
                         </Button>
+                        <Button x:Name="ReadFullReplyButton" Classes="Subtle Compact" Content="Read full reply aloud"
+                                IsVisible="{Binding Session.IsTheVoiceAssistant}"
+                                IsEnabled="{Binding Session.IsAudioAvailable}"
+                                ToolTip.ShowOnDisabled="True"
+                                ToolTip.Tip="Read this whole reply. Audio must be available; text chat remains usable."
+                                Command="{Binding Session.ReadFullReplyCommand}" CommandParameter="{Binding}"/>
                         <Button Classes="Subtle Compact" Click="_OnCopyMessageClick"
                                 Foreground="{DynamicResource CockpitTextFaintBrush}"
                                 ToolTip.Tip="Copy this reply">

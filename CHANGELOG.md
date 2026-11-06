@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2167: choose Full, Summary or Short assistant speech and its shortening method in Options, with Short + Assistant as the default, clear fallback notices and a Read full reply aloud action on each answer.
+
 - AC-2166: prepare private short speech through the assistant or a selected profile, with a three-second deadline and rule-based fallback for providers without an ephemeral route.
 - AC-2165: prepare bounded short and summary speech per completed assistant reply, while full speech keeps streaming.
 - AC-2164: keep opening prompts queued until the Claude or Codex terminal composer is ready, so workspace trust dialogs cannot consume them as delivered turns.

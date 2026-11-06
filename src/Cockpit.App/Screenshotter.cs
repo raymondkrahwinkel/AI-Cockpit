@@ -407,6 +407,10 @@ internal static partial class Screenshotter
         // AC-1881: an Optimus laptop — the backend combo offers each GPU and Auto names the dedicated one.
         ["voice-transcribe-gpus"] = (_, _) => _OptionsVoiceWithTwoGpus(),
         ["voice-assistant"] = (_, _) => _OptionsAssistantPage(),
+        ["assistant-speech"] = (_, _) => _OptionsAssistantPage(),
+        ["assistant-speech-profile"] = (_, _) => _OptionsAssistantPage(speechProfile: true),
+        ["assistant-speech-full"] = (_, _) => _OptionsAssistantPage(fullSpeech: true),
+        ["assistant-speech-unavailable"] = (_, _) => _OptionsAssistantPage(audioAvailable: false),
         // AC-1567: the organisation's rule set as the read-only block on the same page.
         ["options-assistant-org-rules"] = (_, _) => _OptionsAssistantPage(orgRules: true),
         // AC-1000: the consent-bypass state (one recognised source, one orphaned #K11 key) that used to render on
@@ -858,6 +862,7 @@ internal static partial class Screenshotter
         ["elapsed-assistant-simple"] = (width, height) => _ElapsedScene(width, height, ReadingLevel.Simple, true),
         ["elapsed-assistant-classic"] = (width, height) => _ElapsedScene(width, height, ReadingLevel.Developer, true),
         ["assistant-chat"] = (_, _) => _AssistantChat(withConversation: true),
+        ["assistant-read-full"] = (_, _) => _AssistantReadFull(),
         ["assistant-chat-attachments"] = (_, _) => _AssistantReplyAttachments(),
         ["assistant-chat-file-drop"] = (_, _) => _AssistantChat(withConversation: true),
         ["session-file-drop"] = (width, height) => new Window { Width = width, Height = height, Content = new SessionView { DataContext = new SessionViewModel { Title = "Session" } } },
@@ -1554,6 +1559,7 @@ internal static partial class Screenshotter
         // keyboard-focused — focusing the button itself is the cheapest way to trigger the same :focus-within.
         ["session-user-row-copy"] = window => _Named<Button>(window, "UserRowCopyButton").Focus(),
         ["assistant-chat-user-row-copy"] = window => _Named<Button>(window, "UserRowCopyButton").Focus(),
+        ["assistant-read-full"] = window => _Named<Button>(window, "ReadFullReplyButton").Focus(),
         // AC-740: opening the picker is a caret-driven gesture (MentionPickerViewModel.OnTextChanged), not a
         // property a scene can stage ahead of the window existing.
         ["session-mention-picker"] = _OpenMentionPicker,
@@ -1583,6 +1589,10 @@ internal static partial class Screenshotter
         ["options-plugin-declared"] = window => ((OptionsDialog)window).SelectCategory("plugin:claude-provider"),
         ["options-backup-depot"] = _ChooseSceneDepot,
         ["options-backup-status"] = window => _ScrollIntoView(window, "backup", "2. SCHEDULED BACKUP"),
+        ["assistant-speech"] = window => _ScrollIntoView(window, "assistant", "3. REPLIES"),
+        ["assistant-speech-profile"] = window => _ScrollIntoView(window, "assistant", "3. REPLIES"),
+        ["assistant-speech-full"] = window => _ScrollIntoView(window, "assistant", "3. REPLIES"),
+        ["assistant-speech-unavailable"] = window => _ScrollIntoView(window, "assistant", "3. REPLIES"),
         // AC-1509: both choices under the sign-in reach below the fold, so the step is scrolled to them.
         ["profiles-max-parallel-sessions"] = window => window.GetVisualDescendants().OfType<TextBlock>().First(tb => tb.Text == "Maximum parallel sessions").BringIntoView(),
         ["first-run-depot-choice"] = window => window.GetVisualDescendants().OfType<ScrollViewer>().First(viewer => viewer.Extent.Height > viewer.Viewport.Height).ScrollToEnd(),
@@ -2629,10 +2639,22 @@ internal static partial class Screenshotter
 
     // The Assistant category, enabled rather than dimmed under the off master switch, so its profile row renders
     // filled in rather than showing the design-time graph's "no profile store" fallback.
-    private static OptionsDialog _OptionsAssistantPage(bool orgRules = false)
+    private static OptionsDialog _OptionsAssistantPage(bool orgRules = false, bool speechProfile = false, bool fullSpeech = false, bool audioAvailable = true)
     {
         var cockpit = new ViewModels.CockpitViewModel();
         cockpit.AssistantOptions.IsEnabled = true;
+        cockpit.IsAudioAvailable = audioAvailable;
+        cockpit.AudioUnavailableMessage = audioAvailable ? string.Empty : "Audio is unavailable. See Health for details. Text chat is still available.";
+        if (speechProfile)
+        {
+            cockpit.AssistantOptions.SelectedSpeechMethod = cockpit.AssistantOptions.SpeechMethods.First(option => option.Value == SpokenReplyMethod.Profile);
+            cockpit.AssistantOptions.SpeechProfileLabels.Add("Local speech (Ollama)");
+            cockpit.AssistantOptions.SelectedSpeechProfileLabel = "Local speech (Ollama)";
+        }
+        if (fullSpeech)
+        {
+            cockpit.AssistantOptions.SelectedSpeechMode = cockpit.AssistantOptions.SpeechModes.First(option => option.Value == SpokenReplyMode.Full);
+        }
         if (orgRules)
         {
             cockpit.AssistantOptions.OrgRulesHeading = "Rule set of Acme";
@@ -3735,6 +3757,20 @@ internal static partial class Screenshotter
         var viewModel = _AssistantChatViewModel(
             withConversation ? new ViewModels.SessionViewModel() : null, speakReplies, alwaysOn);
         return new AssistantChatWindow { DataContext = viewModel, Topmost = false, WindowStartupLocation = WindowStartupLocation.Manual };
+    }
+
+    private static AssistantChatWindow _AssistantReadFull()
+    {
+        var session = new SessionViewModel();
+        session.AdoptPaneId(Cockpit.Core.Assistant.AssistantIdentity.PaneId);
+        session.Transcript.Clear();
+        session.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "What changed?"));
+        session.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText,
+            "You can choose Short, Summary or Full speech in Assistant Options. The full answer stays here in chat. Read this reply in full whenever you need more detail."));
+        return new AssistantChatWindow
+        {
+            DataContext = _AssistantChatViewModel(session), Topmost = false, WindowStartupLocation = WindowStartupLocation.Manual,
+        };
     }
 
     private static ViewModels.AssistantChatViewModel _AssistantChatViewModel(

@@ -97,6 +97,9 @@ internal static class OptionsStaging
         "AssistantOptions.PushToTalkKeyName",
         "AssistantOptions.SelectedReadingLevel",
         "AssistantOptions.SpeakReplies",
+        "AssistantOptions.SelectedSpeechMode",
+        "AssistantOptions.SelectedSpeechMethod",
+        "AssistantOptions.SelectedSpeechProfileLabel",
     ];
 
     // Cancel does not undo what these feed, which is exactly why each one has to be named here rather than simply left

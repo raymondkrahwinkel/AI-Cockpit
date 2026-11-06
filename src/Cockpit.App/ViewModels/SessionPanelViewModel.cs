@@ -1669,7 +1669,14 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
             return Task.CompletedTask;
         }
 
-        _voicePlaybackQueue.Enqueue(sentences, TtsVoiceSid, ReadAloudLanguage, source, PaneId);
+        if (source == VoicePlaybackSource.Assistant)
+        {
+            _voicePlaybackQueue.Enqueue(SpokenReplyLanguages.Segment(sentences), TtsVoiceSid, source, PaneId);
+        }
+        else
+        {
+            _voicePlaybackQueue.Enqueue(sentences, TtsVoiceSid, ReadAloudLanguage, source, PaneId);
+        }
         return Task.CompletedTask;
     }
 
