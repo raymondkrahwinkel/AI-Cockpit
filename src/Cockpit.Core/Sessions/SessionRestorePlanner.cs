@@ -21,7 +21,7 @@ public sealed class SessionRestorePlanner(ISessionProfileStore profiles) : ISing
                 SessionKind = record.TranscriptPath is null ? PaneSessionKind.Tty : PaneSessionKind.Sdk,
                 StartedByTheAssistant = record.StartedByTheAssistant,
             },
-            new SessionStateRecord(record.PaneId, record.ProfileId, record.ProviderId, record.ConversationId, record.ConversationState, record.WorkingDirectory, null, null, null, record.LastActivityAt),
+            new SessionStateRecord(record.PaneId, record.ProfileId, record.ProviderId, record.ConversationId, record.ConversationState, record.WorkingDirectory, null, null, null, record.LastActivityAt) { Role = record.Role },
             cancellationToken);
 
     // AC-1013: Builds the plan for one saved pane; `state` may be null (pane persisted right before a

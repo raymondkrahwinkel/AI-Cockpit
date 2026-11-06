@@ -8,4 +8,8 @@ public sealed record ProjectMemorySource(string Scheme, string Title, string Ins
     // AC-1992: how a session loads the brain a stored `<scheme>:<value>` names; null when the source has no brains,
     // or (from the call) when the value is not one of this source's own. Pure: it runs while a start is composed.
     public Func<string, string?>? BrainInstruction { get; init; }
+
+    public Func<string, CancellationToken, Task<RoleListResult>>? ListRolesAsync { get; init; }
+
+    public Func<string, string, CancellationToken, Task<RoleLoadResult>>? LoadRoleAsync { get; init; }
 }
