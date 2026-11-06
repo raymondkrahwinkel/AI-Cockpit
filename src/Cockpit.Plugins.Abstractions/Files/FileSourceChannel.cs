@@ -76,6 +76,7 @@ public sealed record FileSourceLiveUndoRequest(string SessionId, bool Redo);
 public sealed record FileSourceLiveReconnectRequest(string SessionId, bool SignIn);
 public sealed record FileSourceLiveSnapshot(string SessionId, string ContentBase64, long Rev, LiveFileStatus Status)
 {
+    public string? SerializedText { get; init; }
     public IReadOnlyList<LivePeer>? Peers { get; init; }
     public string? OpenUrl { get; init; }
 }

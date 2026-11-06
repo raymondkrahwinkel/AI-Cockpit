@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2103: Clear stale local-only warnings after live note recovery confirms the saved text, and offer Retry sync while unconfirmed edits remain protected.
+
 - AC-241: Companion remembers a reachable position, uses native window dragging, and separates tools with an explicit empty state.
 
 - AC-2117: reset swarm membership from any state, rejoin with fresh confirmation, show standalone/paused status and explain conflicting histories.
