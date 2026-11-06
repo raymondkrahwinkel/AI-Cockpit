@@ -49,6 +49,19 @@ public sealed class PluginManager(
     // AC-1389: Plugin is null for a plugin that is only a UI part, which the desktop's PluginUiManager activates.
     private readonly List<(DiscoveredPlugin Discovered, ICockpitPlugin? Plugin)> _loaded = [];
     private readonly object _lifecycleLock = new();
+    private readonly HashSet<(string FolderId, string Sha256)> _hostServiceVersions = [];
+    // Container registrations keep the old code alive even when discovery sees a replacement version.
+    private readonly HashSet<string> _containerPlugins = new(StringComparer.Ordinal);
+
+    public bool RequiresRestart(string folderId, PluginManifest manifest, string sha256)
+    {
+        lock (_lifecycleLock)
+        {
+            return manifest.RequiresRestart || _containerPlugins.Contains(folderId) || _hostServiceVersions.Contains((folderId, sha256));
+        }
+    }
+
+    private bool _RequiresRestart(DiscoveredPlugin plugin) => RequiresRestart(plugin.FolderId, plugin.Manifest, plugin.Sha256);
     private Func<DiscoveredPlugin, ICockpitPlugin?>? _activate;
     private Func<DiscoveredPlugin, ICockpitPlugin, ICockpitHost>? _hostFor;
     private readonly TaskCompletionSource _initialized = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -224,11 +237,10 @@ public sealed class PluginManager(
             {
                 var configured = new ServiceCollection();
                 plugin.ConfigureServices(configured);
-                if (configured.Count > 0 && !candidate.Manifest.RequiresRestart)
+                if (configured.Count > 0)
                 {
-                    diagnostics.Record(candidate.FolderId, candidate.Manifest.Name, "configure", _HostServicesRequireManifest);
-                    _DisposeQuietly(candidate, plugin);
-                    continue;
+                    _containerPlugins.Add(candidate.FolderId);
+                    _hostServiceVersions.Add((candidate.FolderId, candidate.Sha256));
                 }
 
                 foreach (var descriptor in configured)
@@ -250,7 +262,7 @@ public sealed class PluginManager(
                 McpProviders.Register(provider);
             }
 
-            _loaded.Add((candidate, plugin));
+            _loaded.Add((candidate with { RequiresRestart = _RequiresRestart(candidate) }, plugin));
             _WarnIfBuiltAgainstNewerHost(candidate, plugin);
         }
     }
@@ -460,7 +472,7 @@ public sealed class PluginManager(
         }
     }
 
-    private const string _HostServicesRequireManifest = "Host service registrations require requiresRestart in plugin.json; keep plugin-owned services inside the plugin to support live changes.";
+    private const string _HostServicesRequireRestart = "The plugin registers host services and needs a restart to activate.";
 
     // AC-2025: why ActivateOne would turn these bytes away before it starts anything, or null; asked before the running
     // version is stopped for them.
@@ -478,7 +490,7 @@ public sealed class PluginManager(
                 return new(PluginActivationStatus.NeedsRestart, held.Reason);
             }
 
-            return discovered.Manifest.RequiresRestart
+            return _RequiresRestart(discovered)
                 ? new(PluginActivationStatus.NeedsHostRestart, "The plugin asks for a restart to activate.")
                 : null;
         }
@@ -508,7 +520,7 @@ public sealed class PluginManager(
                 return new(PluginActivationStatus.NeedsRestart, held.Reason);
             }
 
-            if (discovered.Manifest.RequiresRestart)
+            if (_RequiresRestart(discovered))
             {
                 return new(PluginActivationStatus.NeedsHostRestart, "The plugin asks for a restart to activate.");
             }
@@ -554,7 +566,7 @@ public sealed class PluginManager(
                     diagnostics.Record(discovered.FolderId, discovered.Manifest.Name, "load", changed);
                     result = new(PluginActivationStatus.Refused, changed);
                 }
-                else if (discovered.Manifest.RequiresRestart)
+                else if (_RequiresRestart(discovered))
                 {
                     result = new(PluginActivationStatus.NeedsHostRestart, "The plugin asks for a restart to activate.");
                 }
@@ -583,8 +595,11 @@ public sealed class PluginManager(
                         {
                             _DisposeQuietly(discovered, plugin);
                             plugin = null;
-                            diagnostics.Record(discovered.FolderId, discovered.Manifest.Name, "configure", _HostServicesRequireManifest);
-                            result = new(PluginActivationStatus.Refused, _HostServicesRequireManifest);
+                            lock (_lifecycleLock)
+                            {
+                                _hostServiceVersions.Add((discovered.FolderId, discovered.Sha256));
+                            }
+                            result = new(PluginActivationStatus.NeedsHostRestart, _HostServicesRequireRestart);
                         }
                         else
                         {
@@ -621,7 +636,7 @@ public sealed class PluginManager(
             }
             else
             {
-                if (result.Status is PluginActivationStatus.NeedsRestart or PluginActivationStatus.NeedsHostRestart && result.Reason is { } reason)
+                if (result.Status is PluginActivationStatus.NeedsRestart && result.Reason is { } reason)
                 {
                     _restartReasons[discovered.FolderId] = (discovered.Sha256, reason);
                 }
@@ -787,6 +802,10 @@ public sealed class PluginManager(
             }
 
             (discovered, plugin) = loaded;
+            if (_RequiresRestart(discovered))
+            {
+                return new(PluginActivationStatus.NeedsHostRestart, "The plugin needs a restart to deactivate.");
+            }
             _activating.Add(folderId);
         }
 

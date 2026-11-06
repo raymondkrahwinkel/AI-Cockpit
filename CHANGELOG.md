@@ -5,6 +5,7 @@
 - Closing the main window exits Cockpit even after hiding the Companion or another helper window; closing to the tray still keeps it running.
 - Desktop shutdown stops background services and awaits their final writes before disposing their dependencies.
 - Enabling an installed plugin without consent now explains that permission for its current SHA is required instead of reporting it as missing.
+- AC-2178: keep existing plugins that register host services loading after an app update, and defer changes to those plugins until restart.
 
 - AC-2164: keep opening prompts queued until the Claude or Codex terminal composer is ready, so workspace trust dialogs cannot consume them as delivered turns.
 - AC-2069: Health recognises Codex, Kimi and opencode API keys supplied through session.env, with setup hints for each provider.
