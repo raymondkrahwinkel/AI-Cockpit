@@ -51,9 +51,25 @@ built from the .NET "app with plugins" pattern:
   `IServiceCollection`, etc. a **single type identity** across the plugin/host boundary. If a plugin shipped
   its own copy of one of these assemblies, the types it implements would be a *different* `ICockpitPlugin`
   from the host's point of view, and the host would silently fail to find a plugin in it.
-- Loading is **non-collectible**: disabling a plugin removes its UI and calls `Dispose()`, but the assembly
-  itself is only actually freed when the process restarts (a loaded assembly cannot be truly unloaded from a
-  non-collectible context). The plugin manager says as much when you disable one.
+- Enabling a plugin activates it **without a restart** (host 0.159.0+) unless it sets `requiresRestart` or its `ConfigureServices` registers services; sessions that are already running get its new MCP tools at their next start.
+- Disabling a plugin takes effect **without a restart** (host 0.160.0+), unless it sets `requiresRestart` or a
+  running session uses its provider. Loading is **non-collectible**, so the assembly itself stays in memory until
+  the process restarts; enabling the same version again reuses it, with a new instance of your plugin class.
+
+### What a live disable stops {#live-disable}
+
+| Who | What |
+|---|---|
+| **The host** | Everything registered through it: contributions and UI, open workspaces and dialogs, registries, MCP endpoints, channel handlers and subscriptions. Store items from `AddMcpServer` stay. |
+| **Your plugin, in `Dispose()`** | Everything it started: timers, pollers, sockets, processes and running work. Also every C# event it subscribed to with `+=` on the host or a host object (`host.Sessions`, `ActiveSessionChanged`, a session context): the host does not track those. |
+
+- The backend part's `Dispose()` runs off the UI thread. A live disable waits for it for 10 seconds and then moves on, so
+  cancel work rather than wait for it.
+- A UI part's `Dispose()` runs on the UI thread, before the backend part's. The host cannot interrupt it, so it must
+  not block: a blocked `Dispose()` hangs the window, and all the host can do is log the plugin's name.
+- Work that cannot stop cleanly, or a process-wide runtime that starts once (CEF), is what `requiresRestart` is for.
+- A tracker can leave while you use it. Watch `ICockpitHost.TrackerProvidersChanged` when you hold on to one for
+  longer than a call.
 
 **Unsandboxed.** A plugin runs with the same rights as the cockpit process. The next section says exactly
 what the host does and does not enforce, and why.
@@ -327,8 +343,9 @@ public sealed record PluginMetadata(string Id, string DisplayName, string Versio
    the next restart** (the container is already built). Keep `ConfigureServices` optional where you can.
 2. **`Initialize(ICockpitHost)`** runs once the host and UI exist. Register your contribution points here —
    at most once each for `AddSettings`, and as many `AddSideMenuButton`/`AddSideMenuSection` calls as you need.
-3. **`Dispose()`** runs when the plugin is disabled or the app exits. Note: the assembly is **not** unloaded
-   until the process restarts (a loaded plugin cannot be truly unloaded) — "disable" means UI off + Dispose.
+3. **`Dispose()`** runs when the plugin is disabled or the app exits. The host has then already withdrawn what you
+   registered; you stop what you started, see [What a live disable stops](#live-disable). The assembly is **not**
+   unloaded until the process restarts.
 
 ### Settings dialog {#settings-dialog}
 
@@ -483,7 +500,7 @@ A plugin can add a whole new **session provider** — the same picker slot as th
 / LM Studio choices — by implementing a small driver and handing it to `host.AddSessionProvider(...)`. Two
 shapes exist in [`plugins-dev/`](https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/plugins-dev):
 
-- **Persistent chat client** (Gemini/OpenAI Provider, GitHub Models): one long-lived `IChatClient` per
+- **Persistent chat client** (Gemini/OpenAI Provider): one long-lived `IChatClient` per
   session, talking an OpenAI-compatible endpoint via `Microsoft.Extensions.AI` — the same stack the host uses
   internally for Ollama/LM Studio.
 - **Subprocess-per-turn** (CLI Agent Provider): shells out to a CLI (`codex exec --json`, resumed for
@@ -651,9 +668,9 @@ public void Initialize(ICockpitHost host)
 
 ### Supplying plugin stores
 
-SDK 3.65.0 / host 0.158.0 adds `ICockpitHost.AddPluginStoreSource(IPluginStoreSourceProvider)`.
+SDK 3.73.0 / host 0.162.0 adds `ICockpitHost.AddPluginStoreSource(IPluginStoreSourceProvider)`.
 The types are in `Cockpit.Plugins.Abstractions.Plugins`. The default interface method throws
-`NotSupportedException`, so existing hosts compile; a plugin using it sets `minHostVersion` to `0.158.0`.
+`NotSupportedException`, so existing hosts compile; a plugin using it sets `minHostVersion` to `0.162.0`.
 Contract `abstractionsVersion` remains 3.
 
 A provider exposes `IReadOnlyList<PluginStoreSourceDescriptor> Sources` and raises `SourcesChanged`
@@ -809,7 +826,7 @@ of Claude; it only knows that *someone* offers a picker. The transcript-search p
 
 A plugin that talks to a service with its own remote MCP server (JetBrains YouTrack's is the shipping
 example) can register it into the **shared MCP registry** with `host.AddMcpServer(...)`, so both session
-worlds — the local-model tool-loop and the Claude Code fan-out — pick up its tools without the user adding the
+worlds — the in-process tool-loop and the session MCP gateway — pick up its tools without the user adding the
 server by hand in the MCP-servers dialog:
 
 ```csharp
@@ -1089,6 +1106,7 @@ version-mismatched manifest is rejected with a message rather than crashing mid-
 | `name` | yes | Display name in the Plugins manager. Non-empty string. |
 | `version` | yes | Your plugin's version. Non-empty string (no particular format enforced). |
 | `entryAssembly` | yes, unless `uiAssembly` is set | The DLL carrying your `ICockpitPlugin`, relative to the plugin folder. The installer refuses the zip if this file is missing. Leave it out for a plugin that is only a UI part (host 0.39.0+). |
+| `requiresRestart` | no | `true` when the plugin cannot start while the cockpit runs (a process-wide native runtime, say). Enabling it then shows "Restart needed" instead of activating it live. Default `false`, host 0.159.0+. Host-container registrations in `ConfigureServices` require this flag explicitly; undeclared registrations are refused. Keep services used only by the plugin inside its own instance to support live changes. |
 | `uiAssembly` | no | The DLL carrying your `ICockpitPluginUi`, relative to the plugin folder — see [the UI part](API-REFERENCE.md#the-ui-part). Checked like `entryAssembly`. A manifest with neither is refused. Host 0.39.0+. |
 | `uiEntryType` | no | Fully-qualified UI entry type; omit to let the host find the single `ICockpitPluginUi` in the UI assembly. |
 | `abstractionsVersion` | yes | The SDK **major** you built against (an integer) — must equal the host's (`AbstractionsContract.Version`), or the host refuses to load the plugin with a clear message. |
@@ -1097,6 +1115,7 @@ version-mismatched manifest is rejected with a message rather than crashing mid-
 | `secretKeys` | no | Storage keys that hold a credential, beyond the names the host recognises itself (`["pat"]`). Read before your plugin loads, so such a value is decrypted on the way in rather than handed to you as ciphertext. See "Credentials". |
 | `minHostVersion` | no | The oldest cockpit your plugin actually works against. **Enforced from host 1.0 onwards**: an older host refuses to load you, and the Plugins manager says "Needs a newer cockpit". Ignored entirely while the host is 0.x — enforcing it there would refuse every plugin in existence, because they all claim `1.0.0` and none of them meant it. That is exactly why the 0.x window is when to make it honest: name the first version carrying the contribution points you call, not the number the template happened to ship. This covers a host **theme resource or control style class** your plugin looks up by name too, not just an SDK member — see "Theme tokens and control classes" below; that dependency has no compiler to catch you if you forget it. |
 | `description`, `author` | no | Shown in the Plugins manager and any store catalogue. |
+| `keywords` | no | Extra store search terms (`["Gemini", "Grok"]`), for names that do not belong in your description. The publish workflow copies them to the store index. An older host ignores the field, so it needs no higher `minHostVersion`. |
 
 ## Project setup {#project-setup}
 
@@ -1346,8 +1365,8 @@ What actually happens under the hood, so you can reason about the "restart to ap
     **needs consent again**, same dialog, same pin-on-enable.
   - Previously disabled → **stays disabled** (no dialog) until you re-enable it in the manager.
   - `abstractionsVersion` mismatch → refused outright, regardless of any of the above.
-- **Disable.** Removes its UI contributions and calls `Dispose()`, but the assembly stays loaded (and its
-  folder stays locked) until the process exits — a loaded plugin cannot be truly unloaded.
+- **Disable.** Takes effect at once, see [What a live disable stops](#live-disable), but the assembly stays loaded
+  (and its folder stays locked) until the process exits — a loaded plugin cannot be truly unloaded.
 - **Remove.** Drops a marker file in the plugin's folder; the folder is actually deleted at the **next
   startup** (once the previous process has released the file lock), not immediately.
 - **Restart to apply.** Because of the above, every state change that isn't purely "remove UI" — a fresh
@@ -1668,7 +1687,8 @@ youtrack/youtrack-1.1.0.zip
 youtrack/youtrack-1.2.0.zip
 ```
 
-Note that the catalogue is advertising only: the zip's own `plugin.json` remains the source of truth at
+Note that the catalogue is advertising only (so `requiresRestart` has no index field: it is read from `plugin.json` at
+enable time): the zip's own `plugin.json` remains the source of truth at
 install time, and consent + hash pinning still apply exactly as for a manual zip install. The cockpit's
 plugin-store dialog (categories sidebar, cards, detail panel, search/sort), the pre-seeded default store, and
 the periodic update check all read this same file — see the [README](https://github.com/raymondkrahwinkel/AI-Cockpit/blob/main/README.md#plugins--plugin-store)
@@ -1683,8 +1703,8 @@ store, or open a PR against it to list your plugin alongside the official ones.
 
 ## Plugins that ship with the app {#plugins-that-ship-with-the-app}
 
-Nine plugins are **bundled**: transcript search, git status, Claude Code, the clock, usage trend, the example
-workspace, the example companion tool, Autopilot and Fan-out. They are built with the cockpit, copied into its
+Eight plugins are **bundled**: transcript search, git status, Claude Code, the clock, usage trend, the example
+workspace, the example companion tool and Autopilot. They are built with the cockpit, copied into its
 `bundled-plugins/` output, and installed into the operator's plugins directory on startup — enabled, and without
 the consent dialog (it asks whether you trust third-party code, and these came out of the very build that is
 asking).
@@ -1708,9 +1728,8 @@ to prove their own SDK extension points end to end from outside the host, not be
 — see [Workspace plugins](#workspace-plugins--a-whole-workspace-surface) and
 [Companion tool plugins](#companion-tool-plugins--a-mini-tool-in-the-pop-out-window).
 
-**Autopilot** and **Fan-out** are bundled because they are first-class features of the cockpit itself — the
-issue-to-PR pipeline and running several agents on one task at once — not something bundling merely defaults on,
-the way the clock is.
+**Autopilot** is bundled because it is the cockpit's first-class issue-to-PR pipeline, not something bundling
+merely defaults on, the way the clock is.
 
 A bundled plugin's files are taken from its output folder by wildcard (every `.dll`, every `.deps.json` and
 `plugin.json`), so a bundled plugin that splits into a backend and a UI part ships both without a change to the
@@ -1757,13 +1776,10 @@ they exercise the main contribution points:
 
 **Provider plugins (`host.AddSessionProvider`, #45):**
 
-- **[Gemini / OpenAI Provider](https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/plugins-dev/Cockpit.Plugin.GeminiProvider)** — registers **two**
-  providers (Gemini and OpenAI) from one `Initialize`, both backed by the same persistent-`IChatClient` driver
-  factory over an OpenAI-compatible chat-completions endpoint, differing only in default base URL. Chat-only
-  capabilities (no tools/permissions). Experimental (0.x).
-- **[GitHub Models](https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/plugins-dev/Cockpit.Plugin.GitHubModelsProvider)** — the same OpenAI-compatible
-  driver against GitHub's own Models endpoint (`models.github.ai/inference`), configured with a GitHub PAT
-  (`models:read` scope) instead of a raw API key. Experimental (0.x).
+- **[OpenAI-compatible](https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/plugins-dev/Cockpit.Plugin.GeminiProvider)** — registers
+  **several** providers (Gemini, OpenAI, Groq, Mistral, Cerebras and Custom) from one `Initialize`, all backed by the same
+  persistent-`IChatClient` driver factory over an OpenAI-compatible chat-completions endpoint, differing only in
+  default base URL. Tools run through the host's loop. Experimental (0.x).
 - **[OpenRouter](https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/plugins-dev/Cockpit.Plugin.OpenRouterProvider)** — the same OpenAI-compatible driver
   against OpenRouter's endpoint (`openrouter.ai/api/v1`), model id in OpenRouter's `vendor/model` notation
   (e.g. `anthropic/claude-sonnet-4.5`). Chat-only, same as the other two; declares no usage signals since the
@@ -1797,3 +1813,7 @@ they exercise the main contribution points:
 They all ship their `plugin.json`, use `ConfigureServices` as an empty no-op (their state lives in
 `host.Storage` or is minted fresh per session instead of living in the DI container), and the UI-contribution
 plugins fall back to `SetClipboardTextAsync` when `HasActiveSession` is false.
+
+## Live workflow contributions
+
+SDK 3.67.0 adds `ICockpitHost.WorkflowStepsChanged` (host 0.158.0): subscribe to invalidate a cached workflow engine when a plugin contributes a step, and unsubscribe when disposing. An existing run keeps its engine; subsequent runs read `WorkflowSteps` again.

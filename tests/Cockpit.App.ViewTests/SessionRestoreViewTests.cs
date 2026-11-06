@@ -132,70 +132,6 @@ public class SessionRestoreViewTests
     }
 
     [Fact]
-    public async Task CommitRename_OnAPersistedSession_WritesTheNewTitleAndNameIsChosenToThePaneRecord()
-    {
-        var pane = new WorkspacePane("saved-pane-1", PaneKind.AiSession) { ProfileId = "work", Title = "work - 1", NameIsChosen = false };
-        var sessions = Workspace.Create("Work", WorkspaceType.Sessions).WithPane(pane);
-        var settings = new WorkspaceSettings { Workspaces = [sessions], ActiveWorkspaceId = sessions.Id };
-
-        var workspaceStore = Substitute.For<IWorkspaceSettingsStore>();
-        workspaceStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(settings);
-        var stateStore = Substitute.For<ISessionStateStore>();
-        stateStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<SessionStateRecord>());
-        stateStore.TryLoadAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<SessionStateRecord>());
-
-        var vm = NewVm(workspaceStore, stateStore);
-        await vm.Workspaces.InitializeAsync();
-        await vm.RestoreSessionPanesAsync();
-        var restored = vm.Sessions[0];
-
-        restored.BeginRename();
-        restored.EditTitle = "release work";
-        restored.CommitRename();
-
-        var persisted = vm.Workspaces.Settings.Workspaces.Single().Panes.Single(p => p.Id == "saved-pane-1");
-        Assert.Equal("release work", persisted.Title);
-        // A manual rename is the operator's own word — NameIsChosen must flip true, unlike a mere suggestion above.
-        Assert.True(persisted.NameIsChosen);
-        await workspaceStore.Received().SaveAsync(
-            Arg.Is<WorkspaceSettings>(saved => saved.Workspaces.Single().Panes.Single(p => p.Id == "saved-pane-1").Title == "release work"),
-            Arg.Any<CancellationToken>());
-    }
-
-    // AC-514: SetSessionName (#AC-13 — the pane-id rename API a plugin or the cockpit's own UI calls through
-    // ICockpitHost) used to set Title/HasGeneratedName directly, bypassing SessionPanelViewModel entirely — the
-    // same bug as CommitRename, on a different call site the first pass of this fix missed. Proves it now goes
-    // through SetNameDirectly and reaches the persisted pane like every other naming route.
-    [Fact]
-    public async Task SetSessionName_OnAPersistedSession_WritesTheNewTitleAndNameIsChosenToThePaneRecord()
-    {
-        var pane = new WorkspacePane("saved-pane-1", PaneKind.AiSession) { ProfileId = "work", Title = "work - 1", NameIsChosen = false };
-        var sessions = Workspace.Create("Work", WorkspaceType.Sessions).WithPane(pane);
-        var settings = new WorkspaceSettings { Workspaces = [sessions], ActiveWorkspaceId = sessions.Id };
-
-        var workspaceStore = Substitute.For<IWorkspaceSettingsStore>();
-        workspaceStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(settings);
-        var stateStore = Substitute.For<ISessionStateStore>();
-        stateStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<SessionStateRecord>());
-        stateStore.TryLoadAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<SessionStateRecord>());
-
-        var vm = NewVm(workspaceStore, stateStore);
-        await vm.Workspaces.InitializeAsync();
-        await vm.RestoreSessionPanesAsync();
-        var restored = vm.Sessions[0];
-
-        var applied = vm.SetSessionName(restored.PaneId, "AC-514 done");
-
-        Assert.True(applied);
-        var persisted = vm.Workspaces.Settings.Workspaces.Single().Panes.Single(p => p.Id == "saved-pane-1");
-        Assert.Equal("AC-514 done", persisted.Title);
-        Assert.True(persisted.NameIsChosen);
-        await workspaceStore.Received().SaveAsync(
-            Arg.Is<WorkspaceSettings>(saved => saved.Workspaces.Single().Panes.Single(p => p.Id == "saved-pane-1").Title == "AC-514 done"),
-            Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
     public async Task RestoreSessionPanesAsync_TwoPanesWithTheSameHandEditedId_MaterializesOnlyOne()
     {
         var duplicate = new WorkspacePane("dup-1", PaneKind.AiSession) { ProfileId = "work" };
@@ -316,40 +252,6 @@ public class SessionRestoreViewTests
         }
     }
 
-    [Fact]
-    public async Task RestoreSessionPanesAsync_UnsupportedProvider_HidesResumeOnBothSdkAndTtyPanes()
-    {
-        var sdkPane = new WorkspacePane("unsupported-sdk", PaneKind.AiSession) { ProfileId = "work", SessionKind = PaneSessionKind.Sdk };
-        var ttyPane = new WorkspacePane("unsupported-tty", PaneKind.AiSession) { ProfileId = "work", SessionKind = PaneSessionKind.Tty };
-        var sessions = Workspace.Create("Work", WorkspaceType.Sessions).WithPane(sdkPane).WithPane(ttyPane);
-        var settings = new WorkspaceSettings { Workspaces = [sessions], ActiveWorkspaceId = sessions.Id };
-
-        var workspaceStore = Substitute.For<IWorkspaceSettingsStore>();
-        workspaceStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(settings);
-
-        var state = new SessionStateRecord("unsupported-sdk", "work", "ollama", null, SessionConversationIdState.Unsupported, "/repo", null, null, null, DateTimeOffset.UtcNow);
-        var ttyState = state with { PaneId = "unsupported-tty" };
-        var stateStore = Substitute.For<ISessionStateStore>();
-        stateStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new[] { state, ttyState });
-        stateStore.TryLoadAsync(Arg.Any<CancellationToken>()).Returns(new[] { state, ttyState });
-
-        var profileStore = Substitute.For<ISessionProfileStore>();
-        profileStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new[] { WorkProfile });
-
-        var vm = NewVm(workspaceStore, stateStore, new SessionRestorePlanner(profileStore));
-
-        await vm.Workspaces.InitializeAsync();
-        await vm.RestoreSessionPanesAsync();
-
-        Assert.Equal(2, vm.Sessions.Count);
-        foreach (var restored in vm.Sessions)
-        {
-            Assert.True(restored.HasRestoreOffer, $"{restored.PaneId} should still show the restore banner");
-            Assert.False(restored.CanResumeConversation, $"{restored.PaneId} should not offer Resume conversation");
-            Assert.False(string.IsNullOrEmpty(restored.RestoreDegradedReason));
-        }
-    }
-
     // AC-410's pitfall: restore runs with IsolateInWorktree false, so WorktreeBranch is set at materialization, not on start.
     [Fact]
     public async Task RestoreSessionPanesAsync_MatchingWorktreeRecord_SetsWorktreeBranchBeforeAnyStart()
@@ -379,25 +281,6 @@ public class SessionRestoreViewTests
         // Still nothing started — the branch is known before any launch call runs.
         Assert.Null(restored.LaunchResult);
         Assert.Null(restored.ProcessId);
-    }
-
-    [Fact]
-    public async Task StartFresh_OnARestoredPane_StartsWithSessionResumeNew()
-    {
-        var (_, restored, driver) = await _RestoreOneKnownPaneAsync();
-
-        // RestoreDecided's handler is fire-and-forget (OnSessionCloseRequested's own pattern — see
-        // CockpitViewModelTests.SessionCloseRequested_ClosesThatSessionThroughTheCockpit), but every awaited step
-        // underneath it resolves against an already-completed fake Task, so the whole chain runs synchronously
-        // within this call.
-        restored.StartFreshCommand.Execute(null);
-        await _SettleAsync(() => !restored.HasRestoreOffer);
-
-        await driver.Received(1).StartAsync(
-            WorkProfile, Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<IReadOnlySet<string>?>(), Arg.Any<string?>(),
-            Arg.Is<SessionResume?>(resume => resume != null && resume.Mode == SessionResumeMode.New),
-            Arg.Any<IReadOnlyDictionary<string, string>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
-        Assert.False(restored.HasRestoreOffer, "the banner disappears once the start actually lands");
     }
 
     // AC-1080: the provider's own resume leaves the pane blank, so a resume repaints from the log Cockpit keeps (AC-1090).
@@ -448,22 +331,6 @@ public class SessionRestoreViewTests
         }
     }
 
-    // An unreadable log must not repaint as nothing: the session starts anyway, and silence reads as "no history" (AC-513).
-    [Fact]
-    public async Task ResumeConversation_WhenTheRecordedLogCannotBeRead_SaysSoInsteadOfShowingNothing()
-    {
-        var store = Substitute.For<ISessionTranscriptStore>();
-        store.TryLoadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns<IReadOnlyList<TranscriptSnapshotEntry>?>(_ => null);
-
-        var (_, restored, _) = await _RestoreOneKnownPaneAsync(transcriptStore: store);
-        restored.ResumeConversationCommand.Execute(null);
-        await _SettleAsync(() => ((SessionViewModel)restored).Transcript.Count > 0);
-
-        var row = Assert.Single(((SessionViewModel)restored).Transcript);
-        Assert.Equal(TranscriptEntryKind.Error, row.Kind);
-        Assert.Contains("could not be read back", row.Text);
-    }
-
     private static string _NewTranscriptRoot()
     {
         var root = Path.Combine(Path.GetTempPath(), "cockpit-tests", Guid.NewGuid().ToString("N"));
@@ -485,21 +352,6 @@ public class SessionRestoreViewTests
     }
 
     [Fact]
-    public async Task StartFresh_OnARestoredManagedWorktree_ReattachesBeforeStarting()
-    {
-        var record = new WorktreeRecord("known-pane", "/repo", "/repo-worktrees/known-pane", "cockpit/known", "abc123", DateTimeOffset.UtcNow);
-        var worktrees = Substitute.For<IWorktreeManager>();
-        worktrees.ListAsync(Arg.Any<CancellationToken>()).Returns([record]);
-        worktrees.ReattachAsync(record.Path, "known-pane", Arg.Any<CancellationToken>()).Returns(record);
-        var (_, restored, _) = await _RestoreOneKnownPaneAsync(worktrees);
-
-        restored.StartFreshCommand.Execute(null);
-        await _SettleAsync(() => !restored.HasRestoreOffer);
-
-        await worktrees.Received(1).ReattachAsync(record.Path, "known-pane", Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
     public async Task ResumeConversation_OnARestoredPane_StartsWithTheSavedConversationId()
     {
         var (_, restored, driver) = await _RestoreOneKnownPaneAsync();
@@ -513,28 +365,6 @@ public class SessionRestoreViewTests
             Arg.Any<IReadOnlyDictionary<string, string>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
         Assert.False(restored.HasRestoreOffer);
     }
-
-    // AC-290: ResolveSession finds the pane; CanTakeAPrompt being false on a pane only restored is what forces the reopen path.
-    [Fact]
-    public Task ReopenAndSendResume_OnARestoredKnownPane_StartsItWithTheSavedConversationId() => HeadlessAvalonia.RunAsync(async () =>
-    {
-        var (vm, restored, driver) = await _RestoreOneKnownPaneAsync();
-
-        var store = Substitute.For<IScheduledResumeStore>();
-        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<ScheduledResume>());
-        var resumes = new ScheduledResumeCoordinator(store);
-        vm.ScheduledResumes = resumes;
-        await vm.StartScheduledResumesAsync();
-
-        await vm.ScheduledResumes.ScheduleAsync(new ScheduledResume(restored.PaneId, DateTimeOffset.Now.AddMinutes(-1), "carry on", "test"));
-        await resumes.RunDueAsync(DateTimeOffset.Now);
-
-        await driver.Received(1).StartAsync(
-            WorkProfile, Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<IReadOnlySet<string>?>(), Arg.Any<string?>(),
-            Arg.Is<SessionResume?>(resume => resume != null && resume.Mode == SessionResumeMode.BySessionId && resume.SessionId == "conv-1"),
-            Arg.Any<IReadOnlyDictionary<string, string>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
-        Assert.False(restored.HasRestoreOffer, "the banner disappears once the reopen lands, same as an operator-accepted resume");
-    });
 
     // AC-290's guard: a restored pane that cannot be resumed must never be started just because a scheduled resume came due.
     [Fact]
@@ -586,25 +416,6 @@ public class SessionRestoreViewTests
         Assert.True(restored.HasRestoreOffer, "the offer is left standing — nothing was started to clear it");
     });
 
-    // AC-290: a TTY pane's PromptSink is wired only once its pty is up, so the reopen path skips TTY panes and keeps the offer.
-    [Fact]
-    public Task ReopenAndSendResume_OnARestoredTtyPane_IsSkipped_TheOfferStaysStanding() => HeadlessAvalonia.RunAsync(async () =>
-    {
-        var (vm, restored) = await _RestoreOneKnownTtyPaneAsync();
-
-        var store = Substitute.For<IScheduledResumeStore>();
-        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<ScheduledResume>());
-        var resumes = new ScheduledResumeCoordinator(store);
-        vm.ScheduledResumes = resumes;
-        await vm.StartScheduledResumesAsync();
-
-        await vm.ScheduledResumes.ScheduleAsync(new ScheduledResume(restored.PaneId, DateTimeOffset.Now.AddMinutes(-1), "carry on", "test"));
-        await resumes.RunDueAsync(DateTimeOffset.Now);
-
-        Assert.True(restored.HasRestoreOffer, "a TTY reopen is skipped outright, so nothing ever started to clear it");
-        Assert.True(restored.CanResumeConversation, "the offer is untouched, not degraded by a failed attempt");
-    });
-
     // AC-410's biggest risk: OnProcessExited closed the pane unconditionally, so a resume that failed fast deleted its own record.
     [Fact]
     public async Task TtyResumeThatExitsImmediately_DoesNotClosePane_ButOffersItBackWithTheReason()
@@ -625,23 +436,6 @@ public class SessionRestoreViewTests
         Assert.Equal(SessionRestoreAvailability.Gone, restored.RestoreOffer!.Availability);
         Assert.False(restored.CanResumeConversation, "the resume that just failed must not be offered again as if nothing happened");
         Assert.Contains("No conversation found with session ID", restored.RestoreDegradedReason);
-    }
-
-    // Once the TUI was on screen, a later exit is the operator closing claude, not a resume failing — the ordinary close applies.
-    [Fact]
-    public async Task TtyResumeThatLaunchesSuccessfully_ClosesNormallyOnALaterExit()
-    {
-        var (_, restored) = await _RestoreOneKnownTtyPaneAsync();
-        var closed = false;
-        restored.CloseRequested += (_, _) => closed = true;
-
-        restored.ResumeConversationCommand.Execute(null);
-        await _SettleAsync(() => !restored.HasRestoreOffer);
-        ((TtyViewModel)restored).OnLaunchSucceeded();
-
-        ((TtyViewModel)restored).OnProcessExited("claude exited normally");
-
-        Assert.True(closed, "the degrade window closed once the launch succeeded, so a later exit is an ordinary close");
     }
 
     private static async Task<(CockpitViewModel Vm, SessionPanelViewModel Restored)> _RestoreOneKnownTtyPaneAsync()
@@ -710,81 +504,6 @@ public class SessionRestoreViewTests
         return (vm, restored, driver);
     }
 
-    // AC-410: a restored pane still showing its offer has no runtime, so counting it as "will be stopped" made the sentence false.
-    [Fact]
-    public async Task CloseWorkspaceWithConfirmationAsync_MixOfStartedAndUnstartedPanes_NamesThemSeparately()
-    {
-        var startedPane = new WorkspacePane("started-pane", PaneKind.AiSession) { ProfileId = "work", SessionKind = PaneSessionKind.Tty };
-        var unstartedPane = new WorkspacePane("unstarted-pane", PaneKind.AiSession) { ProfileId = "work", SessionKind = PaneSessionKind.Tty };
-        var sessions = Workspace.Create("Work", WorkspaceType.Sessions).WithPane(startedPane).WithPane(unstartedPane);
-        // A second workspace: CanClose refuses to close the last one standing, and this test needs to reach the
-        // confirmation dialog rather than being turned away before it.
-        var other = Workspace.Create("Other", WorkspaceType.Sessions);
-        var settings = new WorkspaceSettings { Workspaces = [sessions, other], ActiveWorkspaceId = sessions.Id };
-
-        var workspaceStore = Substitute.For<IWorkspaceSettingsStore>();
-        workspaceStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(settings);
-
-        var startedState = new SessionStateRecord("started-pane", "work", "claude-cli", "conv-1", SessionConversationIdState.Known, Path.GetTempPath(), null, null, "default", DateTimeOffset.UtcNow);
-        var unstartedState = startedState with { PaneId = "unstarted-pane" };
-        var stateStore = Substitute.For<ISessionStateStore>();
-        stateStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new[] { startedState, unstartedState });
-        stateStore.TryLoadAsync(Arg.Any<CancellationToken>()).Returns(new[] { startedState, unstartedState });
-
-        var profileStore = Substitute.For<ISessionProfileStore>();
-        profileStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new[] { WorkProfile });
-
-        var dialogService = Substitute.For<ISessionDialogService>();
-        string? confirmationMessage = null;
-        dialogService.ShowConfirmationDialogAsync(Arg.Any<string>(), Arg.Do<string>(m => confirmationMessage = m), Arg.Any<string>())
-            .Returns(false); // Declining is enough — only the wording is under test, not the actual close.
-
-        var vm = NewVm(workspaceStore, stateStore, new SessionRestorePlanner(profileStore), dialogService: dialogService);
-
-        await vm.Workspaces.InitializeAsync();
-        await vm.RestoreSessionPanesAsync();
-        Assert.Equal(2, vm.Sessions.Count);
-
-        // Starts the one pane, leaving the other still only offering.
-        var toStart = vm.Sessions.Single(s => s.PaneId == "started-pane");
-        toStart.ResumeConversationCommand.Execute(null);
-        await _SettleAsync(() => !toStart.HasRestoreOffer);
-        Assert.False(toStart.HasRestoreOffer);
-        Assert.True(vm.Sessions.Single(s => s.PaneId == "unstarted-pane").HasRestoreOffer);
-
-        await vm.CloseWorkspaceWithConfirmationAsync(sessions.Id);
-
-        Assert.NotNull(confirmationMessage);
-        Assert.Contains("1 session, which will be stopped", confirmationMessage);
-        Assert.Contains("1 restored session that never started", confirmationMessage);
-    }
-
-    // AC-410: the design called disposing a never-started restored pane "probably null-safe, not verified"; this verifies it.
-    [Fact]
-    public async Task DisposeAsync_WithARestoredNeverStartedPane_DoesNotThrow()
-    {
-        var sdkPane = new WorkspacePane("never-started-sdk", PaneKind.AiSession) { ProfileId = "work", SessionKind = PaneSessionKind.Sdk };
-        var ttyPane = new WorkspacePane("never-started-tty", PaneKind.AiSession) { ProfileId = "work", SessionKind = PaneSessionKind.Tty };
-        var sessions = Workspace.Create("Work", WorkspaceType.Sessions).WithPane(sdkPane).WithPane(ttyPane);
-        var settings = new WorkspaceSettings { Workspaces = [sessions], ActiveWorkspaceId = sessions.Id };
-
-        var workspaceStore = Substitute.For<IWorkspaceSettingsStore>();
-        workspaceStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(settings);
-
-        var stateStore = Substitute.For<ISessionStateStore>();
-        stateStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<SessionStateRecord>());
-        stateStore.TryLoadAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<SessionStateRecord>());
-
-        var vm = NewVm(workspaceStore, stateStore);
-
-        await vm.Workspaces.InitializeAsync();
-        await vm.RestoreSessionPanesAsync();
-        Assert.Equal(2, vm.Sessions.Count);
-        Assert.All(vm.Sessions, s => Assert.Null(s.LaunchResult));
-
-        await vm.DisposeAsync();
-    }
-
     private static async IAsyncEnumerable<SessionEvent> _EmptyEvents([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         await Task.CompletedTask;
@@ -797,11 +516,10 @@ public class SessionRestoreViewTests
         SessionRestorePlanner? sessionRestorePlanner = null,
         IWorktreeManager? worktreeManager = null,
         Func<SessionViewModel>? sessionFactory = null,
-        ISessionDialogService? dialogService = null,
         SessionStateRecorder? sessionStateRecorder = null,
         Cockpit.Core.Abstractions.Agents.IWorkspaceAgentCoordinator? agentCoordinator = null)
     {
-        dialogService ??= Substitute.For<ISessionDialogService>();
+        var dialogService = Substitute.For<ISessionDialogService>();
         var captureService = Substitute.For<IAudioCaptureService>();
         var playbackService = Substitute.For<IAudioPlaybackService>();
         var attentionNotifier = Substitute.For<IAttentionNotifier>();

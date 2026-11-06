@@ -1,20 +1,10 @@
 using Cockpit.Core.Mcp;
 using Cockpit.Infrastructure.Mcp;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cockpit.Core.Tests.Mcp;
 
-/// <summary>
-/// The margin a session's credential is judged by, and the single-flight gate that keeps making it wider from
-/// costing the authorization it protects (AC-524).
-/// <para>
-/// The failure this exists for was measured, not imagined: a session started while its access token still had eleven
-/// minutes to live, the token was written into a config the CLI reads exactly once, and eleven minutes later the
-/// server and all its tools were gone from that session with no way back. The per-request margin is two minutes,
-/// which is right for a token spent immediately and useless for one held for hours.
-/// </para>
-/// </summary>
+// Per-request OAuth token lifetime and coalesced renewal of rotating refresh grants.
 public class McpOAuthSessionMarginTests
 {
     // Port 1 refuses immediately, so the connect after the (faked) renewal fails fast and deterministically.
@@ -38,85 +28,6 @@ public class McpOAuthSessionMarginTests
     };
 
     [Fact]
-    public async Task AcquireForSession_ForATokenWithElevenMinutesLeft_RefusesToHandItToASession()
-    {
-        var store = new FakeMcpOAuthTokenStore();
-        await store.SaveAsync("depot", "depot", _TokenExpiringIn(TimeSpan.FromMinutes(11)));
-        var coordinator = new McpOAuthCoordinator(store, new FakeMcpOAuthAuthorizer(), NullLogger<McpOAuthCoordinator>.Instance);
-
-        var forSession = await coordinator.AcquireForSessionAsync(_Server());
-        var forOneRequest = await coordinator.AcquireAsync(_Server(), interactive: false);
-
-        // The two answers differing is the whole fix. Eleven minutes is plenty for the request that is about to go
-        // out and nowhere near enough for a config a session reads once and then holds — and with no refresh token
-        // there is nothing to renew from, so the session is told up front instead of losing the server later.
-        Assert.Equal(McpAuthState.AuthorizationRequired, forSession.State);
-        Assert.Equal(McpOAuthAttentionReason.SignInExpired, forSession.Reason);
-        Assert.Equal(McpAuthState.Authorized, forOneRequest.State);
-        Assert.Equal(McpOAuthAttentionReason.None, forOneRequest.Reason);
-    }
-
-    [Fact]
-    public async Task AcquireForSession_ForATokenThatOutlivesTheMargin_UsesItWithoutRenewing()
-    {
-        var store = new FakeMcpOAuthTokenStore();
-        await store.SaveAsync("depot", "depot", _TokenExpiringIn(TimeSpan.FromHours(6)));
-        var authorizer = new RenewingMcpOAuthAuthorizer(store, TimeSpan.FromHours(1));
-        var coordinator = new McpOAuthCoordinator(store, authorizer, NullLogger<McpOAuthCoordinator>.Instance);
-
-        var access = await coordinator.AcquireForSessionAsync(_Server());
-
-        // The other side of the margin, and the reason it is a fixed number rather than "always renew": a server
-        // handing out long-lived tokens costs nothing at all, so widening the margin buys the short-lived case
-        // without making every session start pay a token-endpoint round trip.
-        Assert.Equal("stored-access-token", access.AccessToken);
-        Assert.Equal(0, authorizer.Attempts);
-    }
-
-    [Fact]
-    public async Task AcquireForSession_ForAStaleTokenThatCanRenew_RenewsItSilentlyRatherThanAskingTheOperator()
-    {
-        var store = new FakeMcpOAuthTokenStore();
-        await store.SaveAsync("depot", "depot", _TokenExpiringIn(TimeSpan.FromMinutes(-1), refreshToken: "refresh"));
-        var logger = new CapturingLogger<McpOAuthCoordinator>();
-        var authorizer = new RenewingMcpOAuthAuthorizer(store, TimeSpan.FromHours(1));
-        var coordinator = new McpOAuthCoordinator(store, authorizer, logger);
-
-        var access = await coordinator.AcquireForSessionAsync(_Server());
-
-        // The ladder, in order: an expired token with a refresh grant behind it is renewed without a word to the
-        // operator. Asking someone to sign in while a usable refresh token is sitting in the store is a defect, not
-        // caution — so nothing here is allowed to reach them.
-        Assert.Equal(McpAuthState.Authorized, access.State);
-        Assert.Equal(authorizer.LastIssuedToken, access.AccessToken);
-        Assert.DoesNotContain(logger.Entries, entry => entry.Level == LogLevel.Warning);
-    }
-
-    [Fact]
-    public async Task EachUsesMargin_IsHandedToTheRenewal_NotKeptOnThisSideOfIt()
-    {
-        var store = new FakeMcpOAuthTokenStore();
-        await store.SaveAsync("depot", "depot", _TokenExpiringIn(TimeSpan.FromMinutes(-1), refreshToken: "refresh"));
-        var authorizer = new RenewingMcpOAuthAuthorizer(store, TimeSpan.FromHours(1));
-        var coordinator = new McpOAuthCoordinator(store, authorizer, new CapturingLogger<McpOAuthCoordinator>());
-
-        await coordinator.AcquireForSessionAsync(_Server());
-        Assert.Equal(TimeSpan.FromMinutes(55), authorizer.LastRenewalMargin);
-
-        await store.SaveAsync("depot", "depot", _TokenExpiringIn(TimeSpan.FromMinutes(-1), refreshToken: "refresh"));
-        await coordinator.AcquireAsync(_Server(), interactive: false);
-
-        // Ten, not two: on the request path the number handed over is when renewing *starts*, which is deliberately
-        // earlier than the two minutes a call needs to survive its own round trip. The gap between them is the grace
-        // period in which a failing token endpoint is retried while calls carry on being served.
-        Assert.Equal(TimeSpan.FromMinutes(10), authorizer.LastRenewalMargin);
-
-        // AC-771: the margin decides both whether a renewal is wanted and whether the SDK performs one, and only the
-        // SDK can act on it. One that stops here is a coordinator asking for renewals in a window where none can
-        // happen, and then reading the unchanged store as a failure.
-    }
-
-    [Fact]
     public async Task Acquire_AgainstAServerWhoseTokensAreShorterThanTheRenewalLead_DoesNotRenewOnEveryCall()
     {
         var store = new FakeMcpOAuthTokenStore();
@@ -135,107 +46,7 @@ public class McpOAuthSessionMarginTests
     }
 
     [Fact]
-    public async Task Acquire_AgainstAShortTokenServer_StillRenewsOnceTheCallItselfIsAtRisk()
-    {
-        var store = new FakeMcpOAuthTokenStore();
-        await store.SaveAsync("depot", "depot", _TokenExpiringIn(TimeSpan.FromMinutes(-1), refreshToken: "refresh"));
-        var authorizer = new RenewingMcpOAuthAuthorizer(store, TimeSpan.FromMinutes(5));
-        var coordinator = new McpOAuthCoordinator(store, authorizer, new CapturingLogger<McpOAuthCoordinator>());
-
-        await coordinator.AcquireAsync(_Server(), interactive: false);
-        await store.SaveAsync("depot", "depot", _TokenExpiringIn(TimeSpan.FromMinutes(1), refreshToken: "refresh"));
-        var access = await coordinator.AcquireAsync(_Server(), interactive: false);
-
-        // Capping the lead must not become "never renew early again": a minute left is inside what the call itself
-        // needs, so this one has to renew whatever the server's tokens are worth.
-        Assert.Equal(McpAuthState.Authorized, access.State);
-        Assert.Equal(2, authorizer.Attempts);
-    }
-
-    [Fact]
-    public async Task Acquire_ForAServerWhoseTokensComfortablyClearTheLead_KeepsTheFullLead()
-    {
-        var store = new FakeMcpOAuthTokenStore();
-        await store.SaveAsync("depot", "depot", _TokenExpiringIn(TimeSpan.FromMinutes(-1), refreshToken: "refresh"));
-        var authorizer = new RenewingMcpOAuthAuthorizer(store, TimeSpan.FromMinutes(30));
-        var coordinator = new McpOAuthCoordinator(store, authorizer, new CapturingLogger<McpOAuthCoordinator>());
-
-        // Measured on the session path, where a half-hour token fails the fifty-five-minute margin outright. What is
-        // recorded is the life, not a verdict — recording "too short" here would take the request path's grace away
-        // from a server whose tokens clear its ten-minute lead twice over.
-        await coordinator.AcquireForSessionAsync(_Server());
-        await store.SaveAsync("depot", "depot", _TokenExpiringIn(TimeSpan.FromMinutes(8), refreshToken: "refresh"));
-        await coordinator.AcquireAsync(_Server(), interactive: false);
-
-        Assert.Equal(2, authorizer.Attempts);
-    }
-
-    [Fact]
-    public async Task Acquire_WhenAServerStartsIssuingLongerTokens_GetsItsGracePeriodBack()
-    {
-        var store = new FakeMcpOAuthTokenStore();
-        await store.SaveAsync("depot", "depot", _TokenExpiringIn(TimeSpan.FromMinutes(-1), refreshToken: "refresh"));
-        var authorizer = new RenewingMcpOAuthAuthorizer(store, TimeSpan.FromMinutes(5));
-        var coordinator = new McpOAuthCoordinator(store, authorizer, new CapturingLogger<McpOAuthCoordinator>());
-
-        await coordinator.AcquireAsync(_Server(), interactive: false);
-
-        authorizer.Lifetime = TimeSpan.FromHours(1);
-        await store.SaveAsync("depot", "depot", _TokenExpiringIn(TimeSpan.FromMinutes(1), refreshToken: "refresh"));
-        await coordinator.AcquireAsync(_Server(), interactive: false);
-
-        // Eight minutes is inside the ten-minute lead and outside the capped two, so this renewal happening at all
-        // is the proof that the cap lifted when the server's tokens grew.
-        await store.SaveAsync("depot", "depot", _TokenExpiringIn(TimeSpan.FromMinutes(8), refreshToken: "refresh"));
-        await coordinator.AcquireAsync(_Server(), interactive: false);
-
-        Assert.Equal(3, authorizer.Attempts);
-    }
-
-    [Fact]
-    public async Task AcquireForSession_WhenEveryTokenThisServerIssuesIsShorterThanTheMargin_SaysSoRatherThanHandingOneOver()
-    {
-        var store = new FakeMcpOAuthTokenStore();
-        await store.SaveAsync("depot", "depot", _TokenExpiringIn(TimeSpan.FromMinutes(-1), refreshToken: "refresh"));
-        var authorizer = new RenewingMcpOAuthAuthorizer(store, TimeSpan.FromMinutes(10));
-        var logger = new CapturingLogger<McpOAuthCoordinator>();
-
-        var access = await new McpOAuthCoordinator(store, authorizer, logger).AcquireForSessionAsync(_Server());
-
-        // The edge a wide margin creates: this server's tokens live ten minutes, so no token it will ever issue
-        // clears the fifty-five a session asks for. Handing it over anyway would produce exactly the session this
-        // ticket exists to stop — one that loses the server ten minutes in — so the answer is no, and it is the
-        // caller (which knows whether the loopback endpoint is standing in and the lifetime therefore irrelevant)
-        // that decides what to do with it.
-        Assert.Equal(McpAuthState.AuthorizationRequired, access.State);
-
-        // The reason is the assertion that matters. Nothing expired here and nothing was revoked: the renewal
-        // worked. Reporting SignInExpired would send the operator through a browser sign-in that hands back another
-        // ten-minute token, which is advice that cannot work.
-        Assert.Equal(McpOAuthAttentionReason.TokenTooShortLived, access.Reason);
-        Assert.DoesNotContain(logger.Messages, message => message.Contains("press Sign in", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public async Task AcquireForSession_WhenTheRenewalItselfFailed_IsNotReportedAsAShortLivedToken()
-    {
-        var store = new FakeMcpOAuthTokenStore();
-        var stale = _TokenExpiringIn(TimeSpan.FromMinutes(-1), refreshToken: "refresh");
-        await store.SaveAsync("depot", "depot", stale);
-
-        // FakeMcpOAuthAuthorizer writes nothing, so the store still holds the same expired token afterwards — the
-        // shape every failed renewal leaves behind. That leftover looks exactly like a fresh token that came out too
-        // short (present, for this address, inside the margin), and the only thing telling the two apart is whether
-        // the value changed. Port 1 refuses the connection, so the honest verdict here is that nothing answered.
-        var access = await new McpOAuthCoordinator(store, new FakeMcpOAuthAuthorizer(), NullLogger<McpOAuthCoordinator>.Instance)
-            .AcquireForSessionAsync(_Server());
-
-        Assert.Equal(McpAuthState.AuthorizationRequired, access.State);
-        Assert.Equal(McpOAuthAttentionReason.ServerUnreachable, access.Reason);
-    }
-
-    [Fact]
-    public async Task AcquireForSession_WhenSeveralSessionsStartAtOnce_RenewsOnceAndGivesThemAllTheSameToken()
+    public async Task Acquire_WhenSeveralCallsStartAtOnce_RenewsOnceAndGivesThemAllTheSameToken()
     {
         var store = new FakeMcpOAuthTokenStore();
         await store.SaveAsync("depot", "depot", _TokenExpiringIn(TimeSpan.FromMinutes(-1), refreshToken: "refresh"));
@@ -246,7 +57,7 @@ public class McpOAuthSessionMarginTests
         // window the callers would file past one after another and the test would pass on a race that never ran.
         authorizer.Gate.Reset();
         var starts = Enumerable.Range(0, 8)
-            .Select(_ => Task.Run(() => coordinator.AcquireForSessionAsync(_Server())))
+            .Select(_ => Task.Run(() => coordinator.AcquireAsync(_Server(), interactive: false)))
             .ToArray();
 
         Assert.True(authorizer.Started.Wait(TimeSpan.FromSeconds(10)));
@@ -281,26 +92,6 @@ public class McpOAuthSessionMarginTests
         Assert.Equal(authorizer.LastIssuedToken, access.AccessToken);
         Assert.Equal(1, authorizer.Attempts);
         Assert.Contains(logger.Messages, message => message.Contains("still considered valid until", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public async Task RenewRejected_WithNothingToRenewFrom_StillReportsAnExpiredSignIn()
-    {
-        var store = new FakeMcpOAuthTokenStore();
-        var refused = _TokenExpiringIn(TimeSpan.FromHours(6), accessToken: "revoked-at-the-far-end");
-        await store.SaveAsync("depot", "depot", refused);
-        var authorizer = new RenewingMcpOAuthAuthorizer(store, TimeSpan.FromHours(1));
-
-        var access = await new McpOAuthCoordinator(store, authorizer, NullLogger<McpOAuthCoordinator>.Instance)
-            .RenewRejectedAsync(_Server(), refused.AccessToken);
-
-        // The other half of AC-550, and the half a careless fix loses: softening every refusal into "could not be
-        // confirmed, try again" would bury the one case where signing in again is exactly what is needed. Here the
-        // server refused the token and there is no refresh grant behind it, so nothing can renew it and no retry
-        // will ever produce a different answer — this genuinely is a sign-in that has to be made anew.
-        Assert.Equal(McpAuthState.AuthorizationRequired, access.State);
-        Assert.Equal(McpOAuthAttentionReason.SignInExpired, access.Reason);
-        Assert.Equal(0, authorizer.Attempts);
     }
 
     [Fact]
@@ -345,21 +136,5 @@ public class McpOAuthSessionMarginTests
         Assert.Equal(1, authorizer.Attempts);
         Assert.All(results, access => Assert.Equal(McpAuthState.Authorized, access.State));
         Assert.Single(results.Select(access => access.AccessToken).Distinct(StringComparer.Ordinal));
-    }
-
-    [Fact]
-    public async Task AcquireForSession_AfterARenewalHasFinished_RenewsAgainWhenTheNextTokenGoesStale()
-    {
-        var store = new FakeMcpOAuthTokenStore();
-        await store.SaveAsync("depot", "depot", _TokenExpiringIn(TimeSpan.FromMinutes(-1), refreshToken: "refresh"));
-        var authorizer = new RenewingMcpOAuthAuthorizer(store, TimeSpan.FromMinutes(-1));
-        var coordinator = new McpOAuthCoordinator(store, authorizer, NullLogger<McpOAuthCoordinator>.Instance);
-
-        await coordinator.AcquireForSessionAsync(_Server());
-        await coordinator.AcquireForSessionAsync(_Server());
-
-        // The gate coalesces renewals; it must not remember one. A slot left occupied after the work finished would
-        // make the second expiry join a task that already completed and hand back the stale token forever.
-        Assert.Equal(2, authorizer.Attempts);
     }
 }

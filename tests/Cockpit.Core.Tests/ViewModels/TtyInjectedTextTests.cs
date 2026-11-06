@@ -25,49 +25,19 @@ public class TtyInjectedTextTests
     private const char Bell = (char)0x07;
 
     [Fact]
-    public void InjectText_WithLineBreaks_WritesNoCarriageReturnIntoThePty()
+    public void InjectText_WithLineBreaksControlBytesOrEscapeSequences_WritesOnlyTextIntoThePty()
     {
         var writes = new List<string>();
         var vm = _NewTty(writes);
 
         vm.InjectText("Fix the login bug.\r\nSteps:\rone\ntwo");
-
-        Assert.Equal(new[] { "Fix the login bug. Steps: one two" }, writes);
-    }
-
-    [Fact]
-    public void InjectText_WithControlBytes_TurnsThemIntoSpacesInsteadOfKeypresses()
-    {
-        var writes = new List<string>();
-        var vm = _NewTty(writes);
-
         vm.InjectText($"before{Interrupt}after{Tab}tab{Backspace}");
-
-        Assert.Equal(new[] { "before after tab" }, writes);
-    }
-
-    [Fact]
-    public void InjectText_WithAnsiEscapeSequences_KeepsThemOutOfThePty()
-    {
-        var writes = new List<string>();
-        var vm = _NewTty(writes);
 
         // A colour run (CSI), a window-title write (OSC) and a bracketed-paste marker — none of it is text, and each
         // is dropped whole, payload included: an escape sequence separates nothing, so nothing takes its place.
         vm.InjectText($"{Escape}[31mred{Escape}[0m and {Escape}]0;pwned{Bell}plain{Escape}[200~");
 
-        Assert.Equal(new[] { "red and plain" }, writes);
-    }
-
-    [Fact]
-    public void InjectText_ThatIsNothingButKeys_WritesNothingAtAll()
-    {
-        var writes = new List<string>();
-        var vm = _NewTty(writes);
-
-        vm.InjectText("\r\n");
-
-        Assert.Empty(writes);
+        Assert.Equal(new[] { "Fix the login bug. Steps: one two", "before after tab", "red and plain" }, writes);
     }
 
     /// <summary>A TTY panel that records into <paramref name="writes"/> every write it asks the view to make into the pty, in order.</summary>

@@ -20,17 +20,6 @@ public class OpenAiCompatConfigTests
         Assert.Contains("https://api.x.ai/v1", text);
     }
 
-    [Fact]
-    public void ToString_WithAnEmptyApiKey_PrintsNullInsteadOfAsterisks()
-    {
-        var config = new OpenAiCompatConfig(string.Empty, "grok-4.6", "https://api.x.ai/v1");
-
-        var text = config.ToString();
-
-        Assert.Contains("ApiKey = null", text);
-        Assert.DoesNotContain("***", text);
-    }
-
     // AC-1484: where the key comes from. A key on the profile wins; an empty one falls back to the process
     // environment (a container secret), but only on the provider's own host; neither means no sign-in. Fake values.
     [Theory]

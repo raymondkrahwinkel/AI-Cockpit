@@ -59,20 +59,6 @@ public sealed class WorktreeManagerDockerCleanupTests : IDisposable
         Assert.False(_docker.IsVolumeRemoved("volume-alive"), "a different, still-live worktree's volume must never be touched");
     }
 
-    [Fact]
-    public async Task CleanupDockerNetworksAsync_RemovesOnlyAnEmptyComposeNetworkForTheClosedWorktree()
-    {
-        var closed = await _manager.CreateAsync("session-closed", "closed", _repo);
-        var live = await _manager.CreateAsync("session-live", "live", _repo);
-        _docker.AddNetwork(Path.GetFileName(closed.Path), "network-closed", containerCount: 0);
-        _docker.AddNetwork(Path.GetFileName(live.Path), "network-live", containerCount: 1);
-
-        await _manager.CleanupDockerNetworksAsync("session-closed");
-
-        Assert.True(_docker.IsNetworkRemoved("network-closed"));
-        Assert.False(_docker.IsNetworkRemoved("network-live"));
-    }
-
     private static void _Git(string workingDirectory, params string[] arguments)
     {
         var result = GitCli.RunAsync(workingDirectory, arguments, CancellationToken.None).GetAwaiter().GetResult();

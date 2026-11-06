@@ -66,6 +66,8 @@ internal sealed class ClaudeModelIntelligence
 
         return new PluginModelIntelligence
         {
+            SupportsImageInput = true,
+            ImageInputSource = new PluginFactSource("Claude SDK image input contract", DateTimeOffset.UtcNow, TimeSpan.FromDays(1)),
             // OpenRouter's version-free aliases; the public feed says which release each points at today (AC-1855).
             Models = ClaudeOptionChoices.ModelCostEstimatesCheapestFirst,
             Quota = quota,

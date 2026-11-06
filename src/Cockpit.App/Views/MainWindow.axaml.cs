@@ -13,19 +13,6 @@ namespace Cockpit.App.Views;
 
 public partial class MainWindow : Window
 {
-    // AC-1933: the title bar's way into the Agents palette. Shown while the palette and its button are both on; the
-    // chrome puts it in the caption row, and it takes the window's view model through the inherited data context.
-    private static Button _AgentsPaletteButton()
-    {
-        var button = new Button { Padding = new Thickness(10, 3), FontSize = 12 };
-        button.Classes.Add("Subtle");
-        ToolTip.SetTip(button, "Search and open agents");
-        button.Bind(ContentControl.ContentProperty, new Avalonia.Data.Binding(nameof(CockpitViewModel.AgentsPaletteButtonLabel)));
-        button.Bind(Visual.IsVisibleProperty, new Avalonia.Data.Binding(nameof(CockpitViewModel.ShowAgentsPaletteButton)));
-        button.Bind(Button.CommandProperty, new Avalonia.Data.Binding(nameof(CockpitViewModel.ShowAgentsPaletteCommand)));
-        return button;
-    }
-
     private readonly IWindowBoundsStore? _windowBoundsStore;
 
     // The last normal (non-maximized) position/size, tracked so a maximized window still saves the bounds to
@@ -70,8 +57,7 @@ public partial class MainWindow : Window
             Title = CockpitWindowChrome.RemoteTitle(remoteServer);
         }
 
-        CockpitWindowChrome.Apply(this, titleBar: CockpitTitleBar.Window, includeMinimize: true, includeMaximize: true, closeOnEscape: false, remoteServer: remoteServer,
-            captionAction: _AgentsPaletteButton());
+        CockpitWindowChrome.Apply(this, titleBar: CockpitTitleBar.Window, includeMinimize: true, includeMaximize: true, closeOnEscape: false, remoteServer: remoteServer);
 
         Activated += (_, _) => _SetWindowActive(true);
         Deactivated += (_, _) => _SetWindowActive(false);

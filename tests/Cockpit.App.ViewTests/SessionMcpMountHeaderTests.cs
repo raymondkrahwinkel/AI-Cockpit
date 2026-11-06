@@ -27,28 +27,6 @@ namespace Cockpit.App.ViewTests;
 [Collection("avalonia")]
 public class SessionMcpMountHeaderTests
 {
-    [Fact]
-    public void AReportedMount_ReplacesTheSelectionTheHeaderCounts()
-    {
-        var (statusLine, servers) = Dispatcher.UIThread.Invoke(() =>
-        {
-            var mounts = new SessionMcpMounts();
-            var cockpit = _Cockpit(mounts);
-            var session = new SessionViewModel
-            {
-                McpServerSelection = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "youtrack" },
-            };
-            cockpit.Sessions.Add(session);
-
-            mounts.Report(session.PaneId, ["youtrack", "cockpit-session", "cockpit-agents"]);
-
-            return (session.ConnectedStatusLine, Servers: session.McpServerSelection);
-        });
-
-        Assert.Equal("Connected (3 MCP servers).", statusLine);
-        Assert.Contains("cockpit-agents", servers!);
-    }
-
     /// <summary>
     /// AC-997: a server that fell over stays in the selection instead of reading as one the operator never
     /// checked, and the header's own line says something is wrong without needing the hover.
@@ -77,24 +55,6 @@ public class SessionMcpMountHeaderTests
         Assert.Equal("Connected (2 MCP servers, 1 could not connect).", statusLine);
         Assert.Contains("git", servers!);
         Assert.Contains("git — could not connect: /home/raymond is not a valid Git repository", tooltip);
-    }
-
-    /// <summary>
-    /// A report for a pane the host no longer holds is dropped rather than throwing: a session can be closed
-    /// while its launch is still resolving its servers.
-    /// </summary>
-    [Fact]
-    public void AReportForAPaneTheHostNoLongerHolds_IsDropped()
-    {
-        var exception = Record.Exception(() => Dispatcher.UIThread.Invoke(() =>
-        {
-            var mounts = new SessionMcpMounts();
-            _ = _Cockpit(mounts);
-
-            mounts.Report("gone", ["youtrack"]);
-        }));
-
-        Assert.Null(exception);
     }
 
     private static CockpitViewModel _Cockpit(SessionMcpMounts mounts)

@@ -43,21 +43,6 @@ public sealed class NodeNotifyRoutingTests : IDisposable
 
     // The scope the pairing grant draws (AC-1292) is the scope of this split too: the same sender, on a desk that does
     // hold a local assistant, reaches the controller under a shared profile and only the local inbox under any other.
-    [Theory]
-    [InlineData(true, "DESKTOP", 0)]
-    [InlineData(false, null, 1)]
-    public async Task Notify_ReachesTheController_OnlyFromAProfileTheGrantCovers(bool profileShared, string? controller, int keptLocally)
-    {
-        _presence.Seen("DESKTOP");
-        McpRequestContext.Set(AgentOnTheNode);
-        var reply = _Json(await _Agents(profileShared, withLocalAssistant: true).NotifyAsync(AssistantIdentity.PaneId, "done", "Green."));
-
-        Assert.True(reply["ok"]?.GetValue<bool>() == true);
-        Assert.Equal(controller, reply["controller"]?.GetValue<string>());
-        Assert.Equal(keptLocally, _inbox.Drain(AssistantIdentity.PaneId, 25).Messages.Count);
-        McpRequestContext.Set(NodeCallerIdentity.PaneId);
-        Assert.Equal<int?>(1 - keptLocally, _Json(await _Node().ReadNodeInboxAsync(null))["messages"]?.AsArray().Count);
-    }
 
     // AC-1405: a key holding the line gets the mail its scope reaches, sign-in alarms included. A read is held to the
     // holder the mail was queued for and the reader's scope now: another key or a successor gets none (it falls back

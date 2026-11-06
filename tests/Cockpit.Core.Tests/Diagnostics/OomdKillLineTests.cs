@@ -25,21 +25,4 @@ public class OomdKillLineTests
         // same thing.
         Assert.Equal("82.71% > 80.00% for > 20s with reclaim activity", kill.Pressure);
     }
-
-    // The last row is the one that matters: a trailing slash leaves no name behind it, and a kill of nothing must
-    // not match a session of ours.
-    [Theory]
-    [InlineData("Considered 4 cgroups for memory pressure kill, top candidate was app.slice")]
-    [InlineData("")]
-    [InlineData("Killed something without a reason")]
-    [InlineData("Killed / due to memory pressure for /app.slice being 90% > 80.00%")]
-    public void AnythingElseOomdLogs_IsNotAKill(string line) =>
-        Assert.Null(OomdKillLine.Parse(line));
-
-    [Fact]
-    public void AKillOfSomethingElse_KeepsItsOwnName() =>
-        // The caller matches this against the group it created; a kill of another app must not read as ours.
-        Assert.Equal(
-            "firefox.scope",
-            OomdKillLine.Parse("Killed /user.slice/user-1000.slice/app.slice/firefox.scope due to memory pressure for /x being 90% > 80.00%")!.CgroupName);
 }

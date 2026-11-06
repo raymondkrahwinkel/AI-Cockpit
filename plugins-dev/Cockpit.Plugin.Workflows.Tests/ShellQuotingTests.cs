@@ -9,16 +9,12 @@ public class ShellQuotingTests
 {
     [Theory]
     [InlineData("plain", "'plain'")]
-    [InlineData("a; rm -rf ~", "'a; rm -rf ~'")]
+    [InlineData("a; rm -rf ~ | b > c", "'a; rm -rf ~ | b > c'")]
     [InlineData("$(whoami)", "'$(whoami)'")]
     [InlineData("back`tick`", "'back`tick`'")]
-    [InlineData("a | b > c", "'a | b > c'")]
+    [InlineData("it's", "'it'\\''s'")] // an embedded single quote — the one character it cannot hold — closes and reopens
     public void QuotePosix_WrapsTheValueSoTheShellReadsItAsOneLiteralArgument(string value, string expected) =>
         Assert.Equal(expected, ShellQuoting.QuotePosix(value));
-
-    [Fact]
-    public void QuotePosix_ClosesAndReopensAroundAnEmbeddedSingleQuote_TheOneCharacterItCannotHold() =>
-        Assert.Equal("'it'\\''s'", ShellQuoting.QuotePosix("it's"));
 
     [Theory]
     [InlineData("a & calc", "a ^& calc")]

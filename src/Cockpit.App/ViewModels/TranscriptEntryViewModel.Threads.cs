@@ -277,7 +277,7 @@ public partial class TranscriptEntryViewModel
     // whose IList.Contains throws on an item of another type, and an ItemsControl asks exactly that.
     public IReadOnlyList<ThreadTagViewModel> ThreadTags => ThreadProjectIds.Count == 0
         ? new[] { GeneralTag }
-        : ThreadProjectIds.Select(id => new ThreadTagViewModel(id, Session?.ProjectName(id) ?? id, SourceFor(id)))
+        : ThreadProjectIds.Select(id => new ThreadTagViewModel(id, Session?.ProjectName(id) ?? $"Onbekend project ({id})", SourceFor(id)))
             .Concat(KeepsGeneral ? [GeneralTag] : [])
             .ToArray();
 

@@ -20,7 +20,10 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
 
     // One slow or unreachable source must not hold up the others, the same guarantee `ProjectsViewModel`'s own
     // `_ListWithTimeoutAsync` already gives `LoadSharedProjectsAsync`.
-    private static readonly TimeSpan SourceTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan SourceTimeout = TimeSpan.FromSeconds(30);
+
+    // AC-2071: a slow Cloudflare hop is not a settings problem; a check gets three tries in one round, with these pauses between.
+    private static readonly TimeSpan[] RetryPauses = [TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5)];
 
     private readonly ILogger<DepotSyncWatcher> _logger;
     private readonly TimeProvider _time;
@@ -77,9 +80,9 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
     // adoption is done. Set by the cockpit, which owns the badge and logo store that read it.
     public Func<string, bool, byte[]?, Task>? OnChecked { get; set; }
 
-    // AC-1503: told once per project and session, the first time a check cannot get an answer (project id, reason),
-    // so "not signed in" is said to the operator and not only logged. Set by the cockpit, which owns the toasts.
-    public Action<string, string>? OnFailing { get; set; }
+    // AC-1503: told once per project and session, the first time a check cannot get an answer (project id, reason,
+    // whether the Depot settings can fix it), so "not signed in" is said to the operator and not only logged. Set by the cockpit, which owns the toasts.
+    public Action<string, string, bool>? OnFailing { get; set; }
 
     // AC-1663: whether Depot is waiting for the operator to sign in; then `OnFailing` stays quiet. Set by the cockpit.
     public Func<Task<bool>>? WaitsForSignIn { get; set; }
@@ -280,40 +283,32 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
 
     private async Task _CheckAsync(DepotBoundProject bound, CancellationToken cancellationToken, bool clearFlag = false)
     {
-        SharedProjectBindingResult result;
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _Attempt attempt;
         try
         {
-            var bindingTask = bound.Source.PrepareBindingAsync(bound.SharedId, timeoutCts.Token);
-            var completed = await Task.WhenAny(bindingTask, Task.Delay(SourceTimeout, cancellationToken)).ConfigureAwait(true);
-            if (completed != bindingTask)
+            attempt = await _AttemptAsync(bound, cancellationToken).ConfigureAwait(true);
+            for (var retry = 0; attempt.Retry && retry < RetryPauses.Length; retry++)
             {
-                timeoutCts.Cancel();
-                await _NoteFailureAsync(bound.ProjectId, $"no answer within {SourceTimeout.TotalSeconds:0} seconds.").ConfigureAwait(true);
-                return;
+                _logger.LogInformation(
+                    "Checking {ProjectId} for a Depot change failed ({Reason}); trying again in {Pause} seconds.",
+                    bound.ProjectId, attempt.Reason, RetryPauses[retry].TotalSeconds);
+                await Task.Delay(RetryPauses[retry], _time, cancellationToken).ConfigureAwait(true);
+                attempt = await _AttemptAsync(bound, cancellationToken).ConfigureAwait(true);
             }
-
-            result = await bindingTask.ConfigureAwait(true);
         }
-        catch (Exception exception)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            // Not signed in, unreachable, the project no longer exists. None of that is news every tick, and
-            // nothing has been remembered that did not happen — the next tick tries again.
-            _logger.LogDebug(exception, "Checking {ProjectId} for a Depot change failed; the next check will try again.", bound.ProjectId);
-            await _NoteFailureAsync(bound.ProjectId, exception.Message).ConfigureAwait(true);
+            // Shutting down is not a failed check: no retry and no toast.
             return;
         }
 
-        if (!result.Succeeded || result.Binding?.Checksum is not { Length: > 0 } checksum)
+        if (attempt.Checksum is not { } checksum)
         {
-            // Said rather than swallowed: "not signed in" is the reason a restored cockpit never syncs again, and
-            // this used to return on it without a word anywhere.
-            var reason = result.Error is { Length: > 0 } error ? error : "no checksum came back.";
-            _logger.LogDebug("Checking {ProjectId} for a Depot change returned nothing usable: {Reason}", bound.ProjectId, reason);
-            await _NoteFailureAsync(bound.ProjectId, reason).ConfigureAwait(true);
+            await _NoteFailureAsync(bound.ProjectId, attempt.Reason, offerSettings: !attempt.Retry).ConfigureAwait(true);
             return;
         }
 
+        var result = attempt.Result!;
         _failing.TryRemove(bound.ProjectId, out _);
 
         // One step, so a tick and "Sync now" on the same project cannot both see the old checksum. The flag is only
@@ -344,7 +339,55 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
         }
     }
 
-    private async Task _NoteFailureAsync(string projectId, string reason)
+    // One try. Retry is set for what a later moment can fix (no answer, a dropped connection, a Depot or Cloudflare 5xx);
+    // not signed in, 401/403 and a vanished project need the operator, so those are never retried.
+    private async Task<_Attempt> _AttemptAsync(DepotBoundProject bound, CancellationToken cancellationToken)
+    {
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        SharedProjectBindingResult result;
+        try
+        {
+            var bindingTask = bound.Source.PrepareBindingAsync(bound.SharedId, timeoutCts.Token);
+            var completed = await Task.WhenAny(bindingTask, Task.Delay(SourceTimeout, _time, cancellationToken)).ConfigureAwait(true);
+            if (completed != bindingTask)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                timeoutCts.Cancel();
+                return new(null, null, $"no answer within {SourceTimeout.TotalSeconds:0} seconds.", Retry: true);
+            }
+
+            result = await bindingTask.ConfigureAwait(true);
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogDebug(exception, "Checking {ProjectId} for a Depot change failed.", bound.ProjectId);
+            var transient = exception is HttpRequestException { StatusCode: null or >= System.Net.HttpStatusCode.InternalServerError }
+                or IOException or TimeoutException or TaskCanceledException;
+            return new(null, null, exception.Message, transient);
+        }
+
+        if (result.Succeeded && result.Binding?.Checksum is { Length: > 0 } checksum)
+        {
+            return new(result, checksum, "", Retry: false);
+        }
+
+        // Said rather than swallowed: "not signed in" is the reason a restored cockpit never syncs again.
+        var reason = result.Error is { Length: > 0 } error ? error : "no checksum came back.";
+        _logger.LogDebug("Checking {ProjectId} for a Depot change returned nothing usable: {Reason}", bound.ProjectId, reason);
+        return new(null, null, reason, Retry: !_NeedsOperator(reason));
+    }
+
+    // The plugin reports failures as text only, so the operator-fixable ones are recognised by their wording.
+    private static bool _NeedsOperator(string reason) =>
+        reason.Contains("sign in", StringComparison.OrdinalIgnoreCase)
+        || reason.Contains("[NotFound]", StringComparison.Ordinal)
+        || reason.Contains("401", StringComparison.Ordinal)
+        || reason.Contains("403", StringComparison.Ordinal)
+        || reason.Contains("permission", StringComparison.OrdinalIgnoreCase);
+
+    private sealed record _Attempt(SharedProjectBindingResult? Result, string? Checksum, string Reason, bool Retry);
+
+    private async Task _NoteFailureAsync(string projectId, string reason, bool offerSettings)
     {
         if (_failing.TryAdd(projectId, 0))
         {
@@ -359,11 +402,12 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
 
         // Claimed only once someone listens: the first pass runs at start, before the app has hung its toast on this, and a
         // failure it found then must still be said by the next check.
-        if (OnFailing is { } tell && _told.TryAdd(projectId, 0))
+        // Kept per kind: a toast about an unreachable Depot must not hide a later "not signed in".
+        if (OnFailing is { } tell && _told.TryAdd(offerSettings ? projectId : projectId + "|unreachable", 0))
         {
             try
             {
-                tell(projectId, reason);
+                tell(projectId, reason, offerSettings);
             }
             catch (Exception exception)
             {

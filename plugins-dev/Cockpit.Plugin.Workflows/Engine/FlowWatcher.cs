@@ -35,6 +35,7 @@ internal sealed class FlowWatcher : IDisposable
     // engine built at startup would not have YouTrack's steps in it — a flow that moves a ticket would then be
     // "skipped, this cockpit cannot run youtrack.start", which is a lie about what this build can do.
     private WorkflowEngine? _engine;
+    private readonly Lock _engineLock = new();
 
     // A trigger already running, guarded by `_runningLock` now that the clock's own tick can land on a threadpool
     // thread too. A flow that watches for text and then *sends* text to a session feeds its own trigger, and the
@@ -42,6 +43,9 @@ internal sealed class FlowWatcher : IDisposable
     private readonly HashSet<string> _running = [];
     private readonly Dictionary<string, WorkflowRun> _active = [];
     private readonly Lock _runningLock = new();
+
+    // AC-2024: every run ends with the plugin. An "Ask me first" step can wait for days, and a command for minutes.
+    private readonly CancellationTokenSource _stopping = new();
 
     private bool _disposed;
 
@@ -62,12 +66,16 @@ internal sealed class FlowWatcher : IDisposable
 
         _host.Sessions.OutputProduced += _OnOutput;
         _host.WorkflowTriggerRaised += _OnPluginTrigger;
+        _host.WorkflowStepsChanged += _OnWorkflowStepsChanged;
 
         Health = new SchedulerHealth(_time, Tick);
         _timer = _time.CreateTimer(_ => _OnClock(_time.GetUtcNow()), null, TimeSpan.Zero, Tick);
     }
 
     public SchedulerHealth Health { get; }
+
+    // Cancelled when the plugin stops: the token of a run this watcher did not start itself.
+    public CancellationToken Stopping => _stopping.Token;
 
     public WorkflowRun? Active(string workflowId)
     {
@@ -99,7 +107,17 @@ internal sealed class FlowWatcher : IDisposable
         _disposed = true;
         _host.Sessions.OutputProduced -= _OnOutput;
         _host.WorkflowTriggerRaised -= _OnPluginTrigger;
+        _host.WorkflowStepsChanged -= _OnWorkflowStepsChanged;
         _timer.Dispose();
+        _stopping.Cancel();
+    }
+
+    private void _OnWorkflowStepsChanged(object? sender, EventArgs args)
+    {
+        lock (_engineLock)
+        {
+            _engine = null;
+        }
     }
 
     // A plugin fired one of its own triggers: a ticket was picked for a session, a review was requested. Every active
@@ -241,6 +259,11 @@ internal sealed class FlowWatcher : IDisposable
 
         lock (_runningLock)
         {
+            if (_disposed)
+            {
+                return false;
+            }
+
             if (!_running.Add(key))
             {
                 if (recordBusy)
@@ -268,13 +291,18 @@ internal sealed class FlowWatcher : IDisposable
         WorkflowRun run;
         try
         {
-            _engine ??= EngineFactory.Create(_host, _host.WorkflowSteps);
-            run = await _engine.RunAsync(
+            WorkflowEngine engine;
+            lock (_engineLock)
+            {
+                engine = _engine ??= EngineFactory.Create(_host, _host.WorkflowSteps);
+            }
+            run = await engine.RunAsync(
                 workflow,
                 trigger.Id,
                 origin,
                 seed,
-                changed: changed => _Track(key, changed));
+                _stopping.Token,
+                changed => _Track(key, changed));
         }
         catch (Exception exception)
         {
@@ -297,7 +325,7 @@ internal sealed class FlowWatcher : IDisposable
 
         // A flow that fired and failed while you were looking elsewhere must say so — this is the one thing that
         // separates automation from a machine quietly doing nothing.
-            if (run.Status == RunStatus.Failed)
+            if (run.Status == RunStatus.Failed && !_stopping.IsCancellationRequested)
             {
                 _host.ShowToast($"'{workflow.Name}' failed: {run.Error}", Cockpit.Plugins.Abstractions.Notifications.PluginToastSeverity.Warning);
             }

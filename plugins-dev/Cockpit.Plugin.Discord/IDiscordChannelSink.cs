@@ -11,13 +11,15 @@ internal interface IDiscordChannelSink
     /// Posts a new message, optionally with Approve/Deny buttons for <paramref name="consentPromptId"/> or a
     /// question's option buttons (<paramref name="answers"/>, AC-1544). Returns the new message's id.
     /// </summary>
-    Task<ulong> PostAsync(string text, Guid? consentPromptId = null, DiscordAnswerButtons? answers = null, CancellationToken cancellationToken = default);
+    Task<ulong> PostAsync(string text, Guid? consentPromptId = null, DiscordAnswerButtons? answers = null, CancellationToken cancellationToken = default,
+        IReadOnlyList<Cockpit.Plugins.Abstractions.Channels.AssistantChannelAttachment>? attachments = null);
 
     /// <summary>
     /// Edits a message already returned by <see cref="PostAsync"/>. <paramref name="keepButtons"/> false strips
     /// any consent buttons.
     /// </summary>
-    Task EditAsync(ulong messageId, string text, bool keepButtons = true, CancellationToken cancellationToken = default);
+    Task EditAsync(ulong messageId, string text, bool keepButtons = true, CancellationToken cancellationToken = default,
+        IReadOnlyList<Cockpit.Plugins.Abstractions.Channels.AssistantChannelAttachment>? attachments = null);
 
     /// <summary>
     /// Adds a reaction emoji to an inbound message — the plugin's only reply to a sender-visible failure.

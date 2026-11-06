@@ -25,6 +25,8 @@ public sealed class PluginRowViewModel(InstalledPlugin installed, bool hasSettin
     // AC-1588: whether the operator muted this plugin's system notifications; the label names the action.
     public bool NotificationsMuted => installed.Registration?.NotificationsMuted ?? false;
 
+    public bool DisabledByStartupProtection => installed.Registration?.DisabledByStartupProtection ?? false;
+
     public string NotificationsToggleLabel => NotificationsMuted ? "Allow notifications" : "Mute notifications";
 
     public string NotificationsToggleTip => NotificationsMuted
@@ -32,6 +34,8 @@ public sealed class PluginRowViewModel(InstalledPlugin installed, bool hasSettin
         : "Stop this plugin from showing desktop notifications. Its messages inside the cockpit stay.";
     // True when the loaded plugin registered a settings view (#14) — the manager shows a gear to open it.
     public bool HasSettings => hasSettings;
+
+    internal PluginRowViewModel WithSettings() => new(installed, hasSettings: true);
 
     // True when this plugin never became operative (load/configure/initialize), or is flagged for a compatibility concern.
     public bool HasFailure => installed.ActivationFailure is not null || installed.CompatibilityWarning is not null;
@@ -67,6 +71,7 @@ public sealed class PluginRowViewModel(InstalledPlugin installed, bool hasSettin
         // would say the opposite of what happened.
         PluginLoadDecision.Load when installed.ActivationFailure is not null => "Failed to load — see below",
         PluginLoadDecision.Load => "Enabled — active this session",
+        PluginLoadDecision.Disabled when DisabledByStartupProtection => "Disabled by startup protection",
         PluginLoadDecision.Disabled => "Disabled",
         PluginLoadDecision.NeedsConsent => "Needs your consent",
         PluginLoadDecision.AbstractionsMajorMismatch => "Incompatible — built for another contract version",

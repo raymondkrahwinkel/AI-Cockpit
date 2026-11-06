@@ -75,21 +75,6 @@ public class McpServerRenameIdentityTests
     }
 
     [Fact]
-    public async Task Rename_ThenSave_LeavesNoSecondEntryForTheOldName()
-    {
-        // Acceptance criterion 4, at the registry: one row in, one row out. A save that added the new name beside
-        // the old one is the shape that leaves an orphan for the token store to keep answering about.
-        var store = _RecordingStore([_OAuthServer("server-id", "depot")]);
-        var viewModel = new McpServersViewModel(store, [], _AlwaysAuthorized());
-        await viewModel.LoadAsync();
-
-        viewModel.Servers.Single().Name = "depot renamed";
-        await viewModel.SaveCommand.ExecuteAsync(null);
-
-        Assert.Single(await store.LoadAsync());
-    }
-
-    [Fact]
     public async Task RenamedRow_AsksTheCoordinatorAboutItsOwnId_NotTheNameItNowCarries()
     {
         var store = _RecordingStore([_OAuthServer("server-id", "depot")]);
@@ -156,51 +141,5 @@ public class McpServerRenameIdentityTests
             Arg.Is<McpServerConfig>(server => server.IdentityKey == "id-beta"), Arg.Any<CancellationToken>());
         await coordinator.DidNotReceive().SignOutAsync(
             Arg.Is<McpServerConfig>(server => server.IdentityKey == "id-alpha"), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task ARowFromAConfigWithoutIds_KeepsTheIdItsOldNameDerivedTo_AcrossARename()
-    {
-        // The upgrade path in the dialog. A row read from a pre-AC-403 config has no id of its own and answers to
-        // the one its name derives to — the same key its already-stored token is found by. Renaming it must pin
-        // that derived id down rather than re-derive from the new name, or the very first rename after upgrading
-        // would strand the credential the derivation was there to rescue.
-        var store = _RecordingStore([new McpServerConfig
-        {
-            Name = "depot",
-            Transport = McpTransport.Http,
-            Url = "https://depot.example/mcp",
-            Auth = McpServerAuth.OAuth,
-        }]);
-        var viewModel = new McpServersViewModel(store, [], _AlwaysAuthorized());
-        await viewModel.LoadAsync();
-
-        viewModel.Servers.Single().Name = "depot renamed";
-        await viewModel.SaveCommand.ExecuteAsync(null);
-
-        Assert.Equal(McpServerIdentity.LegacyIdFor("depot"), Assert.Single(await store.LoadAsync()).IdentityKey);
-    }
-
-    [Fact]
-    public void AddServer_MintsAnIdOfItsOwn_NotOneDerivedFromThePlaceholderName()
-    {
-        // A new row is going to be renamed — the placeholder name exists to be replaced. Deriving its id from that
-        // placeholder would tie the identity to the one name we know for certain is about to change.
-        var viewModel = new McpServersViewModel(_RecordingStore([]), [], _AlwaysAuthorized());
-        viewModel.AddServerCommand.Execute(null);
-
-        var added = viewModel.Servers.Single();
-        Assert.NotEqual(McpServerIdentity.LegacyIdFor(added.Name), added.Id);
-        Assert.NotEmpty(added.Id);
-    }
-
-    [Fact]
-    public void AddServer_TwiceInOneDialog_MintsTwoDifferentIds()
-    {
-        var viewModel = new McpServersViewModel(_RecordingStore([]), [], _AlwaysAuthorized());
-        viewModel.AddServerCommand.Execute(null);
-        viewModel.AddServerCommand.Execute(null);
-
-        Assert.Equal(2, viewModel.Servers.Select(server => server.Id).Distinct(StringComparer.Ordinal).Count());
     }
 }

@@ -15,6 +15,13 @@ public interface IPluginProviderRegistry
     void Register(SessionProviderRegistration registration, string? ownerPluginId = null);
 
     /// <summary>
+    /// Withdraws <paramref name="providerId"/> while <paramref name="ownerPluginId"/> still owns it; a later owner's registration stays.
+    /// </summary>
+    bool Unregister(string providerId, string? ownerPluginId);
+
+    event EventHandler? Changed;
+
+    /// <summary>
     /// The plugin the host stamped as registering <paramref name="providerId"/> (AC-289), or <see langword="null"/> when unknown.
     /// </summary>
     string? OwnerOf(string providerId);

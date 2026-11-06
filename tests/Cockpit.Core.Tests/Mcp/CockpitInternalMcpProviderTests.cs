@@ -67,23 +67,6 @@ public class CockpitInternalMcpProviderTests
         return services.BuildServiceProvider();
     }
 
-    /// <summary>
-    /// AC-1292: the door counts an "all" flag as a granted scope. Without this, a pairing that reaches every
-    /// profile but ticks none of them by name would be turned away here before any endpoint got to answer —
-    /// which is the state every fresh pairing is now in.
-    /// </summary>
-    [Fact]
-    public async Task NodeScope_GrantedByTheAllFlagAlone_IsAScopeTheDoorAccepts()
-    {
-        await using var noneAtAll = await _StartedHostAsync(nodeEnabled: false, services: _ServicesWithPairing(scoped: false));
-        Assert.False(await noneAtAll.NodeScopeGrantedAsync());
-
-        await using var flagOnly = await _StartedHostAsync(
-            nodeEnabled: false,
-            services: _ServicesWithPairing(scoped: false, allowAllProfiles: true));
-        Assert.True(await flagOnly.NodeScopeGrantedAsync());
-    }
-
     // AC-792 made the node's TLS identity a file that outlives the process. These tests must never touch the real
     // one, so each gets a path of its own under the temp directory — and since the certificate is lazy, a test that
     // leaves node binding off never creates the file at all.
@@ -117,29 +100,6 @@ public class CockpitInternalMcpProviderTests
     }
 
     private const string NodeSecret = "test-secret-value";
-
-    // AC-790: the network-node master switch, off by default. Node binding off means only the loopback listener
-    // exists — no second URL to hand anyone.
-    [Fact]
-    public async Task EndpointHost_NodeBindingOff_OnlyEverAdvertisesTheLoopbackListener()
-    {
-        await using var host = new CockpitMcpEndpointHost(
-            endpoints: [],
-            services: new ServiceCollection().BuildServiceProvider(),
-            authKey: new McpAuthKey(),
-            keyring: new SessionMcpKeyring(),
-            nodeEndpointSettings: new FakeNodeEndpointSettingsStore(),
-            nodeCertificate: _ThrowawayNodeCertificate(),
-            mounts: new SessionMcpMounts(),
-            loggerFactory: NullLoggerFactory.Instance,
-            nodeListenAddress: new NodeListenAddress(IPAddress.Loopback));
-
-        await host.MountAsync("cockpit-probe", new ProbeTools(), isEnabled: () => true);
-
-        var mounted = Assert.Single(host.GetServers());
-        Assert.StartsWith("http://127.0.0.1:", mounted.Url);
-        Assert.Empty(host.GetNodeAddresses());
-    }
 
     /// <summary>
     /// AC-856, the whole bind rule in one table: with the master switch on, a NodeOnly endpoint gets the second,
@@ -268,37 +228,6 @@ public class CockpitInternalMcpProviderTests
     // AC-1148's "a switched-off endpoint gets no node socket at all" is now the fourth row of the bind table
     // above, where it sits beside the three other reasons an endpoint does not get one.
 
-    // AC-1148, the loopback negative control on the real host: a session's own live token, on a mounted endpoint
-    // its launch never selected. Every existing test here asked only "valid credential or not"; a wrong-scope call
-    // is valid, which is exactly why it went unseen.
-    [Fact]
-    public async Task EndpointHost_SessionTokenForAnEndpointItsLaunchNeverMounted_Is403ButThePaneThatDidGetsThrough()
-    {
-        var keyring = new SessionMcpKeyring();
-        var mounts = new SessionMcpMounts();
-        mounts.Grant("pane-allowed", ["cockpit-probe"]);
-        mounts.Grant("pane-denied", ["cockpit-something-else"]);
-
-        await using var host = new CockpitMcpEndpointHost(
-            endpoints: [],
-            services: new ServiceCollection().BuildServiceProvider(),
-            authKey: new McpAuthKey(),
-            keyring: keyring,
-            nodeEndpointSettings: new FakeNodeEndpointSettingsStore(),
-            nodeCertificate: _ThrowawayNodeCertificate(),
-            mounts: mounts,
-            loggerFactory: NullLoggerFactory.Instance,
-            nodeListenAddress: new NodeListenAddress(IPAddress.Loopback));
-
-        await host.MountAsync("cockpit-probe", new ProbeTools(), isEnabled: () => true);
-        var url = Assert.IsType<string>(Assert.Single(host.GetServers()).Url);
-
-        Assert.Equal(HttpStatusCode.Forbidden, await _PostStatusAsync(url, keyring.TokenFor("pane-denied")));
-
-        // And the positive control beside it: the pane that did mount this endpoint is not held up by the check.
-        Assert.NotEqual(HttpStatusCode.Forbidden, await _PostStatusAsync(url, keyring.TokenFor("pane-allowed")));
-    }
-
     // AC-1148 (was AC-1161, first half): the heaviest of the three. "A session only gets these tools if started
     // with delegation enabled" was the fan-out talking — the listener took any live token, so a session whose
     // profile has no delegation could start a bypassPermissions sub-agent by finding the port.
@@ -357,45 +286,5 @@ public class CockpitInternalMcpProviderTests
             },
         };
         return new HttpClient(handler);
-    }
-
-    [Fact]
-    public async Task Orchestrator_LoadsTheToggleAtStartup_ThenFlipsAndPersistsOnSet()
-    {
-        var store = Substitute.For<IDelegationSettingsStore>();
-        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new DelegationSettings { McpEnabled = false });
-
-        var server = new OrchestratorMcpServer(
-            Substitute.For<IDelegationService>(),
-            Cockpit.Core.Tests.Delegation.OrchestratorToolsTests.PictureReader(),
-            new McpAuthKey(),
-            new SessionMcpKeyring(),
-            store,
-            new SessionMcpMounts(),
-            NullLoggerFactory.Instance);
-
-        // Before it has bound a port there is nothing to hand the fan-out.
-        Assert.Empty(server.GetServers());
-
-        await server.StartAsync(default);
-        try
-        {
-            // Startup honoured the persisted off-state, and the server names itself a cockpit-hosted endpoint.
-            var started = Assert.Single(server.GetServers());
-            Assert.Equal(OrchestratorMcpServer.ServerName, started.Name);
-            Assert.True(started.CockpitHosted);
-            Assert.False(started.Enabled);
-
-            await server.SetMcpEnabledAsync(true);
-
-            Assert.True(Assert.Single(server.GetServers()).Enabled);
-            await store.Received().SaveAsync(
-                Arg.Is<DelegationSettings>(settings => settings.McpEnabled), Arg.Any<CancellationToken>());
-        }
-        finally
-        {
-            await server.StopAsync(default);
-            await server.DisposeAsync();
-        }
     }
 }

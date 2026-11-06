@@ -3,7 +3,6 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Delegation;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
-using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
 using Cockpit.Plugins.Abstractions.Sessions;
@@ -11,16 +10,8 @@ using NSubstitute;
 
 namespace Cockpit.Core.Tests.Delegation;
 
-/// <summary>
-/// The orchestrator (#67) reaches an interactive TTY session as an ordinary registry server, fanned out by
-/// <see cref="PluginTtySessionProviderAdapter.BuildLaunch"/> onto <see cref="PluginTtyLaunchContext.McpServers"/> —
-/// not by a host-side JSON serializer. (AC-380: an earlier <c>McpConfigFile.SerializeRegistryOnly</c> had no
-/// production caller — the provider plugins build their own spawn config from the servers this adapter resolves —
-/// and was removed; this test used to guard that dead path instead of the live one.) If the orchestrator is
-/// dropped here, delegation is silently unavailable in that session: nothing errors, the tools are just not there,
-/// and the system prompt nudge that tells the model to look for them never gets added either.
-/// </summary>
-public class OrchestratorFanOutTests
+// Delegation availability and briefing preservation across SDK and TTY gateway launches.
+public class OrchestratorFanOutTests : SessionMcpTestFixture
 {
     private static McpServerConfig _Orchestrator(bool enabled = true) => new()
     {
@@ -31,31 +22,13 @@ public class OrchestratorFanOutTests
         Enabled = enabled,
     };
 
-    private static (PluginTtySessionProviderAdapter Adapter, IPluginTtyProvider Inner) _CreateAdapter(IMcpServerCatalog catalog)
+    private (PluginTtySessionProviderAdapter Adapter, IPluginTtyProvider Inner) _CreateAdapter(IMcpServerCatalog catalog)
     {
         var inner = Substitute.For<IPluginTtyProvider>();
         inner.BuildLaunch(Arg.Any<PluginTtyLaunchContext>()).Returns(new PluginTtyLaunchSpec(
             "codex", [], new Dictionary<string, string?>(), "/wd", []));
 
-        return (new PluginTtySessionProviderAdapter("cli-agent-provider.codex", inner, """{"Command":"codex"}""", catalog), inner);
-    }
-
-    [Fact]
-    public void BuildLaunch_CarriesTheEnabledOrchestrator_IntoThePluginsMcpServers_WithTheDelegationPrompt()
-    {
-        var catalog = Substitute.For<IMcpServerCatalog>();
-        catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(new List<McpServerConfig> { _Orchestrator() });
-        var (adapter, inner) = _CreateAdapter(catalog);
-        var context = new TtyLaunchContext(null, new Dictionary<string, string>(), "/wd", null, new Dictionary<string, string>());
-
-        adapter.BuildLaunch(context);
-
-        inner.Received(1).BuildLaunch(Arg.Is<PluginTtyLaunchContext>(pluginContext =>
-            pluginContext.McpServers.Count == 1
-            && pluginContext.McpServers[0].Name == DelegationMcp.ServerName
-            && pluginContext.McpServers[0].Url == "http://127.0.0.1:46503/mcp"
-            && pluginContext.DelegationSystemPrompt == DelegationSystemPrompt.Default));
+        return (new PluginTtySessionProviderAdapter("cli-agent-provider.codex", inner, """{"Command":"codex"}""", catalog, mcpMounts: Mounts, gateway: Gateway), inner);
     }
 
     [Fact]
@@ -67,19 +40,20 @@ public class OrchestratorFanOutTests
         catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(new List<McpServerConfig> { _Orchestrator(enabled: false) });
         var (adapter, inner) = _CreateAdapter(catalog);
-        var context = new TtyLaunchContext(null, new Dictionary<string, string>(), "/wd", null, new Dictionary<string, string>());
+        var context = new TtyLaunchContext(null, new Dictionary<string, string>(), "/wd", null, new Dictionary<string, string> { ["COCKPIT_PANE_ID"] = "tty", ["COCKPIT_MCP_KEY"] = Keyring.TokenFor("tty") });
 
         adapter.BuildLaunch(context);
 
         inner.Received(1).BuildLaunch(Arg.Is<PluginTtyLaunchContext>(pluginContext =>
-            pluginContext.McpServers.Count == 0 && pluginContext.DelegationSystemPrompt == null));
+            pluginContext.McpServers.Count == 1 && pluginContext.McpServers[0].Name == "cockpit" && pluginContext.DelegationSystemPrompt == null));
+        Assert.False(Mounts.IsMounted("tty", DelegationMcp.ServerName));
     }
 
-    private static (PluginSessionDriverAdapter Adapter, IPluginSessionDriver Inner) _CreateHeadlessAdapter(IMcpServerCatalog catalog)
+    private (PluginSessionDriverAdapter Adapter, IPluginSessionDriver Inner) _CreateHeadlessAdapter(IMcpServerCatalog catalog)
     {
         var inner = Substitute.For<IPluginSessionDriver>();
         return (
-            new PluginSessionDriverAdapter(inner, new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true), new McpAuthKey(), catalog),
+            new PluginSessionDriverAdapter(inner, new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true), catalog, keyring: Keyring, mcpMounts: Mounts, gateway: Gateway),
             inner);
     }
 
@@ -109,37 +83,9 @@ public class OrchestratorFanOutTests
             });
 
         var environment = Assert.IsAssignableFrom<IReadOnlyDictionary<string, string>>(
-            Assert.Single(inner.ReceivedCalls()).GetArguments()[5]);
+            Assert.Single(inner.ReceivedCalls(), call => call.GetMethodInfo().Name == nameof(IPluginSessionDriver.StartAsync)).GetArguments()[5]);
         var expected = "You are the CEO. Plan the work first.\n\n" + DelegationSystemPrompt.Default
             + "\n\n" + SessionScratch.Instruction(environment["COCKPIT_SCRATCH"]);
-
-        await inner.Received(1).StartAsync(
-            Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(),
-            Arg.Is<IReadOnlyDictionary<string, string>?>(options =>
-                options != null && options[WellKnownPluginSessionOptions.AppendSystemPrompt] == expected),
-            Arg.Any<IReadOnlyList<PluginMcpServer>?>(), Arg.Any<IReadOnlyDictionary<string, string>?>(),
-            Arg.Any<IPluginToolset?>(), Arg.Any<CancellationToken>());
-    }
-
-    // The other half, and the reason the gate is on what was mounted rather than on what was asked for: a session
-    // without the orchestrator must not be told to call tools it has not got. Off is off here exactly as it is on
-    // the TTY route above.
-    [Fact]
-    public async Task StartAsync_LeavesTheAppendedPromptAlone_WhenTheOrchestratorIsSwitchedOff()
-    {
-        var (adapter, inner) = _CreateHeadlessAdapter(_CatalogWith(_Orchestrator(enabled: false)));
-        await using var session = adapter;
-
-        await adapter.StartAsync(
-            launchOptions: new Dictionary<string, string>
-            {
-                [WellKnownPluginSessionOptions.AppendSystemPrompt] = "You are the CEO. Plan the work first.",
-            });
-
-        var environment = Assert.IsAssignableFrom<IReadOnlyDictionary<string, string>>(
-            Assert.Single(inner.ReceivedCalls()).GetArguments()[5]);
-        var expected = "You are the CEO. Plan the work first.\n\n"
-            + SessionScratch.Instruction(environment["COCKPIT_SCRATCH"]);
 
         await inner.Received(1).StartAsync(
             Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(),

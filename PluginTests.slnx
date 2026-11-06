@@ -27,16 +27,12 @@
     <Project Path="plugins-dev/Cockpit.Plugin.Discord.Tests/Cockpit.Plugin.Discord.Tests.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.Docker/Cockpit.Plugin.Docker.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.Docker.Tests/Cockpit.Plugin.Docker.Tests.csproj" />
-    <Project Path="plugins-dev/Cockpit.Plugin.FanOut/Cockpit.Plugin.FanOut.csproj" />
-    <Project Path="plugins-dev/Cockpit.Plugin.FanOut.Tests/Cockpit.Plugin.FanOut.Tests.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.GeminiProvider/Cockpit.Plugin.GeminiProvider.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.GeminiProvider.Tests/Cockpit.Plugin.GeminiProvider.Tests.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.GitHubActions/Cockpit.Plugin.GitHubActions.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.GitHubActions.Tests/Cockpit.Plugin.GitHubActions.Tests.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.GitHubIssues/Cockpit.Plugin.GitHubIssues.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.GitHubIssues.Tests/Cockpit.Plugin.GitHubIssues.Tests.csproj" />
-    <Project Path="plugins-dev/Cockpit.Plugin.GitHubModelsProvider/Cockpit.Plugin.GitHubModelsProvider.csproj" />
-    <Project Path="plugins-dev/Cockpit.Plugin.GitHubModelsProvider.Tests/Cockpit.Plugin.GitHubModelsProvider.Tests.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.GitHubPullRequests/Cockpit.Plugin.GitHubPullRequests.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.GitHubPullRequests.Tests/Cockpit.Plugin.GitHubPullRequests.Tests.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.GitStatus/Cockpit.Plugin.GitStatus.csproj" />

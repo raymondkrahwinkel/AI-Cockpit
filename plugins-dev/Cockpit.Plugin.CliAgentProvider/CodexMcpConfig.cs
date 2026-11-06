@@ -24,7 +24,7 @@ internal static class CodexMcpConfig
     // defaults to 30 s (measured); a cold-started remote server can need more. Servers start concurrently.
     internal const int StartupTimeoutSeconds = 60;
 
-    public static CodexMcpLaunch Build(IReadOnlyList<PluginMcpServer>? servers)
+    public static CodexMcpLaunch Build(IReadOnlyList<PluginMcpServer>? servers, IReadOnlyDictionary<string, string>? options = null)
     {
         if (servers is null || servers.Count == 0)
         {
@@ -39,7 +39,10 @@ internal static class CodexMcpConfig
         for (var index = 0; index < servers.Count; index++)
         {
             var server = servers[index];
-            if (_InlineTable(server, index, environmentVariables) is not { } inlineTable)
+            var gateway = server.CockpitHosted && server.Name == "cockpit";
+            var approveTools = gateway && (options?.GetValueOrDefault(CodexAppServerSessionDriver.ApprovalOptionKey) == "never"
+                || options?.GetValueOrDefault(WellKnownPluginSessionOptions.PermissionMode) == "bypassPermissions");
+            if (_InlineTable(server, index, environmentVariables, approveTools) is not { } inlineTable)
             {
                 // No usable transport target (neither url nor command) — nothing Codex could connect to.
                 continue;
@@ -47,6 +50,11 @@ internal static class CodexMcpConfig
 
             var codexName = _CodexServerName(server.Name, index, usedNames);
             serverNames[codexName] = server.Name;
+            if (gateway)
+            {
+                configArgs.Add("-c");
+                configArgs.Add("features.mcp_tool_list_changed=true");
+            }
             configArgs.Add("-c");
             configArgs.Add($"mcp_servers.{codexName}={inlineTable}");
         }
@@ -54,11 +62,15 @@ internal static class CodexMcpConfig
         return new CodexMcpLaunch(configArgs, environmentVariables, serverNames);
     }
 
-    private static string? _InlineTable(PluginMcpServer server, int index, Dictionary<string, string?> environmentVariables)
+    private static string? _InlineTable(PluginMcpServer server, int index, Dictionary<string, string?> environmentVariables, bool approveTools)
     {
         if (!string.IsNullOrWhiteSpace(server.Url))
         {
             var fields = new List<string> { $"url = {TomlString(server.Url)}", $"startup_timeout_sec = {StartupTimeoutSeconds}" };
+            if (approveTools)
+            {
+                fields.Add("default_tools_approval_mode = \"approve\"");
+            }
 
             if (server.CockpitHosted)
             {

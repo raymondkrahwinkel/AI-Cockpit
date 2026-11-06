@@ -42,9 +42,9 @@
         <Style Selector="TextBox#InputBox.unavailable.controlled">
             <Setter Property="PlaceholderText" Value="{Binding UnavailableReason}"/>
         </Style>
-        <!-- AC-1529: the Simple stand's column reads as one document of about 720px, as a picked session does. -->
+        <!-- AC-2063: the Simple stand uses the available width with a small inner margin. -->
         <Style Selector="Border#ComposerBorder.simpleColumn, ItemsControl#TranscriptItems.simpleColumn">
-            <Setter Property="MaxWidth" Value="720"/>
+            <Setter Property="Margin" Value="0,0,10,0"/>
         </Style>
         <!-- Assistant threads: the icon rail's items centre their 20 px mark in its 44 px. -->
         <Style Selector="ListBox.iconRail ListBoxItem">
@@ -180,6 +180,9 @@
                             <TextBlock Text="{Binding LeadershipLabel}" FontSize="11" VerticalAlignment="Center"
                                        Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                                        IsVisible="{Binding LeadershipLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                            <Button Content="Take over" Classes="Compact" Command="{Binding ClaimLeadershipCommand}"
+                                    IsVisible="{Binding CanClaimLeadership}"
+                                    ToolTip.Tip="Make this machine the leader. The current leader must be reachable."/>
                         </StackPanel>
                         <TextBlock Text="{Binding Session.ActiveProfileLabel}" FontSize="11"
                                    Foreground="{DynamicResource CockpitTextFaintBrush}"
@@ -212,9 +215,10 @@
                          button, not the chip's `CheckBox.Switch`: a track reads as a stray control in a strip of icons. -->
                     <ToggleButton x:Name="ListeningModeToggle" Grid.Column="2" Classes="Subtle Compact" VerticalAlignment="Center" Margin="0,0,4,0"
                                   IsVisible="{Binding Indicator, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                   IsEnabled="{Binding IsAudioAvailable}"
                                   IsChecked="{Binding Indicator.IsListeningModeAlwaysOn, Mode=OneWay, FallbackValue=False}"
                                   Command="{Binding Indicator.ToggleListeningModeCommand}"
-                                  ToolTip.Tip="{Binding Indicator.IsListeningModeAlwaysOn, Converter={x:Static conv:ListeningModeIconConverter.Tip}, FallbackValue=False}">
+                                   ToolTip.Tip="{Binding AudioControlTooltip}">
                         <materialIcons:MaterialIcon Kind="{Binding Indicator.IsListeningModeAlwaysOn, Converter={x:Static conv:ListeningModeIconConverter.Icon}, FallbackValue=False}"
                                                     Width="14" Height="14"/>
                     </ToggleButton>
@@ -222,7 +226,8 @@
                     <!-- AC-694 reverts AC-685's `Subtle` here; the style stays in Theme.axaml for the listen toggle. -->
                     <ToggleButton x:Name="ReadAloudToggle" Grid.Column="3" IsChecked="{Binding SpeakReplies}" Classes="Compact"
                                   VerticalAlignment="Center" Margin="0,0,4,0"
-                                  ToolTip.Tip="{Binding SpeakReplies, Converter={x:Static conv:ReadAloudIconConverter.Tip}}">
+                                   IsEnabled="{Binding IsAudioAvailable}"
+                                   ToolTip.Tip="{Binding AudioControlTooltip}">
                         <materialIcons:MaterialIcon Kind="{Binding SpeakReplies, Converter={x:Static conv:ReadAloudIconConverter.Icon}}"
                                                     Width="14" Height="14"/>
                     </ToggleButton>
@@ -378,83 +383,23 @@
                     <TextBlock Text="{Binding LeaderSessionError}" FontSize="11" TextWrapping="Wrap"
                                IsVisible="{Binding LeaderSessionError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                    <TextBlock Text="{Binding ClaimError}" FontSize="11" TextWrapping="Wrap"
+                               IsVisible="{Binding ClaimError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                 </StackPanel>
             </Border>
+            <TextBlock DockPanel.Dock="Top" Margin="10,6,10,0" Text="{Binding Session.SpeechRulesReason}"
+                       TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"
+                       IsVisible="{Binding Session.SpeechRulesReason, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
             <WrapPanel DockPanel.Dock="Top" Margin="10,6,10,0" ItemSpacing="8" LineSpacing="6">
-                <!-- AC-1529: usage is ⋯ → Details in the Simple stand (AC-1533). -->
                 <Panel>
-                <Panel.IsVisible>
-                    <MultiBinding Converter="{x:Static BoolConverters.And}">
-                        <Binding ElementName="UsagePill" Path="IsVisible"/>
-                        <Binding Path="!IsInSimpleStand"/>
-                    </MultiBinding>
-                </Panel.IsVisible>
-                <Border x:Name="UsagePill" ClipToBounds="True"
-                        Background="{DynamicResource CockpitSecondaryBgBrush}"
-                        BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
-                        CornerRadius="{StaticResource CockpitPillRadius}"
-                        IsVisible="{Binding Session.HasUsagePillRegion, FallbackValue=False}">
-                    <StackPanel Orientation="Horizontal">
-                        <ItemsControl ItemsSource="{Binding Session.UsagePillItems}" VerticalAlignment="Stretch">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <StackPanel Orientation="Horizontal"/>
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="vm:UsagePillItem">
-                                    <StackPanel Orientation="Horizontal">
-                                        <Border Width="1" Background="{DynamicResource CockpitHairlineBrush}"
-                                                IsVisible="{Binding ShowLeadingDivider}"/>
-                                        <TextBlock Text="{Binding DisplayText}" FontSize="10" Padding="8,2"
-                                                   VerticalAlignment="Center"
-                                                   Foreground="{Binding SeverityBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"
-                                                   ToolTip.Tip="{Binding Tooltip}"/>
-                                    </StackPanel>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-
-                        <Border Width="1" Background="{DynamicResource CockpitHairlineBrush}"
-                                IsVisible="{Binding Session.ShowChevronDivider, FallbackValue=False}"/>
-                        <Button VerticalAlignment="Stretch" Padding="6,2"
-                                MinWidth="0" MinHeight="0"
-                                Background="Transparent" BorderThickness="0"
-                                IsVisible="{Binding Session.HasUsagePill, FallbackValue=False}"
-                                ToolTip.Tip="{Binding Session.LimitsTooltip}">
-                            <materialIcons:MaterialIcon Kind="ChevronDown" Width="12" Height="12"
-                                                        VerticalAlignment="Center"
-                                                        Foreground="{DynamicResource CockpitTextFaintBrush}"/>
-                            <Button.Flyout>
-                                <Flyout Placement="Bottom">
-                                    <StackPanel Spacing="8" MinWidth="210" Margin="4">
-                                        <TextBlock Text="Usage" FontWeight="SemiBold" FontSize="11.5"
-                                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                                        <controls:LimitBar Label="ctx" Percent="{Binding Session.ContextUsedPercent}" Threshold="{Binding Session.ContextThreshold}" FontSize="10" Height="14"
-                                                           StretchTrack="True" HorizontalAlignment="Stretch"/>
-                                        <ItemsControl ItemsSource="{Binding Session.RateLimits}">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate x:DataType="sessions:SessionRateWindow">
-                                                    <StackPanel Spacing="1" Margin="0,4,0,0">
-                                                        <controls:LimitBar Label="{Binding Label}" Percent="{Binding UsedPercent}" Threshold="{Binding ThresholdPercent}" FontSize="10" Height="14"
-                                                                           StretchTrack="True" HorizontalAlignment="Stretch"/>
-                                                        <TextBlock Text="{Binding ResetsAt, Converter={x:Static conv:RateWindowResetConverter.Instance}}"
-                                                                   FontSize="10" Foreground="{DynamicResource CockpitTextFaintBrush}"
-                                                                   IsVisible="{Binding ResetsAt, Converter={x:Static ObjectConverters.IsNotNull}}"/>
-                                                    </StackPanel>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                        <TextBlock Text="{Binding Session.UnreportedWindowsNotice}" FontSize="10" TextWrapping="Wrap"
-                                                   Margin="0,4,0,0"
-                                                   Foreground="{DynamicResource CockpitTextFaintBrush}"
-                                                   IsVisible="{Binding Session.UnreportedWindowsNotice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                                    </StackPanel>
-                                </Flyout>
-                            </Button.Flyout>
-                        </Button>
-                    </StackPanel>
-                </Border>
+                    <Panel.IsVisible>
+                        <MultiBinding Converter="{x:Static BoolConverters.Or}">
+                            <Binding Path="!IsInSimpleStand"/>
+                            <Binding Path="Session.HasUsagePillSegments" FallbackValue="False"/>
+                        </MultiBinding>
+                    </Panel.IsVisible>
+                    <controls:UsagePill x:Name="UsagePill" DataContext="{Binding Session}"/>
                 </Panel>
 
                 <!-- AC-776 Deel 1: session-status pill, same shape as the usage pill above — same
@@ -772,20 +717,24 @@
                                                     Foreground="{DynamicResource CockpitAccentBrush}"/>
                         <TextBlock Text="Thinking…" FontSize="11.5" VerticalAlignment="Center"
                                    Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        <TextBlock Text="{Binding Session.ThinkingAgeText, StringFormat='· {0}'}" IsVisible="{Binding Session.ThinkingAgeText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" FontSize="11.5" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                     </StackPanel>
 
                     <!-- Replaces "Thinking…" for the stretch it used to leave blank (AC-532): a tool call is the
                          longest wait in a turn, and naming the running step is the difference between a window that
                          looks stuck and one that is visibly working. Same slot, one row. -->
-                    <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center"
+                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9" VerticalAlignment="Center"
                                 IsVisible="{Binding Session.HasActiveToolActivity, FallbackValue=False}">
                         <materialIcons:MaterialIcon Kind="Circle" Classes="pulse" Width="9" Height="9"
                                                     VerticalAlignment="Center"
                                                     Foreground="{DynamicResource CockpitAccentBrush}"/>
-                        <TextBlock Text="{Binding Session.ActiveToolActivityLabel}" FontSize="11.5"
+                        <TextBlock Grid.Column="1" Text="{Binding Session.ActiveToolActivityLabel}" FontSize="11.5"
                                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                                    Foreground="{DynamicResource CockpitTextPrimaryBrush}"/>
-                    </StackPanel>
+                        <TextBlock Grid.Column="2" Text="{Binding Session.ActiveToolActivityAgeText, StringFormat='· {0}'}" IsVisible="{Binding Session.ActiveToolActivityAgeText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" FontSize="11.5"
+                                   VerticalAlignment="Center" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                    </Grid>
 
                     <!-- Background work (AC-531): a detached sub-agent or shell outlives both indicators above, and
                          this count is what still says so. No badge at zero rather than a "0" one, the same rule the
@@ -965,7 +914,7 @@
                              button would be live but dead (AC-1316). -->
                         <Button x:Name="ScreenshotButton" Grid.Column="1" Margin="6,0,0,0" Command="{Binding Session.CaptureScreenshotCommand}"
                                 Classes="Compact composerAction" VerticalAlignment="Bottom" Padding="8,6"
-                                IsVisible="{Binding Session, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                IsVisible="{Binding Session.CanPasteImages, FallbackValue=False}"
                                 ToolTip.Tip="{Binding Session.ScreenshotTooltip}" ToolTip.ShowOnDisabled="True">
                             <materialIcons:MaterialIcon Kind="Monitor" Width="14" Height="14" VerticalAlignment="Center"/>
                         </Button>
@@ -1319,5 +1268,6 @@
         <controls:ConsentBannerHost DataContext="{Binding Session}"/>
         <Border BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1" CornerRadius="10"
                 IsHitTestVisible="False" IsVisible="{Binding DrawsOwnFrame}"/>
+        <Border x:Name="DropOverlay" Classes="fileDropTarget" IsHitTestVisible="False" IsVisible="False"/>
         </Grid>
 </UserControl>

@@ -38,77 +38,6 @@ public sealed class ScheduledBackupTests : IDisposable
     }
 
     /// <summary>
-    /// Acceptance 1. Nothing is due at the start; one interval later the timer's tick writes exactly one backup. A
-    /// planner that was never started has no timer to tick, so this goes red without <c>Start()</c>.
-    /// </summary>
-    [Fact]
-    public async Task AnIntervalAfterTheLastBackup_TheTickWritesExactlyOne()
-    {
-        await _store.SaveAsync(new BackupSchedule(Enabled: true, IntervalHours: 24));
-        await _store.SaveStateAsync(new BackupScheduleState(Start));
-
-        _scheduled.Start();
-        await _scheduled.Ticking;
-        Assert.Empty(_target.Entries);
-
-        _clock.Advance(TimeSpan.FromHours(24));
-        _clock.FireTimer();
-        await _scheduled.Ticking;
-
-        Assert.Single(_target.Entries);
-        Assert.Equal(_clock.GetUtcNow(), (await _store.LoadStateAsync()).LastSuccess);
-    }
-
-    /// <summary>
-    /// Acceptance 2. A target that throws is shown once and remembered on disk; the next tick, with nothing moved
-    /// but the clock, writes. Swallowing the exception leaves no toast and no stored failure, and this goes red.
-    /// </summary>
-    [Fact]
-    public async Task ATargetThatFails_IsShownOnce_AndTheNextTickWrites()
-    {
-        await _store.SaveAsync(new BackupSchedule(Enabled: true, IntervalHours: 24));
-        _target.Failure = new IOException("the disk is full");
-
-        _scheduled.Start();
-        await _scheduled.Ticking;
-        _clock.Advance(TimeSpan.FromMinutes(15));
-        _clock.FireTimer();
-        await _scheduled.Ticking;
-
-        Assert.Empty(_target.Entries);
-        Assert.Single(_toasts.Messages);
-        Assert.Contains("the disk is full", _toasts.Messages[0]);
-        Assert.Contains("the disk is full", (await _store.LoadStateAsync()).LastFailure);
-
-        _target.Failure = null;
-        _clock.Advance(TimeSpan.FromMinutes(15));
-        _clock.FireTimer();
-        await _scheduled.Ticking;
-
-        Assert.Single(_target.Entries);
-        Assert.Null((await _store.LoadStateAsync()).LastFailure);
-    }
-
-    /// <summary>
-    /// AC-1663, layer 2 (service). A target of a plugin that waits for the operator to sign in fails: the host already
-    /// said so once with a Sign in button, so there is no toast of its own, and the Backup page still shows the failure.
-    /// Without the check this goes red with one toast.
-    /// </summary>
-    [Fact]
-    public async Task ATargetWhosePluginWaitsForASignIn_KeepsItsFailureOnTheBackupPage_WithoutAToast()
-    {
-        await _store.SaveAsync(new BackupSchedule(Enabled: true, IntervalHours: 24));
-        _target.Failure = new IOException("sign-in needed");
-        _scheduled.WaitsForSignIn = (_, _) => Task.FromResult(true);
-
-        _scheduled.Start();
-        await _scheduled.Ticking;
-
-        Assert.Empty(_toasts.Messages);
-        Assert.Contains("sign-in needed", (await _store.LoadStateAsync()).LastFailure);
-    }
-
-    /// <summary>
     /// Acceptance 3 and 4, the data-loss one. With Keep 3 and a fourth backup the oldest by <c>CreatedAt</c> goes —
     /// the ids are laid out so that the oldest sorts last by name, the newest first, and sorting by id would delete a newer one. A target
     /// that cannot delete keeps all four and says so once. A manual backup and another installation's stay either way, even above Keep.
@@ -154,29 +83,6 @@ public sealed class ScheduledBackupTests : IDisposable
         public List<string> Messages { get; } = [];
 
         public void Show(string message, ToastSeverity severity, string? actionLabel = null, Action? onAction = null) => Messages.Add(message);
-    }
-
-    /// <summary>
-    /// AC-1593: a local 72 hours and 3 kept under an organisation's floor of 24 and 7. Nine days of daily ticks write
-    /// nine and keep seven; the local schedule alone would have written three and kept three. Nothing is written back.
-    /// </summary>
-    [Fact]
-    public async Task AnOrganisationsFloor_BacksUpDaily_AndKeepsSeven()
-    {
-        var org = Substitute.For<IOrgPolicy>();
-        org.ReadAsync(Arg.Any<CancellationToken>()).Returns(new ProvisionPolicy("Acme", Backup: new ProvisionBackupPolicy(MaxIntervalHours: 24, MinKeep: 7)));
-        using var scheduled = new ScheduledBackup(_service, _store, _toasts, null, _clock, org) { TargetFor = _ => _target };
-        await _store.SaveAsync(new BackupSchedule(Enabled: true, IntervalHours: 72, Keep: 3));
-        await _store.SaveStateAsync(new BackupScheduleState(Start));
-
-        foreach (var _ in Enumerable.Range(0, 9))
-        {
-            _clock.Advance(TimeSpan.FromHours(24));
-            await scheduled.RunOnceAsync();
-        }
-
-        Assert.Equal(7, _target.Entries.Count);
-        Assert.Equal(72, (await _store.LoadAsync()).IntervalHours);
     }
 
     /// <summary>

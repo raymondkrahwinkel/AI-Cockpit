@@ -326,7 +326,12 @@ internal sealed class NodeSessionsClient(
                     _Text(result, "resolvedProfile"),
                     result.TryGetProperty("promptDelivered", out var delivered) && delivered.ValueKind is JsonValueKind.True or JsonValueKind.False
                         ? delivered.GetBoolean()
-                        : null);
+                        : null)
+                {
+                    McpServers = result.TryGetProperty("mcpServers", out var servers) && servers.ValueKind == JsonValueKind.Array
+                        ? servers.Deserialize<string[]>() : null,
+                    McpServersConfirmed = result.TryGetProperty("mcpServersConfirmed", out var confirmed) && confirmed.ValueKind == JsonValueKind.True,
+                };
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -416,6 +421,9 @@ internal sealed class NodeSessionsClient(
 
     public Task<string?> RememberOnNodeAsync(string nodeName, string text, string scope, CancellationToken cancellationToken = default) =>
         _ActAsync(nodeName, "remember_on_node", new Dictionary<string, object?> { ["text"] = text, ["scope"] = scope }, cancellationToken);
+
+    public Task<string?> RewriteMemoryOnNodeAsync(string nodeName, string text, CancellationToken cancellationToken = default) =>
+        _ActAsync(nodeName, "rewrite_memory_on_node", new Dictionary<string, object?> { ["text"] = text }, cancellationToken);
 
     // Null when the node did it, its own words when it refused, a sentence of ours when it could not be reached.
     // The three are deliberately one return value: to the operator pressing the button they are the same question —

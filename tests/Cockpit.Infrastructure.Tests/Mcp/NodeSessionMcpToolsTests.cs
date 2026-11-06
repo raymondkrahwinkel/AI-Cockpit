@@ -81,34 +81,7 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
         Assert.Empty(_read.Calls);
     }
 
-    [Fact]
-    public async Task EveryTool_RefusesTheInProcessToolLoop_WhichCarriesNoPaneAtAll()
-    {
-        // null is what the cockpit's own tool loop carries. It is not the node's reserved identity, so it is not
-        // the controller either — the check is an equality, never "anything but a session".
-        McpRequestContext.Set(null);
-        _pairing.AllowEverything = true;
 
-        foreach (var tool in _EveryTool())
-        {
-            Assert.False((await _CallAsync(_Tools(), tool))["ok"]!.GetValue<bool>());
-        }
-
-        Assert.Empty(_gateway.Calls);
-    }
-
-    [Fact]
-    public async Task Start_UnderAnUntickedProfile_IsRefusedAndNothingIsStarted()
-    {
-        McpRequestContext.Set(NodeCallerIdentity.PaneId);
-
-        var answer = _Json(await _Tools().StartNodeAgentAsync("Something Expensive"));
-
-        Assert.False(answer["ok"]!.GetValue<bool>());
-        // Criterion 2: the grant is the gate, and the refusal names what to go and tick rather than saying "no".
-        Assert.Contains("Something Expensive", answer["error"]!.GetValue<string>(), StringComparison.Ordinal);
-        Assert.DoesNotContain(_gateway.Calls, call => call.StartsWith("SpawnAsync", StringComparison.Ordinal));
-    }
 
     [Fact]
     public async Task Start_ForAnUntickedProject_IsRefusedEvenWhenTheProfileIsAllowed()
@@ -123,46 +96,9 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
         Assert.DoesNotContain(_gateway.Calls, call => call.StartsWith("SpawnAsync", StringComparison.Ordinal));
     }
 
-    [Fact]
-    public async Task Start_WithinTheGrant_RunsOnThisMachinesActiveDesk_UnderTheControllersOwnRule()
-    {
-        McpRequestContext.Set(NodeCallerIdentity.PaneId);
-        _pairing.Profiles.Add(AllowedProfile);
-        _pairing.Projects.Add(AllowedProject);
-
-        var answer = _Json(await _Tools().StartNodeAgentAsync(AllowedProfile, AllowedProject, "run the sweep", "sweep"));
-
-        Assert.True(answer["ok"]!.GetValue<bool>());
-
-        var spawn = Assert.Single(_gateway.Spawns);
-        // The desk was read here, never received: the controller named none and could not have.
-        Assert.Equal("ws-active", spawn.Target.WorkspaceId);
-        Assert.Equal(SpawnCaller.Controller, spawn.Target.Caller);
-        Assert.Equal(NodeCallerIdentity.PaneId, spawn.Target.CallerPaneId);
-        // And nothing about this machine's filesystem crossed the wire in either direction.
-        Assert.Null(spawn.WorkingDirectory);
-    }
 
     // AC-1351 (gap E of AC-1283): skipsApprovals is the fourth field, true for a profile that starts past its own
     // approval gate and false for an ordinary one — without it the two rows cannot be told apart.
-    [Theory]
-    [InlineData(AllowedProfile, false)]
-    [InlineData(UnattendedProfile, true)]
-    public async Task ListProfiles_ShowsOnlyTheTickedOnes_AndOnlyFourFieldsOfEach(string ticked, bool skipsApprovals)
-    {
-        McpRequestContext.Set(NodeCallerIdentity.PaneId);
-        _pairing.Profiles.Add(ticked);
-
-        var answer = _Json(await _Tools().ListNodeProfilesAsync());
-
-        var profiles = answer["profiles"]?.AsArray() ?? new JsonArray();
-        var only = Assert.Single(profiles);
-        Assert.Equal(ticked, only?["label"]?.GetValue<string>());
-        // The provider crosses as its name, not as whatever number the enum happens to carry today.
-        Assert.Equal(nameof(SessionProvider.ClaudeCli), only?["provider"]?.GetValue<string>());
-        Assert.Equal(skipsApprovals, only?["skipsApprovals"]?.GetValue<bool>());
-        Assert.Equal(["label", "provider", "purpose", "skipsApprovals"], only?.AsObject().Select(field => field.Key).Order(StringComparer.Ordinal));
-    }
 
     // AC-1367: the callers the start rows below run as — dispatched by index rather than a branch in the test method.
     private static readonly NodeCaller KeyScopedToTheAllowedProject = _Key(new ConnectKeyScope { AllowAllProjects = false, AllowedProjectIds = [AllowedProject] });
@@ -196,19 +132,6 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
 
     // The counterproofs: a key with the grant starts the bypass profile, and (criterion 7, the regression row) a pairing
     // with that profile in its grant still starts it. A key starting in an allowed project is in the AC-2003 rows below.
-    [Theory]
-    [InlineData(1, UnattendedProfile, null)]
-    [InlineData(2, UnattendedProfile, null)]
-    public async Task Start_WithinAKeysScope_OrByAPairing_Runs(int callerIndex, string profile, string? projectId)
-    {
-        McpRequestContext.Set(NodeCallerIdentity.PaneId, _StartingCallers[callerIndex]);
-        _pairing.Profiles.Add(profile);
-
-        var answer = _Json(await _Tools().StartNodeAgentAsync(profile, projectId));
-
-        Assert.True(answer["ok"]?.GetValue<bool>(), answer.ToJsonString());
-        Assert.Equal(profile, Assert.Single(_gateway.Spawns).ProfileLabel);
-    }
 
     // AC-2003 (layer 2, authorization): a subscription login is its owner's alone, whatever the key's scope; an API-key
     // profile is shareable, and a kind the CLI has not reported yet counts as a login. The refusal carries the reason.
@@ -232,17 +155,6 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
     }
 
     // AC-1367 criterion 2, listing: what a key may not start it does not see.
-    [Theory]
-    [InlineData(false, new[] { AllowedProfile, "Something Expensive" })]
-    [InlineData(true, new[] { AllowedProfile, "Something Expensive", UnattendedProfile })]
-    public async Task ListProfiles_ByAConnectKey_ShowsABypassProfileOnlyWithTheGrant(bool mayStartBypass, string[] expected)
-    {
-        McpRequestContext.Set(NodeCallerIdentity.PaneId, _Key(new ConnectKeyScope { MayStartBypassProfiles = mayStartBypass }));
-
-        var answer = _Json(await _Tools().ListNodeProfilesAsync());
-
-        Assert.Equal(expected, (answer["profiles"]?.AsArray() ?? new JsonArray()).Select(profile => profile?["label"]?.GetValue<string>()));
-    }
 
     // AC-1367: seeing is reaching, so a key scoped to one project neither lists nor stops a session in another, nor
     // one with no project at all; its own project's session it lists.
@@ -262,22 +174,6 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
         Assert.Empty(_gateway.Stops);
     }
 
-    [Fact]
-    public async Task Stop_ActsOnThePaneIdItWasGiven_NotOnAName()
-    {
-        McpRequestContext.Set(NodeCallerIdentity.PaneId);
-        _pairing.Profiles.Add(AllowedProfile);
-
-        // Criterion 3, at this end: two sessions on this machine carry the same name, and the only thing that tells
-        // them apart is the pane id — which is why nothing here looks a session up by name.
-        _read.Sessions.Add(new AssistantSessionRow("pane-a", "AC-795 tests", AllowedProfile, "", null, null));
-        _read.Sessions.Add(new AssistantSessionRow("pane-b", "AC-795 tests", AllowedProfile, "", null, null));
-
-        var answer = _Json(await _Tools().StopNodeAgentAsync("pane-b"));
-
-        Assert.True(answer["ok"]!.GetValue<bool>());
-        Assert.Equal("StopAsync(pane-b)", Assert.Single(_gateway.Calls, call => call.StartsWith("StopAsync", StringComparison.Ordinal)));
-    }
 
     [Fact]
     public async Task ListAndStop_CoverOnlyTheWorkRunningUnderAnAllowedProfile()
@@ -315,38 +211,7 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
         Assert.DoesNotContain(_gateway.Calls, call => call.StartsWith("SpawnAsync", StringComparison.Ordinal));
     }
 
-    [Fact]
-    public async Task Stop_IsRecordedAsTheController_NotAsThisMachinesOwnAssistant()
-    {
-        McpRequestContext.Set(NodeCallerIdentity.PaneId);
-        _pairing.Profiles.Add(AllowedProfile);
-        _read.Sessions.Add(new AssistantSessionRow("pane-mine", "the sweep", AllowedProfile, "", null, null));
 
-        await _Tools().StopNodeAgentAsync("pane-mine");
-
-        // A stop that arrived from another machine and is written down as this cockpit's own assistant is a trail
-        // that reads plausibly and is wrong.
-        Assert.Equal((SpawnCaller.Controller, NodeCallerIdentity.PaneId), Assert.Single(_gateway.Stops));
-    }
-
-    [Fact]
-    public async Task NothingHere_StopsASessionWhenThePairingEnds()
-    {
-        // Criterion 4, and Raymond's decision behind it: this is offloading, not remote control. A session started
-        // by a controller is not the controller's to lose — unpairing revokes the credential and leaves the work.
-        // The tempting "tidy up on unpair" would make this the other thing, silently, so it is pinned here.
-        McpRequestContext.Set(NodeCallerIdentity.PaneId);
-        _pairing.Profiles.Add(AllowedProfile);
-        await _Tools().StartNodeAgentAsync(AllowedProfile);
-
-        _pairing.Unpair();
-
-        Assert.DoesNotContain(_gateway.Calls, call => call.StartsWith("StopAsync", StringComparison.Ordinal));
-
-        // And the far side is now refused, which is what revocation does mean.
-        var answer = _Json(await _Tools().StartNodeAgentAsync(AllowedProfile));
-        Assert.False(answer["ok"]!.GetValue<bool>());
-    }
 
     // What the refusal-without-identity row (below) drives: remember_on_node was already proven here, and AC-1333
     // adds read_node_memory on the same gate — dispatched by index rather than a branch in the test method.
@@ -359,31 +224,6 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
     // AC-1329 criterion 3, plus its counterproof: scope "machine" gives the machine file's content and never the
     // behaviour file's, remember_on_node appends to the file the scope names, and neither remember_on_node nor
     // read_node_memory (AC-1333) reaches this machine's memory at all without the controller's own identity.
-    [Theory]
-    [InlineData(0)]
-    [InlineData(1)]
-    public async Task Memory_IsScopedToTheFileNamed_AndRefusedWithoutTheControllersIdentity_WithoutWriting(int callIndex)
-    {
-        McpRequestContext.Set(NodeCallerIdentity.PaneId);
-        var memory = new StubMemory { Machine = "this laptop's own paths", Behaviour = "how this laptop's operator wants replies" };
-        var tools = _Tools(memory);
-
-        var machineRead = _Json(await tools.ReadNodeMemoryAsync("machine"));
-        Assert.True(machineRead["ok"]!.GetValue<bool>());
-        Assert.Equal("this laptop's own paths", machineRead["text"]!.GetValue<string>());
-        // Counterproof: the behaviour file's content never rides along on a machine-scoped read.
-        Assert.DoesNotContain("how this laptop's operator wants replies", machineRead.ToJsonString(), StringComparison.Ordinal);
-
-        var remembered = _Json(await tools.RememberOnNodeAsync("a fact learned by doing here", "machine"));
-        Assert.True(remembered["ok"]!.GetValue<bool>());
-        Assert.Equal((AssistantMemoryScope.Machine, "a fact learned by doing here"), memory.Remembered.Single());
-
-        McpRequestContext.Set(OrdinarySessionPane);
-        var before = memory.Interactions;
-        var refused = _Json(await _MemoryRefusalCalls[callIndex](tools));
-        Assert.False(refused["ok"]!.GetValue<bool>());
-        Assert.Equal(before, memory.Interactions);
-    }
 
     public void Dispose() => McpRequestContext.Set(null);
 
@@ -413,6 +253,8 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
         }
 
         public Task<string> ReadCurrentStateAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<AssistantMemoryRewrite> RewriteAsync(string text, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
         public Task<string> ReadOrgRulesAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
 

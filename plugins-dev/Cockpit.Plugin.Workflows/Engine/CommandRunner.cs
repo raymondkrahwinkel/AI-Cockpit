@@ -61,9 +61,20 @@ internal sealed class CommandRunner : IStepRunner
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(Timeout);
 
-        var stdout = await process.StandardOutput.ReadToEndAsync(timeout.Token);
-        var stderr = await process.StandardError.ReadToEndAsync(timeout.Token);
-        await process.WaitForExitAsync(timeout.Token);
+        string stdout;
+        string stderr;
+        try
+        {
+            stdout = await process.StandardOutput.ReadToEndAsync(timeout.Token);
+            stderr = await process.StandardError.ReadToEndAsync(timeout.Token);
+            await process.WaitForExitAsync(timeout.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // Giving up on the waits alone leaves the shell and whatever it started running.
+            process.Kill(entireProcessTree: true);
+            throw;
+        }
 
         if (process.ExitCode != 0)
         {

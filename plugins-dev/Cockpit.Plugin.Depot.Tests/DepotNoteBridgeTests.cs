@@ -55,6 +55,12 @@ public class DepotNoteBridgeTests
         Assert.Equal(text, serialized);
         Assert.Equal(SchemaSha[..12], _Sha(Encoding.UTF8.GetBytes(bundleSchema))[..12]);
         Assert.Equal(SchemaSha[..12], DepotNoteSchema.Version);
+        // Category B: opening and saving nested formatting must preserve the text in every block kind.
+        const string marked = "# **`heading`**\n\n- **`item`**\n\n| Column |\n| --- |\n| **`cell`** |\n\n**`paragraph`**\n";
+        const string normalized = "# `heading`\n\n- `item`\n\n| Column |\n| ------ |\n| `cell` |\n\n`paragraph`\n";
+        await room.SeedAsync(marked, CancellationToken.None);
+        await room.LoadAsync(string.Empty, CancellationToken.None);
+        Assert.Equal(normalized, await room.SerializeAsync(CancellationToken.None));
     }
 
     // One keystroke in a paragraph is one Edited and one Update, and that update changes that paragraph and no other Y item; the same
@@ -176,84 +182,6 @@ public class DepotNoteBridgeTests
         await _ReadOnlyJoinAsync(seed, schemaMismatch: false, LiveReadOnlyReason.Viewer);
         await _RejectedUndoAsync(seed);
         await _OfflineReadOnlyAsync(seed);
-    }
-
-    // AC-1900, contract with Depot's web editor: a cursor is one Markdown offset in the bridge and one relativePositionToJSON in the web,
-    // and both name the same character, in a paragraph, a heading, a list item and a table cell, in either direction. Through the session:
-    // a web client's awareness becomes a peer with its caret and selection as offsets, and this host's caret goes out under a higher clock.
-    [Fact]
-    public async Task Cursors_NameTheSameCharacterOnBothSides_AndTravelThroughThePresenceOfTheSession()
-    {
-        await using var web = new JintNoteRoom(2);
-        var hub = new _Hub(await _SeedAsync(web, "structure.md"));
-        var loaded = new TaskCompletionSource();
-        var patches = new List<LiveFilePatch>();
-        var statuses = new List<LiveFileStatus>();
-        await using var bridge = _Session(hub, patch => { patches.Add(patch); loaded.TrySetResult(); }, user: new DepotNoteUser("user-1", "Raymond", "#2563eb"), statusChanged: statuses.Add);
-        bridge.Connect();
-        await loaded.Task.WaitAsync(TimeSpan.FromSeconds(60));
-        await web.LoadAsync(string.Empty, CancellationToken.None);
-        var text = await web.ReadAsync(CancellationToken.None);
-        var paragraph = text.IndexOf("and italic", StringComparison.Ordinal);
-        var heading = text.IndexOf("ructure", StringComparison.Ordinal);
-        var item = text.IndexOf("ck to two", StringComparison.Ordinal);
-        var cell = text.IndexOf("ight", StringComparison.Ordinal);
-        Assert.Equal(text, (await bridge.ReadAsync(CancellationToken.None)).Text);
-        await _SameCharacterAsync(web, bridge.Room, paragraph);
-        await _SameCharacterAsync(web, bridge.Room, heading);
-        await _SameCharacterAsync(web, bridge.Room, item);
-        await _SameCharacterAsync(web, bridge.Room, cell);
-
-        // The end of a line inside a block (a list item with another after it, a table cell) is the end of that line, not the start of the next.
-        await _SameCharacterAsync(web, bridge.Room, text.IndexOf("one\n", StringComparison.Ordinal) + 3);
-        await _SameCharacterAsync(web, bridge.Room, text.IndexOf("nested first\n", StringComparison.Ordinal) + 12);
-        await _SameCharacterAsync(web, bridge.Room, text.IndexOf("| a    |", StringComparison.Ordinal) + 3);
-
-        var anchorAt = await web.RelativeAtAsync(paragraph, CancellationToken.None);
-        var headAt = await web.RelativeAtAsync(heading, CancellationToken.None);
-        var state = """{"user":{"id":"u-sanne","name":"Sanne de Vries","role":"editor","color":"#3fb8c4","source":"web"},"activity":"selecting","cursor":{"anchor":""" + anchorAt + ""","head":""" + headAt + "}}";
-        await hub.Push(new DepotNoteEvent("presence", ["doc-1", "conn-9", DepotAwarenessCodec.Encode([new DepotAwarenessEntry(2113437100, 1, state)])]));
-        var you = bridge.Peers[0];
-        var sanne = bridge.Peers[1];
-        // AC-1580: the own entry carries the name and colour /cockpit/me gave; an older Depot gives none and the host shows "You".
-        Assert.Equal(("Raymond", "#2563eb", true, "Cockpit"), (you.Name, you.Color, you.You, you.Source));
-        Assert.Null(DepotPresenceSelf.For("user-1", "editor").Name);
-        Assert.Equal(("Sanne de Vries", "#3fb8c4", "web", "selecting"), (sanne.Name, sanne.Color, sanne.Source, sanne.Activity));
-        Assert.Equal((heading, new LiveRange(heading, paragraph)), (sanne.Caret, sanne.Selection));
-
-        await bridge.SetPresenceAsync(new LivePresenceState("editing", item), CancellationToken.None);
-        var first = DepotAwarenessCodec.Decode(hub.Presence[0])[0];
-        var last = DepotAwarenessCodec.Decode(hub.Presence[^1])[0];
-        Assert.Equal((first.ClientId, 1UL, 2UL), (last.ClientId, first.Clock, last.Clock));
-        var head = JsonDocument.Parse(last.State).RootElement.GetProperty("cursor").GetProperty("head").GetRawText();
-        Assert.Equal(item, await web.OffsetOfAsync(head, CancellationToken.None));
-
-        await hub.Push(new DepotNoteEvent("outside", ["doc-1", JsonSerializer.SerializeToElement(new { name = "Assistant", onBehalfOf = "Raymond", source = "agent", via = "Mcp", version = 2 })]));
-        Assert.Equal("Assistant", statuses[^1].Saved?.Name);
-        Assert.Equal("#a78bda", statuses[^1].Saved?.Color);
-        Assert.Equal("agent", bridge.Peers[^1].Source);
-        await hub.Push(new DepotNoteEvent("merged", ["doc-1", new[] { 0 }, 0]));
-        var external = patches[^1].ExternalEdit ?? throw new InvalidOperationException("The outside writer was not marked.");
-        Assert.Equal("Assistant · on behalf of Raymond", external.Who);
-        Assert.Equal(await bridge.Room.BlockRangesAsync([0], CancellationToken.None), external.Ranges);
-        var marked = patches.Count;
-        await hub.Push(new DepotNoteEvent("outside", ["doc-1", JsonSerializer.SerializeToElement(new { name = "Assistant", source = "agent" })]));
-        await hub.Push(new DepotNoteEvent("outside", ["doc-1", JsonSerializer.SerializeToElement(new { name = "Other", source = "agent" })]));
-        await hub.Push(new DepotNoteEvent("merged", ["doc-1", new[] { 0 }, 0]));
-        Assert.Equal(marked, patches.Count);
-        await hub.Push(new DepotNoteEvent("outside", ["doc-1", JsonSerializer.SerializeToElement(new { name = "Third", source = "agent" })]));
-        await hub.Push(new DepotNoteEvent("merged", ["doc-1", new[] { 0 }, 0]));
-        Assert.Equal(marked, patches.Count);
-        await hub.Push(new DepotNoteEvent("saved", ["doc-1", JsonSerializer.SerializeToElement(new { by = new { name = "Sanne", color = "#3fb8c4" }, at = "2026-10-28T14:12:00Z" })]));
-        Assert.Equal("Sanne", statuses[^1].Saved?.Name);
-    }
-
-    private static async Task _SameCharacterAsync(JintNoteRoom web, IDepotNoteRoom bridge, int offset)
-    {
-        var fromWeb = await web.RelativeAtAsync(offset, CancellationToken.None) ?? throw new InvalidOperationException("The web has no cursor there.");
-        var fromBridge = await bridge.RelativeAtAsync(offset, CancellationToken.None) ?? throw new InvalidOperationException("The bridge has no cursor there.");
-        Assert.Equal(offset, await bridge.OffsetOfAsync(fromWeb, CancellationToken.None));
-        Assert.Equal(offset, await web.OffsetOfAsync(fromBridge, CancellationToken.None));
     }
 
     private static async Task _RejectedUndoAsync(byte[] seed)

@@ -25,7 +25,7 @@ public sealed class SessionStateRecorder : ISessionStateCache, ISingletonService
     // AC-1531: each state written, in call order, for the conversation index that keeps it after the pane is gone.
     public event Action<SessionStateRecord>? Recorded;
 
-    public SessionStateRecorder(ISessionStateStore store, SessionConversationTracker conversationTracker, ILogger<SessionStateRecorder> logger)
+    public SessionStateRecorder(ISessionStateStore store, SessionConversationTracker conversationTracker, ILogger<SessionStateRecorder> logger, SessionMcpMounts? mounts = null, ISessionMcpGatewayState? gatewayState = null)
     {
         _store = store;
         _logger = logger;
@@ -33,6 +33,41 @@ public sealed class SessionStateRecorder : ISessionStateCache, ISingletonService
         // AC-408's tracker already suppresses a report that repeats the same conversation id, so every invocation
         // here is a real change worth a line — never a per-turn poll.
         conversationTracker.Changed += _OnConversationChanged;
+        if (mounts is not null)
+        {
+            mounts.Changed += paneId =>
+            {
+                if (gatewayState?.IsEnabled == true)
+                {
+                    _OnMcpSetChanged(mounts, paneId);
+                }
+            };
+        }
+    }
+
+    private async void _OnMcpSetChanged(SessionMcpMounts mounts, string paneId)
+    {
+        if (mounts.Set(paneId) is not { Context: { } context } set)
+        {
+            return;
+        }
+        var names = set.ServerNames.ToArray();
+        var ceiling = set.DelegationCeiling?.ToArray();
+        try
+        {
+            await _WriteAsync(paneId, existing => existing with
+            {
+                McpServerNames = names,
+                McpManager = context.Manager,
+                McpDelegationCeiling = ceiling,
+                McpIsDelegated = ceiling is not null ? true : existing.McpIsDelegated,
+                McpPreserveSelection = set.PreserveSelection,
+            }, CancellationToken.None);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Could not persist the MCP set for pane {PaneId}.", paneId);
+        }
     }
 
     // AC-513: primes the cache from records the caller already loaded, avoiding a second store read on the startup path.
@@ -100,8 +135,7 @@ public sealed class SessionStateRecorder : ISessionStateCache, ISingletonService
         _WriteAsync(paneId, existing => existing with { PermissionMode = permissionMode }, cancellationToken);
 
     private void _OnConversationChanged(SessionConversationReported reported) =>
-        // Fire-and-forget like every other write here: the tracker's event is synchronous, and a session must not
-        // stall on a state-file append just because its conversation id changed.
+        // The synchronous tracker event queues its write without delaying the provider.
         _ = _WriteAsync(reported.PaneId, existing =>
             // AC-513: Unknown means "no id yet", not "gone" — every session, including a deliberate "start fresh",
             // reports Unknown before reporting anything real, so it must not clobber an already-Known id. Unsupported
@@ -117,9 +151,7 @@ public sealed class SessionStateRecorder : ISessionStateCache, ISingletonService
 
     private async Task _WriteAsync(string paneId, Func<SessionStateRecord, SessionStateRecord> mutate, CancellationToken cancellationToken)
     {
-        // AC-1013: a real caller token cancelling here can throw OperationCanceledException out of WaitAsync/RecordAsync;
-        // unreachable today since both call sites are fire-and-forget with a default token, but a deliberate boundary —
-        // unlike a failed seed, which _EnsureSeededAsync always turns into a clean `false` instead of an exception.
+        // Explicit caller cancellation may propagate; session starts use the default token and the store logs write failures.
         await _writeGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {

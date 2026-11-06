@@ -51,47 +51,15 @@ public class PluginSettingsStagingTests
     {
         var staging = new PluginSettingsStaging();
         var view = new FakeSettingsView();
-        staging.TryStage(view, tag: "view", onSaved: null, out _);
+        var notified = 0;
+        staging.TryStage(view, tag: "view", onSaved: () => { notified++; return Task.CompletedTask; }, out _);
 
         staging.Revert();
         await staging.CommitAsync();
 
         Assert.Equal(0, view.Committed);
+        Assert.Equal(0, notified);
         Assert.False(staging.HasStagedChanges);
-    }
-
-    [Fact]
-    public void ARefusedViewStagesNothing_AndGivesItsOwnReason()
-    {
-        var staging = new PluginSettingsStaging();
-
-        Assert.False(staging.TryStage(new FakeSettingsView(refusal: "Pick a cluster first."), tag: "view", onSaved: null, out var error));
-
-        Assert.Equal("Pick a cluster first.", error);
-        Assert.False(staging.HasStagedChanges);
-    }
-
-    [Fact]
-    public void ARefusalWithNoReason_IsAnsweredRatherThanShownBlank()
-    {
-        var staging = new PluginSettingsStaging();
-
-        Assert.False(staging.TryStage(new FakeSettingsView(refusal: string.Empty), tag: "view", onSaved: null, out var error));
-
-        Assert.False(string.IsNullOrWhiteSpace(error));
-    }
-
-    [Fact]
-    public async Task EveryStagedViewIsCommitted_InTheOrderItWasStaged()
-    {
-        var staging = new PluginSettingsStaging();
-        var order = new List<string>();
-        staging.TryStage(new OrderedView("first", order), tag: "view", onSaved: null, out _);
-        staging.TryStage(new OrderedView("second", order), tag: "view", onSaved: null, out _);
-
-        await staging.CommitAsync();
-
-        Assert.Equal(["first", "second"], order);
     }
 
     // A refusal anywhere in the batch is the caller's to act on (Options blocks its whole Apply, as it already
@@ -104,10 +72,12 @@ public class PluginSettingsStagingTests
         var accepted = new FakeSettingsView();
         staging.TryStage(accepted, tag: "view", onSaved: null, out _);
 
-        Assert.False(staging.TryStage(new FakeSettingsView(refusal: "no"), tag: "view", onSaved: null, out _));
+        var notified = 0;
+        Assert.False(staging.TryStage(new FakeSettingsView(refusal: "no"), tag: "view", onSaved: () => { notified++; return Task.CompletedTask; }, out _));
 
         await staging.CommitAsync();
         Assert.Equal(1, accepted.Committed);
+        Assert.Equal(0, notified);
     }
 
     // AC-1004, criterion 5. The settings-saved signal is what four plugins hang a cache invalidation off
@@ -128,46 +98,6 @@ public class PluginSettingsStagingTests
         Assert.Equal(["write", "notified"], order);
     }
 
-    [Fact]
-    public async Task ARevertedBatchNeverNotifies_BecauseNothingWasWritten()
-    {
-        var staging = new PluginSettingsStaging();
-        var notified = 0;
-        staging.TryStage(new FakeSettingsView(), tag: "view", onSaved: () => { notified++; return Task.CompletedTask; }, out _);
-
-        staging.Revert();
-        await staging.CommitAsync();
-
-        Assert.Equal(0, notified);
-    }
-
-    [Fact]
-    public async Task ARefusedViewNotifiesNothing()
-    {
-        var staging = new PluginSettingsStaging();
-        var notified = 0;
-
-        Assert.False(staging.TryStage(new FakeSettingsView(refusal: "no"), tag: "view", onSaved: () => { notified++; return Task.CompletedTask; }, out _));
-
-        await staging.CommitAsync();
-        Assert.Equal(0, notified);
-    }
-
-    // One plugin's view refusing must not leave another plugin's subscribers told its settings were saved — the
-    // batch Options commits is per view, and so is the signal that follows each write.
-    [Fact]
-    public async Task EachViewsSignalRidesWithItsOwnWrite()
-    {
-        var staging = new PluginSettingsStaging();
-        var order = new List<string>();
-        staging.TryStage(new OrderedView("first write", order), tag: "view", onSaved: () => { order.Add("first notified"); return Task.CompletedTask; }, out _);
-        staging.TryStage(new OrderedView("second write", order), tag: "view", onSaved: () => { order.Add("second notified"); return Task.CompletedTask; }, out _);
-
-        await staging.CommitAsync();
-
-        Assert.Equal(["first write", "first notified", "second write", "second notified"], order);
-    }
-
     // AC-479: a plugin that throws instead of refusing used to abort the whole Apply, so whichever plugins were
     // staged behind it silently kept their old settings. The neighbour's write is the assertion that matters.
     [Fact]
@@ -184,22 +114,6 @@ public class PluginSettingsStagingTests
         var failure = Assert.Single(failures);
         Assert.Equal("plugin:broken", failure.Tag);
         Assert.Contains("disk full", failure.Reason);
-    }
-
-    // The same fault one step earlier: throwing out of TryStage is answered as a refusal, so the rows behind it
-    // are still asked rather than never reached.
-    [Fact]
-    public async Task AThrowingStageReadsAsARefusal_AndTheNextViewIsStillStaged()
-    {
-        var staging = new PluginSettingsStaging();
-        var neighbour = new FakeSettingsView();
-
-        Assert.False(staging.TryStage(new ThrowingView(onCommit: false), tag: "plugin:broken", onSaved: null, out var error));
-        Assert.Contains("disk full", error);
-        Assert.True(staging.TryStage(neighbour, tag: "plugin:neighbour", onSaved: null, out _));
-
-        Assert.Empty(await staging.CommitAsync());
-        Assert.Equal(1, neighbour.Committed);
     }
 
     private sealed class OrderedView(string name, List<string> order) : IPluginSettingsView

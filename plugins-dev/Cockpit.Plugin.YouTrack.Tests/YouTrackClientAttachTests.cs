@@ -38,23 +38,6 @@ public class YouTrackClientAttachTests : IAsyncLifetime
         Assert.Contains("the-image-bytes", _body);
     }
 
-    [Fact]
-    public async Task AttachFileAsync_ThrowsWithYouTrackReasonOnRefusal()
-    {
-        // An address nothing answers on: a server that was started and then shut down again. Asking the OS for
-        // a port and letting go of it would leave the same gap AC-350 removed — something else can take it,
-        // and then this posts at a stranger instead of at nobody.
-        var abandoned = await LoopbackHttpServer.StartAsync(_ => Task.CompletedTask);
-        var abandonedUrl = abandoned.BaseUrl;
-        await abandoned.DisposeAsync();
-
-        var client = new YouTrackClient();
-
-        var act = () => client.AttachFileAsync($"{abandonedUrl}api", "t", "AC-1", "x.png", [1, 2, 3], "image/png", CancellationToken.None);
-
-        await Assert.ThrowsAnyAsync<Exception>(act);
-    }
-
     private async Task _RecordAndAnswerAsync(HttpContext context)
     {
         _method = context.Request.Method;

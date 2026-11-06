@@ -9,7 +9,7 @@
         ShowInTaskbar="False"
         CanResize="False"
         SizeToContent="WidthAndHeight"
-        WindowStartupLocation="Manual"
+        WindowStartupLocation="CenterScreen"
         MinWidth="220">
     <!-- AC-237: chrome copied from VoiceOverlayWindow (no decorations, always on top, rounded translucent card),
          but this window is interactive and draggable — see CompanionWindow.axaml.cs for why it skips the
@@ -26,7 +26,17 @@
                     <materialIcons:MaterialIcon Kind="Close" Width="12" Height="12"/>
                 </Button>
             </Grid>
-            <ItemsControl x:Name="ToolsHost" Margin="12,8,12,12"/>
+            <Grid Margin="12,8,12,12">
+                <TextBlock x:Name="EmptyState" Text="No tools available" FontSize="12"
+                           Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="0,8"/>
+                <ItemsControl x:Name="ToolsHost">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Spacing="12"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                </ItemsControl>
+            </Grid>
         </StackPanel>
     </Border>
 </Window>

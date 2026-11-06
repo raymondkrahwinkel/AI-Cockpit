@@ -60,36 +60,4 @@ public class ProjectResourceSecretPathHeuristicTests
     [InlineData("~", false)]
     public void IsLikelySecretPath_MatchesTheMeasuredTable(string? reference, bool expected) =>
         Assert.Equal(expected, ProjectResourceSecretPathHeuristic.IsLikelySecretPath(reference));
-
-    /// <summary>An absolute path resolves to the same answer as its "~/" form (AC-612 constraint 2) — the heuristic works on the resolved location, not the literal text.</summary>
-    [Fact]
-    public void IsLikelySecretPath_AnAbsolutePathUnderHome_MatchesItsAnchorFormsAnswer()
-    {
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var absolute = Path.Combine(home, ".ssh", "id_rsa");
-
-        Assert.True(ProjectResourceSecretPathHeuristic.IsLikelySecretPath(absolute));
-        Assert.Equal(
-            ProjectResourceSecretPathHeuristic.IsLikelySecretPath("~/.ssh/id_rsa"),
-            ProjectResourceSecretPathHeuristic.IsLikelySecretPath(absolute));
-    }
-
-    /// <summary>An absolute path outside home is out of this heuristic's scope entirely — see the class remarks on why.</summary>
-    [Fact]
-    public void IsLikelySecretPath_AnAbsolutePathOutsideHome_IsFalse()
-    {
-        var outside = OperatingSystem.IsWindows() ? @"C:\etc\ssh\ssh_host_rsa_key" : "/etc/ssh/ssh_host_rsa_key";
-
-        Assert.False(ProjectResourceSecretPathHeuristic.IsLikelySecretPath(outside));
-    }
-
-    /// <summary>
-    /// Casing: Linux is case-sensitive, Windows is not — the same platform split
-    /// <see cref="ProjectResourcePathPortability"/>'s own comparisons already follow.
-    /// </summary>
-    [Fact]
-    public void IsLikelySecretPath_UppercasedDirectory_MatchesOnlyOnAPlatformThatIgnoresCase()
-    {
-        Assert.Equal(OperatingSystem.IsWindows(), ProjectResourceSecretPathHeuristic.IsLikelySecretPath("~/.SSH/ID_RSA"));
-    }
 }

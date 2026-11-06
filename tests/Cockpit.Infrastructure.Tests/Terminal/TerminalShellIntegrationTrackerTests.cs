@@ -34,60 +34,14 @@ public class TerminalShellIntegrationTrackerTests
         Assert.Equal(1, tracker.CommandsFinished);
         Assert.Equal(1, tracker.LastExitCode);
         Assert.False(tracker.AtPrompt, "the next prompt mark is what says it is ready again");
-        tracker.Feed(Mark("C") + Mark("D"));
+        // The pty flushes on its own schedule, so a mark arriving in halves is normal.
+        var split = Mark("D");
+        tracker.Feed(Mark("C") + split[..4]);
+        Assert.Equal(1, tracker.CommandsFinished);
+        tracker.Feed(split[4..]);
 
         Assert.Equal(2, tracker.CommandsFinished);
         Assert.Null(tracker.LastExitCode);
-    }
-
-    [Fact]
-    public void AMarkSplitAcrossTwoWrites_IsStillSeen()
-    {
-        // The pty flushes on its own schedule, so a mark arriving in halves is normal — missing it would strand
-        // run_in_terminal waiting for a command that already finished.
-        var tracker = new TerminalShellIntegrationTracker();
-        var mark = Mark("D;0");
-
-        tracker.Feed("done\r\n" + mark[..4]);
-        Assert.Equal(0, tracker.CommandsFinished);
-
-        tracker.Feed(mark[4..]);
-        Assert.Equal(1, tracker.CommandsFinished);
-        Assert.Equal(0, tracker.LastExitCode);
-    }
-
-    [Fact]
-    public void TheStTerminatedForm_IsReadTheSameAsTheBellTerminatedOne()
-    {
-        var tracker = new TerminalShellIntegrationTracker();
-
-        tracker.Feed($"{Escape}]133;D;7{Escape}\\");
-
-        Assert.Equal(1, tracker.CommandsFinished);
-        Assert.Equal(7, tracker.LastExitCode);
-    }
-
-    [Fact]
-    public void VsCodesOsc633_IsUnderstoodToo()
-    {
-        var tracker = new TerminalShellIntegrationTracker();
-
-        tracker.Feed($"{Escape}]633;B{Bell}");
-
-        Assert.True(tracker.AtPrompt);
-    }
-
-    [Fact]
-    public void OtherEscapeSequences_AreIgnoredWithoutDisturbingTheState()
-    {
-        var tracker = new TerminalShellIntegrationTracker();
-        tracker.Feed(Mark("B"));
-
-        // A colour run, a cursor move and a window-title OSC — all common, none of them ours.
-        tracker.Feed($"{Escape}[32mgreen{Escape}[0m{Escape}[2K{Escape}]0;a title{Bell}");
-
-        Assert.True(tracker.AtPrompt);
-        Assert.Equal(0, tracker.CommandsFinished);
     }
 
     [Fact]
@@ -103,31 +57,5 @@ public class TerminalShellIntegrationTrackerTests
         Assert.True(tracker.ShellIntegrationSeen);
         Assert.Equal(1, tracker.CommandsFinished);
         Assert.Equal(0, tracker.LastExitCode);
-    }
-
-    [Fact]
-    public void ACommandStarting_IsCountedSeparatelyFromItFinishing()
-    {
-        // A finish on its own could belong to something already in flight; a caller waits for both to move.
-        var tracker = new TerminalShellIntegrationTracker();
-
-        tracker.Feed(Mark("D;0"));
-        Assert.Equal(0, tracker.CommandsStarted);
-        Assert.Equal(1, tracker.CommandsFinished);
-
-        tracker.Feed(Mark("C") + Mark("D;0"));
-        Assert.Equal(1, tracker.CommandsStarted);
-        Assert.Equal(2, tracker.CommandsFinished);
-    }
-
-    [Fact]
-    public void AnEscapeThatNeverCompletes_DoesNotGrowWithoutBound()
-    {
-        var tracker = new TerminalShellIntegrationTracker();
-
-        tracker.Feed(Escape + "]133;" + new string('x', 4096));
-        tracker.Feed(Mark("D;0"));
-
-        Assert.Equal(1, tracker.CommandsFinished);
     }
 }

@@ -3,6 +3,7 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Diagnostics;
 using Cockpit.Core.Mcp;
@@ -98,6 +99,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // header's activity text when no `Statusline` is set. On the shared base so the one SessionHeaderBar
     // reads it for every session kind.
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowMcpStatusButton))]
     private string _status = "Not started.";
 
     // The MCP servers this session has: seeded with the merged session/profile selection at launch (#44/AC-130),
@@ -106,6 +108,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ConnectedStatusLine))]
     [NotifyPropertyChangedFor(nameof(McpServersTooltip))]
+    [NotifyPropertyChangedFor(nameof(HasMcpServers), nameof(ShowMcpStatusButton))]
     private IReadOnlySet<string>? _mcpServerSelection;
 
     // Servers in the selection above that never got tools this session — unreachable, crashed at start, or
@@ -114,7 +117,11 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ConnectedStatusLine))]
     [NotifyPropertyChangedFor(nameof(McpServersTooltip))]
+    [NotifyPropertyChangedFor(nameof(ShowMcpStatusButton))]
     private IReadOnlyList<McpServerConnectionIssue> _mcpServerConnectionIssues = [];
+
+    public bool HasMcpServers => McpServerSelection is { Count: > 0 };
+    public bool ShowMcpStatusButton => HasMcpServers && Status == ConnectedStatusLine;
 
     // An unknown selection is left unsaid rather than reported as zero — the count is the one figure here that
     // describes the session's own setup, and a wrong one is worse than none (AC-537, AC-997).
@@ -523,11 +530,20 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
                 return string.Empty;
             }
 
+            var label = string.IsNullOrWhiteSpace(run.Label)
+                || string.Equals(run.Label.Trim(), run.Command.Trim(), StringComparison.Ordinal)
+                || run.Label.Contains('\r')
+                || run.Label.Contains('\n')
+                || run.Label.Length > 80
+                ? string.Empty
+                : $": {run.Label.Trim()}";
             return run.State == SessionRunState.Queued
-                ? $"Waiting for run: {run.Label}: queued ({run.WaitReason ?? "waiting"})"
-                : $"Waiting for run: {run.Label}: running {_RunDuration(run.Since)}";
+                ? $"Waiting for run{label}: queued ({run.WaitReason ?? "waiting"})"
+                : $"Waiting for run{label}: running {_RunDuration(run.Since)}";
         }
     }
+
+    public string RunCommandTooltip => _activeRuns.FirstOrDefault()?.Command ?? string.Empty;
 
     private bool _hasOutstandingProcesses;
     private bool _lastSampleHadOutstanding;
@@ -1180,6 +1196,9 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private string? _projectId;
 
+    // The plugin provider this pane was started on, so disabling that plugin can see which sessions it would cut off (AC-2024).
+    public virtual string? ProviderId => null;
+
     // Whether plugin-contributed session-header items show (AC-25/AC-37): true for a real agent session, false for
     // a plain terminal, where a plugin session indicator has nothing to say. On the base so the one SessionHeaderBar
     // gates the shared PluginSessionHeaderHost without needing the TTY-only IsTerminal flag.
@@ -1201,19 +1220,11 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // Which metrics the header's usage pill shows (AC-105), a global preference pushed down from
     // `CockpitViewModel`. Defaults to just the context window — the original behaviour.
     [ObservableProperty]
-    // SessionUsage is in the default because the standalone meter it replaced had no opt-in at all: it simply
-    // showed whenever usage existed. Leaving it out would have silently dropped the token/cost figure from every
-    // header that never visited Options, which is a different change than the one being made here.
-    private IReadOnlyList<UsagePillField> _usagePillVisibleFields = [UsagePillField.Context, UsagePillField.SessionUsage];
+    private IReadOnlyList<UsagePillField> _usagePillVisibleFields = [UsagePillField.Context];
 
     // The mini-pills the header renders (AC-105): one per selected field the session actually has data for, in
     // the operator's chosen order. Rebuilt whenever the selection or any underlying metric changes.
     public ObservableCollection<UsagePillItem> UsagePillItems { get; } = [];
-
-    // Whether a reading level vetoes the token/cost figure outright, regardless of the operator's pill selection
-    // (AC-138): false on the base (TTY has no reading level) and on the SDK session except at Simple, whose "no
-    // cost" promise has to hold even when session usage is selected.
-    protected virtual bool SuppressCostMeter => false;
 
     // Whether the header's kind chip (TTY / SDK / provider tag) shows: by default whenever there is a label. The SDK
     // session overrides this to drop the chip at the Simple reading level (AC-138), where a model/provider tag is
@@ -1260,8 +1271,9 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         };
     }
 
-    // Whether the usage pill shows at all: at least one metric segment, or the chevron's detail flyout.
-    public bool HasUsagePillRegion => UsagePillItems.Count > 0 || HasUsagePill;
+    public bool HasUsagePillSegments => UsagePillItems.Count > 0;
+
+    public bool HasUsagePillRegion => HasUsagePillSegments || HasUsagePill;
 
     // Whether a divider sits between the last metric segment and the chevron — only when both are present.
     public bool ShowChevronDivider => UsagePillItems.Count > 0 && HasUsagePill;
@@ -1298,6 +1310,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         OnPropertyChanged(nameof(HasActiveRun));
         OnPropertyChanged(nameof(HasOutstandingWork));
         OnPropertyChanged(nameof(RunStatusLabel));
+        OnPropertyChanged(nameof(RunCommandTooltip));
         OnPropertyChanged(nameof(SessionStatusLabel));
 
         if (previousStatus != SessionStatus)
@@ -1412,6 +1425,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         UnreportedWindowsNotice = _DescribeUnreportedWindows();
 
         OnPropertyChanged(nameof(HasUsagePillRegion));
+        OnPropertyChanged(nameof(HasUsagePillSegments));
         OnPropertyChanged(nameof(ShowChevronDivider));
     }
 
@@ -1427,7 +1441,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
                 break;
 
             // Suppress cost here because this is its only rendering; deselecting usage must remove it, not move it.
-            case UsagePillField.SessionUsage when HasUsage && !SuppressCostMeter:
+            case UsagePillField.SessionUsage when HasUsage:
                 yield return new UsagePillItem(UsageSummary, "CockpitTextSecondaryBrush", UsageTooltip);
                 break;
 
@@ -1492,7 +1506,14 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     private IVoicePushToTalkService? _voicePushToTalk;
     private IVoiceSettingsStore? _voiceSettingsStore;
     private IVoicePlaybackQueue? _voicePlaybackQueue;
+    private bool _readAloudCancelled;
+    private long _readAloudTurn;
+    private EventHandler<VoicePlaybackStoppedEventArgs>? _playbackStoppedHandler;
     private IOpenMicState? _openMicState;
+
+    public bool IsAudioAvailable { get; private set; } = true;
+
+    public string VoiceTooltip => IsAudioAvailable ? "Hold to dictate into this box" : "Audio is unavailable. See Health for details.";
 
     // Where a hold reports what it is doing. This view model is where the in-window F9 handlers and the global
     // `Services.VoicePushToTalkCoordinator` meet, so it is the one place that can say the same thing on
@@ -1558,7 +1579,12 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         // not just suppress future turns.
         if (!value)
         {
+            OnReadAloudInvalidated();
             _voicePlaybackQueue?.StopAll();
+        }
+        else if (IsAudioAvailable && _voicePlaybackQueue is not null)
+        {
+            _ = _voicePlaybackQueue.WarmUpAsync();
         }
     }
 
@@ -1570,13 +1596,27 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         IVoiceSettingsStore? voiceSettingsStore,
         IVoicePlaybackQueue? voicePlaybackQueue = null,
         IOpenMicState? openMicState = null,
-        VoiceOverlayCoordinator? voiceOverlay = null)
+        VoiceOverlayCoordinator? voiceOverlay = null,
+        IAudioAvailability? audioAvailability = null)
     {
         _voicePushToTalk = voicePushToTalk;
         _voiceSettingsStore = voiceSettingsStore;
         _voicePlaybackQueue = voicePlaybackQueue;
+        if (_voicePlaybackQueue is not null)
+        {
+            _playbackStoppedHandler = (_, stopped) =>
+            {
+                OnReadAloudInvalidated();
+                if (string.Equals(stopped.OwnerId, PaneId, StringComparison.Ordinal))
+                {
+                    _readAloudCancelled = true;
+                }
+            };
+            _voicePlaybackQueue.PlaybackStopped += _playbackStoppedHandler;
+        }
         _openMicState = openMicState;
         _voiceOverlay = voiceOverlay;
+        IsAudioAvailable = audioAvailability?.IsAvailable ?? true;
 
         if (voiceSettingsStore is not null)
         {
@@ -1597,22 +1637,22 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
     // A no-op when the playback queue was never wired (design-time/tests) or there is nothing to say (AC-729, AC-410).
     protected Task EnqueueReadAloudAsync(string text)
+        => EnqueueReadAloudAsync(TtsProseExtractor.Extract(text));
+
+    protected Task EnqueueReadAloudAsync(IReadOnlyList<string> sentences)
+        => EnqueueReadAloudAsync(sentences, CaptureReadAloudTurn());
+
+    protected (long Turn, int Generation) CaptureReadAloudTurn()
+        => (_readAloudTurn, _voicePlaybackQueue?.Generation ?? 0);
+
+    protected Task EnqueueReadAloudAsync(IReadOnlyList<string> sentences, (long Turn, int Generation) expected)
     {
-        if (_voicePlaybackQueue is null)
+        if (_voicePlaybackQueue is null || _readAloudCancelled || CaptureReadAloudTurn() != expected)
         {
             return Task.CompletedTask;
         }
 
         var source = PaneId == AssistantIdentity.PaneId ? VoicePlaybackSource.Assistant : VoicePlaybackSource.Session;
-
-        var sentences = TtsProseExtractor.Extract(text);
-        if (ReadAloudAsOneUtterance && sentences.Count > 1)
-        {
-            // Joined after extraction, not instead of it: the extractor is what strips code blocks and tables
-            // out of something that would otherwise be read character by character, and that job is unrelated
-            // to how many clips the result is spoken in.
-            sentences = [string.Join(" ", sentences)];
-        }
 
         if (sentences.Count == 0)
         {
@@ -1626,28 +1666,58 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
         // Show the overlay now: the first synthesis (and any first-use model download) runs before a word is
         // heard, and that gap otherwise reads as nothing happening.
-        _voicePlaybackQueue.NotifyPreparing(source);
+        _voicePlaybackQueue.NotifyPreparing(source, PaneId);
 
-        if (_voicePlaybackQueue.Generation != generation)
+        if (_voicePlaybackQueue.Generation != generation || CaptureReadAloudTurn() != expected || _readAloudCancelled)
         {
             // Read-aloud was cancelled while this batch was being prepared — drop it instead of speaking over the
             // interrupt the operator just made.
             return Task.CompletedTask;
         }
 
-        _voicePlaybackQueue.Enqueue(sentences, TtsVoiceSid, ReadAloudLanguage, source);
+        if (source == VoicePlaybackSource.Assistant)
+        {
+            _voicePlaybackQueue.Enqueue(SpokenReplyLanguages.Segment(sentences, ReadAloudLanguage), TtsVoiceSid, source, PaneId);
+        }
+        else
+        {
+            _voicePlaybackQueue.Enqueue(sentences, TtsVoiceSid, ReadAloudLanguage, source, PaneId);
+        }
         return Task.CompletedTask;
     }
 
-    // Whether this session's replies are spoken as one synthesis rather than sentence by sentence.
-    public bool ReadAloudAsOneUtterance { get; set; }
+    protected void CompleteReadAloudStream()
+    {
+        if (_voicePlaybackQueue is not null)
+        {
+            var source = PaneId == AssistantIdentity.PaneId ? VoicePlaybackSource.Assistant : VoicePlaybackSource.Session;
+            _voicePlaybackQueue.CompleteStream(source, PaneId);
+        }
+    }
+
+    protected void ResetReadAloudCancellation()
+    {
+        OnReadAloudInvalidated();
+        _readAloudTurn++;
+        _readAloudCancelled = false;
+    }
+
+    protected void CancelReadAloud()
+    {
+        OnReadAloudInvalidated();
+        _readAloudCancelled = true;
+        _readAloudTurn++;
+        _voicePlaybackQueue?.StopAll();
+    }
+
+    protected virtual void OnReadAloudInvalidated() { }
 
     // Starts a push-to-talk hold (KeyDown on the configured hotkey). Returns false — a no-op the
     // caller should not mark `Handled` for — when voice is off, unwired, or a hold is already in
     // progress (the underlying service's own key-repeat guard).
     public bool BeginVoiceHold()
     {
-        if (!CanReceiveOperatorInput || !VoiceEnabled || _voicePushToTalk is null)
+        if (!CanReceiveOperatorInput || !IsAudioAvailable || !VoiceEnabled || _voicePushToTalk is null)
         {
             return false;
         }
@@ -1982,6 +2052,13 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         }
 
         _disposed = true;
+        OnReadAloudInvalidated();
+
+        if (_voicePlaybackQueue is not null && _playbackStoppedHandler is not null)
+        {
+            _voicePlaybackQueue.PlaybackStopped -= _playbackStoppedHandler;
+            _playbackStoppedHandler = null;
+        }
 
         if (_heavyRuns is not null)
         {

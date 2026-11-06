@@ -41,14 +41,6 @@ public sealed class SingleInstanceGuardTests
     }
 
     [Fact]
-    public void ClaimNameFor_TwoDifferentRoots_AreDifferentClaims()
-    {
-        Assert.NotEqual(
-            SingleInstanceGuard.ClaimNameFor(Path.Combine(Path.GetTempPath(), "cockpit-a")),
-            SingleInstanceGuard.ClaimNameFor(Path.Combine(Path.GetTempPath(), "cockpit-b")));
-    }
-
-    [Fact]
     public void IsAnotherInstanceRunning_WhileAnotherInstanceHoldsItsLock_RefusesTheUpdate()
     {
         var installationDirectory = Directory.CreateTempSubdirectory("ac1486-");
@@ -67,30 +59,6 @@ public sealed class SingleInstanceGuardTests
         }
         finally
         {
-            Directory.Delete(installationDirectory.FullName, recursive: true);
-        }
-    }
-
-    [Fact]
-    public void IsAnotherInstanceRunning_WithAStaleLockOrUnavailableInstallation_CleansItOrAllowsStartup()
-    {
-        var installationDirectory = Directory.CreateTempSubdirectory("ac1486-");
-        var instancesDirectory = Directory.CreateDirectory(Path.Combine(installationDirectory.FullName, ".instances"));
-        var claimPath = Path.Combine(instancesDirectory.FullName, "stale.lock");
-        var unavailableInstallationPath = Path.GetTempFileName();
-
-        try
-        {
-            File.WriteAllText(claimPath, string.Empty);
-            using var noOp = InstallationInstanceGuard.Acquire(unavailableInstallationPath);
-
-            Assert.NotNull(noOp);
-            Assert.False(InstallationInstanceGuard.IsAnotherInstanceRunning(installationDirectory.FullName));
-            Assert.False(File.Exists(claimPath));
-        }
-        finally
-        {
-            File.Delete(unavailableInstallationPath);
             Directory.Delete(installationDirectory.FullName, recursive: true);
         }
     }

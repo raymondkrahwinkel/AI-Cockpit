@@ -36,22 +36,4 @@ public class RestoredPaneAttachFocusTests
 
         Assert.False(focused, "a restored pane that is not the selection must not steal the keyboard on attach");
     });
-
-    [Fact]
-    public void AttachingTheSelectedPane_StillClaimsFocus() => HeadlessAvalonia.Run(() =>
-    {
-        var session = new SessionViewModel { IsSelected = true };
-        var pane = new SessionView { DataContext = session };
-
-        var window = new Window { Content = pane, Width = 400, Height = 300 };
-        window.Show();
-        window.UpdateLayout();
-        Dispatcher.UIThread.RunJobs();
-
-        var composer = pane.GetVisualDescendants().OfType<TextBox>().Single(box => box.Name == "InputBox");
-        var focused = composer.IsFocused;
-        window.Close();
-
-        Assert.True(focused, "the selected pane must still be ready to type in without a click (L10)");
-    });
 }

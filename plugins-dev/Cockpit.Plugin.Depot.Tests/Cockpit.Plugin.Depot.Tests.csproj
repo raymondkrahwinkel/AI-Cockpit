@@ -15,8 +15,8 @@
     <!-- Substituting ICockpitHost pulls in the Avalonia- and DI-typed members of every contribution point on the
          interface (NSubstitute's proxy has to resolve the whole surface, not only AddProjectMemorySource), which
          the plugin itself references compile-only (ExcludeAssets=runtime, host-provided). This test project runs
-         standalone with no host to provide them, so it carries runtime copies — the same reason the FanOut and
-         Autopilot plugin test projects do. -->
+         standalone with no host to provide them, so it carries runtime copies — the same reason the Autopilot
+         plugin test project does. -->
     <PackageReference Include="Avalonia" Version="12.1.2" />
     <!-- AC-423 added a DataGridRow selector to the host's shared Theme.axaml; this project loads that theme file
          off disk (see the Avalonia.Markup.Xaml.Loader reference below) for the IL#9 render test, so the XAML

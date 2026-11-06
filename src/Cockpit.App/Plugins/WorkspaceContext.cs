@@ -88,10 +88,12 @@ internal sealed class WorkspaceContext(
         }
     }
 
-    // Raised by the shell when this workspace is really closed (its tab dismissed), so a body can tear down a long-running job.
+    // Raised by the shell when this workspace is really closed (its tab dismissed) or its plugin left, so a body can tear
+    // down a long-running job. Its embedded sessions go along: nothing reaches them once the body is released.
     public void RaiseClosed()
     {
         _closeGuard = null;
+        embeddedSessions?.CloseForWorkspace(workspaceId);
         Closed?.Invoke(this, EventArgs.Empty);
     }
 }

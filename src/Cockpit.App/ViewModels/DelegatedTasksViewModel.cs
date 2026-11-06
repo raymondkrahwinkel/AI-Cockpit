@@ -51,11 +51,6 @@ public sealed partial class DelegatedTasksViewModel : ObservableObject, ISinglet
     // How many delegated tasks are running or queued right now.
     public int ActiveTaskCount => Tasks.Count(task => task.IsActive);
 
-    // Which brush the status bar's count reads in: the working blue while something is running, quiet grey while
-    // nothing is. The count is always on screen — knowing that nothing is running on your behalf is worth as much as
-    // knowing that something is — so it is the colour, not the presence, that says which.
-    public string ActiveTaskBrushKey => HasActiveTasks ? "CockpitStatusBusyBrush" : "CockpitTextFaintBrush";
-
     [ObservableProperty]
     private DelegatedTaskRowViewModel? _selectedTask;
 
@@ -87,7 +82,6 @@ public sealed partial class DelegatedTasksViewModel : ObservableObject, ISinglet
         SelectedTask = Tasks.FirstOrDefault(task => task.TaskId == selectedId) ?? Tasks.FirstOrDefault();
         OnPropertyChanged(nameof(HasActiveTasks));
         OnPropertyChanged(nameof(ActiveTaskCount));
-        OnPropertyChanged(nameof(ActiveTaskBrushKey));
         OnPropertyChanged(nameof(SelectedTaskOutput));
     }
 

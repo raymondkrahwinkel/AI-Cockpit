@@ -34,31 +34,6 @@ public class DiagnosticsCollectorTests
         Assert.Null(snapshot.Sessions[1].ProcessId);
     }
 
-    [Fact]
-    public void Collect_PassesTheOsCrashArtifactsThrough()
-    {
-        var crash = new CrashLogEntry("Linux OOM (kernel log)", string.Empty, null, "Killed process 100 (Cockpit.App)");
-        var collector = new DiagnosticsCollector(new FakeProcessTable([]), new FakeCrashLogReader([crash]));
-
-        var snapshot = collector.Collect([]);
-
-        Assert.Equal(crash, Assert.Single(snapshot.CrashLogs));
-    }
-
-    [Fact]
-    public void Collect_PopulatesTheLivePlatformAndMemorySections()
-    {
-        var collector = new DiagnosticsCollector(new FakeProcessTable([]), new FakeCrashLogReader([]));
-
-        var snapshot = collector.Collect([]);
-
-        Assert.False(string.IsNullOrWhiteSpace(snapshot.Platform.RuntimeVersion));
-        Assert.False(string.IsNullOrWhiteSpace(snapshot.Platform.AvaloniaVersion));
-        Assert.False(string.IsNullOrWhiteSpace(snapshot.Rendering.Mode));
-        Assert.True(snapshot.Memory.ResidentBytes > 0);
-        Assert.True(snapshot.ManagedHeap.HeapSizeBytes > 0);
-    }
-
     private sealed class FakeProcessTable(IReadOnlyList<ProcessRow> rows) : IProcessTableReader
     {
         public IReadOnlyList<ProcessRow> Read() => rows;

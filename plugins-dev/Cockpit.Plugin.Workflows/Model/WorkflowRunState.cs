@@ -14,6 +14,7 @@ public enum WorkflowRunReason
     AlreadyRunning,
     Missed,
     ConsentDenied,
+    PluginMissing,
 }
 
 public enum WorkflowApprovalOrigin

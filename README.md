@@ -1,5 +1,35 @@
 # AI-Cockpit
 
+Assistant Options controls spoken answers independently of text chat. `assistant.speechMode`
+(`Full`, `Summary`, `Short`; default `Short`), `assistant.speechMethod` (`Assistant`, `Profile`,
+`Rules`; default `Assistant`) and `assistant.speechProfileLabel` (optional existing profile label)
+are local `cockpit.json` settings, deliberately excluded from the settings carrier. Apply saves
+them; Cancel discards edits. Older configurations without these keys use Short + Assistant.
+Full streams speech; the shorter modes wait for the completed answer. AI shortening sends the
+answer and profile context to the selected profile through a private generation route, with up to
+three seconds of extra waiting. An unavailable, missing or unsafe profile falls back to built-in
+shortening and reports why. The speech text never enters the chat, copy or export. Read full reply
+aloud on an assistant answer stops current speech and private generation, then reads that answer
+in full, regardless of the selected mode. Speech uses sentence language cues for Dutch, English
+and German; short ambiguous sentences use the preceding language, starting each batch with the
+configured read-aloud language. Adjacent sentences in the same language share one segment.
+
+The host checks live sessions every 30 seconds for failed turns, unanswered permissions,
+abandoned processes when a session is neither Busy nor WorkingBackground, and panes that disappear
+before finishing. Plain terminals are excluded. It sends at most one inbox message per tick to the
+assistant, with transcript context, and leaves each incident quiet
+until it clears. An event armed through `watch_session` is handled by that watch instead.
+`Notifications.MonitorMessagesPerHour` in `cockpit.json` caps these messages over a rolling hour
+(default 12; nonpositive values use the default). Findings over the cap are held until room returns.
+This preference travels with the Notifications settings carrier and is preserved by Options Apply/Cancel.
+
+Profiles expose **Supports images: Auto / On / Off** near the model selector. `Profiles[].ImageInputMode`
+in `cockpit.json` defaults to `Auto` when absent. `On` and `Off` override model facts across model changes;
+`Auto` uses the service API, then an exact OpenRouter model reference, then off. Expired facts are unknown.
+Images require a driver with image transport. The dialog and `model_options` show the effective result and source;
+saving the profile refreshes its running sessions. This profile preference travels through the settings carrier;
+projects remain excluded. Options stages it as part of the profile, so Cancel discards edits.
+
 CI draait alleen op PR naar staging en bij een release; de poort voor main is scripts/local-gate.sh
 
 [![License: Apache 2.0 + Commons Clause](https://img.shields.io/badge/License-Apache_2.0_%2B_Commons_Clause-blue.svg)](LICENSE)
@@ -15,6 +45,17 @@ or a provider added by a plugin: they all run as panes in the same cockpit.
 > **Status: 0.3.0, pre-1.0, in active development.** Expect breaking changes between commits; there are no
 > releases yet. Deliberately still 0.x: under 1.0 semver promises nothing, which is the honest state of a thing
 > whose plugin contract is still moving. Built and tested on Windows and Linux (Fedora).
+
+### Test and build run limits
+
+Options › Sessions stages this machine's maximum parallel heavy runs and CPU/memory ceilings until Apply;
+Cancel discards edits. `heavyRuns` in `cockpit.json` also works on servers without a UI:
+`MaxParallelRuns` defaults to `0` (automatic, the existing resource-based admission),
+`CpuCeilingPercent` to `75`, and `MemoryCeilingPercent` to `85`.
+A positive maximum adds a limit to the existing resource checks. With no run active, the first heavy run
+can start regardless of these limits. Light and operator runs retain their existing admission rules.
+Queued runs show the reason in Test runs. Overload failures can lower the resource ceilings.
+These settings stay on this machine and are excluded from the settings carrier.
 
 ## Why
 
@@ -57,8 +98,7 @@ exactly the controls that provider supports — and no dead ones.
 | **Claude Code** (`claude` CLI) | built-in | SDK + TTY | Native tools, permission prompts, live model/effort switching |
 | **Ollama** | built-in | SDK | Local models over the OpenAI-compatible `/v1` endpoint |
 | **LM Studio** | built-in | SDK | Local models over the OpenAI-compatible `/v1` endpoint |
-| **Gemini / OpenAI** | plugin | SDK | Both over an OpenAI-compatible chat-completions endpoint |
-| **GitHub Models** | plugin | SDK | GitHub's Models API (`models.github.ai/inference`), with a PAT |
+| **OpenAI-compatible** | plugin | SDK | Gemini, OpenAI, Groq, Mistral, Cerebras or any endpoint with a custom base URL |
 | **Codex CLI** | plugin | SDK | Driven as a subprocess per turn (`codex exec --json`, resumed for follow-ups) |
 
 Every provider — built-in or plugin — sits behind one internal session-driver seam and advertises its own
@@ -77,6 +117,12 @@ In Depot files, Open views a Markdown document, Edit enables changes, and New Ma
 draft in the chosen folder. Save or Ctrl+S writes with the original checksum. Pop out and Dock back
 keep the same text and undo history. Closing warns about unsaved changes; unsaved text is not restored
 after restart. A source conflict preserves local text for the later conflict-resolution flow.
+
+Depot notes also display standalone relative Markdown images in previews, pinned tabs and the live
+editor. Paths are relative to the note's folder in its project; source mode and saving preserve the
+original Markdown. PNG, JPEG, GIF and WebP previews support up to 2 MiB and 16 megapixels per image.
+Unavailable images show their alt text. Reload checks for replacements; signing out or changing a
+connection clears private previews. This requires Depot's authenticated artifact-byte endpoint.
 
 The cockpit does not talk to any model API of its own accord. A session is a driver: it spawns the provider's own
 client, or speaks to the provider's own endpoint, under your own login and your own credentials — which the
@@ -178,6 +224,12 @@ calling agent cannot delegate to what it cannot see.
 - A periodic **update check** raises a toast when a newer version of an installed plugin is available.
 - Enabling/disabling/installing a plugin needs a **restart** (a loaded assembly can't be unloaded); a "Restart
   cockpit now" button appears once one is pending. Settings changes do not.
+- **A crash while starting cannot lock you out.** Each start keeps `startup-attempt.json` in the state root until
+  it has been up 30 s after the restore, or until it quits. A plugin is turned off only when two consecutive
+  unfinished starts were both reopening its panel or tab; the sticky **Turn back on** notification explains why.
+  This recovery state is separate from the operator's own disabled choice and stays on that machine. With no plugin
+  named, the second unfinished start in a row starts in **safe mode** (as `--safe-mode`), and the next good start
+  ends it.
 
 ## Workspaces & dashboards
 
@@ -220,7 +272,8 @@ See the [design note](docs/workspaces-widgets-terminals.md) and the
 - **Keyboard:** every app action — new session, zoom, transcript search, the command palette (Ctrl+K), the Agents palette (Ctrl+Shift+A), switching
   sessions (Ctrl+Up / Ctrl+Down) — is a **rebindable shortcut** in Options → Shortcuts, as are the ones plugins
   contribute. Clearing a gesture unbinds it. The Agents palette, a compact board of all your agents, can be switched
-  off, and its title-bar button and dock-rail icon chosen, in Options → Agents overview.
+  off, and its dock-rail icon chosen, in Options → Agents overview; the key it is bound to now stands in the
+  Agents panel's head, and the panel's floating window shows it under the name.
 - **Notifications:** an OS toast when you're at the machine, or a **Discord webhook** when you're away (presence from
   idle time + lock state) — fired when a session starts needing attention. A session that has been finished and
   quiet for a while can announce that too, though it is off by default: the interesting moment is usually the
@@ -240,6 +293,24 @@ See the [design note](docs/workspaces-widgets-terminals.md) and the
   close.
 
 ## Security
+
+Every session uses its own loopback MCP gateway, including a fresh installation without `cockpit.json`.
+Codex SDK and TTY launches enable live MCP tool-list updates. For the `cockpit` gateway only,
+profiles choosing `approvalPolicy=never` or `bypassPermissions` also approve native MCP tools;
+stricter profiles keep Codex's approval prompts. Sandbox and approval-policy are unchanged.
+Cockpit supplies one `cockpit` endpoint and a session key; upstream credentials and headers stay in Cockpit.
+The in-process tool-loop uses the same live session set. Old gateway-switch settings are ignored.
+If the gateway cannot start or its launch configuration cannot be prepared, the session reports a start
+failure and Cockpit logs the cause. There is no direct-server fallback.
+Live refresh and MCP-set restore use the gateway. The gateway's `call_tool`
+uses the provider's canonical-name authorization and the session ceiling; calls needing permission
+are refused and exposed by name for the next turn. Providers can implement `IPluginMcpToolAuthorization`
+to authorize fallback calls without a prompt. Unknown provider policies refuse fallback execution.
+Stdio servers also run behind the gateway, with a separate process per session and the
+session's working directory, profile variables and scratch directory. Host-controlled credentials are
+removed. Windows uses a kill-on-close Job Object; Linux uses util-linux `setpriv` and `setsid`
+(`/usr/bin`) plus `/bin/kill` to stop the upstream process group if Cockpit dies. Without these tools,
+it logs one warning and starts upstream processes without the OS wrapper, relying on stdin closure.
 
 Your API keys, MCP bearer tokens and the plugins' tokens live in `cockpit.json`. What the cockpit does about that:
 
@@ -272,6 +343,18 @@ Your API keys, MCP bearer tokens and the plugins' tokens live in `cockpit.json`.
 ```
 dotnet run --project src/Cockpit.App
 ```
+
+Debug startup and the dev-plugin watcher refresh approved, installed plugins from
+`plugins-dev/<plugin>/bin/Debug/net10.0/`, including subdirectories such as `Subprocess/` and `runtimes/`.
+The same files are copied and hashed, so a changed child executable is refreshed and re-pinned too.
+The host's shared contract assemblies are excluded at the plugin root; a child process keeps its own dependencies.
+
+For a browser check without clicking, use the existing workspace restore: keep a `browser.tab` workspace in
+`workspaces.workspaces` in the isolated state's `cockpit.json` and set `workspaces.activeWorkspaceId` to its id.
+With the Browser plugin already approved and enabled, startup restores that active workspace and starts CEF.
+Its existing plugin data can select a fixed page: `plugins.browser.data.startupMode` is the JSON string `"2"`
+(Start page), and `plugins.browser.data.startPage` is a JSON-encoded URL string. For example, the stored value
+`"\"https://example.com\""` opens that page. Edit an isolated config only while its dev-app is stopped.
 
 Or build and launch the produced executable directly — the app is designed to run **detached**, with no attached
 console: all logging goes to a file logger rather than stdout.
@@ -414,7 +497,7 @@ Signing uses the hardened runtime with `src/Cockpit.App/Cockpit.entitlements` �
 | **.NET SDK 10.0+** | always |
 | **Claude Code CLI** (`claude`), installed and logged in | only for Claude profiles |
 | **Ollama** or **LM Studio** running locally | only for those profiles |
-| An API key / PAT | only for the plugin providers that need one (Gemini, OpenAI, GitHub Models) |
+| An API key | only for the plugin providers that need one (Gemini, OpenAI) |
 
 You do **not** need a Claude subscription to use the cockpit — a local Ollama profile works on its own.
 
@@ -431,6 +514,9 @@ it is dragged, keyed and clicked into. It covers the whole screen and takes ever
 that cannot be looked at by running the app.
 
 Tests:
+
+Test assemblies initialize one private scratch root per process, replacing any inherited
+`COCKPIT_SCRATCH_ROOT`. Loading a test assembly again as a plugin keeps that root and any active test override.
 
 ```
 dotnet test
@@ -454,7 +540,7 @@ dotnet test
   [github.com/raymondkrahwinkel/AI-Cockpit-Plugins](https://github.com/raymondkrahwinkel/AI-Cockpit-Plugins) — the
   [`plugins-dev/`](plugins-dev) example plugins, published. UI plugins (GitHub Issues, GitHub Pull Requests,
   YouTrack, Git Status, GitHub Actions, Session Review, Prompt Library, Transcript Search), MCP plugins
-  (Docker, Kubernetes), widgets (Clock, System Monitor), providers (Gemini/OpenAI, GitHub Models,
+  (Docker, Kubernetes), widgets (Clock, System Monitor), providers (OpenAI-compatible,
   CLI Agent/Codex), and **Workflows** — a canvas where flows are drawn and an engine that runs them, which
   other plugins contribute their own steps and triggers to. (Usage Trend is a bundled example widget under
   `plugins-dev/`, not yet published to the store; **Depot** — names a Depot project as a place a project's
@@ -537,3 +623,29 @@ Folder notifications say "Creator unknown"; filesystem events do not identify th
 `ToastTimeoutSeconds` defaults to 5; positive values set the timeout for ordinary informational
 and condition toasts. Nonpositive values fall back to 5. Timed-out messages remain in the bell.
 Condition messages also close when resolved, and their actions become unavailable.
+
+
+## Swarm recovery
+
+Options > Swarm > **Leave / reset swarm** makes this machine standalone, including when it
+was removed or has no reachable peers. It backs up `swarm-members.json` beside the original,
+revokes swarm access keys and forgets swarm addresses. Sessions, projects, the node certificate
+and other settings stay in place. Other machines keep their signed membership history.
+
+When two machines have different swarm histories, choose which swarm to keep. Reset the
+machine abandoning its history, then initiate pairing from that machine toward the retained
+swarm. Compare the six digits and confirm on both screens. Pairing retains the receiver's
+signed history and assigns the joining machine a fresh rank; it never silently replaces a
+persisted local history. All participating machines need this lifecycle fix.
+
+Turning **Accept connections** off and applying pauses swarm participation and leadership,
+while keeping membership for later. Restart to change the listener itself. Use reset to leave.
+
+For recovery on an older build: save work and exit Cockpit on **both** machines, including the
+tray, before restarting either. In each instance's state root (`%APPDATA%\Cockpit` on Windows,
+unless `COCKPIT_STATE_ROOT` overrides it), copy `cockpit.json` to a private backup and move only
+`swarm-members.json` and its optional `.bak` to that backup. Retain `node-certificate.pfx`,
+`node-discovery-id.txt` and all other files. Restart both, enable accepting connections on both,
+and pair again. The older panel may still incorrectly label standalone as leader. Do not restore
+the old membership log after pairing. This manual recovery keeps old node connections and keys;
+the reset action in the fixed build also revokes swarm access.

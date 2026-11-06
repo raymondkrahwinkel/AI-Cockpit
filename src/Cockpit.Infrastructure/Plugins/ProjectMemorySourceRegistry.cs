@@ -31,10 +31,14 @@ public interface IProjectMemorySourceRegistry
 
     /// <summary>
     /// Declares a family (AC-499) a source can opt into via <see cref="ProjectMemorySourceRegistration.FamilyKey"/>.
-    /// Refused (false): a blank key/title, or a key already declared (first wins). No <c>RemoveFamily</c> yet —
-    /// nothing un-declares a family once registered (AC-501); add one only once a caller needs it.
+    /// Refused (false): a blank key/title, or a key already declared (first wins).
     /// </summary>
     bool RegisterFamily(ProjectMemorySourceFamily family);
+
+    /// <summary>
+    /// Withdraws the family under <paramref name="key"/>, matched case-insensitively; false when none is declared.
+    /// </summary>
+    bool RemoveFamily(string key);
 
     /// <summary>
     /// Every family declared so far, in declaration order — the order the editor's picker offers them in, ahead of any ungrouped source.
@@ -94,4 +98,7 @@ internal sealed class ProjectMemorySourceRegistry : IProjectMemorySourceRegistry
         _families.Add(family);
         return true;
     }
+
+    public bool RemoveFamily(string key) =>
+        _families.RemoveAll(existing => string.Equals(existing.Key, key, StringComparison.OrdinalIgnoreCase)) > 0;
 }

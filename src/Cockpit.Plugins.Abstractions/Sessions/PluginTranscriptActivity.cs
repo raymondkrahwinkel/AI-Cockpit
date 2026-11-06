@@ -27,4 +27,8 @@ public sealed record PluginTranscriptActivity(
     PluginSessionActivity Activity,
     string? RawLine,
     PluginTokenUsage? Usage = null,
-    int OutstandingShells = 0);
+    int OutstandingShells = 0)
+{
+    /// <summary>The model reported by this transcript line, or null when absent.</summary>
+    public string? Model { get; init; }
+}

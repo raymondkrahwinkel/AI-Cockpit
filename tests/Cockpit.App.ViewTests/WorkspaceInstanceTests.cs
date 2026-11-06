@@ -134,6 +134,24 @@ public sealed class WorkspaceInstanceTests
         // AC-1972: Cancel on the bulk question (no dialog answers no) closes nothing; after it, every guard runs, a
         // refusing one keeps only its own tab, and Close others leaves the clicked tab active.
         var cockpit = await _BulkStripAsync();
+        cockpit.SimpleView = true;
+        await cockpit.ShowSimpleWorkspaceCommand.ExecuteAsync(_IdOf(cockpit, "dirty.md"));
+        var dirtyBody = cockpit.Workspaces.ActivePluginBody;
+        _contexts["dirty.md"].SetCloseGuard(() => Task.FromResult(false));
+        await cockpit.ReturnFromSimpleWorkspaceCommand.ExecuteAsync(null);
+        await cockpit.ShowSimpleStartScreenCommand.ExecuteAsync(null);
+        await cockpit.ShowSimpleProjectsCommand.ExecuteAsync(null);
+        await cockpit.SelectSimpleSessionCommand.ExecuteAsync(cockpit.Sessions[0]);
+        await cockpit.Workspaces.CloseWorkspaceCommand.ExecuteAsync(_IdOf(cockpit, "dirty.md"));
+        Assert.Equal(SimplePage.Workspace, cockpit.SimplePage);
+        Assert.Same(dirtyBody, cockpit.Workspaces.ActivePluginBody);
+        _contexts["dirty.md"].SetCloseGuard(() => Task.FromResult(true));
+        await cockpit.ReturnFromSimpleWorkspaceCommand.ExecuteAsync(null);
+        Assert.Equal(SimplePage.Home, cockpit.SimplePage);
+        await cockpit.Workspaces.OpenWorkspaceAsync(TypeId, new WorkspaceOpenOptions("dirty.md", "dirty.md"));
+        Assert.Equal(SimplePage.Workspace, cockpit.SimplePage);
+        Assert.Same(dirtyBody, cockpit.Workspaces.ActivePluginBody);
+        cockpit.SimpleView = false;
         var before = cockpit.Workspaces.Settings.Workspaces.Count;
         await cockpit.CloseWorkspacesWithConfirmationAsync(BulkClose.All, _IdOf(cockpit, "Empty"));
         Assert.Equal(before, cockpit.Workspaces.Settings.Workspaces.Count);

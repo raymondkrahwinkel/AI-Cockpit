@@ -16,6 +16,8 @@ internal sealed partial class PluginHealthSections(ILogger<PluginHealthSections>
 
     private readonly List<_Entry> _entries = [];
 
+    public event EventHandler? Changed;
+
     // The name is the one plugin string an anonymous caller reads, so it is taken once here and held to a slug: no
     // path or host fits, and the getter cannot change it later. A taken name or one past the cap is refused.
     public bool Add(string pluginId, IPluginHealthSection section)
@@ -46,8 +48,24 @@ internal sealed partial class PluginHealthSections(ILogger<PluginHealthSections>
             }
 
             _entries.Add(new _Entry(name, section, isEssential));
-            return true;
         }
+
+        Changed?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+
+    public bool Remove(IPluginHealthSection section)
+    {
+        lock (_entries)
+        {
+            if (_entries.RemoveAll(entry => ReferenceEquals(entry.Section, section)) == 0)
+            {
+                return false;
+            }
+        }
+
+        Changed?.Invoke(this, EventArgs.Empty);
+        return true;
     }
 
     // AC-1470: `Actions` is the section itself when it offers any; /healthz never looks at it.

@@ -24,6 +24,7 @@ internal sealed class TrackedCommandRunner(ILogger<TrackedCommandRunner> logger)
         string runId,
         CancellationToken cancellationToken = default)
     {
+        command = CommandRunnerProcess.NormalizeExecutablePath(command);
         using var group = RunCgroup.Create(runId, logger);
 
         var startInfo = group.ProcsPath is { } procsPath

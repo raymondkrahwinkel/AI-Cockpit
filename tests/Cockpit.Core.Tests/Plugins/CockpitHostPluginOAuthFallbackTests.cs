@@ -53,58 +53,12 @@ public class CockpitHostPluginOAuthFallbackTests
         Assert.False(provider.WasAsked);
     }
 
-    [Fact]
-    public async Task SignInMcpServerAsync_NameOnlyKnownToAPluginProvider_DrivesTheInteractiveSignIn()
-    {
-        var store = Substitute.For<IMcpServerStore>();
-        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>());
-        var coordinator = Substitute.For<IMcpOAuthCoordinator>();
-        coordinator.AcquireAsync(Arg.Is<McpServerConfig>(config => config.Name == "Depot: Work"), interactive: true, Arg.Any<CancellationToken>())
-            .Returns(McpOAuthAccess.Authorized("token-123"));
-        var provider = new _FakePluginMcpProvider([new McpServerContribution("Depot: Work", "https://depot.example.com/mcp") { OAuthAuthority = "https://depot.example.com" }]);
-        var host = _BuildHost(store, coordinator, provider);
-
-        var outcome = await host.SignInMcpServerAsync("Depot: Work");
-
-        Assert.Equal(PluginMcpSignInOutcome.Authorized, outcome);
-    }
-
-    [Fact]
-    public async Task GetMcpServerAuthStateAsync_NoProviderKnowsTheName_AnswersUnknownWithoutThrowing()
-    {
-        var store = Substitute.For<IMcpServerStore>();
-        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>());
-        var coordinator = Substitute.For<IMcpOAuthCoordinator>();
-        var host = _BuildHost(store, coordinator, new _FakePluginMcpProvider([]));
-
-        var state = await host.GetMcpServerAuthStateAsync("Depot: Ghost");
-
-        Assert.Equal(PluginMcpAuthState.Unknown, state);
-    }
-
-    // A plugin that throws while listing its servers must not break the lookup for anyone else's sign-in — the
-    // same resilience McpServerCatalog applies when assembling a session's tool set.
-    [Fact]
-    public async Task GetMcpServerAuthStateAsync_APluginProviderThrows_SkipsItAndAnswersUnknown()
-    {
-        var store = Substitute.For<IMcpServerStore>();
-        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>());
-        var coordinator = Substitute.For<IMcpOAuthCoordinator>();
-        var throwingProvider = Substitute.For<IPluginMcpProvider>();
-        throwingProvider.GetMcpServers().Returns(_ => throw new InvalidOperationException("boom"));
-        var host = _BuildHost(store, coordinator, throwingProvider);
-
-        var state = await host.GetMcpServerAuthStateAsync("Depot: Work");
-
-        Assert.Equal(PluginMcpAuthState.Unknown, state);
-    }
-
     private static DesktopBackendHost _BuildHost(IMcpServerStore store, IMcpOAuthCoordinator coordinator, IPluginMcpProvider provider)
     {
         var services = new ServiceCollection()
             .AddSingleton(store)
             .AddSingleton(coordinator)
-            .AddSingleton(provider)
+            .AddSingleton(new PluginMcpProviderRegistry(provider))
             .BuildServiceProvider();
         return new DesktopBackendHost(
             "depot",

@@ -18,6 +18,11 @@ public abstract record SessionEvent
 }
 
 // Session-level metadata reported once at start of stream (`{"type":"system","subtype":"init",...}`).
+public sealed record SessionCapabilitiesChanged : SessionEvent
+{
+    public required SessionCapabilities Capabilities { get; init; }
+}
+
 public sealed record SessionInitialized : SessionEvent
 {
     public required string Cwd { get; init; }

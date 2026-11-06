@@ -11,6 +11,7 @@ internal static class SettingsCarrierWhitelist
     public static readonly IReadOnlyList<string> Carried =
     [
         "Profiles[].Label", "Profiles[].Purpose", "Profiles[].SystemPrompt", "Profiles[].Assistant",
+        "Profiles[].ImageInputMode",
         "Profiles[].DefaultKind", "Profiles[].MemoryCapMegabytes", "Profiles[].EnabledMcpServers",
         "Profiles[].Defaults.PermissionMode", "Profiles[].Defaults.Model", "Profiles[].Defaults.Effort",
         "Profiles[].Defaults.AutoApproveTools", "Profiles[].Defaults.OptionDefaults", "Profiles[].Defaults.DefaultReadingLevel",
@@ -21,18 +22,19 @@ internal static class SettingsCarrierWhitelist
         "Profiles[].Delegation.AllowedAsTarget", "Profiles[].Delegation.MaxConcurrent", "Profiles[].Delegation.PermissionCeiling",
         "Profiles[].Delegation.MayDelegateFurther", "Profiles[].Delegation.TimeoutMinutes", "Profiles[].Delegation.AllowedTaskTypes",
         "Profiles[].Delegation.Purpose", "Profiles[].Delegation.Tags", "Profiles[].Delegation.AllowedTools",
+        // Plugins.*.DisabledByStartupProtection deliberately stays local: it describes a recovery decision for this machine's crash history.
         "Plugins.*.Enabled", "Plugins.*.MenuOrder", "Plugins.*.HiddenInMenu", "Plugins.*.PinnedToSidebar",
         "Notifications.LocalEnabled", "Notifications.NotifyOnSessionFinished", "Notifications.NotifyOnSessionIdle",
         "Notifications.NotificationSoundsEnabled", "Notifications.NotificationSoundOnSessionFinished",
         "Notifications.NotificationSoundOnNeedsAttention", "Notifications.NotificationSoundVolume",
         "Notifications.SessionFinishedSound", "Notifications.NeedsAttentionSound",
         "Notifications.NotifyWhenAllSessionsIdle", "Notifications.NotifyOnCiFailure", "Notifications.IdleThresholdMinutes",
-        "Notifications.SessionIdleMinutes",
+        "Notifications.SessionIdleMinutes", "Notifications.MonitorMessagesPerHour",
         "SessionSwitching.IsEnabled", "SessionSwitching.Modifier",
         "TranscriptDisplay.ShowTimestamps",
         "UsagePill.VisibleFields",
         "SessionBehavior.AutoCloseOnExit", "SessionBehavior.CombineQueuedMessages", "SessionBehavior.WakeAgentsByDefault",
-        "SessionBehavior.MemoryBudgetPercent",
+        "SessionBehavior.MemoryBudgetPercent", "SessionBehavior.PluginRestartAdviceAfter",
         "ProjectsDisplay.LayoutMode",
         "UsageThresholds.ByProvider", "UsageThresholds.ByProfile", "UsageThresholds.ByAssistant",
         "Terminal.FontFamily", "Terminal.FontSize",
@@ -45,6 +47,7 @@ internal static class SettingsCarrierWhitelist
     public static readonly IReadOnlyList<string> NeverCarried =
     [
         "HiddenPluginStoreSources",
+        "HeavyRuns.MaxParallelRuns", "HeavyRuns.CpuCeilingPercent", "HeavyRuns.MemoryCeilingPercent",
         "Projects[].Id", "Projects[].Name", "Projects[].Description", "Projects[].Category", "Projects[].GitUrl", "Projects[].SharedSourceKey",
         "Projects[].DefaultProfileLabel", "Projects[].BehaviorPrompt", "Projects[].Assistant", "Projects[].IsolateInWorktreeByDefault",
         "CategoryOrder",

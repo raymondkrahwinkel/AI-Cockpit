@@ -172,6 +172,14 @@ public interface ICockpitUiHost
     void SetStatusText(string? text, SideMenuButtonBadgeTone tone) => SetStatusText(text);
 
     /// <summary>
+    /// Makes the status text a button: a click opens the control <paramref name="createPopup"/> builds, above the status bar,
+    /// and the action it is handed closes it. The plugin keeps the control current while it is open. Pass the same delegate
+    /// each time, since a different one counts as a changed line. UI SDK 3.24.0, host 0.158.0; an older host and a
+    /// server show plain text.
+    /// </summary>
+    void SetStatusText(string? text, SideMenuButtonBadgeTone tone, Func<Action, Control>? createPopup) => SetStatusText(text, tone);
+
+    /// <summary>
     /// Contributes a tool to the companion window.
     /// </summary>
     void AddCompanionTool(CompanionToolRegistration registration);

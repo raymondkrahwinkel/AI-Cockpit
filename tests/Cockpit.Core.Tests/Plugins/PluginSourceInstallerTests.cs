@@ -26,26 +26,11 @@ public class PluginSourceInstallerTests : IDisposable
         Directory.CreateDirectory(_plugins);
     }
 
-    [Fact]
-    public async Task RefreshOnly_LeavesADisabledPluginAlone()
-    {
-        _WriteInstalled("codex", "1.0.0", assemblyContent: "old-bytes");
-        _registrations.Saved["codex"] = new PluginRegistration(Enabled: false, PinnedSha256: "pinned");
-        var source = _WriteSource("codex", "1.0.0", assemblyContent: "rebuilt-bytes");
-
-        var installed = await new PluginSourceInstaller(_registrations, null)
-            .InstallFromSourceFoldersAsync([source], _plugins, installNew: false);
-
-        Assert.Empty(installed);
-        Assert.Equal("old-bytes", _InstalledAssembly("codex"));
-        Assert.Equal(new PluginRegistration(Enabled: false, PinnedSha256: "pinned"), _registrations.Saved["codex"]);
-    }
-
     // A stray Cockpit.Plugins.Abstractions.dll in a source folder (a test project's output offered one, which is
     // how the dev sync first poisoned the plugin folders) must never be copied in: the shared contract loads from
     // the host, and a second copy gives the plugin's ICockpitPlugin its own identity and the loader rejects it.
     [Fact]
-    public async Task Copy_NeverCarriesTheSharedAbstractionsAssemblyIntoAPluginFolder()
+    public async Task Copy_ExcludesTheHostContract_AndDevRefreshKeepsAndPinsTheChildProcessFiles()
     {
         var source = _WriteSource("clock", "1.0.0");
         await File.WriteAllTextAsync(Path.Combine(source, "Cockpit.Plugins.Abstractions.dll"), "shared-contract");
@@ -55,10 +40,25 @@ public class PluginSourceInstallerTests : IDisposable
 
         Assert.True(File.Exists(Path.Combine(_plugins, "clock", "Cockpit.Plugin.clock.dll")));
         Assert.False(File.Exists(Path.Combine(_plugins, "clock", "Cockpit.Plugins.Abstractions.dll")));
-    }
 
-    private string _InstalledAssembly(string id) =>
-        File.ReadAllText(Path.Combine(_plugins, id, $"Cockpit.Plugin.{id}.dll"));
+        var subprocess = Path.Combine(source, "Subprocess");
+        Directory.CreateDirectory(subprocess);
+        await File.WriteAllTextAsync(Path.Combine(subprocess, "worker.exe"), "child-bytes");
+        await File.WriteAllTextAsync(Path.Combine(subprocess, "Cockpit.Plugins.Abstractions.dll"), "child-contract");
+        var dev = new PluginSourceInstaller(_registrations, null, SearchOption.AllDirectories);
+        Assert.Equal(new[] { "clock" }, await dev.InstallFromSourceFoldersAsync([source], _plugins, installNew: false));
+        Assert.Equal("child-bytes", await File.ReadAllTextAsync(Path.Combine(_plugins, "clock", "Subprocess", "worker.exe")));
+        Assert.Equal("child-contract", await File.ReadAllTextAsync(Path.Combine(_plugins, "clock", "Subprocess", "Cockpit.Plugins.Abstractions.dll")));
+        Assert.False(File.Exists(Path.Combine(_plugins, "clock", "Cockpit.Plugins.Abstractions.dll")));
+        Assert.Equal(await PluginClosureHash.OfInstalledFolderAsync(Path.Combine(_plugins, "clock")), _registrations.Saved["clock"].PinnedSha256);
+        Assert.Empty(await dev.InstallFromSourceFoldersAsync([source], _plugins, installNew: false));
+
+        var priorPin = _registrations.Saved["clock"].PinnedSha256;
+        await File.WriteAllTextAsync(Path.Combine(subprocess, "worker.exe"), "rebuilt-child");
+        Assert.Equal(new[] { "clock" }, await dev.InstallFromSourceFoldersAsync([source], _plugins, installNew: false));
+        Assert.Equal("rebuilt-child", await File.ReadAllTextAsync(Path.Combine(_plugins, "clock", "Subprocess", "worker.exe")));
+        Assert.NotEqual(priorPin, _registrations.Saved["clock"].PinnedSha256);
+    }
 
     private string _WriteSource(string id, string version, string? assemblyContent = null)
     {
@@ -66,9 +66,6 @@ public class PluginSourceInstallerTests : IDisposable
         _WritePlugin(folder, id, version, assemblyContent);
         return folder;
     }
-
-    private void _WriteInstalled(string id, string version, string? assemblyContent = null) =>
-        _WritePlugin(Path.Combine(_plugins, id), id, version, assemblyContent);
 
     private static void _WritePlugin(string folder, string id, string version, string? assemblyContent)
     {

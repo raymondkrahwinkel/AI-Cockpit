@@ -66,65 +66,19 @@ public class SlackChannelBridgeTests
         Assert.Empty(sink.Reactions);
     }
 
-    // AC-1064 criterion 1: Slack escapes only &, < and > in the text field — this proves all three come out
-    // of the bridge decoded, the same way they went in.
-    [Fact]
-    public async Task SlackEscapedAmpLtGt_ArriveAtTheGatewayDecoded()
+    // AC-1064: Slack escapes only &, < and > in the text field; those come out decoded, every other entity is
+    // the user's own literal text, and a typed "&amp;" (re-escaped by Slack to "&amp;amp;") must not collapse to "&".
+    [Theory]
+    [InlineData("bouwen &amp; testen &lt;a&gt; &gt;&gt; klaar", "bouwen & testen <a> >> klaar")]
+    [InlineData("&quot;quoted&quot; &#39;apos&#39; &apos;apos2&apos; &nbsp; &copy;2026", "&quot;quoted&quot; &#39;apos&#39; &apos;apos2&apos; &nbsp; &copy;2026")]
+    [InlineData("&amp;amp;", "&amp;")]
+    public async Task OnlySlacksOwnEscapes_AreDecoded(string slackText, string expected)
     {
         var (bridge, gateway, _) = _Build();
 
-        await bridge.HandleInboundMessageAsync(_AllowedUserId, "bouwen &amp; testen &lt;a&gt; &gt;&gt; klaar", messageTs: "1");
+        await bridge.HandleInboundMessageAsync(_AllowedUserId, slackText, messageTs: "1");
 
-        Assert.Contains((_AllowedUserId, "bouwen & testen <a> >> klaar"), gateway.SentMessages);
-    }
-
-    // AC-1064 criterion 2: Slack never escapes these, so they are the user's own literal text and must
-    // survive untouched — a WebUtility/HttpUtility-style decode-everything would wrongly unescape them.
-    [Fact]
-    public async Task EntitiesSlackNeverEscapes_PassThroughUnchanged()
-    {
-        var (bridge, gateway, _) = _Build();
-        const string text = "&quot;quoted&quot; &#39;apos&#39; &apos;apos2&apos; &nbsp; &copy;2026";
-
-        await bridge.HandleInboundMessageAsync(_AllowedUserId, text, messageTs: "1");
-
-        Assert.Contains((_AllowedUserId, text), gateway.SentMessages);
-    }
-
-    // AC-1064 criterion 3: a user who literally typed "&amp;" in Slack sees it re-escaped by Slack to
-    // "&amp;amp;". Decoding &amp; before &lt;/&gt; would wrongly collapse this to a bare "&".
-    [Fact]
-    public async Task LiteralAmpEntityTypedByAUser_SurvivesAsTheEntityNotABareAmpersand()
-    {
-        var (bridge, gateway, _) = _Build();
-
-        await bridge.HandleInboundMessageAsync(_AllowedUserId, "&amp;amp;", messageTs: "1");
-
-        Assert.Contains((_AllowedUserId, "&amp;"), gateway.SentMessages);
-    }
-
-    // AC-1064 criterion 4: quotes and apostrophes are never escaped by Slack and must not be touched here.
-    [Fact]
-    public async Task QuotesAndApostrophes_AreNeverTouched()
-    {
-        var (bridge, gateway, _) = _Build();
-
-        await bridge.HandleInboundMessageAsync(_AllowedUserId, "a \"quote\" and an 'apostrophe' & &lt;tag&gt;", messageTs: "1");
-
-        Assert.Contains((_AllowedUserId, "a \"quote\" and an 'apostrophe' & <tag>"), gateway.SentMessages);
-    }
-
-    [Fact]
-    public void ConsentPromptOpened_PostsAMessageWithTheButtonsAttached()
-    {
-        var (_, gateway, sink) = _Build();
-        var prompt = _ConsentPrompt("rm -rf /tmp/whatever");
-
-        gateway.RaisePromptOpened(prompt);
-
-        var posted = Assert.Single(sink.Posted);
-        Assert.Equal("rm -rf /tmp/whatever", posted.Text);
-        Assert.Equal(prompt.Id, posted.ConsentPromptId);
+        Assert.Contains((_AllowedUserId, expected), gateway.SentMessages);
     }
 
     [Fact]
@@ -133,6 +87,9 @@ public class SlackChannelBridgeTests
         var (bridge, gateway, sink) = _Build();
         var prompt = _ConsentPrompt("do the thing");
         gateway.RaisePromptOpened(prompt);
+        var posted = Assert.Single(sink.Posted);
+        Assert.Equal("do the thing", posted.Text);
+        Assert.Equal(prompt.Id, posted.ConsentPromptId);
 
         await bridge.HandleButtonAsync(SlackConsentButtonId.Approve(prompt.Id), _AllowedUserId);
 

@@ -67,12 +67,10 @@ internal static partial class Screenshotter
         return scenes;
     }
 
-    private static MainWindow _ProjectsWorkspace(Action<CockpitViewModel>? stage)
+    // A headless render has no `ISharedProjectSource` to list from, so the scene hands the view model what the
+    // catalog would.
+    private static void _WireProjectCards(CockpitViewModel cockpit)
     {
-        var cockpit = new CockpitViewModel();
-
-        // A headless render has no `ISharedProjectSource` to list from, so the scene hands the view model what the
-        // catalog would.
         cockpit.Projects.CardActions = new ProjectCardActions(
             cockpit.StartProjectSessionCommand,
             cockpit.NewSessionForProjectCommand,
@@ -81,10 +79,34 @@ internal static partial class Screenshotter
             cockpit.OpenProjectFolderCommand,
             cockpit.ShareProjectCommand,
             cockpit.SyncProjectNowCommand,
-            cockpit.SelectSessionCommand);
+            cockpit.OpenProjectSessionCommand);
         // The design-time cockpit does not wire the running-session count the real one does.
         cockpit.Projects.SetSessionCounter(id => cockpit.Sessions.Count(session => session.ProjectId == id), cockpit.Sessions);
         cockpit.Projects.RunningSessionsOf = id => cockpit.Sessions.Where(session => session.ProjectId == id);
+    }
+
+    // AC-2078: the Simple stand's Projects page on the same two-connection dataset the workspace scenes use.
+    private static CockpitViewModel SimpleStandProjects(CockpitViewModel cockpit, string? selecting)
+    {
+        _WireProjectCards(cockpit);
+        if (selecting is null)
+        {
+            _StageTwoConnections(cockpit);
+        }
+        else
+        {
+            _StageTwoConnectionsSelecting(cockpit, selecting);
+        }
+
+        cockpit.ShowSimpleProjectsCommand.Execute(null);
+        return cockpit;
+    }
+
+    private static MainWindow _ProjectsWorkspace(Action<CockpitViewModel>? stage)
+    {
+        var cockpit = new CockpitViewModel();
+
+        _WireProjectCards(cockpit);
         // A scene builder returns a window synchronously; opening the workspace needs no I/O here, so blocking is safe.
         cockpit.Workspaces.OpenWorkspaceAsync(WorkspaceType.Projects.Id).GetAwaiter().GetResult();
         stage?.Invoke(cockpit);

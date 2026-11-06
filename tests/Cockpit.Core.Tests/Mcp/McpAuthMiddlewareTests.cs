@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Net.Security;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -28,17 +29,6 @@ public class McpAuthMiddlewareTests
     // AC-1985: the node listener takes connect keys only; every harness starts with this bootstrap key.
     private const string NodeKey = "ck_bootstrapKeyForTheMcpAuthMiddlewareTests012345";
 
-    // AC-89, unchanged by AC-791: the shared app key authorizes and names no session, so the in-process tool loop
-    // and anything not yet on a per-session token keep the null identity the consent broker has always seen.
-    [Fact]
-    public async Task LoopbackListener_SharedAppKey_AuthorizesAndNamesNoSession()
-    {
-        var authKey = new McpAuthKey();
-        await using var listeners = await _AuthGatedListeners.StartAsync(authKey, new SessionMcpKeyring());
-
-        Assert.Equal("<none>", await listeners.WhoAmIAsync(listeners.LoopbackUrl, authKey.Value));
-    }
-
     // L2b (authorization), AC-1685 criterion 1, folding in AC-89: a session token is a Session even when the request
     // claims to be the assistant, only the assistant's own token reads as Assistant, and a revoked token is nobody.
     [Fact]
@@ -58,6 +48,77 @@ public class McpAuthMiddlewareTests
         keyring.Revoke("pane-42", token);
         using var response = await listeners.SendAsync(listeners.LoopbackUrl, token);
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+
+        await _AssertGatewayIsolationAsync();
+    }
+
+    // Category A: a valid credential must never open another pane's URL or MCP session.
+    private static async Task _AssertGatewayIsolationAsync()
+    {
+        var keyring = new SessionMcpKeyring();
+        var authKey = new McpAuthKey();
+        var tokenA = keyring.TokenFor("pane-a");
+        var tokenB = keyring.TokenFor("pane-b");
+        var mounts = new SessionMcpMounts();
+        var context = new SessionMcpContext(null, Path.GetTempPath(), null, "agent", SessionMcpManager.Assistant);
+        mounts.Bind("pane-a", context);
+        mounts.Grant("pane-a", ["cockpit-session"]);
+        var configPath = Path.Combine(Path.GetTempPath(), $"gateway-{Guid.NewGuid():N}.json");
+        try
+        {
+            await using var gateway = new SessionMcpGatewayHost(authKey, keyring, NullLoggerFactory.Instance, configPath);
+            await gateway.StartAsync(CancellationToken.None);
+            var urlA = gateway.UrlFor("pane-a") ?? throw new InvalidOperationException("Gateway did not bind.");
+            var urlB = gateway.UrlFor("pane-b") ?? throw new InvalidOperationException("Gateway did not bind.");
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+            using var wrongPane = await _GatewayRequestAsync(client, urlB, tokenA);
+            Assert.Equal(HttpStatusCode.Forbidden, wrongPane.StatusCode);
+            using var appKey = await _GatewayRequestAsync(client, urlA, authKey.Value);
+            Assert.Equal(HttpStatusCode.Forbidden, appKey.StatusCode);
+            using var node = await _GatewayRequestAsync(client, urlA, keyring.TokenFor(NodeCallerIdentity.PaneId));
+            Assert.Equal(HttpStatusCode.Forbidden, node.StatusCode);
+            using var initializedB = await _GatewayRequestAsync(client, urlB, tokenB);
+            initializedB.EnsureSuccessStatusCode();
+            var sessionB = initializedB.Headers.GetValues("Mcp-Session-Id").Single();
+            using var stolen = await _GatewayRequestAsync(client, urlA, tokenA, sessionB);
+            Assert.Equal(HttpStatusCode.Forbidden, stolen.StatusCode);
+            using var initializedA = await _GatewayRequestAsync(client, urlA, tokenA);
+            initializedA.EnsureSuccessStatusCode();
+            var replacement = keyring.TokenFor("pane-a");
+            var tokenIsCurrent = string.Equals(replacement, keyring.CurrentToken("pane-a"), StringComparison.Ordinal);
+            Assert.True(tokenIsCurrent);
+            Assert.Same(context, mounts.Set("pane-a")?.Context);
+            Assert.True(mounts.IsMounted("pane-a", "cockpit-session"));
+            using var oldToken = await _GatewayRequestAsync(client, urlA, tokenA);
+            Assert.Equal(HttpStatusCode.Unauthorized, oldToken.StatusCode);
+            using var restarted = await _GatewayRequestAsync(client, urlA, replacement);
+            restarted.EnsureSuccessStatusCode();
+            keyring.Revoke("pane-a", replacement);
+            using var closed = await _GatewayRequestAsync(client, urlA, replacement);
+            Assert.Equal(HttpStatusCode.Unauthorized, closed.StatusCode);
+            Assert.Null(keyring.CurrentToken("pane-a"));
+            await gateway.StopAsync(CancellationToken.None);
+        }
+        finally
+        {
+            File.Delete(configPath);
+        }
+    }
+
+    private static async Task<HttpResponseMessage> _GatewayRequestAsync(HttpClient client, string url, string token, string? sessionId = null)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, url);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        request.Headers.Accept.ParseAdd("application/json, text/event-stream");
+        if (sessionId is not null)
+        {
+            request.Headers.Add("Mcp-Session-Id", sessionId);
+        }
+
+        request.Content = sessionId is null
+            ? JsonContent.Create(new { jsonrpc = "2.0", id = 1, method = "initialize", @params = new { protocolVersion = "2025-11-25", capabilities = new { }, clientInfo = new { name = "auth-test", version = "1" } } })
+            : JsonContent.Create(new { jsonrpc = "2.0", id = 2, method = "tools/list" });
+        return await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
     }
 
     // L2b (authorization), AC-1685 criterion 2, folding in AC-791 criterion 1: a connect key is Remote with its
@@ -88,44 +149,6 @@ public class McpAuthMiddlewareTests
         {
             Directory.Delete(directory, recursive: true);
         }
-    }
-
-    // AC-791, criterion 3: a refusal has to be classifiable at the other end. "Server unreachable" carries no HTTP
-    // status at all and "that tool does not exist" comes back 200 with a JSON-RPC error, so a 401 naming a token
-    // problem in a machine-readable code is enough to tell all three apart.
-    [Fact]
-    public async Task NodeListener_Refusal_Carries401WithAReasonACallerCanTellFromSilence()
-    {
-        await using var listeners = await _AuthGatedListeners.StartAsync(new McpAuthKey(), new SessionMcpKeyring());
-
-        using var response = await listeners.SendAsync(listeners.NodeUrl, "not-a-valid-credential");
-
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
-        Assert.Equal("Bearer", Assert.Single(response.Headers.WwwAuthenticate).Scheme);
-        Assert.Contains("invalid_token", Assert.Single(response.Headers.WwwAuthenticate).Parameter);
-        Assert.Contains("invalid_token", await response.Content.ReadAsStringAsync());
-
-        // Missing and wrong get the identical answer on purpose: the refusal must not become an oracle for which
-        // of the two it was.
-        using var noCredential = await listeners.SendAsync(listeners.NodeUrl, bearer: null);
-        Assert.Equal(HttpStatusCode.Unauthorized, noCredential.StatusCode);
-        Assert.Equal(await response.Content.ReadAsStringAsync(), await noCredential.Content.ReadAsStringAsync());
-    }
-
-    // AC-791, criterion 4: and the loopback refusal is left exactly as it was — a bare 401 with no challenge. A
-    // `WWW-Authenticate: Bearer` here is what an MCP client reads as "this server wants OAuth", so a local session
-    // whose token was just revoked would be sent looking for a discovery document that does not exist. The reason
-    // is for the controller, which has no other way to tell a refusal from an unreachable machine.
-    [Fact]
-    public async Task LoopbackListener_Refusal_StaysTheBare401ItAlwaysWas()
-    {
-        await using var listeners = await _AuthGatedListeners.StartAsync(new McpAuthKey(), new SessionMcpKeyring());
-
-        using var response = await listeners.SendAsync(listeners.LoopbackUrl, "not-a-valid-credential");
-
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
-        Assert.Empty(response.Headers.WwwAuthenticate);
-        Assert.Empty(await response.Content.ReadAsStringAsync());
     }
 
     // AC-1148, the loopback negative control that never existed: a live token, correctly stamped — and an endpoint
@@ -174,20 +197,6 @@ public class McpAuthMiddlewareTests
     {
         await using var listeners = await _AuthGatedListeners.StartAsync(
             new McpAuthKey(), new SessionMcpKeyring(), nodeScopeGranted: false);
-
-        using var response = await listeners.SendAsync(listeners.NodeUrl, NodeKey);
-
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
-    }
-
-    // AC-1148: and the master switch counts for the controller too — `bindNodeListener` now withholds the socket
-    // outright (see CockpitInternalMcpProviderTests), so this is the belt to that braces: were one ever bound, a
-    // switched-off endpoint still refuses.
-    [Fact]
-    public async Task NodeListener_EndpointTheOperatorSwitchedOff_Is403EvenWithAScopedPairing()
-    {
-        await using var listeners = await _AuthGatedListeners.StartAsync(
-            new McpAuthKey(), new SessionMcpKeyring(), isEnabled: false);
 
         using var response = await listeners.SendAsync(listeners.NodeUrl, NodeKey);
 

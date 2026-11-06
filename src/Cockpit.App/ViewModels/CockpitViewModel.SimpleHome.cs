@@ -97,6 +97,7 @@ public partial class CockpitViewModel
             ProjectId: await _ProjectIdForDirectoryAsync(directory))
         {
             NameIsComposed = true,
+            IsComposed = false,
         };
     }
 

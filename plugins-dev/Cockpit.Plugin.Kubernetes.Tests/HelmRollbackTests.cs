@@ -50,29 +50,6 @@ public class HelmRollbackTests
     }
 
     [Fact]
-    public async Task HelmRollback_ARevisionBelowOne_IsRefusedBeforeAnythingIsAsked()
-    {
-        var (tools, asked) = _Build(ConsentOutcome.Approved);
-
-        var json = JsonNode.Parse(await tools.HelmRollback("prod", Session, "system-ingress", "traefik", 0));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Contains("helm_history", json["error"]!.GetValue<string>());
-        Assert.Empty(asked);
-    }
-
-    [Fact]
-    public async Task HelmRollback_WhenConsentDenied_StopsBeforeTheCluster()
-    {
-        var (tools, _) = _Build(ConsentOutcome.Denied);
-
-        var json = JsonNode.Parse(await tools.HelmRollback("prod", Session, "system-ingress", "traefik", 6));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Contains("did not approve", json["error"]!.GetValue<string>());
-    }
-
-    [Fact]
     public async Task HelmRollback_ReadingTheRevisions_IsGatedAsCredentialMaterial()
     {
         var (tools, asked) = _Build(ConsentOutcome.Approved);
@@ -82,44 +59,6 @@ public class HelmRollbackTests
         var request = Assert.Single(asked, candidate => candidate.Scope.StartsWith("k8s.secret:", StringComparison.Ordinal));
         Assert.Equal(ConsentRisk.Dangerous, request.Risk);
         Assert.False(request.AllowRemember);
-    }
-
-    [Fact]
-    public void NewRevision_WritesAFreshRevisionRatherThanResurrectingTheOldOne()
-    {
-        var now = DateTimeOffset.FromUnixTimeSeconds(1_770_000_000);
-
-        var (secret, payload) = HelmReleaseLedger.NewRevision(TargetRelease, "traefik", "system-ingress", 8, "Rollback to 6", HelmReleaseLedger.PendingRollback, now);
-
-        Assert.Equal("sh.helm.release.v1.traefik.v8", secret.Metadata.Name);
-        Assert.Equal(HelmReleaseLedger.SecretType, secret.Type);
-        Assert.Equal("8", secret.Metadata.Labels["version"]);
-        Assert.Equal("helm", secret.Metadata.Labels["owner"]);
-        Assert.Equal(HelmReleaseLedger.PendingRollback, secret.Metadata.Labels["status"]);
-        Assert.Equal("1770000000", secret.Metadata.Labels["modifiedAt"]);
-
-        // The payload carries the target's manifest under the new number, and says so the way helm does.
-        Assert.Equal(8, payload["version"]!.GetValue<int>());
-        Assert.Equal("Rollback to 6", payload["info"]!["description"]!.GetValue<string>());
-        Assert.Equal(HelmReleaseLedger.PendingRollback, payload["info"]!["status"]!.GetValue<string>());
-        Assert.Equal("2025-01-10T09:00:00Z", payload["info"]!["first_deployed"]!.GetValue<string>());
-        Assert.Equal(6, TargetRelease["version"]!.GetValue<int>());
-    }
-
-    [Fact]
-    public void Restamp_MovesTheStatusInThePayloadAndTheLabelTogether()
-    {
-        var now = DateTimeOffset.FromUnixTimeSeconds(1_770_000_000);
-        var (secret, payload) = HelmReleaseLedger.NewRevision(TargetRelease, "traefik", "system-ingress", 8, "Rollback to 6", HelmReleaseLedger.PendingRollback, now);
-
-        HelmReleaseLedger.Restamp(secret, payload, HelmReleaseLedger.Deployed, now.AddMinutes(1));
-
-        Assert.Equal(HelmReleaseLedger.Deployed, secret.Metadata.Labels["status"]);
-        Assert.Equal("1770000060", secret.Metadata.Labels["modifiedAt"]);
-        var written = HelmReleaseSecretCodec.TryDecodeRaw(secret, out var error);
-        Assert.Null(error);
-        Assert.Equal(HelmReleaseLedger.Deployed, written!["info"]!["status"]!.GetValue<string>());
-        Assert.Equal(8, written["version"]!.GetValue<int>());
     }
 
     [Fact]

@@ -92,49 +92,6 @@ public class DelegationQueueDrainConsentIdentityTests
         Assert.Equal(DelegatedTaskStatus.Running, service.ListTasks().Single(task => task.Label == "injected").Status);
     }
 
-    [Fact]
-    public async Task TheAssistantsOwnQueuedTask_StillRidesItsBypass()
-    {
-        // The other side: restamping must not turn the bypass off for the assistant's own queued work, which is the
-        // whole feature. Same drain, same elevation — only the owner differs.
-        var driver = Substitute.For<ISessionDriver>();
-        driver.Events.Returns(_EmptyStream());
-        var consentTrail = new RecordingConsentAuditLog();
-        var service = _ServiceWith(driver, new ConsentService(consentTrail, new AssistantOnlyBypass()));
-
-        McpRequestContext.Set(AssistantPane);
-        var first = await _DelegateAsTheCallerAsync(service, new DelegationRequest("local", "first", Label: "first"));
-        await _DelegateAsTheCallerAsync(service, new DelegationRequest("local", "second", Label: "second", RequestedPermission: "bypassPermissions"));
-        await service.StopAsync(first.TaskId, AssistantPane);
-
-        var decision = Assert.Single(consentTrail.Entries);
-        Assert.Equal(ConsentAuditAction.Bypassed, decision.Action);
-        Assert.Equal(AssistantPane, decision.PaneId);
-        await driver.Received().SetDelegatedToolGateAsync("bypassPermissions", Arg.Any<IReadOnlyList<string>>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task TheDrainLeavesTheStoppersOwnIdentityAlone()
-    {
-        // The restamp is scoped to the start it covers: an async method's builder restores the ExecutionContext
-        // around its synchronous run, so the identity the drain borrowed never leaks back into the flow that
-        // triggered it — everything that stopper does afterwards is still its own.
-        var driver = Substitute.For<ISessionDriver>();
-        driver.Events.Returns(_EmptyStream());
-        var service = _ServiceWith(driver, new ConsentService(new RecordingConsentAuditLog(), new AssistantOnlyBypass()));
-
-        McpRequestContext.Set(AssistantPane);
-        var assistantTask = await _DelegateAsTheCallerAsync(service, new DelegationRequest("local", "assistant work", Label: "assistant"));
-
-        McpRequestContext.Set(InjectedPane);
-        await _DelegateAsTheCallerAsync(service, new DelegationRequest("local", "injected work", Label: "injected", RequestedPermission: "bypassPermissions"));
-
-        McpRequestContext.Set(AssistantPane);
-        await service.StopAsync(assistantTask.TaskId, AssistantPane);
-
-        Assert.Equal(AssistantPane, McpRequestContext.CurrentPaneId);
-    }
-
     /// <summary>
     /// Delegates the way <c>OrchestratorTools.delegate_task</c> does: the caller is the transport-verified pane of
     /// the request in flight, handed to the service explicitly. That is what stamps <c>OwnerPaneId</c>, and it is

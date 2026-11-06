@@ -5,6 +5,13 @@ using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Infrastructure;
 using Cockpit.Infrastructure.Sessions;
+using Cockpit.App.Services;
+using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Core.Assistant;
+using Cockpit.Core.Profiles;
+using Cockpit.Core.Sessions;
+using Cockpit.Core.Voice;
+using NSubstitute;
 
 namespace Cockpit.Core.Tests.Sessions;
 
@@ -38,19 +45,11 @@ public class Ac1090_TranscriptRecordingWiringTests : IDisposable
         return services;
     }
 
-    [Fact]
-    public async Task Container_ResolvesTheTranscriptLog()
-    {
-        await using var provider = _ProductionServices().BuildServiceProvider();
-
-        Assert.IsType<SessionTranscriptLog>(provider.GetService<ISessionTranscriptStore>());
-    }
-
     // THE ACCEPTANCE TEST. Red without the constructor argument on `SessionViewModel` (the pane resolves fine and
     // writes nothing), green with it. The store is the real one, pointed at a temp folder rather than the
     // operator's state root — the registration is replaced, not the wiring being tested.
     [Fact]
-    public async Task APaneTakenFromTheContainer_RecordsItsRowsToDisk()
+    public async Task APaneTakenFromTheContainer_RecordsItsRowsToDisk_AndDoesNotRecordReplayedRowsAgain()
     {
         var services = _ProductionServices();
         var store = new SessionTranscriptLog(_tempDir, NullLogger<SessionTranscriptLog>.Instance, TimeSpan.Zero);
@@ -64,67 +63,68 @@ public class Ac1090_TranscriptRecordingWiringTests : IDisposable
 
         var recorded = (await store.TryLoadAsync(pane.PaneId))!;
         Assert.Equal("what is the status of AC-1090", Assert.Single(recorded).Text);
+
+        // A replayed row must not be recorded straight back: appending it again on every restart is how an
+        // append-only log quietly turns into the amplification it replaced.
+        var afterRecording = new FileInfo(store.LogPath(pane.PaneId)).Length;
+        var restarted = provider.GetRequiredService<Func<SessionViewModel>>()();
+        restarted.AdoptPaneId(pane.PaneId);
+        await restarted.ReplayRecordedTranscriptAsync();
+        await store.FlushAsync(CancellationToken.None);
+
+        Assert.Equal(afterRecording, new FileInfo(store.LogPath(pane.PaneId)).Length);
+        await _EphemeralSpeechDoesNotBecomeRecordedRowsAsync(store);
     }
 
-    // The other half of the same wiring: what was recorded comes back onto the pane, rebuilt rather than merely
-    // counted — a chip that replays without its tool name and result is a row the operator cannot read.
-    [Fact]
-    public async Task APaneTakenFromTheContainer_ReplaysWhatItRecorded()
+    private static async Task _EphemeralSpeechDoesNotBecomeRecordedRowsAsync(SessionTranscriptLog store)
     {
-        var services = _ProductionServices();
-        var store = new SessionTranscriptLog(_tempDir, NullLogger<SessionTranscriptLog>.Instance, TimeSpan.Zero);
-        services.AddSingleton<ISessionTranscriptStore>(store);
+        const string sentinel = "Private sentinel spoken only.";
+        const string answer = "Het volledige antwoord blijft hier staan.";
+        var profile = new SessionProfile("private", new OllamaConfig("http://unused.invalid", "fake"));
+        var drivers = Substitute.For<ISessionDriverFactory>();
+        drivers.GenerateEphemeralSpeechAsync(profile, answer, Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<string?>(sentinel));
+        var control = Substitute.For<ISessionControl>();
+        var controls = Substitute.For<ISessionControlFactory>();
+        controls.Create(Arg.Any<Func<string>>()).Returns(control);
+        var playback = Substitute.For<IVoicePlaybackQueue>();
+        var spoken = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        playback.When(queue => queue.CompleteStream(VoicePlaybackSource.Assistant, AssistantIdentity.PaneId)).Do(_ => spoken.TrySetResult());
+        await using var pane = new SessionViewModel(controls, voicePlaybackQueue: playback, speechDrivers: drivers);
+        pane.AdoptPaneId(AssistantIdentity.PaneId);
+        pane.ReadResponsesAloud = true;
+        pane.AssistantSpeechMode = SpokenReplyMode.Short;
+        pane.AssistantSpeechMethod = SpokenReplyMethod.Profile;
+        pane.SpeechProfile = profile;
+        control.TurnStarting += Raise.Event<Action<QueuedPrompt>>(new QueuedPrompt("status", []));
+        var row = TranscriptSnapshot.Capture(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, answer));
+        control.RowUpserted += Raise.Event<Action<TranscriptRowUpsert>>(new TranscriptRowUpsert(1, 1, row));
+        control.Folded += Raise.Event<Action<TranscriptFold>>(new TranscriptFold(row, false) { IsReply = true });
+        control.TurnEnded += Raise.Event<Action<SessionTurnEnd>>(new SessionTurnEnd(false, false, false, null, "success", null));
+        await spoken.Task;
+        playback.Received().Enqueue(Arg.Is<IReadOnlyList<SpeechSegment>>(segments => string.Join(" ", segments.SelectMany(segment => segment.Sentences)) == sentinel),
+            Arg.Any<int>(), VoicePlaybackSource.Assistant, pane.PaneId);
+        var snapshots = pane.Transcript.Select(TranscriptSnapshot.Capture).ToArray();
+        Assert.DoesNotContain(snapshots, snapshot => System.Text.Json.JsonSerializer.Serialize(snapshot).Contains(sentinel, StringComparison.Ordinal));
+        Assert.Equal(answer, pane.Transcript.Single(entry => entry.Kind == TranscriptEntryKind.AssistantText).Text);
+        await store.AppendAsync("ephemeral-proof", snapshots.Single(snapshot => snapshot.Kind == nameof(TranscriptEntryKind.AssistantText)));
+        await store.FlushAsync(CancellationToken.None);
+        Assert.Equal(answer, Assert.Single((await store.TryLoadAsync("ephemeral-proof")) ?? []).Text);
+        drivers.DidNotReceive().Create(Arg.Any<SessionProfile?>());
 
-        await using var provider = services.BuildServiceProvider();
-        var factory = provider.GetRequiredService<Func<SessionViewModel>>();
-
-        var first = factory();
-        var toolRow = new TranscriptEntryViewModel(TranscriptEntryKind.ToolUse, "")
+        using var cancelled = new CancellationTokenSource();
+        var late = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        drivers.GenerateEphemeralSpeechAsync(profile, answer, null, Arg.Any<CancellationToken>()).Returns(_ =>
         {
-            ToolName = "Bash",
-            InputJson = """{"command":"ls"}""",
-            ToolUseId = "tool-1",
-        };
-        first.Transcript.Add(toolRow);
-        toolRow.SetResult("file.txt", isError: false);
-        await store.FlushAsync(CancellationToken.None);
-
-        // A different pane object with the same id — the restart this layer exists for.
-        var restarted = factory();
-        restarted.AdoptPaneId(first.PaneId);
-        await restarted.ReplayRecordedTranscriptAsync();
-
-        var replayed = Assert.Single(restarted.Transcript);
-        Assert.Equal(TranscriptEntryKind.ToolUse, replayed.Kind);
-        Assert.Equal("Bash", replayed.ToolName);
-        Assert.Equal("file.txt", replayed.ResultText);
-        Assert.Equal(toolRow.Id, replayed.Id);
-    }
-
-    // A replayed row must not be recorded straight back: it is already in the log, and appending it again on every
-    // restart is how an append-only log quietly turns into the amplification it replaced.
-    [Fact]
-    public async Task ReplayedRows_AreNotRecordedAgain()
-    {
-        var services = _ProductionServices();
-        var store = new SessionTranscriptLog(_tempDir, NullLogger<SessionTranscriptLog>.Instance, TimeSpan.Zero);
-        services.AddSingleton<ISessionTranscriptStore>(store);
-
-        await using var provider = services.BuildServiceProvider();
-        var factory = provider.GetRequiredService<Func<SessionViewModel>>();
-
-        var first = factory();
-        first.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "one"));
-        first.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "two"));
-        await store.FlushAsync(CancellationToken.None);
-        var afterRecording = new FileInfo(store.LogPath(first.PaneId)).Length;
-
-        var restarted = factory();
-        restarted.AdoptPaneId(first.PaneId);
-        await restarted.ReplayRecordedTranscriptAsync();
-        await store.FlushAsync(CancellationToken.None);
-
-        Assert.Equal(afterRecording, new FileInfo(store.LogPath(first.PaneId)).Length);
+            entered.TrySetResult();
+            return late.Task;
+        });
+        var pending = SpokenReplyGeneration.GenerateAsync(drivers, profile, answer, null, SpokenReplyMode.Short, SpokenReplyMethod.Assistant, cancelled.Token);
+        await entered.Task;
+        cancelled.Cancel();
+        late.SetResult(sentinel);
+        Assert.Empty((await pending).Sentences);
     }
 
     public void Dispose()

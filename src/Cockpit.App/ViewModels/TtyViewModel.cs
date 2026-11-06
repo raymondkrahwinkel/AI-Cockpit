@@ -7,6 +7,7 @@ using Cockpit.App.Services;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Core.Configuration;
@@ -25,8 +26,11 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     private readonly ISessionTranscriptReader? _transcriptReader;
     private readonly ILogger<TtyViewModel>? _logger;
     private SessionProfile? _configuredProfile;
+
+    public override string? ProviderId => (_configuredProfile?.ProviderConfig as PluginProviderConfig)?.ProviderId;
     private string? _configuredPermissionMode;
     private string? _configuredModel;
+    private string? _usageModel;
     private string? _configuredEffort;
     private IReadOnlyDictionary<string, string>? _configuredPluginOptions;
     private string? _configuredWorkingDirectory;
@@ -200,7 +204,8 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         IUsageHistory? usageHistory = null,
         VoiceOverlayCoordinator? voiceOverlay = null,
         ILogger<TtyViewModel>? logger = null,
-        ISessionRunActivities? heavyRuns = null)
+        ISessionRunActivities? heavyRuns = null,
+        IAudioAvailability? audioAvailability = null)
         : base(usageHistory, heavyRuns)
     {
         _launcher = launcher;
@@ -212,7 +217,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         // Also publish it on the shared base so the read/observe surface reports where this session runs — the
         // TTY working dir is known up front (unlike an SDK session, which learns it from its init event).
         WorkingDirectory = WorkingPath;
-        InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, openMicState, voiceOverlay);
+        InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, openMicState, voiceOverlay, audioAvailability);
     }
 
     // The effective TTY working directory — the configured Claude:WorkingDirectory when set, else the process
@@ -644,6 +649,11 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
                         RaiseOutputText(line);
                     }
 
+                    if (!string.IsNullOrWhiteSpace(reading.Model))
+                    {
+                        SetUsageModel(reading.Model);
+                    }
+
                     // AC-398/AC-1013: Holds tool-turn usage pending so one turn is not counted as many messages.
                     if (reading.Usage is { } usage)
                     {
@@ -702,7 +712,8 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     public override bool CanOpenOriginalTerminal => !_statusTrackingStopped && PromptSink is not null;
 
     private SessionStatus _WithChildStatus(SessionStatus status) =>
-        status is SessionStatus.Idle or SessionStatus.Done && HasBackgroundTasks ? SessionStatus.WorkingBackground : status;
+        _hostedTuiBlocked ? SessionStatus.NeedsAttention
+        : status is SessionStatus.Idle or SessionStatus.Done && HasBackgroundTasks ? SessionStatus.WorkingBackground : status;
 
     protected override Task<ChildTranscriptPage> ReadChildAsync(BackgroundTask reference, string? cursor, CancellationToken cancellationToken) =>
         _transcriptReader is null || _statusTrackingStopped
@@ -759,7 +770,9 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
 
     // AC-1013: Writes the running totals to the usage trail after every turn (AC-398), same as the SDK path
     private protected override (UsageRunKind RunKind, string? RunId, string? RunLabel, string? Model) GetUsageSnapshotMetadata() =>
-        (UsageRunKind.Interactive, null, null, _configuredModel);
+        (UsageRunKind.Interactive, null, null, _usageModel);
+
+    internal void SetUsageModel(string? model) => _usageModel = string.IsNullOrWhiteSpace(model) ? null : model;
 
     // The transcript callback and disposal both run on the UI thread, so a queued callback can replace the write while drain awaits.
     private protected override bool UsageWritesMayBeQueuedDuringDrain => true;
@@ -818,6 +831,18 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     // `TtyView` measures that gap (bracketed paste / a fallback deadline) and reports it via `MarkHostedTuiReady`.
     // `ResetHostedTuiReadiness` clears it so a relaunched pane does not inherit "ready" from the session before it.
     private bool _hostedTuiReady;
+    private bool _hostedTuiBlocked;
+
+    internal void SetHostedTuiBlocked(bool blocked)
+    {
+        if (_hostedTuiBlocked == blocked)
+        {
+            return;
+        }
+
+        _hostedTuiBlocked = blocked;
+        SessionStatus = _WithChildStatus(_statusTracker.Poll(DateTimeOffset.UtcNow));
+    }
 
     // Called by the view once, from the single place its own readiness answer turns true — mirrors how the
     // `PromptSink` setter above is the one place *its* answer changes. Delivers a brief that was held waiting on
@@ -835,7 +860,11 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
 
     // Called by the view right before it launches a new pty into a pane it is reusing, so the gate above starts
     // closed again rather than carrying over the previous session's answer.
-    public void ResetHostedTuiReadiness() => _hostedTuiReady = false;
+    public void ResetHostedTuiReadiness()
+    {
+        _hostedTuiReady = false;
+        SetHostedTuiBlocked(false);
+    }
 
     // The pty sink is necessary but not sufficient: it exists once the process is spawned, but a prompt written to
     // it before the CLI reads stdin in raw mode is the exact failure AC-760 reports — text lands, Enter does not.
@@ -843,7 +872,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
 
     public override Task<bool> SendPromptAsync(string prompt)
     {
-        if (PromptSink is not { } sink)
+        if (!CanTakeAPrompt || PromptSink is not { } sink)
         {
             return Task.FromResult(false);
         }

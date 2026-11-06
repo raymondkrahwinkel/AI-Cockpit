@@ -10,22 +10,6 @@ public class CodexAppServerConnectionTests
     private static readonly Dictionary<string, string?> _NoEnv = new();
 
     [Fact]
-    public async Task SendRequest_CorrelatesTheReplyById_AndReturnsItsResult()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var connection = new CodexAppServerConnection(fake);
-        connection.Start("codex", Path.GetTempPath(), _NoEnv);
-
-        var requestTask = connection.SendRequestAsync("initialize", new { clientInfo = new { name = "cockpit", version = "1.0.0" } });
-        var id = await _WaitForRequestIdAsync(fake, "initialize");
-        await fake.PushStdoutAsync($$$"""{"id":{{{id}}},"result":{"threadId":"thread-1"}}""");
-
-        var result = await requestTask;
-
-        Assert.Equal("thread-1", result.GetProperty("threadId").GetString());
-    }
-
-    [Fact]
     public async Task SendRequest_Throws_WhenTheReplyIsAJsonRpcError()
     {
         var fake = new FakeCliSubprocess();
@@ -37,6 +21,13 @@ public class CodexAppServerConnectionTests
         await fake.PushStdoutAsync($$$"""{"id":{{{id}}},"error":{"code":-32000,"message":"nope"}}""");
 
         await Assert.ThrowsAsync<CodexAppServerException>(() => requestTask);
+
+        // A request still outstanding when the stream ends fails rather than hangs.
+        var orphanTask = connection.SendRequestAsync("initialize", new { clientInfo = new { name = "cockpit", version = "1.0.0" } });
+        await _WaitForRequestIdAsync(fake, "initialize");
+        fake.CompleteStdout();
+
+        await Assert.ThrowsAsync<CodexAppServerException>(() => orphanTask);
     }
 
     [Fact]
@@ -56,20 +47,6 @@ public class CodexAppServerConnectionTests
         Assert.Equal("item/commandExecution/requestApproval", serverRequest.Method);
         Assert.Equal(7, serverRequest.Id.GetInt32());
         Assert.Equal("item-1", serverRequest.Params.GetProperty("itemId").GetString());
-    }
-
-    [Fact]
-    public async Task SendRequest_Fails_WhenTheStreamEndsBeforeAReply()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var connection = new CodexAppServerConnection(fake);
-        connection.Start("codex", Path.GetTempPath(), _NoEnv);
-
-        var requestTask = connection.SendRequestAsync("initialize", new { clientInfo = new { name = "cockpit", version = "1.0.0" } });
-        await _WaitForRequestIdAsync(fake, "initialize");
-        fake.CompleteStdout();
-
-        await Assert.ThrowsAsync<CodexAppServerException>(() => requestTask);
     }
 
     private static async Task<long> _WaitForRequestIdAsync(FakeCliSubprocess fake, string method)

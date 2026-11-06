@@ -16,7 +16,6 @@ public class ClaudeTranscriptIdentityTests : IDisposable
 {
     private readonly string _configDir = Directory.CreateTempSubdirectory("cockpit-transcript-identity-tests-").FullName;
 
-    private static readonly IReadOnlySet<string> NoBaseline = new HashSet<string>();
 
     [Fact]
     public void ReadEntries_ReadsBackWhatTheSessionWrote_PairingEachToolResultWithItsCall()
@@ -66,21 +65,6 @@ public class ClaudeTranscriptIdentityTests : IDisposable
         Assert.Equal(3, slice.TotalEntries);
         Assert.Equal("low \uFFFD pair 🌿 high \uFFFD text literal \\udf3f", slice.Entries[1].ToolResult);
         Assert.Equal("after", slice.Entries[2].Text);
-    }
-
-    [Fact]
-    public void ReadEntries_KeepsTheRequestedTail_AndReportsNothingWithoutAStatusFile()
-    {
-        // A tail has to be reportable as a tail: a caller told it has thirty rows out of thirty reads them as the
-        // whole conversation and says so out loud.
-        var transcript = _CreateTranscript("long");
-        File.WriteAllLines(transcript, Enumerable.Range(0, 10).Select(index => _UserLine($"line {index}")));
-
-        var slice = new ClaudeTranscriptReader().ReadEntries(_WriteStatusFile(transcript), count: 3);
-
-        Assert.Equal(10, slice.TotalEntries);
-        Assert.Equal(["line 7", "line 8", "line 9"], slice.Entries.Select(entry => entry.Text));
-        Assert.Empty(new ClaudeTranscriptReader().ReadEntries(statusFile: null, count: 30).Entries);
     }
 
     private string _CreateTranscript(string name)

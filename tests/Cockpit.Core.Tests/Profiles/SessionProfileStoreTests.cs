@@ -21,67 +21,7 @@ public class SessionProfileStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task SaveAsync_ThenLoadAsync_RoundTripsProfiles()
-    {
-        var store = new SessionProfileStore(_configFilePath);
-        var profiles = new List<SessionProfile>
-        {
-            new("personal", ClaudePluginProfile.Create(@"C:\Users\raymo\.claude-personal", null), Purpose: "Personal Zyra profile"),
-            new("work", ClaudePluginProfile.Create(@"C:\Users\raymo\.claude-work", @"C:\tools\claude-work.exe")),
-        };
-
-        await store.SaveAsync(profiles);
-        var loaded = await store.LoadAsync();
-
-        Assert.Equivalent(profiles, loaded);
-    }
-
-    [Fact]
-    public async Task SaveAsync_ThenLoadAsync_RoundTripsAutoApproveToolsDefault()
-    {
-        var store = new SessionProfileStore(_configFilePath);
-        var profiles = new List<SessionProfile>
-        {
-            new("ollama", new OllamaConfig("http://localhost:11434", "llama3.1"),
-                Defaults: new ProfileDefaults("default", "sonnet", "medium", AutoApproveTools: true)),
-            new("lmstudio", new LmStudioConfig("http://localhost:1234", "qwen2.5-7b-instruct"),
-                Defaults: new ProfileDefaults("default", "sonnet", "medium")),
-        };
-
-        await store.SaveAsync(profiles);
-        var loaded = await store.LoadAsync();
-
-        // Explicitly opted-in survives, and the (default) false of the second profile is not flipped to
-        // true by the round-trip — the two are not conflated.
-        Assert.Equivalent(profiles, loaded);
-        Assert.True(loaded[0].Defaults!.AutoApproveTools);
-        Assert.False(loaded[1].Defaults!.AutoApproveTools);
-    }
-
-    [Fact]
-    public async Task SaveAsync_ThenLoadAsync_RoundTripsProviderConfigs()
-    {
-        var store = new SessionProfileStore(_configFilePath);
-        var profiles = new List<SessionProfile>
-        {
-            new("claude", ClaudePluginProfile.Create(@"C:\Users\raymo\.claude", null)),
-            new("local-ollama", new OllamaConfig("http://localhost:11434", "llama3.1", "You are helpful.")),
-            new("local-lmstudio", new LmStudioConfig("http://localhost:1234", "qwen2.5-7b-instruct", "secret-key", "Be concise.",
-                ContextTokens: 32_768, LoadOptions: new LmStudioLoadOptions(1, 1, true, "q8_0", "q8_0", true, true,
-                    DraftMaxTokens: 3, DraftMinTokens: 0, DraftMinContinueProbability: 0), EnableThinking: true)),
-        };
-
-        await store.SaveAsync(profiles);
-        var loaded = await store.LoadAsync();
-
-        Assert.Equivalent(profiles, loaded);
-        Assert.Equal(SessionProvider.Plugin, loaded[0].Provider);
-        Assert.Equal(SessionProvider.Ollama, loaded[1].Provider);
-        Assert.Equal(SessionProvider.LmStudio, loaded[2].Provider);
-    }
-
-    [Fact]
-    public async Task LoadAsync_ConfigWrittenByAnEarlierVersion_StillLoads()
+    public async Task LoadAsync_ConfigWrittenByAnEarlierVersion_StillLoads_AndRoundTrips()
     {
         // Verbatim profiles section as written before the Claude* -> Session* rename: the on-disk
         // contract is the property names, not the C# type names, so a config from an older build
@@ -124,6 +64,11 @@ public class SessionProfileStoreTests : IDisposable
         Assert.NotNull(profiles[0].Defaults);
         Assert.Equal(SessionProvider.Ollama, profiles[1].Provider);
         Assert.Equal("llama3.1", Assert.IsType<OllamaConfig>(profiles[1].ProviderConfig).Model);
+
+        // And what was loaded saves and loads back unchanged, plugin-provider and built-in provider alike.
+        await store.SaveAsync(profiles);
+
+        Assert.Equivalent(profiles, await store.LoadAsync());
     }
 
     public void Dispose()

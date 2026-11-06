@@ -17,6 +17,12 @@ public class ProjectRootPathTests
     [InlineData("a.txt:ads", false, true)]
     [InlineData("src/a.cs", true, true)]
     [InlineData("src/../README.md", true, true)]
+    [InlineData("SRC/A.CS", true, true)]
+    // A sibling sharing the root's name as a prefix: the containment check needs a separator boundary.
+    [InlineData("../repo2/x", false, false)]
+    // The same two with Windows' own separator: on Unix a backslash is a file-name character, so both stay inside.
+    [InlineData(@"SRC\A.CS", true, true)]
+    [InlineData(@"..\repo2\x", false, true)]
     public void TryResolve_RejectsUnsafePathsAndAllowsContainedPaths(
         string relativePath, bool allowedOnWindows, bool allowedOnUnix)
     {
@@ -54,22 +60,23 @@ public class ProjectRootPathTests
             Assert.Equal(targetInside, refusal is null);
             Assert.True(aliasAccepted, aliasRefusal);
             Assert.Equal(Path.Combine(inside, "file.txt"), resolved);
+
+            var attachment = Path.Combine(root, "file.txt");
+            File.WriteAllText(attachment, "attachment");
+            using var opened = File.OpenRead(attachment);
+            Assert.True(Cockpit.Infrastructure.Assistant.ReplyAttachmentPath.TryResolve(
+                Cockpit.Infrastructure.Assistant.ReplyAttachmentPath.OpenedPath(opened), [root], out _, out var attachmentRefusal), attachmentRefusal);
+            Assert.False(Cockpit.Infrastructure.Assistant.ReplyAttachmentPath.TryResolve(
+                Path.Combine(root, "cockpit.json"), [root], out _, out var configRefusal));
+            Assert.NotNull(configRefusal);
+            Assert.Equal(targetInside, Cockpit.Infrastructure.Assistant.ReplyAttachmentPath.TryResolve(
+                Path.Combine(link, "file.txt"), [root], out _, out var linkRefusal));
+            Assert.Equal(targetInside, linkRefusal is null);
         }
         finally
         {
             RemoveLinkAndSandbox(link, rootAlias, sandbox);
         }
-    }
-
-    [SkippableFact]
-    public void TryResolve_WindowsUsesCaseInsensitiveRootWithSeparatorBoundary()
-    {
-        Skip.IfNot(OperatingSystem.IsWindows(), "Windows path comparison is platform-specific.");
-
-        Assert.True(ProjectRootPath.TryResolve(@"C:\repo", "SRC/A.CS", out _, out var acceptedRefusal));
-        Assert.Null(acceptedRefusal);
-        Assert.False(ProjectRootPath.TryResolve(@"C:\repo", @"..\repo2\x", out _, out var refusedReason));
-        Assert.NotNull(refusedReason);
     }
 
     private static bool TryCreateDirectoryLink(string link, string target)

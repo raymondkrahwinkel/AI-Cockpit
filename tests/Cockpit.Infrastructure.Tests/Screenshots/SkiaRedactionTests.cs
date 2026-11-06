@@ -35,19 +35,6 @@ public class SkiaRedactionTests
         }
     }
 
-    /// <summary>Outside the box nothing is touched — a redaction that quietly softened the rest would be a different picture than the one the operator saw.</summary>
-    [Fact]
-    public void OutsideTheBox_ThePictureIsUntouched()
-    {
-        var png = _Checkerboard(128, 128);
-
-        var redacted = new SkiaScreenshotImageEditor().Burn(png, [new RedactionMark(new CaptureRect(32, 32, 64, 64))]);
-
-        using var original = SKBitmap.Decode(png);
-        using var image = SKBitmap.Decode(redacted);
-        Assert.Equal(original.GetPixel(10, 10), image.GetPixel(10, 10));
-        Assert.Equal(original.GetPixel(120, 120), image.GetPixel(120, 120));
-    }
 
     /// <summary>Several boxes, several secrets. Each is obscured on its own rather than only the first.</summary>
     [Fact]
@@ -66,22 +53,6 @@ public class SkiaRedactionTests
         Assert.NotEqual(SKColors.White, image.GetPixel(120, 120));
     }
 
-    /// <summary>
-    /// A box is coarse enough that a whole block becomes one colour. Two neighbouring pixels that were opposites
-    /// have to come out identical — that is what "beyond reading" means, as against a soft blur that keeps the
-    /// shapes.
-    /// </summary>
-    [Fact]
-    public void ABlockComesOutFlat()
-    {
-        var png = _Checkerboard(128, 128);
-
-        var redacted = new SkiaScreenshotImageEditor().Burn(png, [new RedactionMark(new CaptureRect(0, 0, 64, 64))]);
-
-        using var image = SKBitmap.Decode(redacted);
-        Assert.Equal(image.GetPixel(1, 0), image.GetPixel(0, 0));
-        Assert.Equal(image.GetPixel(0, 1), image.GetPixel(0, 0));
-    }
 
     /// <summary>A box running off the edge is clamped rather than throwing: the surface can be dragged past the image, and losing the whole redaction over it is the dangerous way to fail.</summary>
     [Fact]

@@ -11,22 +11,32 @@ internal static class TestScratchRoot
 #pragma warning restore CA2255
     internal static void Isolate()
     {
-        // A child of the default base, so scratch paths stay within the 20 characters SessionBaseInstructionTests
-        // holds them to; no sweep reaches it, because sweeps only read markers in the base's direct children.
-        var basis = OperatingSystem.IsWindows() ? @"C:\ck" : Path.Combine(Path.GetTempPath(), "ck");
-        var root = Path.Combine(basis, _Base36(Environment.ProcessId));
-        Environment.SetEnvironmentVariable("COCKPIT_SCRATCH_ROOT", root);
-        AppDomain.CurrentDomain.ProcessExit += (_, _) =>
+        // Plugin probes reload test assemblies; the marker must be shared across their load contexts.
+        lock (AppDomain.CurrentDomain)
         {
-            try
+            const string initialized = "Cockpit.Tests.Shared.TestScratchRoot.Initialized";
+            if (AppContext.GetData(initialized) is true)
             {
-                Directory.Delete(root, recursive: true);
+                return;
             }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+
+            // Keep scratch paths within 20 characters and outside the base's direct-child orphan sweep.
+            var basis = OperatingSystem.IsWindows() ? @"C:\ck" : Path.Combine(Path.GetTempPath(), "ck");
+            var root = Path.Combine(basis, _Base36(Environment.ProcessId));
+            Environment.SetEnvironmentVariable("COCKPIT_SCRATCH_ROOT", root);
+            AppContext.SetData(initialized, true);
+            AppDomain.CurrentDomain.ProcessExit += (_, _) =>
             {
-                // Best effort: a leftover directory is harmless, a throwing exit handler is not.
-            }
-        };
+                try
+                {
+                    Directory.Delete(root, recursive: true);
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    // Best effort: a leftover directory is harmless, a throwing exit handler is not.
+                }
+            };
+        }
     }
 
     private static string _Base36(int value)

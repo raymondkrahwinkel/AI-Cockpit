@@ -23,6 +23,31 @@ internal sealed class SwarmKick(SwarmMembershipStore store, SwarmIdentity identi
     private readonly System.Collections.Concurrent.ConcurrentDictionary<SwarmMemberId, long> _delivered = new();
     internal static string KeyLabel(SwarmMember member) => $"swarm:{member.Id.Value}:{member.Rank}";
 
+    internal async Task<string> ResetAsync(CancellationToken ct)
+    {
+        await store.Gate.WaitAsync(ct);
+        try
+        {
+            SwarmMembership register;
+            try
+            {
+                register = await store.LoadAsync(ct);
+            }
+            catch (Exception ex) when (ex is InvalidDataException or JsonException)
+            {
+                logger.LogWarning(ex, "Resetting an unreadable swarm log; the original file will be backed up.");
+                register = new();
+            }
+            await RevokeAsync(register, ct, reset: true);
+            _delivered.Clear();
+            return store.Reset();
+        }
+        finally
+        {
+            store.Gate.Release();
+        }
+    }
+
     internal async Task RemoveAsync(SwarmMemberId member, CancellationToken ct)
     {
         await store.Gate.WaitAsync(ct);
@@ -42,10 +67,10 @@ internal sealed class SwarmKick(SwarmMembershipStore store, SwarmIdentity identi
         await DeliverAsync(ct);
     }
 
-    internal async Task RevokeAsync(SwarmMembership register, CancellationToken ct)
+    internal async Task RevokeAsync(SwarmMembership register, CancellationToken ct, bool reset = false)
     {
         var removed = register.Tombstones.Select(item => item.Member).ToHashSet();
-        var left = removed.Contains(identity.MemberId);
+        var left = reset || removed.Contains(identity.MemberId);
         foreach (var (key, _) in await keys.ListAsync(ct))
         {
             if (key.RevokedAt is null && key.Label.StartsWith("swarm:", StringComparison.Ordinal) &&
@@ -126,6 +151,7 @@ internal sealed class SwarmKick(SwarmMembershipStore store, SwarmIdentity identi
     {
         SwarmNetworkPolicy.MapGroup(routes, services).MapPost("/removal", (Delegate)(async (HttpContext context) =>
         {
+            var generation = store.Generation;
             using var peer = await context.Connection.GetClientCertificateAsync(context.RequestAborted);
             if (peer is null)
             {
@@ -133,7 +159,7 @@ internal sealed class SwarmKick(SwarmMembershipStore store, SwarmIdentity identi
             }
             var register = await store.LoadAsync(context.RequestAborted);
             var id = SwarmMemberId.FromPublicKey(peer.PublicKey.ExportSubjectPublicKeyInfo());
-            if (register.PublicKeyOf(id) is null)
+            if (register.PublicKeyOf(identity.MemberId) is null || register.PublicKeyOf(id) is null)
             {
                 return Results.StatusCode(403);
             }
@@ -146,7 +172,7 @@ internal sealed class SwarmKick(SwarmMembershipStore store, SwarmIdentity identi
                 {
                     return Results.BadRequest();
                 }
-                await services.GetRequiredService<SwarmPropagation>().ApplyAsync(delta, context.RequestAborted);
+                await services.GetRequiredService<SwarmPropagation>().ApplyAsync(delta, context.RequestAborted, generation);
                 return Results.Ok();
             }
             catch (Exception ex) when (ex is InvalidDataException or JsonException)

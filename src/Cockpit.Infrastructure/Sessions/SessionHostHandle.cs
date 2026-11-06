@@ -1,6 +1,7 @@
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Core.Assistant;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
@@ -137,6 +138,8 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
     public string? ActiveProfileLabel { get; }
 
     public string? ProjectId { get; }
+
+    public string? ProviderId { get; private set; }
 
     public bool IsTerminal => false;
 
@@ -555,6 +558,7 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
     public async Task StartAsync(SessionLaunchRequest request, string? workingDirectory)
     {
         McpServersOverride = request.McpServersOverride;
+        ProviderId = (request.Profile.ProviderConfig as Core.Profiles.PluginProviderConfig)?.ProviderId;
         var runtime = await _host.StartAsync(new SessionStart(
             request.Profile, request.PermissionMode, request.Model,
             McpServerRegistryFilter.EffectiveSessionSelection(request.EnabledMcpServerNames, request.Profile.EnabledMcpServerNames),
@@ -579,6 +583,7 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
     {
         try
         {
+            ProviderId = (launch.Profile.ProviderConfig as Core.Profiles.PluginProviderConfig)?.ProviderId;
             var runtime = await _host.StartAsync(new SessionStart(
                 launch.Profile, SessionPermissionModes.Default, Model: null, launch.EnabledMcpServerNames,
                 launch.WorkingDirectory, launch.Resume, launch.LaunchOptions, ProjectId: null)).ConfigureAwait(false);
@@ -728,7 +733,7 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
     }
 
     // Speech is the desktop's: nothing plays a headless session's replies.
-    public void ApplySpeech(bool speakReplies)
+    public void ApplySpeech(AssistantSettings settings, Cockpit.Core.Profiles.SessionProfile? speechProfile = null)
     {
     }
 

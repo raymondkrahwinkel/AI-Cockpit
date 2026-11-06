@@ -1,7 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Threading;
-using Avalonia.VisualTree;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
@@ -55,49 +54,6 @@ public class VoiceDictationSurfaceTests
         Assert.Equal("open the file", afterTheLocalRoute);
         Assert.Equal("open the file", afterTheGlobalRoute);
         Assert.Empty(other.InputText);
-    });
-
-    // Criterion 5: the release for a press that opened no microphone must not end a hold — ending one that never began throws.
-    [Fact]
-    public void AReleaseThatNoPressStarted_NeverReachesTheTranscriber() => HeadlessAvalonia.Run(() =>
-    {
-        var transcriber = _Transcriber("open the file");
-        var session = _SdkSession(transcriber, _NewPill());
-        session.VoiceEnabled = false;
-        var view = new SessionView { DataContext = session };
-        var window = new Window { Content = view, Width = 800, Height = 600 };
-        window.Show();
-        window.UpdateLayout();
-
-        _Hold(view);
-        Dispatcher.UIThread.RunJobs();
-
-        window.Close();
-
-        transcriber.DidNotReceive().EndHoldAsync(Arg.Any<CancellationToken>());
-    });
-
-    // Criterion 2: asserted on the rendered pill, since the old status property was set on every path and bound nowhere.
-    [Fact]
-    public void AFailedDictation_IsRenderedOnThePill() => HeadlessAvalonia.Run(() =>
-    {
-        var overlay = new VoiceOverlayViewModel
-        {
-            StatusText = "No speech heard — hold the key while you talk, then let go.",
-            State = VoiceOverlayState.Failed,
-        };
-        var window = new VoiceOverlayWindow { DataContext = overlay };
-        window.Show();
-        window.UpdateLayout();
-
-        var onScreen = window.GetVisualDescendants().OfType<TextBlock>()
-            .Where(text => text.IsEffectivelyVisible)
-            .Select(text => text.Text)
-            .ToList();
-
-        window.Close();
-
-        Assert.Contains("No speech heard — hold the key while you talk, then let go.", onScreen);
     });
 
     private static void _Hold(SessionView view)

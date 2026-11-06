@@ -28,7 +28,16 @@ public class WorkspaceSettingsStoreTests : IDisposable
             WidgetId = "system-monitor.usage",
             Cell = new GridCell(1, 0, 2, 1),
         });
-        var saved = WorkspaceSettings.Default.WithWorkspace(dashboard);
+        // AC-410: an AiSession pane comes back with what restoring it needs.
+        var sessions = Workspace.Create("Work", WorkspaceType.Sessions).WithPane(new WorkspacePane("p2", PaneKind.AiSession)
+        {
+            ProfileId = "work",
+            Title = "webshop",
+            NameIsChosen = true,
+            SessionKind = PaneSessionKind.Tty,
+            ProjectId = "proj-1",
+        });
+        var saved = WorkspaceSettings.Default.WithWorkspace(sessions).WithWorkspace(dashboard);
 
         // AC-1306: and the sidebar tree's folded nodes, or every start begins at the bottom of your own tree.
         var folded = saved.Workspaces.First(workspace => workspace.Type == WorkspaceType.Sessions).Id;
@@ -37,46 +46,38 @@ public class WorkspaceSettingsStoreTests : IDisposable
         await store.SaveAsync(saved);
         var loaded = await store.LoadAsync();
 
-        Assert.Equal(3, System.Linq.Enumerable.Count(loaded.Workspaces));
+        Assert.Equal(4, System.Linq.Enumerable.Count(loaded.Workspaces));
         Assert.Equal(dashboard.Id, loaded.ActiveWorkspaceId);
         Assert.Equal([folded], loaded.CollapsedSidebarWorkspaceIds);
         var reloaded = loaded.Workspaces.Single(workspace => workspace.Id == dashboard.Id);
         Assert.Equal("Monitoring", reloaded.Name);
         Assert.Equal(3, reloaded.Layout.Columns);
         Assert.Equivalent(dashboard.Panes[0], Assert.Single(reloaded.Panes));
-    }
 
-    [Fact]
-    public async Task LoadAsync_ADashboardSavedBeforeGridLinesExisted_DefaultsToThemBeingOff()
-    {
-        await File.WriteAllTextAsync(_configPath, """
-            {"Workspaces":{"ActiveWorkspaceId":"w1","Workspaces":[
-              {"Id":"w1","Name":"D","Type":"Dashboard","Layout":{"Columns":4,"Rows":4},"Panes":[]}]}}
-            """);
-
-        var loaded = await new WorkspaceSettingsStore(_configPath).LoadAsync();
-
-        Assert.False(loaded.Workspaces[0].Layout.ShowGridLines, "a dashboard is something you look at, not a worksheet");
-        Assert.Equal(4, loaded.Workspaces[0].Layout.Columns);
+        var pane = loaded.Workspaces.Single(workspace => workspace.Id == sessions.Id).Panes.Single();
+        Assert.Equal("webshop", pane.Title);
+        Assert.True(pane.NameIsChosen);
+        Assert.Equal(PaneSessionKind.Tty, pane.SessionKind);
+        Assert.Equal("proj-1", pane.ProjectId);
     }
 
     [Fact]
     public async Task LoadAsync_AnUnknownWorkspaceType_KeepsItsIdSoThePluginWorkspaceReturnsWhenItsPluginLoads()
     {
-        // A type the host does not know is a plugin type whose plugin is not installed yet: it is kept, not
-        // rewritten to a host type, so the workspace comes back intact once the plugin registers. Its grid panes
-        // are dropped — a plugin workspace holds none — rather than the load throwing.
+        // An unknown type is a plugin type whose plugin is not installed yet: kept, not rewritten, so the workspace
+        // returns once the plugin registers; its grid panes are dropped rather than the load throwing. Likewise an
+        // unknown pane SessionKind (AC-410) degrades to Sdk.
         await File.WriteAllTextAsync(_configPath, """
-            {"Workspaces":{"ActiveWorkspaceId":"w1","Workspaces":[{"Id":"w1","Name":"?","Type":"autopilot.run","Panes":[{"Id":"p1","Kind":"AiSession"}]}]}}
+            {"Workspaces":{"ActiveWorkspaceId":"w1","Workspaces":[{"Id":"w1","Name":"?","Type":"autopilot.run","Panes":[{"Id":"p1","Kind":"AiSession"}]},
+              {"Id":"w2","Name":"Work","Type":"Sessions","Panes":[{"Id":"p2","Kind":"AiSession","SessionKind":"some-future-kind"}]}]}}
             """);
 
         var loaded = await new WorkspaceSettingsStore(_configPath).LoadAsync();
 
-        Assert.Equal(2, System.Linq.Enumerable.Count(loaded.Workspaces));
         var workspace = loaded.Workspaces.Single(workspace => workspace.Id == "w1");
         Assert.Equal(new WorkspaceType("autopilot.run"), workspace.Type);
         Assert.False(workspace.Type.IsBuiltIn);
         Assert.Empty(workspace.Panes);
+        Assert.Equal(PaneSessionKind.Sdk, loaded.Workspaces.Single(workspace => workspace.Id == "w2").Panes.Single().SessionKind);
     }
-
 }

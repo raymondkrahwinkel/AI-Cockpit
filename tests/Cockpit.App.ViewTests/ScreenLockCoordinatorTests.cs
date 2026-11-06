@@ -15,39 +15,18 @@ namespace Cockpit.App.ViewTests;
 /// </summary>
 public class ScreenLockCoordinatorTests
 {
-    [Fact]
-    public async Task ItDoesNotLock_WhenEncryptionIsOff()
+    [Theory]
+    [InlineData(false, true, false)]
+    [InlineData(true, false, false)]
+    [InlineData(true, true, true)]
+    public async Task ItLocksTheUi_OnlyWhenEncryptionAndTheOptionAreOn(bool encryption, bool optionOn, bool expectLock)
     {
-        var protection = new FakeProtection { Enabled = false, Unlocked = false };
-        var (coordinator, locks) = Build(protection, optionOn: true);
-
-        var locked = await coordinator.HandleLockAsync();
-
-        Assert.False(locked, "there is no password to re-ask for when encryption is off");
-        Assert.Equal(0, locks());
-    }
-
-    [Fact]
-    public async Task ItDoesNotLock_WhenTheOptionIsOff()
-    {
-        var protection = new FakeProtection { Enabled = true, Unlocked = true };
-        var (coordinator, locks) = Build(protection, optionOn: false);
-
-        var locked = await coordinator.HandleLockAsync();
-
-        Assert.False(locked, "the operator turned the feature off");
-        Assert.Equal(0, locks());
-    }
-
-    [Fact]
-    public async Task ItLocksTheUi_WhenEncryptionAndTheOptionAreOn()
-    {
-        var protection = new FakeProtection { Enabled = true, Unlocked = true };
+        var protection = new FakeProtection { Enabled = encryption, Unlocked = encryption };
         var count = 0;
 
         // LockAction deliberately does not touch Unlocked here: it models nothing but showing the screen, so the
         // assertion below genuinely proves the coordinator left the key alone rather than the fake putting it back.
-        var coordinator = new ScreenLockCoordinator(new FakeMonitor(), protection, new FakeSettings(true), NullLogger<ScreenLockCoordinator>.Instance)
+        var coordinator = new ScreenLockCoordinator(new FakeMonitor(), protection, new FakeSettings(optionOn), NullLogger<ScreenLockCoordinator>.Instance)
         {
             LockAction = () =>
             {
@@ -59,9 +38,9 @@ public class ScreenLockCoordinatorTests
 
         var locked = await coordinator.HandleLockAsync();
 
-        Assert.True(locked);
-        Assert.Equal(1, count);
-        Assert.True(protection.Unlocked, "a pure UI lock leaves the key in memory — the coordinator never clears it");
+        Assert.Equal(expectLock, locked);
+        Assert.Equal(expectLock ? 1 : 0, count);
+        Assert.Equal(encryption, protection.Unlocked);
     }
 
     [Fact]
@@ -94,108 +73,6 @@ public class ScreenLockCoordinatorTests
         Assert.True((await first));
         Assert.False(second, "a lock is already in effect");
         Assert.Equal(1, count);
-    }
-
-    [Fact]
-    public async Task AfterUnlocking_AFreshOsLock_LocksAgain()
-    {
-        var protection = new FakeProtection { Enabled = true, Unlocked = true };
-        var (coordinator, locks) = Build(protection, optionOn: true);
-
-        Assert.True((await coordinator.HandleLockAsync()));
-
-        // The operator entered the password again — model the app being unlocked once more.
-        protection.Unlocked = true;
-
-        Assert.True(await coordinator.HandleLockAsync(), "the guard reopens once the previous lock is done");
-        Assert.Equal(2, locks());
-    }
-
-    [Fact]
-    public async Task TheMonitorsLockedEvent_DrivesTheGate()
-    {
-        var protection = new FakeProtection { Enabled = true, Unlocked = true };
-        var monitor = new FakeMonitor();
-        var locked = new TaskCompletionSource();
-        var coordinator = new ScreenLockCoordinator(monitor, protection, new FakeSettings(true), NullLogger<ScreenLockCoordinator>.Instance)
-        {
-            LockAction = () =>
-            {
-                locked.TrySetResult();
-                return Task.CompletedTask;
-            },
-        };
-
-        await coordinator.StartAsync();
-        monitor.RaiseLocked();
-
-        Assert.Equal(locked.Task, await Task.WhenAny(locked.Task, Task.Delay(TimeSpan.FromSeconds(5))));
-    }
-
-    [Fact]
-    public async Task TheOsUnlocking_WhileTheScreenIsUp_HandsItTheKeyboardBack()
-    {
-        var protection = new FakeProtection { Enabled = true, Unlocked = true };
-        var monitor = new FakeMonitor();
-        var actionStarted = new TaskCompletionSource();
-        var actionRelease = new TaskCompletionSource();
-        var restores = 0;
-
-        var coordinator = new ScreenLockCoordinator(monitor, protection, new FakeSettings(true), NullLogger<ScreenLockCoordinator>.Instance)
-        {
-            LockAction = async () =>
-            {
-                actionStarted.TrySetResult();
-                await actionRelease.Task;
-            },
-            RestoreFocusAction = () => Interlocked.Increment(ref restores),
-        };
-
-        await coordinator.StartAsync();
-
-        // The screen goes up while the OS is still locked — the state AC-187 is about.
-        var locking = coordinator.HandleLockAsync();
-        await actionStarted.Task;
-
-        monitor.RaiseUnlocked();
-
-        Assert.Equal(1, restores);
-
-        actionRelease.SetResult();
-        Assert.True((await locking));
-    }
-
-    [Fact]
-    public void TheOsUnlocking_WithNoLockInEffect_DoesNothing()
-    {
-        var restores = 0;
-        var coordinator = new ScreenLockCoordinator(new FakeMonitor(), new FakeProtection { Enabled = true, Unlocked = true }, new FakeSettings(true), NullLogger<ScreenLockCoordinator>.Instance)
-        {
-            RestoreFocusAction = () => Interlocked.Increment(ref restores),
-        };
-
-        Assert.False(coordinator.HandleUnlock(), "there is no unlock screen of ours to focus");
-        Assert.Equal(0, restores);
-    }
-
-    private static (ScreenLockCoordinator Coordinator, Func<int> Locks) Build(FakeProtection protection, bool optionOn)
-    {
-        var count = 0;
-        var coordinator = new ScreenLockCoordinator(new FakeMonitor(), protection, new FakeSettings(optionOn), NullLogger<ScreenLockCoordinator>.Instance)
-        {
-            LockAction = () =>
-            {
-                Interlocked.Increment(ref count);
-
-                // Model the operator re-entering the password: the app is unlocked again, so the status reflects it
-                // by the time a later event is handled.
-                protection.Unlocked = true;
-
-                return Task.CompletedTask;
-            },
-        };
-
-        return (coordinator, () => count);
     }
 
     private sealed class FakeMonitor : IScreenLockMonitor

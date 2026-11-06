@@ -43,6 +43,13 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isFeatureEnabled = true;
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowsListeningSwitch))]
+    [NotifyPropertyChangedFor(nameof(ShowsKeyHint))]
+    private bool _isAudioAvailable = true;
+
+    public string AudioControlTooltip => IsAudioAvailable ? "Audio controls" : "Audio is unavailable. See Health for details.";
+
     // Why the assistant cannot be reached, set alongside `AssistantActivity.Unavailable`. Shown as the
     // chip's secondary line — an unavailable chip with no reason sends the operator into Options looking for a
     // setting that is not the problem (criterion 6/the ticket's own point 4).
@@ -227,7 +234,7 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
 
     // The chip's right-hand corner holds one thing, because at the sidebar's ~164px there is room for one: the
     // listening switch in the two resting stands, the key badge in the states that are mid-something.
-    public bool ShowsListeningSwitch => Activity is AssistantActivity.Ready or AssistantActivity.ListeningContinuously;
+    public bool ShowsListeningSwitch => IsAudioAvailable && Activity is AssistantActivity.Ready or AssistantActivity.ListeningContinuously;
 
     public bool ShowsKeyHint => !ShowsListeningSwitch && KeyHint is not null;
 

@@ -30,6 +30,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
     private volatile DepotConnectionRegistration? _pending;
 
     private readonly List<IDisposable> _handlers = [];
+    private Action? _stopWatchingAccounts;
 
     private Inbox.DepotInbox? _inbox;
     private Notes.DepotNotes? _notes;
@@ -58,10 +59,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
 
     public void ConfigureServices(IServiceCollection services)
     {
-        // Register this plugin as the source of its own MCP servers (AC-504): the host's McpServerCatalog
-        // asks each IPluginMcpProvider when assembling a session, rather than this plugin pushing servers
-        // into the shared registry. Same instance the host initializes, so GetMcpServers sees Initialize's settings.
-        services.AddSingleton<IPluginMcpProvider>(this);
+
     }
 
     public void Initialize(ICockpitHost host)
@@ -78,8 +76,9 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
         }
 
         // AC-1665: signing in as someone else must not leave the previous account's project list to be shown.
-        host.McpServerAccountChanged += (_, serverName) =>
+        EventHandler<string> accountChanged = (_, serverName) =>
         {
+            _fileSources?.NotifyChanged();
             foreach (var connection in settings.Connections.Where(candidate => candidate.McpServerName == serverName))
             {
                 DepotProjectListingSource.Forget(host, connection);
@@ -93,6 +92,8 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             }
             _notes?.Refresh();
         };
+        host.McpServerAccountChanged += accountChanged;
+        _stopWatchingAccounts = () => host.McpServerAccountChanged -= accountChanged;
 
         // AC-1394: the settings view and the global-toolbar shortcut to it moved to DepotUi.InitializeUi — this
         // channel action is what that view's own Save/Sign-in route now asks for instead of touching the
@@ -606,6 +607,8 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
 
     public void Dispose()
     {
+        _stopWatchingAccounts?.Invoke();
+        _fileSources?.NotifyChanged();
         foreach (var handler in _handlers)
         {
             handler.Dispose();

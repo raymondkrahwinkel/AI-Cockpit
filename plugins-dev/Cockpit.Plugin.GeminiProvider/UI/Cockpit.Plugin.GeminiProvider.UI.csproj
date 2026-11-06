@@ -21,6 +21,7 @@
     <Compile Include="..\TimeoutSecondsField.cs" Link="Contracts\TimeoutSecondsField.cs" />
     <Compile Include="..\OpenAiCompatModelCatalog.cs" Link="Contracts\OpenAiCompatModelCatalog.cs" />
     <Compile Include="..\OpenAiCompatDefaultBaseUrls.cs" Link="Contracts\OpenAiCompatDefaultBaseUrls.cs" />
+    <Compile Include="..\OpenAiCompatProviders.cs" Link="Contracts\OpenAiCompatProviders.cs" />
   </ItemGroup>
 
   <ItemGroup>

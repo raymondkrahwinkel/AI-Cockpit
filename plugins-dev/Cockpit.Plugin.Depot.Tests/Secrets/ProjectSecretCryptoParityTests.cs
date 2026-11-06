@@ -15,37 +15,21 @@ namespace Cockpit.Plugin.Depot.Tests.Secrets;
 // around. Change either copy and this goes red, whichever side changed.
 public class ProjectSecretCryptoParityTests
 {
+    // Same password, salt and iterations derive the byte-identical key, and a value protected on either side
+    // unprotects to the same plaintext on the other.
     [Fact]
-    public void Derive_SamePasswordSaltIterations_YieldsByteIdenticalKeyOnBothSides()
+    public void DeriveAndProtect_AgreeOnBothSides_InEitherDirection()
     {
         var salt = HostSecretKey.NewSalt();
-
         var hostKey = HostSecretKey.Derive("correct horse battery staple", salt, HostSecretKey.DefaultIterations);
         var pluginKey = PluginSecretKey.Derive("correct horse battery staple", salt, PluginSecretKey.DefaultIterations);
-
         Assert.Equal(hostKey, pluginKey);
-    }
 
-    [Fact]
-    public void Protect_HostSide_UnprotectsCorrectlyOnThePluginSide()
-    {
-        var key = HostSecretKey.Derive("hunter2", HostSecretKey.NewSalt(), HostSecretKey.DefaultIterations);
-        var ciphertext = new HostProtector(key).Protect("SensitiveFields.Api key", "plaintext-value");
+        var fromHost = new HostProtector(hostKey).Protect("SensitiveFields.Api key", "plaintext-value");
+        Assert.Equal("plaintext-value", new PluginProtector(hostKey).Unprotect("SensitiveFields.Api key", fromHost));
 
-        var recovered = new PluginProtector(key).Unprotect("SensitiveFields.Api key", ciphertext);
-
-        Assert.Equal("plaintext-value", recovered);
-    }
-
-    [Fact]
-    public void Protect_PluginSide_UnprotectsCorrectlyOnTheHostSide()
-    {
-        var key = HostSecretKey.Derive("hunter2", HostSecretKey.NewSalt(), HostSecretKey.DefaultIterations);
-        var ciphertext = new PluginProtector(key).Protect("SensitiveFields.Api key", "plaintext-value");
-
-        var recovered = new HostProtector(key).Unprotect("SensitiveFields.Api key", ciphertext);
-
-        Assert.Equal("plaintext-value", recovered);
+        var fromPlugin = new PluginProtector(hostKey).Protect("SensitiveFields.Api key", "plaintext-value");
+        Assert.Equal("plaintext-value", new HostProtector(hostKey).Unprotect("SensitiveFields.Api key", fromPlugin));
     }
 
     [Fact]

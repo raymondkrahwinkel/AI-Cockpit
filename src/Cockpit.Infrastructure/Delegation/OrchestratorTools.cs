@@ -33,7 +33,7 @@ internal sealed class OrchestratorTools
     }
 
     [McpServerTool(Name = "model_options", ReadOnly = true)]
-    [Description("Reports sourced model facts for the profiles list_profiles allows you to delegate to: current price in USD per million tokens, task quality, context, limits, peak windows and quota, ranked by quality with unknown last; unknown prices remain in budget-filtered results, and source age and staleness are included.")]
+    [Description("Reports sourced model facts for the profiles list_profiles allows you to delegate to: current price in USD per million tokens, every available quality score, family, context, limits, peak windows and quota. ranking uses one shared score kind only; rows with another kind are marked not comparable. Unknown prices remain in budget-filtered results, and source age and staleness are included.")]
     public async Task<string> ModelOptionsAsync(
         [Description("What the work is: coding, agentic, or anything else for the general intelligence index. Optional.")] string? taskType = null,
         [Description("Keep only rows whose known input and output price now, USD per million tokens, is at or under this. Optional.")] decimal? maxPricePerMTokens = null,

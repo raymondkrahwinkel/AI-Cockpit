@@ -18,6 +18,13 @@ public interface IPluginIntentRegistry
     void Register(string ownerPluginId, string action, Func<PluginIntent, Task<IReadOnlyDictionary<string, string>>> handler);
 
     /// <summary>
+    /// Withdraws <paramref name="ownerPluginId"/>'s handler for <paramref name="action"/>; false when it has none.
+    /// </summary>
+    bool Unregister(string ownerPluginId, string action);
+
+    event EventHandler? Changed;
+
+    /// <summary>
     /// Whether <paramref name="targetPluginId"/> has a handler for <paramref name="action"/> — the presence check a
     /// caller makes before showing a menu item that would otherwise dispatch to nobody.
     /// </summary>
@@ -37,23 +44,53 @@ internal sealed class PluginIntentRegistry : IPluginIntentRegistry, ISingletonSe
     // WorkflowStepRegistry uses for its type ids, and correct here because both sides are the host-stamped FolderId.
     private readonly Dictionary<(string PluginId, string Action), Func<PluginIntent, Task<IReadOnlyDictionary<string, string>>>> _handlers = [];
 
+    public event EventHandler? Changed;
+
     public void Register(string ownerPluginId, string action, Func<PluginIntent, Task<IReadOnlyDictionary<string, string>>> handler)
     {
-        if (!_handlers.TryAdd((ownerPluginId, action), handler))
+        lock (_handlers)
         {
-            throw new InvalidOperationException(
-                $"Plugin '{ownerPluginId}' already registered an intent handler for action '{action}'. Each (plugin, action) has one handler.");
+            if (!_handlers.TryAdd((ownerPluginId, action), handler))
+            {
+                throw new InvalidOperationException(
+                    $"Plugin '{ownerPluginId}' already registered an intent handler for action '{action}'. Each (plugin, action) has one handler.");
+            }
+        }
+
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    public bool Unregister(string ownerPluginId, string action)
+    {
+        lock (_handlers)
+        {
+            if (!_handlers.Remove((ownerPluginId, action)))
+            {
+                return false;
+            }
+        }
+
+        Changed?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+
+    public bool HasHandler(string targetPluginId, string action)
+    {
+        lock (_handlers)
+        {
+            return _handlers.ContainsKey((targetPluginId, action));
         }
     }
 
-    public bool HasHandler(string targetPluginId, string action) =>
-        _handlers.ContainsKey((targetPluginId, action));
-
     public async Task<IReadOnlyDictionary<string, string>?> Dispatch(PluginIntent intent)
     {
-        if (!_handlers.TryGetValue((intent.TargetPluginId, intent.Action), out var handler))
+        Func<PluginIntent, Task<IReadOnlyDictionary<string, string>>>? handler;
+        lock (_handlers)
         {
-            return null;
+            if (!_handlers.TryGetValue((intent.TargetPluginId, intent.Action), out handler))
+            {
+                return null;
+            }
         }
 
         return await handler(intent).ConfigureAwait(false);

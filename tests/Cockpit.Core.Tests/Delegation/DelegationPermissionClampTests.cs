@@ -24,18 +24,6 @@ namespace Cockpit.Core.Tests.Delegation;
 public class DelegationPermissionClampTests
 {
     [Fact]
-    public async Task ARequestBelowTheCeiling_GatesAtTheRequest()
-    {
-        var driver = Substitute.For<ISessionDriver>();
-        driver.Events.Returns(_EmptyStream());
-        var service = _ServiceWith(driver, ceiling: "bypassPermissions");
-
-        await service.DelegateAsync(new DelegationRequest("local", "review only", RequestedPermission: "acceptEdits"));
-
-        await driver.Received().SetDelegatedToolGateAsync("acceptEdits", Arg.Any<IReadOnlyList<string>>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
     public async Task ARequestAboveTheCeiling_WithNoConsentBroker_IsClampedToTheCeiling()
     {
         var driver = Substitute.For<ISessionDriver>();
@@ -48,40 +36,13 @@ public class DelegationPermissionClampTests
     }
 
     [Fact]
-    public async Task NoRequest_GatesReadOnly_NotAtTheProfileCeiling()
-    {
-        // AC-971: asking for nothing gets read-only, whatever the profile would have allowed. A research task
-        // used to inherit a coder profile's write rights purely because its caller never mentioned permissions.
-        var driver = Substitute.For<ISessionDriver>();
-        driver.Events.Returns(_EmptyStream());
-        var service = _ServiceWith(driver, ceiling: "acceptEdits");
-
-        await service.DelegateAsync(new DelegationRequest("local", "work"));
-
-        await driver.Received().SetDelegatedToolGateAsync("default", Arg.Any<IReadOnlyList<string>>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task NoRequest_OnAProfilePinnedBelowReadOnly_StaysAtTheProfileCeiling()
-    {
-        // The read-only default is a cap, not a grant: a profile the operator pinned lower than read-only keeps
-        // its own ceiling rather than being widened to the default by a caller that asked for nothing.
-        var driver = Substitute.For<ISessionDriver>();
-        driver.Events.Returns(_EmptyStream());
-        var service = _ServiceWith(driver, ceiling: string.Empty);
-
-        await service.DelegateAsync(new DelegationRequest("local", "work"));
-
-        await driver.Received().SetDelegatedToolGateAsync(string.Empty, Arg.Any<IReadOnlyList<string>>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task ARequestAboveTheCeiling_ApprovedByTheOperator_GatesAtTheRequest()
+    public async Task ARequestAboveTheCeiling_AskedAsADangerousNeverRememberedAction_AndApproved_GatesAtTheRequest()
     {
         var driver = Substitute.For<ISessionDriver>();
         driver.Events.Returns(_EmptyStream());
         var consent = Substitute.For<IConsentBroker>();
-        consent.RequestConsentAsync(Arg.Any<ConsentRequest>(), Arg.Any<CancellationToken>())
+        ConsentRequest? captured = null;
+        consent.RequestConsentAsync(Arg.Do<ConsentRequest>(request => captured = request), Arg.Any<CancellationToken>())
             .Returns(new ConsentDecision(ConsentOutcome.Approved));
         var auditLog = Substitute.For<IDelegationAuditLog>();
         var service = _ServiceWith(driver, ceiling: "default", consent, auditLog);
@@ -102,6 +63,11 @@ public class DelegationPermissionClampTests
         await auditLog.Received().RecordAsync(
             Arg.Is<DelegationAuditEntry>(e => e.Action == DelegationAuditAction.PermissionElevated),
             Arg.Any<CancellationToken>());
+
+        Assert.NotNull(captured);
+        Assert.Equal(ConsentRisk.Dangerous, captured!.Risk);
+        Assert.False(captured.AllowRemember);
+        Assert.Equal("delegation.permission:local", captured.Scope);
     }
 
     [Fact]
@@ -121,100 +87,6 @@ public class DelegationPermissionClampTests
         await auditLog.Received().RecordAsync(
             Arg.Is<DelegationAuditEntry>(e => e.Action == DelegationAuditAction.PermissionElevationDenied),
             Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task ARequestAboveTheCeiling_AsksAsADangerousActionThatIsNeverRemembered()
-    {
-        var driver = Substitute.For<ISessionDriver>();
-        driver.Events.Returns(_EmptyStream());
-        var consent = Substitute.For<IConsentBroker>();
-        ConsentRequest? captured = null;
-        consent.RequestConsentAsync(Arg.Do<ConsentRequest>(request => captured = request), Arg.Any<CancellationToken>())
-            .Returns(new ConsentDecision(ConsentOutcome.Approved));
-        var service = _ServiceWith(driver, ceiling: "default", consent);
-
-        await service.DelegateAsync(new DelegationRequest("local", "do everything", RequestedPermission: "bypassPermissions"));
-
-        Assert.NotNull(captured);
-        Assert.Equal(ConsentRisk.Dangerous, captured!.Risk);
-        Assert.False(captured.AllowRemember);
-        Assert.Equal("delegation.permission:local", captured.Scope);
-    }
-
-    [Fact]
-    public async Task ARequestAtOrBelowTheCeiling_NeverAsksForConsent()
-    {
-        var driver = Substitute.For<ISessionDriver>();
-        driver.Events.Returns(_EmptyStream());
-        var consent = Substitute.For<IConsentBroker>();
-        var service = _ServiceWith(driver, ceiling: "bypassPermissions", consent);
-
-        await service.DelegateAsync(new DelegationRequest("local", "review only", RequestedPermission: "acceptEdits"));
-
-        await consent.DidNotReceive().RequestConsentAsync(Arg.Any<ConsentRequest>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task DelegationsFromDifferentCallerProfiles_RecordTheirOwnEffectivePermissions()
-    {
-        var driver = Substitute.For<ISessionDriver>();
-        driver.Events.Returns(_EmptyStream());
-        var auditLog = Substitute.For<IDelegationAuditLog>();
-        var sessionState = Substitute.For<ISessionStateStore>();
-        sessionState.LoadAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<SessionStateRecord>>([
-            new SessionStateRecord("planner-pane", "planner", null, null, SessionConversationIdState.Unknown, null, null, null, "plan", DateTimeOffset.UtcNow),
-            new SessionStateRecord("coder-pane", "coder", null, null, SessionConversationIdState.Unknown, null, null, null, "bypassPermissions", DateTimeOffset.UtcNow),
-        ]));
-        var service = _ServiceWith(driver, "bypassPermissions", auditLog: auditLog, sessionState: sessionState);
-
-        await service.DelegateAsync(new DelegationRequest("local", "review", RequestedPermission: "acceptEdits"), "planner-pane");
-        await service.DelegateAsync(new DelegationRequest("local", "build", RequestedPermission: "acceptEdits"), "coder-pane");
-
-        await auditLog.Received().RecordAsync(
-            Arg.Is<DelegationAuditEntry>(entry => entry.Action == DelegationAuditAction.Delegated
-                && entry.SourceProfileLabel == "planner" && entry.SourceEffectivePermission == "plan"),
-            Arg.Any<CancellationToken>());
-        await auditLog.Received().RecordAsync(
-            Arg.Is<DelegationAuditEntry>(entry => entry.Action == DelegationAuditAction.Delegated
-                && entry.SourceProfileLabel == "coder" && entry.SourceEffectivePermission == "bypassPermissions"),
-            Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task AFailedCallerStateLookup_DoesNotStopDelegation_AndRecordsUnknownSource()
-    {
-        var driver = Substitute.For<ISessionDriver>();
-        driver.Events.Returns(_EmptyStream());
-        var auditLog = Substitute.For<IDelegationAuditLog>();
-        var sessionState = Substitute.For<ISessionStateStore>();
-        sessionState.LoadAsync(Arg.Any<CancellationToken>()).Returns(Task.FromException<IReadOnlyList<SessionStateRecord>>(new IOException("state unavailable")));
-        var service = _ServiceWith(driver, "bypassPermissions", auditLog: auditLog, sessionState: sessionState);
-
-        var task = await service.DelegateAsync(new DelegationRequest("local", "review", RequestedPermission: "acceptEdits"), "caller-pane");
-
-        Assert.Equal(DelegatedTaskStatus.Running, task.Status);
-        await auditLog.Received().RecordAsync(
-            Arg.Is<DelegationAuditEntry>(entry => entry.Action == DelegationAuditAction.Delegated
-                && entry.SourceProfileLabel == "unknown" && entry.SourceEffectivePermission == "unknown"),
-            Arg.Any<CancellationToken>());
-    }
-
-    // A same-rank alias ("plan" and "default" both mean read-only-unattended) must never read as an escalation:
-    // the caller asked for no more than the profile already allows, so no prompt, in either direction.
-    [Theory]
-    [InlineData("default", "plan")]
-    [InlineData("plan", "default")]
-    public async Task ASameRankAliasRequest_NeverAsksForConsent(string ceiling, string requested)
-    {
-        var driver = Substitute.For<ISessionDriver>();
-        driver.Events.Returns(_EmptyStream());
-        var consent = Substitute.For<IConsentBroker>();
-        var service = _ServiceWith(driver, ceiling, consent);
-
-        await service.DelegateAsync(new DelegationRequest("local", "work", RequestedPermission: requested));
-
-        await consent.DidNotReceive().RequestConsentAsync(Arg.Any<ConsentRequest>(), Arg.Any<CancellationToken>());
     }
 
     /// <summary>

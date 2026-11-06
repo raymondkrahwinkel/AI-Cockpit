@@ -55,5 +55,7 @@ public class ProjectResourceSecretPathParityTests
 
         Assert.Equal(HostHeuristic.IsLikelySecretPath(reference), PluginHeuristic.IsLikelySecretPath(reference));
         Assert.True(HostHeuristic.IsLikelySecretPath(reference));
+        Assert.True(PluginHeuristic.IsLikelySecretPath(reference));
+        Assert.Equal(OperatingSystem.IsWindows(), PluginHeuristic.IsLikelySecretPath("~/.SSH/ID_RSA"));
     }
 }

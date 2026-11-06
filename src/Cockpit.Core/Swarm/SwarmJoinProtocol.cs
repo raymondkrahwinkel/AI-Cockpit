@@ -5,8 +5,16 @@ namespace Cockpit.Core.Swarm;
 public enum SwarmHostKind { Desktop, Server }
 
 public sealed record SwarmHost(SwarmHostKind Kind);
-public sealed record SwarmJoinRequest(string Name, byte[] Certificate, string Address);
-public sealed record SwarmJoinPrepare(NodePairingClaimRequest Claim, IReadOnlyList<SwarmRecord> Log);
+public sealed record SwarmJoinRequest(string Name, byte[] Certificate, string Address)
+{
+    public IReadOnlyList<string> Addresses { get; init; } = [];
+    public int Port { get; init; }
+}
+public sealed record SwarmJoinPrepare(NodePairingClaimRequest Claim, IReadOnlyList<SwarmRecord> Log)
+{
+    public bool IncludeLog { get; init; }
+}
+public sealed record SwarmJoinProposal(SwarmRecord Record, IReadOnlyList<SwarmRecord> Log);
 public sealed record SwarmJoinCommit(NodePairingClaimRequest Claim, SwarmRecord Record, SwarmTransport Transport);
 public sealed record SwarmTransport(string ConnectKey, string Pin, IReadOnlyList<NodeEndpointAddress> Endpoints);
 public sealed record SwarmJoinHandshake(string Address, NodePairingOffer Offer, string Code, string Pin, byte[] PublicKey);

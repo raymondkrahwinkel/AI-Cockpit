@@ -6,4 +6,5 @@ public enum SimplePage
     Home,
     Projects,
     Conversation,
+    Workspace,
 }

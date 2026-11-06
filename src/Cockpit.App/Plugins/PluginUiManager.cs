@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Reflection;
 using System.Runtime.Loader;
 using Microsoft.Extensions.Logging;
@@ -15,10 +16,15 @@ namespace Cockpit.App.Plugins;
 // half names no window type. Runs after every backend part's Initialize, over what PluginManager loaded.
 public sealed class PluginUiManager(ILogger<PluginUiManager> logger, PluginDiagnostics diagnostics, PluginManager backend) : IDisposable
 {
+    private static readonly TimeSpan _UiDisposeBudget = TimeSpan.FromSeconds(1);
+
     private readonly Dictionary<DiscoveredPlugin, ICockpitPluginUi> _ui = [];
 
     // AC-1571: the host each UI part was given, which a server's copy of that part borrows its window helpers from.
     private readonly Dictionary<DiscoveredPlugin, ICockpitUiHost> _hosts = [];
+
+    // AC-2024: the same reuse as PluginActivator, for a plugin that is only a UI part and so never passes through it.
+    private static readonly ConcurrentDictionary<(string FolderId, string Sha256), PluginLoadContext> _UiOnlyContexts = new();
 
     internal void RegisterRemoteFileWorkspaces(IRemoteServer server)
     {
@@ -59,22 +65,34 @@ public sealed class PluginUiManager(ILogger<PluginUiManager> logger, PluginDiagn
     {
         foreach (var (discovered, plugin) in backend.LoadedParts.Where(entry => !backend.InitializeFailed(entry.Discovered)))
         {
-            try
-            {
-                if (_Activate(discovered, plugin, activateUi) is not { } ui)
-                {
-                    continue;
-                }
+            InitializeUiOne(discovered, plugin, activateUi, hostFor);
+        }
+    }
 
-                var host = hostFor(discovered, ui);
-                _hosts[discovered] = host;
-                ui.InitializeUi(host);
-            }
-            catch (Exception exception)
+    // Why the UI part could not start, or null (also for a plugin without one); a live update rolls back on it.
+    public string? InitializeUiOne(
+        DiscoveredPlugin discovered,
+        ICockpitPlugin? plugin,
+        Func<DiscoveredPlugin, ICockpitPlugin?, ICockpitPluginUi?> activateUi,
+        Func<DiscoveredPlugin, ICockpitPluginUi, ICockpitUiHost> hostFor)
+    {
+        try
+        {
+            if (_Activate(discovered, plugin, activateUi) is not { } ui)
             {
-                logger.LogWarning(exception, "Plugin {PluginId}'s UI part failed; its UI contributions are skipped.", discovered.FolderId);
-                diagnostics.Record(discovered.FolderId, discovered.Manifest.Name, "initialize-ui", exception.Message);
+                return null;
             }
+
+            var host = hostFor(discovered, ui);
+            _hosts[discovered] = host;
+            ui.InitializeUi(host);
+            return null;
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Plugin {PluginId}'s UI part failed; its UI contributions are skipped.", discovered.FolderId);
+            diagnostics.Record(discovered.FolderId, discovered.Manifest.Name, "initialize-ui", exception.Message);
+            return exception.Message;
         }
     }
 
@@ -103,7 +121,11 @@ public sealed class PluginUiManager(ILogger<PluginUiManager> logger, PluginDiagn
 
                 foreach (var route in ui.CreateFirstStartRoutes(firstStartHostFor(discovered)))
                 {
-                    if (!routes.Register(route, discovered.Manifest.Name))
+                    if (routes.Register(route, discovered.Manifest.Name))
+                    {
+                        backend.RuntimeFor(discovered.FolderId).Add(() => routes.Unregister(route.Id));
+                    }
+                    else
                     {
                         logger.LogWarning("First-start route '{RouteId}' of plugin {PluginId} is already offered by another plugin; it is ignored.", route.Id, discovered.FolderId);
                     }
@@ -143,12 +165,20 @@ public sealed class PluginUiManager(ILogger<PluginUiManager> logger, PluginDiagn
 
     // AC-1571: the UI part type and host of the plugin with manifest id `pluginId`, when that part is its own type. One the
     // backend entry type plays too is left out: a fresh copy of it would run InitializeUi without its Initialize.
-    public (Type UiType, ICockpitUiHost Host)? UiPartOf(string pluginId) =>
+    // AC-2025: with the version it is, read when asked and never kept, so the type of a replaced version is not held on to.
+    public (Type UiType, ICockpitUiHost Host, string Version)? UiPartOf(string pluginId) =>
         backend.LoadedParts
             .Where(entry => string.Equals(entry.Discovered.Manifest.Id, pluginId, StringComparison.Ordinal)
-                && _ui.TryGetValue(entry.Discovered, out var ui) && !ReferenceEquals(ui, entry.Plugin))
-            .Select(entry => ((Type, ICockpitUiHost)?)(_ui[entry.Discovered].GetType(), _hosts[entry.Discovered]))
+                && _ui.TryGetValue(entry.Discovered, out var ui) && !ReferenceEquals(ui, entry.Plugin)
+                && _hosts.ContainsKey(entry.Discovered))
+            .Select(entry => ((Type, ICockpitUiHost, string)?)(_ui[entry.Discovered].GetType(), _hosts[entry.Discovered], entry.Discovered.Manifest.Version))
             .FirstOrDefault();
+
+    private static Assembly _LoadVerified(AssemblyLoadContext context, PluginShadow shadow, string path)
+    {
+        shadow.Verify(path);
+        return context.LoadFromAssemblyPath(path);
+    }
 
     // AC-1389: the plugin's UI part, or null when it has none. Without a uiAssembly that is the backend entry type
     // itself when it implements ICockpitPluginUi too (a plugin moving its UI over before it splits); with one, the
@@ -161,7 +191,14 @@ public sealed class PluginUiManager(ILogger<PluginUiManager> logger, PluginDiagn
             return backend as ICockpitPluginUi;
         }
 
-        if (!PluginEntryPath.TryResolve(discovered.FolderPath, uiAssembly, out var uiPath))
+        if (!PluginEntryPath.TryResolve(discovered.FolderPath, uiAssembly, out _))
+        {
+            throw new InvalidOperationException($"The UI assembly path '{uiAssembly}' is outside the plugin's folder.");
+        }
+
+        // AC-2025: from the verified copy, the one the backend part loaded from.
+        var shadow = PluginShadow.GetOrPrepare(discovered);
+        if (!PluginEntryPath.TryResolve(shadow.Folder, uiAssembly, out var uiPath))
         {
             throw new InvalidOperationException($"The UI assembly path '{uiAssembly}' is outside the plugin's folder.");
         }
@@ -169,8 +206,8 @@ public sealed class PluginUiManager(ILogger<PluginUiManager> logger, PluginDiagn
         var assembly = (backend is null ? null : AssemblyLoadContext.GetLoadContext(backend.GetType().Assembly)) switch
         {
             PluginLoadContext shared => shared.LoadAlongside(uiPath),
-            { } other => other.LoadFromAssemblyPath(uiPath),
-            null => new PluginLoadContext(uiPath).LoadFromAssemblyPath(uiPath),
+            { } other => _LoadVerified(other, shadow, uiPath),
+            null => _UiOnlyContexts.GetOrAdd((discovered.FolderId, discovered.Sha256), _ => new PluginLoadContext(uiPath, shadow: shadow)).LoadOnce(uiPath),
         };
 
         var uiType = _ResolveUiEntryType(assembly, manifest.UiEntryType)
@@ -195,28 +232,48 @@ public sealed class PluginUiManager(ILogger<PluginUiManager> logger, PluginDiagn
     private static bool _IsConcreteUi(Type type) =>
         typeof(ICockpitPluginUi).IsAssignableFrom(type) && type is { IsAbstract: false, IsInterface: false };
 
-    // A UI part that is its own object, not the backend entry type doing both, goes here; the backend part is
-    // PluginManager's to dispose.
+    // AC-2024: one plugin's UI part, on the UI thread, after its contributions left.
+    public void DeactivateUi(DiscoveredPlugin discovered, ICockpitPlugin? plugin)
+    {
+        _DisposePart(discovered, plugin);
+        _ui.Remove(discovered);
+        _hosts.Remove(discovered);
+    }
+
     public void Dispose()
     {
         foreach (var (discovered, plugin) in backend.LoadedParts)
         {
-            if (_ui.GetValueOrDefault(discovered) is not IDisposable ui || ReferenceEquals(ui, plugin))
-            {
-                continue;
-            }
-
-            try
-            {
-                ui.Dispose();
-            }
-            catch (Exception exception)
-            {
-                logger.LogWarning(exception, "Plugin {PluginId} threw while disposing.", discovered.FolderId);
-            }
+            _DisposePart(discovered, plugin);
         }
 
         _ui.Clear();
         _hosts.Clear();
+    }
+
+    // A UI part that is its own object, not the backend entry type doing both, goes here; the backend part is
+    // PluginManager's to dispose.
+    private void _DisposePart(DiscoveredPlugin discovered, ICockpitPlugin? plugin)
+    {
+        if (_ui.GetValueOrDefault(discovered) is not IDisposable ui || ReferenceEquals(ui, plugin))
+        {
+            return;
+        }
+
+        // AC-2024: a synchronous call on the UI thread cannot be cut short. This names the plugin that holds it, also
+        // when the call never returns.
+        using var overrun = new Timer(
+            _ => logger.LogWarning("Plugin {PluginId} is blocking the UI thread in the Dispose of its UI part.", discovered.FolderId),
+            null,
+            _UiDisposeBudget,
+            Timeout.InfiniteTimeSpan);
+        try
+        {
+            ui.Dispose();
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Plugin {PluginId} threw while disposing.", discovered.FolderId);
+        }
     }
 }

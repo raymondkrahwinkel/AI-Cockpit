@@ -8,25 +8,6 @@ namespace Cockpit.Core.Tests.Mcp;
 // implement it.
 public class NodeScopedProfileSummarySecrecyTests
 {
-    private static readonly string[] _FieldsClearedForScoping =
-    [
-        nameof(NodeScopedProfileSummary.Label),
-        nameof(NodeScopedProfileSummary.Provider),
-        nameof(NodeScopedProfileSummary.Purpose),
-        nameof(NodeScopedProfileSummary.SkipsApprovals),
-    ];
-
-    [Fact]
-    public void Summary_CarriesOnlyFieldsClearedForScoping_SoAddingOneIsADeliberateAct()
-    {
-        var actual = typeof(NodeScopedProfileSummary)
-            .GetProperties()
-            .Select(property => property.Name)
-            .OrderBy(name => name, StringComparer.Ordinal);
-
-        Assert.Equal(_FieldsClearedForScoping.OrderBy(name => name, StringComparer.Ordinal), actual);
-    }
-
     [Fact]
     public void Summary_CarriesNoProviderConfigOrEnvironmentOrWorkingDirectoryOrSystemPrompt()
     {

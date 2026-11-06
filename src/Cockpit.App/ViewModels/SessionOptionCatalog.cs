@@ -51,7 +51,7 @@ public static class SessionOptionCatalog
     [
         new(ReadingLevel.Developer, "Developer", "Everything: tool calls, thinking, costs and jargon."),
         new(ReadingLevel.Focus, "Focus", "Calm but complete: tool runs fold up, cost moves to the usage pill."),
-        new(ReadingLevel.Simple, "Simple", "For anyone: no tool noise, no cost, jargon in plain words."),
+        new(ReadingLevel.Simple, "Simple", "For anyone: no tool noise, jargon in plain words."),
     ];
 
     // App-default reading level (Developer — the full surface) used when a profile carries no default.

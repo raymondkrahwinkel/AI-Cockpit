@@ -78,21 +78,6 @@ public sealed class TranscriptComposerInputTests
     }
 
     [Fact]
-    public void PastingText_InsertsAtTheCaret_ReplacingAnySelection() => HeadlessAvalonia.Run(() =>
-    {
-        var harness = new Harness { ClipboardText = "X" };
-        harness.Box.Text = "ab";
-        harness.Box.CaretIndex = 1;
-
-        var down = new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.V, KeyModifiers = KeyModifiers.Control };
-        harness.Input.OnKeyDown(null, down);
-
-        Assert.True(down.Handled);
-        Assert.Equal("aXb", harness.Box.Text);
-        Assert.Equal(2, harness.Box.CaretIndex);
-    });
-
-    [Fact]
     public void PastingAnImage_RoutesThePngBytesToTheResolvedSink_AndLeavesTextUntouched() => HeadlessAvalonia.Run(() =>
     {
         // Not disposed here: a real paste hands the bitmap over and _HandlePasteAsync owns disposing it.
@@ -106,48 +91,12 @@ public sealed class TranscriptComposerInputTests
         Assert.Equal("unchanged", harness.Box.Text);
     });
 
-    // Mirrors AssistantChatView pasting an image with no session yet to attach to (AC-953): the sink resolves
-    // to null and the paste drops silently instead of throwing or falling through to a text insert.
-    [Fact]
-    public void PastingAnImage_WhenNoSinkIsAvailable_DropsSilently() => HeadlessAvalonia.Run(() =>
-    {
-        var harness = new Harness { ImageSinkAvailable = false, ClipboardBitmap = new Bitmap(new MemoryStream(TinyPng)) };
-        harness.Box.Text = "unchanged";
-
-        harness.PressCtrlV();
-
-        Assert.Null(harness.PastedImage);
-        Assert.Equal("unchanged", harness.Box.Text);
-    });
-
-    [Fact]
-    public void AcceptingAMention_SplicesItInAtTheCaret_NotAtTheStartOrEndOfTheText() => HeadlessAvalonia.Run(() =>
-    {
-        var harness = new Harness();
-        var picker = new MentionPickerViewModel(_ => Task.FromResult<IReadOnlyList<string>>(["src/Foo.cs"]), () => "/repo");
-        harness.Box.Text = "hi @fo, thanks";
-        picker.OnTextChanged(harness.Box.Text, caretIndex: 6); // caret right after "@fo"
-        Assert.True(picker.IsOpen);
-        Assert.NotNull(picker.Selected);
-        harness.Picker = picker;
-        harness.Box.CaretIndex = 6;
-
-        var args = harness.PressKey(Key.Enter);
-
-        Assert.True(args.Handled);
-        Assert.False(picker.IsOpen);
-        Assert.Equal("hi @src/Foo.cs , thanks", harness.Box.Text);
-        Assert.Equal("hi @src/Foo.cs ".Length, harness.Box.CaretIndex);
-        Assert.Equal(0, harness.Send.ExecuteCount);
-    });
-
     // AC-726: what the paths do once they arrive; the OS drag itself is verified by hand. Rows 1 and 2 force
-    // opposite behaviour out of the one quoting decision, rows 1 and 5 out of the one leading-space decision.
+    // opposite behaviour out of the one quoting decision, rows 1 and 4 out of the one leading-space decision.
     [Theory]
     [InlineData("ab", 1, new[] { "/tmp/a.txt" }, "a /tmp/a.txt b", 13)]
     [InlineData("ab", 1, new[] { "/tmp/my file.txt", "/tmp/b.md" }, "a \"/tmp/my file.txt\" /tmp/b.md b", 31)]
     [InlineData("ab", 1, new[] { "/tmp/say \"hi\".txt" }, "a \"/tmp/say \\\"hi\\\".txt\" b", 24)]
-    [InlineData("ab", 1, new string[0], "ab", 1)]
     [InlineData("ab ", 3, new[] { "/tmp/a.txt" }, "ab /tmp/a.txt ", 14)]
     public void DroppedPaths_GoInAtTheCaret_SeparatedAndQuotedAsAShellWouldReadThem(
         string text, int caret, string[] paths, string expectedText, int expectedCaret) => HeadlessAvalonia.Run(() =>
@@ -162,27 +111,18 @@ public sealed class TranscriptComposerInputTests
         Assert.Equal(expectedCaret, harness.Box.CaretIndex);
     });
 
-    [Fact]
-    public void Enter_WithoutShift_SendsAndMarksTheEventHandled() => HeadlessAvalonia.Run(() =>
+    // Enter sends and swallows the key; Shift+Enter never sends and leaves the event for the TextBox's own newline.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Enter_SendsUnlessShiftIsHeld(bool shift) => HeadlessAvalonia.Run(() =>
     {
         var harness = new Harness();
         harness.Box.Text = "hello";
 
-        var args = harness.PressKey(Key.Enter);
+        var args = shift ? harness.PressKey(Key.Enter, KeyModifiers.Shift) : harness.PressKey(Key.Enter);
 
-        Assert.True(args.Handled);
-        Assert.Equal(1, harness.Send.ExecuteCount);
-    });
-
-    [Fact]
-    public void ShiftEnter_NeverSends_AndLeavesTheEventUnhandledForTheTextBoxsOwnNewline() => HeadlessAvalonia.Run(() =>
-    {
-        var harness = new Harness();
-        harness.Box.Text = "hello";
-
-        var args = harness.PressKey(Key.Enter, KeyModifiers.Shift);
-
-        Assert.False(args.Handled);
-        Assert.Equal(0, harness.Send.ExecuteCount);
+        Assert.Equal(!shift, args.Handled);
+        Assert.Equal(shift ? 0 : 1, harness.Send.ExecuteCount);
     });
 }

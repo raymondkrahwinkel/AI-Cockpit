@@ -24,9 +24,7 @@
         <Style Selector="Border.hiddenInSimple">
             <Setter Property="IsVisible" Value="False"/>
         </Style>
-        <Style Selector="DockPanel.simpleColumn">
-            <Setter Property="MaxWidth" Value="720"/>
-        </Style>
+        <Style Selector="DockPanel.simpleColumn"/>
         <Style Selector="TextBox#InputBox" x:DataType="vm:SessionViewModel">
             <Setter Property="PlaceholderText" Value="{Binding ComposerPlaceholder}"/>
         </Style>
@@ -113,6 +111,9 @@
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
+                                    <Button x:Name="SessionMcpSettingsButton" Content="MCP servers…" Classes="Compact"
+                                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                            IsVisible="{Binding HasMcpServers}" Click="OnOpenSessionMcp" Margin="0,0,0,8"/>
                                     <TextBlock Text="Display" FontSize="10.5" FontWeight="SemiBold" Margin="0,0,0,4"
                                                Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                     <!-- Reading level (AC-138): how much of this SDK session to show — Developer
@@ -345,6 +346,8 @@
                                    VerticalAlignment="Center" Foreground="{DynamicResource CockpitAccentBrush}"/>
                         <TextBlock Text="Thinking…" FontSize="12" VerticalAlignment="Center"
                                    Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        <TextBlock Text="{Binding ThinkingAgeText, StringFormat='· {0}'}" IsVisible="{Binding ThinkingAgeText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" FontSize="12" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                     </StackPanel>
                 </Border>
 
@@ -355,18 +358,18 @@
                      doing the slowest part of its work. Same slot as "Thinking…" above — one row, not a panel. -->
                 <Border DockPanel.Dock="Top" IsVisible="{Binding HasActiveToolActivity}" Margin="2,0,0,8"
                         HorizontalAlignment="Left">
-                    <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
+                    <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="9" VerticalAlignment="Center">
                         <materialIcons:MaterialIcon Kind="Circle" Classes="pulse" Width="10" Height="10"
                                    VerticalAlignment="Center" Foreground="{DynamicResource CockpitAccentBrush}"/>
-                        <TextBlock Text="{Binding ActiveToolActivityLabel}" FontSize="12" VerticalAlignment="Center"
+                        <TextBlock Grid.Column="1" Text="{Binding ActiveToolActivityLabel}" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                                    Foreground="{DynamicResource CockpitTextPrimaryBrush}"/>
                         <!-- Third segment joined by the same "·" the mockup uses between all three (tool, step,
                              elapsed) — not just the first two. -->
-                        <TextBlock Text="·" FontSize="12" VerticalAlignment="Center"
+                        <TextBlock Grid.Column="2" Text="·" IsVisible="{Binding ActiveToolActivityAgeText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" FontSize="12" VerticalAlignment="Center"
                                    Foreground="{DynamicResource CockpitTextFaintBrush}"/>
-                        <TextBlock Text="{Binding ActiveToolActivityAgeText}" FontSize="12" VerticalAlignment="Center"
+                        <TextBlock Grid.Column="3" Text="{Binding ActiveToolActivityAgeText}" FontSize="12" VerticalAlignment="Center"
                                    Foreground="{DynamicResource CockpitTextFaintBrush}"/>
-                    </StackPanel>
+                    </Grid>
                 </Border>
 
                 <!-- Queued messages (T8): typed while a turn was in flight, dispatched when it completes.
@@ -464,9 +467,15 @@
                      it can be sent with a sentence of your own. ShowOnDisabled because the disabled state is the
                      interesting one — the tooltip is where a session that cannot take an image says why — and
                      Avalonia hides tooltips on disabled controls unless told otherwise. -->
-                <Button x:Name="ScreenshotButton" DockPanel.Dock="Right" Command="{Binding CaptureScreenshotCommand}" IsVisible="{Binding !IsShownInSimpleStand}"
+                <Button x:Name="ScreenshotButton" DockPanel.Dock="Right" Command="{Binding CaptureScreenshotCommand}"
                         Classes="Compact composerAction" VerticalAlignment="Bottom" Margin="8,0,0,0" Padding="8,6"
                         ToolTip.Tip="{Binding ScreenshotTooltip}" ToolTip.ShowOnDisabled="True">
+                    <Button.IsVisible>
+                        <MultiBinding Converter="{x:Static BoolConverters.And}">
+                            <Binding Path="!IsShownInSimpleStand"/>
+                            <Binding Path="CanPasteImages"/>
+                        </MultiBinding>
+                    </Button.IsVisible>
                     <materialIcons:MaterialIcon Kind="Monitor" Width="15" Height="15"/>
                 </Button>
                 <!-- Background work (AC-531): a persistent button next to Send that says how much sub-agent/shell
@@ -649,5 +658,6 @@
          is waiting on this session, so it plainly takes over rather than a banner that shifted the
          transcript and was easy to miss. Collapsed and hit-transparent while idle. -->
     <controls:ConsentBannerHost IsVisible="{Binding !IsReadingChild}"/>
+        <Border x:Name="DropOverlay" Classes="fileDropTarget" IsHitTestVisible="False" IsVisible="False"/>
     </Grid>
 </UserControl>

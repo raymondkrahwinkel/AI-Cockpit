@@ -1,6 +1,5 @@
 using SoundFlow.Abstracts;
 using SoundFlow.Structs;
-using Cockpit.Core.Abstractions;
 using Cockpit.Core.Audio;
 using CoreAudioDeviceInfo = Cockpit.Core.Audio.AudioDeviceInfo;
 
@@ -9,7 +8,7 @@ namespace Cockpit.Infrastructure.Audio;
 // The single serialized gateway to the shared `AudioEngine`'s device enumeration. Capture,
 // playback and the Options device list can all query it concurrently from different threads.
 // The engine gives no concurrency guarantee, so every read runs under one lock here.
-internal sealed class AudioDeviceEnumerator(AudioEngine engine) : ISingletonService
+internal sealed class AudioDeviceEnumerator(AudioEngine engine)
 {
     private readonly object _gate = new();
 

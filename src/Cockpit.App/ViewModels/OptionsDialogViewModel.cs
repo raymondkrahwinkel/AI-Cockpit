@@ -5,6 +5,8 @@ using Cockpit.Core.Abstractions.Consent;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Consent;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Voice;
 
 namespace Cockpit.App.ViewModels;
 
@@ -15,7 +17,8 @@ public sealed partial class AssistantOptionsViewModel(
     IAssistantSettingsStore? settingsStore = null,
     IAssistantProfileStore? profileStore = null,
     IConsentAuditLog? consentAuditLog = null,
-    IAssistantMemory? memory = null) : ObservableObject
+    IAssistantMemory? memory = null,
+    ISessionProfileStore? speechProfiles = null) : ObservableObject
 {
     private readonly IAssistantMemory? _memory = memory;
 
@@ -35,6 +38,28 @@ public sealed partial class AssistantOptionsViewModel(
 
     [ObservableProperty]
     private bool _speakReplies = true;
+
+    public IReadOnlyList<SpeechModeOption> SpeechModes { get; } =
+        [new(SpokenReplyMode.Full, "Full"), new(SpokenReplyMode.Summary, "Summary"), new(SpokenReplyMode.Short, "Short")];
+    public IReadOnlyList<SpeechMethodOption> SpeechMethods { get; } =
+        [new(SpokenReplyMethod.Assistant, "Assistant"), new(SpokenReplyMethod.Profile, "Own AI profile"), new(SpokenReplyMethod.Rules, "Without AI")];
+    public ObservableCollection<string> SpeechProfileLabels { get; } = [];
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanChooseSpeechMethod))]
+    private SpeechModeOption _selectedSpeechMode = new(SpokenReplyMode.Short, "Short");
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(UsesSpeechProfile))]
+    [NotifyPropertyChangedFor(nameof(UsesSpeechAi))]
+    private SpeechMethodOption _selectedSpeechMethod = new(SpokenReplyMethod.Assistant, "Assistant");
+
+    [ObservableProperty]
+    private string? _selectedSpeechProfileLabel;
+
+    public bool CanChooseSpeechMethod => SelectedSpeechMode.Value != SpokenReplyMode.Full;
+    public bool UsesSpeechProfile => SelectedSpeechMethod.Value == SpokenReplyMethod.Profile;
+    public bool UsesSpeechAi => SelectedSpeechMethod.Value != SpokenReplyMethod.Rules;
 
     [ObservableProperty]
     private string _pushToTalkKeyName = "F10";
@@ -93,6 +118,8 @@ public sealed partial class AssistantOptionsViewModel(
                 _lastLoadedSettings = await _settingsStore.LoadAsync(cancellationToken).ConfigureAwait(true);
                 IsEnabled = _lastLoadedSettings.IsEnabled;
                 SpeakReplies = _lastLoadedSettings.SpeakReplies;
+                SelectedSpeechMode = SpeechModes.First(option => option.Value == _lastLoadedSettings.SpeechMode);
+                SelectedSpeechMethod = SpeechMethods.First(option => option.Value == _lastLoadedSettings.SpeechMethod);
                 PushToTalkKeyName = _lastLoadedSettings.PushToTalkKeyName;
                 AlwaysOnTop = _lastLoadedSettings.AlwaysOnTop;
                 ContextCompactionPercent = _lastLoadedSettings.ContextCompactionPercent;
@@ -100,6 +127,20 @@ public sealed partial class AssistantOptionsViewModel(
                 ConsentBypassAll = _lastLoadedSettings.ConsentBypassAll;
                 await _RebuildConsentBypassRowsAsync(cancellationToken).ConfigureAwait(true);
             }
+
+            if (speechProfiles is not null)
+            {
+                SpeechProfileLabels.Clear();
+                foreach (var profile in await speechProfiles.LoadAsync(cancellationToken).ConfigureAwait(true))
+                {
+                    SpeechProfileLabels.Add(profile.Label);
+                }
+                if (_lastLoadedSettings.SpeechProfileLabel is { } missing && !SpeechProfileLabels.Contains(missing))
+                {
+                    SpeechProfileLabels.Add(missing);
+                }
+            }
+            SelectedSpeechProfileLabel = _lastLoadedSettings.SpeechProfileLabel;
 
             if (_profileStore is not null)
             {
@@ -183,6 +224,9 @@ public sealed partial class AssistantOptionsViewModel(
     partial void OnIsEnabledChanged(bool value) => _SaveSettings();
 
     partial void OnSpeakRepliesChanged(bool value) => _SaveSettings();
+    partial void OnSelectedSpeechModeChanged(SpeechModeOption value) => _SaveSettings();
+    partial void OnSelectedSpeechMethodChanged(SpeechMethodOption value) => _SaveSettings();
+    partial void OnSelectedSpeechProfileLabelChanged(string? value) => _SaveSettings();
 
     partial void OnPushToTalkKeyNameChanged(string value) => _SaveSettings();
 
@@ -221,6 +265,9 @@ public sealed partial class AssistantOptionsViewModel(
         var defaults = new AssistantSettings();
         IsEnabled = defaults.IsEnabled;
         SpeakReplies = defaults.SpeakReplies;
+        SelectedSpeechMode = SpeechModes.First(option => option.Value == defaults.SpeechMode);
+        SelectedSpeechMethod = SpeechMethods.First(option => option.Value == defaults.SpeechMethod);
+        SelectedSpeechProfileLabel = defaults.SpeechProfileLabel;
         PushToTalkKeyName = defaults.PushToTalkKeyName;
         AlwaysOnTop = defaults.AlwaysOnTop;
         ContextCompactionPercent = defaults.ContextCompactionPercent;
@@ -257,6 +304,9 @@ public sealed partial class AssistantOptionsViewModel(
         {
             IsEnabled = IsEnabled,
             SpeakReplies = SpeakReplies,
+            SpeechMode = SelectedSpeechMode.Value,
+            SpeechMethod = SelectedSpeechMethod.Value,
+            SpeechProfileLabel = SelectedSpeechProfileLabel,
             PushToTalkKeyName = string.IsNullOrWhiteSpace(PushToTalkKeyName) ? "F10" : PushToTalkKeyName.Trim(),
             AlwaysOnTop = AlwaysOnTop,
             ContextCompactionPercent = AssistantSettings.NormalizeCompactionPercent(ContextCompactionPercent),
@@ -280,6 +330,9 @@ public sealed partial class AssistantOptionsViewModel(
         Saved?.Invoke(this, EventArgs.Empty);
     }
 }
+
+public sealed record SpeechModeOption(SpokenReplyMode Value, string Label);
+public sealed record SpeechMethodOption(SpokenReplyMethod Value, string Label);
 
 // Never shown as the primary name, and never editable (AC-575).
 public sealed partial class ConsentBypassSourceViewModel(string key, string label, bool isOrphan = false) : ObservableObject

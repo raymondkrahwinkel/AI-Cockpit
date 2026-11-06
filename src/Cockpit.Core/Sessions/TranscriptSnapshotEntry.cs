@@ -22,6 +22,9 @@ public sealed record TranscriptSnapshotEntry(
     bool IsResultError,
     DateTimeOffset Timestamp)
 {
+    [TranscriptViewOnly]
+    public IReadOnlyList<ReplyAttachment>? ReplyAttachments { get; init; }
+
     // AC-146's nested sub-agent events, each a full entry that can itself nest. Without these a restored
     // Task/Agent row is an empty chip.
     public IReadOnlyList<TranscriptSnapshotEntry>? SubAgentRows { get; init; }

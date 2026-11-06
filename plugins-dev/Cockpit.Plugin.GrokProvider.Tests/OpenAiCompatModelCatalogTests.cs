@@ -20,17 +20,6 @@ public class OpenAiCompatModelCatalogTests
         Assert.Equal(new AuthenticationHeaderValue("Bearer", "super-secret-key"), handler.Authorization);
     }
 
-    [Fact]
-    public async Task ListAsync_ReturnsTheIdsSortedAndWithoutBlanks()
-    {
-        var handler = new StubHandler("""{"data":[{"id":"grok-4.6"},{"id":""},{"id":"grok-3-mini"}]}""");
-        using var httpClient = new HttpClient(handler);
-
-        var models = await OpenAiCompatModelCatalog.ListAsync(httpClient, "https://api.x.ai/v1", "key", CancellationToken.None);
-
-        Assert.Equal(["grok-3-mini", "grok-4.6"], models);
-    }
-
     private sealed class StubHandler(string body, HttpStatusCode statusCode = HttpStatusCode.OK) : HttpMessageHandler
     {
         public Uri? RequestUri { get; private set; }

@@ -1,0 +1,74 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Cockpit.App.ViewModels"
+        xmlns:mcp="using:Cockpit.Core.Abstractions.Assistant"
+        x:Class="Cockpit.App.Views.SessionMcpDialog"
+        x:DataType="vm:SessionMcpDialogViewModel"
+        Title="MCP servers"
+        Width="500" SizeToContent="Height" CanResize="False" MaxHeight="560"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource CockpitPanelBgBrush}"
+        >
+
+    <DockPanel x:Name="DialogBody">
+        <Border DockPanel.Dock="Bottom" Background="{DynamicResource CockpitChromeBgBrush}"
+                BorderBrush="{DynamicResource CockpitHairlineSoftBrush}" BorderThickness="0,1,0,0" Padding="14,12">
+            <Button Classes="Accent" Content="Close" HorizontalAlignment="Right" Click="OnClose" />
+        </Border>
+
+        <StackPanel Margin="20,18" Spacing="10">
+            <TextBlock Text="{Binding SessionName}" FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+            <TextBlock Text="{Binding Manager, StringFormat=Managed by: {0}}" FontSize="11"
+                       Foreground="{DynamicResource CockpitTextFaintBrush}"
+                       IsVisible="{Binding Manager, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+            <TextBlock IsVisible="{Binding !CanAdd}" Text="The assistant manages this set. Ask it to add a server. You can remove servers at any time."
+                       FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+            <TextBlock Text="{Binding Error}" FontSize="11" TextWrapping="Wrap"
+                       Foreground="{DynamicResource CockpitStatusWaitingBrush}"
+                       IsVisible="{Binding Error, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+
+            <StackPanel Spacing="8" IsVisible="{Binding CanAdd}">
+                <TextBlock Text="Add a server to this session"/>
+                <Grid ColumnDefinitions="*,Auto">
+                    <ComboBox x:Name="ServerPicker" ItemsSource="{Binding AvailableServers}" SelectedItem="{Binding SelectedServer}"
+                              HorizontalAlignment="Stretch" IsEnabled="{Binding !IsBusy}">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate x:DataType="mcp:SessionMcpServerState">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock Text="{Binding Name}"/>
+                                    <TextBlock Text="{Binding Status}" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <Button Grid.Column="1" Content="Add" Command="{Binding AddCommand}" Margin="8,0,0,0" IsEnabled="{Binding CanAddSelected}"/>
+                </Grid>
+            </StackPanel>
+            <Button Content="Sign in" Command="{Binding SignInCommand}" Classes="Ghost" HorizontalAlignment="Left"
+                    IsVisible="{Binding SelectedNeedsSignIn}" IsEnabled="{Binding !IsBusy}"/>
+            <ScrollViewer MaxHeight="300" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                <ItemsControl ItemsSource="{Binding Servers}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="mcp:SessionMcpServerState">
+                            <StackPanel Margin="0,2" Spacing="2">
+                                <Grid ColumnDefinitions="*,Auto,Auto,Auto">
+                                    <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding Status}" Margin="12,0" VerticalAlignment="Center"
+                                               FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                    <Button Grid.Column="2" Content="Sign in" Classes="Subtle" IsVisible="{Binding NeedsSignIn}"
+                                            Command="{Binding $parent[Window].((vm:SessionMcpDialogViewModel)DataContext).SignInCommand}" CommandParameter="{Binding}"/>
+                                    <Button Grid.Column="3" Content="Remove" Classes="Subtle" Padding="6,2"
+                                            Command="{Binding $parent[Window].((vm:SessionMcpDialogViewModel)DataContext).RemoveCommand}"
+                                            CommandParameter="{Binding}" IsEnabled="{Binding CanRemove}"/>
+                                </Grid>
+                                <TextBlock Text="{Binding Reason}" Margin="0,0,0,2" FontSize="11" TextWrapping="Wrap"
+                                           Foreground="{DynamicResource CockpitTextFaintBrush}"
+                                           IsVisible="{Binding Reason, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </StackPanel>
+    </DockPanel>
+</Window>

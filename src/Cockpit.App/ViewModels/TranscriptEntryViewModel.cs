@@ -437,6 +437,10 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
 
     public IReadOnlyList<ImageAttachment>? Images { get; init; }
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsRowVisible))]
+    private IReadOnlyList<ReplyAttachment> _replyAttachments = [];
+
     public bool HasImages => Images is { Count: > 0 };
 
     public string ImageChipLabel => ImageCountLabel.Format(Images?.Count ?? 0);
@@ -890,7 +894,7 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
     // stays visible everywhere. A standalone tool result is treated as auto noise and hidden only in Simple.
     public bool IsRowVisible => Kind switch
     {
-        TranscriptEntryKind.AssistantText => HasImages || !string.IsNullOrWhiteSpace(Text),
+        TranscriptEntryKind.AssistantText => HasImages || ReplyAttachments.Count > 0 || !string.IsNullOrWhiteSpace(Text),
         // Reasoning/thinking (AC-213): the developer surface only. Focus and Simple stay calm (AC-138) —
         // the row is still added to the transcript at every level, but it renders hidden below Developer.
         TranscriptEntryKind.Thinking => ReadingLevel == ReadingLevel.Developer,
@@ -944,6 +948,10 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
     public string? StepFolderLabel => Step.FolderLabel;
 
     public string StepTail => IsStepRunning ? "…" : string.Empty;
+
+    public string ToolActivityAgeText => IsStepRunning && Session?.ToolActivityAge(ToolUseId) is { Length: > 0 } age ? $"· {age}" : string.Empty;
+
+    internal void RefreshActivityAge() => OnPropertyChanged(nameof(ToolActivityAgeText));
 
     public MaterialIconKind StepIconKind => IsStepRunning ? MaterialIconKind.ClockOutline : MaterialIconKind.Check;
 

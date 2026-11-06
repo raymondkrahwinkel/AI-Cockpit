@@ -88,10 +88,12 @@ public sealed class DepotUi : ICockpitPluginUi, IFirstStartPluginUi
 
         // AC-1568: the file browser, as a dock panel and from the toolbar.
         var liveBadge = new DockPanelBadge { Tone = SideMenuButtonBadgeTone.Success };
+        // One delegate for the plugin's lifetime: the host treats a different one as a changed status line.
+        Func<Action, Control> livePopup = close => new DepotLiveNotesPopup(host, notes, () => settings.Connections, close);
         notes.Changed += _ => Dispatcher.UIThread.Post(() =>
         {
             liveBadge.Count = notes.Total;
-            host.SetStatusText($"● {notes.Total} live notes · Depot", SideMenuButtonBadgeTone.Success);
+            host.SetStatusText(notes.Total == 0 ? null : $"● {notes.Total} live {(notes.Total == 1 ? "note" : "notes")} · Depot", SideMenuButtonBadgeTone.Success, livePopup);
         });
         host.AddDockPanel(new DockPanelRegistration("depot-browser", "Depot", MaterialIconKind.FolderNetworkOutline,
             () => new DepotBrowserPanel(host, settings.Connections, inbox, notes: notes)) { Badge = liveBadge });

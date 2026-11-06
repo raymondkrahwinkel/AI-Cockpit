@@ -28,7 +28,8 @@ internal sealed class TabShareBridge : IDisposable
 
             return Task.FromResult(JsonSerializer.SerializeToElement(true, Json));
         }));
-        _handles.Add(host.Channel.Handle(Sessions, (_, _) => Task.FromResult(JsonSerializer.SerializeToElement(host.Sessions.OpenSessions, Json))));
+        _handles.Add(host.Channel.Handle(Sessions, (_, _) => Task.FromResult(JsonSerializer.SerializeToElement(
+            host.Sessions.OpenSessions.Where(session => host.Sessions.HasMcpServer(session.PaneId, "cockpit-browser")), Json))));
         _sessionClosed = (_, paneId) => host.Channel.Publish(SessionClosed, JsonSerializer.SerializeToElement(paneId, Json));
         host.Sessions.SessionClosed += _sessionClosed;
     }

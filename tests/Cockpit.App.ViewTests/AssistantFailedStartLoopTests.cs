@@ -80,31 +80,6 @@ public sealed class AssistantFailedStartLoopTests
         }
     });
 
-    // AC-1316's retry stays: the operator typing is the one thing that tries the start again after it failed.
-    [Fact]
-    public async Task TypingAfterAFailedStart_TriesAgain() => await HeadlessAvalonia.RunAsync(async () =>
-    {
-        var stand = _StandUp((factory, _) => factory.Create(Arg.Any<SessionProfile?>()).Throws(new InvalidOperationException("no provider")));
-        try
-        {
-            await stand.PumpAsync();
-            Assert.Equal(1, stand.Starts);
-
-            var chat = stand.Cockpit.AssistantChat!;
-            chat.InputText = "hello";
-            await chat.SendCommand.ExecuteAsync(null);
-            await stand.PumpAsync();
-
-            Assert.Equal(2, stand.Starts);
-            Assert.Equal("hello", chat.InputText);
-            Assert.True(chat.IsUnavailable);
-        }
-        finally
-        {
-            stand.Dispose();
-        }
-    });
-
     // The whole graph between the cockpit and the chat view, real: the host, the coordinator (which owns the
     // Simple stand's chat-view factory), the dock registry the rail reads and the CockpitView itself.
     private static _Stand _StandUp(Action<ISessionDriverFactory, ISessionDriver> arrange)

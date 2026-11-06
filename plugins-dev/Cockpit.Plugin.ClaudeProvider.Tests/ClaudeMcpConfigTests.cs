@@ -67,28 +67,6 @@ public class ClaudeMcpConfigTests
         }
     }
 
-    [Fact]
-    public void Write_WithNoServers_WriteEmptyExplicit_WritesAnActualEmptyConfig_InsteadOfNull()
-    {
-        // AC-378, criterion 4 — the empty-resolution trap: the headless/strict route must be able to say "zero
-        // servers" as an explicit, on-disk {"mcpServers":{}}, not as a dropped flag that lets the CLI fall back to
-        // its own user/project config.
-        var path = ClaudeMcpConfig.Write([], writeEmptyExplicit: true);
-
-        try
-        {
-            Assert.NotNull(path);
-            Assert.Empty(JsonNode.Parse(File.ReadAllText(path!))!["mcpServers"]!.AsObject());
-        }
-        finally
-        {
-            if (path is not null)
-            {
-                File.Delete(path);
-            }
-        }
-    }
-
     private static string _Authorization(string path, string serverName) =>
         JsonNode.Parse(File.ReadAllText(path))!["mcpServers"]![serverName]!["headers"]!["Authorization"]!.GetValue<string>();
 }

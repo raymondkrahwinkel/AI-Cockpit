@@ -125,6 +125,8 @@ internal sealed partial class SessionPanelHandle : IHostedSession
 
     public string? ProjectId => _pane?.ProjectId;
 
+    public string? ProviderId => _pane?.ProviderId;
+
     public string? RunId => (_pane as SessionViewModel)?.RunId;
 
     // The flag the gateways filter on as "no agent here" is `ShowPluginHeaderItems`; a plain terminal is the only
@@ -142,6 +144,11 @@ internal sealed partial class SessionPanelHandle : IHostedSession
     public bool DeliversInboxAtTurnStart => _pane?.DeliversInboxAtTurnStart ?? false;
 
     public bool HasPromptWaitingToBeDelivered => _pane?.HasPromptWaitingToBeDelivered ?? false;
+
+    public Task<(string Activity, string ActivityAge)> ReadActivityAsync() =>
+        UiThreadCall.RunAsync(() => _pane is SessionViewModel session
+            ? (session.AssistantToolActivityLabel, session.ActiveToolActivityAgeText)
+            : (string.Empty, string.Empty));
 
     // The pane combines provider-owned shells and start_run activity, which only the UI thread may walk.
     public Task<bool> HasOutstandingBackgroundShellsAsync() =>

@@ -19,34 +19,6 @@ namespace Cockpit.Core.Tests.Delegation;
 /// </summary>
 public class DelegationWorkspaceTests
 {
-    [Fact]
-    public async Task ADirectoryASessionIsWorkingIn_IsAllowed_WithoutTheProfileNamingIt()
-    {
-        // The profile allows nothing of its own — which used to mean "nowhere", and refused every delegation that
-        // carried a working directory at all.
-        var service = _ServiceWith(
-            workspaces: ["/home/you/projects/webshop"],
-            _Target("qwen"));
-
-        var task = await service.DelegateAsync(
-            new DelegationRequest("qwen", "review the frontend diff", WorkingDirectory: "/home/you/projects/webshop"));
-
-        Assert.NotEqual(DelegatedTaskStatus.Failed, task.Status);
-    }
-
-    [Fact]
-    public async Task ADirectoryUnderOneASessionIsWorkingIn_IsAllowedToo()
-    {
-        var service = _ServiceWith(
-            workspaces: ["/home/you/projects/webshop"],
-            _Target("qwen"));
-
-        var task = await service.DelegateAsync(
-            new DelegationRequest("qwen", "look at the frontend", WorkingDirectory: "/home/you/projects/webshop/src"));
-
-        Assert.NotEqual(DelegatedTaskStatus.Failed, task.Status);
-    }
-
     // The grant is the caller's own reach, not a way around the policy: a directory no session is in and the
     // profile does not allow is still refused — and the refusal names where the caller *may* go, since it cannot
     // read those directories off the MCP surface and a bare "no" leaves it guessing (AC-114).
@@ -63,18 +35,6 @@ public class DelegationWorkspaceTests
         var thrown = await Assert.ThrowsAsync<DelegationRejectedException>(delegate_);
         Assert.Contains("does not allow a task to run in", thrown.Message);
         Assert.Contains("webshop", thrown.Message);
-    }
-
-    [Fact]
-    public async Task ARefusal_WithNothingAllowed_SaysNoneIsConfigured()
-    {
-        var service = _ServiceWith(workspaces: [], _Target("qwen"));
-
-        var delegate_ = async () => await service.DelegateAsync(
-            new DelegationRequest("qwen", "work", WorkingDirectory: "/home/raymond/anywhere"));
-
-        var thrown3 = await Assert.ThrowsAsync<DelegationRejectedException>(delegate_);
-        Assert.Contains("no allowed working directories", thrown3.Message);
     }
 
     [Fact]

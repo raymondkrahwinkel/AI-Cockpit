@@ -16,17 +16,18 @@ namespace Cockpit.Plugin.Productivity.UI;
 
 internal sealed class HoursWorkspaceBody : UserControl
 {
-    private static readonly CultureInfo Dutch = CultureInfo.GetCultureInfo("nl-NL");
+    private static readonly CultureInfo English = CultureInfo.GetCultureInfo("en-US");
     private readonly ProductivityController _controller;
     private readonly ICockpitUiHost _host;
+    private readonly TimeProvider _time;
     private readonly TextBox _description = new()
     {
         Name = "Description",
-        PlaceholderText = "Omschrijving, bv. Telefonisch overleg met klant XXX",
+        PlaceholderText = "Description, e.g. Phone call with customer XXX",
     };
     private readonly TextBox _duration = new() { Name = "Duration", PlaceholderText = "0:15", Width = 105 };
     private readonly ComboBox _project = new() { Name = "Project", Width = 235 };
-    private readonly Button _add = new() { Name = "AddEntry", Content = "+ Vastleggen" };
+    private readonly Button _add = new() { Name = "AddEntry", Content = "+ Record" };
     private readonly Button _start = new() { Name = "StartStopwatch", Content = "▶ Start stopwatch" };
     private readonly TextBlock _reason = Ui.Hint(string.Empty);
     private readonly TextBlock _error = new() { TextWrapping = TextWrapping.Wrap };
@@ -38,9 +39,9 @@ internal sealed class HoursWorkspaceBody : UserControl
     private readonly StackPanel _running = new() { Spacing = 8 };
     private readonly StackPanel _rows = new() { Spacing = 0 };
     private readonly ContentControl _measured = new() { Name = "MeasuredTime" };
-    private readonly Button _dayMode = new() { Name = "DayMode", Content = "Dag", Classes = { "Compact" } };
+    private readonly Button _dayMode = new() { Name = "DayMode", Content = "Day", Classes = { "Compact" } };
     private readonly Button _weekMode = new() { Name = "WeekMode", Content = "Week", Classes = { "Compact" } };
-    private readonly Button _thisWeek = new() { Name = "ThisWeek", Content = "Vandaag", Classes = { "Compact" } };
+    private readonly Button _thisWeek = new() { Name = "ThisWeek", Content = "Today", Classes = { "Compact" } };
     private readonly StackPanel _meaning = new() { Orientation = Orientation.Horizontal, Spacing = 4, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
     private readonly ContentControl _week = new() { Name = "WeekProposal" };
     private readonly Control _dayColumns;
@@ -53,11 +54,12 @@ internal sealed class HoursWorkspaceBody : UserControl
     private readonly Action _openOverview;
     private readonly RefreshBar _bar;
 
-    public HoursWorkspaceBody(ProductivityController controller, ICockpitUiHost host, Action openOverview)
+    public HoursWorkspaceBody(ProductivityController controller, ICockpitUiHost host, Action openOverview, TimeProvider time)
     {
         _controller = controller;
         _host = host;
         _openOverview = openOverview;
+        _time = time;
         _bar = new RefreshBar(
             this,
             controller.RefreshAsync,
@@ -136,7 +138,7 @@ internal sealed class HoursWorkspaceBody : UserControl
         }
         catch (Exception exception)
         {
-            _host.ShowToast($"De projecten konden niet worden geladen: {exception.Message}", PluginToastSeverity.Error);
+            _host.ShowToast($"The projects could not be loaded: {exception.Message}", PluginToastSeverity.Error);
         }
     }
 
@@ -147,12 +149,12 @@ internal sealed class HoursWorkspaceBody : UserControl
             if (_controller.Week is { } week)
             {
                 await _host.SetClipboardTextAsync(week.ToTable());
-                _host.ShowToast("Het voorstel staat als tabel op het klembord.", PluginToastSeverity.Success);
+                _host.ShowToast("The proposal is on the clipboard as a table.", PluginToastSeverity.Success);
             }
         }
         catch (Exception exception)
         {
-            _host.ShowToast($"Het voorstel kon niet worden gekopieerd: {exception.Message}", PluginToastSeverity.Error);
+            _host.ShowToast($"The proposal could not be copied: {exception.Message}", PluginToastSeverity.Error);
         }
     }
 
@@ -170,7 +172,7 @@ internal sealed class HoursWorkspaceBody : UserControl
             var draft = WeekOfferPrompt.Build(week, weekNumber, settings.AgentInstructions);
             var options = await _controller.GetWeekOfferOptionsAsync(_host.ActiveProjectId);
             await _host.ShowDialogAsync(
-                $"Geef aan een agent · week {weekNumber}",
+                $"Give to an agent · week {weekNumber}",
                 () => new WeekOfferDialog(_controller, _host, options, draft, _controller.WeekStart, weekNumber, _host.ActiveProjectId),
                 $"week-offer.{_controller.WeekStart:yyyy-MM-dd}",
                 width: 980,
@@ -178,7 +180,7 @@ internal sealed class HoursWorkspaceBody : UserControl
         }
         catch (Exception exception)
         {
-            _host.ShowToast($"Het urenvoorstel kon niet worden geopend: {exception.Message}", PluginToastSeverity.Error);
+            _host.ShowToast($"The hours proposal could not be opened: {exception.Message}", PluginToastSeverity.Error);
         }
     }
 
@@ -206,7 +208,7 @@ internal sealed class HoursWorkspaceBody : UserControl
         var segments = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { _dayMode, _weekMode } };
         var datePicker = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
         datePicker.Children.Add(_date);
-        var calendar = Ui.IconButton("OpenDayPicker", MaterialIconKind.CalendarMonthOutline, "Kies een datum");
+        var calendar = Ui.IconButton("OpenDayPicker", MaterialIconKind.CalendarMonthOutline, "Choose a date");
         calendar.IsHitTestVisible = false;
         Grid.SetColumn(calendar, 1);
         datePicker.Children.Add(calendar);
@@ -235,7 +237,7 @@ internal sealed class HoursWorkspaceBody : UserControl
     private Control _EntryCard()
     {
         var heading = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-        heading.Children.Add(new TextBlock { Text = "Snel vastleggen", FontSize = 15, FontWeight = FontWeight.SemiBold });
+        heading.Children.Add(new TextBlock { Text = "Quick record", FontSize = 15, FontWeight = FontWeight.SemiBold });
         Grid.SetColumn(_formDay, 1);
         heading.Children.Add(_formDay);
 
@@ -243,7 +245,7 @@ internal sealed class HoursWorkspaceBody : UserControl
         form.Children.Add(_description);
         Grid.SetColumn(_duration, 1);
         form.Children.Add(_duration);
-        var or = Ui.Hint("of");
+        var or = Ui.Hint("or");
         or.VerticalAlignment = VerticalAlignment.Center;
         Grid.SetColumn(or, 2);
         form.Children.Add(or);
@@ -261,7 +263,7 @@ internal sealed class HoursWorkspaceBody : UserControl
             {
                 heading,
                 form,
-                Ui.Hint("Duur als 0:15, 15m of 1,5u. Het project is optioneel en staat vooraf op de actieve workspace."),
+                Ui.Hint("Duration as 0:15, 15m or 1.5h. The project is optional and is prefilled with the active workspace."),
                 _reason,
                 _error,
                 _running,
@@ -294,7 +296,7 @@ internal sealed class HoursWorkspaceBody : UserControl
                 heading,
                 _ColumnHeadings(),
                 _rows,
-                Ui.Hint("Een regel blijft te bewerken tot hij aangeboden is; daarna staat er ‘aangeboden op …’ of ‘geboekt’ en is hij alleen-lezen."),
+                Ui.Hint("A row stays editable until it is offered; after that it reads 'offered on …' or 'booked' and is read-only."),
             },
         }, 14);
     }
@@ -307,7 +309,7 @@ internal sealed class HoursWorkspaceBody : UserControl
             ColumnSpacing = 10,
             Margin = new Thickness(6, 0),
         };
-        var labels = new[] { "Tijd", "Omschrijving", "Project", "Duur", "Bron", "Status" };
+        var labels = new[] { "Time", "Description", "Project", "Duration", "Source", "Status" };
         for (var index = 0; index < labels.Length; index++)
         {
             var label = Ui.Hint(labels[index]);
@@ -324,12 +326,12 @@ internal sealed class HoursWorkspaceBody : UserControl
         {
             if (!await _host.FocusSessionAsync(paneId))
             {
-                _host.ShowToast("De agentsessie is niet meer open.", Cockpit.Plugins.Abstractions.Notifications.PluginToastSeverity.Warning);
+                _host.ShowToast("The agent session is no longer open.", Cockpit.Plugins.Abstractions.Notifications.PluginToastSeverity.Warning);
             }
         }
         catch (Exception exception)
         {
-            _host.ShowToast($"De agentsessie kon niet worden geopend: {exception.Message}", Cockpit.Plugins.Abstractions.Notifications.PluginToastSeverity.Error);
+            _host.ShowToast($"The agent session could not be opened: {exception.Message}", Cockpit.Plugins.Abstractions.Notifications.PluginToastSeverity.Error);
         }
     }
 
@@ -399,7 +401,7 @@ internal sealed class HoursWorkspaceBody : UserControl
 
     private async Task _DeleteAsync(CockpitTimeEntry entry)
     {
-        if (await _host.ConfirmAsync("Urenregel verwijderen", $"Verwijder ‘{entry.Description}’?", "Verwijderen"))
+        if (await _host.ConfirmAsync("Delete hours row", $"Delete '{entry.Description}'?", "Delete"))
         {
             await _controller.DeleteAsync(entry.Id);
         }
@@ -412,13 +414,13 @@ internal sealed class HoursWorkspaceBody : UserControl
             return;
         }
 
-        if (DateTime.TryParseExact(_date.Text, "dd-MM-yyyy", Dutch, DateTimeStyles.None, out var selected))
+        if (DateTime.TryParseExact(_date.Text, "dd-MM-yyyy", English, DateTimeStyles.None, out var selected))
         {
             await _controller.SelectDateAsync(DateOnly.FromDateTime(selected));
         }
         else
         {
-            _date.Text = _controller.SelectedDate.ToString("dd-MM-yyyy", Dutch);
+            _date.Text = _controller.SelectedDate.ToString("dd-MM-yyyy", English);
         }
     }
 
@@ -427,12 +429,12 @@ internal sealed class HoursWorkspaceBody : UserControl
         _RenderRefreshState();
         _rendering = true;
         var showWeek = _controller.ShowWeek;
-        _date.Text = (showWeek ? _controller.WeekStart : _controller.SelectedDate).ToString("dd-MM-yyyy", Dutch);
+        _date.Text = (showWeek ? _controller.WeekStart : _controller.SelectedDate).ToString("dd-MM-yyyy", English);
         _rendering = false;
         var date = _controller.SelectedDate.ToDateTime(TimeOnly.MinValue);
         _dayLabel.Content = showWeek
             ? _WeekLabel()
-            : date.ToString("ddd d MMM yyyy", Dutch) + (_controller.IsToday ? " · vandaag" : string.Empty);
+            : date.ToString("ddd d MMM yyyy", English) + (_controller.IsToday ? " · today" : string.Empty);
         _dayLabel.IsHitTestVisible = showWeek == false;
         _thisWeek.IsVisible = showWeek && _controller.IsThisWeek == false;
         _SetAccent(_dayMode, showWeek == false);
@@ -440,13 +442,13 @@ internal sealed class HoursWorkspaceBody : UserControl
         _meaning.Children.Clear();
         if (showWeek)
         {
-            _meaning.Children.Add(Ui.Hint("Cockpit boekt niets zelf. Een agent boekt, na jouw akkoord."));
+            _meaning.Children.Add(Ui.Hint("Cockpit books nothing itself. An agent books, after your approval."));
         }
         else
         {
-            _meaning.Children.Add(Ui.Hint("Telt mee als"));
-            _meaning.Children.Add(new TextBlock { Text = "jouw tijd", FontWeight = FontWeight.SemiBold, FontSize = 11.5 });
-            _meaning.Children.Add(Ui.Hint("· gaat mee in het weekvoorstel"));
+            _meaning.Children.Add(Ui.Hint("Counts as"));
+            _meaning.Children.Add(new TextBlock { Text = "your time", FontWeight = FontWeight.SemiBold, FontSize = 11.5 });
+            _meaning.Children.Add(Ui.Hint("· goes into the week proposal"));
         }
 
         _dayColumns.IsVisible = showWeek == false;
@@ -465,15 +467,15 @@ internal sealed class HoursWorkspaceBody : UserControl
                 paneId => _ = _OpenAgentAsync(paneId),
                 (edit, day, projectId) => _ = _EditCellAsync(edit, day, projectId))
             : null;
-        _formDay.Text = "legt vast op " + (_controller.IsToday ? "vandaag, " : string.Empty) + date.ToString("ddd d MMM", Dutch);
+        _formDay.Text = "records on " + (_controller.IsToday ? "today, " : string.Empty) + date.ToString("ddd d MMM", English);
         _rulesTitle.Text = _controller.IsToday
-            ? "Mijn regels van vandaag"
-            : $"Mijn regels van {date.ToString("dddd d MMMM", Dutch)}";
-        _rulesTotal.Text = $"totaal {Ui.Duration(TimeSpan.FromTicks(_controller.Entries.Sum(entry => entry.Duration.Ticks)))}";
+            ? "My rows for today"
+            : $"My rows for {date.ToString("dddd d MMMM", English)}";
+        _rulesTotal.Text = $"total {Ui.Duration(TimeSpan.FromTicks(_controller.Entries.Sum(entry => entry.Duration.Ticks)))}";
         var selectedProject = _project.ItemsSource is null ? _controller.ProjectFallback : _Project();
         _SetProject(selectedProject);
 
-        _add.Content = _editingStopwatch ? "Stopwatch bijwerken" : _editingId is null ? "+ Vastleggen" : "Opslaan";
+        _add.Content = _editingStopwatch ? "Update stopwatch" : _editingId is null ? "+ Record" : "Save";
         _duration.IsEnabled = !_editingStopwatch;
         _start.IsEnabled = _controller.CanStartStopwatch;
         _reason.Text = _controller.StartDisabledReason ?? string.Empty;
@@ -482,7 +484,7 @@ internal sealed class HoursWorkspaceBody : UserControl
         _error.IsVisible = _controller.Error is not null;
         _measured.Content = MeasuredTimeCard.Build(
             _controller.Day,
-            _controller.IsToday ? "Gemeten tijd vandaag" : $"Gemeten tijd {date.ToString("ddd d MMM", Dutch)}",
+            _controller.IsToday ? "Measured time today" : $"Measured time {date.ToString("ddd d MMM", English)}",
             _controller.Names,
             _controller.Sessions);
         _RenderRunning();
@@ -520,10 +522,10 @@ internal sealed class HoursWorkspaceBody : UserControl
         });
 
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        var edit = new Button { Content = "Omschrijving wijzigen", Classes = { "Subtle", "Compact" } };
+        var edit = new Button { Content = "Change description", Classes = { "Subtle", "Compact" } };
         edit.Click += (_, _) => _BeginStopwatchEdit(stopwatch);
         actions.Children.Add(edit);
-        var stop = new Button { Name = "StopStopwatch", Content = "■ Stop en vastleggen", Classes = { "Subtle", "Compact" } }
+        var stop = new Button { Name = "StopStopwatch", Content = "■ Stop and record", Classes = { "Subtle", "Compact" } }
             .Themed(Button.ForegroundProperty, "CockpitStatusErrorBrush")
             .Themed(Button.BorderBrushProperty, "CockpitStatusErrorBrush");
         stop.BorderThickness = new Thickness(1);
@@ -534,7 +536,7 @@ internal sealed class HoursWorkspaceBody : UserControl
         row.Children.Add(identity);
         Grid.SetColumn(actions, 1);
         row.Children.Add(actions);
-        var details = Ui.Hint($"{_controller.Names.Resolve(stopwatch.ProjectId).Label} · gestart {stopwatch.StartedAt.ToLocalTime():HH:mm} · ook zichtbaar in de zijbalk");
+        var details = Ui.Hint($"{_controller.Names.Resolve(stopwatch.ProjectId).Label} · started {stopwatch.StartedAt.ToLocalTime():HH:mm} · also visible in the sidebar");
         Grid.SetRow(details, 1);
         row.Children.Add(details);
         _running.Children.Add(new Border
@@ -552,7 +554,7 @@ internal sealed class HoursWorkspaceBody : UserControl
         _rows.Children.Clear();
         if (_controller.Entries.Count == 0)
         {
-            _rows.Children.Add(new Border { Padding = new Thickness(6, 12), Child = Ui.Hint("Nog geen uren op deze dag.") });
+            _rows.Children.Add(new Border { Padding = new Thickness(6, 12), Child = Ui.Hint("No hours on this day yet.") });
             return;
         }
 
@@ -572,7 +574,7 @@ internal sealed class HoursWorkspaceBody : UserControl
         };
         row.Children.Add(new TextBlock
         {
-            Text = entry.StartedAt.ToLocalTime().ToString("HH:mm", Dutch),
+            Text = entry.StartedAt.ToLocalTime().ToString("HH:mm", English),
             FontFamily = new FontFamily("Cascadia Mono,Consolas,monospace"),
             FontWeight = FontWeight.SemiBold,
         });
@@ -591,7 +593,7 @@ internal sealed class HoursWorkspaceBody : UserControl
         }
 
         var name = _controller.Names.Resolve(entry.ProjectId);
-        var label = Ui.Hint(entry.ProjectId is null ? "— geen" : name.Label);
+        var label = Ui.Hint(entry.ProjectId is null ? "— none" : name.Label);
         label.TextWrapping = TextWrapping.Wrap;
         ToolTip.SetTip(label, name.Tooltip);
         Grid.SetColumn(label, 1);
@@ -604,7 +606,7 @@ internal sealed class HoursWorkspaceBody : UserControl
         row.Children.Add(duration);
         var source = entry.Source == CockpitTimeEntrySource.Stopwatch
             ? Ui.Pill("stopwatch", "CockpitStatusBusyBrush", "CockpitStatusBusyChipTintBrush")
-            : Ui.Pill("duur", "CockpitStatusWaitingBrush", "CockpitStatusWaitingChipTintBrush");
+            : Ui.Pill("duration", "CockpitStatusWaitingBrush", "CockpitStatusWaitingChipTintBrush");
         source.HorizontalAlignment = HorizontalAlignment.Left;
         source.VerticalAlignment = VerticalAlignment.Top;
         Grid.SetColumn(source, 4);
@@ -619,9 +621,9 @@ internal sealed class HoursWorkspaceBody : UserControl
         if (entry.Status == CockpitTimeEntryStatus.Open)
         {
             var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2 };
-            var edit = Ui.IconButton("EditEntry", MaterialIconKind.Pencil, "Bewerken");
+            var edit = Ui.IconButton("EditEntry", MaterialIconKind.Pencil, "Edit");
             edit.Click += (_, _) => _BeginEdit(entry);
-            var delete = Ui.IconButton("DeleteEntry", MaterialIconKind.Close, "Verwijderen");
+            var delete = Ui.IconButton("DeleteEntry", MaterialIconKind.Close, "Delete");
             delete.Click += async (_, _) => await _DeleteAsync(entry);
             actions.Children.Add(edit);
             actions.Children.Add(delete);
@@ -642,10 +644,10 @@ internal sealed class HoursWorkspaceBody : UserControl
         var names = _controller.Names;
         var resolved = names.Resolve(projectId);
         var selected = resolved.ProjectId ?? projectId;
-        var options = new List<_ProjectChoice> { new(null, "Geen project") };
+        var options = new List<_ProjectChoice> { new(null, "No project") };
         options.AddRange(_controller.Projects.Select(project => new _ProjectChoice(
             project.Id,
-            $"Project: {project.Name}" + (project.Id == _controller.ProjectFallback ? " (actieve workspace)" : string.Empty))));
+            $"Project: {project.Name}" + (project.Id == _controller.ProjectFallback ? " (active workspace)" : string.Empty))));
         if (!string.IsNullOrWhiteSpace(selected) && options.All(option => option.Id != selected))
         {
             options.Add(new _ProjectChoice(selected, $"Project: {resolved.Label}"));
@@ -671,7 +673,7 @@ internal sealed class HoursWorkspaceBody : UserControl
             Children =
             {
                 new TextBlock { Text = $"week {ISOWeek.GetWeekOfYear(start)}", FontWeight = FontWeight.SemiBold },
-                Ui.Hint($"· {start.ToString("ddd d", Dutch)} – {end.ToString("ddd d MMM", Dutch)}"),
+                Ui.Hint($"· {start.ToString("ddd d", English)} – {end.ToString("ddd d MMM", English)}"),
             },
         };
     }
@@ -688,5 +690,5 @@ internal sealed class HoursWorkspaceBody : UserControl
         }
     }
 
-    private static DateOnly _Today() => DateOnly.FromDateTime(DateTimeOffset.Now.LocalDateTime);
+    private DateOnly _Today() => DateOnly.FromDateTime(_time.GetLocalNow().DateTime);
 }

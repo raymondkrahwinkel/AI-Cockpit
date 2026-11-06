@@ -6,51 +6,63 @@ using NSubstitute;
 
 namespace Cockpit.Infrastructure.Tests.Sessions;
 
-// AC-1706 (L2c, the turn-end protocol): a turn whose last tool is a notify gets nothing, a later set_status included;
-// AC-1681's own turn (notify, set_status, a Depot append) gets one nudge; a set_status-only stall after it goes to the
-// assistant as `stalled`, never as a second nudge.
-public class StallNudgerTests
+public sealed class StallNudgerTests
 {
-    private static readonly SessionTurnEnd Completed = new(false, false, false, null, null, null);
-
-    [Fact]
-    public void ASessionOfTheAssistant_IsNudgedOnceAfterAStall_AndReportedToTheAssistantOnTheNext()
+    // F: the watch must distinguish a finished or waiting session from one that abandoned real work.
+    [Theory]
+    [InlineData("execute", true, 0, 0)]
+    [InlineData("execute", false, 1, 1)]
+    [InlineData("notify,administration", false, 0, 0)]
+    [InlineData("start_run,administration", false, 0, 0)]
+    [InlineData("notify|execute", false, 1, 1)]
+    [InlineData("notify", false, 0, 0)]
+    [InlineData("start_run", false, 0, 0)]
+    [InlineData("notify|write", false, 1, 1)]
+    public void TurnEnd_ReportsOnlyUnclosedWork(string tools, bool outstandingRun, int nudges, int reports)
     {
-        var handle = Substitute.For<ISessionHandle>();
-        handle.PaneId.Returns("builder");
-        handle.Title.Returns("AC-1681");
-        handle.StartedByTheAssistant.Returns(true);
-        handle.LiveState.Returns(SessionLiveState.None);
-        handle.ReadWakeStateAsync().Returns(new SessionWakeState(false, SessionStatus.Idle, true));
-        var registry = Substitute.For<ISessionRegistry>();
-        registry.All.Returns(new[] { handle });
-        var inbox = Substitute.For<IAgentMessageInbox>();
-        using var nudger = new StallNudger(inbox);
-        nudger.Start(registry);
-
-        _Turn(handle);
-        Assert.Empty(inbox.ReceivedCalls());
-
-        _Turn(handle, "mcp__cockpit-agents__notify", "mcp__cockpit-session__set_status");
-        Assert.Empty(inbox.ReceivedCalls());
-
-        _Turn(handle, "notify", "set_status", "mcp__Depot__depot_krahwinkel-it_nl__append");
-        inbox.Received(1).Deliver(Arg.Any<string>(), "builder", StallNudger.NudgeKind, StallNudger.Nudge);
-
-        _Turn(handle, "set_status");
-        inbox.Received(1).Deliver(Arg.Any<string>(), "builder", StallNudger.NudgeKind, StallNudger.Nudge);
-        inbox.Received(1).Deliver(
-            Arg.Any<string>(), AssistantIdentity.PaneId, "session", Arg.Is<string>(body => body.Contains("stalled")),
-            subjectPaneId: "builder");
-    }
-
-    private static void _Turn(ISessionHandle handle, params string[] toolNames)
-    {
-        foreach (var toolName in toolNames)
+        foreach (var prefix in new[] { "", "mcp__cockpit__" })
         {
-            handle.ToolActivityProduced += Raise.Event<Action<SessionToolCall>>(new SessionToolCall("builder", toolName, "{}", "ok", false));
-        }
+            var handle = Substitute.For<ISessionHandle>();
+            handle.PaneId.Returns("worker");
+            handle.StartedByTheAssistant.Returns(true);
+            handle.LiveState.Returns(SessionLiveState.None);
+            handle.ReadWakeStateAsync().Returns(new SessionWakeState(false, SessionStatus.Idle, true));
+            handle.ReadPendingPermissionsAsync().Returns(Array.Empty<SessionPendingPermission>());
+            handle.HasOutstandingBackgroundShellsAsync().Returns(outstandingRun);
+            var registry = Substitute.For<ISessionRegistry>();
+            registry.All.Returns(new[] { handle });
+            var inbox = Substitute.For<IAgentMessageInbox>();
+            using var nudger = new StallNudger(inbox);
+            nudger.Start(registry);
 
-        handle.TurnEnded += Raise.Event<Action<SessionTurnEnd>>(Completed);
+            var turns = tools.Split('|');
+            if (turns.Length == 2)
+            {
+                handle.ToolActivityProduced += Raise.Event<Action<SessionToolCall>>(
+                    new SessionToolCall("worker", prefix + turns[0], "{}", "", false));
+                handle.TurnEnded += Raise.Event<Action<SessionTurnEnd>>(new SessionTurnEnd(false, false, false, null, null, null));
+                Assert.Empty(inbox.ReceivedCalls());
+            }
+
+            foreach (var tool in turns[^1].Split(','))
+            {
+                var names = tool == "administration"
+                    ? new[] { "set_status", "run_status", "report_job_progress", "append", "patch_section", "write_many", "release" }.Select(name => prefix + name).ToArray()
+                    : new[] { prefix + tool };
+                foreach (var name in names)
+                {
+                    handle.ToolActivityProduced += Raise.Event<Action<SessionToolCall>>(
+                        new SessionToolCall("worker", name, "{}", "", false));
+                }
+            }
+
+            for (var turn = 0; turn < 2; turn++)
+            {
+                handle.TurnEnded += Raise.Event<Action<SessionTurnEnd>>(new SessionTurnEnd(false, false, false, null, null, null));
+                var deliveries = inbox.ReceivedCalls().Where(call => call.GetMethodInfo().Name == nameof(IAgentMessageInbox.Deliver)).ToArray();
+                Assert.Equal(nudges, deliveries.Count(call => Equals(call.GetArguments()[1], "worker")));
+                Assert.Equal(turn == 0 ? 0 : reports, deliveries.Count(call => Equals(call.GetArguments()[1], AssistantIdentity.PaneId)));
+            }
+        }
     }
 }

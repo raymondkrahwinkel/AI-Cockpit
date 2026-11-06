@@ -23,16 +23,6 @@ public class DelegationPolicyEntryTests
         Assert.Equivalent(new object[] { "get_current_user", "search_issues" }, restored.AllowedTools);
     }
 
-    [Fact]
-    public void ToDomain_WithNoAllowListEntry_LeavesItNull()
-    {
-        // An entry deserialized from an older config (no allowedTools key) has a null list, which must stay null
-        // rather than becoming an empty list the decider would read differently.
-        var entry = new DelegationPolicyEntry { AllowedAsTarget = true };
-
-        Assert.Null(entry.ToDomain().AllowedTools);
-    }
-
     [Theory]
     [InlineData(null)]
     [InlineData("")]

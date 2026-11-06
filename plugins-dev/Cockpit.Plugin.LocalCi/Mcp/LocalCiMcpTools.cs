@@ -163,7 +163,7 @@ internal sealed class LocalCiMcpTools(
         {
             try
             {
-                await slot.Admitted;
+                await slot.Admitted.WaitAsync(tracker.Stopping);
             }
             catch (OperationCanceledException)
             {
@@ -173,13 +173,13 @@ internal sealed class LocalCiMcpTools(
                     runId,
                     job = chosen.JobId,
                     verdict = "NotStarted",
-                    summary = "it lost its place in the queue — its session went away, or the operator removed it.",
+                    summary = "it lost its place in the queue — its session went away, the operator removed it, or Local CI was disabled.",
                 }));
                 return;
             }
 
             // Only the Kill button and the queue (owner gone, stopped by hand) may stop the run once it started.
-            using var stopping = CancellationTokenSource.CreateLinkedTokenSource(slot.Revoked);
+            using var stopping = CancellationTokenSource.CreateLinkedTokenSource(slot.Revoked, tracker.Stopping);
             tracker.Begin(runId, chosen.ProjectRoot, chosen.JobId, DateTimeOffset.UtcNow, () =>
             {
                 stopping.Cancel();

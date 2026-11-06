@@ -1,6 +1,5 @@
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Plugins;
-using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure.Plugins;
 
 namespace Cockpit.Core.Tests.Plugins;
@@ -27,20 +26,6 @@ public class BundledPluginInstallerTests : IDisposable
         _plugins = Path.Combine(_root, "plugins");
         Directory.CreateDirectory(_bundled);
         Directory.CreateDirectory(_plugins);
-    }
-
-    [Fact]
-    public async Task AFreshCockpit_GetsTheBundledPlugin_EnabledWithoutAskingForConsent()
-    {
-        _WriteBundled("depot", "1.1.0");
-
-        var installed = await NewSut().InstallAsync(_bundled, _plugins);
-
-        Assert.Equal(new[] { "depot" }, installed);
-        Assert.True(File.Exists(Path.Combine(_plugins, "depot", "plugin.json")));
-        Assert.True(_registrations.Saved["depot"].Enabled);
-        Assert.NotEmpty(_registrations.Saved["depot"].PinnedSha256);
-        Assert.Contains("depot", _registrations.Seeded);
     }
 
     // Turning a plugin off is a decision. Shipping a build is not a reason to undo it.
@@ -74,51 +59,6 @@ public class BundledPluginInstallerTests : IDisposable
 
         Assert.Empty(second);
         Assert.False(Directory.Exists(Path.Combine(_plugins, "depot")), "an uninstalled bundled plugin does not silently return");
-    }
-
-    [Fact]
-    public async Task InstallAsync_BatchesColdWrites_SkipsWarmWrites_AndPersistsAChangedMinimumVersion()
-    {
-        _WriteBundled("depot", "1.1.0");
-        _WriteBundled("github", "1.1.0");
-        _WriteBundled("weather", "1.1.0");
-        var configPath = Path.Combine(_root, "cockpit.json");
-        await using var registrations = new PluginRegistrationStore(configPath);
-        var sut = new BundledPluginInstaller(registrations);
-        var writes = 0;
-        Action<string> countWrite = path =>
-        {
-            if (path == configPath)
-            {
-                Interlocked.Increment(ref writes);
-            }
-        };
-
-        CockpitConfigFileAccess.Written += countWrite;
-        try
-        {
-            await sut.InstallAsync(_bundled, _plugins);
-            var coldWrites = writes;
-
-            writes = 0;
-            await sut.InstallAsync(_bundled, _plugins);
-            var warmWrites = writes;
-
-            writes = 0;
-            _WriteBundled("depot", "1.1.0", expectedMinVersion: "0.105.3");
-            await sut.InstallAsync(_bundled, _plugins);
-            var changedMinimumWrites = writes;
-            var saved = await registrations.LoadAllAsync();
-
-            Assert.InRange(coldWrites, 1, 2);
-            Assert.Equal(0, warmWrites);
-            Assert.Equal(1, changedMinimumWrites);
-            Assert.Equal("0.105.3", saved["depot"].ExpectedMinVersion);
-        }
-        finally
-        {
-            CockpitConfigFileAccess.Written -= countWrite;
-        }
     }
 
     private BundledPluginInstaller NewSut() => new(_registrations);

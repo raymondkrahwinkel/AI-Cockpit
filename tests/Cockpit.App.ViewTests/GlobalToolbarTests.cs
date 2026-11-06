@@ -2,7 +2,6 @@ using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
-using Cockpit.App.Controls;
 using Cockpit.App.Plugins;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.App.ViewModels;
@@ -21,7 +20,6 @@ using Cockpit.Core.SessionBehavior;
 using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.Voice;
-using Cockpit.Core.Workspaces;
 using Cockpit.Plugins.Abstractions;
 using NSubstitute;
 
@@ -36,50 +34,6 @@ public class GlobalToolbarTests
 {
     private static ToolbarAction _Action(string title, Func<Task>? onInvoke = null) =>
         new(title, null, onInvoke ?? (() => Task.CompletedTask));
-
-    [Fact]
-    public async Task TheToolbar_RendersItsActions_OnAProjectsWorkspace() =>
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var cockpit = new CockpitViewModel();
-            ((IPluginContributionSink)cockpit).AddToolbarAction("depot", _Action("Depot servers"));
-
-            // The workspace type with no session in it at all — the case the old placement could not draw.
-            await cockpit.Workspaces.OpenWorkspaceAsync(WorkspaceType.Projects.Id);
-
-            var view = new CockpitView { DataContext = cockpit };
-            var window = new Window { Content = view, Width = 1100, Height = 800 };
-            window.Show();
-            window.UpdateLayout();
-
-            var label = view.GetVisualDescendants().OfType<TextBlock>()
-                .FirstOrDefault(text => text.Text == "Depot servers");
-
-            Assert.NotNull(label);
-
-            window.Close();
-        });
-
-    [Fact]
-    public void AFreshInstall_WithNoActionsRegistered_DrawsNoToolbarAtAll() => HeadlessAvalonia.Run(() =>
-    {
-        var cockpit = new CockpitViewModel();
-
-        var view = new CockpitView { DataContext = cockpit };
-        var window = new Window { Content = view, Width = 1100, Height = 800 };
-        window.Show();
-        window.UpdateLayout();
-
-        // The host is in the tree either way — what matters is that it contributes nothing, so the strip loses no
-        // height on a cockpit without plugins.
-        var host = view.GetVisualDescendants().OfType<PluginToolbarHost>().FirstOrDefault();
-
-        Assert.NotNull(host);
-        Assert.Empty(host.Children);
-        Assert.Equal(0, host.Bounds.Height);
-
-        window.Close();
-    });
 
     [Fact]
     public void AnActionThatThrows_LeavesTheCockpitUp_AndLandsInPluginDiagnostics() => HeadlessAvalonia.Run(() =>

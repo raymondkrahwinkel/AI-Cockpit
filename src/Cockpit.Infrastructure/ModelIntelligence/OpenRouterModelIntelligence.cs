@@ -154,6 +154,10 @@ internal sealed class OpenRouterModelIntelligence : IModelIntelligence
             RefreshInterval)
         {
             CanonicalSlug = _String(model, "canonical_slug"),
+            SupportsImageInput = model.TryGetProperty("architecture", out var architecture) && architecture.ValueKind == JsonValueKind.Object
+                && architecture.TryGetProperty("input_modalities", out var modalities) && modalities.ValueKind == JsonValueKind.Array
+                && modalities.EnumerateArray().All(value => value.ValueKind == JsonValueKind.String)
+                    ? modalities.EnumerateArray().Any(value => value.GetString() == "image") : null,
             HuggingFaceId = _String(model, "hugging_face_id"),
         };
     }

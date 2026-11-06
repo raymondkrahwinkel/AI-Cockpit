@@ -40,8 +40,11 @@ public sealed class HideSharedProjectsTests
         registry.Register(source);
 
         var projects = TestProjects.ViewModel(store, Substitute.For<ISessionDialogService>(), registry);
-        await projects.LoadAsync();
-        await projects.SharedProjectsLoadTask;
+        await HeadlessAvalonia.RunAsync(async () =>
+        {
+            await projects.LoadAsync();
+            await projects.SharedProjectsLoadTask;
+        });
 
         await HeadlessAvalonia.RunAsync(async () =>
         {
@@ -77,8 +80,11 @@ public sealed class HideSharedProjectsTests
         });
 
         var reloaded = TestProjects.ViewModel(store, Substitute.For<ISessionDialogService>(), registry);
-        await reloaded.LoadAsync();
-        await reloaded.SharedProjectsLoadTask;
+        await HeadlessAvalonia.RunAsync(async () =>
+        {
+            await reloaded.LoadAsync();
+            await reloaded.SharedProjectsLoadTask;
+        });
         var section = Assert.Single(reloaded.ProjectSections, candidate => candidate.OrganizationSlug == "acme");
         Assert.Equal(1, section.HiddenCount);
         Assert.DoesNotContain(section.Items, item => item.Id == "depot:alpha");

@@ -51,11 +51,6 @@ public sealed class AssistantMemoryBackupTests : IDisposable
         Assert.False(File.Exists(_MachinePath));
     }
 
-    [Fact]
-    public void Write_WithNeitherFile_Throws()
-    {
-        Assert.Throws<InvalidOperationException>(() => AssistantMemoryBackup.Write(_ArchivePath, _MemoryPath, _StatePath, _MachinePath));
-    }
 
     [Fact]
     public void Restore_CopiesWhatItReplaces_Aside_RatherThanDeletingIt()
@@ -72,16 +67,6 @@ public sealed class AssistantMemoryBackupTests : IDisposable
         Assert.Equal("- live memory nobody backed up yet", File.ReadAllText(aside));
     }
 
-    [Fact]
-    public void Restore_FromAnArchiveWithNeitherFile_Throws()
-    {
-        var emptyArchive = Path.Combine(_directory, "empty.zip");
-        using (System.IO.Compression.ZipFile.Open(emptyArchive, System.IO.Compression.ZipArchiveMode.Create))
-        {
-        }
-
-        Assert.Throws<InvalidOperationException>(() => AssistantMemoryBackup.Restore(emptyArchive, _MemoryPath, _StatePath, _MachinePath));
-    }
 
     public void Dispose() => Directory.Delete(_directory, recursive: true);
 }

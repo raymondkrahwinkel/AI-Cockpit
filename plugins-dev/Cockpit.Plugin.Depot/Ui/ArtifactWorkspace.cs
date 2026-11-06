@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
@@ -8,6 +9,8 @@ using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
 using Cockpit.Plugin.Depot.Contracts;
 using Cockpit.Plugins.Abstractions.UI;
+using Cockpit.Plugins.Abstractions.Files;
+using Avalonia.Threading;
 using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.Plugin.Depot.UI;
@@ -23,11 +26,22 @@ internal sealed class ArtifactWorkspace : UserControl
     private DepotBrowserModel? _model;
     private string? _project;
     private DepotBrowserNode? _node;
+    private IMarkdownEditor? _imageEditor;
+    private IDisposable? _imageSubscription;
 
     public ArtifactWorkspace(ICockpitUiHost host, IWorkspaceContext context, IReadOnlyList<DepotConnectionRegistration> connections)
     {
         _host = host;
         Content = _body;
+        context.Closed += (_, _) =>
+        {
+            _imageSubscription?.Dispose();
+            if (_imageEditor is { } editor)
+            {
+                editor.ImageLoader = null;
+            }
+        };
+        context.RefreshRequested += (_, _) => _imageEditor?.InvalidateImages();
         _ = _SafelyAsync(() => _LoadAsync(context.InstanceKey, connections));
     }
 
@@ -87,6 +101,13 @@ internal sealed class ArtifactWorkspace : UserControl
 
     private void _Show(DepotBrowserNode node, Func<CancellationToken, Task<byte[]?>> read)
     {
+        _imageSubscription?.Dispose();
+        _imageSubscription = null;
+        if (_imageEditor is { } previous)
+        {
+            previous.ImageLoader = null;
+            _imageEditor = null;
+        }
         _node = node;
         _body.Children.Clear();
         var header = _Header(node);
@@ -152,6 +173,24 @@ internal sealed class ArtifactWorkspace : UserControl
         var editor = _host?.CreateMarkdownEditor(text);
         if (editor is not null)
         {
+            if (_model is { } model && _project is { } project && _host is { } host)
+            {
+                var file = DepotFileRefs.Create(model.Connection.Id, project, node.Path);
+                editor.ImageLoader = async (target, ct) =>
+                {
+                    var json = await host.Channel.InvokeAsync(FileImageChannel.Read,
+                        JsonSerializer.SerializeToElement(new FileImageRequest(file, target), FileSourceChannel.Json), ct).ConfigureAwait(false);
+                    var answer = json.Deserialize<FileSourceAnswer<string>>(FileSourceChannel.Json);
+                    if (answer?.Data is not { } encoded || encoded.Length > ((FileImageChannel.MaxBytes + 2) / 3) * 4)
+                    {
+                        throw new FileSourceException(FileSourceErrorKind.Unavailable, "This image is unavailable.");
+                    }
+                    return Convert.FromBase64String(encoded);
+                };
+                _imageEditor = editor;
+                _imageSubscription = host.Channel.Subscribe(FileSourceChannel.Changed,
+                    _ => Dispatcher.UIThread.Post(editor.InvalidateImages));
+            }
             editor.IsReadOnly = true;
             editor.ShowSource = !Path.GetExtension(node.Path).Equals(".md", StringComparison.OrdinalIgnoreCase);
             _body.Children.Add(editor.View);

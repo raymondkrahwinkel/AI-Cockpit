@@ -311,17 +311,19 @@ internal static class ServerGroupScene
 
     private sealed class ScenePlugins : IPluginAdministration
     {
+        public Task<int> GetRetiredLoadContextsAsync(CancellationToken cancellationToken = default) => Task.FromResult(0);
+
         public Task<IReadOnlyList<Cockpit.Core.Plugins.InstalledPlugin>> GetInstalledAsync(CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<Cockpit.Core.Plugins.InstalledPlugin>>([]);
 
         public Task<Cockpit.Core.Plugins.PluginStoreFetchResult> FetchStoreIndexAsync(Cockpit.Core.Plugins.PluginStoreConfig store, CancellationToken cancellationToken = default) => Task.FromResult(new Cockpit.Core.Plugins.PluginStoreFetchResult(false, null, null, null));
 
         public Task<Cockpit.Core.Plugins.PluginInstallResult> InstallFromZipAsync(string zipFilePath, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Install from the server's store, or copy the zip onto the server.");
 
-        public Task<Cockpit.Core.Plugins.PluginProvisionResult> InstallFromStoreAsync(Cockpit.Core.Plugins.PluginProvisionRequest request, CancellationToken cancellationToken = default) => Task.FromResult(new Cockpit.Core.Plugins.PluginProvisionResult(Cockpit.Core.Plugins.PluginProvisionOutcome.Failed, request.Id, request.Name, null, null, null, null));
+        public Task<Cockpit.Core.Plugins.PluginProvisionResult> InstallFromStoreAsync(Cockpit.Core.Plugins.PluginProvisionRequest request, CancellationToken cancellationToken = default, IProgress<Cockpit.Core.Plugins.PluginDownloadProgress>? progress = null) => Task.FromResult(new Cockpit.Core.Plugins.PluginProvisionResult(Cockpit.Core.Plugins.PluginProvisionOutcome.Failed, request.Id, request.Name, null, null, null, null));
 
-        public Task SetEnabledAsync(string folderId, bool enabled, string pinnedSha256, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task<Cockpit.Core.Plugins.PluginLiveState> SetEnabledAsync(string folderId, bool enabled, string pinnedSha256, CancellationToken cancellationToken = default) => Task.FromResult(Cockpit.Core.Plugins.PluginLiveState.Active);
 
-        public Task RemoveAsync(string folderId, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task<Cockpit.Core.Plugins.PluginLiveState> RemoveAsync(string folderId, CancellationToken cancellationToken = default) => Task.FromResult(Cockpit.Core.Plugins.PluginLiveState.Active);
     }
 
     // A session on the stand-in server: two rows for its pane, and nothing it can be asked to do.

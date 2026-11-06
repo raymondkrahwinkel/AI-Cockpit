@@ -14,6 +14,7 @@ internal sealed class SessionLiveStateFold
     private SessionConnection? _connection;
     private string? _cliSessionId;
     private string? _model;
+    private SessionCapabilities? _capabilities;
     private string? _permissionMode;
 
     // A pending permission or a CLI `needs_action`, cleared when the operator sends the next message or answers the
@@ -42,6 +43,9 @@ internal sealed class SessionLiveStateFold
 
         switch (evt)
         {
+            case SessionCapabilitiesChanged changed:
+                _capabilities = changed.Capabilities;
+                break;
             case SessionInitialized init:
                 _connection = new SessionConnection(init.Cwd, init.Tools, init.Model);
                 _model = init.Model;
@@ -127,7 +131,7 @@ internal sealed class SessionLiveStateFold
         _connection,
         _cliSessionId,
         _model,
-        _permissionMode) { Children = _children };
+        _permissionMode) { Children = _children, Capabilities = _capabilities };
 
     public void SetModel(string? model) => _model = model;
 
@@ -138,6 +142,7 @@ internal sealed class SessionLiveStateFold
     // A conversation that starts over in the same pane (AC-564): the turn's state and the numbers go with it.
     public void Reset()
     {
+        _capabilities = null;
         _children = [];
         _ClearActiveToolCalls();
         _backgroundTasks = [];

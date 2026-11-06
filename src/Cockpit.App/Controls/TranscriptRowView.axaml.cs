@@ -49,6 +49,48 @@ public partial class TranscriptRowView : UserControl
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
 
+    private async void _OnReplyAttachmentClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Control { DataContext: Cockpit.Core.Sessions.ReplyAttachment attachment }
+            || TopLevel.GetTopLevel(this) is not Window owner)
+        {
+            return;
+        }
+
+        if (attachment.IsImage)
+        {
+            if (Cockpit.Infrastructure.Images.InboundImage.TryNormalizeToPng(attachment.Content, out var png, out var refusal))
+            {
+                ImagePreviewWindow.Show([Cockpit.Core.Sessions.ImageAttachment.FromBytes(png, "image/png")], 0, owner);
+            }
+            else
+            {
+                ToolTip.SetTip((Control)sender, "Could not preview image: " + refusal);
+            }
+
+            return;
+        }
+
+        var file = await owner.StorageProvider.SaveFilePickerAsync(new Avalonia.Platform.Storage.FilePickerSaveOptions
+        {
+            SuggestedFileName = attachment.Name,
+            Title = "Save attachment",
+        });
+        if (file is not null)
+        {
+            try
+            {
+                await using var output = await file.OpenWriteAsync();
+                output.SetLength(0);
+                await output.WriteAsync(attachment.Content);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                ToolTip.SetTip((Control)sender, "Could not save attachment: " + error.Message);
+            }
+        }
+    }
+
     // Copies a tool result's formatted text to the clipboard (T6).
     private void _OnCopyResultClick(object? sender, RoutedEventArgs e) => _CopyRowText(sender, entry => entry.ResultDisplayText);
 

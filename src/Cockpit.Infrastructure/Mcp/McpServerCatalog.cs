@@ -5,6 +5,7 @@ using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Projects;
 using Cockpit.Plugins.Abstractions.Mcp;
+using Cockpit.Infrastructure.Plugins;
 
 namespace Cockpit.Infrastructure.Mcp;
 
@@ -14,7 +15,7 @@ namespace Cockpit.Infrastructure.Mcp;
 internal sealed class McpServerCatalog(
     IMcpServerStore store,
     IProjectStore projectStore,
-    IEnumerable<IPluginMcpProvider> pluginProviders,
+    PluginMcpProviderRegistry pluginProviders,
     IEnumerable<ICockpitInternalMcpProvider> internalProviders,
     ILogger<McpServerCatalog> logger)
     : IMcpServerCatalog, ISingletonService
@@ -37,9 +38,12 @@ internal sealed class McpServerCatalog(
         // parsed here in Cockpit.Core so a plugin never parses a reference across the plugin-ALC boundary.
         // AC-766: an unscoped query unions every project's schemes instead of using one project's own.
         var projectMemorySchemes = (project is not null ? (IReadOnlyList<Project>)[project] : projects.Projects)
-            .SelectMany(candidate => candidate.Resources)
-            .Where(resource => resource.Role == ProjectResourceRole.Memory && resource.ReachesSessions)
-            .Select(resource => ProjectMemoryRef.TryParse(resource.Reference.Trim(), out var scheme, out _) ? scheme : null)
+            .SelectMany(candidate => candidate.Resources
+                .Where(resource => resource.Role == ProjectResourceRole.Memory && resource.ReachesSessions)
+                .Select(resource => resource.Reference)
+                // AC-2083: the brain's server comes along too, even when it sits on another Depot than the memory.
+                .Concat(ProjectMemoryRef.IsBrainReference(candidate.Assistant) ? [candidate.Assistant!] : []))
+            .Select(reference => ProjectMemoryRef.TryParse(reference.Trim(), out var scheme, out _) ? scheme : null)
             .OfType<string>()
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -47,14 +51,15 @@ internal sealed class McpServerCatalog(
         // AC-500/AC-504: projectId and memory schemes reach each provider directly, so a plugin can contribute
         // a project-only server. AC-736/AC-766: `schemeless` is the same answer without those schemes, so
         // scheme-gated servers can be told apart; an unscoped query has no project, so nothing is marked linked.
+        var providers = pluginProviders.Providers;
         var schemeless = project is null || projectMemorySchemes.Count == 0
             ? null
-            : pluginProviders
+            : providers
                 .SelectMany(provider => _ServersOf(provider, projectId, []))
                 .Select(contribution => contribution.Name)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        var pluginServers = pluginProviders
+        var pluginServers = providers
             .SelectMany(provider => _ServersOf(provider, projectId, projectMemorySchemes))
             .Select(PluginMcpMapping.ToServerConfig)
             .Select(server => schemeless?.Contains(server.Name) == false ? server with { ProjectLinked = true } : server)

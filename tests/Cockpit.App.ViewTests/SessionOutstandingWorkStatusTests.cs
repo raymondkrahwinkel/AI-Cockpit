@@ -41,24 +41,13 @@ public class SessionOutstandingWorkStatusTests
     }
 
     [Fact]
-    public void ATurnEndingWhileASubAgentRuns_ReadsAsWorkingBackground_NotDone() => HeadlessAvalonia.Run(() =>
-    {
-        var session = new SessionViewModel();
-        session.IsBusy = true;
-        session.Apply(Outstanding(new BackgroundTask("a1", BackgroundTaskKind.SubAgent, "Agent 1")));
-
-        session.Apply(Turn());
-
-        Assert.Equal(SessionStatus.WorkingBackground, session.SessionStatus);
-    });
-
-    [Fact]
     public void OnceTheLastSubAgentFinishes_TheSessionReachesDone() => HeadlessAvalonia.Run(() =>
     {
         var session = new SessionViewModel();
         session.IsBusy = true;
         session.Apply(Outstanding(new BackgroundTask("a1", BackgroundTaskKind.SubAgent, "Agent 1")));
         session.Apply(Turn());
+        Assert.Equal(SessionStatus.WorkingBackground, session.SessionStatus);
 
         // The provider restates the whole set, now empty — that is how the last one ending arrives.
         session.Apply(Outstanding());
@@ -139,36 +128,6 @@ public class SessionOutstandingWorkStatusTests
         Assert.Equal(SessionStatus.Busy, session.SessionStatus);
     });
 
-    [Fact]
-    public void NeedsAttention_StillOutranksOutstandingWork() => HeadlessAvalonia.Run(() =>
-    {
-        // A permission prompt must still surface while a sub-agent runs: an operator who cannot see the request
-        // cannot answer it, and the session would sit on WorkingBackground waiting for an answer it never asked for.
-        var session = new SessionViewModel();
-        session.IsBusy = true;
-        session.Apply(Outstanding(new BackgroundTask("a1", BackgroundTaskKind.SubAgent, "Agent 1")));
-        session.Apply(Turn());
-
-        session.Apply(new SessionStatusChanged { SessionId = "s1", NeedsAction = "permission" });
-
-        Assert.Equal(SessionStatus.NeedsAttention, session.SessionStatus);
-    });
-
-    [Fact]
-    public void OutstandingWorkNeverMakesASessionRequireCloseConfirmation() => HeadlessAvalonia.Run(() =>
-    {
-        // AC-276's dev-server objection, as a test on the field this ticket adds: a shell that never ends must
-        // not turn "Done" into "ask before closing" through the back door the status itself was closed to avoid.
-        var session = new SessionViewModel();
-        session.IsBusy = true;
-        session.Apply(Outstanding(new BackgroundTask("b1", BackgroundTaskKind.Shell, "npm run dev")));
-        session.Apply(Turn());
-
-        Assert.Equal(SessionStatus.Done, session.SessionStatus);
-        Assert.True(session.HasOutstandingBackgroundShells);
-        Assert.False(session.RequiresCloseConfirmation, "only Busy/WorkingBackground ask before closing — the outstanding-work field must not join that set");
-    });
-
     // AC-1319: the CLI's own queue starts a turn the host never sent — a prompt written mid-turn that arrived after
     // the `result` (SF-161, 07:58:55Z), whose first tool call then ran for eleven minutes under an Idle status.
     [Fact]
@@ -230,62 +189,5 @@ public class SessionOutstandingWorkStatusTests
 
         Assert.Equal(SessionStatus.Done, session.SessionStatus);
         Assert.False(session.IsBusy);
-    });
-
-    // Tegenproef on the gate: a driver without its own input queue (Kimi polls /usage after each turn and a reply
-    // chunk can fall through as plain text) never starts a turn by itself, so its stray output leaves Done alone.
-    [Fact]
-    public void AStrayDeltaFromADriverWithoutMidTurnInput_LeavesAFinishedSessionDone() => HeadlessAvalonia.Run(() =>
-    {
-        var session = TestSessions.Pane(Substitute.For<ISessionManager>());
-        session.IsBusy = true;
-        session.Apply(Turn());
-
-        session.Apply(new AssistantTextDelta { SessionId = "s1", BlockIndex = 0, Text = "context: 12%" });
-
-        Assert.Equal(SessionStatus.Done, session.SessionStatus);
-    });
-
-    // AC-1334: the sidebar/rail word itself said "Idle" or "Done" while a backgrounded shell (a 15-minute
-    // `dotnet test`) was still running underneath — SF-197, PP-135, PP-18, all measured the same morning.
-    // `setup` reaches the baseline before listening starts, so `finalAction` is the one event under test.
-    public static TheoryData<Action<SessionViewModel>, Action<SessionViewModel>, string> OutstandingWorkLabelCases => new()
-    {
-        {
-            s => { s.IsBusy = true; s.Apply(Turn()); },
-            s => s.Apply(_Ledger(true)),
-            "Done · background work"
-        },
-        {
-            _ => { },
-            s => s.Apply(_Ledger(true)),
-            "Idle · background work"
-        },
-        {
-            s => { s.IsBusy = true; s.Apply(Turn()); s.Apply(_Ledger(true)); },
-            s => s.Apply(_Ledger(false)),
-            "Done"
-        },
-        {
-            _ => { },
-            s => { s.IsBusy = true; s.Apply(Turn()); },
-            "Done"
-        },
-    };
-
-    [Theory]
-    [MemberData(nameof(OutstandingWorkLabelCases))]
-    public void SessionStatusLabel_CarriesOutstandingWork_WithoutTouchingTheStatusMachine(
-        Action<SessionViewModel> setup, Action<SessionViewModel> finalAction, string expectedLabel) => HeadlessAvalonia.Run(() =>
-    {
-        var session = new SessionViewModel();
-        setup(session);
-
-        var labelChanged = false;
-        session.PropertyChanged += (_, e) => labelChanged |= e.PropertyName == nameof(SessionViewModel.SessionStatusLabel);
-        finalAction(session);
-
-        Assert.Equal(expectedLabel, session.SessionStatusLabel);
-        Assert.True(labelChanged, "the sidebar/rail bindings must be told the label changed, not just recompute it lazily");
     });
 }

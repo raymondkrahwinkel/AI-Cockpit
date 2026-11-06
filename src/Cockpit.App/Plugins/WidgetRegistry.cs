@@ -22,12 +22,17 @@ public interface IWidgetRegistry
     bool Register(WidgetRegistration widget, IPluginStorage pluginStorage, ICockpitSessionObserver sessions, IReadOnlyList<string> declaredSecretKeys);
 
     /// <summary>
+    /// Withdraws the widget type <paramref name="widgetId"/>; false when none is registered. Placed panes stay in their dashboard.
+    /// </summary>
+    bool Unregister(string widgetId);
+
+    /// <summary>
     /// Every credential key any widget-providing plugin declared — what an export scrubs beyond the name rule.
     /// </summary>
     IReadOnlyList<string> DeclaredSecretKeys { get; }
 
     /// <summary>
-    /// Raised when a plugin contributes a widget. Plugins initialize after the view models are built, so anything
+    /// Raised when a plugin contributes or withdraws a widget. Plugins initialize after the view models are built, so anything
     /// reading <see cref="Widgets"/> would otherwise read an empty list once and never hear about widgets that
     /// arrived later — exactly how the "Add widget" button stayed disabled with two widgets installed.
     /// </summary>
@@ -76,6 +81,17 @@ internal sealed class WidgetRegistry : IWidgetRegistry, ISingletonService
         _widgets.Add(new RegisteredWidget(widget, pluginStorage, sessions, declaredSecretKeys));
         Changed?.Invoke(this, EventArgs.Empty);
 
+        return true;
+    }
+
+    public bool Unregister(string widgetId)
+    {
+        if (_widgets.RemoveAll(widget => widget.Registration.Id == widgetId) == 0)
+        {
+            return false;
+        }
+
+        Changed?.Invoke(this, EventArgs.Empty);
         return true;
     }
 

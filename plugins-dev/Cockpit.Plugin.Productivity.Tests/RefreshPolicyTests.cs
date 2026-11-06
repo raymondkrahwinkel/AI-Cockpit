@@ -20,7 +20,7 @@ public sealed class RefreshPolicyTests
         Assert.False(RefreshPolicy.IsDue(false, false, false, stale, Now, Minute));
         Assert.False(RefreshPolicy.IsDue(true, false, true, stale, Now, Minute));
         Assert.Equal(Minute, RefreshPolicy.Interval(5));
-        Assert.Equal("bijgewerkt 42 s geleden", RefreshPolicy.Age(Now - TimeSpan.FromSeconds(42), Now));
-        Assert.Equal("nog niet bijgewerkt", RefreshPolicy.Age(null, Now));
+        Assert.Equal("updated 42 s ago", RefreshPolicy.Age(Now - TimeSpan.FromSeconds(42), Now));
+        Assert.Equal("not updated yet", RefreshPolicy.Age(null, Now));
     }
 }

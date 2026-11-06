@@ -1,0 +1,136 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Cockpit.App.ViewModels"
+        xmlns:conv="using:Cockpit.App.Converters"
+        xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        x:Class="Cockpit.App.Views.TestRunsDialog"
+        x:DataType="vm:TestRunsViewModel"
+        Title="Test runs"
+        Width="820" Height="520"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource CockpitPanelBgBrush}">
+
+    <Design.DataContext>
+        <vm:TestRunsViewModel/>
+    </Design.DataContext>
+
+    <DockPanel Margin="16">
+        <TextBlock DockPanel.Dock="Top" Margin="0,0,0,12"
+                   Text="Commands your sessions started through start_run, and heavy runs waiting for the machine to have room. Finished runs stay here for this session of the app."
+                   Foreground="{DynamicResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+
+        <Grid DockPanel.Dock="Bottom" ColumnDefinitions="*,Auto" Margin="0,12,0,0">
+            <Button Grid.Column="0" Classes="Subtle Compact"
+                    HorizontalAlignment="Left" Command="{Binding RefreshCommand}">
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <materialIcons:MaterialIcon Kind="Refresh" Width="12" Height="12"/>
+                    <TextBlock Text="Refresh"/>
+                </StackPanel>
+            </Button>
+            <Button Grid.Column="1" Content="Close" Click="OnClose"/>
+        </Grid>
+
+        <Grid ColumnDefinitions="300,*">
+            <Border Grid.Column="0" BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
+                    CornerRadius="{StaticResource CockpitPanelRadius}" Padding="4">
+                <ScrollViewer>
+                    <ItemsControl ItemsSource="{Binding Groups}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:TestRunGroupViewModel">
+                                <StackPanel Margin="0,2,0,8">
+                                    <TextBlock Text="{Binding Header}" FontSize="10" FontWeight="SemiBold"
+                                               Margin="8,4,0,4"
+                                               Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                    <ItemsControl ItemsSource="{Binding Runs}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:TestRunRowViewModel">
+                                                <Border Padding="8,6" Margin="2,1" CornerRadius="{StaticResource CockpitControlRadius}"
+                                                        Background="{DynamicResource CockpitSecondaryBgBrush}"
+                                                        PointerPressed="OnRunPressed">
+                                                    <StackPanel Spacing="3">
+                                                        <DockPanel>
+                                                            <Border DockPanel.Dock="Right" IsVisible="{Binding IsHeavy}" Margin="6,0,0,0"
+                                                                    Padding="6,0" CornerRadius="{StaticResource CockpitPillRadius}"
+                                                                    Background="{DynamicResource CockpitStatusWaitingChipTintBrush}"
+                                                                    VerticalAlignment="Center">
+                                                                <TextBlock Text="Heavy" FontSize="10" FontWeight="SemiBold"
+                                                                           Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
+                                                            </Border>
+                                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                                <Ellipse Width="7" Height="7" VerticalAlignment="Center"
+                                                                         Fill="{Binding StatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                                                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="12"
+                                                                           TextTrimming="CharacterEllipsis"/>
+                                                            </StackPanel>
+                                                        </DockPanel>
+                                                        <StackPanel Orientation="Horizontal" Spacing="6" Margin="13,0,0,0">
+                                                            <TextBlock Text="{Binding StatusText}" FontSize="11"
+                                                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                                            <TextBlock Text="{Binding Note}" FontSize="11"
+                                                                       Foreground="{DynamicResource CockpitTextFaintBrush}"
+                                                                       TextTrimming="CharacterEllipsis"/>
+                                                        </StackPanel>
+                                                        <TextBlock Text="{Binding SessionName}" FontSize="11" Margin="13,0,0,0"
+                                                                   IsVisible="{Binding HasSession}"
+                                                                   Foreground="{DynamicResource CockpitTextFaintBrush}"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   ToolTip.Tip="{Binding PaneId}"/>
+                                                    </StackPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Border>
+
+            <Border Grid.Column="1" Margin="12,0,0,0"
+                    BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
+                    CornerRadius="{StaticResource CockpitPanelRadius}" Padding="12">
+                <DockPanel IsVisible="{Binding HasSelection}">
+                    <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" ColumnSpacing="8" Margin="0,0,0,8">
+                        <TextBlock Grid.Column="0" Text="{Binding SelectedRun.Title}" FontWeight="SemiBold"
+                                   FontSize="12" VerticalAlignment="Center"
+                                   TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"
+                                   ToolTip.Tip="{Binding SelectedRun.Title}"/>
+                        <Button Grid.Column="1" Content="Stop" Classes="Compact" VerticalAlignment="Center"
+                                Command="{Binding StopCommand}" CommandParameter="{Binding SelectedRun}"
+                                IsVisible="{Binding SelectedRun.CanStop, FallbackValue=False}"
+                                ToolTip.Tip="Stops the run and ends the processes it started."/>
+                    </Grid>
+
+                    <Grid DockPanel.Dock="Top" ColumnDefinitions="110,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto" RowSpacing="4" Margin="0,0,0,10">
+                        <TextBlock Grid.Row="0" Text="Status" FontSize="11.5" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding SelectedRun.StatusText}" FontSize="11.5"
+                                   Foreground="{Binding SelectedRun.StatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                        <TextBlock Grid.Row="1" Text="Session" FontSize="11.5" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SelectedRun.SessionName}" FontSize="11.5"
+                                   TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding SelectedRun.PaneId}"/>
+                        <TextBlock Grid.Row="2" Text="Kind" FontSize="11.5" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SelectedRun.KindText}" FontSize="11.5"/>
+                        <TextBlock Grid.Row="3" Text="Working directory" FontSize="11.5" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SelectedRun.WorkingDirectory}" FontSize="11.5"
+                                   FontFamily="{StaticResource CockpitMonoFont}" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Grid.Row="4" Text="Run id" FontSize="11.5" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding SelectedRun.RunId}" FontSize="11.5"
+                                   FontFamily="{StaticResource CockpitMonoFont}"/>
+                    </Grid>
+
+                    <Border Background="{DynamicResource CockpitSecondaryBgBrush}" CornerRadius="{StaticResource CockpitControlRadius}" Padding="8,6">
+                        <ScrollViewer HorizontalScrollBarVisibility="Auto">
+                            <SelectableTextBlock Text="{Binding SelectedRun.Output}" FontSize="11"
+                                                 FontFamily="{StaticResource CockpitMonoFont}"
+                                                 Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        </ScrollViewer>
+                    </Border>
+                </DockPanel>
+            </Border>
+        </Grid>
+    </DockPanel>
+</Window>

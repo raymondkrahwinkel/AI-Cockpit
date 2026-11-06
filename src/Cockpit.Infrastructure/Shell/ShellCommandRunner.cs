@@ -17,7 +17,7 @@ internal sealed class ShellCommandRunner : IShellCommandRunner, ISingletonServic
         TimeSpan timeout,
         CancellationToken cancellationToken = default)
     {
-        var startInfo = new ProcessStartInfo(command)
+        var startInfo = new ProcessStartInfo(CommandRunnerProcess.NormalizeExecutablePath(command))
         {
             WorkingDirectory = workingDirectory,
             UseShellExecute = false,

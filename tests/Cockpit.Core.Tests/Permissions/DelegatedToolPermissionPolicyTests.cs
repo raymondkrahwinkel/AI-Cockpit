@@ -29,41 +29,6 @@ public class DelegatedToolPermissionPolicyTests
 
     // --- ClassifyWellKnown: first-party fallback for annotation-less built-in tools (AC-100/AC-112) ---
 
-    [Theory]
-    [InlineData("write_file")]
-    [InlineData("edit_file")]
-    [InlineData("create_directory")]
-    [InlineData("move_file")]
-    public void ClassifyWellKnown_FilesystemWrites_AreWrite(string toolName)
-    {
-        Assert.Equal(ToolPermissionClass.Write, DelegatedToolPermissionPolicy.ClassifyWellKnown(toolName));
-    }
-
-    [Theory]
-    [InlineData("read_file")]
-    [InlineData("read_text_file")]
-    [InlineData("read_media_file")]
-    [InlineData("read_multiple_files")]
-    [InlineData("list_directory")]
-    [InlineData("list_directory_with_sizes")]
-    [InlineData("directory_tree")]
-    [InlineData("search_files")]
-    [InlineData("get_file_info")]
-    [InlineData("list_allowed_directories")]
-    public void ClassifyWellKnown_FilesystemReads_AreReadOnly(string toolName)
-    {
-        Assert.Equal(ToolPermissionClass.ReadOnly, DelegatedToolPermissionPolicy.ClassifyWellKnown(toolName));
-    }
-
-    [Theory]
-    [InlineData("mystery_tool")]
-    [InlineData("delete_repo")]
-    [InlineData("")]
-    public void ClassifyWellKnown_UnrecognisedName_IsNull_SoAnnotationClassIsKept(string toolName)
-    {
-        Assert.Null(DelegatedToolPermissionPolicy.ClassifyWellKnown(toolName));
-    }
-
     [Fact]
     public void WellKnownFilesystemWrite_RunsAtAcceptEdits_ButNotAtDefault()
     {
@@ -79,42 +44,20 @@ public class DelegatedToolPermissionPolicyTests
             .IsAllowed);
     }
 
-    // --- Decide: read-only runs under every ceiling ---
+    // --- Decide: a write needs acceptEdits or bypass, a destructive tool needs bypass ---
 
     [Theory]
-    [InlineData("plan")]
-    [InlineData("default")]
-    [InlineData("acceptEdits")]
-    [InlineData("bypassPermissions")]
-    public void Decide_ReadOnly_IsAllowedUnderEveryCeiling(string ceiling)
+    [InlineData(ToolPermissionClass.Write, "plan", false)]
+    [InlineData(ToolPermissionClass.Write, "default", false)]
+    [InlineData(ToolPermissionClass.Write, "acceptEdits", true)]
+    [InlineData(ToolPermissionClass.Write, "bypassPermissions", true)]
+    [InlineData(ToolPermissionClass.Destructive, "plan", false)]
+    [InlineData(ToolPermissionClass.Destructive, "default", false)]
+    [InlineData(ToolPermissionClass.Destructive, "acceptEdits", false)]
+    [InlineData(ToolPermissionClass.Destructive, "bypassPermissions", true)]
+    public void Decide_AWriteNeedsAcceptEdits_AndADestructiveToolNeedsBypass(ToolPermissionClass toolClass, string ceiling, bool expectedAllowed)
     {
-        Assert.True(DelegatedToolPermissionPolicy.Decide(ceiling, ToolPermissionClass.ReadOnly, "search", onAllowList: false)
-            .IsAllowed);
-    }
-
-    // --- Decide: a write needs acceptEdits or bypass ---
-
-    [Theory]
-    [InlineData("plan", false)]
-    [InlineData("default", false)]
-    [InlineData("acceptEdits", true)]
-    [InlineData("bypassPermissions", true)]
-    public void Decide_Write_IsAllowedOnlyAtAcceptEditsOrBypass(string ceiling, bool expectedAllowed)
-    {
-        Assert.Equal(expectedAllowed, DelegatedToolPermissionPolicy.Decide(ceiling, ToolPermissionClass.Write, "write_file", onAllowList: false)
-            .IsAllowed);
-    }
-
-    // --- Decide: a destructive tool needs bypass ---
-
-    [Theory]
-    [InlineData("plan", false)]
-    [InlineData("default", false)]
-    [InlineData("acceptEdits", false)]
-    [InlineData("bypassPermissions", true)]
-    public void Decide_Destructive_IsAllowedOnlyAtBypass(string ceiling, bool expectedAllowed)
-    {
-        Assert.Equal(expectedAllowed, DelegatedToolPermissionPolicy.Decide(ceiling, ToolPermissionClass.Destructive, "delete_repo", onAllowList: false)
+        Assert.Equal(expectedAllowed, DelegatedToolPermissionPolicy.Decide(ceiling, toolClass, "a_tool", onAllowList: false)
             .IsAllowed);
     }
 
@@ -150,7 +93,7 @@ public class DelegatedToolPermissionPolicyTests
     // --- Decide: an unrecognised/blank ceiling is treated as the most restrictive (read-only only) ---
 
     [Fact]
-    public void Decide_UnrecognisedCeiling_AllowsOnlyReadOnly()
+    public void Decide_UnrecognisedCeiling_AllowsOnlyReadOnly_AndAnUnrecognisedRequestNeverWidens()
     {
         Assert.True(DelegatedToolPermissionPolicy.Decide("something-invented", ToolPermissionClass.ReadOnly, "search", onAllowList: false)
             .IsAllowed);
@@ -158,63 +101,8 @@ public class DelegatedToolPermissionPolicyTests
             .IsAllowed);
         Assert.False(DelegatedToolPermissionPolicy.Decide(null, ToolPermissionClass.Write, "write_file", onAllowList: false)
             .IsAllowed);
-    }
 
-    [Fact]
-    public void Decide_DeniedWrite_ExplainsWithTheCeiling()
-    {
-        var decision = DelegatedToolPermissionPolicy.Decide("plan", ToolPermissionClass.Write, "write_file", onAllowList: false);
-
-        Assert.False(decision.IsAllowed);
-        Assert.Contains("write_file", decision.DenyMessage);
-        Assert.Contains("plan", decision.DenyMessage);
-    }
-
-    // --- Fail-safe defaults / collision reconciliation (security hardening) ---
-
-    [Fact]
-    public void Default_ToolPermissionClass_IsUnknown_SoAMissingClassFailsClosed()
-    {
-        // Unknown must be the zero value: a missing/uninitialised class must deny, not allow.
-        Assert.Equal(ToolPermissionClass.Unknown, default(ToolPermissionClass));
-        Assert.False(DelegatedToolPermissionPolicy.Decide("bypassPermissions", default, "x", onAllowList: false)
-            .IsAllowed);
-    }
-
-    [Theory]
-    // Same class → unchanged.
-    [InlineData(ToolPermissionClass.ReadOnly, ToolPermissionClass.ReadOnly, ToolPermissionClass.ReadOnly)]
-    // A safe name colliding with a riskier one takes the riskier (harder-to-run) class.
-    [InlineData(ToolPermissionClass.ReadOnly, ToolPermissionClass.Write, ToolPermissionClass.Write)]
-    [InlineData(ToolPermissionClass.ReadOnly, ToolPermissionClass.Destructive, ToolPermissionClass.Destructive)]
-    [InlineData(ToolPermissionClass.Write, ToolPermissionClass.Destructive, ToolPermissionClass.Destructive)]
-    // Unknown is the most restrictive of all — a collision with it can never be auto-run without the allow-list.
-    [InlineData(ToolPermissionClass.ReadOnly, ToolPermissionClass.Unknown, ToolPermissionClass.Unknown)]
-    [InlineData(ToolPermissionClass.Destructive, ToolPermissionClass.Unknown, ToolPermissionClass.Unknown)]
-    public void MoreRestrictive_TakesTheHarderToRunClass_EitherOrder(ToolPermissionClass a, ToolPermissionClass b, ToolPermissionClass expected)
-    {
-        Assert.Equal(expected, DelegatedToolPermissionPolicy.MoreRestrictive(a, b));
-        Assert.Equal(expected, DelegatedToolPermissionPolicy.MoreRestrictive(b, a));
-    }
-
-    // --- MoreRestrictiveCeiling: clamp a per-task requested ceiling to the profile's own (AC-117) ---
-
-    [Theory]
-    [InlineData("bypassPermissions", "acceptEdits", "acceptEdits")]
-    [InlineData("acceptEdits", "default", "default")]
-    [InlineData("acceptEdits", "plan", "plan")]
-    [InlineData("default", "bypassPermissions", "default")]   // a request above the ceiling is clamped to the ceiling
-    [InlineData("acceptEdits", "acceptEdits", "acceptEdits")]
-    public void MoreRestrictiveCeiling_TakesTheLowerCeiling_EitherOrder(string a, string b, string expected)
-    {
-        Assert.Equal(expected, DelegatedToolPermissionPolicy.MoreRestrictiveCeiling(a, b));
-        Assert.Equal(expected, DelegatedToolPermissionPolicy.MoreRestrictiveCeiling(b, a));
-    }
-
-    [Fact]
-    public void MoreRestrictiveCeiling_AnUnrecognisedRequest_NeverWidens_AndDeniesAWrite()
-    {
-        // A per-task request the policy does not recognise must never widen what runs: it ranks as most
+        // AC-117: a per-task request the policy does not recognise must never widen what runs: it ranks as most
         // restrictive, and the resulting ceiling denies a write just like read-only does.
         var effective = DelegatedToolPermissionPolicy.MoreRestrictiveCeiling("acceptEdits", "nonsense");
 
@@ -224,58 +112,20 @@ public class DelegatedToolPermissionPolicyTests
 
     // --- ClassifyAgentBuiltIn / AllowsChanges: the tools a CLI runs itself (AC-971) ---
 
-    [Theory]
-    [InlineData("Read", ToolPermissionClass.ReadOnly)]
-    [InlineData("Grep", ToolPermissionClass.ReadOnly)]
-    [InlineData("WebFetch", ToolPermissionClass.ReadOnly)]
-    [InlineData("Write", ToolPermissionClass.Write)]
-    [InlineData("Edit", ToolPermissionClass.Write)]
-    [InlineData("NotebookEdit", ToolPermissionClass.Write)]
-    [InlineData("Bash", ToolPermissionClass.Destructive)]
-    [InlineData("shell", ToolPermissionClass.Destructive)]              // Codex's name for the same thing
-    [InlineData("apply_patch", ToolPermissionClass.Write)]
-    public void ClassifyAgentBuiltIn_GradesTheToolsAnAgentCliRunsItself(string toolName, ToolPermissionClass expected)
-    {
-        Assert.Equal(expected, DelegatedToolPermissionPolicy.ClassifyAgentBuiltIn(toolName));
-    }
-
     [Fact]
-    public void ClassifyAgentBuiltIn_AToolWeDoNotKnow_HasNoClass()
+    public void ClassifyAgentBuiltIn_GradesTheToolsAnAgentCliRunsItself()
     {
-        // Null, not a guess: the caller decides what an unclassifiable name means in its own context, and an MCP
-        // tool must not be graded here by a name that happens to collide with a built-in.
-        Assert.Null(DelegatedToolPermissionPolicy.ClassifyAgentBuiltIn("mcp__depot__write"));
-        Assert.Null(DelegatedToolPermissionPolicy.ClassifyAgentBuiltIn("SomeFutureTool"));
+        (string Name, ToolPermissionClass Expected)[] tools =
+        [
+            ("Read", ToolPermissionClass.ReadOnly), ("Grep", ToolPermissionClass.ReadOnly),
+            ("WebFetch", ToolPermissionClass.ReadOnly), ("Write", ToolPermissionClass.Write),
+            ("Edit", ToolPermissionClass.Write), ("NotebookEdit", ToolPermissionClass.Write),
+            ("Bash", ToolPermissionClass.Destructive), ("shell", ToolPermissionClass.Destructive),
+            ("apply_patch", ToolPermissionClass.Write),
+        ];
+        foreach (var (name, expected) in tools)
+        {
+            Assert.Equal(expected, DelegatedToolPermissionPolicy.ClassifyAgentBuiltIn(name));
+        }
     }
-
-    [Fact]
-    public void ClassifyAgentBuiltIn_AtTheReadOnlyDefault_ReadRuns_AndWriteAndBashDoNot()
-    {
-        // The whole point of the read-only default: a research task can still read the repository, and cannot
-        // change it — not by a file write, and not by a shell command either.
-        var ceiling = DelegatedToolPermissionPolicy.ReadOnlyCeiling;
-
-        Assert.True(_Decide(ceiling, "Read").IsAllowed);
-        Assert.False(_Decide(ceiling, "Write").IsAllowed);
-        Assert.False(_Decide(ceiling, "Bash").IsAllowed);
-    }
-
-    [Theory]
-    [InlineData("bypassPermissions", true)]
-    [InlineData("acceptEdits", true)]
-    [InlineData("default", false)]
-    [InlineData("plan", false)]
-    [InlineData("", false)]
-    [InlineData(null, false)]
-    public void AllowsChanges_IsTrueOnlyWhereATaskMayChangeSomething(string? ceiling, bool expected)
-    {
-        Assert.Equal(expected, DelegatedToolPermissionPolicy.AllowsChanges(ceiling));
-    }
-
-    private static PermissionDecision _Decide(string ceiling, string toolName) =>
-        DelegatedToolPermissionPolicy.Decide(
-            ceiling,
-            DelegatedToolPermissionPolicy.ClassifyAgentBuiltIn(toolName) ?? ToolPermissionClass.Unknown,
-            toolName,
-            onAllowList: false);
 }

@@ -74,6 +74,19 @@ public sealed class WorkflowEngine(IReadOnlyList<IStepRunner> runners, ICockpitH
             return run;
         }
 
+        // A step no loaded plugin runs means its plugin is disabled or removed: skip the whole run and say so, rather than pass the gap by.
+        var missing = workflow.Nodes.Where(node => !node.IsDisabled && !_runners.ContainsKey(node.TypeId)).Select(node => node.TypeId).Distinct().ToList();
+        if (missing.Count > 0)
+        {
+            run.Status = RunStatus.Skipped;
+            run.Reason = WorkflowRunReason.PluginMissing;
+            run.Note = $"Not run: the plugin for {string.Join(", ", missing.Select(typeId => $"'{typeId}'"))} is not available (disabled or removed).";
+            run.FinishedAt = DateTimeOffset.UtcNow;
+            run.Phase = WorkflowRunPhase.Completed;
+            changed?.Invoke(run);
+            return run;
+        }
+
         // Breadth-first from the trigger: each pending entry is a step and the items handed to it. Fan-out simply
         // means one step queues several.
         var pending = new Queue<(string NodeId, IReadOnlyList<WorkflowItem> Input)>();
@@ -146,7 +159,12 @@ public sealed class WorkflowEngine(IReadOnlyList<IStepRunner> runners, ICockpitH
         }
 
         run.FinishedAt = DateTimeOffset.UtcNow;
-        if (run.Status == RunStatus.Running)
+        if (run.Status == RunStatus.Running && cancellationToken.IsCancellationRequested)
+        {
+            run.Status = RunStatus.Failed;
+            run.Error = "The run was stopped before it finished.";
+        }
+        else if (run.Status == RunStatus.Running)
         {
             run.Status = RunStatus.Succeeded;
         }
@@ -178,13 +196,7 @@ public sealed class WorkflowEngine(IReadOnlyList<IStepRunner> runners, ICockpitH
             return StepOutcome.Passing(input, string.Empty);
         }
 
-        if (!_runners.TryGetValue(node.TypeId, out var runner))
-        {
-            step.Status = RunStatus.Skipped;
-            step.Note = $"This cockpit cannot run '{node.TypeId}' yet — the step was passed by, not performed.";
-            step.Items = RunItems.Keep(input);
-            return StepOutcome.Passing(input, string.Empty);
-        }
+        var runner = _runners[node.TypeId];
 
         // A step that acts with the operator's rights is gated: unless the operator started this run themselves, the
         // literal action is put to them for Approve/Deny before it happens. Denied ends this branch as Skipped, not

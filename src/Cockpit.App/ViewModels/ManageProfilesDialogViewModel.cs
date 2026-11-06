@@ -17,6 +17,7 @@ namespace Cockpit.App.ViewModels;
 // entries. Save persists the whole edited list through `ISessionProfileStore`; the view closes via `CloseRequested`.
 public partial class ManageProfilesDialogViewModel : ViewModelBase
 {
+    private readonly Cockpit.Core.ModelIntelligence.IModelImageInput? _imageInput;
     private readonly ISessionProfileStore? _profileStore;
     private readonly IProfileLoginChecker? _loginChecker;
     private readonly ISessionLoginFlows? _loginStarter;
@@ -93,9 +94,11 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
         ISessionLoginFlows? loginStarter = null,
         IPluginProviderConfigViews? pluginConfigViews = null,
         IOrgPolicy? orgPolicy = null,
-        bool hostRunsTty = true)
+        bool hostRunsTty = true,
+        Cockpit.Core.ModelIntelligence.IModelImageInput? imageInput = null)
     {
         _orgPolicyReader = orgPolicy;
+        _imageInput = imageInput;
         _pluginConfigViews = pluginConfigViews;
         _profileStore = profileStore;
         _loginChecker = loginChecker;
@@ -180,7 +183,7 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
         Profiles.Clear();
         foreach (var profile in profiles)
         {
-            Profiles.Add(new EditableProfileViewModel(profile, _loginChecker?.IsLoggedIn(profile) ?? false, providers: _providers, pluginProviderRegistry: _pluginProviderRegistry, pluginConfigViews: _pluginConfigViews, availableMcpServerNames: _availableMcpServerNames, tokenEstimator: _tokenEstimator, ttyProviderResolver: _ttyProviderResolver, loginStarter: _loginStarter, orgPolicy: _orgPolicy, hostRunsTty: _hostRunsTty)
+            Profiles.Add(new EditableProfileViewModel(profile, _loginChecker?.IsLoggedIn(profile) ?? false, providers: _providers, pluginProviderRegistry: _pluginProviderRegistry, pluginConfigViews: _pluginConfigViews, availableMcpServerNames: _availableMcpServerNames, tokenEstimator: _tokenEstimator, ttyProviderResolver: _ttyProviderResolver, loginStarter: _loginStarter, orgPolicy: _orgPolicy, hostRunsTty: _hostRunsTty, imageInput: _imageInput)
             {
                 OriginalLabel = profile.Label,
             });
@@ -195,7 +198,7 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
         // A freshly added profile may pick its provider (#26); an existing one is fixed. Defaults to the bundled
         // Claude provider plugin — Claude is a plugin like every other now (Fase 4), not a built-in CLI provider.
         var added = new EditableProfileViewModel(
-            new SessionProfile("new profile", ClaudePluginProfile.Create(string.Empty, null)), isLoggedIn: false, canChooseProvider: true, providers: _providers, pluginProviderRegistry: _pluginProviderRegistry, pluginConfigViews: _pluginConfigViews, availableMcpServerNames: _availableMcpServerNames, tokenEstimator: _tokenEstimator, ttyProviderResolver: _ttyProviderResolver, loginStarter: _loginStarter, orgPolicy: _orgPolicy, hostRunsTty: _hostRunsTty);
+            new SessionProfile("new profile", ClaudePluginProfile.Create(string.Empty, null)), isLoggedIn: false, canChooseProvider: true, providers: _providers, pluginProviderRegistry: _pluginProviderRegistry, pluginConfigViews: _pluginConfigViews, availableMcpServerNames: _availableMcpServerNames, tokenEstimator: _tokenEstimator, ttyProviderResolver: _ttyProviderResolver, loginStarter: _loginStarter, orgPolicy: _orgPolicy, hostRunsTty: _hostRunsTty, imageInput: _imageInput);
         Profiles.Add(added);
         SelectedProfile = added;
     }

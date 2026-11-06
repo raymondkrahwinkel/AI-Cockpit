@@ -13,6 +13,9 @@ public interface ISwarmOptions
     Task<SwarmJoinHandshake> BeginManualAsync(string address, CancellationToken ct = default) => BeginAsync(address, ct);
     Task CompleteAsync(SwarmJoinHandshake handshake, bool discovered, CancellationToken ct = default);
     Task RetryAsync(CancellationToken ct = default) => Task.CompletedTask;
+    Task<string> ResetAsync(CancellationToken ct = default) => throw new NotSupportedException("Swarm reset is unavailable.");
+    Task<bool> ConnectionsEnabledAsync(CancellationToken ct = default) => Task.FromResult(true);
+    string ConnectionFailure => "";
     Task KickAsync(SwarmMemberId member, CancellationToken ct = default) => Task.CompletedTask;
     Task<string> RemovalStatusAsync(CancellationToken ct = default) => Task.FromResult("");
     SwarmJoinPending? Pending { get; }

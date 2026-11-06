@@ -28,7 +28,7 @@ internal sealed class SwarmPropagation(SwarmMembershipStore store, IToastService
         return new(since, prefix, membership.Log.Skip((int)since).ToArray());
     }
 
-    internal async Task ApplyAsync(SwarmRecords delta, CancellationToken ct)
+    internal async Task ApplyAsync(SwarmRecords delta, CancellationToken ct, long? generation = null)
     {
         if (delta.Records is null)
         {
@@ -37,6 +37,10 @@ internal sealed class SwarmPropagation(SwarmMembershipStore store, IToastService
         await store.Gate.WaitAsync(ct);
         try
         {
+            if (generation is { } expected && expected != store.Generation)
+            {
+                throw new InvalidDataException("swarm_reset_during_request");
+            }
             var current = await store.LoadAsync(ct);
             if (delta.Since > current.Sequence || delta.Since < 0
                 || Prefix(current.Log.Take((int)delta.Since)) != delta.Prefix)

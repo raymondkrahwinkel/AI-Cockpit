@@ -48,7 +48,7 @@ public class ClusterAccessGateTests
         asked.FirstOrDefault(request => request.Scope.StartsWith(prefix, StringComparison.Ordinal));
 
     [Fact]
-    public async Task Read_OnAllowedNamespace_AsksOnlyForTheConnection()
+    public async Task Read_OnAllowedNamespace_AsksOnlyForTheConnection_OutsideTheList_AsksForTheNamespace_LowRiskRemember()
     {
         var host = _Host(ConsentOutcome.Approved, out var asked);
         var gate = new ClusterAccessGate(host);
@@ -58,15 +58,9 @@ public class ClusterAccessGateTests
         Assert.True(result.IsAllowed);
         Assert.NotNull(_WithScopePrefix(asked, "k8s.connect:"));
         Assert.Null(_WithScopePrefix(asked, "k8s.namespace:"));
-    }
 
-    [Fact]
-    public async Task Read_OnNamespaceOutsideTheList_AsksForTheNamespace_LowRiskRemember_ShowingIt()
-    {
-        var host = _Host(ConsentOutcome.Approved, out var asked);
-        var gate = new ClusterAccessGate(host);
-
-        var result = await gate.AuthorizeNamespacedReadAsync(_Cluster(["default"]), "list_resources", "kube-system", "list pods", PaneId);
+        asked.Clear();
+        result = await gate.AuthorizeNamespacedReadAsync(_Cluster(["default"]), "list_resources", "kube-system", "list pods", PaneId);
 
         Assert.True(result.IsAllowed);
         var namespaceAsk = _WithScopePrefix(asked, "k8s.namespace:");
@@ -91,16 +85,10 @@ public class ClusterAccessGateTests
         Assert.Equal(ConsentRisk.Dangerous, mutate!.Risk);
         Assert.False(mutate.AllowRemember, "a mutation is never remembered");
         Assert.Equal("delete pod nginx-1", mutate.Action);
-    }
 
-    [Fact]
-    public async Task Mutation_OutsideTheList_AsksNamespaceThenMutation()
-    {
-        var host = _Host(ConsentOutcome.Approved, out var asked);
-        var gate = new ClusterAccessGate(host);
-
+        // Outside the list: the namespace is asked first, then the mutation.
+        asked.Clear();
         await gate.AuthorizeNamespacedMutationAsync(_Cluster(["default"]), "delete_resource", "kube-system", "delete pod x", PaneId);
-
         Assert.NotNull(_WithScopePrefix(asked, "k8s.namespace:"));
         Assert.NotNull(_WithScopePrefix(asked, "k8s.mutate:"));
     }
@@ -122,16 +110,10 @@ public class ClusterAccessGateTests
         Assert.Equal(ConsentRisk.Dangerous, refresh!.Risk);
         Assert.False(refresh.AllowRemember, "a refresh is never remembered, same as every other write");
         Assert.Null(_WithScopePrefix(asked, "k8s.mutate:"));
-    }
 
-    [Fact]
-    public async Task ArgoRefresh_OutsideTheAllowedNamespace_AsksNamespaceThenRefresh()
-    {
-        var host = _Host(ConsentOutcome.Approved, out var asked);
-        var gate = new ClusterAccessGate(host);
-
+        // Outside the list: the namespace is asked first, then the refresh.
+        asked.Clear();
         await gate.AuthorizeArgoRefreshAsync(_Cluster(["default"]), "argo_refresh", "argocd", "refresh Application \"cert-manager\"", PaneId);
-
         Assert.NotNull(_WithScopePrefix(asked, "k8s.namespace:"));
         Assert.NotNull(_WithScopePrefix(asked, "k8s.argo.refresh:"));
     }
@@ -149,7 +131,7 @@ public class ClusterAccessGateTests
     }
 
     [Fact]
-    public async Task ClusterScoped_WhenOff_IsBlockedWithoutAsking()
+    public async Task ClusterScopedOrDanger_WhenOff_IsBlockedWithoutAsking()
     {
         var host = _Host(ConsentOutcome.Approved, out var asked);
         var gate = new ClusterAccessGate(host);
@@ -158,28 +140,21 @@ public class ClusterAccessGateTests
 
         Assert.False(result.IsAllowed, "cluster-scoped access is opt-in per cluster");
         Assert.Contains("settings", result.DeniedReason);
+
+        result = await gate.AuthorizeDangerAsync(_Cluster(["default"], exec: false), "exec", DangerCapability.Exec, "default", "exec: sh -c ls", PaneId);
+        Assert.False(result.IsAllowed, "exec is off by default");
+        Assert.Contains("settings", result.DeniedReason);
         Assert.Empty(asked);
     }
 
     [Fact]
-    public async Task ClusterScoped_WhenOn_Asks()
+    public async Task ClusterScoped_WhenOn_Asks_AndTheRememberScopeIsPerKind_NotTheWholeClass()
     {
         var host = _Host(ConsentOutcome.Approved, out var asked);
         var gate = new ClusterAccessGate(host);
 
         var result = await gate.AuthorizeClusterScopedReadAsync(_Cluster(clusterScoped: true), "list_resources", "/nodes", "list nodes", PaneId);
-
         Assert.True(result.IsAllowed);
-        Assert.NotNull(_WithScopePrefix(asked, "k8s.clusterscoped:"));
-    }
-
-    [Fact]
-    public async Task ClusterScoped_RememberScope_IsPerKind_NotTheWholeClass()
-    {
-        var host = _Host(ConsentOutcome.Approved, out var asked);
-        var gate = new ClusterAccessGate(host);
-
-        await gate.AuthorizeClusterScopedReadAsync(_Cluster(clusterScoped: true), "list_resources", "/nodes", "list nodes", PaneId);
         await gate.AuthorizeClusterScopedReadAsync(_Cluster(clusterScoped: true), "list_resources", "rbac.authorization.k8s.io/clusterroles", "list clusterroles", PaneId);
 
         var scopes = asked.Where(request => request.Scope.StartsWith("k8s.clusterscoped:", StringComparison.Ordinal)).Select(request => request.Scope).ToList();
@@ -203,19 +178,12 @@ public class ClusterAccessGateTests
         Assert.DoesNotContain("\r", danger.Action, StringComparison.Ordinal);
         Assert.Contains("\\n", danger.Action, StringComparison.Ordinal);
         Assert.Contains("routine health-check", danger.Action, StringComparison.Ordinal);
-    }
 
-    [Fact]
-    public async Task ConsentAction_DoesNotLetASecondLineMasqueradeAsAComment()
-    {
         // AC-92: a raw newline flattened to a space turns "echo hi #harmless\nrm -rf /data" into one line that reads
         // as commented-out while the apiserver still runs line 2. Visibly escaping the break keeps that impossible.
-        var host = _Host(ConsentOutcome.Approved, out var asked);
-        var gate = new ClusterAccessGate(host);
-
+        asked.Clear();
         await gate.AuthorizeDangerAsync(_Cluster(["default"], exec: true), "exec", DangerCapability.Exec, "default", "echo hi #harmless\nrm -rf /data", PaneId);
-
-        var danger = _WithScopePrefix(asked, "k8s.exec:");
+        danger = _WithScopePrefix(asked, "k8s.exec:");
         Assert.NotNull(danger);
         Assert.DoesNotContain("#harmless rm -rf /data", danger!.Action, StringComparison.Ordinal);
         Assert.Contains("#harmless\\nrm -rf /data", danger.Action, StringComparison.Ordinal);
@@ -239,21 +207,14 @@ public class ClusterAccessGateTests
         Assert.NotNull(mutate);
         Assert.Equal(1 + lines.Count, mutate!.Action.Split('\n').Length);
         Assert.DoesNotContain("\\n", mutate.Action, StringComparison.Ordinal);
-    }
 
-    // AC-1062, criterion 3: the multi-line ingress still holds the AC-92 invariant — a detail line carrying a raw
-    // newline of its own cannot turn into a second physical line, it comes out escaped on the one line it was given.
-    [Fact]
-    public async Task Mutation_ADetailLineWithAnEmbeddedNewline_ComesOutAsOneEscapedLine_NotTwoLines()
-    {
-        var host = _Host(ConsentOutcome.Approved, out var asked);
-        var gate = new ClusterAccessGate(host);
-
+        // AC-1062, criterion 3: the multi-line ingress still holds the AC-92 invariant — a detail line carrying a raw
+        // newline of its own cannot turn into a second physical line, it comes out escaped on the one line it was given.
+        asked.Clear();
         await gate.AuthorizeNamespacedMutationAsync(
             _Cluster(["default"]), "delete_resource", "default", "roll back Helm release \"demo\"", PaneId,
             detailLines: ["+ CREATE v1 ConfigMap default/evil\nrm -rf /data"]);
-
-        var mutate = _WithScopePrefix(asked, "k8s.mutate:");
+        mutate = _WithScopePrefix(asked, "k8s.mutate:");
         Assert.NotNull(mutate);
         Assert.Equal(2, mutate!.Action.Split('\n').Length);
         Assert.Contains("evil\\nrm -rf /data", mutate.Action, StringComparison.Ordinal);
@@ -280,19 +241,6 @@ public class ClusterAccessGateTests
     }
 
     [Fact]
-    public async Task Danger_WhenCapabilityOff_IsBlockedWithoutAsking()
-    {
-        var host = _Host(ConsentOutcome.Approved, out var asked);
-        var gate = new ClusterAccessGate(host);
-
-        var result = await gate.AuthorizeDangerAsync(_Cluster(["default"], exec: false), "exec", DangerCapability.Exec, "default", "exec: sh -c ls", PaneId);
-
-        Assert.False(result.IsAllowed, "exec is off by default");
-        Assert.Contains("settings", result.DeniedReason);
-        Assert.Empty(asked);
-    }
-
-    [Fact]
     public async Task Danger_WhenOn_Asks_AsDangerous_NeverRemembered()
     {
         var host = _Host(ConsentOutcome.Approved, out var asked);
@@ -305,16 +253,10 @@ public class ClusterAccessGateTests
         Assert.NotNull(exec);
         Assert.Equal(ConsentRisk.Dangerous, exec!.Risk);
         Assert.False(exec.AllowRemember);
-    }
 
-    [Fact]
-    public async Task Danger_OnNamespaceOutsideTheList_StillAppliesTheJail()
-    {
-        var host = _Host(ConsentOutcome.Approved, out var asked);
-        var gate = new ClusterAccessGate(host);
-
+        // Outside the list the namespace jail still applies on top.
+        asked.Clear();
         await gate.AuthorizeDangerAsync(_Cluster(["default"], exec: true), "exec", DangerCapability.Exec, "kube-system", "exec: sh -c ls", PaneId);
-
         Assert.NotNull(_WithScopePrefix(asked, "k8s.namespace:"));
         Assert.NotNull(_WithScopePrefix(asked, "k8s.exec:"));
     }

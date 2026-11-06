@@ -1,7 +1,7 @@
 using Microsoft.Extensions.AI;
 using Cockpit.Infrastructure.Mcp;
-using ModelContextProtocol.Client;
-using NSubstitute;
+using Cockpit.Core.Mcp;
+using Cockpit.Core.Sessions.Permissions;
 
 namespace Cockpit.Core.Tests.Mcp;
 
@@ -12,58 +12,37 @@ namespace Cockpit.Core.Tests.Mcp;
 public class GatedToolTests
 {
     [Fact]
-    public async Task Invoke_WhenAnActualMcpResultIsNotTruncated_PreservesItsType()
-    {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        await using var server = await InProcessMcpHttpServer.StartAsync<McpTestToolA>();
-        await using var client = await McpClientConnector.ConnectAsync(_TransportTo(server), null, timeout.Token);
-        var actualTool = Assert.Single(await client.ListToolsAsync(cancellationToken: timeout.Token));
-        var actualResult = await actualTool.InvokeAsync(cancellationToken: timeout.Token);
-        var gate = Substitute.For<IToolApprovalGate>();
-        gate.RequestApprovalAsync(Arg.Any<string>(), actualTool.Name, Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(ToolApprovalResult.Allow);
-        var tool = new GatedTool(actualTool, gate);
-
-        var result = await tool.InvokeAsync(cancellationToken: timeout.Token);
-
-        Assert.Equal(actualResult?.GetType(), result?.GetType());
-    }
-
-    [Fact]
-    public async Task Invoke_WhenDenied_DoesNotRunTheTool_AndReturnsARefusal()
+    public async Task Invoke_UsesCanonicalPermissions_AndNeverSharesAnAllowBetweenServers()
     {
         var calls = 0;
-        AIFunction inner = AIFunctionFactory.Create(() => { calls++; return "the result"; }, "myTool");
-        var gate = Substitute.For<IToolApprovalGate>();
-        gate.RequestApprovalAsync(Arg.Any<string>(), "myTool", Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(ToolApprovalResult.Deny(null));
+        var names = new McpToolNames();
+        var alias = names.ForTool("coding", "write");
+        var canonical = names.ToCanonical(alias);
+        var otherAlias = names.ForTool("other", "write");
+        var reported = new List<string>();
+        AIFunction inner = AIFunctionFactory.Create(() => { calls++; return "the result"; }, alias);
+        var gate = new SessionToolApprovalGate((_, name, _) => reported.Add(name), (_, _, _) => throw new InvalidOperationException("Delegation must not prompt."), (_, _, _) => { })
+        {
+            ToolNames = names,
+            ToolClasses = new Dictionary<string, ToolPermissionClass>
+            {
+                [canonical] = ToolPermissionClass.Write,
+                [names.ToCanonical(otherAlias)] = ToolPermissionClass.Write,
+            },
+        };
+        gate.SetDelegatedGate("default", []);
         var tool = new GatedTool(inner, gate);
 
         var result = await tool.InvokeAsync();
 
         Assert.Equal(0, calls);
-        Assert.Contains("denied", result?.ToString());
+        Assert.Contains("does not permit", result?.ToString());
+        Assert.Equal("mcp__coding__write", Assert.Single(reported));
+
+        gate.SetDelegatedGate("default", [canonical]);
+        Assert.Equal("the result", (await tool.InvokeAsync())?.ToString());
+        var other = new GatedTool(AIFunctionFactory.Create(() => { calls++; return "wrong server"; }, otherAlias), gate);
+        Assert.Contains("does not permit", (await other.InvokeAsync())?.ToString());
+        Assert.Equal(1, calls);
     }
-
-    [Fact]
-    public async Task Invoke_WhenTheToolReturnsAContentList_ReturnsItsTextNotItsTypeName()
-    {
-        var gate = Substitute.For<IToolApprovalGate>();
-        gate.RequestApprovalAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(ToolApprovalResult.Allow);
-        var tool = new GatedTool(new ContentListTool(), gate);
-
-        var result = await tool.InvokeAsync();
-
-        Assert.Equal("hello\nmail", result);
-    }
-
-    // What McpClientTool hands back for a tool's output with inbox mail piggybacked on it (AC-1492).
-    private sealed class ContentListTool : AIFunction
-    {
-        public override string Name => "contentList";
-
-        protected override ValueTask<object?> InvokeCoreAsync(AIFunctionArguments arguments, CancellationToken cancellationToken) =>
-            new(new AIContent[] { new TextContent("hello"), new TextContent("mail") });
-    }
-
-    private static HttpClientTransport _TransportTo(InProcessMcpHttpServer server) =>
-        new(new HttpClientTransportOptions { Endpoint = new Uri(server.Url) });
 }

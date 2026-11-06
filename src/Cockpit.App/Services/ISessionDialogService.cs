@@ -133,6 +133,11 @@ public interface ISessionDialogService
     Task ShowDelegatedTasksDialogAsync();
 
     /// <summary>
+    /// Opens the test-runs view (AC-2028): the runs `start_run` began, running, queued and finished.
+    /// </summary>
+    Task ShowTestRunsDialogAsync();
+
+    /// <summary>
     /// Opens the read-only window on the agent line (AC-397): what agents on this desk said, wakes asked for,
     /// what's claimed and refused. Takes its view model like the worktrees dialog does, since the caller owns it.
     /// </summary>
@@ -156,6 +161,11 @@ public interface ISessionDialogService
     /// — empty when cleared — or null when cancelled, leaving the status unchanged.
     /// </summary>
     Task<string?> ShowSetStatusDialogAsync(string currentStatusline);
+
+    /// <summary>
+    /// Shows a session's live MCP set. The operator can remove a server here; adding remains an assistant action.
+    /// </summary>
+    Task ShowSessionMcpDialogAsync(string paneId, string sessionName);
 
     /// <summary>
     /// Asks for a moment and a prompt to pick a session up with (AC-231), starting from <paramref name="suggested"/>.

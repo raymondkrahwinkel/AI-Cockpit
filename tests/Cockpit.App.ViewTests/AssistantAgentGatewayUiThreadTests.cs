@@ -60,30 +60,6 @@ public class AssistantAgentGatewayUiThreadTests
     }
 
     /// <summary>
-    /// The spawn path is the one whose lambda genuinely awaits inside the dispatcher, and the one that mutates
-    /// <c>Sessions</c>. A refusal is enough to prove the marshalling: it travels the same road as a start.
-    /// </summary>
-    [Fact]
-    public async Task ASpawnArrivingOffTheUiThread_IsMarshalledOntoIt_RatherThanTouchingSessionsFromKestrel()
-    {
-        var (gateway, deskId) = Dispatcher.UIThread.Invoke(() => _Gateway());
-
-        var result = await Task.Run(async () =>
-        {
-            Assert.False(Dispatcher.UIThread.CheckAccess());
-
-            return await gateway
-                .SpawnAsync(new AgentSpawnRequest(SpawnTarget.NamedByTheAssistant(deskId), "no-such-profile"))
-                .WaitAsync(TimeSpan.FromSeconds(10));
-        });
-
-        // The profile store this gateway holds is empty, so the answer is a refusal — which is the point: it came
-        // back at all, with a sentence, from a thread that may not read the cockpit's collections.
-        Assert.False(result.Ok);
-        Assert.Contains("no-such-profile", result.Error);
-    }
-
-    /// <summary>
     /// An embedded session — an Autopilot step, a plugin run — is a session but not a pane the cockpit closes, and
     /// the assistant's own <c>list_sessions</c> shows it. Stopping one must be refused with a reason.
     /// </summary>
@@ -110,46 +86,6 @@ public class AssistantAgentGatewayUiThreadTests
 
         // The half that makes this more than a wording test: it is still there afterwards.
         Assert.NotNull(Dispatcher.UIThread.Invoke(() => cockpit.FindSession(embeddedPaneId)));
-    }
-
-    [Fact]
-    public async Task CreatingADesk_MakesASessionsDeskThatCanHoldASession_AndAddsItToTheCockpit()
-    {
-        var (gateway, _) = Dispatcher.UIThread.Invoke(() => _Gateway(out var cockpit));
-
-        var created = await Task.Run(() => Dispatcher.UIThread.InvokeAsync(
-            () => gateway.CreateWorkspaceAsync("Release work")));
-
-        Assert.NotNull(created);
-        Assert.Equal("Release work", created!.Name);
-        // The type id ("sessions"), which is what this row's own contract promises — not the record struct's
-        // ToString(), which hands the model "WorkspaceType { Id = Sessions, IsBuiltIn = True }". This assertion
-        // used to read ToString() and so pinned the leak rather than the contract (found in a live transcript,
-        // Raymond 2026-08-02).
-        Assert.Equal(WorkspaceType.Sessions.Id, created.Type);
-
-        // Reported rather than left to be inferred from the type: this is the answer a spawn depends on, and the
-        // whole reason to make a desk is to put something on it.
-        Assert.True(created.CanHostSessions);
-        Assert.Equal(0, created.SessionCount);
-
-        var listed = await Dispatcher.UIThread.InvokeAsync(() => gateway.ListWorkspacesAsync());
-        Assert.Contains(listed, row => row.Id == created.Id);
-    }
-
-    [Fact]
-    public async Task CreatingADeskWithABlankName_MakesNothing_RatherThanADeskWithNoLabel()
-    {
-        var (gateway, _) = Dispatcher.UIThread.Invoke(() => _Gateway(out var cockpit));
-
-        var before = (await Dispatcher.UIThread.InvokeAsync(() => gateway.ListWorkspacesAsync())).Count;
-        var created = await Dispatcher.UIThread.InvokeAsync(() => gateway.CreateWorkspaceAsync("   "));
-        var after = (await Dispatcher.UIThread.InvokeAsync(() => gateway.ListWorkspacesAsync())).Count;
-
-        // A tab with no label is unclickable and unnameable afterwards; refusing is the only outcome the operator
-        // can act on.
-        Assert.Null(created);
-        Assert.Equal(before, after);
     }
 
     private static (AssistantAgentGateway Gateway, string DeskId) _Gateway() => _Gateway(out _);

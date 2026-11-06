@@ -156,6 +156,12 @@
                                    IsVisible="{Binding $parent[Window].((vm:ManageProfilesDialogViewModel)DataContext).ModelFetchStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                     </StackPanel>
 
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Supports images" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        <ComboBox ItemsSource="{Binding ImageInputModes}" SelectedItem="{Binding ImageInputMode}" HorizontalAlignment="Stretch"/>
+                        <TextBlock Text="{Binding ImageInputStatus}" FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                    </StackPanel>
+
                     <StackPanel Spacing="4" IsVisible="{Binding IsLmStudioProvider}">
                         <TextBlock Text="API key (optional, only behind a proxy)" FontSize="11"
                                    Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>

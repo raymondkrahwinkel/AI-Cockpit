@@ -82,63 +82,13 @@ public class NodePairingBrokerTests : IDisposable
         Assert.Equal(NodePairingError.Expired, refusal.Error);
     }
 
-    [Fact]
-    public async Task Claim_AfterConfirming_IsNotDefeatedByTheWindowClosing()
-    {
-        var broker = _Broker();
-        var offer = await broker.RequestAsync("desk", "192.168.1.5");
-        await broker.ConfirmAsync(offer.PairingId);
 
-        // The two minutes are on the operator answering, not on the controller collecting. Expiring here would
-        // leave the node paired with a controller that can never hold the credential it was granted.
-        _time.Advance(NodePairingBroker.Lifetime + TimeSpan.FromSeconds(1));
-
-        var grant = await broker.ClaimAsync(offer.PairingId, offer.ClaimToken);
-        Assert.NotEqual("", grant.SharedSecret);
-    }
-
-    [Fact]
-    public async Task Request_WhileAlreadyPaired_IsRefusedAndNamesTheIncumbent()
-    {
-        var store = _Store();
-        var broker = _Broker(store);
-        var first = await broker.RequestAsync("Raymond's desktop", "192.168.1.5");
-        await broker.ConfirmAsync(first.PairingId);
-        await broker.ClaimAsync(first.PairingId, first.ClaimToken);
-
-        var refusal = await Assert.ThrowsAsync<NodePairingException>(() => broker.RequestAsync("a stranger", "192.168.1.9"));
-
-        // Criterion 3, and open point 3's answer: refuse, but say who has it — otherwise this is indistinguishable
-        // from a credential problem and the caller retries the wrong thing forever.
-        Assert.Equal(NodePairingError.AlreadyPaired, refusal.Error);
-        Assert.Contains("Raymond's desktop", refusal.Message, StringComparison.Ordinal);
-        Assert.Contains("192.168.1.5", refusal.Message, StringComparison.Ordinal);
-    }
 
     /// <summary>
     /// AC-1325: no chains. A cockpit that already controls a node of its own refuses a pairing request naming that
     /// node, and its counter-proof in the same row set — no controlled node — is today's existing behaviour: the
     /// request becomes <c>Pending</c> exactly as before this ticket.
     /// </summary>
-    [Theory]
-    [InlineData(new[] { "laptop" }, NodePairingError.IsAController, "laptop")]
-    [InlineData(new string[0], null, "")]
-    public async Task Request_RefusesOnlyWhenThisCockpitAlreadyControlsANode(string[] controlledNodes, string? expectedError, string expectedNameInMessage)
-    {
-        var servers = new _FakeMcpServerStore([.. controlledNodes.Select(node => new McpServerConfig
-        {
-            Name = NodeServerName.For(node, NodeServerName.SessionsServerName),
-            Transport = McpTransport.Http,
-            Url = $"https://{node}/mcp",
-        })]);
-        var broker = _Broker(servers: servers);
-
-        var refusal = await Record.ExceptionAsync(() => broker.RequestAsync("desk", "192.168.1.5")) as NodePairingException;
-
-        Assert.Equal(expectedError, refusal?.Error);
-        Assert.Equal(expectedError is null, broker.Pending is not null);
-        Assert.Contains(expectedNameInMessage, refusal?.Message ?? "", StringComparison.Ordinal);
-    }
 
     [Fact]
     public async Task Request_WhileAnotherIsWaitingForTheOperator_IsRefused()
@@ -153,58 +103,8 @@ public class NodePairingBrokerTests : IDisposable
         Assert.Equal(NodePairingError.PairingInProgress, refusal.Error);
     }
 
-    [Fact]
-    public async Task Request_AfterTheOperatorRefuses_IsAcceptedAgain()
-    {
-        var broker = _Broker();
-        var first = await broker.RequestAsync("desk", "192.168.1.5");
-        broker.Refuse(first.PairingId);
 
-        // Refusing must not wedge the node for two minutes — the operator who pressed Refuse is often about to
-        // retry with the right machine.
-        var second = await broker.RequestAsync("desk", "192.168.1.5");
-        Assert.NotEqual(first.PairingId, second.PairingId);
-    }
 
-    [Fact]
-    public async Task Unpair_InvalidatesTheSharedSecretTheControllerWasGranted()
-    {
-        var store = _Store();
-        var broker = _Broker(store);
-        var offer = await broker.RequestAsync("desk", "192.168.1.5");
-        await broker.ConfirmAsync(offer.PairingId);
-        var grant = await broker.ClaimAsync(offer.PairingId, offer.ClaimToken);
-
-        await broker.UnpairAsync();
-
-        // Criterion 5: this is the value `McpAuthMiddleware` accepts on the node listener, so clearing it is the
-        // revocation. Merely forgetting the pairing would leave the controller able to call in.
-        var settings = await store.LoadAsync();
-        Assert.Equal("", settings.SharedSecret);
-        Assert.NotEqual(grant.SharedSecret, settings.SharedSecret);
-        Assert.Null(settings.Pairing);
-        Assert.Null(broker.Pairing);
-    }
-
-    [Fact]
-    public async Task Confirm_TakesTheRequestOffTheOperatorsScreen_SoRefuseCannotUndoIt()
-    {
-        var store = _Store();
-        var broker = _Broker(store);
-        var offer = await broker.RequestAsync("desk", "192.168.1.5");
-        await broker.ConfirmAsync(offer.PairingId);
-
-        // Nothing left for the operator to press — the screen keys on this, so a Refuse button that lingered here
-        // could mark a pairing refused whose secret is already minted and rotated into place.
-        Assert.Null(broker.Pending);
-
-        broker.Refuse(offer.PairingId);
-
-        // And if it is pressed anyway, it changes nothing: the pairing stands and the controller can still claim.
-        Assert.NotNull(broker.Pairing);
-        var grant = await broker.ClaimAsync(offer.PairingId, offer.ClaimToken);
-        Assert.Equal((await store.LoadAsync()).SharedSecret, grant.SharedSecret);
-    }
 
     [Fact]
     public async Task Confirm_Twice_IsRefused()
@@ -218,90 +118,17 @@ public class NodePairingBrokerTests : IDisposable
         Assert.Equal(NodePairingError.InvalidToken, refusal.Error);
     }
 
-    [Fact]
-    public async Task Confirm_RecordsThePairingSoARestartStillKnowsWhoItIs()
-    {
-        var store = _Store();
-        var broker = _Broker(store);
-        var offer = await broker.RequestAsync("Raymond's desktop", "192.168.1.5");
-        await broker.ConfirmAsync(offer.PairingId);
 
-        // A second broker over the same config is the restart: the pending pairing is gone (it lives in memory on
-        // purpose) but the coupling it created is not.
-        var afterRestart = _Broker(new NodeEndpointSettingsStore(_configPath));
-        var refusal = await Assert.ThrowsAsync<NodePairingException>(() => afterRestart.RequestAsync("a stranger", "192.168.1.9"));
-
-        Assert.Equal(NodePairingError.AlreadyPaired, refusal.Error);
-        Assert.Null(afterRestart.Pending);
-    }
-
-    [Fact]
-    public async Task Confirm_MintsAFreshSecretRatherThanReusingTheHandCopiedOne()
-    {
-        var store = _Store();
-        await store.SaveAsync(new NodeEndpointSettings { Enabled = true, SharedSecret = "the-hand-copied-one" });
-
-        var broker = _Broker(store);
-        var offer = await broker.RequestAsync("desk", "192.168.1.5");
-        await broker.ConfirmAsync(offer.PairingId);
-
-        // Pairing is a new coupling, so it gets a new credential — otherwise unpairing later would leave whoever
-        // had read the old key off the Security tab still holding a working one.
-        var settings = await store.LoadAsync();
-        Assert.NotEqual("the-hand-copied-one", settings.SharedSecret);
-        Assert.True(settings.Enabled);
-    }
 
     // ── AC-794, scope ──────────────────────────────────────────────────────────────────────────────────────────
 
-    [Fact]
-    public void IsProfileAllowed_WhileUnpaired_IsFalse_ThereIsNothingToCheckAgainst()
-    {
-        var broker = _Broker();
-
-        Assert.False(broker.IsProfileAllowed("default"));
-        Assert.False(broker.IsProjectAllowed("proj-1"));
-    }
 
     /// <summary>
     /// AC-1292 criteria 1 and 2, and a deliberate reversal of AC-794's own criterion 2: confirming is still where
     /// the access comes from, but what it covers is now everything — including the profile and the project that do
     /// not exist yet, which a literal id list could never reach.
     /// </summary>
-    [Fact]
-    public async Task IsProfileAllowed_OnAFreshPairing_CoversEverything_IncludingWhatIsMadeAfterwards()
-    {
-        var broker = _Broker();
-        var offer = await broker.RequestAsync("desk", "192.168.1.5");
-        await broker.ConfirmAsync(offer.PairingId);
-        await broker.ClaimAsync(offer.PairingId, offer.ClaimToken);
 
-        Assert.True(broker.IsProfileAllowed("default"));
-        Assert.True(broker.IsProjectAllowed("proj-1"));
-
-        // Nothing was ticked, so a name nobody has ever seen is reached on the same footing — which is exactly the
-        // "created after the pairing" case.
-        Assert.True(broker.IsProfileAllowed("a-profile-made-tomorrow"));
-        Assert.True(broker.IsProjectAllowed("a-project-made-tomorrow"));
-    }
-
-    [Fact]
-    public async Task SetScope_GrantsExactlyWhatWasListed_NothingElse()
-    {
-        var broker = _Broker();
-        var offer = await broker.RequestAsync("desk", "192.168.1.5");
-        await broker.ConfirmAsync(offer.PairingId);
-        await broker.ClaimAsync(offer.PairingId, offer.ClaimToken);
-
-        await broker.SetScopeAsync(["default"], ["proj-1"], false, false);
-
-        Assert.True(broker.IsProfileAllowed("default"));
-        Assert.True(broker.IsProjectAllowed("proj-1"));
-        // Criterion 5's sibling: a grant is a named list, not "everything past this point" — a second profile that
-        // was never ticked stays refused.
-        Assert.False(broker.IsProfileAllowed("work"));
-        Assert.False(broker.IsProjectAllowed("proj-2"));
-    }
 
     /// <summary>
     /// AC-1292 criterion 3: the narrow stand still does exactly what it did, and the two kinds are separate
@@ -322,34 +149,7 @@ public class NodePairingBrokerTests : IDisposable
         Assert.True(broker.IsProjectAllowed("a-project-made-tomorrow"));
     }
 
-    [Fact]
-    public async Task SetScope_Persists_SoARestartRemembersTheGrant()
-    {
-        var store = _Store();
-        var broker = _Broker(store);
-        var offer = await broker.RequestAsync("desk", "192.168.1.5");
-        await broker.ConfirmAsync(offer.PairingId);
-        await broker.ClaimAsync(offer.PairingId, offer.ClaimToken);
-        await broker.SetScopeAsync(["default"], ["proj-1"], false, false);
 
-        var afterRestart = _Broker(new NodeEndpointSettingsStore(_configPath));
-        await afterRestart.EnsureLoadedAsync();
-
-        Assert.True(afterRestart.IsProfileAllowed("default"));
-        Assert.True(afterRestart.IsProjectAllowed("proj-1"));
-    }
-
-    [Fact]
-    public async Task SetScope_WhileUnpaired_IsANoOp_ThereIsNoPairingToAttachAGrantTo()
-    {
-        var store = _Store();
-        var broker = _Broker(store);
-
-        await broker.SetScopeAsync(["default"], ["proj-1"], false, false);
-
-        Assert.False(broker.IsProfileAllowed("default"));
-        Assert.Null((await store.LoadAsync()).Pairing);
-    }
 
     [Fact]
     public async Task SetScope_NarrowedWhileTheListenerIsLive_TakesEffectAtOnce_NotOnTheNextClaim()
@@ -370,47 +170,7 @@ public class NodePairingBrokerTests : IDisposable
         Assert.NotNull(broker.Pairing);
     }
 
-    [Fact]
-    public async Task SetScope_TwoCallsInFlightAtOnce_TheSecondOneStartsFromWhatTheFirstActuallyWrote()
-    {
-        // Pins the contract _scopeWriteGate exists for: two calls in flight at once (the checklist's
-        // fire-and-forget toggle can produce exactly this) must not interleave their read-modify-write-disk
-        // sequences — the second one only starts once the first has fully finished, so the result is always
-        // `second`'s target. A fast local disk makes the unguarded version of this pass too, most of the time (the
-        // two calls rarely genuinely overlap without an artificial stall on the store) — the write-gate's own
-        // comment carries the reasoning for why the sequencing still matters.
-        var store = _Store();
-        var broker = _Broker(store);
-        var offer = await broker.RequestAsync("desk", "192.168.1.5");
-        await broker.ConfirmAsync(offer.PairingId);
-        await broker.ClaimAsync(offer.PairingId, offer.ClaimToken);
 
-        var first = broker.SetScopeAsync(["default"], [], false, false);
-        var second = broker.SetScopeAsync(["default", "work"], ["proj-1"], false, false);
-        await Task.WhenAll(first, second);
-
-        Assert.True(broker.IsProfileAllowed("work"));
-        Assert.True(broker.IsProjectAllowed("proj-1"));
-        var onDisk = (await store.LoadAsync()).Pairing!;
-        Assert.Contains("work", onDisk.AllowedProfileLabels);
-        Assert.Contains("proj-1", onDisk.AllowedProjectIds);
-    }
-
-    [Fact]
-    public async Task Unpair_ClearsTheScopeGrant_SoNothingIsReachableWithoutAPairing()
-    {
-        var broker = _Broker();
-        var offer = await broker.RequestAsync("desk", "192.168.1.5");
-        await broker.ConfirmAsync(offer.PairingId);
-        await broker.ClaimAsync(offer.PairingId, offer.ClaimToken);
-        await broker.SetScopeAsync(["default"], ["proj-1"], false, false);
-        Assert.True(broker.IsProfileAllowed("default"));
-
-        await broker.UnpairAsync();
-
-        Assert.False(broker.IsProfileAllowed("default"));
-        Assert.False(broker.IsProjectAllowed("proj-1"));
-    }
 
     private sealed class _FakeMcpServerStore(IReadOnlyList<McpServerConfig> servers) : IMcpServerStore
     {

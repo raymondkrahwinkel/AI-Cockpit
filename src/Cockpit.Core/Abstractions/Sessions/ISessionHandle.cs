@@ -10,6 +10,12 @@ namespace Cockpit.Core.Abstractions.Sessions;
 public interface ISessionHandle
 {
     IReadOnlyList<string>? McpServersOverride => null;
+
+    /// <summary>
+    /// The active SDK tool's full label and elapsed-state text; terminal panes have no tool stream.
+    /// </summary>
+    Task<(string Activity, string ActivityAge)> ReadActivityAsync() =>
+        Task.FromResult((string.Empty, string.Empty));
     /// <summary>
     /// The session's turn-time control, when this handle owns one.
     /// </summary>
@@ -70,6 +76,11 @@ public interface ISessionHandle
     /// The project the session was started for, or null when it has none.
     /// </summary>
     string? ProjectId => null;
+
+    /// <summary>
+    /// The plugin provider the session runs on, null for a plain terminal or a handle that cannot tell (AC-2024).
+    /// </summary>
+    string? ProviderId => null;
 
     /// <summary>
     /// True when the assistant started this session rather than the operator (AC-1300); what AC-1706's stall nudge is limited to.

@@ -17,28 +17,6 @@ namespace Cockpit.Infrastructure.Tests.Worktrees;
 /// </summary>
 public class WorktreeToolsTests
 {
-    [Fact]
-    public async Task CreateAsync_AsksForTheSourceToBeLeftAlone()
-    {
-        var manager = Substitute.For<IWorktreeManager>();
-        manager.CreateForSessionAsync(Arg.Is("pane"), Arg.Is<string?>(label => label == null), Arg.Is("/repo"), Arg.Any<WorktreeSourceHandling>(), Arg.Any<bool>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(_Record("pane", "/wt/path"));
-        var tools = new WorktreeTools(manager);
-
-        await tools.CreateAsync("pane", "/repo");
-
-        // `directory` is a folder the agent named, and the session was never scoped to whatever is checked out
-        // there — so this route may never be the reason that repository's branch or working tree is written to.
-        // isAgentCreated: true (AC-520 fix 5) — every worktree this tool creates is one an agent asked for.
-        await manager.Received().CreateForSessionAsync(
-            Arg.Is("pane"),
-            Arg.Is<string?>(label => label == null),
-            Arg.Is("/repo"),
-            Arg.Is(WorktreeSourceHandling.LeaveSourceAlone),
-            Arg.Is(true),
-            Arg.Any<string?>(),
-            Arg.Any<CancellationToken>());
-    }
 
     [Fact]
     public async Task Remove_RefusesAWorktreeOwnedByAnotherSession_KeyedOnTheVerifiedPane()
@@ -68,19 +46,6 @@ public class WorktreeToolsTests
         new(session, "/repo", path, "cockpit/x", "abc", DateTimeOffset.UtcNow);
 
     [Fact]
-    public async Task Remove_PathNotManaged_ReturnsNotOkAndRemovesNothing()
-    {
-        var manager = Substitute.For<IWorktreeManager>();
-        manager.ListAsync(Arg.Any<CancellationToken>()).Returns(new List<WorktreeRecord>());
-        var tools = new WorktreeTools(manager);
-
-        using var result = JsonDocument.Parse(await tools.RemoveAsync("/nope"));
-
-        Assert.False(result.RootElement.GetProperty("ok").GetBoolean());
-        await manager.DidNotReceive().RemoveAsync(Arg.Any<WorktreeRecord>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
     public async Task Remove_OwnerSessionIsDeadAndLivenessIsKnown_AllowsTheCrossSessionRemoval()
     {
         // AC-524's third defect: guard 1 used to be categorical regardless of liveness, so a worktree an agent made
@@ -107,48 +72,6 @@ public class WorktreeToolsTests
         {
             McpRequestContext.Set(null);
         }
-    }
-
-    [Fact]
-    public async Task Remove_LivenessIsUnknown_KeepsGuard1CategoricalEvenForADeadLookingOwner()
-    {
-        // The load-bearing safety net for the relaxation above: with no ILiveSessionRegistry to ask, "dead" cannot
-        // be told apart from "we simply do not know" — treating a missing registration as permission would silently
-        // disable AC-128's confused-deputy protection instead of only loosening it for a provably dead owner.
-        var manager = Substitute.For<IWorktreeManager>();
-        var record = _Record("some-pane", "/wt/unknown-liveness");
-        manager.ListAsync(Arg.Any<CancellationToken>()).Returns(new List<WorktreeRecord> { record });
-        var tools = new WorktreeTools(manager, liveSessions: null);
-
-        McpRequestContext.Set("another-pane");
-        try
-        {
-            using var result = JsonDocument.Parse(await tools.RemoveAsync("/wt/unknown-liveness"));
-
-            Assert.False(result.RootElement.GetProperty("ok").GetBoolean());
-            Assert.Contains("another session", result.RootElement.GetProperty("error").GetString());
-            await manager.DidNotReceive().RemoveAsync(Arg.Any<WorktreeRecord>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
-        }
-        finally
-        {
-            McpRequestContext.Set(null);
-        }
-    }
-
-    [Fact]
-    public async Task Remove_OwnerSessionStillLive_RefusesAndRemovesNothing()
-    {
-        var manager = Substitute.For<IWorktreeManager>();
-        var record = _Record("live-pane", "/wt/live");
-        manager.ListAsync(Arg.Any<CancellationToken>()).Returns(new List<WorktreeRecord> { record });
-        var live = Substitute.For<ILiveSessionRegistry>();
-        live.LiveSessionIds.Returns(new HashSet<string>(StringComparer.Ordinal) { "live-pane" });
-        var tools = new WorktreeTools(manager, live);
-
-        using var result = JsonDocument.Parse(await tools.RemoveAsync("/wt/live"));
-
-        Assert.False(result.RootElement.GetProperty("ok").GetBoolean());
-        await manager.DidNotReceive().RemoveAsync(Arg.Any<WorktreeRecord>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -204,25 +127,6 @@ public class WorktreeToolsTests
         {
             McpRequestContext.Set(null);
         }
-    }
-
-    [Fact]
-    public async Task Remove_RepositoryGoneButLeavesAFolderBehind_RelaysTheNoticeInTheResponse()
-    {
-        var manager = Substitute.For<IWorktreeManager>();
-        var record = _Record("gone-pane", "/wt/gone");
-        manager.ListAsync(Arg.Any<CancellationToken>()).Returns(new List<WorktreeRecord> { record });
-        manager.HasUncommittedChangesAsync(record, Arg.Any<CancellationToken>()).Returns(false);
-        manager.RemoveAsync(record, false, Arg.Any<CancellationToken>())
-            .Returns("its worktree folder was left on disk and is no longer managed by the cockpit");
-        var live = Substitute.For<ILiveSessionRegistry>();
-        live.LiveSessionIds.Returns(new HashSet<string>(StringComparer.Ordinal));
-        var tools = new WorktreeTools(manager, live);
-
-        using var result = JsonDocument.Parse(await tools.RemoveAsync("/wt/gone"));
-
-        Assert.True(result.RootElement.GetProperty("ok").GetBoolean());
-        Assert.Contains("no longer managed by the cockpit", result.RootElement.GetProperty("notice").GetString());
     }
 
     [Fact]

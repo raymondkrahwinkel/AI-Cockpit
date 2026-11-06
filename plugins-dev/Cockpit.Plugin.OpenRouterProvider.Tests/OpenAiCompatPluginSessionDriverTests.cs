@@ -6,8 +6,7 @@ using System.Runtime.CompilerServices;
 
 namespace Cockpit.Plugin.OpenRouterProvider.Tests;
 
-// AC-806: `OpenAiCompatPluginSessionDriver` against a fake `IChatClient`, mirroring the sibling
-// GitHub Models plugin's own driver tests — same shape.
+// AC-806: `OpenAiCompatPluginSessionDriver` against a fake `IChatClient`.
 // A session that gets no host toolset stays chat-only; the tool loop it runs when it does get one is covered
 // by OpenAiCompatPluginSessionDriverToolLoopTests in the Gemini provider's tests (AC-964, one shared driver).
 public class OpenAiCompatPluginSessionDriverTests
@@ -20,7 +19,10 @@ public class OpenAiCompatPluginSessionDriverTests
         var chatClient = Substitute.For<IChatClient>();
         chatClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
             .Returns(stalls ? _StalledStream() : _SlowSteadyStream());
-        var driver = new OpenAiCompatPluginSessionDriver(chatClient, "anthropic/claude-sonnet-4.5", streamIdleTimeout: TimeSpan.FromMilliseconds(50));
+        // A stall never sends again, so a short timeout is exact; a steady stream gets 200x its 10 ms gap, so a busy
+        // machine cannot stretch one gap past the timeout and turn the steady case into an idle one.
+        var idleTimeout = stalls ? TimeSpan.FromMilliseconds(50) : TimeSpan.FromSeconds(2);
+        var driver = new OpenAiCompatPluginSessionDriver(chatClient, "anthropic/claude-sonnet-4.5", streamIdleTimeout: idleTimeout);
 
         await driver.StartAsync();
         await driver.SendUserMessageAsync("hi");

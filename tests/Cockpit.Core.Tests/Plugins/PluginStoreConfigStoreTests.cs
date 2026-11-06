@@ -42,10 +42,10 @@ public class PluginStoreConfigStoreTests : IDisposable
         Assert.Equal("""{"kind":"remote","location":"https://example.com/store/index.json"}""", serialized);
         Assert.DoesNotContain(runtimeToken, serialized);
         Assert.Null(JsonSerializer.Deserialize<PluginStoreConfig>(serialized)?.Signed);
+        await _AssertLegacyStringEntryReadsAsPublicRemoteAsync();
     }
 
-    [Fact]
-    public async Task LoadAsync_LegacyStringEntry_ReadsAsPublicRemote()
+    private async Task _AssertLegacyStringEntryReadsAsPublicRemoteAsync()
     {
         // A pre-AC-7 config wrote plain URL strings; they must still read, as public remote stores.
         await File.WriteAllTextAsync(

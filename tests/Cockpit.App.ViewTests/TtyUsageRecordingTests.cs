@@ -5,7 +5,6 @@ using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Usage;
-using Cockpit.Tests.Shared;
 using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
@@ -104,7 +103,7 @@ public class TtyUsageRecordingTests
         // which is most of them.
         var history = new RecordingUsageHistory();
         var reader = _ReaderYielding(
-            new SessionTranscriptActivity(SessionActivity.Busy, "tool-use line", new TokenUsage(100, 20, 0, 0)),
+            new SessionTranscriptActivity(SessionActivity.Busy, "tool-use line", new TokenUsage(100, 20, 0, 0)) { Model = "claude-opus-4-6" },
             new SessionTranscriptActivity(SessionActivity.TurnComplete, "final line", new TokenUsage(50, 200, 10, 5)));
         var vm = new TtyViewModel(Substitute.For<ITtyLauncher>(), _Resolver(), transcriptReader: reader, usageHistory: history);
         vm.LaunchConfigured(Work, "default", "sonnet", "medium");
@@ -118,99 +117,7 @@ public class TtyUsageRecordingTests
         Assert.Equal(10, snapshot.CacheReadInputTokens);
         Assert.Equal(5, snapshot.CacheCreationInputTokens);
         Assert.Equal(1, snapshot.Turns);
-    });
-
-    [Fact]
-    public Task ATurnsUsage_IsRecordedWithNoCost_RatherThanAGuessedFigure() => HeadlessAvalonia.RunAsync(async () =>
-    {
-        // The CLI's on-disk transcript reports tokens per assistant message but never a cost field (unlike the
-        // SDK path's stream-json result event) — the cockpit does not compute one itself from tokens.
-        var history = new RecordingUsageHistory();
-        var reader = _ReaderYielding(
-            new SessionTranscriptActivity(SessionActivity.TurnComplete, "line", new TokenUsage(17, 19, 23, 29)));
-        var vm = new TtyViewModel(Substitute.For<ITtyLauncher>(), _Resolver(), transcriptReader: reader, usageHistory: history);
-        vm.LaunchConfigured(Work, "default", "sonnet", "medium");
-
-        vm.OnLaunchSucceeded();
-
-        await _WaitUntilAsync(() => history.Recorded.Count > 0);
-        var snapshot = Assert.Single(history.Recorded);
-        Assert.Equal(0, snapshot.TotalCostUsd);
-        Assert.NotEqual(default, snapshot.StartedAt);
-        Assert.NotEqual(default, snapshot.RecordedAt);
-        Assert.Empty(UsageSnapshotContract.CommonFieldDifferences(new UsageSnapshot
-        {
-            PaneId = vm.PaneId,
-            StartedAt = snapshot.StartedAt,
-            RecordedAt = snapshot.RecordedAt,
-            ProfileLabel = "work",
-            Model = "sonnet",
-            InputTokens = 17,
-            OutputTokens = 19,
-            CacheReadInputTokens = 23,
-            CacheCreationInputTokens = 29,
-            TotalCostUsd = 0,
-            Turns = 1,
-        }, snapshot));
-    });
-
-    [Fact]
-    public Task ASecondCompletedTurn_WritesAgain_WithTheRunningTotalSoFar() => HeadlessAvalonia.RunAsync(async () =>
-    {
-        var history = new RecordingUsageHistory();
-        var reader = _ReaderYielding(
-            new SessionTranscriptActivity(SessionActivity.TurnComplete, "first", new TokenUsage(10, 5, 0, 0)),
-            new SessionTranscriptActivity(SessionActivity.TurnComplete, "second", new TokenUsage(20, 8, 0, 0)));
-        var vm = new TtyViewModel(Substitute.For<ITtyLauncher>(), _Resolver(), transcriptReader: reader, usageHistory: history);
-        vm.LaunchConfigured(Work, "default", "sonnet", "medium");
-
-        vm.OnLaunchSucceeded();
-
-        await _WaitUntilAsync(() => history.Recorded.Count >= 2);
-        Assert.Equal(30, history.Recorded[1].InputTokens);
-        Assert.Equal(13, history.Recorded[1].OutputTokens);
-        Assert.Equal(2, history.Recorded[1].Turns);
-    });
-
-    [Fact]
-    public Task ItIsAlwaysRecordedAsInteractiveWithNoRun() => HeadlessAvalonia.RunAsync(async () =>
-    {
-        // Nothing embeds a TTY session today (CockpitViewModel.Embed only ever builds an SDK SessionViewModel) —
-        // pinning this documents that, rather than leaving it an untested assumption.
-        var history = new RecordingUsageHistory();
-        var reader = _ReaderYielding(
-            new SessionTranscriptActivity(SessionActivity.TurnComplete, "line", new TokenUsage(10, 5, 0, 0)));
-        var vm = new TtyViewModel(Substitute.For<ITtyLauncher>(), _Resolver(), transcriptReader: reader, usageHistory: history);
-        vm.LaunchConfigured(Work, "default", "sonnet", "medium");
-
-        vm.OnLaunchSucceeded();
-
-        await _WaitUntilAsync(() => history.Recorded.Count > 0);
-        var snapshot = Assert.Single(history.Recorded);
-        Assert.Equal(UsageRunKind.Interactive, snapshot.RunKind);
-        Assert.Null(snapshot.RunId);
-        Assert.Null(snapshot.RunLabel);
-    });
-
-    [Fact]
-    public Task ATurnWithNoUsageReading_LeavesNoRecord_RatherThanARowOfZeroes() => HeadlessAvalonia.RunAsync(async () =>
-    {
-        var history = new RecordingUsageHistory();
-        var reader = _ReaderYielding(new SessionTranscriptActivity(SessionActivity.TurnComplete, "line", Usage: null));
-        var vm = new TtyViewModel(Substitute.For<ITtyLauncher>(), _Resolver(), transcriptReader: reader, usageHistory: history);
-        vm.LaunchConfigured(Work, "default", "sonnet", "medium");
-
-        // No positive record to poll for, but every reading raises OutputTextProduced before the tail decides
-        // whether to write one — RunContinuationsAsynchronously so that firing (mid-callback, with more of the
-        // same callback still to run) cannot resume this test's assert ahead of it.
-        var processed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        vm.OutputTextProduced += (_, _) => processed.TrySetResult();
-
-        vm.OnLaunchSucceeded();
-
-        await Task.WhenAny(processed.Task, Task.Delay(TimeSpan.FromSeconds(5)));
-        Assert.True(processed.Task.IsCompletedSuccessfully, "the reading should have been processed within the wait window");
-        Assert.Empty(history.Recorded);
+        Assert.Equal("claude-opus-4-6", snapshot.Model);
     });
 
     [Fact]

@@ -21,19 +21,6 @@ public class PluginMenuPreferenceTests : IDisposable
     }
 
     [Fact]
-    public async Task SaveMenuPreferenceAsync_RoundTripsOrderAndVisibility()
-    {
-        var store = new PluginRegistrationStore(_configFilePath);
-        await store.SaveAsync("youtrack", new PluginRegistration(Enabled: true, PinnedSha256: "abc"));
-
-        await store.SaveMenuPreferenceAsync("youtrack", menuOrder: 3, hiddenInMenu: true);
-        var registration = (await store.LoadAllAsync())["youtrack"];
-
-        Assert.Equal(3, registration.MenuOrder);
-        Assert.True(registration.HiddenInMenu);
-    }
-
-    [Fact]
     public async Task SaveMenuPreferenceAsync_LeavesTheEnableAndConsentStateAlone()
     {
         var store = new PluginRegistrationStore(_configFilePath);

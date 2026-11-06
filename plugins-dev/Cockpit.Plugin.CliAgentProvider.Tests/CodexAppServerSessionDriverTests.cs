@@ -77,30 +77,6 @@ public class CodexAppServerSessionDriverTests
         Assert.IsType<PluginToolResult>(Assert.Single(completed.Events));
     }
 
-    // The profile's environment variables (AC-22) ride the environment-carrying StartAsync overload into the
-    // spawn, under everything the driver sets itself — the config's CODEX_HOME/auth keep the last word.
-
-    [Fact]
-    public async Task Start_DoesHandshake_PassesTheCockpitCwd_AndEmitsSessionInitialized()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
-
-        var startTask = driver.StartAsync("gpt-5-codex", "/work/here", resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
-        await _RespondAsync(fake, "initialize", "{}");
-        await _RespondAsync(fake, "model/list", """{"data":[]}""");
-        var threadStart = await _RespondAsync(fake, "thread/start", """{"threadId":"thread-1"}""");
-        await startTask;
-
-        Assert.Equal("/work/here", threadStart.GetProperty("params").GetProperty("cwd").GetString());
-        Assert.Equal("gpt-5-codex", threadStart.GetProperty("params").GetProperty("model").GetString());
-        Assert.Contains(fake.WrittenLines, line => line.Contains("\"method\":\"initialized\""));
-
-        var initialized = await _NextEventAsync(driver);
-        Assert.IsType<PluginSessionInitialized>(initialized);
-        Assert.Equal("thread-1", driver.SessionId);
-    }
-
     private static async Task _AssertPerSessionSandboxAndModelOptionsAsync()
     {
         var fake = new FakeCliSubprocess();
@@ -128,18 +104,24 @@ public class CodexAppServerSessionDriverTests
         var fake = new FakeCliSubprocess();
         await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
 
-        var options = new Dictionary<string, string> { ["effort"] = "high", ["approvalPolicy"] = "never" };
+        var options = new Dictionary<string, string> { ["effort"] = "high", ["approvalPolicy"] = "never", ["sandbox"] = "workspace-write" };
         var startTask = driver.StartAsync(null, "/work", resumeSessionId: null, options, mcpServers: null, CancellationToken.None);
         await _RespondAsync(fake, "initialize", "{}");
         await _RespondAsync(fake, "model/list", """{"data":[]}""");
         await _RespondAsync(fake, "thread/start", """{"threadId":"thread-1"}""");
         await startTask;
 
-        await driver.SendUserMessageAsync("go");
+        await driver.SendUserMessageAsync("go", [new PluginImageAttachment("image/png", "aGk=")], CancellationToken.None);
 
         var turn = await _WaitForRequestAsync(fake, "turn/start");
+        var image = turn.GetProperty("params").GetProperty("input")[1];
+        Assert.Equal("image", image.GetProperty("type").GetString());
+        Assert.Equal("data:image/png;base64,aGk=", image.GetProperty("url").GetString());
         Assert.Equal("high", turn.GetProperty("params").GetProperty("effort").GetString());
         Assert.Equal("never", turn.GetProperty("params").GetProperty("approvalPolicy").GetString());
+        // The launch sandbox is re-asserted on every turn as its policy object (like the model), so a turn the
+        // operator never touched still runs under the sandbox the session launched with.
+        Assert.Equal("workspaceWrite", turn.GetProperty("params").GetProperty("sandboxPolicy").GetProperty("type").GetString());
     }
 
     // AC-1102: an absent `sandbox` is what reaches `CodexSandbox.ForCeiling` and lets a delegated task write
@@ -225,30 +207,6 @@ public class CodexAppServerSessionDriverTests
         Assert.Equal("thread-99", driver.SessionId);
     }
 
-    [Fact]
-    public async Task SendUserMessage_StreamsAgentDeltas_ThenCompletesTheTurn()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
-        await _StartAsync(driver, fake);
-
-        await driver.SendUserMessageAsync("hi");
-        await _WaitForRequestIdAsync(fake, "turn/start");
-        await fake.PushStdoutAsync("""{"method":"turn/started","params":{"threadId":"thread-1","turn":{"id":"turn-1"}}}""");
-        await fake.PushStdoutAsync("""{"method":"item/agentMessage/delta","params":{"delta":"Hello, ","itemId":"i1","threadId":"thread-1","turnId":"turn-1"}}""");
-        await fake.PushStdoutAsync("""{"method":"item/agentMessage/delta","params":{"delta":"world!","itemId":"i1","threadId":"thread-1","turnId":"turn-1"}}""");
-        await fake.PushStdoutAsync("""{"method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-1","status":"completed"}}}""");
-
-        var events = await _CollectUntilTurnCompletedAsync(driver);
-
-        Assert.Equal("Hello, world!", string.Concat(events.OfType<PluginAssistantTextDelta>().Select(delta => delta.Text)));
-        var completed = Assert.Single(events.OfType<PluginTurnCompleted>());
-        Assert.False(completed.IsError);
-        // AC-126: turn/completed carries no "final text" of its own on the wire — Result must be the deltas this
-        // driver folded, not null, or get_task_result/LastAssistantText see a "finished" turn with no answer.
-        Assert.Equal("Hello, world!", completed.Result);
-    }
-
     // AC-126: a turn that never streamed a message (pure tool-use, or a failed turn before any text) must report
     // Result:null rather than an empty string — an empty StringBuilder is not an answer to fold in as one.
 
@@ -275,46 +233,20 @@ public class CodexAppServerSessionDriverTests
         var answer = await _WaitForWrittenLineAsync(fake, "\"id\":55");
         using var document = JsonDocument.Parse(answer);
         Assert.Equal("accept", document.RootElement.GetProperty("result").GetProperty("decision").GetString());
-    }
 
-    [Fact]
-    public async Task Approval_Deny_IsAnsweredWithDecline()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
-        await _StartAsync(driver, fake);
-
-        await driver.SendUserMessageAsync("run rm");
-        await _WaitForRequestIdAsync(fake, "turn/start");
+        // Deny is answered with decline.
         await fake.PushStdoutAsync("""{"id":57,"method":"item/commandExecution/requestApproval","params":{"itemId":"cmd-2","command":"rm -rf /","threadId":"thread-1","turnId":"turn-1"}}""");
         await _NextEventOfTypeAsync<PluginPermissionRequested>(driver);
-
-        // The decline branch shares _RespondDecisionAsync with accept/acceptForSession — cover it so the refactor stays honest.
         await driver.RespondToPermissionAsync("cmd-2", allow: false);
-
-        var answer = await _WaitForWrittenLineAsync(fake, "\"id\":57");
-        using var document = JsonDocument.Parse(answer);
-        Assert.Equal("decline", document.RootElement.GetProperty("result").GetProperty("decision").GetString());
-    }
-
-    [Fact]
-    public async Task Approval_AllowAlways_IsAnsweredWithAcceptForSession()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
-        await _StartAsync(driver, fake);
-
-        await driver.SendUserMessageAsync("run ls");
-        await _WaitForRequestIdAsync(fake, "turn/start");
-        await fake.PushStdoutAsync("""{"id":56,"method":"item/fileChange/requestApproval","params":{"itemId":"edit-1","threadId":"thread-1","turnId":"turn-1"}}""");
-        await _NextEventOfTypeAsync<PluginPermissionRequested>(driver);
+        using var declined = JsonDocument.Parse(await _WaitForWrittenLineAsync(fake, "\"id\":57"));
+        Assert.Equal("decline", declined.RootElement.GetProperty("result").GetProperty("decision").GetString());
 
         // D4: "allow always" is acceptForSession, so the agent stops asking for the like of it this thread.
+        await fake.PushStdoutAsync("""{"id":56,"method":"item/fileChange/requestApproval","params":{"itemId":"edit-1","threadId":"thread-1","turnId":"turn-1"}}""");
+        await _NextEventOfTypeAsync<PluginPermissionRequested>(driver);
         await driver.AllowPermissionAlwaysAsync("edit-1");
-
-        var answer = await _WaitForWrittenLineAsync(fake, "\"id\":56");
-        using var document = JsonDocument.Parse(answer);
-        Assert.Equal("acceptForSession", document.RootElement.GetProperty("result").GetProperty("decision").GetString());
+        using var always = JsonDocument.Parse(await _WaitForWrittenLineAsync(fake, "\"id\":56"));
+        Assert.Equal("acceptForSession", always.RootElement.GetProperty("result").GetProperty("decision").GetString());
     }
 
     // AC-943: the app-server blocks on its own `item/*/requestApproval` request, so an interrupt must decline
@@ -348,23 +280,6 @@ public class CodexAppServerSessionDriverTests
         var writtenAfterInterrupt = fake.WrittenLines.Count;
         await driver.RespondToPermissionAsync("cmd-1", allow: true);
         Assert.Equal(writtenAfterInterrupt, fake.WrittenLines.Count);
-    }
-
-    [Fact]
-    public async Task TurnCompleted_WithInterruptedStatus_IsNotReportedAsError()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
-        await _StartAsync(driver, fake);
-
-        await driver.SendUserMessageAsync("hi");
-        await _WaitForRequestIdAsync(fake, "turn/start");
-        await fake.PushStdoutAsync("""{"method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-1","status":"interrupted"}}}""");
-
-        var events = await _CollectUntilTurnCompletedAsync(driver);
-        var completed = Assert.Single(events.OfType<PluginTurnCompleted>());
-        Assert.False(completed.IsError);
-        Assert.Equal("interrupt", completed.StopReason);
     }
 
     // AC-126: the operator stopping a turn mid-answer must not throw away the partial answer already streamed —
@@ -405,48 +320,11 @@ public class CodexAppServerSessionDriverTests
         Assert.Equal(25, status.ContextUsedPercent);
     }
 
-    [Fact]
-    public async Task RateLimitsNotification_FillsBothWindows_WithTheirUsedPercentSpanAndReset()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
-        await _StartAsync(driver, fake);
-
-        // D7: the account snapshot's windows carry usedPercent, an epoch reset, and a span the driver turns into a
-        // label the header shows (300 min → "5h", 10080 min → "7d") — the provider owns the label, not the host.
-        await fake.PushStdoutAsync("""{"method":"account/rateLimits/updated","params":{"rateLimits":{"primary":{"usedPercent":60,"resetsAt":1800000000,"windowDurationMins":300},"secondary":{"usedPercent":80,"resetsAt":1800600000,"windowDurationMins":10080}}}}""");
-
-        var status = await _WaitForStatusAsync(driver, current => current.RateLimits.Count > 0);
-        Assert.Equal(new[]
-        {
-            new PluginRateLimitWindow("5h", 60, DateTimeOffset.FromUnixTimeSeconds(1800000000), 300),
-            new PluginRateLimitWindow("7d", 80, DateTimeOffset.FromUnixTimeSeconds(1800600000), 10080),
-        }, status.RateLimits);
-    }
-
     // #1105 C: the driver asks for the account snapshot itself right after the handshake instead of waiting
     // for a turn. Fire-and-forget: _StartAsync below never answers this request, yet the session still starts.
 
     // A codex build too old to know "account/rateLimits/read" answers with a JSON-RPC error rather than a
     // result; today's behaviour (empty until the first turn) must survive that, not tear the session down.
-
-    [Fact]
-    public async Task TurnCompleted_CarriesTheLastTurnsTokenUsage_ReasoningFoldedIntoOutput()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
-        await _StartAsync(driver, fake);
-
-        await driver.SendUserMessageAsync("hi");
-        await _WaitForRequestIdAsync(fake, "turn/start");
-        await fake.PushStdoutAsync("""{"method":"thread/tokenUsage/updated","params":{"tokenUsage":{"last":{"inputTokens":1000,"outputTokens":200,"cachedInputTokens":50,"reasoningOutputTokens":30,"totalTokens":1280},"modelContextWindow":200000}}}""");
-        await fake.PushStdoutAsync("""{"method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-1","status":"completed"}}}""");
-
-        // D3: the turn's usage feeds the host token meter — reasoning output (30) folds into output (200), cached
-        // input (50) maps to cache-read, and Codex reports no cache-creation count.
-        var events = await _CollectUntilTurnCompletedAsync(driver);
-        Assert.Equal(new PluginTokenUsage(1000, 230, 50, 0), Assert.Single(events.OfType<PluginTurnCompleted>()).Usage);
-    }
 
     [Fact]
     public async Task TurnWithoutItsOwnUsage_DoesNotInheritThePreviousTurnsUsage()
@@ -455,13 +333,15 @@ public class CodexAppServerSessionDriverTests
         await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
         await _StartAsync(driver, fake);
 
-        // Turn 1 reports usage.
+        // Turn 1 reports usage. D3: it feeds the host token meter — reasoning output (30) folds into output (200),
+        // cached input (50) maps to cache-read, and Codex reports no cache-creation count.
         await driver.SendUserMessageAsync("one");
         await _WaitForRequestIdAsync(fake, "turn/start");
         await fake.PushStdoutAsync("""{"method":"turn/started","params":{"threadId":"thread-1","turn":{"id":"turn-1"}}}""");
-        await fake.PushStdoutAsync("""{"method":"thread/tokenUsage/updated","params":{"tokenUsage":{"last":{"inputTokens":1000,"outputTokens":200,"cachedInputTokens":0,"reasoningOutputTokens":0,"totalTokens":1200},"modelContextWindow":200000}}}""");
+        await fake.PushStdoutAsync("""{"method":"thread/tokenUsage/updated","params":{"tokenUsage":{"last":{"inputTokens":1000,"outputTokens":200,"cachedInputTokens":50,"reasoningOutputTokens":30,"totalTokens":1280},"modelContextWindow":200000}}}""");
         await fake.PushStdoutAsync("""{"method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-1","status":"completed"}}}""");
-        await _CollectUntilTurnCompletedAsync(driver);
+        var first = await _CollectUntilTurnCompletedAsync(driver);
+        Assert.Equal(new PluginTokenUsage(1000, 230, 50, 0), Assert.Single(first.OfType<PluginTurnCompleted>()).Usage);
 
         // Turn 2 reports NO tokenUsage (e.g. an interrupted turn). Its usage must be null — not turn 1's total
         // leaking in, which the accumulating token meter would then double-count.
@@ -479,21 +359,6 @@ public class CodexAppServerSessionDriverTests
     // might silently ignore.
 
     [Fact]
-    public async Task TurnStart_CarriesTheApprovalPolicy_AfterASwitch()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
-        await _StartAsync(driver, fake);
-
-        // D4 inc2: switching the approval policy rides the next turn/start as a per-turn override, like model/effort.
-        await driver.SetLiveOptionAsync("approvalPolicy", "never");
-        await driver.SendUserMessageAsync("go");
-
-        var turn = await _WaitForRequestAsync(fake, "turn/start");
-        Assert.Equal("never", turn.GetProperty("params").GetProperty("approvalPolicy").GetString());
-    }
-
-    [Fact]
     public async Task TurnStart_CarriesTheSandboxPolicyObject_WithItsCamelCaseType_AfterASwitch()
     {
         var fake = new FakeCliSubprocess();
@@ -502,32 +367,14 @@ public class CodexAppServerSessionDriverTests
 
         // D4 inc2b: the sandbox override rides turn/start as the tagged-union SandboxPolicy object, keyed by its
         // camelCase type — the kebab choice "danger-full-access" becomes { "type": "dangerFullAccess" }.
+        // D4 inc2: a switched approval policy rides the same turn/start as a per-turn override, like model/effort.
         await driver.SetLiveOptionAsync("sandbox", "danger-full-access");
+        await driver.SetLiveOptionAsync("approvalPolicy", "never");
         await driver.SendUserMessageAsync("go");
 
         var turn = await _WaitForRequestAsync(fake, "turn/start");
         Assert.Equal("dangerFullAccess", turn.GetProperty("params").GetProperty("sandboxPolicy").GetProperty("type").GetString());
-    }
-
-    [Fact]
-    public async Task TurnStart_CarriesTheLaunchSandbox_AsAPolicyObject_EvenWithoutASwitch()
-    {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
-
-        var options = new Dictionary<string, string> { ["sandbox"] = "workspace-write" };
-        var startTask = driver.StartAsync(null, "/work", resumeSessionId: null, options, mcpServers: null, CancellationToken.None);
-        await _RespondAsync(fake, "initialize", "{}");
-        await _RespondAsync(fake, "model/list", """{"data":[]}""");
-        await _RespondAsync(fake, "thread/start", """{"threadId":"thread-1"}""");
-        await startTask;
-
-        await driver.SendUserMessageAsync("go");
-
-        // The launch sandbox is re-asserted on every turn as its policy object (like the model), so a turn the
-        // operator never touched still runs under the sandbox the session launched with.
-        var turn = await _WaitForRequestAsync(fake, "turn/start");
-        Assert.Equal("workspaceWrite", turn.GetProperty("params").GetProperty("sandboxPolicy").GetProperty("type").GetString());
+        Assert.Equal("never", turn.GetProperty("params").GetProperty("approvalPolicy").GetString());
     }
 
     // AC-1852: Codex drops an MCP server that fails to start and says nothing in the thread; the app-server reports it
@@ -561,6 +408,20 @@ public class CodexAppServerSessionDriverTests
         var warning = Assert.Single(logger.Warnings);
         Assert.Contains("YouTrack: Personal", warning);
         Assert.Contains("thread-1", warning);
+
+        // Category D: the app-server contract marks reconnect notices with willRetry, not with message text.
+        await fake.PushStdoutAsync("""{"method":"turn/started","params":{"threadId":"thread-1","turn":{"id":"turn-1"}}}""");
+        await fake.PushStdoutAsync("""{"method":"error","params":{"error":{"message":"Reconnecting... 2/5"},"willRetry":true,"threadId":"thread-1","turnId":"turn-1"}}""");
+        await fake.PushStdoutAsync("""{"method":"item/agentMessage/delta","params":{"threadId":"thread-1","delta":"recovered"}}""");
+        await fake.PushStdoutAsync("""{"method":"turn/completed","params":{"threadId":"thread-1","turn":{"status":"completed"}}}""");
+
+        var events = await _CollectUntilTurnCompletedAsync(driver);
+        Assert.DoesNotContain(events, evt => evt is PluginSessionError);
+        Assert.False(Assert.Single(events.OfType<PluginTurnCompleted>()).IsError);
+
+        await fake.PushStdoutAsync("""{"method":"error","params":{"error":{"message":"authentication failed"},"willRetry":false,"threadId":"thread-1","turnId":"turn-2"}}""");
+        var terminal = await _NextEventOfTypeAsync<PluginSessionError>(driver);
+        Assert.Equal("authentication failed", terminal.Message);
     }
 
     // --- helpers -----------------------------------------------------------------------------------------

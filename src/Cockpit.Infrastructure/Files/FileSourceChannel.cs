@@ -66,6 +66,20 @@ internal static class FileSourceChannel
                 }
                 return result;
             })));
+            registration.Handlers.Add(channel.Handle(FileImageChannel.Read, (payload, ct) => _RunAsync(async () =>
+            {
+                var request = payload.Deserialize<FileImageRequest>(Wire.Json) ?? throw new JsonException();
+                if (_Source(provider, request.File, false) is not IFileImageSource images)
+                {
+                    throw new FileSourceException(FileSourceErrorKind.Unsupported, "Images are unavailable for this source.");
+                }
+                var bytes = await images.ReadImageAsync(request.File, request.Target, ct).ConfigureAwait(false);
+                if (bytes.Length > FileImageChannel.MaxBytes)
+                {
+                    throw new FileSourceException(FileSourceErrorKind.TooLarge, "This image is too large.");
+                }
+                return Convert.ToBase64String(bytes);
+            })));
             _RegisterLive(channel, provider, registration);
             registration.Changed = (_, _) => channel.Publish(Wire.Changed,
                 JsonSerializer.SerializeToElement(provider.Connections, Wire.Json));
@@ -166,12 +180,13 @@ internal static class FileSourceChannel
     {
         var snapshot = await session.ReadAsync(ct).ConfigureAwait(false);
         var bytes = Encoding.UTF8.GetBytes(snapshot.Text);
-        if (bytes.Length > Wire.MaxContentBytes)
+        if (bytes.Length > Wire.MaxContentBytes || Encoding.UTF8.GetByteCount(snapshot.SerializedText ?? "") > Wire.MaxContentBytes)
         {
             throw new FileSourceException(FileSourceErrorKind.TooLarge, "This file is too large to edit in Cockpit.");
         }
         return new FileSourceLiveSnapshot(id, Convert.ToBase64String(bytes), snapshot.Rev, snapshot.Status)
         {
+            SerializedText = snapshot.SerializedText,
             Peers = (session as ILivePresence)?.Peers,
             OpenUrl = (session as ILivePresence)?.OpenUrl,
         };

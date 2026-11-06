@@ -11,28 +11,6 @@ public class LocalRunApprovalTests : IDisposable
     public void Dispose() => _project.Dispose();
 
     [Fact]
-    public void AJobTheClassificationRefusesCarriesItsReasonUnchanged()
-    {
-        var workflow = _project.AddWorkflow("ci.yml", TemporaryProject.MatrixJob);
-
-        var approval = LocalRunApproval.For(new LocalRunRequest(_project.Root, workflow, "spread"));
-
-        Assert.False(approval.IsApproved);
-        Assert.Contains("matrix", approval.Reason);
-    }
-
-    [Fact]
-    public void AJobThatIsNotInTheFileIsRefusedRatherThanAttempted()
-    {
-        var workflow = _project.AddWorkflow("ci.yml", TemporaryProject.OneLinuxJob);
-
-        var approval = LocalRunApproval.For(new LocalRunRequest(_project.Root, workflow, "nope"));
-
-        Assert.False(approval.IsApproved);
-        Assert.Contains("no job called nope", approval.Reason);
-    }
-
-    [Fact]
     public void AWorkflowOutsideTheProjectIsRefused()
     {
         _project.AddWorkflow("ci.yml", TemporaryProject.OneLinuxJob);

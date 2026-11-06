@@ -8,6 +8,7 @@ using Avalonia.Rendering.Composition;
 using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Cockpit.App.Controls;
 using Cockpit.App.Logging;
 using Cockpit.App.Diagnostics;
 using Cockpit.App.Plugins;
@@ -37,6 +38,7 @@ using Cockpit.Infrastructure.Provisioning;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.StatusBar;
+using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.Plugins.Abstractions.Workflows;
 
 using Cockpit.Core.Abstractions.Mcp;
@@ -561,7 +563,7 @@ public partial class App : Application
         // type. Plugins add theirs later, through ICockpitHost, as they load.
         foreach (var source in Program.Services.GetServices<ISupervisedActivitySource>())
         {
-            cockpitViewModel.PluginSupervisedActivities.Add(source);
+            cockpitViewModel.PluginSupervisedActivities.Add(new PluginSupervisedActivity(null, source));
         }
 
         // ProfileDisplayConverter is x:Static rather than DI-created, so supply the now-populated registry here to
@@ -582,7 +584,14 @@ public partial class App : Application
 
         // Avalonia cannot re-show a closed window; clearing it here makes every show route use its existing null
         // guard instead of crashing from a tray handler.
-        _mainWindow.Closed += (_, _) => _mainWindow = null;
+        _mainWindow.Closed += (_, _) =>
+        {
+            _mainWindow = null;
+            if (!IsQuitting)
+            {
+                RequestQuit();
+            }
+        };
 
         // The onboarding gate owns every creation route (AC-509). Show explicitly because Avalonia will not
         // auto-show a MainWindow that replaces the startup unlock window. AC-1827: behind a splash it is shown at the end.
@@ -738,7 +747,8 @@ public partial class App : Application
             Program.Services.GetService<ITtySessionProviderResolver>(),
             Program.Services.GetService<ISessionLoginFlows>(),
             Program.Services.GetService<IPluginProviderConfigViews>(),
-            Program.Services.GetService<IOrgPolicy>());
+            Program.Services.GetService<IOrgPolicy>(),
+            imageInput: Program.Services.GetService<Cockpit.Core.ModelIntelligence.IModelImageInput>());
 
         // AC-1002: Options → MCP Servers, built the same way SessionDialogService builds the standalone dialog it
         // replaces — same services, same view model type, just handed to the cockpit instead of a window.
@@ -951,31 +961,33 @@ public partial class App : Application
 
         // AC-1389: one backend host per plugin, shared by its backend part and the UI part's CockpitUiHost that forwards
         // what a backend can do too to it, and built on demand for a plugin that is only a UI part.
+        var pluginManager = Program.Services.GetRequiredService<PluginManager>();
         var hosts = new Dictionary<DiscoveredPlugin, ICockpitHost>();
-        ICockpitHost HostFor(DiscoveredPlugin discovered, Type pluginType) =>
-            hosts.TryGetValue(discovered, out var existing) ? existing : hosts[discovered] = new DesktopBackendHost(
-            discovered.FolderId,
-            discovered.Manifest.Name,
-            Program.Services,
-            actions,
-            PluginStorage.ForPlugin(discovered, registrationStore, secretFieldStore),
-            sessionObserver,
-            diagnostics,
-            // AC-499: this plugin's own runtime type, so the host can tell its own IPluginMcpProvider registration
-            // apart from every other plugin's when it resolves a tool call's caller-scoped fallback.
-            pluginType,
-            pluginCache.CreateFor(discovered.FolderId),
-            discovered.Manifest.Capabilities);
-
-        backend.InitializePlugins((discovered, plugin) => HostFor(discovered, plugin.GetType()));
+        ICockpitHost HostFor(DiscoveredPlugin discovered, Type pluginType)
+        {
+            lock (hosts)
+            {
+                return hosts.TryGetValue(discovered, out var existing) ? existing : hosts[discovered] = new DesktopBackendHost(
+                    discovered.FolderId,
+                    discovered.Manifest.Name,
+                    Program.Services,
+                    actions,
+                    PluginStorage.ForPlugin(discovered, registrationStore, secretFieldStore),
+                    sessionObserver,
+                    diagnostics,
+                    // AC-499: distinguish the plugin's own MCP provider registration from other plugins'.
+                    pluginType,
+                    pluginCache.CreateFor(discovered.FolderId),
+                    discovered.Manifest.Capabilities,
+                    pluginManager.RuntimeFor(discovered.FolderId));
+            }
+        }
 
         // AC-1389: the UI parts, after every backend part has registered, so a UI part can rely on its backend's
         // registrations (a provider it adds a config view to) being there.
         var uiParts = Program.Services.GetRequiredService<PluginUiManager>();
         cockpit.LocalPluginUiPart = uiParts.UiPartOf;
-        uiParts.InitializeUi(
-            PluginUiManager.ActivateUi,
-            (discovered, ui) => new CockpitUiHost(
+        ICockpitUiHost UiHostFor(DiscoveredPlugin discovered, ICockpitPluginUi ui) => new CockpitUiHost(
                 discovered.FolderId,
                 discovered.Manifest.Name,
                 HostFor(discovered, ui.GetType()),
@@ -987,7 +999,45 @@ public partial class App : Application
                 // The keys this plugin says hold a credential. They already gate encryption and the backup scrubber;
                 // handing them to the widget registry lets a dashboard export drop them too, which is the third place
                 // a declared secret has to be honoured.
-                discovered.Manifest.SecretKeys ?? []));
+                discovered.Manifest.SecretKeys ?? [],
+                pluginManager.RuntimeFor(discovered.FolderId));
+        // AC-2025: awaited by the activation, so a UI part that fails fails the update instead of reporting it done.
+        pluginManager.StartUiPart = (discovered, plugin, isCurrent) => UiThreadCall.Uncapped(() =>
+        {
+            if (!isCurrent())
+            {
+                return Task.FromResult<string?>("The activation was abandoned.");
+            }
+
+            var failure = uiParts.InitializeUiOne(discovered, plugin, PluginUiManager.ActivateUi, UiHostFor);
+            Program.Services.GetRequiredService<HelpService>().Invalidate();
+            cockpit.RefreshLivePlugin(discovered.FolderId);
+            return Task.FromResult(failure);
+        });
+        // AC-2024: uncapped, as a timeout here would leave the plugin half gone with its registration already saved.
+        pluginManager.RunOnUiThread = work => UiThreadCall.Uncapped(() =>
+        {
+            work();
+            return Task.CompletedTask;
+        });
+        pluginManager.UpdateBlocker = folderId => UiThreadCall.Uncapped(() => Task.FromResult<string?>(
+            cockpit.Workspaces.HasGuardedPluginWorkspace(folderId) ? "A workspace of this plugin asks before it closes." : null));
+        pluginManager.Deactivated += (discovered, plugin) =>
+        {
+            uiParts.DeactivateUi(discovered, plugin);
+
+            // The host holds the runtime that just closed; the next activation has to build its own.
+            lock (hosts)
+            {
+                hosts.Remove(discovered);
+            }
+
+            Program.Services.GetRequiredService<HelpService>().Invalidate();
+            cockpit.ForgetLivePlugin(discovered.FolderId);
+        };
+        backend.InitializePlugins(
+            (discovered, plugin) => HostFor(discovered, plugin.GetType()),
+            () => uiParts.InitializeUi(PluginUiManager.ActivateUi, UiHostFor));
         cockpit.FollowRemoteFileWorkspaces(uiParts.RegisterRemoteFileWorkspaces);
 
         // The templates installed from a store (#69) join the ones the plugins ship, in the same registry: to the
@@ -1116,12 +1166,12 @@ public partial class App : Application
         var catalog = Program.Services.GetRequiredService<IProjectCatalog>();
         var signIns = Program.Services.GetService<PluginSignInStanding>();
         watcher.WaitsForSignIn = () => signIns is null ? Task.FromResult(false) : signIns.WaitsAsync("depot");
-        watcher.OnFailing = (projectId, reason) =>
+        watcher.OnFailing = (projectId, reason, offerSettings) =>
         {
             var name = catalog.Current.Settings.Projects.FirstOrDefault(project => project.Id == projectId)?.Name ?? projectId;
             var message = $"The Depot sync cannot check {name}: {reason}";
 
-            if (cockpit.HasPluginSettings("depot"))
+            if (offerSettings && cockpit.HasPluginSettings("depot"))
             {
                 // A toast action is synchronous, so the wrapper observes and logs the detached settings task.
                 toasts.Show(message, ToastSeverity.Warning, "Open Depot settings", () => _ = _OpenPluginSettingsAsync(cockpit, "depot"));
@@ -1358,7 +1408,7 @@ public partial class App : Application
 
         // AC-237: toggles rather than only shows, since the window's own header has no tray-independent way to
         // reopen it once hidden — this is the DoD's "pops up/hides from the tray" both ways.
-        var companionItem = new NativeMenuItem("Show companion");
+        var companionItem = new NativeMenuItem("Show / hide companion");
         companionItem.Click += (_, _) => Program.Services.GetRequiredService<CompanionWindowPresenter>().Toggle();
 
         var quitItem = new NativeMenuItem("Quit");
@@ -1366,7 +1416,7 @@ public partial class App : Application
 
         var tray = new TrayIcon
         {
-            Icon = new WindowIcon(AssetLoader.Open(new Uri("avares://Cockpit.App/Assets/AppIcon.ico"))),
+            Icon = CockpitWindowChrome.CreateAppIcon(),
             ToolTipText = CockpitProduct.DisplayName,
             Menu = new NativeMenu { Items = { showItem, companionItem, quitItem } },
         };
@@ -1394,9 +1444,44 @@ public partial class App : Application
             await cockpit.ToastHost.RestoreNotificationsAsync(keptNotificationsPath);
         }
 
+        // No host (a test driving the restore on its own) means no startup attempt to report on or complete.
+        var attempt = Program.Services?.GetService<StartupAttempt>();
+        if (attempt is { Disabled.Count: > 0 })
+        {
+            _SayWhatTheLastStartTurnedOff(attempt.Disabled);
+        }
+
         await thresholdsLoaded;
         await cockpit.Workspaces.InitializeAsync();
         await cockpit.RestoreSessionPanesAsync();
+
+        // AC-2039: restored and still up a while later, so this start did not keep the operator out.
+        _ = attempt?.CompleteAfterAsync(StartupAttempt.StableAfter);
+    }
+
+    // AC-2109: the same plugin was being restored in two interrupted starts, so this one turned it off.
+    private static void _SayWhatTheLastStartTurnedOff(IReadOnlyList<DisabledPlugin> disabled)
+    {
+        var names = string.Join(", ", disabled.Select(plugin => plugin.Name));
+        var toasts = Program.Services.GetRequiredService<IToastService>();
+        var administration = Program.Services.GetRequiredService<IPluginAdministration>();
+        toasts.Show(
+            $"Cockpit stopped during two starts while it was opening {names}, so {(disabled.Count == 1 ? "it is" : "they are")} turned off for now.",
+            ToastSeverity.Warning,
+            [new ToastAction("Turn back on", () => _ = _TurnBackOnAsync(disabled, administration, toasts))],
+            sticky: true,
+            source: null,
+            key: StartupAttempt.FileName);
+    }
+
+    private static async Task _TurnBackOnAsync(IReadOnlyList<DisabledPlugin> disabled, IPluginAdministration administration, IToastService toasts)
+    {
+        foreach (var plugin in disabled)
+        {
+            await administration.SetEnabledAsync(plugin.Id, enabled: true, plugin.PinnedSha256);
+        }
+
+        toasts.Show($"{string.Join(", ", disabled.Select(plugin => plugin.Name))} will load again at the next start.", ToastSeverity.Information);
     }
 
     // Starts the scheduled resumes (AC-234) and, unlike the bare fire-and-forget this replaces, watches how that

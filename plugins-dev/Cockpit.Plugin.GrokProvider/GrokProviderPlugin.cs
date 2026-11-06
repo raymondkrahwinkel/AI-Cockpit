@@ -27,7 +27,7 @@ public sealed class GrokProviderPlugin : ICockpitPlugin
             ProviderId: "grok-provider.grok",
             DisplayName: "Grok",
             CreateDriverFactory: _ => new OpenAiCompatPluginSessionDriverFactory(),
-            Capabilities: new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false)
+            Capabilities: new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false, SupportsVision: true)
             {
                 // AC-964: this endpoint is plain chat completions — it brings no tool search of its own, so the
                 // host's may ride along without ever giving the model two ways to find the same tool. The driver
@@ -40,6 +40,7 @@ public sealed class GrokProviderPlugin : ICockpitPlugin
             // AC-1484: a key on the profile, or the provider variable in session.env, is what signs a profile in.
             IsLoggedIn = configJson => OpenAiCompatConfig.CredentialKindOf(configJson, OpenAiCompatConfig.ApiKeyEnvVar, OpenAiCompatDefaultBaseUrls.Grok) != PluginCredentialKind.Unknown,
             CredentialKind = configJson => OpenAiCompatConfig.CredentialKindOf(configJson, OpenAiCompatConfig.ApiKeyEnvVar, OpenAiCompatDefaultBaseUrls.Grok),
+            ReadModelIntelligenceAsync = GrokModelIntelligence.ReadAsync,
         });
     }
 

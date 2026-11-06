@@ -12,6 +12,7 @@ public partial class ConfirmationDialog : Window
     public ConfirmationDialog()
     {
         InitializeComponent();
+        CockpitWindowChrome.EnableConfirmationKeys(this);
         // Apply the chrome once the title is known (it comes from the view model), so the title bar reads e.g.
         // "Remove store" rather than the placeholder.
         DataContextChanged += (_, _) =>

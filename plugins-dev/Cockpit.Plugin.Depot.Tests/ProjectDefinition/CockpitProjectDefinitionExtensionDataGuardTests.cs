@@ -8,25 +8,14 @@ namespace Cockpit.Plugin.Depot.Tests.ProjectDefinition;
 public class CockpitProjectDefinitionExtensionDataGuardTests
 {
     [Fact]
-    public void Apply_NonSecretShapedKey_PassesThroughUntouched()
-    {
-        var extensionData = new Dictionary<string, JsonElement>
-        {
-            ["someFutureField"] = JsonSerializer.SerializeToElement("forwarded as-is"),
-        };
-
-        var (kept, droppedKeys) = CockpitProjectDefinitionExtensionDataGuard.Apply(extensionData);
-
-        Assert.Empty(droppedKeys);
-        Assert.NotNull(kept);
-        Assert.Equal("forwarded as-is", kept["someFutureField"].GetString());
-    }
-
-    [Fact]
     public void Apply_NestedObjectOneLevelDeep_SecretShapedChildIsDroppedAndReportedWithDottedPath()
     {
         var nested = JsonSerializer.SerializeToElement(new { apiToken = "plain", label = "kept" });
-        var extensionData = new Dictionary<string, JsonElement> { ["integration"] = nested };
+        var extensionData = new Dictionary<string, JsonElement>
+        {
+            ["integration"] = nested,
+            ["someFutureField"] = JsonSerializer.SerializeToElement("forwarded as-is"),
+        };
 
         var (kept, droppedKeys) = CockpitProjectDefinitionExtensionDataGuard.Apply(extensionData);
 
@@ -35,5 +24,6 @@ public class CockpitProjectDefinitionExtensionDataGuardTests
         var remaining = kept["integration"];
         Assert.False(remaining.TryGetProperty("apiToken", out _));
         Assert.Equal("kept", remaining.GetProperty("label").GetString());
+        Assert.Equal("forwarded as-is", kept["someFutureField"].GetString());
     }
 }

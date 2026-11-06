@@ -46,8 +46,10 @@ public class CockpitProjectDefinitionStoreTests
         }
     }
 
+    // A secret-shaped plaintext field is dropped and reported (top level and on a SensitiveFields row's fallback field),
+    // an already-encrypted one passes through, and the caller's own definition is left untouched.
     [Fact]
-    public async Task WriteAsync_ExtensionDataHasSecretShapedPlaintextField_DropsItBeforeSendingAndReportsIt()
+    public async Task WriteAsync_SecretShapedPlaintextFields_AreDroppedBeforeSendingAndReported_EncryptedOnesPassThrough()
     {
         var handler = new _StubHandler(HttpStatusCode.OK, """{"checksum":"c1"}""");
         var definition = new CockpitProjectDefinition
@@ -56,52 +58,17 @@ public class CockpitProjectDefinitionStoreTests
             ExtensionData = new Dictionary<string, JsonElement>
             {
                 ["newerSecretToken"] = JsonSerializer.SerializeToElement("plaintext-leak"),
+                ["olderSecretToken"] = JsonSerializer.SerializeToElement("enc:v1:AAAA"),
             },
-        };
-
-        var result = await _WriteAsync(handler, definition, baseChecksum: null);
-
-        Assert.Equal(["newerSecretToken"], result.DroppedExtensionKeys);
-        Assert.DoesNotContain("plaintext-leak", handler.Body, StringComparison.Ordinal);
-        Assert.Equal("*", handler.IfNoneMatch);
-        Assert.True(definition.ExtensionData.ContainsKey("newerSecretToken"));
-    }
-
-    [Fact]
-    public async Task WriteAsync_ExtensionDataHasSecretShapedFieldAlreadyEncrypted_PassesItThroughAndReportsNoDrop()
-    {
-        var handler = new _StubHandler(HttpStatusCode.OK, """{"checksum":"c1"}""");
-        var definition = new CockpitProjectDefinition
-        {
-            Name = "probe",
-            ExtensionData = new Dictionary<string, JsonElement>
-            {
-                ["newerSecretToken"] = JsonSerializer.SerializeToElement("enc:v1:AAAA"),
-            },
-        };
-
-        var result = await _WriteAsync(handler, definition, baseChecksum: null);
-
-        Assert.Null(result.DroppedExtensionKeys);
-        Assert.Contains("enc:v1:AAAA", handler.Body, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task WriteAsync_SensitiveFieldRowHasSecretShapedPlaintextFallbackField_DropsItBeforeSendingAndReportsIt()
-    {
-        var handler = new _StubHandler(HttpStatusCode.OK, """{"checksum":"c1"}""");
-        var definition = new CockpitProjectDefinition
-        {
-            Name = "probe",
             SensitiveFields =
             [
                 new CockpitProjectSensitiveFieldEntry
                 {
                     Label = "Deploy token",
-                    Value = "enc:v1:AAAA",
+                    Value = "enc:v1:BBBB",
                     ExtensionData = new Dictionary<string, JsonElement>
                     {
-                        ["fallbackPassword"] = JsonSerializer.SerializeToElement("plaintext-leak"),
+                        ["fallbackPassword"] = JsonSerializer.SerializeToElement("row-plaintext-leak"),
                     },
                 },
             ],
@@ -109,8 +76,14 @@ public class CockpitProjectDefinitionStoreTests
 
         var result = await _WriteAsync(handler, definition, baseChecksum: null);
 
-        Assert.Equal(["SensitiveFields.Deploy token.fallbackPassword"], result.DroppedExtensionKeys);
+        Assert.NotNull(result.DroppedExtensionKeys);
+        Assert.Equal(
+            ["SensitiveFields.Deploy token.fallbackPassword", "newerSecretToken"],
+            result.DroppedExtensionKeys.Order(StringComparer.Ordinal));
         Assert.DoesNotContain("plaintext-leak", handler.Body, StringComparison.Ordinal);
+        Assert.Contains("enc:v1:AAAA", handler.Body, StringComparison.Ordinal);
+        Assert.Equal("*", handler.IfNoneMatch);
+        Assert.True(definition.ExtensionData.ContainsKey("newerSecretToken"));
         var kept = definition.SensitiveFields[0].ExtensionData;
         Assert.NotNull(kept);
         Assert.True(kept.ContainsKey("fallbackPassword"));

@@ -29,6 +29,7 @@ internal sealed class OpencodeAcpSessionDriver : IPluginSessionDriver
     };
 
     private readonly OpencodeAcpConnection _connection;
+    private readonly Action<JsonElement?>? _recordCapabilities;
     private readonly OpencodeConfig _config;
     private readonly string _executablePath;
     private readonly PluginSessionEventPublisher _events = new();
@@ -94,9 +95,10 @@ internal sealed class OpencodeAcpSessionDriver : IPluginSessionDriver
     // different tasks (StartAsync, SetLiveOptionAsync, the notification pump).
     private volatile IReadOnlyList<PluginSessionLaunchOption> _liveOptions = [];
 
-    public OpencodeAcpSessionDriver(Func<ICliSubprocess> subprocessFactory, OpencodeConfig config, string executablePath)
+    public OpencodeAcpSessionDriver(Func<ICliSubprocess> subprocessFactory, OpencodeConfig config, string executablePath, Action<JsonElement?>? recordCapabilities = null)
     {
         _connection = new OpencodeAcpConnection(subprocessFactory());
+        _recordCapabilities = recordCapabilities;
         _config = config;
         _executablePath = executablePath;
         _model = config.DefaultModel;
@@ -104,6 +106,7 @@ internal sealed class OpencodeAcpSessionDriver : IPluginSessionDriver
 
     public PluginSessionCapabilities Capabilities { get; } = new(SupportsTools: true, SupportsPermissions: true)
     {
+        SupportsVision = true,
         SupportsEnvVars = true,
 
         // WellKnownPluginSessionOptions.Model is the literal string "model" — the same id opencode's own
@@ -183,6 +186,7 @@ internal sealed class OpencodeAcpSessionDriver : IPluginSessionDriver
         }, cancellationToken).ConfigureAwait(false);
 
         _agentCapabilities = initializeResult.TryGetProperty("agentCapabilities", out var agentCapabilities) ? agentCapabilities.Clone() : null;
+        _recordCapabilities?.Invoke(_agentCapabilities);
         _authMethods = initializeResult.TryGetProperty("authMethods", out var authMethods) ? authMethods.Clone() : null;
 
         // cwd must be absolute — normalising here means a caller-supplied relative path is still a real path
@@ -291,7 +295,10 @@ internal sealed class OpencodeAcpSessionDriver : IPluginSessionDriver
             : _liveOptions.FirstOrDefault(option => option.Key == "model")?.Choices
                 .FirstOrDefault(choice => string.Equals(choice, model, StringComparison.OrdinalIgnoreCase));
 
-    public Task SendUserMessageAsync(string text, CancellationToken cancellationToken = default)
+    public Task SendUserMessageAsync(string text, CancellationToken cancellationToken = default) =>
+        SendUserMessageAsync(text, null, cancellationToken);
+
+    public Task SendUserMessageAsync(string text, IReadOnlyList<PluginImageAttachment>? images, CancellationToken cancellationToken)
     {
         if (_sessionId is not { Length: > 0 } sessionId)
         {
@@ -301,11 +308,11 @@ internal sealed class OpencodeAcpSessionDriver : IPluginSessionDriver
         // Fire-and-forget: session/prompt only settles at turn end, so awaiting it here would block the caller
         // for the whole turn. The turn's content streams through the notification pump instead. Tracked so
         // DisposeAsync can await it before disposing _promptGate.
-        _launchedTasks.Add(_SendPromptAsync(sessionId, text, cancellationToken));
+        _launchedTasks.Add(_SendPromptAsync(sessionId, text, cancellationToken, images: images));
         return Task.CompletedTask;
     }
 
-    private async Task _SendPromptAsync(string sessionId, string text, CancellationToken cancellationToken, bool operatorTurn = true)
+    private async Task _SendPromptAsync(string sessionId, string text, CancellationToken cancellationToken, bool operatorTurn = true, IReadOnlyList<PluginImageAttachment>? images = null)
     {
         var queuedAtGeneration = Volatile.Read(ref _stopGeneration);
         try
@@ -327,7 +334,11 @@ internal sealed class OpencodeAcpSessionDriver : IPluginSessionDriver
 
                 // A prompt going out reopens the door the cancel closed: a permission request is a real question again.
                 _cancelling = false;
-                var prompt = new object[] { new { type = "text", text } };
+                var prompt = new List<object> { new { type = "text", text } };
+                if (images is not null)
+                {
+                    prompt.AddRange(images.Select(image => new { type = "image", mimeType = image.MediaType, data = image.Base64Data }));
+                }
                 result = await _connection.SendRequestAsync("session/prompt", new { sessionId, prompt }, cancellationToken).ConfigureAwait(false);
             }
             finally

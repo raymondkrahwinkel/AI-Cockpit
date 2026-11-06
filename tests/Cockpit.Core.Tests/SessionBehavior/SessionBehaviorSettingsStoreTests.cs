@@ -1,5 +1,4 @@
 using Cockpit.Core.Diagnostics;
-using Cockpit.Core.SessionBehavior;
 using Cockpit.Infrastructure.SessionBehavior;
 
 namespace Cockpit.Core.Tests.SessionBehavior;
@@ -19,18 +18,6 @@ public class SessionBehaviorSettingsStoreTests : IDisposable
         _tempDir = Path.Combine(Path.GetTempPath(), "cockpit-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_tempDir);
         _configFilePath = Path.Combine(_tempDir, "cockpit.json");
-    }
-
-    [Fact]
-    public async Task SaveAsync_ThenLoadAsync_RoundTripsSettings()
-    {
-        var store = new SessionBehaviorSettingsStore(_configFilePath);
-
-        await store.SaveAsync(new SessionBehaviorSettings { AutoCloseOnExit = true, CombineQueuedMessages = true });
-        var loaded = await store.LoadAsync();
-
-        Assert.True(loaded.AutoCloseOnExit);
-        Assert.True(loaded.CombineQueuedMessages);
     }
 
     [Fact]

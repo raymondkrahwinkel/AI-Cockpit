@@ -8,6 +8,18 @@ namespace Cockpit.Core.Abstractions.Assistant;
 public interface IAssistantAgentGateway
 {
     /// <summary>
+    /// Reads a local session's current MCP set, including its manager and server availability.
+    /// </summary>
+    Task<SessionMcpSetResult> GetSessionMcpSetAsync(string paneId, CancellationToken cancellationToken = default) =>
+        Task.FromResult(new SessionMcpSetResult(false, null, [], "Session MCP management is unavailable."));
+
+    /// <summary>
+    /// Changes a local set; the operator may add unless the assistant manages the set.
+    /// </summary>
+    Task<SessionMcpSetResult> ChangeSessionMcpServerAsync(string paneId, string name, bool add, bool byOperator = false, CancellationToken cancellationToken = default) =>
+        Task.FromResult(new SessionMcpSetResult(false, null, [], "Session MCP management is unavailable."));
+
+    /// <summary>
     /// Starts a session on <paramref name="request"/>'s profile and places it on the target's desk as an ordinary
     /// pane, with its own consents and transcript. The desk is <em>not</em> activated: a spawn elsewhere must leave
     /// the operator where they are, since work is often set up on another desk precisely so it does not interrupt.
@@ -482,6 +494,10 @@ public sealed record AgentSpawnResult(
     bool Ok, string? PaneId, string? SessionName, string? WorkingDirectory, string? Error,
     bool? PromptDelivered = null, string? ResolvedProfileLabel = null)
 {
+    public IReadOnlyList<string>? McpServers { get; init; }
+
+    public bool McpServersConfirmed { get; init; }
+
     public static AgentSpawnResult Started(
         string paneId, string sessionName, string? workingDirectory, bool? promptDelivered = null, string? resolvedProfileLabel = null) =>
         new(true, paneId, sessionName, workingDirectory, null, promptDelivered, resolvedProfileLabel);

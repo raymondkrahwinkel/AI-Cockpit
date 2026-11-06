@@ -1,6 +1,7 @@
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Abstractions.SessionBehavior;
 using Cockpit.Core.Abstractions.Shell;
 using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Assistant;
@@ -21,8 +22,10 @@ internal sealed class DockerStorageMaintenance(
     HeavyRunQueue queue,
     IAgentMessageInbox inbox,
     ILiveSessionRegistry live,
+    ISessionRegistry sessions,
     ILogger<DockerStorageMaintenance> logger,
-    IToastService? toasts = null) : IDockerStorageMaintenance, ISingletonService, IAsyncDisposable
+    IToastService? toasts = null,
+    ISessionBehaviorSettingsStore? settings = null) : IDockerStorageMaintenance, ISingletonService, IAsyncDisposable
 {
     private readonly SemaphoreSlim _operation = new(1, 1);
     private readonly CancellationTokenSource _stopping = new();
@@ -33,6 +36,7 @@ internal sealed class DockerStorageMaintenance(
     private Task _tick = Task.CompletedTask;
     private DateTimeOffset _lastCleanup;
     private DateTimeOffset _lastOffer;
+    private DateTimeOffset _lastSuggestion;
     private string? _pauseId;
     private DockerDataDisk? _disk;
     private DockerStorageUsage? _usage;
@@ -55,11 +59,19 @@ internal sealed class DockerStorageMaintenance(
         }
     }, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(60));
 
-    internal bool AcknowledgePause(string paneId, string pauseId)
+    internal StoragePauseAcknowledgement AcknowledgePause(string paneId, string pauseId)
     {
         lock (_gate)
         {
-            return _pauseId == pauseId && _acknowledgements.TryGetValue(paneId, out var acknowledgement) && acknowledgement.TrySetResult();
+            if (_pauseId is null)
+                return new(false, "no_pause");
+            if (_pauseId != pauseId)
+                return new(false, "unknown_pause");
+            if (!_acknowledgements.TryGetValue(paneId, out var acknowledgement))
+                return new(true, "not_required");
+            return acknowledgement.TrySetResult()
+                ? new(true, "acknowledged")
+                : new(true, "already_acknowledged");
         }
     }
 
@@ -67,15 +79,23 @@ internal sealed class DockerStorageMaintenance(
     {
         _usage = null;
         _disk = null;
-        var result = await docker.RunAsync(["system", "df", "--format", "json"], cancellationToken).ConfigureAwait(false);
-        if (result.ExitCode != 0)
+        DockerCliResult? result;
+        try
+        {
+            result = await docker.RunAsync(["system", "df", "--format", "json"], cancellationToken).ConfigureAwait(false);
+        }
+        catch (DockerUnavailableException)
+        {
+            result = null;
+        }
+        if (result is null || result.Value.ExitCode != 0)
         {
             Volatile.Write(ref _summary, "Docker is unavailable; disk monitoring continues.");
             Changed?.Invoke();
             return;
         }
 
-        var usage = DockerStorageUsage.Parse(result.StandardOutput);
+        var usage = DockerStorageUsage.Parse(result.Value.StandardOutput);
         DockerDataDisk? disk = null;
         try
         {
@@ -192,7 +212,7 @@ internal sealed class DockerStorageMaintenance(
         }
 
         var restart = false;
-        var participants = live.LiveSessionIds.ToArray();
+        var participants = live.LiveSessionIds.Where(pane => pane != AssistantIdentity.PaneId).ToArray();
         try
         {
             _stopping.Token.ThrowIfCancellationRequested();
@@ -220,11 +240,33 @@ internal sealed class DockerStorageMaintenance(
                 {
                     throw new InvalidOperationException($"Could not notify {pane}; compaction canceled.");
                 }
+
+                if (sessions.Find(pane) is { } session
+                    && !await session.HasOutstandingBackgroundShellsAsync().ConfigureAwait(false)
+                    && session.SessionStatus != SessionStatus.Busy)
+                {
+                    AcknowledgePause(pane, pauseId);
+                }
             }
 
-            await Task.WhenAll(acknowledgements).WaitAsync(bounded.Token).ConfigureAwait(false);
+            try
+            {
+                await Task.WhenAll(acknowledgements).WaitAsync(bounded.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!_stopping.IsCancellationRequested && !reservation.Revoked.IsCancellationRequested)
+            {
+                string[] missing;
+                lock (_gate)
+                {
+                    missing = _acknowledgements.Where(pair => !pair.Value.Task.IsCompleted)
+                        .Select(pair => sessions.Find(pair.Key)?.Title ?? pair.Key).ToArray();
+                }
+
+                _Report($"Compaction canceled: no acknowledgement within 5 minutes from {string.Join(", ", missing)}. Ask them to pause Docker work, or request compaction again.", ToastSeverity.Warning);
+                return;
+            }
             bounded.CancelAfter(Timeout.InfiniteTimeSpan);
-            if (!live.LiveSessionIds.SetEquals(participants))
+            if (!live.LiveSessionIds.Where(pane => pane != AssistantIdentity.PaneId).ToHashSet(StringComparer.Ordinal).SetEquals(participants))
             {
                 throw new InvalidOperationException("The session roster changed; request compaction again.");
             }
@@ -305,7 +347,9 @@ internal sealed class DockerStorageMaintenance(
         {
             var pressure = resources.Disks.Select(drive => drive.Pressure).DefaultIfEmpty().Max();
             var now = DateTimeOffset.UtcNow;
-            if (now - _lastCleanup >= (pressure >= DiskPressure.Elevated ? TimeSpan.FromMinutes(15) : TimeSpan.FromDays(1)))
+            // AC-2035: read afresh each tick, so switching it in Options or on the server needs no restart.
+            var automatic = settings is not null && (await settings.LoadAsync(_stopping.Token).ConfigureAwait(false)).AutomaticDockerCleanup;
+            if (automatic && now - _lastCleanup >= (pressure >= DiskPressure.Elevated ? TimeSpan.FromMinutes(15) : TimeSpan.FromDays(1)))
             {
                 await CleanupAsync(_stopping.Token).ConfigureAwait(false);
             }
@@ -313,6 +357,13 @@ internal sealed class DockerStorageMaintenance(
             {
                 try { await SampleAsync(_stopping.Token).ConfigureAwait(false); }
                 finally { _operation.Release(); }
+            }
+
+            if (!automatic && pressure >= DiskPressure.Elevated && now - _lastSuggestion >= TimeSpan.FromHours(6) && _usage is not null)
+            {
+                _lastSuggestion = now;
+                var worst = resources.Disks.MaxBy(drive => drive.Pressure)!;
+                _Report($"Disk space on {worst.Name} is {(pressure == DiskPressure.Critical ? "critically low" : "running low")} ({worst.PressureReason ?? "below the configured threshold"}) and automatic Docker clean-up is off. Clean up Docker by hand from the storage status in the status bar.", ToastSeverity.Warning);
             }
 
             if (CanCompact && now - _lastOffer >= TimeSpan.FromDays(1))
@@ -362,3 +413,5 @@ internal sealed class DockerStorageMaintenance(
         _operation.Release();
     }
 }
+
+internal sealed record StoragePauseAcknowledgement(bool Ok, string Reason);

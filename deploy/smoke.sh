@@ -96,7 +96,13 @@ if grep -q 'docker.sock' <<< "$compose_config"; then fail "compose mounts the do
 
 echo "== controls: the checks above must be able to go red"
 docker run -d --name "$project-control-root" --user 0 --entrypoint bash "$image" -c 'exec -a /app/Cockpit.Server sleep 60' >/dev/null
-[ "$(server_uid "$project-control-root")" = 0 ] || fail "control: the server-uid check did not see a server that runs as root"
+control_uid=
+for _ in $(seq 10); do
+  control_uid=$(server_uid "$project-control-root")
+  [ "$control_uid" = 0 ] && break
+  sleep .1
+done
+[ "$control_uid" = 0 ] || fail "control: the server-uid check did not see a server that runs as root"
 docker rm -f "$project-control-root" >/dev/null
 printf 'FROM %s\nARG S\nENV LEAK=$S\n' "$image" | docker build -q --build-arg S="$unlock" -t "$project-control-leak" - >/dev/null
 history_leaks "$project-control-leak" "$unlock" || fail "control: the history check missed a secret baked into a layer"

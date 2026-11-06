@@ -12,7 +12,7 @@ using Material.Icons;
 
 namespace Cockpit.Plugin.Productivity.UI;
 
-// Uren · Dag and Overzicht for `--screenshot --scene plugin:<name>` (AC-1766), fed by a fixed week of Cockpit and
+// Hours · Day and Overview for `--screenshot --scene plugin:<name>` (AC-1766), fed by a fixed week of Cockpit and
 // Depot sessions in worktrees. A dev hook, not a plugin contract: the channel answers from this data, through the
 // same overview builder the backend uses.
 internal static class ProductivityScenes
@@ -42,7 +42,7 @@ internal static class ProductivityScenes
                 var controller = new OverviewController(new SceneChannel(), new FixedTime());
                 // A scene is built synchronously and rendered at once; the stub channel answers without awaiting.
                 _Done(controller.RefreshAsync());
-                return (new WorkspaceTypeRegistration(ProductivityUi.OverviewWorkspaceTypeId, "Overzicht", _ => new OverviewWorkspaceBody(controller, () => { }, () => { }, () => RefreshPolicy.Interval(RefreshPolicy.DefaultSeconds))) { IconKind = MaterialIconKind.ViewDashboardOutline }, null);
+                return (new WorkspaceTypeRegistration(ProductivityUi.OverviewWorkspaceTypeId, "Overview", _ => new OverviewWorkspaceBody(controller, () => { }, () => { }, () => RefreshPolicy.Interval(RefreshPolicy.DefaultSeconds))) { IconKind = MaterialIconKind.ViewDashboardOutline }, null);
             },
         };
 
@@ -50,11 +50,12 @@ internal static class ProductivityScenes
     {
         MeasuredTimeCard.OpenFolds = true;
         var host = SceneHost.Create(new SceneChannel());
-        var controller = new ProductivityController(host.Channel, new FixedTime());
+        var time = new FixedTime();
+        var controller = new ProductivityController(host.Channel, time);
         controller.UpdateProjectFallback(Cockpit);
         // A scene is built synchronously and rendered at once; the stub channel answers without awaiting.
         _Done(controller.ShowWeekAsync(week));
-        return (new WorkspaceTypeRegistration(ProductivityUi.WorkspaceTypeId, "Uren", _ => new HoursWorkspaceBody(controller, host, () => { })) { IconKind = MaterialIconKind.ClockOutline }, null);
+        return (new WorkspaceTypeRegistration(ProductivityUi.WorkspaceTypeId, "Hours", _ => new HoursWorkspaceBody(controller, host, () => { }, time)) { IconKind = MaterialIconKind.ClockOutline }, null);
     }
 
     // AC-1891: never waits. The stub channel has already answered, so a task still running is a broken scene.
@@ -120,7 +121,7 @@ internal static class ProductivityScenes
     private static CockpitTimelineLine _Line(CockpitTimelineKind kind, DateTimeOffset at, int session, CockpitTimelineStatus? status)
     {
         var (pane, project, ticket, name, _, _, _) = Sessions[session];
-        return new CockpitTimelineLine(kind, at, pane, project, null, ticket, status, kind == CockpitTimelineKind.Operator ? CockpitOperatorAction.MessageSent : null, $"{name} · bezig");
+        return new CockpitTimelineLine(kind, at, pane, project, null, ticket, status, kind == CockpitTimelineKind.Operator ? CockpitOperatorAction.MessageSent : null, $"{name} · busy");
     }
 
     // Your own lines: one stored with a worktree folder from before AC-1737, one with an id no project has.

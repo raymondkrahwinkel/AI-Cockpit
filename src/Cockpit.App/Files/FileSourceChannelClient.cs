@@ -12,6 +12,21 @@ internal sealed class FileSourceChannelClient(IPluginUiChannel channel)
 {
     public IDisposable Subscribe(string name, Action<PluginChannelEvent> handler) => channel.Subscribe(name, handler);
 
+    public async Task<byte[]> ReadImageAsync(FileRef file, string target, CancellationToken cancellationToken)
+    {
+        var encoded = await _CallAsync<string>(FileImageChannel.Read, new FileImageRequest(file, target), cancellationToken).ConfigureAwait(false);
+        if (encoded.Length > ((FileImageChannel.MaxBytes + 2) / 3) * 4)
+        {
+            throw new FileSourceException(FileSourceErrorKind.TooLarge, "This image is too large.");
+        }
+        var bytes = Convert.FromBase64String(encoded);
+        if (bytes.Length > FileImageChannel.MaxBytes)
+        {
+            throw new FileSourceException(FileSourceErrorKind.TooLarge, "This image is too large.");
+        }
+        return bytes;
+    }
+
     public async Task<IReadOnlyList<FileConnection>> ConnectionsAsync(CancellationToken cancellationToken) =>
         await _RunAsync(() => _CallAsync<FileConnection[]>(FileSourceChannel.Connections, new { }, cancellationToken), cancellationToken).ConfigureAwait(false);
 
@@ -69,7 +84,7 @@ internal sealed class FileSourceChannelClient(IPluginUiChannel channel)
         string.IsNullOrWhiteSpace(live.SessionId) || live.ContentBase64 is null || live.Status is null
             ? throw new FileSourceException(FileSourceErrorKind.Unavailable, "The source returned an invalid live file.")
             : (live.SessionId, new LiveFileSnapshot(new UTF8Encoding(false, true).GetString(FileSourceChannel.DecodeContent(live.ContentBase64)),
-                live.Rev, live.Status));
+                live.Rev, live.Status) { SerializedText = live.SerializedText });
 
     public Task<FileWriteResult> WriteAsync(FileRef file, Stream content, string? ifVersion,
         bool mustNotExist, CancellationToken cancellationToken) => _RunAsync(async () =>

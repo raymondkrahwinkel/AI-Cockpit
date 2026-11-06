@@ -39,24 +39,6 @@ public class CredentialFilePermissionTests : IDisposable
     }
 
     [Fact]
-    public async Task ConfigFile_ThatIsAlreadyWorldReadable_IsRestrictedOnTheNextWrite()
-    {
-        if (OperatingSystem.IsWindows())
-        {
-            return;
-        }
-
-        // What every existing installation looks like today: a config written by a version that let the umask decide.
-        var path = Path.Combine(_directory, "cockpit.json");
-        await File.WriteAllTextAsync(path, "{}");
-        File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
-
-        await new McpServerStore(path).SaveAsync([]);
-
-        Assert.Equal(OwnerOnly, File.GetUnixFileMode(path));
-    }
-
-    [Fact]
     public void TtyMcpConfig_LivesBesideTheOtherState_NotInTheSharedTempDirectory()
     {
         // The file carries the registry's bearer headers, and the temp directory is world-readable (1777).

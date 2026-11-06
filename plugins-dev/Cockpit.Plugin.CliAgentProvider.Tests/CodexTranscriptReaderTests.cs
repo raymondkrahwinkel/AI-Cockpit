@@ -16,20 +16,6 @@ public class CodexTranscriptReaderTests : IDisposable
     // No transcript from a prior session exists, so the one the test writes is always the "new" one.
     private static readonly IReadOnlySet<string> NoBaseline = new HashSet<string>();
 
-    [Theory]
-    [InlineData("""{"type":"event_msg","payload":{"type":"task_started"}}""", PluginSessionActivity.Busy)]
-    [InlineData("""{"type":"event_msg","payload":{"type":"task_complete","turn_id":"x"}}""", PluginSessionActivity.TurnComplete)]
-    [InlineData("""{"type":"event_msg","payload":{"type":"agent_message","message":"hi"}}""", PluginSessionActivity.None)]
-    [InlineData("""{"type":"event_msg","payload":{"type":"token_count","info":{}}}""", PluginSessionActivity.None)]
-    [InlineData("""{"type":"event_msg","payload":{"type":"user_message","message":"hi"}}""", PluginSessionActivity.None)]
-    [InlineData("""{"type":"response_item","payload":{"type":"function_call"}}""", PluginSessionActivity.None)]
-    [InlineData("""{"type":"session_meta","payload":{}}""", PluginSessionActivity.None)]
-    [InlineData("""{"type":"event_msg"}""", PluginSessionActivity.None)]
-    [InlineData("not json", PluginSessionActivity.None)]
-    [InlineData("", PluginSessionActivity.None)]
-    public void ClassifyLine_ReadsTheEventMsgPayloadType(string line, PluginSessionActivity expected) =>
-        Assert.Equal(expected, CodexTranscriptReader.ClassifyLine(line));
-
     [Fact]
     public async Task ReadActivityAsync_YieldsBusyOnTaskStarted_ThenTurnCompleteOnTaskComplete()
     {

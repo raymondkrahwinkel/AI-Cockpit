@@ -1,6 +1,9 @@
 using System.Text;
 using System.Text.Json;
 using Avalonia.Controls;
+using Avalonia.VisualTree;
+using Avalonia.Threading;
+using Cockpit.App.Views.Editor;
 using Cockpit.App.Files;
 using Cockpit.App.Plugins;
 using Cockpit.App.ViewModels;
@@ -55,6 +58,10 @@ internal static partial class Screenshotter
             _ => null,
         };
         var text = presence ? PresenceNote : "# md-editor-in-cockpit\n\nCapture an idea straight from the **Depot file browser**, and see *right away* how it looks.\n\n## Wishes\n- A new file in a chosen place\n- A tab or a separate window\n- Saving writes back to Depot with `baseChecksum`\n\n## Tasks\n- [x] Mockup v003\n- [ ] Write the next idea\n";
+        if (state == "images")
+        {
+            text = "# Weekly sync\n\n## Desktop reference\n\n![Desktop reference](assets/desktop.png)\n\nThe image belongs to this note's project. Its relative Markdown stays unchanged.\n\n![Unavailable attachment](assets/missing.png)\n";
+        }
         if (state == "presence-agent")
         {
             text += "- [ ] Joris: post the Linux numbers in #cockpit before Friday\n- [ ] Sanne: plan the inbox dry run with two web users\n- [ ] Raymond: decide B7 (Cockpit as saver) after LB-3\n";
@@ -62,9 +69,9 @@ internal static partial class Screenshotter
         var options = new FileWorkspaceOpenOptions(
             presence ? new FileRef("scene", "idea", "Meetings/2026-10-28 Weekly sync.md") : new FileRef("scene", "idea", "Ideas/md-editor-in-cockpit.md"),
             "idea", presence ? "2026-10-28 Weekly sync.md" : "md-editor-in-cockpit.md", "Depot / Work / krahwinkel-it/cockpit",
-            Edit: state is not ("readonly" or "preview"), CreateNew: state == "new", InitialText: "# md-editor-in-cockpit\n\n");
+            Edit: state is not ("readonly" or "preview" or "images"), CreateNew: state == "new", InitialText: "# md-editor-in-cockpit\n\n");
         var registry = new WorkspaceTypeRegistry(new ServiceCollection().BuildServiceProvider());
-        var sceneChannel = new FileSceneChannel(text, state != "readonly", state.StartsWith("conflict"), state is "live" || presence, presence, away: state == "presence-away", status: readOnly ?? _SceneStatus(state), agent: state == "presence-agent");
+        var sceneChannel = new FileSceneChannel(text, state != "readonly", state.StartsWith("conflict"), state is "live" or "live-timeout" || presence, presence, away: state == "presence-away", status: readOnly ?? _SceneStatus(state), agent: state == "presence-agent", hangOpen: state == "live-timeout");
         registry.Register(new WorkspaceTypeRegistration("scene.file", "Markdown", context =>
             new MarkdownFileWorkspace(context, options, new FileSourceChannelClient(sceneChannel),
                 () => Task.FromResult(false))) { CanFloat = true }, new PluginScenes.SceneStorage(), NullCockpitSessionObserver.Instance);
@@ -77,7 +84,20 @@ internal static partial class Screenshotter
         workspaces.OpenWorkspaceAsync("scene.file", new("idea", options.Title, state == "preview")).GetAwaiter().GetResult();
         var entry = workspaces.Active ?? throw new InvalidOperationException("The file scene did not open.");
         var body = workspaces.BodyFor(entry) as MarkdownFileWorkspace ?? throw new InvalidOperationException("The editor scene is missing.");
+        if (state == "images")
+        {
+            body.Tag = sceneChannel;
+        }
+        while (state == "live-timeout" && !body.Ready.IsCompleted)
+        {
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            Thread.Sleep(5);
+        }
         body.Ready.GetAwaiter().GetResult();
+        if (state == "live-timeout" && (body.Editor.Text != text || body.LiveStatus is not null))
+        {
+            throw new InvalidOperationException("A timed-out live open did not retain the saved snapshot.");
+        }
         if (state == "presence-agent")
         {
             body.Editor.MarkExternalEdit(new ExternalTextEdit("Assistant · on behalf of Raymond", DateTimeOffset.UtcNow, [new(PresenceNote.Length, text.Length)]));
@@ -126,6 +146,50 @@ internal static partial class Screenshotter
         return new MainWindow { Width = width, Height = height, DataContext = cockpit };
     }
 
+    private static void _ExerciseNoteImages(Window window)
+    {
+        var body = window.GetVisualDescendants().OfType<MarkdownFileWorkspace>().Single();
+        var editor = body.Editor;
+        var channel = (FileSceneChannel)(body.Tag ?? throw new InvalidOperationException("The image scene has no source."));
+        _WaitForNoteImage(window, editor);
+        var grid = editor.Parent as Grid ?? throw new InvalidOperationException("The image editor has no grid.");
+        var position = grid.Children.IndexOf(editor);
+        grid.Children.Remove(editor);
+        var reads = channel.ImageReads;
+        editor.InvalidateImages();
+        window.UpdateLayout();
+        Dispatcher.UIThread.RunJobs();
+        if (channel.ImageReads != reads)
+        {
+            throw new InvalidOperationException("A detached editor started an image load.");
+        }
+        grid.Children.Insert(position, editor);
+        _WaitForNoteImage(window, editor);
+        if (channel.ImageReads <= reads)
+        {
+            throw new InvalidOperationException("The reattached editor did not reload its image.");
+        }
+        Console.WriteLine("AC-2100 scene: first async image has its own line height; detach starts no loads; reattach restores the image.");
+    }
+
+    private static void _WaitForNoteImage(Window window, MarkdownEditor editor)
+    {
+        var deadline = Environment.TickCount64 + 5000;
+        while (Environment.TickCount64 < deadline)
+        {
+            Dispatcher.UIThread.RunJobs();
+            window.UpdateLayout();
+            var image = editor.GetVisualDescendants().OfType<Image>().FirstOrDefault();
+            var line = editor.TextEditor.TextArea.TextView.VisualLines.FirstOrDefault(line => line.FirstDocumentLine.LineNumber == 5);
+            if (image?.Source is Avalonia.Media.Imaging.Bitmap && image.Bounds.Height >= 200 && line?.Height >= image.Bounds.Height)
+            {
+                return;
+            }
+            Thread.Sleep(1);
+        }
+        throw new InvalidOperationException("The image did not receive a correctly measured line within five seconds.");
+    }
+
     // Mockup v2 screens 4, 3a and 6: who saved the live note last, as the source reports it (AC-1901).
     private static LiveFileStatus? _SceneStatus(string state)
     {
@@ -140,8 +204,17 @@ internal static partial class Screenshotter
         return saved is null ? null : new LiveFileStatus(LiveFileState.Live) { Saved = saved };
     }
 
-    private sealed class FileSceneChannel(string text, bool writable, bool conflict = false, bool live = false, bool presence = false, bool away = false, LiveFileStatus? status = null, bool agent = false) : IPluginUiChannel
+    private sealed class FileSceneChannel(string text, bool writable, bool conflict = false, bool live = false, bool presence = false, bool away = false, LiveFileStatus? status = null, bool agent = false, bool hangOpen = false) : IPluginUiChannel
     {
+        public int ImageReads { get; private set; }
+
+        private JsonElement _ImageAnswer(FileImageRequest? request)
+        {
+            ImageReads++;
+            return JsonSerializer.SerializeToElement(request?.Target == "assets/desktop.png"
+                ? new FileSourceAnswer<string>(Convert.ToBase64String(_StandInPng(480, 240)), null)
+                : new FileSourceAnswer<string>(null, new FileSourceError(FileSourceErrorKind.NotFound, "This image is unavailable.")), FileSourceChannel.Json);
+        }
         private string Changed => text.Replace("`baseChecksum`" + (char)10, "`baseChecksum`" + (char)10 + "- Compare before you overwrite" + (char)10);
         private bool _read;
         private long _rev = 1;
@@ -158,8 +231,10 @@ internal static partial class Screenshotter
                     text.Insert(text.IndexOf("\n\n## Decisions", StringComparison.Ordinal), LocalNoteLines))), FileSourceChannel.Json)));
         }
 
-        public Task<JsonElement> InvokeAsync(string action, JsonElement payload, CancellationToken cancellationToken = default) => Task.FromResult(action switch
+        public Task<JsonElement> InvokeAsync(string action, JsonElement payload, CancellationToken cancellationToken = default) =>
+            action == FileSourceChannel.LiveOpen && hangOpen ? new TaskCompletionSource<JsonElement>().Task : Task.FromResult(action switch
         {
+            FileImageChannel.Read => _ImageAnswer(payload.Deserialize<FileImageRequest>(FileSourceChannel.Json)),
             FileSourceChannel.Write when !conflict => JsonSerializer.SerializeToElement(new FileSourceAnswer<FileWriteResult>(new(FileWriteStatus.Written, "e7a1b6ca"), null), FileSourceChannel.Json),
             FileSourceChannel.Write => JsonSerializer.SerializeToElement(new FileSourceAnswer<FileWriteResult>(new(FileWriteStatus.Conflict, "f00dcafe"), null), FileSourceChannel.Json),
             FileSourceChannel.Read when conflict && _read => JsonSerializer.SerializeToElement(new FileSourceAnswer<FileSourceReadAnswer>(

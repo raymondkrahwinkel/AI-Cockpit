@@ -35,7 +35,8 @@ internal static class AssistantAgentGatewayGraph
         IProjectFieldRegistry? projectFields = null,
         ProjectCatalog? projects = null,
         IProviderModelIntelligence? providerIntelligence = null,
-        TimeSpan? modelIntelligenceBudget = null) =>
+        TimeSpan? modelIntelligenceBudget = null,
+        Cockpit.Core.Sessions.SessionMcpMounts? mcpMounts = null) =>
         new(
             sessions,
             DesktopLauncher.Over(cockpit, sessions, worktreeManager, mcpServerCatalog),
@@ -54,5 +55,6 @@ internal static class AssistantAgentGatewayGraph
             modelIntelligenceBudget,
             worktreeManager,
             projectFields,
-            mcpServers: mcpServerCatalog);
+            mcpServers: mcpServerCatalog,
+            mcpMounts: mcpMounts);
 }

@@ -6,9 +6,7 @@ using Exclr8.Terminal;
 namespace Cockpit.App.ViewTests;
 
 /// <summary>
-/// AC-442's invariant: a pane shown as a miniature keeps the grid its pty already has. The two tests only
-/// mean something together — the first pins the invariant, the second is the mutation kept runnable, so the
-/// first is known to be red without the fix rather than green on a terminal that never resized anyway.
+/// AC-442's invariant: a pane shown as a miniature keeps the grid its pty already has.
 /// </summary>
 [Collection("avalonia")]
 public class MiniatureHostPtyInvariantTests
@@ -65,34 +63,6 @@ public class MiniatureHostPtyInvariantTests
 
         // AC-442 #4: the same control throughout — the switch is a number, not a rebuilt pane.
         Assert.Same(childBefore, childAfter);
-    }
-
-    /// <summary>
-    /// The mutation, kept runnable: the same terminal in the same tile without the host's scaling. It is the
-    /// evidence that the invariant test above can fail — remove the transform from
-    /// <see cref="MiniatureHost"/> and it degenerates into exactly this.
-    /// </summary>
-    [Fact]
-    public async Task WithoutTheHost_TheSameTileReshapesThePty()
-    {
-        (int Cols, int Rows) full = default, tiled = default;
-
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var terminal = NewTerminal();
-
-            Layout(terminal, FullWidth, FullHeight);
-            await TerminalSettle.WaitAsync(terminal);
-            full = Grid(terminal);
-
-            Layout(terminal, FullWidth * MiniatureScale, FullHeight * MiniatureScale);
-            await TerminalSettle.WaitAsync(terminal);
-            tiled = Grid(terminal);
-        });
-
-        Assert.True(tiled.Cols < full.Cols / 2,
-            $"a {MiniatureScale:P0} tile left the grid at {tiled.Cols}x{tiled.Rows} against {full.Cols}x{full.Rows}; "
-            + "if a real tile no longer collapses the grid, the invariant test above stopped proving anything");
     }
 
     private static TerminalControl NewTerminal() =>

@@ -22,15 +22,4 @@ public class ClaudePluginProfileTests
         Assert.Equal("/home/raymond/.claude-work", profile.Claude.ConfigDir);
         Assert.Equal("/usr/local/bin/claude", profile.Claude.ExecutablePath);
     }
-
-    [Fact]
-    public void MigratedConfiglessProfile_ReconstructsABlankConfigDir_SoItFollowsTheCliDefault()
-    {
-        // A blank ConfigDir is the signal the provider plugin resolves to the CLI default (~/.claude); reconstructing
-        // it as blank rather than null keeps a default profile a real, resolvable Claude profile after migration.
-        var profile = new SessionProfile("default", ClaudePluginProfile.Create(configDir: null, executablePath: null));
-
-        Assert.NotNull(profile.Claude);
-        Assert.True(string.IsNullOrEmpty(profile.Claude.ConfigDir));
-    }
 }

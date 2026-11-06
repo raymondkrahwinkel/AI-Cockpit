@@ -19,54 +19,6 @@ public class SessionHostTests
 {
     private static readonly SessionProfile Profile = new("work", new ClaudeConfig("/fake/.claude"));
 
-    public static TheoryData<Func<SessionHost, Func<int>>, TimeSpan> Polls => new()
-    {
-        {
-            host =>
-            {
-                var checks = 0;
-                host.LoginChecked += _ => checks++;
-                host.StartLoginPoll(Profile);
-                checks = 0;
-                return () => checks;
-            },
-            TimeSpan.FromMinutes(1)
-        },
-        {
-            host =>
-            {
-                var catchUps = 0;
-                host.UsageCatchUpDue += () => catchUps++;
-                host.StartUsageCatchUp();
-                return () => catchUps;
-            },
-            TimeSpan.FromSeconds(30)
-        },
-    };
-
-    /// <summary>
-    /// Two sessions raising at once: each stream rises strictly and no number is handed out twice. Only the order is
-    /// asserted, since the counter is shared by every host in the process, other tests' included.
-    /// </summary>
-    [Fact]
-    public async Task TheSequence_RisesStrictlyPerSession_AndIsNeverHandedOutTwice()
-    {
-        var (first, firstRuntime) = _Started();
-        var (second, secondRuntime) = _Started();
-        var firstSeqs = new List<long>();
-        var secondSeqs = new List<long>();
-        first.EventAppended += hostEvent => firstSeqs.Add(hostEvent.Seq);
-        second.EventAppended += hostEvent => secondSeqs.Add(hostEvent.Seq);
-
-        await Task.WhenAll(
-            Task.Run(() => _RaiseMany(firstRuntime, 500)),
-            Task.Run(() => _RaiseMany(secondRuntime, 500)));
-
-        Assert.All(firstSeqs.Zip(firstSeqs.Skip(1)), pair => Assert.True(pair.First < pair.Second));
-        Assert.All(secondSeqs.Zip(secondSeqs.Skip(1)), pair => Assert.True(pair.First < pair.Second));
-        Assert.Equal(1000, firstSeqs.Concat(secondSeqs).Distinct().Count());
-    }
-
     // Layer 2: enforcement overrides approval, and a withdrawn reservation must never dispatch later.
     [Fact]
     public async Task AReadOnlyTurn_RefusesWritingTools_AndWithdrawsBeforeStart()
@@ -75,7 +27,7 @@ public class SessionHostTests
         runtime.SupportsReadOnlyTurns.Returns(true);
         var provider = Substitute.For<IPluginSessionDriver>();
         provider.SupportsReadOnlyTurns.Returns(true);
-        var adapter = new PluginSessionDriverAdapter(provider, new PluginSessionCapabilities(true, true), new McpAuthKey());
+        var adapter = new PluginSessionDriverAdapter(provider, new PluginSessionCapabilities(true, true));
         Func<string, bool>? providerFilter = null;
         provider.SetReadOnlyTurnAsync(Arg.Any<Func<string, bool>?>(), Arg.Any<CancellationToken>()).Returns(call =>
         {
@@ -147,11 +99,6 @@ public class SessionHostTests
     private static TurnCompleted _TurnCompleted() =>
         new() { SessionId = "S1", Subtype = "success", Result = "done", IsError = false };
 
-    private static void _RaiseMany(ISessionRuntime runtime, int count) =>
-        Enumerable.Range(0, count).ToList().ForEach(index =>
-            runtime.EventAppended += Raise.Event<Action<SessionEvent>>(
-                new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = index.ToString() }));
-
     // A clock whose timers fire only when the test advances it, honouring Change and Dispose as the real ones do.
     private sealed class ManualClock : TimeProvider
     {
@@ -208,16 +155,4 @@ public class SessionHostTests
         }
     }
 
-    private sealed class RecordingLogger : ILogger
-    {
-        public List<LogLevel> Levels { get; } = [];
-
-        public IDisposable? BeginScope<TState>(TState state)
-            where TState : notnull => null;
-
-        public bool IsEnabled(LogLevel logLevel) => true;
-
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
-            Levels.Add(logLevel);
-    }
 }

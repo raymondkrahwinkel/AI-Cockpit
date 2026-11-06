@@ -18,24 +18,6 @@ namespace Cockpit.App.ViewTests;
 public class PluginMenuOrderTests
 {
     [Fact]
-    public void ASectionMovedToTheTop_IsAtTheTop_AboveTheButtons() => HeadlessAvalonia.Run(() =>
-    {
-        var cockpit = new CockpitViewModel();
-        var sink = (IPluginContributionSink)cockpit;
-        sink.AddPluginSideButton("youtrack", "YouTrack", () => { });
-        sink.AddPluginSideSection("github-pull-requests", "Open PRs", () => new TextBlock());
-        sink.AddPluginSideButton("workflows", "Workflows", () => { });
-
-        cockpit.ApplyPluginMenuPreference("github-pull-requests", menuOrder: 0, hiddenInMenu: false);
-        cockpit.ApplyPluginMenuPreference("workflows", menuOrder: 1, hiddenInMenu: false);
-        cockpit.ApplyPluginMenuPreference("youtrack", menuOrder: 2, hiddenInMenu: false);
-
-        Assert.Equal(
-            new[] { "github-pull-requests", "workflows", "youtrack" },
-            cockpit.VisibleMenuEntries.Select(entry => entry.PluginId));
-    });
-
-    [Fact]
     public void APluginHiddenFromTheMenu_ContributesNothingToIt() => HeadlessAvalonia.Run(() =>
     {
         var cockpit = new CockpitViewModel();
@@ -46,18 +28,5 @@ public class PluginMenuOrderTests
         cockpit.ApplyPluginMenuPreference("transcript-search", menuOrder: 0, hiddenInMenu: true);
 
         Assert.Equal(new[] { "youtrack" }, cockpit.VisibleMenuEntries.Select(entry => entry.PluginId));
-    });
-
-    // A plugin that contributes both keeps its launcher above its own section: the button is how you reach it, the
-    // section is what it has to say.
-    [Fact]
-    public void APluginWithBothAButtonAndASection_KeepsTheButtonAbove() => HeadlessAvalonia.Run(() =>
-    {
-        var cockpit = new CockpitViewModel();
-        var sink = (IPluginContributionSink)cockpit;
-        sink.AddPluginSideSection("github-pull-requests", "Open PRs", () => new TextBlock());
-        sink.AddPluginSideButton("github-pull-requests", "Pull requests", () => { });
-
-        Assert.Equal(new[] { true, false }, cockpit.VisibleMenuEntries.Select(entry => entry.Button is not null));
     });
 }

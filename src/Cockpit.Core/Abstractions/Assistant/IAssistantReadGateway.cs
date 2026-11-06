@@ -114,4 +114,7 @@ public sealed record AssistantSessionRow(
     long MemoryBytes = 0,
     int AbandonedProcessCount = 0,
     string? ProjectId = null,
-    IReadOnlyList<string>? McpServers = null);
+    IReadOnlyList<string>? McpServers = null,
+    string Activity = "",
+    string ActivityAge = "",
+    bool Selected = false);

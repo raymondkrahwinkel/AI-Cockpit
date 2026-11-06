@@ -15,6 +15,7 @@ namespace Cockpit.Plugin.Proxmox.UI;
 internal sealed class ProxmoxOverviewBody : UserControl
 {
     private readonly ICockpitUiHost _host;
+    private readonly ComboBox _server;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly TextBlock _statusText = new() { FontSize = 11, Opacity = 0.7 };
     private readonly Button _refreshButton = new() { Content = "Refresh" };
@@ -23,20 +24,31 @@ internal sealed class ProxmoxOverviewBody : UserControl
     private readonly StackPanel _vmsPanel = new() { Spacing = 4 };
     private readonly StackPanel _lxcPanel = new() { Spacing = 4 };
     private readonly StackPanel _storagePanel = new() { Spacing = 4 };
+    private readonly StackPanel _pbsDatastoresPanel = new() { Spacing = 4 };
+    private readonly StackPanel _pbsTasksPanel = new() { Spacing = 4 };
     private bool _isLoading;
 
     public ProxmoxOverviewBody(IWorkspaceContext context, ICockpitUiHost host)
     {
         _host = host;
+        _server = new ComboBox
+        {
+            ItemsSource = new ProxmoxSettings(host.Storage).Servers.Select(server => server.Name).ToList(),
+            Width = 180,
+            SelectedIndex = 0,
+        };
 
         _refreshButton.Click += async (_, _) => await _RefreshAsync();
+        _server.SelectionChanged += async (_, _) => await _RefreshAsync();
         context.RefreshRequested += async (_, _) => await _RefreshAsync();
         context.Closed += (_, _) => _lifetime.Cancel();
 
         var header = new DockPanel { Margin = new Thickness(12, 12, 12, 4) };
         var title = new TextBlock { Text = "Proxmox", FontWeight = Avalonia.Media.FontWeight.SemiBold, FontSize = 15 };
         DockPanel.SetDock(_refreshButton, Dock.Right);
+        DockPanel.SetDock(_server, Dock.Right);
         header.Children.Add(_refreshButton);
+        header.Children.Add(_server);
         header.Children.Add(title);
 
         var body = new StackPanel
@@ -51,6 +63,8 @@ internal sealed class ProxmoxOverviewBody : UserControl
                 _Section("VMs", _vmsPanel),
                 _Section("LXC containers", _lxcPanel),
                 _Section("Storage", _storagePanel),
+                _Section("PBS datastores", _pbsDatastoresPanel),
+                _Section("PBS recent tasks", _pbsTasksPanel),
             },
         };
 
@@ -77,7 +91,7 @@ internal sealed class ProxmoxOverviewBody : UserControl
 
         try
         {
-            var answer = await _AskAsync<ProxmoxEmptyRequest, ProxmoxOverviewAnswer>(ProxmoxChannel.Overview, new ProxmoxEmptyRequest());
+            var answer = await _AskAsync<ProxmoxOverviewRequest, ProxmoxOverviewAnswer>(ProxmoxChannel.Overview, new ProxmoxOverviewRequest(_server.SelectedItem as string));
             if (answer.DeniedReason is { } denied)
             {
                 _statusText.Text = denied;
@@ -90,11 +104,25 @@ internal sealed class ProxmoxOverviewBody : UserControl
                 return;
             }
 
+            if (answer.PbsDatastores is not null)
+            {
+                _RenderPbs(answer.PbsDatastores, answer.PbsTasks ?? []);
+                _clusterPanel.Children.Clear();
+                _nodesPanel.Children.Clear();
+                _vmsPanel.Children.Clear();
+                _lxcPanel.Children.Clear();
+                _storagePanel.Children.Clear();
+                _statusText.Text = $"Updated {DateTimeOffset.Now:T}";
+                return;
+            }
+
             _RenderCluster(answer.Cluster ?? throw new InvalidOperationException("The backend part answered no cluster data."));
             _RenderNodes(answer.Nodes ?? []);
             _RenderGuests(_vmsPanel, answer.Vms ?? [], isLxc: false);
             _RenderGuests(_lxcPanel, answer.Lxc ?? [], isLxc: true);
             _RenderStorage(answer.Storage ?? []);
+            _pbsDatastoresPanel.Children.Clear();
+            _pbsTasksPanel.Children.Clear();
             _statusText.Text = $"Updated {DateTimeOffset.Now:T}";
         }
         catch (OperationCanceledException)
@@ -190,7 +218,7 @@ internal sealed class ProxmoxOverviewBody : UserControl
         ProxmoxActionAnswer answer;
         try
         {
-            answer = await _AskAsync<ProxmoxGuestActionRequest, ProxmoxActionAnswer>(action, new ProxmoxGuestActionRequest(node, vmId, isLxc));
+            answer = await _AskAsync<ProxmoxGuestActionRequest, ProxmoxActionAnswer>(action, new ProxmoxGuestActionRequest(node, vmId, isLxc, _server.SelectedItem as string));
         }
         catch (OperationCanceledException)
         {
@@ -238,6 +266,22 @@ internal sealed class ProxmoxOverviewBody : UserControl
         if (pools.Count == 0)
         {
             _storagePanel.Children.Add(new TextBlock { Text = "No storage pools.", Opacity = 0.7 });
+        }
+    }
+
+    private void _RenderPbs(IReadOnlyList<PbsDatastoreData> stores, IReadOnlyList<PbsTaskData> tasks)
+    {
+        _pbsDatastoresPanel.Children.Clear();
+        foreach (var store in stores)
+        {
+            var percent = store.TotalBytes > 0 ? store.UsedBytes * 100.0 / store.TotalBytes : 0;
+            _pbsDatastoresPanel.Children.Add(new TextBlock { Text = $"{store.Name} — {_Bytes(store.UsedBytes)}/{_Bytes(store.TotalBytes)} ({percent:0.#}%), GC {store.GcStatus ?? "-"}, verify {store.VerifyStatus ?? "-"}" });
+        }
+
+        _pbsTasksPanel.Children.Clear();
+        foreach (var task in tasks)
+        {
+            _pbsTasksPanel.Children.Add(new TextBlock { Text = $"{task.Type} — {task.Status ?? "running"}" });
         }
     }
 

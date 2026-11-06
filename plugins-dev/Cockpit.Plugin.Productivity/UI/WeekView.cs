@@ -11,11 +11,11 @@ using Cockpit.Plugins.Abstractions.TimeTracking;
 
 namespace Cockpit.Plugin.Productivity.UI;
 
-// Uren · Week (AC-1723): the schedule, what goes along and the proposal per day, as mockup v3 03 and 04 draw them.
+// Hours · Week (AC-1723): the schedule, what goes along and the proposal per day, as mockup v3 03 and 04 draw them.
 internal static class WeekView
 {
     private const string Waiting = "CockpitStatusWaitingBrush";
-    private static readonly CultureInfo Dutch = CultureInfo.GetCultureInfo("nl-NL");
+    private static readonly CultureInfo English = CultureInfo.GetCultureInfo("en-US");
     private static readonly IBrush Ok = new ImmutableSolidColorBrush(Color.Parse("#7CC596"));
     private static readonly IBrush OwnRow = new ImmutableSolidColorBrush(Color.Parse("#08E0A33E"));
 
@@ -47,9 +47,9 @@ internal static class WeekView
         else
         {
             body.Children.Add(Ui.Card(_Rich(
-                new Run("🕘  Je kijkt naar "),
+                new Run("🕘  You are looking at "),
                 new Run($"week {weekNumber}") { FontWeight = FontWeight.SemiBold },
-                new Run(". Dezelfde weergave als nu, met het voorstel en de status van toen. Ruwe tijdlijn tot 90 dagen terug, daarna dagtotalen per project; eigen regels en terugmeldingen blijven altijd bewaard.")), 14));
+                new Run(". The same view as now, with the proposal and status of back then. Raw timeline up to 90 days back, then day totals per project; own rows and reports are always kept.")), 14));
         }
 
         body.Children.Add(_ProposalCard(week, settings, thisWeek, weekNumber, openDay, copy, giveToAgent, openAgent, edit));
@@ -62,10 +62,10 @@ internal static class WeekView
         {
             Orientation = Orientation.Horizontal,
             Spacing = 9,
-            Children = { _Title("Werkschema"), Ui.Pill("harde grens", Waiting, "CockpitStatusWaitingChipTintBrush") },
+            Children = { _Title("Schedule"), Ui.Pill("hard limit", Waiting, "CockpitStatusWaitingChipTintBrush") },
         };
         var days = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,*,*,*,*,*"), ColumnSpacing = 8 };
-        string[] names = ["ma", "di", "wo", "do", "vr", "za", "zo"];
+        string[] names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
         for (var index = 0; index < names.Length; index++)
         {
             var hours = settings.ScheduleMinutes[index] / 60.0;
@@ -80,7 +80,7 @@ internal static class WeekView
                         Padding = new Thickness(8, 5),
                         CornerRadius = new CornerRadius(8),
                         BorderThickness = new Thickness(1),
-                        Child = new TextBlock { Text = hours.ToString("0.##", Dutch) },
+                        Child = new TextBlock { Text = hours.ToString("0.##", English) },
                     }.Themed(Border.BorderBrushProperty, "CockpitHairlineBrush"),
                 },
             };
@@ -103,7 +103,7 @@ internal static class WeekView
         }
 
         var footer = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*,Auto"), ColumnSpacing = 10 };
-        var roundingLabel = new TextBlock { Text = "Afronden op", VerticalAlignment = VerticalAlignment.Center };
+        var roundingLabel = new TextBlock { Text = "Round to", VerticalAlignment = VerticalAlignment.Center };
         footer.Children.Add(roundingLabel);
         Grid.SetColumn(rounding, 1);
         footer.Children.Add(rounding);
@@ -114,8 +114,8 @@ internal static class WeekView
             VerticalAlignment = VerticalAlignment.Center,
             Children =
             {
-                Ui.Hint("Totaal"),
-                new TextBlock { Text = $"{(settings.ScheduleMinutes.Sum() / 60.0).ToString("0.##", Dutch)}u", FontWeight = FontWeight.Bold },
+                Ui.Hint("Total"),
+            new TextBlock { Text = $"{(settings.ScheduleMinutes.Sum() / 60.0).ToString("0.##", English)}h", FontWeight = FontWeight.Bold },
             },
         };
         Grid.SetColumn(total, 3);
@@ -129,7 +129,7 @@ internal static class WeekView
                 heading,
                 days,
                 footer,
-                Ui.Hint("De agent boekt per dag nooit meer dan het schema, met wat er al geboekt staat meegerekend. Komt een dag erboven, dan boekt hij die dag niets en legt hij hem eerst voor. Aanpassen doe je in de instellingen van Productivity."),
+                Ui.Hint("The agent never books more than the schedule per day, including what is already booked. If a day comes above it, it books nothing for that day and puts it forward first. You adjust this in the Productivity settings."),
             },
         }, 14);
     }
@@ -141,23 +141,23 @@ internal static class WeekView
         {
             var isPrivate = settings.PrivateProjects.Contains(project.Id, StringComparer.Ordinal);
             var chip = isPrivate
-                ? Ui.Pill($"{project.Name} · privé", "CockpitTextSecondaryBrush", "CockpitHairlineSoftBrush")
+                ? Ui.Pill($"{project.Name} · private", "CockpitTextSecondaryBrush", "CockpitHairlineSoftBrush")
                 : Ui.Pill(project.Name, "CockpitStatusDoneBrush", "CockpitStatusDoneChipTintBrush");
             chip.Margin = new Thickness(0, 0, 6, 4);
             chips.Children.Add(chip);
         }
 
         var rows = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), RowDefinitions = new RowDefinitions("Auto,Auto,Auto"), ColumnSpacing = 14, RowSpacing = 8 };
-        _Cell(rows, Ui.Hint("Projecten"), 0, 0);
+        _Cell(rows, Ui.Hint("Projects"), 0, 0);
         _Cell(rows, chips, 0, 1);
-        _Cell(rows, Ui.Hint("Eigen regels"), 1, 0);
-        _Cell(rows, new TextBlock { Text = "alle open regels van de week, ook zonder project", FontSize = 12.5, TextWrapping = TextWrapping.Wrap }, 1, 1);
-        _Cell(rows, Ui.Hint("Instructies"), 2, 0);
-        _Cell(rows, Ui.Hint("komen met de overdracht aan een agent"), 2, 1);
+        _Cell(rows, Ui.Hint("Own rows"), 1, 0);
+        _Cell(rows, new TextBlock { Text = "all open rows of the week, also without a project", FontSize = 12.5, TextWrapping = TextWrapping.Wrap }, 1, 1);
+        _Cell(rows, Ui.Hint("Instructions"), 2, 0);
+        _Cell(rows, Ui.Hint("go along with the handoff to an agent"), 2, 1);
 
         var heading = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-        heading.Children.Add(_Title("Wat er meegaat"));
-        var instructions = new Button { Content = "Instructies bewerken", Classes = { "Compact" } };
+        heading.Children.Add(_Title("What goes along"));
+        var instructions = new Button { Content = "Edit instructions", Classes = { "Compact" } };
         instructions.Click += (_, _) => editInstructions();
         Grid.SetColumn(instructions, 1);
         heading.Children.Add(instructions);
@@ -169,7 +169,7 @@ internal static class WeekView
             {
                 heading,
                 rows,
-                Ui.Hint("Privé-projecten tellen wel als jouw tijd in het overzicht, maar komen niet in het voorstel. Geen koppeltabel naar een boekhoudpakket: dat zoekt de agent zelf uit."),
+                Ui.Hint("Private projects still count as your time in the overview, but they do not go into the proposal. No mapping table to a bookkeeping package: the agent works that out itself."),
             },
         }, 14);
     }
@@ -179,27 +179,27 @@ internal static class WeekView
         var days = week.VisibleDays;
         var columns = "*," + string.Join(',', days.Select(_ => "58")) + ",58,245";
         var heading = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-        heading.Children.Add(_Title(thisWeek ? "Voorstel per dag" : $"Voorstel per dag · week {weekNumber}"));
+        heading.Children.Add(_Title(thisWeek ? "Proposal per day" : $"Proposal per day · week {weekNumber}"));
         var legend = new StackPanel
         {
             Orientation = Orientation.Horizontal,
             Spacing = 6,
             VerticalAlignment = VerticalAlignment.Center,
-            Children = { _OwnTag(), Ui.Hint("= jouw eigen regel, telt als bezet binnen het schema · klik een dag om naar Dag te gaan") },
+            Children = { _OwnTag(), Ui.Hint("= your own row, counts as taken within the schedule · click a day to go to Day") },
         };
         Grid.SetColumn(legend, 1);
         heading.Children.Add(legend);
 
         var table = new StackPanel();
         var header = _Row(columns);
-        _Cell(header, Ui.Hint("Regel"), 0, 0);
+        _Cell(header, Ui.Hint("Row"), 0, 0);
         for (var index = 0; index < days.Count; index++)
         {
             var day = days[index].Day;
             var open = new Button
             {
                 Name = "OpenDay",
-                Content = day.ToDateTime(TimeOnly.MinValue).ToString("ddd d", Dutch),
+                Content = day.ToDateTime(TimeOnly.MinValue).ToString("ddd d", English),
                 Background = Brushes.Transparent,
                 BorderThickness = new Thickness(0),
                 Padding = new Thickness(0),
@@ -216,7 +216,7 @@ internal static class WeekView
         table.Children.Add(_Line(header));
 
         var schedule = _Row(columns);
-        _Cell(schedule, new TextBlock { Text = "Schema (grens)" }, 0, 0);
+        _Cell(schedule, new TextBlock { Text = "Schedule (limit)" }, 0, 0);
         _Values(schedule, [.. days.Select(day => WeekProposal.Text(day.Schedule)), WeekProposal.Text(TimeSpan.FromTicks(days.Sum(day => day.Schedule.Ticks)))], null);
         table.Children.Add(_Line(schedule));
 
@@ -264,7 +264,7 @@ internal static class WeekView
         }
 
         var totals = _Row(columns);
-        _Cell(totals, new TextBlock { Text = "Totaal voorstel", FontWeight = FontWeight.Bold }, 0, 0);
+        _Cell(totals, new TextBlock { Text = "Proposal total", FontWeight = FontWeight.Bold }, 0, 0);
         for (var index = 0; index < days.Count; index++)
         {
             var day = days[index];
@@ -291,7 +291,7 @@ internal static class WeekView
         table.Children.Add(new Border { Child = totals, BorderThickness = new Thickness(0, 1, 0, 1) }.Themed(Border.BorderBrushProperty, "CockpitHairlineBrush"));
 
         var measured = _Row(columns);
-        _Cell(measured, Ui.Hint("gemeten (jouw tijd, zonder eigen regels)"), 0, 0);
+        _Cell(measured, Ui.Hint("measured (your time, without own rows)"), 0, 0);
         _Values(measured, [.. days.Select(day => WeekProposal.Text(day.Measured)), WeekProposal.Text(TimeSpan.FromTicks(days.Sum(day => day.Measured.Ticks)))], "CockpitTextSecondaryBrush");
         table.Children.Add(measured);
 
@@ -311,7 +311,7 @@ internal static class WeekView
             var notice = new TextBlock
             {
                 Name = "AgentReportNotice",
-                Text = $"{(week.Report.IsGreen ? "✓" : "⚠ Overschrijding ·")} {week.Report.AgentName} meldde om {reportedAt.ToLocalTime():HH:mm}: {week.Report.BookedCount} regels geboekt ({string.Join(", ", week.Report.BookedDays.Select(day => day.ToDateTime(TimeOnly.MinValue).ToString("ddd", Dutch)))}), elk met een kenmerk zoals {week.Report.Rows.FirstOrDefault()?.Row.Marker}. Wat niet geboekt werd, staat weer open.",
+                Text = $"{(week.Report.IsGreen ? "✓" : "⚠ overrun ·")} {week.Report.AgentName} reported at {reportedAt.ToLocalTime():HH:mm}: {week.Report.BookedCount} rows booked ({string.Join(", ", week.Report.BookedDays.Select(day => day.ToDateTime(TimeOnly.MinValue).ToString("ddd", English)))}), each with a marker like {week.Report.Rows.FirstOrDefault()?.Row.Marker}. What was not booked is open again.",
                 TextWrapping = TextWrapping.Wrap,
             };
             notice.Themed(TextBlock.ForegroundProperty, week.Report.IsGreen ? "CockpitStatusDoneBrush" : "CockpitStatusErrorBrush");
@@ -324,10 +324,10 @@ internal static class WeekView
             var text = new TextBlock
             {
                 Name = "AgentDayWarning",
-                Text = $"⚠ {warning.Day.ToDateTime(TimeOnly.MinValue).ToString("ddd d", Dutch)} · {(warning.Overrun ? "overschrijding" : "niet geboekt: boven het schema")}. Schema {WeekProposal.Text(TimeSpan.FromMinutes(warning.ScheduleMinutes))}, al geboekt {WeekProposal.Text(TimeSpan.FromMinutes(warning.AlreadyBooked))} {warning.AlreadyBookedDescription}, voorstel {WeekProposal.Text(TimeSpan.FromMinutes(warning.ProposedMinutes))}: {WeekProposal.Text(TimeSpan.FromMinutes((long)warning.AlreadyBooked + warning.ProposedMinutes))} tegenover {WeekProposal.Text(TimeSpan.FromMinutes(warning.ScheduleMinutes))}. {(warning.Overrun ? "De agent meldde een boeking boven het schema." : warning.BookedMinutes == 0 ? "Niets geschreven, voorgelegd." : "Niet alles geboekt, voorgelegd.")}",
+                Text = $"⚠ {warning.Day.ToDateTime(TimeOnly.MinValue).ToString("ddd d", English)} · {(warning.Overrun ? "overrun" : "not booked: above the schedule")}. Schedule {WeekProposal.Text(TimeSpan.FromMinutes(warning.ScheduleMinutes))}, already booked {WeekProposal.Text(TimeSpan.FromMinutes(warning.AlreadyBooked))} {warning.AlreadyBookedDescription}, proposal {WeekProposal.Text(TimeSpan.FromMinutes(warning.ProposedMinutes))}: {WeekProposal.Text(TimeSpan.FromMinutes((long)warning.AlreadyBooked + warning.ProposedMinutes))} against {WeekProposal.Text(TimeSpan.FromMinutes(warning.ScheduleMinutes))}. {(warning.Overrun ? "The agent reported a booking above the schedule." : warning.BookedMinutes == 0 ? "Nothing written, put forward." : "Not everything booked, put forward.")}",
                 TextWrapping = TextWrapping.Wrap,
             }.Themed(TextBlock.ForegroundProperty, brush);
-            var open = new Button { Name = "OpenReportAgent", Content = "Open de werkagent ›", Classes = { "Compact", "Subtle" } };
+            var open = new Button { Name = "OpenReportAgent", Content = "Open the work agent ›", Classes = { "Compact", "Subtle" } };
             open.Click += (_, _) => openAgent(warning.PaneId);
             body.Children.Add(Ui.Card(new StackPanel { Spacing = 6, Children = { text, open } }, 12).Themed(Border.BorderBrushProperty, brush));
         }
@@ -340,7 +340,7 @@ internal static class WeekView
     {
         if (report.AgentStatus(line.EntryId, line.ProjectId) is { Length: > 0 } outcome)
         {
-            var brush = outcome.Contains("overschrijding", StringComparison.Ordinal) ? "CockpitStatusErrorBrush"
+            var brush = outcome.Contains("overrun", StringComparison.Ordinal) ? "CockpitStatusErrorBrush"
                 : outcome.StartsWith("⚠", StringComparison.Ordinal) ? Waiting : "CockpitStatusDoneBrush";
             var result = new TextBlock { Name = "AgentOutcome", Text = outcome, FontSize = 11.5, TextWrapping = TextWrapping.Wrap }.Themed(TextBlock.ForegroundProperty, brush);
             ToolTip.SetTip(result, report.Reason(line.EntryId, line.ProjectId));
@@ -348,19 +348,19 @@ internal static class WeekView
         }
 
         var text = WeekProposal.Status(line);
-        if (text.StartsWith("geboekt", StringComparison.Ordinal))
+        if (text.StartsWith("booked", StringComparison.Ordinal))
         {
-            var booked = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { Ui.Pill("✓ geboekt", "CockpitStatusDoneBrush", "CockpitStatusDoneChipTintBrush") } };
-            if (text.Length > "geboekt".Length)
+            var booked = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { Ui.Pill("✓ booked", "CockpitStatusDoneBrush", "CockpitStatusDoneChipTintBrush") } };
+            if (text.Length > "booked".Length)
             {
-                booked.Children.Add(Ui.Hint(text["geboekt".Length..].Trim()));
+                booked.Children.Add(Ui.Hint(text["booked".Length..].Trim()));
             }
 
             return booked;
         }
 
-        var status = new TextBlock { Text = text.StartsWith("niet geboekt", StringComparison.Ordinal) ? "⚠ " + text : text, FontSize = 11.5, TextWrapping = TextWrapping.Wrap };
-        return status.Themed(TextBlock.ForegroundProperty, text.StartsWith("niet geboekt", StringComparison.Ordinal) ? Waiting : "CockpitTextSecondaryBrush");
+        var status = new TextBlock { Text = text.StartsWith("not booked", StringComparison.Ordinal) ? "⚠ " + text : text, FontSize = 11.5, TextWrapping = TextWrapping.Wrap };
+        return status.Themed(TextBlock.ForegroundProperty, text.StartsWith("not booked", StringComparison.Ordinal) ? Waiting : "CockpitTextSecondaryBrush");
     }
 
     private static Control _Warning(ProposalDay day) =>
@@ -371,8 +371,8 @@ internal static class WeekView
             BorderThickness = new Thickness(1),
             Child = _Rich(
                 new Run("⚠  "),
-                new Run($"{day.Day.ToDateTime(TimeOnly.MinValue).ToString("ddd d", Dutch)} staat nu op {WeekProposal.Text(day.Total)} tegenover {WeekProposal.Text(day.Schedule)}") { FontWeight = FontWeight.Bold },
-                new Run(": de eigen en geboekte regels komen samen boven het schema. Bied je hem aan, dan legt de agent die dag voor in plaats van te boeken. Pas hem aan of verplaats hem.")),
+                new Run($"{day.Day.ToDateTime(TimeOnly.MinValue).ToString("ddd d", English)} is now at {WeekProposal.Text(day.Total)} against {WeekProposal.Text(day.Schedule)}") { FontWeight = FontWeight.Bold },
+                new Run(": the own and booked rows together come above the schedule. If you offer it, the agent puts that day forward instead of booking it. Adjust it or move it.")),
         }.Themed(Border.BorderBrushProperty, Waiting)
             .Themed(Border.BackgroundProperty, "CockpitStatusWaitingChipTintBrush");
 
@@ -385,33 +385,33 @@ internal static class WeekView
             Background = new ImmutableSolidColorBrush(Color.Parse("#242563EB")),
             BorderBrush = new ImmutableSolidColorBrush(Color.Parse("#552563EB")),
             Child = _Rich(
-                new Run("Zo komt het voorstel tot stand: per dag "),
-                new Run("schema − eigen regels") { FontWeight = FontWeight.Bold },
-                new Run(" = te verdelen. Dat verdeel je over de projecten in het voorstel naar verhouding van de "),
-                new Run("gemeten tijd") { FontWeight = FontWeight.Bold },
-                new Run($", afgerond op {settings.RoundingMinutes}m; het afrondverschil gaat naar het grootste project. Wat er al in de boekhouding staat, rekent de agent zelf mee.")),
+                new Run("How the proposal comes about: per day "),
+                new Run("schedule − own rows") { FontWeight = FontWeight.Bold },
+                new Run(" = to distribute. That is spread over the projects in the proposal in proportion to the "),
+                new Run("measured time") { FontWeight = FontWeight.Bold },
+                new Run($", rounded to {settings.RoundingMinutes}m; the rounding difference goes to the largest project. What is already in the bookkeeping is counted by the agent itself.")),
         };
 
     private static Control _Footer(WeekProposal week, bool thisWeek, Action copy, Action giveToAgent)
     {
-        var copyButton = new Button { Name = "CopyTable", Content = "Kopieer als tabel" };
+        var copyButton = new Button { Name = "CopyTable", Content = "Copy as table" };
         copyButton.Click += (_, _) => copy();
         var openCount = week.OpenLines.Count;
         var agent = new Button
         {
             Name = "GiveToAgent",
-            Content = thisWeek ? "Geef aan een agent…" : $"Geef {openCount} open regels aan een agent…",
+            Content = thisWeek ? "Give to an agent…" : $"Give {openCount} open rows to an agent…",
             IsEnabled = openCount > 0,
             Classes = { "Accent" },
         };
         agent.Click += (_, _) => giveToAgent();
         if (openCount == 0)
         {
-            ToolTip.SetTip(agent, "Er zijn geen open regels.");
+            ToolTip.SetTip(agent, "There are no open rows.");
         }
         var hint = Ui.Hint(thisWeek
-            ? "Per regel één omschrijving: de tickets van die dag. Je kunt elk vak aanpassen."
-            : "Alleen open regels gaan mee. Geboekte regels zijn alleen-lezen en gaan nooit opnieuw mee.");
+            ? "One description per row: the tickets of that day. You can adjust any cell."
+            : "Only open rows go along. Booked rows are read-only and never go along again.");
         hint.VerticalAlignment = VerticalAlignment.Center;
         var footer = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto"), ColumnSpacing = 10 };
         footer.Children.Add(hint);
@@ -422,14 +422,14 @@ internal static class WeekView
         return footer;
     }
 
-    // An open project cell: its duration and description, kept as the operator's own until "Herstel".
+    // An open project cell: its duration and description, kept as the operator's own until "Reset calculation".
     private static Control _EditableCell(ProposalCell cell, string projectId, Action<CellOverride?, DateOnly, string> edit)
     {
         var duration = new TextBox { Name = "CellDuration", Text = WeekProposal.Text(cell.Time), Width = 80 };
-        var description = new TextBox { Name = "CellDescription", Text = cell.Description ?? string.Empty, Width = 280, PlaceholderText = "Omschrijving" };
+        var description = new TextBox { Name = "CellDescription", Text = cell.Description ?? string.Empty, Width = 280, PlaceholderText = "Description" };
         var error = Ui.Hint(string.Empty);
-        var save = new Button { Name = "SaveCell", Content = "Opslaan", Classes = { "Accent", "Compact" } };
-        var reset = new Button { Content = "Herstel berekening", Classes = { "Compact" }, IsVisible = cell.Edited };
+        var save = new Button { Name = "SaveCell", Content = "Save", Classes = { "Accent", "Compact" } };
+        var reset = new Button { Content = "Reset calculation", Classes = { "Compact" }, IsVisible = cell.Edited };
         var flyout = new Flyout
         {
             Content = new StackPanel
@@ -447,7 +447,7 @@ internal static class WeekView
         {
             if (DurationText.Parse(duration.Text ?? string.Empty) is not { } time)
             {
-                error.Text = "Voer een geldige duur in, bijvoorbeeld 4:15.";
+                error.Text = "Enter a valid duration, for example 4:15.";
                 return;
             }
 
@@ -474,7 +474,7 @@ internal static class WeekView
             FontWeight = FontWeight.Normal,
             Flyout = flyout,
         };
-        ToolTip.SetTip(button, string.IsNullOrEmpty(cell.Description) ? "Klik om aan te passen" : cell.Description);
+        ToolTip.SetTip(button, string.IsNullOrEmpty(cell.Description) ? "Click to adjust" : cell.Description);
         return button;
     }
 
@@ -524,7 +524,7 @@ internal static class WeekView
             BorderThickness = new Thickness(1),
             VerticalAlignment = VerticalAlignment.Center,
             BorderBrush = new ImmutableSolidColorBrush(Color.Parse("#55E0A33E")),
-            Child = new TextBlock { Text = "eigen", FontSize = 11 }.Themed(TextBlock.ForegroundProperty, Waiting),
+            Child = new TextBlock { Text = "own", FontSize = 11 }.Themed(TextBlock.ForegroundProperty, Waiting),
         }.Themed(Border.BackgroundProperty, "CockpitStatusWaitingChipTintBrush");
 
     private static TextBlock _Rich(params Run[] runs)

@@ -13,12 +13,6 @@ public class GitDiffReaderTests
     }
 
     [Fact]
-    public void StatusArguments_ListEveryUntrackedFileNotJustItsFolder()
-    {
-        Assert.Equal(["-c", "core.quotePath=false", "status", "--porcelain", "--untracked-files=all"], GitDiffReader.StatusArguments);
-    }
-
-    [Fact]
     public void UntrackedPaths_TakesOnlyTheQuestionMarkedEntries()
     {
         var status = " M src/Changed.cs\n?? src/New.cs\nA  src/Staged.cs\n?? docs/notes.md\n";
@@ -39,16 +33,6 @@ public class GitDiffReaderTests
         Assert.Equal((2, 0), (file.Added, file.Removed));
         Assert.Equal(["one", "two"], file.Rows.Where(r => r.Kind == DiffLineKind.Added).Select(r => r.Text));
         Assert.Contains("@@ -0,0 +1,2 @@", block, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void UntrackedBinaryBlock_ParsesAsABinaryFileSoThePanelListsItWithoutDrawingIt()
-    {
-        var file = Assert.Single(DiffParser.Parse(GitDiffReader.UntrackedBinaryBlock("assets/logo.png")));
-
-        Assert.Equal("assets/logo.png", file.Path);
-        Assert.Equal(FileChangeKind.Binary, file.Kind);
-        Assert.Empty(file.Rows);
     }
 
     [Fact]

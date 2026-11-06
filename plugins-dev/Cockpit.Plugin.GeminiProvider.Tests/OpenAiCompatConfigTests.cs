@@ -22,11 +22,22 @@ public class OpenAiCompatConfigTests
         Assert.Contains("https://generativelanguage.googleapis.com/v1beta/openai/", text);
     }
 
+    // Layer 2, category D: a ProviderId is stored in profiles (Hetzner Inference lives on the OpenAI one), and renaming
+    // one compiles and passes everything else while those profiles lose their provider.
+    [Fact]
+    public void All_KeepsTheProviderIdsExistingProfilesAreStoredUnder()
+    {
+        var ids = OpenAiCompatProvider.All.Select(provider => provider.ProviderId).ToList();
+
+        Assert.Contains("gemini-provider.gemini", ids);
+        Assert.Contains("gemini-provider.openai", ids);
+        Assert.Equal(ids.Count, ids.Distinct().Count());
+    }
+
     // AC-1484: where the key comes from. A key on the profile wins; an empty one falls back to the process
     // environment (a container secret), but only on the provider's own host; neither means no sign-in. Fake values.
     [Theory]
     [InlineData("sk-config", "sk-env", OpenAiCompatDefaultBaseUrls.Gemini, PluginCredentialKind.ApiKey, "sk-config")]
-    [InlineData("sk-config", null, OpenAiCompatDefaultBaseUrls.Gemini, PluginCredentialKind.ApiKey, "sk-config")]
     [InlineData("", "sk-env", OpenAiCompatDefaultBaseUrls.Gemini, PluginCredentialKind.ApiKeyFromSecret, "sk-env")]
     [InlineData("  ", "sk-env", OpenAiCompatDefaultBaseUrls.Gemini, PluginCredentialKind.ApiKeyFromSecret, "sk-env")]
     [InlineData("", null, OpenAiCompatDefaultBaseUrls.Gemini, PluginCredentialKind.Unknown, null)]

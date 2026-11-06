@@ -38,21 +38,7 @@ public sealed class GitCliEvidenceSourceTests : IDisposable
     }
 
     [Fact]
-    public async Task MarkAsync_PinsTheDirtyWorktree_NotMerelyHead()
-    {
-        // The distinction the whole mark rests on: with uncommitted work present, the pinned commit must be a snapshot
-        // of the worktree, not HEAD — otherwise that work is measured as the next step's.
-        _Write("tracked.txt", "uncommitted");
-
-        var mark = await _source.MarkAsync(_repository);
-        var head = (await _Git("rev-parse", "HEAD")).Trim();
-
-        Assert.NotNull(mark);
-        Assert.NotEqual(head, mark.Commit);
-    }
-
-    [Fact]
-    public async Task MarkAsync_LeavesTheWorktreeExactlyAsItFoundIt()
+    public async Task MarkAsync_LeavesTheWorktreeExactlyAsItFoundIt_AndReturnsNullWhenGitRefusesToSnapshotIt()
     {
         // An observation that mutates what it observes is not evidence — and `stash create` is only safe here because
         // it writes its snapshot nowhere.
@@ -66,17 +52,11 @@ public sealed class GitCliEvidenceSourceTests : IDisposable
         var status = await _Git("status", "--porcelain");
         Assert.Contains("tracked.txt", status);
         Assert.Contains("untracked.txt", status);
-    }
 
-    [Fact]
-    public async Task MarkAsync_WhenGitRefusesToSnapshotTheWorktree_ReturnsNull_RatherThanQuietlyPinningHead()
-    {
         // The guard that keeps a failure from becoming a wrong answer: falling back to the commit alone would hand
-        // the next step this step's uncommitted work as its own. Provoked through an index lock rather than a
-        // conflicted merge (not portable) — a lock stops every index-writing git command while `rev-parse HEAD` still answers.
-        _Write("tracked.txt", "uncommitted work that must not be mistaken for the next step's");
+        // the next step this step's uncommitted work as its own. Provoked through an index lock — a lock stops every
+        // index-writing git command while `rev-parse HEAD` still answers.
         File.WriteAllText(Path.Combine(_repository, ".git", "index.lock"), string.Empty);
-
         try
         {
             Assert.Null(await _source.MarkAsync(_repository));

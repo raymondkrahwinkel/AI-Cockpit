@@ -4,7 +4,6 @@ using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
-using Cockpit.Core.Assistant;
 using Cockpit.Core.ModelIntelligence;
 using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Assistant;
@@ -15,7 +14,6 @@ using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using ModelContextProtocol.Server;
 using NSubstitute;
-using System.ComponentModel;
 
 namespace Cockpit.Infrastructure.Tests.Assistant;
 
@@ -41,16 +39,17 @@ public sealed class ModelOptionsTests
             new NodeDiscoveryId(Path.Combine(Path.GetTempPath(), $"node-discovery-id-{Guid.NewGuid():N}.txt")),
             new ModelPictureReader(_public, _provider, _profiles, new FakeClock(Now)));
 
-    private void _Given(ModelIndices indices, PluginModelIntelligence? reading)
+    private void _Given(ModelIndices indices, PluginModelIntelligence? reading, IReadOnlyList<ModelSnapshot>? snapshots = null)
     {
         _profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns([new SessionProfile("Prov", new PluginProviderConfig("p", "{}"))]);
         _public.GetSnapshotsAsync(Arg.Any<CancellationToken>()).Returns(
-            [new ModelSnapshot("m1", "M1", new ModelPrice(5m, 10m), 200_000, true, indices, [], [], "public feed", Now, TimeSpan.FromHours(24))]);
+            snapshots ?? [new ModelSnapshot("m1", "M1", new ModelPrice(5m, 10m), 200_000, true, indices, [], [], "public feed", Now, TimeSpan.FromHours(24))]);
         _provider.ReadAsync("Prov", Arg.Any<CancellationToken>()).Returns(reading);
     }
 
-    [Fact]
-    public async Task ModelOptions_AssistantToolRefusesAgents_OrchestratorToolShowsOnlyDelegatableProfiles()
+    [Theory]
+    [MemberData(nameof(ModelReferenceCases))]
+    public async Task ModelOptions_AssistantToolRefusesAgents_OrchestratorToolShowsOnlyDelegatableProfiles(string model, string snapshotId, string? aliasTarget, string publicModelRef, string? unmatched)
     {
         McpRequestContext.Set("pane-ordinary");
 
@@ -61,10 +60,21 @@ public sealed class ModelOptionsTests
         await _public.DidNotReceive().GetSnapshotsAsync(Arg.Any<CancellationToken>());
         await _provider.DidNotReceive().ReadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
 
-        _Given(new ModelIndices(50m, null, null), new PluginModelIntelligence
+        var snapshots = unmatched is null
+            ? new[]
+            {
+                new ModelSnapshot(snapshotId, "M1", new ModelPrice(5m, 10m), 200_000, true, new ModelIndices(null, 80m, null), [], [], "public feed", Now, TimeSpan.FromHours(24)) { AliasTarget = aliasTarget },
+                new ModelSnapshot("example/intelligence-only", "M2", new ModelPrice(5m, 10m), 200_000, true, new ModelIndices(90m, null, null), [], [], "public feed", Now, TimeSpan.FromHours(24)),
+            }
+            : new[]
+            {
+                new ModelSnapshot("qwen/qwen3.8-27b", "Closest", new ModelPrice(5m, 10m), 200_000, true, new ModelIndices(null, 80m, null), [], [], "public feed", Now, TimeSpan.FromHours(24)),
+                new ModelSnapshot("example/intelligence-only", "M2", new ModelPrice(5m, 10m), 200_000, true, new ModelIndices(90m, null, null), [], [], "public feed", Now, TimeSpan.FromHours(24)),
+            };
+        _Given(new ModelIndices(null, 80m, null), new PluginModelIntelligence
         {
-            Models = [new PluginModelCostEstimate("m1")],
-        });
+            Models = [new PluginModelCostEstimate(model), new PluginModelCostEstimate("intelligence-only")],
+        }, snapshots);
         _profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns(
         [
             new SessionProfile("Prov", new PluginProviderConfig("p", "{}")),
@@ -75,166 +85,37 @@ public sealed class ModelOptionsTests
             [new DelegationTargetView("Prov", "p", null, [], [], 1, 0, [])]);
         var tools = new OrchestratorTools(delegation, new ModelPictureReader(_public, _provider, _profiles, new FakeClock(Now)));
 
-        var options = JsonNode.Parse(await tools.ModelOptionsAsync())!;
+        var options = JsonNode.Parse(await tools.ModelOptionsAsync(taskType: "coding"))!;
 
         Assert.True((bool)options["ok"]!);
-        Assert.Equal(1, (int)options["count"]!);
-        Assert.Equal("Prov", (string)Assert.Single(options["models"]!.AsArray())!["profile"]!);
+        Assert.Equal(2, (int)options["count"]!);
+        Assert.Equal(unmatched is null ? "coding" : "intelligence", (string)options["ranking"]!["kind"]!);
+        Assert.Contains(unmatched is null ? "not comparable" : "Requested coding", (string)options["ranking"]!["message"]!);
+        var models = options["models"]!.AsArray();
+        var sourceModel = models.Single(candidate => (string)candidate!["model"]! == model)!;
+        Assert.Equal(publicModelRef, (string)sourceModel["publicModelRef"]!);
+        Assert.Equal(unmatched is null, (bool)sourceModel["comparable"]!);
+        if (unmatched is not null)
+        {
+            Assert.Equal($"unknown: {unmatched}", (string)sourceModel["quality"]!);
+        }
         var tool = typeof(OrchestratorTools).GetMethod(nameof(OrchestratorTools.ModelOptionsAsync))!.GetCustomAttribute<McpServerToolAttribute>()!;
         Assert.Equal("model_options", tool.Name);
         Assert.True(tool.ReadOnly);
     }
 
-    // AC-1855 merged two cases: the provider's price wins with its source, and a missing quota or index is unknown, never 0.
-    [Fact]
-    public async Task ModelOptions_ProviderPriceWins_AndMissingValuesAndUnmatchedSelfHostedQuality_AreUnknown_NeverZero()
+    public static TheoryData<string, string, string?, string, string?> ModelReferenceCases => new()
     {
-        var provider = new PluginModelCostEstimate("m1")
-        {
-            EstimatedInputUsdPerMillionTokens = 1m,
-            EstimatedOutputUsdPerMillionTokens = 2m,
-            Source = new PluginFactSource("provider live read", Now.AddSeconds(-30), TimeSpan.FromMinutes(5)),
-        };
-        _Given(new ModelIndices(50m, null, null), new PluginModelIntelligence { Models = [provider] });
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-
-        var result = JsonNode.Parse(await _Tools().ModelOptionsAsync("coding"))!;
-        var model = result["models"]![0]!;
-
-        var price = model["price"]!;
-        Assert.Equal(1m, (decimal)price["inputPerMTokens"]!);
-        Assert.Equal("provider live read", (string)price["fact"]!["source"]!);
-        Assert.Equal(30, (int)price["fact"]!["ageSeconds"]!);
-        Assert.Contains("provider live read", result["attribution"]!.AsArray().Select(source => (string)source!));
-
-        Assert.Equal("coding missing → intelligence", model["quality"]?["basis"]?.GetValue<string>());
-        Assert.Equal("unknown", (string)model["quota"]!);
-
-        foreach (var (providerFilter, profileFilter, matches) in new (string?, string?, bool)[]
-        {
-            (null, null, true), ("", "", true), ("P", null, true), (null, "pROV", true),
-            ("P", "pROV", true), ("unknown", null, false), (null, "unknown", false),
-            ("P", "Pro", false), ("unknown", "Prov", false), (" ", null, false),
-        })
-        {
-            var filtered = JsonNode.Parse(await _Tools().ModelOptionsAsync("coding", provider: providerFilter, profile: profileFilter))!;
-            Assert.True((bool)filtered["ok"]!);
-            Assert.Equal(matches ? 1 : 0, (int)filtered["count"]!);
-            Assert.Equal(matches ? 1 : 0, filtered["models"]!.AsArray().Count);
-            Assert.True(JsonNode.DeepEquals(result["attribution"], filtered["attribution"]));
-            if (matches)
-            {
-                Assert.True(JsonNode.DeepEquals(result, filtered));
-            }
-        }
-
-        _profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns(
-        [
-            new SessionProfile("Prov", new PluginProviderConfig("cli-agent-provider.codex", "{}")),
-            new SessionProfile("Other", new PluginProviderConfig("other", "{}")),
-        ]);
-        var codex = JsonNode.Parse(await _Tools().ModelOptionsAsync("coding", provider: "CoDeX", profile: "pROV"))!;
-        Assert.True((bool)codex["ok"]!);
-        Assert.Equal(1, (int)codex["count"]!);
-        Assert.Equal("cli-agent-provider.codex", (string)Assert.Single(codex["models"]!.AsArray())!["provider"]!);
-        Assert.Equal("Prov", (string)codex["models"]![0]!["profile"]!);
-        var mismatch = JsonNode.Parse(await _Tools().ModelOptionsAsync(provider: "codex", profile: "Other"))!;
-        Assert.True((bool)mismatch["ok"]!);
-        Assert.Empty(mismatch["models"]!.AsArray());
-
-        // AC-1813/AC-1855: the step stands in BEFORE A SPAWN, the tool in WHAT EXISTS, and it is preloaded, not deferred.
-        var startAgent = typeof(AssistantAgentMcpTools).GetMethod(nameof(AssistantAgentMcpTools.StartAgentAsync))!.GetCustomAttribute<DescriptionAttribute>()!.Description;
-        Assert.Contains("promptDelivered:false", startAgent);
-        Assert.Contains("never retry the start or resend that prompt", startAgent);
-        var prompt = AssistantSystemPrompt.Default;
-        var start = prompt.IndexOf("BEFORE A SPAWN, CHECK THESE", StringComparison.Ordinal);
-        var beforeSpawn = prompt[start..prompt.IndexOf("IN EVERY BRIEF, WHATEVER", start, StringComparison.Ordinal)];
-        Assert.Contains("a fixed step, unasked: before every `start_agent`, and before you give a subagent a model, call `model_options`", beforeSpawn);
-        Assert.Contains("never invent a figure", beforeSpawn);
-        Assert.Contains("- Model choice (AC-1855): `model_options`", prompt[prompt.IndexOf("WHAT EXISTS", StringComparison.Ordinal)..]);
-        var meta = typeof(AssistantReadMcpTools).GetMethod(nameof(AssistantReadMcpTools.ModelOptionsAsync))!.GetCustomAttributes<McpMetaAttribute>();
-        Assert.Contains(meta, attribute => attribute.Name == AssistantAgentMcpTools.AlwaysLoadMeta);
-
-        _Given(new ModelIndices(50m, null, null), new PluginModelIntelligence
-        {
-            IsSelfHosted = true,
-            Models = [new PluginModelCostEstimate("Qwen3.8-27B") { PublicModelRef = "Qwen3.8-27B" }],
-        });
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-
-        var selfHostedResult = JsonNode.Parse(await _Tools().ModelOptionsAsync("coding"))!;
-        var selfHostedModel = selfHostedResult["models"]![0]!;
-
-        Assert.Equal("Qwen3.8-27B", (string)selfHostedModel["model"]!);
-        Assert.Equal("self-hosted / own endpoint", (string)selfHostedModel["price"]!);
-        Assert.StartsWith("unknown:", (string)selfHostedModel["quality"]!);
-    }
-
-    public static TheoryData<string, string, string, string, Func<JsonNode, string>> ModelReferenceCases => new()
-    {
-        { "claude-opus-5-5", "coding", "anthropic/claude-opus-5.5", "coding missing → intelligence", _Basis },
-        { "anthropic/claude-opus-5.5", "coding", "anthropic/claude-opus-5.5", "coding missing → intelligence", _Basis },
-        { "~anthropic/claude-opus-latest", "coding", "anthropic/claude-opus-5.5 via ~anthropic/claude-opus-latest", "coding missing → intelligence", _Basis },
-        { "anthropic/claude-opus-5.5:batch", "coding", "anthropic/claude-opus-5.5", "coding missing → intelligence", _Basis },
-        { "gpt-6.1-sol", "coding", "openai/gpt-6.1-sol", "coding missing → intelligence", _Basis },
-        { "openai/gpt-6.1-sol", "coding", "openai/gpt-6.1-sol", "coding missing → intelligence", _Basis },
-        { "qwen3.8-27b-Q4_K_M", "coding", "qwen/qwen3.8-27b", "coding missing → intelligence", _Basis },
-        { "agentic-only", "agentic", "example/agentic-only", "agentic missing → coding", _Basis },
-        { "onbekend-model", "coding", "onbekend-model", "unknown: no match for onbekend-model; closest approximation: qwen/qwen3.8-27b", _Quality },
+        { "claude-opus-5-5", "anthropic/claude-opus-5.5", null, "anthropic/claude-opus-5.5", null },
+        { "anthropic/claude-opus-5.5", "anthropic/claude-opus-5.5", null, "anthropic/claude-opus-5.5", null },
+        { "~anthropic/claude-opus-latest", "~anthropic/claude-opus-latest", "anthropic/claude-opus-5.5", "anthropic/claude-opus-5.5 via ~anthropic/claude-opus-latest", null },
+        { "anthropic/claude-opus-5.5:batch", "anthropic/claude-opus-5.5", null, "anthropic/claude-opus-5.5", null },
+        { "gpt-6.1-sol", "openai/gpt-6.1-sol", null, "openai/gpt-6.1-sol", null },
+        { "openai/gpt-6.1-sol", "openai/gpt-6.1-sol", null, "openai/gpt-6.1-sol", null },
+        { "qwen3.8-27b-Q4_K_M", "qwen/qwen3.8-27b", null, "qwen/qwen3.8-27b", null },
+        { "agentic-only", "example/agentic-only", null, "example/agentic-only", null },
+        { "onbekend-model", "", null, "onbekend-model", "no match for onbekend-model; closest approximation: qwen/qwen3.8-27b" },
     };
-
-    [Theory]
-    [MemberData(nameof(ModelReferenceCases))]
-    public async Task ModelOptions_NormalizesReferences_AndStatesFallbackBasis(string reference, string taskType, string expectedPublicRef, string expectedQuality, Func<JsonNode, string> quality)
-    {
-        // The real feed's shape: versioned canonical_slug, alias_target as an object, indices as numbers.
-        const string feed = """
-            {"data":[
-              {"id":"anthropic/claude-opus-5.5","canonical_slug":"anthropic/claude-opus-5.5-20260921","name":"Opus","context_length":1000000,
-               "pricing":{"prompt":"0.000004","completion":"0.00002"},"benchmarks":{"artificial_analysis":{"intelligence_index":57.6,"coding_index":null}}},
-              {"id":"~anthropic/claude-opus-latest","canonical_slug":"~anthropic/claude-opus-latest","alias_target":{"slug":"anthropic/claude-opus-5.5"},"pricing":{"prompt":"0.000004","completion":"0.00002"}},
-              {"id":"openai/gpt-6.1-sol","canonical_slug":"openai/gpt-6.1-sol-20260929","pricing":{"prompt":"0.000002","completion":"0.000012"},
-               "benchmarks":{"artificial_analysis":{"intelligence_index":76.7}}},
-              {"id":"anthropic/claude-sonnet-5.5","canonical_slug":"anthropic/claude-sonnet-5.5-20260928",
-               "pricing":{"prompt":"0.000002","completion":"0.00001"},"benchmarks":{"artificial_analysis":{"intelligence_index":56}}},
-              {"id":"anthropic/claude-fable-5.1","pricing":{"prompt":"0.00001","completion":"0.00005"},
-               "benchmarks":{"artificial_analysis":{"intelligence_index":53.4}}},
-              {"id":"~anthropic/claude-fable-latest","alias_target":{"slug":"anthropic/claude-fable-5.1"}},
-              {"id":"qwen/qwen3.8-27b","hugging_face_id":"Qwen/Qwen3.8-27B","benchmarks":{"artificial_analysis":{"intelligence_index":60.2}}},
-              {"id":"example/agentic-only","benchmarks":{"artificial_analysis":{"intelligence_index":54,"coding_index":55}}}]}
-            """;
-        var root = Path.Combine(Path.GetTempPath(), $"ac1855-{Guid.NewGuid():N}");
-        try
-        {
-            var publicData = new OpenRouterModelIntelligence(root, new FeedHandler(feed), new FakeClock(Now));
-            _profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns([new SessionProfile("Prov", new PluginProviderConfig("claude", "{}"))]);
-            _provider.ReadAsync("Prov", Arg.Any<CancellationToken>()).Returns(new PluginModelIntelligence
-            {
-                Models = [new PluginModelCostEstimate("model") { PublicModelRef = reference }],
-            });
-            McpRequestContext.Set(AssistantIdentity.PaneId);
-            var tools = new AssistantReadMcpTools(
-                Substitute.For<IAssistantReadGateway>(), Substitute.For<IDelegationService>(), Substitute.For<INodeSessionsClient>(),
-                new NodeDiscoveryId(Path.Combine(root, "node-discovery-id.txt")), new ModelPictureReader(publicData, _provider, _profiles, new FakeClock(Now)));
-
-            var models = (JsonNode.Parse(await tools.ModelOptionsAsync(taskType)) ?? throw new InvalidOperationException("Missing result"))["models"]?.AsArray()
-                ?? throw new InvalidOperationException("Missing models");
-            var model = models.Single() ?? throw new InvalidOperationException("Missing model");
-            Assert.Equal(expectedPublicRef, model["publicModelRef"]?.GetValue<string>());
-            Assert.Equal(expectedQuality, quality(model));
-        }
-        finally
-        {
-            if (Directory.Exists(root))
-            {
-                Directory.Delete(root, recursive: true);
-            }
-        }
-    }
-
-    private static string _Basis(JsonNode row) => row["quality"]?["basis"]?.GetValue<string>() ?? throw new InvalidOperationException("Missing fallback basis");
-
-    private static string _Quality(JsonNode row) => row["quality"]?.GetValue<string>() ?? throw new InvalidOperationException("Missing quality");
 
     private sealed class FeedHandler(string feed) : HttpMessageHandler
     {

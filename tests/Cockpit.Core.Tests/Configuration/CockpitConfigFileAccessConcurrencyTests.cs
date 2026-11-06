@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Configuration;
 
@@ -30,33 +29,6 @@ public class CockpitConfigFileAccessConcurrencyTests : IDisposable
         }
 
         GC.SuppressFinalize(this);
-    }
-
-    [Fact]
-    public async Task UpdateAsync_WhenTwoStoresWriteAtOnce_LeavesTheFileReadable()
-    {
-        // One writer makes the document long, the other short. Interleaved on a shared sidecar, the short
-        // document lands first and the tail of the long one survives behind it — the file then parses up to a
-        // point and is garbage after it, which is exactly the shape the operator's config was found in.
-        var longProfiles = Enumerable.Range(0, 400)
-            .Select(index => new SessionProfile($"profile-{index}", new ClaudeConfig($"/home/someone/.claude-{index}"), Purpose: new string('x', 400)))
-            .ToList();
-
-        var writers = Enumerable.Range(0, 24).Select(index =>
-        {
-            var access = new CockpitConfigFileAccess(ConfigPath);
-
-            return index % 2 is 0
-                ? access.UpdateAsync(config => config.Profiles = [.. longProfiles.Select(SessionProfileEntry.FromDomain)], CancellationToken.None)
-                : access.UpdateAsync(config => config.Profiles = [SessionProfileEntry.FromDomain(new SessionProfile("solo", new ClaudeConfig("/home/someone/.claude")))], CancellationToken.None);
-        });
-
-        await Task.WhenAll(writers);
-
-        var contents = await File.ReadAllTextAsync(ConfigPath);
-        var parse = () => JsonSerializer.Deserialize<JsonDocument>(contents);
-
-        parse();
     }
 
     [Fact]

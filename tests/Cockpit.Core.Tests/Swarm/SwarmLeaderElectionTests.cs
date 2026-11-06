@@ -1,17 +1,89 @@
 using System.Net;
 using System.Security.Cryptography;
 using Cockpit.Core.Swarm;
+using Cockpit.Infrastructure.Mcp;
+using Cockpit.Infrastructure.Swarm;
+using System.Security.Cryptography.X509Certificates;
 
 namespace Cockpit.Core.Tests.Swarm;
 
 public class SwarmLeaderElectionTests
 {
     [Fact]
-    public void ReachableRankAndStableReturnDetermineLeadership()
+    public async Task ReachableRankAndStableReturnDetermineLeadership()
     {
         foreach (var criterion in new[] { 1, 2, 3 })
         {
             VerifyLeadershipCriterion(criterion);
+        }
+        await VerifyConcurrentClaimsAsync();
+    }
+
+    private static async Task VerifyConcurrentClaimsAsync()
+    {
+        var root = Path.Combine(Environment.GetEnvironmentVariable("COCKPIT_SCRATCH") ?? Path.GetTempPath(),
+            "swarm-claims-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            using var certificate = new NodeSelfSignedCertificate(Path.Combine(root, "leader.pfx"));
+            var identity = new SwarmIdentity(certificate);
+            using var key = certificate.Value.GetECDsaPrivateKey() ?? throw new InvalidOperationException("Missing key.");
+            using var laptopKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+            using var tabletKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+            var leader = new SwarmMember(key.ExportSubjectPublicKeyInfo(), "Leader", 17, [], 20382,
+                identity.MemberId, DateTimeOffset.UnixEpoch, 1);
+            var laptop = new SwarmMember(laptopKey.ExportSubjectPublicKeyInfo(), "Laptop", 42, [], 20383,
+                leader.Id, DateTimeOffset.UnixEpoch, 2);
+            var tablet = new SwarmMember(tabletKey.ExportSubjectPublicKeyInfo(), "Tablet", 55, [], 20384,
+                leader.Id, DateTimeOffset.UnixEpoch, 3);
+            var register = new SwarmMembership();
+            Assert.Equal(SwarmMembershipVerdict.Accepted, register.Accept(SwarmRecord.Sign(SwarmMembership.ToPayload(leader), key)));
+            Assert.Equal(SwarmMembershipVerdict.Accepted, register.Accept(SwarmRecord.Sign(SwarmMembership.ToPayload(laptop), key).CoSign(laptopKey)));
+            Assert.Equal(SwarmMembershipVerdict.Accepted, register.Accept(SwarmRecord.Sign(SwarmMembership.ToPayload(tablet), key).CoSign(tabletKey)));
+            var store = new SwarmMembershipStore(Path.Combine(root, "members.json"));
+            store.Save(register);
+            var settings = new SwarmSettingsStore(Path.Combine(root, "cockpit.json"));
+            await settings.SaveAsync(new() { WhenALowerRankComesBack = SwarmLowerRankReturn.JoinAtBack });
+            var clock = new FakeTimeProvider();
+            var reachability = new SwarmReachability(clock);
+            var leadership = new SwarmLeadership(store, settings, identity, reachability) { Time = clock };
+            await leadership.RefreshAsync();
+            reachability.Answer(laptop.Id, HttpStatusCode.OK);
+            reachability.Answer(tablet.Id, HttpStatusCode.OK);
+            var laptopClaim = SwarmRecord.Sign(SwarmMembership.ToPayload(SwarmLeaderElection.ClaimLead(register, laptop.Id)), laptopKey);
+            var tabletClaim = SwarmRecord.Sign(SwarmMembership.ToPayload(SwarmLeaderElection.ClaimLead(register, tablet.Id)), tabletKey);
+            var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            async Task<SwarmRecords?> ClaimAsync(SwarmMemberId caller, SwarmRecord record)
+            {
+                await start.Task;
+                try
+                {
+                    return await leadership.AcceptClaimAsync(caller, record, default);
+                }
+                catch (InvalidDataException)
+                {
+                    return null;
+                }
+            }
+            var first = Task.Run(() => ClaimAsync(laptop.Id, laptopClaim));
+            var second = Task.Run(() => ClaimAsync(tablet.Id, tabletClaim));
+            start.SetResult();
+            var results = await Task.WhenAll(first, second);
+            var accepted = Assert.Single(results, result => result is not null)
+                ?? throw new InvalidOperationException("No claim accepted.");
+            Assert.Single(results, result => result is null);
+            var replay = SwarmMembership.Replay(accepted.Records);
+            Assert.Equal(4, replay.Sequence);
+            Assert.Equal(replay.Members.MinBy(member => member.Rank)?.Id, leadership.Current?.Id);
+            await leadership.RefreshAsync();
+            Assert.Equal(replay.ClaimedLeader, leadership.Current?.Id);
+            Assert.False(leadership.IsSelf);
+            Assert.Equal(replay.ClaimedLeader, (await store.LoadAsync()).ClaimedLeader);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
         }
     }
 

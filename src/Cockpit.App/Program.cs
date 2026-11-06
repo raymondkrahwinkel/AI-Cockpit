@@ -1,6 +1,8 @@
+using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Media;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Cockpit.App.Composition;
 using Cockpit.App.Plugins;
@@ -130,11 +132,17 @@ sealed class Program
         Startup.AddCore("Loading plugins…", _ => _OnStaThread(() =>
         {
             // Plugins are discovered before the container is built so they can register services (#14). Safe mode is a
-            // UI-independent command-line escape hatch that still discovers them but loads none (AC-478).
+            // UI-independent command-line escape hatch that still discovers them but loads none (AC-478). AC-2039: a
+            // start the last one did not finish turns off what it named, or goes to safe mode by itself.
+            var attempt = StartupAttempt.Begin(loggerFactory.CreateLogger<StartupAttempt>());
             var backend = CockpitBackend.Build(
                 loggerFactory,
-                services => AddDesktop(services, loggerFactory),
-                args.Contains(PluginManager.SafeModeArgument) ? PluginStartup.SafeMode : PluginStartup.Load,
+                services =>
+                {
+                    AddDesktop(services, loggerFactory);
+                    services.AddSingleton(attempt);
+                },
+                args.Contains(PluginManager.SafeModeArgument) || attempt.SafeMode ? PluginStartup.SafeMode : PluginStartup.Load,
                 applyIncomingSettings: false,
                 enableStorageMaintenance: true);
             Services = backend.Services;
@@ -182,6 +190,23 @@ sealed class Program
             exceptionEvent.Handled = true;
         };
 
+        // The Kestrel hosts' ConsoleLifetime swallows SIGTERM (AC-2057); only the first signal, once the UI is up, is routed into the quit route.
+        var quitRequested = 0;
+        var signals = OperatingSystem.IsWindows()
+            ? []
+            : new[] { PosixSignal.SIGTERM, PosixSignal.SIGINT, PosixSignal.SIGQUIT }.Select(signal =>
+                PosixSignalRegistration.Create(signal, context =>
+                {
+                    if (Application.Current is not App app || Interlocked.Exchange(ref quitRequested, 1) == 1)
+                    {
+                        return;
+                    }
+
+                    context.Cancel = true;
+                    Cockpit.App.Logging.LifecycleLog.Write($"{signal} received; requesting a quit.");
+                    Avalonia.Threading.Dispatcher.UIThread.Post(app.RequestQuit);
+                })).ToList();
+
         try
         {
             BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
@@ -201,6 +226,7 @@ sealed class Program
             // and SoundFlow native disposal can hang. The OS reclaims the loopback socket anyway.
             DisposeCockpit();
             fileLogger.Flush();
+            GC.KeepAlive(signals);
             Environment.Exit(0);
         }
     }
@@ -416,6 +442,9 @@ sealed class Program
             return;
         }
 
+        // AC-2039: a quit or restart the operator asked for is not a crash, whatever the teardown below does next.
+        CompleteStartupAttempt();
+
         // Started here and not only in Main's finally: while the shutdown is held open for this, nothing else bounds
         // the process, and a wedged teardown must never hold the exit up (bug #32).
         StartExitWatchdog(TeardownBudget + TimeSpan.FromSeconds(1));
@@ -435,6 +464,9 @@ sealed class Program
 
     // AC-1202: its own bound, separate from TeardownBudget above — AwaitTeardownAsync can already spend the
     // full 3s against the 4s watchdog, so this gets what is safely left rather than a share of the whole budget.
+    // Direct Velopack updates bypass the desktop lifetime, so they clear the marker first.
+    internal static void CompleteStartupAttempt() => Services?.GetService<StartupAttempt>()?.Complete();
+
     private static readonly TimeSpan ContainerDisposeBudget = TimeSpan.FromMilliseconds(800);
 
     // AC-1202: asynchronously disposes singleton resources; sync disposal rejects CockpitViewModel's async-only path.
@@ -444,6 +476,20 @@ sealed class Program
         if (Services is not IAsyncDisposable disposable)
         {
             return;
+        }
+
+        // BackgroundService.Dispose only cancels; StopAsync also awaits its work and final writes.
+        using var stopping = new CancellationTokenSource(ContainerDisposeBudget);
+        foreach (var service in Services.GetServices<IHostedService>().Reverse())
+        {
+            try
+            {
+                await service.StopAsync(stopping.Token).WaitAsync(stopping.Token).ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                Cockpit.App.Logging.LifecycleLog.Write($"{service.GetType().Name} failed to stop: {exception}");
+            }
         }
 
         try

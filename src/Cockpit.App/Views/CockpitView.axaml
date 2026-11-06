@@ -164,6 +164,7 @@
                                   IsVisible="{Binding SupportsClearContext}"/>
                         <Separator/>
                         <MenuItem Header="Set status…" Click="OnSetSessionStatus"/>
+                        <MenuItem Header="MCP servers…" Click="OnOpenSessionMcp"/>
                         <MenuItem Header="Resume later…" Click="OnScheduleSessionResume"/>
                         <MenuItem Header="Clear status" Click="OnClearSessionStatus"
                                   IsEnabled="{Binding Statusline, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
@@ -253,6 +254,7 @@
                         <!-- Hover-revealed close, hidden while the confirm prompt is up. -->
                         <Button Grid.Column="1" Classes="Subtle closeSession"
                                 VerticalAlignment="Top" Padding="4,0"
+                                Focusable="True"
                                 Foreground="{DynamicResource CockpitTextFaintBrush}"
                                 IsVisible="{Binding !IsConfirmingClose}"
                                 Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).RequestCloseSessionCommand}"
@@ -315,14 +317,18 @@
                                                     <Ellipse StrokeThickness="1" Stroke="{Binding StatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
                                                     <Ellipse Opacity="{Binding DotFillOpacity}" Fill="{Binding StatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
                                                 </Grid>
-                                                <TextBlock Grid.Column="1" Text="{Binding Title}" FontSize="12" TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding Title}" FontSize="12" TextTrimming="CharacterEllipsis"
+                                                           Foreground="{Binding RowForegroundBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
                                             </Grid>
-                                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="5" Margin="13,0,0,0">
-                                                <Border Background="{DynamicResource CockpitStatusBackgroundChipTintBrush}" CornerRadius="3" Padding="4,0" VerticalAlignment="Center">
-                                                    <TextBlock Text="{Binding TypeText}" FontSize="10" Foreground="{DynamicResource CockpitStatusBackgroundBrush}"/>
+                                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="5" Margin="13,0,0,0">
+                                                <Border Background="{Binding StatusChipTintBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}" CornerRadius="3" Padding="4,0" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding TypeText}" FontSize="10" Foreground="{Binding StatusChipForegroundBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
                                                 </Border>
                                                 <TextBlock Grid.Column="1" Text="{Binding SidebarDetail}" FontSize="10.5" TextTrimming="CharacterEllipsis"
-                                                           Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                                           Foreground="{Binding RowForegroundBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                                                <Border Grid.Column="2" Background="{Binding StatusChipTintBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}" CornerRadius="3" Padding="4,0" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding StatusText}" FontSize="10" Foreground="{Binding StatusChipForegroundBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                                                </Border>
                                             </Grid>
                                         </StackPanel>
                                         </Panel>
@@ -392,6 +398,9 @@
             <Setter Property="Opacity" Value="0"/>
         </Style>
         <Style Selector="Border.sessionItem:pointerover Button.closeSession">
+            <Setter Property="Opacity" Value="1"/>
+        </Style>
+        <Style Selector="Border.sessionItem Button.closeSession:focus">
             <Setter Property="Opacity" Value="1"/>
         </Style>
 
@@ -915,11 +924,11 @@
                              the other way round instead: picking one walks to its tab first (see SelectSession).
                              Drag-reorder (AC-115) sits on the per-node ItemsControl, so a drag reorders inside
                              one node and never carries a session across to another tab. -->
-                        <!-- AC-1487: this laptop's desks, which a remote window does not have. -->
+                        <!-- AC-1487: this machine's desks, which a remote window does not have. -->
                         <StackPanel Spacing="2" IsVisible="{Binding !IsRemoteWindow}">
-                            <!-- AC-1456: once a server group stands below, this laptop's desks get their own heading. -->
+                            <!-- AC-1456: once a server group stands below, this machine's desks get their own heading. -->
                             <Grid ColumnDefinitions="*,Auto,Auto" Margin="2,0,4,2" IsVisible="{Binding ShowLocalMachineHeading}">
-                                <TextBlock Text="This laptop" FontSize="11" FontWeight="SemiBold"
+                                <TextBlock Text="{Binding LocalMachineName}" FontSize="11" FontWeight="SemiBold"
                                            Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                 <Border Grid.Column="1" Classes="tag" Margin="4,0" IsVisible="{Binding LocalLeads}">
                                     <TextBlock Text="leads" FontSize="10" Foreground="{DynamicResource CockpitStatusDoneBrush}"/>
@@ -1168,6 +1177,30 @@
                             </DockPanel>
                         </Border>
                     </Button>
+                </StackPanel>
+
+                <StackPanel DockPanel.Dock="Top" x:Name="SimpleOpenItems" Spacing="2" Margin="0,0,0,12" IsVisible="{Binding Workspaces.HasOpenItems}">
+                    <TextBlock Text="OPEN ITEMS" FontSize="11" FontWeight="SemiBold" Margin="2,0,0,2"
+                               Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                    <ScrollViewer MaxHeight="150" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding Workspaces.OpenItems}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:WorkspaceTabViewModel">
+                                    <Button Classes="Subtle" Padding="0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                                            Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).ShowSimpleWorkspaceCommand}" CommandParameter="{Binding Id}">
+                                        <Border Classes="sessionItem" Classes.active="{Binding IsActive}" Padding="10,7" CornerRadius="{StaticResource CockpitControlRadius}">
+                                            <DockPanel>
+                                                <Ellipse DockPanel.Dock="Right" Width="7" Height="7" Margin="7,0,0,0" VerticalAlignment="Center"
+                                                         Fill="{DynamicResource CockpitStatusWaitingBrush}" IsVisible="{Binding HasMarker}" ToolTip.Tip="Unsaved changes"/>
+                                                <materialIcons:MaterialIcon DockPanel.Dock="Left" Kind="{Binding Icon}" Width="16" Height="16" Margin="0,0,10,0"/>
+                                                <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                            </DockPanel>
+                                        </Border>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
                 </StackPanel>
 
                 <!-- AC-1302: the tree of sessions. It groups *who drives what* — the assistant and the sessions
@@ -1466,9 +1499,22 @@
                 </DockPanel>
             </Border>
 
-            <!-- AC-1793: the Panels stand's workspace bodies, one switch for all of them. Simple has no workspace tabs,
-                 so a tab left open here would draw under its pages; hidden, not rebuilt, it comes back as it was left. -->
-            <Panel Grid.Row="1" IsVisible="{Binding !SimpleView}">
+            <DockPanel Grid.Row="1" IsVisible="{Binding ShowWorkspaceContent}">
+                <Border DockPanel.Dock="Top" IsVisible="{Binding SimpleStandShowsTheWorkspace}" Padding="12,8"
+                        BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,0,0,1">
+                    <DockPanel>
+                        <Button DockPanel.Dock="Left" Classes="Subtle Compact" Content="← Back" Margin="0,0,10,0"
+                                Command="{Binding ReturnFromSimpleWorkspaceCommand}"/>
+                        <Button DockPanel.Dock="Right" Classes="Subtle Compact" Content="Close"
+                                Command="{Binding Workspaces.CloseWorkspaceCommand}" CommandParameter="{Binding Workspaces.Active.Id}"/>
+                        <TextBlock Text="{Binding Workspaces.Active.Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                    </DockPanel>
+                </Border>
+                <ScrollViewer DockPanel.Dock="Top" IsVisible="{Binding SimpleStandShowsTheWorkspace}"
+                              HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                    <controls:WorkspaceHeaderActionsHost/>
+                </ScrollViewer>
+                <Panel>
                 <!-- Dashboard: the widget grid, shown instead of the session content when a Dashboard workspace is
                      active. Its own empty state says "add a widget", never "no sessions yet" — the workspace type
                      drives the affordance, so a dashboard never asks for something it cannot hold. -->
@@ -1748,14 +1794,15 @@
                     <StackPanel Spacing="8" MaxWidth="360">
                         <materialIcons:MaterialIcon Kind="PuzzleOutline" Width="28" Height="28"
                                                     HorizontalAlignment="Center" Opacity="0.6"/>
-                        <TextBlock Text="This workspace's plugin is not installed."
+                        <TextBlock Text="{Binding Workspaces.UnknownPluginWorkspaceTitle}"
                                    HorizontalAlignment="Center" TextAlignment="Center" FontWeight="SemiBold"/>
-                        <TextBlock Text="Install or enable the plugin that provides it, and this workspace comes back."
+                        <TextBlock Text="{Binding Workspaces.UnknownPluginWorkspaceHint}"
                                    HorizontalAlignment="Center" TextAlignment="Center" FontSize="12"
                                    Opacity="0.7" TextWrapping="Wrap"/>
                     </StackPanel>
                 </Border>
-            </Panel>
+                </Panel>
+            </DockPanel>
 
             <!-- Session grid + zoom, shown once at least one session exists and a Sessions workspace is active. -->
             <DockPanel Grid.Row="1" Margin="12" IsVisible="{Binding ShowSessionGrid}">
@@ -2222,56 +2269,12 @@
 
             <views:SimpleHomeView Grid.Row="1" x:Name="SimpleHomePage" IsVisible="{Binding SimpleStandShowsTheStartScreen}"/>
 
-            <!-- AC-1527: the Simple stand's Projects page — the overview's own cards (`ProjectCategoryGroups`), whose
-                 Start is the dialog-free quick start, so a click lands in the new conversation. -->
-            <ScrollViewer Grid.Row="1" x:Name="SimpleProjectsPage" IsVisible="{Binding SimpleStandShowsTheProjects}"
-                          HorizontalScrollBarVisibility="Disabled">
-                <StackPanel Margin="52,40,52,32">
-                    <DockPanel Margin="8,0,8,12">
-                        <Button DockPanel.Dock="Right" VerticalAlignment="Top" Padding="12,6"
-                                Command="{Binding Projects.AddProjectCommand}"
-                                ToolTip.Tip="Add a project — from a folder on this computer, or one your team shares">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <materialIcons:MaterialIcon Kind="Plus" Width="14" Height="14"/>
-                                <TextBlock Text="New project" FontWeight="SemiBold"/>
-                            </StackPanel>
-                        </Button>
-                        <StackPanel Spacing="4">
-                            <TextBlock Text="Your projects" FontSize="22" FontWeight="SemiBold"/>
-                            <TextBlock Text="A project keeps a folder, the instructions for the assistant and its conversations together."
-                                       FontSize="13" TextWrapping="Wrap"
-                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                        </StackPanel>
-                    </DockPanel>
-                    <Panel IsVisible="{Binding !Projects.HasProjects}">
-                        <controls:StartingPointsView DataContext="{Binding Projects}"/>
-                    </Panel>
-                    <ItemsControl ItemsSource="{Binding Projects.ProjectCategoryGroups}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="vm:ProjectCategoryGroupViewModel">
-                                <StackPanel Spacing="4">
-                                    <TextBlock Text="{Binding CategoryName}" FontSize="13" FontWeight="SemiBold" Margin="8,8,0,0"
-                                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"
-                                               IsVisible="{Binding HasHeader}"/>
-                                    <ItemsControl ItemsSource="{Binding Cards}">
-                                        <ItemsControl.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <WrapPanel/>
-                                            </ItemsPanelTemplate>
-                                        </ItemsControl.ItemsPanel>
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate x:DataType="vm:ProjectCardViewModel">
-                                                <controls:ProjectCardView
-                                                    JobCommand="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).StartProjectJobNowCommand}"/>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                </StackPanel>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </StackPanel>
-            </ScrollViewer>
+            <!-- AC-2078: the Simple stand's Projects page is the Projects workspace itself — one list, one detail pane,
+                 one set of add options — hosted here under its own toolbar. -->
+            <DockPanel Grid.Row="1" x:Name="SimpleProjectsPage" IsVisible="{Binding SimpleStandShowsTheProjects}">
+                <controls:ProjectsToolbar DockPanel.Dock="Top" DataContext="{Binding Projects}"/>
+                <controls:ProjectsWorkspace DataContext="{Binding Projects}"/>
+            </DockPanel>
 
             <!-- AC-1305: a session that is not the one in this column is waiting for consent. The card itself
                  (ConsentBanner, over the conversation) stays where the question belongs, so this only names who is
@@ -2447,7 +2450,12 @@
                                 <TextBlock Text="Assistant"/>
                             </StackPanel>
                         </Button>
-                        <TextBlock x:Name="DockPanelHeaderTitle" VerticalAlignment="Center" FontSize="12.5"/>
+                        <!-- AC-1933: the key the Agents panel is bound to stands beside its name; blank while none is. -->
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock x:Name="DockPanelHeaderTitle" VerticalAlignment="Center" FontSize="12.5"/>
+                            <TextBlock x:Name="DockPanelHeaderShortcut" IsVisible="False" Margin="8,0,0,0"
+                                       VerticalAlignment="Center" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        </StackPanel>
                     </DockPanel>
                 </Border>
 
@@ -2698,37 +2706,8 @@
                         </StackPanel>
                     </Button>
 
-                    <!-- The delegated tasks (#67) run as sessions without a tab, so the status bar is where they are
-                         visible at all: work is happening on your behalf that nothing else on screen would tell you
-                         about. Always there, including at nought: a meter that shows up only when it has something to
-                         report leaves you unable to tell "nothing is running" from "the meter is gone". The colour carries
-                         that — blue while something works, grey while nothing does. -->
-                    <Button DockPanel.Dock="Right"
-                            Classes="statusMeter"
-                            Padding="8,2"
-                            Margin="0,0,8,0"
-                            Command="{Binding ShowDelegatedTasksCommand}"
-                            ToolTip.Tip="Work your sessions handed to another profile — click to read what they produced, or stop them">
-                        <TextBlock Text="{Binding DelegatedTasks.ActiveTaskCount, StringFormat='Delegated tasks: {0}'}"
-                                   FontSize="11"
-                                   Foreground="{Binding DelegatedTasks.ActiveTaskBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"
-                                   VerticalAlignment="Center"/>
-                    </Button>
-
-                    <!-- AC-1456: each connect server's connection, as its group's header says it. -->
-                    <ItemsControl DockPanel.Dock="Right" Margin="0,0,8,0" VerticalAlignment="Center"
-                                  ItemsSource="{Binding ServerStatusLabels}">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <StackPanel Orientation="Horizontal" Spacing="12"/>
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="x:String">
-                                <TextBlock Text="{Binding}" FontSize="11" Foreground="{DynamicResource CockpitAccentBrush}"/>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+                    <!-- AC-2028: the disk meter, compact like CPU/RAM; the panel it opens lists every drive. -->
+                    <controls:DiskStorageStatus DockPanel.Dock="Right"/>
 
                     <!-- Managed worktrees (AC-85): the git worktrees the cockpit created for isolated sessions. Shown only
                          while there are any — click to see each one's state, reattach a gone one, or clean up finished. -->
@@ -2743,6 +2722,41 @@
                                    FontSize="11"
                                    Foreground="{Binding Worktrees.CountBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"
                                    VerticalAlignment="Center"/>
+                    </Button>
+
+                    <!-- The delegated tasks (#67) run as sessions without a tab, so the status bar is where they are
+                         visible at all: work is happening on your behalf that nothing else on screen would tell you
+                         about. Shown only while a task runs or waits (AC-2028): a meter at nought is clutter, and the
+                         dialog stays one click away from the side menu. -->
+                    <Button DockPanel.Dock="Right"
+                            Classes="statusMeter"
+                            Padding="8,2"
+                            Margin="0,0,8,0"
+                            Command="{Binding ShowDelegatedTasksCommand}"
+                            IsVisible="{Binding DelegatedTasks.HasActiveTasks}"
+                            ToolTip.Tip="Work your sessions handed to another profile — click to read what they produced, or stop them">
+                        <TextBlock Text="{Binding DelegatedTasks.ActiveTaskCount, StringFormat='Delegated tasks: {0}'}"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource CockpitStatusBusyBrush}"
+                                   VerticalAlignment="Center"/>
+                    </Button>
+
+                    <!-- AC-2028: running and queued test runs, tracked and heavy together; gone at nought. -->
+                    <Button DockPanel.Dock="Right"
+                            Classes="statusMeter"
+                            Padding="8,2"
+                            Margin="0,0,8,0"
+                            Command="{Binding ShowTestRunsCommand}"
+                            IsVisible="{Binding TestRuns.HasActive}"
+                            ToolTip.Tip="Commands your sessions started through start_run — click to read their output, or stop them">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="5">
+                            <materialIcons:MaterialIcon Kind="FlaskOutline" Width="13" Height="13"
+                                                        Foreground="{DynamicResource CockpitStatusBusyBrush}"/>
+                            <TextBlock Text="{Binding TestRuns.ActiveCount, StringFormat='Test runs: {0}'}"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource CockpitStatusBusyBrush}"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
                     </Button>
 
                     <!-- Plugin-registered supervised activities (AC-82): a counter per source (e.g. "Port-forwards: 2"),
@@ -2761,9 +2775,20 @@
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
                             <DataTemplate DataType="plugins:PluginStatusText">
-                                <TextBlock Text="{Binding Text}" FontSize="11" Margin="0,0,12,0"
-                                           Foreground="{Binding Tone, Converter={x:Static conv:BadgeToneBrushConverter.Instance}}"
-                                           VerticalAlignment="Center"/>
+                                <Panel>
+                                    <TextBlock Text="{Binding Text}" FontSize="11" Margin="0,0,12,0"
+                                               IsVisible="{Binding Popup, Converter={x:Static ObjectConverters.IsNull}}"
+                                               Foreground="{Binding Tone, Converter={x:Static conv:BadgeToneBrushConverter.Instance}}"
+                                               VerticalAlignment="Center"/>
+                                    <!-- A plugin that offered a popup (SetStatusText with createPopup): a button like the other meters. -->
+                                    <controls:PluginStatusTextButton Classes="statusMeter" Padding="8,2" Margin="0,0,8,0"
+                                                                     IsVisible="{Binding Popup, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                                                     AutomationProperties.Name="{Binding Text}">
+                                        <TextBlock Text="{Binding Text}" FontSize="11"
+                                                   Foreground="{Binding Tone, Converter={x:Static conv:BadgeToneBrushConverter.Instance}}"
+                                                   VerticalAlignment="Center"/>
+                                    </controls:PluginStatusTextButton>
+                                </Panel>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>

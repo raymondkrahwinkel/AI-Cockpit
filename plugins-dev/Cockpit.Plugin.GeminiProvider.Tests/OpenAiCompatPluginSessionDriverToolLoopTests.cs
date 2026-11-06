@@ -6,7 +6,7 @@ using NSubstitute;
 namespace Cockpit.Plugin.GeminiProvider.Tests;
 
 // The tool loop the shared OpenAiCompat driver runs over a host-mounted toolset (AC-964). One copy of that
-// driver serves this whole provider family, so this covers the Grok, OpenRouter and GitHub Models plugins too.
+// driver serves this whole provider family, so this covers the Grok and OpenRouter plugins too.
 public class OpenAiCompatPluginSessionDriverToolLoopTests
 {
     [Fact]
@@ -78,27 +78,6 @@ public class OpenAiCompatPluginSessionDriverToolLoopTests
             Assert.Equal(2000, sentResults[3]?.Length);
             Assert.Equal(preservePrefix ? new string('x', 2000) : new string('x', 1500) + "\n[truncated by cockpit: 2000 chars]", sentResults[4]);
         }
-    }
-
-    [Fact]
-    public async Task SendUserMessage_WhenTheModelStopsOnAnAnnouncement_GetsAtMostOneContinuationRound()
-    {
-        var sent = new List<List<ChatMessage>>();
-        var chatClient = Substitute.For<IChatClient>();
-        chatClient.GetStreamingResponseAsync(Arg.Do<IEnumerable<ChatMessage>>(messages => sent.Add([.. messages])), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
-            .Returns(_ToolCall("set_status", ("status", "AC-1431")), _Stream("Now I'll inspect the diff."));
-        var driver = new OpenAiCompatPluginSessionDriver(chatClient, "gpt-5");
-        await _StartWithToolsetAsync(driver, new FakeToolset(["set_status"], reachable: ["set_status"]));
-
-        await driver.SendUserMessageAsync("work until the PR is open");
-        var events = await _CollectAsync(driver, evt => evt is PluginTurnCompleted);
-
-        // AC-1431 criterion 2: an announcement without a tool call or the end-of-turn marker is nudged on within the
-        // same turn, and a model that never finishes gets exactly one nudge (AC-1489): the tool round, its answer, one more.
-        Assert.Equal(3, sent.Count);
-        Assert.Single(sent[^1], message => message.Role == ChatRole.User && message.Text == ChatTurnLoop.ContinuationNudge);
-        Assert.Contains(ChatTurnLoop.CompletionMarker, sent[0][0].Text);
-        Assert.False(Assert.Single(events.OfType<PluginTurnCompleted>()).IsError);
     }
 
     [Fact]

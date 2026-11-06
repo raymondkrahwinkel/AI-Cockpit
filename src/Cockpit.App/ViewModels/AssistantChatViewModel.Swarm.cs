@@ -1,5 +1,6 @@
 using Cockpit.Core.Assistant;
 using Cockpit.App.Services;
+using CommunityToolkit.Mvvm.Input;
 
 namespace Cockpit.App.ViewModels;
 
@@ -20,12 +21,39 @@ public sealed partial class AssistantChatViewModel
     public bool LeaderIsServer => _cockpit?.AssistantLeaderIsServer == true;
     public string? LeaderSessionError => _leaderSessionError;
     public bool CanClearConversation => !IsFollowingLeader;
+    public bool CanClaimLeadership => IsFollowingLeader;
+    private string? _claimError;
+    public string? ClaimError => _claimError;
+
+    [RelayCommand(CanExecute = nameof(CanClaimLeadership))]
+    private async Task ClaimLeadershipAsync()
+    {
+        _claimError = null;
+        try
+        {
+            if (_cockpit?.SwarmLeadership is { } leadership)
+            {
+                await leadership.ClaimLeadershipAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _claimError = $"Could not take over. {ex.Message}";
+        }
+        OnPropertyChanged(nameof(ClaimError));
+    }
 
     internal async Task RefreshLeaderSessionAsync(CancellationToken cancellationToken = default)
     {
-        var version = ++_leaderVersion;
         var leadership = _cockpit?.SwarmLeadership;
         var leader = leadership?.Current;
+        // Attaching a rebuilt host opens the chat again. Replacing a healthy follower session here
+        // would rebuild that host again, losing its composer and caret after every asynchronous open.
+        if (IsFollowingLeader && _leaderId == leader?.Id.Value && Session is { IsRemote: true, IsLinkUp: true })
+        {
+            return;
+        }
+        var version = ++_leaderVersion;
         _leaderId = leader?.Id.Value;
         _leaderSessionError = null;
         OnPropertyChanged(nameof(LeaderSessionError));

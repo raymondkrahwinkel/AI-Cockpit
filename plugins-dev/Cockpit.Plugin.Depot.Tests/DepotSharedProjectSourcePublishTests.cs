@@ -24,17 +24,25 @@ public class DepotSharedProjectSourcePublishTests
             BehaviorPrompt: "Be terse.", IsolateInWorktreeByDefault: false, EnabledMcpServerNames: ["github"],
             Resources: resources ?? []);
 
+    // An id of another connection never reaches this Depot, for publishing and binding (AC-246) alike; a write Depot
+    // refuses for a role below Editor is PermissionDenied with a reason.
     [Fact]
-    public async Task PublishAsync_WriteRejectedForRoleBelowEditor_ReturnsPermissionDenied()
+    public async Task PublishAsync_AnIdOfAnotherConnectionCallsNoDepot_AndAWriteRejectedForRoleBelowEditorIsPermissionDenied()
     {
         var host = Substitute.For<ICockpitHost>();
         var scheme = _Scheme(host);
         var handler = new _DefinitionHandler(
             "new-project", definition: null, writeStatus: HttpStatusCode.Forbidden);
         using var http = new HttpClient(handler);
+        var source = SourceFor(host, http);
 
-        var result = await SourceFor(host, http).PublishAsync(
-            $"{scheme}:new-project", Definition(), CancellationToken.None);
+        var otherPublish = await source.PublishAsync("other-scheme:new-project", Definition(), CancellationToken.None);
+        var otherBinding = await source.PrepareBindingAsync("other-scheme:new-project", CancellationToken.None);
+        Assert.Equal(SharedProjectPublishOutcome.Failed, otherPublish.Outcome);
+        Assert.False(otherBinding.Succeeded);
+        Assert.Equal(0, handler.RequestCount);
+
+        var result = await source.PublishAsync($"{scheme}:new-project", Definition(), CancellationToken.None);
 
         Assert.Equal(SharedProjectPublishOutcome.PermissionDenied, result.Outcome);
         Assert.NotNull(result.Error);
@@ -53,20 +61,6 @@ public class DepotSharedProjectSourcePublishTests
 
         Assert.Equal(SharedProjectPublishOutcome.AlreadyPublished, result.Outcome);
         Assert.Equal(0, handler.PutCount);
-    }
-
-    [Fact]
-    public async Task PublishAsync_WrongScheme_FailsWithoutCallingDepot()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        var handler = new _DefinitionHandler("new-project", definition: null);
-        using var http = new HttpClient(handler);
-
-        var result = await SourceFor(host, http).PublishAsync(
-            "other-scheme:new-project", Definition(), CancellationToken.None);
-
-        Assert.Equal(SharedProjectPublishOutcome.Failed, result.Outcome);
-        Assert.Equal(0, handler.RequestCount);
     }
 
     [Fact]

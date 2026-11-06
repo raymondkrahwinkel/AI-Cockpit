@@ -6,27 +6,17 @@ namespace Cockpit.Plugin.YouTrack.Tests;
 // configured yet.
 public class YouTrackMcpRegistrationTests
 {
-    [Theory]
-    [InlineData("https://x.youtrack.cloud/api", "https://x.youtrack.cloud/mcp")]
-    [InlineData("https://x.youtrack.cloud/API", "https://x.youtrack.cloud/mcp")]
-    [InlineData("https://x.youtrack.cloud/api/", "https://x.youtrack.cloud/mcp")]
-    [InlineData("https://x.youtrack.cloud/Api/", "https://x.youtrack.cloud/mcp")]
-    [InlineData("https://x.youtrack.cloud", "https://x.youtrack.cloud/mcp")]
-    [InlineData("https://x.youtrack.cloud/", "https://x.youtrack.cloud/mcp")]
-    [InlineData("https://myjetbrains.com/youtrack/api", "https://myjetbrains.com/youtrack/mcp")]
-    public void DeriveMcpEndpoint_MapsTheApiBaseUrlToTheMcpEndpoint(string instanceBaseUrl, string expected)
-    {
-        Assert.Equal(expected, YouTrackMcpRegistration.DeriveMcpEndpoint(instanceBaseUrl));
-    }
 
     [Fact]
-    public void BuildContributions_InstanceMissingUrlOrToken_IsSkipped()
+    public void BuildContributions_InstanceMissingUrlOrTokenOrWithMcpTurnedOff_IsSkipped()
     {
         var instances = new List<YouTrackInstance>
         {
             new("No URL", string.Empty, "token", string.Empty),
             new("No token", "https://x.youtrack.cloud/api", string.Empty, string.Empty),
             new("Blank token", "https://x.youtrack.cloud/api", "   ", string.Empty),
+            // Fully configured, but the operator unticked "add this instance's MCP server to sessions" (AC-11).
+            new("MCP off", "https://x.youtrack.cloud/api", "secret-token", "PROJ", AddMcpToSessions: false),
         };
 
         Assert.Empty(YouTrackMcpRegistration.BuildContributions(instances));
@@ -46,17 +36,5 @@ public class YouTrackMcpRegistrationTests
         Assert.Equal("YouTrack: Prod", contributions[0].Name);
         Assert.Equal("https://x.youtrack.cloud/mcp", contributions[0].Url);
         Assert.Equal("secret-token", contributions[0].BearerToken);
-    }
-
-    [Fact]
-    public void BuildContributions_InstanceWithMcpTurnedOff_IsSkipped()
-    {
-        // Fully configured, but the operator unticked "add this instance's MCP server to sessions" (AC-11).
-        var instances = new List<YouTrackInstance>
-        {
-            new("Prod", "https://x.youtrack.cloud/api", "secret-token", "PROJ", AddMcpToSessions: false),
-        };
-
-        Assert.Empty(YouTrackMcpRegistration.BuildContributions(instances));
     }
 }

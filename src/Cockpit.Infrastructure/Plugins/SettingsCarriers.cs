@@ -8,6 +8,7 @@ namespace Cockpit.Infrastructure.Plugins;
 public sealed class SettingsCarriers(ILogger<SettingsCarriers> logger) : ISingletonService
 {
     private readonly ConcurrentDictionary<string, SettingsCarrierRegistration> _carriers = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, string> _owners = new(StringComparer.Ordinal);
     private SettingsCarrierRegistration? _carrier;
     private string? _pluginId;
 
@@ -26,10 +27,30 @@ public sealed class SettingsCarriers(ILogger<SettingsCarriers> logger) : ISingle
             return false;
         }
 
+        _owners[registration.Id] = pluginId;
         if (Interlocked.CompareExchange(ref _carrier, registration, null) is null)
         {
             Volatile.Write(ref _pluginId, pluginId);
         }
+        return true;
+    }
+
+    // The carrier in use hands over to one that is left, so settings keep a way to travel.
+    public bool Remove(string id)
+    {
+        if (!_carriers.TryRemove(id, out var removed))
+        {
+            return false;
+        }
+
+        _owners.TryRemove(id, out _);
+        if (ReferenceEquals(Carrier, removed))
+        {
+            var next = _carriers.Values.FirstOrDefault();
+            Volatile.Write(ref _carrier, next);
+            Volatile.Write(ref _pluginId, next is null ? null : _owners.GetValueOrDefault(next.Id));
+        }
+
         return true;
     }
 }

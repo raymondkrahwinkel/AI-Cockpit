@@ -34,7 +34,8 @@ public sealed record AssistantSpawnAuditEntry(
     string? SessionName,
     string? Refusal,
     string? ProjectId = null,
-    IReadOnlyList<string>? McpServers = null);
+    IReadOnlyList<string>? McpServers = null,
+    IReadOnlyList<string>? McpServersOutsideProject = null);
 
 // What a trail entry records having been asked for.
 public enum AssistantSpawnAction
@@ -47,4 +48,7 @@ public enum AssistantSpawnAction
 
     // A worktree re-owned from the assistant onto a session — `worktree_handover` (AC-719).
     Handover,
+
+    McpAdd,
+    McpRemove,
 }

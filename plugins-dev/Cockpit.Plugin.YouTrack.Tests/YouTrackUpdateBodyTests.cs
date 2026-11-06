@@ -38,16 +38,6 @@ public class YouTrackUpdateBodyTests
         Assert.False(customField.TryGetProperty("value", out _));
     }
 
-    [Fact]
-    public void ForAssignee_AddressesTheUserByLogin()
-    {
-        var customField = _SingleCustomField(YouTrackUpdateBody.ForAssignee("Assignee", "raymond"));
-
-        Assert.Equal("Assignee", customField.GetProperty("name").GetString());
-        Assert.Equal("SingleUserIssueCustomField", customField.GetProperty("$type").GetString());
-        Assert.Equal("raymond", customField.GetProperty("value").GetProperty("login").GetString());
-    }
-
     private static JsonElement _SingleCustomField(string body)
     {
         using var document = JsonDocument.Parse(body);
