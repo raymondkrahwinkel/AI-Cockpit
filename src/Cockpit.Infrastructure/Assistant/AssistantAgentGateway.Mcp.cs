@@ -17,10 +17,17 @@ internal sealed partial class AssistantAgentGateway
         }
         IReadOnlyList<McpServerConfig> registry = mcpServers is null ? [] : await mcpServers.GetServersForSessionAsync(
             context.Project?.Id, new ExactMcpServerSelection(set.ServerNames), cancellationToken).ConfigureAwait(false);
+        var report = mcpMounts?.ConnectionReport(paneId);
         return new(true, context.Manager.ToString(), [.. set.ServerNames.Order(StringComparer.OrdinalIgnoreCase).Select(name =>
         {
             var server = registry.FirstOrDefault(candidate => string.Equals(candidate.Name, name, StringComparison.OrdinalIgnoreCase));
-            return new SessionMcpServerState(name, server is null ? "unknown" : server.Enabled ? "selected" : "disabled");
+            var issue = report?.Issues.FirstOrDefault(candidate => string.Equals(candidate.Name, name, StringComparison.OrdinalIgnoreCase));
+            var status = issue is not null
+                ? string.Equals(issue.Reason, "Needs a sign-in.", StringComparison.Ordinal) ? "sign-in needed" : "not reachable"
+                : report?.ConnectedServerNames.Contains(name, StringComparer.OrdinalIgnoreCase) == true ? "connected"
+                : server is null ? "unknown" : server.Enabled ? "selected" : "disabled";
+            var reason = issue?.Reason ?? (server?.AlwaysMounted == true ? "Always mounted servers cannot be removed." : null);
+            return new SessionMcpServerState(name, status, reason, server?.AlwaysMounted != true);
         })], null);
     }
 

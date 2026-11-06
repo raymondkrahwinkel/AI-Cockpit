@@ -7112,6 +7112,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
+    [RelayCommand]
+    private Task OpenSessionMcpAsync(SessionPanelViewModel session) =>
+        _dialogService?.ShowSessionMcpDialogAsync(session.PaneId, session.Title) ?? Task.CompletedTask;
+
     // Context-menu "Resume later…" (AC-231): schedules one prompt for this session at a moment of the operator's
     // choosing, the route that does not start from a warning. Silently unavailable where nothing can be scheduled.
     [RelayCommand]

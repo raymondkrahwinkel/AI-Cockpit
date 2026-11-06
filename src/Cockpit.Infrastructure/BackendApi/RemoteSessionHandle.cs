@@ -2,6 +2,7 @@ using System.Collections.Specialized;
 using System.Net;
 using System.Text.Json;
 using Cockpit.Core.Abstractions.Agents;
+using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Events;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
@@ -15,7 +16,7 @@ namespace Cockpit.Infrastructure.BackendApi;
 // AC-1388: one session on a backend reached over `/api/v1`. Its facts are the session list's as `RemoteBackend` last
 // read it; its rows the transcript route's snapshot plus every later row the stream carries, each exactly once. A
 // member the API has no route for refuses; one that only means something on the backend's machine reads empty.
-public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl
+public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl, ISessionMcpSetClient
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -316,6 +317,12 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl
 
     public Task SetModelAsync(string? model) =>
         _client.SendAsync<JsonElement>(HttpMethod.Post, $"{_Path}/model", new { model });
+
+    public Task<SessionMcpSetResult> GetMcpSetAsync(CancellationToken cancellationToken = default) =>
+        _client.GetAsync<SessionMcpSetResult>($"{_Path}/mcp", cancellationToken);
+
+    public Task<SessionMcpSetResult> RemoveMcpServerAsync(string name, CancellationToken cancellationToken = default) =>
+        _client.SendAsync<SessionMcpSetResult>(HttpMethod.Put, $"{_Path}/mcp", new { name, add = false }, cancellationToken);
 
     public Task SetMaxThinkingTokensAsync(int maxThinkingTokens) =>
         _Unsupported("The API does not expose a remote thinking-budget switch.");

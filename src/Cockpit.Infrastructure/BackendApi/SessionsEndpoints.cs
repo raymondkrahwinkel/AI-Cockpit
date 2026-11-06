@@ -113,6 +113,32 @@ internal static class SessionsEndpoints
             });
         }).RequireOperate();
 
+        api.MapGet("/sessions/{paneId}/mcp", async (string paneId, CancellationToken cancellationToken) =>
+        {
+            var result = await gateway().GetSessionMcpSetAsync(paneId, cancellationToken).ConfigureAwait(false);
+            return result.Ok
+                ? Results.Json(new
+                {
+                    ok = true,
+                    manager = result.Manager,
+                    servers = result.Servers.Select(server => new { name = server.Name, status = server.Status, reason = server.Reason, canRemove = server.CanRemove }),
+                })
+                : Results.NotFound();
+        }).RequireAdmin().Audited("get_session_mcp_set", services);
+
+        api.MapPut("/sessions/{paneId}/mcp", async (string paneId, McpSetChangeBody body, CancellationToken cancellationToken) =>
+        {
+            var result = await gateway().ChangeSessionMcpServerAsync(paneId, body.Name, body.Add, byOperator: true, cancellationToken).ConfigureAwait(false);
+            return result.Ok
+                ? Results.Json(new
+                {
+                    ok = true,
+                    manager = result.Manager,
+                    servers = result.Servers.Select(server => new { name = server.Name, status = server.Status, reason = server.Reason, canRemove = server.CanRemove }),
+                })
+                : BackendApiRoutes.Error(StatusCodes.Status409Conflict, "mcp_change_refused", result.Error ?? "The MCP set could not be changed.");
+        }).RequireAdmin().Audited("change_session_mcp_set", services);
+
         api.MapPost("/sessions", async (StartSessionBody body) =>
         {
             if (string.IsNullOrWhiteSpace(body.Profile))
@@ -421,3 +447,5 @@ internal sealed record ModelBody(string? Model);
 internal sealed record PermissionModeBody(string Mode);
 
 internal sealed record QueueCommandBody(string Command, string? WireId, string? Text, string? ReplyToRowId, bool TakesMidTurnInput = false);
+
+internal sealed record McpSetChangeBody(string Name, bool Add);

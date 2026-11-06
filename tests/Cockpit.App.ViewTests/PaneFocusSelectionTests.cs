@@ -1,9 +1,11 @@
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Cockpit.App.Controls;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
+using Cockpit.Core.Abstractions.Assistant;
 
 namespace Cockpit.App.ViewTests;
 
@@ -61,5 +63,47 @@ public class PaneFocusSelectionTests
 
         Assert.True(startedOnB, "the test needs focus to start on the other pane, or it proves nothing");
         Assert.True(movedToA, "selecting an SDK pane must put the caret in its own composer");
+        _SessionMcpDialogKeyboard();
     });
+
+    // F: a nested ItemsControl must not hide the session MCP actions from keyboard traversal (AC-2133).
+    private static void _SessionMcpDialogKeyboard()
+    {
+        var removed = false;
+        var result = new SessionMcpSetResult(true, "Assistant", [new SessionMcpServerState("Depot", "connected")], null);
+        var viewModel = new SessionMcpDialogViewModel(
+            "Session",
+            _ => Task.FromResult(result),
+            (_, _) =>
+            {
+                removed = true;
+                return Task.FromResult(result);
+            });
+        viewModel.LoadAsync().GetAwaiter().GetResult();
+        var window = new SessionMcpDialog { DataContext = viewModel };
+        window.Show();
+        window.UpdateLayout();
+
+        try
+        {
+            var remove = window.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "Remove"));
+            var close = window.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "Close"));
+
+            Assert.True(remove.IsFocused);
+            remove.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Tab });
+            Assert.True(close.IsFocused);
+            close.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Tab, KeyModifiers = KeyModifiers.Shift });
+            Assert.True(remove.IsFocused);
+            remove.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Enter });
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(removed);
+
+            close.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Escape });
+            Assert.False(window.IsVisible);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
 }
