@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2164: keep opening prompts queued until the Claude or Codex terminal composer is ready, so workspace trust dialogs cannot consume them as delivered turns.
+
 - AC-241: Companion remembers a reachable position, uses native window dragging, and separates tools with an explicit empty state.
 
 - AC-2117: reset swarm membership from any state, rejoin with fresh confirmation, show standalone/paused status and explain conflicting histories.

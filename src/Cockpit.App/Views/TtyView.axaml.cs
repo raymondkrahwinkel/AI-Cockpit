@@ -1123,9 +1123,7 @@ public partial class TtyView : UserControl
         _CheckHostedTuiReadiness();
     }
 
-    // The gate a held opening brief waits behind: `TerminalControl.BracketedPaste` flips true the moment the hosted
-    // CLI sends DECSET 2004, which happens in the CLI's very first output burst (measured ~0.27s after spawn for
-    // `claude` — AC-760 grooming). The fallback covers a CLI that never sends it.
+    // AC-2164: paste mode and elapsed time also occur during onboarding; agent CLIs must show their composer.
     private void _CheckHostedTuiReadiness()
     {
         if (_hostedTuiReady)
@@ -1137,6 +1135,21 @@ public partial class TtyView : UserControl
         if (!Terminal.BracketedPaste && !fallbackElapsed)
         {
             return;
+        }
+
+        var providerId = _pendingLaunch?.Provider.ProviderId;
+        if (providerId is "claude" or "cli-agent-provider.codex")
+        {
+            var screen = _LastVisibleLines(Terminal.Buffer.Rows) ?? string.Empty;
+            var lines = screen.Split('\n', StringSplitOptions.TrimEntries);
+            var composerVisible = providerId == "claude"
+                ? lines.Any(line => line == "❯" || line.StartsWith("❯ Try \"", StringComparison.Ordinal))
+                : lines.Any(line => line.StartsWith("›", StringComparison.Ordinal))
+                  && screen.Contains("context left", StringComparison.Ordinal);
+            if (!composerVisible)
+            {
+                return;
+            }
         }
 
         _hostedTuiReady = true;

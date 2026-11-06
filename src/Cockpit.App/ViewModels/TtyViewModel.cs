@@ -855,7 +855,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
 
     public override Task<bool> SendPromptAsync(string prompt)
     {
-        if (PromptSink is not { } sink)
+        if (!CanTakeAPrompt || PromptSink is not { } sink)
         {
             return Task.FromResult(false);
         }
