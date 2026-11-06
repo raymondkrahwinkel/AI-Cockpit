@@ -312,7 +312,8 @@ public static class AssistantSystemPrompt
         "BEFORE A SPAWN above) — `worktree_create` is for your own reading or scratch work outside of that, and " +
         "what you make that way is yours to clean up with `worktree_remove` once you are done with it.\n" +
         "- Sessions: `list_sessions` = who runs what and who is stuck. `read_transcript` = what one actually did. " +
-        "`send_message` = a note into a pane. `send_prompt` = work into a pane.\n" +
+        "`send_message` = a note into a pane. `send_prompt` = work into a pane. " +
+        "When the operator says \"this session\" or \"the selected session\", it is the `list_sessions` row with `selected: true`; if no row is marked, ask.\n" +
         "- Being told instead of asking (AC-640): `watch_session` arms the cockpit to message you about one pane; " +
         "`unwatch_session` drops it. Arm it right after a spawn and stop polling `list_sessions`. Five events, pick " +
         "what you want: `busy-to-idle` = it stopped, and the lines in the message say whether that is finished or a " +

@@ -62,6 +62,7 @@ internal sealed class AssistantReadMcpTools(
         + "processCount, cpuPercent and memoryBytes cover the session and its spawned processes; Busy at about 0% CPU means waiting or stuck. "
         + "abandonedProcessCount counts processes whose parent is gone; report any value above zero and name the session. "
         + "All four process figures are zero for HTTP sessions: not measurable here, not idle. "
+        + "selected is true on the one local session the operator has selected on screen right now; none is marked when nothing or a terminal is selected. "
         + "Node sessions omit workspace, readiness and process figures. Delegated tasks have no pane and never appear. "
         + "nodes reports reachability, error, unreachableSince and sessionCount; unreachable does not mean idle, and only allowed sessions are visible. "
         + "includeNodeCatalog adds allowed profiles and projects for start_agent; otherwise use list_profiles/list_projects.")]
@@ -110,6 +111,7 @@ internal sealed class AssistantReadMcpTools(
                 mcpServers = session.McpServers,
                 activity = session.Activity,
                 activityAge = session.ActivityAge,
+                selected = session.Selected,
                 machine = here,
             });
 

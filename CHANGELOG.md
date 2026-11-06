@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2187: the assistant can tell which session you have selected: `list_sessions` marks it, following the Simple stand's own selection when that stand is showing.
+
 - AC-2168: keep test scratch isolation stable when plugin probes reload a test assembly.
 
 - AC-2168: keep private speech out of synthesis and playback error logs, and stream completed sentences ending in short words without mistaking them for abbreviations.
