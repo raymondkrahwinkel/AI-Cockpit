@@ -6,7 +6,7 @@ A web browser inside Cockpit on CEF (Chromium Embedded Framework). This README c
 ## Engine IPC foundation (AC-2143)
 
 `Ipc/` is compiled into the UI and Subprocess assemblies; Core does not know this protocol.
-It is not wired into the browser yet (AC-2144/AC-2147). `requiresRestart` remains true.
+The engine launcher uses it (AC-2144); the browser views move to host tabs in AC-2147. `requiresRestart` remains true.
 The launcher supplies a fresh generation and two inherited anonymous pipe handles, restricts inheritance
 to its own child, then calls `ChildStarted` to close the parent's client copies. Handles are capabilities,
 not credentials to put in logs. Register trusted tab/session pairs on each endpoint before sending requests.
@@ -36,9 +36,37 @@ Readers map read-only. Disposing a buffer returns its connection slot, including
 Cleanup attempts every resource independently and retains failures in `CleanupErrors`. Producer files use
 DeleteOnClose; creation also sweeps abandoned pixel files with an exclusive open, skipping live mappings.
 On Linux, producers and readers hold shared `flock` leases; cleanup requires an exclusive lease.
-The launcher must validate the parent's trust and existing owners/ACLs before using storage (AC-2144).
+The launcher creates a private storage parent and validates existing ownership and access before using it.
+Both endpoints resolve directory symlinks/junctions first and validate the resulting real ancestor chain.
+Untrusted targets, unresolved reparse points, another buffer owner and non-owner buffer access are rejected.
+Sticky temporary directories are allowed; an ordinary writable ancestor is not.
+Existing buffer files are inspected before opening and their open handles are checked before mapping;
+Linux also rejects hard links. Buffer storage remains strictly private. An existing Windows cache may belong
+to and grant access to the current user, SYSTEM, Administrators or TrustedInstaller; other principals are refused.
+An existing Linux cache owned by the current user is tightened to 0700 automatically; another owner is refused.
 Frame-ready/ack and dirty-region copying are connected in AC-2147: never reuse a published buffer before ack.
 This process boundary is not a sandbox against another process running as the same OS user.
+
+## Engine host launcher (AC-2144)
+
+`BrowserEngine.StartHostAsync` fetches through the existing pinned runtime cache, then starts the existing
+self-contained Subprocess executable with `--cockpit-enginehost`. Each call has a fresh process and generation.
+The runtime, cache and private buffer parent are supplied by the plugin, never by an IPC request or a page.
+The host loads and initializes CEF once on its 8 MiB startup thread and shuts it down there after pipe EOF.
+Linux retains argv[0], and every native CEF child receives `--cockpit-cef-runtime-dir` as before.
+
+Windows uses a CreateProcess handle list containing exactly the two child pipe handles. Linux uses glibc
+`posix_spawn` file actions to duplicate those endpoints to descriptors 3/4 and close all other descriptors;
+standard input/output/error are attached to `/dev/null` so native diagnostics cannot corrupt a reused descriptor.
+this requires glibc's `posix_spawn_file_actions_addclosefrom_np` (2.34 or newer). There is no broad-inheritance
+fallback. The host marks both received handles non-inheritable before it starts CEF children.
+The generation is registered before the IPC reader starts. `engine.ready` returns initialization status and
+the actual host PID; it makes no nested request. Startup is bounded by the existing 30-second call deadline.
+Missing runtime, pipe failure and host crash fail the caller; another start can use a fresh process.
+Host exit also closes IPC directly, independently of EOF, so an accidentally inherited pipe cannot delay failure.
+Disposal closes IPC, waits up to five seconds and then stops only that client's own host PID if necessary.
+Process-tree lifetime containment belongs to AC-2145/AC-2146, and the existing in-process UI remains active
+until AC-2147 connects the views. Use this launcher only from the explicit local development harness meanwhile.
 
 ## The browser
 

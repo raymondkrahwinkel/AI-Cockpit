@@ -42,12 +42,21 @@ internal sealed class BrowserIpcFrameBuffer : IDisposable
 
     private BrowserIpcFrameBuffer(string directory, BrowserIpcFrameDescriptor descriptor, bool create, Action<BrowserIpcFrameBuffer>? released)
     {
+        directory = BrowserIpcStorage.ValidateDirectory(directory);
         Descriptor = descriptor;
         DirectoryPath = directory;
         long length = descriptor.ByteLength;
         _ownedDirectory = create ? directory : null;
         _released = released;
         string path = Path.Combine(directory, descriptor.BufferId.ToString("N") + ".bgra");
+        if (new FileInfo(path).LinkTarget is not null || (File.Exists(path) && (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0))
+        {
+            throw new UnauthorizedAccessException("IPC buffers cannot be links or reparse points.");
+        }
+        if (create == false)
+        {
+            BrowserIpcStorage.ValidateExistingFile(path);
+        }
         var options = new FileStreamOptions
         {
             Mode = create ? FileMode.CreateNew : FileMode.Open,
@@ -65,6 +74,7 @@ internal sealed class BrowserIpcFrameBuffer : IDisposable
         _file = new FileStream(path, options);
         try
         {
+            BrowserIpcStorage.ValidateFile(path, _file);
             if (OperatingSystem.IsLinux())
             {
                 _LockLinux(_file, exclusive: false);
@@ -102,6 +112,7 @@ internal sealed class BrowserIpcFrameBuffer : IDisposable
     {
         var descriptor = new BrowserIpcFrameDescriptor(generation, Guid.NewGuid(), width, height);
         _ = descriptor.ByteLength;
+        trustedParent = BrowserIpcStorage.ValidateDirectory(trustedParent);
         CleanupAbandoned(trustedParent);
         string directory = Path.Combine(trustedParent, $"browser-{generation:N}-{descriptor.BufferId:N}");
         if (OperatingSystem.IsWindows())
@@ -132,6 +143,7 @@ internal sealed class BrowserIpcFrameBuffer : IDisposable
         {
             throw new InvalidDataException("Stale IPC frame buffer generation.");
         }
+        trustedParent = BrowserIpcStorage.ValidateDirectory(trustedParent);
         string directory = Path.Combine(trustedParent, $"browser-{generation:N}-{descriptor.BufferId:N}");
         return new BrowserIpcFrameBuffer(directory, descriptor, false, released);
     }
@@ -142,6 +154,7 @@ internal sealed class BrowserIpcFrameBuffer : IDisposable
         {
             return;
         }
+        trustedParent = BrowserIpcStorage.ValidateDirectory(trustedParent);
         foreach (string directory in Directory.EnumerateDirectories(trustedParent, "browser-*"))
         {
             string name = Path.GetFileName(directory);
@@ -152,9 +165,19 @@ internal sealed class BrowserIpcFrameBuffer : IDisposable
             }
             try
             {
+                if (BrowserIpcStorage.ValidateDirectory(directory) != directory)
+                {
+                    continue;
+                }
                 string path = Path.Combine(directory, id.ToString("N") + ".bgra");
+                if (new FileInfo(path).LinkTarget is not null || (File.Exists(path) && (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0))
+                {
+                    continue;
+                }
+                BrowserIpcStorage.ValidateExistingFile(path);
                 using (var file = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.Delete))
                 {
+                    BrowserIpcStorage.ValidateFile(path, file);
                     if (OperatingSystem.IsLinux())
                     {
                         _LockLinux(file, exclusive: true);

@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using Avalonia.Threading;
 using Cockpit.Core.Configuration;
 using Cockpit.Plugin.Browser.UI.Runtime;
+using Cockpit.Plugin.Browser.Host;
 using Xilium.CefGlue;
 
 namespace Cockpit.Plugin.Browser.UI.Engine;
@@ -201,34 +202,31 @@ internal sealed class BrowserEngine
         {
             CefRuntime.Load(runtimeDir);
         }
-        CefRuntime.Initialize(new CefMainArgs([]), CreateSettings(runtimeDir, subprocess, _rootCachePath), new BrowserApp(Switches, runtimeDir), nint.Zero);
+        CefRuntime.Initialize(new CefMainArgs([]), CreateSettings(runtimeDir, subprocess, _rootCachePath), BrowserHostRuntime.CreateApp(runtimeDir, Switches), nint.Zero);
     }
 
     // No RemoteDebuggingPort, ever: it opens every tab of every profile in the process to anyone on the machine
     // (AC-1709, measured). Reading and driving a tab goes in-process, through ExecuteDevToolsMethod.
-    internal static CefSettings CreateSettings(string runtimeDir, string subprocessPath, string rootCachePath) => new()
-    {
-        MultiThreadedMessageLoop = true,
-        WindowlessRenderingEnabled = true,
-        NoSandbox = true,
-        CommandLineArgsDisabled = true,
-        BrowserSubprocessPath = subprocessPath,
-        RootCachePath = rootCachePath,
-        ResourcesDirPath = runtimeDir,
-        LocalesDirPath = Path.Combine(runtimeDir, "locales"),
-        PersistSessionCookies = true,
-        LogSeverity = CefLogSeverity.Warning,
-        LogFile = Path.Combine(rootCachePath, "cef.log"),
-    };
+    internal static CefSettings CreateSettings(string runtimeDir, string subprocessPath, string rootCachePath) =>
+        BrowserHostRuntime.CreateSettings(runtimeDir, subprocessPath, rootCachePath);
 
-    // AC-2038: Linux defaults to software rendering; hardware acceleration remains an explicit opt-in.
-    internal IReadOnlyList<KeyValuePair<string, string?>> Switches =>
-    [
-        new("autoplay-policy", "no-user-gesture-required"),
-        .. OperatingSystem.IsLinux() ? [new KeyValuePair<string, string?>("no-zygote", null)] : Array.Empty<KeyValuePair<string, string?>>(),
-        .. IsHardwareAccelerationEnabled ? Array.Empty<KeyValuePair<string, string?>>() :
-            [new("disable-gpu", null), new("disable-gpu-compositing", null)],
-    ];
+    internal IReadOnlyList<KeyValuePair<string, string?>> Switches => BrowserHostRuntime.Switches(IsHardwareAccelerationEnabled);
+
+    internal async Task<BrowserHostClient> StartHostAsync(CancellationToken cancellationToken = default)
+    {
+        var progress = new Progress<CefRuntimeProgress>(value =>
+        {
+            Progress = value;
+            Changed?.Invoke(this, EventArgs.Empty);
+        });
+        var runtime = await _fetchRuntime(progress, cancellationToken);
+        if (runtime.Directory is null)
+        {
+            throw new IOException(runtime.Failure ?? "The browser engine could not be fetched.");
+        }
+        return await BrowserHostClient.StartAsync(_subprocessPath, runtime.Directory, _rootCachePath,
+            Path.Combine(_rootCachePath, "ipc"), IsHardwareAccelerationEnabled, cancellationToken);
+    }
 
     public void Register(CefBrowserView view) => _views.Add(view);
 
@@ -315,37 +313,4 @@ internal sealed class BrowserEngine
 
     private static string _SubprocessExecutable() => OperatingSystem.IsWindows() ? SubprocessFileName + ".exe" : SubprocessFileName;
 
-    private sealed class BrowserApp(IReadOnlyList<KeyValuePair<string, string?>> switches, string runtimeDir) : CefApp
-    {
-        private readonly BrowserProcessHandler _processHandler = new(runtimeDir);
-
-        protected override CefBrowserProcessHandler GetBrowserProcessHandler() => _processHandler;
-
-        protected override void OnBeforeCommandLineProcessing(string processType, CefCommandLine commandLine)
-        {
-            if (string.IsNullOrEmpty(processType) == false)
-            {
-                return;
-            }
-
-            foreach (var (name, value) in switches)
-            {
-                if (value is null)
-                {
-                    commandLine.AppendSwitch(name);
-                }
-                else
-                {
-                    commandLine.AppendSwitch(name, value);
-                }
-            }
-        }
-    }
-
-    private sealed class BrowserProcessHandler(string runtimeDir) : CefBrowserProcessHandler
-    {
-        // CEF starts children natively; managed environment changes are invisible there on Linux (AC-2038).
-        protected override void OnBeforeChildProcessLaunch(CefCommandLine commandLine) =>
-            commandLine.AppendSwitch("cockpit-cef-runtime-dir", runtimeDir);
-    }
 }

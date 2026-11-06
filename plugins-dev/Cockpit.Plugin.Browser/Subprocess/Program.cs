@@ -18,6 +18,30 @@ internal static class Program
             return 1;
         }
 
+        if (args.Contains("--cockpit-enginehost") && args.Any(argument => argument.StartsWith("--type=", StringComparison.Ordinal)) == false)
+        {
+            int hostExitCode = 1;
+            var hostThread = new Thread(() =>
+            {
+                try
+                {
+                    hostExitCode = BrowserEngineHost.Run(args, runtimeDir);
+                }
+                catch (Exception)
+                {
+                    // Invalid inherited capabilities or storage must end only this host process.
+                    hostExitCode = 1;
+                }
+            }, 8 * 1024 * 1024);
+            if (OperatingSystem.IsWindows())
+            {
+                hostThread.SetApartmentState(ApartmentState.STA);
+            }
+            hostThread.Start();
+            hostThread.Join();
+            return hostExitCode;
+        }
+
         NativeLibrary.SetDllImportResolver(typeof(CefRuntime).Assembly, (name, _, _) =>
             name == "libcef" ? NativeLibrary.Load(Path.Combine(runtimeDir, _LibraryName())) : nint.Zero);
 
