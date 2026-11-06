@@ -448,7 +448,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
                     }
                     var confineRoot = _launchOptions?.GetValueOrDefault(WellKnownPluginSessionOptions.ConfineFileToolsToWorkingDirectory) == "true" ? workingDirectory : null;
                     await gateway.BindLaunchAsync(gatewayPane, projectId, workingDirectory, confineRoot, Profile?.Label,
-                        enabledServerNames is ExactMcpServerSelection, cancellationToken).ConfigureAwait(false);
+                        enabledServerNames is ExactMcpServerSelection { AssistantManaged: true }, cancellationToken).ConfigureAwait(false);
                     _minted = new MintedToken(gatewayPane, keyring.TokenFor(gatewayPane));
                     var names = eligible.Select(server => server.Name).ToList();
                     mcpMounts?.Grant(gatewayPane, names);

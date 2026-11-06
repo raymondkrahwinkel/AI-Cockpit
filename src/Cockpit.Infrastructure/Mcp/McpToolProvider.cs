@@ -41,7 +41,7 @@ internal sealed partial class McpToolProvider(
             {
                 var candidatePane = string.IsNullOrEmpty(paneId) ? Guid.NewGuid().ToString("N") : paneId;
                 await gateway.BindLaunchAsync(candidatePane, projectId, workingDirectory, confineFileToolsToDirectory, agentName,
-                    enabledServerNames is ExactMcpServerSelection, cancellationToken).ConfigureAwait(false);
+                    enabledServerNames is ExactMcpServerSelection { AssistantManaged: true }, cancellationToken).ConfigureAwait(false);
                 paneId = candidatePane;
             }
             catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
@@ -104,7 +104,7 @@ internal sealed partial class McpToolProvider(
     {
         var set = _mounts?.Set(paneId);
         if (set is null) { return []; }
-        var registry = await _catalog.GetServersForSessionAsync(set.Context?.Project?.Id, set.ServerNames, ct);
+        var registry = await _catalog.GetServersForSessionAsync(set.Context?.Project?.Id, set.PreserveSelection ? new ExactMcpServerSelection(set.ServerNames) : set.ServerNames, ct);
         return [.. registry.Where(server => server.Enabled && server.Transport == McpTransport.Http && set.ServerNames.Contains(server.Name))];
     }
 
