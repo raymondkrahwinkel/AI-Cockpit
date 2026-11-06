@@ -81,15 +81,15 @@ public sealed class SessionMcpMounts : ISingletonService
     // AC-1148: records the mount decision without announcing it — for a route that grants before it connects,
     // being its own client. Last write wins, the same "once per launch" rule Report follows, so a relaunch in
     // this pane replaces the grant rather than widening it with the previous session's.
-    public void Grant(string paneId, IReadOnlyList<string> serverNames)
+    public void Grant(string paneId, IReadOnlyList<string> serverNames, bool preserveSelection = false)
     {
         var names = serverNames.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
         _mounted.AddOrUpdate(paneId,
-            _ => new SessionMcpSet(null, names),
+            _ => new SessionMcpSet(null, names) { PreserveSelection = preserveSelection },
             (_, current) => current.PreserveSelection ? current : current with
             {
                 ServerNames = names,
-                PreserveSelection = current.Context?.Manager == SessionMcpManager.Assistant,
+                PreserveSelection = preserveSelection || current.Context?.Manager == SessionMcpManager.Assistant,
             });
         Changed?.Invoke(paneId);
     }

@@ -437,6 +437,10 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
 
         try
         {
+            if (_paneId is not null && mcpMounts?.Set(_paneId) is { PreserveSelection: true } desired)
+            {
+                enabledServerNames = new ExactMcpServerSelection(desired.ServerNames) { AssistantManaged = desired.Context?.Manager == SessionMcpManager.Assistant };
+            }
             var registry = await mcpServerCatalog.GetServersForSessionAsync(projectId, enabledServerNames, cancellationToken).ConfigureAwait(false);
             // AC-869: cockpit-github-pull-requests is Internal (hidden from every picker); a git-repo working
             // directory names it explicitly here rather than through operator config.

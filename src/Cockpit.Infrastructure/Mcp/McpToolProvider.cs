@@ -52,6 +52,10 @@ internal sealed partial class McpToolProvider(
         // AC-89: a session with a pane id mints one per-session token here (not per server) so every
         // cockpit-hosted endpoint it connects to can attribute requests to this pane; no pane id falls back to the shared app key.
         var sessionToken = string.IsNullOrEmpty(paneId) ? null : _keyring.TokenFor(paneId);
+        if (paneId is not null && _mounts?.Set(paneId) is { PreserveSelection: true } desired)
+        {
+            enabledServerNames = new ExactMcpServerSelection(desired.ServerNames) { AssistantManaged = desired.Context?.Manager == SessionMcpManager.Assistant };
+        }
         // AC-11/AC-218: registry plus what active plugins provide, scoped to projectId so a local model
         // sees a plugin's/project's own servers too, not just the unscoped registry.
         var registry = await _catalog.GetServersForSessionAsync(projectId, enabledServerNames, cancellationToken).ConfigureAwait(false);

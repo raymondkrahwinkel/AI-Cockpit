@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Update session MCP tools live, with search fallback, graceful removal and restored sets and delegation limits.
+
 - Let the local assistant manage session MCP sets within delegation limits, with audited changes and an operator removal brake.
 
 - Forward HTTP MCP tools through the opt-in session gateway, preserving images and instructions while isolating failed upstream servers.

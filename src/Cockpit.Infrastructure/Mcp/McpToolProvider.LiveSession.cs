@@ -89,7 +89,10 @@ internal sealed partial class McpToolProvider
                     try
                     {
                         var set = _paneId is null ? null : _provider._mounts?.Set(_paneId);
-                        if (set is null) { continue; }
+                        if (set is null)
+                        {
+                            continue;
+                        }
                         var registry = await _provider._catalog.GetServersForSessionAsync(_projectId, new ExactMcpServerSelection(set.ServerNames), ct);
                         var servers = registry.Where(server => server.Enabled && set.ServerNames.Contains(server.Name)).ToList();
                         await UpdateServersAsync(confineRoot is null ? servers : _ConfinedServers(servers, confineRoot));

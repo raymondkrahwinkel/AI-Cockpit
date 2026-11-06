@@ -3675,7 +3675,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Cockpit.Core.Swarm.ISwarmOptions? swarmOptions = null,
         Cockpit.Core.Swarm.ISwarmLeadership? swarmLeadership = null,
         // AC-1846: Options › Sync. Absent in the design-time/unit-test graph, where the page lists no server.
-        ISyncOptions? syncOptions = null)
+        ISyncOptions? syncOptions = null,
+        ISessionMcpRestore? sessionMcpRestore = null)
     {
         _managedSettingsReader = managedSettings;
         _settingsWriteBatch = settingsWriteBatch;
@@ -3969,6 +3970,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         _sessionMcpMounts = sessionMcpMounts;
+        _sessionMcpRestore = sessionMcpRestore;
         if (sessionMcpMounts is not null)
         {
             sessionMcpMounts.Reported += _OnSessionMcpMounted;
@@ -3977,12 +3979,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     }
 
     private readonly SessionMcpMounts? _sessionMcpMounts;
+    private readonly ISessionMcpRestore? _sessionMcpRestore;
 
     private void _OnSessionMcpSetChanged(string paneId) => _OnUiThread(() =>
     {
         if (FindSession(paneId) is { } session && _sessionMcpMounts?.Set(paneId) is { Context: { } context } set)
         {
-            session.McpServerSelection = new ExactMcpServerSelection(set.ServerNames, context.Manager);
+            session.McpServerSelection = new ExactMcpServerSelection(set.ServerNames) { AssistantManaged = context.Manager == SessionMcpManager.Assistant };
         }
     });
 
@@ -4007,9 +4010,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
                 // AC-2083: stays exact, so Clear context re-mounts an override's other-project server instead of narrowing to the project's.
                 session.McpServerSelection = set?.Context is { } context
-                    ? new ExactMcpServerSelection(selection, context.Manager)
+                    ? new ExactMcpServerSelection(selection) { AssistantManaged = context.Manager == SessionMcpManager.Assistant }
                     : session.McpServerSelection is ExactMcpServerSelection exact
-                        ? new ExactMcpServerSelection(selection, exact.Manager) : selection;
+                        ? new ExactMcpServerSelection(selection) { AssistantManaged = exact.AssistantManaged } : selection;
                 session.McpServerConnectionIssues = issues;
             }
         });
@@ -8505,7 +8508,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             SessionOptionCatalog.DefaultEffort,
             pane.Title,
             EnabledMcpServerNames: plan.State?.McpServerNames is { } names
-                ? new ExactMcpServerSelection(names, plan.State.McpManager)
+                ? new ExactMcpServerSelection(names) { AssistantManaged = plan.State.McpManager == SessionMcpManager.Assistant }
                 : null,
             WorkingDirectory: _restoreWorkingDirectories.GetValueOrDefault(pane.Id, pane.WorkingDirectory),
             Resume: resume,
@@ -8544,6 +8547,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // pane id names this pane, so it starts in place rather than as a second one.
         try
         {
+            if (_sessionMcpRestore is not null && await _sessionMcpRestore.RestoreAsync(plan) is { } restoredSelection)
+            {
+                result = result with { EnabledMcpServerNames = restoredSelection };
+            }
             if (await launcher.StartSessionAsync(_RequestOf(result, session.WorkspaceId) with { PaneId = session.PaneId }) is { PaneId.Length: > 0 })
             {
                 session.RestoreOffer = null;

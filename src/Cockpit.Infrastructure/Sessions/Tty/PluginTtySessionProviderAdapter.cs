@@ -128,6 +128,10 @@ internal sealed class PluginTtySessionProviderAdapter(
 
         try
         {
+            if (_PaneId(context.BaseEnvironment) is { } desiredPane && mcpMounts?.Set(desiredPane) is { PreserveSelection: true } desired)
+            {
+                enabledServerNames = new ExactMcpServerSelection(desired.ServerNames) { AssistantManaged = desired.Context?.Manager == SessionMcpManager.Assistant };
+            }
             var registry = mcpServerCatalog.GetServersForSessionAsync(projectId, enabledServerNames, budget).GetAwaiter().GetResult();
             // AC-869: cockpit-github-pull-requests is Internal (hidden from every picker); a git-repo working
             // directory names it explicitly here rather than through operator config. Blocking is consistent with

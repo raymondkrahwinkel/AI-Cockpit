@@ -46,9 +46,17 @@ public sealed class SessionStateRecorder : ISessionStateCache, ISingletonService
             return;
         }
         var names = set.ServerNames.ToArray();
+        var ceiling = set.DelegationCeiling?.ToArray();
         try
         {
-            await _WriteAsync(paneId, existing => existing with { McpServerNames = names, McpManager = context.Manager }, CancellationToken.None);
+            await _WriteAsync(paneId, existing => existing with
+            {
+                McpServerNames = names,
+                McpManager = context.Manager,
+                McpDelegationCeiling = ceiling,
+                McpIsDelegated = ceiling is not null,
+                McpPreserveSelection = set.PreserveSelection,
+            }, CancellationToken.None);
         }
         catch (Exception exception)
         {
