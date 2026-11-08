@@ -47,7 +47,7 @@ internal sealed class AssistantAgentMcpTools(
     }
 
     [McpServerTool(Name = "remove_session_mcp_server", ReadOnly = false, Destructive = false)]
-    [Description("Removes a server from a local session without consent. Always-mounted core servers cannot be removed. The assistant receives a change notification.")]
+    [Description("Removes a server from a local session without consent. Always-mounted core servers and the session's brain server cannot be removed. The assistant receives a change notification.")]
     public async Task<string> RemoveSessionMcpServerAsync(string paneId, string name)
     {
         if (_RefuseIfNotTheAssistant() is { } refusal)
@@ -189,7 +189,7 @@ internal sealed class AssistantAgentMcpTools(
         [Description("Overrides only named keys from the profile's Options in list_profiles. Unknown keys/values, permission-mode, sandbox and approval-policy are refused. Omitted keys retain profile values. Refused on nodes.")] Dictionary<string, string>? options = null,
         [Description("true requests a git worktree; omitted inherits project isolation, otherwise unisolated. false is always refused. Refused on nodes.")] bool? isolate = null,
         [Description("An exact paired-node name from list_sessions, or local to select this machine explicitly. Omitted means local unless projectId is ambiguous with a cached node project. Nodes accept only profile, projectId, prompt, name and role.")] string? node = null,
-        [Description("Exact MCP server names for this session, overriding project and profile selection. Any registered server may be named, also one that belongs to another project. Omitted preserves defaults (the project's brain server included); [] keeps only always-mounted servers. Internal, unknown, globally disabled or not-yet-authorized names are refused. Global switches still apply. Refused on nodes.")] string[]? mcpServers = null,
+        [Description("Exact MCP server names for this session, overriding project and profile selection. Any registered server may be named, also one that belongs to another project. Omitted preserves defaults; [] keeps only the always-mounted servers. The session's brain server (from the project or profile) is always added and cannot be removed. Internal, unknown, globally disabled or not-yet-authorized names are refused. Global switches still apply. Refused on nodes.")] string[]? mcpServers = null,
         [Description("A role from list_roles for the target session, or explicit none for general work. Required when that brain has roles. On a node, the node checks its own roles and returns them on refusal.")] string? role = null)
     {
         try

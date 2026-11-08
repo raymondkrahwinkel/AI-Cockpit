@@ -106,6 +106,21 @@ public sealed record SessionStartDefaults(
     public static string? ResolveBrainInstruction(Project? project, SessionProfile? profile, IReadOnlyList<ProjectMemorySource>? memorySources) =>
         ResolveAssistant(project, profile) is { } assistant ? _Brain(assistant, memorySources).Note : null;
 
+    // The MCP server serving the resolved brain, so a session keeps it whatever server list it is started with.
+    public static string? ResolveBrainMcpServer(Project? project, SessionProfile? profile, IReadOnlyList<ProjectMemorySource>? memorySources)
+    {
+        if (ResolveAssistant(project, profile) is not { } assistant || !ProjectMemoryRef.TryParse(assistant.Trim(), out var scheme, out var value))
+        {
+            return null;
+        }
+
+        return (memorySources ?? [])
+            .Where(source => source.BrainMcpServerName is not null)
+            .OrderByDescending(source => string.Equals(source.Scheme, scheme, StringComparison.OrdinalIgnoreCase))
+            .Select(source => source.BrainMcpServerName!(value))
+            .FirstOrDefault(name => !string.IsNullOrWhiteSpace(name));
+    }
+
     // AC-1992: pinned by name like `AssistantChoiceIsMade` — the clause that takes the brain question away from the
     // provider's own CLAUDE.md, without which a session would load that brain beside the cockpit's.
     public const string ClaudeMdBrainChoiceLapses = "the brain choice in CLAUDE.md does not apply to this session.";

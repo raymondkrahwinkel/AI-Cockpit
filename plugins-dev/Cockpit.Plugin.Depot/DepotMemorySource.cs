@@ -92,6 +92,7 @@ internal static partial class DepotMemorySource
             BrainInstruction = value => _BrainInstruction(connection, value),
             ListRolesAsync = (value, ct) => _ListRolesAsync(host, connection, value, ct),
             LoadRoleAsync = (value, role, ct) => _LoadRoleAsync(host, connection, value, role, ct),
+            BrainMcpServerName = value => _BrainInstruction(connection, value) is null ? null : connection.McpServerName,
             FamilyKey = Scheme,
             InstanceTitle = connection.Name,
             Identity = _Identity(connection),

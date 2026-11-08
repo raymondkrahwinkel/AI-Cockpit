@@ -27,6 +27,7 @@ public static class ProjectMemorySourceMapping
                 var result = await load(brain, role, ct).ConfigureAwait(false);
                 return new Cockpit.Core.Projects.RoleLoadResult(_Outcome(result.Outcome), result.Instructions);
             },
+            BrainMcpServerName = registration.BrainMcpServerName,
         })];
 
     private static Cockpit.Core.Projects.RoleSourceOutcome _Outcome(Cockpit.Plugins.Abstractions.Projects.RoleSourceOutcome outcome) => outcome switch

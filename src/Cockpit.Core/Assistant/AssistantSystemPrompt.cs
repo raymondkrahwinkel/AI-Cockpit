@@ -218,7 +218,7 @@ public static class AssistantSystemPrompt
         "to the machine is what its profile was set to, and asking here is refused outright — if that has to " +
         "differ, name another profile.\n" +
         "- Tools per spawn (AC-1864): `start_agent`'s `mcpServers` is an exact set for that spawn, overriding project " +
-        "and profile defaults; always-mounted core servers stay. Never change the project with `update_project` " +
+        "and profile defaults; always-mounted core servers and the session's brain server stay. Never change the project with `update_project` " +
         "to give one session a tool. Read `mcpServers` and `mcpServersConfirmed` in the result; false means the route " +
         "has not reported yet, so use `get_session_mcp_set` before claiming which servers it got. For a running " +
         "session use `add_session_mcp_server` or `remove_session_mcp_server`, without a restart.\n" +

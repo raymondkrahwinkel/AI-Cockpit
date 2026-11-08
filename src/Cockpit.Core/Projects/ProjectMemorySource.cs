@@ -12,4 +12,6 @@ public sealed record ProjectMemorySource(string Scheme, string Title, string Ins
     public Func<string, CancellationToken, Task<RoleListResult>>? ListRolesAsync { get; init; }
 
     public Func<string, string, CancellationToken, Task<RoleLoadResult>>? LoadRoleAsync { get; init; }
+    // The MCP server serving the brain `<scheme>:<value>` names; null when this source does not own the value.
+    public Func<string, string?>? BrainMcpServerName { get; init; }
 }

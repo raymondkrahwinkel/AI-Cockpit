@@ -1104,7 +1104,7 @@
                             <TextBlock Text="Help" VerticalAlignment="Center"/>
                         </StackPanel>
                         <Button.Flyout>
-                            <Flyout Placement="Right">
+                            <Flyout Placement="Right" FlyoutPresenterClasses="Card">
                                 <views:HelpMenu/>
                             </Flyout>
                         </Button.Flyout>
