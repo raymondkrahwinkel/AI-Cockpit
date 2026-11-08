@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2213: clear Speaking when queued audio drains while the assistant continues working, preserving open-mic pausing.
+
 - AC-2169: keep session and assistant role pickers behind the frontend contract boundary.
 
 - AC-2173: every session receives the pull request merge rule automatically; assistant briefs no longer repeat the standing work agreements.
