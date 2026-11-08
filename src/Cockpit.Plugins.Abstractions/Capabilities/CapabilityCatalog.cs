@@ -174,7 +174,7 @@ public static class CapabilityCatalog
         new(
             "plugin.store-source",
             "Offering plugin stores",
-            "Offers plugin stores with request-time credentials; the operator can hide each source.",
+            "Offers plugin stores whose requests a plugin-supplied handler signs in; the operator can hide each source.",
             CapabilityRisk.Sensitive,
             "0.162.0",
             ["ICockpitHost.AddPluginStoreSource"],

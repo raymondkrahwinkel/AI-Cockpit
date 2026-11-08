@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using Cockpit.Core.Abstractions;
@@ -15,11 +16,13 @@ internal sealed partial class PluginStoreClient : IPluginStoreClient, ISingleton
 {
     private static readonly HttpClient Http = new();
 
+    private static readonly ConditionalWeakTable<Func<HttpMessageHandler>, HttpClient> SignedHttp = [];
+
     // A store logo is a small image, not a payload — anything larger is refused rather than downloaded.
     private const long MaxLogoBytes = 1_048_576;
 
     // One resolved fetch: a local file path or a remote URL, whether to ask GitHub for raw bytes, and the bearer token to send (only ever to the store's own host).
-    private readonly record struct StoreTarget(bool IsLocal, string Value, bool GitHubRaw, string? Token);
+    private readonly record struct StoreTarget(bool IsLocal, string Value, bool GitHubRaw, string? Token, PluginStoreSignedSource? Signed = null);
 
     public async Task<PluginStoreFetchResult> FetchIndexAsync(PluginStoreConfig store, CancellationToken cancellationToken = default)
     {
@@ -30,7 +33,7 @@ internal sealed partial class PluginStoreClient : IPluginStoreClient, ISingleton
 
         try
         {
-            target = await _WithSignedTokenAsync(store, target, cancellationToken).ConfigureAwait(false);
+            target = _WithSignedHandler(store, target);
             var json = await _ReadStringAsync(target, cancellationToken).ConfigureAwait(false);
             if (!PluginStoreIndex.TryParse(json, out var index, out var parseError))
             {
@@ -110,7 +113,7 @@ internal sealed partial class PluginStoreClient : IPluginStoreClient, ISingleton
         string? tempPath = null;
         try
         {
-            target = await _WithSignedTokenAsync(store, target, downloadToken).ConfigureAwait(false);
+            target = _WithSignedHandler(store, target);
             var bytes = await _ReadBytesAsync(target, maxBytes: store.Signed is null ? null : 512L * 1024 * 1024, downloadToken, progress).ConfigureAwait(false);
             if (_ChecksumMismatch(bytes, expectedSha256))
             {
@@ -334,7 +337,8 @@ internal sealed partial class PluginStoreClient : IPluginStoreClient, ISingleton
                 : null;
     }
 
-    private static async ValueTask<StoreTarget> _WithSignedTokenAsync(PluginStoreConfig store, StoreTarget target, CancellationToken cancellationToken)
+    // A signed source sends through its host handler, which adds the bearer itself and only for its own origin.
+    private static StoreTarget _WithSignedHandler(PluginStoreConfig store, StoreTarget target)
     {
         if (store.Signed is not { } signed)
         {
@@ -346,8 +350,7 @@ internal sealed partial class PluginStoreClient : IPluginStoreClient, ISingleton
             throw new InvalidOperationException("A signed source cannot send credentials outside its own origin.");
         }
 
-        var token = await signed.GetTokenAsync(cancellationToken).ConfigureAwait(false);
-        return target with { Token = token };
+        return target with { Signed = signed };
     }
 
     [GeneratedRegex("\\A[a-z0-9][a-z0-9-]{0,62}\\z", RegexOptions.CultureInvariant)]
@@ -418,7 +421,7 @@ internal sealed partial class PluginStoreClient : IPluginStoreClient, ISingleton
         }
 
         using var request = _BuildRequest(target);
-        using var response = await Http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        using var response = await _SendAsync(target, request, HttpCompletionOption.ResponseContentRead, cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
 
         return await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
@@ -439,7 +442,7 @@ internal sealed partial class PluginStoreClient : IPluginStoreClient, ISingleton
         }
 
         using var request = _BuildRequest(target);
-        using var response = await Http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+        using var response = await _SendAsync(target, request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
 
         if (maxBytes is { } cap && response.Content.Headers.ContentLength > cap)
@@ -467,6 +470,15 @@ internal sealed partial class PluginStoreClient : IPluginStoreClient, ISingleton
         }
 
         return buffer.ToArray();
+    }
+
+    private static async Task<HttpResponseMessage> _SendAsync(StoreTarget target, HttpRequestMessage request, HttpCompletionOption completion, CancellationToken cancellationToken)
+    {
+        // One client per handler factory: it lives as long as the registration and a streamed body needs it alive until read.
+        var http = target.Signed is { } signed
+            ? SignedHttp.GetValue(signed.CreateHandler, create => new HttpClient(create(), disposeHandler: true) { Timeout = Timeout.InfiniteTimeSpan })
+            : Http;
+        return await http.SendAsync(request, completion, cancellationToken).ConfigureAwait(false);
     }
 
     private static HttpRequestMessage _BuildRequest(StoreTarget target)

@@ -117,7 +117,7 @@ public class PluginProvisioningServiceTests : IDisposable
             .Returns(new PluginStoreDownloadResult(true, null, zip));
         var store = PluginStoreConfig.Remote("https://depot.example/cockpit/stores/acme/index.json") with
         {
-            Signed = new PluginStoreSignedSource("depot:depot.example/acme", "acme", _ => ValueTask.FromResult<string?>(null)),
+            Signed = new PluginStoreSignedSource("depot:depot.example/acme", "acme", () => new HttpClientHandler()),
         };
         var service = new PluginProvisioningService(client, _installer, new PluginSignatureVerifier(), new PluginTrustStore(Path.Combine(_tempDir, "cockpit.json")));
         var version = new PluginStoreVersion("1.0.0", "ignored.zip", HostMajor, null, PluginHash.Compute(bytes), null);

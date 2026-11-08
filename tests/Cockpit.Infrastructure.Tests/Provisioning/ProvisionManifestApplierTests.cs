@@ -59,6 +59,9 @@ public sealed class ProvisionManifestApplierTests : IDisposable
 
         Assert.Null(applied.Failure);
         Assert.Equal(["stores.acme-intern"], applied.Report.Where(line => line.Reason == ProvisionManifestApplier.TokenNeeded).Select(line => line.Path));
+        // AC-1975: a depot store is neither written down nor fetched, and its plugin waits for the sign-in instead of failing the set.
+        Assert.Equal(["plugins.delta", "stores.acme-depot"], applied.Report.Where(line => line.Reason == ProvisionManifestApplier.SignInNeeded && line.Path is "plugins.delta" or "stores.acme-depot").Select(line => line.Path).Order());
+        Assert.DoesNotContain("depot.acme.nl", File.ReadAllText(ConfigPath));
         var written = File.ReadAllText(ConfigPath);
         var file = JsonNode.Parse(written) ?? throw new InvalidOperationException("The applier left cockpit.json empty.");
         // AC-1507: the font size of 11 was chosen here before, so the manifest's default gives way to it.
@@ -259,9 +262,9 @@ public sealed class ProvisionManifestApplierTests : IDisposable
     private const string Manifest = """
         {
           "format": "cockpit.provision", "formatVersion": 1,
-          "plugins": { "required": [ { "id": "alpha", "minVersion": "1.0.0", "store": "acme" }, { "id": "beta", "store": "acme" } ] },
+          "plugins": { "required": [ { "id": "alpha", "minVersion": "1.0.0", "store": "acme" }, { "id": "beta", "store": "acme" }, { "id": "delta", "store": "acme-depot" } ] },
           "stores": { "allowed": [ { "id": "acme", "url": "https://store.example/", "auth": "token-required" } ],
-                      "added": [ { "id": "acme-intern", "url": "https://plugins.acme.nl/", "auth": "token-required" } ] },
+                      "added": [ { "id": "acme-intern", "url": "https://plugins.acme.nl/", "auth": "token-required" }, { "id": "acme-depot", "url": "https://depot.acme.nl/cockpit/stores/acme/index.json", "auth": "depot" } ] },
           "settings": {
             "notifications.localEnabled":     { "value": false, "mode": "default", "by": "org" },
             "terminal.fontSize":              { "value": 15,    "mode": "default", "by": "profile" },

@@ -675,8 +675,9 @@ Contract `abstractionsVersion` remains 3.
 
 A provider exposes `IReadOnlyList<PluginStoreSourceDescriptor> Sources` and raises `SourcesChanged`
 when that snapshot changes. Each descriptor supplies a stable `SourceKey`, display `Name`, `IndexUrl`,
-`Organization` and `Func<CancellationToken, ValueTask<string?>> GetTokenAsync`. Resolve credentials
-inside that callback: the host calls it for each request. Dispose the registration on plugin unload.
+`Organization` and `Func<HttpMessageHandler> CreateHandler`. The host sends every request of the source
+through that handler, so hand out `ICockpitHost.CreateAuthorizedHandler(name)` and the sign-in stays in the host.
+Dispose the registration on plugin unload.
 
 The local store and update checker include these sources. Manage stores can hide them by source key,
 but cannot remove them. The remote administration catalog stays configuration-only. Descriptors and

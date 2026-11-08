@@ -246,7 +246,7 @@ public sealed class PluginPublisherTrustTests : IDisposable
             .Returns(new PluginStoreDownloadResult(true, null, _lastZip));
         var store = PluginStoreConfig.Remote("https://depot.example/cockpit/stores/acme/index.json") with
         {
-            Signed = new PluginStoreSignedSource("depot:depot.example/acme", "acme", _ => ValueTask.FromResult<string?>(null)),
+            Signed = new PluginStoreSignedSource("depot:depot.example/acme", "acme", () => new HttpClientHandler()),
         };
         return new PluginProvisionRequest("acme", "Acme", store, new PluginStoreVersion(version, "ignored.zip", 3, null, sha, null, Signature: signature, KeyFingerprint: "untrusted-feed-value"));
     }

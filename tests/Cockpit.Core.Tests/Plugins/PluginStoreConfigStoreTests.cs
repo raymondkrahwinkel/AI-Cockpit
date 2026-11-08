@@ -36,7 +36,7 @@ public class PluginStoreConfigStoreTests : IDisposable
 
         var signed = PluginStoreConfig.Remote("https://example.com/store/index.json") with
         {
-            Signed = new PluginStoreSignedSource("example:store", "example", _ => ValueTask.FromResult<string?>(runtimeToken)),
+            Signed = new PluginStoreSignedSource("example:store", "example", () => new HttpClientHandler()),
         };
         var serialized = JsonSerializer.Serialize(signed);
         Assert.Equal("""{"kind":"remote","location":"https://example.com/store/index.json"}""", serialized);

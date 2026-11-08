@@ -38,6 +38,7 @@ public static class ProvisionManifestApplier
     public const string SignInNeeded = "sign-in-needed";
 
     public const string TokenNeeded = "token-needed";
+    private const string DepotAuth = "depot";
 
     // A section this version reads but does not apply yet, said rather than passed over.
     public const string NotApplied = "not-applied";
@@ -92,6 +93,7 @@ public static class ProvisionManifestApplier
 
         var tokenNeeded = _TokenNeeded(manifest, current);
         report.AddRange(tokenNeeded);
+        report.AddRange(_DepotSignInNeeded(manifest));
         var settings = _Settings(manifest, report);
         _ReportNotApplied(manifest, report);
         var firstRun = _FirstRun(manifest, report);
@@ -546,7 +548,7 @@ public static class ProvisionManifestApplier
             var tagged = new List<(string Id, string? MinVersion, string? Pin, string? Store)>();
             // A private store without a token here is not asked: _TokenNeeded already says so.
             var readable = (manifest.Stores?.Allowed ?? []).Concat(manifest.Stores?.Added ?? [])
-                .Where(store => store.Auth != "token-required" || !string.IsNullOrWhiteSpace(_LocalToken(store, current)))
+                .Where(store => store.Auth != DepotAuth && (store.Auth != "token-required" || !string.IsNullOrWhiteSpace(_LocalToken(store, current))))
                 .Select(store => PluginStoreConfig.Remote(store.Url, _LocalToken(store, current)));
             foreach (var store in readable.Concat(current.PluginStores).DistinctBy(candidate => candidate.Location))
             {
@@ -583,6 +585,13 @@ public static class ProvisionManifestApplier
             if (installed is null && bundled is not null && _Satisfies(bundled, minVersion, pin))
             {
                 report.Add(new($"plugins.{id}", Applied, Detail: $"{bundled} comes with this build"));
+                continue;
+            }
+
+            // Phase 1 runs before any plugin has loaded, so a store the Depot plugin serves cannot be read yet: no failure, a note.
+            if (store is not null && _AllStores(manifest).Any(candidate => candidate.Id == store && candidate.Auth == DepotAuth))
+            {
+                report.Add(new($"plugins.{id}", SignInNeeded, Detail: $"{id} comes from store {store}: connect to that Depot, then install it from the plugin store"));
                 continue;
             }
 
@@ -639,9 +648,17 @@ public static class ProvisionManifestApplier
 
     // The manifest's stores, each with the token this machine holds for it: a token never travels in a manifest (§3.2).
     private static IEnumerable<PluginStoreConfig> _Stores(ProvisionManifest manifest, CockpitConfigFile current, string? id = null) =>
-        (manifest.Stores?.Allowed ?? []).Concat(manifest.Stores?.Added ?? [])
-            .Where(store => id is null || store.Id == id)
+        _AllStores(manifest)
+            .Where(store => store.Auth != DepotAuth && (id is null || store.Id == id))
             .Select(store => PluginStoreConfig.Remote(store.Url, _LocalToken(store, current)));
+
+    private static IEnumerable<ProvisionStore> _AllStores(ProvisionManifest manifest) =>
+        (manifest.Stores?.Allowed ?? []).Concat(manifest.Stores?.Added ?? []);
+
+    // A depot store is never written to cockpit.json: the Depot plugin offers it as a source once signed in, with that sign-in as its credential.
+    private static List<ProvisionNote> _DepotSignInNeeded(ProvisionManifest manifest) =>
+        [.. _AllStores(manifest).Where(store => store.Auth == DepotAuth).DistinctBy(store => store.Id)
+            .Select(store => new ProvisionNote($"stores.{store.Id}", SignInNeeded, Detail: $"sign in to the Depot of store {store.Id}; its plugins then appear in the plugin store"))];
 
     private static string? _LocalToken(ProvisionStore store, CockpitConfigFile current) =>
         current.PluginStores.FirstOrDefault(local => local is not null && local.SameStoreAs(PluginStoreConfig.Remote(store.Url)))?.Token;
