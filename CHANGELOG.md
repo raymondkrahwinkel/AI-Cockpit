@@ -2,8 +2,8 @@
 
 ## Unreleased
 
+- AC-2209: the assistant can look at one whole display with `look_at_screen`, only after you start it on its card (display and 5, 10 or 30 minutes); while it runs the strip shows a cyan border, the time left and Stop, the display gets a cyan frame and a tab with the last look and Stop, and none of them are in what the assistant sees. Every look is one screenshot on its own call; there is no interval.
 - AC-2207: Customize strip adds, removes and reorders companion tools while Cockpit stays in the tray; new tools wait under Available, and unavailable plugins keep their place with Enable and Forget.
-
 - AC-2203: open the assistant conversation or its pending questions from the companion strip, and choose the assistant or selected agent as the screenshot recipient; the strip and its pop-outs stay out of captures.
 - AC-2208: a plugin can embed the cockpit's live Markdown editor, with the people in the file and their carets, in its own view (plugin SDK 3.78.0, host 0.167.0).
 - AC-2204: the companion strip shows running, waiting and background counts; its status panel lists agents and services and lets you select an agent while Cockpit stays in the tray.

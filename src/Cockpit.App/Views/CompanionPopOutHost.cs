@@ -25,6 +25,8 @@ internal sealed class CompanionPopOutHost
     // Wayland cannot place a window absolutely; the compositor anchors it to the strip instead (not yet tried live).
     private static bool _IsWayland => OperatingSystem.IsLinux() && Environment.GetEnvironmentVariable("XDG_SESSION_TYPE") == "wayland";
 
+    public IReadOnlyList<PixelRect> OpenBounds => [.. _open.Select(p => p.CardBounds)];
+
     public bool IsOpen(string key) => _open.Exists(p => p.PopOutKey == key);
 
     public void Close(string key) => _open.Find(p => p.PopOutKey == key)?.Close();

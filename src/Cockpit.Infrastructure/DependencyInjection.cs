@@ -138,6 +138,7 @@ public static class DependencyInjection
         services.AddSingleton<ISpeechToTextService, WhisperWorkerSpeechToTextService>();
         AddGlobalHotkey(services);
         AddScreenshotCapture(services);
+        services.AddSingleton<ScreenLookAlong>();
         AddScreenLockMonitor(services);
         AddPresenceDetector(services);
 
