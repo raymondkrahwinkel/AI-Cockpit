@@ -1,0 +1,80 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:svc="using:Cockpit.App.Services"
+             xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+             x:Class="Cockpit.App.Views.CompanionNotificationsPanel">
+    <UserControl.Styles>
+        <Style Selector="Border.attentionRow">
+            <Setter Property="Background" Value="{DynamicResource CockpitSecondaryBgBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CockpitHairlineBrush}"/>
+            <Setter Property="BorderThickness" Value="{StaticResource CockpitHairlineThickness}"/>
+            <Setter Property="CornerRadius" Value="{StaticResource CockpitControlRadius}"/>
+            <Setter Property="Padding" Value="12,10"/>
+        </Style>
+        <Style Selector="Border.attentionRow.attention">
+            <Setter Property="Background" Value="{DynamicResource CockpitStatusWaitingRowTintBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CockpitStatusWaitingRingTintBrush}"/>
+        </Style>
+    </UserControl.Styles>
+    <StackPanel Spacing="6" Width="328">
+        <TextBlock x:Name="EmptyText" Text="Nothing is waiting for you." FontSize="12.5"
+                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+        <ItemsControl x:Name="Rows">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <StackPanel Spacing="6"/>
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="svc:CompanionAttentionItem">
+                    <Border Classes="attentionRow" Classes.attention="{Binding NeedsYou}">
+                        <StackPanel Spacing="8">
+                            <DockPanel>
+                                <Button DockPanel.Dock="Right" Classes="Subtle" Padding="4" VerticalAlignment="Top"
+                                        IsVisible="{Binding IsDone}" Click="OnDismiss" ToolTip.Tip="Dismiss">
+                                    <materialIcons:MaterialIcon Kind="Close" Width="13" Height="13"/>
+                                </Button>
+                                <materialIcons:MaterialIcon DockPanel.Dock="Left" Kind="{Binding Glyph}" Width="14" Height="14"
+                                                            Margin="0,1,8,0" VerticalAlignment="Top"/>
+                                <StackPanel Spacing="3">
+                                    <TextBlock Text="{Binding SessionTitle}" FontSize="12.5" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                    <TextBlock Text="{Binding Text}" FontSize="12.5" TextWrapping="Wrap"
+                                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                </StackPanel>
+                            </DockPanel>
+
+                            <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsPermission}">
+                                <Button Content="Allow" Classes="Compact Accent" Click="OnAllow"/>
+                                <Button Content="Deny" Classes="Compact" Click="OnDeny"/>
+                            </StackPanel>
+
+                            <StackPanel Spacing="6" IsVisible="{Binding IsQuestion}">
+                                <ItemsControl ItemsSource="{Binding Options}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Spacing="4"/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="x:String">
+                                            <Button Classes="optionChip" Click="OnOption">
+                                                <TextBlock Text="{Binding}" TextWrapping="Wrap"/>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <DockPanel IsVisible="{Binding AllowsFreeText}">
+                                    <Button DockPanel.Dock="Right" Content="Send" Classes="Compact Accent" Margin="6,0,0,0" Click="OnSendReply"/>
+                                    <TextBox Text="{Binding Reply}" PlaceholderText="Your answer" AcceptsReturn="False" KeyDown="OnReplyKeyDown"/>
+                                </DockPanel>
+                            </StackPanel>
+
+                            <Button Content="Open in Cockpit" Classes="Compact" HorizontalAlignment="Left"
+                                    IsVisible="{Binding OpensInCockpit}" Click="OnOpen"/>
+                        </StackPanel>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+    </StackPanel>
+</UserControl>

@@ -959,6 +959,12 @@ public partial class App : Application
                 $"Companion tool '{screenshotCompanionTool.Id}' is already contributed by another plugin; this registration is ignored.");
         }
 
+        var attentionFeed = Program.Services.GetRequiredService<CompanionAttentionFeed>();
+        if (firstPartyCompanionTools.AddCompanionTool(attentionFeed.CreateCompanionTool()))
+        {
+            attentionFeed.Start();
+        }
+
         // AC-1389: one backend host per plugin, shared by its backend part and the UI part's CockpitUiHost that forwards
         // what a backend can do too to it, and built on demand for a plugin that is only a UI part.
         var pluginManager = Program.Services.GetRequiredService<PluginManager>();
