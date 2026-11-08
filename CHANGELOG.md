@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2208: a plugin can embed the cockpit's live Markdown editor, with the people in the file and their carets, in its own view (plugin SDK 3.78.0, host 0.167.0).
+
 - AC-2207: Customize strip adds, removes and reorders companion tools while Cockpit stays in the tray; new tools wait under Available, and unavailable plugins keep their place with Enable and Forget.
 
 - AC-2215: project cards and waiting conversations on Home wrap a long title onto further lines instead of cutting it off.
