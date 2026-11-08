@@ -5,38 +5,32 @@
         WindowDecorations="None"
         Background="Transparent"
         TransparencyLevelHint="Transparent"
-        Topmost="True"
         ShowInTaskbar="False"
         CanResize="False"
         SizeToContent="WidthAndHeight"
-        WindowStartupLocation="CenterScreen"
-        MinWidth="220">
-    <!-- AC-237: chrome copied from VoiceOverlayWindow (no decorations, always on top, rounded translucent card),
-         but this window is interactive and draggable — see CompanionWindow.axaml.cs for why it skips the
-         overlay's X11 click-through input shape. -->
-    <Border Margin="16" BoxShadow="{DynamicResource CockpitFloatingCardShadow}" Background="{DynamicResource CockpitFloatingCardBrush}" BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1" CornerRadius="16">
-        <StackPanel>
-            <!-- The drag handle and the window's own way out (its own Close), so hiding it never depends solely
-                 on remembering the tray icon. -->
-            <Grid x:Name="HeaderBar" Background="Transparent" ColumnDefinitions="*,Auto" Margin="12,10,8,0">
-                <TextBlock Grid.Column="0" Text="Companion" FontSize="12" FontWeight="Medium"
-                           VerticalAlignment="Center" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                <Button x:Name="CloseButton" Grid.Column="1" Classes="Subtle Compact" VerticalAlignment="Center"
-                        ToolTip.Tip="Hide companion">
-                    <materialIcons:MaterialIcon Kind="Close" Width="12" Height="12"/>
-                </Button>
-            </Grid>
-            <Grid Margin="12,8,12,12">
-                <TextBlock x:Name="EmptyState" Text="No tools available" FontSize="12"
-                           Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="0,8"/>
-                <ItemsControl x:Name="ToolsHost">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <StackPanel Spacing="12"/>
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                </ItemsControl>
-            </Grid>
+        WindowStartupLocation="CenterScreen">
+    <!-- Chrome copied from VoiceOverlayWindow (no decorations, rounded translucent card), but interactive and
+         draggable — see CompanionWindow.axaml.cs for why it skips the overlay's X11 click-through input shape. -->
+    <Border x:Name="Card" Margin="16" BoxShadow="{DynamicResource CockpitFloatingCardShadow}" Background="{DynamicResource CockpitFloatingCardBrush}" BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1" CornerRadius="16">
+        <StackPanel x:Name="Strip" Margin="6" Spacing="4">
+            <Border x:Name="Grip" Background="Transparent" Padding="4" Cursor="SizeAll" ToolTip.Tip="Drag to move">
+                <materialIcons:MaterialIcon x:Name="GripIcon" Width="16" Height="16" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+            </Border>
+            <TextBlock x:Name="EmptyState" Text="No tools available" FontSize="12" VerticalAlignment="Center"
+                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+            <StackPanel x:Name="ToolsHost" Spacing="4"/>
+            <Button x:Name="MoreButton" Classes="Subtle Compact" ToolTip.Tip="More">
+                <materialIcons:MaterialIcon Kind="DotsHorizontal" Width="16" Height="16"/>
+                <Button.Flyout>
+                    <MenuFlyout>
+                        <MenuItem x:Name="OrientationItem"/>
+                        <MenuItem x:Name="TopmostItem" Header="Always on top" ToggleType="CheckBox"/>
+                        <MenuItem x:Name="CustomizeItem" Header="Customize strip…" IsEnabled="False"/>
+                        <Separator/>
+                        <MenuItem x:Name="HideItem" Header="Hide"/>
+                    </MenuFlyout>
+                </Button.Flyout>
+            </Button>
         </StackPanel>
     </Border>
 </Window>

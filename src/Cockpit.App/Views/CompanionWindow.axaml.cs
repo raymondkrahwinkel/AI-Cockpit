@@ -1,24 +1,29 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Media;
 using Avalonia.Threading;
 using Cockpit.App.Controls;
 using Cockpit.Core.Abstractions.Layout;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Layout;
+using Material.Icons;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Cockpit.App.Views;
 
-// AC-237: hosts the mini-tools plugins register via `ICockpitHost.AddCompanionTool`. Chrome copied from
+// Hosts the mini-tools plugins register via `ICockpitHost.AddCompanionTool` as a strip. Chrome copied from
 // `VoiceOverlayWindow`, but interactive rather than a passive pill, so it skips that window's X11 click-through
 // input shape (VoiceOverlayWindow._TryEnableClickThrough) — that would make every tool inside unclickable.
 public partial class CompanionWindow : Window
 {
     private const string BoundsKey = "companion";
+    private const double PopOutWidth = 360;
 
     private readonly IWindowBoundsStore? _windowBoundsStore;
     private readonly DispatcherTimer _positionSaveTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
+    private readonly CompanionPopOutHost _popOuts;
+    private readonly Dictionary<string, (CompanionStripItem Item, Control Control)> _controls = [];
 
     public CompanionWindow()
         : this(Program.Services?.GetService<IWindowBoundsStore>())
@@ -31,8 +36,9 @@ public partial class CompanionWindow : Window
         _windowBoundsStore = windowBoundsStore;
         InitializeComponent();
         Title = $"{CockpitProduct.DisplayName} companion";
+        _popOuts = new CompanionPopOutHost(this);
 
-        HeaderBar.PointerPressed += _OnHeaderPressed;
+        Card.PointerPressed += _OnCardPressed;
         PositionChanged += (_, _) =>
         {
             if (IsVisible)
@@ -46,22 +52,32 @@ public partial class CompanionWindow : Window
             _positionSaveTimer.Stop();
             _ = SavePositionAsync();
         };
-        CloseButton.Click += (_, _) => CloseRequested?.Invoke(this, EventArgs.Empty);
+        Opened += (_, _) => KeepOnScreen();
+        OrientationItem.Click += (_, _) => _Change(
+            Orientation == CompanionOrientation.Horizontal ? CompanionOrientation.Vertical : CompanionOrientation.Horizontal, AlwaysOnTop);
+        TopmostItem.Click += (_, _) => _Change(Orientation, !AlwaysOnTop);
+        HideItem.Click += (_, _) => CloseRequested?.Invoke(this, EventArgs.Empty);
+        ApplyLayout(CompanionOrientation.Horizontal, alwaysOnTop: true);
 
-        // Only the position is worth restoring: this window is SizeToContent, so a saved width/height would
-        // never apply the way AssistantChatWindow's HasUsableSize gate expects for its own resizable window.
+        // Only the position is worth restoring: this window is SizeToContent, so a saved size would never apply.
         var saved = _windowBoundsStore?.LoadAsync(BoundsKey).GetAwaiter().GetResult();
-        // AC-241: the header must remain reachable, not just the bottom of a tall tool list.
-        if (saved is not null && RestoredWindowBounds.IsOnAScreen(saved with { Height = 32 }, Screens.All.Select(s => s.WorkingArea)))
+        if (saved is not null && RestoredWindowBounds.IsOnAScreen(saved, Screens.All.Select(s => s.WorkingArea)))
         {
             WindowStartupLocation = WindowStartupLocation.Manual;
             Position = new PixelPoint(saved.X, saved.Y);
         }
     }
 
-    // AC-1522: every operator close (X button, Alt+F4, taskbar) is a request, so CompanionWindowPresenter.Hide stays
+    // AC-1522: every operator close (⋯ › Hide, Alt+F4, taskbar) is a request, so CompanionWindowPresenter.Hide stays
     // the one route that hides the window and persists the state.
     public event EventHandler? CloseRequested;
+
+    // Raised when the operator picks another orientation or toggles always on top, so the presenter can persist it.
+    public event EventHandler? LayoutChanged;
+
+    public CompanionOrientation Orientation { get; private set; }
+
+    public bool AlwaysOnTop => Topmost;
 
     protected override void OnClosing(WindowClosingEventArgs e)
     {
@@ -74,40 +90,143 @@ public partial class CompanionWindow : Window
         base.OnClosing(e);
     }
 
-    // Rebuilds the hosted tools from the registry (CompanionWindowPresenter calls this on every registry change).
+    public void ApplyLayout(CompanionOrientation orientation, bool alwaysOnTop)
+    {
+        var horizontal = orientation == CompanionOrientation.Horizontal;
+        Orientation = orientation;
+        Topmost = alwaysOnTop;
+        TopmostItem.IsChecked = alwaysOnTop;
+        var layout = horizontal ? Avalonia.Layout.Orientation.Horizontal : Avalonia.Layout.Orientation.Vertical;
+        Strip.Orientation = layout;
+        ToolsHost.Orientation = layout;
+        GripIcon.Kind = horizontal ? MaterialIconKind.DragVertical : MaterialIconKind.DragHorizontal;
+        OrientationItem.Header = horizontal ? "Vertical strip" : "Horizontal strip";
+        _popOuts.Orientation = orientation;
+        _popOuts.CloseAll();
+        foreach (var (_, control) in _controls.Values)
+        {
+            if (control is AssistantIndicator indicator)
+            {
+                indicator.Collapsed = !horizontal;
+            }
+        }
+
+        // The grip is at the start in both orientations and stays put; only a strip that now runs off the screen moves.
+        Dispatcher.UIThread.Post(KeepOnScreen, DispatcherPriority.Loaded);
+    }
+
+    // Rebuilds the strip from the registry (CompanionWindowPresenter calls this on every registry change).
     // Replacing the whole list is simpler than diffing and companion tools change rarely — a plugin loading, not a
     // per-frame update.
-    public void SetTools(IReadOnlyList<(string Title, Control View)> tools)
+    internal void SetTools(IReadOnlyList<CompanionStripItem> items)
     {
-        EmptyState.IsVisible = tools.Count == 0;
-        ToolsHost.IsVisible = tools.Count > 0;
-        ToolsHost.Items.Clear();
-        foreach (var (title, view) in tools)
+        _popOuts.CloseAll();
+        EmptyState.IsVisible = items.Count == 0;
+        ToolsHost.IsVisible = items.Count > 0;
+        ToolsHost.Children.Clear();
+        _controls.Clear();
+        foreach (var item in items)
         {
-            var label = new TextBlock { Text = title, FontSize = 11 };
-            label.Bind(TextBlock.ForegroundProperty, this.GetResourceObservable("CockpitTextSecondaryBrush"));
-            ToolsHost.Items.Add(new StackPanel
+            Control control;
+            if (item.Inline)
             {
-                Spacing = 4,
-                Children =
+                control = item.CreateView();
+                if (control is AssistantIndicator indicator)
                 {
-                    label,
-                    view,
-                },
-            });
+                    indicator.Collapsed = Orientation == CompanionOrientation.Vertical;
+                }
+            }
+            else
+            {
+                var button = new CompanionStripButton(item);
+                button.Click += (_, _) => _TogglePopOut(item, button, showActivated: true);
+                control = button;
+            }
+
+            _controls[item.Id] = (item, control);
+            ToolsHost.Children.Add(control);
+        }
+
+        Dispatcher.UIThread.Post(KeepOnScreen, DispatcherPriority.Loaded);
+    }
+
+    // A tool asked for its pop-out (ICompanionToolContext.RequestPopOut): open it without taking the focus.
+    public void OpenPopOut(string toolId)
+    {
+        if (_controls.TryGetValue(toolId, out var entry) && !entry.Item.Inline && !_popOuts.IsOpen(toolId))
+        {
+            _TogglePopOut(entry.Item, entry.Control, showActivated: false);
         }
     }
 
-    // AC-241: let the window manager move it, including compositors that do not allow absolute positioning.
-    private void _OnHeaderPressed(object? sender, PointerPressedEventArgs e)
+    // The strip's card without its window, for a scene that lays it on a stand-in screen.
+    internal Control TakeCard()
     {
-        if (!e.GetCurrentPoint(HeaderBar).Properties.IsLeftButtonPressed || CloseButton.IsPointerOver)
+        Content = null;
+
+        return Card;
+    }
+
+    public void ClosePopOuts() => _popOuts.CloseAll();
+
+    private void _TogglePopOut(CompanionStripItem item, Control button, bool showActivated)
+    {
+        if (_popOuts.IsOpen(item.Id))
+        {
+            _popOuts.CloseAll();
+            return;
+        }
+
+        var title = new TextBlock { Text = item.Title, FontSize = 13, FontWeight = FontWeight.Medium };
+        title.Bind(TextBlock.ForegroundProperty, title.GetResourceObservable("CockpitTextPrimaryBrush"));
+        var content = new StackPanel { Margin = new Thickness(16), Spacing = 10, Children = { title, item.CreateView() } };
+        _popOuts.Toggle(item.Id, button, content, PopOutWidth, showActivated);
+    }
+
+    private void _Change(CompanionOrientation orientation, bool alwaysOnTop)
+    {
+        ApplyLayout(orientation, alwaysOnTop);
+        LayoutChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    // AC-241: let the window manager move it, including compositors that do not allow absolute positioning.
+    // Buttons handle their own presses, so what reaches the card is the grip or an empty spot.
+    private void _OnCardPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (!e.GetCurrentPoint(Card).Properties.IsLeftButtonPressed)
         {
             return;
         }
 
         BeginMoveDrag(e);
         e.Handled = true;
+    }
+
+    // Pulls the strip back inside the work area when a restore, a new screen layout or a longer strip put it outside.
+    internal void KeepOnScreen()
+    {
+        if (Bounds.Width <= 0 || Screens.ScreenFromWindow(this) is not { } screen)
+        {
+            return;
+        }
+
+        var size = new PixelSize((int)Math.Ceiling(Bounds.Width * RenderScaling), (int)Math.Ceiling(Bounds.Height * RenderScaling));
+        var clamped = ClampInto(screen.WorkingArea, new PixelRect(Position, size), (int)Math.Ceiling(Card.Margin.Left * RenderScaling));
+        if (clamped != Position)
+        {
+            Position = clamped;
+        }
+    }
+
+    // Moves the card (the window minus its shadow margin) inside the work area; the shadow may hang over the edge.
+    internal static PixelPoint ClampInto(PixelRect workArea, PixelRect window, int shadow)
+    {
+        var minX = workArea.X - shadow;
+        var minY = workArea.Y - shadow;
+        var maxX = Math.Max(minX, workArea.Right + shadow - window.Width);
+        var maxY = Math.Max(minY, workArea.Bottom + shadow - window.Height);
+
+        return new PixelPoint(Math.Clamp(window.X, minX, maxX), Math.Clamp(window.Y, minY, maxY));
     }
 
     internal async Task SavePositionAsync()

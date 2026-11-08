@@ -34,7 +34,7 @@
              "who is listening" without room for prose. The pulse ring sits in a Panel beside the badge, not
              inside its Border: a Border clips its child to its own bounds, so a ring meant to grow past the
              badge's edge (Theme.axaml's Ellipse.assistantIndicatorPulseRing) has to be a sibling, not a child. -->
-        <Button Classes="assistantIndicatorRail" Command="{Binding ClickCommand}" IsVisible="{Binding IsCollapsed}"
+        <Button x:Name="RailForm" Classes="assistantIndicatorRail" Command="{Binding ClickCommand}" IsVisible="False"
                 ToolTip.Tip="{Binding Label}">
             <!-- Pinned to the rail badge's 30px, clipping off — same reason as the chip's badge Panel. -->
             <Panel Width="30" Height="30" ClipToBounds="False">
@@ -77,7 +77,7 @@
 
         <!-- Expanded form: the chip plus the listening-mode picker (criterion 17), both hidden once the
              sidebar is a rail — there is nowhere for either to sit. -->
-        <StackPanel Spacing="8" IsVisible="{Binding !IsCollapsed}">
+        <StackPanel x:Name="ChipForm" Spacing="8">
 
             <!-- Vormgeving pass (2026-08-01): the whole chip tints per state, not only the mic badge — the
                  Classes bindings below are what let Theme.axaml paint the chip's own border/background per

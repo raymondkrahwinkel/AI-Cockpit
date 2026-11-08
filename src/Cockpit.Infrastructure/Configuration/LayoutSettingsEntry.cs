@@ -32,6 +32,10 @@ internal sealed class LayoutSettingsEntry
 
     public bool CompanionWindowVisible { get; set; }
 
+    public CompanionOrientation CompanionOrientation { get; set; } = CompanionOrientation.Horizontal;
+
+    public bool CompanionAlwaysOnTop { get; set; } = true;
+
     public bool OpenInSimpleView { get; set; }
 
     public bool AgentsPaletteEnabled { get; set; } = true;
@@ -63,6 +67,8 @@ internal sealed class LayoutSettingsEntry
         AssistantDocked = settings.AssistantDocked,
         FloatingDockPanelIds = settings.FloatingDockPanelIds?.ToList(),
         CompanionWindowVisible = settings.CompanionWindowVisible,
+        CompanionOrientation = settings.CompanionOrientation,
+        CompanionAlwaysOnTop = settings.CompanionAlwaysOnTop,
         OpenInSimpleView = settings.OpenInSimpleView,
         AgentsPaletteEnabled = settings.AgentsPaletteEnabled,
         AgentsPaletteRailIcon = settings.AgentsPaletteRailIcon,
@@ -88,6 +94,8 @@ internal sealed class LayoutSettingsEntry
         AssistantDocked = AssistantDocked,
         FloatingDockPanelIds = FloatingDockPanelIds,
         CompanionWindowVisible = CompanionWindowVisible,
+        CompanionOrientation = CompanionOrientation,
+        CompanionAlwaysOnTop = CompanionAlwaysOnTop,
         OpenInSimpleView = OpenInSimpleView,
         AgentsPaletteEnabled = AgentsPaletteEnabled,
         AgentsPaletteRailIcon = AgentsPaletteRailIcon,

@@ -1,5 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
+using System.ComponentModel;
+using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Views;
 
@@ -17,8 +19,62 @@ public partial class AssistantIndicator : UserControl
         set => SetValue(ShowWhenDisabledProperty, value);
     }
 
+    // Null follows the view model's IsCollapsed (the sidebar); a value pins this instance to the rail or the chip.
+    public static readonly StyledProperty<bool?> CollapsedProperty =
+        AvaloniaProperty.Register<AssistantIndicator, bool?>(nameof(Collapsed));
+
+    public bool? Collapsed
+    {
+        get => GetValue(CollapsedProperty);
+        set => SetValue(CollapsedProperty, value);
+    }
+
+    private AssistantIndicatorViewModel? _viewModel;
+
     public AssistantIndicator()
     {
         InitializeComponent();
+        _SyncForm();
+    }
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == CollapsedProperty)
+        {
+            _SyncForm();
+        }
+    }
+
+    protected override void OnDataContextChanged(EventArgs e)
+    {
+        base.OnDataContextChanged(e);
+        if (_viewModel is not null)
+        {
+            _viewModel.PropertyChanged -= _OnViewModelChanged;
+        }
+
+        _viewModel = DataContext as AssistantIndicatorViewModel;
+        if (_viewModel is not null)
+        {
+            _viewModel.PropertyChanged += _OnViewModelChanged;
+        }
+
+        _SyncForm();
+    }
+
+    private void _OnViewModelChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(AssistantIndicatorViewModel.IsCollapsed))
+        {
+            _SyncForm();
+        }
+    }
+
+    private void _SyncForm()
+    {
+        var collapsed = Collapsed ?? _viewModel?.IsCollapsed ?? false;
+        RailForm.IsVisible = collapsed;
+        ChipForm.IsVisible = !collapsed;
     }
 }

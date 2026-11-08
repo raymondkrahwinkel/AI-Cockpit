@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Threading;
 using Cockpit.App.Views;
+using Cockpit.Core.Layout;
 
 namespace Cockpit.App;
 

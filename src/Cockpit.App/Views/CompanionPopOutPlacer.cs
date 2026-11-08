@@ -1,12 +1,7 @@
 using Avalonia;
+using Cockpit.Core.Layout;
 
 namespace Cockpit.App.Views;
-
-internal enum CompanionOrientation
-{
-    Horizontal,
-    Vertical,
-}
 
 internal readonly record struct CompanionPopOutPlacement(PixelRect Bounds, bool ContentScrolls);
 

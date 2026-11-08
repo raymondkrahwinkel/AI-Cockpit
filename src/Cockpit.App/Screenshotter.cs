@@ -28,6 +28,7 @@ using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Layout;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Voice;
 using Microsoft.Extensions.DependencyInjection;
@@ -43,24 +44,8 @@ internal static partial class Screenshotter
     private static Window _CompanionScene(bool empty)
     {
         var window = new CompanionWindow(null);
-        window.SetTools(empty ? [] :
-        [
-            ("Assistant", new AssistantIndicator
-            {
-                ShowWhenDisabled = true,
-                DataContext = new AssistantIndicatorViewModel
-                {
-                    IsFeatureEnabled = true,
-                    Activity = Core.Assistant.AssistantActivity.Listening,
-                    ListeningMode = Core.Assistant.AssistantListeningMode.Off,
-                },
-            }),
-            ("Screenshot", new Button
-            {
-                Content = Controls.CockpitIcons.Icon(Material.Icons.MaterialIconKind.Monitor),
-                Padding = new Thickness(7, 6),
-            }),
-        ]);
+        window.ApplyLayout(CompanionSceneOrientation == "v" ? CompanionOrientation.Vertical : CompanionOrientation.Horizontal, alwaysOnTop: true);
+        window.SetTools(empty ? [] : _CompanionSceneItems());
         return window;
     }
 
@@ -260,6 +245,7 @@ internal static partial class Screenshotter
         ["companion-tools"] = (_, _) => _CompanionScene(empty: false),
         ["companion-empty"] = (_, _) => _CompanionScene(empty: true),
         ["companion-popout"] = _CompanionPopOutScene,
+        ["companion-strip"] = _CompanionStripScene,
         ["session-background-work"] = (_, _) => _BackgroundWorkScene(),
         // AC-2028: the status bar at rest and busy, the test-runs dialog, and the disk panel open on a critical drive.
         ["statusbar-rest"] = (_, _) => _StatusBarScene(busy: false),
@@ -1511,6 +1497,7 @@ internal static partial class Screenshotter
     // they are opened here rather than built into the scene.
     private static readonly Dictionary<string, Action<Window>> Hovers = new(StringComparer.Ordinal)
     {
+        ["companion-strip"] = _StageCompanionStrip,
         ["companion-popout"] = _OpenPassivePopOut,
         ["markdown-file-images"] = _ExerciseNoteImages,
         ["session-file-drop"] = _LightFileDropOverlay,
