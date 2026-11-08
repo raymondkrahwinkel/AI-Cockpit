@@ -39,7 +39,7 @@
                             <Button x:Name="CustomizeItem" Classes="Subtle Row">
                                 <StackPanel Orientation="Horizontal" Spacing="10">
                                     <materialIcons:MaterialIcon Kind="TuneVariant" Width="16" Height="16"/>
-                                    <TextBlock Text="Customize strip?" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Customize strip…" VerticalAlignment="Center"/>
                                 </StackPanel>
                             </Button>
                             <Separator/>
