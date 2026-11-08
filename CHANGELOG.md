@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2212: the Simple rail now has a Plugins row above Settings and Help that opens the plugin store, with the same update and approval badges as the Panels sidebar.
+
 - AC-2191: the Panels sidebar footer uses flat icon rows like the Simple rail, and the Menu and Help flyouts get the mention-picker look with icon rows (also in the Simple rail's Help).
 
 - AC-2188: queued test runs start strictly in arrival order, without pre-merge priority or aging.
