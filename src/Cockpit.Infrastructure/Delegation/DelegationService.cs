@@ -74,7 +74,7 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
     // AC-2026: the profile's `MaxParallelSessions`, shared with the pane starts. Absent in a test graph without one.
     private readonly ProfileSessionLimit? _limit;
     private readonly SessionMcpMounts? _mcpMounts;
-    private readonly SessionStartComposer? _startComposer;
+    private readonly Func<SessionStartComposer>? _startComposer;
     private readonly IProjectStore? _projectStore;
     private readonly IProjectMemorySourceRegistry? _memorySources;
 
@@ -101,7 +101,7 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         IProjectStore? projectStore = null,
         IProjectMemorySourceRegistry? memorySources = null,
         SessionMcpMounts? mcpMounts = null,
-        SessionStartComposer? startComposer = null)
+        Func<SessionStartComposer>? startComposer = null)
         : this(profileStore, sessionManager, mcpServerStore, auditLog, minutes => TimeSpan.FromMinutes(minutes), workspaces, providerRegistry, projects, worktrees, idleWindow: null, consent, mcpServerCatalog: mcpServerCatalog, sessionState: sessionState, orgPolicy: orgPolicy, limit: limit, projectStore: projectStore, memorySources: memorySources, mcpMounts: mcpMounts, startComposer: startComposer)
     {
     }
@@ -128,7 +128,7 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         IProjectStore? projectStore = null,
         IProjectMemorySourceRegistry? memorySources = null,
         SessionMcpMounts? mcpMounts = null,
-        SessionStartComposer? startComposer = null)
+        Func<SessionStartComposer>? startComposer = null)
     {
         _mcpMounts = mcpMounts;
         _startComposer = startComposer;
@@ -717,7 +717,7 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
             var brainInstruction = SessionStartDefaults.ResolveBrainInstruction(project, entry.Profile, _memorySources?.Sources.ToMemorySources());
             if (!string.IsNullOrWhiteSpace(entry.Role) && !string.Equals(entry.Role.Trim(), "none", StringComparison.OrdinalIgnoreCase))
             {
-                var composer = _startComposer ?? throw new DelegationRejectedException("Role loading is unavailable; no task session was started.");
+                var composer = _startComposer?.Invoke() ?? throw new DelegationRejectedException("Role loading is unavailable; no task session was started.");
                 var composed = await composer.ComposeRoleAsync(new SessionLaunchRequest(
                     string.Empty, entry.Profile, null, entry.WorkingDirectory, entry.Label, null, null, null, entry.ProjectId, false)
                 {

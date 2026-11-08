@@ -189,8 +189,8 @@ internal sealed partial class AssistantAgentGateway(
         var role = request.Role?.Trim();
         var withoutRole = string.IsNullOrWhiteSpace(role) || string.Equals(role, "none", StringComparison.OrdinalIgnoreCase);
         var knownRole = roleList.Roles.FirstOrDefault(candidate => string.Equals(candidate.Name, role, StringComparison.OrdinalIgnoreCase));
-        if ((!withoutRole && knownRole is null)
-            || (roleList.Roles.Count > 0 && string.IsNullOrWhiteSpace(role) && request.RoleChoiceRequired))
+        var missingRequiredChoice = request.RoleChoiceRequired && roleList.Roles.Count > 0 && string.IsNullOrWhiteSpace(role);
+        if ((!withoutRole && knownRole is null) || missingRequiredChoice)
         {
             var choices = string.Join("; ", roleList.Roles.Select(candidate => $"{candidate.Name}: {candidate.Description}"));
             var reason = roleList.Outcome == RoleSourceOutcome.Unavailable
