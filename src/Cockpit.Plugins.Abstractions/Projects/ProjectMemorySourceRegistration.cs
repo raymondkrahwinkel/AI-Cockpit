@@ -121,6 +121,11 @@ public sealed record ProjectMemorySourceRegistration(string Scheme, string Title
     public Func<string, string?>? BrainInstruction { get; init; }
 
     /// <summary>
+    /// The name of the MCP server that serves the brain a stored value names, so the host keeps it mounted when a start names its own server list. Null when this source does not own that value.
+    /// </summary>
+    public Func<string, string?>? BrainMcpServerName { get; init; }
+
+    /// <summary>
     /// What this registration's delegates are bound to (AC-1992) — the server address of the connection they close
     /// over, say — so a registration rebuilt after that target moved compares unequal and is replaced.
     /// </summary>

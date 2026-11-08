@@ -1490,8 +1490,9 @@
                                 <TextBlock Text="Spoken answer" FontWeight="SemiBold"/>
                                 <ComboBox x:Name="AssistantSpeechMode" ItemsSource="{Binding AssistantOptions.SpeechModes}"
                                           SelectedItem="{Binding AssistantOptions.SelectedSpeechMode}"
+                                          IsEnabled="{Binding AssistantOptions.CanChooseSpeechMode}"
                                           DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Left" MinWidth="180"/>
-                                <StackPanel Spacing="6" IsEnabled="{Binding AssistantOptions.CanChooseSpeechMethod}">
+                                <StackPanel Spacing="6">
                                     <TextBlock Text="Shortening method" FontWeight="SemiBold"/>
                                     <ComboBox x:Name="AssistantSpeechMethod" ItemsSource="{Binding AssistantOptions.SpeechMethods}"
                                               SelectedItem="{Binding AssistantOptions.SelectedSpeechMethod}"
@@ -1503,7 +1504,9 @@
                                     <TextBlock Classes="optionsHint" IsVisible="{Binding AssistantOptions.UsesSpeechAi}"
                                                Text="Short and Summary wait until the answer is finished, then may take up to 3 extra seconds. The answer and context go to the selected AI profile (Assistant uses the assistant's profile). If private speech generation is unavailable, including for a missing profile, built-in rules shorten the answer instead."/>
                                 </StackPanel>
-                                <TextBlock Classes="optionsHint" Text="Full reads the answer as it arrives. Without AI uses built-in shortening rules. Only the full answer appears in chat; the shorter speech text is never shown."/>
+                                <TextBlock Classes="optionsHint" IsVisible="{Binding !AssistantOptions.CanChooseSpeechMode}"
+                                           Text="Without AI reads the answer in full as it arrives, so Short and Summary are off. Pick Assistant or an own AI profile to use them again."/>
+                                <TextBlock Classes="optionsHint" Text="Full reads the answer as it arrives. Without AI reads the full answer, as there is nothing to shorten with. Only the full answer appears in chat; the shorter speech text is never shown."/>
                             </StackPanel>
 
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">

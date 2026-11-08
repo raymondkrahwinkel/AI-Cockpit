@@ -11,12 +11,15 @@
 - AC-1979: ask before trusting a changed plugin publisher key; Update all keeps the current version and explains why.
 
 - AC-1976: the plugin store shows a "From <organization>" block per Depot organization on Discover, says on every row which store it comes from, and lists the source and publisher key of a plugin in its details.
+- AC-2191: the Panels sidebar footer uses flat icon rows like the Simple rail, and the Menu and Help flyouts get the mention-picker look with icon rows (also in the Simple rail's Help).
+
 - AC-2188: queued test runs start strictly in arrival order, without pre-merge priority or aging.
 
 - AC-2189: inbox messages from other sessions now start collapsed to their header in the transcript, and run results keep a coloured one-line verdict; the toggle opens the full text.
 - Centre the Simple/Panels switch on the main window's title bar, keeping it available down to the window's minimum width.
 - Move the Simple/Panels switch to the title bar in both views and remove the Simple rail's More options shortcut.
 - Keep connected sessions' MCP counts and status buttons current after live server or connection-issue changes, preserving other session statuses.
+- AC-2119: the assistant now speaks the first sentences while the answer is still arriving, also for Short and Summary without AI, which now read the full answer; Short and Summary need an AI method to shorten.
 - AC-2187: the assistant can tell which session you have selected: `list_sessions` marks it, following the Simple stand's own selection when that stand is showing.
 - AC-2100: display relative Depot note images in Markdown file previews and editors without rewriting their source.
 
