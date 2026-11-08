@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2191: the Panels sidebar footer uses flat icon rows like the Simple rail, and the Menu and Help flyouts get the mention-picker look with icon rows (also in the Simple rail's Help).
+
 - AC-2188: queued test runs start strictly in arrival order, without pre-merge priority or aging.
 
 - AC-2189: inbox messages from other sessions now start collapsed to their header in the transcript, and run results keep a coloured one-line verdict; the toggle opens the full text.

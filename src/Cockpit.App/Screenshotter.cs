@@ -303,6 +303,8 @@ internal static partial class Screenshotter
         // AC-512: the sidebar's Help flyout, opened the way session-settings-flyout already proves headless
         // rendering can — after the window is up, via the Hovers table below.
         ["help-menu"] = (_, _) => new MainWindow { DataContext = new ViewModels.CockpitViewModel() },
+        ["sidebar-footer-menu"] = (_, _) => _SidebarFooterScene(simple: false),
+        ["simple-help-menu"] = (_, _) => _SidebarFooterScene(simple: true),
         // AC-1763 (mockups Productivity v3 #09, Company v8 #22 and v7 #21): the sidebar's plugin cards — Productivity's two
         // buttons and its Tijd section in one card, the single-button plugins together in "Plugins" — open, or folded.
         ["sidebar-plugins"] = (width, height) => _PluginSidebarScene(width, height, folded: false),
@@ -1392,6 +1394,15 @@ internal static partial class Screenshotter
     // AC-1763: a CockpitViewModel with plugins registered through the sink, the same route a real plugin uses —
     // Productivity (two buttons, one with a text badge, and the Tijd section) and three plugins with a single button,
     // two of them with a counter.
+    private static MainWindow _SidebarFooterScene(bool simple)
+    {
+        var cockpit = new ViewModels.CockpitViewModel { SimpleView = simple };
+        cockpit.Plugins.SetUpdateBadgeCount(12);
+        cockpit.Plugins.SeedPendingApprovalCount(3);
+
+        return new MainWindow { DataContext = cockpit };
+    }
+
     private static MainWindow _PluginSidebarScene(int width, int height, bool folded)
     {
         var cockpit = new ViewModels.CockpitViewModel { SidebarWidth = 240 };
@@ -1546,6 +1557,8 @@ internal static partial class Screenshotter
         ["session-settings-flyout-no-live-controls"] = window => _OpenFlyout(window, "SessionSettingsButton"),
         ["workspace-layout-flyout"] = window => _OpenFlyout(window, "WorkspaceLayoutButton"),
         ["help-menu"] = window => _OpenFlyout(window, "HelpButton"),
+        ["sidebar-footer-menu"] = window => _OpenFlyout(window, "MenuButton"),
+        ["simple-help-menu"] = window => _OpenFlyout(window, "SimpleRailHelp"),
         ["plugin:depot-browser-settings"] = window => _OpenFlyout(window, "OpenFilesInButton"),
         ["projects-workspace-split-open"] = window =>
         {
