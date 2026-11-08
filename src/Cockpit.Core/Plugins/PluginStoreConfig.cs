@@ -11,6 +11,10 @@ public sealed record PluginStoreConfig(PluginStoreKind Kind, string Location, st
     [JsonIgnore]
     public PluginStoreSignedSource? Signed { get; init; }
 
+    // AC-1980: what a plugin is bound to — the Depot source key for an organization store, else kind and location (compared like SameStoreAs).
+    [JsonIgnore]
+    public string SourceKey => Signed?.SourceKey ?? (IsLocal ? $"local:{Location}" : $"remote:{Location.ToLowerInvariant()}");
+
     // A remote http(s) store, optionally private (a bearer `token`).
     public static PluginStoreConfig Remote(string url, string? token = null) =>
         new(PluginStoreKind.Remote, url, string.IsNullOrWhiteSpace(token) ? null : token);

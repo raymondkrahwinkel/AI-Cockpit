@@ -611,6 +611,13 @@ internal static partial class Screenshotter
         ["plugin-store"] = (_, _) => _PluginStore(),
         ["plugin-store-organizations"] = (_, _) => new PluginStoreDialog { DataContext = _PluginStoreOrganizations() },
         ["plugin-store-installed"] = (_, _) => _PluginStoreInstalled(),
+        ["plugin-store-two-stores"] = (_, _) => new PluginStoreDialog { DataContext = _PluginStoreTwoStores() },
+        ["plugin-store-switch-consent"] = (_, _) => new ConfirmationDialog
+        {
+            DataContext = new ViewModels.ConfirmationDialogViewModel("Confirm plugin publisher",
+                ViewModels.PluginConsentTerms.PublisherMessage(new PluginKeyConsentRequest("docker", "1.9.0", PluginTrustDecision.SourceChanged,
+                    null, null, null, null, null, null, null, "depot:depot.acme.example/acme")), "Install"),
+        },
         // AC-2024: the list right after a live disable, with no restart banner.
         ["plugin-store-disabled-live"] = (_, _) => _PluginStoreDisabledLive(),
         ["plugin-store-updates-incompatible"] = (_, _) => _PluginStoreUpdatesWithIncompatible(),
@@ -3398,6 +3405,28 @@ internal static partial class Screenshotter
         {
             SelectedPlugin = manager.AvailablePlugins.First(),
         };
+    }
+
+    // AC-1980: Docker installed from Acme Engineering, the public store offering a higher version that is no update.
+    private static PluginStoreDialogViewModel _PluginStoreTwoStores()
+    {
+        var acme = PluginStoreConfig.Remote("https://depot.acme.example/cockpit/stores/acme/index.json") with
+        {
+            Signed = new PluginStoreSignedSource("depot:depot.acme.example/acme", "acme", () => new HttpClientHandler()),
+        };
+        var publicStore = PluginStoreConfig.Remote("https://raw.githubusercontent.com/raymondkrahwinkel/AI-Cockpit-Plugins/main/index.json");
+        var entry = new PluginStoreEntry("docker", "Docker", "Containers, images and compose as tools for your agents.", "Acme IT", "1.6.0",
+            [new PluginStoreVersion("1.6.0", "plugins/docker.zip", null, null, "3e7a90c2d14f", null, Signature: "sig",
+                KeyFingerprint: "SHA256:4dGsEgg14BFnREFGj96+RZpCH8D3lSMJmMkYQ6Pd1cY", KeyName: "Acme release key")], "Integrations");
+        var other = new PluginStoreEntry("docker", "Docker", null, "Cockpit", "1.9.0", [new PluginStoreVersion("1.9.0", "plugins/docker.zip", null, null, null, null)]);
+        var manager = new PluginManagerViewModel();
+        manager.Stores.Add(acme);
+        manager.Stores.Add(publicStore);
+        manager.AvailablePlugins.Add(new StorePluginRowViewModel(entry, acme, "1.6.0", isEnabled: true)
+        {
+            AlsoOfferedBy = [new StoreOffer(publicStore, "Cockpit plugins", other, null)],
+        });
+        return new PluginStoreDialogViewModel(manager) { SelectedPlugin = manager.AvailablePlugins.First() };
     }
 
     // AC-1588: the Installed list with one plugin allowed and one muted, so a row shows both labels of the toggle.

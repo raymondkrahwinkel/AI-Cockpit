@@ -90,7 +90,8 @@ public sealed class PluginProvisioningService(IPluginStoreClient storeClient, IP
                 }
             }
 
-            if (required)
+            // AC-1980: moving an installed plugin to another store is always a source change, signed or not, so it always goes through the consent below.
+            if (required || request.SwitchSource)
             {
                 var state = await installer.GetInstalledStateAsync(folderId, cancellationToken).ConfigureAwait(false);
                 var source = request.Store.Signed?.SourceKey;

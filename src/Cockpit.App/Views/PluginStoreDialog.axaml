@@ -481,6 +481,28 @@
                                                  Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                         </StackPanel>
 
+                        <!-- AC-1980: the same plugin in another store is a fact here; the installation stays with its source. -->
+                        <StackPanel Spacing="4" IsVisible="{Binding HasAlsoOfferedBy}">
+                            <TextBlock Text="Also offered by" FontWeight="SemiBold"/>
+                            <ItemsControl ItemsSource="{Binding AlsoOfferedBy}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:StoreOffer">
+                                        <StackPanel Spacing="4" Margin="0,0,0,6">
+                                            <TextBlock TextWrapping="Wrap">
+                                                <Run Text="{Binding StoreName}" FontWeight="SemiBold"/>
+                                                <Run Text="{Binding Version, StringFormat=' {0} there.'}"/>
+                                            </TextBlock>
+                                            <Button Content="{Binding StoreName, StringFormat='Switch to {0}…'}" HorizontalAlignment="Left"
+                                                    Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).SwitchSourceCommand}"
+                                                    CommandParameter="{Binding}"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Text="Your installation stays with its source until you switch. Switching asks for consent again, and pins that store's file and publisher."
+                                       FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        </StackPanel>
+
                         <StackPanel Spacing="4" IsVisible="{Binding HasPublisher}">
                             <TextBlock Text="Publisher" FontWeight="SemiBold"/>
                             <TextBlock Text="{Binding PublisherName}" TextWrapping="Wrap"/>

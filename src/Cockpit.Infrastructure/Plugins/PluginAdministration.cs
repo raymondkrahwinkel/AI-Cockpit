@@ -81,6 +81,12 @@ internal sealed class PluginAdministration(
             await _WaitForInitializationAsync(cancellationToken).ConfigureAwait(false);
             await bootstrap.ReconcileUpdatesAsync(cancellationToken).ConfigureAwait(false);
             var result = await provisioning.InstallAsync(request, AbstractionsContract.Version, cancellationToken: cancellationToken, progress: progress, keyConsent: keyConsent).ConfigureAwait(false);
+            if (result.IsSuccess && result.FolderId is { } installedFolder)
+            {
+                // AC-1980: an update keeps its registration; a fresh install has none until consent, so the manager records it then.
+                await registrations.SetSourceAsync(installedFolder, request.Store.SourceKey, cancellationToken).ConfigureAwait(false);
+            }
+
             return result.Outcome == PluginProvisionOutcome.Staged
                 ? result with { Live = await _UpdateAsync(result.FolderId, result.Sha256, result.InPlace, result.ConsentReason, result.ReplacedSha256, result.Manifest?.RequiresRestart == true).ConfigureAwait(false) ?? PluginLiveState.Blocked("Approve the installed plugin in Plugin Manager to activate it.") }
                 : result;

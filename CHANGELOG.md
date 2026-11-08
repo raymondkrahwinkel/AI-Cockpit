@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-1980: an installed plugin stays with the store it came from: a higher version in another store is no update (also not in Update all), the details show "Also offered by" with a Switch button that asks for consent again, and installations without a recorded store keep their consent.
+
 - AC-1977: Manage plugin stores shows a row per organization with its Depot and plugin count, lets you hide or show it, and says "You are no longer a member" when the Depot no longer lists you; installed plugins keep running without updates.
 
 - AC-1979: ask before trusting a changed plugin publisher key; Update all keeps the current version and explains why.

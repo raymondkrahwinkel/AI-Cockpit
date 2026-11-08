@@ -604,7 +604,8 @@ internal sealed class BackupService(
 
         foreach (var id in wanted)
         {
-            var (request, report, note) = _Pick(catalogue, unreadable, id, manifest.Plugins.GetValueOrDefault(id));
+            var archivedSource = options.Settings ? ((incoming?["Plugins"] as JsonObject)?[PluginFolderName.Normalize(id)] as JsonObject)?["Source"]?.ToString() : null;
+            var (request, report, note) = _Pick(catalogue, unreadable, id, manifest.Plugins.GetValueOrDefault(id), archivedSource);
             logger.LogInformation("Restoring plugin '{Plugin}': {Report}", id, report);
 
             if (request is null)
@@ -778,7 +779,8 @@ internal sealed class BackupService(
         IReadOnlyList<(PluginStoreConfig Store, PluginStoreIndex Index)> catalogue,
         IReadOnlyList<PluginStoreConfig> unreadable,
         string id,
-        string? archivedVersion)
+        string? archivedVersion,
+        string? archivedSource = null)
     {
         var found = catalogue
             .Select(source => (source.Store, Entry: source.Index.Plugins.FirstOrDefault(plugin => string.Equals(plugin.Id, id, StringComparison.OrdinalIgnoreCase)), source.Index.RevokedKeys))
@@ -800,8 +802,8 @@ internal sealed class BackupService(
 
         // The rule when two stores publish the same id, a decision and not a detail: the first configured store
         // carrying it wins. `PinnedSha256` cannot settle it — that hashes the installed folder, a store's `Sha256`
-        // hashes the zip, so the two never compare equal. Order the operator can see beats a comparison that cannot.
-        var (store, entry, revokedKeys) = found[0];
+        // hashes the zip, so the two never compare equal. Order the operator can see beats a comparison that cannot. AC-1980: unless the archive records the bound store.
+        var (store, entry, revokedKeys) = found[Math.Max(0, found.FindIndex(candidate => archivedSource is not null && candidate.Store.SourceKey == archivedSource))];
         var wanted = archivedVersion is { Length: > 0 } and not UnknownVersion ? archivedVersion : null;
 
         if (entry!.Versions.FirstOrDefault(version => string.Equals(version.Version, wanted, StringComparison.OrdinalIgnoreCase)) is { } exact)

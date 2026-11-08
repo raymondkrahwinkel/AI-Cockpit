@@ -23,6 +23,11 @@ public sealed partial class StorePluginRowViewModel(
 
     public IReadOnlyList<PluginStoreRevokedKey>? RevokedKeys { get; init; }
 
+    // AC-1980: the other stores that offer this installed plugin; it stays with its own until the operator switches.
+    public IReadOnlyList<StoreOffer> AlsoOfferedBy { get; init; } = [];
+
+    public bool HasAlsoOfferedBy => AlsoOfferedBy.Count > 0;
+
     // Whether the installed plugin is currently enabled (false when not installed) — drives the card's enable/disable toggle.
     public bool IsEnabled => isEnabled;
 
@@ -263,4 +268,10 @@ public sealed partial class StorePluginRowViewModel(
         : null;
 
     public bool HasUpdateUnavailableReason => UpdateUnavailableReason is not null;
+}
+
+// AC-1980: what one store lists for a plugin id.
+public sealed record StoreOffer(PluginStoreConfig Store, string StoreName, PluginStoreEntry Entry, IReadOnlyList<PluginStoreRevokedKey>? RevokedKeys)
+{
+    public string Version => $"v{Entry.LatestVersion}";
 }

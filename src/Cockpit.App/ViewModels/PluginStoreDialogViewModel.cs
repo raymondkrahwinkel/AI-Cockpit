@@ -306,6 +306,16 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
         }
     }
 
+    // AC-1980: moves the selected installed plugin to another store that offers it (asks for consent again).
+    [RelayCommand(CanExecute = nameof(CanInstallSelectedVersion))]
+    private async Task SwitchSourceAsync(StoreOffer offer)
+    {
+        if (SelectedPlugin is { } row)
+        {
+            await Manager.SwitchSourceAsync(row, offer);
+        }
+    }
+
     // Refetches the catalogue. Closed while the store is working (AC-455): it clears and refills the collection a running install is walking, and its own gate is what makes the button go dead rather than quietly do nothing.
     [RelayCommand(CanExecute = nameof(CanChangePlugins))]
     private Task RefreshAsync() => LoadAsync();
