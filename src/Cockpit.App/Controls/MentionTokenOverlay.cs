@@ -9,7 +9,7 @@ using Cockpit.Core.Abstractions.Mentions;
 namespace Cockpit.App.Controls;
 
 // Draws a rounded background behind each accepted project token of Input, from the text layout's own geometry. It
-// lies over the text box without taking input: filled for the token that sets the context, outlined for a mention.
+// lies over the text box without taking input: filled for the token that sets the window's project, outlined for a mention.
 public sealed class MentionTokenOverlay : Control
 {
     public static readonly StyledProperty<TextBox?> InputProperty =
@@ -18,13 +18,9 @@ public sealed class MentionTokenOverlay : Control
     public static readonly StyledProperty<MentionPickerViewModel?> PickerProperty =
         AvaloniaProperty.Register<MentionTokenOverlay, MentionPickerViewModel?>(nameof(Picker));
 
-    // Whether the first project token fills (it sets the project) or is a mention like the rest (a running session).
-    public static readonly StyledProperty<bool> FillsFirstTokenProperty =
-        AvaloniaProperty.Register<MentionTokenOverlay, bool>(nameof(FillsFirstToken), true);
-
     static MentionTokenOverlay()
     {
-        AffectsRender<MentionTokenOverlay>(InputProperty, PickerProperty, FillsFirstTokenProperty);
+        AffectsRender<MentionTokenOverlay>(InputProperty, PickerProperty);
     }
 
     public MentionTokenOverlay()
@@ -42,12 +38,6 @@ public sealed class MentionTokenOverlay : Control
     {
         get => GetValue(PickerProperty);
         set => SetValue(PickerProperty, value);
-    }
-
-    public bool FillsFirstToken
-    {
-        get => GetValue(FillsFirstTokenProperty);
-        set => SetValue(FillsFirstTokenProperty, value);
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
@@ -89,7 +79,7 @@ public sealed class MentionTokenOverlay : Control
 
     private void _OnPickerChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(MentionPickerViewModel.Tokens))
+        if (e.PropertyName is nameof(MentionPickerViewModel.Tokens) or nameof(MentionPickerViewModel.ContextToken))
         {
             InvalidateVisual();
         }
@@ -112,7 +102,7 @@ public sealed class MentionTokenOverlay : Control
         var outline = new Pen(accentBrush, 1);
         foreach (var token in picker.Tokens.Where(token => token.Item.Kind == MentionKind.Project && token.Start + token.Length <= text.Length))
         {
-            var isContext = FillsFirstToken && token == picker.FirstProjectToken;
+            var isContext = token == picker.ContextToken;
             foreach (var rect in layout.HitTestTextRange(token.Start, token.Length))
             {
                 var box = new Rect(origin.X + rect.X - 3, origin.Y + rect.Y, rect.Width + 6, rect.Height).Deflate(new Thickness(0, 1));

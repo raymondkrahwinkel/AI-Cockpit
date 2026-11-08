@@ -248,7 +248,7 @@ internal static partial class Screenshotter
     // The window each scene name asks for. A table rather than a switch so the set of names can be read off it:
     // anything that has to cover every screen — the theme baseline (AC-338) above all — would otherwise be
     // working from a hand-written list, and a hand-written list is blind to exactly the scene nobody remembered.
-    private static readonly Dictionary<string, Func<int, int, Window>> Scenes = _WithProjectScenes(new(StringComparer.Ordinal)
+    private static readonly Dictionary<string, Func<int, int, Window>> Scenes = _WithMentionScenes(_WithProjectScenes(new(StringComparer.Ordinal)
     {
         ["companion-tools"] = (_, _) => _CompanionScene(empty: false),
         ["companion-empty"] = (_, _) => _CompanionScene(empty: true),
@@ -1093,7 +1093,7 @@ internal static partial class Screenshotter
         // AC-1316: the fold open on one row — the grant, the origin and the checksum are folded, never hidden, and
         // this is the half of that sentence the two scenes above cannot show.
         ["first-run-work-kind-unfolded"] = (_, _) => _WorkKindWizard(pluginCount: 3),
-    });
+    }));
 
     private static Window _StartChoiceWizard(bool pickRestore, bool withPluginRoute)
     {
@@ -1492,7 +1492,7 @@ internal static partial class Screenshotter
             ScreenshotSelectionScene.Stage(surface, scene);
         }
 
-        if (Hovers.TryGetValue(scene ?? string.Empty, out var open))
+        if (Hovers.TryGetValue(scene ?? string.Empty, out var open) || MentionStages.TryGetValue(scene ?? string.Empty, out open))
         {
             open(window);
             Dispatcher.UIThread.RunJobs();
@@ -2873,7 +2873,7 @@ internal static partial class Screenshotter
             Task.FromResult(groups(context));
     }
 
-    private static IReadOnlyList<IMentionSource> _SampleMentionSources()
+    private static IReadOnlyList<IMentionSource> _SampleMentionSources(Func<string, string>? keyOf = null, IReadOnlyList<MentionItem>? moreLocal = null, IReadOnlyList<MentionItem>? moreShared = null)
     {
         static MentionItem File(string path)
         {
@@ -2882,8 +2882,8 @@ internal static partial class Screenshotter
             return new MentionItem(path, name, path, new MentionTile(name[..1].ToUpperInvariant()), MentionKind.File, path, path);
         }
 
-        static MentionItem Project(string name, string line, int daysAgo) =>
-            new("project:" + name, name, line, new MentionTile(name[..1].ToUpperInvariant()), MentionKind.Project, name, "C:/Code/" + name,
+        MentionItem Project(string name, string line, int daysAgo) =>
+            new(keyOf?.Invoke(name) ?? "project:" + name, name, line, new MentionTile(name[..1].ToUpperInvariant()), MentionKind.Project, name, "C:/Code/" + name,
                 DateTimeOffset.Now.AddDays(-daysAgo));
 
         return
@@ -2901,10 +2901,12 @@ internal static partial class Screenshotter
                 [
                     Project("Cockpit", "Depot krahwinkel-it/Cockpit · C:/Code/Cockpit", 0),
                     Project("EVE Workbench", "Depot eve-workbench/EVE Workbench · C:/Code/EVE Workbench", 2),
+                    .. moreLocal ?? [],
                 ]),
                 new MentionGroup("Depot",
                 [
                     new MentionItem("shared:startpage", "StartPage", "Not on this PC yet", new MentionTile("S"), MentionKind.Project, "StartPage", "depot:startpage"),
+                    .. moreShared ?? [],
                 ], "via Depot plugin"),
             ]),
         ];
@@ -4035,9 +4037,14 @@ internal static partial class Screenshotter
     }
 
     // AC-1528: Home on a fixed morning for a fixed name, one conversation waiting and one working, as in the mockup.
-    private static ViewModels.CockpitViewModel _SimpleStandHome(bool withProjects = true)
+    private static ViewModels.CockpitViewModel _SimpleStandHome(bool withProjects = true, Func<IReadOnlyList<IMentionSource>>? mentionSources = null)
     {
         var cockpit = _SimpleStand(withAssistant: true);
+        if (mentionSources is not null)
+        {
+            cockpit.MentionSources = mentionSources();
+        }
+
         cockpit.SimpleHome.FirstName = "Raymond";
         cockpit.SimpleHome.Now = () => new DateTime(2026, 10, 13, 9, 0, 0);
         cockpit.VoiceEnabled = true;

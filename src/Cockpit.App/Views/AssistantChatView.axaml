@@ -906,7 +906,7 @@
                         <TextBox x:Name="InputBox" Text="{Binding InputText}" Classes.unavailable="{Binding IsUnavailable}"
                                  Classes.controlled="{Binding IsControlled}"
                                  AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="100" VerticalContentAlignment="Top"/>
-                        <controls:MentionTokenOverlay Input="{Binding #InputBox}" Picker="{Binding MentionPicker}" FillsFirstToken="False"/>
+                        <controls:MentionTokenOverlay Input="{Binding #InputBox}" Picker="{Binding MentionPicker}"/>
                         <!-- Screenshot (AC-220, reaching this window in AC-630): the desktop's own region picker with
                              its marking tools, landing as an attachment on the composer rather than a message of its
                              own. ShowOnDisabled because the disabled state is the interesting one — the tooltip is
