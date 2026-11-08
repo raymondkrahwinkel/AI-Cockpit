@@ -61,7 +61,6 @@ internal sealed class CompanionToolRegistry : ICompanionToolRegistry, ISingleton
 
     public event EventHandler? Changed;
 
-    // ponytail: no subscriber yet, so RequestPopOut is a no-op until the strip opens it through the pop-out placer.
     public event EventHandler<string>? PopOutRequested;
 
     public IReadOnlyList<CompanionToolRegistration> Tools => [.. _tools.Select(tool => tool.Registration)];

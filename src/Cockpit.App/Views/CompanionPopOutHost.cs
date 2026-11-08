@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Cockpit.Core.Layout;
 
 namespace Cockpit.App.Views;
 
@@ -23,6 +24,16 @@ internal sealed class CompanionPopOutHost
 
     // Wayland cannot place a window absolutely; the compositor anchors it to the strip instead (not yet tried live).
     private static bool _IsWayland => OperatingSystem.IsLinux() && Environment.GetEnvironmentVariable("XDG_SESSION_TYPE") == "wayland";
+
+    public bool IsOpen(string key) => _open.Exists(p => p.PopOutKey == key);
+
+    public void CloseAll()
+    {
+        foreach (var popOut in _open.ToArray())
+        {
+            popOut.Close();
+        }
+    }
 
     // A second click on the same item closes it. False means there is no room; the caller then holds its message.
     public bool Toggle(string key, Control item, Control content, double width, bool showActivated = true)

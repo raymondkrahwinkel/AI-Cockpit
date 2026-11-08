@@ -3,6 +3,7 @@ using Cockpit.App.Plugins;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Layout;
+using Cockpit.Core.Layout;
 
 namespace Cockpit.App.Services;
 
@@ -14,12 +15,18 @@ internal sealed class CompanionWindowPresenter : ISingletonService
     private readonly ICompanionToolRegistry _registry;
     private readonly ILayoutSettingsStore _layoutSettingsStore;
     private CompanionWindow? _window;
+    private CompanionOrientation _orientation = CompanionOrientation.Horizontal;
+    private bool _alwaysOnTop = true;
+
+    // These show as the view itself on the strip; the conversation and screenshot pop-outs come with their own tickets.
+    private static readonly HashSet<string> InlineToolIds = ["cockpit.assistant", "cockpit.screenshot"];
 
     public CompanionWindowPresenter(ICompanionToolRegistry registry, ILayoutSettingsStore layoutSettingsStore)
     {
         _registry = registry;
         _layoutSettingsStore = layoutSettingsStore;
         _registry.Changed += (_, _) => _Refresh();
+        _registry.PopOutRequested += (_, toolId) => Dispatcher.UIThread.Post(() => _window?.OpenPopOut(toolId));
     }
 
     public bool IsVisible => _window?.IsVisible == true;
@@ -35,6 +42,8 @@ internal sealed class CompanionWindowPresenter : ISingletonService
         if (isNew)
         {
             window.CloseRequested += (_, _) => Hide();
+            window.LayoutChanged += (_, _) => _OnLayoutChanged(window);
+            window.ApplyLayout(_orientation, _alwaysOnTop);
             _Refresh();
         }
 
@@ -49,6 +58,7 @@ internal sealed class CompanionWindowPresenter : ISingletonService
             _ = window.SavePositionAsync();
         }
 
+        _window?.ClosePopOuts();
         _window?.Hide();
         _ = _SaveVisibleAsync(false);
     }
@@ -70,6 +80,8 @@ internal sealed class CompanionWindowPresenter : ISingletonService
     public async Task RestoreAsync()
     {
         var settings = await _layoutSettingsStore.LoadAsync().ConfigureAwait(false);
+        _orientation = settings.CompanionOrientation;
+        _alwaysOnTop = settings.CompanionAlwaysOnTop;
         if (settings.CompanionWindowVisible)
         {
             await Dispatcher.UIThread.InvokeAsync(Show);
@@ -84,8 +96,33 @@ internal sealed class CompanionWindowPresenter : ISingletonService
         }
 
         // CreateContext never returns null here: every id in _registry.Tools is one _registry itself just
-        // reported, so the lookup inside it cannot miss.
-        window.SetTools([.. _registry.Tools.Select(tool => (tool.Title, tool.CreateView(_registry.CreateContext(tool.Id)!)))]);
+        // reported, so the lookup inside it cannot miss. The assistant stands first, the rest in registration order.
+        window.SetTools([.. _registry.Tools
+            .OrderBy(tool => tool.Id != "cockpit.assistant")
+            .Select(tool => new CompanionStripItem(
+                tool.Id, tool.Title, tool.Tooltip, tool.Icon, tool.IconKind, _registry.GetBadge(tool.Id),
+                () => tool.CreateView(_registry.CreateContext(tool.Id)!), InlineToolIds.Contains(tool.Id)))]);
+    }
+
+    private void _OnLayoutChanged(CompanionWindow window)
+    {
+        _orientation = window.Orientation;
+        _alwaysOnTop = window.AlwaysOnTop;
+        _ = _SaveLayoutAsync();
+    }
+
+    private async Task _SaveLayoutAsync()
+    {
+        try
+        {
+            var settings = await _layoutSettingsStore.LoadAsync().ConfigureAwait(false);
+            await _layoutSettingsStore.SaveAsync(settings with { CompanionOrientation = _orientation, CompanionAlwaysOnTop = _alwaysOnTop })
+                .ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // Best-effort, like the visibility save below: a lost preference must not stop the strip from changing.
+        }
     }
 
     private async Task _SaveVisibleAsync(bool visible)

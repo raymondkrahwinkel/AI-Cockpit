@@ -2,7 +2,6 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Threading;
-using Cockpit.App.Theming;
 using Cockpit.Plugins.Abstractions;
 using Material.Icons;
 
@@ -41,17 +40,10 @@ internal sealed class PluginLauncherButton : Button
         if (badge is not null)
         {
             _badge = badge;
-            // AC-1790: the mockups' `.nav .cnt` — 10.5 px, padding 0/6, radius 8, a tint with a matching ring.
-            _badgeText = new TextBlock { FontSize = 10.5 };
-            _badgePill = new Border
-            {
-                CornerRadius = new CornerRadius(8),
-                BorderThickness = new Thickness(1),
-                Padding = new Thickness(6, 0),
-                VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(6, 0, 0, 0),
-                Child = _badgeText,
-            };
+            // AC-1790: the mockups' `.nav .cnt`.
+            _badgePill = BadgePill.Create(out _badgeText);
+            _badgePill.VerticalAlignment = VerticalAlignment.Center;
+            _badgePill.Margin = new Thickness(6, 0, 0, 0);
             _RenderBadge();
             DockPanel.SetDock(_badgePill, Dock.Right);
             content.Children.Add(_badgePill);
@@ -114,21 +106,6 @@ internal sealed class PluginLauncherButton : Button
             return;
         }
 
-        var text = _badge.ToDisplayText();
-        _badgeText.Text = text;
-        // The default tone is the mockups' plain `.cnt` (the waiting amber), Success is `.cnt.ok`.
-        (_badgePill.Background, _badgePill.BorderBrush, _badgeText.Foreground) = _badge.Tone switch
-        {
-            SideMenuButtonBadgeTone.Success =>
-                (ThemeBrush.Resolve("CockpitStatusDoneChipTintBrush", "#145AA576"), ThemeBrush.Resolve("CockpitStatusDoneRingTintBrush", "#1F5AA576"),
-                    ThemeBrush.Resolve("CockpitStatusDoneBrush", "#5AA576")),
-            SideMenuButtonBadgeTone.Neutral =>
-                (ThemeBrush.Resolve("CockpitInsetBgBrush", "#16181d"), ThemeBrush.Resolve("CockpitHairlineBrush", "#2a2f39"),
-                    ThemeBrush.Resolve("CockpitTextSecondaryBrush", "#9aa3b2")),
-            _ =>
-                (ThemeBrush.Resolve("CockpitStatusWaitingChipTintBrush", "#14E0A33E"), ThemeBrush.Resolve("CockpitStatusWaitingRingTintBrush", "#1FE0A33E"),
-                    ThemeBrush.Resolve("CockpitStatusWaitingBrush", "#E0A33E")),
-        };
-        _badgePill.IsVisible = text.Length > 0;
+        BadgePill.Render(_badge, _badgePill, _badgeText);
     }
 }
