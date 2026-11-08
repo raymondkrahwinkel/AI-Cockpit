@@ -382,6 +382,11 @@ Create a session via **+ New session**: pick a profile, permission mode, model a
 macOS. Profiles, layout, voice, shortcuts, always-allow rules, the MCP registry and plugin state all live in that
 one file, alongside `plugins/`, `logs/` and the previous version of the config (`cockpit.json.bak`).
 
+Plugins can supply runtime plugin stores with request-time credentials. Manage stores shows these sources with
+Hide/Show instead of Remove. `HiddenPluginStoreSources` is a string array of hidden source keys (default empty),
+saved immediately by Manage stores; Options Apply/Cancel does not change it. This machine-local preference is
+excluded from settings carriers. Runtime store descriptors and their tokens are never stored in config or backups.
+
 Notification sounds are configured under `Notifications.NotificationSoundsEnabled`,
 `NotificationSoundOnSessionFinished`, `NotificationSoundOnNeedsAttention`, `SessionFinishedSound`,
 `NeedsAttentionSound`, `SessionFinishedCustomSoundPath`, `NeedsAttentionCustomSoundPath` and
@@ -655,5 +660,13 @@ unless `COCKPIT_STATE_ROOT` overrides it), copy `cockpit.json` to a private back
 and pair again. The older panel may still incorrectly label standalone as leader. Do not restore
 the old membership log after pairing. This manual recovery keeps old node connections and keys;
 the reset action in the fixed build also revokes swarm access.
+
+### Publisher trust for plugin-provided stores
+
+Plugin-provided stores require SSHSIG Ed25519 signatures (`cockpit-plugin-v1@krahwinkel-it.nl`, SHA-512), verified before extraction or consent. Signed downloads keep the HTTP client's timeout for their complete body and are limited to 512 MiB and the archive manifest must match the signed id and version. Ordinary unsigned stores keep their existing behavior.
+
+`cockpit.json` holds publisher decisions in `PluginTrust`, keyed by normalized plugin id: each entry has `Source` and `KeyFingerprint`. This is consent metadata with no editable Options value; it is saved immediately and is excluded from automatic settings-carrier sync. Removing a plugin keeps its rule. When settings are selected for restore, local rules win and the archive fills missing rules only for the selected plugins. Malformed archive rules are ignored. An unattended install proceeds only for a known source and key. A source or key change requires confirmation; changing to an unsigned source removes the rule only after a successful install.
+
+Revoked keys block installations and updates. Installed plugins keep running and receive a warning on each readable source-feed check. Revocations are not stored permanently: Cockpit follows the current feed (contract decision C remains open). A manually selected zip bypasses publisher verification and keeps the remembered publisher rule. A signature identifies its publisher, not whether code is safe; plugins run in-process, and on a first install the key comes from the same Depot.
 
 `AssistantProfile.AssistantRole` stores the assistant's optional role separately from its provider profile. It is included in the settings carrier; projects remain machine-local. The Assistant Profile dialog stages this value until Save and applies it on the next assistant start. It is not an Options field, so `OptionsStaging` does not track it.

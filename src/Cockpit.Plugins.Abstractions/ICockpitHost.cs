@@ -1110,4 +1110,8 @@ public interface ICockpitHost
     IDisposable AddFileSource(Files.IFileSourceProvider provider) =>
         throw new NotSupportedException("This host does not support file sources.");
 
+    /// <summary>Registers runtime plugin stores. Dispose the registration when unloading. Requires host 0.162.0.</summary>
+    IDisposable AddPluginStoreSource(Plugins.IPluginStoreSourceProvider provider) =>
+        throw new NotSupportedException("This host does not support plugin store sources.");
+
 }

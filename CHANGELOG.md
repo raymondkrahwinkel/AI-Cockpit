@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- AC-1981: the Installed tab shows each plugin's source and verified publisher, says when its version was cleaned up (with an update to the newest) or its source is no longer available, and shows a revoked publisher key; a restore reports a plugin whose source is not available instead of fetching it from another store.
+
+- AC-1980: an installed plugin stays with the store it came from: a higher version in another store is no update (also not in Update all), the details show "Also offered by" with a Switch button that asks for consent again, and installations without a recorded store keep their consent.
+
+- AC-1977: Manage plugin stores shows a row per organization with its Depot and plugin count, lets you hide or show it, and says "You are no longer a member" when the Depot no longer lists you; installed plugins keep running without updates.
+
+- AC-1979: ask before trusting a changed plugin publisher key; Update all keeps the current version and explains why.
+
+- AC-1976: the plugin store shows a "From <organization>" block per Depot organization on Discover, says on every row which store it comes from, and lists the source and publisher key of a plugin in its details.
+
 - AC-2213: clear Speaking when queued audio drains while the assistant continues working, preserving open-mic pausing.
 
 - AC-2169: keep session and assistant role pickers behind the frontend contract boundary.
@@ -125,6 +135,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 ## [Unreleased]
 
 ### Added
+
+- Plugin-provided stores now verify publisher signatures before installation, remember publisher consent across removal and restore, and warn when the current feed revokes an installed plugin's key.
+
+- The Depot plugin-store epic now includes the current host changes while retaining runtime stores and their credential protection.
+- Plugins can offer stores with refreshed credentials alongside configured stores. Manage stores can hide these sources; their addresses and credentials stay out of backups.
 
 - The assistant can attach files from its scratch folder and managed worktrees to replies, with image previews and file downloads in chat.
 - Discord replies now carry files and images on the last message part, and display Markdown tables as aligned code blocks.

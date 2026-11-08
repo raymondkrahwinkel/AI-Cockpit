@@ -118,6 +118,13 @@ public class PluginBackendHost(
         return registration;
     }
 
+    public IDisposable AddPluginStoreSource(Cockpit.Plugins.Abstractions.Plugins.IPluginStoreSourceProvider provider)
+    {
+        var registration = services.GetRequiredService<PluginStoreSources>().Add(provider);
+        Runtime.Add(registration);
+        return registration;
+    }
+
     public ICockpitSessionObserver Sessions => sessions;
 
     // AC-128: the transport-verified pane behind the current in-process MCP call, read from the ambient request

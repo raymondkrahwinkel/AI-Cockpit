@@ -6,6 +6,7 @@ namespace Cockpit.App.ViewModels;
 
 // This list only answers "has the operator changed anything", for the footer's indicator and the warning on Escape
 // (AC-999).
+// Publisher trust is written by consent; there is no editable Options value to stage.
 internal static class OptionsStaging
 {
     // A character no setting can contain, so two different sets of values cannot join into the same string.
@@ -112,6 +113,8 @@ internal static class OptionsStaging
     // off the list above: a new control lands in a category on purpose or the guard test fails.
     public static readonly string[] ImmediateOrTransient =
     [
+        // Store visibility is saved by Manage stores immediately, independently of the Options Apply/Cancel cycle.
+        "Plugins.HiddenStoreSourceKeys",
         "IsTestingMic",
         "OptionsSearchText",
         "BackupIncludesCredentials",

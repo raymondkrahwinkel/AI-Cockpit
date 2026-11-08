@@ -676,7 +676,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 
         var files = await owner.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = "Install plugin from zip",
+            Title = "Install plugin from zip (publisher verification is bypassed)",
             AllowMultiple = false,
             FileTypeFilter = [new FilePickerFileType("Plugin package (*.zip)") { Patterns = ["*.zip"] }],
         });
@@ -877,6 +877,16 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         {
             _logger.LogError(exception, "Opening the selected agent from the palette failed.");
         }
+    }
+
+    public async Task<bool> ShowPublisherKeyChangedDialogAsync(Cockpit.Core.Plugins.PluginKeyConsentRequest request)
+    {
+        if (OwnerWindow() is not { } owner)
+        {
+            return false;
+        }
+
+        return await new PublisherKeyChangedDialog { DataContext = request }.ShowDialog<bool>(owner);
     }
 
     public async Task<bool> ShowConfirmationDialogAsync(string title, string message, string confirmLabel = "Remove")

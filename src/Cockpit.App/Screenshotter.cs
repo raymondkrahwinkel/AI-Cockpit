@@ -615,7 +615,16 @@ internal static partial class Screenshotter
         // "Uncategorized" always last (and shown even though nothing is left in it here) and every card's origin
         // badge — "● This machine" and "◆ Depot — Work" — now that the old "On this machine" heading is gone.
         ["plugin-store"] = (_, _) => _PluginStore(),
+        ["plugin-store-organizations"] = (_, _) => new PluginStoreDialog { DataContext = _PluginStoreOrganizations() },
         ["plugin-store-installed"] = (_, _) => _PluginStoreInstalled(),
+        ["plugin-store-installed-sources"] = (_, _) => _PluginStoreInstalledSources(),
+        ["plugin-store-two-stores"] = (_, _) => new PluginStoreDialog { DataContext = _PluginStoreTwoStores() },
+        ["plugin-store-switch-consent"] = (_, _) => new ConfirmationDialog
+        {
+            DataContext = new ViewModels.ConfirmationDialogViewModel("Confirm plugin publisher",
+                ViewModels.PluginConsentTerms.PublisherMessage(new PluginKeyConsentRequest("docker", "1.9.0", PluginTrustDecision.SourceChanged,
+                    null, null, null, null, null, null, null, "depot:depot.acme.example/acme")), "Install"),
+        },
         // AC-2024: the list right after a live disable, with no restart banner.
         ["plugin-store-disabled-live"] = (_, _) => _PluginStoreDisabledLive(),
         ["plugin-store-updates-incompatible"] = (_, _) => _PluginStoreUpdatesWithIncompatible(),
@@ -815,12 +824,25 @@ internal static partial class Screenshotter
             DataContext = new ViewModels.PasswordDialogViewModel(
                 "Change your password", "Type the password you use now, then the one you want.", requiresCurrent: true),
         },
+        ["plugin-key-changed"] = (_, _) => new PublisherKeyChangedDialog
+        {
+            DataContext = new PluginKeyConsentRequest("acme-tools", "2.4.0", PluginTrustDecision.KeyChanged,
+                "acme", "depot.example", "SHA256:4dGsEgg14BFnREFGj96+RZpCH8D3lSMJmMkYQ6Pd1cY", null,
+                "github.com/acme/tools", "v2.4.0", "SHA256:7f3aEgg14BFnREFGj96+RZpCH8D3lSMJmMkYQ6Pc19e", "depot:depot.example/acme"),
+        },
+        ["plugin-publisher-consent"] = (_, _) => new ConfirmationDialog
+        {
+            DataContext = new ViewModels.ConfirmationDialogViewModel("Confirm plugin publisher",
+                ViewModels.PluginConsentTerms.PublisherMessage(new PluginKeyConsentRequest("acme-tools", "1.2.0", PluginTrustDecision.FirstInstall,
+                    "acme", "depot.example", "SHA256:4dGsEgg14BFnREFGj96+RZpCH8D3lSMJmMkYQ6Pd1cY", "Acme release key",
+                    "github.com/acme/tools", "v1.2.0", null, null)), "Install"),
+        },
         ["plugin-consent"] = (_, _) => new PluginConsentDialog
         {
             DataContext = new ViewModels.PluginConsentInfo(
                 "GitHub Issues", "1.8.0", "Cockpit", "/home/you/.config/Cockpit/plugins/github-issues",
                 "9f2c4b1ea7d05836c1b4e0f9a3d7c25e8b6041fd93a7e2c5b80d1a6a4e37c9b2",
-                [CapabilityCatalog.TimeEntries]),
+                [CapabilityCatalog.TimeEntries]) { Publisher = new PluginTrustEntry("depot:depot.example/acme", "SHA256:4dGsEgg14BFnREFGj96+RZpCH8D3lSMJmMkYQ6Pd1cY") },
         },
         ["restore-selection"] = (_, _) => _RestoreSelection(),
         ["schedule-resume"] = (_, _) => new ScheduleResumeDialog { DataContext = new ViewModels.ScheduleResumeDialogViewModel() },
@@ -3400,6 +3422,73 @@ internal static partial class Screenshotter
     // Seed the plugin store directly so its full layout can be rendered headlessly without network access (#62).
     private static PluginStoreDialog _PluginStore() => new() { DataContext = _PluginStoreViewModel() };
 
+    // AC-1976: two organization stores through Depot next to the public one, with the first organization's plugin open in the detail panel.
+    private static PluginStoreDialogViewModel _PluginStoreOrganizations()
+    {
+        static PluginStoreConfig Org(string key, string organization, string host) =>
+            PluginStoreConfig.Remote($"https://{host}/cockpit/stores/{key}/index.json") with
+            {
+                Signed = new PluginStoreSignedSource(key, organization, () => new HttpClientHandler()),
+            };
+
+        static StorePluginRowViewModel Row(
+            PluginStoreConfig store, string id, string name, string description, string author, string latest, string? installed, string? repository = null)
+        {
+            var source = repository is null ? null : new PluginStoreSource(repository, $"v{latest}");
+            var signed = store.Signed is not null;
+            var versions = new[]
+            {
+                new PluginStoreVersion(latest, $"plugins/{id}.zip", null, null, "3e7a90c2d14f", null,
+                    Signature: signed ? "sig" : null, KeyFingerprint: signed ? "SHA256:7f3a9c0e5b21d4c8a6e0f1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c19e" : null,
+                    KeyName: signed ? "Acme CI" : null, Source: source),
+                new PluginStoreVersion("2.3.1", $"plugins/{id}-2.3.1.zip", null, null, null, null),
+            };
+            var entry = new PluginStoreEntry(id, name, description, author, latest, versions, "Integrations");
+            return new StorePluginRowViewModel(entry, store, installed, isEnabled: installed is not null) { StoreName = signed ? null : "Cockpit plugins" };
+        }
+
+        var acme = Org("acme", "Acme Engineering", "depot.acme.example");
+        var northwind = Org("northwind", "Northwind Labs", "depot.northwind.example");
+        var publicStore = PluginStoreConfig.Remote("https://raw.githubusercontent.com/raymondkrahwinkel/AI-Cockpit-Plugins/main/index.json");
+
+        var manager = new PluginManagerViewModel();
+        manager.Stores.Add(acme);
+        manager.Stores.Add(northwind);
+        manager.Stores.Add(publicStore);
+        manager.AvailablePlugins.Add(Row(acme, "acme-erp", "Acme ERP Connector", "Read orders and stock from the Acme ERP inside a session.", "Acme IT", "2.4.0", "2.3.1", "acme/erp-plugin"));
+        manager.AvailablePlugins.Add(Row(acme, "warehouse", "Warehouse Module", "Stock, purchase orders and late deliveries as a module.", "Acme IT", "1.8.2", null, "acme/warehouse-plugin"));
+        manager.AvailablePlugins.Add(Row(northwind, "nw-reports", "Northwind Reports", "Monthly reports from the Northwind data warehouse.", "Northwind", "3.0.1", null, "northwind/reports"));
+        manager.AvailablePlugins.Add(Row(publicStore, "docker", "Docker", "Containers, images and compose as tools for your agents.", "Cockpit", "1.9.0", "1.9.0"));
+        manager.AvailablePlugins.Add(Row(publicStore, "youtrack", "YouTrack", "Issues and comments from YouTrack.", "Cockpit", "1.2.0", null));
+
+        return new PluginStoreDialogViewModel(manager)
+        {
+            SelectedPlugin = manager.AvailablePlugins.First(),
+        };
+    }
+
+    // AC-1980: Docker installed from Acme Engineering, the public store offering a higher version that is no update.
+    private static PluginStoreDialogViewModel _PluginStoreTwoStores()
+    {
+        var acme = PluginStoreConfig.Remote("https://depot.acme.example/cockpit/stores/acme/index.json") with
+        {
+            Signed = new PluginStoreSignedSource("depot:depot.acme.example/acme", "acme", () => new HttpClientHandler()),
+        };
+        var publicStore = PluginStoreConfig.Remote("https://raw.githubusercontent.com/raymondkrahwinkel/AI-Cockpit-Plugins/main/index.json");
+        var entry = new PluginStoreEntry("docker", "Docker", "Containers, images and compose as tools for your agents.", "Acme IT", "1.6.0",
+            [new PluginStoreVersion("1.6.0", "plugins/docker.zip", null, null, "3e7a90c2d14f", null, Signature: "sig",
+                KeyFingerprint: "SHA256:4dGsEgg14BFnREFGj96+RZpCH8D3lSMJmMkYQ6Pd1cY", KeyName: "Acme release key")], "Integrations");
+        var other = new PluginStoreEntry("docker", "Docker", null, "Cockpit", "1.9.0", [new PluginStoreVersion("1.9.0", "plugins/docker.zip", null, null, null, null)]);
+        var manager = new PluginManagerViewModel();
+        manager.Stores.Add(acme);
+        manager.Stores.Add(publicStore);
+        manager.AvailablePlugins.Add(new StorePluginRowViewModel(entry, acme, "1.6.0", isEnabled: true)
+        {
+            AlsoOfferedBy = [new StoreOffer(publicStore, "Cockpit plugins", other, null)],
+        });
+        return new PluginStoreDialogViewModel(manager) { SelectedPlugin = manager.AvailablePlugins.First() };
+    }
+
     // AC-1588: the Installed list with one plugin allowed and one muted, so a row shows both labels of the toggle.
     private static PluginStoreDialog _PluginStoreInstalled()
     {
@@ -3416,6 +3505,46 @@ internal static partial class Screenshotter
         viewModel.Manager.HasPlugins = true;
         viewModel.SelectedSidebarItem = viewModel.SecondarySidebarItems.First(item => item.Filter == PluginStoreFilter.Installed);
         return new PluginStoreDialog { DataContext = viewModel };
+    }
+
+    // AC-1981: four Installed rows — a plain source with its publisher, a cleaned-up version, a source that is gone, and a revoked key.
+    private static PluginStoreDialog _PluginStoreInstalledSources()
+    {
+        const string Fingerprint = "SHA256:7Fq2kLm9Xa3PzR1c";
+        var acme = PluginStoreConfig.Remote("https://depot.acme.example/orgs/acme/plugin-store/index.json") with
+        {
+            Signed = new PluginStoreSignedSource("depot:acme", "Acme Engineering", () => new HttpClientHandler()),
+        };
+        var sources = new List<PluginStoreSourceInfo> { new(acme, "Acme Engineering") };
+        var key = new PluginStoreRevokedKey(Fingerprint, "Acme release key", null);
+
+        static PluginStoreVersion Version(string version) => new(version, $"{version}.zip", 3, null, null, null, KeyFingerprint: Fingerprint, KeyName: "Acme release key");
+        static PluginStoreEntry Entry(string id, string latest, params string[] versions) => new(id, id, null, null, latest, [.. versions.Select(Version)]);
+        static PluginRowViewModel Row(string id, string name, string version, string? source) => new(new InstalledPlugin(
+            new DiscoveredPlugin(Path.Combine("plugins", id), id, new PluginManifest(id, name, version, null, 3, null, null, $"The {name} plugin.", "Acme Engineering"), $"{id}-hash", PluginLoadDecision.Load),
+            new PluginRegistration(true, $"{id}-hash", Source: source),
+            null,
+            null,
+            null));
+
+        var viewModel = _PluginStoreViewModel();
+        var trust = new PluginTrustEntry("depot:acme", Fingerprint);
+        var rows = new (PluginRowViewModel Row, InstalledPluginOffer? Offer, string Source)[]
+        {
+            (Row("build-board", "Build Board", "2.4.0", "depot:acme"), new(acme, Entry("build-board", "2.4.0", "2.4.0", "2.3.0"), null), "depot:acme"),
+            (Row("release-notes", "Release Notes", "1.1.0", "depot:acme"), new(acme, Entry("release-notes", "1.3.0", "1.3.0", "1.2.0"), null), "depot:acme"),
+            (Row("time-sheets", "Time Sheets", "0.9.0", "depot:former-employer"), null, "depot:former-employer"),
+            (Row("deploy-log", "Deploy Log", "1.0.2", "depot:acme"), new(acme, Entry("deploy-log", "1.0.2", "1.0.2"), [key]), "depot:acme"),
+        };
+        foreach (var (row, offer, source) in rows)
+        {
+            row.Source = InstalledPluginSource.Build(source, row.Discovered.Manifest.Version, sources, offer is null ? [] : [offer], trust);
+            viewModel.Manager.Plugins.Add(row);
+        }
+
+        viewModel.Manager.HasPlugins = true;
+        viewModel.SelectedSidebarItem = viewModel.SecondarySidebarItems.First(item => item.Filter == PluginStoreFilter.Installed);
+        return new PluginStoreDialog { DataContext = viewModel, Height = 900 };
     }
 
     private static PluginStoreDialog _PluginStoreDisabledLive()
@@ -3622,7 +3751,21 @@ internal static partial class Screenshotter
             PluginCount = 2, IsReachable = true, IsBrowsed = true,
         });
 
-        return new ManageStoresDialog { DataContext = manager };
+        _AddOrganizationStore(manager, "acme", "Acme Engineering", "https://depot.acme.example", 7, hidden: false);
+        _AddOrganizationStore(manager, "northwind", "Northwind Labs", "https://depot.krahwinkel-it.nl", 3, hidden: false);
+        _AddOrganizationStore(manager, "initech", "Initech", "https://depot.krahwinkel-it.nl", 2, hidden: true);
+        _AddOrganizationStore(manager, "globex", "Globex", "https://depot.acme.example", 0, hidden: false, withdrawn: true);
+
+        return new ManageStoresDialog { DataContext = manager, Height = 860 };
+    }
+
+    private static void _AddOrganizationStore(PluginManagerViewModel manager, string organization, string name, string depot, int count, bool hidden, bool withdrawn = false)
+    {
+        var store = PluginStoreConfig.Remote($"{depot}/cockpit/stores/{organization}/index.json") with
+        {
+            Signed = new PluginStoreSignedSource($"depot:{new Uri(depot).Authority}/{organization}", organization, () => new HttpClientHandler()),
+        };
+        manager.StoreInfos.Add(new PluginStoreInfo(store, name, hidden, withdrawn) { PluginCount = count, IsReachable = true, IsBrowsed = !withdrawn });
     }
 
     // The clone dialog after a clone was refused (AC-90): the URL and destination the operator typed are still
