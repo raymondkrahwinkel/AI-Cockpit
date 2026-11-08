@@ -14,6 +14,7 @@ internal sealed class CompanionWindowPresenter : ISingletonService
 {
     private readonly ICompanionToolRegistry _registry;
     private readonly ILayoutSettingsStore _layoutSettingsStore;
+    private readonly CompanionAttentionFeed _attention;
     private CompanionWindow? _window;
     private CompanionOrientation _orientation = CompanionOrientation.Horizontal;
     private bool _alwaysOnTop = true;
@@ -21,8 +22,9 @@ internal sealed class CompanionWindowPresenter : ISingletonService
     // These show as the view itself on the strip; the conversation and screenshot pop-outs come with their own tickets.
     private static readonly HashSet<string> InlineToolIds = ["cockpit.assistant", "cockpit.screenshot"];
 
-    public CompanionWindowPresenter(ICompanionToolRegistry registry, ILayoutSettingsStore layoutSettingsStore)
+    public CompanionWindowPresenter(ICompanionToolRegistry registry, ILayoutSettingsStore layoutSettingsStore, CompanionAttentionFeed attention)
     {
+        _attention = attention;
         _registry = registry;
         _layoutSettingsStore = layoutSettingsStore;
         _registry.Changed += (_, _) => _Refresh();
@@ -111,7 +113,7 @@ internal sealed class CompanionWindowPresenter : ISingletonService
             .OrderBy(tool => tool.Id != "cockpit.assistant")
             .Select(tool => new CompanionStripItem(
                 tool.Id, tool.Title, tool.Tooltip, tool.Icon, tool.IconKind, _registry.GetBadge(tool.Id),
-                () => tool.CreateView(_registry.CreateContext(tool.Id)!), InlineToolIds.Contains(tool.Id)))]);
+                () => tool.CreateView(_registry.CreateContext(tool.Id)!), InlineToolIds.Contains(tool.Id), tool.Id == CompanionAttentionFeed.StatusToolId ? () => new CompanionStatusCounters(_attention) : null))]);
     }
 
     private void _OnLayoutChanged(CompanionWindow window)

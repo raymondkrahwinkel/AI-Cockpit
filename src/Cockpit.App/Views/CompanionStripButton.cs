@@ -38,7 +38,7 @@ internal sealed class CompanionStripButton : Button
             _Render();
         }
 
-        Content = content;
+        Content = item.CreateStripContent?.Invoke() ?? content;
     }
 
     protected override Type StyleKeyOverride => typeof(Button);
