@@ -46,18 +46,19 @@ public sealed partial class AssistantOptionsViewModel(
     public ObservableCollection<string> SpeechProfileLabels { get; } = [];
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CanChooseSpeechMethod))]
     private SpeechModeOption _selectedSpeechMode = new(SpokenReplyMode.Short, "Short");
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(UsesSpeechProfile))]
     [NotifyPropertyChangedFor(nameof(UsesSpeechAi))]
+    [NotifyPropertyChangedFor(nameof(CanChooseSpeechMode))]
     private SpeechMethodOption _selectedSpeechMethod = new(SpokenReplyMethod.Assistant, "Assistant");
 
     [ObservableProperty]
     private string? _selectedSpeechProfileLabel;
 
-    public bool CanChooseSpeechMethod => SelectedSpeechMode.Value != SpokenReplyMode.Full;
+    // Without AI has nothing to shorten with, so it reads the answer in full; the method stays choosable, which is the way back.
+    public bool CanChooseSpeechMode => SelectedSpeechMethod.Value != SpokenReplyMethod.Rules;
     public bool UsesSpeechProfile => SelectedSpeechMethod.Value == SpokenReplyMethod.Profile;
     public bool UsesSpeechAi => SelectedSpeechMethod.Value != SpokenReplyMethod.Rules;
 
@@ -120,6 +121,7 @@ public sealed partial class AssistantOptionsViewModel(
                 SpeakReplies = _lastLoadedSettings.SpeakReplies;
                 SelectedSpeechMode = SpeechModes.First(option => option.Value == _lastLoadedSettings.SpeechMode);
                 SelectedSpeechMethod = SpeechMethods.First(option => option.Value == _lastLoadedSettings.SpeechMethod);
+                SelectedSpeechMode = SpeechModes.First(option => option.Value == SpokenReply.EffectiveMode(_lastLoadedSettings.SpeechMode, _lastLoadedSettings.SpeechMethod));
                 PushToTalkKeyName = _lastLoadedSettings.PushToTalkKeyName;
                 AlwaysOnTop = _lastLoadedSettings.AlwaysOnTop;
                 ContextCompactionPercent = _lastLoadedSettings.ContextCompactionPercent;
@@ -225,7 +227,14 @@ public sealed partial class AssistantOptionsViewModel(
 
     partial void OnSpeakRepliesChanged(bool value) => _SaveSettings();
     partial void OnSelectedSpeechModeChanged(SpeechModeOption value) => _SaveSettings();
-    partial void OnSelectedSpeechMethodChanged(SpeechMethodOption value) => _SaveSettings();
+    partial void OnSelectedSpeechMethodChanged(SpeechMethodOption value)
+    {
+        if (value.Value == SpokenReplyMethod.Rules)
+        {
+            SelectedSpeechMode = SpeechModes.First(option => option.Value == SpokenReplyMode.Full);
+        }
+        _SaveSettings();
+    }
     partial void OnSelectedSpeechProfileLabelChanged(string? value) => _SaveSettings();
 
     partial void OnPushToTalkKeyNameChanged(string value) => _SaveSettings();
