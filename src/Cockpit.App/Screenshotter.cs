@@ -414,6 +414,7 @@ internal static partial class Screenshotter
         // Voice tab — own scenes rather than reusing "options", since neither category renders on the category that
         // scene opens on (Notifications) and a layout change to a page nothing captures is a layout change nobody
         ["voice-transcribe"] = (_, _) => _OptionsOnTab("Voice"),
+        ["voice-wake-word"] = (_, _) => _OptionsWakeWord(),
         // AC-1881: an Optimus laptop — the backend combo offers each GPU and Auto names the dedicated one.
         ["voice-transcribe-gpus"] = (_, _) => _OptionsVoiceWithTwoGpus(),
         ["voice-assistant"] = (_, _) => _OptionsAssistantPage(),
@@ -1616,6 +1617,7 @@ internal static partial class Screenshotter
         ["options-backup-depot"] = _ChooseSceneDepot,
         ["options-backup-status"] = window => _ScrollIntoView(window, "backup", "2. SCHEDULED BACKUP"),
         ["assistant-speech"] = window => _ScrollIntoView(window, "assistant", "3. REPLIES"),
+        ["voice-wake-word"] = window => _ScrollIntoView(window, "voice", "4. ALWAYS LISTENING"),
         ["assistant-speech-profile"] = window => _ScrollIntoView(window, "assistant", "3. REPLIES"),
         ["assistant-speech-full"] = window => _ScrollIntoView(window, "assistant", "3. REPLIES"),
         ["assistant-speech-unavailable"] = window => _ScrollIntoView(window, "assistant", "3. REPLIES"),
@@ -2576,6 +2578,17 @@ internal static partial class Screenshotter
             cockpit.Security.IsHelloBusy = busy;
             cockpit.Security.HelloStatus = "On — bound to this computer’s security chip (TPM). Your password keeps working.";
         };
+        return dialog;
+    }
+
+    private static OptionsDialog _OptionsWakeWord()
+    {
+        var dialog = _OptionsOnTab("Voice");
+        var cockpit = dialog.DataContext as ViewModels.CockpitViewModel
+            ?? throw new InvalidOperationException("The Options dialog has no cockpit.");
+        cockpit.VoiceEnabled = true;
+        cockpit.AssistantOptions.IsEnabled = true;
+        cockpit.AssistantOptions.WakeWordEnabled = true;
         return dialog;
     }
 

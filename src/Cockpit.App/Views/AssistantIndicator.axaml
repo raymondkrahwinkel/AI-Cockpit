@@ -189,14 +189,7 @@
                 </Grid>
             </Button>
 
-            <!-- Listening mode (criteria 17/18/comment 5) is the switch inside the chip above, not a row of its
-                 own down here. The Off / Always on buttons this used to be said the same thing in two controls and
-                 a whole extra line of a 164px sidebar; Raymond's call, 2026-08-08. AlwaysOn's confirmation stays
-                 inline below rather than in a dialog — the switch already put the operator's attention on this
-                 exact chip, and a modal for a one-line, one-time warning would be a bigger interruption than the
-                 thing it warns about. SelectListeningModeOff/AlwaysOn are still the commands underneath (the
-                 switch delegates to them), and AssistantListeningMode.AlwaysOnWithWakeWord is still refused by
-                 AssistantIndicatorCoordinator rather than offered anywhere. -->
+            <!-- Keep the cost explanation beside the switch that opened it. -->
 
             <!-- The one-time AlwaysOn cost explanation (criterion 18) — shown once, on the pick, never again
                  once AlwaysOnCostAcknowledged is true (see AssistantIndicatorViewModel.SelectListeningModeAlwaysOn). -->
