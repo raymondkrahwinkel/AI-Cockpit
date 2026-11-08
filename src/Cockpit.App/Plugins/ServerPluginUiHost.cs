@@ -128,6 +128,9 @@ internal sealed class ServerPluginUiHost(
     public Task OpenFileWorkspaceAsync(string workspaceTypeId, Cockpit.Plugins.Abstractions.UI.Files.FileWorkspaceOpenOptions options) =>
         local is CockpitUiHost native ? native.OpenRemoteFileWorkspaceAsync(workspaceTypeId, sourceKey, options) : Task.CompletedTask;
 
+    public Cockpit.Plugins.Abstractions.UI.Files.ILiveMarkdownEditor? CreateLiveMarkdownEditor(Cockpit.Plugins.Abstractions.UI.Files.LiveMarkdownEditorOptions options) =>
+        local is CockpitUiHost native ? native.CreateRemoteLiveMarkdownEditor(options, sourceKey) : null;
+
     public Task OpenDockPanelAsync(string panelId) => Task.CompletedTask;
 
     public void SetStatusText(string? text)

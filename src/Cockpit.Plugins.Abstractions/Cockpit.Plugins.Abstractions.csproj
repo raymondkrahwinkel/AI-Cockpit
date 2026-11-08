@@ -667,7 +667,8 @@
     <!-- AC-2100: optional IFileImageSource and bounded file-image channel; requires host 0.161.0. -->
     <!-- 3.73.0: ProjectMemorySourceRegistration.BrainMcpServerName; a plugin that sets it requires host 0.161.0, contract stays 3. -->
     <!-- 3.76.0: ICompanionToolContext.Badge and RequestPopOut; a plugin that uses them requires host 0.165.0, contract stays 3. -->
-    <Version>3.76.0</Version>
+    <!-- 3.78.0: a live Markdown editor over a live file source for plugin UI (Abstractions.UI 3.26.0); a plugin that uses it requires host 0.167.0, contract stays 3. -->
+    <Version>3.78.0</Version>
     <AssemblyVersion>1.17.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

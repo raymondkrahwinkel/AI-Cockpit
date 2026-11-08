@@ -81,6 +81,17 @@ internal sealed partial class CockpitUiHost
         }
     }
 
+    public ILiveMarkdownEditor? CreateLiveMarkdownEditor(LiveMarkdownEditorOptions options) => _CreateLiveEditor(options.WorkspaceTypeId, options.File);
+
+    internal ILiveMarkdownEditor? CreateRemoteLiveMarkdownEditor(LiveMarkdownEditorOptions options, string server) =>
+        _CreateLiveEditor(_RemoteFileType(options.WorkspaceTypeId, server), options.File);
+
+    private LiveMarkdownEditorView? _CreateLiveEditor(string typeId, Cockpit.Plugins.Abstractions.Files.FileRef file) =>
+        _fileWorkspaceChannels.ContainsKey(typeId)
+            ? new LiveMarkdownEditorView(new FileSourceChannelClient(new FileWorkspaceChannel(() => _fileWorkspaceChannels[typeId])), file,
+                _Service<ILogger<LiveMarkdownEditorView>>() ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<LiveMarkdownEditorView>.Instance)
+            : null;
+
     public Task OpenFileWorkspaceAsync(string workspaceTypeId, FileWorkspaceOpenOptions options) =>
         _OpenFileWorkspaceAsync(workspaceTypeId, options);
 

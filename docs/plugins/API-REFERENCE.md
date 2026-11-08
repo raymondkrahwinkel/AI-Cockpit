@@ -806,6 +806,11 @@ public interface ICompanionToolContext
   the tool hidden from the strip, it does nothing and the host tells the user once. SDK 3.76.0, requires host
   0.165.0.
 
+`CompanionToolRegistration.Attached` (`Action<ICompanionToolContext>?`) is called once after the host accepts the registration, so `Badge` and `RequestPopOut()` work before the tool's view has ever been created. UI SDK 3.26.0, requires host 0.167.0.
+
+### `ILiveMarkdownEditor? CreateLiveMarkdownEditor(LiveMarkdownEditorOptions options)` {#ilivemarkdowneditor-createlivemarkdowneditorlivemarkdowneditoroptions-options}
+The cockpit's own live Markdown editor over one file of a live file source (`ILiveFileSource`), without a workspace tab: the people in the file, who is typing, their carets with names, and your own typing. `options` names the type you registered with `AddFileWorkspaceType` and the `FileRef`. Place `View`, read `Peers`, and `Dispose` it to leave the file. Returns null on a host without it, or when the type is not registered; fall back to a read-only view then. UI SDK 3.26.0, SDK 3.78.0, requires host 0.167.0.
+
 ### `void AddWorkspaceType(WorkspaceTypeRegistration registration)` {#void-addworkspacetypeworkspacetyperegistration-registration}
 Registers a **full-surface workspace type** — the workspace equivalent of `AddWidget`, one level up. Where a
 widget fills one cell of a Dashboard's grid, a workspace type owns its **whole body**: the host draws the tab
