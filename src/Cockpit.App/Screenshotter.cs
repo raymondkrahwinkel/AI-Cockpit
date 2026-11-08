@@ -611,6 +611,7 @@ internal static partial class Screenshotter
         ["plugin-store"] = (_, _) => _PluginStore(),
         ["plugin-store-organizations"] = (_, _) => new PluginStoreDialog { DataContext = _PluginStoreOrganizations() },
         ["plugin-store-installed"] = (_, _) => _PluginStoreInstalled(),
+        ["plugin-store-installed-sources"] = (_, _) => _PluginStoreInstalledSources(),
         ["plugin-store-two-stores"] = (_, _) => new PluginStoreDialog { DataContext = _PluginStoreTwoStores() },
         ["plugin-store-switch-consent"] = (_, _) => new ConfirmationDialog
         {
@@ -3445,6 +3446,46 @@ internal static partial class Screenshotter
         viewModel.Manager.HasPlugins = true;
         viewModel.SelectedSidebarItem = viewModel.SecondarySidebarItems.First(item => item.Filter == PluginStoreFilter.Installed);
         return new PluginStoreDialog { DataContext = viewModel };
+    }
+
+    // AC-1981: four Installed rows — a plain source with its publisher, a cleaned-up version, a source that is gone, and a revoked key.
+    private static PluginStoreDialog _PluginStoreInstalledSources()
+    {
+        const string Fingerprint = "SHA256:7Fq2kLm9Xa3PzR1c";
+        var acme = PluginStoreConfig.Remote("https://depot.acme.example/orgs/acme/plugin-store/index.json") with
+        {
+            Signed = new PluginStoreSignedSource("depot:acme", "Acme Engineering", () => new HttpClientHandler()),
+        };
+        var sources = new List<PluginStoreSourceInfo> { new(acme, "Acme Engineering") };
+        var key = new PluginStoreRevokedKey(Fingerprint, "Acme release key", null);
+
+        static PluginStoreVersion Version(string version) => new(version, $"{version}.zip", 3, null, null, null, KeyFingerprint: Fingerprint, KeyName: "Acme release key");
+        static PluginStoreEntry Entry(string id, string latest, params string[] versions) => new(id, id, null, null, latest, [.. versions.Select(Version)]);
+        static PluginRowViewModel Row(string id, string name, string version, string? source) => new(new InstalledPlugin(
+            new DiscoveredPlugin(Path.Combine("plugins", id), id, new PluginManifest(id, name, version, null, 3, null, null, $"The {name} plugin.", "Acme Engineering"), $"{id}-hash", PluginLoadDecision.Load),
+            new PluginRegistration(true, $"{id}-hash", Source: source),
+            null,
+            null,
+            null));
+
+        var viewModel = _PluginStoreViewModel();
+        var trust = new PluginTrustEntry("depot:acme", Fingerprint);
+        var rows = new (PluginRowViewModel Row, InstalledPluginOffer? Offer, string Source)[]
+        {
+            (Row("build-board", "Build Board", "2.4.0", "depot:acme"), new(acme, Entry("build-board", "2.4.0", "2.4.0", "2.3.0"), null), "depot:acme"),
+            (Row("release-notes", "Release Notes", "1.1.0", "depot:acme"), new(acme, Entry("release-notes", "1.3.0", "1.3.0", "1.2.0"), null), "depot:acme"),
+            (Row("time-sheets", "Time Sheets", "0.9.0", "depot:former-employer"), null, "depot:former-employer"),
+            (Row("deploy-log", "Deploy Log", "1.0.2", "depot:acme"), new(acme, Entry("deploy-log", "1.0.2", "1.0.2"), [key]), "depot:acme"),
+        };
+        foreach (var (row, offer, source) in rows)
+        {
+            row.Source = InstalledPluginSource.Build(source, row.Discovered.Manifest.Version, sources, offer is null ? [] : [offer], trust);
+            viewModel.Manager.Plugins.Add(row);
+        }
+
+        viewModel.Manager.HasPlugins = true;
+        viewModel.SelectedSidebarItem = viewModel.SecondarySidebarItems.First(item => item.Filter == PluginStoreFilter.Installed);
+        return new PluginStoreDialog { DataContext = viewModel, Height = 900 };
     }
 
     private static PluginStoreDialog _PluginStoreDisabledLive()

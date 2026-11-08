@@ -239,18 +239,23 @@ public sealed class RestoreIntoATemporaryRootTests : IDisposable
     public async Task PluginSettings_AreWrittenAfterTheInstall_AndOutliveAPluginThatNeverArrived()
     {
         _Current("""{"Plugins":{}}""");
-        _archivedVersions["landed"] = _archivedVersions["gone"] = _archivedVersions["unsupported"] = "1.0.0";
+        _archivedVersions["landed"] = _archivedVersions["gone"] = _archivedVersions["unsupported"] = _archivedVersions["orphan"] = "1.0.0";
         _Publish("landed", _Version("landed", "1.0.0"));
+        _Publish("orphan", _Version("orphan", "1.0.0"));
         _Publish("unsupported", _Version("unsupported", "1.0.0", abstractions: AbstractionsContract.Version + 97));
 
         var archive = _ArchiveWith(("cockpit.json", """
             {"Plugins":{
               "landed":{"Enabled":true,"PinnedSha256":"archived-pin","MenuOrder":4,"Data":{"board":"archived"}},
               "gone":{"Enabled":true,"PinnedSha256":"archived-pin","HiddenInMenu":true,"Data":{"board":"archived"}},
-              "unsupported":{"Enabled":true,"PinnedSha256":"archived-pin","Data":{"board":"archived"}}}}
+              "unsupported":{"Enabled":true,"PinnedSha256":"archived-pin","Data":{"board":"archived"}},
+              "orphan":{"Enabled":true,"PinnedSha256":"archived-pin","Source":"remote:https://gone.test","Data":{"board":"archived"}}}}
             """));
 
-        await _Restore(archive, new RestoreOptions(false, ["landed", "gone", "unsupported"]));
+        // AC-1981: "orphan" is also published by the configured store but belongs to a source that is not here; it is reported, not swapped.
+        var report = await _Restore(archive, new RestoreOptions(true, ["landed", "gone", "unsupported", "orphan"]));
+        Assert.DoesNotContain("orphan-1.0.0", _installed);
+        Assert.Contains("is not available here", report.Notes.Single(note => note.Id == "orphan").Note, StringComparison.Ordinal);
 
         // The install ran while cockpit.json still said what it said before the restore: the settings that belong to
         // a plugin are written once it is back, never ahead of it.
@@ -261,7 +266,7 @@ public sealed class RestoreIntoATemporaryRootTests : IDisposable
         Assert.Equal(4, restored["landed"]!["MenuOrder"]!.GetValue<int>());
         Assert.Equal("archived", restored["landed"]!["Data"]!["board"]!.GetValue<string>());
 
-        foreach (var withoutBinaries in new[] { "gone", "unsupported" })
+        foreach (var withoutBinaries in new[] { "gone", "unsupported", "orphan" })
         {
             Assert.Equal("archived-pin", restored[withoutBinaries]!["PinnedSha256"]!.GetValue<string>());
             Assert.Equal("archived", restored[withoutBinaries]!["Data"]!["board"]!.GetValue<string>());

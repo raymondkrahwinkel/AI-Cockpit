@@ -803,7 +803,16 @@ internal sealed class BackupService(
         // The rule when two stores publish the same id, a decision and not a detail: the first configured store
         // carrying it wins. `PinnedSha256` cannot settle it — that hashes the installed folder, a store's `Sha256`
         // hashes the zip, so the two never compare equal. Order the operator can see beats a comparison that cannot. AC-1980: unless the archive records the bound store.
-        var (store, entry, revokedKeys) = found[Math.Max(0, found.FindIndex(candidate => archivedSource is not null && candidate.Store.SourceKey == archivedSource))];
+        var boundIndex = archivedSource is null ? 0 : found.FindIndex(candidate => candidate.Store.SourceKey == archivedSource);
+        if (boundIndex < 0)
+        {
+            // AC-1981: a plugin stays with its source (AC-1973), so an unavailable one is reported, never swapped for another store's copy.
+            var unavailable = $"its source ({PluginSourceNotices.Describe(archivedSource!)}) is not available here, so its settings are back and its binaries are not.";
+
+            return (null, unavailable, unavailable);
+        }
+
+        var (store, entry, revokedKeys) = found[boundIndex];
         var wanted = archivedVersion is { Length: > 0 } and not UnknownVersion ? archivedVersion : null;
 
         if (entry!.Versions.FirstOrDefault(version => string.Equals(version.Version, wanted, StringComparison.OrdinalIgnoreCase)) is { } exact)

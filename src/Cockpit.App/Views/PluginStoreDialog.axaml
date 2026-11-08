@@ -185,6 +185,23 @@
                                                        Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                             <TextBlock Text="{Binding StatusText}" FontSize="11"
                                                        Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                            <!-- AC-1981: where the plugin came from, who signed it, and what its source is up to. -->
+                                            <TextBlock IsVisible="{Binding HasSource}" FontSize="11" TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}">
+                                                <Run Text="Source: "/><Run Text="{Binding Source.SourceLine}"/>
+                                            </TextBlock>
+                                            <TextBlock Text="{Binding Source.PublisherLine}" IsVisible="{Binding Source.HasPublisher}"
+                                                       FontSize="11" TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                            <TextBlock Text="{Binding Source.SourceNotice}" IsVisible="{Binding Source.HasSourceNotice}"
+                                                       FontSize="11" TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
+                                            <TextBlock Text="{Binding Source.RevokedNotice}" IsVisible="{Binding Source.HasRevokedNotice}"
+                                                       FontSize="11" TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
+                                            <TextBlock Text="{Binding Source.VersionNotice}" IsVisible="{Binding Source.HasVersionNotice}"
+                                                       FontSize="11" TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
                                             <TextBlock Text="{Binding FailureText}" IsVisible="{Binding HasFailure}"
                                                        FontSize="11" TextWrapping="Wrap"
                                                        Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
@@ -205,6 +222,9 @@
                                                 </Button>
                                                 <Button Content="{Binding EnableLabel}" Classes="Compact" IsVisible="{Binding CanEnable}"
                                                         Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).Manager.EnablePluginCommand}"
+                                                        CommandParameter="{Binding}"/>
+                                                <Button Content="{Binding Source.UpdateLabel}" Classes="Compact" IsVisible="{Binding Source.HasUpdate}"
+                                                        Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).Manager.UpdateInstalledPluginCommand}"
                                                         CommandParameter="{Binding}"/>
                                                 <Button Content="Disable" Classes="Compact" IsVisible="{Binding CanDisable}"
                                                         Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).Manager.DisablePluginCommand}"

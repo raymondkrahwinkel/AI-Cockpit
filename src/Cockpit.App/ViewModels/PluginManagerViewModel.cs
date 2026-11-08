@@ -379,8 +379,35 @@ public partial class PluginManagerViewModel : ViewModelBase
         }
 
         await _LoadStoresAsync();
+        await _AnnotateInstalledSourcesAsync(null);
         await _RefreshRetiredAsync();
     }
+
+    // AC-1981: each installed row learns its source from the recorded one and the known stores; a browse adds what the stores offer.
+    private async Task _AnnotateInstalledSourcesAsync(Dictionary<string, List<StoreOffer>>? offered)
+    {
+        if (_administration is null)
+        {
+            return;
+        }
+
+        var saved = _registrationStore is null ? null : await _registrationStore.LoadAllAsync();
+        var sources = StoreInfos.Select(info => new PluginStoreSourceInfo(info.Store, info.Name, info.IsHidden, info.IsWithdrawn)).ToList();
+        foreach (var row in Plugins)
+        {
+            var offers = offered?.Where(pair => PluginFolderName.Normalize(pair.Key) == row.FolderId)
+                .SelectMany(pair => pair.Value).Select(offer => new InstalledPluginOffer(offer.Store, offer.Entry, offer.RevokedKeys)).ToList();
+            row.Source = InstalledPluginSource.Build(
+                saved?.GetValueOrDefault(row.FolderId)?.Source,
+                row.Discovered.Manifest.Version,
+                sources,
+                offers,
+                await _administration.GetPublisherTrustAsync(row.FolderId));
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanChangePlugins))]
+    private Task UpdateInstalledPluginAsync(PluginRowViewModel row) => UpdateStorePluginAsync(row.FolderId);
 
     private async Task _LoadStoresAsync()
     {
@@ -902,6 +929,7 @@ public partial class PluginManagerViewModel : ViewModelBase
             }
 
             await _BindInstalledToTheirSourceAsync(offered, BuildRow);
+            await _AnnotateInstalledSourcesAsync(offered);
             await Task.WhenAll(logoLoads);
 
             OnPropertyChanged(nameof(HasAvailableTemplates));
