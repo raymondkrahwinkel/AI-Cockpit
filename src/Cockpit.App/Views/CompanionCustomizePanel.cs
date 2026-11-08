@@ -3,6 +3,7 @@ using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
+using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -119,8 +120,14 @@ internal sealed class CompanionCustomizePanel : StackPanel
         });
         if (focused is not null)
         {
-            Dispatcher.UIThread.Post(() => this.GetVisualDescendants().OfType<Control>()
-                .FirstOrDefault(control => control.Tag as string == focused && control.IsEnabled)?.Focus(), DispatcherPriority.Loaded);
+            Dispatcher.UIThread.Post(() =>
+            {
+                var controls = this.GetVisualDescendants().OfType<Control>().ToList();
+                var target = controls.FirstOrDefault(control => control.Tag as string == focused && control.IsEnabled);
+                var separator = focused.LastIndexOf(':');
+                target ??= separator > 0 ? controls.FirstOrDefault(control => control.Tag as string == focused[..separator]) : null;
+                target?.Focus();
+            }, DispatcherPriority.Loaded);
         }
     }
 
@@ -136,6 +143,14 @@ internal sealed class CompanionCustomizePanel : StackPanel
         {
             var row = _Row(id, title == "Unavailable" ? "Plugin unavailable. Place kept." : "Ready to add", out var actions);
             addActions(id, actions);
+            row.KeyDown += (_, e) =>
+            {
+                if (e.Key == Key.Enter && ReferenceEquals(e.Source, row) && actions.Children.OfType<Button>().FirstOrDefault(button => button.IsEnabled) is { } action)
+                {
+                    action.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    e.Handled = true;
+                }
+            };
             _rows.Children.Add(row);
         }
     }

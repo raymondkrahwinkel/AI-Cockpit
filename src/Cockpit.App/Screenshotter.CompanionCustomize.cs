@@ -3,7 +3,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.LogicalTree;
-using Avalonia.Interactivity;
+using Avalonia.Input;
 using Cockpit.App.Plugins;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.App.ViewModels;
@@ -65,11 +65,11 @@ internal static partial class Screenshotter
         var panel = new CompanionCustomizePanel(model, _ => Task.CompletedTask, () => { });
         if (reordered)
         {
-            var up = panel.GetLogicalDescendants().OfType<Button>().Single(button => button.Tag as string == "cockpit.status:Move up");
-            up.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            var row = panel.GetLogicalDescendants().OfType<Control>().Single(control => control.Tag as string == "cockpit.status");
+            row.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Up });
             if (model.OnStrip.ElementAt(1) != "cockpit.status")
             {
-                throw new InvalidOperationException("The panel's arrow did not reorder the strip.");
+                throw new InvalidOperationException("The panel's arrow key did not reorder the strip.");
             }
         }
         model.SetEnabled(CompanionCustomizationModel.AssistantId, false);
