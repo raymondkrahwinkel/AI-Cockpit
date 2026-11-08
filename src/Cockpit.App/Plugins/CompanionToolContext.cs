@@ -7,7 +7,11 @@ namespace Cockpit.App.Plugins;
 // The host's `ICompanionToolContext`, built by `CompanionToolRegistry.CreateContext` from the registering
 // plugin's own storage/sessions — the same pair `WidgetContext` gets, so a tool's saved state survives a
 // restart and `SelectedSession` reflects a real session, exactly as the interface's own doc promises.
-internal sealed class CompanionToolContext(IPluginStorage storage, ICockpitSessionObserver sessions) : ICompanionToolContext
+internal sealed class CompanionToolContext(
+    IPluginStorage storage,
+    ICockpitSessionObserver sessions,
+    SideMenuButtonBadge badge,
+    Action requestPopOut) : ICompanionToolContext
 {
     public ICockpitSessionObserver SelectedSession => sessions;
 
@@ -16,4 +20,8 @@ internal sealed class CompanionToolContext(IPluginStorage storage, ICockpitSessi
     public event EventHandler? RefreshRequested;
 
     public void RequestRefresh() => RefreshRequested?.Invoke(this, EventArgs.Empty);
+
+    public SideMenuButtonBadge Badge { get; } = badge;
+
+    public void RequestPopOut() => requestPopOut();
 }

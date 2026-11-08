@@ -42,6 +42,17 @@ public interface ICompanionToolRegistry
     /// or null when no plugin contributes that id.
     /// </summary>
     ICompanionToolContext? CreateContext(string toolId);
+
+    /// <summary>
+    /// The badge <paramref name="toolId"/>'s plugin sets through its context, or null when no plugin contributes
+    /// that id. The strip shows it on the tool's button and follows its <see cref="SideMenuButtonBadge.Changed"/>.
+    /// </summary>
+    SideMenuButtonBadge? GetBadge(string toolId);
+
+    /// <summary>
+    /// Raised with the tool id when a tool asks for its pop-out (<see cref="ICompanionToolContext.RequestPopOut"/>).
+    /// </summary>
+    event EventHandler<string>? PopOutRequested;
 }
 
 internal sealed class CompanionToolRegistry : ICompanionToolRegistry, ISingletonService
@@ -49,6 +60,9 @@ internal sealed class CompanionToolRegistry : ICompanionToolRegistry, ISingleton
     private readonly List<RegisteredCompanionTool> _tools = [];
 
     public event EventHandler? Changed;
+
+    // ponytail: no subscriber yet, so RequestPopOut is a no-op until the strip opens it through the pop-out placer.
+    public event EventHandler<string>? PopOutRequested;
 
     public IReadOnlyList<CompanionToolRegistration> Tools => [.. _tools.Select(tool => tool.Registration)];
 
@@ -85,6 +99,13 @@ internal sealed class CompanionToolRegistry : ICompanionToolRegistry, ISingleton
             return null;
         }
 
-        return new CompanionToolContext(new CompanionToolInstanceStorage(registered.PluginStorage, toolId), registered.Sessions);
+        return new CompanionToolContext(
+            new CompanionToolInstanceStorage(registered.PluginStorage, toolId),
+            registered.Sessions,
+            registered.Badge,
+            () => PopOutRequested?.Invoke(this, toolId));
     }
+
+    public SideMenuButtonBadge? GetBadge(string toolId) =>
+        _tools.FirstOrDefault(tool => tool.Registration.Id == toolId)?.Badge;
 }
