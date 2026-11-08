@@ -212,7 +212,7 @@ internal static class SessionsEndpoints
                 body.ProjectId,
                 body.Prompt,
                 WorkingDirectory: null,
-                SessionName: body.Name)).ConfigureAwait(false);
+                SessionName: body.Name, Role: body.Role)).ConfigureAwait(false);
 
             return result.Ok
                 ? Results.Json(new
@@ -223,6 +223,8 @@ internal static class SessionsEndpoints
                     promptDelivered = result.PromptDelivered,
                     mcpServers = result.McpServers,
                     mcpServersConfirmed = result.McpServersConfirmed,
+                    role = result.Role,
+                    roleList = result.RoleList,
                 }, statusCode: StatusCodes.Status201Created)
                 : BackendApiRoutes.Error(StatusCodes.Status409Conflict, NotStarted, result.Error ?? string.Empty);
         }).RequireOperate().Audited("start_session", services);
@@ -485,7 +487,7 @@ internal static class SessionsEndpoints
         McpRequestContext.CurrentNodeCaller ?? throw new InvalidOperationException("A session route ran without a connect-key caller.");
 }
 
-internal sealed record StartSessionBody(string Profile, string? ProjectId, string? Prompt, string? Name);
+internal sealed record StartSessionBody(string Profile, string? ProjectId, string? Prompt, string? Name, string? Role = null);
 
 internal sealed record PromptBody(string Text);
 

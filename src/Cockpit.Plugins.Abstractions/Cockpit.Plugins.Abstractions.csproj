@@ -665,8 +665,8 @@
     <!-- AC-2103: optional file serialization on a live snapshot binds recovery confirmation to its revision. -->
     <!-- AC-2166: optional session-less ephemeral speech generation; additive, contract stays 3. -->
     <!-- AC-2100: optional IFileImageSource and bounded file-image channel; requires host 0.161.0. -->
-    <!-- 3.73.0: ProjectMemorySourceRegistration.BrainMcpServerName; a plugin that sets it requires host 0.161.0, contract stays 3. -->
-    <Version>3.73.0</Version>
+    <!-- 3.73.1: optional brain roles and brain MCP server selection (AC-2169, AC-2210); contract stays 3. -->
+    <Version>3.73.1</Version>
     <AssemblyVersion>1.17.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

@@ -181,6 +181,7 @@ internal sealed class ConversationIndexStore : IConversationIndex, ISingletonSer
                 WorkingDirectory = state.WorkingDirectory ?? record.WorkingDirectory,
                 ConversationId = state.ConversationId,
                 ConversationState = state.ConversationState,
+                Role = state.Role,
             }
             : record;
 

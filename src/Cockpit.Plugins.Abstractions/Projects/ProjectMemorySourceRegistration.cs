@@ -121,6 +121,16 @@ public sealed record ProjectMemorySourceRegistration(string Scheme, string Title
     public Func<string, string?>? BrainInstruction { get; init; }
 
     /// <summary>
+    /// Lists the optional roles in a brain value, with an explicit unavailable or no-roles outcome.
+    /// </summary>
+    public Func<string, CancellationToken, Task<RoleListResult>>? ListRolesAsync { get; init; }
+
+    /// <summary>
+    /// Loads a named role from a brain value, with at most 12,000 characters of instructions including its skill list.
+    /// </summary>
+    public Func<string, string, CancellationToken, Task<RoleLoadResult>>? LoadRoleAsync { get; init; }
+
+    /// <summary>
     /// The name of the MCP server that serves the brain a stored value names, so the host keeps it mounted when a start names its own server list. Null when this source does not own that value.
     /// </summary>
     public Func<string, string?>? BrainMcpServerName { get; init; }

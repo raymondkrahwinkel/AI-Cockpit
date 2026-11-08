@@ -12,6 +12,7 @@ internal static class SettingsCarrierWhitelist
     [
         "Profiles[].Label", "Profiles[].Purpose", "Profiles[].SystemPrompt", "Profiles[].Assistant",
         "Profiles[].ImageInputMode",
+        "AssistantProfile.AssistantRole",
         "Profiles[].DefaultKind", "Profiles[].MemoryCapMegabytes", "Profiles[].EnabledMcpServers",
         "Profiles[].Defaults.PermissionMode", "Profiles[].Defaults.Model", "Profiles[].Defaults.Effort",
         "Profiles[].Defaults.AutoApproveTools", "Profiles[].Defaults.OptionDefaults", "Profiles[].Defaults.DefaultReadingLevel",
