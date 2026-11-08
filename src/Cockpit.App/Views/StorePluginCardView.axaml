@@ -75,10 +75,19 @@
                     <TextBlock Text="{Binding LatestVersion}" FontSize="11" VerticalAlignment="Center"
                                Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                     <TextBlock Text="Free" FontSize="11" VerticalAlignment="Center"
+                               IsVisible="{Binding !IsOrganizationPlugin}"
                                Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                     <TextBlock Text="{Binding Author}" FontSize="11" VerticalAlignment="Center"
                                IsVisible="{Binding HasAuthor}"
                                Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                    <!-- AC-1976: which store the row comes from, the public one included. -->
+                    <StackPanel Orientation="Horizontal" Spacing="3" VerticalAlignment="Center"
+                                ToolTip.Tip="{Binding SourceTitle}">
+                        <materialIcons:MaterialIcon Kind="Storefront" Width="11" Height="11"
+                                                    Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        <TextBlock Text="{Binding SourceName}" FontSize="11" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                    </StackPanel>
                 </StackPanel>
             </StackPanel>
 

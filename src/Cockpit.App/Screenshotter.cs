@@ -609,6 +609,7 @@ internal static partial class Screenshotter
         // "Uncategorized" always last (and shown even though nothing is left in it here) and every card's origin
         // badge — "● This machine" and "◆ Depot — Work" — now that the old "On this machine" heading is gone.
         ["plugin-store"] = (_, _) => _PluginStore(),
+        ["plugin-store-organizations"] = (_, _) => new PluginStoreDialog { DataContext = _PluginStoreOrganizations() },
         ["plugin-store-installed"] = (_, _) => _PluginStoreInstalled(),
         // AC-2024: the list right after a live disable, with no restart banner.
         ["plugin-store-disabled-live"] = (_, _) => _PluginStoreDisabledLive(),
@@ -3353,6 +3354,51 @@ internal static partial class Screenshotter
 
     // Seed the plugin store directly so its full layout can be rendered headlessly without network access (#62).
     private static PluginStoreDialog _PluginStore() => new() { DataContext = _PluginStoreViewModel() };
+
+    // AC-1976: two organization stores through Depot next to the public one, with the first organization's plugin open in the detail panel.
+    private static PluginStoreDialogViewModel _PluginStoreOrganizations()
+    {
+        static PluginStoreConfig Org(string key, string organization, string host) =>
+            PluginStoreConfig.Remote($"https://{host}/cockpit/stores/{key}/index.json") with
+            {
+                Signed = new PluginStoreSignedSource(key, organization, () => new HttpClientHandler()),
+            };
+
+        static StorePluginRowViewModel Row(
+            PluginStoreConfig store, string id, string name, string description, string author, string latest, string? installed, string? repository = null)
+        {
+            var source = repository is null ? null : new PluginStoreSource(repository, $"v{latest}");
+            var signed = store.Signed is not null;
+            var versions = new[]
+            {
+                new PluginStoreVersion(latest, $"plugins/{id}.zip", null, null, "3e7a90c2d14f", null,
+                    Signature: signed ? "sig" : null, KeyFingerprint: signed ? "SHA256:7f3a9c0e5b21d4c8a6e0f1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c19e" : null,
+                    KeyName: signed ? "Acme CI" : null, Source: source),
+                new PluginStoreVersion("2.3.1", $"plugins/{id}-2.3.1.zip", null, null, null, null),
+            };
+            var entry = new PluginStoreEntry(id, name, description, author, latest, versions, "Integrations");
+            return new StorePluginRowViewModel(entry, store, installed, isEnabled: installed is not null) { StoreName = signed ? null : "Cockpit plugins" };
+        }
+
+        var acme = Org("acme", "Acme Engineering", "depot.acme.example");
+        var northwind = Org("northwind", "Northwind Labs", "depot.northwind.example");
+        var publicStore = PluginStoreConfig.Remote("https://raw.githubusercontent.com/raymondkrahwinkel/AI-Cockpit-Plugins/main/index.json");
+
+        var manager = new PluginManagerViewModel();
+        manager.Stores.Add(acme);
+        manager.Stores.Add(northwind);
+        manager.Stores.Add(publicStore);
+        manager.AvailablePlugins.Add(Row(acme, "acme-erp", "Acme ERP Connector", "Read orders and stock from the Acme ERP inside a session.", "Acme IT", "2.4.0", "2.3.1", "acme/erp-plugin"));
+        manager.AvailablePlugins.Add(Row(acme, "warehouse", "Warehouse Module", "Stock, purchase orders and late deliveries as a module.", "Acme IT", "1.8.2", null, "acme/warehouse-plugin"));
+        manager.AvailablePlugins.Add(Row(northwind, "nw-reports", "Northwind Reports", "Monthly reports from the Northwind data warehouse.", "Northwind", "3.0.1", null, "northwind/reports"));
+        manager.AvailablePlugins.Add(Row(publicStore, "docker", "Docker", "Containers, images and compose as tools for your agents.", "Cockpit", "1.9.0", "1.9.0"));
+        manager.AvailablePlugins.Add(Row(publicStore, "youtrack", "YouTrack", "Issues and comments from YouTrack.", "Cockpit", "1.2.0", null));
+
+        return new PluginStoreDialogViewModel(manager)
+        {
+            SelectedPlugin = manager.AvailablePlugins.First(),
+        };
+    }
 
     // AC-1588: the Installed list with one plugin allowed and one muted, so a row shows both labels of the toggle.
     private static PluginStoreDialog _PluginStoreInstalled()

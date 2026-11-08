@@ -4,6 +4,7 @@
 
 - AC-1979: ask before trusting a changed plugin publisher key; Update all keeps the current version and explains why.
 
+- AC-1976: the plugin store shows a "From <organization>" block per Depot organization on Discover, says on every row which store it comes from, and lists the source and publisher key of a plugin in its details.
 - AC-2187: the assistant can tell which session you have selected: `list_sessions` marks it, following the Simple stand's own selection when that stand is showing.
 - AC-2100: display relative Depot note images in Markdown file previews and editors without rewriting their source.
 

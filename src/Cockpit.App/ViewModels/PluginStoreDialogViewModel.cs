@@ -39,6 +39,9 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
 
     public ObservableCollection<StorePluginRowViewModel> FeaturedPlugins { get; } = [];
 
+    // Discover's "From <organization>" blocks: empty without an organization store, so the page is then what it always was.
+    public ObservableCollection<StoreOrganizationGroup> OrganizationGroups { get; } = [];
+
     public ObservableCollection<StorePluginRowViewModel> RecentlyAddedPlugins { get; } = [];
 
     [ObservableProperty]
@@ -217,7 +220,10 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
 
     public bool HasRecentlyAddedPlugins => RecentlyAddedPlugins.Count > 0;
 
-    public bool HasFilteredResults => FilteredPlugins.Count > 0;
+    public bool HasFilteredResults => FilteredPlugins.Count > 0 || OrganizationGroups.Count > 0;
+
+    // The "All plugins" divider; it is dropped when the organization blocks hold everything, rather than heading an empty list.
+    public bool ShowAllPluginsHeader => ShowDiscoverRails && (FilteredPlugins.Count > 0 || OrganizationGroups.Count == 0);
 
     // The sort combobox's bound item — a thin wrapper so the picker binds to a `PluginStoreSortModeOption` object while `SelectedSortMode` (the enum) stays the plain, test-friendly source of truth.
     public PluginStoreSortModeOption SelectedSortModeOption
@@ -401,7 +407,19 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
     {
         var filter = SelectedSidebarItem?.Filter ?? PluginStoreFilter.Discover;
         var filtered = Filter(_manager.AvailablePlugins, filter, SearchText, SelectedSortMode);
-        _Replace(FilteredPlugins, filtered);
+
+        // On Discover the organization plugins sit in their own blocks above the rest; a search or any other page lists them flat.
+        var groups = ShowDiscoverRails ? OrganizationGroupsOf(filtered) : [];
+        if (!OrganizationGroups.SequenceEqual(groups))
+        {
+            OrganizationGroups.Clear();
+            foreach (var group in groups)
+            {
+                OrganizationGroups.Add(group);
+            }
+        }
+
+        _Replace(FilteredPlugins, groups.Count == 0 ? filtered : [.. filtered.Where(row => !row.IsOrganizationPlugin)]);
 
         if (SelectedPlugin is not null && !filtered.Contains(SelectedPlugin))
         {
@@ -424,6 +442,7 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
         OnPropertyChanged(nameof(HasFeaturedPlugins));
         OnPropertyChanged(nameof(HasRecentlyAddedPlugins));
         OnPropertyChanged(nameof(HasFilteredResults));
+        OnPropertyChanged(nameof(ShowAllPluginsHeader));
     }
 
     private static void _Replace(ObservableCollection<StorePluginRowViewModel> target, IReadOnlyList<StorePluginRowViewModel> source)
@@ -503,6 +522,15 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
             .Where(row => row.PublishedDate.HasValue)
             .OrderByDescending(row => row.PublishedDate)
             .Take(RecentlyAddedCount)
+            .ToList();
+
+    // One block per organization source, ordered by organization name; a plugin of a public or local store belongs to none.
+    public static IReadOnlyList<StoreOrganizationGroup> OrganizationGroupsOf(IEnumerable<StorePluginRowViewModel> plugins) =>
+        plugins
+            .Where(row => row.IsOrganizationPlugin)
+            .GroupBy(row => row.Store.Signed!.SourceKey, StringComparer.Ordinal)
+            .Select(group => new StoreOrganizationGroup(group.First().Organization!, [.. group]))
+            .OrderBy(group => group.Organization, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
     public static IReadOnlyList<string> DistinctCategories(IEnumerable<StorePluginRowViewModel> plugins) =>
