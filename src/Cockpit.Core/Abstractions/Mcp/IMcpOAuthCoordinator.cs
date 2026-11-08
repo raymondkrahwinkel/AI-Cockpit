@@ -48,4 +48,11 @@ public interface IMcpOAuthCoordinator
     /// One place to withdraw from, which is the reason the token lives in one place to begin with.
     /// </summary>
     Task SignOutAsync(McpServerConfig server, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Reports that <paramref name="server"/> answered <paramref name="accessToken"/> with 403 and
+    /// <c>error="insufficient_scope"</c>. A renewal cannot add scope, so the server needs a sign-in from then on,
+    /// exactly as if it had no usable token, until a sign-in grants a different scope.
+    /// </summary>
+    Task ReportInsufficientScopeAsync(McpServerConfig server, string accessToken, CancellationToken cancellationToken = default) => Task.CompletedTask;
 }

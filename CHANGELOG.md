@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2216: plugins can let two MCP servers share one sign-in, refresh a server's tools in running sessions without a restart, and a server that refuses a sign-in for missing permissions now shows the usual sign-in notice.
+
 - AC-2215: project cards and waiting conversations on Home wrap a long title onto further lines instead of cutting it off.
 
 - AC-2194: the project picker follows the approved compact row typography and selection stripe, and token marks leave the surrounding spaces clear.
