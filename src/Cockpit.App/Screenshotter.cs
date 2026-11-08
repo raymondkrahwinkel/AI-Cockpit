@@ -760,6 +760,8 @@ internal static partial class Screenshotter
         ["session-run-running"] = (width, height) => new Window { Width = width, Height = height, Content = _RunStatusSession(queued: false) },
         // AC-740: the @-mention picker, staged open by the Hovers table below (typing is a caret-driven gesture,
         // not something a scene can pre-stage the way a static transcript can).
+        ["mention-popup-home"] = _MentionPopupHome,
+        ["mention-popup-home-tokens"] = _MentionPopupHome,
         ["session-mention-picker"] = (width, height) => new Window { Width = width, Height = height, Content = _MentionPicker() },
         ["tty"] = (width, height) => new Window { Width = width, Height = height, Content = new Views.TtyView { DataContext = new ViewModels.TtyViewModel() } },
         // A plain terminal pane (#AC-25/#AC-29): its own scene so the shared header's terminal treatment
@@ -936,6 +938,7 @@ internal static partial class Screenshotter
         },
         // AC-740 addendum: the picker in the pop-out's own composer, staged open by the Hovers table below.
         ["assistant-chat-mention-picker"] = (_, _) => _AssistantChatMentionPicker(),
+        ["assistant-chat-mention-picker-280"] = (_, height) => new Window { Width = 280, Height = height, Content = new AssistantChatView { DataContext = _AssistantChatMentionPickerViewModel() } },
         // AC-683 criteria 1-3: the usage-pill row and the stacked warning bar, both new to this window — it had
         // neither before, which was the whole premise of the ticket (a running-out allowance was invisible on
         // the assistant's one and only surface).
@@ -1575,8 +1578,11 @@ internal static partial class Screenshotter
         ["assistant-read-full"] = window => _Named<Button>(window, "ReadFullReplyButton").Focus(),
         // AC-740: opening the picker is a caret-driven gesture (MentionPickerViewModel.OnTextChanged), not a
         // property a scene can stage ahead of the window existing.
+        ["mention-popup-home"] = _OpenMentionPopupHome,
+        ["mention-popup-home-tokens"] = _AcceptMentionTokens,
         ["session-mention-picker"] = _OpenMentionPicker,
         ["assistant-chat-mention-picker"] = _OpenAssistantChatMentionPicker,
+        ["assistant-chat-mention-picker-280"] = _OpenAssistantChatMentionPicker,
         // AC-776: the session-pill's own "⋯" list, and Deel 2's merged history/export dropdown.
         ["assistant-chat-session-pill-list-open"] = window => _OpenFlyout(window, "SessionListButton"),
         ["assistant-chat-history-dropdown-open"] = window => _OpenFlyout(window, "HistoryButton"),
@@ -1636,8 +1642,8 @@ internal static partial class Screenshotter
     {
         if (window.Content is SessionView { DataContext: SessionViewModel viewModel })
         {
-            viewModel.InputText = "@Session";
-            viewModel.MentionPicker.OnTextChanged("@Session", "@Session".Length);
+            viewModel.InputText = "@";
+            viewModel.MentionPicker.OnTextChanged("@", 1);
         }
     }
 
@@ -1647,8 +1653,8 @@ internal static partial class Screenshotter
         // docked assistant (AC-953) will be found by — there is no AssistantChatWindow around it there.
         if (window.FindDescendantOfType<AssistantChatView>() is { DataContext: ViewModels.AssistantChatViewModel viewModel })
         {
-            viewModel.InputText = "@Session";
-            viewModel.MentionPicker.OnTextChanged("@Session", "@Session".Length);
+            viewModel.InputText = "@";
+            viewModel.MentionPicker.OnTextChanged("@", 1);
         }
     }
 
@@ -2856,22 +2862,113 @@ internal static partial class Screenshotter
         return new SessionView { DataContext = viewModel };
     }
 
-    // AC-740: a handful of paths under a working directory that would resolve to it in a real repo, so the row
-    // template (bold name, dimmed parent directory, trailing '/' on a directory row) has something to show.
-    private sealed class _SampleMentionFileSource : IMentionFileSource
+    // A files group and a projects group in the shape the real sources return them, so the rows have something to show.
+    private sealed class _SampleMentionSource(int order, Func<MentionContext, IReadOnlyList<MentionGroup>> groups) : IMentionSource
     {
-        public Task<IReadOnlyList<string>> GetPathsAsync(string workingDirectory, CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<string>>([
-                "src/Views/SessionView.axaml",
-                "src/Views/SessionView.axaml.cs",
-                "src/ViewModels/SessionViewModel.cs",
-                "src/ViewModels/",
-            ]);
+        public string Key => "sample" + order;
+
+        public int Order => order;
+
+        public Task<IReadOnlyList<MentionGroup>> GetAsync(MentionContext context, CancellationToken cancellationToken) =>
+            Task.FromResult(groups(context));
+    }
+
+    private static IReadOnlyList<IMentionSource> _SampleMentionSources()
+    {
+        static MentionItem File(string path)
+        {
+            var name = path.TrimEnd('/');
+            name = name[(name.LastIndexOf('/') + 1)..];
+            return new MentionItem(path, name, path, new MentionTile(name[..1].ToUpperInvariant()), MentionKind.File, path, path);
+        }
+
+        static MentionItem Project(string name, string line, int daysAgo) =>
+            new("project:" + name, name, line, new MentionTile(name[..1].ToUpperInvariant()), MentionKind.Project, name, "C:/Code/" + name,
+                DateTimeOffset.Now.AddDays(-daysAgo));
+
+        return
+        [
+            new _SampleMentionSource(0, context => context.Surface == MentionSurface.Home
+                ? []
+                : [new MentionGroup("Files in repo",
+                [
+                    File("src/Views/SessionView.axaml"),
+                    File("src/ViewModels/SessionViewModel.cs"),
+                ])]),
+            new _SampleMentionSource(10, _ =>
+            [
+                new MentionGroup("Projects on this PC",
+                [
+                    Project("Cockpit", "Depot krahwinkel-it/Cockpit · C:/Code/Cockpit", 0),
+                    Project("EVE Workbench", "Depot eve-workbench/EVE Workbench · C:/Code/EVE Workbench", 2),
+                ]),
+                new MentionGroup("Depot",
+                [
+                    new MentionItem("shared:startpage", "StartPage", "Not on this PC yet", new MentionTile("S"), MentionKind.Project, "StartPage", "depot:startpage"),
+                ], "via Depot plugin"),
+            ]),
+        ];
+    }
+
+    // The same list on Home's shape: a card near the top of the window with the text box in it, under a title bar.
+    private static Window _MentionPopupHome(int width, int height)
+    {
+        var box = new TextBox { Text = "Look at @", AcceptsReturn = true, TextWrapping = Avalonia.Media.TextWrapping.Wrap, Name = "InputBox" };
+        var picker = new ViewModels.MentionPickerViewModel(_SampleMentionSources(), () => new MentionContext(MentionSurface.Home, null));
+        var card = new Border
+        {
+            Name = "ComposerBorder",
+            Margin = new Thickness(40, 24),
+            Padding = new Thickness(16),
+            CornerRadius = new CornerRadius(12),
+            BorderThickness = new Thickness(1),
+            BorderBrush = _Brush("CockpitHairlineBrush"),
+            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Top,
+            Child = new Grid
+            {
+                Children =
+                {
+                    box,
+                    new Controls.MentionTokenOverlay { Input = box, Picker = picker },
+                    new Controls.MentionPopup
+                    {
+                        DataContext = picker, Input = box, EmptyActionText = "Choose folder…",
+                    },
+                },
+            },
+        };
+        card.AttachedToVisualTree += (_, _) => card.GetVisualDescendants().OfType<Controls.MentionPopup>().First().Frame = card;
+        var titleBar = new Border { Height = 36, Background = _Brush("CockpitSecondaryBgBrush"), Child = new TextBlock { Text = "Cockpit", Margin = new Thickness(12, 0), VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center } };
+        DockPanel.SetDock(titleBar, Dock.Top);
+        return new Window { Width = width, Height = height, Content = new DockPanel { Children = { titleBar, card } } };
+    }
+
+    // Two accepted project tokens in the text, the first filled and the second outlined; the list is closed.
+    private static void _AcceptMentionTokens(Window window)
+    {
+        var popup = window.GetVisualDescendants().OfType<Controls.MentionPopup>().First();
+        var picker = (ViewModels.MentionPickerViewModel)popup.DataContext!;
+        var text = "Look at ";
+        foreach (var (query, rest) in new[] { ("Cockpit", "and compare with "), ("EVE", "") })
+        {
+            picker.OnTextChanged(text + "@" + query, text.Length + 1 + query.Length);
+            var insert = picker.Accept()!.Item.InsertText;
+            text += "@" + insert + " " + rest;
+            popup.Input!.Text = text;
+            picker.SyncTokens(text);
+        }
+    }
+
+    private static void _OpenMentionPopupHome(Window window)
+    {
+        var popup = window.GetVisualDescendants().OfType<Controls.MentionPopup>().First();
+        popup.Input!.CaretIndex = popup.Input.Text!.Length;
+        ((ViewModels.MentionPickerViewModel)popup.DataContext!).OnTextChanged(popup.Input.Text, popup.Input.CaretIndex);
     }
 
     private static SessionView _MentionPicker()
     {
-        var viewModel = new SessionViewModel(new _SampleMentionFileSource()) { WorkingDirectory = "/repo" };
+        var viewModel = new SessionViewModel(_SampleMentionSources()) { WorkingDirectory = "/repo" };
         return new SessionView { DataContext = viewModel };
     }
 
@@ -4491,14 +4588,13 @@ internal static partial class Screenshotter
 
     // AC-740 addendum: no session yet, so this also proves the profile-default fallback renders the picker —
     // not just the session's own working directory, which the SessionView scene already covers.
-    private static AssistantChatWindow _AssistantChatMentionPicker()
-    {
-        var host = new _FakeAssistantSessionHost { Session = null, DefaultWorkingDirectory = "/repo" };
-        var viewModel = new ViewModels.AssistantChatViewModel(
-            host, new _FakeAssistantSettingsStore(speakReplies: true), new _NullVoicePlaybackQueue(),
-            mentionFileSource: new _SampleMentionFileSource());
-        return new AssistantChatWindow { DataContext = viewModel, Topmost = false, WindowStartupLocation = WindowStartupLocation.Manual };
-    }
+    private static AssistantChatWindow _AssistantChatMentionPicker() =>
+        new() { DataContext = _AssistantChatMentionPickerViewModel(), Topmost = false, WindowStartupLocation = WindowStartupLocation.Manual };
+
+    private static ViewModels.AssistantChatViewModel _AssistantChatMentionPickerViewModel() =>
+        new(new _FakeAssistantSessionHost { Session = null, DefaultWorkingDirectory = "/repo" },
+            new _FakeAssistantSettingsStore(speakReplies: true), new _NullVoicePlaybackQueue(),
+            mentionSources: _SampleMentionSources());
 
     // AC-683: the same stacked warnings _StackedWarningsSession renders in a session pane, on the assistant's
     // session instead — the window this ticket's criteria 1-3 add the pill row and the warning bar to, so the
