@@ -26,7 +26,17 @@ internal sealed class CompanionWindowPresenter : ISingletonService
         _registry = registry;
         _layoutSettingsStore = layoutSettingsStore;
         _registry.Changed += (_, _) => _Refresh();
-        _registry.PopOutRequested += (_, toolId) => Dispatcher.UIThread.Post(() => _window?.OpenPopOut(toolId));
+        _registry.PopOutRequested += (_, toolId) => Dispatcher.UIThread.Post(() =>
+        {
+            // A window that is not always on top may sit under another one; a new question brings it back without focus.
+            if (toolId == CompanionAttentionFeed.ToolId && _window is { IsVisible: true, Topmost: false } window)
+            {
+                window.Topmost = true;
+                window.Topmost = false;
+            }
+
+            _window?.OpenPopOut(toolId);
+        });
     }
 
     public bool IsVisible => _window?.IsVisible == true;

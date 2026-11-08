@@ -246,6 +246,8 @@ internal static partial class Screenshotter
         ["companion-empty"] = (_, _) => _CompanionScene(empty: true),
         ["companion-popout"] = _CompanionPopOutScene,
         ["companion-strip"] = _CompanionStripScene,
+        ["companion-notifications"] = (_, _) => _CompanionNotificationsScene(terminal: false),
+        ["companion-notifications-tty"] = (_, _) => _CompanionNotificationsScene(terminal: true),
         ["session-background-work"] = (_, _) => _BackgroundWorkScene(),
         // AC-2028: the status bar at rest and busy, the test-runs dialog, and the disk panel open on a critical drive.
         ["statusbar-rest"] = (_, _) => _StatusBarScene(busy: false),
