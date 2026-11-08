@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2145: bind the upcoming Browser engine host and its children to the Windows owner lifetime, including owner and host crashes.
+
 - AC-2144: add an isolated Browser engine launcher for the upcoming host-backed tabs, with private storage checks and restricted pipe inheritance.
 
 - AC-2143: prepare a bounded private connection for the Browser engine host, rejecting stale generations and requests for unregistered tabs.
