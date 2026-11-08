@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2200: plugins can add their own suggestions to the chat's @-list under "Suggested by plugins"; a plugin source that fails or takes longer than two seconds is left out without holding up the rest.
+
 - AC-2188: queued test runs start strictly in arrival order, without pre-merge priority or aging.
 
 - AC-2189: inbox messages from other sessions now start collapsed to their header in the transcript, and run results keep a coloured one-line verdict; the toggle opens the full text.
