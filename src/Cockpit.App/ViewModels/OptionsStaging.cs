@@ -115,6 +115,8 @@ internal static class OptionsStaging
     [
         // Store visibility is saved by Manage stores immediately, independently of the Options Apply/Cancel cycle.
         "Plugins.HiddenStoreSourceKeys",
+        // Companion strip preferences are applied by Customize immediately, outside Options.
+        "CompanionStripLayout",
         "IsTestingMic",
         "OptionsSearchText",
         "BackupIncludesCredentials",

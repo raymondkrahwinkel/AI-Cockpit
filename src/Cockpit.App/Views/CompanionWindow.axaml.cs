@@ -4,6 +4,7 @@ using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Cockpit.App.Controls;
+using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Layout;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Layout;
@@ -62,6 +63,8 @@ public partial class CompanionWindow : Window
             Orientation == CompanionOrientation.Horizontal ? CompanionOrientation.Vertical : CompanionOrientation.Horizontal, AlwaysOnTop);
         TopmostItem.Click += (_, _) => _Change(Orientation, !AlwaysOnTop);
         HideItem.Click += (_, _) => CloseRequested?.Invoke(this, EventArgs.Empty);
+        OrientationItem.Click += (_, _) => MoreButton.Flyout?.Hide();
+        TopmostItem.Click += (_, _) => MoreButton.Flyout?.Hide();
         ApplyLayout(CompanionOrientation.Horizontal, alwaysOnTop: true);
 
         // Only the position is worth restoring: this window is SizeToContent, so a saved size would never apply.
@@ -103,13 +106,13 @@ public partial class CompanionWindow : Window
         var horizontal = orientation == CompanionOrientation.Horizontal;
         Orientation = orientation;
         Topmost = alwaysOnTop;
-        TopmostItem.IsChecked = alwaysOnTop;
+        TopmostIcon.Kind = alwaysOnTop ? MaterialIconKind.Check : MaterialIconKind.PinOutline;
         var layout = horizontal ? Avalonia.Layout.Orientation.Horizontal : Avalonia.Layout.Orientation.Vertical;
         Strip.Orientation = layout;
         ToolsHost.Orientation = layout;
         LookAlong.Orientation = layout;
         GripIcon.Kind = horizontal ? MaterialIconKind.DragVertical : MaterialIconKind.DragHorizontal;
-        OrientationItem.Header = horizontal ? "Vertical strip" : "Horizontal strip";
+        OrientationLabel.Text = horizontal ? "Vertical strip" : "Horizontal strip";
         _popOuts.Orientation = orientation;
         _popOuts.CloseAll();
         foreach (var (_, control) in _controls.Values)
@@ -129,7 +132,7 @@ public partial class CompanionWindow : Window
     // per-frame update.
     internal void SetTools(IReadOnlyList<CompanionStripItem> items)
     {
-        _popOuts.CloseAll();
+        _popOuts.CloseAll("companion.customize", "companion.unavailable");
         EmptyState.IsVisible = items.Count == 0;
         ToolsHost.IsVisible = items.Count > 0;
         ToolsHost.Children.Clear();
@@ -191,6 +194,27 @@ public partial class CompanionWindow : Window
     }
 
     public void ClosePopOuts() => _popOuts.CloseAll();
+
+    internal void ConfigureCustomization(CompanionCustomizationModel model, Func<string, Task> enable)
+    {
+        CustomizeItem.Click += (_, _) =>
+        {
+            MoreButton.Flyout?.Hide();
+            _popOuts.Toggle("companion.customize", MoreButton,
+                new CompanionCustomizePanel(model, enable, () => _popOuts.Close("companion.customize")), 400);
+        };
+    }
+
+    internal bool ShowUnavailableNotice(string message)
+    {
+        const string key = "companion.unavailable";
+        _popOuts.Close(key);
+        var text = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap };
+        text.Bind(TextBlock.ForegroundProperty, text.GetResourceObservable("CockpitTextPrimaryBrush"));
+        var dismiss = new Button { Content = "Dismiss", Classes = { "Ghost", "Compact" }, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right };
+        dismiss.Click += (_, _) => _popOuts.Close(key);
+        return _popOuts.Toggle(key, MoreButton, new StackPanel { Margin = new Thickness(16), Spacing = 8, Children = { text, dismiss } }, 320, showActivated: false);
+    }
 
     internal bool IsToolPopOutOpen(string toolId) => _popOuts.IsOpen(toolId);
 

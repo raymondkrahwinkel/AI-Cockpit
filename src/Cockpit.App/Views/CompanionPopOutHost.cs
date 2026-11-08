@@ -53,9 +53,9 @@ internal sealed class CompanionPopOutHost
         };
     }
 
-    public void CloseAll()
+    public void CloseAll(params string[] exceptKeys)
     {
-        foreach (var popOut in _open.ToArray())
+        foreach (var popOut in _open.Where(popOut => !exceptKeys.Contains(popOut.PopOutKey)).ToArray())
         {
             popOut.Close();
         }

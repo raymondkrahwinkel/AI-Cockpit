@@ -247,6 +247,8 @@ internal static partial class Screenshotter
         ["companion-popout"] = _CompanionPopOutScene,
         ["companion-strip"] = _CompanionStripScene,
         ["companion-look-along"] = _CompanionLookAlongScene,
+        ["companion-customize"] = (_, _) => _CompanionCustomizeScene(reordered: false),
+        ["companion-customize-reordered"] = (_, _) => _CompanionCustomizeScene(reordered: true),
         ["companion-live-note"] = _CompanionLiveNoteScene,
         ["companion-status"] = (w, h) => _CompanionStatusScene(w, h, "all"),
         ["companion-status-waiting"] = (w, h) => _CompanionStatusScene(w, h, "waiting"),
