@@ -8,6 +8,7 @@ using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Plugins;
 using Cockpit.Core.Startup;
 using Cockpit.Core.Workspaces;
@@ -29,6 +30,7 @@ using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Mentions;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Projects;
+using Cockpit.Plugins.Abstractions.Plugins;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.Settings;
 using Cockpit.Plugins.Abstractions.StatusBar;
@@ -184,6 +186,7 @@ public sealed class PluginLiveLifecycleTests
     [
         typeof(PluginChannelHub),
         typeof(PluginMentionSources),
+        typeof(PluginStoreSources),
         typeof(IWidgetRegistry),
         typeof(IWorkspaceTypeRegistry),
         typeof(ICompanionToolRegistry),
@@ -213,6 +216,7 @@ public sealed class PluginLiveLifecycleTests
     {
         var services = new ServiceCollection();
         services.AddLogging();
+        services.AddSingleton(new PluginStoreSources(Substitute.For<IPluginStoreConfigStore>(), Path.Combine(Path.GetTempPath(), "cockpit-lifecycle-" + Guid.NewGuid().ToString("N"), "cockpit.json")));
         services.AddSingleton(cockpit);
         services.AddSingleton<PluginMentionSources>();
         services.AddSingleton(mcpEndpoints);
@@ -329,6 +333,7 @@ public sealed class PluginLiveLifecycleTests
             host.AddBackupTarget(target);
             host.AddStartupStep("step", _ => Task.CompletedTask);
             host.AddFileSource(Substitute.For<IFileSourceProvider>());
+            host.AddPluginStoreSource(Substitute.For<IPluginStoreSourceProvider>());
         }
 
         public void Dispose() => disposed.Add("backend");

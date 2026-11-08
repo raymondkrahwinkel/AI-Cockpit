@@ -40,10 +40,20 @@ public sealed class ManagedCliServiceTests : IDisposable
         Assert.Null(service.ResolveInstalledPath("acme"));
     }
 
-    [Theory]
-    [InlineData("../evil")]
-    [InlineData("..")]
-    public async Task PathBuildingMethods_RejectAnUnsafeCliName(string cliName)
+    [Fact]
+    public async Task PathBuildingMethods_RejectAnUnsafeCliName()
+    {
+        using (var scenario = new ManagedCliServiceTests())
+        {
+            await scenario._AssertPathBuildingMethods_RejectAnUnsafeCliNameAsync("../evil");
+        }
+        using (var scenario = new ManagedCliServiceTests())
+        {
+            await scenario._AssertPathBuildingMethods_RejectAnUnsafeCliNameAsync("..");
+        }
+    }
+
+    private async Task _AssertPathBuildingMethods_RejectAnUnsafeCliNameAsync(string cliName)
     {
         // A cli name becomes a path segment; a separator or dot-segment must never resolve, remove or install anywhere.
         _PlaceInstalled("acme", "1.0.0"); // a real install exists, but not under the unsafe name

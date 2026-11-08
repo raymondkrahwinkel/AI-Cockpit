@@ -9,6 +9,8 @@ namespace Cockpit.Infrastructure.Configuration;
 // on-disk shape can evolve independently.
 internal sealed class CockpitConfigFile
 {
+    public Dictionary<string, PluginTrustEntry> PluginTrust { get; set; } = new(StringComparer.Ordinal);
+
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public JsonObject? SettingsSync { get; set; }
 
@@ -133,6 +135,8 @@ internal sealed class CockpitConfigFile
 
     // Configured plugin stores (#14, AC-7) the manager browses — remote (public or private) or local; owned by the plugin-store config store. A bare URL string from a pre-AC-7 config still reads (see `Cockpit.Core.Plugins.PluginStoreConfigJsonConverter`).
     public List<PluginStoreConfig> PluginStores { get; set; } = [];
+
+    public List<string> HiddenPluginStoreSources { get; set; } = [];
 
     // First-run marker (#43): set the first time `PluginStores` resolves. Once true the default store
     // is never re-added, so removing it stays a durable choice.

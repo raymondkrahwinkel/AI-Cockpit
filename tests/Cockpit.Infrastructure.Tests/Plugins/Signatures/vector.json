@@ -1,0 +1,21 @@
+{
+  "namespace": "cockpit-plugin-v1@krahwinkel-it.nl",
+  "hashAlgorithm": "sha512",
+  "fields": {
+    "org": "acme",
+    "id": "acme-tools",
+    "version": "1.2.0",
+    "platform": "any",
+    "repository": "github.com/acme/tools",
+    "tag": "v1.2.0",
+    "sha256": "9de2e8a3c8df41ed756a9ec970ce28cf9d3ff2ab8e43ef105b9c2ff818604d34"
+  },
+  "packageBase64": "UEsDBBQAAAgAAAAAIQDxG4V4cgAAAHIAAAALAAAAcGx1Z2luLmpzb257ImlkIjoiYWNtZS10b29scyIsIm5hbWUiOiJBY21lIFRvb2xzIiwidmVyc2lvbiI6IjEuMi4wIiwiYWJzdHJhY3Rpb25zVmVyc2lvbiI6MywiZW50cnlBc3NlbWJseSI6IkFjbWUuVG9vbHMuZGxsIn1QSwECFAAUAAAIAAAAACEA8RuFeHIAAAByAAAACwAAAAAAAAAAAAAAAAAAAAAAcGx1Z2luLmpzb25QSwUGAAAAAAEAAQA5AAAAmwAAAAAA",
+  "statementText": "org=acme\nid=acme-tools\nversion=1.2.0\nplatform=any\nsha256=9de2e8a3c8df41ed756a9ec970ce28cf9d3ff2ab8e43ef105b9c2ff818604d34\nrepository=github.com/acme/tools\ntag=v1.2.0\n",
+  "statementBase64": "b3JnPWFjbWUKaWQ9YWNtZS10b29scwp2ZXJzaW9uPTEuMi4wCnBsYXRmb3JtPWFueQpzaGEyNTY9OWRlMmU4YTNjOGRmNDFlZDc1NmE5ZWM5NzBjZTI4Y2Y5ZDNmZjJhYjhlNDNlZjEwNWI5YzJmZjgxODYwNGQzNApyZXBvc2l0b3J5PWdpdGh1Yi5jb20vYWNtZS90b29scwp0YWc9djEuMi4wCg==",
+  "sha512OfStatementHex": "0229fbdcb0b5760143ae956750d86aa89995b82f3b1e850badaa9df11a51e311933080952a5ec6994c90865676c578d1f0ac604d6c72a2bd250a651d1a9f7f6b",
+  "seedHex": "edc207cd80dc88d1754649c8985c62c421440b2fde9d79f1ba88e31b2236ccf7",
+  "publicKey": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBh5MMkgVsybzSjzUhaT0YuSHnWLqikmfH83R7L4agqJ dep-564-test-vector",
+  "fingerprint": "SHA256:4dGsEgg14BFnREFGj96+RZpCH8D3lSMJmMkYQ6Pd1cY",
+  "signature": "-----BEGIN SSH SIGNATURE-----\nU1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgGHkwySBWzJvNKPNSFpPRi5IedY\nuqKSZ8fzdHsvhqCokAAAAiY29ja3BpdC1wbHVnaW4tdjFAa3JhaHdpbmtlbC1pdC5ubAAA\nAAAAAAAGc2hhNTEyAAAAUwAAAAtzc2gtZWQyNTUxOQAAAEC7OvWmEmaTt+RJhxVH8EFiZI\nGHUybuZtpLQBSJNC0uVQIZP+BlLjxLW8/BMFHbRwKSVSRXaYNBGjOo7v6mKjkJ\n-----END SSH SIGNATURE-----\n"
+}

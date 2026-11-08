@@ -20,6 +20,9 @@ public sealed class PluginUpdateChecker : IPluginUpdateChecker
     private readonly Func<string, string, bool> _isUpdateStaged;
     private readonly IPluginStoreConfigStore _storeConfigStore;
     private readonly IPluginStoreClient _storeClient;
+    private readonly IPluginStoreSources? _storeSources;
+    private readonly IPluginTrustStore? _trust;
+    private readonly Action<int> _setUpdateBadgeCount;
     private readonly IToastService _toastService;
     private readonly CockpitViewModel _cockpit;
     private readonly ILogger<PluginUpdateChecker> _logger;
@@ -39,7 +42,10 @@ public sealed class PluginUpdateChecker : IPluginUpdateChecker
         ILogger<PluginUpdateChecker> logger,
         Func<string, string, bool>? isUpdateStaged = null,
         Version? hostVersion = null,
-        IPluginRegistrationStore? registrations = null)
+        IPluginRegistrationStore? registrations = null,
+        IPluginStoreSources? storeSources = null,
+        Action<int>? setUpdateBadgeCount = null,
+        IPluginTrustStore? trust = null)
     {
         _getInstalledPluginsAsync = getInstalledPluginsAsync;
         _isUpdateStaged = isUpdateStaged ?? ((entryId, latestVersion) => cockpit.Plugins.IsUpdateStaged(entryId, latestVersion));
@@ -50,8 +56,16 @@ public sealed class PluginUpdateChecker : IPluginUpdateChecker
         _logger = logger;
         _hostVersion = hostVersion ?? HostVersionInfo.Current;
         _registrations = registrations;
+        _storeSources = storeSources;
+        _trust = trust;
+        _setUpdateBadgeCount = setUpdateBadgeCount ?? cockpit.Plugins.SetUpdateBadgeCount;
         cockpit.Plugins.UpdatesCleared += () => Dispatcher.UIThread.Post(() => cockpit.ToastHost.Withdraw(UpdateToastKey));
     }
+
+    private void _WarnRevokedPublisher(string id, string fingerprint) =>
+        _toastService.Show(
+            $"The publisher key for {id} has been revoked ({fingerprint}). The installed plugin keeps running; installation and updates under this key are blocked.",
+            ToastSeverity.Warning);
 
     private const string UpdateToastKey = "plugin-update-available";
 
@@ -65,7 +79,7 @@ public sealed class PluginUpdateChecker : IPluginUpdateChecker
             var updates = await _FindUpdatesAsync(cancellationToken).ConfigureAwait(false);
             // AC-76: the full current set feeds the persistent sidebar badge (not just the newly-detected ones the
             // toast dedups), so an update stays visible in the main window until it is installed.
-            _cockpit.Plugins.SetUpdateBadgeCount(updates.Count);
+            _setUpdateBadgeCount(updates.Count);
             _NotifyNewUpdates([.. updates.Where(update => !belowMinimum.Any(below => below.FolderId == update.FolderId))]);
         }
         catch (Exception exception)
@@ -140,43 +154,74 @@ public sealed class PluginUpdateChecker : IPluginUpdateChecker
     private async Task<IReadOnlyList<PluginUpdateInfo>> _FindUpdatesAsync(CancellationToken cancellationToken)
     {
         var installed = await _getInstalledPluginsAsync(cancellationToken).ConfigureAwait(false);
-        var stores = await _storeConfigStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+        var stores = _storeSources is null
+            ? await _storeConfigStore.LoadAsync(cancellationToken).ConfigureAwait(false)
+            : (await _storeSources.LoadAsync(cancellationToken).ConfigureAwait(false))
+                .Where(source => !source.IsHidden).Select(source => source.Store).ToList();
 
-        var updates = new List<PluginUpdateInfo>();
-        var seenFolderIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var offers = new Dictionary<string, List<(int Priority, PluginStoreConfig Store, PluginStoreEntry Entry)>>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var store in stores)
+        var sourceOrder = stores.ToList();
+        await foreach (var (store, fetch) in PluginStoreFetching.FetchAllAsync(
+            sourceOrder, (source, token) => _storeClient.FetchIndexAsync(source, token), cancellationToken).ConfigureAwait(false))
         {
-            var fetch = await _storeClient.FetchIndexAsync(store, cancellationToken).ConfigureAwait(false);
+            var sourcePriority = sourceOrder.IndexOf(store);
             if (!fetch.IsSuccess || fetch.Index is null)
             {
                 continue;
             }
 
+            if (_trust is not null && store.Signed is { } signed)
+            {
+                foreach (var plugin in installed)
+                {
+                    var pinned = await _trust.GetAsync(plugin.FolderId, cancellationToken).ConfigureAwait(false);
+                    if (pinned is not null && string.Equals(pinned.Source, signed.SourceKey, StringComparison.Ordinal)
+                        && fetch.Index.RevokedKeys?.Any(key => string.Equals(key.Fingerprint, pinned.KeyFingerprint, StringComparison.Ordinal)) == true)
+                    {
+                        _WarnRevokedPublisher(plugin.FolderId, pinned.KeyFingerprint);
+                    }
+                }
+            }
+
             foreach (var entry in fetch.Index.Plugins)
             {
                 var folderId = PluginFolderName.Normalize(entry.Id);
-                // First store wins for a given plugin id, same as the manual "Browse stores" flow.
-                if (!seenFolderIds.Add(folderId))
+                if (!offers.TryGetValue(folderId, out var list))
                 {
-                    continue;
+                    offers[folderId] = list = [];
                 }
+                list.Add((sourcePriority, store, entry));
+            }
+        }
 
-                var plugin = installed.FirstOrDefault(candidate => candidate.FolderId == folderId);
-                if (plugin is null)
-                {
-                    continue; // not installed — nothing to update
-                }
+        var saved = _registrations is null ? null : await _registrations.LoadAllAsync(cancellationToken).ConfigureAwait(false);
+        var updates = new List<PluginUpdateInfo>();
+        foreach (var plugin in installed)
+        {
+            if (!offers.TryGetValue(plugin.FolderId, out var list))
+            {
+                continue; // not offered — nothing to update
+            }
 
-                // Newer, unless already staged this session (AC-76: must not re-inflate the badge), and only
-                // when this host can actually run it (AC-181) — same reason
-                // PluginManagerViewModel.CanUpdate excludes it from "Update all".
-                if (PluginVersion.IsNewer(entry.LatestVersion, plugin.Manifest.Version)
-                    && !_isUpdateStaged(entry.Id, entry.LatestVersion)
-                    && _HostCanRun(entry, _hostVersion))
-                {
-                    updates.Add(new PluginUpdateInfo(folderId, plugin.Manifest.Name, plugin.Manifest.Version, entry.LatestVersion));
-                }
+            // AC-1980: only the store the plugin is bound to counts; a higher version elsewhere is not an update. Unbound: first store wins, as before.
+            var bound = PluginSourceBinding.Resolve(saved?.GetValueOrDefault(plugin.FolderId)?.Source, list.Select(offer => offer.Store.SourceKey));
+            var (_, _, entry) = bound is null
+                ? list.MinBy(offer => offer.Priority)
+                : list.Where(offer => offer.Store.SourceKey == bound).DefaultIfEmpty().MinBy(offer => offer.Priority);
+            if (entry is null)
+            {
+                continue;
+            }
+
+            // Newer, unless already staged this session (AC-76: must not re-inflate the badge), and only
+            // when this host can actually run it (AC-181) — same reason
+            // PluginManagerViewModel.CanUpdate excludes it from "Update all".
+            if (PluginVersion.IsNewer(entry.LatestVersion, plugin.Manifest.Version)
+                && !_isUpdateStaged(entry.Id, entry.LatestVersion)
+                && _HostCanRun(entry, _hostVersion))
+            {
+                updates.Add(new PluginUpdateInfo(plugin.FolderId, plugin.Manifest.Name, plugin.Manifest.Version, entry.LatestVersion));
             }
         }
 

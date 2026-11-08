@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Plugins;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.TestSupport;
@@ -14,11 +15,14 @@ namespace Cockpit.Core.Tests.Plugins;
 public class PluginStoreClientRemoteAuthTests : IAsyncLifetime
 {
     private readonly ConcurrentDictionary<string, string?> _authByPath = new();
+    private readonly List<string?> _downloads = [];
     private readonly PluginStoreClient _client = new();
     private LoopbackHttpServer? _store;
     private LoopbackHttpServer? _foreign;
     private string _prefix = string.Empty;
     private string _foreignPrefix = string.Empty;
+    private bool _oversizedDownload;
+    private string _indexJson = """{ "name": "s", "plugins": [] }""";
 
     public async Task InitializeAsync()
     {
@@ -29,7 +33,7 @@ public class PluginStoreClientRemoteAuthTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task FetchIndexAsync_PrivateStore_SendsBearerToken()
+    public async Task PrivateStore_SendsBearerOnlyToItsOriginAndRejectsTraversal()
     {
         var store = PluginStoreConfig.Remote($"{_prefix}mystore/", "s3cr3t");
 
@@ -37,10 +41,11 @@ public class PluginStoreClientRemoteAuthTests : IAsyncLifetime
 
         Assert.True(result.IsSuccess);
         Assert.Equal("Bearer s3cr3t", _authByPath["/mystore/index.json"]);
+        await _AssertForeignDownloadsDoNotSendTokenAsync();
+        await _AssertGitHubTraversalIsRejectedAsync();
     }
 
-    [Fact]
-    public async Task DownloadZipOrImage_AbsoluteUrlToForeignHost_DoesNotSendTheToken()
+    private async Task _AssertForeignDownloadsDoNotSendTokenAsync()
     {
         // A store-controlled index that lists a zip or an icon on another origin must not exfiltrate the token.
         var store = PluginStoreConfig.Remote($"{_prefix}mystore/", "s3cr3t");
@@ -52,8 +57,7 @@ public class PluginStoreClientRemoteAuthTests : IAsyncLifetime
         Assert.Null(_authByPath["/logo.png"]);
     }
 
-    [Fact]
-    public async Task DownloadZipAsync_PrivateGitHub_RejectsATraversalPath()
+    private async Task _AssertGitHubTraversalIsRejectedAsync()
     {
         // No network: an unsafe path is refused before any request is built.
         var store = PluginStoreConfig.Remote("https://github.com/owner/repo", "token");
@@ -64,6 +68,57 @@ public class PluginStoreClientRemoteAuthTests : IAsyncLifetime
         Assert.Contains("unsafe", result.Error);
     }
 
+    [Theory]
+    [InlineData("{foreign}foreign.zip")]
+    [InlineData("//{foreignHost}/foreign.zip")]
+    public async Task SignedSource_RefreshesCredentialsAndIgnoresUntrustedPaths(string advertisedPath)
+    {
+        _indexJson = """
+            { "name": "s", "iconUrl": "logo.png", "templates": [{ "id": "flow" }],
+              "plugins": [{ "id": "tools", "name": "Tools", "latestVersion": "1.2.0",
+                "logoAsset": "tools.svg", "versions": [] }] }
+            """;
+        var token = "first";
+        var store = PluginStoreConfig.Remote($"{_prefix}mystore/index.json") with
+        {
+            Signed = new PluginStoreSignedSource("test:store", "acme", () => new _BearerHandler(() => token)),
+        };
+        IPluginStoreClient client = _client;
+
+        var fetched = await client.FetchIndexAsync(store);
+        token = "second";
+        var path = advertisedPath.Replace("{foreign}", _foreignPrefix, StringComparison.Ordinal)
+            .Replace("{foreignHost}", new Uri(_foreignPrefix).Authority, StringComparison.Ordinal);
+        var version = new PluginStoreVersion("1.2.0", path, null, null, null, null);
+        var downloaded = await client.DownloadZipAsync(store, version, "tools");
+        var image = await client.DownloadImageAsync(store, "logo.png");
+        var template = await client.DownloadTemplateAsync(store, "flow.json", null);
+        var legacy = await client.DownloadZipAsync(store, path, (string?)null);
+        _downloads.Add(downloaded.ZipPath);
+        _downloads.Add(legacy.ZipPath);
+
+        Assert.True(fetched.IsSuccess, fetched.Error);
+        Assert.NotNull(fetched.Index);
+        Assert.Null(fetched.Index.IconUrl);
+        Assert.Null(fetched.Index.Templates);
+        Assert.Null(Assert.Single(fetched.Index.Plugins).LogoAsset);
+        Assert.True(downloaded.IsSuccess, downloaded.Error);
+        Assert.DoesNotContain(_authByPath, request => request.Key == "/foreign.zip" && request.Value is not null);
+        Assert.Equal("Bearer first", _authByPath["/mystore/index.json"]);
+        Assert.Equal("Bearer second", _authByPath["/mystore/plugins/tools/1.2.0/plugin.zip"]);
+        Assert.Equal(2, _authByPath.Count);
+        Assert.False(image.IsSuccess);
+        Assert.False(template.IsSuccess);
+        Assert.False(legacy.IsSuccess);
+        Assert.NotNull(downloaded.ZipPath);
+        _oversizedDownload = true;
+        var oversized = await client.DownloadZipAsync(store, version, "tools");
+        Assert.False(oversized.IsSuccess);
+        Assert.Null(oversized.ZipPath);
+        Assert.Contains("too large", oversized.Error, StringComparison.Ordinal);
+
+    }
+
     private async Task _RecordAndAnswerAsync(HttpContext context)
     {
         // Absent and present-but-empty are recorded apart: "sent no header" is the assertion the token tests make,
@@ -71,11 +126,34 @@ public class PluginStoreClientRemoteAuthTests : IAsyncLifetime
         _authByPath[context.Request.Path.ToString()] =
             context.Request.Headers.TryGetValue("Authorization", out var authorization) ? authorization.ToString() : null;
 
-        await context.Response.WriteAsync("""{ "name": "s", "plugins": [] }""");
+        if (_oversizedDownload && context.Request.Path.Value?.EndsWith(".zip", StringComparison.Ordinal) == true)
+        {
+            context.Response.ContentLength = 513L * 1024 * 1024;
+            await context.Response.StartAsync();
+            return;
+        }
+        await context.Response.WriteAsync(_indexJson);
+    }
+
+    private sealed class _BearerHandler(Func<string> token) : DelegatingHandler(new HttpClientHandler())
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            request.Headers.Authorization = new("Bearer", token());
+            return base.SendAsync(request, cancellationToken);
+        }
     }
 
     public async Task DisposeAsync()
     {
+        foreach (var download in _downloads)
+        {
+            if (download is not null)
+            {
+                File.Delete(download);
+            }
+        }
+
         if (_store is not null)
         {
             await _store.DisposeAsync();

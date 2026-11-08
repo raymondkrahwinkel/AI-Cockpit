@@ -5,11 +5,24 @@ namespace Cockpit.Infrastructure.Tests.Worktrees;
 public sealed class WorktreeCleanupTests
 {
 
-    [Theory]
-    [InlineData(true, false, false)]
-    [InlineData(false, false, true)]
-    [InlineData(false, true, false)]
-    public async Task Testcontainer_IsRemovedOnlyWithoutRyukAndWithoutALiveComposeProject(bool ryuk, bool liveCompose, bool removed)
+    [Fact]
+    public async Task Testcontainer_IsRemovedOnlyWithoutRyukAndWithoutALiveComposeProject()
+    {
+        {
+            var scenario = new WorktreeCleanupTests();
+            await scenario._AssertTestcontainer_IsRemovedOnlyWithoutRyukAndWithoutALiveComposeProjectAsync(true, false, false);
+        }
+        {
+            var scenario = new WorktreeCleanupTests();
+            await scenario._AssertTestcontainer_IsRemovedOnlyWithoutRyukAndWithoutALiveComposeProjectAsync(false, false, true);
+        }
+        {
+            var scenario = new WorktreeCleanupTests();
+            await scenario._AssertTestcontainer_IsRemovedOnlyWithoutRyukAndWithoutALiveComposeProjectAsync(false, true, false);
+        }
+    }
+
+    private async Task _AssertTestcontainer_IsRemovedOnlyWithoutRyukAndWithoutALiveComposeProjectAsync(bool ryuk, bool liveCompose, bool removed)
     {
         using var fixture = new CleanupFixture();
         await fixture.InitializeAsync();
