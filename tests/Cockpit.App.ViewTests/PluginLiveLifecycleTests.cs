@@ -57,7 +57,8 @@ public sealed class PluginLiveLifecycleTests
     [Fact]
     public Task APluginThatMakesEveryContribution_LeavesNothingBehind_AndComesBack() => HeadlessAvalonia.RunAsync(async () =>
     {
-        var folder = Directory.CreateTempSubdirectory("cockpit-live-plugin").FullName;
+        // Under `<state>/plugins/<id>`, as installed: the copies go beside `plugins`, never into the root of the temp volume.
+        var folder = Directory.CreateDirectory(Path.Combine(Directory.CreateTempSubdirectory("cockpit-live-plugin").FullName, "plugins", PluginId)).FullName;
         File.WriteAllText(
             Path.Combine(folder, "plugin.json"),
             $$"""{"id":"{{PluginId}}","name":"Everything","version":"1.0.0","entryAssembly":"everything.dll","abstractionsVersion":3}""");
@@ -139,7 +140,8 @@ public sealed class PluginLiveLifecycleTests
         Assert.Equal(PluginActivationStatus.NotActive, (await manager.DeactivateAsync(PluginId)).Status);
         Assert.Equal(2, disposed.Count);
 
-        Assert.Equal(PluginActivationStatus.Activated, (await Task.Run(() => manager.ActivateOne(discovered))).Status);
+        var reactivated = await Task.Run(() => manager.ActivateOne(discovered));
+        Assert.True(reactivated.Status == PluginActivationStatus.Activated, $"Reactivation gave {reactivated.Status}: {reactivated.Reason}");
         await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
 
         Assert.Equal(active, _Held(provider, cockpit));

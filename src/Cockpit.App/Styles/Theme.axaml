@@ -1170,15 +1170,8 @@
         <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
     </Style>
 
-    <!-- Segment of a segmented control (AC-789): the frame belongs to the surrounding Border, so a segment draws
-         no border of its own and the checked one is marked by a raised surface instead of the accent fill — an
-         accent-filled segment reads as the page's primary action rather than as "you are here".
-         A plain Button with an `on` class the view binds to the view model, and neither a ToggleButton nor a
-         RadioButton: both of those own an IsChecked of their own that fights the binding — a ToggleButton flips it on
-         every click, and a RadioButton's group writes a local `false` into every sibling, across every instance
-         of the same GroupName in the window (AC-1297: two ViewModeSwitch copies, one per stand, blanked each
-         other). Here nothing owns the selection: the class is a pure function of the view model, and a click is
-         only a command. Same dense footprint as ToggleButton.Compact. -->
+    <!-- Segments share their surrounding Border's frame. The view model supplies the selection through `on`,
+         avoiding local IsChecked values; a raised surface distinguishes selection from a primary action. -->
     <Style Selector="Button.Segment">
         <Setter Property="Background" Value="Transparent"/>
         <Setter Property="BorderThickness" Value="0"/>

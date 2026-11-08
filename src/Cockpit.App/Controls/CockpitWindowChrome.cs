@@ -8,6 +8,7 @@ using Avalonia.LogicalTree;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
+using Avalonia.VisualTree;
 using Cockpit.Core.Configuration;
 using Material.Icons;
 
@@ -45,7 +46,7 @@ internal static class CockpitWindowChrome
     // AC-1013: `title`/`subtitle` are ignored by `CockpitTitleBar.Window` (its own name/mark, AC-430); `onSettings`
     // adds a settings gear to a plugin dialog. AC-1487: `remoteServer` gives the app window the `--remote` look of
     // mockup v2 tab 5: a blue rim, a blue bar, and the server with its "no state on this machine" chip.
-    public static void Apply(Window window, string? title = null, string? subtitle = null, CockpitTitleBar titleBar = CockpitTitleBar.Dialog, bool includeMinimize = false, bool includeMaximize = false, bool closeOnEscape = true, Action? onSettings = null, string? remoteServer = null, Control? captionAction = null)
+    public static void Apply(Window window, string? title = null, string? subtitle = null, CockpitTitleBar titleBar = CockpitTitleBar.Dialog, bool includeMinimize = false, bool includeMaximize = false, bool closeOnEscape = true, Action? onSettings = null, string? remoteServer = null, Control? captionAction = null, Control? centeredCaptionAction = null)
     {
         window.ExtendClientAreaToDecorationsHint = true;
         if (CockpitBuild.IsDevelopment)
@@ -84,7 +85,7 @@ internal static class CockpitWindowChrome
         // Detach the existing content before re-parenting it under the chrome, or Avalonia throws while the
         // control is briefly a child of two parents.
         window.Content = null;
-        var root = _ChromeRoot(window, title ?? window.Title ?? string.Empty, subtitle, titleBar, body, includeMinimize, includeMaximize, onSettings, remoteServer, captionAction);
+        var root = _ChromeRoot(window, title ?? window.Title ?? string.Empty, subtitle, titleBar, body, includeMinimize, includeMaximize, onSettings, remoteServer, captionAction, centeredCaptionAction);
         window.Content = remoteServer is null
             ? root
             : new Border { BorderBrush = _Brush("CockpitAccentBrush"), BorderThickness = new Thickness(2), Child = root };
@@ -104,17 +105,17 @@ internal static class CockpitWindowChrome
         };
     }
 
-    private static Control _ChromeRoot(Window window, string title, string? subtitle, CockpitTitleBar shape, Control body, bool includeMinimize, bool includeMaximize, Action? onSettings, string? remoteServer, Control? captionAction)
+    private static Control _ChromeRoot(Window window, string title, string? subtitle, CockpitTitleBar shape, Control body, bool includeMinimize, bool includeMaximize, Action? onSettings, string? remoteServer, Control? captionAction, Control? centeredCaptionAction)
     {
         var root = new DockPanel();
-        var titleBar = _TitleBar(window, title, subtitle, shape, includeMinimize, includeMaximize, onSettings, remoteServer, captionAction);
+        var titleBar = _TitleBar(window, title, subtitle, shape, includeMinimize, includeMaximize, onSettings, remoteServer, captionAction, centeredCaptionAction);
         DockPanel.SetDock(titleBar, Dock.Top);
         root.Children.Add(titleBar);
         root.Children.Add(body);
         return root;
     }
 
-    private static Control _TitleBar(Window window, string title, string? subtitle, CockpitTitleBar shape, bool includeMinimize, bool includeMaximize, Action? onSettings, string? remoteServer, Control? captionAction)
+    private static Control _TitleBar(Window window, string title, string? subtitle, CockpitTitleBar shape, bool includeMinimize, bool includeMaximize, Action? onSettings, string? remoteServer, Control? captionAction, Control? centeredCaptionAction)
     {
         var isDialog = shape == CockpitTitleBar.Dialog;
 
@@ -184,6 +185,14 @@ internal static class CockpitWindowChrome
             Child = bar,
         };
 
+        if (centeredCaptionAction is not null)
+        {
+            centeredCaptionAction.HorizontalAlignment = HorizontalAlignment.Center;
+            centeredCaptionAction.VerticalAlignment = VerticalAlignment.Center;
+            wrapper.Child = null;
+            wrapper.Child = new Grid { Children = { bar, centeredCaptionAction } };
+        }
+
         if (OperatingSystem.IsWindows())
         {
             // AC-934: marks the bar as the native caption so dragging it triggers Aero Snap; the buttons inside
@@ -193,13 +202,18 @@ internal static class CockpitWindowChrome
             {
                 WindowDecorationProperties.SetElementRole(button, WindowDecorationsElementRole.User);
             }
+            if (centeredCaptionAction is not null)
+            {
+                WindowDecorationProperties.SetElementRole(centeredCaptionAction, WindowDecorationsElementRole.User);
+            }
         }
 
         // Drag the window by the title bar; a double-click maximizes/restores it (where that is allowed),
         // and a press on a caption button is left to the button.
         wrapper.PointerPressed += (_, e) =>
         {
-            if (e.Source is Button)
+            if (e.Source is Visual source && (captionButtons.IsVisualAncestorOf(source)
+                || centeredCaptionAction is not null && (ReferenceEquals(source, centeredCaptionAction) || centeredCaptionAction.IsVisualAncestorOf(source))))
             {
                 return;
             }

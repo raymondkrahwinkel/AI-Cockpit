@@ -18,9 +18,6 @@ public sealed record HeavyRunSettings
     // A timeout only counts against the ceiling when the machine was this busy while it happened.
     public double OverloadedAbovePercent { get; init; } = 65;
 
-    // An exploring run that has waited this long is queued as if it were a pre-merge gate.
-    public int AgingMinutes { get; init; } = 15;
-
     public double DiskElevatedTimeToFullHours { get; init; } = 6;
 
     public double DiskCriticalTimeToFullHours { get; init; } = 1;

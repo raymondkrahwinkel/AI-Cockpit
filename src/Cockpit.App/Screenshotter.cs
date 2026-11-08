@@ -984,6 +984,7 @@ internal static partial class Screenshotter
         // Assistant threads: the rail with labels (960), icons (520), the labels over the chat, the picker below 340,
         // a project thread and Questions for you.
         ["assistant-threads-all"] = (_, _) => _AssistantThreads(960),
+        ["assistant-threads-runs"] = (_, _) => _AssistantThreads(960, thread: "depot", runs: true),
         ["assistant-threads-depot"] = (_, _) => _AssistantThreads(960, thread: "depot"),
         ["assistant-threads-questions"] = (_, _) => _AssistantThreads(960, questions: true),
         ["assistant-threads-questions-answered"] = (_, _) => _AssistantThreads(960, questions: true, answered: true),

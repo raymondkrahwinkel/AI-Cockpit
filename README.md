@@ -54,6 +54,8 @@ Cancel discards edits. `heavyRuns` in `cockpit.json` also works on servers witho
 `CpuCeilingPercent` to `75`, and `MemoryCeilingPercent` to `85`.
 A positive maximum adds a limit to the existing resource checks. With no run active, the first heavy run
 can start regardless of these limits. Light and operator runs retain their existing admission rules.
+Queued runs start strictly in arrival order, regardless of purpose or time spent waiting.
+Light and operator-started runs still start immediately. Legacy `AgingMinutes` settings are ignored.
 Queued runs show the reason in Test runs. Overload failures can lower the resource ceilings.
 These settings stay on this machine and are excluded from the settings carrier.
 
