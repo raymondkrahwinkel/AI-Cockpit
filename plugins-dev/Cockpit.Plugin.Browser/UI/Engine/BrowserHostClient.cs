@@ -2,20 +2,23 @@ using System.Diagnostics;
 using System.Runtime.Versioning;
 using System.Text.Json;
 using Cockpit.Plugin.Browser.Ipc;
+using Microsoft.Win32.SafeHandles;
 
 namespace Cockpit.Plugin.Browser.UI.Engine;
 
 internal sealed class BrowserHostClient : IAsyncDisposable
 {
     private readonly Process _process;
+    private readonly SafeFileHandle? _job;
     private readonly BrowserIpcPipes _pipes;
     private readonly Task _exited;
     private readonly Task _closeOnExit;
     private int _disposed;
 
-    private BrowserHostClient(Process process, BrowserIpcPipes pipes, Guid generation)
+    private BrowserHostClient(Process process, BrowserIpcPipes pipes, Guid generation, SafeFileHandle? job)
     {
         _process = process;
+        _job = job;
         _pipes = pipes;
         _exited = OperatingSystem.IsLinux() ? _ReapLinuxAsync(process.Id) : process.WaitForExitAsync();
         Generation = generation;
@@ -42,6 +45,8 @@ internal sealed class BrowserHostClient : IAsyncDisposable
         var generation = Guid.NewGuid();
         var pipes = new BrowserIpcPipes();
         BrowserHostClient? client = null;
+        SafeFileHandle? job = null;
+        Process? process = null;
         try
         {
             string[] arguments =
@@ -56,10 +61,9 @@ internal sealed class BrowserHostClient : IAsyncDisposable
                 .. hardwareAcceleration ? new[] { "--cockpit-hardware-acceleration" } : Array.Empty<string>(),
             ];
             cancellationToken.ThrowIfCancellationRequested();
-            Process process;
             if (OperatingSystem.IsWindows())
             {
-                process = WindowsBrowserHostProcess.Start(executable, arguments, pipes);
+                (process, job) = WindowsBrowserHostProcess.Start(executable, arguments, pipes);
             }
             else if (OperatingSystem.IsLinux())
             {
@@ -69,7 +73,7 @@ internal sealed class BrowserHostClient : IAsyncDisposable
             {
                 throw new PlatformNotSupportedException("The browser host is supported on Windows and Linux.");
             }
-            client = new BrowserHostClient(process, pipes, generation);
+            client = new BrowserHostClient(process, pipes, generation, job);
             pipes.ChildStarted();
             var ready = await client.Connection.CallAsync(generation, "enginehost", "engine.ready", JsonSerializer.SerializeToElement(true),
                 BrowserIpcLimits.Deadline, cancellationToken).ConfigureAwait(false);
@@ -87,6 +91,8 @@ internal sealed class BrowserHostClient : IAsyncDisposable
             }
             else
             {
+                job?.Dispose();
+                process?.Dispose();
                 pipes.Dispose();
             }
             throw;
@@ -104,6 +110,7 @@ internal sealed class BrowserHostClient : IAsyncDisposable
         }
         finally
         {
+            _job?.Dispose();
             Connection.Close();
         }
     }
@@ -131,8 +138,15 @@ internal sealed class BrowserHostClient : IAsyncDisposable
         }
         catch (OperationCanceledException)
         {
-            // Only the process started by this client is eligible for forced cleanup (tree ownership: AC-2145/2146).
-            BrowserIpcCleanup.Try(() => _process.Kill(), errors);
+            if (_job is not null)
+            {
+                _job.Dispose();
+            }
+            else
+            {
+                // AC-2146 supplies Linux tree containment; until then only this client's host is eligible.
+                BrowserIpcCleanup.Try(() => _process.Kill(), errors);
+            }
             try
             {
                 await _exited.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
@@ -148,6 +162,7 @@ internal sealed class BrowserHostClient : IAsyncDisposable
         }
         finally
         {
+            _job?.Dispose();
             _process.Dispose();
         }
         try

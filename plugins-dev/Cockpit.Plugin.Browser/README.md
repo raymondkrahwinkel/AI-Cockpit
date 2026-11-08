@@ -64,8 +64,13 @@ The generation is registered before the IPC reader starts. `engine.ready` return
 the actual host PID; it makes no nested request. Startup is bounded by the existing 30-second call deadline.
 Missing runtime, pipe failure and host crash fail the caller; another start can use a fresh process.
 Host exit also closes IPC directly, independently of EOF, so an accidentally inherited pipe cannot delay failure.
-Disposal closes IPC, waits up to five seconds and then stops only that client's own host PID if necessary.
-Process-tree lifetime containment belongs to AC-2145/AC-2146, and the existing in-process UI remains active
+Disposal closes IPC and waits up to five seconds before forced cleanup.
+On Windows (AC-2145), an unnamed, non-inheritable Job Object has `KILL_ON_JOB_CLOSE` and no breakaway flags.
+`CreateProcess` assigns the suspended host atomically through `PROC_THREAD_ATTRIBUTE_JOB_LIST` before resume;
+failure prevents startup. This also covers an owner crash immediately after process creation. The job handle
+stays only in the client: it closes on host exit or the graceful deadline, killing remaining host/CEF children.
+An owner crash closes it through the OS. No process enumeration or attachment to unrelated PIDs is needed.
+Linux process-tree containment belongs to AC-2146, and the existing in-process UI remains active
 until AC-2147 connects the views. Use this launcher only from the explicit local development harness meanwhile.
 
 ## The browser
