@@ -9676,6 +9676,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         public void NotifyPreparing(Cockpit.Core.Voice.VoicePlaybackSource source = Cockpit.Core.Voice.VoicePlaybackSource.Session, string? ownerId = null) { }
         public event EventHandler<bool>? PlaybackActiveChanged { add { } remove { } }
         public event EventHandler? SpeakingStarted { add { } remove { } }
+        public event EventHandler<bool>? AudioPendingChanged { add { } remove { } }
         public event EventHandler<Cockpit.Core.Abstractions.Voice.VoicePlaybackStoppedEventArgs>? PlaybackStopped { add { } remove { } }
         public void StopAll() { }
         public int Generation => 0;

@@ -93,9 +93,7 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         _openMic.PropertyChanged += _OnSourceChanged;
         _overlay.Overlay.PropertyChanged += _OnSourceChanged;
 
-        // AC-1013: AssistantActivity.Speaking was rendered but never set — the host only writes Activity for
-        // things it does itself, not for playback afterwards — so "it is talking" was dead until wired here.
-        _playbackQueue.PlaybackActiveChanged += _OnPlaybackActiveChanged;
+        _playbackQueue.AudioPendingChanged += _OnAudioPendingChanged;
 
         // Same feed as the voice pill's waveform; all three capture sources already funnel through the
         // overlay coordinator, so no extra filtering is needed here.
@@ -172,7 +170,7 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     // `_ResolveActivity`, because the queue reports this by event, with no property to read back.
     private bool _isSpeaking;
 
-    private void _OnPlaybackActiveChanged(object? sender, bool active) =>
+    private void _OnAudioPendingChanged(object? sender, bool active) =>
         Dispatcher.UIThread.Post(() =>
         {
             _isSpeaking = active;
