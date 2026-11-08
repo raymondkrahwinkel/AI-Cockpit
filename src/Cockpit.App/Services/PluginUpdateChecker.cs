@@ -159,8 +159,7 @@ public sealed class PluginUpdateChecker : IPluginUpdateChecker
             : (await _storeSources.LoadAsync(cancellationToken).ConfigureAwait(false))
                 .Where(source => !source.IsHidden).Select(source => source.Store).ToList();
 
-        var updates = new List<PluginUpdateInfo>();
-        var seenFolderIds = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var offers = new Dictionary<string, List<(int Priority, PluginStoreConfig Store, PluginStoreEntry Entry)>>(StringComparer.OrdinalIgnoreCase);
 
         var sourceOrder = stores.ToList();
         await foreach (var (store, fetch) in PluginStoreFetching.FetchAllAsync(
@@ -188,29 +187,41 @@ public sealed class PluginUpdateChecker : IPluginUpdateChecker
             foreach (var entry in fetch.Index.Plugins)
             {
                 var folderId = PluginFolderName.Normalize(entry.Id);
-                // First store wins for a given plugin id, same as the manual "Browse stores" flow.
-                if (seenFolderIds.TryGetValue(folderId, out var priority) && priority <= sourcePriority)
+                if (!offers.TryGetValue(folderId, out var list))
                 {
-                    continue;
+                    offers[folderId] = list = [];
                 }
-                seenFolderIds[folderId] = sourcePriority;
-                updates.RemoveAll(update => update.FolderId == folderId);
+                list.Add((sourcePriority, store, entry));
+            }
+        }
 
-                var plugin = installed.FirstOrDefault(candidate => candidate.FolderId == folderId);
-                if (plugin is null)
-                {
-                    continue; // not installed — nothing to update
-                }
+        var saved = _registrations is null ? null : await _registrations.LoadAllAsync(cancellationToken).ConfigureAwait(false);
+        var updates = new List<PluginUpdateInfo>();
+        foreach (var plugin in installed)
+        {
+            if (!offers.TryGetValue(plugin.FolderId, out var list))
+            {
+                continue; // not offered — nothing to update
+            }
 
-                // Newer, unless already staged this session (AC-76: must not re-inflate the badge), and only
-                // when this host can actually run it (AC-181) — same reason
-                // PluginManagerViewModel.CanUpdate excludes it from "Update all".
-                if (PluginVersion.IsNewer(entry.LatestVersion, plugin.Manifest.Version)
-                    && !_isUpdateStaged(entry.Id, entry.LatestVersion)
-                    && _HostCanRun(entry, _hostVersion))
-                {
-                    updates.Add(new PluginUpdateInfo(folderId, plugin.Manifest.Name, plugin.Manifest.Version, entry.LatestVersion));
-                }
+            // AC-1980: only the store the plugin is bound to counts; a higher version elsewhere is not an update. Unbound: first store wins, as before.
+            var bound = PluginSourceBinding.Resolve(saved?.GetValueOrDefault(plugin.FolderId)?.Source, list.Select(offer => offer.Store.SourceKey));
+            var (_, _, entry) = bound is null
+                ? list.MinBy(offer => offer.Priority)
+                : list.Where(offer => offer.Store.SourceKey == bound).DefaultIfEmpty().MinBy(offer => offer.Priority);
+            if (entry is null)
+            {
+                continue;
+            }
+
+            // Newer, unless already staged this session (AC-76: must not re-inflate the badge), and only
+            // when this host can actually run it (AC-181) — same reason
+            // PluginManagerViewModel.CanUpdate excludes it from "Update all".
+            if (PluginVersion.IsNewer(entry.LatestVersion, plugin.Manifest.Version)
+                && !_isUpdateStaged(entry.Id, entry.LatestVersion)
+                && _HostCanRun(entry, _hostVersion))
+            {
+                updates.Add(new PluginUpdateInfo(plugin.FolderId, plugin.Manifest.Name, plugin.Manifest.Version, entry.LatestVersion));
             }
         }
 

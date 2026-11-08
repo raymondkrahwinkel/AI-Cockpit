@@ -16,6 +16,10 @@ public static class PluginConsentTerms
     public const string PermissionSummary =
         "run with your account's permissions — your files, your network, your shell. Not sandboxed.";
 
+    // AC-1980: the consent for moving an installed plugin to another store.
+    public static string SwitchMessage(string plugin, string from, string to) =>
+        $"Switch {plugin} from {from} to {to}?\n\nThe file from {to} replaces the installed one and is pinned from now on. A plugin runs with your account's permissions.";
+
     public static string PublisherMessage(PluginKeyConsentRequest request)
     {
         var change = request.Decision switch
