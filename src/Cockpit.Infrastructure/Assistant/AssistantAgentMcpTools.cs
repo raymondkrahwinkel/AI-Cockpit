@@ -41,6 +41,11 @@ internal sealed class AssistantAgentMcpTools(
             return new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = "Looking at the screen is not available here." }] };
         }
 
+        if (reason.Length > Screenshots.ScreenLookAlong.ReasonLimit)
+        {
+            return new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = $"Give the reason in one short sentence, at most {Screenshots.ScreenLookAlong.ReasonLimit} characters." }] };
+        }
+
         try
         {
             var look = await lookAlong.LookAsync(reason).ConfigureAwait(false);

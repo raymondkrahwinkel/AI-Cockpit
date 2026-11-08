@@ -22,7 +22,8 @@ public sealed class ScreenLookAlong(
     IConsentBroker consent,
     TimeProvider? time = null)
 {
-    private const int ReasonLimit = 200;
+    // The longest reason the tool accepts, so the card always shows it whole.
+    public const int ReasonLimit = 200;
     private static readonly int[] Minutes = [5, 10, 30];
 
     private readonly TimeProvider _time = time ?? TimeProvider.System;
@@ -83,17 +84,18 @@ public sealed class ScreenLookAlong(
             restore?.Invoke();
         }
 
-        // A Stop or the timer while the screen was being read wins: those pixels came after the session ended.
-        var display = shot?.DisplayAt(new CapturePoint(
-            session.Display.X + (session.Display.Width / 2), session.Display.Y + (session.Display.Height / 2)));
-        if (Current is null || display is null)
+        // A Stop or the timer while the screen was being read wins, also when a new session started right after:
+        // those pixels belong to a session that ended.
+        var display = session.Display;
+        var read = shot?.DisplayAt(new CapturePoint(display.X + (display.Width / 2), display.Y + (display.Height / 2)));
+        if (Current is not { } now || now.Display != display || now.Until != session.Until || read is null)
         {
-            return new ScreenLook(display is null
+            return new ScreenLook(read is null
                 ? "The chosen display could not be read; nothing was captured."
                 : "Look-along ended while the screen was being read; nothing was kept.");
         }
 
-        var png = editor.Crop(shot!.Image, display.ImageBounds);
+        var png = editor.Crop(shot!.Image, read.ImageBounds);
         lock (_gate)
         {
             _session = _session is null ? null : _session with { LastLook = _time.GetUtcNow() };
@@ -152,11 +154,6 @@ public sealed class ScreenLookAlong(
     public static ConsentRequest Card(string? reason, IReadOnlyList<DesktopDisplay> screens)
     {
         var said = string.Join(' ', (reason ?? string.Empty).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
-        if (said.Length > ReasonLimit)
-        {
-            said = said[..ReasonLimit] + "...";
-        }
-
         return new ConsentRequest(
             "Let the assistant look at your screen?",
             "Screen · one screenshot of the chosen display each time it looks\n"
