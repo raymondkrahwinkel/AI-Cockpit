@@ -13,6 +13,7 @@ using Cockpit.Core.Startup;
 using Cockpit.Core.Workspaces;
 using Cockpit.Infrastructure.Backup;
 using Cockpit.Infrastructure.ManagedCli;
+using Cockpit.Infrastructure.Mentions;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
@@ -25,6 +26,7 @@ using Cockpit.Plugins.Abstractions.Files;
 using Cockpit.Plugins.Abstractions.Health;
 using Cockpit.Plugins.Abstractions.ManagedCli;
 using Cockpit.Plugins.Abstractions.Mcp;
+using Cockpit.Plugins.Abstractions.Mentions;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
@@ -181,6 +183,7 @@ public sealed class PluginLiveLifecycleTests
     private static readonly Type[] _RegistryTypes =
     [
         typeof(PluginChannelHub),
+        typeof(PluginMentionSources),
         typeof(IWidgetRegistry),
         typeof(IWorkspaceTypeRegistry),
         typeof(ICompanionToolRegistry),
@@ -211,6 +214,7 @@ public sealed class PluginLiveLifecycleTests
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton(cockpit);
+        services.AddSingleton<PluginMentionSources>();
         services.AddSingleton(mcpEndpoints);
         services.AddSingleton(Substitute.For<IManagedCliService>());
         services.AddSingleton(new PluginChannelHub(NullLogger<PluginChannelHub>.Instance));
@@ -313,6 +317,9 @@ public sealed class PluginLiveLifecycleTests
             var source = Substitute.For<ISharedProjectSource>();
             source.Key.Returns("shared");
             host.AddSharedProjectSource(source);
+            var mentions = Substitute.For<IPluginMentionSource>();
+            mentions.Key.Returns("mentions");
+            host.AddMentionSource(mentions);
             var section = Substitute.For<IPluginHealthSection>();
             section.Name.Returns("health");
             host.AddHealthSection(section);

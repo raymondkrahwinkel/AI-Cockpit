@@ -19,6 +19,7 @@ internal static partial class Screenshotter
         new("mention-home-cleared", (_, _) => _MentionHome()),
         new("mention-nogit", (_, _) => _MentionHome(withUnversioned: true)),
         new("mention-empty", (_, _) => _MentionHome()),
+        new("mention-plugin", (_, _) => _MentionHome(withPlugin: true)),
         new("mention-panel", (_, height) => _MentionPanel(400, height)),
         new("mention-panel-min", (_, height) => _MentionPanel(280, height)),
         new("mention-many", (_, height) => _MentionPanel(400, height, many: true)),
@@ -38,6 +39,7 @@ internal static partial class Screenshotter
         },
         ["mention-nogit"] = window => _TypeOnHome(window, "Look at @bel"),
         ["mention-empty"] = window => _TypeOnHome(window, "Look at @zzz"),
+        ["mention-plugin"] = window => _TypeOnHome(window, "Look at @"),
         ["mention-panel"] = _OpenAssistantChatMentionPicker,
         ["mention-panel-min"] = _OpenAssistantChatMentionPicker,
         ["mention-many"] = window =>
@@ -66,14 +68,16 @@ internal static partial class Screenshotter
     }
 
     // Home with the sample projects; the "Cockpit" item is the catalog's own project, so choosing it sets the button.
-    private static Window _MentionHome(bool withUnversioned = false)
+    private static Window _MentionHome(bool withUnversioned = false, bool withPlugin = false)
     {
         CockpitViewModel? cockpit = null;
         MentionItem[] unversioned = withUnversioned
             ? [new("project:belasting", "Belasting 2026", @"Z:\Belasting 2026", new MentionTile("B"), MentionKind.Project, "Belasting 2026", @"Z:\Belasting 2026", DateTimeOffset.Now.AddDays(-9))]
             : [];
         cockpit = _SimpleStandHome(mentionSources: () => _SampleMentionSources(
-            name => name == "Cockpit" ? "project:" + cockpit!.Projects.Projects[0].Id : "project:" + name, unversioned));
+            name => name == "Cockpit" ? "project:" + cockpit!.Projects.Projects[0].Id : "project:" + name, unversioned)
+            .Concat(withPlugin ? new IMentionSource[] { new _SampleMentionSource(20, _ => [new MentionGroup("Suggested by plugins",
+                [new MentionItem("plugin:m365:planning", "Project planning", "via Microsoft 365", new MentionTile("P"), MentionKind.Suggestion, "Project planning", "m365:planning")])]) } : []).ToArray());
         return new MainWindow { DataContext = cockpit };
     }
 
