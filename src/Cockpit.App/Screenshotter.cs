@@ -303,6 +303,8 @@ internal static partial class Screenshotter
         // AC-512: the sidebar's Help flyout, opened the way session-settings-flyout already proves headless
         // rendering can — after the window is up, via the Hovers table below.
         ["help-menu"] = (_, _) => new MainWindow { DataContext = new ViewModels.CockpitViewModel() },
+        ["sidebar-footer-menu"] = (_, _) => _SidebarFooterScene(simple: false),
+        ["simple-help-menu"] = (_, _) => _SidebarFooterScene(simple: true),
         // AC-1763 (mockups Productivity v3 #09, Company v8 #22 and v7 #21): the sidebar's plugin cards — Productivity's two
         // buttons and its Tijd section in one card, the single-button plugins together in "Plugins" — open, or folded.
         ["sidebar-plugins"] = (width, height) => _PluginSidebarScene(width, height, folded: false),
@@ -412,6 +414,7 @@ internal static partial class Screenshotter
         // Voice tab — own scenes rather than reusing "options", since neither category renders on the category that
         // scene opens on (Notifications) and a layout change to a page nothing captures is a layout change nobody
         ["voice-transcribe"] = (_, _) => _OptionsOnTab("Voice"),
+        ["voice-wake-word"] = (_, _) => _OptionsWakeWord(),
         // AC-1881: an Optimus laptop — the backend combo offers each GPU and Auto names the dedicated one.
         ["voice-transcribe-gpus"] = (_, _) => _OptionsVoiceWithTwoGpus(),
         ["voice-assistant"] = (_, _) => _OptionsAssistantPage(),
@@ -1395,6 +1398,15 @@ internal static partial class Screenshotter
     // AC-1763: a CockpitViewModel with plugins registered through the sink, the same route a real plugin uses —
     // Productivity (two buttons, one with a text badge, and the Tijd section) and three plugins with a single button,
     // two of them with a counter.
+    private static MainWindow _SidebarFooterScene(bool simple)
+    {
+        var cockpit = new ViewModels.CockpitViewModel { SimpleView = simple };
+        cockpit.Plugins.SetUpdateBadgeCount(12);
+        cockpit.Plugins.SeedPendingApprovalCount(3);
+
+        return new MainWindow { DataContext = cockpit };
+    }
+
     private static MainWindow _PluginSidebarScene(int width, int height, bool folded)
     {
         var cockpit = new ViewModels.CockpitViewModel { SidebarWidth = 240 };
@@ -1549,6 +1561,8 @@ internal static partial class Screenshotter
         ["session-settings-flyout-no-live-controls"] = window => _OpenFlyout(window, "SessionSettingsButton"),
         ["workspace-layout-flyout"] = window => _OpenFlyout(window, "WorkspaceLayoutButton"),
         ["help-menu"] = window => _OpenFlyout(window, "HelpButton"),
+        ["sidebar-footer-menu"] = window => _OpenFlyout(window, "MenuButton"),
+        ["simple-help-menu"] = window => _OpenFlyout(window, "SimpleRailHelp"),
         ["plugin:depot-browser-settings"] = window => _OpenFlyout(window, "OpenFilesInButton"),
         ["projects-workspace-split-open"] = window =>
         {
@@ -1609,6 +1623,7 @@ internal static partial class Screenshotter
         ["options-backup-depot"] = _ChooseSceneDepot,
         ["options-backup-status"] = window => _ScrollIntoView(window, "backup", "2. SCHEDULED BACKUP"),
         ["assistant-speech"] = window => _ScrollIntoView(window, "assistant", "3. REPLIES"),
+        ["voice-wake-word"] = window => _ScrollIntoView(window, "voice", "4. ALWAYS LISTENING"),
         ["assistant-speech-profile"] = window => _ScrollIntoView(window, "assistant", "3. REPLIES"),
         ["assistant-speech-full"] = window => _ScrollIntoView(window, "assistant", "3. REPLIES"),
         ["assistant-speech-unavailable"] = window => _ScrollIntoView(window, "assistant", "3. REPLIES"),
@@ -2569,6 +2584,17 @@ internal static partial class Screenshotter
             cockpit.Security.IsHelloBusy = busy;
             cockpit.Security.HelloStatus = "On — bound to this computer’s security chip (TPM). Your password keeps working.";
         };
+        return dialog;
+    }
+
+    private static OptionsDialog _OptionsWakeWord()
+    {
+        var dialog = _OptionsOnTab("Voice");
+        var cockpit = dialog.DataContext as ViewModels.CockpitViewModel
+            ?? throw new InvalidOperationException("The Options dialog has no cockpit.");
+        cockpit.VoiceEnabled = true;
+        cockpit.AssistantOptions.IsEnabled = true;
+        cockpit.AssistantOptions.WakeWordEnabled = true;
         return dialog;
     }
 

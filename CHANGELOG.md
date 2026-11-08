@@ -6,6 +6,9 @@
 
 - AC-2200: plugins can add their own suggestions to the chat's @-list under "Suggested by plugins"; a plugin source that fails or takes longer than two seconds is left out without holding up the rest.
 - AC-2198: typing @ in a chat composer opens one shared list that hangs on the caret line at the composer's full width, groups files and projects per window, skips group headings with the arrow keys, and marks accepted project mentions in the text.
+- AC-2212: the Simple rail now has a Plugins row above Settings and Help that opens the plugin store, with the same update and approval badges as the Panels sidebar.
+
+- AC-2191: the Panels sidebar footer uses flat icon rows like the Simple rail, and the Menu and Help flyouts get the mention-picker look with icon rows (also in the Simple rail's Help).
 
 - AC-2188: queued test runs start strictly in arrival order, without pre-merge priority or aging.
 
