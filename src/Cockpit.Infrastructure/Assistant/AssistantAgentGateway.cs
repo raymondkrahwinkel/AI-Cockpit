@@ -47,7 +47,8 @@ internal sealed partial class AssistantAgentGateway(
     IMcpOAuthTokenStore? oauthTokens = null,
     IWorkspaceAgentCoordinator? agentCoordinator = null,
     ProfileSessionLimit? sessionLimit = null,
-    Cockpit.Core.Sessions.SessionMcpMounts? mcpMounts = null) : IAssistantAgentGateway, ISingletonService
+    Cockpit.Core.Sessions.SessionMcpMounts? mcpMounts = null,
+    Cockpit.Infrastructure.Plugins.IProjectMemorySourceRegistry? memorySources = null) : IAssistantAgentGateway, ISingletonService
 {
     private static readonly StringComparison _PathComparison =
         OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
@@ -171,7 +172,14 @@ internal sealed partial class AssistantAgentGateway(
         }
 
         IReadOnlyList<string> outsideProject = [];
-        if (request.McpServers is { } requestedServers)
+        var mcpServerNames = request.McpServers;
+        if (mcpServerNames is not null && _BrainServer(project, profile) is { } brainServer
+            && !mcpServerNames.Contains(brainServer, StringComparer.OrdinalIgnoreCase))
+        {
+            mcpServerNames = [.. mcpServerNames, brainServer];
+        }
+
+        if (mcpServerNames is { } requestedServers)
         {
             var refusal = await new McpSetPolicy(mcpServers, oauthTokens).RefusalAsync(
                 project?.Id, requestedServers, cancellationToken: cancellationToken).ConfigureAwait(false);
@@ -191,8 +199,8 @@ internal sealed partial class AssistantAgentGateway(
             // back out of the spawn trail later — a trail records what happened, not what is still true.
             StartedByTheAssistant: request.Target.Caller == SpawnCaller.Assistant)
         {
-            EnabledMcpServerNames = request.McpServers is null ? null : new ExactMcpServerSelection(request.McpServers) { AssistantManaged = request.Target.Caller == SpawnCaller.Assistant },
-            McpServersOverride = request.McpServers,
+            EnabledMcpServerNames = mcpServerNames is null ? null : new ExactMcpServerSelection(mcpServerNames) { AssistantManaged = request.Target.Caller == SpawnCaller.Assistant },
+            McpServersOverride = mcpServerNames,
         }).ConfigureAwait(false);
 
         // AC-719: a spawn has no one to ask, so isolation that needs a person's choice is a refusal with the reason.

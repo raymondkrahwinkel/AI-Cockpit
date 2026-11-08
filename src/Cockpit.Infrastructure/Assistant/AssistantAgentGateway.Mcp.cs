@@ -1,6 +1,9 @@
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Profiles;
+using Cockpit.Core.Projects;
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Mcp;
 using Microsoft.Extensions.Logging;
@@ -28,6 +31,7 @@ internal sealed partial class AssistantAgentGateway
             available.Add(new(server.Name, needsSignIn ? "sign-in needed" : "available"));
         }
         var report = mcpMounts?.ConnectionReport(paneId);
+        var brainServer = await _BrainServerOfAsync(paneId, context.Project, cancellationToken).ConfigureAwait(false);
         return new(true, context.Manager.ToString(), [.. set.ServerNames.Order(StringComparer.OrdinalIgnoreCase).Select(name =>
         {
             var server = registry.FirstOrDefault(candidate => string.Equals(candidate.Name, name, StringComparison.OrdinalIgnoreCase));
@@ -36,9 +40,22 @@ internal sealed partial class AssistantAgentGateway
                 ? string.Equals(issue.Reason, "Needs a sign-in.", StringComparison.Ordinal) ? "sign-in needed" : "not reachable"
                 : report?.ConnectedServerNames.Contains(name, StringComparer.OrdinalIgnoreCase) == true ? "connected"
                 : server is null ? "unknown" : server.Enabled ? "selected" : "disabled";
-            var reason = issue?.Reason ?? (server?.AlwaysMounted == true ? "Always mounted servers cannot be removed." : null);
-            return new SessionMcpServerState(name, status, reason, server?.AlwaysMounted != true);
+            var isBrain = string.Equals(name, brainServer, StringComparison.OrdinalIgnoreCase);
+            var reason = issue?.Reason ?? (server?.AlwaysMounted == true ? "Always mounted servers cannot be removed."
+                : isBrain ? "This session's brain server; it is always mounted and cannot be removed." : null);
+            return new SessionMcpServerState(name, status, reason, server?.AlwaysMounted != true && !isBrain);
         })], null) { AvailableServers = available };
+    }
+
+    private string? _BrainServer(Project? project, SessionProfile? profile) =>
+        SessionStartDefaults.ResolveBrainMcpServer(project, profile, memorySources?.Sources.ToMemorySources());
+
+    private async Task<string?> _BrainServerOfAsync(string paneId, Project? project, CancellationToken cancellationToken)
+    {
+        var label = (paneId == AssistantIdentity.PaneId ? sessions.Assistant : sessions.Find(paneId))?.ActiveProfileLabel;
+        var profile = label is null ? null : (await profiles.LoadAsync(cancellationToken).ConfigureAwait(false))
+            .FirstOrDefault(candidate => string.Equals(candidate.Label, label, StringComparison.OrdinalIgnoreCase));
+        return _BrainServer(project, profile);
     }
 
     public async Task<SessionMcpSetResult> ChangeSessionMcpServerAsync(string paneId, string name, bool add,
@@ -54,6 +71,8 @@ internal sealed partial class AssistantAgentGateway
         var error = NodeSessionAddress.Split(paneId) is not null ? "MCP set management on nodes is outside v1."
             : set?.Context is null ? "No local MCP set exists for that session."
             : byOperator && add && set.Context.Manager == SessionMcpManager.Assistant ? "The assistant manages this set. Ask it to add a server."
+            : !add && string.Equals(name, await _BrainServerOfAsync(paneId, set.Context.Project, cancellationToken).ConfigureAwait(false), StringComparison.OrdinalIgnoreCase)
+                ? $"MCP server '{name}' is this session's brain server and cannot be removed."
             : await new McpSetPolicy(mcpServers, oauthTokens).RefusalAsync(set.Context.Project?.Id, [name], add,
                 set.DelegationCeiling, cancellationToken).ConfigureAwait(false);
         if (error is null && set is not null && set.ServerNames.Contains(name) == add)

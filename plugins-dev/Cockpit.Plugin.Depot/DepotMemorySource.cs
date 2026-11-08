@@ -90,6 +90,7 @@ internal static class DepotMemorySource
             AppendNoteAsync = (value, note, cancellationToken) => _AppendNoteAsync(host, connection, addressing, value, note, cancellationToken),
             ListBrainsAsync = cancellationToken => _ListBrainsAsync(connection, projects, cancellationToken),
             BrainInstruction = value => _BrainInstruction(connection, value),
+            BrainMcpServerName = value => _BrainInstruction(connection, value) is null ? null : connection.McpServerName,
             FamilyKey = Scheme,
             InstanceTitle = connection.Name,
             Identity = _Identity(connection),
