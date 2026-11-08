@@ -3679,8 +3679,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IPluginStoreSources? pluginStoreSources = null,
         ISessionMcpRestore? sessionMcpRestore = null,
         Cockpit.Core.HeavyRuns.IHeavyRunSettingsStore? heavyRunSettingsStore = null,
-        Cockpit.Core.HeavyRuns.IHeavyRunSettingsRefresh? heavyRunSettingsRefresh = null)
+        Cockpit.Core.HeavyRuns.IHeavyRunSettingsRefresh? heavyRunSettingsRefresh = null,
+        IEnumerable<Cockpit.Core.Abstractions.Mentions.IMentionSource>? mentionSources = null)
     {
+        MentionSources = mentionSources;
         _heavyRunSettingsStore = heavyRunSettingsStore;
         _heavyRunSettingsRefresh = heavyRunSettingsRefresh;
         _managedSettingsReader = managedSettings;

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- AC-2194: the project picker follows the approved compact row typography and selection stripe, and token marks leave the surrounding spaces clear.
+
+- AC-2199: typing @ on Home picks the project the button shows (and removing it clears the button again); every other project mention goes into the prompt with its path or shared id, and the list now works the same on Home, in sessions and in the assistant panel.
+
+- AC-2200: plugins can add their own suggestions to the chat's @-list under "Suggested by plugins"; a plugin source that fails or takes longer than two seconds is left out without holding up the rest.
+- AC-2198: typing @ in a chat composer opens one shared list that hangs on the caret line at the composer's full width, groups files and projects per window, skips group headings with the arrow keys, and marks accepted project mentions in the text.
 - AC-1981: the Installed tab shows each plugin's source and verified publisher, says when its version was cleaned up (with an update to the newest) or its source is no longer available, and shows a revoked publisher key; a restore reports a plugin whose source is not available instead of fetching it from another store.
 
 - AC-1980: an installed plugin stays with the store it came from: a higher version in another store is no update (also not in Update all), the details show "Also offered by" with a Switch button that asks for consent again, and installations without a recorded store keep their consent.

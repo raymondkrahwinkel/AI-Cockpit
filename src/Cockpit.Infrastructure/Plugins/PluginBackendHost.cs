@@ -18,6 +18,7 @@ using Cockpit.Infrastructure.Backup;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.HeavyRuns;
 using Cockpit.Infrastructure.ManagedCli;
+using Cockpit.Infrastructure.Mentions;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
@@ -31,6 +32,7 @@ using Cockpit.Plugins.Abstractions.Health;
 using Cockpit.Plugins.Abstractions.HeavyRuns;
 using Cockpit.Plugins.Abstractions.ManagedCli;
 using Cockpit.Plugins.Abstractions.Mcp;
+using Cockpit.Plugins.Abstractions.Mentions;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Profiles;
 using Cockpit.Plugins.Abstractions.Projects;
@@ -347,6 +349,21 @@ public class PluginBackendHost(
 
     public IReadOnlyList<ISharedProjectSource> SharedProjectSources =>
         services.GetRequiredService<ISharedProjectSourceRegistry>().Sources;
+
+    public void AddMentionSource(IPluginMentionSource source)
+    {
+        var sources = services.GetRequiredService<PluginMentionSources>();
+        if (sources.Register(source))
+        {
+            Runtime.Add(() => sources.Remove(source.Key));
+        }
+        else
+        {
+            _Logger()?.LogDebug("Mention source '{MentionSourceKey}' is already contributed; this registration is ignored", source.Key);
+        }
+    }
+
+    public void RemoveMentionSource(string key) => services.GetRequiredService<PluginMentionSources>().Remove(key);
 
     public void AddHealthSection(IPluginHealthSection section)
     {

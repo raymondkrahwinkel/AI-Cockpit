@@ -1050,6 +1050,27 @@ public interface ICockpitHost
     IReadOnlyList<Projects.ISharedProjectSource> SharedProjectSources => [];
 
     /// <summary>
+    /// Registers a source of suggestions for the chat's @-list, shown under "Suggested by plugins".
+    /// </summary>
+    /// <remarks>
+    /// A <see cref="Mentions.IPluginMentionSource.Key"/> another plugin already registered is kept as it was and
+    /// this registration ignored. Default no-op so existing implementations keep compiling untouched.
+    /// </remarks>
+    void AddMentionSource(Mentions.IPluginMentionSource source)
+    {
+    }
+
+    /// <summary>
+    /// Withdraws the mention source registered under <paramref name="key"/>; a no-op when nothing is registered under it.
+    /// </summary>
+    /// <remarks>
+    /// Default no-op so existing implementations keep compiling untouched.
+    /// </remarks>
+    void RemoveMentionSource(string key)
+    {
+    }
+
+    /// <summary>
     /// Registers a health section (AC-1466) the host reads on every health request, so /healthz sees this plugin's state.
     /// Default no-op so existing implementations keep compiling untouched.
     /// </summary>
