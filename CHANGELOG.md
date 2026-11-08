@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-1977: Manage plugin stores shows a row per organization with its Depot and plugin count, lets you hide or show it, and says "You are no longer a member" when the Depot no longer lists you; installed plugins keep running without updates.
+
 - AC-1979: ask before trusting a changed plugin publisher key; Update all keeps the current version and explains why.
 
 - AC-1976: the plugin store shows a "From <organization>" block per Depot organization on Discover, says on every row which store it comes from, and lists the source and publisher key of a plugin in its details.

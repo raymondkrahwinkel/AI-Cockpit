@@ -397,11 +397,11 @@ public partial class PluginManagerViewModel : ViewModelBase
         _sourcesDirty = false;
         foreach (var source in sources)
         {
-            if (!source.IsHidden)
+            if (!source.IsHidden && !source.IsWithdrawn)
             {
                 Stores.Add(source.Store);
             }
-            StoreInfos.Add(new PluginStoreInfo(source.Store, source.Name, source.IsHidden));
+            StoreInfos.Add(new PluginStoreInfo(source.Store, source.Name, source.IsHidden, source.IsWithdrawn));
         }
     }
 

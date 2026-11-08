@@ -3622,7 +3622,21 @@ internal static partial class Screenshotter
             PluginCount = 2, IsReachable = true, IsBrowsed = true,
         });
 
-        return new ManageStoresDialog { DataContext = manager };
+        _AddOrganizationStore(manager, "acme", "Acme Engineering", "https://depot.acme.example", 7, hidden: false);
+        _AddOrganizationStore(manager, "northwind", "Northwind Labs", "https://depot.krahwinkel-it.nl", 3, hidden: false);
+        _AddOrganizationStore(manager, "initech", "Initech", "https://depot.krahwinkel-it.nl", 2, hidden: true);
+        _AddOrganizationStore(manager, "globex", "Globex", "https://depot.acme.example", 0, hidden: false, withdrawn: true);
+
+        return new ManageStoresDialog { DataContext = manager, Height = 860 };
+    }
+
+    private static void _AddOrganizationStore(PluginManagerViewModel manager, string organization, string name, string depot, int count, bool hidden, bool withdrawn = false)
+    {
+        var store = PluginStoreConfig.Remote($"{depot}/cockpit/stores/{organization}/index.json") with
+        {
+            Signed = new PluginStoreSignedSource($"depot:{new Uri(depot).Authority}/{organization}", organization, () => new HttpClientHandler()),
+        };
+        manager.StoreInfos.Add(new PluginStoreInfo(store, name, hidden, withdrawn) { PluginCount = count, IsReachable = true, IsBrowsed = !withdrawn });
     }
 
     // The clone dialog after a clone was refused (AC-90): the URL and destination the operator typed are still

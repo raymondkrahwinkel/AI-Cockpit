@@ -81,7 +81,7 @@ internal sealed class PluginStoreSources : IPluginStoreSources, ISingletonServic
                     {
                         Signed = new PluginStoreSignedSource(descriptor.SourceKey, descriptor.Organization, descriptor.CreateHandler),
                     };
-                    result.Add(new PluginStoreSourceInfo(store, descriptor.Name, hidden.Contains(descriptor.SourceKey)));
+                    result.Add(new PluginStoreSourceInfo(store, descriptor.Name, hidden.Contains(descriptor.SourceKey), descriptor.IsWithdrawn));
                 }
             }
             catch (Exception exception)

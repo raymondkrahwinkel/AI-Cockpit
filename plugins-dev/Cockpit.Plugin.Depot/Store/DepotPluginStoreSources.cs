@@ -50,8 +50,9 @@ internal sealed partial class DepotPluginStoreSources(
 
             foreach (var connection in current)
             {
-                if (await _ReadAsync(connection).ConfigureAwait(false) is { } sources)
+                if (await _ReadAsync(connection).ConfigureAwait(false) is { } read)
                 {
+                    var sources = read.Reachable ? _WithWithdrawn(connection.Id, read.Sources) : read.Sources;
                     changed |= !_byConnection.TryGetValue(connection.Id, out var before) || !before.SequenceEqual(sources);
                     _byConnection[connection.Id] = sources;
                 }
@@ -80,7 +81,7 @@ internal sealed partial class DepotPluginStoreSources(
     }
 
     // Null keeps what was known: an unreachable Depot must not take its organizations away, and the others carry on.
-    private async Task<IReadOnlyList<PluginStoreSourceDescriptor>?> _ReadAsync(DepotConnectionRegistration connection)
+    private async Task<(IReadOnlyList<PluginStoreSourceDescriptor> Sources, bool Reachable)?> _ReadAsync(DepotConnectionRegistration connection)
     {
         try
         {
@@ -89,9 +90,9 @@ internal sealed partial class DepotPluginStoreSources(
             switch (result.Outcome)
             {
                 case DepotApiOutcome.Success:
-                    return _Descriptors(connection, result.Content);
+                    return (_Descriptors(connection, result.Content), true);
                 case DepotApiOutcome.NotSignedIn or DepotApiOutcome.Forbidden or DepotApiOutcome.OlderDepot:
-                    return [];
+                    return ([], false);
                 default:
                     return null;
             }
@@ -100,6 +101,19 @@ internal sealed partial class DepotPluginStoreSources(
         {
             return null;
         }
+    }
+
+    // A source the reachable Depot no longer lists stays as withdrawn (member left); an unreachable Depot never gets here.
+    private List<PluginStoreSourceDescriptor> _WithWithdrawn(string connectionId, IReadOnlyList<PluginStoreSourceDescriptor> now)
+    {
+        var result = new List<PluginStoreSourceDescriptor>(now);
+        if (_byConnection.TryGetValue(connectionId, out var before))
+        {
+            result.AddRange(before.Where(old => now.All(current => current.SourceKey != old.SourceKey))
+                .Select(old => old.IsWithdrawn ? old : old with { IsWithdrawn = true }));
+        }
+
+        return result;
     }
 
     private IReadOnlyList<PluginStoreSourceDescriptor> _Descriptors(DepotConnectionRegistration connection, ReadOnlyMemory<byte> content)
