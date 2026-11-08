@@ -1391,7 +1391,7 @@ public partial class PluginManagerViewModel : ViewModelBase
     // Install one store row's version — its advertised latest, or an explicit one for a rollback — through the
     // provisioning service (AC-510[b]), then run the same UI-side aftercare every install path always has: the consent
     // walk for a fresh install, the registration re-pin for a staged update.
-    private async Task<InstallOutcome> _DownloadAndInstallRowAsync(StorePluginRowViewModel row, PluginStoreVersion? explicitVersion = null, bool interactive = true)
+    private async Task<InstallOutcome> _DownloadAndInstallRowAsync(StorePluginRowViewModel row, PluginStoreVersion? explicitVersion = null, bool interactive = true, bool switchSource = false)
     {
         if ((explicitVersion ?? row.LatestVersionEntry) is not { } version)
         {
@@ -1417,7 +1417,7 @@ public partial class PluginManagerViewModel : ViewModelBase
                 ? $"Downloading '{row.Name}' v{version.Version}… {downloaded:0.0} / {total / 1_000_000d:0.0} MB"
                 : $"Downloading '{row.Name}' v{version.Version}… {downloaded:0.0} MB";
         });
-        var provision = await _administration.InstallFromStoreAsync(new PluginProvisionRequest(row.Id, row.Name, row.Store, version, row.RevokedKeys, AllowDowngrade: explicitVersion is not null),
+        var provision = await _administration.InstallFromStoreAsync(new PluginProvisionRequest(row.Id, row.Name, row.Store, version, row.RevokedKeys, AllowDowngrade: explicitVersion is not null, SwitchSource: switchSource),
             progress: progress, keyConsent: interactive ? _ConfirmPublisherAsync : null);
 
         // Surface an unverified-checksum advisory ahead of the installed message (AC-46): a store that publishes
@@ -1451,19 +1451,11 @@ public partial class PluginManagerViewModel : ViewModelBase
         return new InstallOutcome(installResult.IsSuccess, provision.Live);
     }
 
-    // AC-1980: moves an installed plugin to another store that offers it — the only way it ever leaves its source. Asks for consent again; a Depot
-    // store goes through the publisher consent of provisioning, any other store through this confirmation, and the new file and publisher are pinned.
+    // AC-1980: moves an installed plugin to another store that offers it — the only way it ever leaves its source. Asks for consent again; the consent is the publisher
+    // consent of provisioning (SourceChanged), signed target or not, and the new file and publisher are pinned.
     public async Task SwitchSourceAsync(StorePluginRowViewModel row, StoreOffer offer)
     {
-        if (_administration is null || _dialogService is null)
-        {
-            return;
-        }
-
-        var pinned = await _administration.GetPublisherTrustAsync(PluginFolderName.Normalize(row.Id));
-        if (offer.Store.Signed is null && pinned is null
-            && !await _dialogService.ShowConfirmationDialogAsync("Switch plugin source",
-                PluginConsentTerms.SwitchMessage(row.Name, row.SourceName, offer.StoreName), "Switch"))
+        if (_administration is null)
         {
             return;
         }
@@ -1471,7 +1463,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         var target = new StorePluginRowViewModel(offer.Entry, offer.Store, row.InstalledVersion) { RevokedKeys = offer.RevokedKeys, StoreName = offer.StoreName };
         await _InstallExclusivelyAsync(async () =>
         {
-            await _DownloadAndInstallRowAsync(target, target.LatestVersionEntry);
+            await _DownloadAndInstallRowAsync(target, target.LatestVersionEntry, switchSource: true);
             var message = StatusMessage;
             await BrowseStoresAsync();
             StatusMessage = message;

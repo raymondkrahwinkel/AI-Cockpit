@@ -614,8 +614,9 @@ internal static partial class Screenshotter
         ["plugin-store-two-stores"] = (_, _) => new PluginStoreDialog { DataContext = _PluginStoreTwoStores() },
         ["plugin-store-switch-consent"] = (_, _) => new ConfirmationDialog
         {
-            DataContext = new ViewModels.ConfirmationDialogViewModel("Switch plugin source",
-                ViewModels.PluginConsentTerms.SwitchMessage("Docker", "Acme Engineering", "Cockpit plugins"), "Switch"),
+            DataContext = new ViewModels.ConfirmationDialogViewModel("Confirm plugin publisher",
+                ViewModels.PluginConsentTerms.PublisherMessage(new PluginKeyConsentRequest("docker", "1.9.0", PluginTrustDecision.SourceChanged,
+                    null, null, null, null, null, null, null, "depot:depot.acme.example/acme")), "Install"),
         },
         // AC-2024: the list right after a live disable, with no restart banner.
         ["plugin-store-disabled-live"] = (_, _) => _PluginStoreDisabledLive(),
