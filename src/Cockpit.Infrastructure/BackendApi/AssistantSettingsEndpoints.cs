@@ -33,6 +33,13 @@ internal static class AssistantSettingsEndpoints
             Results.Json(await _ReadAsync(services, cancellationToken).ConfigureAwait(false), ConnectKeyEndpoints.Json))
             .RequireAdmin().Audited("assistant_settings", services);
 
+        api.MapGet(Route + "/roles", async (string? brain, CancellationToken cancellationToken) =>
+        {
+            var current = await slot().LoadAsync(cancellationToken).ConfigureAwait(false);
+            var profile = current.Profile is { } held ? held with { Assistant = brain } : null;
+            return Results.Json(await services.GetRequiredService<SessionRoleResolver>().ListAsync(null, profile, cancellationToken).ConfigureAwait(false), ConnectKeyEndpoints.Json);
+        }).RequireAdmin().Audited("assistant_roles", services);
+
         api.MapPut(Route + "/enabled", async (HttpRequest request, CancellationToken cancellationToken) =>
         {
             var (body, refused) = await ProfileEndpoints.ReadBodyAsync<AssistantEnabledBody>(request, "The body names only enabled.", cancellationToken).ConfigureAwait(false);
@@ -69,7 +76,7 @@ internal static class AssistantSettingsEndpoints
                     return await _AuditAsync(services, "api:assistant_profile", "refused", null, refusal).ConfigureAwait(false);
                 }
 
-                await slot().RepointAsync(changed, patch.ReplacesStandingInstruction ?? current.ReplacesStandingInstruction, cancellationToken).ConfigureAwait(false);
+                await slot().RepointAsync(changed, patch.ReplacesStandingInstruction ?? current.ReplacesStandingInstruction, cancellationToken, patch.AssistantRole ?? current.AssistantRole).ConfigureAwait(false);
             }
             finally
             {
@@ -101,7 +108,7 @@ internal static class AssistantSettingsEndpoints
                 }
 
                 var current = await slot().LoadAsync(cancellationToken).ConfigureAwait(false);
-                await slot().RepointAsync(source, current.ReplacesStandingInstruction, cancellationToken).ConfigureAwait(false);
+                await slot().RepointAsync(source, current.ReplacesStandingInstruction, cancellationToken, current.AssistantRole).ConfigureAwait(false);
             }
             finally
             {
@@ -143,7 +150,7 @@ internal static class AssistantSettingsEndpoints
             profile?.SystemPrompt,
             slot.ReplacesStandingInstruction,
             profile?.ProviderConfig is not PluginProviderConfig plugin || registry is null || registry.Resolve(plugin.ProviderId) is not null,
-            new RemoteConsentBypass(settings.ConsentBypassAll, [.. settings.ConsentBypassSources.Concat(settings.ConsentBypassDangerousSources).Distinct(StringComparer.Ordinal)]));
+            new RemoteConsentBypass(settings.ConsentBypassAll, [.. settings.ConsentBypassSources.Concat(settings.ConsentBypassDangerousSources).Distinct(StringComparer.Ordinal)]), slot.AssistantRole);
     }
 
     // AC-1473's per-field rule on the slot's record, plus the slot's own label and instructions.

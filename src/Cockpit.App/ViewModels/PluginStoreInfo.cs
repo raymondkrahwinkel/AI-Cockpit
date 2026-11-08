@@ -39,13 +39,26 @@ public sealed partial class PluginStoreInfo : ObservableObject
     [ObservableProperty]
     private Bitmap? _logo;
 
-    public PluginStoreInfo(PluginStoreConfig store)
+    public bool IsHidden { get; }
+
+    // The organization dropped this member: the row stays, is never browsed, and installed plugins keep running without updates.
+    public bool IsWithdrawn { get; }
+
+    public bool CanRemove => Store.Signed is null;
+
+    public bool CanHide => Store.Signed is not null;
+
+    public string VisibilityAction => IsHidden ? "Show" : "Hide";
+
+    public PluginStoreInfo(PluginStoreConfig store, string? name = null, bool isHidden = false, bool isWithdrawn = false)
     {
         Store = store;
-        Url = store.Location;
-        _name = store.IsLocal
+        IsHidden = isHidden;
+        IsWithdrawn = isWithdrawn;
+        Url = store.Signed is { } signed ? _DepotLine(signed.Organization, store.Location) : store.Location;
+        _name = name ?? (store.IsLocal
             ? _LocalName(store.Location)
-            : PluginStoreUrl.DeriveDisplayName(store.Location);
+            : PluginStoreUrl.DeriveDisplayName(store.Location));
     }
 
     // Whether this is a local-folder store (AC-7) — the row shows a folder badge rather than a link.
@@ -53,6 +66,10 @@ public sealed partial class PluginStoreInfo : ObservableObject
 
     // Whether this is a private remote store reached with a token (AC-7) — the row shows a lock badge.
     public bool IsPrivate => !Store.IsLocal && Store.HasToken;
+
+    // An organization's row names its Depot (the index URL's host) rather than the feed URL.
+    private static string _DepotLine(string organization, string indexUrl) =>
+        Uri.TryCreate(indexUrl, UriKind.Absolute, out var uri) ? $"{organization} · {uri.Authority}" : organization;
 
     // The folder's own name reads better than the full path as a title; the path still shows underneath.
     private static string _LocalName(string path)
@@ -76,7 +93,9 @@ public sealed partial class PluginStoreInfo : ObservableObject
     public bool ShowDefaultIcon => !HasLogo && !HasCustomIcon;
 
     // The count line under the name — quiet until browsed, then the plugin count or an unreachable note.
-    public string CountText => !IsBrowsed
+    public string CountText => IsWithdrawn
+        ? "You are no longer a member. Plugins you installed stay, without updates."
+        : !IsBrowsed
         ? "Not browsed yet"
         : !IsReachable
             ? "Unreachable"

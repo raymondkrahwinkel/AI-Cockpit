@@ -53,6 +53,13 @@ internal sealed class TranscriptComposerInput
         _sendCommand = sendCommand;
         _resolvePastedImageSink = resolvePastedImageSink;
         _canPasteImages = canPasteImages ?? (() => false);
+        _inputBox.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == TextBox.TextProperty)
+            {
+                _mentionPicker()?.SyncTokens(_inputBox.Text ?? string.Empty);
+            }
+        };
     }
 
     internal void OnKeyDown(object? sender, KeyEventArgs e)
@@ -63,34 +70,11 @@ internal sealed class TranscriptComposerInput
 
     private void _OnKeyDownCore(KeyEventArgs e)
     {
-        // AC-740: the open picker gets first refusal on these five keys, ahead of every handler below — Up
-        // otherwise recalls, Escape otherwise stops the turn, and Enter otherwise sends.
-        if (_mentionPicker() is { IsOpen: true } picker)
+        // The open picker gets first refusal on its keys, ahead of every handler below: Up otherwise recalls,
+        // Escape otherwise stops the turn, and Enter otherwise sends.
+        if (MentionComposerKeys.Handle(_mentionPicker(), _inputBox, e))
         {
-            switch (e.Key)
-            {
-                case Key.Up:
-                    picker.Move(-1);
-                    e.Handled = true;
-                    return;
-                case Key.Down:
-                    picker.Move(1);
-                    e.Handled = true;
-                    return;
-                case Key.Tab:
-                case Key.Enter:
-                    if (picker.Accept() is { } acceptance)
-                    {
-                        _InsertMention(acceptance);
-                    }
-
-                    e.Handled = true;
-                    return;
-                case Key.Escape:
-                    picker.Dismiss();
-                    e.Handled = true;
-                    return;
-            }
+            return;
         }
 
         if (_IsPasteGesture(e))
@@ -287,18 +271,5 @@ internal sealed class TranscriptComposerInput
         }
 
         picker.OnTextChanged(_inputBox.Text ?? string.Empty, _inputBox.CaretIndex);
-    }
-
-    // Splices an accepted mention into the text: replaces [TokenStart..caret] with '@' + path + a trailing space.
-    private void _InsertMention(MentionAcceptance acceptance)
-    {
-        var current = _inputBox.Text ?? string.Empty;
-        var end = Math.Clamp(_inputBox.CaretIndex, 0, current.Length);
-        var start = Math.Clamp(acceptance.TokenStart, 0, end);
-        var replacement = $"@{acceptance.Path} ";
-        _inputBox.Text = current[..start] + replacement + current[end..];
-        _inputBox.CaretIndex = start + replacement.Length;
-        _inputBox.SelectionStart = _inputBox.CaretIndex;
-        _inputBox.SelectionEnd = _inputBox.CaretIndex;
     }
 }

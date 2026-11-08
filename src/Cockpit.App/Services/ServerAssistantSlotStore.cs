@@ -18,14 +18,16 @@ public sealed class ServerAssistantSlotStore(string server, IAssistantAdministra
     // Whether the server refused the key on a save; the page then reads as read-only, as after any refusal.
     public bool IsRefused { get; private set; }
 
+    public Task<Cockpit.Core.Projects.RoleListResult> ListRolesAsync(SessionProfile? profile) => assistant.ListRolesAsync(profile?.Assistant);
+
     public async Task<AssistantProfileSlot> LoadAsync(CancellationToken cancellationToken = default) =>
         _Slot(await assistant.GetAsync(cancellationToken));
 
-    public async Task<AssistantProfileSlot> RepointAsync(SessionProfile record, bool replacesStandingInstruction, CancellationToken cancellationToken = default)
+    public async Task<AssistantProfileSlot> RepointAsync(SessionProfile record, bool replacesStandingInstruction, CancellationToken cancellationToken = default, string? assistantRole = null)
     {
         try
         {
-            Saved = await assistant.SaveProfileAsync(record, replacesStandingInstruction, cancellationToken);
+            Saved = await assistant.SaveProfileAsync(record, replacesStandingInstruction, cancellationToken, assistantRole);
         }
         catch (UnauthorizedAccessException exception)
         {
@@ -41,5 +43,5 @@ public sealed class ServerAssistantSlotStore(string server, IAssistantAdministra
         throw new NotSupportedException("A server's assistant slot is emptied on the server.");
 
     private static AssistantProfileSlot _Slot(RemoteAssistantSettings settings) =>
-        new(settings.Profile?.Full, settings.UnsetReason, settings.ReplacesStandingInstruction);
+        new(settings.Profile?.Full, settings.UnsetReason, settings.ReplacesStandingInstruction, settings.AssistantRole);
 }

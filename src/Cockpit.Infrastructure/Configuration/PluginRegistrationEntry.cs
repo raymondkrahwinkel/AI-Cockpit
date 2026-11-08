@@ -29,6 +29,9 @@ internal sealed class PluginRegistrationEntry
     // AC-2109: distinct from the operator choosing Disabled, so recovery can explain why this plugin is off.
     public bool DisabledByStartupProtection { get; set; }
 
+    // AC-1980: key of the store this plugin was installed or updated from; null for an installation that predates it.
+    public string? Source { get; set; }
+
     // The plugin's own key/value storage (`Cockpit.Plugins.Abstractions.IPluginStorage`); values are JSON strings. Owned by the plugin, not the load decision.
     public Dictionary<string, string> Data { get; set; } = [];
 
@@ -43,9 +46,10 @@ internal sealed class PluginRegistrationEntry
         VersionChosen = registration.VersionChosen,
         NotificationsMuted = registration.NotificationsMuted,
         DisabledByStartupProtection = registration.DisabledByStartupProtection,
+        Source = registration.Source,
     };
 
     // AC-937 (Raymond, voorstel A): every plugin starts collapsed into "Plugins ›" until the operator pins it.
     public PluginRegistration ToDomain() =>
-        new(Enabled, PinnedSha256, MenuOrder, HiddenInMenu, PinnedToSidebar ?? false, ExpectedMinVersion, VersionChosen, NotificationsMuted, DisabledByStartupProtection);
+        new(Enabled, PinnedSha256, MenuOrder, HiddenInMenu, PinnedToSidebar ?? false, ExpectedMinVersion, VersionChosen, NotificationsMuted, DisabledByStartupProtection, Source);
 }

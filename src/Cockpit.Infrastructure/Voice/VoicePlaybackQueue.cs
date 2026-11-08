@@ -59,6 +59,7 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
     private long _lastPlaybackEnded;
     private bool _isPlaybackActive;
     private bool _speakingAnnounced;
+    private bool _audioPending;
     private int _generation;
     private VoicePlaybackSource _activeSource;
     private string? _activeOwnerId;
@@ -66,6 +67,7 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
 
     public event EventHandler<bool>? PlaybackActiveChanged;
     public event EventHandler? SpeakingStarted;
+    public event EventHandler<bool>? AudioPendingChanged;
     public event EventHandler<VoicePlaybackStoppedEventArgs>? PlaybackStopped;
 
     public int Generation
@@ -134,11 +136,12 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
             sentenceCount, segments.Count, _sentences.Reader.Count);
         var batch = new QueuedBatch(sentenceCount, DateTimeOffset.UtcNow);
         var generation = _CaptureGeneration();
+        Interlocked.Add(ref _queuedSentenceCount, sentenceCount);
+        _SetAudioPending(true);
         foreach (var segment in segments)
         {
             foreach (var sentence in segment.Sentences)
             {
-                Interlocked.Increment(ref _queuedSentenceCount);
                 _sentences.Writer.TryWrite(new QueuedSentence(batch, sentence, segment.Language, speakerId, source, ownerId, generation.Generation, generation.Token));
             }
         }
@@ -197,6 +200,7 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
         }
         Interlocked.Exchange(ref _lastPlaybackEnded, 0);
         PlaybackStopped?.Invoke(this, stopped);
+        _SetAudioPending(false);
         _SetPlaybackActive(false);
     }
 
@@ -334,11 +338,29 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
         }
     }
 
+    private void _SetAudioPending(bool pending)
+    {
+        lock (_activeGate)
+        {
+            if (_audioPending == pending)
+            {
+                return;
+            }
+            _audioPending = pending;
+            AudioPendingChanged?.Invoke(this, pending);
+        }
+    }
+
     private void _SetInactiveIfDrained()
     {
         lock (_activeGate)
         {
-            if (Volatile.Read(ref _queuedSentenceCount) != 0 || _openStreams.Count != 0)
+            if (Volatile.Read(ref _queuedSentenceCount) != 0)
+            {
+                return;
+            }
+            _SetAudioPending(false);
+            if (_openStreams.Count != 0)
             {
                 return;
             }

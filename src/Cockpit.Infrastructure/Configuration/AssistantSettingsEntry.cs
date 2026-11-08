@@ -18,6 +18,10 @@ internal sealed class AssistantSettingsEntry
 
     public bool AlwaysOnCostAcknowledged { get; set; }
 
+    public bool WakeWordEnabled { get; set; }
+    public string WakeWord { get; set; } = "computer";
+    public int WakeWordListeningSeconds { get; set; } = 8;
+
     // AC-681. Defaults true to match `AssistantSettings.AlwaysOnTop`'s own default.
     public bool AlwaysOnTop { get; set; } = true;
 
@@ -46,6 +50,9 @@ internal sealed class AssistantSettingsEntry
         SpeechProfileLabel = settings.SpeechProfileLabel,
         PushToTalkKeyName = settings.PushToTalkKeyName,
         AlwaysOnCostAcknowledged = settings.AlwaysOnCostAcknowledged,
+        WakeWordEnabled = settings.WakeWordEnabled,
+        WakeWord = settings.WakeWord,
+        WakeWordListeningSeconds = settings.WakeWordListeningSeconds,
         AlwaysOnTop = settings.AlwaysOnTop,
         ContextCompactionPercent = settings.ContextCompactionPercent,
         ReadingLevel = settings.ReadingLevel.ToString(),
@@ -63,6 +70,9 @@ internal sealed class AssistantSettingsEntry
         SpeechProfileLabel = SpeechProfileLabel,
         PushToTalkKeyName = PushToTalkKeyName,
         AlwaysOnCostAcknowledged = AlwaysOnCostAcknowledged,
+        WakeWordEnabled = WakeWordEnabled,
+        WakeWord = WakeWord?.Trim() ?? string.Empty,
+        WakeWordListeningSeconds = AssistantSettings.NormalizeWakeWordListeningSeconds(WakeWordListeningSeconds),
         AlwaysOnTop = AlwaysOnTop,
         ContextCompactionPercent = AssistantSettings.NormalizeCompactionPercent(ContextCompactionPercent),
         // A value written by an older build, or a hand-edited config, that does not name one of the three levels

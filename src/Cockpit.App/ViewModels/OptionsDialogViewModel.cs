@@ -39,6 +39,21 @@ public sealed partial class AssistantOptionsViewModel(
     [ObservableProperty]
     private bool _speakReplies = true;
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(WakeWordValidationMessage))]
+    private bool _wakeWordEnabled;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(WakeWordValidationMessage))]
+    private string _wakeWord = "computer";
+
+    [ObservableProperty]
+    private int _wakeWordListeningSeconds = 8;
+
+    public string? WakeWordValidationMessage => WakeWordEnabled && !AssistantWakeWord.IsConfigured(WakeWord)
+        ? "Enter comma-separated words using letters or numbers. Listening stays off until the list is valid."
+        : null;
+
     public IReadOnlyList<SpeechModeOption> SpeechModes { get; } =
         [new(SpokenReplyMode.Full, "Full"), new(SpokenReplyMode.Summary, "Summary"), new(SpokenReplyMode.Short, "Short")];
     public IReadOnlyList<SpeechMethodOption> SpeechMethods { get; } =
@@ -119,6 +134,9 @@ public sealed partial class AssistantOptionsViewModel(
                 _lastLoadedSettings = await _settingsStore.LoadAsync(cancellationToken).ConfigureAwait(true);
                 IsEnabled = _lastLoadedSettings.IsEnabled;
                 SpeakReplies = _lastLoadedSettings.SpeakReplies;
+                WakeWordEnabled = _lastLoadedSettings.WakeWordEnabled;
+                WakeWord = _lastLoadedSettings.WakeWord;
+                WakeWordListeningSeconds = _lastLoadedSettings.WakeWordListeningSeconds;
                 SelectedSpeechMode = SpeechModes.First(option => option.Value == _lastLoadedSettings.SpeechMode);
                 SelectedSpeechMethod = SpeechMethods.First(option => option.Value == _lastLoadedSettings.SpeechMethod);
                 SelectedSpeechMode = SpeechModes.First(option => option.Value == SpokenReply.EffectiveMode(_lastLoadedSettings.SpeechMode, _lastLoadedSettings.SpeechMethod));
@@ -226,6 +244,9 @@ public sealed partial class AssistantOptionsViewModel(
     partial void OnIsEnabledChanged(bool value) => _SaveSettings();
 
     partial void OnSpeakRepliesChanged(bool value) => _SaveSettings();
+    partial void OnWakeWordEnabledChanged(bool value) => _SaveSettings();
+    partial void OnWakeWordChanged(string value) => _SaveSettings();
+    partial void OnWakeWordListeningSecondsChanged(int value) => _SaveSettings();
     partial void OnSelectedSpeechModeChanged(SpeechModeOption value) => _SaveSettings();
     partial void OnSelectedSpeechMethodChanged(SpeechMethodOption value)
     {
@@ -272,6 +293,9 @@ public sealed partial class AssistantOptionsViewModel(
     public void RestoreDefaults()
     {
         var defaults = new AssistantSettings();
+        WakeWordEnabled = defaults.WakeWordEnabled;
+        WakeWord = defaults.WakeWord;
+        WakeWordListeningSeconds = defaults.WakeWordListeningSeconds;
         IsEnabled = defaults.IsEnabled;
         SpeakReplies = defaults.SpeakReplies;
         SelectedSpeechMode = SpeechModes.First(option => option.Value == defaults.SpeechMode);
@@ -313,6 +337,9 @@ public sealed partial class AssistantOptionsViewModel(
         {
             IsEnabled = IsEnabled,
             SpeakReplies = SpeakReplies,
+            WakeWordEnabled = WakeWordEnabled,
+            WakeWord = WakeWord.Trim(),
+            WakeWordListeningSeconds = AssistantSettings.NormalizeWakeWordListeningSeconds(WakeWordListeningSeconds),
             SpeechMode = SelectedSpeechMode.Value,
             SpeechMethod = SelectedSpeechMethod.Value,
             SpeechProfileLabel = SelectedSpeechProfileLabel,

@@ -9,16 +9,44 @@ namespace Cockpit.Infrastructure.Tests.Sessions;
 public sealed class StallNudgerTests
 {
     // F: the watch must distinguish a finished or waiting session from one that abandoned real work.
-    [Theory]
-    [InlineData("execute", true, 0, 0)]
-    [InlineData("execute", false, 1, 1)]
-    [InlineData("notify,administration", false, 0, 0)]
-    [InlineData("start_run,administration", false, 0, 0)]
-    [InlineData("notify|execute", false, 1, 1)]
-    [InlineData("notify", false, 0, 0)]
-    [InlineData("start_run", false, 0, 0)]
-    [InlineData("notify|write", false, 1, 1)]
-    public void TurnEnd_ReportsOnlyUnclosedWork(string tools, bool outstandingRun, int nudges, int reports)
+    [Fact]
+    public void TurnEnd_ReportsOnlyUnclosedWork()
+    {
+        {
+            var scenario = new StallNudgerTests();
+            scenario._AssertTurnEnd_ReportsOnlyUnclosedWork("execute", true, 0, 0);
+        }
+        {
+            var scenario = new StallNudgerTests();
+            scenario._AssertTurnEnd_ReportsOnlyUnclosedWork("execute", false, 1, 1);
+        }
+        {
+            var scenario = new StallNudgerTests();
+            scenario._AssertTurnEnd_ReportsOnlyUnclosedWork("notify,administration", false, 0, 0);
+        }
+        {
+            var scenario = new StallNudgerTests();
+            scenario._AssertTurnEnd_ReportsOnlyUnclosedWork("start_run,administration", false, 0, 0);
+        }
+        {
+            var scenario = new StallNudgerTests();
+            scenario._AssertTurnEnd_ReportsOnlyUnclosedWork("notify|execute", false, 1, 1);
+        }
+        {
+            var scenario = new StallNudgerTests();
+            scenario._AssertTurnEnd_ReportsOnlyUnclosedWork("notify", false, 0, 0);
+        }
+        {
+            var scenario = new StallNudgerTests();
+            scenario._AssertTurnEnd_ReportsOnlyUnclosedWork("start_run", false, 0, 0);
+        }
+        {
+            var scenario = new StallNudgerTests();
+            scenario._AssertTurnEnd_ReportsOnlyUnclosedWork("notify|write", false, 1, 1);
+        }
+    }
+
+    private void _AssertTurnEnd_ReportsOnlyUnclosedWork(string tools, bool outstandingRun, int nudges, int reports)
     {
         foreach (var prefix in new[] { "", "mcp__cockpit__" })
         {

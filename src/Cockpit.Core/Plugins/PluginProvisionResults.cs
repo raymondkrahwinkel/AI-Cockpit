@@ -20,11 +20,12 @@ public enum PluginProvisionOutcome
     // An update over an existing install — staged under `.pending-updates` and live only after the
     // next restart.
     Staged,
+    KeyNotConfirmed,
 }
 
 // One plugin to install: the identity the caller reports it by, the store to fetch it from, and the
 // specific version (its zip path, checksum, and compatibility fields).
-public sealed record PluginProvisionRequest(string Id, string Name, PluginStoreConfig Store, PluginStoreVersion Version);
+public sealed record PluginProvisionRequest(string Id, string Name, PluginStoreConfig Store, PluginStoreVersion Version, IReadOnlyList<PluginStoreRevokedKey>? RevokedKeys = null, bool AllowDowngrade = false, PluginTrustEntry? RestoredTrust = null, bool SwitchSource = false);
 
 // The outcome of one `PluginProvisioningService.InstallAsync` call: which of the four forms it took
 // (`PluginProvisionOutcome`), the folder id and entry-assembly hash a successful install landed under,

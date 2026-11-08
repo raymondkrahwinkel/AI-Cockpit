@@ -147,6 +147,17 @@
                     </StackPanel>
                 </Grid>
 
+                <Grid ColumnDefinitions="72,*" IsVisible="{Binding RolePicker.IsAvailable}">
+                    <TextBlock Text="Role" FontSize="12.5" VerticalAlignment="Center"
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                    <StackPanel Grid.Column="1" Spacing="4">
+                        <ComboBox ItemsSource="{Binding RolePicker.Choices}" SelectedItem="{Binding RolePicker.Selected}"
+                                  DisplayMemberBinding="{Binding Name, DataType=vm:BrainChoice}" HorizontalAlignment="Stretch"/>
+                        <TextBlock Text="{Binding RolePicker.Selected.Detail}" TextWrapping="Wrap" FontSize="11"
+                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                    </StackPanel>
+                </Grid>
+
                 <!-- Session name is provider-independent, so it is always shown. -->
                 <Grid ColumnDefinitions="72,*" VerticalAlignment="Center">
                     <TextBlock Grid.Column="0" Text="Name" VerticalAlignment="Center" FontSize="12.5"

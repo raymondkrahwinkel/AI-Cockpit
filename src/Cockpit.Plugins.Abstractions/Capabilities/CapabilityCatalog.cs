@@ -172,6 +172,15 @@ public static class CapabilityCatalog
             []),
 
         new(
+            "plugin.store-source",
+            "Offering plugin stores",
+            "Offers plugin stores whose requests a plugin-supplied handler signs in; the operator can hide each source.",
+            CapabilityRisk.Sensitive,
+            "0.162.0",
+            ["ICockpitHost.AddPluginStoreSource"],
+            []),
+
+        new(
             "backup.target",
             "Keeping the cockpit's backups",
             "Keeps whole backups of the cockpit somewhere the operator picks, and hands them back for a restore.",

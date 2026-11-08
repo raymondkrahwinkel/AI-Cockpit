@@ -48,7 +48,9 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(ShowsKeyHint))]
     private bool _isAudioAvailable = true;
 
-    public string AudioControlTooltip => IsAudioAvailable ? "Audio controls" : "Audio is unavailable. See Health for details.";
+    public string AudioControlTooltip => IsAudioAvailable
+        ? WakeWordEnabled ? $"Toggle listening with wake word: {WakeWord}" : "Toggle listening without a wake-word filter"
+        : "Audio is unavailable. See Health for details.";
 
     // Why the assistant cannot be reached, set alongside `AssistantActivity.Unavailable`. Shown as the
     // chip's secondary line — an unavailable chip with no reason sends the operator into Options looking for a
@@ -75,7 +77,18 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsListeningModeOff))]
     [NotifyPropertyChangedFor(nameof(IsListeningModeAlwaysOn))]
+    [NotifyPropertyChangedFor(nameof(Detail))]
+    [NotifyPropertyChangedFor(nameof(Label))]
     private AssistantListeningMode _listeningMode = AssistantListeningMode.Off;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AudioControlTooltip))]
+    private bool _wakeWordEnabled;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AudioControlTooltip))]
+    [NotifyPropertyChangedFor(nameof(Detail))]
+    private string _wakeWord = "computer";
 
     // Fed in rather than owned here: the setting is persisted by the host, and this view model only needs to know it to
     // decide whether picking AlwaysOn should ask first (criterion 18).
@@ -135,7 +148,8 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
     {
         AssistantActivity.Ready => "Assistant",
         AssistantActivity.Listening => "Listening",
-        AssistantActivity.ListeningContinuously => "Listening continuously",
+        AssistantActivity.ListeningContinuously => ListeningMode == AssistantListeningMode.AlwaysOnWithWakeWord
+            ? "Listening for wake word" : "Listening continuously",
         AssistantActivity.Transcribing => "Transcribing…",
         // The step is the headline, not the word "Preparing": on first use this is a gigabyte-and-a-half download,
         // and "Downloading speech model" is what makes the wait make sense. Falls back to the generic word only
@@ -156,7 +170,7 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
     public string? Detail => ShowsQuestions ? "Open to answer" : Activity switch
     {
         AssistantActivity.Listening => "Assistant",
-        AssistantActivity.ListeningContinuously => "Assistant",
+        AssistantActivity.ListeningContinuously => ListeningMode == AssistantListeningMode.AlwaysOnWithWakeWord ? $"Wake word: {WakeWord}" : "No wake-word filter",
         AssistantActivity.Transcribing => "Assistant",
         // The step's own words are the headline above; this line is the number, and a step without a total shows
         // nothing here rather than a made-up one.
@@ -230,7 +244,7 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
         or AssistantActivity.ListeningContinuously or AssistantActivity.Dictating;
 
     public bool IsListeningModeOff => ListeningMode == AssistantListeningMode.Off;
-    public bool IsListeningModeAlwaysOn => ListeningMode == AssistantListeningMode.AlwaysOn;
+    public bool IsListeningModeAlwaysOn => ListeningMode is AssistantListeningMode.AlwaysOn or AssistantListeningMode.AlwaysOnWithWakeWord;
 
     // The chip's right-hand corner holds one thing, because at the sidebar's ~164px there is room for one: the
     // listening switch in the two resting stands, the key badge in the states that are mid-something.
@@ -293,6 +307,12 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
     [RelayCommand]
     private void SelectListeningModeAlwaysOn()
     {
+        if (WakeWordEnabled)
+        {
+            ListeningModeSelected?.Invoke(this, AssistantListeningMode.AlwaysOnWithWakeWord);
+            return;
+        }
+
         if (AlwaysOnCostAcknowledged)
         {
             ListeningModeSelected?.Invoke(this, AssistantListeningMode.AlwaysOn);
