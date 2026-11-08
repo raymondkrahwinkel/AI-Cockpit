@@ -71,7 +71,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     private readonly ISessionLoginFlows? _loginFlows;
 
     // AC-740: null in the design-time/unit-test graph, where the @-mention picker's file source always answers empty.
-    private readonly IMentionFileSource? _mentionFileSource;
 
     // AC-1239: a swallowed launch failure left no trace anywhere. Null in the design-time/unit-test graph.
     private readonly ILogger<SessionViewModel>? _logger;
@@ -1464,12 +1463,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     }
 
     // Parameterless constructor kept for the Avalonia previewer design-time context.
-    public SessionViewModel(IMentionFileSource? mentionFileSource = null)
+    public SessionViewModel(IEnumerable<IMentionSource>? mentionSources = null)
     {
         _control = _BindControl(SessionControls.DesignTime);
         _rowFeed = _FollowRows(eventLog: null, logger: null);
-        _mentionFileSource = mentionFileSource;
-        MentionPicker = new MentionPickerViewModel(_MentionPathsAsync, () => WorkingDirectory);
+        MentionPicker = new MentionPickerViewModel(mentionSources ?? [], () => new MentionContext(MentionSurface.Session, WorkingDirectory));
         // Sample MCP selection, and the status line derived from it rather than typed out beside it (AC-563): a
         // hard-coded "Connected (3 MCP servers)." next to an unset selection would have every previewer and render
         // showing a count of three over a hover saying the selection is unknown.
@@ -1543,7 +1541,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         VoiceOverlayCoordinator? voiceOverlay = null,
         IProfileLoginChecker? loginChecker = null,
         ISessionLoginFlows? loginFlows = null,
-        IMentionFileSource? mentionFileSource = null,
+        IEnumerable<IMentionSource>? mentionSources = null,
         ISessionTranscriptReader? transcriptReader = null,
         ILogger<SessionViewModel>? logger = null,
         IBackendEventLog? eventLog = null,
@@ -1564,9 +1562,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _usageSignals = usageSignals;
         _loginChecker = loginChecker;
         _loginFlows = loginFlows;
-        _mentionFileSource = mentionFileSource;
         _logger = logger;
-        MentionPicker = new MentionPickerViewModel(_MentionPathsAsync, () => WorkingDirectory);
+        MentionPicker = new MentionPickerViewModel(mentionSources ?? [], () => new MentionContext(MentionSurface.Session, WorkingDirectory));
         _TrackPendingAttachments();
         InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, openMicState, voiceOverlay, audioAvailability);
         CloseRequested += (_, _) => _control.StopPolling();
@@ -1879,14 +1876,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             OnPropertyChanged(nameof(CanTakeAPrompt));
         }
     }
-
-    // AC-740: no source registered (design-time/unit-test graph) or no working directory yet both answer empty
-    // rather than throw — the picker itself stays closed whenever WorkingDirectory is null (see its own guard),
-    // so this only actually runs once a session has one.
-    private Task<IReadOnlyList<string>> _MentionPathsAsync(CancellationToken cancellationToken) =>
-        _mentionFileSource is not null && WorkingDirectory is { } workingDirectory
-            ? _mentionFileSource.GetPathsAsync(workingDirectory, cancellationToken)
-            : Task.FromResult<IReadOnlyList<string>>([]);
 
     private void _TrackPendingAttachments()
     {

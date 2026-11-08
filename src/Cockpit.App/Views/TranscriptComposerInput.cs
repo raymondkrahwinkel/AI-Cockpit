@@ -53,6 +53,13 @@ internal sealed class TranscriptComposerInput
         _sendCommand = sendCommand;
         _resolvePastedImageSink = resolvePastedImageSink;
         _canPasteImages = canPasteImages ?? (() => false);
+        _inputBox.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == TextBox.TextProperty)
+            {
+                _mentionPicker()?.SyncTokens(_inputBox.Text ?? string.Empty);
+            }
+        };
     }
 
     internal void OnKeyDown(object? sender, KeyEventArgs e)
@@ -289,13 +296,13 @@ internal sealed class TranscriptComposerInput
         picker.OnTextChanged(_inputBox.Text ?? string.Empty, _inputBox.CaretIndex);
     }
 
-    // Splices an accepted mention into the text: replaces [TokenStart..caret] with '@' + path + a trailing space.
+    // Splices an accepted mention into the text: replaces [TokenStart..caret] with '@' + InsertText + a trailing space.
     private void _InsertMention(MentionAcceptance acceptance)
     {
         var current = _inputBox.Text ?? string.Empty;
         var end = Math.Clamp(_inputBox.CaretIndex, 0, current.Length);
         var start = Math.Clamp(acceptance.TokenStart, 0, end);
-        var replacement = $"@{acceptance.Path} ";
+        var replacement = $"@{acceptance.Item.InsertText} ";
         _inputBox.Text = current[..start] + replacement + current[end..];
         _inputBox.CaretIndex = start + replacement.Length;
         _inputBox.SelectionStart = _inputBox.CaretIndex;

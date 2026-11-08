@@ -33,18 +33,13 @@ public class AssistantChatMentionPickerViewTests
         return host;
     }
 
-    private static IMentionFileSource _FilesNamed(params string[] paths)
-    {
-        var source = Substitute.For<IMentionFileSource>();
-        source.GetPathsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<IReadOnlyList<string>>(paths));
-        return source;
-    }
+    private static IReadOnlyList<IMentionSource> _FilesNamed(params string[] paths) =>
+        [new FixedMentionSource(0, new MentionGroup("Files", paths.Select(FixedMentionSource.File).ToList()))];
 
-    private static Pane _Pane(IAssistantSessionHost host, IMentionFileSource? fileSource = null)
+    private static Pane _Pane(IAssistantSessionHost host, IReadOnlyList<IMentionSource>? fileSource = null)
     {
         var viewModel = new AssistantChatViewModel(
-            host, Substitute.For<IAssistantSettingsStore>(), Substitute.For<IVoicePlaybackQueue>(), mentionFileSource: fileSource);
+            host, Substitute.For<IAssistantSettingsStore>(), Substitute.For<IVoicePlaybackQueue>(), mentionSources: fileSource);
         var window = new AssistantChatWindow { Width = 420, Height = 560, DataContext = viewModel };
         window.Show();
         Dispatcher.UIThread.RunJobs();

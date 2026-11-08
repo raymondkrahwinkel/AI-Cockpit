@@ -28,7 +28,6 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     private readonly IAssistantSpawnAuditLog? _spawnAuditLog;
 
     // AC-740: null in the design-time/unit-test graph, where the @-mention picker's file source always answers empty.
-    private readonly IMentionFileSource? _mentionFileSource;
 
     // AC-776: optional so every construction path predating this ticket (tests, Screenshotter) keeps compiling.
     // The one thing this view model reaches for outside its own host — see LiveSessions' remarks for why a whole
@@ -114,7 +113,7 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
         IVoicePlaybackQueue playbackQueue,
         IAssistantSpawnAuditLog? spawnAuditLog = null,
         AssistantIndicatorViewModel? indicator = null,
-        IMentionFileSource? mentionFileSource = null,
+        IEnumerable<IMentionSource>? mentionSources = null,
         CockpitViewModel? cockpit = null)
     {
         _host = host;
@@ -122,9 +121,10 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
         _playbackQueue = playbackQueue;
         _spawnAuditLog = spawnAuditLog;
         _indicator = indicator;
-        _mentionFileSource = mentionFileSource;
         _cockpit = cockpit;
-        MentionPicker = new MentionPickerViewModel(_MentionPathsAsync, () => Session?.WorkingDirectory ?? _host.DefaultWorkingDirectory);
+        MentionPicker = new MentionPickerViewModel(
+            mentionSources ?? [],
+            () => new MentionContext(MentionSurface.Assistant, Session?.WorkingDirectory ?? _host.DefaultWorkingDirectory));
         _observedSession = IsFollowingLeader ? null : _host.View();
         _WatchTranscript(previous: null, _observedSession);
         _host.PropertyChanged += _OnHostPropertyChanged;
@@ -143,16 +143,6 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
 
         _InitThreads();
         _WatchThreads(previous: null, _observedSession);
-    }
-
-    // AC-740: null source (design-time/unit-test graph) or no working directory yet (no session started, and the
-    // Assistant Profile's own default not loaded/set either) both answer empty rather than throw.
-    private Task<IReadOnlyList<string>> _MentionPathsAsync(CancellationToken cancellationToken)
-    {
-        var workingDirectory = Session?.WorkingDirectory ?? _host.DefaultWorkingDirectory;
-        return _mentionFileSource is not null && workingDirectory is not null
-            ? _mentionFileSource.GetPathsAsync(workingDirectory, cancellationToken)
-            : Task.FromResult<IReadOnlyList<string>>([]);
     }
 
     // Read-through, like `Session` below: never assigned locally, only ever reports whatever `_indicator` holds.

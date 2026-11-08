@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2198: typing @ in a chat composer opens one shared list that hangs on the caret line at the composer's full width, groups files and projects per window, skips group headings with the arrow keys, and marks accepted project mentions in the text.
+
 - AC-2188: queued test runs start strictly in arrival order, without pre-merge priority or aging.
 
 - AC-2189: inbox messages from other sessions now start collapsed to their header in the transcript, and run results keep a coloured one-line verdict; the toggle opens the full text.
