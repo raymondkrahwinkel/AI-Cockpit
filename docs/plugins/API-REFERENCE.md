@@ -801,9 +801,9 @@ public interface ICompanionToolContext
   ignore it; one showing a snapshot should re-read.
 - `Badge` — the same [`SideMenuButtonBadge`](#sidemenu-badge) the left menu uses, one per tool. Set
   `Text` and `Tone` when the count changes; empty means no badge. The host follows `Changed` from any thread.
-  SDK 3.75.0, requires host 0.165.0.
+  SDK 3.76.0, requires host 0.165.0.
 - `RequestPopOut()` — asks the host to open this tool's pop-out without taking focus. With no room, or with
-  the tool hidden from the strip, it does nothing and the host tells the user once. SDK 3.75.0, requires host
+  the tool hidden from the strip, it does nothing and the host tells the user once. SDK 3.76.0, requires host
   0.165.0.
 
 ### `void AddWorkspaceType(WorkspaceTypeRegistration registration)` {#void-addworkspacetypeworkspacetyperegistration-registration}

@@ -445,7 +445,7 @@
     <!-- 0.160.0: plugins stop their background work on a live disable; TrackerProvidersChanged and ProviderAvailable (AC-2024, SDK 3.68.0). -->
     <!-- 0.158.0: a plugin's status line can open a popup (UI SDK 3.24.0). -->
     <!-- AC-2100: source-bound Markdown images (Abstractions 3.72.0, UI 3.25.0); consumers require host 0.161.0. -->
-    <!-- 0.165.0: companion tools can set a badge and ask for their pop-out (SDK 3.75.0). -->
+    <!-- 0.165.0: companion tools can set a badge and ask for their pop-out (SDK 3.76.0). -->
     <VersionPrefix>0.165.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>

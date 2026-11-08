@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- AC-2206: companion tool plugins can put a badge on their button and ask for their own pop-out (plugin SDK 3.75.0, host 0.165.0).
+- AC-2206: companion tool plugins can put a badge on their button and ask for their own pop-out (plugin SDK 3.76.0, host 0.165.0).
 
 - AC-2188: queued test runs start strictly in arrival order, without pre-merge priority or aging.
 
