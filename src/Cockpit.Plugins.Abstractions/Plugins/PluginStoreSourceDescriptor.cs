@@ -6,4 +6,8 @@ public sealed record PluginStoreSourceDescriptor(
     string Name,
     string IndexUrl,
     string Organization,
-    Func<HttpMessageHandler> CreateHandler);
+    Func<HttpMessageHandler> CreateHandler)
+{
+    /// <summary>True when the source's host was reachable and no longer offers this organization; the host shows the row but never browses it.</summary>
+    public bool IsWithdrawn { get; init; }
+}

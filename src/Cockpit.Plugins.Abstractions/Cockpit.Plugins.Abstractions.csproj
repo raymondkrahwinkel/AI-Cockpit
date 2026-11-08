@@ -666,7 +666,8 @@
     <!-- AC-2166: optional session-less ephemeral speech generation; additive, contract stays 3. -->
     <!-- AC-2100: optional IFileImageSource and bounded file-image channel; requires host 0.161.0. -->
     <!-- 3.73.0 (AC-1974): runtime plugin-store providers; additive, requires host 0.162.0, contract stays 3. -->
-    <Version>3.73.0</Version>
+    <!-- 3.74.0 (AC-1977): PluginStoreSourceDescriptor.IsWithdrawn; additive, requires host 0.164.0, contract stays 3. -->
+    <Version>3.74.0</Version>
     <AssemblyVersion>1.17.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

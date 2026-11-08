@@ -679,6 +679,9 @@ when that snapshot changes. Each descriptor supplies a stable `SourceKey`, displ
 through that handler, so hand out `ICockpitHost.CreateAuthorizedHandler(name)` and the sign-in stays in the host.
 Dispose the registration on plugin unload.
 
+SDK 3.74.0 / host 0.164.0 adds `PluginStoreSourceDescriptor.IsWithdrawn`: set it when the source's host was reachable and no longer
+offers the organization. The host keeps the row, never browses it, and says the member left; an unreachable host is no reason for it.
+
 The local store and update checker include these sources. Manage stores can hide them by source key,
 but cannot remove them. The remote administration catalog stays configuration-only. Descriptors and
 credentials are runtime-only; a backup contains neither. Signed sources use validated plugin/version/platform
