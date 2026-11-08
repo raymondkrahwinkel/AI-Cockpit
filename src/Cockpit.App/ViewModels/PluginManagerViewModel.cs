@@ -855,7 +855,7 @@ public partial class PluginManagerViewModel : ViewModelBase
                         installedVersion,
                         isEnabled: installedRow?.CanDisable ?? false,
                         hasSettings: installedRow?.HasSettings ?? false,
-                        disabledByStartupProtection: installedRow?.DisabledByStartupProtection ?? false) { RevokedKeys = fetch.Index.RevokedKeys };
+                        disabledByStartupProtection: installedRow?.DisabledByStartupProtection ?? false) { RevokedKeys = fetch.Index.RevokedKeys, StoreName = info?.Name };
                     var insertionIndex = AvailablePlugins.TakeWhile(candidate => sourceOrder.IndexOf(candidate.Store) <= sourcePriority).Count();
                     AvailablePlugins.Insert(insertionIndex, row);
 

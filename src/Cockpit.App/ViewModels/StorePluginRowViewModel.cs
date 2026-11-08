@@ -41,6 +41,38 @@ public sealed partial class StorePluginRowViewModel(
     // The store this row came from — the manager downloads through it, so a private or local store resolves the same way it was browsed.
     public PluginStoreConfig Store => store;
 
+    // The store's own name from its index, set by the manager once browsed; an organization store is named by its organization instead.
+    public string? StoreName { get; init; }
+
+    // The organization an organization store (a signed Depot source) belongs to, else null for a public or local store.
+    public string? Organization => store.Signed?.Organization;
+
+    public bool IsOrganizationPlugin => store.Signed is not null;
+
+    // What a row says about where it comes from — also for the public store.
+    public string SourceName => Organization ?? StoreName ?? PluginStoreUrl.DeriveDisplayName(store.Location);
+
+    // The detail panel's Source line: the organization and the Depot it is reached through, else the store's name.
+    public string SourceTitle => store.Signed is { } signed && Uri.TryCreate(store.Location, UriKind.Absolute, out var location)
+        ? $"{signed.Organization}, on {location.Host}"
+        : SourceName;
+
+    // "repo @ tag" of the build the store points at, when the index says where it was built.
+    public string? SourceRepository => LatestVersionEntry?.Source is { Repository: { Length: > 0 } repository } source
+        ? (string.IsNullOrWhiteSpace(source.Tag) ? repository : $"{repository} @ {source.Tag}")
+        : null;
+
+    public bool HasSourceRepository => SourceRepository is not null;
+
+    private PluginStorePackage? _LatestPackage => LatestVersionEntry?.PackageFor();
+
+    public bool HasPublisher => !string.IsNullOrEmpty(_LatestPackage?.KeyFingerprint);
+
+    // The store's claim, not a verdict: the signature is checked when the plugin is installed.
+    public string PublisherName => _LatestPackage?.KeyName is { Length: > 0 } name ? $"Signed by {name}" : "Signed with an unnamed key";
+
+    public string? PublisherFingerprint => _LatestPackage?.KeyFingerprint;
+
     public string Id => entry.Id;
 
     public string Name => entry.Name;
