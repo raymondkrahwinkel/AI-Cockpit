@@ -485,7 +485,9 @@ public sealed record AgentSpawnRequest(
     string? Kind = null,
     IReadOnlyDictionary<string, string>? OptionOverrides = null,
     bool? IsolateInWorktree = null,
-    IReadOnlyList<string>? McpServers = null);
+    IReadOnlyList<string>? McpServers = null,
+    string? Role = null,
+    bool RoleChoiceRequired = false);
 
 // AC-1013: What came of a spawn — a refusal carries Error and no pane, so a failed spawn is a sentence the
 // operator hears, not a session that's silently missing. PromptDelivered (AC-760) and ResolvedProfileLabel
@@ -494,6 +496,10 @@ public sealed record AgentSpawnResult(
     bool Ok, string? PaneId, string? SessionName, string? WorkingDirectory, string? Error,
     bool? PromptDelivered = null, string? ResolvedProfileLabel = null)
 {
+    public string? Role { get; init; }
+
+    public string? RoleList { get; init; }
+
     public IReadOnlyList<string>? McpServers { get; init; }
 
     public bool McpServersConfirmed { get; init; }

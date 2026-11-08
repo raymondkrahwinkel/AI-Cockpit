@@ -11,7 +11,27 @@ public sealed class SessionRoleResolver(
     IProjectMemorySourceRegistry? memorySources = null,
     IAssistantProfileStore? assistantProfiles = null) : ISingletonService
 {
-    public async Task<BrainSource?> ResolveAsync(Project? project, SessionProfile profile, CancellationToken cancellationToken)
+    public async Task<RoleListResult> ListAsync(Project? project, SessionProfile? profile, CancellationToken cancellationToken = default)
+    {
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        budget.CancelAfter(TimeSpan.FromSeconds(5));
+        try
+        {
+            var brain = await ResolveAsync(project, profile, budget.Token).WaitAsync(budget.Token).ConfigureAwait(false);
+            if (brain?.Source.ListRolesAsync is not { } list)
+            {
+                return new(RoleSourceOutcome.NoRoles, []);
+            }
+            var result = await list(brain.Value, budget.Token).WaitAsync(budget.Token).ConfigureAwait(false);
+            return result with { Roles = result.Roles.Where(role => !string.Equals(role.Name, "none", StringComparison.OrdinalIgnoreCase)).ToArray() };
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            return new(RoleSourceOutcome.Unavailable, []);
+        }
+    }
+
+    public async Task<BrainSource?> ResolveAsync(Project? project, SessionProfile? profile, CancellationToken cancellationToken)
     {
         var sources = memorySources?.Sources ?? [];
         var chosen = SessionStartDefaults.ResolveAssistant(project, profile);
@@ -38,7 +58,7 @@ public sealed class SessionRoleResolver(
             var result = await list(cancellationToken).WaitAsync(cancellationToken).ConfigureAwait(false);
             if (result.Outcome != Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocationsOutcome.Success)
             {
-                return null;
+                throw new InvalidOperationException("The brain list is unavailable.");
             }
             foreach (var brain in result.Locations)
             {

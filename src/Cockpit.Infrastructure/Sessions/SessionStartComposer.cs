@@ -49,7 +49,7 @@ public sealed class SessionStartComposer(
     {
         if (request.IsComposed)
         {
-            return await _WithRoleAsync(request, cancellationToken).ConfigureAwait(false);
+            return await ComposeRoleAsync(request, cancellationToken).ConfigureAwait(false);
         }
 
         var profile = request.Profile;
@@ -65,7 +65,7 @@ public sealed class SessionStartComposer(
         var kind = request.Kind ?? composed?.Kind ?? (TtyRoute.IsDefault(profile, ttyProviders) ? PaneSessionKind.Tty : PaneSessionKind.Sdk);
         var named = !string.IsNullOrWhiteSpace(request.SessionName);
 
-        return await _WithRoleAsync(request with
+        return await ComposeRoleAsync(request with
         {
             Kind = kind,
             SessionName = named ? request.SessionName : $"{profile.Label} — {DateTime.Now:HH:mm}",
@@ -95,7 +95,7 @@ public sealed class SessionStartComposer(
         return request.RoleWarning is null ? brainInstruction : string.Join("\n\n", new[] { brainInstruction, request.RoleWarning }.Where(text => !string.IsNullOrWhiteSpace(text)));
     }
 
-    private async Task<SessionLaunchRequest> _WithRoleAsync(SessionLaunchRequest request, CancellationToken cancellationToken)
+    internal async Task<SessionLaunchRequest> ComposeRoleAsync(SessionLaunchRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.Role) || string.Equals(request.Role.Trim(), "none", StringComparison.OrdinalIgnoreCase))
         {

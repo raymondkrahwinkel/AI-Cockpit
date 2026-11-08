@@ -74,6 +74,7 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
     // AC-2026: the profile's `MaxParallelSessions`, shared with the pane starts. Absent in a test graph without one.
     private readonly ProfileSessionLimit? _limit;
     private readonly SessionMcpMounts? _mcpMounts;
+    private readonly SessionStartComposer? _startComposer;
     private readonly IProjectStore? _projectStore;
     private readonly IProjectMemorySourceRegistry? _memorySources;
 
@@ -99,8 +100,9 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         ProfileSessionLimit? limit = null,
         IProjectStore? projectStore = null,
         IProjectMemorySourceRegistry? memorySources = null,
-        SessionMcpMounts? mcpMounts = null)
-        : this(profileStore, sessionManager, mcpServerStore, auditLog, minutes => TimeSpan.FromMinutes(minutes), workspaces, providerRegistry, projects, worktrees, idleWindow: null, consent, mcpServerCatalog: mcpServerCatalog, sessionState: sessionState, orgPolicy: orgPolicy, limit: limit, projectStore: projectStore, memorySources: memorySources, mcpMounts: mcpMounts)
+        SessionMcpMounts? mcpMounts = null,
+        SessionStartComposer? startComposer = null)
+        : this(profileStore, sessionManager, mcpServerStore, auditLog, minutes => TimeSpan.FromMinutes(minutes), workspaces, providerRegistry, projects, worktrees, idleWindow: null, consent, mcpServerCatalog: mcpServerCatalog, sessionState: sessionState, orgPolicy: orgPolicy, limit: limit, projectStore: projectStore, memorySources: memorySources, mcpMounts: mcpMounts, startComposer: startComposer)
     {
     }
 
@@ -125,9 +127,11 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         ProfileSessionLimit? limit = null,
         IProjectStore? projectStore = null,
         IProjectMemorySourceRegistry? memorySources = null,
-        SessionMcpMounts? mcpMounts = null)
+        SessionMcpMounts? mcpMounts = null,
+        SessionStartComposer? startComposer = null)
     {
         _mcpMounts = mcpMounts;
+        _startComposer = startComposer;
         _profileStore = profileStore;
         _sessionManager = sessionManager;
         _mcpServerStore = mcpServerStore;
@@ -707,6 +711,25 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
             // task changed rather than what the delegating session left dirty. Taken before the session exists.
             entry.WorkspaceBaseline = await DelegatedWorkspaceChanges.SnapshotAsync(entry.WorkingDirectory);
 
+            var project = entry.ProjectId is { Length: > 0 } projectId && _projectStore is not null
+                ? (await _projectStore.LoadAsync()).Projects.FirstOrDefault(p => p.Id == projectId)
+                : null;
+            var brainInstruction = SessionStartDefaults.ResolveBrainInstruction(project, entry.Profile, _memorySources?.Sources.ToMemorySources());
+            if (!string.IsNullOrWhiteSpace(entry.Role) && !string.Equals(entry.Role.Trim(), "none", StringComparison.OrdinalIgnoreCase))
+            {
+                var composer = _startComposer ?? throw new DelegationRejectedException("Role loading is unavailable; no task session was started.");
+                var composed = await composer.ComposeRoleAsync(new SessionLaunchRequest(
+                    string.Empty, entry.Profile, null, entry.WorkingDirectory, entry.Label, null, null, null, entry.ProjectId, false)
+                {
+                    Role = entry.Role,
+                }, CancellationToken.None).ConfigureAwait(false);
+                if (composed.RoleFailure is { } failure)
+                {
+                    throw new DelegationRejectedException(failure);
+                }
+                brainInstruction = composed.RoleInstruction;
+            }
+
             var runtime = _sessionManager.Create(entry.Profile);
             entry.Attach(runtime);
 
@@ -718,11 +741,6 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
             TasksChanged?.Invoke();
 
             runtime.EventAppended += evt => _OnTaskEvent(entry, evt);
-
-            var project = entry.ProjectId is { Length: > 0 } projectId && _projectStore is not null
-                ? (await _projectStore.LoadAsync()).Projects.FirstOrDefault(p => p.Id == projectId)
-                : null;
-            var brainInstruction = SessionStartDefaults.ResolveBrainInstruction(project, entry.Profile, _memorySources?.Sources.ToMemorySources());
 
             _mcpMounts?.RestrictDelegation(entry.TaskId, await _ToolsForAsync(entry.Profile, projectId: entry.ProjectId));
 

@@ -301,7 +301,8 @@ internal sealed class NodeSessionMcpTools(
         [Description("The profile to run under, exactly as list_node_profiles reports its label. Required — there is no default, and an unknown or unticked label is refused rather than swapped for something that would run.")] string profile,
         [Description("The project on the node to work on, by its id from list_node_projects. Optional; given, the session comes up with that project's folder, settings and — where you named no profile of your own — its default profile. An id the operator has not allowed is refused.")] string? projectId = null,
         [Description("The first message to hand the session once it is up. Write it as a brief for an agent on another machine that cannot see this conversation: it gets this text and nothing else, and the only route back is a notify to its own assistant. Say what to do, what to leave alone, and whether to report.")] string? prompt = null,
-        [Description("What to call the pane on the node, so its operator can see what it is. Say what the work is and that it came from here — \"AC-795 tests (from the controller)\" beats the profile name and the clock.")] string? name = null)
+        [Description("What to call the pane on the node, so its operator can see what it is. Say what the work is and that it came from here — \"AC-795 tests (from the controller)\" beats the profile name and the clock.")] string? name = null,
+        [Description("A role from this node's target brain, or none. When roles exist, omitting it is refused with the available roles.")] string? role = null)
     {
         try
         {
@@ -334,7 +335,7 @@ internal sealed class NodeSessionMcpTools(
                 // a machine whose filesystem this caller has never seen, and the options a session runs under are
                 // the node operator's configuration — the grant is over *which* profile, never over what it is.
                 WorkingDirectory: null,
-                SessionName: name)).ConfigureAwait(false);
+                SessionName: name, Role: role, RoleChoiceRequired: true)).ConfigureAwait(false);
 
             return result.Ok
                 ? _Serialize(new
@@ -347,6 +348,8 @@ internal sealed class NodeSessionMcpTools(
                     promptDelivered = result.PromptDelivered,
                     mcpServers = result.McpServers,
                     mcpServersConfirmed = result.McpServersConfirmed,
+                    role = result.Role,
+                    roleList = result.RoleList,
                 })
                 : _Serialize(new { ok = false, error = result.Error });
         }

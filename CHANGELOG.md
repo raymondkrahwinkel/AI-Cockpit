@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2171: the assistant explicitly chooses a role or none when starting sessions, including on paired nodes. Role refusals show the available choices; manual server starts and delegated tasks keep roles optional.
+
 - AC-2170: sessions can carry an optional role from their brain on every provider route, keep that choice when copied or resumed, and resume with a warning if the role source is unavailable. Older memory plugins and servers continue to work without roles.
 
 - AC-2187: the assistant can tell which session you have selected: `list_sessions` marks it, following the Simple stand's own selection when that stand is showing.
