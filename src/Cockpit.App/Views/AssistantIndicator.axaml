@@ -34,7 +34,7 @@
              "who is listening" without room for prose. The pulse ring sits in a Panel beside the badge, not
              inside its Border: a Border clips its child to its own bounds, so a ring meant to grow past the
              badge's edge (Theme.axaml's Ellipse.assistantIndicatorPulseRing) has to be a sibling, not a child. -->
-        <Button x:Name="RailForm" Classes="assistantIndicatorRail" Command="{Binding ClickCommand}" IsVisible="False"
+        <Button x:Name="RailForm" Classes="assistantIndicatorRail" Click="_OnOpenClick" IsVisible="False"
                 ToolTip.Tip="{Binding Label}">
             <!-- Pinned to the rail badge's 30px, clipping off — same reason as the chip's badge Panel. -->
             <Panel Width="30" Height="30" ClipToBounds="False">
@@ -92,7 +92,7 @@
                     Classes.awaitingOperator="{Binding ShowsAwaitingOperator}"
                         Classes.questions="{Binding ShowsQuestions}"
                     Classes.unavailable="{Binding IsUnavailable}"
-                    Command="{Binding ClickCommand}">
+                    Click="_OnOpenClick">
                 <!-- Three columns, not four. The mockup lays badge / label / meter / key across 340px; this chip
                      gets about 164 in the sidebar, and with the meter and the key both taking their width first
                      the star column collapsed — "Listening" and "Speaking" rendered with no label at all, and

@@ -1,11 +1,9 @@
 using Avalonia;
-using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
 using Material.Icons;
 using Microsoft.Extensions.Logging;
-using Cockpit.App.Controls;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions;
@@ -30,6 +28,8 @@ public sealed class ScreenshotCoordinator : ISingletonService
     private readonly IScreenshotImageEditor _editor;
     private readonly IDesktopWindows _windows;
     private readonly ILogger<ScreenshotCoordinator> _logger;
+
+    internal event EventHandler? AssistantScreenshotCaptured;
 
     // Guards against a second capture while the picker is already open — the hotkey is easy to press twice.
     private bool _isCapturing;
@@ -98,43 +98,56 @@ public sealed class ScreenshotCoordinator : ISingletonService
     // read it there has to come back and read it again.
     public Task SupportSettled => _capture.SupportSettled;
 
-    // AC-239: the companion window's contribution, through AC-238's first-party host — this coordinator's
-    // second consumer, alongside the global hotkey and the composer button. There is no panel of its own to
-    // name, so it takes the session in view, exactly as the hotkey does.
     public CompanionToolRegistration CreateCompanionTool() =>
-        new("cockpit.screenshot", "Screenshot", _ => _CreateCompanionToolView())
+        new("cockpit.screenshot", "Screenshot", _CreateCompanionToolView)
         {
             IconKind = MaterialIconKind.Monitor,
         };
 
-    // Never hidden on an unsupported platform (AC-238's ShowWhenDisabled reasoning): in the companion window,
-    // hidden and broken look the same, so this stays put and greys out with a reason instead.
-    private Control _CreateCompanionToolView()
+    private Control _CreateCompanionToolView(ICompanionToolContext context)
     {
-        var button = new Button
+        var button = new CompanionScreenshotView(context.Storage, _cockpit,
+            () => CaptureIntoAssistantAsync(), () => CaptureIntoSelectedSessionAsync())
         {
-            Content = CockpitIcons.Icon(MaterialIconKind.Monitor),
-            Padding = new Thickness(7, 6),
+            IsEnabled = IsSupported,
         };
-        ToolTip.SetShowOnDisabled(button, true);
-        AutomationProperties.SetName(button, "Screenshot");
-        button.Click += (_, _) => _ = CaptureIntoSelectedSessionAsync();
-
-        void Refresh()
+        _ = SupportSettled.ContinueWith(_ => Dispatcher.UIThread.Post(() =>
         {
             button.IsEnabled = IsSupported;
-            ToolTip.SetTip(button, IsSupported
-                ? "Take a screenshot into the active session"
-                : "Screen capture is not available on this platform.");
-        }
-
-        Refresh();
-
-        // Support settles after a D-Bus round trip on Linux (AC-326); this button can exist before that
-        // answers, same as the composer's own (`_RewireScreenshotsWhenSupportSettlesAsync`).
-        _ = SupportSettled.ContinueWith(_ => Dispatcher.UIThread.Post(Refresh), TaskScheduler.Default);
+            button.Refresh();
+        }), TaskScheduler.Default);
 
         return button;
+    }
+
+    public async Task CaptureIntoAssistantAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (_cockpit.AssistantHost is { } host)
+            {
+                await host.EnsureStartedAsync(cancellationToken).ConfigureAwait(true);
+                if (host.View() is { } session)
+                {
+                    if (await _CaptureIntoAsync(session, cancellationToken).ConfigureAwait(true))
+                    {
+                        AssistantScreenshotCaptured?.Invoke(this, EventArgs.Empty);
+                    }
+
+                    return;
+                }
+            }
+
+            _toasts.Show("The assistant is unavailable, so there is nowhere to put a screenshot.", ToastSeverity.Warning);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Preparing a screenshot for the assistant failed.");
+            _toasts.Show($"The screenshot could not be taken: {exception.Message}", ToastSeverity.Error);
+        }
     }
 
     // Runs the picker and puts the result on the session in view — the global hotkey's path, which has no
@@ -156,16 +169,40 @@ public sealed class ScreenshotCoordinator : ISingletonService
     // Runs the picker and puts the result on the given session — the composer button's path, naming its own
     // panel rather than the selected one, since the clicked button and the session in view may differ in a grid.
     // Safe to call from a command or a hotkey; never throws, since both callers discard the task.
-    public async Task CaptureIntoAsync(SessionPanelViewModel session, CancellationToken cancellationToken = default)
+    public Task CaptureIntoAsync(SessionPanelViewModel session, CancellationToken cancellationToken = default) =>
+        _CaptureIntoAsync(session, cancellationToken);
+
+    private async Task<bool> _CaptureIntoAsync(SessionPanelViewModel session, CancellationToken cancellationToken)
     {
         if (_isCapturing)
         {
-            return;
+            return false;
+        }
+
+        if (session.ScreenshotRefusalReason is { } refusal)
+        {
+            _toasts.Show(refusal, ToastSeverity.Warning);
+            return false;
         }
 
         _isCapturing = true;
+        var restore = new List<Action>();
         try
         {
+            if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+            {
+                foreach (var strip in desktop.Windows.OfType<CompanionWindow>().Where(window => window.IsVisible).ToArray())
+                {
+                    restore.Add(strip.HideForCapture());
+                }
+            }
+
+            if (restore.Count > 0)
+            {
+                // Let the compositor paint the desktop after the companion windows disappear.
+                await Task.Delay(100, cancellationToken).ConfigureAwait(true);
+            }
+
             // Logged either side of the picker, because without it the only evidence a capture ever ran is a
             // timeout two minutes later — which is exactly how long diagnosing the first real failure took.
             _logger.LogInformation("Screen capture starting for session '{Session}'.", session.Title);
@@ -177,13 +214,13 @@ public sealed class ScreenshotCoordinator : ISingletonService
                 // Cancelled. Silent on purpose: pressing Escape on the picker is the ordinary way to change your
                 // mind, and a toast for it would be nagging. A platform that cannot capture at all throws
                 // instead, and lands in the catch below where it gets said out loud.
-                return;
+                return false;
             }
 
             if (await _PickAsync(capture, session).ConfigureAwait(true) is not { } png)
             {
                 _logger.LogInformation("The selection was dismissed, so nothing was taken.");
-                return;
+                return false;
             }
 
             if (await session.InjectScreenshotAsync(png).ConfigureAwait(true) is { } reason)
@@ -194,6 +231,7 @@ public sealed class ScreenshotCoordinator : ISingletonService
             else
             {
                 _logger.LogInformation("Screen capture of {Bytes} bytes went into session '{Session}'.", png.Length, session.Title);
+                return true;
             }
         }
         catch (OperationCanceledException)
@@ -207,8 +245,15 @@ public sealed class ScreenshotCoordinator : ISingletonService
         }
         finally
         {
+            foreach (var show in restore)
+            {
+                show();
+            }
+
             _isCapturing = false;
         }
+
+        return false;
     }
 
     // Puts the selection surface over the frozen capture and returns the marked-out region, cropped (AC-329) —

@@ -254,6 +254,10 @@ internal static partial class Screenshotter
         ["companion-status-quiet"] = (w, h) => _CompanionStatusScene(w, h, "quiet"),
         ["companion-notifications"] = (_, _) => _CompanionNotificationsScene(terminal: false),
         ["companion-notifications-tty"] = (_, _) => _CompanionNotificationsScene(terminal: true),
+        ["companion-assistant"] = (w, h) => _CompanionAssistantScene(w, h),
+        ["companion-assistant-questions"] = (w, h) => _CompanionAssistantScene(w, h, questions: true),
+        ["companion-screenshot"] = (w, h) => _CompanionAssistantScene(w, h, recipients: true),
+        ["companion-screenshot-tty"] = (w, h) => _CompanionAssistantScene(w, h, recipients: true, tty: true),
         ["session-background-work"] = (_, _) => _BackgroundWorkScene(),
         // AC-2028: the status bar at rest and busy, the test-runs dialog, and the disk panel open on a critical drive.
         ["statusbar-rest"] = (_, _) => _StatusBarScene(busy: false),
@@ -1571,6 +1575,10 @@ internal static partial class Screenshotter
     private static readonly Dictionary<string, Action<Window>> Hovers = new(StringComparer.Ordinal)
     {
         ["companion-strip"] = _StageCompanionStrip,
+        ["companion-assistant"] = _StageCompanionAssistant,
+        ["companion-assistant-questions"] = _StageCompanionAssistant,
+        ["companion-screenshot"] = _StageCompanionAssistant,
+        ["companion-screenshot-tty"] = _StageCompanionAssistant,
         ["companion-live-note"] = _StageCompanionLiveNote,
         ["companion-popout"] = _OpenPassivePopOut,
         ["markdown-file-images"] = _ExerciseNoteImages,

@@ -2,10 +2,15 @@
 
 ## Unreleased
 
-- AC-2208: a plugin can embed the cockpit's live Markdown editor, with the people in the file and their carets, in its own view (plugin SDK 3.78.0, host 0.167.0).
-
 - AC-2207: Customize strip adds, removes and reorders companion tools while Cockpit stays in the tray; new tools wait under Available, and unavailable plugins keep their place with Enable and Forget.
 
+- AC-2203: open the assistant conversation or its pending questions from the companion strip, and choose the assistant or selected agent as the screenshot recipient; the strip and its pop-outs stay out of captures.
+- AC-2208: a plugin can embed the cockpit's live Markdown editor, with the people in the file and their carets, in its own view (plugin SDK 3.78.0, host 0.167.0).
+- AC-2204: the companion strip shows running, waiting and background counts; its status panel lists agents and services and lets you select an agent while Cockpit stays in the tray.
+- AC-2201: the companion strip gets a soft shadow, and a pop-out shell with one placement rule is in place for the strip's upcoming items.
+- AC-2206: companion tool plugins can put a badge on their button and ask for their own pop-out (plugin SDK 3.76.0, host 0.165.0).
+- AC-2205: the companion strip gets a bell with a panel for what waits on you: open questions and permissions can be answered right there (SDK sessions; a terminal session shows Open in Cockpit), and a finished agent waits there until you dismiss or open it.
+- AC-2202: the companion strip lies horizontally or vertically, drags freely, can stay above other windows (on by default), and shows each tool as an icon button with its badge that opens the tool in a pop-out; the setting is remembered.
 - AC-2215: project cards and waiting conversations on Home wrap a long title onto further lines instead of cutting it off.
 
 - AC-2194: the project picker follows the approved compact row typography and selection stripe, and token marks leave the surrounding spaces clear.
@@ -37,12 +42,6 @@
 - AC-2212: the Simple rail now has a Plugins row above Settings and Help that opens the plugin store, with the same update and approval badges as the Panels sidebar.
 
 - AC-2191: the Panels sidebar footer uses flat icon rows like the Simple rail, and the Menu and Help flyouts get the mention-picker look with icon rows (also in the Simple rail's Help).
-- AC-2204: the companion strip shows running, waiting and background counts; its status panel lists agents and services and lets you select an agent while Cockpit stays in the tray.
-
-- AC-2201: the companion strip gets a soft shadow, and a pop-out shell with one placement rule is in place for the strip's upcoming items.
-- AC-2206: companion tool plugins can put a badge on their button and ask for their own pop-out (plugin SDK 3.76.0, host 0.165.0).
-- AC-2205: the companion strip gets a bell with a panel for what waits on you: open questions and permissions can be answered right there (SDK sessions; a terminal session shows Open in Cockpit), and a finished agent waits there until you dismiss or open it.
-- AC-2202: the companion strip lies horizontally or vertically, drags freely, can stay above other windows (on by default), and shows each tool as an icon button with its badge that opens the tool in a pop-out; the setting is remembered.
 
 - AC-2188: queued test runs start strictly in arrival order, without pre-merge priority or aging.
 

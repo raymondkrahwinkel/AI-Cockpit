@@ -193,6 +193,37 @@ public partial class CompanionWindow : Window
         return _popOuts.Toggle(key, MoreButton, new StackPanel { Margin = new Thickness(16), Spacing = 8, Children = { text, dismiss } }, 320, showActivated: false);
     }
 
+    internal bool IsToolPopOutOpen(string toolId) => _popOuts.IsOpen(toolId);
+
+    internal void OpenToolPopOut(string toolId, Func<Control> createView, double width)
+    {
+        if (!_controls.TryGetValue(toolId, out var entry) || _popOuts.IsOpen(toolId))
+        {
+            return;
+        }
+
+        _popOuts.Toggle(toolId, entry.Control, createView(), width, showActivated: true);
+    }
+
+    internal void CloseToolPopOut(string toolId) => _popOuts.Close(toolId);
+
+    internal void ActivateToolPopOut(string toolId) => _popOuts.Activate(toolId);
+
+    internal Action HideForCapture()
+    {
+        var restorePopOuts = _popOuts.HideForCapture();
+        Hide();
+
+        return () =>
+        {
+            var activate = ShowActivated;
+            ShowActivated = false;
+            Show();
+            ShowActivated = activate;
+            restorePopOuts();
+        };
+    }
+
     private void _TogglePopOut(CompanionStripItem item, Control button, bool showActivated)
     {
         if (_popOuts.IsOpen(item.Id))
