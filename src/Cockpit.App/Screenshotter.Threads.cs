@@ -18,10 +18,10 @@ internal static partial class Screenshotter
     private static AssistantChatWindow _AssistantThreads(
         double width, string? thread = null, bool questions = false, bool overlay = false, bool answered = false,
         bool dragging = false, bool moved = false, bool overview = false, bool closed = false, bool suggestion = false,
-        bool logos = false, bool iconsOnly = false)
+        bool logos = false, bool iconsOnly = false, bool runs = false)
     {
         var chat = _AssistantChatViewModel(
-            _AssistantThreadsConversation(),
+            _AssistantThreadsConversation(runs),
             cockpit: logos ? _CockpitWithALogo() : iconsOnly ? new CockpitViewModel { AssistantThreadRailWindow = Cockpit.Core.Layout.AssistantThreadRail.IconsOnly } : null);
         var window = new AssistantChatWindow
         {
@@ -157,7 +157,7 @@ internal static partial class Screenshotter
         return cockpit;
     }
 
-    internal static SessionViewModel _AssistantThreadsConversation()
+    internal static SessionViewModel _AssistantThreadsConversation(bool runs = false)
     {
         var session = new SessionViewModel
         {
@@ -206,6 +206,14 @@ internal static partial class Screenshotter
             ProjectSources = named.ToDictionary(hit => hit.ProjectId, hit => hit.Source),
             ProjectParts = ProjectInference.Parts(Both, named),
         });
+        if (runs)
+        {
+            session.Transcript.Add(_Message(TranscriptEntryKind.Inbox, "AC-2189", "Code-quality-check AC-2189",
+                "Approved. The diff is small and reuses the existing toggle.\n\nTwo small things before the final gates.", "depot"));
+            session.Transcript.Add(_RunCard("Run r-41 ('build') finished: Passed. Exit code 0, 48.2s."));
+            session.Transcript.Add(_RunCard("Run r-42 ('unit') finished: Failed. Exit code 1, 12.7s.\nFailed ETagTests.Returns304\n" + new string('x', 160)));
+        }
+
         return session;
     }
 
@@ -224,6 +232,10 @@ internal static partial class Screenshotter
             ProjectIds = [project],
             ProjectSources = new Dictionary<string, ProjectSource> { [project] = ProjectSource.Session },
         };
+
+    private static TranscriptEntryViewModel _RunCard(string text) =>
+        new(TranscriptEntryKind.Inbox, text) { SenderPaneId = "cockpit-run", SenderTitle = "cockpit-run", MessageKind = "run",
+            ProjectIds = ["depot"], ProjectSources = new Dictionary<string, ProjectSource> { ["depot"] = ProjectSource.Session } };
 
     private static TranscriptEntryViewModel _Question(string question, string[] options, string project)
     {
