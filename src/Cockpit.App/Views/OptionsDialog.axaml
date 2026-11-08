@@ -1367,7 +1367,30 @@
                                 </MultiBinding>
                             </StackPanel.IsVisible>
 
-                            <TextBlock Classes="optionsSectionHeader" Text="4. WHILE YOU'RE TALKING"/>
+                            <TextBlock Classes="optionsSectionHeader" Text="4. ALWAYS LISTENING"/>
+                            <CheckBox Content="Use a wake word when always listening"
+                                      IsChecked="{Binding AssistantOptions.WakeWordEnabled}"/>
+                            <TextBlock Classes="optionsHint" Text="Turn listening on or off from the assistant indicator. Without this filter, everything you say goes to the assistant."/>
+                            <StackPanel Spacing="6" IsEnabled="{Binding AssistantOptions.WakeWordEnabled}">
+                                <TextBlock Text="Wake-word variants"/>
+                                <TextBox Text="{Binding AssistantOptions.WakeWord}" PlaceholderText="computer"
+                                         MaxLength="64" HorizontalAlignment="Left" Width="220"
+                                         AutomationProperties.Name="Wake-word variants"/>
+                                <TextBlock Text="{Binding AssistantOptions.WakeWordValidationMessage}"
+                                           IsVisible="{Binding AssistantOptions.WakeWordValidationMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                           TextWrapping="Wrap" Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
+                                <TextBlock Classes="optionsHint" Text="Separate variants with commas, for example: Zyra, Zira. Whole words match anywhere; case, accents and punctuation are ignored."/>
+                                <TextBlock Classes="optionsHint" Text="Only what follows the first match is sent. Everything before it is discarded locally."/>
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock Text="Listen after the wake word (seconds)" VerticalAlignment="Center"/>
+                                    <NumericUpDown Value="{Binding AssistantOptions.WakeWordListeningSeconds}"
+                                                   Minimum="1" Maximum="30" Increment="1" FormatString="0" Width="100"
+                                                   AutomationProperties.Name="Listen after the wake word in seconds"/>
+                                </StackPanel>
+                                <TextBlock Classes="optionsHint" Text="End an utterance with the wake word to let your next utterance through during this period."/>
+                            </StackPanel>
+
+                            <TextBlock Classes="optionsSectionHeader" Text="5. WHILE YOU'RE TALKING"/>
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <CheckBox Content="Stop the assistant when I start talking"
                                           IsChecked="{Binding VoiceStopReadAloudWhenSpeaking}"/>
