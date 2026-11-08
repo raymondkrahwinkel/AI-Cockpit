@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2188: queued test runs start strictly in arrival order, without pre-merge priority or aging.
+
 - Centre the Simple/Panels switch on the main window's title bar, keeping it available down to the window's minimum width.
 - Move the Simple/Panels switch to the title bar in both views and remove the Simple rail's More options shortcut.
 - Keep connected sessions' MCP counts and status buttons current after live server or connection-issue changes, preserving other session statuses.

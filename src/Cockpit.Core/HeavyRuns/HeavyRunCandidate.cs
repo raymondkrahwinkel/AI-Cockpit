@@ -4,7 +4,6 @@ namespace Cockpit.Core.HeavyRuns;
 // until a run of this kind in this repository was measured; `FreeDiskBytes` is the volume the run works on.
 public sealed record HeavyRunCandidate(
     string Kind,
-    bool IsPreMerge,
-    DateTimeOffset EnqueuedAt,
+    long ArrivalSequence,
     HeavyRunCost? Cost,
     long? FreeDiskBytes);

@@ -14,7 +14,6 @@ internal sealed class HeavyRunSettingsEntry
     public double CeilingStepPercent { get; set; } = Defaults.CeilingStepPercent;
     public double CeilingFloorPercent { get; set; } = Defaults.CeilingFloorPercent;
     public double OverloadedAbovePercent { get; set; } = Defaults.OverloadedAbovePercent;
-    public int AgingMinutes { get; set; } = Defaults.AgingMinutes;
     public double DiskElevatedTimeToFullHours { get; set; } = Defaults.DiskElevatedTimeToFullHours;
     public double DiskCriticalTimeToFullHours { get; set; } = Defaults.DiskCriticalTimeToFullHours;
     public double DiskMinimumFreePercent { get; set; } = Defaults.DiskMinimumFreePercent;
@@ -28,7 +27,6 @@ internal sealed class HeavyRunSettingsEntry
         CeilingStepPercent = settings.CeilingStepPercent,
         CeilingFloorPercent = settings.CeilingFloorPercent,
         OverloadedAbovePercent = settings.OverloadedAbovePercent,
-        AgingMinutes = settings.AgingMinutes,
         DiskElevatedTimeToFullHours = settings.DiskElevatedTimeToFullHours,
         DiskCriticalTimeToFullHours = settings.DiskCriticalTimeToFullHours,
         DiskMinimumFreePercent = settings.DiskMinimumFreePercent,
@@ -43,7 +41,6 @@ internal sealed class HeavyRunSettingsEntry
         CeilingStepPercent = CeilingStepPercent,
         CeilingFloorPercent = CeilingFloorPercent,
         OverloadedAbovePercent = OverloadedAbovePercent,
-        AgingMinutes = AgingMinutes,
         DiskElevatedTimeToFullHours = DiskElevatedTimeToFullHours,
         DiskCriticalTimeToFullHours = DiskCriticalTimeToFullHours,
         DiskMinimumFreePercent = DiskMinimumFreePercent,
