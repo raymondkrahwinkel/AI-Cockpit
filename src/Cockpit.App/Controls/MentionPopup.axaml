@@ -67,6 +67,23 @@
                                 <Setter Property="Background" Value="{DynamicResource CockpitInsetBgBrush}"/>
                                 <Setter Property="BorderBrush" Value="{DynamicResource CockpitAccentBrush}"/>
                             </Style>
+                            <!-- On a narrow list the activity goes under the title; text wraps and is never cut off. -->
+                            <Style Selector="TextBlock.Activity">
+                                <Setter Property="Grid.Column" Value="2"/>
+                                <Setter Property="Grid.Row" Value="0"/>
+                                <Setter Property="Margin" Value="12,0,0,0"/>
+                            </Style>
+                            <Style Selector="StackPanel.Texts">
+                                <Setter Property="Grid.RowSpan" Value="2"/>
+                            </Style>
+                            <Style Selector="Border.narrow TextBlock.Activity">
+                                <Setter Property="Grid.Column" Value="1"/>
+                                <Setter Property="Grid.Row" Value="1"/>
+                                <Setter Property="Margin" Value="0,2,0,0"/>
+                            </Style>
+                            <Style Selector="Border.narrow StackPanel.Texts">
+                                <Setter Property="Grid.RowSpan" Value="1"/>
+                            </Style>
                         </ListBox.Styles>
                         <ListBox.ItemTemplate>
                             <DataTemplate x:DataType="vm:MentionMatch">
@@ -76,20 +93,20 @@
                                                Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                     <Border Classes="MentionRow" IsVisible="{Binding IsItem}" Margin="4,1" Padding="6,4,8,4"
                                             MinHeight="38" CornerRadius="7" BorderThickness="2,0,0,0">
-                                        <Grid ColumnDefinitions="Auto,*,Auto">
-                                            <controls:ProjectLogoBadge Size="22" Margin="0,0,9,0" VerticalAlignment="Center"
+                                        <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto">
+                                            <controls:ProjectLogoBadge Size="22" Margin="0,0,9,0" VerticalAlignment="Center" Grid.RowSpan="2"
                                                                        ProjectName="{Binding Tile.Letter}"
                                                                        LogoPath="{Binding Tile.LogoPath}"
                                                                        WellBackground="{DynamicResource CockpitInsetBgBrush}"/>
-                                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                                <TextBlock FontSize="12.5" LineHeight="16.25" TextTrimming="CharacterEllipsis">
+                                            <StackPanel Classes="Texts" Grid.Column="1" VerticalAlignment="Center">
+                                                <TextBlock FontSize="12.5" LineHeight="16.25" TextWrapping="Wrap">
                                                     <Run Text="{Binding TitleBefore}" FontWeight="SemiBold"/><Run Text="{Binding TitleHit}" FontWeight="SemiBold" Foreground="{DynamicResource CockpitAccentBrush}"/><Run Text="{Binding TitleAfter}" FontWeight="SemiBold"/>
                                                 </TextBlock>
-                                                <TextBlock Text="{Binding SourceLine}" FontSize="11.5" LineHeight="14.95" TextTrimming="CharacterEllipsis"
+                                                <TextBlock Text="{Binding SourceLine}" FontSize="11.5" LineHeight="14.95" TextWrapping="Wrap"
                                                            Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                                                            IsVisible="{Binding SourceLine, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                                             </StackPanel>
-                                            <TextBlock Grid.Column="2" Margin="9,0,0,0" FontSize="11.5" VerticalAlignment="Center"
+                                            <TextBlock Classes="Activity" TextWrapping="Wrap" FontSize="11.5" VerticalAlignment="Top"
                                                        Foreground="{DynamicResource CockpitTextFaintBrush}"
                                                        Text="{Binding LastActivity, Converter={x:Static conv:LastOpenedConverter.Instance}}"
                                                        IsVisible="{Binding LastActivity, Converter={x:Static ObjectConverters.IsNotNull}}"/>

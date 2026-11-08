@@ -18,6 +18,7 @@ public partial class MentionPopup : UserControl
 
     private const double EdgeMargin = 8;
     private const double MinListHeight = 96;
+    private const double NarrowWidth = 360;
 
     public static readonly StyledProperty<TextBox?> InputProperty =
         AvaloniaProperty.Register<MentionPopup, TextBox?>(nameof(Input));
@@ -143,6 +144,7 @@ public partial class MentionPopup : UserControl
         host.PlacementRect = line;
         host.Placement = down ? PlacementMode.Bottom : PlacementMode.Top;
         card.Width = frame.Bounds.Width;
+        card.Classes.Set("narrow", frame.Bounds.Width < NarrowWidth);
         card.MaxHeight = Math.Clamp(down ? below : above, MinListHeight, MaxListHeight);
     }
 

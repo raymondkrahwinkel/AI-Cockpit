@@ -20,7 +20,7 @@ internal static partial class Screenshotter
         new("mention-nogit", (_, _) => _MentionHome(withUnversioned: true)),
         new("mention-empty", (_, _) => _MentionHome()),
         new("mention-plugin", (_, _) => _MentionHome(withPlugin: true)),
-        new("mention-panel", (_, height) => _MentionPanel(400, height)),
+        new("mention-panel", (width, height) => _MentionPanel(Math.Min(width, 400), height)),
         new("mention-panel-min", (_, height) => _MentionPanel(280, height)),
         new("mention-many", (_, height) => _MentionPanel(400, height, many: true)),
         new("mention-session", (width, height) => new Window { Width = width, Height = height, Content = _MentionPicker() }),
