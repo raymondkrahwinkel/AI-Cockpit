@@ -18,7 +18,7 @@ public interface ICompanionToolRegistry
     /// <returns>
     /// False when another plugin already contributes this tool id — the caller says so; nothing throws.
     /// </returns>
-    bool Register(CompanionToolRegistration tool, IPluginStorage pluginStorage, ICockpitSessionObserver sessions);
+    bool Register(CompanionToolRegistration tool, IPluginStorage pluginStorage, ICockpitSessionObserver sessions, string? pluginId = null);
 
     /// <summary>
     /// Withdraws the tool <paramref name="toolId"/>; false when none is registered.
@@ -42,6 +42,9 @@ public interface ICompanionToolRegistry
     /// or null when no plugin contributes that id.
     /// </summary>
     ICompanionToolContext? CreateContext(string toolId);
+
+    /// <summary>The owning plugin, for the host's enable action; null for built-in tools.</summary>
+    string? GetPluginId(string toolId);
 
     /// <summary>
     /// The badge <paramref name="toolId"/>'s plugin sets through its context, or null when no plugin contributes
@@ -67,14 +70,14 @@ internal sealed class CompanionToolRegistry : ICompanionToolRegistry, ISingleton
 
     // First registration of a tool id wins; a later duplicate is refused rather than added beside it, since two
     // plugins claiming the same id would silently double the companion window's entry.
-    public bool Register(CompanionToolRegistration tool, IPluginStorage pluginStorage, ICockpitSessionObserver sessions)
+    public bool Register(CompanionToolRegistration tool, IPluginStorage pluginStorage, ICockpitSessionObserver sessions, string? pluginId = null)
     {
         if (_tools.Any(existing => existing.Registration.Id == tool.Id))
         {
             return false;
         }
 
-        _tools.Add(new RegisteredCompanionTool(tool, pluginStorage, sessions));
+        _tools.Add(new RegisteredCompanionTool(tool, pluginStorage, sessions, pluginId));
         Changed?.Invoke(this, EventArgs.Empty);
 
         return true;
@@ -104,6 +107,9 @@ internal sealed class CompanionToolRegistry : ICompanionToolRegistry, ISingleton
             registered.Badge,
             () => PopOutRequested?.Invoke(this, toolId));
     }
+
+    public string? GetPluginId(string toolId) =>
+        _tools.FirstOrDefault(tool => tool.Registration.Id == toolId)?.PluginId;
 
     public SideMenuButtonBadge? GetBadge(string toolId) =>
         _tools.FirstOrDefault(tool => tool.Registration.Id == toolId)?.Badge;

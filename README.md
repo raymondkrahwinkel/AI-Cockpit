@@ -670,3 +670,15 @@ Plugin-provided stores require SSHSIG Ed25519 signatures (`cockpit-plugin-v1@kra
 Revoked keys block installations and updates. Installed plugins keep running and receive a warning on each readable source-feed check. Revocations are not stored permanently: Cockpit follows the current feed (contract decision C remains open). A manually selected zip bypasses publisher verification and keeps the remembered publisher rule. A signature identifies its publisher, not whether code is safe; plugins run in-process, and on a first install the key comes from the same Depot.
 
 `AssistantProfile.AssistantRole` stores the assistant's optional role separately from its provider profile. It is included in the settings carrier; projects remain machine-local. The Assistant Profile dialog stages this value until Save and applies it on the next assistant start. It is not an Options field, so `OptionsStaging` does not track it.
+
+### Companion strip preferences
+
+`Layout.CompanionStripLayout` stores `Order`, `HiddenIds`, `SeenIds`, `Titles` and
+`PluginIds` by companion tool id. Customize strip applies changes immediately,
+including while the main window is in the tray; Options Apply/Cancel does not
+change them. The assistant stays first. New plugin tools wait under Available.
+Unavailable tools keep their order and enabled state until forgotten, and return
+to the same place when their plugin is enabled again. Titles and owning plugin ids
+let the panel explain a missing tool and use the existing plugin consent flow.
+These preferences stay on this machine, outside `SettingsCarrierWhitelist`,
+because its installed companion tools can differ from another machine's.
