@@ -155,6 +155,13 @@ internal static partial class Screenshotter
             return 1;
         }
 
+        CompanionScenePosition = _Value(args, "--pos") ?? CompanionScenePosition;
+        CompanionSceneOrientation = _Value(args, "--orient") ?? CompanionSceneOrientation;
+        if (_Value(args, "--popouts") is { } popOuts && int.TryParse(popOuts, out var count))
+        {
+            CompanionScenePopOuts = count;
+        }
+
         var width = DefaultWindowWidth;
         var height = DefaultWindowHeight;
         if (_Value(args, "--size") is { } size)
@@ -252,6 +259,7 @@ internal static partial class Screenshotter
     {
         ["companion-tools"] = (_, _) => _CompanionScene(empty: false),
         ["companion-empty"] = (_, _) => _CompanionScene(empty: true),
+        ["companion-popout"] = _CompanionPopOutScene,
         ["session-background-work"] = (_, _) => _BackgroundWorkScene(),
         // AC-2028: the status bar at rest and busy, the test-runs dialog, and the disk panel open on a critical drive.
         ["statusbar-rest"] = (_, _) => _StatusBarScene(busy: false),
@@ -1503,6 +1511,7 @@ internal static partial class Screenshotter
     // they are opened here rather than built into the scene.
     private static readonly Dictionary<string, Action<Window>> Hovers = new(StringComparer.Ordinal)
     {
+        ["companion-popout"] = _OpenPassivePopOut,
         ["markdown-file-images"] = _ExerciseNoteImages,
         ["session-file-drop"] = _LightFileDropOverlay,
         ["assistant-chat-file-drop"] = _LightFileDropOverlay,
