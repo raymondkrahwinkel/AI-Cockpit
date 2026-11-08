@@ -52,7 +52,12 @@ public partial class CompanionWindow : Window
             _positionSaveTimer.Stop();
             _ = SavePositionAsync();
         };
-        Opened += (_, _) => KeepOnScreen();
+        Opened += (_, _) =>
+        {
+            OverlayWindows.ExcludeFromCapture(this);
+            KeepOnScreen();
+        };
+        LookAlongStop.Click += (_, _) => LookAlongStopRequested?.Invoke(this, EventArgs.Empty);
         OrientationItem.Click += (_, _) => _Change(
             Orientation == CompanionOrientation.Horizontal ? CompanionOrientation.Vertical : CompanionOrientation.Horizontal, AlwaysOnTop);
         TopmostItem.Click += (_, _) => _Change(Orientation, !AlwaysOnTop);
@@ -74,6 +79,9 @@ public partial class CompanionWindow : Window
 
     // Raised when the operator picks another orientation or toggles always on top, so the presenter can persist it.
     public event EventHandler? LayoutChanged;
+
+    // AC-2209: Stop on the strip while the assistant may look at the screen.
+    public event EventHandler? LookAlongStopRequested;
 
     public CompanionOrientation Orientation { get; private set; }
 
@@ -99,6 +107,7 @@ public partial class CompanionWindow : Window
         var layout = horizontal ? Avalonia.Layout.Orientation.Horizontal : Avalonia.Layout.Orientation.Vertical;
         Strip.Orientation = layout;
         ToolsHost.Orientation = layout;
+        LookAlong.Orientation = layout;
         GripIcon.Kind = horizontal ? MaterialIconKind.DragVertical : MaterialIconKind.DragHorizontal;
         OrientationItem.Header = horizontal ? "Vertical strip" : "Horizontal strip";
         _popOuts.Orientation = orientation;
@@ -158,6 +167,20 @@ public partial class CompanionWindow : Window
             _TogglePopOut(entry.Item, entry.Control, showActivated: false);
         }
     }
+
+    // AC-2209: the cyan border, the time left and Stop while the assistant may look at the screen; null takes them down.
+    internal void ShowLookAlong(string? remaining)
+    {
+        var active = remaining is not null;
+        LookAlong.IsVisible = active;
+        LookAlongTimer.Text = remaining;
+        Card.BorderThickness = new Thickness(active ? 2 : 1);
+        Card.Bind(Border.BorderBrushProperty, Card.GetResourceObservable(active ? "CockpitStatusBusyBrush" : "CockpitHairlineBrush"));
+    }
+
+    // Where the strip and its open pop-outs are on the desktop, for something that must not cover them.
+    internal IReadOnlyList<PixelRect> OccupiedBounds() =>
+        [new PixelRect(Position, PixelSize.FromSize(Bounds.Size, RenderScaling)), .. _popOuts.OpenBounds];
 
     // The strip's card without its window, for a scene that lays it on a stand-in screen.
     internal Control TakeCard()

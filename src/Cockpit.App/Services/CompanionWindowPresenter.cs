@@ -63,8 +63,12 @@ internal sealed class CompanionWindowPresenter : ISingletonService
         _ = _SaveVisibleAsync(true);
     }
 
+    // AC-2209: the operator hid the strip, which ends a look-along: its timer and Stop would be out of sight.
+    public event EventHandler? Hidden;
+
     public void Hide()
     {
+        Hidden?.Invoke(this, EventArgs.Empty);
         if (_window is { } window)
         {
             _ = window.SavePositionAsync();

@@ -246,6 +246,7 @@ internal static partial class Screenshotter
         ["companion-empty"] = (_, _) => _CompanionScene(empty: true),
         ["companion-popout"] = _CompanionPopOutScene,
         ["companion-strip"] = _CompanionStripScene,
+        ["companion-look-along"] = _CompanionLookAlongScene,
         ["companion-live-note"] = _CompanionLiveNoteScene,
         ["companion-status"] = (w, h) => _CompanionStatusScene(w, h, "all"),
         ["companion-status-waiting"] = (w, h) => _CompanionStatusScene(w, h, "waiting"),
@@ -985,6 +986,7 @@ internal static partial class Screenshotter
         // AC-1715: the assistant asks to look along; the card sits in its own conversation.
         ["assistant-chat-look-along"] = (_, _) => _AssistantChatLookAlong(),
         ["assistant-chat-look-along-others"] = (_, _) => _AssistantChatLookAlong(showOthers: true),
+        ["assistant-chat-look-at-screen"] = (_, _) => _AssistantChatLookAtScreen(),
         ["assistant-chat-consent-short"] = (_, _) => _AssistantChatConsent("Project: Synvolution-MailCatch\nDescription: \"Mail sink\" → \"Mail sink for staging\""),
 
         // AC-776 Deel 1: the session-status pill in all six SessionStatus values, and the same pill's "⋯" flyout
@@ -1573,6 +1575,7 @@ internal static partial class Screenshotter
     private static readonly Dictionary<string, Action<Window>> Hovers = new(StringComparer.Ordinal)
     {
         ["companion-strip"] = _StageCompanionStrip,
+        ["companion-look-along"] = _StageCompanionLookAlong,
         ["companion-assistant"] = _StageCompanionAssistant,
         ["companion-assistant-questions"] = _StageCompanionAssistant,
         ["companion-screenshot"] = _StageCompanionAssistant,

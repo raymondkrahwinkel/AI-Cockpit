@@ -10,6 +10,7 @@ public partial class CompanionPopOut : Window
     public CompanionPopOut()
     {
         InitializeComponent();
+        Opened += (_, _) => OverlayWindows.ExcludeFromCapture(this);
         KeyDown += (_, e) =>
         {
             if (e.Key == Key.Escape)

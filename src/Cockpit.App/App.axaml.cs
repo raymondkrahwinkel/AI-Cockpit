@@ -612,6 +612,9 @@ public partial class App : Application
         // Changed event is already listening by the time a plugin registers a companion tool.
         Program.Services.GetRequiredService<CompanionWindowPresenter>();
 
+        // AC-2209: resolved for its subscription, so a look-along the assistant starts shows its frame, timer and Stop.
+        Program.Services.GetRequiredService<ScreenLookAlongPresenter>();
+
         // AC-1343: restoring saved workspaces and their panes is started further down, after usage thresholds
         // load — see RestoreCockpitAsync's own comment for why.
 

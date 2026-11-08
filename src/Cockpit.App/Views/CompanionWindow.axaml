@@ -16,6 +16,15 @@
             <Border x:Name="Grip" Background="Transparent" Padding="4" Cursor="SizeAll" ToolTip.Tip="Drag to move">
                 <materialIcons:MaterialIcon x:Name="GripIcon" Width="16" Height="16" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
             </Border>
+            <!-- AC-2209: while the assistant may look at the screen; the card's border turns cyan with it. -->
+            <StackPanel x:Name="LookAlong" IsVisible="False" Spacing="6" VerticalAlignment="Center" HorizontalAlignment="Center">
+                <materialIcons:MaterialIcon Kind="Eye" Width="16" Height="16" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                            Foreground="{DynamicResource CockpitStatusBusyBrush}" ToolTip.Tip="The assistant may look at your screen"/>
+                <TextBlock x:Name="LookAlongTimer" FontSize="12" VerticalAlignment="Center" HorizontalAlignment="Center"
+                           Foreground="{DynamicResource CockpitTextPrimaryBrush}"/>
+                <Button x:Name="LookAlongStop" Classes="Compact" Content="Stop" HorizontalAlignment="Center"
+                        ToolTip.Tip="Stop the assistant looking at your screen"/>
+            </StackPanel>
             <TextBlock x:Name="EmptyState" Text="No tools available" FontSize="12" VerticalAlignment="Center"
                        Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
             <StackPanel x:Name="ToolsHost" Spacing="4"/>
