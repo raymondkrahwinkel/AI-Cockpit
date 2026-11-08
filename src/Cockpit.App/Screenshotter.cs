@@ -680,6 +680,7 @@ internal static partial class Screenshotter
         // AC-1529: a picked conversation in a project, at work — the header, the stand and Stop over the 720px column.
         ["simple-view-conversation"] = (_, _) => new MainWindow { DataContext = _SimpleStandConversation() },
         // AC-488: Home on a cockpit that has no projects yet, the second place the starting-point gallery is drawn.
+        ["simple-view-home-long-name"] = (_, _) => new MainWindow { DataContext = _SimpleStandHome(longName: true) },
         ["simple-view-home-empty"] = (_, _) => new MainWindow { DataContext = _SimpleStandHome(withProjects: false) },
         // AC-1316: the assistant's own conversation with it switched off — the reason where its rows would stand.
         ["simple-view-assistant-off"] = (_, _) => new MainWindow { DataContext = _SimpleStandAssistant(assistantOff: true) },
@@ -3991,7 +3992,7 @@ internal static partial class Screenshotter
     }
 
     // AC-1528: Home on a fixed morning for a fixed name, one conversation waiting and one working, as in the mockup.
-    private static ViewModels.CockpitViewModel _SimpleStandHome(bool withProjects = true)
+    private static ViewModels.CockpitViewModel _SimpleStandHome(bool withProjects = true, bool longName = false)
     {
         var cockpit = _SimpleStand(withAssistant: true);
         cockpit.SimpleHome.FirstName = "Raymond";
@@ -3999,7 +4000,7 @@ internal static partial class Screenshotter
         cockpit.VoiceEnabled = true;
         if (withProjects)
         {
-            cockpit.Projects.StageDesignSample();
+            cockpit.Projects.StageDesignSample(longName);
             var working = _Named(cockpit, "kind→staging");
             working.ProjectId = cockpit.Projects.Projects[0].Id;
             working.SessionStatus = SessionStatus.Busy;

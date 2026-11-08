@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2215: project cards and waiting conversations on Home wrap a long title onto further lines instead of cutting it off.
+
 - AC-2213: clear Speaking when queued audio drains while the assistant continues working, preserving open-mic pausing.
 
 - AC-2169: keep session and assistant role pickers behind the frontend contract boundary.
