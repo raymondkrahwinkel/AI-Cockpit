@@ -4937,6 +4937,7 @@ internal static partial class Screenshotter
         public event EventHandler<bool>? PlaybackActiveChanged { add { } remove { } }
 
         public event EventHandler? SpeakingStarted { add { } remove { } }
+        public event EventHandler<bool>? AudioPendingChanged { add { } remove { } }
 
         public event EventHandler<Cockpit.Core.Abstractions.Voice.VoicePlaybackStoppedEventArgs>? PlaybackStopped { add { } remove { } }
 
