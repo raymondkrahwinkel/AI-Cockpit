@@ -833,6 +833,8 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
         OnPropertyChanged(nameof(ToggleIconKind));
         OnPropertyChanged(nameof(ToggleLabel));
         OnPropertyChanged(nameof(ToolHeader));
+        OnPropertyChanged(nameof(ShowsRunSummary));
+        OnPropertyChanged(nameof(ShowsInboxBody));
         // AC-489: the consent fold rides this same toggle, so opening it has to reveal the command it names.
         OnPropertyChanged(nameof(ShowConsentCommand));
         OnPropertyChanged(nameof(ConsentCommandToggleLabel));
