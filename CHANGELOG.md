@@ -8,6 +8,9 @@
 
 - AC-2200: plugins can add their own suggestions to the chat's @-list under "Suggested by plugins"; a plugin source that fails or takes longer than two seconds is left out without holding up the rest.
 - AC-2198: typing @ in a chat composer opens one shared list that hangs on the caret line at the composer's full width, groups files and projects per window, skips group headings with the arrow keys, and marks accepted project mentions in the text.
+
+- AC-2213: clear Speaking when queued audio drains while the assistant continues working, preserving open-mic pausing.
+
 - AC-2169: keep session and assistant role pickers behind the frontend contract boundary.
 
 - AC-2173: every session receives the pull request merge rule automatically; assistant briefs no longer repeat the standing work agreements.
