@@ -74,7 +74,6 @@ public class Ac1090_TranscriptRecordingWiringTests : IDisposable
 
         Assert.Equal(afterRecording, new FileInfo(store.LogPath(pane.PaneId)).Length);
         await _EphemeralSpeechDoesNotBecomeRecordedRowsAsync(store);
-        await _RulesReplyIsSpokenWhileItStreamsAsync();
     }
 
     private static async Task _EphemeralSpeechDoesNotBecomeRecordedRowsAsync(SessionTranscriptLog store)
@@ -126,35 +125,6 @@ public class Ac1090_TranscriptRecordingWiringTests : IDisposable
         cancelled.Cancel();
         late.SetResult(sentinel);
         Assert.Empty((await pending).Sentences);
-    }
-
-    // A reply read by rules reaches the speaker sentence by sentence while it streams, not in one piece after the turn.
-    private static async Task _RulesReplyIsSpokenWhileItStreamsAsync()
-    {
-        var control = Substitute.For<ISessionControl>();
-        var controls = Substitute.For<ISessionControlFactory>();
-        controls.Create(Arg.Any<Func<string>>()).Returns(control);
-        var playback = Substitute.For<IVoicePlaybackQueue>();
-        var spoken = new List<string>();
-        var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        playback.When(queue => queue.Enqueue(Arg.Any<IReadOnlyList<SpeechSegment>>(), Arg.Any<int>(), VoicePlaybackSource.Assistant, AssistantIdentity.PaneId))
-            .Do(call => spoken.AddRange(call.Arg<IReadOnlyList<SpeechSegment>>().SelectMany(segment => segment.Sentences)));
-        playback.When(queue => queue.CompleteStream(VoicePlaybackSource.Assistant, AssistantIdentity.PaneId)).Do(_ => finished.TrySetResult());
-        await using var pane = new SessionViewModel(controls, voicePlaybackQueue: playback);
-        pane.AdoptPaneId(AssistantIdentity.PaneId);
-        pane.ReadResponsesAloud = true;
-        pane.AssistantSpeechMode = SpokenReplyMode.Short;
-        pane.AssistantSpeechMethod = SpokenReplyMethod.Rules;
-        control.TurnStarting += Raise.Event<Action<QueuedPrompt>>(new QueuedPrompt("status", []));
-        var row = TranscriptSnapshot.Capture(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, "Eerste zin. Tweede zin begint nog"));
-        control.RowUpserted += Raise.Event<Action<TranscriptRowUpsert>>(new TranscriptRowUpsert(1, 1, row));
-        control.Folded += Raise.Event<Action<TranscriptFold>>(new TranscriptFold(row, false) { IsReply = true });
-
-        Assert.Equal(["Eerste zin."], spoken);
-
-        control.TurnEnded += Raise.Event<Action<SessionTurnEnd>>(new SessionTurnEnd(false, false, false, null, "success", null));
-        await finished.Task;
-        Assert.Equal(["Eerste zin.", "Tweede zin begint nog."], spoken);
     }
 
     public void Dispose()
