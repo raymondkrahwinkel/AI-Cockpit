@@ -246,6 +246,7 @@ internal static partial class Screenshotter
         ["companion-empty"] = (_, _) => _CompanionScene(empty: true),
         ["companion-popout"] = _CompanionPopOutScene,
         ["companion-strip"] = _CompanionStripScene,
+        ["companion-live-note"] = _CompanionLiveNoteScene,
         ["companion-status"] = (w, h) => _CompanionStatusScene(w, h, "all"),
         ["companion-status-waiting"] = (w, h) => _CompanionStatusScene(w, h, "waiting"),
         ["companion-status-quiet"] = (w, h) => _CompanionStatusScene(w, h, "quiet"),
@@ -1503,6 +1504,7 @@ internal static partial class Screenshotter
     private static readonly Dictionary<string, Action<Window>> Hovers = new(StringComparer.Ordinal)
     {
         ["companion-strip"] = _StageCompanionStrip,
+        ["companion-live-note"] = _StageCompanionLiveNote,
         ["companion-popout"] = _OpenPassivePopOut,
         ["markdown-file-images"] = _ExerciseNoteImages,
         ["session-file-drop"] = _LightFileDropOverlay,
