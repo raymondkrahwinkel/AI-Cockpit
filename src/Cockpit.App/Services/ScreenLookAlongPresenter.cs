@@ -2,7 +2,7 @@ using Avalonia;
 using Avalonia.Threading;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions;
-using Cockpit.Infrastructure.Screenshots;
+using Cockpit.Core.Abstractions.Screenshots;
 
 namespace Cockpit.App.Services;
 
@@ -11,14 +11,14 @@ namespace Cockpit.App.Services;
 // the strip is hidden. Where the OS cannot leave them out of a capture, it hides all of them just before a look.
 internal sealed class ScreenLookAlongPresenter : ISingletonService
 {
-    private readonly ScreenLookAlong _lookAlong;
+    private readonly IScreenLookAlong _lookAlong;
     private readonly CompanionWindowPresenter _companion;
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(1) };
     private LookAlongFrameWindow? _frame;
     private LookAlongTabWindow? _tab;
     private CompanionWindow? _strip;
 
-    public ScreenLookAlongPresenter(ScreenLookAlong lookAlong, CompanionWindowPresenter companion)
+    public ScreenLookAlongPresenter(IScreenLookAlong lookAlong, CompanionWindowPresenter companion)
     {
         _lookAlong = lookAlong;
         _companion = companion;

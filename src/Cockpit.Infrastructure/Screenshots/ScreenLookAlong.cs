@@ -9,9 +9,6 @@ namespace Cockpit.Infrastructure.Screenshots;
 // What one `look_at_screen` call came back with: always a message, and the display's pixels only when a look happened.
 public sealed record ScreenLook(string Message, byte[]? Png = null);
 
-// The look-along the operator started with a click: which display, until when, and when the assistant last looked.
-public sealed record ScreenLookSession(CaptureRect Display, DateTimeOffset Until, DateTimeOffset? LastLook);
-
 // AC-2209: the assistant looking at one whole display. Nothing is captured outside a session the operator started
 // on the card; one call is one capture, with no interval and no background mode. Stop, the timer, hiding the strip
 // and closing Cockpit end the session, after which the next call shows the card again and captures nothing.
@@ -20,7 +17,7 @@ public sealed class ScreenLookAlong(
     IDesktopDisplays displays,
     IScreenshotImageEditor editor,
     IConsentBroker consent,
-    TimeProvider? time = null)
+    TimeProvider? time = null) : IScreenLookAlong
 {
     // The longest reason the tool accepts, so the card always shows it whole.
     public const int ReasonLimit = 200;
