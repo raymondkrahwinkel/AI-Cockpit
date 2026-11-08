@@ -20,10 +20,20 @@ public sealed class AgentWakeConsentDefaultTests
     /// "Has not answered" and "answered no" are different states, and the difference is the whole point of the
     /// override: a session that opted out must not be opted back in by the operator changing a setting later.
     /// </summary>
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void APaneThatAnsweredForItself_KeepsItsAnswerWhateverTheSettingDoes(bool ownAnswer)
+    [Fact]
+    public void APaneThatAnsweredForItself_KeepsItsAnswerWhateverTheSettingDoes()
+    {
+        {
+            var scenario = new AgentWakeConsentDefaultTests();
+            scenario._AssertAPaneThatAnsweredForItself_KeepsItsAnswerWhateverTheSettingDoes(true);
+        }
+        {
+            var scenario = new AgentWakeConsentDefaultTests();
+            scenario._AssertAPaneThatAnsweredForItself_KeepsItsAnswerWhateverTheSettingDoes(false);
+        }
+    }
+
+    private void _AssertAPaneThatAnsweredForItself_KeepsItsAnswerWhateverTheSettingDoes(bool ownAnswer)
     {
         var coordinator = new WorkspaceAgentCoordinator();
         coordinator.SetWakeConsent("pane-1", ownAnswer);

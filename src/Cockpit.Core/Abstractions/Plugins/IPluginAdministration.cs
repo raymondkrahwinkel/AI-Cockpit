@@ -23,7 +23,10 @@ public interface IPluginAdministration
     /// <summary>
     /// Installs one store version, the same way <see cref="InstallFromZipAsync"/> installs an archive.
     /// </summary>
-    Task<PluginProvisionResult> InstallFromStoreAsync(PluginProvisionRequest request, CancellationToken cancellationToken = default, IProgress<PluginDownloadProgress>? progress = null);
+    Task<PluginProvisionResult> InstallFromStoreAsync(PluginProvisionRequest request, CancellationToken cancellationToken = default, IProgress<PluginDownloadProgress>? progress = null,
+        Func<PluginKeyConsentRequest, CancellationToken, Task<bool>>? keyConsent = null);
+
+    Task<PluginTrustEntry?> GetPublisherTrustAsync(string folderId, CancellationToken cancellationToken = default) => Task.FromResult<PluginTrustEntry?>(null);
 
     /// <summary>
     /// Enables or disables a plugin; enabling trusts exactly the bytes <paramref name="pinnedSha256"/> names. Enabling

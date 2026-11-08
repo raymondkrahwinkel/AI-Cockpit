@@ -47,15 +47,40 @@ public sealed class NodeNotifyRoutingTests : IDisposable
     // AC-1405: a key holding the line gets the mail its scope reaches, sign-in alarms included. A read is held to the
     // holder the mail was queued for and the reader's scope now: another key or a successor gets none (it falls back
     // locally), a narrowed key misses what fell outside it, and once widened gets it, as its cursor acked only what it saw.
-    [Theory]
-    [InlineData(false, "project-a", "project-a", "DESKTOP", 0, "ck_test", false, false, "project-a", 0, 2, 0, 0)]
-    [InlineData(false, "project-a", "project-b", null, 1, "ck_test", false, false, "project-a", 0, 1, 0, 1)]
-    [InlineData(true, "project-a", null, "DESKTOP", 0, "ck_test", true, true, "project-a", 0, 2, 0, 0)]
-    [InlineData(false, "project-a", "project-a", "DESKTOP", 0, "ck_other", false, false, "project-a", 0, null, null, 0)]
-    [InlineData(false, "project-a", "project-a", "DESKTOP", 0, "ck_other", false, false, "project-b", 60, 0, 0, 3)]
-    [InlineData(false, "project-a", "project-a", "DESKTOP", 0, "ck_other", false, false, "project-a", 60, 1, 0, 2)]
-    [InlineData(true, "project-a", "project-b", "DESKTOP", 0, "ck_test", false, true, "project-a", 0, 1, 1, 1)]
-    public async Task Notify_ReachesAKeyController_OnlyFromASessionTheKeyScopeReaches(
+    [Fact]
+    public async Task Notify_ReachesAKeyController_OnlyFromASessionTheKeyScopeReaches()
+    {
+        using (var scenario = new NodeNotifyRoutingTests())
+        {
+            await scenario._AssertNotify_ReachesAKeyController_OnlyFromASessionTheKeyScopeReachesAsync(false, "project-a", "project-a", "DESKTOP", 0, "ck_test", false, false, "project-a", 0, 2, 0, 0);
+        }
+        using (var scenario = new NodeNotifyRoutingTests())
+        {
+            await scenario._AssertNotify_ReachesAKeyController_OnlyFromASessionTheKeyScopeReachesAsync(false, "project-a", "project-b", null, 1, "ck_test", false, false, "project-a", 0, 1, 0, 1);
+        }
+        using (var scenario = new NodeNotifyRoutingTests())
+        {
+            await scenario._AssertNotify_ReachesAKeyController_OnlyFromASessionTheKeyScopeReachesAsync(true, "project-a", null, "DESKTOP", 0, "ck_test", true, true, "project-a", 0, 2, 0, 0);
+        }
+        using (var scenario = new NodeNotifyRoutingTests())
+        {
+            await scenario._AssertNotify_ReachesAKeyController_OnlyFromASessionTheKeyScopeReachesAsync(false, "project-a", "project-a", "DESKTOP", 0, "ck_other", false, false, "project-a", 0, null, null, 0);
+        }
+        using (var scenario = new NodeNotifyRoutingTests())
+        {
+            await scenario._AssertNotify_ReachesAKeyController_OnlyFromASessionTheKeyScopeReachesAsync(false, "project-a", "project-a", "DESKTOP", 0, "ck_other", false, false, "project-b", 60, 0, 0, 3);
+        }
+        using (var scenario = new NodeNotifyRoutingTests())
+        {
+            await scenario._AssertNotify_ReachesAKeyController_OnlyFromASessionTheKeyScopeReachesAsync(false, "project-a", "project-a", "DESKTOP", 0, "ck_other", false, false, "project-a", 60, 1, 0, 2);
+        }
+        using (var scenario = new NodeNotifyRoutingTests())
+        {
+            await scenario._AssertNotify_ReachesAKeyController_OnlyFromASessionTheKeyScopeReachesAsync(true, "project-a", "project-b", "DESKTOP", 0, "ck_test", false, true, "project-a", 0, 1, 1, 1);
+        }
+    }
+
+    private async Task _AssertNotify_ReachesAKeyController_OnlyFromASessionTheKeyScopeReachesAsync(
         bool holderOnEveryProject, string holderProject, string? sessionProject, string? controller, int keptLocally,
         string readerKey, bool readerOnEveryProject, bool readerLaterOnEveryProject, string readerProject, int secondsLater,
         int? collected, int? collectedAfterAck, int foldedLocally)

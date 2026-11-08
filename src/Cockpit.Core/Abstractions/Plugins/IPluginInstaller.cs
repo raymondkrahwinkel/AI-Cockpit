@@ -15,7 +15,9 @@ public interface IPluginInstaller
     /// an existing install stages the new version for <see cref="SweepPendingUpdatesAsync"/>; <paramref name="hostVersion"/> defaults to <see cref="HostVersionInfo"/>, only overridden explicitly in a test.
     /// </summary>
     Task<PluginInstallResult> InstallFromZipAsync(
-        string zipFilePath, int hostAbstractionsMajor, Version? hostVersion = null, CancellationToken cancellationToken = default);
+        string zipFilePath, int hostAbstractionsMajor, Version? hostVersion = null, CancellationToken cancellationToken = default, string? expectedId = null, string? expectedVersion = null);
+
+    Task<PluginInstalledState> GetInstalledStateAsync(string folderId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Marks an installed plugin folder for deletion at the next startup, since a currently-loaded assembly cannot be deleted while the app runs.

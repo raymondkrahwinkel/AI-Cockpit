@@ -185,6 +185,23 @@
                                                        Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                             <TextBlock Text="{Binding StatusText}" FontSize="11"
                                                        Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                            <!-- AC-1981: where the plugin came from, who signed it, and what its source is up to. -->
+                                            <TextBlock IsVisible="{Binding HasSource}" FontSize="11" TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}">
+                                                <Run Text="Source: "/><Run Text="{Binding Source.SourceLine}"/>
+                                            </TextBlock>
+                                            <TextBlock Text="{Binding Source.PublisherLine}" IsVisible="{Binding Source.HasPublisher}"
+                                                       FontSize="11" TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                            <TextBlock Text="{Binding Source.SourceNotice}" IsVisible="{Binding Source.HasSourceNotice}"
+                                                       FontSize="11" TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
+                                            <TextBlock Text="{Binding Source.RevokedNotice}" IsVisible="{Binding Source.HasRevokedNotice}"
+                                                       FontSize="11" TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
+                                            <TextBlock Text="{Binding Source.VersionNotice}" IsVisible="{Binding Source.HasVersionNotice}"
+                                                       FontSize="11" TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
                                             <TextBlock Text="{Binding FailureText}" IsVisible="{Binding HasFailure}"
                                                        FontSize="11" TextWrapping="Wrap"
                                                        Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
@@ -205,6 +222,9 @@
                                                 </Button>
                                                 <Button Content="{Binding EnableLabel}" Classes="Compact" IsVisible="{Binding CanEnable}"
                                                         Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).Manager.EnablePluginCommand}"
+                                                        CommandParameter="{Binding}"/>
+                                                <Button Content="{Binding Source.UpdateLabel}" Classes="Compact" IsVisible="{Binding Source.HasUpdate}"
+                                                        Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).Manager.UpdateInstalledPluginCommand}"
                                                         CommandParameter="{Binding}"/>
                                                 <Button Content="Disable" Classes="Compact" IsVisible="{Binding CanDisable}"
                                                         Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).Manager.DisablePluginCommand}"
@@ -338,6 +358,36 @@
                 <ScrollViewer IsVisible="{Binding !HasNoStores}">
                     <StackPanel Margin="16" Spacing="8">
 
+                        <!-- AC-1976: one block per organization whose store this Depot connection reaches, above the rest. -->
+                        <ItemsControl ItemsSource="{Binding OrganizationGroups}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Spacing="14"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:StoreOrganizationGroup">
+                                    <StackPanel Spacing="6">
+                                        <TextBlock Text="{Binding Header}" Classes="storeSectionHeader"/>
+                                        <TextBlock Text="Private plugins from your organization, through your Depot connection."
+                                                   FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                        <ItemsControl ItemsSource="{Binding Plugins}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <StackPanel Spacing="8"/>
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="vm:StorePluginRowViewModel">
+                                                    <views:StorePluginCardView/>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
                         <!-- Featured group: the store's hand-picked plugins, as a vertical list above the full
                              catalogue (Discover only). Each carries the accent left-edge from Border.storeRow.featured. -->
                         <StackPanel Spacing="6" IsVisible="{Binding HasFeaturedPlugins}">
@@ -358,7 +408,7 @@
 
                         <!-- "All plugins" header divides the Featured rail from the full list; on a category or
                              updates filter the list stands alone without a redundant header. -->
-                        <TextBlock Text="All plugins" Classes="storeSectionHeader" IsVisible="{Binding ShowDiscoverRails}"/>
+                        <TextBlock Text="All plugins" Classes="storeSectionHeader" IsVisible="{Binding ShowAllPluginsHeader}"/>
 
                         <TextBlock Text="{Binding EmptyStateMessage}"
                                    IsVisible="{Binding !HasFilteredResults}"
@@ -438,6 +488,47 @@
                                     <materialIcons:MaterialIcon Kind="OpenInNew" Width="12" Height="12"/>
                                 </StackPanel>
                             </Button>
+                        </StackPanel>
+
+                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
+
+                        <!-- AC-1976: where the plugin comes from and who signed it. -->
+                        <TextBlock Text="Source" FontWeight="SemiBold"/>
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="{Binding SourceTitle}" TextWrapping="Wrap"/>
+                            <SelectableTextBlock Text="{Binding SourceRepository}" IsVisible="{Binding HasSourceRepository}"
+                                                 FontFamily="{StaticResource CockpitMonoFont}" FontSize="11" TextWrapping="Wrap"
+                                                 Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        </StackPanel>
+
+                        <!-- AC-1980: the same plugin in another store is a fact here; the installation stays with its source. -->
+                        <StackPanel Spacing="4" IsVisible="{Binding HasAlsoOfferedBy}">
+                            <TextBlock Text="Also offered by" FontWeight="SemiBold"/>
+                            <ItemsControl ItemsSource="{Binding AlsoOfferedBy}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:StoreOffer">
+                                        <StackPanel Spacing="4" Margin="0,0,0,6">
+                                            <TextBlock TextWrapping="Wrap">
+                                                <Run Text="{Binding StoreName}" FontWeight="SemiBold"/>
+                                                <Run Text="{Binding Version, StringFormat=' {0} there.'}"/>
+                                            </TextBlock>
+                                            <Button Content="{Binding StoreName, StringFormat='Switch to {0}…'}" HorizontalAlignment="Left"
+                                                    Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).SwitchSourceCommand}"
+                                                    CommandParameter="{Binding}"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Text="Your installation stays with its source until you switch. Switching asks for consent again, and pins that store's file and publisher."
+                                       FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        </StackPanel>
+
+                        <StackPanel Spacing="4" IsVisible="{Binding HasPublisher}">
+                            <TextBlock Text="Publisher" FontWeight="SemiBold"/>
+                            <TextBlock Text="{Binding PublisherName}" TextWrapping="Wrap"/>
+                            <SelectableTextBlock Text="{Binding PublisherFingerprint}"
+                                                 FontFamily="{StaticResource CockpitMonoFont}" FontSize="11" TextWrapping="Wrap"
+                                                 Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                         </StackPanel>
 
                         <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>

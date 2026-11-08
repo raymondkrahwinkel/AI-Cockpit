@@ -83,7 +83,7 @@ public class PluginManagerViewModelBusyGateTests
     // so the run never reaches PluginBootstrap and never touches the real plugins folder on disk.
     private static void _StagesTheUpdate(IPluginInstaller installer) =>
         installer
-            .InstallFromZipAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<Version?>(), Arg.Any<CancellationToken>())
+            .InstallFromZipAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<Version?>(), Arg.Any<CancellationToken>(), Arg.Any<string?>(), Arg.Any<string?>())
             .Returns(_ => Task.FromResult(PluginInstallResult.Success("plugin-folder", "sha256-of-the-new-bytes", staged: true)));
 
     private static PluginManagerViewModel _Manager(
@@ -103,8 +103,9 @@ public class PluginManagerViewModelBusyGateTests
                 .Returns(Task.FromResult<IReadOnlyDictionary<string, PluginRegistration>>(new Dictionary<string, PluginRegistration>()));
         }
 
+        var stateRoot = Path.Combine(Path.GetTempPath(), "cockpit-busy-gate-" + Guid.NewGuid().ToString("N"));
         return new PluginManagerViewModel(
-            new PluginAdministration(new PluginBootstrap(), registrationStore, installer, new PluginProvisioningService(storeClient, installer), storeClient),
+            new PluginAdministration(new PluginBootstrap(Path.Combine(stateRoot, "plugins"), Path.Combine(stateRoot, "cockpit.json")), registrationStore, installer, new PluginProvisioningService(storeClient, installer, new PluginSignatureVerifier(), Substitute.For<IPluginTrustStore>()), storeClient),
             registrationStore,
             dialogService ?? Substitute.For<ISessionDialogService>(),
             Substitute.For<IPluginStoreConfigStore>(),
