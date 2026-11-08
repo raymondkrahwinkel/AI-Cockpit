@@ -161,6 +161,15 @@ public sealed partial class MarkdownEditor : UserControl, IMarkdownEditor
 
     internal void UseWorkspaceSourceToggle() => _sourceToggle.IsVisible = false;
 
+    // For an editor in a narrow pop-out: typing Markdown stays, the formatting buttons do not fit.
+    internal void HideToolbar()
+    {
+        _toolbarHidden = true;
+        _toolbar.IsVisible = false;
+    }
+
+    private bool _toolbarHidden;
+
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
@@ -168,7 +177,7 @@ public sealed partial class MarkdownEditor : UserControl, IMarkdownEditor
         {
             _editor.IsReadOnly = IsReadOnly;
             _editor.TextArea.Caret.CaretBrush = IsReadOnly ? Brushes.Transparent : null;
-            _toolbar.IsVisible = !IsReadOnly;
+            _toolbar.IsVisible = !IsReadOnly && !_toolbarHidden;
             _Redraw();
         }
         else if (change.Property == ShowSourceProperty)

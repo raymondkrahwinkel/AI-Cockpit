@@ -2,7 +2,9 @@
 
 ## Unreleased
 
-- AC-2203: open the assistant conversation or its pending questions from the companion strip, and choose whether a screenshot is attached to the assistant or the selected agent; the strip and its pop-outs stay out of captures.
+- AC-2203: open the assistant conversation or its pending questions from the companion strip, and choose the assistant or selected agent as the screenshot recipient; the strip and its pop-outs stay out of captures.
+- AC-2208: a plugin can embed the cockpit's live Markdown editor, with the people in the file and their carets, in its own view (plugin SDK 3.78.0, host 0.167.0).
+- AC-2204: the companion strip shows running, waiting and background counts; its status panel lists agents and services and lets you select an agent while Cockpit stays in the tray.
 - AC-2201: the companion strip gets a soft shadow, and a pop-out shell with one placement rule is in place for the strip's upcoming items.
 - AC-2206: companion tool plugins can put a badge on their button and ask for their own pop-out (plugin SDK 3.76.0, host 0.165.0).
 - AC-2205: the companion strip gets a bell with a panel for what waits on you: open questions and permissions can be answered right there (SDK sessions; a terminal session shows Open in Cockpit), and a finished agent waits there until you dismiss or open it.

@@ -965,6 +965,7 @@ public partial class App : Application
         var attentionFeed = Program.Services.GetRequiredService<CompanionAttentionFeed>();
         if (firstPartyCompanionTools.AddCompanionTool(attentionFeed.CreateCompanionTool()))
         {
+            firstPartyCompanionTools.AddCompanionTool(attentionFeed.CreateStatusTool());
             attentionFeed.Start();
         }
 

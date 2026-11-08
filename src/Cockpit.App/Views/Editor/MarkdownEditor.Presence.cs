@@ -110,8 +110,12 @@ public sealed partial class MarkdownEditor
 
             var name = new FormattedText(cursor.Name.Split(' ')[0], CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
                 new Typeface(FontFamily.Default, weight: FontWeight.SemiBold), 10.5, FlagText);
-            var flag = new Rect(Math.Round(top.X) - 1, Math.Max(0, top.Y - 16), name.Width + 10, 16);
-            drawingContext.DrawRectangle(brush, null, new RoundedRect(flag, new CornerRadius(4, 4, 4, 0)));
+            // A caret near the right edge puts its flag on the left of the caret instead, so the name stays whole.
+            var flagWidth = name.Width + 10;
+            var left = Math.Round(top.X) - 1;
+            var flipped = left + flagWidth > textView.Bounds.Width && left + 2 - flagWidth >= 0;
+            var flag = new Rect(flipped ? left + 2 - flagWidth : left, Math.Max(0, top.Y - 16), flagWidth, 16);
+            drawingContext.DrawRectangle(brush, null, new RoundedRect(flag, new CornerRadius(4, 4, flipped ? 0 : 4, flipped ? 4 : 0)));
             drawingContext.DrawText(name, new Point(flag.X + 5, flag.Y + (16 - name.Height) / 2));
         }
     }
