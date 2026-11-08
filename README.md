@@ -198,6 +198,15 @@ calling agent cannot delegate to what it cannot see.
   [binary size & on-demand runtimes](docs/binary-size-and-on-demand-runtimes.md).
 - **Open-mic mode:** continuous listening with Silero VAD-based endpointing (configurable silence timeout) — no
   push-to-talk needed.
+- **Wake word:** Options → Voice can filter always-listening speech using the existing local transcription.
+  Set comma-separated variants such as `Zyra, Zira`. The first matching whole word anywhere in an utterance
+  is used, ignoring case, accents and punctuation. `Zara` and `Computers` do not match `Zyra` and `computer`.
+  Only the text after the match is sent to the assistant; preceding text and utterances without
+  a match are discarded without being logged. A match with nothing after it admits the next utterance for
+  8 seconds by default.
+  In `cockpit.json`, `Assistant.WakeWordEnabled` defaults to `false`, `Assistant.WakeWord` (the variant list) to `computer`,
+  and `Assistant.WakeWordListeningSeconds` to `8` (1–30 seconds). These preferences stay local and are excluded
+  from `SettingsCarrierWhitelist`, like the existing assistant voice settings. The indicator identifies the filter.
 - **Push-to-talk:** a configurable key (default `F9`); optionally a **global hotkey** that works even when the
   cockpit isn't focused (a low-level keyboard hook on Windows, the XDG global-shortcuts portal on Wayland/Linux),
   paired with a small **desktop overlay** showing listening/transcribing state and a live waveform.
