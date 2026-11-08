@@ -106,7 +106,9 @@ public sealed class PluginProvisioningService(IPluginStoreClient storeClient, IP
                         request.Version.Source?.Repository, request.Version.Source?.Tag, previous?.KeyFingerprint, previous?.Source);
                     if (keyConsent is null || !await keyConsent(consent, cancellationToken).ConfigureAwait(false))
                     {
-                        return _Refuse(request, "Publisher key not confirmed yet.", PluginProvisionOutcome.KeyNotConfirmed);
+                        return _Refuse(request, decision == PluginTrustDecision.KeyChanged
+                            ? "Publisher key changed. Current version kept; review this plugin individually to trust the new key."
+                            : "Publisher key not confirmed yet.", PluginProvisionOutcome.KeyNotConfirmed);
                     }
                 }
                 if (state.Version is not null && !request.AllowDowngrade

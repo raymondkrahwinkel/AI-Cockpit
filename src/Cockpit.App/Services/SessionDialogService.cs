@@ -876,6 +876,16 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         }
     }
 
+    public async Task<bool> ShowPublisherKeyChangedDialogAsync(Cockpit.Core.Plugins.PluginKeyConsentRequest request)
+    {
+        if (OwnerWindow() is not { } owner)
+        {
+            return false;
+        }
+
+        return await new PublisherKeyChangedDialog { DataContext = request }.ShowDialog<bool>(owner);
+    }
+
     public async Task<bool> ShowConfirmationDialogAsync(string title, string message, string confirmLabel = "Remove")
     {
         // Owner is the topmost window so the confirm sits over whatever dialog triggered it (e.g. the store).

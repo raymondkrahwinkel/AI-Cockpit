@@ -809,6 +809,12 @@ internal static partial class Screenshotter
             DataContext = new ViewModels.PasswordDialogViewModel(
                 "Change your password", "Type the password you use now, then the one you want.", requiresCurrent: true),
         },
+        ["plugin-key-changed"] = (_, _) => new PublisherKeyChangedDialog
+        {
+            DataContext = new PluginKeyConsentRequest("acme-tools", "2.4.0", PluginTrustDecision.KeyChanged,
+                "acme", "depot.example", "SHA256:4dGsEgg14BFnREFGj96+RZpCH8D3lSMJmMkYQ6Pd1cY", null,
+                "github.com/acme/tools", "v2.4.0", "SHA256:7f3aEgg14BFnREFGj96+RZpCH8D3lSMJmMkYQ6Pc19e", "depot:depot.example/acme"),
+        },
         ["plugin-publisher-consent"] = (_, _) => new ConfirmationDialog
         {
             DataContext = new ViewModels.ConfirmationDialogViewModel("Confirm plugin publisher",

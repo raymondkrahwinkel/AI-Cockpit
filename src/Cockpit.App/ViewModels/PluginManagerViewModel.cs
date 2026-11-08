@@ -1184,7 +1184,7 @@ public partial class PluginManagerViewModel : ViewModelBase
                     try
                     {
                         // Isolate each plugin: one failing update must not abort the whole batch.
-                        var outcome = await _DownloadAndInstallRowAsync(row);
+                        var outcome = await _DownloadAndInstallRowAsync(row, interactive: false);
                         if (!outcome.Installed)
                         {
                             failed.Add($"'{row.Name}' ({StatusMessage.TrimEnd('.')})");
@@ -1341,7 +1341,7 @@ public partial class PluginManagerViewModel : ViewModelBase
     // Install one store row's version — its advertised latest, or an explicit one for a rollback — through the
     // provisioning service (AC-510[b]), then run the same UI-side aftercare every install path always has: the consent
     // walk for a fresh install, the registration re-pin for a staged update.
-    private async Task<InstallOutcome> _DownloadAndInstallRowAsync(StorePluginRowViewModel row, PluginStoreVersion? explicitVersion = null)
+    private async Task<InstallOutcome> _DownloadAndInstallRowAsync(StorePluginRowViewModel row, PluginStoreVersion? explicitVersion = null, bool interactive = true)
     {
         if ((explicitVersion ?? row.LatestVersionEntry) is not { } version)
         {
@@ -1368,7 +1368,7 @@ public partial class PluginManagerViewModel : ViewModelBase
                 : $"Downloading '{row.Name}' v{version.Version}… {downloaded:0.0} MB";
         });
         var provision = await _administration.InstallFromStoreAsync(new PluginProvisionRequest(row.Id, row.Name, row.Store, version, row.RevokedKeys, AllowDowngrade: explicitVersion is not null),
-            progress: progress, keyConsent: _ConfirmPublisherAsync);
+            progress: progress, keyConsent: interactive ? _ConfirmPublisherAsync : null);
 
         // Surface an unverified-checksum advisory ahead of the installed message (AC-46): a store that publishes
         // no per-artifact hash still installs, but the operator is told the download could not be verified.
@@ -1407,7 +1407,9 @@ public partial class PluginManagerViewModel : ViewModelBase
             return false;
         }
         return await Dispatcher.UIThread.InvokeAsync(async () =>
-            await _dialogService.ShowConfirmationDialogAsync("Confirm plugin publisher", PluginConsentTerms.PublisherMessage(request), "Install"));
+            request.Decision == PluginTrustDecision.KeyChanged
+                ? await _dialogService.ShowPublisherKeyChangedDialogAsync(request)
+                : await _dialogService.ShowConfirmationDialogAsync("Confirm plugin publisher", PluginConsentTerms.PublisherMessage(request), "Install"));
     }
 
     // AC-1500: the "Update" action of the bundle-minimum notice — the store's own update for one plugin, no extra prompt.

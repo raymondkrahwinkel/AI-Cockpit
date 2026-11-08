@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-1979: ask before trusting a changed plugin publisher key; Update all keeps the current version and explains why.
+
 - AC-2187: the assistant can tell which session you have selected: `list_sessions` marks it, following the Simple stand's own selection when that stand is showing.
 - AC-2100: display relative Depot note images in Markdown file previews and editors without rewriting their source.
 
