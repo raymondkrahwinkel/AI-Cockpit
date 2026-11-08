@@ -3,9 +3,7 @@ using Cockpit.Core.Voice;
 
 namespace Cockpit.Core.Assistant;
 
-// The assistant's own settings, persisted under `assistant` in `cockpit.json`, deliberately not extending
-// `Cockpit.Core.Voice.VoiceSettings` since the assistant can be used with neither mic nor speaker. The
-// profile lives behind `AssistantProfileSlot`; the listening mode is computed, not stored, from `VoiceSettings.OpenMicEnabled`.
+// Assistant preferences live separately from voice because the assistant also works without audio.
 public sealed record AssistantSettings
 {
     public const double MinimumCompactionPercent = 10;
@@ -48,6 +46,12 @@ public sealed record AssistantSettings
     // first time `AssistantListeningMode.AlwaysOn` is switched on, and never asked again: a warning
     // that returns every time is one that gets clicked away without being read.
     public bool AlwaysOnCostAcknowledged { get; init; }
+
+    public bool WakeWordEnabled { get; init; }
+    public string WakeWord { get; init; } = "computer";
+    public int WakeWordListeningSeconds { get; init; } = 8;
+
+    public static int NormalizeWakeWordListeningSeconds(int value) => value is >= 1 and <= 30 ? value : 8;
 
     // Skip Cockpit's consent card for every source and both risk classes (#AC-637). *On by default* — the
     // friction the operator wanted gone — falling back to the two per-source lists below when off, which

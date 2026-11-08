@@ -81,10 +81,20 @@ public sealed class NodePermissionAnswerTests : IDisposable
 
     // AC-1367 criterion 3: a connect key answers a permission prompt only with the mayAnswerPermissions grant, and
     // without it is refused before the gateway is asked.
-    [Theory]
-    [InlineData(false, NodeSessionMcpTools.PermissionsRefusal, 0)]
-    [InlineData(true, null, 1)]
-    public async Task AConnectKey_AnswersAPermissionOnlyWithTheGrant(bool mayAnswerPermissions, string? refusal, int answeredCalls)
+    [Fact]
+    public async Task AConnectKey_AnswersAPermissionOnlyWithTheGrant()
+    {
+        using (var scenario = new NodePermissionAnswerTests())
+        {
+            await scenario._AssertAConnectKey_AnswersAPermissionOnlyWithTheGrantAsync(false, NodeSessionMcpTools.PermissionsRefusal, 0);
+        }
+        using (var scenario = new NodePermissionAnswerTests())
+        {
+            await scenario._AssertAConnectKey_AnswersAPermissionOnlyWithTheGrantAsync(true, null, 1);
+        }
+    }
+
+    private async Task _AssertAConnectKey_AnswersAPermissionOnlyWithTheGrantAsync(bool mayAnswerPermissions, string? refusal, int answeredCalls)
     {
         // AC-2003: the owner's key, so the session on a subscription profile stays visible and only the grant decides.
         McpRequestContext.Set(NodeCallerIdentity.PaneId, new NodeCaller(

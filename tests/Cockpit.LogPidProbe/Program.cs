@@ -36,8 +36,8 @@ internal static class Program
             AppDomain.CurrentDomain.UnhandledException += (_, _) =>
             {
                 LifecycleLog.Write("lifecycle from later crash handler");
-                // Model runtimes that terminate directly after crash handlers without ProcessExit.
-                Environment.FailFast("AC-1893 end immediately after the late crash handler");
+                // Hard exit without ProcessExit; FailFast also waits for Windows crash reporting.
+                System.Diagnostics.Process.GetCurrentProcess().Kill();
             };
             LifecycleLog.Write("lifecycle before managed crash");
             throw new InvalidOperationException("AC-1893 managed crash probe");

@@ -151,6 +151,8 @@ public interface ISessionDialogService
     // The Agents palette (AC-1933): the Agents panel as a compact kanban overlay.
     Task ShowAgentsPaletteDialogAsync(AgentsOverviewViewModel agents);
 
+    Task<bool> ShowPublisherKeyChangedDialogAsync(Cockpit.Core.Plugins.PluginKeyConsentRequest request) => Task.FromResult(false);
+
     /// <summary>
     /// Asks the operator to confirm a destructive action (remove a store/profile/plugin/…). Returns true only when they confirm; Cancel/✕/Esc return false. Shown over the topmost window.
     /// </summary>

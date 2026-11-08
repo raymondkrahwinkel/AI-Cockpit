@@ -53,10 +53,20 @@ public sealed class EventsEndpointTests
     }
 
 
-    [Theory]
-    [InlineData("project-b", "profile-a")]
-    [InlineData("project-a", "profile-b")]
-    public async Task ScopedKeyReceivesItsSessionAndSkipsTheOther(string otherProject, string otherProfile)
+    [Fact]
+    public async Task ScopedKeyReceivesItsSessionAndSkipsTheOther()
+    {
+        {
+            var scenario = new EventsEndpointTests();
+            await scenario._AssertScopedKeyReceivesItsSessionAndSkipsTheOtherAsync("project-b", "profile-a");
+        }
+        {
+            var scenario = new EventsEndpointTests();
+            await scenario._AssertScopedKeyReceivesItsSessionAndSkipsTheOtherAsync("project-a", "profile-b");
+        }
+    }
+
+    private async Task _AssertScopedKeyReceivesItsSessionAndSkipsTheOtherAsync(string otherProject, string otherProfile)
     {
         var log = new BackendEventLog();
         var first = log.Append("row", "pane-b", new { value = "outside" }, otherProfile, otherProject);
@@ -88,10 +98,20 @@ public sealed class EventsEndpointTests
 
     // AC-1547 (layer 2, event stream key boundary): a plugin's channel event reaches the stream through the bridge, named
     // by the plugin's folder, and only an admin key reads it, as only an admin key may call the plugin's channel.
-    [Theory]
-    [InlineData(true, ConnectKeyCapability.Admin, "plugin {\"folder\":\"schedules-folder\",\"name\":\"run-recorded\",\"payload\":{\"id\":\"run-1\"}} | row {\"value\":\"assistant\"}")]
-    [InlineData(false, ConnectKeyCapability.Operate, "row {\"value\":\"session\"}")]
-    public async Task EachKeyReceivesOnlyTheAssistantAndPluginEventsItMayRead(bool holdsAssistant, ConnectKeyCapability capability, string expected)
+    [Fact]
+    public async Task EachKeyReceivesOnlyTheAssistantAndPluginEventsItMayRead()
+    {
+        {
+            var scenario = new EventsEndpointTests();
+            await scenario._AssertEachKeyReceivesOnlyTheAssistantAndPluginEventsItMayReadAsync(true, ConnectKeyCapability.Admin, "plugin {\"folder\":\"schedules-folder\",\"name\":\"run-recorded\",\"payload\":{\"id\":\"run-1\"}} | row {\"value\":\"assistant\"}");
+        }
+        {
+            var scenario = new EventsEndpointTests();
+            await scenario._AssertEachKeyReceivesOnlyTheAssistantAndPluginEventsItMayReadAsync(false, ConnectKeyCapability.Operate, "row {\"value\":\"session\"}");
+        }
+    }
+
+    private async Task _AssertEachKeyReceivesOnlyTheAssistantAndPluginEventsItMayReadAsync(bool holdsAssistant, ConnectKeyCapability capability, string expected)
     {
         var log = new BackendEventLog();
         var hub = new PluginChannelHub(NullLogger<PluginChannelHub>.Instance);

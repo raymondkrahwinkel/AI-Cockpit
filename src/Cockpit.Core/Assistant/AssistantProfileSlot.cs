@@ -8,7 +8,8 @@ namespace Cockpit.Core.Assistant;
 public sealed record AssistantProfileSlot(
     SessionProfile? Profile = null,
     string? UnsetReason = null,
-    bool ReplacesStandingInstruction = false)
+    bool ReplacesStandingInstruction = false,
+    string? AssistantRole = null)
 {
     // The slot's stable identity. A constant rather than a generated id: there is exactly one slot, it is created
     // by the app rather than by the operator, and a value that could differ per machine would be one more thing

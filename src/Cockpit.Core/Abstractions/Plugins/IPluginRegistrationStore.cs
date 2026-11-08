@@ -48,6 +48,11 @@ public interface IPluginRegistrationStore
     Task SaveNotificationsMutedAsync(string folderId, bool muted, CancellationToken cancellationToken = default) =>
         Task.CompletedTask;
 
+    /// <summary>
+    /// AC-1980: records the store key a plugin was installed or updated from; a no-op when it is not registered, so a fresh install that still awaits consent keeps needing it. A default no-op, so existing fakes keep compiling.
+    /// </summary>
+    Task SetSourceAsync(string folderId, string? source, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
     Task RemoveAsync(string folderId, CancellationToken cancellationToken = default);
 
     /// <summary>

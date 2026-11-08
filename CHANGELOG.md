@@ -2,12 +2,44 @@
 
 ## Unreleased
 
+- AC-2203: open the assistant conversation or its pending questions from the companion strip, and choose the assistant or selected agent as the screenshot recipient; the strip and its pop-outs stay out of captures.
 - AC-2208: a plugin can embed the cockpit's live Markdown editor, with the people in the file and their carets, in its own view (plugin SDK 3.78.0, host 0.167.0).
 - AC-2204: the companion strip shows running, waiting and background counts; its status panel lists agents and services and lets you select an agent while Cockpit stays in the tray.
 - AC-2201: the companion strip gets a soft shadow, and a pop-out shell with one placement rule is in place for the strip's upcoming items.
 - AC-2206: companion tool plugins can put a badge on their button and ask for their own pop-out (plugin SDK 3.76.0, host 0.165.0).
 - AC-2205: the companion strip gets a bell with a panel for what waits on you: open questions and permissions can be answered right there (SDK sessions; a terminal session shows Open in Cockpit), and a finished agent waits there until you dismiss or open it.
 - AC-2202: the companion strip lies horizontally or vertically, drags freely, can stay above other windows (on by default), and shows each tool as an icon button with its badge that opens the tool in a pop-out; the setting is remembered.
+- AC-2215: project cards and waiting conversations on Home wrap a long title onto further lines instead of cutting it off.
+
+- AC-2194: the project picker follows the approved compact row typography and selection stripe, and token marks leave the surrounding spaces clear.
+
+- AC-2199: typing @ on Home picks the project the button shows (and removing it clears the button again); every other project mention goes into the prompt with its path or shared id, and the list now works the same on Home, in sessions and in the assistant panel.
+
+- AC-2200: plugins can add their own suggestions to the chat's @-list under "Suggested by plugins"; a plugin source that fails or takes longer than two seconds is left out without holding up the rest.
+- AC-2198: typing @ in a chat composer opens one shared list that hangs on the caret line at the composer's full width, groups files and projects per window, skips group headings with the arrow keys, and marks accepted project mentions in the text.
+- AC-1981: the Installed tab shows each plugin's source and verified publisher, says when its version was cleaned up (with an update to the newest) or its source is no longer available, and shows a revoked publisher key; a restore reports a plugin whose source is not available instead of fetching it from another store.
+
+- AC-1980: an installed plugin stays with the store it came from: a higher version in another store is no update (also not in Update all), the details show "Also offered by" with a Switch button that asks for consent again, and installations without a recorded store keep their consent.
+
+- AC-1977: Manage plugin stores shows a row per organization with its Depot and plugin count, lets you hide or show it, and says "You are no longer a member" when the Depot no longer lists you; installed plugins keep running without updates.
+
+- AC-1979: ask before trusting a changed plugin publisher key; Update all keeps the current version and explains why.
+
+- AC-1976: the plugin store shows a "From <organization>" block per Depot organization on Discover, says on every row which store it comes from, and lists the source and publisher key of a plugin in its details.
+
+- AC-2213: clear Speaking when queued audio drains while the assistant continues working, preserving open-mic pausing.
+
+- AC-2169: keep session and assistant role pickers behind the frontend contract boundary.
+
+- AC-2173: every session receives the pull request merge rule automatically; assistant briefs no longer repeat the standing work agreements.
+- AC-2172: choose an optional role when starting a session or editing the Assistant Profile. The assistant keeps its role across provider changes and starts with a warning if the role cannot be loaded.
+
+- AC-2171: the assistant explicitly chooses a role or none when starting sessions, including on paired nodes. Role refusals show the available choices; manual server starts and delegated tasks keep roles optional.
+
+- AC-2170: sessions can carry an optional role from their brain on every provider route, keep that choice when copied or resumed, and resume with a warning if the role source is unavailable. Older memory plugins and servers continue to work without roles.
+- AC-2212: the Simple rail now has a Plugins row above Settings and Help that opens the plugin store, with the same update and approval badges as the Panels sidebar.
+
+- AC-2191: the Panels sidebar footer uses flat icon rows like the Simple rail, and the Menu and Help flyouts get the mention-picker look with icon rows (also in the Simple rail's Help).
 
 - AC-2188: queued test runs start strictly in arrival order, without pre-merge priority or aging.
 
@@ -118,6 +150,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 ## [Unreleased]
 
 ### Added
+
+- Plugin-provided stores now verify publisher signatures before installation, remember publisher consent across removal and restore, and warn when the current feed revokes an installed plugin's key.
+
+- The Depot plugin-store epic now includes the current host changes while retaining runtime stores and their credential protection.
+- Plugins can offer stores with refreshed credentials alongside configured stores. Manage stores can hide these sources; their addresses and credentials stay out of backups.
 
 - The assistant can attach files from its scratch folder and managed worktrees to replies, with image previews and file downloads in chat.
 - Discord replies now carry files and images on the last message part, and display Markdown tables as aligned code blocks.

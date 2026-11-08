@@ -295,7 +295,8 @@ internal sealed class NodeSessionsClient(
         string? projectId = null,
         string? prompt = null,
         string? sessionName = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? role = null)
     {
         var arguments = new Dictionary<string, object?> { ["profile"] = profileLabel };
         if (!string.IsNullOrWhiteSpace(projectId))
@@ -316,6 +317,21 @@ internal sealed class NodeSessionsClient(
         try
         {
             await using var client = await _ConnectAsync(nodeName, cancellationToken).ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(role))
+            {
+                var tools = await client.ListToolsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+                var start = tools.FirstOrDefault(tool => tool.Name == "start_node_agent");
+                var acceptsRole = start is not null && start.JsonSchema.TryGetProperty("properties", out var properties)
+                    && properties.TryGetProperty("role", out _);
+                if (acceptsRole)
+                {
+                    arguments["role"] = role;
+                }
+                else if (!string.Equals(role.Trim(), "none", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new NodeStartResult("This node does not support roles; no session was started. Use none to start without a role.");
+                }
+            }
             var result = await _CallAsync(client, "start_node_agent", arguments, cancellationToken).ConfigureAwait(false);
             return _ErrorIn(result) is { } refusal
                 ? new NodeStartResult(refusal)
@@ -328,6 +344,8 @@ internal sealed class NodeSessionsClient(
                         ? delivered.GetBoolean()
                         : null)
                 {
+                    Role = _Text(result, "role"),
+                    RoleList = _Text(result, "roleList"),
                     McpServers = result.TryGetProperty("mcpServers", out var servers) && servers.ValueKind == JsonValueKind.Array
                         ? servers.Deserialize<string[]>() : null,
                     McpServersConfirmed = result.TryGetProperty("mcpServersConfirmed", out var confirmed) && confirmed.ValueKind == JsonValueKind.True,

@@ -23,6 +23,12 @@ public partial class PluginManagerViewModel : ViewModelBase
     private readonly ISessionDialogService? _dialogService;
     private readonly IPluginStoreConfigStore? _storeConfigStore;
     private readonly IPluginStoreClient? _storeClient;
+    private readonly IPluginStoreSources? _storeSources;
+    private readonly bool _refreshSourcesOnDispatcher;
+    private bool _sourcesDirty;
+
+    public IReadOnlyList<string> HiddenStoreSourceKeys => StoreInfos.Where(info => info.IsHidden)
+        .Select(info => info.Store.Signed?.SourceKey).OfType<string>().ToList();
 
     private readonly IReadOnlyDictionary<string, PluginSettingsRegistration>? _settingsRegistry;
     private readonly IPluginContributionSink? _contributionSink;
@@ -165,6 +171,7 @@ public partial class PluginManagerViewModel : ViewModelBase
 
         AddStoreCommand.NotifyCanExecuteChanged();
         RemoveStoreCommand.NotifyCanExecuteChanged();
+        ToggleStoreHiddenCommand.NotifyCanExecuteChanged();
         EnablePluginCommand.NotifyCanExecuteChanged();
         DisablePluginCommand.NotifyCanExecuteChanged();
         RemovePluginCommand.NotifyCanExecuteChanged();
@@ -232,7 +239,8 @@ public partial class PluginManagerViewModel : ViewModelBase
         IReadOnlyDictionary<string, PluginSettingsRegistration> settingsRegistry,
         IPluginContributionSink? contributionSink = null,
         IAppRestartService? restartService = null,
-        IWorkflowTemplateLibrary? templateLibrary = null)
+        IWorkflowTemplateLibrary? templateLibrary = null,
+        IPluginStoreSources? storeSources = null)
     {
         _administration = administration;
         _registrationStore = registrationStore;
@@ -243,6 +251,12 @@ public partial class PluginManagerViewModel : ViewModelBase
         _contributionSink = contributionSink;
         _restartService = restartService;
         _templateLibrary = templateLibrary;
+        _storeSources = storeSources;
+        _refreshSourcesOnDispatcher = SynchronizationContext.Current is AvaloniaSynchronizationContext;
+        if (_storeSources is not null)
+        {
+            _storeSources.SourcesChanged += _OnStoreSourcesChanged;
+        }
         _WatchAvailablePluginsForUpdateGate();
         _WatchPluginsForPendingApprovalBadge();
     }
@@ -365,8 +379,35 @@ public partial class PluginManagerViewModel : ViewModelBase
         }
 
         await _LoadStoresAsync();
+        await _AnnotateInstalledSourcesAsync(null);
         await _RefreshRetiredAsync();
     }
+
+    // AC-1981: each installed row learns its source from the recorded one and the known stores; a browse adds what the stores offer.
+    private async Task _AnnotateInstalledSourcesAsync(Dictionary<string, List<StoreOffer>>? offered)
+    {
+        if (_administration is null)
+        {
+            return;
+        }
+
+        var saved = _registrationStore is null ? null : await _registrationStore.LoadAllAsync();
+        var sources = StoreInfos.Select(info => new PluginStoreSourceInfo(info.Store, info.Name, info.IsHidden, info.IsWithdrawn)).ToList();
+        foreach (var row in Plugins)
+        {
+            var offers = offered?.Where(pair => PluginFolderName.Normalize(pair.Key) == row.FolderId)
+                .SelectMany(pair => pair.Value).Select(offer => new InstalledPluginOffer(offer.Store, offer.Entry, offer.RevokedKeys)).ToList();
+            row.Source = InstalledPluginSource.Build(
+                saved?.GetValueOrDefault(row.FolderId)?.Source,
+                row.Discovered.Manifest.Version,
+                sources,
+                offers,
+                await _administration.GetPublisherTrustAsync(row.FolderId));
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanChangePlugins))]
+    private Task UpdateInstalledPluginAsync(PluginRowViewModel row) => UpdateStorePluginAsync(row.FolderId);
 
     private async Task _LoadStoresAsync()
     {
@@ -377,12 +418,42 @@ public partial class PluginManagerViewModel : ViewModelBase
 
         Stores.Clear();
         StoreInfos.Clear();
-        foreach (var store in await _storeConfigStore.LoadAsync())
+        var sources = _storeSources is null
+            ? (await _storeConfigStore.LoadAsync()).Select(store => new PluginStoreSourceInfo(store)).ToList()
+            : await _storeSources.LoadAsync();
+        _sourcesDirty = false;
+        foreach (var source in sources)
         {
-            Stores.Add(store);
-            // Name/icon/count start URL-derived and fill in on the next browse; keeping the same URL as the
-            // key means the browse can find and enrich this exact row.
-            StoreInfos.Add(new PluginStoreInfo(store));
+            if (!source.IsHidden && !source.IsWithdrawn)
+            {
+                Stores.Add(source.Store);
+            }
+            StoreInfos.Add(new PluginStoreInfo(source.Store, source.Name, source.IsHidden, source.IsWithdrawn));
+        }
+    }
+
+    private async void _OnStoreSourcesChanged(object? sender, EventArgs args)
+    {
+        _sourcesDirty = true;
+        if (!_refreshSourcesOnDispatcher)
+        {
+            return;
+        }
+        try
+        {
+            await Dispatcher.UIThread.InvokeAsync(async () =>
+            {
+                if (!IsBusy)
+                {
+                    await _LoadStoresAsync();
+                    await BrowseStoresAsync();
+                }
+            });
+        }
+        catch (Exception exception)
+        {
+            StatusMessage = $"Could not refresh plugin sources: {exception.Message}";
+            StatusIsError = true;
         }
     }
 
@@ -423,7 +494,8 @@ public partial class PluginManagerViewModel : ViewModelBase
 
         // Enabling always requires consent to the current bytes: the operator sees what they are trusting
         // and the shown SHA-256 is what gets pinned.
-        var consented = await _dialogService.ShowPluginConsentAsync(row.ToConsentInfo());
+        var publisher = await _administration.GetPublisherTrustAsync(row.FolderId);
+        var consented = await _dialogService.ShowPluginConsentAsync(row.ToConsentInfo() with { Publisher = publisher });
         if (!consented)
         {
             return;
@@ -679,6 +751,10 @@ public partial class PluginManagerViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(CanChangePlugins))]
     private async Task RemoveStoreAsync(PluginStoreInfo info)
     {
+        if (!info.CanRemove)
+        {
+            return;
+        }
         if (_storeConfigStore is null)
         {
             return;
@@ -695,6 +771,15 @@ public partial class PluginManagerViewModel : ViewModelBase
 
         await _storeConfigStore.RemoveAsync(info.Store);
         await _LoadStoresAsync();
+    }
+
+    [RelayCommand(CanExecute = nameof(CanChangePlugins))]
+    private async Task ToggleStoreHiddenAsync(PluginStoreInfo info)
+    {
+        if (_storeSources is not null && info.Store.Signed is { } signed)
+        {
+            await _storeSources.SetHiddenAsync(signed.SourceKey, !info.IsHidden);
+        }
     }
 
     // Public because the install paths call it directly on their way out and must not be refused: the command is gated
@@ -717,19 +802,49 @@ public partial class PluginManagerViewModel : ViewModelBase
         AvailableTemplates.Clear();
         try
         {
-            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var seenTemplates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (_storeSources is not null)
+            {
+                await _LoadStoresAsync();
+            }
+            var seen = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var seenTemplates = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             var problems = new List<string>();
             // Store logos are fetched after the catalogue is in — plugins show at once, the logos pop in when
             // they arrive, and a slow or broken image never delays the list.
             var logoLoads = new List<Task>();
-            // Over a snapshot, for the reason "Update all" takes one: this loop awaits a fetch per store, and LoadAsync
-            // clears that list.
-            foreach (var store in Stores.ToList())
+            var sourceOrder = Stores.ToList();
+            var offered = new Dictionary<string, List<StoreOffer>>(StringComparer.OrdinalIgnoreCase);
+            StorePluginRowViewModel BuildRow(StoreOffer offer, IReadOnlyList<StoreOffer> others)
             {
-                var info = StoreInfos.FirstOrDefault(candidate => candidate.Store.SameStoreAs(store));
+                var installedRow = Plugins.FirstOrDefault(row => row.FolderId == PluginFolderName.Normalize(offer.Entry.Id));
+                // A staged update reports its new version even before the restart, so it drops out of the
+                // updates list once updated instead of lingering.
+                var installedVersion = _pendingUpdateVersions.TryGetValue(offer.Entry.Id, out var pending)
+                    ? pending
+                    : installedRow?.Discovered.Manifest.Version;
+                var row = new StorePluginRowViewModel(
+                    offer.Entry,
+                    offer.Store,
+                    installedVersion,
+                    isEnabled: installedRow?.CanDisable ?? false,
+                    hasSettings: installedRow?.HasSettings ?? false,
+                    disabledByStartupProtection: installedRow?.DisabledByStartupProtection ?? false) { RevokedKeys = offer.RevokedKeys, StoreName = offer.StoreName, AlsoOfferedBy = others };
+                // AC-553 option A: a provider plugin's `LogoAsset` naming its vendor's own CDN — fetched the
+                // same way a store's own IconUrl already is (below), never redistributed as a file in this repo.
+                if (row.IsRemoteLogoAsset)
+                {
+                    logoLoads.Add(_LoadPluginLogoAsync(row, offer.Store, offer.Entry.LogoAsset!));
+                }
 
-                var fetch = await _administration.FetchStoreIndexAsync(store);
+                return row;
+            }
+
+            await foreach (var (store, fetch) in PluginStoreFetching.FetchAllAsync(
+                sourceOrder, (source, token) => _administration.FetchStoreIndexAsync(source, token)))
+            {
+                var sourcePriority = sourceOrder.IndexOf(store);
+                var info = StoreInfos.FirstOrDefault(candidate => candidate.Store == store);
+
                 if (!fetch.IsSuccess || fetch.Index is null || fetch.IndexUrl is null)
                 {
                     problems.Add(fetch.Error ?? "unreachable store");
@@ -746,7 +861,10 @@ public partial class PluginManagerViewModel : ViewModelBase
                 {
                     // The store's own advertised name/icon/count for the Manage-stores dialog; the name falls
                     // back to the URL-derived one when the index sets none.
-                    info.Name = string.IsNullOrWhiteSpace(fetch.Index.Name) ? info.Name : fetch.Index.Name!;
+                    if (store.Signed is null && !string.IsNullOrWhiteSpace(fetch.Index.Name))
+                    {
+                        info.Name = fetch.Index.Name;
+                    }
                     info.Icon = fetch.Index.Icon;
                     info.PluginCount = fetch.Index.Plugins.Count;
                     info.IsReachable = true;
@@ -760,10 +878,22 @@ public partial class PluginManagerViewModel : ViewModelBase
 
                 foreach (var entry in fetch.Index.Plugins)
                 {
+                    var offer = new StoreOffer(store, store.Signed?.Organization ?? info?.Name ?? PluginStoreUrl.DeriveDisplayName(store.Location), entry, fetch.Index.RevokedKeys);
+                    if (!offered.TryGetValue(entry.Id, out var offers))
+                    {
+                        offered[entry.Id] = offers = [];
+                    }
+                    offers.Add(offer);
+
                     // First store wins for a given id, so a plugin listed in several stores shows once.
-                    if (!seen.Add(entry.Id))
+                    if (seen.TryGetValue(entry.Id, out var priority) && priority <= sourcePriority)
                     {
                         continue;
+                    }
+                    seen[entry.Id] = sourcePriority;
+                    if (AvailablePlugins.FirstOrDefault(row => string.Equals(row.Entry.Id, entry.Id, StringComparison.OrdinalIgnoreCase)) is { } previous)
+                    {
+                        AvailablePlugins.Remove(previous);
                     }
 
                     // AC-815: a reference-only plugin (e.g. Example Workspace) stays installable via
@@ -773,44 +903,33 @@ public partial class PluginManagerViewModel : ViewModelBase
                         continue;
                     }
 
-                    var installedRow = Plugins.FirstOrDefault(row => row.FolderId == PluginFolderName.Normalize(entry.Id));
-                    // A staged update reports its new version even before the restart, so it drops out of the
-                    // updates list once updated instead of lingering.
-                    var installedVersion = _pendingUpdateVersions.TryGetValue(entry.Id, out var pending)
-                        ? pending
-                        : installedRow?.Discovered.Manifest.Version;
-                    var row = new StorePluginRowViewModel(
-                        entry,
-                        store,
-                        installedVersion,
-                        isEnabled: installedRow?.CanDisable ?? false,
-                        hasSettings: installedRow?.HasSettings ?? false,
-                        disabledByStartupProtection: installedRow?.DisabledByStartupProtection ?? false);
-                    AvailablePlugins.Add(row);
-
-                    // AC-553 option A: a provider plugin's `LogoAsset` naming its vendor's own CDN — fetched the
-                    // same way a store's own IconUrl already is (below), never redistributed as a file in this repo.
-                    if (row.IsRemoteLogoAsset)
-                    {
-                        logoLoads.Add(_LoadPluginLogoAsync(row, store, entry.LogoAsset!));
-                    }
+                    var insertionIndex = AvailablePlugins.TakeWhile(candidate => sourceOrder.IndexOf(candidate.Store) <= sourcePriority).Count();
+                    AvailablePlugins.Insert(insertionIndex, BuildRow(offer, []));
                 }
 
                 foreach (var template in fetch.Index.Templates ?? [])
                 {
                     // First store wins for an id, same as for plugins: a template listed twice shows once.
-                    if (!seenTemplates.Add(template.Id))
+                    if (seenTemplates.TryGetValue(template.Id, out var priority) && priority <= sourcePriority)
                     {
                         continue;
                     }
+                    seenTemplates[template.Id] = sourcePriority;
+                    if (AvailableTemplates.FirstOrDefault(row => string.Equals(row.Entry.Id, template.Id, StringComparison.OrdinalIgnoreCase)) is { } previous)
+                    {
+                        AvailableTemplates.Remove(previous);
+                    }
 
-                    AvailableTemplates.Add(new StoreTemplateRowViewModel(
+                    var insertionIndex = AvailableTemplates.TakeWhile(candidate => sourceOrder.IndexOf(candidate.Store) <= sourcePriority).Count();
+                    AvailableTemplates.Insert(insertionIndex, new StoreTemplateRowViewModel(
                         template,
                         store,
                         isInstalled: _templateLibrary?.IsInstalled(template.Id) ?? false));
                 }
             }
 
+            await _BindInstalledToTheirSourceAsync(offered, BuildRow);
+            await _AnnotateInstalledSourcesAsync(offered);
             await Task.WhenAll(logoLoads);
 
             OnPropertyChanged(nameof(HasAvailableTemplates));
@@ -825,6 +944,46 @@ public partial class PluginManagerViewModel : ViewModelBase
         finally
         {
             _ExitBusy();
+            if (_sourcesDirty)
+            {
+                await BrowseStoresAsync();
+            }
+        }
+    }
+
+    // AC-1980: an installed plugin is shown from the store it is bound to (recorded, else the only one offering it), with the other stores as
+    // "Also offered by". Bound to a store that offers it no more, the row goes: another store's version is not an update.
+    private async Task _BindInstalledToTheirSourceAsync(Dictionary<string, List<StoreOffer>> offered, Func<StoreOffer, IReadOnlyList<StoreOffer>, StorePluginRowViewModel> buildRow)
+    {
+        var saved = _registrationStore is null ? null : await _registrationStore.LoadAllAsync();
+        foreach (var (id, offers) in offered)
+        {
+            var folderId = PluginFolderName.Normalize(id);
+            if (Plugins.All(row => row.FolderId != folderId))
+            {
+                continue;
+            }
+
+            var bound = PluginSourceBinding.Resolve(saved?.GetValueOrDefault(folderId)?.Source, offers.Select(offer => offer.Store.SourceKey));
+            if (bound is null)
+            {
+                continue; // several stores, no recorded source: first store wins, as before
+            }
+
+            var current = AvailablePlugins.FirstOrDefault(row => string.Equals(row.Entry.Id, id, StringComparison.OrdinalIgnoreCase));
+            var visible = offers.Where(offer => !offer.Entry.Hidden).ToList();
+            var chosen = visible.FirstOrDefault(offer => offer.Store.SourceKey == bound);
+            var index = current is null ? AvailablePlugins.Count : AvailablePlugins.IndexOf(current);
+            if (current is not null)
+            {
+                AvailablePlugins.RemoveAt(index);
+            }
+
+            if (chosen is not null)
+            {
+                var others = visible.Where(offer => offer.Store.SourceKey != chosen.Store.SourceKey).DistinctBy(offer => offer.Store.SourceKey).ToList();
+                AvailablePlugins.Insert(index, buildRow(chosen, others));
+            }
         }
     }
 
@@ -1103,7 +1262,7 @@ public partial class PluginManagerViewModel : ViewModelBase
                     try
                     {
                         // Isolate each plugin: one failing update must not abort the whole batch.
-                        var outcome = await _DownloadAndInstallRowAsync(row);
+                        var outcome = await _DownloadAndInstallRowAsync(row, interactive: false);
                         if (!outcome.Installed)
                         {
                             failed.Add($"'{row.Name}' ({StatusMessage.TrimEnd('.')})");
@@ -1260,7 +1419,7 @@ public partial class PluginManagerViewModel : ViewModelBase
     // Install one store row's version — its advertised latest, or an explicit one for a rollback — through the
     // provisioning service (AC-510[b]), then run the same UI-side aftercare every install path always has: the consent
     // walk for a fresh install, the registration re-pin for a staged update.
-    private async Task<InstallOutcome> _DownloadAndInstallRowAsync(StorePluginRowViewModel row, PluginStoreVersion? explicitVersion = null)
+    private async Task<InstallOutcome> _DownloadAndInstallRowAsync(StorePluginRowViewModel row, PluginStoreVersion? explicitVersion = null, bool interactive = true, bool switchSource = false)
     {
         if ((explicitVersion ?? row.LatestVersionEntry) is not { } version)
         {
@@ -1286,7 +1445,8 @@ public partial class PluginManagerViewModel : ViewModelBase
                 ? $"Downloading '{row.Name}' v{version.Version}… {downloaded:0.0} / {total / 1_000_000d:0.0} MB"
                 : $"Downloading '{row.Name}' v{version.Version}… {downloaded:0.0} MB";
         });
-        var provision = await _administration.InstallFromStoreAsync(new PluginProvisionRequest(row.Id, row.Name, row.Store, version), progress: progress);
+        var provision = await _administration.InstallFromStoreAsync(new PluginProvisionRequest(row.Id, row.Name, row.Store, version, row.RevokedKeys, AllowDowngrade: explicitVersion is not null, SwitchSource: switchSource),
+            progress: progress, keyConsent: interactive ? _ConfirmPublisherAsync : null);
 
         // Surface an unverified-checksum advisory ahead of the installed message (AC-46): a store that publishes
         // no per-artifact hash still installs, but the operator is told the download could not be verified.
@@ -1313,9 +1473,41 @@ public partial class PluginManagerViewModel : ViewModelBase
         if (installResult is { IsSuccess: true, FolderId: { } installedFolderId } && _registrationStore is not null)
         {
             await _registrationStore.SetVersionChosenAsync(installedFolderId, explicitVersion is not null && explicitVersion.Version != row.LatestVersionEntry?.Version);
+            await _registrationStore.SetSourceAsync(installedFolderId, row.Store.SourceKey);
         }
 
         return new InstallOutcome(installResult.IsSuccess, provision.Live);
+    }
+
+    // AC-1980: moves an installed plugin to another store that offers it — the only way it ever leaves its source. Asks for consent again; the consent is the publisher
+    // consent of provisioning (SourceChanged), signed target or not, and the new file and publisher are pinned.
+    public async Task SwitchSourceAsync(StorePluginRowViewModel row, StoreOffer offer)
+    {
+        if (_administration is null)
+        {
+            return;
+        }
+
+        var target = new StorePluginRowViewModel(offer.Entry, offer.Store, row.InstalledVersion) { RevokedKeys = offer.RevokedKeys, StoreName = offer.StoreName };
+        await _InstallExclusivelyAsync(async () =>
+        {
+            await _DownloadAndInstallRowAsync(target, target.LatestVersionEntry, switchSource: true);
+            var message = StatusMessage;
+            await BrowseStoresAsync();
+            StatusMessage = message;
+        });
+    }
+
+    private async Task<bool> _ConfirmPublisherAsync(PluginKeyConsentRequest request, CancellationToken cancellationToken)
+    {
+        if (_dialogService is null)
+        {
+            return false;
+        }
+        return await Dispatcher.UIThread.InvokeAsync(async () =>
+            request.Decision == PluginTrustDecision.KeyChanged
+                ? await _dialogService.ShowPublisherKeyChangedDialogAsync(request)
+                : await _dialogService.ShowConfirmationDialogAsync("Confirm plugin publisher", PluginConsentTerms.PublisherMessage(request), "Install"));
     }
 
     // AC-1500: the "Update" action of the bundle-minimum notice — the store's own update for one plugin, no extra prompt.

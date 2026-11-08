@@ -5,6 +5,7 @@ using System.Text;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.App.Services;
+using Cockpit.Core.Abstractions.Mentions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Projects;
 
@@ -14,12 +15,18 @@ namespace Cockpit.App.ViewModels;
 public sealed partial class SimpleHomeViewModel : ObservableObject, ISimpleComposerTarget
 {
     private readonly CockpitViewModel _cockpit;
+    private bool _projectFromToken;
     private IVoicePushToTalkService? _voice;
     private VoiceOverlayCoordinator? _overlay;
 
-    public SimpleHomeViewModel(CockpitViewModel cockpit)
+    public SimpleHomeViewModel(CockpitViewModel cockpit, IEnumerable<IMentionSource>? mentionSources = null)
     {
         _cockpit = cockpit;
+        MentionPicker = new MentionPickerViewModel(mentionSources ?? [], () => new MentionContext(MentionSurface.Home, null))
+        {
+            CanSetContext = item => _LocalProject(item) is not null,
+        };
+        MentionPicker.PropertyChanged += _OnMentionPickerChanged;
         _cockpit.PropertyChanged += _OnCockpitPropertyChanged;
     }
 
@@ -38,6 +45,15 @@ public sealed partial class SimpleHomeViewModel : ObservableObject, ISimpleCompo
 
     public string TargetLabel =>
         Project?.Name ?? (Folder is { } folder ? Path.GetFileName(Path.TrimEndingDirectorySeparator(folder)) : "No project or folder");
+
+    // Typing @ here picks a project; the first project token is the one the button shows.
+    public MentionPickerViewModel MentionPicker { get; }
+
+    // Why the first token sets no project, when it does not: a shared project has no folder here to work in.
+    public string? MentionNote =>
+        MentionPicker is { ContextToken: null, FirstProjectToken: { } first } && _LocalProject(first.Item) is null
+            ? "Not on this PC yet — add it from Projects to work in it"
+            : null;
 
     public ObservableCollection<ImageAttachmentViewModel> PendingAttachments { get; } = [];
 
@@ -73,15 +89,19 @@ public sealed partial class SimpleHomeViewModel : ObservableObject, ISimpleCompo
     [RelayCommand]
     private void ChooseProject(Project? project)
     {
+        _projectFromToken = false;
         Project = project;
         Folder = null;
     }
 
     public void ChooseFolder(string folder)
     {
+        _projectFromToken = false;
         Folder = folder;
         Project = null;
     }
+
+    partial void OnInputTextChanged(string value) => MentionPicker.SyncTokens(value);
 
     private bool CanSend => !string.IsNullOrWhiteSpace(InputText);
 
@@ -90,11 +110,12 @@ public sealed partial class SimpleHomeViewModel : ObservableObject, ISimpleCompo
     private async Task SendAsync()
     {
         var images = PendingAttachments.Select(attachment => attachment.PngBytes).ToList();
-        if (await _cockpit.StartSimpleConversationAsync(InputText.Trim(), Project, Folder, images) is null)
+        if (await _cockpit.StartSimpleConversationAsync(MentionPicker.ExpandMentions(InputText).Trim(), Project, Folder, images) is null)
         {
             return;
         }
 
+        MentionPicker.Close();
         InputText = string.Empty;
         foreach (var attachment in PendingAttachments)
         {
@@ -154,6 +175,35 @@ public sealed partial class SimpleHomeViewModel : ObservableObject, ISimpleCompo
             _overlay?.ShowPushToTalkThenClear(VoiceOverlayState.Failed, $"Dictation failed — {ex.Message}", TimeSpan.FromSeconds(5));
         }
     }
+
+    // The first token chooses the project, as the button does; once it goes, the project goes only if the token had set it.
+    private void _OnMentionPickerChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(MentionPickerViewModel.ContextToken) or nameof(MentionPickerViewModel.FirstProjectToken))
+        {
+            OnPropertyChanged(nameof(MentionNote));
+        }
+
+        if (e.PropertyName != nameof(MentionPickerViewModel.ContextToken))
+        {
+            return;
+        }
+
+        if (MentionPicker.ContextToken is { } token && _LocalProject(token.Item) is { } project)
+        {
+            Project = project;
+            Folder = null;
+            _projectFromToken = true;
+        }
+        else if (_projectFromToken)
+        {
+            Project = null;
+            _projectFromToken = false;
+        }
+    }
+
+    private Project? _LocalProject(MentionItem item) =>
+        item.Kind == MentionKind.Project ? _cockpit.Projects.Projects.FirstOrDefault(project => $"project:{project.Id}" == item.Key) : null;
 
     private void _RemoveAttachment(ImageAttachmentViewModel attachment)
     {

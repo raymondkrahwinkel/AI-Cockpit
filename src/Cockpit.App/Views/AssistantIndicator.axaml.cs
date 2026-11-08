@@ -1,6 +1,8 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Interactivity;
 using System.ComponentModel;
+using System.Windows.Input;
 using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Views;
@@ -30,6 +32,23 @@ public partial class AssistantIndicator : UserControl
     }
 
     private AssistantIndicatorViewModel? _viewModel;
+
+    internal ICommand? OpenCommand { get; init; }
+
+    private void _OnOpenClick(object? sender, RoutedEventArgs e)
+    {
+        if (OpenCommand is { } open)
+        {
+            if (open.CanExecute(null))
+            {
+                open.Execute(null);
+            }
+        }
+        else
+        {
+            _viewModel?.ClickCommand.Execute(null);
+        }
+    }
 
     public AssistantIndicator()
     {

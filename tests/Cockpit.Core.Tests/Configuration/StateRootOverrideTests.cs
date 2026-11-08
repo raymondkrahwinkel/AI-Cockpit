@@ -61,7 +61,7 @@ public sealed class StateRootOverrideTests
 
         // The exemption is only honoured while it names something that exists, so deleting or renaming that
         // property leaves a dead exemption rather than a quietly widened one.
-        Assert.Contains(underRealRoot, path => path.Name == DoesNotMoveByDesign);
+        Assert.Contains(withoutOverride, path => path.Name == DoesNotMoveByDesign);
 
         underRealRoot = underRealRoot.Where(path => path.Name != DoesNotMoveByDesign && !ExternalPaths.Contains(path.Name)).ToList();
 

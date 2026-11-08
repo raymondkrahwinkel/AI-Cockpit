@@ -1,0 +1,21 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:views="using:Cockpit.App.Views"
+             xmlns:icons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+             x:Class="Cockpit.App.Views.CompanionAssistantChatView"
+             Height="360">
+    <DockPanel>
+        <Border DockPanel.Dock="Top" Padding="12,8" BorderThickness="0,0,0,1"
+                BorderBrush="{DynamicResource CockpitHairlineBrush}">
+            <Grid ColumnDefinitions="*,Auto,Auto">
+                <TextBlock Text="Assistant" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                <Button x:Name="OpenInCockpitButton" Grid.Column="1" Content="Open in Cockpit" Classes="Ghost Compact"/>
+                <Button x:Name="CloseButton" Grid.Column="2" Classes="Subtle Compact" ToolTip.Tip="Close"
+                        AutomationProperties.Name="Close assistant pop-out">
+                    <icons:MaterialIcon Kind="Close" Width="14" Height="14"/>
+                </Button>
+            </Grid>
+        </Border>
+        <views:AssistantChatView x:Name="Chat"/>
+    </DockPanel>
+</UserControl>

@@ -1399,6 +1399,15 @@ offers your `SignInAsync` and retries) or `.Failed(reason)`; never throw. Leave 
 source as read-only: it is not offered anywhere a note could be captured. Setting it raises your manifest's
 `minHostVersion` to `0.31.0`.
 
+**Optional brain roles (SDK 3.73.0, host 0.162.0).** Alongside `ListBrainsAsync` and `BrainInstruction`, a source
+can set `ListRolesAsync(brainValue, ct)` and `LoadRoleAsync(brainValue, role, ct)`. Their results use
+`RoleSourceOutcome.Success`, `NoRoles` or `Unavailable`; a list carries `SessionRole(Name, Description)` rows,
+and a load carries the instructions and skill descriptions, at most 12,000 characters. Leave either delegate
+null when unsupported. `none` is reserved, case-insensitively, and never offered as a role. The host loads
+the role before admitting a worktree, with a five-second deadline, then includes its additive block with the
+brain instruction on both SDK and TTY routes. A fresh start refuses a role it cannot load; restoration keeps
+the choice and resumes with a warning. The host can call the source without mounting its MCP in the session.
+
 ### `IReadOnlyList<ProjectMemorySourceRegistration> ProjectMemorySources { get; }` {#ireadonlylistprojectmemorysourceregistration-projectmemorysources--get}
 
 Every memory source plugins have contributed, in registration order — what the project editor's picker and a

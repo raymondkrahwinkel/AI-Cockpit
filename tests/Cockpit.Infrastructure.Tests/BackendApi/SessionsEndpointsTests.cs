@@ -18,6 +18,23 @@ namespace Cockpit.Infrastructure.Tests.BackendApi;
 // on the recording gateways the node tool tests use, so what a route reaches is what the node tools would reach.
 public sealed class SessionsEndpointsTests
 {
+    [Fact]
+    public async Task SecurityDoor_PreservesItsIndependentChecks()
+    {
+        {
+            var scenario = new SessionsEndpointsTests();
+            await scenario._AssertTheSessionList_ShowsOnlyTheKeysSessionsAsync();
+        }
+        {
+            var scenario = new SessionsEndpointsTests();
+            await scenario._AssertAPromptToTheAssistant_IsAuditedAndNeverHoldsIt_WhereTheSameKeyOnTheMcpDoorDoesAsync();
+        }
+        {
+            var scenario = new SessionsEndpointsTests();
+            await scenario._AssertTheBridge_PreservesEmissionOrder_AndKeepsRowUpsertSeqInTheDataAsync();
+        }
+    }
+
     // The labels `NodeSessionMcpToolsTests.StubProfileStore` and `RecordingReadGateway` know.
     private const string Profile = "Laptop Sonnet";
 
@@ -28,10 +45,20 @@ public sealed class SessionsEndpointsTests
     private static readonly ConnectKeyScope OneProject = new() { AllowAllProjects = false, AllowedProjectIds = [Project] };
 
     // Criterion 2: a start outside the key's projects is a 403 that names the scope; inside it, a 201 with the pane.
-    [Theory]
-    [InlineData("project-elsewhere", HttpStatusCode.Forbidden, "The scope of this connect key does not include the project")]
-    [InlineData(Project, HttpStatusCode.Created, "\"paneId\":\"pane-new\"")]
-    public async Task StartingASession_IsHeldToTheKeysProjects(string project, HttpStatusCode expected, string bodyPart)
+    [Fact]
+    public async Task StartingASession_IsHeldToTheKeysProjects()
+    {
+        {
+            var scenario = new SessionsEndpointsTests();
+            await scenario._AssertStartingASession_IsHeldToTheKeysProjectsAsync("project-elsewhere", HttpStatusCode.Forbidden, "The scope of this connect key does not include the project");
+        }
+        {
+            var scenario = new SessionsEndpointsTests();
+            await scenario._AssertStartingASession_IsHeldToTheKeysProjectsAsync(Project, HttpStatusCode.Created, "\"paneId\":\"pane-new\"");
+        }
+    }
+
+    private async Task _AssertStartingASession_IsHeldToTheKeysProjectsAsync(string project, HttpStatusCode expected, string bodyPart)
     {
         await using var door = new BackendApiDoorTests._Door();
         var verifier = await door.StartAsync();
@@ -45,13 +72,32 @@ public sealed class SessionsEndpointsTests
 
     // Criterion 3: answering or switching into an auto-accepting mode takes the mayAnswerPermissions grant, checked before
     // the body is read. AC-1476: a session scope is answered, and one the server does not know, or one on a deny, refused.
-    [Theory]
-    [InlineData(false, """{"allow":true}""", HttpStatusCode.Forbidden, HttpStatusCode.Forbidden, NodeSessionMcpTools.PermissionsRefusal, "\"mayAnswerPermissions\":false")]
-    [InlineData(true, """{"allow":true}""", HttpStatusCode.OK, HttpStatusCode.OK, "\"toolUseId\":\"tool-1\"", "\"mayAnswerPermissions\":true")]
-    [InlineData(true, """{"allow":true,"scope":"session"}""", HttpStatusCode.OK, HttpStatusCode.OK, "\"toolUseId\":\"tool-1\"", "\"mayAnswerPermissions\":true")]
-    [InlineData(true, """{"allow":true,"scope":"bogus"}""", HttpStatusCode.BadRequest, HttpStatusCode.OK, "invalid_request", "\"mayAnswerPermissions\":true")]
-    [InlineData(true, """{"allow":false,"scope":"session"}""", HttpStatusCode.BadRequest, HttpStatusCode.OK, "invalid_request", "\"mayAnswerPermissions\":true")]
-    public async Task AnsweringAPermission_TakesTheGrant(bool mayAnswerPermissions, string answerBody, HttpStatusCode expected, HttpStatusCode modeExpected, string answerPart, string whoamiPart)
+    [Fact]
+    public async Task AnsweringAPermission_TakesTheGrant()
+    {
+        {
+            var scenario = new SessionsEndpointsTests();
+            await scenario._AssertAnsweringAPermission_TakesTheGrantAsync(false, """{"allow":true}""", HttpStatusCode.Forbidden, HttpStatusCode.Forbidden, NodeSessionMcpTools.PermissionsRefusal, "\"mayAnswerPermissions\":false");
+        }
+        {
+            var scenario = new SessionsEndpointsTests();
+            await scenario._AssertAnsweringAPermission_TakesTheGrantAsync(true, """{"allow":true}""", HttpStatusCode.OK, HttpStatusCode.OK, "\"toolUseId\":\"tool-1\"", "\"mayAnswerPermissions\":true");
+        }
+        {
+            var scenario = new SessionsEndpointsTests();
+            await scenario._AssertAnsweringAPermission_TakesTheGrantAsync(true, """{"allow":true,"scope":"session"}""", HttpStatusCode.OK, HttpStatusCode.OK, "\"toolUseId\":\"tool-1\"", "\"mayAnswerPermissions\":true");
+        }
+        {
+            var scenario = new SessionsEndpointsTests();
+            await scenario._AssertAnsweringAPermission_TakesTheGrantAsync(true, """{"allow":true,"scope":"bogus"}""", HttpStatusCode.BadRequest, HttpStatusCode.OK, "invalid_request", "\"mayAnswerPermissions\":true");
+        }
+        {
+            var scenario = new SessionsEndpointsTests();
+            await scenario._AssertAnsweringAPermission_TakesTheGrantAsync(true, """{"allow":false,"scope":"session"}""", HttpStatusCode.BadRequest, HttpStatusCode.OK, "invalid_request", "\"mayAnswerPermissions\":true");
+        }
+    }
+
+    private async Task _AssertAnsweringAPermission_TakesTheGrantAsync(bool mayAnswerPermissions, string answerBody, HttpStatusCode expected, HttpStatusCode modeExpected, string answerPart, string whoamiPart)
     {
         await using var door = new BackendApiDoorTests._Door();
         var verifier = await door.StartAsync();
@@ -85,16 +131,44 @@ public sealed class SessionsEndpointsTests
     }
 
     // Seeing is reaching: a pane outside the key's projects is not found on any route, and no gateway call reaches it.
-    [Theory]
-    [InlineData("GET", "/api/v1/sessions/pane-out/transcript", null)]
-    [InlineData("POST", "/api/v1/sessions/pane-out/prompt", """{"text":"go"}""")]
-    [InlineData("DELETE", "/api/v1/sessions/pane-out", null)]
-    [InlineData("POST", "/api/v1/sessions/pane-out/permissions/tool-1", """{"allow":true}""")]
-    [InlineData("POST", "/api/v1/sessions/pane-out/interrupt", null)]
-    [InlineData("POST", "/api/v1/sessions/pane-out/model", """{"model":"sonnet"}""")]
-    [InlineData("POST", "/api/v1/sessions/pane-out/permission-mode", """{"mode":"acceptEdits"}""")]
-    [InlineData("POST", "/api/v1/sessions/pane-out/queue", """{"command":"submit","wireId":"queue-1","text":"go"}""")]
-    public async Task APaneOutsideTheScope_IsNotFound(string method, string path, string? body)
+    [Fact]
+    public async Task APaneOutsideTheScope_IsNotFound()
+    {
+        {
+            var scenario = new SessionsEndpointsTests();
+            await scenario._AssertAPaneOutsideTheScope_IsNotFoundAsync("GET", "/api/v1/sessions/pane-out/transcript", null);
+        }
+        {
+            var scenario = new SessionsEndpointsTests();
+            await scenario._AssertAPaneOutsideTheScope_IsNotFoundAsync("POST", "/api/v1/sessions/pane-out/prompt", """{"text":"go"}""");
+        }
+        {
+            var scenario = new SessionsEndpointsTests();
+            await scenario._AssertAPaneOutsideTheScope_IsNotFoundAsync("DELETE", "/api/v1/sessions/pane-out", null);
+        }
+        {
+            var scenario = new SessionsEndpointsTests();
+            await scenario._AssertAPaneOutsideTheScope_IsNotFoundAsync("POST", "/api/v1/sessions/pane-out/permissions/tool-1", """{"allow":true}""");
+        }
+        {
+            var scenario = new SessionsEndpointsTests();
+            await scenario._AssertAPaneOutsideTheScope_IsNotFoundAsync("POST", "/api/v1/sessions/pane-out/interrupt", null);
+        }
+        {
+            var scenario = new SessionsEndpointsTests();
+            await scenario._AssertAPaneOutsideTheScope_IsNotFoundAsync("POST", "/api/v1/sessions/pane-out/model", """{"model":"sonnet"}""");
+        }
+        {
+            var scenario = new SessionsEndpointsTests();
+            await scenario._AssertAPaneOutsideTheScope_IsNotFoundAsync("POST", "/api/v1/sessions/pane-out/permission-mode", """{"mode":"acceptEdits"}""");
+        }
+        {
+            var scenario = new SessionsEndpointsTests();
+            await scenario._AssertAPaneOutsideTheScope_IsNotFoundAsync("POST", "/api/v1/sessions/pane-out/queue", """{"command":"submit","wireId":"queue-1","text":"go"}""");
+        }
+    }
+
+    private async Task _AssertAPaneOutsideTheScope_IsNotFoundAsync(string method, string path, string? body)
     {
         await using var door = new BackendApiDoorTests._Door();
         var verifier = await door.StartAsync();
@@ -118,8 +192,7 @@ public sealed class SessionsEndpointsTests
         Assert.Empty(control.ReceivedCalls());
     }
 
-    [Fact]
-    public async Task TheSessionList_ShowsOnlyTheKeysSessions()
+    private async Task _AssertTheSessionList_ShowsOnlyTheKeysSessionsAsync()
     {
         await using var door = new BackendApiDoorTests._Door();
         var verifier = await door.StartAsync();
@@ -156,8 +229,7 @@ public sealed class SessionsEndpointsTests
 
     // Criterion 4: a prompt to the assistant over the API reaches it, is audited and leaves the assistant free; the same
     // holdsAssistant key on the MCP door does take the line.
-    [Fact]
-    public async Task APromptToTheAssistant_IsAuditedAndNeverHoldsIt_WhereTheSameKeyOnTheMcpDoorDoes()
+    private async Task _AssertAPromptToTheAssistant_IsAuditedAndNeverHoldsIt_WhereTheSameKeyOnTheMcpDoorDoesAsync()
     {
         await using var door = new BackendApiDoorTests._Door();
         var verifier = await door.StartAsync();
@@ -180,8 +252,7 @@ public sealed class SessionsEndpointsTests
     // Criterion 6 (corrected): two upserts whose seqs were drawn in one order reach the log in the other, as two threads
     // racing for its gate do. The event ids still only rise, so a resume after the last one misses nothing, and each
     // row carries its upsert's own seq and its pane in the data. A registry change is announced first.
-    [Fact]
-    public async Task TheBridge_PreservesEmissionOrder_AndKeepsRowUpsertSeqInTheData()
+    private async Task _AssertTheBridge_PreservesEmissionOrder_AndKeepsRowUpsertSeqInTheDataAsync()
     {
         var registry = new SessionRegistry();
         var log = new BackendEventLog();
