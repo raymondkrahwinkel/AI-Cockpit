@@ -79,7 +79,7 @@ internal sealed class PluginStoreSources : IPluginStoreSources, ISingletonServic
 
                     var store = PluginStoreConfig.Remote(descriptor.IndexUrl) with
                     {
-                        Signed = new PluginStoreSignedSource(descriptor.SourceKey, descriptor.Organization, descriptor.GetTokenAsync),
+                        Signed = new PluginStoreSignedSource(descriptor.SourceKey, descriptor.Organization, descriptor.CreateHandler),
                     };
                     result.Add(new PluginStoreSourceInfo(store, descriptor.Name, hidden.Contains(descriptor.SourceKey)));
                 }

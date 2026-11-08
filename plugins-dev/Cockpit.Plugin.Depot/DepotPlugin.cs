@@ -38,6 +38,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
     private Notes.Live.DepotNoteLive? _noteLive;
     private ILogger? _logger;
     private Files.DepotFileSourceProvider? _fileSources;
+    private Store.DepotPluginStoreSources? _storeSources;
 
     // A 100 MiB file on a slow link must not hit the default 100 second timeout.
     private readonly HttpClient _publishHttp = new() { Timeout = TimeSpan.FromMinutes(30) };
@@ -79,6 +80,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
         EventHandler<string> accountChanged = (_, serverName) =>
         {
             _fileSources?.NotifyChanged();
+            _ = _storeSources?.RefreshAsync();
             foreach (var connection in settings.Connections.Where(candidate => candidate.McpServerName == serverName))
             {
                 DepotProjectListingSource.Forget(host, connection);
@@ -117,6 +119,9 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
         var browser = new Browser.DepotBrowserService(host, () => settings.Connections);
         _fileSources = new Files.DepotFileSourceProvider(host, () => settings.Connections, () => _noteLive);
         _handlers.Add(host.AddFileSource(_fileSources));
+        _storeSources = new Store.DepotPluginStoreSources(host, () => settings.Connections);
+        _handlers.Add(host.AddPluginStoreSource(_storeSources));
+        _storeSources.Start();
         _HandleBrowser(host, DepotBrowserChannel.Projects, browser.ProjectsAsync);
         _HandleBrowser(host, DepotBrowserChannel.Tree, browser.TreeAsync);
         _HandleBrowser(host, DepotBrowserChannel.Read, browser.ReadAsync);
@@ -347,7 +352,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             host,
             settings,
             [.. request.Connections.Select(connection => new DepotConnectionRegistration(connection.Id, connection.Name, connection.Url, connection.SynchroniseSettings))],
-            cancellationToken, _events, () => _fileSources?.NotifyChanged()).ConfigureAwait(false);
+            cancellationToken, _events, _ConnectionsChanged).ConfigureAwait(false);
         _notes?.Refresh();
         return JsonSerializer.SerializeToElement(new DepotSaveConnectionsAnswer(true), DepotChannel.Json);
     }
@@ -384,7 +389,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             host,
             settings,
             existing is null ? [.. before, connection] : [.. before.Select(candidate => candidate.Id == existing.Id ? connection : candidate)],
-            cancellationToken, _events, () => _fileSources?.NotifyChanged()).ConfigureAwait(false);
+            cancellationToken, _events, _ConnectionsChanged).ConfigureAwait(false);
 
         var outcome = await host.SignInMcpServerWithGrantAsync(
             connection.McpServerName,
@@ -396,7 +401,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             return _InstallTokenAnswer(true, "Signed in.");
         }
 
-        await WriteConnectionsAsync(host, settings, before, cancellationToken, _events, () => _fileSources?.NotifyChanged()).ConfigureAwait(false);
+        await WriteConnectionsAsync(host, settings, before, cancellationToken, _events, _ConnectionsChanged).ConfigureAwait(false);
         return _InstallTokenAnswer(false, outcome switch
         {
             PluginMcpSignInOutcome.Declined => InvalidInstallTokenMessage,
@@ -407,6 +412,12 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
 
     private static JsonElement _InstallTokenAnswer(bool success, string message) =>
         JsonSerializer.SerializeToElement(new DepotInstallTokenAnswer(success, message), DepotChannel.Json);
+
+    private void _ConnectionsChanged()
+    {
+        _fileSources?.NotifyChanged();
+        _ = _storeSources?.RefreshAsync();
+    }
 
     // The write both channel actions share: storage first, then the registries diffed against what was there.
     internal static async Task WriteConnectionsAsync(
@@ -609,6 +620,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
     {
         _stopWatchingAccounts?.Invoke();
         _fileSources?.NotifyChanged();
+        _storeSources?.Dispose();
         foreach (var handler in _handlers)
         {
             handler.Dispose();

@@ -19,7 +19,7 @@ public sealed class PluginPublisherWarningTests
         var plugin = new DiscoveredPlugin("unused", "acme", manifest, "pin", PluginLoadDecision.Load);
         var store = PluginStoreConfig.Remote("https://depot.example/cockpit/stores/acme/index.json") with
         {
-            Signed = new PluginStoreSignedSource("depot:depot.example/acme", "acme", _ => ValueTask.FromResult<string?>(null)),
+            Signed = new PluginStoreSignedSource("depot:depot.example/acme", "acme", () => new HttpClientHandler()),
         };
         var sources = Substitute.For<IPluginStoreSources>();
         sources.LoadAsync(Arg.Any<CancellationToken>()).Returns(new[] { new PluginStoreSourceInfo(store) });

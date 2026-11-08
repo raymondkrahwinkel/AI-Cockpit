@@ -1,9 +1,9 @@
 namespace Cockpit.Plugins.Abstractions.Plugins;
 
-/// <summary>A stable source identity and its current location, organization and request-time credential.</summary>
+/// <summary>A stable source identity, its location and organization, and a handler that signs in each request; the credential never leaves the host.</summary>
 public sealed record PluginStoreSourceDescriptor(
     string SourceKey,
     string Name,
     string IndexUrl,
     string Organization,
-    Func<CancellationToken, ValueTask<string?>> GetTokenAsync);
+    Func<HttpMessageHandler> CreateHandler);

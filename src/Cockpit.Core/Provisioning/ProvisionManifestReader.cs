@@ -36,7 +36,7 @@ public static partial class ProvisionManifestReader
 
     private static readonly string[] IssuerKinds = ["depot", "static"];
 
-    private static readonly string[] StoreAuth = ["none", "token-required"];
+    private static readonly string[] StoreAuth = ["none", "token-required", "depot"];
 
     private static readonly JsonSerializerOptions Options = new()
     {

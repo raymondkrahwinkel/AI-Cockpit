@@ -81,7 +81,7 @@ public class PluginStoreClientRemoteAuthTests : IAsyncLifetime
         var token = "first";
         var store = PluginStoreConfig.Remote($"{_prefix}mystore/index.json") with
         {
-            Signed = new PluginStoreSignedSource("test:store", "acme", _ => ValueTask.FromResult<string?>(token)),
+            Signed = new PluginStoreSignedSource("test:store", "acme", () => new _BearerHandler(() => token)),
         };
         IPluginStoreClient client = _client;
 
@@ -133,6 +133,15 @@ public class PluginStoreClientRemoteAuthTests : IAsyncLifetime
             return;
         }
         await context.Response.WriteAsync(_indexJson);
+    }
+
+    private sealed class _BearerHandler(Func<string> token) : DelegatingHandler(new HttpClientHandler())
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            request.Headers.Authorization = new("Bearer", token());
+            return base.SendAsync(request, cancellationToken);
+        }
     }
 
     public async Task DisposeAsync()
