@@ -112,6 +112,10 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     // Raised when the dialog should close: the result carries the confirmed choices, or null on cancel.
     public event Action<NewSessionResult?>? CloseRequested;
 
+    public RolePickerViewModel RolePicker { get; } = new();
+    private readonly Cockpit.Infrastructure.Sessions.SessionRoleResolver? _roles;
+    public Task RoleLoad { get; private set; } = Task.CompletedTask;
+
     // Raised when the operator wants to manage profiles; the host opens the Manage-profiles dialog and reloads.
     public event Action? ManageProfilesRequested;
 
@@ -577,9 +581,11 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         IMcpOAuthCoordinator? oauthCoordinator = null,
         ISessionLoginFlows? loginFlows = null,
         IShellAccessSwitch? shellAccessSwitch = null,
-        IOrgPolicy? orgPolicy = null)
+        IOrgPolicy? orgPolicy = null,
+        Cockpit.Infrastructure.Sessions.SessionRoleResolver? roles = null)
     {
         _orgPolicyReader = orgPolicy;
+        _roles = roles;
         _shellAccessSwitch = shellAccessSwitch;
         _projectStore = projectStore;
         _memorySources = plugins?.MemorySources;
@@ -776,6 +782,8 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     partial void OnSelectedProjectChanged(Project? value)
     {
         OnPropertyChanged(nameof(SelectedProjectDescription));
+        RolePicker.Restore(null);
+        RoleLoad = RolePicker.LoadAsync(_roles, value, SelectedProfile);
 
         // AC-938: the quick-pick's project-repository rows depend on which project is selected, so a project
         // switch rebuilds it — a no-op (same Clone-from-URL entry, same history) for a project with zero or one
@@ -1077,6 +1085,8 @@ public partial class NewSessionDialogViewModel : ViewModelBase
 
     partial void OnSelectedProfileChanged(SessionProfile? value)
     {
+        RolePicker.Restore(null);
+        RoleLoad = RolePicker.LoadAsync(_roles, SelectedProject, value);
         OnPropertyChanged(nameof(SelectedProfileRefusal));
         // The generic login checker gates whichever provider declares a login; a profile whose provider has no
         // gate (or a profile-less/local session) reports logged in, so gating never falsely blocks it.
@@ -1408,6 +1418,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
             // A name we filled in from the project is the cockpit's, not the operator's — so it stays open to a ticket
             // link relabelling it later, exactly as the quick-start's own composed name does (#AC-310/#AC-324).
             NameIsComposed = !_sessionNameTouched,
+            Role = RolePicker.Selected?.Reference,
         });
     }
 

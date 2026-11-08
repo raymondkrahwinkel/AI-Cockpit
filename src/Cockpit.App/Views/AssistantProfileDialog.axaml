@@ -98,6 +98,14 @@
                         <controls:BrainPicker DataContext="{Binding BrainPicker}"/>
                     </StackPanel>
 
+                <StackPanel Spacing="4" IsVisible="{Binding $parent[Window].((vm:AssistantProfileDialogViewModel)DataContext).RolePicker.IsAvailable}">
+                    <TextBlock Text="Role" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                    <ComboBox ItemsSource="{Binding $parent[Window].((vm:AssistantProfileDialogViewModel)DataContext).RolePicker.Choices}" SelectedItem="{Binding $parent[Window].((vm:AssistantProfileDialogViewModel)DataContext).RolePicker.Selected}"
+                              DisplayMemberBinding="{Binding Name, DataType=vm:BrainChoice}" HorizontalAlignment="Stretch"/>
+                    <TextBlock Text="{Binding $parent[Window].((vm:AssistantProfileDialogViewModel)DataContext).RolePicker.Selected.Detail}" TextWrapping="Wrap" FontSize="11"
+                               Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                </StackPanel>
+
                     <!-- AC-594: this is added to AssistantSystemPrompt.Default, not put in its place. Replacing it
                          outright is the checkbox below, because that default carries the language rule, the
                          speak-don't-write rule, the honesty clause and the permission paragraph. -->

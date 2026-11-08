@@ -644,3 +644,5 @@ unless `COCKPIT_STATE_ROOT` overrides it), copy `cockpit.json` to a private back
 and pair again. The older panel may still incorrectly label standalone as leader. Do not restore
 the old membership log after pairing. This manual recovery keeps old node connections and keys;
 the reset action in the fixed build also revokes swarm access.
+
+`AssistantProfile.AssistantRole` stores the assistant's optional role separately from its provider profile. It is included in the settings carrier; projects remain machine-local. The Assistant Profile dialog stages this value until Save and applies it on the next assistant start. It is not an Options field, so `OptionsStaging` does not track it.

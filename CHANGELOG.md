@@ -3,6 +3,7 @@
 ## Unreleased
 
 - AC-2173: every session receives the pull request merge rule automatically; assistant briefs no longer repeat the standing work agreements.
+- AC-2172: choose an optional role when starting a session or editing the Assistant Profile. The assistant keeps its role across provider changes and starts with a warning if the role cannot be loaded.
 
 - AC-2171: the assistant explicitly chooses a role or none when starting sessions, including on paired nodes. Role refusals show the available choices; manual server starts and delegated tasks keep roles optional.
 

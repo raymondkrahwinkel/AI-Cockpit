@@ -33,6 +33,9 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
     private readonly IReadOnlyList<SessionProviderOption> _providers;
     private readonly AssistantProfileSetup? _setup;
     private readonly bool _canChooseProvider = true;
+    private readonly Cockpit.Infrastructure.Sessions.SessionRoleResolver? _roles;
+    public RolePickerViewModel RolePicker { get; } = new();
+    public Task RoleLoad { get; private set; } = Task.CompletedTask;
 
     private IReadOnlyList<string> _availableMcpServerNames = [];
 
@@ -154,10 +157,12 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
         ITtySessionProviderResolver? ttyProviderResolver = null,
         IPluginProviderConfigViews? pluginConfigViews = null,
         AssistantProfileSetup? setup = null,
-        bool canChooseProvider = true)
+        bool canChooseProvider = true,
+        Cockpit.Infrastructure.Sessions.SessionRoleResolver? roles = null)
     {
         _setup = setup;
         _canChooseProvider = canChooseProvider;
+        _roles = roles;
         _pluginConfigViews = pluginConfigViews;
         _slotStore = slotStore;
         _sessionProfileStore = sessionProfileStore;
@@ -204,6 +209,8 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
             // not an error. Its own display name is the starting label — the assistant is what it is for.
             Profile = _Editable(slot.Profile ?? _EmptyProfile(_setup?.PreferredProvider));
             ReplacesStandingInstruction = slot.ReplacesStandingInstruction;
+            RolePicker.Restore(slot.AssistantRole);
+            RoleLoad = _LoadRolesAsync(Profile.ToProfile());
             StatusMessage = slot.Profile is null ? slot.UnsetReason ?? string.Empty : string.Empty;
         }
     }
@@ -284,7 +291,7 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
         // stays switchable between Claude, Codex and a local model (AC-543).
         try
         {
-            await _slotStore.RepointAsync(Profile.ToProfile(), ReplacesStandingInstruction, cancellationToken).ConfigureAwait(true);
+            await _slotStore.RepointAsync(Profile.ToProfile(), ReplacesStandingInstruction, cancellationToken, RolePicker.Selected?.Reference).ConfigureAwait(true);
         }
         catch (UnauthorizedAccessException exception)
         {
@@ -339,12 +346,20 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
     partial void OnProfileChanged(EditableProfileViewModel value)
     {
         value.PropertyChanged += _OnProfilePropertyChanged;
+        RoleLoad = _LoadRolesAsync(value.ToProfile());
         OnPropertyChanged(nameof(CanSetUpLater));
         OnPropertyChanged(nameof(ShowSave));
     }
 
+    private Task _LoadRolesAsync(SessionProfile profile) => RolePicker.LoadAsync(_roles, null, profile,
+        _slotStore is ServerAssistantSlotStore remote ? remote.ListRolesAsync : null);
+
     private void _OnProfilePropertyChanged(object? sender, PropertyChangedEventArgs args)
     {
+        if (args.PropertyName == nameof(EditableProfileViewModel.Assistant))
+        {
+            RoleLoad = _LoadRolesAsync(Profile.ToProfile());
+        }
         if (args.PropertyName is nameof(EditableProfileViewModel.SelectedProvider) or nameof(EditableProfileViewModel.PluginConfigView))
         {
             OnPropertyChanged(nameof(CanSetUpLater));

@@ -19,6 +19,8 @@ internal sealed class AssistantProfileEntry
     // Whether the record's system prompt replaces the built-in standing instruction (AC-594); absent reads as false, which is "add to it".
     public bool? ReplacesStandingInstruction { get; set; }
 
+    public string? AssistantRole { get; set; }
+
     public static AssistantProfileEntry FromDomain(AssistantProfileSlot slot) => new()
     {
         Profile = slot.Profile is null ? null : SessionProfileEntry.FromDomain(slot.Profile),
@@ -26,9 +28,10 @@ internal sealed class AssistantProfileEntry
         // an explanation for its absence, and whichever a later reader believed would be the wrong one.
         UnsetReason = slot.Profile is null ? slot.UnsetReason ?? NoRecordYetReason : null,
         ReplacesStandingInstruction = slot.ReplacesStandingInstruction,
+        AssistantRole = slot.AssistantRole,
     };
 
     public AssistantProfileSlot ToDomain() => Profile is { } profile
-        ? new AssistantProfileSlot(profile.ToDomain(), null, ReplacesStandingInstruction ?? false)
+        ? new AssistantProfileSlot(profile.ToDomain(), null, ReplacesStandingInstruction ?? false, AssistantRole)
         : new AssistantProfileSlot(null, string.IsNullOrWhiteSpace(UnsetReason) ? NoRecordYetReason : UnsetReason);
 }
