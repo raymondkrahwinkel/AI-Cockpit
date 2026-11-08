@@ -864,6 +864,17 @@ public class PluginBackendHost(
         }
     }
 
+    // Own servers only, like sign-out: another plugin's sessions are never this plugin's to reconnect.
+    public Task RefreshMcpServerAsync(string name, CancellationToken cancellationToken = default)
+    {
+        if (_OwnMcpServerContributions().Any(server => string.Equals(server.Name, name, StringComparison.Ordinal)))
+        {
+            services.GetService<IMcpToolProvider>()?.RefreshServer(name);
+        }
+
+        return Task.CompletedTask;
+    }
+
     // AC-1511: the same server lookup as SignInMcpServerAsync, then a grant redeemed without a browser. The plugin
     // hands over the grant's parameters and gets an outcome back, never a token.
     public async Task<PluginMcpSignInOutcome> SignInMcpServerWithGrantAsync(

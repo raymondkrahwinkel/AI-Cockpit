@@ -334,6 +334,16 @@ public interface ICockpitHost
     Task SignOutMcpServerAsync(string name, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
     /// <summary>
+    /// Has every live session that mounted the MCP server this plugin contributed under <paramref name="name"/> ask
+    /// it for <c>tools/list</c> again and tell its agent the list changed, without a restart.
+    /// </summary>
+    /// <remarks>
+    /// For a server that never sends <c>tools/list_changed</c> itself, such as a stateless one whose tools changed
+    /// after an authorization elsewhere. Only this plugin's own servers; the default is a no-op.
+    /// </remarks>
+    Task RefreshMcpServerAsync(string name, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    /// <summary>
     /// Calls <paramref name="toolName"/> on the MCP server this plugin contributed under <paramref name="name"/>
     /// via <see cref="AddMcpServer"/> — on the app's own behalf, not a session's (AC-502), before any session
     /// exists.
