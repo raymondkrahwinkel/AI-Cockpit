@@ -390,6 +390,7 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
             return;
         }
 
+        var sent = MentionPicker.ExpandMentions(InputText).Trim();
         InputText = string.Empty;
         var remoteSession = IsFollowingLeader ? Session : null;
         var attachments = remoteSession?.PendingAttachments.ToArray() ?? [];
@@ -401,11 +402,11 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
         {
             if (remoteSession is null)
             {
-                await _host.SendAsync(text);
+                await _host.SendAsync(sent);
             }
             else
             {
-                await _host.SendAsync(text, attachments.Select(attachment => attachment.PngBytes).ToArray());
+                await _host.SendAsync(sent, attachments.Select(attachment => attachment.PngBytes).ToArray());
                 foreach (var attachment in attachments)
                 {
                     remoteSession.PendingAttachments.Remove(attachment);

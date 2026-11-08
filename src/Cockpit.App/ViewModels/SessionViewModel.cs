@@ -1700,11 +1700,12 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
         var text = InputText;
         var replyTo = PendingReplyTo;
+        var sent = MentionPicker.ExpandMentions(text);
         InputText = string.Empty;
         PendingReplyTo = null;
         try
         {
-            await _remoteControl.SendPromptAsync(BuildOutgoingText(text, replyTo)).ConfigureAwait(true);
+            await _remoteControl.SendPromptAsync(BuildOutgoingText(sent, replyTo)).ConfigureAwait(true);
         }
         catch (Exception exception)
         {
@@ -2495,7 +2496,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         var replyTo = PendingReplyTo;
 
         var attachments = PendingAttachments.ToArray();
-        var prompt = new QueuedPrompt(text, images, replyTo?.Id);
+        var prompt = new QueuedPrompt(MentionPicker.ExpandMentions(text), images, replyTo?.Id);
         _submittingPrompt = prompt;
         _submissionFailed = false;
         try

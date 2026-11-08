@@ -25,7 +25,7 @@
                        HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"
                        Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
 
-            <Border Padding="14,12,12,10" Background="{DynamicResource CockpitPanelBgBrush}"
+            <Border x:Name="HomeComposerBorder" Padding="14,12,12,10" Background="{DynamicResource CockpitPanelBgBrush}"
                     BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
                     CornerRadius="{StaticResource CockpitPanelRadius}">
                 <StackPanel Spacing="8">
@@ -52,10 +52,16 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
                     <!-- The dictation key, not F10: F10 talks to the assistant, and this box is not the assistant. -->
-                    <TextBox x:Name="HomeInput" Text="{Binding SimpleHome.InputText}" AcceptsReturn="True" TextWrapping="Wrap"
-                             MinHeight="48" MaxHeight="160" VerticalContentAlignment="Top" Padding="0,2,0,0"
-                             Background="Transparent" BorderThickness="0"
-                             PlaceholderText="{Binding VoicePushToTalkKeyName, StringFormat='Ask something or describe what needs doing — or hold {0} to dictate…'}"/>
+                    <Grid>
+                        <TextBox x:Name="HomeInput" Text="{Binding SimpleHome.InputText}" AcceptsReturn="True" TextWrapping="Wrap"
+                                 MinHeight="48" MaxHeight="160" VerticalContentAlignment="Top" Padding="0,2,0,0"
+                                 Background="Transparent" BorderThickness="0" ToolTip.Tip="{Binding SimpleHome.MentionNote}"
+                                 PlaceholderText="{Binding VoicePushToTalkKeyName, StringFormat='Ask something or describe what needs doing — or hold {0} to dictate…'}"/>
+                        <controls:MentionTokenOverlay Input="{Binding #HomeInput}" Picker="{Binding SimpleHome.MentionPicker}"/>
+                        <controls:MentionPopup x:Name="HomeMentionPopup" DataContext="{Binding SimpleHome.MentionPicker}"
+                                               Input="{Binding #HomeInput}" Frame="{Binding #HomeComposerBorder}"
+                                               EmptyActionText="Choose folder…"/>
+                    </Grid>
                     <DockPanel>
                         <Button x:Name="HomeSendButton" DockPanel.Dock="Right" Content="Send" Classes="Accent" Margin="8,0,0,0"
                                 Padding="16,6" VerticalAlignment="Center" Command="{Binding SimpleHome.SendCommand}"/>

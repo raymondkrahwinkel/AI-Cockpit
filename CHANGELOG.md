@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2199: typing @ on Home picks the project the button shows (and removing it clears the button again); every other project mention goes into the prompt with its path or shared id, and the list now works the same on Home, in sessions and in the assistant panel, where on a narrow panel the activity moves under the title instead of cutting it off.
+
 - AC-2200: plugins can add their own suggestions to the chat's @-list under "Suggested by plugins"; a plugin source that fails or takes longer than two seconds is left out without holding up the rest.
 - AC-2198: typing @ in a chat composer opens one shared list that hangs on the caret line at the composer's full width, groups files and projects per window, skips group headings with the arrow keys, and marks accepted project mentions in the text.
 

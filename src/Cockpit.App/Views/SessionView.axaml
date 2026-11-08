@@ -518,7 +518,7 @@
                     <TextBox x:Name="InputBox" Text="{Binding InputText}" IsEnabled="{Binding IsInputEnabled}"
                              Classes.simpleReply="{Binding IsShownInSimpleStand}"
                              AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="120" VerticalContentAlignment="Top"/>
-                    <controls:MentionTokenOverlay Input="{Binding #InputBox}" Picker="{Binding MentionPicker}" FillsFirstToken="False"/>
+                    <controls:MentionTokenOverlay Input="{Binding #InputBox}" Picker="{Binding MentionPicker}"/>
                 </Grid>
                 <controls:MentionPopup DataContext="{Binding MentionPicker}" Input="{Binding #InputBox}" Frame="{Binding #ComposerBorder}"/>
             </DockPanel>

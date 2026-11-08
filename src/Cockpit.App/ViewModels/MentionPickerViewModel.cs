@@ -40,6 +40,13 @@ public partial class MentionPickerViewModel : ViewModelBase
     [ObservableProperty]
     private MentionToken? _firstProjectToken;
 
+    // The project token that sets the window's project: the first one, when the window says its item can. Null elsewhere.
+    [ObservableProperty]
+    private MentionToken? _contextToken;
+
+    // Set by a window where the first project token chooses the project (Home); the rest keep every token a mention.
+    public Func<MentionItem, bool>? CanSetContext { get; init; }
+
     // Flat list: a heading row precedes the rows of its group.
     public ObservableCollection<MentionMatch> Matches { get; } = [];
 
@@ -120,7 +127,20 @@ public partial class MentionPickerViewModel : ViewModelBase
         {
             Tokens = found;
             FirstProjectToken = found.FirstOrDefault(token => token.Item.Kind == MentionKind.Project);
+            ContextToken = FirstProjectToken is { } first && CanSetContext?.Invoke(first.Item) == true ? first : null;
         }
+    }
+
+    // The text as it goes to the model: every mention except the context token gains its path or shared id after the name.
+    public string ExpandMentions(string text)
+    {
+        SyncTokens(text);
+        foreach (var token in Tokens.Where(token => token.Item.Kind != MentionKind.File && token != ContextToken && token.Item.Reference is not null).Reverse())
+        {
+            text = text.Insert(token.Start + token.Length, $" ({token.Item.Reference})");
+        }
+
+        return text;
     }
 
     // Moves the selection over the item rows only; the headings are skipped.
