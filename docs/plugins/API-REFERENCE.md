@@ -787,6 +787,8 @@ public interface ICompanionToolContext
     ICockpitSessionObserver SelectedSession { get; } // same read/observe surface as host.Sessions
     IPluginStorage Storage { get; }                  // scoped to this tool's own id
     event EventHandler RefreshRequested;             // the host asking this tool to refresh
+    SideMenuButtonBadge Badge { get; }               // the badge on this tool's strip button, empty by default
+    void RequestPopOut();                            // ask the host to open this tool's pop-out
 }
 ```
 - `SelectedSession` — the same selection-following surface as
@@ -797,6 +799,12 @@ public interface ICompanionToolContext
   and never collides with a sibling tool's.
 - `RefreshRequested` — raised when the host asks this tool to refresh. A tool polling on its own timer can
   ignore it; one showing a snapshot should re-read.
+- `Badge` — the same [`SideMenuButtonBadge`](#sidemenu-badge) the left menu uses, one per tool. Set
+  `Text` and `Tone` when the count changes; empty means no badge. The host follows `Changed` from any thread.
+  SDK 3.75.0, requires host 0.165.0.
+- `RequestPopOut()` — asks the host to open this tool's pop-out without taking focus. With no room, or with
+  the tool hidden from the strip, it does nothing and the host tells the user once. SDK 3.75.0, requires host
+  0.165.0.
 
 ### `void AddWorkspaceType(WorkspaceTypeRegistration registration)` {#void-addworkspacetypeworkspacetyperegistration-registration}
 Registers a **full-surface workspace type** — the workspace equivalent of `AddWidget`, one level up. Where a
