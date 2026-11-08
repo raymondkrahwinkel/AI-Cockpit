@@ -9,6 +9,12 @@
 
 - AC-2170: sessions can carry an optional role from their brain on every provider route, keep that choice when copied or resumed, and resume with a warning if the role source is unavailable. Older memory plugins and servers continue to work without roles.
 
+- AC-2188: queued test runs start strictly in arrival order, without pre-merge priority or aging.
+
+- AC-2189: inbox messages from other sessions now start collapsed to their header in the transcript, and run results keep a coloured one-line verdict; the toggle opens the full text.
+- Centre the Simple/Panels switch on the main window's title bar, keeping it available down to the window's minimum width.
+- Move the Simple/Panels switch to the title bar in both views and remove the Simple rail's More options shortcut.
+- Keep connected sessions' MCP counts and status buttons current after live server or connection-issue changes, preserving other session statuses.
 - AC-2187: the assistant can tell which session you have selected: `list_sessions` marks it, following the Simple stand's own selection when that stand is showing.
 - AC-2100: display relative Depot note images in Markdown file previews and editors without rewriting their source.
 

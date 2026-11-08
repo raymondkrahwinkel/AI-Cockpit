@@ -29,6 +29,7 @@ public sealed class HeavyRunQueue : ISessionRunActivities, ISupervisedActivitySo
     private readonly ILogger<HeavyRunQueue> _logger;
     private HeavyRunSettings _settings = new();
     private bool _settingsLoaded;
+    private long _arrivalSequence;
     private Slot? _maintenance;
 
     public HeavyRunQueue(
@@ -66,6 +67,7 @@ public sealed class HeavyRunQueue : ISessionRunActivities, ISupervisedActivitySo
             }
             else
             {
+                slot.ArrivalSequence = ++_arrivalSequence;
                 _waiting.Add(slot);
             }
         }
@@ -334,13 +336,12 @@ public sealed class HeavyRunQueue : ISessionRunActivities, ISupervisedActivitySo
 
                 var candidates = _waiting.Select(slot => new HeavyRunCandidate(
                     slot.Request.Kind.ToString().ToLowerInvariant(),
-                    slot.Request.Purpose == HeavyRunPurpose.PreMerge,
-                    slot.EnqueuedAt,
+                    slot.ArrivalSequence,
                     _costs.Get(slot.CostKey),
                     slot.FreeDiskBytes)).ToList();
                 var diskReason = _CriticalDiskReason(_Ordered()[0].Request.WorkingDirectory);
                 var decision = diskReason is null
-                    ? HeavyRunAdmission.Next(candidates, _Projected(now), _settings, _running.Count, now)
+                    ? HeavyRunAdmission.Next(candidates, _Projected(now), _settings, _running.Count)
                     : new HeavyRunDecision(null, diskReason);
                 if (decision.Admit is not { } index)
                 {
@@ -408,9 +409,7 @@ public sealed class HeavyRunQueue : ISessionRunActivities, ISupervisedActivitySo
     private List<Slot> _Ordered()
     {
         var order = HeavyRunAdmission.Order(
-            [.. _waiting.Select(slot => new HeavyRunCandidate(string.Empty, slot.Request.Purpose == HeavyRunPurpose.PreMerge, slot.EnqueuedAt, null, null))],
-            _settings,
-            DateTimeOffset.UtcNow);
+            [.. _waiting.Select(slot => new HeavyRunCandidate(string.Empty, slot.ArrivalSequence, null, null))]);
         return [.. order.Select(index => _waiting[index])];
     }
 
@@ -551,6 +550,8 @@ public sealed class HeavyRunQueue : ISessionRunActivities, ISupervisedActivitySo
         public HeavyRunRequest Request { get; } = request;
 
         public DateTimeOffset EnqueuedAt { get; } = enqueuedAt;
+
+        public long ArrivalSequence { get; set; }
 
         public string CostKey { get; } = costKey;
 
