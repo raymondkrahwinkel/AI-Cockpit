@@ -47,7 +47,8 @@ internal sealed partial class AssistantAgentGateway(
     IMcpOAuthTokenStore? oauthTokens = null,
     IWorkspaceAgentCoordinator? agentCoordinator = null,
     ProfileSessionLimit? sessionLimit = null,
-    Cockpit.Core.Sessions.SessionMcpMounts? mcpMounts = null) : IAssistantAgentGateway, ISingletonService
+    Cockpit.Core.Sessions.SessionMcpMounts? mcpMounts = null,
+    SessionRoleResolver? roles = null) : IAssistantAgentGateway, ISingletonService
 {
     private static readonly StringComparison _PathComparison =
         OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
@@ -184,6 +185,22 @@ internal sealed partial class AssistantAgentGateway(
                 project?.Id, string.Join(", ", requestedServers), string.Join(", ", outsideProject));
         }
 
+        var roleList = await (roles ?? new SessionRoleResolver()).ListAsync(project, profile, cancellationToken).ConfigureAwait(false);
+        var role = request.Role?.Trim();
+        var withoutRole = string.IsNullOrWhiteSpace(role) || string.Equals(role, "none", StringComparison.OrdinalIgnoreCase);
+        var knownRole = roleList.Roles.FirstOrDefault(candidate => string.Equals(candidate.Name, role, StringComparison.OrdinalIgnoreCase));
+        var missingRequiredChoice = request.RoleChoiceRequired && roleList.Roles.Count > 0 && string.IsNullOrWhiteSpace(role);
+        if ((!withoutRole && knownRole is null) || missingRequiredChoice)
+        {
+            var choices = string.Join("; ", roleList.Roles.Select(candidate => $"{candidate.Name}: {candidate.Description}"));
+            var reason = roleList.Outcome == RoleSourceOutcome.Unavailable
+                ? "The role list is unavailable; use role: none to start without a role."
+                : roleList.Roles.Count == 0
+                    ? "This session's brain has no roles to load. Use none to start without a role."
+                    : $"Choose a role or explicit none. Available roles: {choices}. Use none to start without a role.";
+            return await _RefuseSpawnAsync(request, workspace.Name, reason, cancellationToken).ConfigureAwait(false);
+        }
+
         var started = await launcher.StartSessionAsync(new SessionLaunchRequest(
             workspace.Id, profile, request.Prompt, request.WorkingDirectory, request.SessionName, requestedKind,
             launchOptions, request.IsolateInWorktree, project?.Id,
@@ -191,6 +208,7 @@ internal sealed partial class AssistantAgentGateway(
             // back out of the spawn trail later — a trail records what happened, not what is still true.
             StartedByTheAssistant: request.Target.Caller == SpawnCaller.Assistant)
         {
+            Role = knownRole?.Name,
             EnabledMcpServerNames = request.McpServers is null ? null : new ExactMcpServerSelection(request.McpServers) { AssistantManaged = request.Target.Caller == SpawnCaller.Assistant },
             McpServersOverride = request.McpServers,
         }).ConfigureAwait(false);
@@ -200,6 +218,11 @@ internal sealed partial class AssistantAgentGateway(
         {
             return await _RefuseSpawnAsync(request, workspace.Name,
                 $"worktree isolation failed for '{decision.WorkingDirectory}': {decision.Reason}", cancellationToken).ConfigureAwait(false);
+        }
+
+        if (started?.FailureReason is { } failure)
+        {
+            return await _RefuseSpawnAsync(request, workspace.Name, failure, cancellationToken).ConfigureAwait(false);
         }
 
         if (started is not { } pane)
@@ -230,11 +253,14 @@ internal sealed partial class AssistantAgentGateway(
             Refusal: null,
             ProjectId: project?.Id,
             McpServers: request.McpServers,
-            McpServersOutsideProject: outsideProject), cancellationToken).ConfigureAwait(false);
+            McpServersOutsideProject: outsideProject,
+            Role: knownRole?.Name ?? role), cancellationToken).ConfigureAwait(false);
 
         var mcpReport = mcpMounts?.ConnectionReport(pane.PaneId);
         return AgentSpawnResult.Started(pane.PaneId, pane.Name, request.WorkingDirectory, pane.PromptDelivered, resolvedProfileLabel: profile.Label) with
         {
+            Role = knownRole?.Name ?? (withoutRole ? role : null),
+            RoleList = roleList.Outcome == RoleSourceOutcome.Unavailable ? "unavailable" : null,
             McpServers = mcpReport?.ConnectedServerNames,
             McpServersConfirmed = mcpReport is not null,
         };
@@ -686,7 +712,8 @@ internal sealed partial class AssistantAgentGateway(
             SessionName: null,
             reason,
             ProjectId: request.ProjectId,
-            McpServers: request.McpServers), cancellationToken).ConfigureAwait(false);
+            McpServers: request.McpServers,
+            Role: request.Role), cancellationToken).ConfigureAwait(false);
 
         return AgentSpawnResult.Refused(reason);
     }

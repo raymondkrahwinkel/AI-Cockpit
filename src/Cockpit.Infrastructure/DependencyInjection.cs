@@ -36,6 +36,7 @@ public static class DependencyInjection
         // service back through ICockpitInternalMcpProvider, and injecting it directly closes a construction cycle
         // that deadlocks the container instead of being reported.
         services.AddSingleton<Func<IMcpServerCatalog?>>(provider => provider.GetService<IMcpServerCatalog>);
+        services.AddSingleton<Func<SessionStartComposer>>(provider => provider.GetRequiredService<SessionStartComposer>);
         services.AddSingleton(provider => new Assistant.LocalTextModelClient(
             provider.GetRequiredService<Cockpit.Core.Abstractions.Profiles.ISessionProfileStore>(),
             new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false })

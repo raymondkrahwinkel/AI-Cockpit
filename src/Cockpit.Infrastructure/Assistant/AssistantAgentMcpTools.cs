@@ -177,7 +177,7 @@ internal sealed class AssistantAgentMcpTools(
         "This tool is the cockpit assistant's own. It is not available to an agent session.";
 
     [McpServerTool(Name = "start_agent", ReadOnly = false, Destructive = false)]
-    [Description("Starts an AI session and returns its paneId, resolvedProfile, promptDelivered, mcpServers and mcpServersConfirmed. Locally, workspaceId from list_workspaces is required; profile is required unless projectId supplies a default. Unknown profiles or projects are refused. projectId applies the project's folder, profile default, isolation, prompt, resources and MCP selection. options changes only named provider keys; unknown keys or values are refused. Permission-mode is never overridable, nor Codex sandbox or approval-policy. isolate:false is always refused; omitted inherits project isolation. On a paired node, use its name from list_sessions and fetch its catalog through list_profiles/list_projects or list_sessions(includeNodeCatalog:true). Only profile (required), projectId, prompt and name travel; workspaceId, workingDirectory, kind, options and isolate are refused. Node grants restrict profiles/projects. Node paneIds are addressed as \"<node> · <paneId>\". An omitted node with a projectId also seen on a node is refused using cached snapshots; node:\"local\" selects this machine explicitly. Unread nodes cannot be detected by that check. promptDelivered:false means queued for automatic delivery exactly once: never retry the start or resend that prompt. null means no prompt was supplied. mcpServersConfirmed:false means the route has not reported its MCP set yet; use get_session_mcp_set to read it later. Use add_session_mcp_server to add a server to a running local session without restarting. Delegated tasks have no pane and cannot be started here.")]
+    [Description("Starts an AI session and returns its paneId, resolvedProfile, promptDelivered, mcpServers and mcpServersConfirmed. Locally, workspaceId from list_workspaces is required; profile is required unless projectId supplies a default. Unknown profiles or projects are refused. projectId applies the project's folder, profile default, isolation, prompt, resources and MCP selection. options changes only named provider keys; unknown keys or values are refused. Permission-mode is never overridable, nor Codex sandbox or approval-policy. isolate:false is always refused; omitted inherits project isolation. On a paired node, use its name from list_sessions and fetch its catalog through list_profiles/list_projects or list_sessions(includeNodeCatalog:true). Only profile (required), projectId, prompt, name and role travel; workspaceId, workingDirectory, kind, options and isolate are refused. Node grants restrict profiles/projects. Node paneIds are addressed as \"<node> · <paneId>\". An omitted node with a projectId also seen on a node is refused using cached snapshots; node:\"local\" selects this machine explicitly. Unread nodes cannot be detected by that check. promptDelivered:false means queued for automatic delivery exactly once: never retry the start or resend that prompt. null means no prompt was supplied. mcpServersConfirmed:false means the route has not reported its MCP set yet; use get_session_mcp_set to read it later. Use add_session_mcp_server to add a server to a running local session without restarting. Delegated tasks have no pane and cannot be started here.")]
     public async Task<string> StartAgentAsync(
         [Description("The desk id from list_workspaces or list_sessions, never its tab label. Required locally and refused on a node.")] string? workspaceId = null,
         [Description("An exact profile label from list_profiles. Overrides the project's default; required when no project default exists. Unknown labels are refused. The result reports resolvedProfile.")] string? profile = null,
@@ -188,8 +188,9 @@ internal sealed class AssistantAgentMcpTools(
         [Description("The route: tty for the provider terminal or sdk for chat. Omitted, uses the profile route. Refused on nodes.")] string? kind = null,
         [Description("Overrides only named keys from the profile's Options in list_profiles. Unknown keys/values, permission-mode, sandbox and approval-policy are refused. Omitted keys retain profile values. Refused on nodes.")] Dictionary<string, string>? options = null,
         [Description("true requests a git worktree; omitted inherits project isolation, otherwise unisolated. false is always refused. Refused on nodes.")] bool? isolate = null,
-        [Description("An exact paired-node name from list_sessions, or local to select this machine explicitly. Omitted means local unless projectId is ambiguous with a cached node project. Nodes accept only profile, projectId, prompt and name.")] string? node = null,
-        [Description("Exact MCP server names for this session, overriding project and profile selection. Any registered server may be named, also one that belongs to another project. Omitted preserves defaults (the project's brain server included); [] keeps only always-mounted servers. Internal, unknown, globally disabled or not-yet-authorized names are refused. Global switches still apply. Refused on nodes.")] string[]? mcpServers = null)
+        [Description("An exact paired-node name from list_sessions, or local to select this machine explicitly. Omitted means local unless projectId is ambiguous with a cached node project. Nodes accept only profile, projectId, prompt, name and role.")] string? node = null,
+        [Description("Exact MCP server names for this session, overriding project and profile selection. Any registered server may be named, also one that belongs to another project. Omitted preserves defaults (the project's brain server included); [] keeps only always-mounted servers. Internal, unknown, globally disabled or not-yet-authorized names are refused. Global switches still apply. Refused on nodes.")] string[]? mcpServers = null,
+        [Description("A role from list_roles for the target session, or explicit none for general work. Required when that brain has roles. On a node, the node checks its own roles and returns them on refusal.")] string? role = null)
     {
         try
         {
@@ -202,7 +203,7 @@ internal sealed class AssistantAgentMcpTools(
             {
                 if (!string.Equals(node, "local", StringComparison.Ordinal))
                 {
-                    return await _StartOnNodeAsync(node, workspaceId, profile, projectId, prompt, workingDirectory, name, kind, options, isolate, mcpServers).ConfigureAwait(false);
+                    return await _StartOnNodeAsync(node, workspaceId, profile, projectId, prompt, workingDirectory, name, kind, options, isolate, mcpServers, role).ConfigureAwait(false);
                 }
             }
             else if (projectId is { Length: > 0 } && await _ProjectAlsoOnANodeAsync(projectId).ConfigureAwait(false) is { } elsewhere)
@@ -236,7 +237,7 @@ internal sealed class AssistantAgentMcpTools(
                 kind,
                 options,
                 isolate,
-                mcpServers)).ConfigureAwait(false);
+                mcpServers, Role: role, RoleChoiceRequired: true)).ConfigureAwait(false);
 
             return result.Ok
                 ? _Serialize(new
@@ -254,6 +255,8 @@ internal sealed class AssistantAgentMcpTools(
                     promptDelivered = result.PromptDelivered,
                     mcpServers = result.McpServers,
                     mcpServersConfirmed = result.McpServersConfirmed,
+                    role = result.Role,
+                    roleList = result.RoleList,
                 })
                 : _Serialize(new { ok = false, error = result.Error });
         }
@@ -291,12 +294,10 @@ internal sealed class AssistantAgentMcpTools(
         return null;
     }
 
-    // AC-1323: a start on a node carries what the node's grant is over and nothing else — the same four fields
-    // `start_node_agent` takes. Everything local is refused rather than dropped, so the caller never learns the
-    // wrong lesson from a session that came up without the folder or the options it asked for.
+    // AC-1323: refuse local-only arguments rather than silently losing them on a node.
     private async Task<string> _StartOnNodeAsync(
         string node, string? workspaceId, string? profile, string? projectId, string? prompt,
-        string? workingDirectory, string? name, string? kind, Dictionary<string, string>? options, bool? isolate, string[]? mcpServers)
+        string? workingDirectory, string? name, string? kind, Dictionary<string, string>? options, bool? isolate, string[]? mcpServers, string? role)
     {
         if (nodes is null)
         {
@@ -317,7 +318,7 @@ internal sealed class AssistantAgentMcpTools(
             return _Serialize(new
             {
                 ok = false,
-                error = $"A start on node '{node}' takes only profile, projectId, prompt and name; {string.Join(", ", notOnANode)} mean nothing on another machine and were refused rather than dropped. Nothing was started.",
+                error = $"A start on node '{node}' takes only profile, projectId, prompt, name and role; {string.Join(", ", notOnANode)} mean nothing on another machine and were refused rather than dropped. Nothing was started.",
             });
         }
 
@@ -326,7 +327,7 @@ internal sealed class AssistantAgentMcpTools(
             return _Serialize(new { ok = false, error = $"A start on node '{node}' needs the profile named: one of the profiles list_sessions reports for that node. Nothing was started." });
         }
 
-        var started = await nodes.StartAsync(node, profile, projectId, prompt, name).ConfigureAwait(false);
+        var started = await nodes.StartAsync(node, profile, projectId, prompt, name, role: role).ConfigureAwait(false);
         return started.Error is { } refusal
             ? _Serialize(new { ok = false, error = $"On {node}: {refusal}", machine = new { name = node, local = false } })
             : _Serialize(new
@@ -339,6 +340,8 @@ internal sealed class AssistantAgentMcpTools(
                 promptDelivered = started.PromptDelivered,
                 mcpServers = started.McpServers,
                 mcpServersConfirmed = started.McpServersConfirmed,
+                role = started.Role,
+                roleList = started.RoleList,
                 machine = new { name = node, local = false },
             });
     }

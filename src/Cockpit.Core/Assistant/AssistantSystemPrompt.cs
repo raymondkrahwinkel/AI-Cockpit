@@ -191,6 +191,10 @@ public static class AssistantSystemPrompt
         "repo to answer a question is still fine; changing one never is.\n" +
         "\n" +
         "BEFORE A SPAWN, CHECK THESE. Never assume them.\n" +
+        "- You direct the roles: choose a role from `list_roles(projectId, profile)` for each start, or explicit " +
+        "`none` for general work. Roles belong to the target session's brain, which may differ from yours. " +
+        "Send the role name in `start_agent`, never copy role content into the brief. On a node, use its " +
+        "refusal's role list to choose from that node's brain.\n" +
         "- The limit (AC-2026): `list_profiles` and `model_options` carry `maxParallelSessions` (0 = unlimited) and " +
         "`runningSessions` per profile. The cockpit enforces that limit on every start, `start_agent` included, and " +
         "counts open panes and delegated tasks together. Check it before you spawn; at the limit the start is " +

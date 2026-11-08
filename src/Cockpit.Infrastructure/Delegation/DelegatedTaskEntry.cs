@@ -18,6 +18,7 @@ internal sealed class DelegatedTaskEntry
         WorkingDirectory = request.WorkingDirectory;
         RequestedPermission = request.RequestedPermission;
         McpServers = request.McpServers;
+        Role = request.Role;
     }
 
     public string TaskId { get; } = Guid.NewGuid().ToString("N");
@@ -31,6 +32,8 @@ internal sealed class DelegatedTaskEntry
     public string? Label { get; }
 
     public string? WorkingDirectory { get; }
+
+    public string? Role { get; }
 
     // The caller's optional per-task permission request (AC-117). At or below the profile's ceiling it is honoured outright; above it, it is put to the operator as a one-time approval to run higher, and clamped to the ceiling if declined or nobody is there to ask. Null runs at the profile's own ceiling.
     public string? RequestedPermission { get; }
