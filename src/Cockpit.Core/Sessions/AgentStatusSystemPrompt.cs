@@ -11,7 +11,7 @@ public static class AgentStatusSystemPrompt
     public const string Default =
         "Keep your own statusline current with the cockpit-session set_status tool, so the operator can see what " +
         "you are doing without opening your session. Set it as soon as you pick up a ticket or task, naming it " +
-        "plainly (\"AC-544\", \"reviewing the diff\"), and update it whenever the phase of your work changes — " +
+        "plainly (\"fixing a bug\", \"reviewing the diff\"), and update it whenever the phase of your work changes — " +
         "reading, writing, running tests — since only you know when that has happened. Clear it when the work " +
         "is done. CI reports arrive when a check fails or a pull request becomes mergeable; a running check sends " +
         "no message, so silence is not a green result.";
