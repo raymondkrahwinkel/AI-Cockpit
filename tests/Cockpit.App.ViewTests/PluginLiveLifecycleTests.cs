@@ -55,7 +55,8 @@ public sealed class PluginLiveLifecycleTests
     [Fact]
     public Task APluginThatMakesEveryContribution_LeavesNothingBehind_AndComesBack() => HeadlessAvalonia.RunAsync(async () =>
     {
-        var folder = Directory.CreateTempSubdirectory("cockpit-live-plugin").FullName;
+        // Under `<state>/plugins/<id>`, as installed: the copies go beside `plugins`, never into the root of the temp volume.
+        var folder = Directory.CreateDirectory(Path.Combine(Directory.CreateTempSubdirectory("cockpit-live-plugin").FullName, "plugins", PluginId)).FullName;
         File.WriteAllText(
             Path.Combine(folder, "plugin.json"),
             $$"""{"id":"{{PluginId}}","name":"Everything","version":"1.0.0","entryAssembly":"everything.dll","abstractionsVersion":3}""");
