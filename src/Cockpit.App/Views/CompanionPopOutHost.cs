@@ -27,13 +27,15 @@ internal sealed class CompanionPopOutHost
 
     public bool IsOpen(string key) => _open.Exists(p => p.PopOutKey == key);
 
-    public void CloseAll()
+    public void CloseAll(params string[] exceptKeys)
     {
-        foreach (var popOut in _open.ToArray())
+        foreach (var popOut in _open.Where(popOut => !exceptKeys.Contains(popOut.PopOutKey)).ToArray())
         {
             popOut.Close();
         }
     }
+
+    public void Close(string key) => _open.Find(popOut => popOut.PopOutKey == key)?.Close();
 
     // A second click on the same item closes it. False means there is no room; the caller then holds its message.
     public bool Toggle(string key, Control item, Control content, double width, bool showActivated = true)

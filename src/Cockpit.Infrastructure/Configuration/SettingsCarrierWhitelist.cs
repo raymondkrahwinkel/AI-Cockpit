@@ -48,6 +48,7 @@ internal static class SettingsCarrierWhitelist
     public static readonly IReadOnlyList<string> NeverCarried =
     [
         "PluginTrust",
+        "Layout.CompanionStripLayout",
         "HiddenPluginStoreSources",
         "HeavyRuns.MaxParallelRuns", "HeavyRuns.CpuCeilingPercent", "HeavyRuns.MemoryCeilingPercent",
         "Projects[].Id", "Projects[].Name", "Projects[].Description", "Projects[].Category", "Projects[].GitUrl", "Projects[].SharedSourceKey",

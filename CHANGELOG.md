@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2207: Customize strip adds, removes and reorders companion tools while Cockpit stays in the tray; new tools wait under Available, and unavailable plugins keep their place with Enable and Forget.
+
 - AC-2215: project cards and waiting conversations on Home wrap a long title onto further lines instead of cutting it off.
 
 - AC-2194: the project picker follows the approved compact row typography and selection stripe, and token marks leave the surrounding spaces clear.

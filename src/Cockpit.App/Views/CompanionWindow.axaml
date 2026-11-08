@@ -22,13 +22,35 @@
             <Button x:Name="MoreButton" Classes="Subtle Compact" ToolTip.Tip="More">
                 <materialIcons:MaterialIcon Kind="DotsHorizontal" Width="16" Height="16"/>
                 <Button.Flyout>
-                    <MenuFlyout>
-                        <MenuItem x:Name="OrientationItem"/>
-                        <MenuItem x:Name="TopmostItem" Header="Always on top" ToggleType="CheckBox"/>
-                        <MenuItem x:Name="CustomizeItem" Header="Customize strip…" IsEnabled="False"/>
-                        <Separator/>
-                        <MenuItem x:Name="HideItem" Header="Hide"/>
-                    </MenuFlyout>
+                    <Flyout FlyoutPresenterClasses="Card">
+                        <StackPanel MinWidth="220">
+                            <Button x:Name="OrientationItem" Classes="Subtle Row">
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <materialIcons:MaterialIcon Kind="RotateRight" Width="16" Height="16"/>
+                                    <TextBlock x:Name="OrientationLabel" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                            <Button x:Name="TopmostItem" Classes="Subtle Row">
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <materialIcons:MaterialIcon x:Name="TopmostIcon" Width="16" Height="16"/>
+                                    <TextBlock Text="Always on top" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                            <Button x:Name="CustomizeItem" Classes="Subtle Row">
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <materialIcons:MaterialIcon Kind="TuneVariant" Width="16" Height="16"/>
+                                    <TextBlock Text="Customize strip?" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                            <Separator/>
+                            <Button x:Name="HideItem" Classes="Subtle Row">
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <materialIcons:MaterialIcon Kind="EyeOffOutline" Width="16" Height="16"/>
+                                    <TextBlock Text="Hide" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                    </Flyout>
                 </Button.Flyout>
             </Button>
         </StackPanel>
