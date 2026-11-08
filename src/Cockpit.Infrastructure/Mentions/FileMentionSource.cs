@@ -11,7 +11,7 @@ internal sealed class FileMentionSource(IMentionFileSource files) : IMentionSour
 
     public async Task<IReadOnlyList<MentionGroup>> GetAsync(MentionContext context, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrEmpty(context.WorkingDirectory))
+        if (context.Surface == MentionSurface.Home || string.IsNullOrEmpty(context.WorkingDirectory))
         {
             return [];
         }
