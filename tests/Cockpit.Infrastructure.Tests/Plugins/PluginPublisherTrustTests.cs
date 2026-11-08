@@ -80,6 +80,18 @@ public sealed class PluginPublisherTrustTests : IDisposable
         Assert.Equal(PluginProvisionOutcome.KeyNotConfirmed, denied.Outcome);
         Assert.Equal(original, await _trust.GetAsync("acme"));
         Assert.Equal(installed, await File.ReadAllTextAsync(Path.Combine(_root, "plugins", "acme", "plugin.json")));
+        var cancelled = await _service.InstallAsync(_Package("1.2.0", 2), 3, keyConsent: (consent, _) =>
+        {
+            Assert.Equal(PluginTrustDecision.KeyChanged, consent.Decision);
+            Assert.Equal(original.KeyFingerprint, consent.PreviousFingerprint);
+            Assert.NotEqual(original.KeyFingerprint, consent.Fingerprint);
+            return Task.FromResult(false);
+        });
+        Assert.Equal(PluginProvisionOutcome.KeyNotConfirmed, cancelled.Outcome);
+        var rollback = await _service.InstallAsync(_Package("0.9.0", 2) with { AllowDowngrade = true }, 3);
+        Assert.Equal(PluginProvisionOutcome.KeyNotConfirmed, rollback.Outcome);
+        Assert.Equal(original, await _trust.GetAsync("acme"));
+        Assert.Equal(installed, await File.ReadAllTextAsync(Path.Combine(_root, "plugins", "acme", "plugin.json")));
         var decisions = new List<PluginTrustDecision>();
         var accepted = await _service.InstallAsync(_Package("1.2.0", 2) with { RevokedKeys = changed.RevokedKeys }, 3,
             keyConsent: (consent, _) => { decisions.Add(consent.Decision); return Task.FromResult(true); });
