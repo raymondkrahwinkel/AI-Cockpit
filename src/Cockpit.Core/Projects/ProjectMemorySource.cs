@@ -8,4 +8,7 @@ public sealed record ProjectMemorySource(string Scheme, string Title, string Ins
     // AC-1992: how a session loads the brain a stored `<scheme>:<value>` names; null when the source has no brains,
     // or (from the call) when the value is not one of this source's own. Pure: it runs while a start is composed.
     public Func<string, string?>? BrainInstruction { get; init; }
+
+    // The MCP server serving the brain `<scheme>:<value>` names; null when this source does not own the value.
+    public Func<string, string?>? BrainMcpServerName { get; init; }
 }

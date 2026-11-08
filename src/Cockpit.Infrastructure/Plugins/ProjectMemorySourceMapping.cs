@@ -12,5 +12,6 @@ public static class ProjectMemorySourceMapping
         [.. registrations.Select(registration => new ProjectMemorySource(registration.Scheme, registration.Title, registration.Instruction)
         {
             BrainInstruction = registration.BrainInstruction,
+            BrainMcpServerName = registration.BrainMcpServerName,
         })];
 }
