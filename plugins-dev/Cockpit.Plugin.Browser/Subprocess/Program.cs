@@ -18,6 +18,19 @@ internal static class Program
             return 1;
         }
 
+        if (OperatingSystem.IsLinux() && args.Contains("--cockpit-supervisor") && args.Any(argument => argument.StartsWith("--type=", StringComparison.Ordinal)) == false)
+        {
+            try
+            {
+                return LinuxBrowserSupervisor.Run(args);
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine($"Browser supervisor: {exception.GetType().Name}: {exception.Message.Replace('\r', ' ').Replace('\n', ' ')}");
+                return 1;
+            }
+        }
+
         if (args.Contains("--cockpit-enginehost") && args.Any(argument => argument.StartsWith("--type=", StringComparison.Ordinal)) == false)
         {
             int hostExitCode = 1;

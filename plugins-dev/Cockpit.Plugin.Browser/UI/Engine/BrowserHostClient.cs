@@ -10,15 +10,17 @@ internal sealed class BrowserHostClient : IAsyncDisposable
 {
     private readonly Process _process;
     private readonly SafeFileHandle? _job;
+    private readonly LinuxBrowserHostProcess? _linux;
     private readonly BrowserIpcPipes _pipes;
     private readonly Task _exited;
     private readonly Task _closeOnExit;
     private int _disposed;
 
-    private BrowserHostClient(Process process, BrowserIpcPipes pipes, Guid generation, SafeFileHandle? job)
+    private BrowserHostClient(Process process, BrowserIpcPipes pipes, Guid generation, SafeFileHandle? job, LinuxBrowserHostProcess? linux)
     {
         _process = process;
         _job = job;
+        _linux = linux;
         _pipes = pipes;
         _exited = OperatingSystem.IsLinux() ? _ReapLinuxAsync(process.Id) : process.WaitForExitAsync();
         Generation = generation;
@@ -28,7 +30,7 @@ internal sealed class BrowserHostClient : IAsyncDisposable
     }
 
     internal Guid Generation { get; }
-    internal int ProcessId => _process.Id;
+    internal int ProcessId => OperatingSystem.IsLinux() && _linux is not null ? _linux.HostProcessId : _process.Id;
     internal BrowserIpcConnection Connection { get; }
 
     internal static async Task<BrowserHostClient> StartAsync(string executable, string runtimeDirectory, string cacheDirectory,
@@ -47,6 +49,7 @@ internal sealed class BrowserHostClient : IAsyncDisposable
         BrowserHostClient? client = null;
         SafeFileHandle? job = null;
         Process? process = null;
+        LinuxBrowserHostProcess? linux = null;
         try
         {
             string[] arguments =
@@ -67,17 +70,18 @@ internal sealed class BrowserHostClient : IAsyncDisposable
             }
             else if (OperatingSystem.IsLinux())
             {
-                process = LinuxBrowserHostProcess.Start(executable, arguments, pipes);
+                linux = new LinuxBrowserHostProcess();
+                process = await linux.StartAsync(executable, arguments, pipes, cancellationToken).ConfigureAwait(false);
             }
             else
             {
                 throw new PlatformNotSupportedException("The browser host is supported on Windows and Linux.");
             }
-            client = new BrowserHostClient(process, pipes, generation, job);
+            client = new BrowserHostClient(process, pipes, generation, job, linux);
             pipes.ChildStarted();
             var ready = await client.Connection.CallAsync(generation, "enginehost", "engine.ready", JsonSerializer.SerializeToElement(true),
                 BrowserIpcLimits.Deadline, cancellationToken).ConfigureAwait(false);
-            if (ready.GetProperty("Initialized").GetBoolean() == false || ready.GetProperty("ProcessId").GetInt32() != process.Id)
+            if (ready.GetProperty("Initialized").GetBoolean() == false || ready.GetProperty("ProcessId").GetInt32() != client.ProcessId)
             {
                 throw new IOException("The browser host could not initialize CEF.");
             }
@@ -92,6 +96,7 @@ internal sealed class BrowserHostClient : IAsyncDisposable
             else
             {
                 job?.Dispose();
+                linux?.Dispose();
                 process?.Dispose();
                 pipes.Dispose();
             }
@@ -110,8 +115,16 @@ internal sealed class BrowserHostClient : IAsyncDisposable
         }
         finally
         {
-            _job?.Dispose();
-            Connection.Close();
+            try
+            {
+                _job?.Dispose();
+                _linux?.ReportFailure();
+            }
+            finally
+            {
+                _linux?.Dispose();
+                Connection.Close();
+            }
         }
     }
 
@@ -144,8 +157,7 @@ internal sealed class BrowserHostClient : IAsyncDisposable
             }
             else
             {
-                // AC-2146 supplies Linux tree containment; until then only this client's host is eligible.
-                BrowserIpcCleanup.Try(() => _process.Kill(), errors);
+                _linux?.Stop();
             }
             try
             {

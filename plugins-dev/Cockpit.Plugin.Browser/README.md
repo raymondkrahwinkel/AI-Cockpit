@@ -70,8 +70,18 @@ On Windows (AC-2145), an unnamed, non-inheritable Job Object has `KILL_ON_JOB_CL
 failure prevents startup. This also covers an owner crash immediately after process creation. The job handle
 stays only in the client: it closes on host exit or the graceful deadline, killing remaining host/CEF children.
 An owner crash closes it through the OS. No process enumeration or attachment to unrelated PIDs is needed.
-Linux process-tree containment belongs to AC-2146, and the existing in-process UI remains active
+On Linux (AC-2146), Subprocess first runs as a supervisor outside the host's new process group. It becomes a
+child subreaper before spawning the enginehost with `POSIX_SPAWN_SETPGROUP`. Only the supervisor inherits the
+lifetime reader; the client alone holds its writer. EOF, a broken lifetime pipe or host exit kills the own group,
+then the supervisor reaps its adopted descendants. The leader stays waitable until the group is killed to prevent
+PID reuse. A separate pipe reports the host PID within five seconds; startup failure closes the lifetime writer.
+Supervisor exceptions produce one stderr line, captured separately and written to the client's trace log.
+The enginehost and CEF children cannot inherit the supervisor pipes. No `/proc` snapshot, systemd or cgroup is
+needed for containment. The existing in-process UI remains active
 until AC-2147 connects the views. Use this launcher only from the explicit local development harness meanwhile.
+If the supervisor alone is killed, the client closes IPC and a responsive host can stop normally. A host that
+ignores EOF can survive supervisor SIGKILL or an OOM kill of only the supervisor; covering supervisor loss would
+require a kernel lifetime boundary and is outside this mechanism.
 
 ## The browser
 

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2146: clean up the upcoming Linux Browser host and its children when their owner or engine host crashes.
+
 - AC-2145: bind the upcoming Browser engine host and its children to the Windows owner lifetime, including owner and host crashes.
 
 - AC-2144: add an isolated Browser engine launcher for the upcoming host-backed tabs, with private storage checks and restricted pipe inheritance.
