@@ -33,7 +33,7 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
     private readonly IReadOnlyList<SessionProviderOption> _providers;
     private readonly AssistantProfileSetup? _setup;
     private readonly bool _canChooseProvider = true;
-    private readonly Cockpit.Infrastructure.Sessions.SessionRoleResolver? _roles;
+    private readonly ISessionRoleCatalog? _roles;
     public RolePickerViewModel RolePicker { get; } = new();
     public Task RoleLoad { get; private set; } = Task.CompletedTask;
 
@@ -158,7 +158,7 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
         IPluginProviderConfigViews? pluginConfigViews = null,
         AssistantProfileSetup? setup = null,
         bool canChooseProvider = true,
-        Cockpit.Infrastructure.Sessions.SessionRoleResolver? roles = null)
+        ISessionRoleCatalog? roles = null)
     {
         _setup = setup;
         _canChooseProvider = canChooseProvider;

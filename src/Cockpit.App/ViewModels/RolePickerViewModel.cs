@@ -1,7 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
-using Cockpit.Infrastructure.Sessions;
+using Cockpit.Core.Abstractions.Sessions;
 
 namespace Cockpit.App.ViewModels;
 
@@ -36,7 +36,7 @@ public partial class RolePickerViewModel : ViewModelBase
         OnPropertyChanged(nameof(Selected));
     }
 
-    public async Task LoadAsync(SessionRoleResolver? resolver, Project? project, SessionProfile? profile, Func<SessionProfile?, Task<RoleListResult>>? remoteList = null)
+    public async Task LoadAsync(ISessionRoleCatalog? resolver, Project? project, SessionProfile? profile, Func<SessionProfile?, Task<RoleListResult>>? remoteList = null)
     {
         var generation = ++_generation;
         RoleListResult? result;

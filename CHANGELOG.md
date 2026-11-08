@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2169: keep session and assistant role pickers behind the frontend contract boundary.
+
 - AC-2173: every session receives the pull request merge rule automatically; assistant briefs no longer repeat the standing work agreements.
 - AC-2172: choose an optional role when starting a session or editing the Assistant Profile. The assistant keeps its role across provider changes and starts with a warning if the role cannot be loaded.
 

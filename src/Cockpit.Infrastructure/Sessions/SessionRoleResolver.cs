@@ -1,4 +1,5 @@
 using Cockpit.Core.Abstractions;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
@@ -9,7 +10,7 @@ namespace Cockpit.Infrastructure.Sessions;
 
 public sealed class SessionRoleResolver(
     IProjectMemorySourceRegistry? memorySources = null,
-    IAssistantProfileStore? assistantProfiles = null) : ISingletonService
+    IAssistantProfileStore? assistantProfiles = null) : ISessionRoleCatalog, ISingletonService
 {
     public async Task<RoleListResult> ListAsync(Project? project, SessionProfile? profile, CancellationToken cancellationToken = default)
     {

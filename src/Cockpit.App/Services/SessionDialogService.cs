@@ -65,7 +65,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     private readonly IAssistantProfileStore _assistantProfileStore;
     private readonly IOrgPolicy _orgPolicy;
     private readonly IProfileSessionLimits _sessionLimit;
-    private readonly Cockpit.Infrastructure.Sessions.SessionRoleResolver? _roles;
+    private readonly ISessionRoleCatalog? _roles;
 
     public SessionDialogService(
         ISessionProfileStore profileStore,
@@ -95,7 +95,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         IAssistantAgentGateway assistantGateway,
         SessionMcpMounts mcpMounts,
         ILogger<SessionDialogService> logger,
-        Cockpit.Infrastructure.Sessions.SessionRoleResolver? roles = null)
+        ISessionRoleCatalog? roles = null)
     {
         _logger = logger;
         _roles = roles;

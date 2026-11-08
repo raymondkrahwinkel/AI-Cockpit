@@ -113,7 +113,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     public event Action<NewSessionResult?>? CloseRequested;
 
     public RolePickerViewModel RolePicker { get; } = new();
-    private readonly Cockpit.Infrastructure.Sessions.SessionRoleResolver? _roles;
+    private readonly ISessionRoleCatalog? _roles;
     public Task RoleLoad { get; private set; } = Task.CompletedTask;
 
     // Raised when the operator wants to manage profiles; the host opens the Manage-profiles dialog and reloads.
@@ -582,7 +582,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         ISessionLoginFlows? loginFlows = null,
         IShellAccessSwitch? shellAccessSwitch = null,
         IOrgPolicy? orgPolicy = null,
-        Cockpit.Infrastructure.Sessions.SessionRoleResolver? roles = null)
+        ISessionRoleCatalog? roles = null)
     {
         _orgPolicyReader = orgPolicy;
         _roles = roles;
