@@ -10,6 +10,12 @@ namespace Cockpit.Core.Abstractions.Remote;
 public interface IAssistantAdministration
 {
     /// <summary>
+    /// Lists roles from the server brain currently selected in the editor.
+    /// </summary>
+    Task<Cockpit.Core.Projects.RoleListResult> ListRolesAsync(string? brain, CancellationToken cancellationToken = default) =>
+        Task.FromResult(new Cockpit.Core.Projects.RoleListResult(Cockpit.Core.Projects.RoleSourceOutcome.NoRoles, []));
+
+    /// <summary>
     /// The switch, the server's availability and its reason, the profile without its secrets, and the bypass summary.
     /// </summary>
     Task<RemoteAssistantSettings> GetAsync(CancellationToken cancellationToken = default);
@@ -24,7 +30,7 @@ public interface IAssistantAdministration
     /// each secret that reads as the server's mask stays as the server holds it. Throws <see cref="ArgumentException"/>
     /// with the server's reason when it refuses, a new credential included.
     /// </summary>
-    Task<RemoteAssistantSettings> SaveProfileAsync(SessionProfile profile, bool replacesStandingInstruction, CancellationToken cancellationToken = default);
+    Task<RemoteAssistantSettings> SaveProfileAsync(SessionProfile profile, bool replacesStandingInstruction, CancellationToken cancellationToken = default, string? assistantRole = null);
 
     /// <summary>
     /// Has the server copy its own profile <paramref name="label"/> into the slot, secrets included; null when it has

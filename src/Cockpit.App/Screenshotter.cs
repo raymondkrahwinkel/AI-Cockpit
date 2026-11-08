@@ -414,6 +414,7 @@ internal static partial class Screenshotter
         // Voice tab — own scenes rather than reusing "options", since neither category renders on the category that
         // scene opens on (Notifications) and a layout change to a page nothing captures is a layout change nobody
         ["voice-transcribe"] = (_, _) => _OptionsOnTab("Voice"),
+        ["voice-wake-word"] = (_, _) => _OptionsWakeWord(),
         // AC-1881: an Optimus laptop — the backend combo offers each GPU and Auto names the dedicated one.
         ["voice-transcribe-gpus"] = (_, _) => _OptionsVoiceWithTwoGpus(),
         ["voice-assistant"] = (_, _) => _OptionsAssistantPage(),
@@ -526,6 +527,8 @@ internal static partial class Screenshotter
         ["profiles-plugin-option-defaults"] = (_, _) => _ManageProfilesPluginOptionDefaults(),
         ["verify-runners"] = (_, _) => new VerifyRunnersDialog { DataContext = new ViewModels.VerifyRunnersViewModel() },
         ["verify-runners-edit"] = (_, _) => _VerifyRunnersEditing(),
+        ["new-session-roles"] = (_, _) => _RoleScene(false),
+        ["assistant-profile-roles"] = (_, _) => _RoleScene(true),
         ["new-session"] = (_, _) => new NewSessionDialog { DataContext = new ViewModels.NewSessionDialogViewModel() },
         // AC-2026: the dialog on a profile that already runs its parallel-session maximum: the reason shows and Start is off.
         ["new-session-profile-full"] = (_, _) => new NewSessionDialog
@@ -1263,12 +1266,37 @@ internal static partial class Screenshotter
         return new AssistantProfileDialog { DataContext = viewModel, Height = 1220 };
     }
 
+    private static Window _RoleScene(bool assistant)
+    {
+        var roleSource = _BrainServer("depot", "Acme", "depot.acme.example") with
+        {
+            BrainInstruction = _ => "Load this brain through its source.",
+            ListRolesAsync = (_, _) => Task.FromResult(new Cockpit.Plugins.Abstractions.Projects.RoleListResult(
+                Cockpit.Plugins.Abstractions.Projects.RoleSourceOutcome.Success,
+                [new Cockpit.Plugins.Abstractions.Projects.SessionRole("Programmer", "Build and maintain software."),
+                 new Cockpit.Plugins.Abstractions.Projects.SessionRole("PersonalAssistant", "Plan work and keep track of commitments.")])),
+        };
+        var resolver = new Cockpit.Infrastructure.Sessions.SessionRoleResolver(new _MemorySourceRegistry([roleSource]));
+        if (assistant)
+        {
+            var window = Scenes["assistant-profile"](560, 1220);
+            var vm = (AssistantProfileDialogViewModel)(window.DataContext ?? throw new InvalidOperationException("Missing assistant profile scene."));
+            vm.RolePicker.Restore("PersonalAssistant");
+            vm.RolePicker.LoadAsync(resolver, null, vm.Profile.ToProfile()).GetAwaiter().GetResult();
+            return window;
+        }
+        var session = new NewSessionDialogViewModel();
+        session.RolePicker.Restore("Programmer");
+        session.RolePicker.LoadAsync(resolver, null, session.SelectedProfile).GetAwaiter().GetResult();
+        return new NewSessionDialog { DataContext = session };
+    }
+
     private sealed class _FakeAssistantProfileStore(SessionProfile profile) : IAssistantProfileStore
     {
         public Task<Cockpit.Core.Assistant.AssistantProfileSlot> LoadAsync(CancellationToken cancellationToken = default) => Task.FromResult(new Cockpit.Core.Assistant.AssistantProfileSlot(profile));
 
-        public Task<Cockpit.Core.Assistant.AssistantProfileSlot> RepointAsync(SessionProfile record, bool replacesStandingInstruction, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new Cockpit.Core.Assistant.AssistantProfileSlot(record, null, replacesStandingInstruction));
+        public Task<Cockpit.Core.Assistant.AssistantProfileSlot> RepointAsync(SessionProfile record, bool replacesStandingInstruction, CancellationToken cancellationToken = default, string? assistantRole = null) =>
+            Task.FromResult(new Cockpit.Core.Assistant.AssistantProfileSlot(record, null, replacesStandingInstruction, assistantRole));
 
         public Task<Cockpit.Core.Assistant.AssistantProfileSlot> UnsetAsync(string reason, CancellationToken cancellationToken = default) =>
             Task.FromResult(new Cockpit.Core.Assistant.AssistantProfileSlot(null, reason));
@@ -1638,6 +1666,7 @@ internal static partial class Screenshotter
         ["options-backup-depot"] = _ChooseSceneDepot,
         ["options-backup-status"] = window => _ScrollIntoView(window, "backup", "2. SCHEDULED BACKUP"),
         ["assistant-speech"] = window => _ScrollIntoView(window, "assistant", "3. REPLIES"),
+        ["voice-wake-word"] = window => _ScrollIntoView(window, "voice", "4. ALWAYS LISTENING"),
         ["assistant-speech-profile"] = window => _ScrollIntoView(window, "assistant", "3. REPLIES"),
         ["assistant-speech-full"] = window => _ScrollIntoView(window, "assistant", "3. REPLIES"),
         ["assistant-speech-unavailable"] = window => _ScrollIntoView(window, "assistant", "3. REPLIES"),
@@ -2498,7 +2527,7 @@ internal static partial class Screenshotter
 
         public (NodeSessionsSnapshot Snapshot, DateTimeOffset AtUtc)? TryGetLastSnapshot(string nodeName) => null;
 
-        public Task<NodeStartResult> StartAsync(string nodeName, string profileLabel, string? projectId = null, string? prompt = null, string? sessionName = null, CancellationToken cancellationToken = default) =>
+        public Task<NodeStartResult> StartAsync(string nodeName, string profileLabel, string? projectId = null, string? prompt = null, string? sessionName = null, CancellationToken cancellationToken = default, string? role = null) =>
             Task.FromResult(StartSession?.Invoke(nodeName, profileLabel, projectId) ?? throw new NotSupportedException());
 
         public Task<string?> StopAsync(string nodeName, string paneId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
@@ -2598,6 +2627,17 @@ internal static partial class Screenshotter
             cockpit.Security.IsHelloBusy = busy;
             cockpit.Security.HelloStatus = "On — bound to this computer’s security chip (TPM). Your password keeps working.";
         };
+        return dialog;
+    }
+
+    private static OptionsDialog _OptionsWakeWord()
+    {
+        var dialog = _OptionsOnTab("Voice");
+        var cockpit = dialog.DataContext as ViewModels.CockpitViewModel
+            ?? throw new InvalidOperationException("The Options dialog has no cockpit.");
+        cockpit.VoiceEnabled = true;
+        cockpit.AssistantOptions.IsEnabled = true;
+        cockpit.AssistantOptions.WakeWordEnabled = true;
         return dialog;
     }
 

@@ -6818,6 +6818,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                     key: $"session.unisolated:{launched.PaneId}");
             }
 
+            if ((launched?.FailureReason ?? launched?.RoleWarning) is { } roleNotice)
+            {
+                ToastHost.Add(roleNotice, ToastSeverity.Warning, [], sticky: true);
+            }
+
             return launched?.PaneId is { Length: > 0 } started ? started : null;
         }
         catch (Exception exception) when (exception is WorktreeAdmissionException || (exception is ProfileSessionLimitException && !refuseLoudly))
@@ -6861,6 +6866,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             IsComposed = result.IsComposed,
             NameIsComposed = result.NameIsComposed,
             Effort = result.Effort.Value,
+            Role = result.Role,
+            IsRestoring = result.IsRestoring,
             EnabledMcpServerNames = result.EnabledMcpServerNames,
             ReadingLevel = result.ReadingLevel,
             ProjectJobId = result.ProjectJobId,
@@ -6893,6 +6900,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             NameIsComposed = request.NameIsComposed,
             StartedByTheAssistant = request.StartedByTheAssistant,
             ProjectJobId = request.ProjectJobId,
+            Role = request.Role,
         };
     }
 
@@ -8540,6 +8548,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             ProjectId: pane.ProjectId)
         {
             NameIsComposed = !pane.NameIsChosen,
+            Role = plan.State?.Role,
+            IsRestoring = true,
             StartedByTheAssistant = _sessionRegistry?.Find(pane.Id)?.StartedByTheAssistant == true,
         };
     }
@@ -8571,7 +8581,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             {
                 result = result with { EnabledMcpServerNames = restoredSelection };
             }
-            if (await launcher.StartSessionAsync(_RequestOf(result, session.WorkspaceId) with { PaneId = session.PaneId }) is { PaneId.Length: > 0 })
+            var launched = await launcher.StartSessionAsync(_RequestOf(result, session.WorkspaceId) with { PaneId = session.PaneId });
+            if (launched?.RoleWarning is { } warning)
+            {
+                ToastHost.Add(warning, ToastSeverity.Warning, [], sticky: true);
+            }
+            if (launched is { PaneId.Length: > 0 })
             {
                 session.RestoreOffer = null;
             }
@@ -9906,7 +9921,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         try
         {
-            await _sessionLauncher!.Invoke()!.StartSessionAsync(_RequestOf(launch, Workspaces.EnsureSessionWorkspace()) with { PaneId = record.PaneId });
+            var launched = await _sessionLauncher!.Invoke()!.StartSessionAsync(_RequestOf(launch, Workspaces.EnsureSessionWorkspace()) with { PaneId = record.PaneId });
+            if (launched?.RoleWarning is { } warning)
+            {
+                ToastHost.Add(warning, ToastSeverity.Warning, [], sticky: true);
+            }
         }
         catch (ProfileSessionLimitException exception)
         {

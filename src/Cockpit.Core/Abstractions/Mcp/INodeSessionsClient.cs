@@ -37,7 +37,8 @@ public interface INodeSessionsClient
         string? projectId = null,
         string? prompt = null,
         string? sessionName = null,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        string? role = null);
 
     /// <summary>
     /// Stops the session with <paramref name="paneId"/> on <paramref name="nodeName"/>. Returns null when it
@@ -142,6 +143,10 @@ public sealed record NodeStartResult(
     string ResolvedProfile = "",
     bool? PromptDelivered = null)
 {
+    public string? Role { get; init; }
+
+    public string? RoleList { get; init; }
+
     public IReadOnlyList<string>? McpServers { get; init; }
 
     public bool McpServersConfirmed { get; init; }

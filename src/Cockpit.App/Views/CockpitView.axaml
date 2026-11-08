@@ -1088,6 +1088,7 @@
             <DockPanel Margin="8">
                 <StackPanel DockPanel.Dock="Bottom" Spacing="2">
                     <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}" Margin="0,4,0,6"/>
+                    <views:PluginsRow/>
                     <Button x:Name="SimpleRailSettings" Classes="Subtle" HorizontalAlignment="Stretch"
                             HorizontalContentAlignment="Left" Padding="10,7"
                             Command="{Binding OptionsCommand}" ToolTip.Tip="Options — Ctrl+O">

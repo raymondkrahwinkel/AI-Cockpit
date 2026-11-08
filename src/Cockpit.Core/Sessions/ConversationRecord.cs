@@ -16,7 +16,10 @@ public sealed record ConversationRecord(
     DateTimeOffset? ClosedAt,
     bool StartedByTheAssistant,
     bool IsAssistant,
-    string? TranscriptPath);
+    string? TranscriptPath)
+{
+    public string? Role { get; init; }
+}
 
 public sealed record ConversationSearchResult(ConversationRecord Record, string? Fragment);
 

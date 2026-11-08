@@ -127,6 +127,8 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         var settings = await _settings.LoadAsync().ConfigureAwait(true);
         Indicator.AlwaysOnCostAcknowledged = settings.AlwaysOnCostAcknowledged;
         Indicator.IsConsentBypassActive = settings.HasConsentBypass;
+        Indicator.WakeWordEnabled = settings.WakeWordEnabled;
+        Indicator.WakeWord = settings.WakeWord;
         Indicator.IsFeatureEnabled = settings.IsEnabled;
     }
 
@@ -136,6 +138,8 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         var settings = await _settings.LoadAsync(cancellationToken).ConfigureAwait(true);
         Indicator.IsFeatureEnabled = settings.IsEnabled;
         Indicator.IsConsentBypassActive = settings.HasConsentBypass;
+        Indicator.WakeWordEnabled = settings.WakeWordEnabled;
+        Indicator.WakeWord = settings.WakeWord;
         _Refresh();
 
         // AC-1013: also applies to the pop-out when open — it's ownerless and kept between openings, and Show()
@@ -186,7 +190,7 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
 
         // Derived, not stored: what "always on" means is that the microphone is open, and that is already one
         // persisted flag on the open-mic coordinator. A second copy here would be a second thing to keep in step.
-        Indicator.ListeningMode = _openMic.IsListening ? AssistantListeningMode.AlwaysOn : AssistantListeningMode.Off;
+        Indicator.ListeningMode = _openMic.ListeningMode;
 
         // Assistant threads: the session files its rows by project, and only the cockpit knows the projects.
         var visibleSession = _cockpit.SwarmLeadership is { IsActive: true, IsSelf: false } ? _chatViewModel?.Session : _assistant.View();
@@ -559,17 +563,16 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         }
     }
 
-    // Switches the microphone between held-only and held-open. Wake-word mode is refused rather than absent
-    // from the UI: the enum still carries it (its own future ticket), so a caller could still pass it — this
-    // one-line guard keeps the microphone from opening on a filter that doesn't exist yet.
+    // An invalid wake word must never open an unfiltered microphone.
     private async Task _ApplyListeningModeAsync(AssistantListeningMode mode)
     {
-        if (!_cockpit.IsAudioAvailable || mode == AssistantListeningMode.AlwaysOnWithWakeWord)
+        var settings = await _settings.LoadAsync().ConfigureAwait(true);
+        if (!_cockpit.IsAudioAvailable || mode == AssistantListeningMode.AlwaysOnWithWakeWord && !AssistantWakeWord.IsConfigured(settings.WakeWord))
         {
             return;
         }
 
-        if (_openMic.IsListening != (mode == AssistantListeningMode.AlwaysOn))
+        if (_openMic.IsListening != (mode != AssistantListeningMode.Off))
         {
             await _openMic.ToggleOpenMicCommand.ExecuteAsync(null).ConfigureAwait(true);
         }
@@ -578,7 +581,6 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         // what stops it returning after a restart.
         if (Indicator.AlwaysOnCostAcknowledged)
         {
-            var settings = await _settings.LoadAsync().ConfigureAwait(true);
             if (!settings.AlwaysOnCostAcknowledged)
             {
                 await _settings.SaveAsync(settings with { AlwaysOnCostAcknowledged = true }).ConfigureAwait(true);
