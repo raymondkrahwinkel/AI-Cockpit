@@ -34,7 +34,7 @@ public sealed partial class CompanionAttentionItem : ObservableObject
         Text = text;
         if (row?.QuestionPrompts is [{ MultiSelect: false } prompt])
         {
-            Question = prompt;
+            QuestionPrompt = prompt;
             Options = [.. prompt.Options.Select(option => option.Label)];
             AllowsFreeText = prompt.AllowOther || prompt.Options.Count == 0;
         }
@@ -48,7 +48,7 @@ public sealed partial class CompanionAttentionItem : ObservableObject
 
     internal TranscriptEntryViewModel? Row { get; }
 
-    internal AskUserQuestionViewModel? Question { get; }
+    internal AskUserQuestionViewModel? QuestionPrompt { get; }
 
     public string SessionTitle => Session.Title;
 
@@ -73,7 +73,7 @@ public sealed partial class CompanionAttentionItem : ObservableObject
     // The answer goes through the command of the row's own session, as the button in its transcript does.
     internal async Task AnswerAsync(string answer)
     {
-        if (Session is not SessionViewModel session || Row is not { } row || Question is not { } question || answer.Trim().Length == 0)
+        if (Session is not SessionViewModel session || Row is not { } row || QuestionPrompt is not { } question || answer.Trim().Length == 0)
         {
             return;
         }
@@ -94,7 +94,7 @@ public sealed partial class CompanionAttentionItem : ObservableObject
     // A TTY pane is turn-time in its own TUI (AC-294), so only an SDK session offers answer buttons.
     public bool IsPermission => Kind == CompanionAttentionKind.Permission;
 
-    public bool IsQuestion => Kind == CompanionAttentionKind.Question && Question is not null;
+    public bool IsQuestion => Kind == CompanionAttentionKind.Question && QuestionPrompt is not null;
 
     public bool IsDone => Kind == CompanionAttentionKind.Done;
 
@@ -102,7 +102,7 @@ public sealed partial class CompanionAttentionItem : ObservableObject
 
     // A question this strip cannot show whole (several questions, or ticks) goes to the transcript row, like a TTY row.
     public bool OpensInCockpit => Kind is CompanionAttentionKind.Terminal or CompanionAttentionKind.Done
-        || Kind == CompanionAttentionKind.Question && Question is null;
+        || Kind == CompanionAttentionKind.Question && QuestionPrompt is null;
 
     public MaterialIconKind Glyph => Kind switch
     {

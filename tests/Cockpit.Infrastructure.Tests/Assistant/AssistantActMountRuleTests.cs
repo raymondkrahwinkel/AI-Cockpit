@@ -86,7 +86,9 @@ public sealed class AssistantActMountRuleTests : IDisposable
     private static IReadOnlyList<MethodInfo> _EveryTool() =>
         [.. typeof(AssistantAgentMcpTools)
             .GetMethods(BindingFlags.Public | BindingFlags.Instance)
-            .Where(tool => tool.GetCustomAttribute<McpServerToolAttribute>() is not null)
+            // look_at_screen (AC-2209) answers with an MCP result carrying pixels, not the JSON string these tests read,
+            // and never reaches the gateway; its own tests cover it.
+            .Where(tool => tool.GetCustomAttribute<McpServerToolAttribute>() is not null && tool.ReturnType == typeof(Task<string>))
             .OrderBy(tool => tool.Name, StringComparer.Ordinal)];
 
     /// <summary>
