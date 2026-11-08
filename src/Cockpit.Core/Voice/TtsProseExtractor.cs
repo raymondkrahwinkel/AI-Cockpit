@@ -73,12 +73,6 @@ public static partial class TtsProseExtractor
             var lineEnd = newline < 0 ? markdown.Length : newline;
             var nextLineStart = newline < 0 ? markdown.Length : newline + 1;
             var line = markdown[lineStart..lineEnd];
-            var lineIsComplete = newline >= 0 || SentenceEndingPunctuation().IsMatch(line) || line.TrimStart().StartsWith("```", StringComparison.Ordinal);
-            if (!lineIsComplete)
-            {
-                break;
-            }
-
             if (insideFence)
             {
                 if (line.TrimStart().StartsWith("```", StringComparison.Ordinal))
@@ -150,7 +144,9 @@ public static partial class TtsProseExtractor
             completedLength = lineEnd;
         }
 
-        for (var index = lineStart; index < lineEnd; index++)
+        // A list marker's own dot is no sentence end, and a half-arrived item must not speak just the number.
+        var scanStart = lineStart + ListItem().Match(line).Length;
+        for (var index = scanStart; index < lineEnd; index++)
         {
             if (markdown[index] is '.' or '!' or '?' && _IsCompletedSentence(markdown, index))
             {

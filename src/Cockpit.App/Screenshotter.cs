@@ -418,6 +418,7 @@ internal static partial class Screenshotter
         ["assistant-speech"] = (_, _) => _OptionsAssistantPage(),
         ["assistant-speech-profile"] = (_, _) => _OptionsAssistantPage(speechProfile: true),
         ["assistant-speech-full"] = (_, _) => _OptionsAssistantPage(fullSpeech: true),
+        ["assistant-speech-rules"] = (_, _) => _OptionsAssistantPage(rulesSpeech: true),
         ["assistant-speech-unavailable"] = (_, _) => _OptionsAssistantPage(audioAvailable: false),
         // AC-1567: the organisation's rule set as the read-only block on the same page.
         ["options-assistant-org-rules"] = (_, _) => _OptionsAssistantPage(orgRules: true),
@@ -2650,7 +2651,7 @@ internal static partial class Screenshotter
 
     // The Assistant category, enabled rather than dimmed under the off master switch, so its profile row renders
     // filled in rather than showing the design-time graph's "no profile store" fallback.
-    private static OptionsDialog _OptionsAssistantPage(bool orgRules = false, bool speechProfile = false, bool fullSpeech = false, bool audioAvailable = true)
+    private static OptionsDialog _OptionsAssistantPage(bool orgRules = false, bool speechProfile = false, bool fullSpeech = false, bool audioAvailable = true, bool rulesSpeech = false)
     {
         var cockpit = new ViewModels.CockpitViewModel();
         cockpit.AssistantOptions.IsEnabled = true;
@@ -2661,6 +2662,10 @@ internal static partial class Screenshotter
             cockpit.AssistantOptions.SelectedSpeechMethod = cockpit.AssistantOptions.SpeechMethods.First(option => option.Value == SpokenReplyMethod.Profile);
             cockpit.AssistantOptions.SpeechProfileLabels.Add("Local speech (Ollama)");
             cockpit.AssistantOptions.SelectedSpeechProfileLabel = "Local speech (Ollama)";
+        }
+        if (rulesSpeech)
+        {
+            cockpit.AssistantOptions.SelectedSpeechMethod = cockpit.AssistantOptions.SpeechMethods.First(option => option.Value == SpokenReplyMethod.Rules);
         }
         if (fullSpeech)
         {

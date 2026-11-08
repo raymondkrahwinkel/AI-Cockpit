@@ -499,6 +499,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     }
     private readonly Dictionary<TranscriptEntryViewModel, string> _readAloudObservedEntries = [];
     private int _readAloudObservedEntryCount;
+    private int _readAloudStreamedSelection;
 
     // AC-597/598: whether anything has actually been spoken this turn. What decides both fillers — a lead-in is
     // only owed when the model gave none, and a sign of life only when the operator has heard nothing since.
@@ -2864,6 +2865,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _AppendStreamingReadAloudDelta();
         if (_turnSpeechMode != SpokenReplyMode.Full)
         {
+            _StreamRulesSelectionForReadAloud();
             return;
         }
         var stream = TtsProseExtractor.ExtractCompleted(_readAloudPendingProse.ToString());
@@ -2876,6 +2878,28 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _spokenSomethingThisTurn |= stream.Sentences.Count > 0;
         _RestartSignOfLifeClock();
         _ = EnqueueReadAloudAsync(stream.Sentences, IsTheVoiceAssistant ? _speechTurn : CaptureReadAloudTurn());
+    }
+
+    // The rules selection is a prefix of the reply, so its sentences can sound while the rest still streams in.
+    private void _StreamRulesSelectionForReadAloud()
+    {
+        if (_turnSpeechMethod != SpokenReplyMethod.Rules)
+        {
+            return;
+        }
+
+        var prose = _readAloudPendingProse.ToString();
+        var selected = SpokenReply.Select(prose[..TtsProseExtractor.ExtractCompleted(prose).ConsumedLength], _turnSpeechMode);
+        if (selected.Count <= _readAloudStreamedSelection)
+        {
+            return;
+        }
+
+        var fresh = selected.Skip(_readAloudStreamedSelection).ToList();
+        _readAloudStreamedSelection = selected.Count;
+        _spokenSomethingThisTurn = true;
+        _RestartSignOfLifeClock();
+        _ = EnqueueReadAloudAsync(fresh, _speechTurn);
     }
 
     private void _AppendStreamingReadAloudDelta()
@@ -2904,6 +2928,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _readAloudPendingProse.Clear();
         _readAloudObservedEntries.Clear();
         _readAloudObservedEntryCount = 0;
+        _readAloudStreamedSelection = 0;
     }
 
     // Says out loud that it is about to go and look, when the model went straight to a tool without saying so (AC-597).
@@ -3137,7 +3162,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         else if (ReadResponsesAloud && !end.IsError && !end.WasInterrupted)
         {
             _AppendStreamingReadAloudDelta();
-            _ = _SpeakCompletedReplyAsync(_readAloudPendingProse.ToString(), _turnSpeechMode, _turnSpeechMethod, _turnSpeechProfile, _speechTurn);
+            _ = _SpeakCompletedReplyAsync(_readAloudPendingProse.ToString(), _turnSpeechMode, _turnSpeechMethod, _turnSpeechProfile, _speechTurn, _readAloudStreamedSelection);
         }
         else
         {
@@ -3153,7 +3178,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _turnCompletedInFold = true;
     }
 
-    private async Task _SpeakCompletedReplyAsync(string answer, SpokenReplyMode mode, SpokenReplyMethod method, SessionProfile? profile, (long Turn, int Generation) expected)
+    private async Task _SpeakCompletedReplyAsync(string answer, SpokenReplyMode mode, SpokenReplyMethod method, SessionProfile? profile, (long Turn, int Generation) expected, int alreadySpoken)
     {
         if (CaptureReadAloudTurn() != expected || !ReadResponsesAloud)
         {
@@ -3175,7 +3200,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             {
                 SpeechRulesReason = spoken.RulesReason;
                 OnPropertyChanged(nameof(SpeechRulesReason));
-                await EnqueueReadAloudAsync(spoken.Sentences, expected);
+                await EnqueueReadAloudAsync(spoken.Sentences.Skip(alreadySpoken).ToList(), expected);
                 if (CaptureReadAloudTurn() == expected)
                 {
                     CompleteReadAloudStream();

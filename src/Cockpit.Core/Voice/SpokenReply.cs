@@ -2,6 +2,9 @@ namespace Cockpit.Core.Voice;
 
 public static class SpokenReply
 {
+    public static SpokenReplyMode EffectiveMode(SpokenReplyMode mode, SpokenReplyMethod method) =>
+        method == SpokenReplyMethod.Rules ? SpokenReplyMode.Full : mode;
+
     public static IReadOnlyList<string> Select(string markdown, SpokenReplyMode mode)
     {
         IReadOnlyList<string> sentences = TtsProseExtractor.Extract(markdown, usePlaceholders: mode == SpokenReplyMode.Full);

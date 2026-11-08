@@ -1,3 +1,4 @@
+using Cockpit.Core.Voice;
 using System.ComponentModel;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Assistant;
@@ -128,7 +129,7 @@ internal sealed partial class SessionPanelHandle : IAssistantSession
             pane.ReadAloudLanguage = voice.Language;
         }
 
-        pane.AssistantSpeechMode = settings.SpeechMode;
+        pane.AssistantSpeechMode = SpokenReply.EffectiveMode(settings.SpeechMode, settings.SpeechMethod);
         pane.AssistantSpeechMethod = settings.SpeechMethod;
         pane.SpeechProfile = speechProfile;
         pane.ReadResponsesAloud = settings.SpeakReplies;
