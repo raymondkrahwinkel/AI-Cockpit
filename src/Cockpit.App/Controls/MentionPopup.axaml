@@ -1,0 +1,130 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Cockpit.App.ViewModels"
+             xmlns:controls="using:Cockpit.App.Controls"
+             xmlns:conv="using:Cockpit.App.Converters"
+             x:Class="Cockpit.App.Controls.MentionPopup"
+             x:Name="Root"
+             x:DataType="vm:MentionPickerViewModel">
+
+    <!-- The one @-mention list of every chat window. DataContext is the MentionPickerViewModel; Input and Frame name
+         the composer's text box and its frame, which decide where the list hangs and how wide it is. The code-behind
+         places it on the caret line when it opens. IsLightDismissEnabled is off because the view model owns
+         open/close, and the list is never focused, so the text box keeps its caret. -->
+    <Popup x:Name="Host" IsLightDismissEnabled="False" Placement="Top" PlacementConstraintAdjustment="None">
+        <Border x:Name="Card" Background="{DynamicResource CockpitPanelBgBrush}"
+                BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
+                CornerRadius="{StaticResource CockpitControlRadius}" BoxShadow="0 6 20 0 #66000000"
+                Margin="0,4">
+            <DockPanel>
+                <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,1,0,0"
+                        Padding="12,6">
+                    <TextBlock FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"
+                               Text="↑↓ navigate · Enter or Tab choose · Esc close"/>
+                </Border>
+
+                <StackPanel DockPanel.Dock="Top" Spacing="2" Margin="0,4"
+                            IsVisible="{Binding !HasMatches}">
+                    <TextBlock Text="Indexing…" FontSize="12" Margin="12,6"
+                               Foreground="{DynamicResource CockpitTextFaintBrush}"
+                               IsVisible="{Binding IsLoading}"/>
+                    <StackPanel IsVisible="{Binding !IsLoading}">
+                        <TextBlock FontSize="12" Margin="12,6" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource CockpitTextFaintBrush}">
+                            <Run Text="No project matches "/><Run Text="{Binding Query}" FontWeight="SemiBold"/>
+                        </TextBlock>
+                        <Button x:Name="EmptyAction" Classes="Compact" Margin="8,0,8,6" HorizontalAlignment="Left"
+                                Content="{Binding #Root.EmptyActionText}" Command="{Binding #Root.EmptyActionCommand}"
+                                IsVisible="{Binding #Root.EmptyActionText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <Panel IsVisible="{Binding HasMatches}">
+                    <ListBox x:Name="List" Focusable="False" ItemsSource="{Binding Matches}"
+                             SelectedItem="{Binding Selected}"
+                             Background="Transparent" BorderThickness="0" Padding="0,4">
+                        <ListBox.Styles>
+                            <Style Selector="ListBoxItem">
+                                <Setter Property="Padding" Value="0"/>
+                                <Setter Property="MinHeight" Value="0"/>
+                            </Style>
+                            <Style Selector="ListBoxItem /template/ ContentPresenter">
+                                <Setter Property="Background" Value="Transparent"/>
+                            </Style>
+                            <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+                                <Setter Property="Background" Value="Transparent"/>
+                            </Style>
+                            <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+                                <Setter Property="Background" Value="Transparent"/>
+                            </Style>
+                            <Style Selector="Border.MentionRow">
+                                <Setter Property="BorderBrush" Value="Transparent"/>
+                            </Style>
+                            <Style Selector="ListBoxItem:pointerover Border.MentionRow">
+                                <Setter Property="Background" Value="{DynamicResource CockpitSecondaryBgBrush}"/>
+                            </Style>
+                            <Style Selector="ListBoxItem:selected Border.MentionRow">
+                                <Setter Property="Background" Value="{DynamicResource CockpitInsetBgBrush}"/>
+                                <Setter Property="BorderBrush" Value="{DynamicResource CockpitAccentBrush}"/>
+                            </Style>
+                            <!-- On a narrow list the activity goes under the title; text wraps and is never cut off. -->
+                            <Style Selector="TextBlock.Activity">
+                                <Setter Property="Grid.Column" Value="2"/>
+                                <Setter Property="Grid.Row" Value="0"/>
+                                <Setter Property="Margin" Value="12,0,0,0"/>
+                            </Style>
+                            <Style Selector="StackPanel.Texts">
+                                <Setter Property="Grid.RowSpan" Value="2"/>
+                            </Style>
+                            <Style Selector="Border.narrow TextBlock.Activity">
+                                <Setter Property="Grid.Column" Value="1"/>
+                                <Setter Property="Grid.Row" Value="1"/>
+                                <Setter Property="Margin" Value="0,2,0,0"/>
+                            </Style>
+                            <Style Selector="Border.narrow StackPanel.Texts">
+                                <Setter Property="Grid.RowSpan" Value="1"/>
+                            </Style>
+                        </ListBox.Styles>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="vm:MentionMatch">
+                                <Panel>
+                                    <TextBlock Text="{Binding Heading}" IsVisible="{Binding IsHeading}"
+                                               FontSize="11" FontWeight="Medium" Margin="12,8,12,4"
+                                               Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                    <Border Classes="MentionRow" IsVisible="{Binding IsItem}" Margin="4,1" Padding="6,4,8,4"
+                                            MinHeight="38" CornerRadius="7" BorderThickness="2,0,0,0">
+                                        <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto">
+                                            <controls:ProjectLogoBadge Size="22" Margin="0,0,9,0" VerticalAlignment="Center" Grid.RowSpan="2"
+                                                                       ProjectName="{Binding Tile.Letter}"
+                                                                       LogoPath="{Binding Tile.LogoPath}"
+                                                                       WellBackground="{DynamicResource CockpitInsetBgBrush}"/>
+                                            <StackPanel Classes="Texts" Grid.Column="1" VerticalAlignment="Center">
+                                                <TextBlock FontSize="12.5" LineHeight="16.25" TextWrapping="Wrap">
+                                                    <Run Text="{Binding TitleBefore}" FontWeight="SemiBold"/><Run Text="{Binding TitleHit}" FontWeight="SemiBold" Foreground="{DynamicResource CockpitAccentBrush}"/><Run Text="{Binding TitleAfter}" FontWeight="SemiBold"/>
+                                                </TextBlock>
+                                                <TextBlock Text="{Binding SourceLine}" FontSize="11.5" LineHeight="14.95" TextWrapping="Wrap"
+                                                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"
+                                                           IsVisible="{Binding SourceLine, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                            </StackPanel>
+                                            <TextBlock Classes="Activity" TextWrapping="Wrap" FontSize="11.5" VerticalAlignment="Top"
+                                                       Foreground="{DynamicResource CockpitTextFaintBrush}"
+                                                       Text="{Binding LastActivity, Converter={x:Static conv:LastOpenedConverter.Instance}}"
+                                                       IsVisible="{Binding LastActivity, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+                                        </Grid>
+                                    </Border>
+                                </Panel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <!-- The heading of the group at the top of the scrolled list stays in view. -->
+                    <Border VerticalAlignment="Top" Background="{DynamicResource CockpitPanelBgBrush}" IsHitTestVisible="False"
+                            Padding="12,6,12,2" IsVisible="{Binding #Root.StickyHeading, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                        <TextBlock Text="{Binding #Root.StickyHeading}" FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                    </Border>
+                </Panel>
+            </DockPanel>
+        </Border>
+    </Popup>
+</UserControl>

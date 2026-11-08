@@ -38,6 +38,7 @@
                 </StackPanel>
 
                 <StackPanel Spacing="2">
+                    <TextBlock Text="{Binding PublisherNotice}" TextWrapping="Wrap" FontSize="12"/>
                     <TextBlock Text="Location" Foreground="{DynamicResource CockpitTextFaintBrush}" FontSize="11"/>
                     <TextBlock Text="{Binding FolderPath}" FontFamily="{StaticResource CockpitMonoFont}"
                                FontSize="11" TextWrapping="Wrap"/>

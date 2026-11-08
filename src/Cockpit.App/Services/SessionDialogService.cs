@@ -65,6 +65,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     private readonly IAssistantProfileStore _assistantProfileStore;
     private readonly IOrgPolicy _orgPolicy;
     private readonly IProfileSessionLimits _sessionLimit;
+    private readonly ISessionRoleCatalog? _roles;
 
     public SessionDialogService(
         ISessionProfileStore profileStore,
@@ -93,9 +94,11 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         ISessionRegistry sessions,
         IAssistantAgentGateway assistantGateway,
         SessionMcpMounts mcpMounts,
-        ILogger<SessionDialogService> logger)
+        ILogger<SessionDialogService> logger,
+        ISessionRoleCatalog? roles = null)
     {
         _logger = logger;
+        _roles = roles;
         _sessionLimit = sessionLimit;
         _orgPolicy = orgPolicy;
         _projectDefinitionBuilder = projectDefinitionBuilder;
@@ -146,7 +149,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         var viewModel = new NewSessionDialogViewModel(
             _profileStore, _loginChecker, _mcpServerCatalog, _workingPathStore, _plugins,
             _ttyProviderResolver, _worktreeManager, _tokenEstimator,
-            _projectStore, _oauthCoordinator, _loginFlows, _shellAccessSwitch, _orgPolicy)
+            _projectStore, _oauthCoordinator, _loginFlows, _shellAccessSwitch, _orgPolicy, _roles)
         {
             FullReason = _sessionLimit.FullReason,
         };
@@ -265,7 +268,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         {
             var viewModel = new AssistantProfileDialogViewModel(
                 _assistantProfileStore, _profileStore, assistant, _loginChecker,
-                _plugins, _mcpServerCatalog, _tokenEstimator, _ttyProviderResolver, _pluginConfigViews, setup);
+                _plugins, _mcpServerCatalog, _tokenEstimator, _ttyProviderResolver, _pluginConfigViews, setup, roles: _roles);
             await viewModel.LoadAsync();
 
             return new AssistantProfileDialog { DataContext = viewModel };
@@ -673,7 +676,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 
         var files = await owner.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = "Install plugin from zip",
+            Title = "Install plugin from zip (publisher verification is bypassed)",
             AllowMultiple = false,
             FileTypeFilter = [new FilePickerFileType("Plugin package (*.zip)") { Patterns = ["*.zip"] }],
         });
@@ -874,6 +877,16 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         {
             _logger.LogError(exception, "Opening the selected agent from the palette failed.");
         }
+    }
+
+    public async Task<bool> ShowPublisherKeyChangedDialogAsync(Cockpit.Core.Plugins.PluginKeyConsentRequest request)
+    {
+        if (OwnerWindow() is not { } owner)
+        {
+            return false;
+        }
+
+        return await new PublisherKeyChangedDialog { DataContext = request }.ShowDialog<bool>(owner);
     }
 
     public async Task<bool> ShowConfirmationDialogAsync(string title, string message, string confirmLabel = "Remove")

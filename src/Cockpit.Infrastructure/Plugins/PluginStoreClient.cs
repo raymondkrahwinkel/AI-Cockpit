@@ -1,4 +1,7 @@
 using System.Net.Http.Headers;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Plugins;
@@ -9,15 +12,17 @@ namespace Cockpit.Infrastructure.Plugins;
 // Fetches a store's `index.json` and downloads a version's zip (#14, AC-7): local folder, plain GET, or
 // bearer-auth remote — a private `github.com` repo goes through the Contents API since raw.githubusercontent.com
 // won't serve it with a token. Published SHA-256 is verified before writing; mismatch is rejected.
-internal sealed class PluginStoreClient : IPluginStoreClient, ISingletonService
+internal sealed partial class PluginStoreClient : IPluginStoreClient, ISingletonService
 {
     private static readonly HttpClient Http = new();
+
+    private static readonly ConditionalWeakTable<Func<HttpMessageHandler>, HttpClient> SignedHttp = [];
 
     // A store logo is a small image, not a payload — anything larger is refused rather than downloaded.
     private const long MaxLogoBytes = 1_048_576;
 
     // One resolved fetch: a local file path or a remote URL, whether to ask GitHub for raw bytes, and the bearer token to send (only ever to the store's own host).
-    private readonly record struct StoreTarget(bool IsLocal, string Value, bool GitHubRaw, string? Token);
+    private readonly record struct StoreTarget(bool IsLocal, string Value, bool GitHubRaw, string? Token, PluginStoreSignedSource? Signed = null);
 
     public async Task<PluginStoreFetchResult> FetchIndexAsync(PluginStoreConfig store, CancellationToken cancellationToken = default)
     {
@@ -28,10 +33,21 @@ internal sealed class PluginStoreClient : IPluginStoreClient, ISingletonService
 
         try
         {
+            target = _WithSignedHandler(store, target);
             var json = await _ReadStringAsync(target, cancellationToken).ConfigureAwait(false);
             if (!PluginStoreIndex.TryParse(json, out var index, out var parseError))
             {
                 return new PluginStoreFetchResult(false, parseError, null, target.Value);
+            }
+
+            if (store.Signed is not null && index is not null)
+            {
+                index = index with
+                {
+                    Templates = null,
+                    IconUrl = null,
+                    Plugins = [.. index.Plugins.Select(plugin => plugin with { LogoAsset = null })],
+                };
             }
 
             return new PluginStoreFetchResult(true, null, index, target.Value);
@@ -44,32 +60,95 @@ internal sealed class PluginStoreClient : IPluginStoreClient, ISingletonService
 
     public async Task<PluginStoreDownloadResult> DownloadZipAsync(PluginStoreConfig store, string relativePath, string? expectedSha256, CancellationToken cancellationToken = default, IProgress<PluginDownloadProgress>? progress = null)
     {
+        if (store.Signed is not null)
+        {
+            return new PluginStoreDownloadResult(false, "A signed source requires validated plugin and version fields.", null);
+        }
+
         if (!_TryResolveRelative(store, relativePath, out var target, out var error))
         {
             return new PluginStoreDownloadResult(false, error, null);
         }
 
+        return await _DownloadZipAsync(store, target, expectedSha256, cancellationToken, progress).ConfigureAwait(false);
+    }
+
+    public async Task<PluginStoreDownloadResult> DownloadZipAsync(PluginStoreConfig store, PluginStoreVersion version, string pluginId, CancellationToken cancellationToken = default, IProgress<PluginDownloadProgress>? progress = null)
+    {
+        if (version.PackageFor() is not { } package)
+        {
+            return new PluginStoreDownloadResult(false, "The selected version has no package for this platform.", null);
+        }
+
+        if (store.Signed is not { } signed)
+        {
+            return await DownloadZipAsync(store, package.Path, package.Sha256, cancellationToken, progress).ConfigureAwait(false);
+        }
+
+        var platform = version.Packages is null ? "any" : RuntimeInformation.RuntimeIdentifier;
+        if (string.IsNullOrEmpty(pluginId) || pluginId.Length > 100 || !_IdPattern().IsMatch(pluginId)
+            || string.IsNullOrEmpty(version.Version) || !_VersionPattern().IsMatch(version.Version)
+            || string.IsNullOrEmpty(signed.Organization) || !_OrganizationPattern().IsMatch(signed.Organization)
+            || !_PlatformPattern().IsMatch(platform))
+        {
+            return new PluginStoreDownloadResult(false, "The signed source has invalid plugin, version, organization or platform fields.", null);
+        }
+
+        if (!_TryResolveIndex(store, out var index, out var error))
+        {
+            return new PluginStoreDownloadResult(false, error, null);
+        }
+
+        var file = version.Packages is null ? "plugin.zip" : $"plugin-{platform}.zip";
+        var url = PluginStoreUrl.ResolveZipUrl(index.Value, $"plugins/{pluginId}/{version.Version}/{file}");
+        var target = new StoreTarget(IsLocal: false, url, GitHubRaw: false, Token: null);
+        return await _DownloadZipAsync(store, target, package.Sha256, cancellationToken, progress).ConfigureAwait(false);
+    }
+
+    private static async Task<PluginStoreDownloadResult> _DownloadZipAsync(PluginStoreConfig store, StoreTarget target, string? expectedSha256, CancellationToken cancellationToken, IProgress<PluginDownloadProgress>? progress)
+    {
+        using var deadline = store.Signed is null ? null : CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline?.CancelAfter(Http.Timeout);
+        var downloadToken = deadline?.Token ?? cancellationToken;
+        string? tempPath = null;
         try
         {
-            var bytes = await _ReadBytesAsync(target, maxBytes: null, cancellationToken, progress).ConfigureAwait(false);
+            target = _WithSignedHandler(store, target);
+            var bytes = await _ReadBytesAsync(target, maxBytes: store.Signed is null ? null : 512L * 1024 * 1024, downloadToken, progress).ConfigureAwait(false);
             if (_ChecksumMismatch(bytes, expectedSha256))
             {
                 return new PluginStoreDownloadResult(false, "The downloaded plugin did not match the store's published checksum and was rejected.", null, ChecksumMismatch: true);
             }
 
-            var tempPath = Path.Combine(Path.GetTempPath(), "cockpit-store-" + Guid.NewGuid().ToString("N") + ".zip");
-            await File.WriteAllBytesAsync(tempPath, bytes, cancellationToken).ConfigureAwait(false);
+            tempPath = Path.Combine(Path.GetTempPath(), "cockpit-store-" + Guid.NewGuid().ToString("N") + ".zip");
+            await File.WriteAllBytesAsync(tempPath, bytes, downloadToken).ConfigureAwait(false);
 
             return new PluginStoreDownloadResult(true, null, tempPath, _UnverifiedWarning(expectedSha256, "plugin"));
         }
         catch (Exception exception)
         {
+            if (tempPath is not null)
+            {
+                try
+                {
+                    File.Delete(tempPath);
+                }
+                catch (Exception cleanup) when (cleanup is IOException or UnauthorizedAccessException)
+                {
+                    return new PluginStoreDownloadResult(false, $"Could not download the plugin or remove its partial download: {exception.Message}; {cleanup.Message}", null);
+                }
+            }
             return new PluginStoreDownloadResult(false, $"Could not download the plugin: {exception.Message}", null);
         }
     }
 
     public async Task<WorkflowTemplateDownloadResult> DownloadTemplateAsync(PluginStoreConfig store, string relativePath, string? expectedSha256, CancellationToken cancellationToken = default)
     {
+        if (store.Signed is not null)
+        {
+            return new WorkflowTemplateDownloadResult(false, "Signed sources do not provide workflow templates.", null);
+        }
+
         if (!_TryResolveRelative(store, relativePath, out var target, out var error))
         {
             return new WorkflowTemplateDownloadResult(false, error, null);
@@ -93,6 +172,11 @@ internal sealed class PluginStoreClient : IPluginStoreClient, ISingletonService
 
     public async Task<PluginStoreImageResult> DownloadImageAsync(PluginStoreConfig store, string iconUrl, CancellationToken cancellationToken = default)
     {
+        if (store.Signed is not null)
+        {
+            return new PluginStoreImageResult(false, "Signed sources do not provide images.", null);
+        }
+
         if (!_TryResolveIcon(store, iconUrl, out var target, out var error))
         {
             return new PluginStoreImageResult(false, error, null);
@@ -124,6 +208,20 @@ internal sealed class PluginStoreClient : IPluginStoreClient, ISingletonService
     {
         target = default;
         error = null;
+
+        if (store.Signed is not null)
+        {
+            if (store.IsLocal || !Uri.TryCreate(store.Location, UriKind.Absolute, out var signedIndex)
+                || (signedIndex.Scheme != Uri.UriSchemeHttp && signedIndex.Scheme != Uri.UriSchemeHttps)
+                || signedIndex.UserInfo.Length > 0 || signedIndex.Fragment.Length > 0)
+            {
+                error = "A signed source requires an http(s) index URL without embedded credentials or a fragment.";
+                return false;
+            }
+
+            target = new StoreTarget(IsLocal: false, signedIndex.ToString(), GitHubRaw: false, Token: null);
+            return true;
+        }
 
         if (store.Kind == PluginStoreKind.Local)
         {
@@ -239,6 +337,34 @@ internal sealed class PluginStoreClient : IPluginStoreClient, ISingletonService
                 : null;
     }
 
+    // A signed source sends through its host handler, which adds the bearer itself and only for its own origin.
+    private static StoreTarget _WithSignedHandler(PluginStoreConfig store, StoreTarget target)
+    {
+        if (store.Signed is not { } signed)
+        {
+            return target;
+        }
+
+        if (target.IsLocal || _TokenForSameOrigin(target.Value, store.Location, "origin-check") is null)
+        {
+            throw new InvalidOperationException("A signed source cannot send credentials outside its own origin.");
+        }
+
+        return target with { Signed = signed };
+    }
+
+    [GeneratedRegex("\\A[a-z0-9][a-z0-9-]{0,62}\\z", RegexOptions.CultureInvariant)]
+    private static partial Regex _OrganizationPattern();
+
+    [GeneratedRegex("\\A[a-z0-9]+(-[a-z0-9]+)*\\z", RegexOptions.CultureInvariant)]
+    private static partial Regex _IdPattern();
+
+    [GeneratedRegex("\\A(0|[1-9][0-9]{0,8})\\.(0|[1-9][0-9]{0,8})\\.(0|[1-9][0-9]{0,8})\\z", RegexOptions.CultureInvariant)]
+    private static partial Regex _VersionPattern();
+
+    [GeneratedRegex("\\A(any|[a-z0-9][a-z0-9.-]{0,31})\\z", RegexOptions.CultureInvariant)]
+    private static partial Regex _PlatformPattern();
+
     private static bool _TryResolveIcon(PluginStoreConfig store, string iconUrl, out StoreTarget target, out string? error)
     {
         target = default;
@@ -295,7 +421,7 @@ internal sealed class PluginStoreClient : IPluginStoreClient, ISingletonService
         }
 
         using var request = _BuildRequest(target);
-        using var response = await Http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        using var response = await _SendAsync(target, request, HttpCompletionOption.ResponseContentRead, cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
 
         return await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
@@ -309,19 +435,19 @@ internal sealed class PluginStoreClient : IPluginStoreClient, ISingletonService
             var bytes = await _ReadStreamAsync(stream, stream.Length, maxBytes, cancellationToken, progress).ConfigureAwait(false);
             if (maxBytes is { } localCap && bytes.Length > localCap)
             {
-                throw new InvalidOperationException("The store icon is too large.");
+                throw new InvalidOperationException("The store download is too large.");
             }
 
             return bytes;
         }
 
         using var request = _BuildRequest(target);
-        using var response = await Http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+        using var response = await _SendAsync(target, request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
 
         if (maxBytes is { } cap && response.Content.Headers.ContentLength > cap)
         {
-            throw new InvalidOperationException("The store icon is too large.");
+            throw new InvalidOperationException("The store download is too large.");
         }
 
         await using var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
@@ -330,7 +456,7 @@ internal sealed class PluginStoreClient : IPluginStoreClient, ISingletonService
 
     private static async Task<byte[]> _ReadStreamAsync(Stream stream, long? totalBytes, long? maxBytes, CancellationToken cancellationToken, IProgress<PluginDownloadProgress>? progress)
     {
-        await using var buffer = new MemoryStream(totalBytes is > 0 and <= int.MaxValue ? (int)totalBytes.Value : 0);
+        await using var buffer = new MemoryStream(totalBytes is > 0 and <= int.MaxValue && (maxBytes is null || totalBytes <= maxBytes) ? (int)totalBytes.Value : 0);
         var chunk = new byte[81920];
         long read = 0;
         int count;
@@ -338,12 +464,21 @@ internal sealed class PluginStoreClient : IPluginStoreClient, ISingletonService
         {
             read += count;
             if (maxBytes is { } limit && read > limit)
-                throw new InvalidOperationException("The store icon is too large.");
+                throw new InvalidOperationException("The store download is too large.");
             await buffer.WriteAsync(chunk.AsMemory(0, count), cancellationToken).ConfigureAwait(false);
             progress?.Report(new PluginDownloadProgress(read, totalBytes));
         }
 
         return buffer.ToArray();
+    }
+
+    private static async Task<HttpResponseMessage> _SendAsync(StoreTarget target, HttpRequestMessage request, HttpCompletionOption completion, CancellationToken cancellationToken)
+    {
+        // One client per handler factory: it lives as long as the registration and a streamed body needs it alive until read.
+        var http = target.Signed is { } signed
+            ? SignedHttp.GetValue(signed.CreateHandler, create => new HttpClient(create(), disposeHandler: true) { Timeout = Timeout.InfiniteTimeSpan })
+            : Http;
+        return await http.SendAsync(request, completion, cancellationToken).ConfigureAwait(false);
     }
 
     private static HttpRequestMessage _BuildRequest(StoreTarget target)

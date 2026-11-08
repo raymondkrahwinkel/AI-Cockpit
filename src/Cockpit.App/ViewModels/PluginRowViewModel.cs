@@ -1,3 +1,4 @@
+using CommunityToolkit.Mvvm.ComponentModel;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Plugins;
 using Cockpit.Plugins.Abstractions.Capabilities;
@@ -7,8 +8,16 @@ namespace Cockpit.App.ViewModels;
 // One row in the plugin manager (#14): the display fields plus the action affordances derived from the
 // plugin's `PluginLoadDecision`. The manager owns the enable/disable/remove commands and
 // takes the row as their parameter, so the row itself stays a passive projection of an installed plugin.
-public sealed class PluginRowViewModel(InstalledPlugin installed, bool hasSettings = false)
+public sealed partial class PluginRowViewModel(InstalledPlugin installed, bool hasSettings = false) : ObservableObject
 {
+    // AC-1981: where the plugin came from and what its source is up to; set by the manager once it knows.
+    [ObservableProperty]
+    private InstalledPluginSource _source = InstalledPluginSource.None;
+
+    public bool HasSource => Source.SourceLine is not null;
+
+    partial void OnSourceChanged(InstalledPluginSource value) => OnPropertyChanged(nameof(HasSource));
+
     public DiscoveredPlugin Discovered => installed.Discovered;
 
     // Whether this plugin's left-menu contributions are hidden (#72). The plugin still runs — its shortcut and command-palette entry keep working — which is what separates this from disabling it.
@@ -35,7 +44,7 @@ public sealed class PluginRowViewModel(InstalledPlugin installed, bool hasSettin
     // True when the loaded plugin registered a settings view (#14) — the manager shows a gear to open it.
     public bool HasSettings => hasSettings;
 
-    internal PluginRowViewModel WithSettings() => new(installed, hasSettings: true);
+    internal PluginRowViewModel WithSettings() => new(installed, hasSettings: true) { Source = Source };
 
     // True when this plugin never became operative (load/configure/initialize), or is flagged for a compatibility concern.
     public bool HasFailure => installed.ActivationFailure is not null || installed.CompatibilityWarning is not null;

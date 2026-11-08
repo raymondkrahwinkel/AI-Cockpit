@@ -949,7 +949,10 @@ public partial class App : Application
 
         // AC-239: the second first-party companion tool through the same host — proof the seam AC-238 built
         // carries more than one resident.
-        var screenshotCompanionTool = Program.Services.GetRequiredService<ScreenshotCoordinator>().CreateCompanionTool();
+        var screenshots = Program.Services.GetRequiredService<ScreenshotCoordinator>();
+        screenshots.AssistantScreenshotCaptured += async (_, _) =>
+            await Program.Services.GetRequiredService<AssistantIndicatorCoordinator>().OpenCompanionComposerAsync();
+        var screenshotCompanionTool = screenshots.CreateCompanionTool();
         if (!firstPartyCompanionTools.AddCompanionTool(screenshotCompanionTool))
         {
             diagnostics.Record(

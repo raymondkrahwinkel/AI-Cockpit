@@ -36,9 +36,9 @@ public partial class CompanionPopOut : Window
     internal PixelSize DesiredCardSize(double width)
     {
         var content = Body;
-        content.Measure(new Size(width, double.PositiveInfinity));
+        content.Measure(new Size(width - 2, double.PositiveInfinity));
 
-        return new PixelSize((int)Math.Ceiling(width * RenderScaling), (int)Math.Ceiling(content.DesiredSize.Height * RenderScaling));
+        return new PixelSize((int)Math.Ceiling(width * RenderScaling), (int)Math.Ceiling((content.DesiredSize.Height + 2) * RenderScaling));
     }
 
     internal void PlaceAt(PixelRect card)

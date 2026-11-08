@@ -114,12 +114,13 @@ internal sealed class OrchestratorTools
         [Description("The working directory for the task; must be one the target profile allows.")] string? working_directory,
         [Description("What this one task may do: OMIT for read-only, which is the default — the task may read, search and report, and every attempt to write a file or run a shell command is refused by the cockpit itself. Pass 'acceptEdits' for a task that is meant to change files, or 'bypassPermissions' to also let it run shell commands (builds, tests, git). A value at or below the profile's own ceiling is honoured outright; a value ABOVE it is not granted automatically — it asks the operator for a one-time approval, asked fresh for every such task and never remembered, and if nobody answers or they decline the task runs clamped to the profile's ceiling instead.")] string? requested_permission,
         [Description("Optional narrowing of which MCP servers this one task gets: the server names to keep, as they appear in this profile's 'mcpServers' from list_profiles. It can only restrict within what the profile already allows, never grant — naming a server the profile does not have refuses the whole call, so read list_profiles first. Omit to run with the profile's full set.")] string[]? mcp_servers,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        [Description("Optional role from the target session's brain, or none to work without a role.")] string? role = null)
     {
         try
         {
             var task = await _delegation.DelegateAsync(
-                new DelegationRequest(profile, prompt, task_type, label, working_directory, requested_permission, McpServers: mcp_servers),
+                new DelegationRequest(profile, prompt, task_type, label, working_directory, requested_permission, McpServers: mcp_servers, Role: role),
                 McpRequestContext.CurrentPaneId,
                 cancellationToken);
 

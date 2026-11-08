@@ -688,6 +688,24 @@
     <Style Selector="Button.Subtle:pointerover /template/ ContentPresenter">
         <Setter Property="Background" Value="Transparent"/>
     </Style>
+    <!-- Flyout card in the @-mention picker's look (PanelBg, hairline, radius, 0,4 padding); opted into with FlyoutPresenterClasses="Card". -->
+    <Style Selector="FlyoutPresenter.Card">
+        <Setter Property="Background" Value="{DynamicResource CockpitPanelBgBrush}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource CockpitHairlineBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius" Value="{StaticResource CockpitControlRadius}"/>
+        <Setter Property="Padding" Value="0,4"/>
+    </Style>
+    <!-- A flat flyout row: the Simple rail's row shape, lit with SecondaryBg under the pointer like the picker's selected item. -->
+    <Style Selector="Button.Subtle.Row">
+        <Setter Property="HorizontalAlignment" Value="Stretch"/>
+        <Setter Property="HorizontalContentAlignment" Value="Left"/>
+        <Setter Property="Padding" Value="10,7"/>
+        <Setter Property="CornerRadius" Value="0"/>
+    </Style>
+    <Style Selector="Button.Subtle.Row:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource CockpitSecondaryBgBrush}"/>
+    </Style>
     <!-- Disabled Subtle button (e.g. Remove with nothing selected): stay chromeless — without this the
          default theme paints a grey disabled box, which reads as a broken/mis-styled button. -->
     <Style Selector="Button.Subtle:disabled /template/ ContentPresenter">

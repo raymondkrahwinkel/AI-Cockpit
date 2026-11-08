@@ -126,12 +126,16 @@
                                                    Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                     </StackPanel>
 
-                                    <Button Grid.Column="2" Content="Remove" Classes="Subtle Compact"
+                                    <Button Grid.Column="2" Content="Remove" Classes="Subtle Compact" IsVisible="{Binding CanRemove}"
                                             VerticalAlignment="Center"
                                             Foreground="{DynamicResource CockpitTextFaintBrush}"
                                             Command="{Binding $parent[ItemsControl].((vm:PluginManagerViewModel)DataContext).RemoveStoreCommand}"
                                             CommandParameter="{Binding}"
                                             ToolTip.Tip="Remove this store from the catalogue"/>
+                                    <Button Grid.Column="2" Content="{Binding VisibilityAction}" Classes="Subtle Compact"
+                                            IsVisible="{Binding CanHide}" VerticalAlignment="Center"
+                                            Command="{Binding $parent[ItemsControl].((vm:PluginManagerViewModel)DataContext).ToggleStoreHiddenCommand}"
+                                            CommandParameter="{Binding}"/>
                                 </Grid>
                             </Border>
                         </DataTemplate>

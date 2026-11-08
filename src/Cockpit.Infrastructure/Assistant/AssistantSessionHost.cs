@@ -44,9 +44,39 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
     private readonly ISwarmLeadership? _leadership;
     private readonly SwarmTakeoverCoordinator? _takeover;
     private readonly IProjectMemorySourceRegistry? _memorySources;
+    private readonly Func<SessionStartComposer>? _startComposer;
     internal Task StandbyPublication { get; private set; } = Task.CompletedTask;
     internal Task LeadershipTransition { get; private set; } = Task.CompletedTask;
     private double _contextCompactionPercent = AssistantSettings.DefaultCompactionPercent;
+
+    private async Task<string?> _BrainAndRoleAsync(AssistantProfileSlot slot, CancellationToken cancellationToken)
+    {
+        var brain = SessionStartDefaults.ResolveBrainInstruction(null, slot.Profile, _memorySources?.Sources.ToMemorySources());
+        if (string.IsNullOrWhiteSpace(slot.AssistantRole) || string.Equals(slot.AssistantRole.Trim(), "none", StringComparison.OrdinalIgnoreCase) || slot.Profile is not { } profile)
+        {
+            return brain;
+        }
+        try
+        {
+            if (_startComposer is not null)
+            {
+                var request = await _startComposer().ComposeRoleAsync(new SessionLaunchRequest("", profile, null, null, null, null, null, null, null, false)
+                {
+                    Role = slot.AssistantRole,
+                    IsRestoring = true,
+                }, cancellationToken).ConfigureAwait(true);
+                if (request.RoleInstruction is not null)
+                {
+                    return request.RoleInstruction;
+                }
+            }
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogWarning(exception, "The assistant role could not be loaded.");
+        }
+        return string.Join("\n\n", new[] { brain, $"The role '{slot.AssistantRole}' could not be loaded; tell the operator." }.Where(text => !string.IsNullOrWhiteSpace(text)));
+    }
 
     private async Task _ApplySpeechAsync(IAssistantSession session, AssistantSettings settings, CancellationToken cancellationToken)
     {
@@ -88,7 +118,8 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         ISwarmLeadership? leadership = null,
         SwarmTakeoverCoordinator? takeover = null,
         IProjectMemorySourceRegistry? memorySources = null,
-        ISessionProfileStore? speechProfiles = null)
+        ISessionProfileStore? speechProfiles = null,
+        Func<SessionStartComposer>? startComposer = null)
     {
         _sessions = sessions;
         _presence = presence;
@@ -112,6 +143,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         _leadership = leadership;
         _takeover = takeover;
         _memorySources = memorySources;
+        _startComposer = startComposer;
         if (leadership is not null) leadership.Changed += (_, _) =>
             LeadershipTransition = _sessions.OnOwnerThreadAsync(_FollowLeadershipAsync);
 
@@ -629,7 +661,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
                 consentCardAsks: !settings.ConsentBypassAll,
                 orgRules: await _memory.ReadOrgRulesAsync(cancellationToken).ConfigureAwait(true),
                 // AC-1994: the slot's brain, resolved the way every other start resolves one; the assistant has no project.
-                brainInstruction: SessionStartDefaults.ResolveBrainInstruction(null, profile, _memorySources?.Sources.ToMemorySources())),
+                brainInstruction: await _BrainAndRoleAsync(slot, cancellationToken).ConfigureAwait(true)),
             settings.ReadingLevel)).ConfigureAwait(true);
 
         // Dropped, never assigned to `Session`: that change rebuilt the Simple stand's chat view, whose attach started the assistant again — a loop per layout pass when the start cannot succeed.

@@ -206,11 +206,9 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
 
     // The same sample, applied to an existing view model — for the Projects-workspace renders (AC-772), where the
     // view model is the one `CockpitViewModel` already owns and so cannot be swapped for a freshly built sample.
-    internal void StageDesignSample()
+    internal void StageDesignSample(bool withLongName = false)
     {
-        _snapshot = _snapshot with
-        {
-            Settings = ProjectSettings.Empty.WithProject(Project.Create("Cockpit") with
+        var settings = ProjectSettings.Empty.WithProject(Project.Create("Cockpit") with
             {
                 Description = "The cockpit itself — the desktop app these sessions run in.",
                 SourceDirectories = [new("/home/raymond/RiderProjects/AI-Cockpit")],
@@ -221,8 +219,16 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
                 new ProjectInfoField("Repository", "https://github.com/example/ai-cockpit"),
                 new ProjectInfoField("Customer", "Acme BV — ask for their project lead"),
             ],
-            }),
-        };
+            });
+        if (withLongName)
+        {
+            settings = settings.WithProject(Project.Create("Demo Horizon met een langere projectnaam") with
+            {
+                Description = "A project whose name needs more than one line.",
+            });
+        }
+
+        _snapshot = _snapshot with { Settings = settings };
         _Republish();
     }
 

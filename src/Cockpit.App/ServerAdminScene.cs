@@ -458,7 +458,7 @@ internal static class ServerAdminScene
         public Task<RemoteAssistantSettings> SetEnabledAsync(bool enabled, CancellationToken cancellationToken = default) => GetAsync(cancellationToken);
 
         // "saved": the server holds the profile the dialog sent, and the assistant runs on it.
-        public Task<RemoteAssistantSettings> SaveProfileAsync(SessionProfile profile, bool replacesStandingInstruction, CancellationToken cancellationToken = default) => Task.FromResult(
+        public Task<RemoteAssistantSettings> SaveProfileAsync(SessionProfile profile, bool replacesStandingInstruction, CancellationToken cancellationToken = default, string? assistantRole = null) => Task.FromResult(
             new RemoteAssistantSettings(true, true, null, false, Profile with { Full = profile }, null, profile.SystemPrompt, replacesStandingInstruction, true, Bypass));
 
         public Task<RemoteAssistantSettings?> CopyProfileFromAsync(string label, CancellationToken cancellationToken = default) =>
@@ -532,7 +532,7 @@ internal static class ServerAdminScene
 
         public Task<PluginInstallResult> InstallFromZipAsync(string zipFilePath, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Install from the server's store, or copy the zip onto the server.");
 
-        public Task<PluginProvisionResult> InstallFromStoreAsync(PluginProvisionRequest request, CancellationToken cancellationToken = default, IProgress<PluginDownloadProgress>? progress = null) => Task.FromResult(new PluginProvisionResult(PluginProvisionOutcome.Failed, request.Id, request.Name, "No store is configured.", null, null, null));
+        public Task<PluginProvisionResult> InstallFromStoreAsync(PluginProvisionRequest request, CancellationToken cancellationToken = default, IProgress<PluginDownloadProgress>? progress = null, Func<PluginKeyConsentRequest, CancellationToken, Task<bool>>? keyConsent = null) => Task.FromResult(new PluginProvisionResult(PluginProvisionOutcome.Failed, request.Id, request.Name, "No store is configured.", null, null, null));
 
         public Task<Cockpit.Core.Plugins.PluginLiveState> SetEnabledAsync(string folderId, bool enabled, string pinnedSha256, CancellationToken cancellationToken = default) => Task.FromResult(Cockpit.Core.Plugins.PluginLiveState.Active);
 

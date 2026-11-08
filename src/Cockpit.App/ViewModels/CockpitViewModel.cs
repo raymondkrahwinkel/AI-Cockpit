@@ -3676,10 +3676,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Cockpit.Core.Swarm.ISwarmLeadership? swarmLeadership = null,
         // AC-1846: Options › Sync. Absent in the design-time/unit-test graph, where the page lists no server.
         ISyncOptions? syncOptions = null,
+        IPluginStoreSources? pluginStoreSources = null,
         ISessionMcpRestore? sessionMcpRestore = null,
         Cockpit.Core.HeavyRuns.IHeavyRunSettingsStore? heavyRunSettingsStore = null,
-        Cockpit.Core.HeavyRuns.IHeavyRunSettingsRefresh? heavyRunSettingsRefresh = null)
+        Cockpit.Core.HeavyRuns.IHeavyRunSettingsRefresh? heavyRunSettingsRefresh = null,
+        IEnumerable<Cockpit.Core.Abstractions.Mentions.IMentionSource>? mentionSources = null)
     {
+        MentionSources = mentionSources;
         _heavyRunSettingsStore = heavyRunSettingsStore;
         _heavyRunSettingsRefresh = heavyRunSettingsRefresh;
         _managedSettingsReader = managedSettings;
@@ -3861,7 +3864,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Plugins = pluginAdministration is not null && pluginRegistrationStore is not null
                 && pluginStoreConfigStore is not null && pluginStoreClient is not null && pluginDialogHost is not null
                 && pluginDiagnostics is not null
-            ? new PluginManagerViewModel(pluginAdministration, pluginRegistrationStore, dialogService, pluginStoreConfigStore, pluginStoreClient, PluginSettings, this, appRestartService, workflowTemplateLibrary)
+            ? new PluginManagerViewModel(pluginAdministration, pluginRegistrationStore, dialogService, pluginStoreConfigStore, pluginStoreClient, PluginSettings, this, appRestartService, workflowTemplateLibrary, pluginStoreSources)
             : new PluginManagerViewModel();
         // a plugin's fire-and-forget AddMcpServer completing on a background continuation) — without this, the banner
         // would keep reporting the state at startup while the Plugin manager moved on, the exact divergence the ticket
@@ -6817,6 +6820,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                     key: $"session.unisolated:{launched.PaneId}");
             }
 
+            if ((launched?.FailureReason ?? launched?.RoleWarning) is { } roleNotice)
+            {
+                ToastHost.Add(roleNotice, ToastSeverity.Warning, [], sticky: true);
+            }
+
             return launched?.PaneId is { Length: > 0 } started ? started : null;
         }
         catch (Exception exception) when (exception is WorktreeAdmissionException || (exception is ProfileSessionLimitException && !refuseLoudly))
@@ -6860,6 +6868,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             IsComposed = result.IsComposed,
             NameIsComposed = result.NameIsComposed,
             Effort = result.Effort.Value,
+            Role = result.Role,
+            IsRestoring = result.IsRestoring,
             EnabledMcpServerNames = result.EnabledMcpServerNames,
             ReadingLevel = result.ReadingLevel,
             ProjectJobId = result.ProjectJobId,
@@ -6892,6 +6902,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             NameIsComposed = request.NameIsComposed,
             StartedByTheAssistant = request.StartedByTheAssistant,
             ProjectJobId = request.ProjectJobId,
+            Role = request.Role,
         };
     }
 
@@ -8539,6 +8550,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             ProjectId: pane.ProjectId)
         {
             NameIsComposed = !pane.NameIsChosen,
+            Role = plan.State?.Role,
+            IsRestoring = true,
             StartedByTheAssistant = _sessionRegistry?.Find(pane.Id)?.StartedByTheAssistant == true,
         };
     }
@@ -8570,7 +8583,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             {
                 result = result with { EnabledMcpServerNames = restoredSelection };
             }
-            if (await launcher.StartSessionAsync(_RequestOf(result, session.WorkspaceId) with { PaneId = session.PaneId }) is { PaneId.Length: > 0 })
+            var launched = await launcher.StartSessionAsync(_RequestOf(result, session.WorkspaceId) with { PaneId = session.PaneId });
+            if (launched?.RoleWarning is { } warning)
+            {
+                ToastHost.Add(warning, ToastSeverity.Warning, [], sticky: true);
+            }
+            if (launched is { PaneId.Length: > 0 })
             {
                 session.RestoreOffer = null;
             }
@@ -9660,6 +9678,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         public void NotifyPreparing(Cockpit.Core.Voice.VoicePlaybackSource source = Cockpit.Core.Voice.VoicePlaybackSource.Session, string? ownerId = null) { }
         public event EventHandler<bool>? PlaybackActiveChanged { add { } remove { } }
         public event EventHandler? SpeakingStarted { add { } remove { } }
+        public event EventHandler<bool>? AudioPendingChanged { add { } remove { } }
         public event EventHandler<Cockpit.Core.Abstractions.Voice.VoicePlaybackStoppedEventArgs>? PlaybackStopped { add { } remove { } }
         public void StopAll() { }
         public int Generation => 0;
@@ -9905,7 +9924,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         try
         {
-            await _sessionLauncher!.Invoke()!.StartSessionAsync(_RequestOf(launch, Workspaces.EnsureSessionWorkspace()) with { PaneId = record.PaneId });
+            var launched = await _sessionLauncher!.Invoke()!.StartSessionAsync(_RequestOf(launch, Workspaces.EnsureSessionWorkspace()) with { PaneId = record.PaneId });
+            if (launched?.RoleWarning is { } warning)
+            {
+                ToastHost.Add(warning, ToastSeverity.Warning, [], sticky: true);
+            }
         }
         catch (ProfileSessionLimitException exception)
         {

@@ -25,7 +25,7 @@ public interface IAssistantProfileStore
     Task<AssistantProfileSlot> RepointAsync(
         SessionProfile record,
         bool replacesStandingInstruction,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default, string? assistantRole = null);
 
     /// <summary>
     /// Lands the slot explicitly on "not set up", with <paramref name="reason"/> saying why — for the switch that

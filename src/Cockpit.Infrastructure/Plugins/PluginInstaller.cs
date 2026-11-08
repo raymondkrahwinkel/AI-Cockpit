@@ -48,8 +48,43 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
         _manager = manager;
     }
 
+    public async Task<PluginInstalledState> GetInstalledStateAsync(string folderId, CancellationToken cancellationToken = default)
+    {
+        var folder = Path.Combine(_pluginsRoot, folderId);
+        var exists = Directory.Exists(folder);
+        var removed = File.Exists(Path.Combine(folder, RemovalMarker));
+        var manifest = exists && IsInstalledPlugin(folder)
+            ? await _ReadManifestAsync(Path.Combine(folder, "plugin.json"), cancellationToken).ConfigureAwait(false) : null;
+        if (!exists)
+        {
+            manifest = await _ReadManifestAsync(Path.Combine(AppContext.BaseDirectory, BundledPluginInstaller.BundledFolderName, folderId, "plugin.json"), cancellationToken).ConfigureAwait(false);
+            var bundled = BundledPluginResources.TryRead(Path.Join(folderId, "plugin.json").Replace(Path.DirectorySeparatorChar, '/'));
+            manifest ??= bundled is not null && PluginManifest.TryParse(bundled, out var parsed, out _) ? parsed : null;
+        }
+        var pending = removed ? null : await _ReadManifestAsync(Path.Combine(_pluginsRoot, PendingUpdatesFolder, folderId, "plugin.json"), cancellationToken).ConfigureAwait(false);
+        var version = manifest?.Version;
+        if (Version.TryParse(pending?.Version, out var staged) && (!Version.TryParse(version, out var installed) || staged > installed))
+        {
+            version = pending?.Version;
+        }
+        // Folder presence still requires source consent; an unreadable or removed manifest imposes no version floor.
+        return new PluginInstalledState(exists || manifest is not null || pending is not null, version);
+    }
+
+    private static async Task<PluginManifest?> _ReadManifestAsync(string path, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return File.Exists(path) && PluginManifest.TryParse(await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false), out var manifest, out _) ? manifest : null;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
     public async Task<PluginInstallResult> InstallFromZipAsync(
-        string zipFilePath, int hostAbstractionsMajor, Version? hostVersion = null, CancellationToken cancellationToken = default)
+        string zipFilePath, int hostAbstractionsMajor, Version? hostVersion = null, CancellationToken cancellationToken = default, string? expectedId = null, string? expectedVersion = null)
     {
         hostVersion ??= HostVersionInfo.Current;
 
@@ -79,6 +114,16 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
             if (!PluginManifest.TryParse(json, out var manifest, out var parseError) || manifest is null)
             {
                 return PluginInstallResult.Failure($"Invalid plugin.json: {parseError}");
+            }
+
+            if (expectedId is not null && !string.Equals(PluginFolderName.Normalize(manifest.Id), PluginFolderName.Normalize(expectedId), StringComparison.Ordinal))
+            {
+                return PluginInstallResult.Failure("The archive targets a different plugin folder than the selected store entry.");
+            }
+            if (expectedVersion is not null && ((expectedId is not null && !string.Equals(manifest.Id, expectedId, StringComparison.Ordinal))
+                || !string.Equals(manifest.Version, expectedVersion, StringComparison.Ordinal)))
+            {
+                return PluginInstallResult.Failure("The extracted plugin does not match the verified identity and version.");
             }
 
             if (manifest.AbstractionsVersion != hostAbstractionsMajor)

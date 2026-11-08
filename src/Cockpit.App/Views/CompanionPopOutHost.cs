@@ -27,6 +27,30 @@ internal sealed class CompanionPopOutHost
 
     public bool IsOpen(string key) => _open.Exists(p => p.PopOutKey == key);
 
+    public void Close(string key) => _open.Find(p => p.PopOutKey == key)?.Close();
+
+    public void Activate(string key) => _open.Find(p => p.PopOutKey == key)?.Activate();
+
+    public Action HideForCapture()
+    {
+        var visible = _open.Where(popOut => popOut.IsVisible).ToArray();
+        foreach (var popOut in visible)
+        {
+            popOut.Hide();
+        }
+
+        return () =>
+        {
+            foreach (var popOut in visible.Where(_open.Contains))
+            {
+                var activate = popOut.ShowActivated;
+                popOut.ShowActivated = false;
+                popOut.Show(_strip);
+                popOut.ShowActivated = activate;
+            }
+        };
+    }
+
     public void CloseAll()
     {
         foreach (var popOut in _open.ToArray())

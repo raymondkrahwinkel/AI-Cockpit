@@ -24,11 +24,9 @@ internal static partial class Screenshotter
                 ListeningMode = Core.Assistant.AssistantListeningMode.Off,
             },
         }, Inline: true),
-        new("cockpit.screenshot", "Screenshot", "Take a screenshot", string.Empty, MaterialIconKind.Monitor, null, () => new Button
-        {
-            Content = Controls.CockpitIcons.Icon(MaterialIconKind.Monitor),
-            Padding = new Thickness(7, 6),
-        }, Inline: true),
+        new("cockpit.screenshot", "Screenshot", "Take a screenshot", string.Empty, MaterialIconKind.Monitor, null,
+            () => new CompanionScreenshotView(new CompanionSceneStorage(), new CockpitViewModel(),
+                () => Task.CompletedTask, () => Task.CompletedTask), Inline: true),
         new("example-companion-tool.hello", "Example", "Example companion tool", string.Empty, MaterialIconKind.HandWave,
             new SideMenuButtonBadge { Primary = 2 }, () => _SceneBody(1), Inline: false),
     ];

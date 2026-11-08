@@ -12,7 +12,8 @@ public sealed record PluginStoreVersion(
     string? MinHostVersion,
     string? Sha256,
     string? Notes,
-    IReadOnlyDictionary<string, PluginStorePackage>? Packages = null)
+    IReadOnlyDictionary<string, PluginStorePackage>? Packages = null,
+    string? Signature = null, string? KeyFingerprint = null, string? KeyName = null, PluginStoreSource? Source = null)
 {
     // The zip this host downloads: the package for its RID, `Path` when the version has no packages,
     // and null when it has packages but none for this RID.
@@ -20,7 +21,7 @@ public sealed record PluginStoreVersion(
     {
         if (Packages is null)
         {
-            return new PluginStorePackage(Path, Sha256);
+            return new PluginStorePackage(Path, Sha256, Signature, KeyFingerprint, KeyName);
         }
 
         return Packages.GetValueOrDefault(runtimeIdentifier ?? RuntimeInformation.RuntimeIdentifier);
@@ -28,4 +29,4 @@ public sealed record PluginStoreVersion(
 }
 
 // One platform's zip of a version (AC-1740): its repo-relative path and the sha256 to verify it against.
-public sealed record PluginStorePackage(string Path, string? Sha256);
+public sealed record PluginStorePackage(string Path, string? Sha256, string? Signature = null, string? KeyFingerprint = null, string? KeyName = null);
