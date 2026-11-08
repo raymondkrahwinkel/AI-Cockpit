@@ -13,4 +13,4 @@ internal sealed record CompanionStripItem(
     MaterialIconKind? IconKind,
     SideMenuButtonBadge? Badge,
     Func<Control> CreateView,
-    bool Inline);
+    bool Inline, Func<Control>? CreateStripContent = null);

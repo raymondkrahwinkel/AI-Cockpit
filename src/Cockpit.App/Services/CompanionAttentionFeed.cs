@@ -114,7 +114,7 @@ public sealed partial class CompanionAttentionItem : ObservableObject
 
 // Gathers what waits for the operator across all sessions (the same rows the transcript draws), so the strip's
 // bell can hold them and answer them without ever consulting the selected session.
-public sealed class CompanionAttentionFeed : ISingletonService
+public sealed partial class CompanionAttentionFeed : ISingletonService
 {
     public const string ToolId = "cockpit.notifications";
 
@@ -142,6 +142,9 @@ public sealed class CompanionAttentionFeed : ISingletonService
     public void Start()
     {
         _cockpit.Sessions.CollectionChanged += (_, _) => _QueueRefresh();
+        _cockpit.DelegatedTasks.Tasks.CollectionChanged += (_, _) => _QueueRefresh();
+        _cockpit.PluginStatusTexts.CollectionChanged += (_, _) => _QueueRefresh();
+        _cockpit.Projects.Projects.CollectionChanged += (_, _) => _QueueRefresh();
         _cockpit.PropertyChanged += (_, _) => _QueueRefresh();
         _QueueRefresh();
     }
@@ -186,6 +189,7 @@ public sealed class CompanionAttentionFeed : ISingletonService
             session.PropertyChanged += _OnSessionChanged;
         }
 
+        RefreshStatus(sessions);
         var wanted = sessions.SelectMany(_ItemsOf).ToList();
         var known = Items.ToDictionary(item => item.Key);
         var fresh = wanted.Where(item => !known.ContainsKey(item.Key)).ToList();
@@ -216,7 +220,7 @@ public sealed class CompanionAttentionFeed : ISingletonService
     private void _OnSessionChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(SessionViewModel.HasPendingPermission) or nameof(SessionViewModel.OpenQuestionCount)
-            or nameof(SessionPanelViewModel.SessionStatus))
+            or nameof(SessionPanelViewModel.SessionStatus) or nameof(SessionPanelViewModel.Title) or nameof(SessionPanelViewModel.Statusline) or nameof(SessionPanelViewModel.ProjectId))
         {
             _QueueRefresh();
         }
