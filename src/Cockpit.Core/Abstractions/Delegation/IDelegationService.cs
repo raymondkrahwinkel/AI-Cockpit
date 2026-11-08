@@ -151,4 +151,5 @@ public sealed record DelegationRequest(
     string? WorkingDirectory = null,
     string? RequestedPermission = null,
     int Depth = 0,
-    IReadOnlyList<string>? McpServers = null);
+    IReadOnlyList<string>? McpServers = null,
+    string? Role = null);

@@ -105,7 +105,7 @@ public sealed class MentionTokenOverlay : Control
             var isContext = token == picker.ContextToken;
             foreach (var rect in layout.HitTestTextRange(token.Start, token.Length))
             {
-                var box = new Rect(origin.X + rect.X - 3, origin.Y + rect.Y, rect.Width + 6, rect.Height).Deflate(new Thickness(0, 1));
+                var box = new Rect(origin.X + rect.X, origin.Y + rect.Y, rect.Width, rect.Height).Deflate(new Thickness(0, 1));
                 context.DrawRectangle(isContext ? fill : null, isContext ? null : outline, box, 5, 5);
             }
         }

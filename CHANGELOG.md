@@ -2,10 +2,20 @@
 
 ## Unreleased
 
-- AC-2199: typing @ on Home picks the project the button shows (and removing it clears the button again); every other project mention goes into the prompt with its path or shared id, and the list now works the same on Home, in sessions and in the assistant panel, where on a narrow panel the activity moves under the title instead of cutting it off.
+- AC-2194: the project picker follows the approved compact row typography and selection stripe, and token marks leave the surrounding spaces clear.
+
+- AC-2199: typing @ on Home picks the project the button shows (and removing it clears the button again); every other project mention goes into the prompt with its path or shared id, and the list now works the same on Home, in sessions and in the assistant panel.
 
 - AC-2200: plugins can add their own suggestions to the chat's @-list under "Suggested by plugins"; a plugin source that fails or takes longer than two seconds is left out without holding up the rest.
 - AC-2198: typing @ in a chat composer opens one shared list that hangs on the caret line at the composer's full width, groups files and projects per window, skips group headings with the arrow keys, and marks accepted project mentions in the text.
+- AC-2169: keep session and assistant role pickers behind the frontend contract boundary.
+
+- AC-2173: every session receives the pull request merge rule automatically; assistant briefs no longer repeat the standing work agreements.
+- AC-2172: choose an optional role when starting a session or editing the Assistant Profile. The assistant keeps its role across provider changes and starts with a warning if the role cannot be loaded.
+
+- AC-2171: the assistant explicitly chooses a role or none when starting sessions, including on paired nodes. Role refusals show the available choices; manual server starts and delegated tasks keep roles optional.
+
+- AC-2170: sessions can carry an optional role from their brain on every provider route, keep that choice when copied or resumed, and resume with a warning if the role source is unavailable. Older memory plugins and servers continue to work without roles.
 - AC-2212: the Simple rail now has a Plugins row above Settings and Help that opens the plugin store, with the same update and approval badges as the Panels sidebar.
 
 - AC-2191: the Panels sidebar footer uses flat icon rows like the Simple rail, and the Menu and Help flyouts get the mention-picker look with icon rows (also in the Simple rail's Help).

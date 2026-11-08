@@ -20,4 +20,6 @@ public sealed record SessionStateRecord(
     public IReadOnlyList<string>? McpDelegationCeiling { get; init; }
     public bool? McpIsDelegated { get; init; }
     public bool McpPreserveSelection { get; init; }
+
+    public string? Role { get; init; }
 }

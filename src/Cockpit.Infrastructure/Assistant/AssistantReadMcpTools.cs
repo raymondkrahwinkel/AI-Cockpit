@@ -27,7 +27,9 @@ internal sealed class AssistantReadMcpTools(
     ModelPictureReader modelPicture,
     LocalTextModelClient? localText = null,
     ISessionProfileStore? profileStore = null,
-    ProfileSessionLimit? sessionLimit = null)
+    ProfileSessionLimit? sessionLimit = null,
+    Cockpit.Core.Abstractions.Sessions.ISessionLauncher? launcher = null,
+    SessionRoleResolver? roles = null)
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
 
@@ -46,6 +48,36 @@ internal sealed class AssistantReadMcpTools(
     // the refusal is the whole answer, and there is nothing here for an ordinary session to learn from.
     private const string NotTheAssistant =
         "This tool is the cockpit assistant's own. It is not available to an agent session.";
+
+    [McpServerTool(Name = "list_roles", ReadOnly = true)]
+    [Description("Lists roles with descriptions from the brain a target session would use. Name its projectId and/or profile as for start_agent. Reports available, none or unavailable; roles belong to the target session's brain.")]
+    public async Task<string> ListRolesAsync(
+        [Description("The target project's id from list_projects.")] string? projectId = null,
+        [Description("The target profile's label from list_profiles; omitted uses the project's default.")] string? profile = null)
+    {
+        if (_RefuseIfNotTheAssistant() is { } refusal)
+        {
+            return refusal;
+        }
+        var project = string.IsNullOrWhiteSpace(projectId) || launcher is null ? null : await launcher.FindProjectByIdAsync(projectId).ConfigureAwait(false);
+        if (!string.IsNullOrWhiteSpace(projectId) && project is null)
+        {
+            return _Serialize(new { ok = false, error = "Unknown projectId; use list_projects." });
+        }
+        var label = string.IsNullOrWhiteSpace(profile) ? project?.DefaultProfileLabel : profile;
+        var profiles = profileStore is null ? [] : await profileStore.LoadAsync().ConfigureAwait(false);
+        var target = profiles.FirstOrDefault(candidate => string.Equals(candidate.Label, label, StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrWhiteSpace(label) && target is null)
+        {
+            return _Serialize(new { ok = false, error = "Unknown profile; use list_profiles." });
+        }
+        var result = await (roles ?? new SessionRoleResolver()).ListAsync(project, target).ConfigureAwait(false);
+        return _Serialize(new
+        {
+            roleList = result.Outcome == Cockpit.Core.Projects.RoleSourceOutcome.Unavailable ? "unavailable" : result.Roles.Count == 0 ? "none" : "available",
+            roles = result.Roles.Select(role => new { name = role.Name, description = role.Description }),
+        });
+    }
 
     [McpServerTool(Name = "list_sessions", ReadOnly = true)]
     [Description("Lists AI sessions across workspaces and paired nodes. "
