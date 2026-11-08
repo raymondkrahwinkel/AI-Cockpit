@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2215: project cards and waiting conversations on Home wrap a long title onto further lines instead of cutting it off.
+
 - AC-2194: the project picker follows the approved compact row typography and selection stripe, and token marks leave the surrounding spaces clear.
 
 - AC-2199: typing @ on Home picks the project the button shows (and removing it clears the button again); every other project mention goes into the prompt with its path or shared id, and the list now works the same on Home, in sessions and in the assistant panel.

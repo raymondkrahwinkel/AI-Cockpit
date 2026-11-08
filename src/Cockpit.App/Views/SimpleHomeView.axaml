@@ -102,7 +102,7 @@
                                                                 Margin="0,0,12,0" VerticalAlignment="Center"
                                                                 Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
                                     <StackPanel Spacing="3" VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap"/>
                                         <WrapPanel Orientation="Horizontal">
                                             <TextBlock FontSize="12" Margin="0,0,6,0" VerticalAlignment="Center"
                                                        Foreground="{DynamicResource CockpitTextSecondaryBrush}"
@@ -182,13 +182,14 @@
                                     </StackPanel>
                                 </Button>
                                 <StackPanel Spacing="8">
-                                    <StackPanel Orientation="Horizontal" Spacing="10">
-                                        <controls:ProjectLogoBadge Size="30" LogoPath="{Binding Project.LogoPath}"
+                                    <DockPanel>
+                                        <controls:ProjectLogoBadge DockPanel.Dock="Left" Size="30" Margin="0,0,10,0"
+                                                                   VerticalAlignment="Top" LogoPath="{Binding Project.LogoPath}"
                                                                    ProjectName="{Binding Project.Name}"
                                                                    WellBackground="{DynamicResource CockpitSecondaryBgBrush}"/>
                                         <TextBlock Text="{Binding Project.Name}" FontSize="15" FontWeight="SemiBold"
-                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                                    </StackPanel>
+                                                   VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                    </DockPanel>
                                     <TextBlock Text="{Binding Project.Description}" FontSize="12.5" TextWrapping="Wrap" MaxLines="3"
                                                TextTrimming="CharacterEllipsis"
                                                Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
