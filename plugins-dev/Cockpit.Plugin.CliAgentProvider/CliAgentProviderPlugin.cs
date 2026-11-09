@@ -104,7 +104,7 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
         host.AddTtyProvider(new TtyProviderRegistration(
             ProviderId: "cli-agent-provider.codex",
             DisplayName: "Codex (CLI)",
-            CreateProvider: _ => new CodexTtyProvider(host.ResolveManagedCliPath),
+            CreateProvider: _ => new CodexTtyProvider(host.ResolveManagedCliPath, host.Services?.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.Plugin.CliAgentProvider")),
             Options: [ttySandbox, ttyModelFallback])
         {
             // #1105: declared here too (no ReadUsage, out of scope) — App.axaml.cs lists the TTY registration

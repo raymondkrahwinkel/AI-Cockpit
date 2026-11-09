@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2249: strict Codex profiles use workspace-write on TTY and app-server, with session write paths and network access; an explicit read-only choice stays read-only. Linked worktrees keep their profile's sandbox because Codex protects the worktree gitdir and otherwise blocks commits.
+
 - AC-2247: coding tools and command working directories follow profile guardrails, including session scratch and allowed paths; strict mode also checks runs from sessions without a worktree.
 
 - AC-2246: profiles can select Strict, Warn or Off guardrails and additional write paths. New profiles start on Strict; existing profiles start on Warn. Sessions receive their effective policy; enforcement follows in the remaining guardrail tickets.
