@@ -313,6 +313,8 @@ public sealed class LiveFileWorkspaceTests
             source.Status = new LiveFileStatus(LiveFileState.Live) { Saved = new LiveFileSave("Old saver") };
             source.PublishStatus();
             await HeadlessAvalonia.SettleAsync();
+            await Task.Delay(1800);
+            await HeadlessAvalonia.SettleAsync();
             Assert.True(body.IsDirty);
             Assert.False(await source.ConfirmClose());
             var reads = source.FileReads;
@@ -332,6 +334,8 @@ public sealed class LiveFileWorkspaceTests
             source.Hold = hold.Task;
             body.Editor.TextEditor.Document.Insert(0, "NEWER\n");
             read.SetResult(new FileReadResult(new MemoryStream(Encoding.UTF8.GetBytes(confirmed)), "recovered") { CanWrite = true });
+            await HeadlessAvalonia.SettleAsync();
+            await Task.Delay(1800);
             await HeadlessAvalonia.SettleAsync();
             Assert.True(body.IsDirty);
             Assert.Equal(WorkspaceMarker.Unsaved, marker());
