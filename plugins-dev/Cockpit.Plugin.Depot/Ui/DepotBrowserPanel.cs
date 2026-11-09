@@ -112,6 +112,8 @@ internal sealed partial class DepotBrowserPanel : UserControl
         if (connections.Count == 0)
         {
             _SetState("No Depot server connected", "Add a Depot server in the Depot settings first.", MaterialIconKind.DatabaseOffOutline);
+            // The settings open on an empty connection row when no server exists, which is the add dialog.
+            _state.Children.Add(DepotAddServerButton.Create(host));
         }
     }
 
