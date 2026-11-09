@@ -56,13 +56,25 @@ internal sealed class DepotPairPhoneDialog : UserControl
         _close.Click += (_, _) => (TopLevel.GetTopLevel(this) as Window)?.Close();
         _hint.Text = $"Scan this code with the Cockpit app on your phone to pair it with {connectionName}. Only this Cockpit and that phone can read what they send each other.";
         _hint.Bind(TextBlock.ForegroundProperty, this.GetResourceObservable("CockpitTextSecondaryBrush"));
+        var experimentalText = new TextBlock { Text = "Experimental", FontSize = 11, FontWeight = FontWeight.SemiBold };
+        experimentalText.Bind(TextBlock.ForegroundProperty, this.GetResourceObservable("CockpitStatusWaitingBrush"));
+        var experimental = new Border
+        {
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(8, 2),
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Child = experimentalText,
+        };
+        experimental.Bind(Border.BorderBrushProperty, this.GetResourceObservable("CockpitStatusWaitingBrush"));
+        experimental.Bind(Border.CornerRadiusProperty, this.GetResourceObservable("CockpitControlRadius"));
+        ToolTip.SetTip(experimental, "The mobile app is experimental and may change or break between releases.");
         Content = new DockPanel
         {
             Margin = new Thickness(16),
             Children =
             {
                 _Dock(new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Children = { _close } }, Dock.Bottom),
-                new StackPanel { Spacing = 12, Children = { _hint, _qrFrame, _countdown, _status, _link } },
+                new StackPanel { Spacing = 12, Children = { experimental, _hint, _qrFrame, _countdown, _status, _link } },
             },
         };
         _timer.Tick += async (_, _) => await _TickAsync().ConfigureAwait(true);
