@@ -262,6 +262,7 @@ internal static partial class Screenshotter
         ["session-background-work"] = (_, _) => _BackgroundWorkScene(),
         // AC-2028: the status bar at rest and busy, the test-runs dialog, and the disk panel open on a critical drive.
         ["statusbar-rest"] = (_, _) => _StatusBarScene(busy: false),
+        ["statusbar-hover"] = (_, _) => _StatusBarScene(busy: false),
         ["statusbar-busy"] = (_, _) => _StatusBarScene(busy: true),
         ["statusbar-disk-popup"] = (_, _) => _StatusBarScene(busy: false),
         ["test-runs"] = (_, _) => _TestRunsScene(),
@@ -1620,6 +1621,7 @@ internal static partial class Screenshotter
         ["session-settings-flyout"] = window => _OpenFlyout(window, "SessionSettingsButton"),
         ["session-mcp-header"] = window => _Named<Button>(window, "SessionMcpStatusButton").Focus(Avalonia.Input.NavigationMethod.Tab),
         ["statusbar-rest"] = window => _UseDisks(window, critical: false, open: false),
+        ["statusbar-hover"] = _HoverStatusMeters,
         ["statusbar-busy"] = window => _UseDisks(window, critical: true, open: false),
         ["statusbar-disk-popup"] = window => _UseDisks(window, critical: true, open: true),
         ["child-history-popout"] = window => _OpenFlyout(window, "BackgroundWorkButton"),
