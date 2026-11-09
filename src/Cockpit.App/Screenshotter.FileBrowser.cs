@@ -37,7 +37,7 @@ internal static partial class Screenshotter
 
         public Task<JsonElement> InvokeAsync(string action, JsonElement payload, CancellationToken cancellationToken = default) => Task.FromResult(action switch
         {
-            FileSourceChannel.Connections => _Answer<IReadOnlyList<FileConnection>>([new("work", "Work notes", "memory", readOnly)]),
+            FileSourceChannel.Connections => _Answer<IReadOnlyList<FileConnection>>([new("work", "Work notes", "memory", readOnly) { CanCreateFolder = !readOnly, CanCreateFile = !readOnly }]),
             FileSourceChannel.List => _Answer(new FileListing(payload.Deserialize<FileSourceListRequest>(FileSourceChannel.Json)?.Folder.Path switch
             {
                 "/" =>

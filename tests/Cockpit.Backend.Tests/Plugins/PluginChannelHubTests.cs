@@ -44,7 +44,7 @@ public class PluginChannelHubTests
         Assert.NotNull(typeof(FileReadResult).GetConstructor([typeof(Stream), typeof(string), typeof(long?), typeof(DateTimeOffset?), typeof(string)]));
         Assert.NotNull(typeof(FileSourceReadAnswer).GetConstructor([typeof(string), typeof(string), typeof(long?), typeof(DateTimeOffset?), typeof(string)]));
         var source = Substitute.For<IFileSource>();
-        source.Capabilities.Returns(new FileSourceCapabilities(true, FileSourceChannel.MaxContentBytes) { CanCreateFolder = true });
+        source.Capabilities.Returns(new FileSourceCapabilities(true, FileSourceChannel.MaxContentBytes) { CanCreateFolder = true, CanCreateFile = true });
         source.ListAsync(Arg.Any<FileRef>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new FileListing([new FileEntry("opaque", "note.md", "note.md", FileEntryKind.File, 7)])));
         source.ReadAsync(Arg.Any<FileRef>(), Arg.Any<CancellationToken>()).Returns(_ =>
@@ -101,6 +101,19 @@ public class PluginChannelHubTests
         Assert.Equal(FileSourceErrorKind.Forbidden, (forcedFolder.Deserialize<FileSourceAnswer<FileEntry>>(FileSourceChannel.Json)?.Error
             ?? throw new InvalidOperationException("The read-only folder refusal was missing.")).Kind);
         await source.DidNotReceive().CreateFolderAsync(Arg.Any<FileRef>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        var forcedFile = await hub.InvokeAsync("files", FileSourceChannel.CreateFile,
+            JsonSerializer.SerializeToElement(new FileSourceCreateFileRequest(FileRef.Root("c1"), "new.md", ""), FileSourceChannel.Json), default);
+        Assert.Equal(FileSourceErrorKind.Forbidden, (forcedFile.Deserialize<FileSourceAnswer<FileEntry>>(FileSourceChannel.Json)?.Error
+            ?? throw new InvalidOperationException("The read-only file refusal was missing.")).Kind);
+        await source.DidNotReceive().CreateFileAsync(Arg.Any<FileRef>(), Arg.Any<string>(), Arg.Any<Stream>(), Arg.Any<CancellationToken>());
+        foreach (var (offset, count) in new[] { (0L, FileSourceChannel.MaxContentBytes + 1), (-1L, 1) })
+        {
+            var block = await hub.InvokeAsync("files", FileSourceChannel.ReadRange,
+                JsonSerializer.SerializeToElement(new FileSourceReadRangeRequest(file, offset, count), FileSourceChannel.Json), default);
+            Assert.Equal(FileSourceErrorKind.Unsupported, (block.Deserialize<FileSourceAnswer<FileSourceReadAnswer>>(FileSourceChannel.Json)?.Error
+                ?? throw new InvalidOperationException("The block refusal was missing.")).Kind);
+        }
+        await source.DidNotReceive().ReadRangeAsync(Arg.Any<FileRef>(), Arg.Any<long>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
         source.ReadAsync(Arg.Any<FileRef>(), Arg.Any<CancellationToken>()).Returns(_ => Task.FromResult(
             new FileReadResult(new MemoryStream(), "v1") { CanWrite = true }));
         var readonlySnapshot = await hub.InvokeAsync("files", FileSourceChannel.Read,

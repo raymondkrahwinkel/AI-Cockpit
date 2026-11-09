@@ -40,6 +40,10 @@ internal sealed class FileSourceChannelClient(IPluginUiChannel channel)
     public Task<FileEntry> CreateFolderAsync(FileRef parent, string name, CancellationToken cancellationToken) =>
         _RunAsync(() => _CallAsync<FileEntry>(FileSourceChannel.CreateFolder, new FileSourceCreateFolderRequest(parent, name), cancellationToken), cancellationToken);
 
+    public Task<FileEntry> CreateFileAsync(FileRef parent, string name, byte[] content, CancellationToken cancellationToken) =>
+        _RunAsync(() => _CallAsync<FileEntry>(FileSourceChannel.CreateFile,
+            new FileSourceCreateFileRequest(parent, name, Convert.ToBase64String(content)), cancellationToken), cancellationToken);
+
     // Size is the whole file's, so the caller knows when it has every block.
     public Task<(byte[] Bytes, string Version, long Size)> ReadRangeAsync(FileRef file, long offset, int count, CancellationToken cancellationToken) =>
         _RunAsync(async () =>
