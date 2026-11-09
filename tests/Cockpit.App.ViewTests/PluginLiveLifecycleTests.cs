@@ -36,6 +36,7 @@ using Cockpit.Plugins.Abstractions.Settings;
 using Cockpit.Plugins.Abstractions.StatusBar;
 using Cockpit.Plugins.Abstractions.Tracking;
 using Cockpit.Plugins.Abstractions.UI;
+using Cockpit.Plugins.Abstractions.UI.Files;
 using Cockpit.Plugins.Abstractions.UI.Onboarding;
 using Cockpit.Plugins.Abstractions.Widgets;
 using Cockpit.Plugins.Abstractions.Workflows;
@@ -365,6 +366,7 @@ public sealed class PluginLiveLifecycleTests
                 return new TextBlock();
             }));
             host.AddFileWorkspaceType("everything.file", "File");
+            host.AddFileBrowser(new FileBrowserRegistration("everything.browser", "Browser", MaterialIconKind.Abacus, "everything.file"));
             host.AddLinkHandler(new LinkHandlerRegistration(_NeverMatches, (_, _) => false));
         }
 

@@ -95,6 +95,10 @@ public sealed class SessionStartComposer(
         return request.RoleWarning is null ? brainInstruction : string.Join("\n\n", new[] { brainInstruction, request.RoleWarning }.Where(text => !string.IsNullOrWhiteSpace(text)));
     }
 
+    // AC-2220: the brain reference itself, by the same precedence, for the session's MCP servers.
+    public async Task<string?> BrainAsync(SessionLaunchRequest request) =>
+        SessionStartDefaults.ResolveAssistant(request.ProjectId is { Length: > 0 } projectId ? await FindProjectAsync(projectId).ConfigureAwait(false) : null, request.Profile);
+
     internal async Task<SessionLaunchRequest> ComposeRoleAsync(SessionLaunchRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.Role) || string.Equals(request.Role.Trim(), "none", StringComparison.OrdinalIgnoreCase))
@@ -149,7 +153,7 @@ public sealed class SessionStartComposer(
     // AC-544: the standing statusline instruction rides after the profile's own words, never instead of them; AC-490
     // adds the job report for a job's run; AC-1705's base instruction goes ahead of both.
     public static IReadOnlyDictionary<string, string> WithInstructions(
-        IReadOnlyDictionary<string, string>? options, string? systemPrompt, bool isJobRun, string? brainInstruction = null)
+        IReadOnlyDictionary<string, string>? options, string? systemPrompt, bool isJobRun, string? brainInstruction = null, string? brain = null)
     {
         var merged = options is null
             ? new Dictionary<string, string>(StringComparer.Ordinal)
@@ -157,13 +161,13 @@ public sealed class SessionStartComposer(
         var standing = SessionBaseInstruction.Text + "\n\n" + (isJobRun
             ? AgentStatusSystemPrompt.Default + "\n\n" + AgentStatusSystemPrompt.JobRun
             : AgentStatusSystemPrompt.Default);
-        PutSystemPrompt(merged, string.IsNullOrWhiteSpace(systemPrompt) ? standing : systemPrompt.Trim() + "\n\n" + standing, brainInstruction);
+        PutSystemPrompt(merged, string.IsNullOrWhiteSpace(systemPrompt) ? standing : systemPrompt.Trim() + "\n\n" + standing, brainInstruction, brain);
         return merged;
     }
 
     // AC-1992: the brain leads the system prompt once, and also rides alone under its own key for a provider that has
     // no system prompt to put it in. AC-1994: the assistant's own launch puts its brain through here as well.
-    internal static void PutSystemPrompt(IDictionary<string, string> options, string systemPrompt, string? brainInstruction)
+    internal static void PutSystemPrompt(IDictionary<string, string> options, string systemPrompt, string? brainInstruction, string? brain = null)
     {
         options[WellKnownPluginSessionOptions.AppendSystemPrompt] = string.Join("\n\n",
             new[] { brainInstruction, systemPrompt }.Where(part => !string.IsNullOrWhiteSpace(part)).Select(part => part?.Trim()));
@@ -171,6 +175,11 @@ public sealed class SessionStartComposer(
         if (!string.IsNullOrWhiteSpace(brainInstruction))
         {
             options[WellKnownPluginSessionOptions.BrainInstruction] = brainInstruction.Trim();
+        }
+        options.Remove(WellKnownPluginSessionOptions.Brain);
+        if (!string.IsNullOrWhiteSpace(brain))
+        {
+            options[WellKnownPluginSessionOptions.Brain] = brain.Trim();
         }
     }
 

@@ -59,6 +59,17 @@ public sealed class PluginMcpAuthorizedHandlerTests
             var scenario = new PluginMcpAuthorizedHandlerTests();
             await scenario._AssertSend_TheBearerNeverLeavesTheServersOriginAsync("https://depot.example.com/cockpit/inbox", "https://evil.example.com/steal");
         }
+        {
+            // A contribution sharing the sign-in's id gets its token on the same origin, never on another.
+            var signIn = Depot with { Id = "depot-connection" };
+            var store = Substitute.For<IMcpOAuthTokenStore>();
+            store.GetAsync(signIn.IdentityKey, Arg.Any<CancellationToken>()).Returns(new McpOAuthToken { AccessToken = Token, ResourceUrl = signIn.Url });
+            var coordinator = new McpOAuthCoordinator(store, Substitute.For<IMcpOAuthAuthorizer>(), NullLogger<McpOAuthCoordinator>.Instance);
+            var gateway = signIn with { Name = "Depot: Gateway", Url = "https://depot.example.com/mcp/gateway?org=x" };
+
+            Assert.Equal(Token, (await coordinator.AcquireAsync(gateway, interactive: false)).AccessToken);
+            Assert.Null((await coordinator.AcquireAsync(gateway with { Url = "https://evil.example.com/mcp/gateway?org=x" }, interactive: false)).AccessToken);
+        }
     }
 
     private async Task _AssertSend_TheBearerNeverLeavesTheServersOriginAsync(string target, string? repointTo)

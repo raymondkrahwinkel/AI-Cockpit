@@ -28,6 +28,8 @@ public static class ProjectMemorySourceMapping
                 return new Cockpit.Core.Projects.RoleLoadResult(_Outcome(result.Outcome), result.Instructions);
             },
             BrainMcpServerName = registration.BrainMcpServerName,
+            BrainMcpServerQuery = registration.BrainMcpServerQuery is not { } query ? null
+                : brain => query(brain) is { } parameter ? new Cockpit.Core.Mcp.McpServerQueryParameter(parameter.ServerName, parameter.Name, parameter.Value) : null,
         })];
 
     private static Cockpit.Core.Projects.RoleSourceOutcome _Outcome(Cockpit.Plugins.Abstractions.Projects.RoleSourceOutcome outcome) => outcome switch

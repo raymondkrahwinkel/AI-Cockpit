@@ -1835,6 +1835,14 @@
                             <TextBlock Text="MCP Servers" FontSize="20" FontWeight="Bold"/>
                         </StackPanel>
                         <TextBlock Text="Shared MCP servers: which ones exist, who may use them, and how they sign in." Classes="optionsHint"/>
+                        <!-- AC-2219: advice a plugin has about its own server (Depot: too many tools); not a banner. -->
+                        <ItemsControl ItemsSource="{Binding McpServers.Advisories}" IsVisible="{Binding McpServers.HasAdvisories}" Margin="0,2,0,0">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:McpAdvisoryItem">
+                                    <controls:McpAdvisoryLine DataContext="{Binding}"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
                         <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}" Margin="0,4"/>
 
                         <Grid ColumnDefinitions="180,1,*" Margin="0,4,0,0" IsVisible="{Binding McpServers, Converter={x:Static ObjectConverters.IsNotNull}}">

@@ -39,4 +39,11 @@ public sealed record CompanionToolRegistration(string Id, string Title, Func<ICo
     /// the <see cref="Icon"/> string.
     /// </summary>
     public MaterialIconKind? IconKind { get; init; }
+
+    /// <summary>
+    /// Called once, right after the host accepts the registration, with a context of this tool: its <see cref="ICompanionToolContext.Badge"/>
+    /// and <see cref="ICompanionToolContext.RequestPopOut"/> work from then on, before <see cref="CreateView"/> has ever run. Null by default.
+    /// UI SDK 3.26.0, host 0.167.0.
+    /// </summary>
+    public Action<ICompanionToolContext>? Attached { get; init; }
 }

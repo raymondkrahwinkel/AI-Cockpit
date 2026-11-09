@@ -10,4 +10,9 @@ namespace Cockpit.App.Plugins;
 internal sealed record RegisteredCompanionTool(
     CompanionToolRegistration Registration,
     IPluginStorage PluginStorage,
-    ICockpitSessionObserver Sessions);
+    ICockpitSessionObserver Sessions,
+    string? PluginId = null)
+{
+    // One badge per registration, so every context built for this tool sets the same one the strip shows.
+    public SideMenuButtonBadge Badge { get; } = new();
+}

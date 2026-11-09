@@ -32,8 +32,11 @@ internal sealed class McpOAuthCoordinator(
     private static readonly TimeSpan RequestRenewalLead = TimeSpan.FromMinutes(10);
 
     // AC-524: last unusable-reason per server, so the proxy (which runs this on every request) reports a
-    // transition once instead of logging the same line per request.
+    // transition once instead of logging the same line per request. By name: servers sharing one sign-in are reported apart.
     private readonly Dictionary<string, McpOAuthAttentionReason> _reported = new(StringComparer.Ordinal);
+
+    // Per server name, the granted scope it refused with 403 insufficient_scope; a refresh cannot widen it (RFC 6749 §6).
+    private readonly Dictionary<string, string> _scopeRefusals = new(StringComparer.Ordinal);
     private readonly Lock _reportedLock = new();
 
     // AC-403: renewal in flight per server id — everyone who arrives while it runs waits for that one. Not
@@ -156,6 +159,11 @@ internal sealed class McpOAuthCoordinator(
             // an interactive sign-in can still recover from. Returning here instead would leave a name that changed
             // hands permanently unauthorizable, since the stale record is never removed either.
             stored = null;
+        }
+
+        if (stored is not null && _RefusedForScope(server, stored))
+        {
+            return _Unauthorized(server, McpOAuthAttentionReason.SignInExpired, McpSignInStage.NoBrowserLaunched);
         }
 
         var renewAt = _RenewAtFor(server, policy);
@@ -350,7 +358,7 @@ internal sealed class McpOAuthCoordinator(
     {
         lock (_reportedLock)
         {
-            _reported.Remove(server.IdentityKey);
+            _reported.Remove(server.Name);
         }
 
         return McpOAuthAccess.Authorized(accessToken);
@@ -364,10 +372,10 @@ internal sealed class McpOAuthCoordinator(
         bool episodeStarts;
         lock (_reportedLock)
         {
-            var known = _reported.TryGetValue(server.IdentityKey, out var previous);
+            var known = _reported.TryGetValue(server.Name, out var previous);
             announce = !known || previous != reason;
             episodeStarts = _NeedsSignIn(reason) && !(known && _NeedsSignIn(previous));
-            _reported[server.IdentityKey] = reason;
+            _reported[server.Name] = reason;
         }
 
         if (announce)
@@ -436,7 +444,7 @@ internal sealed class McpOAuthCoordinator(
         }
 
         var stored = await _ReadAsync(server, cancellationToken).ConfigureAwait(false);
-        if (stored is null || !stored.IsForResource(server.Url))
+        if (stored is null || !stored.IsForResource(server.Url) || _RefusedForScope(server, stored))
         {
             return McpAuthState.AuthorizationRequired;
         }
@@ -447,6 +455,33 @@ internal sealed class McpOAuthCoordinator(
             ? McpAuthState.Authorized
             : McpAuthState.AuthorizationRequired;
     }
+
+    public async Task ReportInsufficientScopeAsync(McpServerConfig server, string accessToken, CancellationToken cancellationToken = default)
+    {
+        if (await _ReadAsync(server, cancellationToken).ConfigureAwait(false) is not { } stored
+            || !string.Equals(stored.AccessToken, accessToken, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        lock (_reportedLock)
+        {
+            _scopeRefusals[server.Name] = _GrantMarker(stored);
+        }
+
+        _Unauthorized(server, McpOAuthAttentionReason.SignInExpired, McpSignInStage.NoBrowserLaunched);
+    }
+
+    private bool _RefusedForScope(McpServerConfig server, McpOAuthToken stored)
+    {
+        lock (_reportedLock)
+        {
+            return _scopeRefusals.TryGetValue(server.Name, out var refused) && refused == _GrantMarker(stored);
+        }
+    }
+
+    // A server that names no scope is marked by its access token, so each renewal earns it one more try.
+    private static string _GrantMarker(McpOAuthToken token) => token.Scope ?? token.AccessToken;
 
     public async Task SignOutAsync(McpServerConfig server, CancellationToken cancellationToken = default)
     {

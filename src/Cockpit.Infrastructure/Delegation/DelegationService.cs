@@ -760,7 +760,7 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
                     // driver hands the CLI exactly the servers _ToolsForAsync resolved, never the operator's own
                     // user/project config. A server resolving to nothing used to yield every account connector instead.
                     [WellKnownPluginSessionOptions.Unattended] = "true",
-                }, entry.Profile.SystemPrompt, isJobRun: false, brainInstruction),
+                }, entry.Profile.SystemPrompt, isJobRun: false, brainInstruction, SessionStartDefaults.ResolveAssistant(project, entry.Profile)),
                 // The project this task inherited from the session that delegated it (AC-320), so its MCP fan-out
                 // resolves the registry as that project sees it (AC-218) rather than unscoped. A value, never a
                 // lookup: this runs where the driver may resolve synchronously.

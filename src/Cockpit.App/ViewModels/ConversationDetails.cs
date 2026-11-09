@@ -12,6 +12,8 @@ public sealed partial class ConversationDetails(SessionPanelViewModel session, s
         new(session, project, consentBypass: false, canRename: true,
             session.SupportsClearContext && cockpit is not null ? () => cockpit.ClearSessionContextCommand.ExecuteAsync(session) : null);
 
+    public string PaneId => session.PaneId;
+
     public string? Project => project;
 
     public string Folder => session.WorkingDirectory ?? "Not known yet";
@@ -21,6 +23,12 @@ public sealed partial class ConversationDetails(SessionPanelViewModel session, s
     public string Cost => session.DetailsCostUsd is { } usd ? $"${usd.ToString("0.00", CultureInfo.InvariantCulture)} so far" : "Not measured";
 
     public string Model => session.DetailsModel is { Length: > 0 } model ? model : "Not known";
+
+    // AC-2219: the plugins' lines about the MCP servers this conversation has.
+    public IReadOnlyList<McpAdvisoryItem> Advisories =>
+        [.. (session.McpServerSelection ?? new HashSet<string>()).Order(StringComparer.OrdinalIgnoreCase).Select(McpAdvisoryItem.For).OfType<McpAdvisoryItem>()];
+
+    public bool HasAdvisories => Advisories.Count > 0;
 
     public bool CanRename => canRename;
 

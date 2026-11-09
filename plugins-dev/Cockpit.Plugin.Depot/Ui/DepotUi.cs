@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
@@ -6,6 +7,7 @@ using Material.Icons;
 using Cockpit.Plugin.Depot.Contracts;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Docking;
+using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.Plugins.Abstractions.UI.Onboarding;
 using Cockpit.Plugins.Abstractions.Workspaces;
@@ -52,6 +54,8 @@ public sealed class DepotUi : ICockpitPluginUi, IFirstStartPluginUi
             // Channel handlers are synchronous, so the wrapper observes and logs the detached settings task.
             _ = _ShowSettingsAsync(host);
         }));
+        // The bell's Authorize runs the list button's route: the backend part waits, this part opens the browser.
+        host.Channel.Subscribe(DepotPersonalChannel.AuthorizeRequested, evt => Dispatcher.UIThread.Post(() => { _ = _AuthorizeFromBellAsync(host, evt.Payload); }));
         // AC-784: same global-toolbar route the Kubernetes plugin uses (AC-91) — the project editor's own
         // "Servers…" button above still opens settings the same way it always has.
         host.AddToolbarAction(new ToolbarAction("Depot settings", MaterialIconKind.Database, () => host.ShowSettingsAsync()));
@@ -60,7 +64,7 @@ public sealed class DepotUi : ICockpitPluginUi, IFirstStartPluginUi
         // AC-1581: one route into a note for the toast, the inbox, the Notes tab and a transcript link.
         var route = new DepotNoteRoute(host, () => settings.Connections,
             (connection, token) => DepotNoteRoute.ResolveOverChannelAsync(host, connection, token),
-            inbox.SignInAsync, (connection, messageId, show) => inbox.JoinedAsync(connection.Id, messageId, show), _LaunchNoteAsync);
+            inbox.SignInAsync, (connection, messageId, show) => inbox.JoinedAsync(connection.Id, messageId, show), uri => LaunchAsync(uri));
         // AC-1580's opener: the note's own key, so a second Join brings its tab forward and Show tab is the same open.
         route.OpenLive = async (connection, target) =>
         {
@@ -95,6 +99,7 @@ public sealed class DepotUi : ICockpitPluginUi, IFirstStartPluginUi
             liveBadge.Count = notes.Total;
             host.SetStatusText(notes.Total == 0 ? null : $"● {notes.Total} live {(notes.Total == 1 ? "note" : "notes")} · Depot", SideMenuButtonBadgeTone.Success, livePopup);
         });
+        host.AddCompanionTool(new DepotLiveNoteTool(host, notes, () => settings.Connections).Registration);
         host.AddDockPanel(new DockPanelRegistration("depot-browser", "Depot", MaterialIconKind.FolderNetworkOutline,
             () => new DepotBrowserPanel(host, settings.Connections, inbox, notes: notes)) { Badge = liveBadge });
         _ = notes.LoadAsync(settings.Connections);
@@ -110,10 +115,17 @@ public sealed class DepotUi : ICockpitPluginUi, IFirstStartPluginUi
             () => host.ShowDialogAsync("Depot", () => new DepotBrowserPanel(host, settings.Connections, inbox, notes: notes), "depot-browser", 1000, 680)));
     }
 
-    private static Task _LaunchNoteAsync(Uri uri) =>
-        Avalonia.Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime { MainWindow: { } window }
-            ? window.Launcher.LaunchUriAsync(uri)
-            : Task.FromException(new InvalidOperationException("The Cockpit window is unavailable."));
+    // The window the link comes from, else the main one; no window is an error for the caller to show, not a silent nothing.
+    internal static Task LaunchAsync(Uri uri, Control? from = null)
+    {
+        var window = from is null ? null : TopLevel.GetTopLevel(from);
+        if (window is null && Avalonia.Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime lifetime)
+        {
+            window = lifetime.MainWindow;
+        }
+
+        return window?.Launcher.LaunchUriAsync(uri) ?? Task.FromException(new InvalidOperationException("The Cockpit window is unavailable."));
+    }
 
     private static async Task _JoinLinkAsync(DepotNoteRoute route, string link)
     {
@@ -137,6 +149,15 @@ public sealed class DepotUi : ICockpitPluginUi, IFirstStartPluginUi
         catch (Exception exception)
         {
             Trace.TraceWarning($"Depot: opening the file browser from a transcript link failed: {exception}");
+        }
+    }
+
+    private static async Task _AuthorizeFromBellAsync(ICockpitUiHost host, JsonElement payload)
+    {
+        var target = payload.Deserialize<DepotPersonalTarget>(DepotChannel.Json);
+        if (target is not null && await DepotPersonalMcpsView.AuthorizeAsync(host.Channel, uri => LaunchAsync(uri), target).ConfigureAwait(true) is { } failure)
+        {
+            host.ShowToast(failure, PluginToastSeverity.Warning);
         }
     }
 

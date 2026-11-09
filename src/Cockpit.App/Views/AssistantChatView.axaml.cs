@@ -43,6 +43,15 @@ public partial class AssistantChatView : UserControl
 
     private AssistantChatViewModel? _attachedViewModel;
 
+    public static readonly StyledProperty<bool> IsCompanionProperty =
+        AvaloniaProperty.Register<AssistantChatView, bool>(nameof(IsCompanion));
+
+    public bool IsCompanion
+    {
+        get => GetValue(IsCompanionProperty);
+        set => SetValue(IsCompanionProperty, value);
+    }
+
     // Set by a test before this is shown; otherwise resolved from the container on attach, and only on macOS —
     // see SessionView._ResolveDiagnostics for why Windows and X11 must not even subscribe.
     internal DiagnosticsBackgroundService? Diagnostics { get; set; }

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2238: a paired phone can page back through the whole assistant conversation, 50 rows at a time, also right after Cockpit restarted; plugins can read earlier assistant rows through `ReadRowsAsync` (plugin SDK 3.82.0, host 0.171.0).
+
 - AC-2239: a phone pairing is saved only after both devices confirm their encryption keys; a changed QR key or missing confirmation leaves no new pairing or assistant access.
 
 - AC-2227: a paired phone talks to your assistant in the same conversation as the chat window, end to end encrypted over Depot: messages from the phone go in as yours, the answer streams back, the phone can page back 50 rows at a time through what was said since Cockpit started, and a permission prompt or a question of the assistant shows on the phone as waiting for you on the desktop. With the chat closed, the phone gets a notification without any text. A forgotten phone gets nothing and can send nothing.
@@ -10,7 +12,46 @@
 
 - AC-2222: groundwork for the mobile app: the Depot plugin can now encrypt the conversation between your phone and this Cockpit end to end, so Depot only relays bytes it cannot read. Nothing to see yet; pairing follows in a later release.
 
+- AC-1788: Remote files supports WebDAV with Basic or bearer authentication, certificate pinning and conditional saves. HTTPS is recommended; HTTP carries a red warning.
+
+- AC-1787: new plugin Remote files: add SFTP, FTPS or FTP servers under Options › Plugins › Remote files and browse, view and edit them in the Files browser. Test connection shows the server's host key or self-signed certificate and nothing of your login is sent until you trust it; a changed key is refused with the old and new fingerprint. Passwords, private keys and passphrases are stored as secrets and the page only shows whether one is set. FTP without encryption can be chosen but is never the default and carries a red warning. Each connection is read only until you allow writing. On a server, the connection runs from the server. The Files browser shows a refused server key as its own state with both fingerprints and a way to the connection settings (plugin SDK 3.81.0, host 0.170.0).
+
+- AC-1786: new plugin Local files: add folders under Options › Plugins › Local files (or a Cockpit project folder as a shortcut) and browse, view and edit them in the Files browser. A folder is read only until you allow writing; nothing outside the added folders can be reached, a link that points outside shows Forbidden, and Cockpit's own state folder is always refused. On a server, an admin adds folders on the server's disk.
+
+- AC-2236: plugins with a file source get a file browser in the dock rail without building their own: pick a connection (also on a managed server), open folders, click a Markdown file to preview it or Edit it, add a file or folder, upload up to 1 MiB and download any size. A read-only connection shows no New, Upload or Edit (plugin SDK 3.81.0, UI SDK 3.27.0, host 0.170.0).
+
+- AC-1819: conversation details show the copyable scratch folder and its size; the disk indicator hover shows the total scratch size for this instance.
+
+- AC-2235: closing a session no longer breaks `/tmp` in Git Bash for your other sessions; the scratch folder that Git Bash uses as `/tmp` is left in place instead of removed.
+
+- AC-2220: a session whose brain is a Depot brain gets the Depot gateway filtered by that brain (`brain=<organization>/<slug>`) on every route: SDK, TTY, start_agent, delegation, the assistant and local models. The parameter sits on the upstream address behind the session gateway, so the agent never sees it; a project without a Depot brain, or with a brain on another Depot, keeps the unfiltered gateway.
+
+- AC-2219: when the Depot gateway offers too many tools (Depot totals them over all your organizations: 40 tools or 22 KB for a warning, 80 or 44 KB for critical), the New session, project and profile MCP lists, Options › MCP Servers and a conversation's details say so beside the gateway, with a link to Depot's Performance page. Never a banner; nothing shows when Depot gives no figure or the load is fine.
+
+- AC-2218: the Depot plugin shows the personal MCPs that still need your sign-in under Personal MCPs in the Depot settings, as a bell with an Authorize button, and as a step after the first-start sign-in with Later. Authorize opens Depot in the browser; when it is done the list updates, and running sessions get the new tools without a restart.
+
+- AC-2217: the Depot plugin offers the Depot gateway as one extra MCP server per connection ("Depot gateway: <connection>") on the same sign-in, only on a Depot that lists the depot.gateway scope; an older or unreachable Depot keeps working exactly as before, without a gateway row or a message.
+
+- AC-2216: plugins can let two MCP servers share one sign-in, refresh a server's tools in running sessions without a restart, and a server that refuses a sign-in for missing permissions now shows the usual sign-in notice.
+- AC-2237: live recovery retries briefly when the saved note lags behind, keeping unconfirmed text protected.
+
+- AC-2232: a maximized main window stays maximized after locking and unlocking Windows.
+
+- AC-2233: the disk indicator in the status bar now uses the same hover background as CPU/RAM.
+
+- AC-2190: the companion strip and its pop-outs now look like the approved mockup: a 44px strip with one assistant chip ("F10 to talk"), quiet icon buttons, a split screenshot button, hairlines between the groups, and pop-outs 6px from the strip with a shared head and close button. Customize strip reorders by dragging and has Reset, the notification cards show their age and answer pills, and a background agent is no longer also counted as running.
+- AC-2209: the assistant can look at one whole display with `look_at_screen`, only after you start it on its card (display and 5, 10 or 30 minutes); while it runs the strip shows a cyan border, the time left and Stop, the display gets a cyan frame and a tab with the last look and Stop, and none of them are in what the assistant sees. Every look is one screenshot on its own call; there is no interval.
+- AC-2207: Customize strip adds, removes and reorders companion tools while Cockpit stays in the tray; new tools wait under Available, and unavailable plugins keep their place with Enable and Forget.
+- AC-2203: open the assistant conversation or its pending questions from the companion strip, and choose the assistant or selected agent as the screenshot recipient; the strip and its pop-outs stay out of captures.
+- AC-2208: a plugin can embed the cockpit's live Markdown editor, with the people in the file and their carets, in its own view (plugin SDK 3.78.0, host 0.167.0).
+- AC-2204: the companion strip shows running, waiting and background counts; its status panel lists agents and services and lets you select an agent while Cockpit stays in the tray.
+- AC-2201: the companion strip gets a soft shadow, and a pop-out shell with one placement rule is in place for the strip's upcoming items.
+- AC-2206: companion tool plugins can put a badge on their button and ask for their own pop-out (plugin SDK 3.76.0, host 0.165.0).
+- AC-2205: the companion strip gets a bell with a panel for what waits on you: open questions and permissions can be answered right there (SDK sessions; a terminal session shows Open in Cockpit), and a finished agent waits there until you dismiss or open it.
+- AC-2202: the companion strip lies horizontally or vertically, drags freely, can stay above other windows (on by default), and shows each tool as an icon button with its badge that opens the tool in a pop-out; the setting is remembered.
 - AC-2230: with the speaker switched off, the assistant no longer reads a reply aloud, and a mute clicked while the assistant is still starting is no longer overwritten by the stored value; "Read full reply aloud" still speaks on request.
+
+- AC-2211: agent browser actions wait for navigation or download feedback, and profile cleanup waits for browser shutdown even when a tab closes concurrently.
 
 - AC-2215: project cards and waiting conversations on Home wrap a long title onto further lines instead of cutting it off.
 

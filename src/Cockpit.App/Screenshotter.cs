@@ -28,6 +28,7 @@ using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Layout;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Voice;
 using Microsoft.Extensions.DependencyInjection;
@@ -43,24 +44,8 @@ internal static partial class Screenshotter
     private static Window _CompanionScene(bool empty)
     {
         var window = new CompanionWindow(null);
-        window.SetTools(empty ? [] :
-        [
-            ("Assistant", new AssistantIndicator
-            {
-                ShowWhenDisabled = true,
-                DataContext = new AssistantIndicatorViewModel
-                {
-                    IsFeatureEnabled = true,
-                    Activity = Core.Assistant.AssistantActivity.Listening,
-                    ListeningMode = Core.Assistant.AssistantListeningMode.Off,
-                },
-            }),
-            ("Screenshot", new Button
-            {
-                Content = Controls.CockpitIcons.Icon(Material.Icons.MaterialIconKind.Monitor),
-                Padding = new Thickness(7, 6),
-            }),
-        ]);
+        window.ApplyLayout(CompanionSceneOrientation == "v" ? CompanionOrientation.Vertical : CompanionOrientation.Horizontal, alwaysOnTop: true);
+        window.SetTools(empty ? [] : _CompanionSceneItems());
         return window;
     }
 
@@ -153,6 +138,13 @@ internal static partial class Screenshotter
             Console.Error.WriteLine($"--theme must be Light or Dark; it is \"{theme}\".");
 
             return 1;
+        }
+
+        CompanionScenePosition = _Value(args, "--pos") ?? CompanionScenePosition;
+        CompanionSceneOrientation = _Value(args, "--orient") ?? CompanionSceneOrientation;
+        if (_Value(args, "--popouts") is { } popOuts && int.TryParse(popOuts, out var count))
+        {
+            CompanionScenePopOuts = count;
         }
 
         var width = DefaultWindowWidth;
@@ -252,9 +244,25 @@ internal static partial class Screenshotter
     {
         ["companion-tools"] = (_, _) => _CompanionScene(empty: false),
         ["companion-empty"] = (_, _) => _CompanionScene(empty: true),
+        ["companion-popout"] = _CompanionPopOutScene,
+        ["companion-strip"] = _CompanionStripScene,
+        ["companion-look-along"] = _CompanionLookAlongScene,
+        ["companion-customize"] = (w, h) => _CompanionCustomizeScene(w, h, reordered: false),
+        ["companion-customize-reordered"] = (w, h) => _CompanionCustomizeScene(w, h, reordered: true),
+        ["companion-live-note"] = _CompanionLiveNoteScene,
+        ["companion-status"] = (w, h) => _CompanionStatusScene(w, h, "all"),
+        ["companion-status-waiting"] = (w, h) => _CompanionStatusScene(w, h, "waiting"),
+        ["companion-status-quiet"] = (w, h) => _CompanionStatusScene(w, h, "quiet"),
+        ["companion-notifications"] = (w, h) => _CompanionNotificationsScene(w, h, terminal: false),
+        ["companion-notifications-tty"] = (w, h) => _CompanionNotificationsScene(w, h, terminal: true),
+        ["companion-assistant"] = (w, h) => _CompanionAssistantScene(w, h),
+        ["companion-assistant-questions"] = (w, h) => _CompanionAssistantScene(w, h, questions: true),
+        ["companion-screenshot"] = (w, h) => _CompanionAssistantScene(w, h, recipients: true),
+        ["companion-screenshot-tty"] = (w, h) => _CompanionAssistantScene(w, h, recipients: true, tty: true),
         ["session-background-work"] = (_, _) => _BackgroundWorkScene(),
         // AC-2028: the status bar at rest and busy, the test-runs dialog, and the disk panel open on a critical drive.
         ["statusbar-rest"] = (_, _) => _StatusBarScene(busy: false),
+        ["statusbar-hover"] = (_, _) => _StatusBarScene(busy: false),
         ["statusbar-busy"] = (_, _) => _StatusBarScene(busy: true),
         ["statusbar-disk-popup"] = (_, _) => _StatusBarScene(busy: false),
         ["test-runs"] = (_, _) => _TestRunsScene(),
@@ -310,6 +318,10 @@ internal static partial class Screenshotter
         ["sidebar-plugins"] = (width, height) => _PluginSidebarScene(width, height, folded: false),
         ["sidebar-plugins-folded"] = (width, height) => _PluginSidebarScene(width, height, folded: true),
         // AC-1750 (mockup AC-1749 v003): a kept tab with an unsaved marker beside the preview tab, italic and labelled.
+        ["file-browser"] = (width, height) => _FileBrowserScene(width, height, readOnly: false),
+        ["file-browser-readonly"] = (width, height) => _FileBrowserScene(width, height, readOnly: true),
+        ["file-browser-hostkey"] = (width, height) => _FileBrowserScene(width, height, readOnly: false, hostKey: HostKeyScene.Changed),
+        ["file-browser-hostkey-unverified"] = (width, height) => _FileBrowserScene(width, height, readOnly: false, hostKey: HostKeyScene.NotVerified),
         ["workspace-preview-tab"] = (_, _) => _WorkspacePreviewTabScene(),
         ["workspace-tab-overflow"] = (_, _) => _WorkspacePreviewTabScene(overflow: true),
         ["workspace-tab-overflow-middle"] = (_, _) => _WorkspacePreviewTabScene(overflow: true),
@@ -647,6 +659,9 @@ internal static partial class Screenshotter
         // this window is five lists whose failure mode is one of them quietly bound to the wrong collection.
         ["agent-line"] = (_, _) => new AgentLineInspectorDialog { DataContext = _AgentLine() },
         ["set-status"] = (_, _) => new SetStatusDialog { DataContext = new ViewModels.SetStatusDialogViewModel("AC-32 — manual status") },
+        ["mcp-advisory-checklist"] = (_, _) => _McpAdvisoryChecklist(),
+        ["mcp-advisory-details"] = (_, _) => new MainWindow { DataContext = _McpAdvisoryDetails() },
+        ["mcp-advisory-options"] = (_, _) => _McpAdvisoryOptions(),
         ["session-mcp"] = (_, _) => new SessionMcpDialog { DataContext = new ViewModels.SessionMcpDialogViewModel() },
         // AC-492: the quick-note surface with a failed write, since that is the state the ticket's one hard rule is
         // about — the note stays, and the line under it says why.
@@ -695,6 +710,9 @@ internal static partial class Screenshotter
         ["simple-view-assistant-off"] = (_, _) => new MainWindow { DataContext = _SimpleStandAssistant(assistantOff: true) },
         // AC-1321: the node while a paired controller holds the line — the takeover notice, and no button, since nothing here ends it.
         ["simple-view-assistant-controlled"] = (_, _) => new MainWindow { DataContext = _SimpleStandAssistant(controlled: true) },
+        ["scratch-empty"] = (_, _) => new MainWindow { DataContext = _SimpleStandConversation(withCost: true) },
+        ["scratch-grown"] = (_, _) => new MainWindow { DataContext = _SimpleStandConversation(withCost: true) },
+        ["scratch-hover"] = (_, _) => new MainWindow { DataContext = _SimpleStandConversation(withCost: true) },
         // AC-1533: the same conversation with ⋯ → Details open — where it works, what it may do, its cost and model.
         ["simple-view-conversation-details"] = (_, _) => new MainWindow { DataContext = _SimpleStandConversation(withCost: true) },
         // A restored profile whose start cannot succeed on this machine: the reason where the off notice stands, tried once.
@@ -981,6 +999,7 @@ internal static partial class Screenshotter
         // AC-1715: the assistant asks to look along; the card sits in its own conversation.
         ["assistant-chat-look-along"] = (_, _) => _AssistantChatLookAlong(),
         ["assistant-chat-look-along-others"] = (_, _) => _AssistantChatLookAlong(showOthers: true),
+        ["assistant-chat-look-at-screen"] = (_, _) => _AssistantChatLookAtScreen(),
         ["assistant-chat-consent-short"] = (_, _) => _AssistantChatConsent("Project: Synvolution-MailCatch\nDescription: \"Mail sink\" → \"Mail sink for staging\""),
 
         // AC-776 Deel 1: the session-status pill in all six SessionStatus values, and the same pill's "⋯" flyout
@@ -1568,7 +1587,24 @@ internal static partial class Screenshotter
     // they are opened here rather than built into the scene.
     private static readonly Dictionary<string, Action<Window>> Hovers = new(StringComparer.Ordinal)
     {
+        ["companion-strip"] = _StageCompanionDesk,
+        ["companion-look-along"] = _StageCompanionDesk,
+        ["companion-assistant"] = _StageCompanionDesk,
+        ["companion-assistant-questions"] = _StageCompanionDesk,
+        ["companion-screenshot"] = _StageCompanionDesk,
+        ["companion-screenshot-tty"] = _StageCompanionDesk,
+        ["companion-live-note"] = _StageCompanionDesk,
+        ["companion-status"] = _StageCompanionDesk,
+        ["companion-status-waiting"] = _StageCompanionDesk,
+        ["companion-status-quiet"] = _StageCompanionDesk,
+        ["companion-notifications"] = _StageCompanionDesk,
+        ["companion-notifications-tty"] = _StageCompanionDesk,
+        ["companion-customize"] = _StageCompanionDesk,
+        ["companion-customize-reordered"] = _StageCompanionDesk,
+        ["companion-popout"] = _OpenPassivePopOut,
         ["markdown-file-images"] = _ExerciseNoteImages,
+        ["file-browser"] = _OpenFileBrowserFolder,
+        ["file-browser-readonly"] = _OpenFileBrowserFolder,
         ["session-file-drop"] = _LightFileDropOverlay,
         ["assistant-chat-file-drop"] = _LightFileDropOverlay,
         ["workspace-menu-preview"] = window => _OpenWorkspaceTabMenu(window, true),
@@ -1597,6 +1633,7 @@ internal static partial class Screenshotter
         ["session-settings-flyout"] = window => _OpenFlyout(window, "SessionSettingsButton"),
         ["session-mcp-header"] = window => _Named<Button>(window, "SessionMcpStatusButton").Focus(Avalonia.Input.NavigationMethod.Tab),
         ["statusbar-rest"] = window => _UseDisks(window, critical: false, open: false),
+        ["statusbar-hover"] = _HoverStatusMeters,
         ["statusbar-busy"] = window => _UseDisks(window, critical: true, open: false),
         ["statusbar-disk-popup"] = window => _UseDisks(window, critical: true, open: true),
         ["child-history-popout"] = window => _OpenFlyout(window, "BackgroundWorkButton"),
@@ -1652,6 +1689,10 @@ internal static partial class Screenshotter
         ["assistant-chat-history-dropdown-open"] = window => _OpenFlyout(window, "HistoryButton"),
         ["assistant-threads-docked-280-closed"] = window => _OpenFlyout(window, "ThreadPickerClosed"),
         ["assistant-threads-docked-280-picker"] = window => _Named<ComboBox>(window, "ThreadPicker").IsDropDownOpen = true,
+        ["scratch-empty"] = window => _StageScratch(window, grown: false, hover: false),
+        ["scratch-grown"] = window => _StageScratch(window, grown: true, hover: false),
+        ["scratch-hover"] = window => _StageScratch(window, grown: true, hover: true),
+        ["mcp-advisory-details"] = window => _OpenFlyout(window.GetVisualDescendants().OfType<Controls.SimpleConversationHeader>().First(header => header.IsEffectivelyVisible), "DetailsButton"),
         ["simple-view-conversation-details"] = window => _OpenFlyout(window.GetVisualDescendants().OfType<Controls.SimpleConversationHeader>().First(header => header.IsEffectivelyVisible), "DetailsButton"),
         // AC-1984: show Accept and Connect together after removing the desktop-pairing block.
         ["options-swarm-settings"] = window => _ScrollIntoView(window, "swarm", "Internal network only"),
