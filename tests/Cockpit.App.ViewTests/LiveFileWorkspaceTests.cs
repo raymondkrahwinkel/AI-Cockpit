@@ -360,6 +360,8 @@ public sealed class LiveFileWorkspaceTests
             source.FileText = source.Text.ToString();
             retry.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             await HeadlessAvalonia.SettleAsync();
+            await Task.Delay(1800);
+            await HeadlessAvalonia.SettleAsync();
             Assert.Equal("NEWER\nOFFLINE\n" + Lines + "\nOTHER EDITOR", source.FileText);
             Assert.Equal(source.FileText, body.Editor.Text);
             Assert.False(body.IsDirty);
