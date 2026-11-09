@@ -25,6 +25,9 @@ internal sealed class DepotGateway(ICockpitHost host, ILogger? logger = null) : 
 
     private const string RowPrefix = "Depot gateway: ";
 
+    // The one connector merges every organization; Depot applies `<org>/<slug>` only to that organization's tools (contract, § DEP-632).
+    internal const string BrainParameter = "brain";
+
     // The resource metadata of the gateway lists `depot.gateway`; a Depot without the gateway answers for /mcp/gateway with
     // the plain `depot` scope or not at all (contract, § Gateway-authenticatie).
     private const string MetadataPath = "/.well-known/oauth-protected-resource/mcp/gateway";
