@@ -54,6 +54,13 @@ public sealed partial class CompanionAttentionItem : ObservableObject
 
     public string Text { get; }
 
+    // AC-2190: when the row arrived, shown as the mockup's "now" / "3 min" at the row's end. It is read when the panel
+    // draws, not ticked. ponytail: a row left open keeps its age until the panel redraws; a timer if that matters.
+    internal DateTimeOffset Since { get; init; } = DateTimeOffset.Now;
+
+    public string Age => (DateTimeOffset.Now - Since).TotalMinutes is var minutes and >= 1
+        ? $"{(int)minutes} min" : "now";
+
     public IReadOnlyList<string> Options { get; } = [];
 
     public bool AllowsFreeText { get; }
@@ -108,7 +115,7 @@ public sealed partial class CompanionAttentionItem : ObservableObject
     {
         CompanionAttentionKind.Question => MaterialIconKind.HelpCircleOutline,
         CompanionAttentionKind.Done => MaterialIconKind.CheckCircleOutline,
-        _ => MaterialIconKind.ShieldAlertOutline,
+        _ => MaterialIconKind.HandBackLeftOutline,
     };
 }
 

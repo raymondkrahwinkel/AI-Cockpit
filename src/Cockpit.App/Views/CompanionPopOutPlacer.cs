@@ -8,7 +8,7 @@ internal readonly record struct CompanionPopOutPlacement(PixelRect Bounds, bool 
 // The one placement rule for every Companion pop-out: pure geometry, so a wrong spot shows in the renders.
 internal static class CompanionPopOutPlacer
 {
-    internal const int Gap = 8;
+    internal const int Gap = 6;
     internal const int MinSide = 160;
 
     // Returns null when there is no room left; the strip itself is never moved.

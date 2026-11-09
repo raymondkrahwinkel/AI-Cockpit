@@ -67,7 +67,7 @@ internal sealed class ScreenLookAlongPresenter : ISingletonService
             _tab.StopRequested += _OnStop;
         }
 
-        _tab!.ShowLastLook(session.LastLook is { } at ? $"Last look {at.ToLocalTime():HH:mm}" : "No look yet");
+        _tab!.ShowLastLook(session.LastLook is { } at ? $"last look {at.ToLocalTime():HH:mm}" : "no look yet");
         if (!_tab.IsVisible)
         {
             _tab.Show();

@@ -1,7 +1,5 @@
 using System.Text.Json;
-using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Layout;
 using Avalonia.LogicalTree;
 using Avalonia.Input;
 using Cockpit.App.Plugins;
@@ -16,12 +14,17 @@ namespace Cockpit.App;
 
 internal static partial class Screenshotter
 {
-    private static Window _CompanionCustomizeScene(bool reordered)
+    // The customize pop-out under the strip's options, as the mockup's "manage" scene, after the model's own checks: a
+    // new plugin tool waits under Available, a withdrawn one keeps its place, the order survives a restart, and the
+    // assistant stays first. "reordered" moves Status up with the arrow key first.
+    private static Window _CompanionCustomizeScene(int width, int height, bool reordered)
     {
-        var items = _CompanionSceneItems();
-        items.RemoveAt(2);
-        items.Add(new("cockpit.notifications", "Notifications", "Waiting for you", "", MaterialIconKind.BellOutline, null, () => _SceneBody(1), false));
-        items.Add(new("cockpit.status", "Status", "Cockpit status", "", MaterialIconKind.CircleOutline, null, () => _SceneBody(1), false));
+        List<CompanionStripItem> items =
+        [
+            .. _CompanionSceneItems().Take(2),
+            new("cockpit.notifications", "Notifications", "Waiting for you", "", MaterialIconKind.BellOutline, null, () => _SceneBody(1), false),
+            new("cockpit.status", "Status", "Cockpit status", "", MaterialIconKind.Pulse, null, () => _SceneBody(1), false),
+        ];
         items.Add(new("checks.run", "Local checks", "Run local checks", "", MaterialIconKind.CheckCircleOutline, null, () => _SceneBody(1), false));
         items.Add(new("timer.start", "Task timer", "Time a task", "", MaterialIconKind.TimerOutline, null, () => _SceneBody(1), false));
         var tools = items.Select(item => new CompanionToolRegistration(item.Id, item.Title, _ => item.CreateView()) { IconKind = item.IconKind }).ToList();
@@ -60,35 +63,54 @@ internal static partial class Screenshotter
         {
             throw new InvalidOperationException("The strip's order or owning plugin was lost across restart.");
         }
-        model = restored;
         registry.Unregister("checks.run");
-        var panel = new CompanionCustomizePanel(model, _ => Task.CompletedTask, () => { });
-        if (reordered)
-        {
-            var row = panel.GetLogicalDescendants().OfType<Control>().Single(control => control.Tag as string == "cockpit.status");
-            row.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Up });
-            if (model.OnStrip.ElementAt(1) != "cockpit.status")
-            {
-                throw new InvalidOperationException("The panel's arrow key did not reorder the strip.");
-            }
-        }
         model.SetEnabled(CompanionCustomizationModel.AssistantId, false);
         model.Move(CompanionCustomizationModel.AssistantId, 1);
         if (model.OnStrip.First() != CompanionCustomizationModel.AssistantId)
         {
             throw new InvalidOperationException("The assistant must stay first and enabled.");
         }
-        var strip = new CompanionWindow(null);
-        strip.SetTools([.. model.OnStrip.Select(id => items.Single(item => item.Id == id))]);
-        var column = new StackPanel { Spacing = 12, Margin = new Thickness(24), HorizontalAlignment = HorizontalAlignment.Left };
-        column.Children.Add(strip.TakeCard());
-        column.Children.Add(new CompanionPopOutCard
+
+        // What the mockup shows: its seven items on the strip, three plugin items waiting under Available.
+        var shown = _CompanionSceneItems();
+        string?[] owners = [null, null, null, null, "depot", "local-ci", "github-pull-requests"];
+        var display = new CompanionCustomizationModel();
+        var extra = new (string Id, string Title, MaterialIconKind Icon, string? Owner)[]
         {
-            Width = 432,
-            Body = panel,
-        });
-        var window = new Window { Width = 520, Height = 740, Content = column };
-        window.Bind(Window.BackgroundProperty, window.GetResourceObservable("CockpitWindowBgBrush"));
-        return window;
+            ("cockpit.open", "Open Cockpit", MaterialIconKind.OpenInNew, null),
+            ("usage-trend.meter", "Usage", MaterialIconKind.Speedometer, "usage-trend"),
+            ("example-companion-tool.hello", "Example", MaterialIconKind.HandWave, "example"),
+        };
+        var registrations = shown.Select(item => new CompanionToolRegistration(item.Id, item.Title, _ => item.CreateView()) { IconKind = item.IconKind })
+            .Concat(extra.Select(tool => new CompanionToolRegistration(tool.Id, tool.Title, _ => new TextBlock()) { IconKind = tool.Icon })).ToList();
+        var ownerOf = shown.Select((item, index) => (item.Id, owners[index])).Concat(extra.Select(tool => (tool.Id, tool.Owner)))
+            .ToDictionary(pair => pair.Item1, pair => pair.Item2);
+        display.Merge(registrations, id => ownerOf.GetValueOrDefault(id));
+        foreach (var id in owners.Select((owner, index) => owner is null ? null : shown[index].Id).OfType<string>())
+        {
+            display.SetEnabled(id, true);
+        }
+
+        var sources = new Dictionary<string, string>
+        {
+            ["depot"] = "Depot", ["local-ci"] = "Local CI", ["github-pull-requests"] = "GitHub pull requests",
+            ["usage-trend"] = "Usage trend", ["example"] = "Example companion tool",
+        };
+        var panel = new CompanionCustomizePanel(display, _ => Task.CompletedTask, () => { }, () => { },
+            id => display.PluginId(id) is { } owner ? sources[owner] : "Cockpit");
+        if (reordered)
+        {
+            var row = panel.GetLogicalDescendants().OfType<Control>().Single(control => control.Tag as string == "cockpit.status");
+            row.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Up });
+            if (display.OnStrip.ElementAt(1) != "cockpit.status")
+            {
+                throw new InvalidOperationException("The panel's arrow key did not reorder the strip.");
+            }
+        }
+
+        var strip = new CompanionWindow(null);
+        strip.SetTools([.. display.OnStrip.Select(id => shown.Single(item => item.Id == id))]);
+
+        return _CompanionDeskScene(width, height, new CompanionDesk(strip, card => _StripItem(card, "more"), panel, 360));
     }
 }

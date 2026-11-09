@@ -2,6 +2,7 @@ using System.ComponentModel;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
+using Avalonia.VisualTree;
 using Cockpit.App.Controls;
 using Cockpit.App.ViewModels;
 using Cockpit.Plugins.Abstractions;
@@ -16,10 +17,11 @@ internal sealed class CompanionScreenshotView : StackPanel
     private readonly CockpitViewModel _cockpit;
     private SessionPanelViewModel? _observedSession;
     private bool _isAttached;
-    private readonly Button _assistant = new() { Classes = { "Subtle", "Row" } };
-    private readonly Button _agent = new() { Classes = { "Subtle", "Row" } };
-    private readonly Button _capture = new() { Content = CockpitIcons.Icon(MaterialIconKind.Monitor), Classes = { "Subtle", "Compact" } };
-    private readonly Button _choose = new() { Content = CockpitIcons.Icon(MaterialIconKind.ChevronDown), Classes = { "Subtle", "Compact" } };
+    private readonly StackPanel _recipients = new() { Margin = new Thickness(6, 0, 6, 0) };
+    private readonly Button _capture = new() { Content = CockpitIcons.Icon(MaterialIconKind.MonitorScreenshot, 18), Classes = { "companionStripItem" } };
+    private readonly Button _choose = new() { Content = CockpitIcons.Icon(MaterialIconKind.MenuDown, 14), Classes = { "companionStripItem" } };
+    private readonly Flyout _menu;
+    private Button _agent = new();
 
     public CompanionScreenshotView(IPluginStorage storage, CockpitViewModel cockpit,
         Func<Task> captureAssistant, Func<Task> captureSelected)
@@ -34,25 +36,26 @@ internal sealed class CompanionScreenshotView : StackPanel
         AutomationProperties.SetName(_choose, "Screenshot recipient");
         ToolTip.SetTip(_choose, "Send screenshot to");
         ToolTip.SetShowOnDisabled(_capture, true);
-        ToolTip.SetShowOnDisabled(_agent, true);
-        var menu = new Flyout
+        // AC-2190: the mockup's split — one 34px button and a 16px caret sharing their outer corners — and its
+        // recipients pop-out under the split, 6px clear of the strip, with a head, the two rows and a hint at the foot.
+        _menu = new Flyout
         {
-            FlyoutPresenterClasses = { "Card" },
+            FlyoutPresenterClasses = { "Card", "companionPanel" },
             Content = new StackPanel
             {
                 Width = 280,
                 Children =
                 {
-                    new TextBlock { Text = "Send screenshot to", FontWeight = Avalonia.Media.FontWeight.SemiBold, Margin = new Thickness(10,6) },
-                    _assistant,
-                    _agent,
+                    CompanionPanelChrome.Header("Send screenshot to", () => _menu?.Hide()),
+                    _recipients,
+                    _Hint(),
                 },
             },
         };
-        menu.Opening += (_, _) => Refresh();
-        _choose.Flyout = menu;
-        _assistant.Click += (_, _) => _Choose("assistant");
-        _agent.Click += (_, _) => _Choose("selected");
+        _menu.Opening += (_, _) => Refresh();
+        _menu.Closed += (_, _) => _choose.Classes.Set("open", false);
+        _Shape();
+        _choose.Click += (_, _) => OpenRecipients();
         _capture.Click += async (_, _) =>
         {
             Refresh();
@@ -66,6 +69,10 @@ internal sealed class CompanionScreenshotView : StackPanel
         AttachedToVisualTree += (_, _) =>
         {
             _isAttached = true;
+            if (this.FindAncestorOfType<StackPanel>() is { Name: "ToolsHost" } host)
+            {
+                Bind(OrientationProperty, new Avalonia.Data.Binding(nameof(Orientation)) { Source = host });
+            }
             _cockpit.PropertyChanged += _OnSelectionChanged;
             Refresh();
         };
@@ -85,12 +92,22 @@ internal sealed class CompanionScreenshotView : StackPanel
         var session = _cockpit.SelectedSession;
         _WatchSession(_isAttached ? session : null);
         var refusal = session?.ScreenshotRefusalReason ?? (session is null ? "No agent is selected." : null);
-        _assistant.Content = _RecipientRow(MaterialIconKind.Microphone, "Assistant", "Its standing conversation", !_IsSelectedAgent);
-        _agent.Content = _RecipientRow(MaterialIconKind.RobotOutline, session?.Title ?? "Selected agent",
+        var assistant = CompanionPanelChrome.PickRow(MaterialIconKind.Microphone, "Assistant", "Its standing conversation", !_IsSelectedAgent);
+        _agent = CompanionPanelChrome.PickRow(MaterialIconKind.RobotOutline, session?.Title ?? "Selected agent",
             refusal ?? (session is TtyViewModel ? "Paste the screenshot path into this terminal." : "Selected agent"), _IsSelectedAgent);
-        AutomationProperties.SetName(_assistant, _IsSelectedAgent ? "Assistant" : "Assistant, selected");
+        assistant.Click += (_, _) => _Choose("assistant");
+        _agent.Click += (_, _) => _Choose("selected");
+        _recipients.Children.Clear();
+        _recipients.Children.Add(assistant);
+        _recipients.Children.Add(_agent);
+        AutomationProperties.SetName(assistant, _IsSelectedAgent ? "Assistant" : "Assistant, selected");
         AutomationProperties.SetName(_agent, $"Selected agent: {session?.Title}{(_IsSelectedAgent ? ", selected" : string.Empty)}");
+        ToolTip.SetShowOnDisabled(_agent, true);
         _agent.IsEnabled = refusal is null;
+        if (!_agent.IsEnabled)
+        {
+            _agent.Opacity = 0.55;
+        }
         ToolTip.SetTip(_agent, refusal ?? "Send the screenshot to the selected agent.");
         _capture.IsEnabled = !_IsSelectedAgent || refusal is null;
         ToolTip.SetTip(_capture, !IsEnabled ? "Screen capture is not available on this platform."
@@ -98,29 +115,45 @@ internal sealed class CompanionScreenshotView : StackPanel
             : "Take a screenshot for Assistant");
     }
 
-    private static Control _RecipientRow(MaterialIconKind iconKind, string title, string subtitle, bool selected)
+    private static Control _Hint()
     {
-        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), ColumnSpacing = 9 };
-        row.Children.Add(CockpitIcons.Icon(iconKind, 15));
-        var label = new TextBlock { Text = title, TextWrapping = Avalonia.Media.TextWrapping.Wrap };
-        var hint = new TextBlock
-        {
-            Text = subtitle,
-            TextWrapping = Avalonia.Media.TextWrapping.Wrap,
-            FontSize = 11,
-        };
-        hint.Bind(TextBlock.ForegroundProperty, hint.GetResourceObservable("CockpitTextFaintBrush"));
-        var text = new StackPanel { Spacing = 3, Children = { label, hint } };
-        Grid.SetColumn(text, 1);
-        row.Children.Add(text);
-        var check = CockpitIcons.Icon(MaterialIconKind.Check, 14);
-        check.IsVisible = selected;
-        Grid.SetColumn(check, 2);
-        row.Children.Add(check);
-        return row;
+        var hint = CompanionPanelChrome.Text("Change the selected agent under Status.", "CockpitTextSecondaryBrush", 11);
+        hint.Margin = new Thickness(14, 6, 14, 10);
+
+        return hint;
     }
 
-    internal void OpenRecipients() => _choose.Flyout?.ShowAt(_choose);
+    // The split follows the strip: side by side across a horizontal one, the caret under the button down a vertical one.
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        // The base constructor sets the orientation before this one has built its menu.
+        if (change.Property == OrientationProperty && _menu is not null)
+        {
+            _Shape();
+        }
+    }
+
+    private void _Shape()
+    {
+        var horizontal = Orientation == Avalonia.Layout.Orientation.Horizontal;
+        _capture.CornerRadius = horizontal ? new CornerRadius(9, 0, 0, 9) : new CornerRadius(9, 9, 0, 0);
+        _choose.CornerRadius = horizontal ? new CornerRadius(0, 9, 9, 0) : new CornerRadius(0, 0, 9, 9);
+        _choose.MinWidth = horizontal ? 16 : 34;
+        _choose.Width = horizontal ? 16 : 34;
+        _choose.MinHeight = horizontal ? 34 : 16;
+        _choose.Height = horizontal ? 34 : 16;
+        // Clear of the strip's own edge: the strip pads its items by 4px inside a 1px hairline, and a pop-out keeps 6px off it.
+        _menu.Placement = horizontal ? PlacementMode.BottomEdgeAlignedLeft : PlacementMode.RightEdgeAlignedTop;
+        _menu.VerticalOffset = horizontal ? 11 : 0;
+        _menu.HorizontalOffset = horizontal ? 0 : 11;
+    }
+
+    internal void OpenRecipients()
+    {
+        _choose.Classes.Set("open", true);
+        _menu.ShowAt(this);
+    }
 
     private void _OnSelectionChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -161,6 +194,6 @@ internal sealed class CompanionScreenshotView : StackPanel
     {
         _storage.Set(RecipientKey, recipient);
         Refresh();
-        _choose.Flyout?.Hide();
+        _menu.Hide();
     }
 }

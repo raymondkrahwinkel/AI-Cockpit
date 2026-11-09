@@ -17,8 +17,8 @@ internal sealed class CompanionStripButton : Button
 
     public CompanionStripButton(CompanionStripItem item)
     {
-        Classes.Add("Subtle");
-        Padding = new Thickness(7, 6);
+        Classes.Add("companionStripItem");
+        Tag = item.Id;
         ToolTip.SetTip(this, item.Tooltip.Length > 0 ? item.Tooltip : item.Title);
         AutomationProperties.SetName(this, item.Title);
 
@@ -32,8 +32,17 @@ internal sealed class CompanionStripButton : Button
             _pill = BadgePill.Create(out _pillText);
             _pill.HorizontalAlignment = HorizontalAlignment.Right;
             _pill.VerticalAlignment = VerticalAlignment.Top;
-            _pill.Margin = new Thickness(0, -9, -12, 0);
-            _pill.Padding = new Thickness(4, 0);
+            // The mockup's badge sits 1px in from the 34px button's top-right corner; the icon is 18px, centred.
+            _pill.Margin = new Thickness(0, -7, -7, 0);
+            // The mockup's strip badge: 14px high, 10px semibold, a 2px ring of the panel colour round it.
+            _pill.Padding = new Thickness(3, 0);
+            _pill.MinWidth = 14;
+            _pill.Height = 14;
+            _pill.CornerRadius = new CornerRadius(7);
+            _pillText!.FontSize = 10;
+            _pillText.FontWeight = Avalonia.Media.FontWeight.SemiBold;
+            _pillText.HorizontalAlignment = HorizontalAlignment.Center;
+            _pillText.VerticalAlignment = VerticalAlignment.Center;
             content.Children.Add(_pill);
             _Render();
         }

@@ -33,8 +33,25 @@ public partial class CompanionNotificationsPanel : UserControl
         _open = open;
         InitializeComponent();
         Rows.ItemsSource = items;
-        items.CollectionChanged += (_, _) => EmptyText.IsVisible = items.Count == 0;
+        items.CollectionChanged += (_, _) => _Count(items);
+        _Count(items);
+        CloseButton.Click += (_, _) => CompanionPanelChrome.CloseOf(this)();
+    }
+
+    private void _Count(ObservableCollection<CompanionAttentionItem> items)
+    {
         EmptyText.IsVisible = items.Count == 0;
+        var waiting = items.Count(item => item.NeedsYou);
+        HeaderText.Text = waiting == 0 ? "Notifications" : $"{waiting} need{(waiting == 1 ? "s" : string.Empty)} you";
+    }
+
+    // The first answer of a question is the filled one, as the mockup's primary pill.
+    private void OnOptionLoaded(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: string label } button && _ItemOf(button) is { } item)
+        {
+            button.Classes.Set("primary", item.Options.Count > 0 && item.Options[0] == label);
+        }
     }
 
     private static CompanionAttentionItem? _ItemOf(object? sender) =>

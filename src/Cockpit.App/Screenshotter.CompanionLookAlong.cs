@@ -3,7 +3,6 @@ using Avalonia.Controls;
 using Cockpit.App.Composition;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Screenshots;
-using Cockpit.Core.Layout;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Screenshots;
 
@@ -12,44 +11,32 @@ namespace Cockpit.App;
 internal static partial class Screenshotter
 {
     // AC-2209: a stand-in display while the assistant may look at it: the cyan frame round it, the strip at the top
-    // with its cyan border, the time left and Stop, and the tab with the last look, placed where it covers no strip.
+    // right with its cyan border and the look-along pill, and the tab with the last look, placed where it covers no
+    // strip — the mockup's "look" scene.
     private static Window _CompanionLookAlongScene(int width, int height)
     {
         var strip = new CompanionWindow(null);
         strip.SetTools(_CompanionSceneItems());
-        strip.ApplyLayout(CompanionSceneOrientation == "v" ? CompanionOrientation.Vertical : CompanionOrientation.Horizontal, true);
         strip.ShowLookAlong("9:42");
-        var canvas = new Canvas { Width = width, Height = height };
-        canvas.Bind(Panel.BackgroundProperty, canvas.GetResourceObservable("CockpitWindowBgBrush"));
-        canvas.Children.Add(strip.TakeCard());
-        var frame = new Border { Width = width, Height = height, BorderThickness = new Thickness(3), IsHitTestVisible = false };
-        frame.Bind(Border.BorderBrushProperty, frame.GetResourceObservable("CockpitStatusBusyBrush"));
-        canvas.Children.Add(frame);
-        canvas.Children.Add(LookAlongTabWindow.CreateCard(new TextBlock { FontSize = 12, Text = "Last look 14:02" }, () => { }));
 
-        return new Window { Width = width, Height = height, Content = canvas };
-    }
-
-    private static void _StageCompanionLookAlong(Window scene)
-    {
-        var canvas = scene.Content as Canvas ?? throw new InvalidOperationException("The look-along scene needs its desktop.");
-        var strip = canvas.Children[0];
-        var tab = canvas.Children[2];
-        var size = _Settled(scene, strip);
-        var at = new PixelPoint(((int)canvas.Width - size.Width) / 2, 0);
-        Canvas.SetLeft(strip, at.X);
-        Canvas.SetTop(strip, at.Y);
-        var tabSize = _Settled(scene, tab);
-        var display = new PixelRect(0, 0, (int)canvas.Width, (int)canvas.Height);
-        var spot = LookAlongTabWindow.Place(display, tabSize, [new PixelRect(at, size)]);
-        if (new PixelRect(spot, tabSize).Intersects(new PixelRect(at, size)))
+        return _CompanionDeskScene(width, height, new CompanionDesk(strip, Extra: (canvas, stripRect) =>
         {
-            throw new InvalidOperationException("The look-along tab covers the strip.");
-        }
+            var frame = new Border { Width = width, Height = height, BorderThickness = new Thickness(3), IsHitTestVisible = false };
+            frame.Bind(Border.BorderBrushProperty, frame.GetResourceObservable("CockpitStatusBusyBrush"));
+            canvas.Children.Add(frame);
+            var tab = LookAlongTabWindow.CreateCard(new TextBlock { Text = "last look 14:02" }, () => { });
+            canvas.Children.Add(tab);
+            tab.Measure(Size.Infinity);
+            var tabSize = new PixelSize((int)Math.Ceiling(tab.DesiredSize.Width), (int)Math.Ceiling(tab.DesiredSize.Height));
+            var spot = LookAlongTabWindow.Place(new PixelRect(0, 0, width, height), tabSize, [_Inflate(stripRect, CompanionPopOutCard.ShadowMargin)]);
+            if (new PixelRect(spot, tabSize).Intersects(_Inflate(stripRect, CompanionPopOutCard.ShadowMargin)))
+            {
+                throw new InvalidOperationException("The look-along tab covers the strip.");
+            }
 
-        Canvas.SetLeft(tab, spot.X);
-        Canvas.SetTop(tab, spot.Y);
-        scene.UpdateLayout();
+            Canvas.SetLeft(tab, spot.X);
+            Canvas.SetTop(tab, spot.Y);
+        }));
     }
 
     // AC-2209: the card look_at_screen raises, as the assistant's chat shows it, built by the real card builder.

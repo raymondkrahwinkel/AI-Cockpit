@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Controls.Shapes;
@@ -16,7 +17,7 @@ internal sealed class CompanionStatusPanel : UserControl
 {
     private readonly CompanionAttentionFeed _feed;
     private Window? _mainWindow;
-    private readonly StackPanel _body = new() { Spacing = 8, Margin = new Thickness(14) };
+    private readonly StackPanel _body = new();
 
     public CompanionStatusPanel(CompanionAttentionFeed feed)
     {
@@ -55,79 +56,103 @@ internal sealed class CompanionStatusPanel : UserControl
         }
     }
 
+    // AC-2190: the companion-strook mockup's status pop-out — the Cockpit mark with where the main window is and Open
+    // Cockpit in the head, then one two-line row per agent (name, what it is doing) with the selected one marked, then
+    // the services as name and value.
     private void _Refresh()
     {
         _body.Children.Clear();
-        _body.Children.Add(new TextBlock { Text = "Cockpit", FontWeight = FontWeight.SemiBold });
         var main = (Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.MainWindow;
-        _body.Children.Add(_StatusRow(MaterialIconKind.Monitor, "Main window", main is { IsVisible: true }
-            ? main.WindowState == WindowState.Minimized ? "Minimized" : "Open" : "In tray"));
-        _body.Children.Add(_Heading("Agents"));
+        var where = main is { IsVisible: true }
+            ? main.WindowState == WindowState.Minimized ? "Main window minimized" : "Main window open"
+            : "Main window in the tray";
+        var mark = new Image { Source = CockpitWindowChrome.BrandMark, Width = 20, Height = 20, VerticalAlignment = VerticalAlignment.Center };
+        var title = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        title.Children.Add(CompanionPanelChrome.Text("Cockpit", weight: FontWeight.SemiBold));
+        title.Children.Add(CompanionPanelChrome.Text(where, "CockpitTextSecondaryBrush", 11));
+        var brand = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { mark, title } };
+        var actions = new List<Control>();
+        if (main is not { IsVisible: true })
+        {
+            var open = new Button { Content = "Open Cockpit", Classes = { "Accent", "Compact" }, VerticalAlignment = VerticalAlignment.Center };
+            open.Click += (_, _) => (Application.Current as App)?.ShowMainWindow();
+            actions.Add(open);
+        }
+        _body.Children.Add(CompanionPanelChrome.Header(brand, CompanionPanelChrome.CloseOf(this), [.. actions]));
+
+        var rows = new StackPanel { Margin = new Thickness(6, 0, 6, 8) };
+        rows.Children.Add(_Label("Agents"));
         foreach (var session in _feed.StatusSessions)
         {
             using var card = new AgentOverviewCardViewModel(session, _feed.Cockpit);
             var brush = session.SessionStatus is SessionStatus.Busy or SessionStatus.WorkingBackground
                 && !_feed.Cockpit.Sessions.Contains(session) ? "CockpitStatusBackgroundBrush" : session.SessionStatusBrushKey;
-            var dot = new Ellipse { Width = 7, Height = 7, Margin = new Thickness(0, 5, 9, 0), VerticalAlignment = VerticalAlignment.Top };
+            var selected = ReferenceEquals(_feed.Cockpit.SelectedSession, session);
+            var dot = new Ellipse { Width = 7, Height = 7, VerticalAlignment = VerticalAlignment.Center };
             dot.Bind(Shape.FillProperty, dot.GetResourceObservable(brush));
-            var text = new StackPanel { Spacing = 3 };
-            text.Children.Add(_Text(card.Title));
-            text.Children.Add(_Text(card.Project, "CockpitTextSecondaryBrush"));
-            text.Children.Add(_Text(session.SessionStatusLabel, brush));
-            if (session.Statusline.Length > 0)
-            {
-                text.Children.Add(_Text(session.Statusline, "CockpitTextSecondaryBrush"));
-            }
-            var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
+            var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+            text.Children.Add(CompanionPanelChrome.Text(card.Title, weight: FontWeight.SemiBold));
+            text.Children.Add(CompanionPanelChrome.Text(session.Statusline.Length > 0 ? session.Statusline : session.SessionStatusLabel, "CockpitTextSecondaryBrush", 11));
+            var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), ColumnSpacing = 9 };
             row.Children.Add(dot);
             Grid.SetColumn(text, 1);
             row.Children.Add(text);
-            var button = new Button { Content = row, Tag = session, HorizontalContentAlignment = HorizontalAlignment.Stretch };
-            button.Classes.Add("Ghost");
-            button.Click += (_, _) => _feed.Cockpit.SelectSessionCommand.Execute(session);
-            var selection = new Border { Child = button, CornerRadius = new CornerRadius(6) };
-            selection.Classes.Add("sessionItem");
-            var selected = ReferenceEquals(_feed.Cockpit.SelectedSession, session);
-            selection.Classes.Set("active", selected);
             if (selected)
             {
-                selection.Bind(Border.BackgroundProperty, selection.GetResourceObservable("CockpitAccentSelectionBrush"));
+                var tag = CompanionPanelChrome.Text("Selected", "CockpitTextSecondaryBrush", 11.5);
+                tag.VerticalAlignment = VerticalAlignment.Center;
+                tag.TextWrapping = TextWrapping.NoWrap;
+                Grid.SetColumn(tag, 2);
+                row.Children.Add(tag);
             }
-            _body.Children.Add(selection);
+            var button = new Button
+            {
+                Content = row,
+                Tag = session,
+                Classes = { "Ghost", "companionPickRow" },
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                Padding = new Thickness(8, 6),
+                CornerRadius = new CornerRadius(7),
+            };
+            button.Classes.Set("selected", selected);
+            AutomationProperties.SetName(button, selected ? $"{card.Title}, selected" : $"Select {card.Title}");
+            button.Click += (_, _) => _feed.Cockpit.SelectSessionCommand.Execute(session);
+            rows.Children.Add(button);
         }
-        _body.Children.Add(_Heading("Services"));
+        rows.Children.Add(_Label("Services"));
         foreach (var status in _feed.Cockpit.PluginStatusTexts)
         {
-            _body.Children.Add(_StatusRow(MaterialIconKind.CloudCheckOutline, status.PluginId, status.Text));
+            rows.Children.Add(_StatusRow(MaterialIconKind.CloudCheckOutline, status.PluginId, status.Text));
         }
-        _body.Children.Add(_StatusRow(MaterialIconKind.MicrophoneOutline, "Audio",
+        rows.Children.Add(_StatusRow(MaterialIconKind.MicrophoneOutline, "Audio",
             _feed.Cockpit.IsAudioAvailable ? "Available" : _feed.Cockpit.AudioUnavailableMessage));
-        var open = new Button { Content = "Open Cockpit" };
-        open.Classes.Add("Accent");
-        open.Click += (_, _) => (Application.Current as App)?.ShowMainWindow();
-        _body.Children.Add(open);
+        _body.Children.Add(rows);
     }
 
     private static Grid _StatusRow(MaterialIconKind icon, string name, string status)
     {
-        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,*"), ColumnSpacing = 8, Margin = new Thickness(8, 4) };
-        row.Children.Add(CockpitIcons.Icon(icon, 16));
-        var title = _Text(name);
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), ColumnSpacing = 9, Margin = new Thickness(8, 6) };
+        var glyph = CockpitIcons.Icon(icon, 15);
+        glyph.Bind(Material.Icons.Avalonia.MaterialIcon.ForegroundProperty, glyph.GetResourceObservable("CockpitTextSecondaryBrush"));
+        row.Children.Add(glyph);
+        var title = CompanionPanelChrome.Text(name);
         Grid.SetColumn(title, 1);
         row.Children.Add(title);
-        var value = _Text(status, "CockpitTextSecondaryBrush");
+        var value = CompanionPanelChrome.Text(status, "CockpitTextSecondaryBrush", 11.5);
         value.HorizontalAlignment = HorizontalAlignment.Right;
+        value.TextAlignment = TextAlignment.Right;
+        value.MaxWidth = 170;
+        value.Margin = new Thickness(8, 0, 0, 0);
         Grid.SetColumn(value, 2);
         row.Children.Add(value);
         return row;
     }
 
-    private static TextBlock _Heading(string text) => new() { Text = text, FontSize = 11, Margin = new Thickness(8, 6, 0, 0) };
-
-    private static TextBlock _Text(string text, string brush = "CockpitTextPrimaryBrush")
+    private static TextBlock _Label(string text)
     {
-        var label = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap };
-        label.Bind(TextBlock.ForegroundProperty, label.GetResourceObservable(brush));
+        var label = CompanionPanelChrome.Label(text);
+        label.Margin = new Thickness(8, 4, 8, 4);
         return label;
     }
 }

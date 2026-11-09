@@ -81,7 +81,13 @@ internal sealed class CompanionPopOutHost
             return false;
         }
 
-        popOut.Closed += (_, _) => _open.Remove(popOut);
+        // AC-2190: the item whose pop-out is open stays lit, as the mockup's .ti.open.
+        item.Classes.Set("open", true);
+        popOut.Closed += (_, _) =>
+        {
+            _open.Remove(popOut);
+            item.Classes.Set("open", _open.Exists(other => ReferenceEquals(other.Tag, item)));
+        };
         _open.Add(popOut);
         popOut.Show(_strip);
 

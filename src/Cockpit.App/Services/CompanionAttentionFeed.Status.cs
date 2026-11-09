@@ -20,7 +20,7 @@ public sealed partial class CompanionAttentionFeed
         new(StatusToolId, "Status", _ => new CompanionStatusPanel(this))
         {
             Tooltip = "Cockpit status and selected agent",
-            IconKind = MaterialIconKind.CircleOutline,
+            IconKind = MaterialIconKind.Pulse,
         };
 
     internal void RefreshStatus(List<SessionPanelViewModel> sessions)
@@ -31,7 +31,9 @@ public sealed partial class CompanionAttentionFeed
             _watched.Remove(gone);
         }
         StatusSessions = sessions;
-        RunningCount = sessions.Count(session => session.SessionStatus is SessionStatus.Busy or SessionStatus.WorkingBackground);
+        // AC-2190: a session in the background is counted once, under background, as the mockup's counters have it.
+        RunningCount = sessions.Count(session => _cockpit.Sessions.Contains(session)
+            && session.SessionStatus is SessionStatus.Busy or SessionStatus.WorkingBackground);
         BackgroundCount = sessions.Count(session => !_cockpit.Sessions.Contains(session)
             && session.SessionStatus is SessionStatus.Busy or SessionStatus.WorkingBackground)
             + _cockpit.DelegatedTasks.Tasks.Count(task => task.Status == Core.Delegation.DelegatedTaskStatus.Running);

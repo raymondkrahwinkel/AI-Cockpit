@@ -24,6 +24,7 @@ internal sealed partial class CompanionWindowPresenter : ISingletonService
 
     // These show as the view itself on the strip; the conversation and screenshot pop-outs come with their own tickets.
     private static readonly HashSet<string> InlineToolIds = ["cockpit.assistant", "cockpit.screenshot"];
+    private static readonly HashSet<string> OwnHeadToolIds = [CompanionAttentionFeed.StatusToolId, CompanionAttentionFeed.ToolId];
 
     public CompanionWindowPresenter(ICompanionToolRegistry registry, ILayoutSettingsStore layoutSettingsStore, CompanionAttentionFeed attention, IToastService toasts, Func<CockpitViewModel> cockpit, ILogger<CompanionWindowPresenter> logger)
     {
@@ -60,7 +61,7 @@ internal sealed partial class CompanionWindowPresenter : ISingletonService
         var window = _window ??= new CompanionWindow();
         if (isNew)
         {
-            window.ConfigureCustomization(_customization, _EnableToolAsync);
+            window.ConfigureCustomization(_customization, _EnableToolAsync, _SourceOf);
             window.CloseRequested += (_, _) => Hide();
             window.LayoutChanged += (_, _) => _OnLayoutChanged(window);
             window.ApplyLayout(_orientation, _alwaysOnTop);
@@ -129,7 +130,8 @@ internal sealed partial class CompanionWindowPresenter : ISingletonService
             .Select(tool => new CompanionStripItem(
                 tool.Id, tool.Title, tool.Tooltip, tool.Icon, tool.IconKind, _registry.GetBadge(tool.Id),
                 () => _registry.CreateContext(tool.Id) is { } context ? tool.CreateView(context) : new Avalonia.Controls.TextBlock { Text = "Tool unavailable" },
-                InlineToolIds.Contains(tool.Id), tool.Id == CompanionAttentionFeed.StatusToolId ? () => new CompanionStatusCounters(_attention) : null))]);
+                InlineToolIds.Contains(tool.Id), tool.Id == CompanionAttentionFeed.StatusToolId ? () => new CompanionStatusCounters(_attention) : null,
+                OwnHeadToolIds.Contains(tool.Id)))]);
     }
 
     private void _OnLayoutChanged(CompanionWindow window)

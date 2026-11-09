@@ -31,6 +31,16 @@ public partial class AssistantIndicator : UserControl
         set => SetValue(CollapsedProperty, value);
     }
 
+    // AC-2190: the Companion strip's own 34px chip instead of the sidebar's two-line one; the rail form is shared.
+    public static readonly StyledProperty<bool> IsStripProperty =
+        AvaloniaProperty.Register<AssistantIndicator, bool>(nameof(IsStrip));
+
+    public bool IsStrip
+    {
+        get => GetValue(IsStripProperty);
+        set => SetValue(IsStripProperty, value);
+    }
+
     private AssistantIndicatorViewModel? _viewModel;
 
     internal ICommand? OpenCommand { get; init; }
@@ -59,7 +69,7 @@ public partial class AssistantIndicator : UserControl
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
-        if (change.Property == CollapsedProperty)
+        if (change.Property == CollapsedProperty || change.Property == IsStripProperty)
         {
             _SyncForm();
         }
@@ -94,6 +104,7 @@ public partial class AssistantIndicator : UserControl
     {
         var collapsed = Collapsed ?? _viewModel?.IsCollapsed ?? false;
         RailForm.IsVisible = collapsed;
-        ChipForm.IsVisible = !collapsed;
+        StripForm.IsVisible = !collapsed && IsStrip;
+        ChipForm.IsVisible = !collapsed && !IsStrip;
     }
 }

@@ -3,19 +3,22 @@
              xmlns:views="using:Cockpit.App.Views"
              xmlns:icons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
              x:Class="Cockpit.App.Views.CompanionAssistantChatView"
-             Height="360">
+             Height="240">
+    <!-- AC-2190: the mockup's head — the title, open in Cockpit and close as ghost icons, no rule under it. -->
     <DockPanel>
-        <Border DockPanel.Dock="Top" Padding="12,8" BorderThickness="0,0,0,1"
-                BorderBrush="{DynamicResource CockpitHairlineBrush}">
-            <Grid ColumnDefinitions="*,Auto,Auto">
-                <TextBlock Text="Assistant" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                <Button x:Name="OpenInCockpitButton" Grid.Column="1" Content="Open in Cockpit" Classes="Ghost Compact"/>
-                <Button x:Name="CloseButton" Grid.Column="2" Classes="Subtle Compact" ToolTip.Tip="Close"
-                        AutomationProperties.Name="Close assistant pop-out">
-                    <icons:MaterialIcon Kind="Close" Width="14" Height="14"/>
-                </Button>
-            </Grid>
-        </Border>
+        <DockPanel DockPanel.Dock="Top" Margin="14,10,10,4">
+            <Button x:Name="CloseButton" DockPanel.Dock="Right" Classes="Ghost" Width="24" Height="24" Padding="0"
+                    HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                    ToolTip.Tip="Close" AutomationProperties.Name="Close assistant pop-out">
+                <icons:MaterialIcon Kind="Close" Width="14" Height="14" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+            </Button>
+            <Button x:Name="OpenInCockpitButton" DockPanel.Dock="Right" Classes="Ghost" Width="24" Height="24" Padding="0" Margin="0,0,4,0"
+                    HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                    ToolTip.Tip="Open in Cockpit" AutomationProperties.Name="Open in Cockpit">
+                <icons:MaterialIcon Kind="OpenInNew" Width="14" Height="14" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+            </Button>
+            <TextBlock Text="Assistant" FontSize="12.5" FontWeight="SemiBold" VerticalAlignment="Center"/>
+        </DockPanel>
         <views:AssistantChatView x:Name="Chat"/>
     </DockPanel>
 </UserControl>

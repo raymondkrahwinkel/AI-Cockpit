@@ -101,7 +101,7 @@ public sealed class ScreenshotCoordinator : ISingletonService
     public CompanionToolRegistration CreateCompanionTool() =>
         new("cockpit.screenshot", "Screenshot", _CreateCompanionToolView)
         {
-            IconKind = MaterialIconKind.Monitor,
+            IconKind = MaterialIconKind.MonitorScreenshot,
         };
 
     private Control _CreateCompanionToolView(ICompanionToolContext context)

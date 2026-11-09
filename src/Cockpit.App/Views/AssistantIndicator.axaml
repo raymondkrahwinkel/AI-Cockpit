@@ -75,6 +75,55 @@
             </Panel>
         </Button>
 
+        <!-- Strip form (AC-2190): the Companion strip's chip, 34px high like every other item on the strip, so one
+             line of label and one of detail, with the key folded into the detail ("F10 to talk") instead of a key
+             badge or the listening switch. A width floor, not a fixed width: a long state widens the strip rather
+             than losing its words. -->
+        <Button x:Name="StripForm" Click="_OnOpenClick" IsVisible="False" ToolTip.Tip="Talk to the assistant"
+                Classes="assistantIndicatorChip strip"
+                Classes.listening="{Binding IsListening}"
+                Classes.listeningContinuously="{Binding IsListeningContinuously}"
+                Classes.thinking="{Binding IsWorking}"
+                Classes.speaking="{Binding IsSpeaking}"
+                Classes.dictating="{Binding IsDictating}"
+                Classes.awaitingOperator="{Binding ShowsAwaitingOperator}"
+                Classes.questions="{Binding ShowsQuestions}"
+                Classes.unavailable="{Binding IsUnavailable}">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="7">
+                <Panel Width="26" Height="26" ClipToBounds="False">
+                    <Arc Classes="assistantIndicatorLevelArc" Classes.dictating="{Binding IsDictating}"
+                         IsVisible="{Binding ShowsLevel}" SweepAngle="{Binding LevelSweep}"/>
+                    <Border Classes="assistantIndicatorRing small"
+                            Classes.listening="{Binding IsListening}"
+                            Classes.listeningContinuously="{Binding IsListeningContinuously}"
+                            Classes.thinking="{Binding IsWorking}"
+                            Classes.speaking="{Binding IsSpeaking}"
+                            Classes.dictating="{Binding IsDictating}"
+                            Classes.awaitingOperator="{Binding ShowsAwaitingOperator}"
+                            Classes.questions="{Binding ShowsQuestions}"
+                            Classes.unavailable="{Binding IsUnavailable}">
+                        <Grid>
+                            <materialIcons:MaterialIcon Kind="Microphone" IsVisible="{Binding IsMicIcon}"/>
+                            <materialIcons:MaterialIcon Kind="ThoughtBubble" IsVisible="{Binding IsWorking}"/>
+                            <materialIcons:MaterialIcon Kind="VolumeHigh" IsVisible="{Binding IsSpeaking}"/>
+                            <materialIcons:MaterialIcon Kind="HandBackLeftOutline" IsVisible="{Binding ShowsAwaitingOperator}"/>
+                            <materialIcons:MaterialIcon Kind="HelpCircleOutline" IsVisible="{Binding ShowsQuestions}"/>
+                            <materialIcons:MaterialIcon Kind="AlertCircleOutline" IsVisible="{Binding IsUnavailable}"/>
+                            <Ellipse Classes="assistantIndicatorModeDot" IsVisible="{Binding IsListeningContinuously}"/>
+                        </Grid>
+                    </Border>
+                    <materialIcons:MaterialIcon Classes="assistantIndicatorBypassMark" Kind="ShieldOffOutline"
+                                                IsVisible="{Binding IsConsentBypassActive}"
+                                                ToolTip.Tip="Some consent cards are skipped for the assistant. Change this in Options → Assistant."/>
+                </Panel>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock Classes="assistantIndicatorLabel" Text="{Binding Label}"/>
+                    <TextBlock Classes="assistantIndicatorStripDetail" Text="{Binding StripDetail}"
+                               IsVisible="{Binding StripDetail, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                </StackPanel>
+            </Grid>
+        </Button>
+
         <!-- Expanded form: the chip plus the listening-mode picker (criterion 17), both hidden once the
              sidebar is a rail — there is nowhere for either to sit. -->
         <StackPanel x:Name="ChipForm" Spacing="8">

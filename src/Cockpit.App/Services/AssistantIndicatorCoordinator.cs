@@ -89,7 +89,7 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
             OpenCommand = new AsyncRelayCommand(() => _OpenCompanionChatAsync(questions: Indicator.ShowsQuestions)),
         })
         {
-            IconKind = MaterialIconKind.Creation,
+            IconKind = MaterialIconKind.Microphone,
         };
 
     internal Task OpenCompanionComposerAsync() => _OpenCompanionChatAsync(questions: false, toggle: false);
@@ -559,7 +559,7 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
                 {
                     _CloseCompanionChat();
                     _ShowChatWindow();
-                }, _CloseCompanionChat), 400);
+                }, _CloseCompanionChat), 360);
             return;
         }
 

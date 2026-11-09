@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- AC-2190: the companion strip and its pop-outs now look like the approved mockup: a 44px strip with one assistant chip ("F10 to talk"), quiet icon buttons, a split screenshot button, hairlines between the groups, and pop-outs 6px from the strip with a shared head and close button. Customize strip reorders by dragging and has Reset, the notification cards show their age and answer pills, and a background agent is no longer also counted as running.
 - AC-2209: the assistant can look at one whole display with `look_at_screen`, only after you start it on its card (display and 5, 10 or 30 minutes); while it runs the strip shows a cyan border, the time left and Stop, the display gets a cyan frame and a tab with the last look and Stop, and none of them are in what the assistant sees. Every look is one screenshot on its own call; there is no interval.
 - AC-2207: Customize strip adds, removes and reorders companion tools while Cockpit stays in the tray; new tools wait under Available, and unavailable plugins keep their place with Enable and Forget.
 - AC-2203: open the assistant conversation or its pending questions from the companion strip, and choose the assistant or selected agent as the screenshot recipient; the strip and its pop-outs stay out of captures.
