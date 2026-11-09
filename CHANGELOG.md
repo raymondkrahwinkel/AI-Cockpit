@@ -14,6 +14,8 @@
 - AC-2202: the companion strip lies horizontally or vertically, drags freely, can stay above other windows (on by default), and shows each tool as an icon button with its badge that opens the tool in a pop-out; the setting is remembered.
 - AC-2230: with the speaker switched off, the assistant no longer reads a reply aloud, and a mute clicked while the assistant is still starting is no longer overwritten by the stored value; "Read full reply aloud" still speaks on request.
 
+- AC-2211: agent browser actions wait for navigation or download feedback, and profile cleanup waits for browser shutdown even when a tab closes concurrently.
+
 - AC-2215: project cards and waiting conversations on Home wrap a long title onto further lines instead of cutting it off.
 
 - AC-2194: the project picker follows the approved compact row typography and selection stripe, and token marks leave the surrounding spaces clear.
