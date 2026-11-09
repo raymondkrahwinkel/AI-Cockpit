@@ -140,12 +140,12 @@ internal static class FileSourceChannel
             }
             var result = await _Source(provider, request.File, false).ReadRangeAsync(request.File, request.Offset, request.Count, ct).ConfigureAwait(false);
             await using var content = result?.Content;
-            if (content is null || string.IsNullOrWhiteSpace(result!.Version) || result.Size is null)
+            if (result is not { Content: not null, Size: not null } || string.IsNullOrWhiteSpace(result.Version))
             {
                 throw new FileSourceException(FileSourceErrorKind.Unavailable, "The source did not return a version and size for this block.");
             }
             // A source that hands back more than asked would otherwise slip past the block limit.
-            var bytes = await Wire.ReadContentAsync(content, request.Count, ct).ConfigureAwait(false);
+            var bytes = await Wire.ReadContentAsync(result.Content, request.Count, ct).ConfigureAwait(false);
             return new FileSourceReadAnswer(Convert.ToBase64String(bytes), result.Version, result.Size, result.Modified, result.ContentType);
         })));
     }
@@ -166,7 +166,7 @@ internal static class FileSourceChannel
         && !string.IsNullOrWhiteSpace(entry.Name);
 
     private static FileEntry _Created(FileEntry? entry) =>
-        _Valid(entry) ? entry! : throw new FileSourceException(FileSourceErrorKind.Unavailable, "The source did not confirm the new item.");
+        entry is { } created && _Valid(created) ? created : throw new FileSourceException(FileSourceErrorKind.Unavailable, "The source did not confirm the new item.");
 
     private static void _RegisterLive(IPluginBackendChannel channel, IFileSourceProvider provider, Registration registration)
     {
