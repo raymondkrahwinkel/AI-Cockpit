@@ -43,6 +43,10 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
     // AC-2217: the Depot gateway rows beside each connection's own; created with the first host the plugin gets.
     private DepotGateway? _gateway;
 
+    // The personal MCPs of that gateway that still need authorizing; the first start's channel handles go when Initialize registers its own.
+    private DepotPersonalMcps? _personal;
+    private readonly List<IDisposable> _firstStartPersonalHandlers = [];
+
     // A 100 MiB file on a slow link must not hit the default 100 second timeout.
     private readonly HttpClient _publishHttp = new() { Timeout = TimeSpan.FromMinutes(30) };
 
@@ -73,6 +77,16 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
         _host = host;
         _initializedHost = host;
         var gateway = _GatewayFor(host);
+        foreach (var handler in _firstStartPersonalHandlers)
+        {
+            handler.Dispose();
+        }
+
+        _firstStartPersonalHandlers.Clear();
+        var personal = _personal ??= new DepotPersonalMcps(host, gateway, () => settings.Connections, host.Services?.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.Plugin.Depot"));
+        personal.Attach(host);
+        host.AddNotificationSource(personal.RecheckAsync);
+        _HandlePersonal(host, personal, _handlers);
 
         foreach (var connection in settings.Connections)
         {
@@ -94,7 +108,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             // AC-2217: after a (re)sign-in the gateway is read again; a sign-in on a gateway row is one on its connection too.
             foreach (var connection in settings.Connections.Where(candidate => candidate.McpServerName == serverName || DepotGateway.IsGatewayServerName(serverName)))
             {
-                _ = gateway.RefreshAsync(connection, CancellationToken.None);
+                _ = personal.ReadAsync(connection, CancellationToken.None);
             }
 
             // The Projects page keeps what the last read said, "sign in" included, until something tells it to read again.
@@ -225,13 +239,15 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
                 connection, userId, () => host.CreateAuthorizedHandler(connection.McpServerName), onEvent, onReconnected, onClosed),
             _logger,
             // AC-2217: a Depot that came back, possibly upgraded, is read for the gateway again.
-            connection => _ = gateway.RefreshAsync(connection, CancellationToken.None));
+            connection => _ = personal.ReadAsync(connection, CancellationToken.None));
 
         // AC-2217: once at the start, in the background — a Depot that is offline or older never holds the plugin up.
         foreach (var connection in settings.Connections)
         {
-            _ = gateway.RefreshAsync(connection, CancellationToken.None);
+            _ = personal.ReadAsync(connection, CancellationToken.None);
         }
+
+        personal.Start();
 
         // AC-499: declared unconditionally, even with zero connections — fixes the doorless-dead-end bug where
         // zero connections meant no "Depot" option anywhere and no way to reach this plugin's settings.
@@ -283,7 +299,11 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
         var settings = new DepotSettings(host.Storage);
         _settings ??= settings;
         _host ??= host;
-        _GatewayFor(host);
+        var gateway = _GatewayFor(host);
+
+        // No bell on the first start: the step after the sign-in shows what is open, with Later. Initialize turns the bell on.
+        var personal = _personal = new DepotPersonalMcps(host, gateway, () => settings.Connections);
+        _HandlePersonal(host, personal, _firstStartPersonalHandlers);
 
         var firstStart = new FirstStart.DepotFirstStart(
             host, settings, connection => _pending = connection, () => _initializedHost, () => _events);
@@ -298,6 +318,27 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             var request = payload.Deserialize<DepotFirstStartManifestRequest>(DepotChannel.Json)
                 ?? throw new ArgumentException("The request names no organization.", nameof(payload));
             return JsonSerializer.SerializeToElement(await firstStart.ReadManifestAsync(request, cancellationToken).ConfigureAwait(false), DepotChannel.Json);
+        }));
+    }
+
+    // What the UI part asks about the personal MCPs; `into` is where the handles go, so Initialize can replace the first start's.
+    private static void _HandlePersonal(ICockpitHost host, DepotPersonalMcps personal, List<IDisposable> into)
+    {
+        into.Add(host.Channel.Handle(DepotPersonalChannel.List, async (payload, cancellationToken) =>
+        {
+            var request = payload.Deserialize<DepotPersonalListRequest>(DepotChannel.Json) ?? new DepotPersonalListRequest(false);
+            return JsonSerializer.SerializeToElement(await personal.ListAsync(request.Refresh, cancellationToken).ConfigureAwait(false), DepotChannel.Json);
+        }));
+        into.Add(host.Channel.Handle(DepotPersonalChannel.Authorize, (payload, _) =>
+        {
+            var target = payload.Deserialize<DepotPersonalTarget>(DepotChannel.Json)
+                ?? throw new ArgumentException("The request names no personal MCP.", nameof(payload));
+            return Task.FromResult(JsonSerializer.SerializeToElement(personal.Authorize(target), DepotChannel.Json));
+        }));
+        into.Add(host.Channel.Handle(DepotPersonalChannel.Cancel, (_, _) =>
+        {
+            personal.Cancel();
+            return Task.FromResult(JsonSerializer.SerializeToElement(true, DepotChannel.Json));
         }));
     }
 
@@ -688,7 +729,12 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
         }
 
         _publishHttp.Dispose();
+        _personal?.Dispose();
         _gateway?.Dispose();
+        foreach (var handler in _firstStartPersonalHandlers)
+        {
+            handler.Dispose();
+        }
         _ = _notes?.DisposeAsync().AsTask().ContinueWith(
             closing => _logger?.LogWarning(closing.Exception?.GetBaseException(), "Closing Depot notes failed."),
             CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
