@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2227: a paired phone talks to your assistant in the same conversation as the chat window, end to end encrypted over Depot: messages from the phone go in as yours, the answer streams back, the phone can page back 50 rows at a time through what was said since Cockpit started, and a permission prompt or a question of the assistant shows on the phone as waiting for you on the desktop. With the chat closed, the phone gets a notification without any text. A forgotten phone gets nothing and can send nothing.
+
 - AC-2224: pair your phone from Settings › Depot: "Pair phone…" on a signed-in connection shows a QR code that is valid for five minutes, and the phone is paired only once its end-to-end handshake checks out. "Paired phones" lists your phones with a Forget button, and links to Depot to unpair one there.
 
 - AC-2222: groundwork for the mobile app: the Depot plugin can now encrypt the conversation between your phone and this Cockpit end to end, so Depot only relays bytes it cannot read. Nothing to see yet; pairing follows in a later release.

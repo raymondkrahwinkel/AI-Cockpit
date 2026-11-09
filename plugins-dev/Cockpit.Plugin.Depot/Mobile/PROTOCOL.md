@@ -189,7 +189,7 @@ The plaintext of a frame is one message as UTF-8 JSON:
 { "type": "…", "id": "…", "body": { … } }
 ```
 
-- `type`: what the message is. The types themselves are defined in AC-2227; this protocol only fixes the envelope.
+- `type`: what the message is. The types of v1 are in § 10.
 - `id`: unique per sender within the stream, for correlating a reply.
 - `body`: a JSON object whose shape depends on `type`.
 
@@ -258,3 +258,49 @@ frame or a stream that stops, never a frame that the other side accepts as genui
 The two limits of the first draft, forward secrecy on one side only and a recorded handshake that could be played
 again, are gone since the Cockpit's ephemeral key (§ 3, § 4). Zyra decided this on 09-11, from Raymond's requirement
 in DEP-618: Depot must not be able to interact with anybody's Cockpit in any way.
+
+## 10. Message types, v1 (AC-2227)
+
+Every message is an envelope as in § 6. A reply carries the `id` of the message it answers as `replyTo` in its body.
+The Cockpit's own ids are `c1`, `c2`, … per stream.
+
+**Who may send.** A frame reaches the assistant only from a phone this Cockpit holds a key for, over that phone's current
+stream, after its keys opened the frame. Each paired phone is its own channel onto the assistant (the same conversation
+as the chat window, next to Slack and Discord), opened for that phone's device id alone. Forget closes the channel, drops
+the stream and wipes the key: from then on that phone gets nothing and nothing it sends gets in. The Cockpit sends to a
+phone only after the phone's first frame opened (§ 9.4).
+
+**Phone → Cockpit.**
+
+| `type` | `body` | What happens |
+|---|---|---|
+| `assistant.send` | `{ "text": string }` | Handed to the assistant as the operator's message, by the same route as typed text. Answered with `assistant.sent`. Refused while a question of the assistant waits (see `assistant.question`), because the Cockpit would read the text as its answer. The refusal lifts at the operator's next message, the moment the host stops reading text as the answer. |
+| `assistant.history` | `{ "limit"?: number, "before"?: string }` | The tail of the conversation: at most 50 rows (`limit` is clamped to 1…50), older than the row with id `before` when given. Answered with `assistant.history`. |
+| `assistant.chat` | `{ "open": bool }` | The chat is on screen on the phone (`true`) or not (`false`). Live rows go out only while it is open. A new stream starts closed. |
+| `cockpit.status` | `{}` | Answered with `cockpit.status`. |
+
+**Cockpit → phone.**
+
+| `type` | `body` | When |
+|---|---|---|
+| `assistant.sent` | `{ "replyTo", "ok": bool, "error"?: string }` | After `assistant.send`. |
+| `assistant.history` | `{ "replyTo", "more": bool, "last": bool, "rows": [row] }` | After `assistant.history`. A page fills as few frames as it can; `last` marks the final frame of the page, `more` says there are older rows. |
+| `assistant.rows` | `{ "last": bool, "rows": [row] }` | While the chat is open: rows that arrived or changed. A streaming row is sent as its latest snapshot, at most about four times a second. |
+| `assistant.turnEnded` | `{}` | While the chat is open: the assistant finished its turn. |
+| `assistant.consent` | `{ "promptId": string, "title": string }` | While the chat is open (and on opening it): the assistant waits on a permission prompt. Read-only in v1: the app shows "Waiting for you on the desktop", and the Cockpit takes no answer from the phone. |
+| `assistant.consentClosed` | `{ "promptId": string }` | The prompt was answered on the desktop. |
+| `assistant.question` | `{ "questionId": string, "question": string }` | While the chat is open (and on opening it): the assistant asked a question that is answered on the desktop. Read-only in v1, like `assistant.consent`. |
+| `assistant.questionClosed` | `{ "questionId": string }` | The operator's next message, typed anywhere, moved past the question. |
+| `notify` | `{ "kind": "assistantMessage" }` | The assistant finished a turn with a new answer while the chat was not open. No text, nothing of the answer; only to a phone with an open stream. |
+| `cockpit.status` | `{ "replyTo", "name": string, "version": string?, "assistant": bool }` | After `cockpit.status`: the machine name, the Cockpit version, and whether this Cockpit has an assistant. |
+
+A `row` is `{ "id", "kind", "text", "timestamp", "toolName"?, "resultText"?, "truncated": bool }`. `kind` is one of
+`assistantText`, `userText`, `toolUse`, `toolResult`, `thinking`, `question`, `turnCompleted`, `error`, `divider`. A row
+too big for one frame keeps the start of its text and says `truncated: true`. Attachments do not go over the line in v1.
+
+**History is what the channel saw.** The plugin gets no read of past rows from the host, so the history holds the rows
+since the channel opened (when Cockpit started, or the phone paired), in memory only and at most 2,000 of them. Nothing of
+the conversation is written to disk or to a log by this plugin.
+
+**Back-pressure.** At most 32 frames wait to go to one phone. Past that a frame is not queued but dropped, so a phone
+that keeps asking cannot hold up the relay for the others; a page that loses a frame never sends its `last`.

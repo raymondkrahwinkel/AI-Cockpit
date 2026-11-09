@@ -6,6 +6,7 @@ using Cockpit.Plugin.Depot.Contracts;
 using Cockpit.Plugin.Depot.Events;
 using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Channels;
 using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Plugin.Depot.Mobile;
@@ -17,7 +18,9 @@ internal sealed class MobilePairing(
     Func<DepotConnectionRegistration, HttpMessageHandler> hostHandler,
     IPluginStorage storage,
     DepotEvents events,
-    ILogger? logger = null) : IAsyncDisposable
+    Func<AssistantChannelContribution, IAssistantChannelGateway?> openChannel,
+    ILogger? logger = null,
+    Func<string, string, Func<byte[]?>, Task>? send = null) : IAsyncDisposable
 {
     private readonly MobileKeyStore _keys = new(storage);
     private readonly Lock _gate = new();
@@ -25,12 +28,21 @@ internal sealed class MobilePairing(
     private readonly Dictionary<string, MobileRelay> _relays = new(StringComparer.Ordinal);
     private readonly Dictionary<string, IDisposable> _deviceEvents = new(StringComparer.Ordinal);
     private readonly Dictionary<(string Connection, string Device), _Stream> _streams = [];
+    private readonly Dictionary<(string Connection, string Device), MobileAssistantChannel> _channels = [];
 
     // Connects the relay of every connection that has a paired phone, so those phones can reach this Cockpit.
     public void Start()
     {
         foreach (var connection in connections().Where(connection => _Phones(connection.Id).Count > 0))
         {
+            lock (_gate)
+            {
+                foreach (var phone in _Phones(connection.Id))
+                {
+                    _Channel(connection.Id, phone.DeviceId);
+                }
+            }
+
             _ = _EnsureAsync(connection, CancellationToken.None);
         }
     }
@@ -176,6 +188,11 @@ internal sealed class MobilePairing(
             foreach (var id in idle)
             {
                 _DropStreams(id);
+                if (!live.Contains(id))
+                {
+                    _DropChannels(id);
+                }
+
                 if (!live.Contains(id) && _deviceEvents.Remove(id, out var subscription))
                 {
                     subscription.Dispose();
@@ -212,6 +229,7 @@ internal sealed class MobilePairing(
             {
                 _relays.Remove(connection.Id, out relay);
                 _DropStreams(connection.Id);
+                _DropChannels(connection.Id);
             }
 
             if (relay is not null)
@@ -238,9 +256,10 @@ internal sealed class MobilePairing(
             }
 
             _deviceEvents.Clear();
-            foreach (var connection in _streams.Keys.Select(key => key.Connection).Distinct().ToList())
+            foreach (var connection in _streams.Keys.Concat(_channels.Keys).Select(key => key.Connection).Distinct().ToList())
             {
                 _DropStreams(connection);
+                _DropChannels(connection);
             }
 
             relays = [.. _relays.Values];
@@ -292,9 +311,9 @@ internal sealed class MobilePairing(
             }
 
             var relay = new MobileRelay(connection, userId, () => hostHandler(connection),
-                (streamId, deviceId) => _OnOpened(connection.Id, streamId, deviceId),
-                (streamId, deviceId, frame) => _OnFrame(connection.Id, streamId, deviceId, frame),
-                (streamId, deviceId) => _OnClosed(connection.Id, streamId, deviceId));
+                (streamId, deviceId) => Opened(connection.Id, streamId, deviceId),
+                (streamId, deviceId, frame) => Frame(connection.Id, streamId, deviceId, frame),
+                (streamId, deviceId) => Closed(connection.Id, streamId, deviceId));
             lock (_gate)
             {
                 if (!_relays.TryAdd(connection.Id, relay))
@@ -371,7 +390,7 @@ internal sealed class MobilePairing(
     }
 
     // A new stream from a phone: its first frame will be the handshake, keyed to this stream id (PROTOCOL.md § 4).
-    private void _OnOpened(string connectionId, string streamId, string deviceId)
+    internal void Opened(string connectionId, string streamId, string deviceId)
     {
         lock (_gate)
         {
@@ -381,7 +400,7 @@ internal sealed class MobilePairing(
     }
 
     // A close names its stream, so a late close of a replaced stream leaves the current one alone.
-    private void _OnClosed(string connectionId, string streamId, string deviceId)
+    internal void Closed(string connectionId, string streamId, string deviceId)
     {
         lock (_gate)
         {
@@ -389,10 +408,13 @@ internal sealed class MobilePairing(
         }
     }
 
-    // Only the device's current stream is read; a frame of any other stream id is refused.
-    private void _OnFrame(string connectionId, string streamId, string deviceId, byte[] frame)
+    // Only the device's current stream is read; a frame of any other stream id is refused. A frame reaches the
+    // assistant only through the channel of a phone that is still paired, after its stream's keys opened it.
+    internal void Frame(string connectionId, string streamId, string deviceId, byte[] frame)
     {
         byte[]? reply = null;
+        MobileAssistantChannel? channel = null;
+        byte[] plaintext = [];
         lock (_gate)
         {
             if (!_streams.TryGetValue((connectionId, deviceId), out var stream) || stream.StreamId != streamId)
@@ -402,25 +424,41 @@ internal sealed class MobilePairing(
 
             if (stream.Cipher is { } cipher)
             {
-                // The content is AC-2227's; a frame that does not open ends the stream.
-                if (!cipher.TryOpen(frame, out var plaintext))
+                // A frame that does not open ends the stream.
+                if (!cipher.TryOpen(frame, out plaintext))
                 {
                     _DropStream(connectionId, deviceId);
+                    return;
                 }
 
-                CryptographicOperations.ZeroMemory(plaintext);
-                return;
+                stream.Confirmed = true;
+                channel = _Channel(connectionId, deviceId);
             }
-
-            reply = _Handshake(connectionId, deviceId, stream, frame);
-            if (reply is null)
+            else
             {
-                _DropStream(connectionId, deviceId);
-                return;
+                reply = _Handshake(connectionId, deviceId, stream, frame);
+                if (reply is null)
+                {
+                    _DropStream(connectionId, deviceId);
+                    return;
+                }
             }
         }
 
-        _ = _SendAsync(connectionId, deviceId, streamId, reply);
+        if (reply is not null)
+        {
+            _ = _SendAsync(connectionId, deviceId, streamId, () => reply);
+            return;
+        }
+
+        try
+        {
+            channel?.Receive(plaintext);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(plaintext);
+        }
     }
 
     // Under _gate. The reply for the phone once the handshake holds, or null for every refusal alike.
@@ -458,7 +496,98 @@ internal sealed class MobilePairing(
         }
     }
 
-    private async Task _SendAsync(string connectionId, string deviceId, string streamId, byte[] frame)
+    // Under _gate. The phone's door onto the assistant while it is paired; null for a phone this Cockpit does not hold.
+    private MobileAssistantChannel? _Channel(string connectionId, string deviceId)
+    {
+        if (_channels.TryGetValue((connectionId, deviceId), out var channel))
+        {
+            return channel;
+        }
+
+        if (_Phones(connectionId).FirstOrDefault(phone => phone.DeviceId == deviceId) is not { } paired
+            || AssistantChannelAccess.ForSingleUser(deviceId).Access is not { } access)
+        {
+            return null;
+        }
+
+        var gateway = openChannel(new AssistantChannelContribution
+        {
+            Id = $"depot-mobile-{connectionId}-{deviceId}",
+            Name = paired.Name,
+            Access = access,
+            Verbosity = AssistantChannelVerbosity.Everything,
+        });
+        channel = new MobileAssistantChannel(deviceId, gateway, plaintext => _SendToPhone(connectionId, deviceId, plaintext),
+            Environment.MachineName, System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3), logger);
+        _channels[(connectionId, deviceId)] = channel;
+        return channel;
+    }
+
+    // A phone gets at most this many frames waiting at once; past that a send is refused rather than queued, so one
+    // phone that keeps asking cannot hold the relay or the memory of the others.
+    private const int _MaxWaitingSends = 32;
+
+    // Only over a stream whose phone proved its keys with a frame that opened (PROTOCOL.md § 9.4). The frame is sealed
+    // when its turn to leave comes, and not at all once that stream is gone.
+    private bool _SendToPhone(string connectionId, string deviceId, byte[] plaintext)
+    {
+        string streamId;
+        lock (_gate)
+        {
+            if (!_streams.TryGetValue((connectionId, deviceId), out var stream) || stream is not { Cipher: not null, Confirmed: true }
+                || stream.WaitingSends >= _MaxWaitingSends)
+            {
+                CryptographicOperations.ZeroMemory(plaintext);
+                return false;
+            }
+
+            streamId = stream.StreamId;
+            stream.WaitingSends++;
+        }
+
+        _ = _SendAsync(connectionId, deviceId, streamId, () =>
+        {
+            lock (_gate)
+            {
+                try
+                {
+                    return _streams.TryGetValue((connectionId, deviceId), out var current)
+                        && current is { Confirmed: true, Cipher: { } cipher } && current.StreamId == streamId
+                        ? cipher.Seal(plaintext)
+                        : null;
+                }
+                finally
+                {
+                    CryptographicOperations.ZeroMemory(plaintext);
+                }
+            }
+        }, () =>
+        {
+            CryptographicOperations.ZeroMemory(plaintext);
+            lock (_gate)
+            {
+                if (_streams.TryGetValue((connectionId, deviceId), out var current) && current.StreamId == streamId)
+                {
+                    current.WaitingSends--;
+                }
+            }
+        });
+        return true;
+    }
+
+    private async Task _SendAsync(string connectionId, string deviceId, string streamId, Func<byte[]?> frame, Action? done = null)
+    {
+        try
+        {
+            await _SendAsync(connectionId, deviceId, streamId, frame).ConfigureAwait(false);
+        }
+        finally
+        {
+            done?.Invoke();
+        }
+    }
+
+    private async Task _SendAsync(string connectionId, string deviceId, string streamId, Func<byte[]?> frame)
     {
         MobileRelay? relay;
         lock (_gate)
@@ -468,7 +597,11 @@ internal sealed class MobilePairing(
 
         try
         {
-            if (relay is not null)
+            if (send is not null)
+            {
+                await send(connectionId, streamId, frame).ConfigureAwait(false);
+            }
+            else if (relay is not null)
             {
                 await relay.SendAsync(streamId, frame, CancellationToken.None).ConfigureAwait(false);
             }
@@ -500,6 +633,12 @@ internal sealed class MobilePairing(
         }
 
         _Save(connectionId, [.. phones.Where(phone => phone.DeviceId != deviceId)]);
+
+        // A forgotten phone, or one pairing again under the same id: its channel and what that channel saw go with its key.
+        if (_channels.Remove((connectionId, deviceId), out var channel))
+        {
+            channel.Dispose();
+        }
     }
 
     // Under _gate. With a stream id, only when that is still the device's current stream.
@@ -509,6 +648,16 @@ internal sealed class MobilePairing(
         {
             _streams.Remove((connectionId, deviceId));
             stream.Cipher?.Dispose();
+            _channels.GetValueOrDefault((connectionId, deviceId))?.StreamEnded();
+        }
+    }
+
+    private void _DropChannels(string connectionId)
+    {
+        foreach (var key in _channels.Keys.Where(key => key.Connection == connectionId).ToList())
+        {
+            _channels.Remove(key, out var channel);
+            channel!.Dispose();
         }
     }
 
@@ -589,6 +738,10 @@ internal sealed class MobilePairing(
         public string StreamId { get; } = streamId;
 
         public MobileFrameCipher? Cipher { get; set; }
+
+        public bool Confirmed { get; set; }
+
+        public int WaitingSends { get; set; }
     }
 
     private sealed class _NoSubscription : IDisposable
