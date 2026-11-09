@@ -22,6 +22,7 @@ internal sealed class BrowserHostTab : IAsyncDisposable
     private CefRectangle _dirty;
     private bool _inflight;
     private bool _closing;
+    private bool _creationPending;
     private long _frameId;
     private long _bufferRevision;
     private Task _frameSender = Task.CompletedTask;
@@ -43,7 +44,11 @@ internal sealed class BrowserHostTab : IAsyncDisposable
         _size = size;
         var info = CefWindowInfo.Create();
         info.SetAsWindowless(nint.Zero, true);
-        CefBrowserHost.CreateBrowser(info, new Client(this), new CefBrowserSettings { WindowlessFrameRate = 60 }, _state.Address, null, profile);
+        _creationPending = CefBrowserHost.CreateBrowser(info, new Client(this), new CefBrowserSettings { WindowlessFrameRate = 60 }, _state.Address, null, profile);
+        if (_creationPending == false)
+        {
+            throw new InvalidOperationException("CEF refused the browser tab.");
+        }
     }
 
     internal Task HandleAsync(BrowserIpcMessage message, CancellationToken token) => OnCefAsync(() =>
@@ -250,13 +255,13 @@ internal sealed class BrowserHostTab : IAsyncDisposable
             {
                 browser.GetHost().CloseBrowser(true);
             }
-            else
+            else if (_creationPending == false)
             {
                 _closed.TrySetResult();
             }
         }, CancellationToken.None);
-        await _closed.Task.WaitAsync(BrowserIpcLimits.Deadline);
         _states.Writer.TryComplete();
+        await _closed.Task.WaitAsync(BrowserIpcLimits.Deadline);
         await Task.WhenAll(_frameSender, _stateSender);
         _buffer?.Dispose();
         _send.Dispose();
@@ -285,8 +290,14 @@ internal sealed class BrowserHostTab : IAsyncDisposable
     {
         protected override void OnAfterCreated(CefBrowser browser)
         {
+            owner._creationPending = false;
             owner._browser = browser;
             owner._created.TrySetResult();
+            if (owner._closing)
+            {
+                CefRuntime.PostTask(CefThreadId.UI, new ActionTask(() => browser.GetHost().CloseBrowser(true)));
+                return;
+            }
             browser.GetHost().WasResized();
         }
         protected override void OnBeforeClose(CefBrowser browser)
@@ -351,7 +362,7 @@ internal sealed class BrowserHostTab : IAsyncDisposable
                 {
                     owner._Paint(buffer, width, height, dirtyRects);
                 }
-                catch (Exception exception) when (exception is IOException or OperationCanceledException or ObjectDisposedException or InvalidOperationException or AggregateException)
+                catch (Exception exception) when (exception is IOException or InvalidDataException or OperationCanceledException or ObjectDisposedException or InvalidOperationException or AggregateException)
                 {
                     owner._connection.Close();
                 }

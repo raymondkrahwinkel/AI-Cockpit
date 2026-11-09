@@ -131,6 +131,13 @@ internal sealed class BrowserIpcConnection : IAsyncDisposable
             {
                 call.Answer.TrySetCanceled();
             }
+            if (_tabs.Any(pair => pair.Tab == tab) == false)
+            {
+                foreach (var buffer in _buffers.Where(pair => pair.Value == tab).Select(pair => pair.Key).ToArray())
+                {
+                    BrowserIpcCleanup.Try(buffer.Dispose, _cleanupErrors);
+                }
+            }
         }
         try
         {

@@ -14,7 +14,10 @@ namespace Cockpit.Plugin.Browser.UI.Engine;
 internal sealed class HostBrowserView : BrowserView
 {
     private readonly BrowserHostClient _host;
-    private readonly Channel<(string Operation, JsonElement Payload)> _commands = Channel.CreateBounded<(string, JsonElement)>(64);
+    private readonly Channel<Command> _commands = Channel.CreateBounded<Command>(64);
+    private readonly object _commandGate = new();
+    private Command? _move;
+    private Command? _wheel;
     private readonly Task _sender;
     private readonly Task _disconnected;
     private BrowserIpcFrameBuffer? _buffer;
@@ -53,10 +56,30 @@ internal sealed class HostBrowserView : BrowserView
         {
             return;
         }
-        if (_commands.Writer.TryWrite((operation, JsonSerializer.SerializeToElement(payload))) == false)
+        var command = new Command(operation, JsonSerializer.SerializeToElement(payload));
+        lock (_commandGate)
         {
-            _Fail("The browser input queue is full. Close this tab and open it again.");
+            if (payload is BrowserTabInput { Kind: "move" or "wheel" } pointer)
+            {
+                ref Command? pending = ref (pointer.Kind == "move" ? ref _move : ref _wheel);
+                if (pending is { } queued)
+                {
+                    queued.Payload = command.Payload;
+                    return;
+                }
+                pending = command;
+            }
+            else
+            {
+                _move = null;
+                _wheel = null;
+            }
+            if (_commands.Writer.TryWrite(command))
+            {
+                return;
+            }
         }
+        _Fail("The browser input queue is full. Close this tab and open it again.");
     }
 
     private async Task _SendAsync(string address)
@@ -71,10 +94,23 @@ internal sealed class HostBrowserView : BrowserView
                 {
                     break;
                 }
-                await _host.Connection.CallAsync(TabId, "operator", command.Operation, command.Payload, BrowserIpcLimits.Deadline).ConfigureAwait(false);
+                JsonElement payload;
+                lock (_commandGate)
+                {
+                    if (ReferenceEquals(_move, command))
+                    {
+                        _move = null;
+                    }
+                    if (ReferenceEquals(_wheel, command))
+                    {
+                        _wheel = null;
+                    }
+                    payload = command.Payload;
+                }
+                await _host.Connection.CallAsync(TabId, "operator", command.Operation, payload, BrowserIpcLimits.Deadline).ConfigureAwait(false);
             }
         }
-        catch (Exception exception) when (exception is IOException or OperationCanceledException or ObjectDisposedException or InvalidOperationException)
+        catch (Exception exception) when (exception is IOException or InvalidDataException or JsonException or OperationCanceledException or ObjectDisposedException or InvalidOperationException or TimeoutException)
         {
             await Dispatcher.UIThread.InvokeAsync(() => _Fail("The browser tab connection stopped. Close this tab and open it again."));
         }
@@ -185,10 +221,20 @@ internal sealed class HostBrowserView : BrowserView
     {
         try
         {
-            await _sender;
-            await _host.Connection.CallAsync(_host.Generation, "enginehost", "tab.close", JsonSerializer.SerializeToElement(TabId), BrowserIpcLimits.Deadline);
+            try
+            {
+                await _sender;
+            }
+            catch (Exception exception) when (exception is IOException or InvalidDataException or JsonException or OperationCanceledException or ObjectDisposedException or InvalidOperationException or TimeoutException)
+            {
+                // An input failure must not suppress the close handshake.
+            }
+            finally
+            {
+                await _host.Connection.CallAsync(_host.Generation, "enginehost", "tab.close", JsonSerializer.SerializeToElement(TabId), BrowserIpcLimits.Deadline);
+            }
         }
-        catch (Exception exception) when (exception is IOException or OperationCanceledException or ObjectDisposedException or InvalidOperationException)
+        catch (Exception exception) when (exception is IOException or InvalidDataException or JsonException or OperationCanceledException or ObjectDisposedException or InvalidOperationException or TimeoutException)
         {
             _host.Connection.Close();
             await _disconnected.WaitAsync(BrowserIpcLimits.Deadline);
@@ -336,4 +382,10 @@ internal sealed class HostBrowserView : BrowserView
     }
     private static int _Modifiers(KeyModifiers modifiers) => (modifiers.HasFlag(KeyModifiers.Shift) ? 2 : 0)
         | (modifiers.HasFlag(KeyModifiers.Control) ? 4 : 0) | (modifiers.HasFlag(KeyModifiers.Alt) ? 8 : 0);
+
+    private sealed class Command(string operation, JsonElement payload)
+    {
+        internal string Operation { get; } = operation;
+        internal JsonElement Payload { get; set; } = payload;
+    }
 }

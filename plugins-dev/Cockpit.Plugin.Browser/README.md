@@ -103,7 +103,8 @@ ack requests another paint when needed, including when the page stopped animatin
 buffer until ack, and the UI discards stale revisions. Close acknowledges pending frames without presenting them.
 Invalid tab/generation/buffer correlation ends the connection visibly rather than displaying another page.
 
-Input is ordered through a bounded queue (64 commands per view); overflow fails the tab visibly. Host state
+Input is ordered through a bounded queue (64 commands per view); pending move and wheel events each retain only
+their latest value, with discrete commands preserving their order. Overflow of discrete commands fails the tab visibly. Host state
 coalesces in one slot, with at most one outbound call per tab across state and frames. Engine disconnect and
 renderer termination replace the stale page image with a failure; a renderer can recover on navigation/reload.
 DevTools, agent authorization, clipboard, IME, popup surfaces and audio are the later epic steps. The explicit

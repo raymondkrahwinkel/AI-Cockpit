@@ -22,23 +22,45 @@ internal sealed class BrowserHostTabs(BrowserIpcConnection connection, string st
             connection.RegisterTab(create.TabId, "operator");
             var tab = new BrowserHostTab(connection, storage, create.TabId, create.Url);
             _tabs.Add(create.TabId, tab);
-            await BrowserHostTab.OnCefAsync(() =>
+            try
             {
-                _profile ??= CefRequestContext.CreateContext(new CefRequestContextSettings
+                await BrowserHostTab.OnCefAsync(() =>
                 {
-                    CachePath = Path.Combine(cache, "user"), PersistSessionCookies = true,
-                }, null);
-                tab.Create(_profile, new BrowserTabSize(create.Width, create.Height, create.Scale, 1));
-            }, token);
-            await tab.Created.WaitAsync(token);
+                    _profile ??= CefRequestContext.CreateContext(new CefRequestContextSettings
+                    {
+                        CachePath = Path.Combine(cache, "user"), PersistSessionCookies = true,
+                    }, null);
+                    tab.Create(_profile, new BrowserTabSize(create.Width, create.Height, create.Scale, 1));
+                }, token);
+                await tab.Created.WaitAsync(token);
+            }
+            catch
+            {
+                _tabs.Remove(create.TabId);
+                try
+                {
+                    await tab.DisposeAsync();
+                }
+                finally
+                {
+                    await connection.UnregisterTabAsync(create.TabId, "operator");
+                }
+                throw;
+            }
         }
         else if (message.Operation == "tab.close" && message.TabId == message.Generation)
         {
             var id = message.Payload.GetGuid();
             if (_tabs.Remove(id, out var tab))
             {
-                await tab.DisposeAsync();
-                await connection.UnregisterTabAsync(id, "operator");
+                try
+                {
+                    await tab.DisposeAsync();
+                }
+                finally
+                {
+                    await connection.UnregisterTabAsync(id, "operator");
+                }
             }
         }
         else if (_tabs.TryGetValue(message.TabId, out var tab))
