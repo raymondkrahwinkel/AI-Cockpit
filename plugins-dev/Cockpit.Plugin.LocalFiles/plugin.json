@@ -1,7 +1,7 @@
 {
   "id": "local-files",
   "name": "Local files",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "entryAssembly": "Cockpit.Plugin.LocalFiles.dll",
   "entryType": "Cockpit.Plugin.LocalFiles.LocalFilesPlugin",
   "uiAssembly": "Cockpit.Plugin.LocalFiles.UI.dll",
