@@ -647,6 +647,9 @@ internal static partial class Screenshotter
         // this window is five lists whose failure mode is one of them quietly bound to the wrong collection.
         ["agent-line"] = (_, _) => new AgentLineInspectorDialog { DataContext = _AgentLine() },
         ["set-status"] = (_, _) => new SetStatusDialog { DataContext = new ViewModels.SetStatusDialogViewModel("AC-32 — manual status") },
+        ["mcp-advisory-checklist"] = (_, _) => _McpAdvisoryChecklist(),
+        ["mcp-advisory-details"] = (_, _) => new MainWindow { DataContext = _McpAdvisoryDetails() },
+        ["mcp-advisory-options"] = (_, _) => _McpAdvisoryOptions(),
         ["session-mcp"] = (_, _) => new SessionMcpDialog { DataContext = new ViewModels.SessionMcpDialogViewModel() },
         // AC-492: the quick-note surface with a failed write, since that is the state the ticket's one hard rule is
         // about — the note stays, and the line under it says why.
@@ -1652,6 +1655,7 @@ internal static partial class Screenshotter
         ["assistant-chat-history-dropdown-open"] = window => _OpenFlyout(window, "HistoryButton"),
         ["assistant-threads-docked-280-closed"] = window => _OpenFlyout(window, "ThreadPickerClosed"),
         ["assistant-threads-docked-280-picker"] = window => _Named<ComboBox>(window, "ThreadPicker").IsDropDownOpen = true,
+        ["mcp-advisory-details"] = window => _OpenFlyout(window.GetVisualDescendants().OfType<Controls.SimpleConversationHeader>().First(header => header.IsEffectivelyVisible), "DetailsButton"),
         ["simple-view-conversation-details"] = window => _OpenFlyout(window.GetVisualDescendants().OfType<Controls.SimpleConversationHeader>().First(header => header.IsEffectivelyVisible), "DetailsButton"),
         // AC-1984: show Accept and Connect together after removing the desktop-pairing block.
         ["options-swarm-settings"] = window => _ScrollIntoView(window, "swarm", "Internal network only"),

@@ -875,6 +875,22 @@ public class PluginBackendHost(
         return Task.CompletedTask;
     }
 
+    public void SetMcpServerAdvisory(string name, PluginMcpAdvisory? advisory)
+    {
+        if (!_OwnMcpServerContributions().Any(server => string.Equals(server.Name, name, StringComparison.Ordinal)))
+        {
+            return;
+        }
+
+        var level = advisory?.Level switch
+        {
+            PluginMcpAdvisoryLevel.Warning => McpAdvisoryLevel.Warning,
+            PluginMcpAdvisoryLevel.Critical => McpAdvisoryLevel.Critical,
+            _ => McpAdvisoryLevel.Ok,
+        };
+        McpServerAdvisories.Shared.Set(name, advisory is null || level == McpAdvisoryLevel.Ok ? null : new McpServerAdvisory(level, advisory.Text, advisory.Link));
+    }
+
     // AC-1511: the same server lookup as SignInMcpServerAsync, then a grant redeemed without a browser. The plugin
     // hands over the grant's parameters and gets an outcome back, never a token.
     public async Task<PluginMcpSignInOutcome> SignInMcpServerWithGrantAsync(
