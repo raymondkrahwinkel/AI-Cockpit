@@ -8,6 +8,7 @@ using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Sessions;
 
 namespace Cockpit.Infrastructure.Mcp;
@@ -26,7 +27,8 @@ internal sealed partial class McpToolProvider(
     SessionMcpMounts? mounts = null,
     SessionMcpGatewayHost? gateway = null,
     Cockpit.Core.Abstractions.Sessions.ISessionProcessAnchor? processAnchor = null,
-    SessionStdioProcesses? stdioProcesses = null)
+    SessionStdioProcesses? stdioProcesses = null,
+    IProjectMemorySourceRegistry? memorySources = null)
     : IMcpToolProvider, IMcpToolInvoker, ISingletonService
 {
     internal TimeSpan RemovedCallDrainTimeout { get; init; } = TimeSpan.FromMinutes(2);
@@ -49,7 +51,7 @@ internal sealed partial class McpToolProvider(
             }
             var candidatePane = string.IsNullOrEmpty(paneId) ? Guid.NewGuid().ToString("N") : paneId;
             await gateway.BindLaunchAsync(candidatePane, projectId, workingDirectory, confineFileToolsToDirectory, agentName,
-                enabledServerNames is ExactMcpServerSelection { AssistantManaged: true }, cancellationToken).ConfigureAwait(false);
+                enabledServerNames is ExactMcpServerSelection { AssistantManaged: true }, cancellationToken, brain: _mounts?.Set(candidatePane)?.Context?.Brain).ConfigureAwait(false);
             paneId = candidatePane;
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
@@ -74,8 +76,8 @@ internal sealed partial class McpToolProvider(
         var sessionRegistry = McpServerRegistryFilter.ApplySessionSelection(registry, effectiveSelection);
         // Local models host the built-in defaults (#26) overlaid by the registry (a registry entry, including
         // a disabled one, overrides the same-named built-in). #44's per-session selection is already applied above.
-        var enabledServers = _EffectiveServers(sessionRegistry).Where(server => server.Enabled
-            && (enabledServerNames is null || effectiveSelection?.Contains(server.Name) == true || server.AlwaysMounted)).ToList();
+        var enabledServers = _WithBrainQuery(_EffectiveServers(sessionRegistry).Where(server => server.Enabled
+            && (enabledServerNames is null || effectiveSelection?.Contains(server.Name) == true || server.AlwaysMounted)), paneId);
 
         // AC-1962: confine Cockpit's file tools without changing the operator's MCP selection.
         if (!string.IsNullOrWhiteSpace(confineFileToolsToDirectory))
@@ -113,6 +115,18 @@ internal sealed partial class McpToolProvider(
         }
     }
 
+    // AC-2220: the query parameter the session's brain hangs on one server, on the upstream address the agent never sees.
+    private List<McpServerConfig> _WithBrainQuery(IEnumerable<McpServerConfig> servers, string? paneId)
+    {
+        var query = paneId is null ? null : SessionStartDefaults.ResolveBrainMcpServerQuery(_mounts?.Set(paneId)?.Context?.Brain, memorySources?.Sources.ToMemorySources());
+        var applied = servers.Select(server => query?.ApplyTo(server) ?? server).ToList();
+        if (query is not null)
+        {
+            _logger.LogInformation("MCP server {Server} for session {Pane} carries the brain parameter {Name}={Value}.", query.ServerName, paneId, query.Name, query.Value);
+        }
+        return applied;
+    }
+
     internal IMcpToolSession CreateGatewaySession(string paneId, string token, SessionMcpContext? context) =>
         new LiveMcpToolSession(this, paneId, token, context?.Project?.Id, context?.AgentName, ownsToken: false);
 
@@ -121,7 +135,7 @@ internal sealed partial class McpToolProvider(
         var set = _mounts?.Set(paneId);
         if (set is null) { return []; }
         var registry = await _catalog.GetServersForSessionAsync(set.Context?.Project?.Id, set.PreserveSelection ? new ExactMcpServerSelection(set.ServerNames) : set.ServerNames, ct);
-        var selected = registry.Where(server => server.Enabled && set.ServerNames.Contains(server.Name)).ToList();
+        var selected = _WithBrainQuery(registry.Where(server => server.Enabled && set.ServerNames.Contains(server.Name)), paneId);
         return set.Context?.ConfineRoot is { } root ? _ConfinedServers(selected, root) : selected;
     }
 
