@@ -344,6 +344,15 @@ public interface ICockpitHost
     Task RefreshMcpServerAsync(string name, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
     /// <summary>
+    /// Sets (or, with <see langword="null"/> or <see cref="Mcp.PluginMcpAdvisoryLevel.Ok"/>, clears) the advisory the
+    /// host shows with the MCP server this plugin contributed under <paramref name="name"/> (AC-2219).
+    /// </summary>
+    /// <remarks>Own servers only. Launch-time information, so it works on both session routes. Default no-op.</remarks>
+    void SetMcpServerAdvisory(string name, Mcp.PluginMcpAdvisory? advisory)
+    {
+    }
+
+    /// <summary>
     /// Calls <paramref name="toolName"/> on the MCP server this plugin contributed under <paramref name="name"/>
     /// via <see cref="AddMcpServer"/> — on the app's own behalf, not a session's (AC-502), before any session
     /// exists.

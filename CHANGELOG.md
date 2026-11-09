@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2219: when the Depot gateway offers too many tools (Depot totals them over all your organizations: 40 tools or 22 KB for a warning, 80 or 44 KB for critical), the New session, project and profile MCP lists, Options › MCP Servers and a conversation's details say so beside the gateway, with a link to Depot's Performance page. Never a banner; nothing shows when Depot gives no figure or the load is fine.
+
 - AC-2218: the Depot plugin shows the personal MCPs that still need your sign-in under Personal MCPs in the Depot settings, as a bell with an Authorize button, and as a step after the first-start sign-in with Later. Authorize opens Depot in the browser; when it is done the list updates, and running sessions get the new tools without a restart.
 
 - AC-2217: the Depot plugin offers the Depot gateway as one extra MCP server per connection ("Depot gateway: <connection>") on the same sign-in, only on a Depot that lists the depot.gateway scope; an older or unreachable Depot keeps working exactly as before, without a gateway row or a message.

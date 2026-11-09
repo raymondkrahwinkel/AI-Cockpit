@@ -15,7 +15,8 @@ internal sealed class DepotGateway(ICockpitHost host, ILogger? logger = null) : 
 
     // The one place that names the contract's fields (Depot `Docs/mcp-gateway-cockpit-contract.md`): the discovery route
     // and the top-level address in its answer. The per-organization status in that answer is not read here.
-    private const string DiscoveryPath = "cockpit/gateway";
+    // toolLoad is opt-in (contract, § toolLoad is opt-in): 5 queries instead of 3, fine for a read that happens on sign-in and after an authorization.
+    private const string DiscoveryPath = "cockpit/gateway?include=toolLoad";
     private const string AddressField = "gatewayUrl";
 
     // The same answer lists the personal MCPs, under each organization it names.
@@ -130,6 +131,7 @@ internal sealed class DepotGateway(ICockpitHost host, ILogger? logger = null) : 
     {
         if (!ScopeSupported(connection))
         {
+            host.SetMcpServerAdvisory(ServerNameFor(connection), null);
             return;
         }
 
@@ -143,6 +145,10 @@ internal sealed class DepotGateway(ICockpitHost host, ILogger? logger = null) : 
             url = success ? ParseAddress(result.Content.Span, connection) : null;
             var foreign = 0;
             personal = success ? ParsePersonal(result.Content.Span, connection, out foreign) : null;
+            if (success)
+            {
+                host.SetMcpServerAdvisory(ServerNameFor(connection), url is null ? null : ParseAdvisory(result.Content.Span, connection));
+            }
             if (foreign > 0)
             {
                 logger?.LogDebug("{Connection} lists {Count} personal MCP(s) with an authorize address outside its own origin; they are left out.", connection.Name, foreign);
@@ -216,6 +222,44 @@ internal sealed class DepotGateway(ICockpitHost host, ILogger? logger = null) : 
             }
 
             return url.GetString();
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    // The load of the one merged tool list, as Depot totals it: nothing is added up here. No toolLoad (a closed or older
+    // Depot) or Ok is no advisory; the link goes to the Performance page of the first organization that takes part.
+    internal static PluginMcpAdvisory? ParseAdvisory(ReadOnlySpan<byte> content, DepotConnectionRegistration connection)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(content.ToArray());
+            if (document.RootElement.ValueKind != JsonValueKind.Object
+                || !document.RootElement.TryGetProperty("toolLoad", out var load)
+                || load.ValueKind != JsonValueKind.Object
+                || !load.TryGetProperty("toolCount", out var count) || !count.TryGetInt32(out var tools)
+                || !load.TryGetProperty("schemaBytes", out var size) || !size.TryGetInt64(out var bytes)
+                || _Text(load, "level") is not { } level || (level != "Warning" && level != "Critical"))
+            {
+                return null;
+            }
+
+            string? link = null;
+            if (document.RootElement.TryGetProperty(OrganizationsField, out var organizations) && organizations.ValueKind == JsonValueKind.Array
+                && organizations.EnumerateArray().FirstOrDefault(organization => organization.ValueKind == JsonValueKind.Object
+                    && organization.TryGetProperty("gatewayAllowed", out var allowed) && allowed.ValueKind == JsonValueKind.True) is { ValueKind: JsonValueKind.Object } first
+                && _Text(first, "slug") is { Length: > 0 } slug && DepotUrlNormalizer.Origin(connection.Url) is { } origin)
+            {
+                link = $"{origin}/org/{Uri.EscapeDataString(slug)}/mcp/performance";
+            }
+
+            var kilobytes = (bytes / 1000.0).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+            return new(
+                level == "Critical" ? PluginMcpAdvisoryLevel.Critical : PluginMcpAdvisoryLevel.Warning,
+                $"{tools} tools, {kilobytes} KB of tool descriptions. Agents get slower and less precise with this many.",
+                link);
         }
         catch (JsonException)
         {
