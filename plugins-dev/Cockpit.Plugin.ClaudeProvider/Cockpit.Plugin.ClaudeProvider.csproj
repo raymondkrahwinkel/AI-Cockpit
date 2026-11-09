@@ -41,6 +41,10 @@
 
   <ItemGroup>
     <Compile Include="..\_shared\JsonLineText.cs" Link="JsonLineText.cs" />
+    <Compile Include="..\_shared\ClaudePathGuard.cs" Link="ClaudePathGuard.cs" />
+    <Compile Include="..\..\src\Cockpit.Core\Sessions\PathBoundary.cs" Link="PathBoundary.cs" />
+    <Compile Include="..\..\src\Cockpit.Core\Sessions\PathBoundaryResult.cs" Link="PathBoundaryResult.cs" />
+    <Compile Include="..\..\src\Cockpit.Core\Profiles\GuardrailMode.cs" Link="GuardrailMode.cs" />
     <None Include="plugin.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

@@ -1,4 +1,4 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><ApplicationManifest>app.manifest</ApplicationManifest></PropertyGroup>
-  <ItemGroup><Compile Include="../../_shared/HookRelay/Program.cs" Link="Program.cs" /></ItemGroup>
+  <ItemGroup><Compile Include="../../_shared/HookRelay/Program.cs" Link="Program.cs" /><Compile Include="../../_shared/ClaudePathGuard.cs" Link="ClaudePathGuard.cs" /><Compile Include="../../../src/Cockpit.Core/Sessions/PathBoundary.cs" Link="PathBoundary.cs" /><Compile Include="../../../src/Cockpit.Core/Sessions/PathBoundaryResult.cs" Link="PathBoundaryResult.cs" /><Compile Include="../../../src/Cockpit.Core/Profiles/GuardrailMode.cs" Link="GuardrailMode.cs" /></ItemGroup>
 </Project>

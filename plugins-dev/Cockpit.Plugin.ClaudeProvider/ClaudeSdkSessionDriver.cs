@@ -539,10 +539,20 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver, IPluginMcpT
             // routed here, never to the transcript parser.
             if (ClaudeControlProtocol.IsControlLine(type))
             {
-                if (ClaudeControlProtocol.TryParseHookRequest(root, out var hookRequestId, out var hookToolName))
+                if (ClaudeControlProtocol.TryParseHookRequest(root, out var hookRequestId, out var hookToolName, out var hookInputJson, out var hookCwd))
                 {
-                    bool deny = _readOnlyToolFilter is { } toolFilter && !toolFilter(hookToolName);
-                    await _WriteLineAsync(ClaudeControlProtocol.BuildHookResponse(hookRequestId, deny), cancellationToken).ConfigureAwait(false);
+                    var decision = ClaudePathGuard.ModeFrom(_profileEnvironment?.GetValueOrDefault(ClaudePathGuard.ModeVariable)) is { } guardMode
+                        ? ClaudePathGuard.Evaluate(hookToolName, hookInputJson, hookCwd, guardMode, ClaudePathGuard.RootsFrom(_profileEnvironment?.GetValueOrDefault(ClaudePathGuard.RootsVariable)))
+                        : GuardDecision.Allow;
+                    if (decision.Message is not null)
+                    {
+                        Console.Error.WriteLine($"cockpit-guard session {_sessionId}: {decision.Message}");
+                    }
+                    if (_readOnlyToolFilter is { } toolFilter && !toolFilter(hookToolName))
+                    {
+                        decision = new GuardDecision(true, "This turn is read-only; this tool is denied.");
+                    }
+                    await _WriteLineAsync(ClaudeControlProtocol.BuildHookResponse(hookRequestId, decision), cancellationToken).ConfigureAwait(false);
                 }
                 else if (ClaudeControlProtocol.TryParsePermissionRequest(root, out var requestId, out var toolUseId, out var toolName, out var inputJson))
                 {

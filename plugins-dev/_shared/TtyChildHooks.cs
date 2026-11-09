@@ -6,12 +6,13 @@ internal static class TtyChildHooks
 {
     public static string Journal(string statusFile) => statusFile + ".children.json";
 
+    public static string Relay => Path.Combine(Path.GetDirectoryName(typeof(TtyChildHooks).Assembly.Location) ?? "", "HookRelay", OperatingSystem.IsWindows() ? "HookRelay.exe" : "HookRelay");
+
     public static object Settings(string statusFile, string provider, IDictionary<string, string?> environment)
     {
         environment["COCKPIT_SUBAGENT_FILE"] = Journal(statusFile);
-        string relay = Path.Combine(Path.GetDirectoryName(typeof(TtyChildHooks).Assembly.Location) ?? "", "HookRelay", OperatingSystem.IsWindows() ? "HookRelay.exe" : "HookRelay");
         string Quote(string value) => "'" + value.Replace("'", OperatingSystem.IsWindows() ? "''" : "'\\''") + "'";
-        var command = $"{Quote(relay)} --environment {provider}";
+        var command = $"{Quote(Relay)} --environment {provider}";
         if (OperatingSystem.IsWindows())
         {
             command = "powershell.exe -NoProfile -NonInteractive -EncodedCommand " + Convert.ToBase64String(Encoding.Unicode.GetBytes("& " + command));
