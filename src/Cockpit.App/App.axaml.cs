@@ -454,7 +454,10 @@ public partial class App : Application
         // This route is reachable only after onboarding, so it needs no separate gate (AC-509). Bring a hidden or
         // minimized cockpit forward first so the modal has a visible owner and does not look like a freeze.
         _mainWindow.Show();
-        _mainWindow.WindowState = WindowState.Normal;
+        if (_mainWindow.WindowState == WindowState.Minimized)
+        {
+            _mainWindow.WindowState = WindowState.Normal;
+        }
 
         var protection = Program.Services.GetRequiredService<ISecretProtectionService>();
         var viewModel = new UnlockViewModel(protection);
