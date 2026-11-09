@@ -274,7 +274,7 @@ phone only after the phone's first frame opened (§ 9.4).
 
 | `type` | `body` | What happens |
 |---|---|---|
-| `assistant.send` | `{ "text": string }` | Handed to the assistant as the operator's message, by the same route as typed text. Answered with `assistant.sent`. |
+| `assistant.send` | `{ "text": string }` | Handed to the assistant as the operator's message, by the same route as typed text. Answered with `assistant.sent`. Refused while a question of the assistant waits (see `assistant.question`), because the Cockpit would read the text as its answer. |
 | `assistant.history` | `{ "limit"?: number, "before"?: string }` | The tail of the conversation: at most 50 rows (`limit` is clamped to 1…50), older than the row with id `before` when given. Answered with `assistant.history`. |
 | `assistant.chat` | `{ "open": bool }` | The chat is on screen on the phone (`true`) or not (`false`). Live rows go out only while it is open. A new stream starts closed. |
 | `cockpit.status` | `{}` | Answered with `cockpit.status`. |
@@ -289,6 +289,8 @@ phone only after the phone's first frame opened (§ 9.4).
 | `assistant.turnEnded` | `{}` | While the chat is open: the assistant finished its turn. |
 | `assistant.consent` | `{ "promptId": string, "title": string }` | While the chat is open (and on opening it): the assistant waits on a permission prompt. Read-only in v1: the app shows "Waiting for you on the desktop", and the Cockpit takes no answer from the phone. |
 | `assistant.consentClosed` | `{ "promptId": string }` | The prompt was answered on the desktop. |
+| `assistant.question` | `{ "questionId": string, "question": string }` | While the chat is open (and on opening it): the assistant asked a question that is answered on the desktop. Read-only in v1, like `assistant.consent`. |
+| `assistant.questionClosed` | `{ "questionId": string }` | The operator's next message, typed anywhere, moved past the question. |
 | `notify` | `{ "kind": "assistantMessage" }` | The assistant finished a turn with a new answer while the chat was not open. No text, nothing of the answer; only to a phone with an open stream. |
 | `cockpit.status` | `{ "replyTo", "name": string, "version": string?, "assistant": bool }` | After `cockpit.status`: the machine name, the Cockpit version, and whether this Cockpit has an assistant. |
 
@@ -299,3 +301,6 @@ too big for one frame keeps the start of its text and says `truncated: true`. At
 **History is what the channel saw.** The plugin gets no read of past rows from the host, so the history holds the rows
 since the channel opened (when Cockpit started, or the phone paired), in memory only and at most 2,000 of them. Nothing of
 the conversation is written to disk or to a log by this plugin.
+
+**Back-pressure.** At most 32 frames wait to go to one phone. Past that a frame is not queued but dropped, so a phone
+that keeps asking cannot hold up the relay for the others; a page that loses a frame never sends its `last`.

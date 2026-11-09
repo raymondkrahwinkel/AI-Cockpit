@@ -10,6 +10,8 @@ namespace Cockpit.Plugin.Depot.Mobile;
 internal sealed class MobileRelay : IAsyncDisposable
 {
     private readonly HubConnection _connection;
+    private static readonly TimeSpan _SendDeadline = TimeSpan.FromSeconds(10);
+
     private readonly SemaphoreSlim _sending = new(1, 1);
 
     public MobileRelay(
@@ -53,7 +55,10 @@ internal sealed class MobileRelay : IAsyncDisposable
         {
             if (frame() is { } sealedFrame)
             {
-                await _connection.InvokeAsync("Send", streamId, sealedFrame, cancellationToken).ConfigureAwait(false);
+                // Depot gives a send two seconds; a send that hangs past this frees the line for the next one.
+                using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                deadline.CancelAfter(_SendDeadline);
+                await _connection.InvokeAsync("Send", streamId, sealedFrame, deadline.Token).ConfigureAwait(false);
             }
         }
         finally

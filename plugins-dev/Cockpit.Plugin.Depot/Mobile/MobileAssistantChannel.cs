@@ -30,6 +30,7 @@ internal sealed class MobileAssistantChannel : IDisposable
     private readonly List<AssistantChannelRow> _rows = [];
     private readonly Dictionary<Guid, AssistantChannelRow> _dirty = [];
     private readonly Dictionary<Guid, string> _prompts = [];
+    private (string Id, string Text)? _question;
     private long _nextId;
     private bool _chatOpen;
     private bool _unseenAnswer;
@@ -71,6 +72,18 @@ internal sealed class MobileAssistantChannel : IDisposable
             }
         }
 
+        try
+        {
+            _Receive(plaintext);
+        }
+        catch (Exception exception)
+        {
+            _logger?.LogDebug("A phone's message could not be handled: {Reason}", exception.GetType().Name);
+        }
+    }
+
+    private void _Receive(byte[] plaintext)
+    {
         string? type;
         string? id;
         JsonElement body;
@@ -141,6 +154,7 @@ internal sealed class MobileAssistantChannel : IDisposable
             _rows.Clear();
             _dirty.Clear();
             _prompts.Clear();
+            _question = null;
         }
 
         if (_gateway is not null)
@@ -163,6 +177,12 @@ internal sealed class MobileAssistantChannel : IDisposable
         else if (string.IsNullOrWhiteSpace(text))
         {
             result = AssistantChannelSendResult.Refused("The message is empty.");
+        }
+        else if (_OpenQuestion() is not null)
+        {
+            // While the assistant's question waits, the host reads a text reply as its answer (AC-1553); in v1 that is
+            // decided on the desktop only, like a permission prompt.
+            result = AssistantChannelSendResult.Refused("Answer the question on the desktop first.");
         }
         else
         {
@@ -226,6 +246,7 @@ internal sealed class MobileAssistantChannel : IDisposable
     private void _Chat(bool open)
     {
         List<(Guid Id, string Title)> prompts;
+        (string Id, string Text)? question;
         lock (_gate)
         {
             _chatOpen = open;
@@ -235,15 +256,78 @@ internal sealed class MobileAssistantChannel : IDisposable
             }
 
             prompts = open ? [.. _prompts.Select(prompt => (prompt.Key, prompt.Value))] : [];
+            question = open ? _question : null;
         }
 
         foreach (var (promptId, title) in prompts)
         {
             _SendConsent(promptId, title);
         }
+
+        if (question is { } waiting)
+        {
+            _SendQuestion(waiting);
+        }
     }
 
     private void _OnRowChanged(object? sender, AssistantChannelRow row)
+    {
+        (string Id, string Text)? asked = null;
+        string? answered = null;
+        bool open;
+        lock (_gate)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            // The host clears its waiting question on the operator's next message, wherever it came from; so does this.
+            if (row.Kind == AssistantChannelRowKind.UserText && _question is { } waiting)
+            {
+                answered = waiting.Id;
+                _question = null;
+            }
+
+            if (row is { Questions.Count: > 0, CorrelationId: { } correlationId } && _question?.Id != correlationId)
+            {
+                answered = _question?.Id ?? answered;
+                _question = asked = (correlationId, row.Questions[0].Question);
+            }
+
+            open = _chatOpen;
+        }
+
+        if (open && answered is not null)
+        {
+            _Send("assistant.questionClosed", writer => writer.WriteString("questionId", answered));
+        }
+
+        if (open && asked is { } question)
+        {
+            _SendQuestion(question);
+        }
+
+        _Keep(row);
+    }
+
+    private (string Id, string Text)? _OpenQuestion()
+    {
+        lock (_gate)
+        {
+            return _question;
+        }
+    }
+
+    // Read-only, like a permission prompt: the phone shows the question and that it waits on the desktop.
+    private void _SendQuestion((string Id, string Text) question) =>
+        _Send("assistant.question", writer =>
+        {
+            writer.WriteString("questionId", question.Id);
+            writer.WriteString("question", question.Text);
+        });
+
+    private void _Keep(AssistantChannelRow row)
     {
         lock (_gate)
         {

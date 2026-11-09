@@ -525,29 +525,66 @@ internal sealed class MobilePairing(
 
     // Only over a stream whose phone proved its keys with a frame that opened (PROTOCOL.md § 9.4). The frame is sealed
     // when its turn to leave comes, and not at all once that stream is gone.
+    // A phone gets at most this many frames waiting at once; past that a send is refused rather than queued, so one
+    // phone that keeps asking cannot hold the relay or the memory of the others.
+    private const int _MaxWaitingSends = 32;
+
     private bool _SendToPhone(string connectionId, string deviceId, byte[] plaintext)
     {
         string streamId;
         lock (_gate)
         {
-            if (!_streams.TryGetValue((connectionId, deviceId), out var stream) || stream is not { Cipher: not null, Confirmed: true })
+            if (!_streams.TryGetValue((connectionId, deviceId), out var stream) || stream is not { Cipher: not null, Confirmed: true }
+                || stream.WaitingSends >= _MaxWaitingSends)
             {
+                CryptographicOperations.ZeroMemory(plaintext);
                 return false;
             }
 
             streamId = stream.StreamId;
+            stream.WaitingSends++;
         }
 
         _ = _SendAsync(connectionId, deviceId, streamId, () =>
         {
             lock (_gate)
             {
-                return _streams.TryGetValue((connectionId, deviceId), out var current) && current.StreamId == streamId
-                    ? current.Cipher!.Seal(plaintext)
-                    : null;
+                try
+                {
+                    return _streams.TryGetValue((connectionId, deviceId), out var current)
+                        && current is { Confirmed: true, Cipher: { } cipher } && current.StreamId == streamId
+                        ? cipher.Seal(plaintext)
+                        : null;
+                }
+                finally
+                {
+                    CryptographicOperations.ZeroMemory(plaintext);
+                }
+            }
+        }, () =>
+        {
+            CryptographicOperations.ZeroMemory(plaintext);
+            lock (_gate)
+            {
+                if (_streams.TryGetValue((connectionId, deviceId), out var current) && current.StreamId == streamId)
+                {
+                    current.WaitingSends--;
+                }
             }
         });
         return true;
+    }
+
+    private async Task _SendAsync(string connectionId, string deviceId, string streamId, Func<byte[]?> frame, Action? done = null)
+    {
+        try
+        {
+            await _SendAsync(connectionId, deviceId, streamId, frame).ConfigureAwait(false);
+        }
+        finally
+        {
+            done?.Invoke();
+        }
     }
 
     private async Task _SendAsync(string connectionId, string deviceId, string streamId, Func<byte[]?> frame)
@@ -585,10 +622,6 @@ internal sealed class MobilePairing(
     {
         _DropStream(connectionId, deviceId);
         _RemoveKey(connectionId, deviceId);
-        if (_channels.Remove((connectionId, deviceId), out var channel))
-        {
-            channel.Dispose();
-        }
     }
 
     private void _RemoveKey(string connectionId, string deviceId)
@@ -600,6 +633,12 @@ internal sealed class MobilePairing(
         }
 
         _Save(connectionId, [.. phones.Where(phone => phone.DeviceId != deviceId)]);
+
+        // A forgotten phone, or one pairing again under the same id: its channel and what that channel saw go with its key.
+        if (_channels.Remove((connectionId, deviceId), out var channel))
+        {
+            channel.Dispose();
+        }
     }
 
     // Under _gate. With a stream id, only when that is still the device's current stream.
@@ -701,6 +740,8 @@ internal sealed class MobilePairing(
         public MobileFrameCipher? Cipher { get; set; }
 
         public bool Confirmed { get; set; }
+
+        public int WaitingSends { get; set; }
     }
 
     private sealed class _NoSubscription : IDisposable

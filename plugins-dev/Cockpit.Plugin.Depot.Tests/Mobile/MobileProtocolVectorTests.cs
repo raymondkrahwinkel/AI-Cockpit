@@ -17,7 +17,7 @@ public class MobileProtocolVectorTests
         "pairing", "wrongPairingSecret", "replacedPhonePub", "offCurveEphPub", "offCurvePhonePub", "zeroPointEphPub",
         "zeroPointPhonePub", "wrongLength", "wrongVersion", "unknownFlag", "pairingWithoutPending", "expiredPending",
         "secondPairingSamePending", "tamperedTag", "replay", "counterGap", "shortFrame", "mirroredFrame", "replayedHandshake",
-        "assistantPairedPhone", "assistantForgottenPhone", "assistantWrongKey",
+        "assistantPairedPhone", "assistantForgottenPhone", "assistantWrongKey", "assistantOpenQuestion",
     ];
 
     [Theory]
@@ -145,7 +145,8 @@ public class MobileProtocolVectorTests
     }
 
     // AC-2227: a phone that speaks the protocol, through MobilePairing to the assistant's door. Only a phone that is
-    // paired now gets a message to the assistant; a forgotten one or an unpaired key gets nothing in, on any stream.
+    // paired now gets a message to the assistant; a forgotten one or an unpaired key gets nothing in, on any stream, and
+    // no text from the phone answers a question the assistant waits on.
     private static async Task _AssistantDoor(string @case)
     {
         const string connection = "connection";
@@ -217,6 +218,21 @@ public class MobileProtocolVectorTests
             using var again = Connect("stream-2");
             Assert.Null(again);
             Say(again, "stream-2", "let me in");
+        }
+
+        if (@case == "assistantOpenQuestion")
+        {
+            // While the assistant's question waits, the host would read "1" as its answer: that stays on the desktop.
+            gateway.RowChanged += Raise.Event<EventHandler<AssistantChannelRow>>(gateway, new AssistantChannelRow
+            {
+                Id = Guid.NewGuid(),
+                Kind = AssistantChannelRowKind.Question,
+                Text = "Which one?",
+                Timestamp = DateTimeOffset.UtcNow,
+                CorrelationId = "question",
+                Questions = [new AssistantChannelQuestion { Question = "Which one?", Options = [] }],
+            });
+            Say(first, "stream-1", "1");
         }
 
         var expected = @case == "assistantWrongKey" ? 0 : 1;
