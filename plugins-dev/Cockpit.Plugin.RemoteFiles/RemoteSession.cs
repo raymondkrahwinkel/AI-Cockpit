@@ -7,9 +7,9 @@ using Renci.SshNet.Common;
 
 namespace Cockpit.Plugin.RemoteFiles;
 
-internal sealed record RemoteItem(string Name, bool Folder, long Size, DateTimeOffset Modified)
+internal sealed record RemoteItem(string Name, bool Folder, long Size, DateTimeOffset Modified, string? ETag = null)
 {
-    public string Version => $"{Modified.UtcTicks}:{Size}";
+    public string Version => ETag ?? $"{Modified.UtcTicks}:{Size}";
 }
 
 // One open, signed-in connection; paths are absolute on the server.
@@ -35,6 +35,7 @@ internal static class RemoteSession
     {
         try
         {
+
             await session.DisposeAsync().ConfigureAwait(false);
         }
         catch (Exception)
@@ -50,6 +51,10 @@ internal static class RemoteSession
         IDisposable? client = null;
         try
         {
+            if (connection.Kind == RemoteFilesChannel.WebDav)
+            {
+                return new WebDavSession(connection, secrets, trust);
+            }
             if (connection.Kind == RemoteFilesChannel.Sftp)
             {
                 key = connection.UseKey ? _Key(secrets) : null;
