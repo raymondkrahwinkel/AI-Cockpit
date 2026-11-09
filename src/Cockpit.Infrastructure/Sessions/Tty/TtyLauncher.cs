@@ -102,6 +102,11 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemory
         {
             scratchBaseEnvironment[key] = scratch;
         }
+        foreach (var (key, value) in SessionGuardrailEnvironment.Build(profile, workingDirectory, scratch,
+            scratchBaseEnvironment.GetValueOrDefault("CLAUDE_CONFIG_DIR"), orgPolicy?.Current, message => logger.LogWarning("{Message}", message)))
+        {
+            scratchBaseEnvironment[key] = value;
+        }
         baseEnvironment = scratchBaseEnvironment;
 
         var context = new TtyLaunchContext(
