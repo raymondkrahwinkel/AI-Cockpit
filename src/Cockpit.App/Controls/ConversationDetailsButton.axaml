@@ -12,7 +12,7 @@
                 <StackPanel x:Name="DetailsPanel" x:DataType="vm:ConversationDetails" Width="320" Spacing="0">
                     <TextBlock Text="DETAILS OF THIS CONVERSATION" FontSize="10.5" FontWeight="SemiBold" Margin="12,10,12,8"
                                Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                    <Grid ColumnDefinitions="90,*" RowDefinitions="Auto,Auto,Auto,Auto" Margin="12,0,12,10">
+                    <Grid ColumnDefinitions="90,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto" Margin="12,0,12,10">
                         <Grid.Styles>
                             <Style Selector="TextBlock">
                                 <Setter Property="FontSize" Value="12"/>
@@ -31,6 +31,13 @@
                         <TextBlock x:Name="DetailsCost" Grid.Row="2" Grid.Column="1" Text="{Binding Cost}"/>
                         <TextBlock Grid.Row="3" Text="Model" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                         <TextBlock x:Name="DetailsModel" Grid.Row="3" Grid.Column="1" Text="{Binding Model}"/>
+                        <TextBlock Grid.Row="4" Text="Scratch" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        <StackPanel Grid.Row="4" Grid.Column="1" Spacing="4">
+                            <SelectableTextBlock x:Name="ScratchPath" FontSize="12" TextWrapping="Wrap"
+                                                 FontFamily="{DynamicResource CockpitMonoFont}"
+                                                 Foreground="{DynamicResource CockpitClickablePathFgBrush}"/>
+                            <TextBlock x:Name="ScratchSizeText"/>
+                        </StackPanel>
                     </Grid>
                     <Border BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,1,0,0"/>
                     <StackPanel Margin="4,6">
