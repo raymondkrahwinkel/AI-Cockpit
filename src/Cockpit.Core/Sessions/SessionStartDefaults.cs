@@ -1,3 +1,4 @@
+using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
 
@@ -119,6 +120,21 @@ public sealed record SessionStartDefaults(
             .OrderByDescending(source => string.Equals(source.Scheme, scheme, StringComparison.OrdinalIgnoreCase))
             .Select(source => source.BrainMcpServerName!(value))
             .FirstOrDefault(name => !string.IsNullOrWhiteSpace(name));
+    }
+
+    // AC-2220: the query parameter the brain a start resolved hangs on one of its source's own MCP servers.
+    public static McpServerQueryParameter? ResolveBrainMcpServerQuery(string? brain, IReadOnlyList<ProjectMemorySource>? memorySources)
+    {
+        if (brain is null || !ProjectMemoryRef.TryParse(brain.Trim(), out var scheme, out var value))
+        {
+            return null;
+        }
+
+        return (memorySources ?? [])
+            .Where(source => source.BrainMcpServerQuery is not null)
+            .OrderByDescending(source => string.Equals(source.Scheme, scheme, StringComparison.OrdinalIgnoreCase))
+            .Select(source => source.BrainMcpServerQuery!(value))
+            .FirstOrDefault(parameter => parameter is not null);
     }
 
     // AC-1992: pinned by name like `AssistantChoiceIsMade` — the clause that takes the brain question away from the

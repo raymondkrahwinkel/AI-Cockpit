@@ -1,13 +1,13 @@
 {
   "id": "local-files",
   "name": "Local files",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "entryAssembly": "Cockpit.Plugin.LocalFiles.dll",
   "entryType": "Cockpit.Plugin.LocalFiles.LocalFilesPlugin",
   "uiAssembly": "Cockpit.Plugin.LocalFiles.UI.dll",
   "uiEntryType": "Cockpit.Plugin.LocalFiles.UI.LocalFilesUi",
   "abstractionsVersion": 3,
-  "minHostVersion": "0.168.0",
+  "minHostVersion": "0.170.0",
   "description": "Browse, view and edit folders you add yourself in Cockpit's file browser. Each folder is read only until you allow writing, and nothing outside the folders you add can be reached. On a server, an admin adds folders on the server's disk.",
   "author": "Cockpit"
 }

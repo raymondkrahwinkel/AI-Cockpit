@@ -60,7 +60,7 @@ does not implement compare-and-swap. No live Depot is used by the contract tests
 
 ## Browsing and the host file browser (AC-2236)
 
-Requires host 0.168.0, Abstractions 3.79.0 and Abstractions.UI 3.27.0. Four `IFileSource` methods default
+Requires host 0.170.0, Abstractions 3.81.0 and Abstractions.UI 3.27.0. Four `IFileSource` methods default
 to `Unsupported`, so an older source compiles and loads unchanged:
 
 | Method | Channel action | Notes |
@@ -105,7 +105,7 @@ including the session worktrees kept there, so a worktree cannot be added as a f
 
 ## Server identity (AC-1787)
 
-Requires host 0.169.0 and Abstractions 3.80.0. A source whose server is not trusted yet, or presents another identity than
+Requires host 0.170.0 and Abstractions 3.81.0. A source whose server is not trusted yet, or presents another identity than
 the trusted one, throws `FileSourceException(FileSourceErrorKind.HostKey, message)` before it sends anything of the login.
 `Trusted` is the fingerprint the operator trusted (null when none is), `Presented` the one the server showed when it
 differs. Both travel on `FileSourceError`. The browser replaces the tree with a "Server key changed" or "Server key not

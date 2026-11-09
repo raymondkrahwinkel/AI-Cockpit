@@ -117,7 +117,8 @@ public sealed class SessionLauncher(
             var instructed = request with
             {
                 LaunchOptions = SessionStartComposer.WithWorktreeConfinement(
-                    SessionStartComposer.WithInstructions(request.LaunchOptions, request.SystemPrompt, request.ProjectJobId is not null, brainInstruction),
+                    SessionStartComposer.WithInstructions(request.LaunchOptions, request.SystemPrompt, request.ProjectJobId is not null, brainInstruction,
+                        await composer.BrainAsync(request).ConfigureAwait(false)),
                     admitted.WorktreeBranch is not null),
             };
             // AC-2162: establish profile/place before a fast provider reports its conversation id.
