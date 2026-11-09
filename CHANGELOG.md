@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2230: with the speaker switched off, the assistant no longer reads a reply aloud, and a mute clicked while the assistant is still starting is no longer overwritten by the stored value; "Read full reply aloud" still speaks on request.
+
 - AC-2215: project cards and waiting conversations on Home wrap a long title onto further lines instead of cutting it off.
 
 - AC-2194: the project picker follows the approved compact row typography and selection stripe, and token marks leave the surrounding spaces clear.
