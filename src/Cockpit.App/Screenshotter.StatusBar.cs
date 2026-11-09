@@ -99,11 +99,15 @@ internal static partial class Screenshotter
         Dispatcher.UIThread.RunJobs();
     }
 
-    private sealed class SceneResources(IReadOnlyList<DiskSpaceSnapshot> disks) : IMachineResources
+    private sealed class SceneResources(IReadOnlyList<DiskSpaceSnapshot> disks,
+        IReadOnlyDictionary<string, (string Path, long? Bytes)>? scratchUsage = null) : IMachineResources
     {
         public MachineLoad Current => MachineLoad.Unknown;
 
         public IReadOnlyList<DiskSpaceSnapshot> Disks => disks;
+
+        public IReadOnlyDictionary<string, (string Path, long? Bytes)> ScratchUsage => scratchUsage
+            ?? System.Collections.ObjectModel.ReadOnlyDictionary<string, (string Path, long? Bytes)>.Empty;
 
         public long? FreeDiskBytes(string directory) => null;
 

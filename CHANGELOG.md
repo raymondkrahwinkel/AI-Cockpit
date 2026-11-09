@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- AC-1819: conversation details show the copyable scratch folder and its size; the disk indicator hover shows the total scratch size for this instance.
+
+- AC-2235: closing a session no longer breaks `/tmp` in Git Bash for your other sessions; the scratch folder that Git Bash uses as `/tmp` is left in place instead of removed.
 - AC-2220: a session whose brain is a Depot brain gets the Depot gateway filtered by that brain (`brain=<organization>/<slug>`) on every route: SDK, TTY, start_agent, delegation, the assistant and local models. The parameter sits on the upstream address behind the session gateway, so the agent never sees it; a project without a Depot brain, or with a brain on another Depot, keeps the unfiltered gateway.
 
 - AC-2219: when the Depot gateway offers too many tools (Depot totals them over all your organizations: 40 tools or 22 KB for a warning, 80 or 44 KB for critical), the New session, project and profile MCP lists, Options › MCP Servers and a conversation's details say so beside the gateway, with a link to Depot's Performance page. Never a banner; nothing shows when Depot gives no figure or the load is fine.

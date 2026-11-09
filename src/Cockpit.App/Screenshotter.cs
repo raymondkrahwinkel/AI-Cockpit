@@ -706,6 +706,9 @@ internal static partial class Screenshotter
         ["simple-view-assistant-off"] = (_, _) => new MainWindow { DataContext = _SimpleStandAssistant(assistantOff: true) },
         // AC-1321: the node while a paired controller holds the line — the takeover notice, and no button, since nothing here ends it.
         ["simple-view-assistant-controlled"] = (_, _) => new MainWindow { DataContext = _SimpleStandAssistant(controlled: true) },
+        ["scratch-empty"] = (_, _) => new MainWindow { DataContext = _SimpleStandConversation(withCost: true) },
+        ["scratch-grown"] = (_, _) => new MainWindow { DataContext = _SimpleStandConversation(withCost: true) },
+        ["scratch-hover"] = (_, _) => new MainWindow { DataContext = _SimpleStandConversation(withCost: true) },
         // AC-1533: the same conversation with ⋯ → Details open — where it works, what it may do, its cost and model.
         ["simple-view-conversation-details"] = (_, _) => new MainWindow { DataContext = _SimpleStandConversation(withCost: true) },
         // A restored profile whose start cannot succeed on this machine: the reason where the off notice stands, tried once.
@@ -1680,6 +1683,9 @@ internal static partial class Screenshotter
         ["assistant-chat-history-dropdown-open"] = window => _OpenFlyout(window, "HistoryButton"),
         ["assistant-threads-docked-280-closed"] = window => _OpenFlyout(window, "ThreadPickerClosed"),
         ["assistant-threads-docked-280-picker"] = window => _Named<ComboBox>(window, "ThreadPicker").IsDropDownOpen = true,
+        ["scratch-empty"] = window => _StageScratch(window, grown: false, hover: false),
+        ["scratch-grown"] = window => _StageScratch(window, grown: true, hover: false),
+        ["scratch-hover"] = window => _StageScratch(window, grown: true, hover: true),
         ["mcp-advisory-details"] = window => _OpenFlyout(window.GetVisualDescendants().OfType<Controls.SimpleConversationHeader>().First(header => header.IsEffectivelyVisible), "DetailsButton"),
         ["simple-view-conversation-details"] = window => _OpenFlyout(window.GetVisualDescendants().OfType<Controls.SimpleConversationHeader>().First(header => header.IsEffectivelyVisible), "DetailsButton"),
         // AC-1984: show Accept and Connect together after removing the desktop-pairing block.
