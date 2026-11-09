@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace Cockpit.Plugin.LocalFiles.Contracts;
 
-// The settings view's actions on the plugin's own channel; linked into the UI part, so the backend validates every root.
+// Settings go through the backend, so every root is checked where the plugin runs.
 public static class LocalFilesChannel
 {
     public const string Roots = "local-files-roots";
@@ -15,8 +15,7 @@ public static class LocalFilesChannel
 
 public sealed record LocalRoot(string Id, string Path, bool Writable, bool Project = false);
 
-// Machine lets the view tell its own disk from a server's, so it only offers the native picker for its own.
-// Hidden maps a root id to the state folder inside it, which the source never shows or opens.
+// Machine tells the view whether the native picker sees this disk; Hidden names the state folder inside a root.
 public sealed record LocalRootsAnswer(IReadOnlyList<LocalRoot> Roots, IReadOnlyDictionary<string, string> Hidden, string Machine,
     string? Error = null);
 

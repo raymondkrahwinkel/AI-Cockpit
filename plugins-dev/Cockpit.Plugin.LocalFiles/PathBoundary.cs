@@ -2,8 +2,7 @@ using Cockpit.Plugins.Abstractions.Files;
 
 namespace Cockpit.Plugin.LocalFiles;
 
-// The path limit of a root (plan AC-1782 §5): every FileRef is resolved here, against the physical disk, and refused
-// unless the result lies inside the root and outside every denied folder. A gap here opens the whole disk silently.
+// Every reference is resolved against the physical disk here, because a gap would silently open the whole disk.
 internal static class PathBoundary
 {
     public const string TempMarker = ".cockpit-tmp-";
@@ -13,7 +12,7 @@ internal static class PathBoundary
     public static readonly StringComparison Comparison =
         OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
-    // Windows opens these as devices in any folder and with any extension; refused everywhere, so a root behaves the same on every OS.
+    // Windows opens these as devices anywhere; refused on every OS so a root behaves the same everywhere.
     private static readonly HashSet<string> Devices = new(
         ["CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$", "CLOCK$",
             .. Enumerable.Range(0, 10).SelectMany(n => new[] { $"COM{n}", $"LPT{n}" }),
@@ -22,7 +21,7 @@ internal static class PathBoundary
 
     private static readonly char[] Refused = ['\\', ':', '*', '?', '"', '<', '>', '|', .. Path.GetInvalidFileNameChars()];
 
-    // The physical path of `relative` under `root`, which is itself a physical path. "/" is the root.
+    // The lexical check is a first fence; only the physical path after following links decides.
     public static string Resolve(string root, string relative, IReadOnlyCollection<string> denied)
     {
         var segments = Segments(relative);
@@ -39,7 +38,7 @@ internal static class PathBoundary
         return real;
     }
 
-    // A relative, '/'-separated path, split into names that mean the same file on every OS; anything else is refused.
+    // Only names that mean the same file on every OS pass, so no platform quirk can widen the root.
     public static string[] Segments(string? relative)
     {
         if (relative == "/")
@@ -66,8 +65,7 @@ internal static class PathBoundary
             || path.StartsWith(Path.EndsInDirectorySeparator(root) ? root : root + Path.DirectorySeparatorChar, Comparison);
     }
 
-    // Follows every link on the way, one name at a time from the drive root, so '..' and a relative target are taken
-    // from where the link really is. On Windows every name is replaced by its long name, so an 8.3 alias cannot pass for another folder.
+    // One name at a time from the drive root, so '..' and relative link targets start where the link really is.
     public static string RealPath(string path)
     {
         var hops = 0;
@@ -109,7 +107,7 @@ internal static class PathBoundary
         return current;
     }
 
-    // Only a name of an existing item has a long form; a new file keeps the name it is given.
+    // The long name, so an 8.3 alias cannot pass for the state folder; a new file keeps its own name.
     private static string _LongName(string folder, string name) =>
         name.IndexOfAny(['*', '?']) < 0 && Directory.Exists(folder)
             ? new DirectoryInfo(folder).EnumerateFileSystemInfos(name).FirstOrDefault()?.Name ?? name

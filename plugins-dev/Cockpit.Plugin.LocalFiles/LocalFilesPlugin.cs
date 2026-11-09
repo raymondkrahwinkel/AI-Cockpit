@@ -7,8 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Cockpit.Plugin.LocalFiles;
 
-// Local files (AC-1786): the folders the operator added, one file connection each, for the host's file browser. On a
-// server these are the server's folders, added by an admin; the settings view reaches them over this plugin's channel.
+// One file connection per added folder; on a server these are the server's folders, so every check runs here.
 public sealed class LocalFilesPlugin : ICockpitPlugin, IFileSourceProvider
 {
     private const string RootsKey = "roots";
@@ -16,7 +15,7 @@ public sealed class LocalFilesPlugin : ICockpitPlugin, IFileSourceProvider
     private readonly List<IDisposable> _handlers = [];
     private IPluginStorage? _storage;
 
-    // Cockpit's state folders hold unencrypted credentials on a server (AC-1481); no root may show them, not even a parent.
+    // Cockpit's state folders hold credentials, unencrypted on a server; no root may show them, not even a parent.
     private readonly IReadOnlyCollection<string> _denied = new[]
         {
             CockpitBuild.StateRoot,
@@ -87,16 +86,21 @@ public sealed class LocalFilesPlugin : ICockpitPlugin, IFileSourceProvider
     private LocalRootsAnswer _Save(IReadOnlyList<LocalRoot> roots)
     {
         var saved = new List<LocalRoot>();
+        // The id names the connection in open tabs and in the browser, so it must be set and unique.
+        if (roots.Any(root => root is null || string.IsNullOrWhiteSpace(root.Id)) || roots.DistinctBy(root => root.Id).Count() != roots.Count)
+        {
+            return _Answer("Every folder needs its own id.");
+        }
         foreach (var root in roots)
         {
-            var check = Check(root?.Path);
+            var check = Check(root.Path);
             if (check.Error is not null || check.Path is null)
             {
-                return _Answer($"{root?.Path}: {check.Error}");
+                return _Answer($"{root.Path}: {check.Error}");
             }
             if (!saved.Any(other => other.Path.Equals(check.Path, PathBoundary.Comparison)))
             {
-                saved.Add(new LocalRoot(string.IsNullOrWhiteSpace(root!.Id) ? Guid.NewGuid().ToString("n") : root.Id, check.Path, root.Writable, root.Project));
+                saved.Add(root with { Path = check.Path });
             }
         }
         _storage?.Set(RootsKey, saved.ToArray());
@@ -104,7 +108,7 @@ public sealed class LocalFilesPlugin : ICockpitPlugin, IFileSourceProvider
         return _Answer(null);
     }
 
-    // The server's own folders for the admin's picker; drives or "/" first. Refusing the state folder is Check's job.
+    // The native picker sees only the desktop's disk, so a server lists its own folders; Check still refuses.
     private static LocalFolders _Folders(string? path)
     {
         try

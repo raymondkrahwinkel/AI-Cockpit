@@ -1,7 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- The path limit of Local files (AC-1786), against a real folder with a real junction or symlink: a fake file
-       system would prove nothing about what Windows and Linux actually resolve. -->
+  <!-- Real folders and real links: a fake file system proves nothing about what the OS resolves. -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -22,7 +21,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Cockpit.Plugin.LocalFiles\Cockpit.Plugin.LocalFiles.csproj" />
-    <!-- The plugin takes these compile-only from the host; the test has no host, so it needs their runtime copies. -->
+    <!-- The plugin takes these compile-only from the host; without a host the test needs them at runtime. -->
     <ProjectReference Include="..\..\src\Cockpit.Plugins.Abstractions\Cockpit.Plugins.Abstractions.csproj" />
     <ProjectReference Include="..\..\src\Cockpit.Core\Cockpit.Core.csproj" />
   </ItemGroup>

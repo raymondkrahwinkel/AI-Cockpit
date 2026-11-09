@@ -15,8 +15,7 @@ using Material.Icons.Avalonia;
 
 namespace Cockpit.Plugin.LocalFiles.UI;
 
-// Board 1 of AC-1785: the added folders, read only until switched, and project folders as shortcuts. Every path is
-// checked by the backend where the plugin runs, so the same view serves the desktop and a server's admin connection.
+// The backend checks every path where the plugin runs, so one view serves the desktop and a server's admin connection.
 internal sealed class LocalFilesSettingsControl : UserControl, IAsyncPluginSettingsView
 {
     private readonly IPluginUiChannel _channel;
@@ -27,14 +26,17 @@ internal sealed class LocalFilesSettingsControl : UserControl, IAsyncPluginSetti
     private readonly StackPanel _projectRows = new();
     private readonly Border _banner;
     private readonly ContentControl _refusal = new();
-    private readonly StackPanel _picker = new() { Spacing = 6, IsVisible = false };
+    private readonly Func<string, Func<Control>, Task> _showDialog;
     private IReadOnlyList<PluginProjectInfo> _projectList = [];
     private bool _remote;
+    private string _machine = "the server";
 
-    public LocalFilesSettingsControl(IPluginUiChannel channel, Func<Task<IReadOnlyList<PluginProjectInfo>>> projects)
+    public LocalFilesSettingsControl(IPluginUiChannel channel, Func<Task<IReadOnlyList<PluginProjectInfo>>> projects,
+        Func<string, Func<Control>, Task> showDialog)
     {
         _channel = channel;
         _projects = projects;
+        _showDialog = showDialog;
         Styles.Add(new Style(x => x.OfType<Button>().Class("rowAction")) { Setters = { new Setter(OpacityProperty, 0.0) } });
         foreach (var shown in new[] { ":pointerover", ":focus-within" })
         {
@@ -56,7 +58,6 @@ internal sealed class LocalFilesSettingsControl : UserControl, IAsyncPluginSetti
                 _Hint("Only the folders listed here appear in the Files browser. A new folder is read only; turn on writing per folder."),
                 _rows,
                 _refusal,
-                _picker,
                 add,
                 _Section("COCKPIT PROJECT FOLDERS"),
                 _Hint("Shortcuts to the folders of your Cockpit projects. Nothing is added until you click Add."),
@@ -97,6 +98,7 @@ internal sealed class LocalFilesSettingsControl : UserControl, IAsyncPluginSetti
                 }
             }
             _remote = answer?.Machine != Environment.MachineName;
+            _machine = answer?.Machine ?? _machine;
             _projectList = await _projects().ConfigureAwait(true);
         }
         catch (Exception error) when (error is not OperationCanceledException)
@@ -109,17 +111,19 @@ internal sealed class LocalFilesSettingsControl : UserControl, IAsyncPluginSetti
 
     private async Task AddFolderAsync()
     {
+        string? chosen = null;
         if (_remote)
         {
-            await _BrowseAsync(null).ConfigureAwait(true);
-            return;
+            await _showDialog($"Choose a folder on {_machine}", () => new ServerFolderPicker(_channel, path => chosen = path)).ConfigureAwait(true);
         }
-        var picked = TopLevel.GetTopLevel(this) is { } top
-            ? await top.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions { Title = "Select folder" }).ConfigureAwait(true)
-            : [];
-        if (picked.Count > 0 && picked[0].TryGetLocalPath() is { } path)
+        else if (TopLevel.GetTopLevel(this) is { } top
+            && await top.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions { Title = "Select folder" }).ConfigureAwait(true) is [var folder, ..])
         {
-            await AddAsync(path, project: false).ConfigureAwait(true);
+            chosen = folder.TryGetLocalPath();
+        }
+        if (chosen is not null)
+        {
+            await AddAsync(chosen, project: false).ConfigureAwait(true);
         }
     }
 
@@ -134,47 +138,13 @@ internal sealed class LocalFilesSettingsControl : UserControl, IAsyncPluginSetti
         }
         if (!_roots.Any(root => root.Path == real))
         {
-            _roots.Add(new LocalRoot(string.Empty, real, Writable: false, project));
+            _roots.Add(new LocalRoot(Guid.NewGuid().ToString("n"), real, Writable: false, project));
             if (check.Hidden is { } hidden)
             {
                 _hidden[real] = hidden;
             }
         }
         _Render();
-    }
-
-    // The server's folders, listed by the plugin there: the native picker only sees this computer's disk.
-    private async Task _BrowseAsync(string? path)
-    {
-        var folders = await _InvokeAsync<LocalFolders>(LocalFilesChannel.Folders, new LocalPathRequest(path)).ConfigureAwait(true);
-        var list = new ListBox { MaxHeight = 220, ItemsSource = folders?.Children ?? [] };
-        list.DoubleTapped += async (_, _) =>
-        {
-            if (list.SelectedItem is string child)
-            {
-                await _GuardAsync(() => _BrowseAsync(child)).ConfigureAwait(true);
-            }
-        };
-        var up = new Button { Content = "Up", Classes = { "Compact" }, IsEnabled = folders?.Path is not null };
-        up.Click += async (_, _) => await _GuardAsync(() => _BrowseAsync(Path.GetDirectoryName(folders?.Path ?? ""))).ConfigureAwait(true);
-        var cancel = new Button { Content = "Cancel", Classes = { "Ghost" } };
-        cancel.Click += (_, _) => _picker.IsVisible = false;
-        var select = new Button { Content = "Select folder", Classes = { "Accent" } };
-        select.Click += async (_, _) =>
-        {
-            if ((list.SelectedItem as string ?? folders?.Path) is { } chosen)
-            {
-                _picker.IsVisible = false;
-                await _GuardAsync(() => AddAsync(chosen, project: false)).ConfigureAwait(true);
-            }
-        };
-        _picker.Children.Clear();
-        _picker.Children.Add(_Section("CHOOSE A FOLDER ON THE SERVER"));
-        _picker.Children.Add(_Hint(folders?.Error ?? "Folders on the server's disk. Double-click a folder to open it."));
-        _picker.Children.Add(_Mono(folders?.Path ?? "Drives"));
-        _picker.Children.Add(list);
-        _picker.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { up, cancel, select } });
-        _picker.IsVisible = true;
     }
 
     private void _Render()

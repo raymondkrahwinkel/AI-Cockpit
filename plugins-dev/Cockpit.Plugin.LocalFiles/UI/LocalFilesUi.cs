@@ -5,7 +5,7 @@ using Material.Icons;
 
 namespace Cockpit.Plugin.LocalFiles.UI;
 
-// The browser itself is the host's (AC-2236); this part only registers it and the settings view.
+// The host owns the browser, so this part only registers it and the settings view.
 public sealed class LocalFilesUi : ICockpitPluginUi
 {
     public const string WorkspaceTypeId = "local-files.markdown";
@@ -17,6 +17,7 @@ public sealed class LocalFilesUi : ICockpitPluginUi
     {
         host.AddFileWorkspaceType(WorkspaceTypeId, "Markdown file");
         host.AddFileBrowser(new FileBrowserRegistration("local-files.browser", "Local files", MaterialIconKind.FolderOutline, WorkspaceTypeId));
-        host.AddSettings(() => new LocalFilesSettingsControl(host.Channel, host.GetProjectsAsync));
+        host.AddSettings(() => new LocalFilesSettingsControl(host.Channel, host.GetProjectsAsync,
+            (title, content) => host.ShowDialogAsync(title, content, 560, 480)));
     }
 }

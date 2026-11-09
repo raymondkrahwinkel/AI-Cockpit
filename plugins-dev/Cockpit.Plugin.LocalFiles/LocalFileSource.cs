@@ -3,13 +3,14 @@ using Wire = Cockpit.Plugins.Abstractions.Files.FileSourceChannel;
 
 namespace Cockpit.Plugin.LocalFiles;
 
-// One added folder as a file source. Ids are '/'-separated paths relative to the root; every call resolves them again
-// through PathBoundary. Version = mtime+size: a same-size write within one clock tick goes unnoticed.
+// Ids are '/'-separated paths under the root, resolved again on every call; mtime+size misses a same-size write in one tick.
 internal sealed class LocalFileSource(string connectionId, string root, bool writable, IReadOnlyCollection<string> denied) : IFileSource
 {
-    // ponytail: one lock for every local write in this process; an outside writer between the last check and the
-    // rename still wins. Per-file locks if contention shows; a real compare-and-swap needs OS support Windows lacks.
+    // ponytail: one process-wide lock and a version check before the rename; per-file locks or real CAS if contention shows.
     private static readonly SemaphoreSlim Writing = new(1, 1);
+
+    // Skipping unreadable items keeps one broken link or locked file from hiding the whole folder.
+    private static readonly EnumerationOptions Listing = new() { IgnoreInaccessible = true, AttributesToSkip = 0 };
 
     public FileSourceCapabilities Capabilities { get; } =
         new(writable, Wire.MaxContentBytes) { CanCreateFolder = writable, CanCreateFile = writable };
@@ -21,18 +22,28 @@ internal sealed class LocalFileSource(string connectionId, string root, bool wri
         {
             throw new FileSourceException(FileSourceErrorKind.NotFound, "This folder does not exist any more.");
         }
-        // Names the boundary would refuse cannot be opened, and the state folder stays hidden as well as refused.
-        var entries = new DirectoryInfo(path).EnumerateFileSystemInfos()
-            .Where(item => PathBoundary.IsName(item.Name) && !denied.Any(folder => PathBoundary.IsWithin(folder, item.FullName)))
-            .Select(item => _Entry(folder.Id, item))
-            .ToList();
+        var entries = new List<FileEntry>();
+        foreach (var item in new DirectoryInfo(path).EnumerateFileSystemInfos("*", Listing))
+        {
+            // Names the boundary refuses cannot be opened, and the state folder stays hidden as well as refused.
+            if (PathBoundary.IsName(item.Name) && !denied.Any(hidden => PathBoundary.IsWithin(hidden, item.FullName))
+                && _TryEntry(folder.Id, item) is { } entry)
+            {
+                entries.Add(entry);
+            }
+        }
         return new FileListing(entries);
     });
 
     public Task<FileReadResult> ReadAsync(FileRef file, CancellationToken cancellationToken) =>
-        ReadRangeAsync(file, 0, Wire.MaxContentBytes + 1, cancellationToken);
+        _ReadAsync(file, 0, Wire.MaxContentBytes + 1);
 
-    public Task<FileReadResult> ReadRangeAsync(FileRef file, long offset, int count, CancellationToken cancellationToken) => _Run(() =>
+    public Task<FileReadResult> ReadRangeAsync(FileRef file, long offset, int count, CancellationToken cancellationToken) =>
+        offset < 0 || count < 1
+            ? Task.FromException<FileReadResult>(new FileSourceException(FileSourceErrorKind.Unsupported, "A block starts at 0 or later and holds at least 1 byte."))
+            : _ReadAsync(file, offset, count);
+
+    private Task<FileReadResult> _ReadAsync(FileRef file, long offset, int count) => _Run(() =>
     {
         using var stream = new FileStream(_Resolve(file), FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
         var before = _Version(stream);
@@ -56,43 +67,60 @@ internal sealed class LocalFileSource(string connectionId, string root, bool wri
     {
         Wire.ValidateWrite(ifVersion, mustNotExist);
         var path = _Writable(target);
+        // Read before the lock, so a slow upload does not hold up every other save.
+        var bytes = await Wire.ReadContentAsync(content, Wire.MaxContentBytes, cancellationToken).ConfigureAwait(false);
         if (mustNotExist)
         {
-            return await _CreateAsync(path, content, cancellationToken).ConfigureAwait(false) is { } created
+            return _Create(path, bytes, cancellationToken) is { } created
                 ? new FileWriteResult(FileWriteStatus.Written, created)
                 : new FileWriteResult(FileWriteStatus.Conflict, _VersionOf(path));
         }
         await Writing.WaitAsync(cancellationToken).ConfigureAwait(false);
-        var temp = _Temp(path);
         try
         {
-            if (_VersionOf(path) is var current && current != ifVersion)
+            var temp = _Temp(path);
+            try
             {
-                return new FileWriteResult(FileWriteStatus.Conflict, current);
+                if (_VersionOf(path) is var current && current != ifVersion)
+                {
+                    return new FileWriteResult(FileWriteStatus.Conflict, current);
+                }
+                var version = _WriteTemp(temp, bytes, cancellationToken);
+                // A new inode would drop the file's permissions on Unix; on Windows the folder's ACL applies.
+                if (!OperatingSystem.IsWindows())
+                {
+                    File.SetUnixFileMode(temp, File.GetUnixFileMode(path));
+                }
+                if (_VersionOf(path) is var now && now != ifVersion)
+                {
+                    return new FileWriteResult(FileWriteStatus.Conflict, now);
+                }
+                File.Move(temp, path, overwrite: true);
+                return new FileWriteResult(FileWriteStatus.Written, version);
             }
-            var version = await _WriteTempAsync(temp, content, cancellationToken).ConfigureAwait(false);
-            if (_VersionOf(path) is var now && now != ifVersion)
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
             {
-                return new FileWriteResult(FileWriteStatus.Conflict, now);
+                throw _Failed(error);
             }
-            File.Move(temp, path, overwrite: true);
-            return new FileWriteResult(FileWriteStatus.Written, version);
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            throw _Failed(error);
+            finally
+            {
+                _Delete(temp);
+            }
         }
         finally
         {
-            File.Delete(temp);
             Writing.Release();
         }
     }
 
     public Task<FileEntry> CreateFolderAsync(FileRef parent, string name, CancellationToken cancellationToken) => _Run(() =>
     {
-        var child = _Child(parent, name);
-        var path = _Writable(child);
+        var path = _Writable(_Child(parent, name));
+        // CreateDirectory would quietly make missing parents too.
+        if (!Directory.Exists(Path.GetDirectoryName(path)))
+        {
+            throw new FileSourceException(FileSourceErrorKind.NotFound, "This folder does not exist any more.");
+        }
         if (Path.Exists(path))
         {
             throw _Exists();
@@ -102,25 +130,28 @@ internal sealed class LocalFileSource(string connectionId, string root, bool wri
 
     public async Task<FileEntry> CreateFileAsync(FileRef parent, string name, Stream content, CancellationToken cancellationToken)
     {
-        var child = _Child(parent, name);
-        var path = _Writable(child);
-        _ = await _CreateAsync(path, content, cancellationToken).ConfigureAwait(false) ?? throw _Exists();
+        var path = _Writable(_Child(parent, name));
+        var bytes = await Wire.ReadContentAsync(content, Wire.MaxContentBytes, cancellationToken).ConfigureAwait(false);
+        _ = _Create(path, bytes, cancellationToken) ?? throw _Exists();
         return _Entry(parent.Id, new FileInfo(path));
     }
 
     // Null when the name is taken: the move without overwrite is the atomic "must not exist" check.
-    private static async Task<string?> _CreateAsync(string path, Stream content, CancellationToken cancellationToken)
+    private static string? _Create(string path, byte[] bytes, CancellationToken cancellationToken)
     {
         var temp = _Temp(path);
         try
         {
-            var version = await _WriteTempAsync(temp, content, cancellationToken).ConfigureAwait(false);
-            File.Move(temp, path, overwrite: false);
+            var version = _WriteTemp(temp, bytes, cancellationToken);
+            try
+            {
+                File.Move(temp, path, overwrite: false);
+            }
+            catch (IOException) when (Path.Exists(path))
+            {
+                return null;
+            }
             return version;
-        }
-        catch (IOException) when (Path.Exists(path))
-        {
-            return null;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
@@ -128,20 +159,32 @@ internal sealed class LocalFileSource(string connectionId, string root, bool wri
         }
         finally
         {
-            File.Delete(temp);
+            _Delete(temp);
         }
     }
 
     // The version is read after closing, since NTFS may stamp the write time only when the handle closes.
-    private static async Task<string> _WriteTempAsync(string temp, Stream content, CancellationToken cancellationToken)
+    private static string _WriteTemp(string temp, byte[] bytes, CancellationToken cancellationToken)
     {
-        var bytes = await Wire.ReadContentAsync(content, Wire.MaxContentBytes, cancellationToken).ConfigureAwait(false);
-        await using (var stream = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+        cancellationToken.ThrowIfCancellationRequested();
+        using (var stream = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
         {
-            await stream.WriteAsync(bytes, cancellationToken).ConfigureAwait(false);
+            stream.Write(bytes);
             stream.Flush(flushToDisk: true);
         }
         return _VersionOf(temp) ?? throw new FileSourceException(FileSourceErrorKind.Unavailable, "The file could not be saved.");
+    }
+
+    // A temp file that cannot be removed must not turn a finished save into a failure.
+    private static void _Delete(string temp)
+    {
+        try
+        {
+            File.Delete(temp);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+        }
     }
 
     private static string _Temp(string path) => path + PathBoundary.TempMarker + Guid.NewGuid().ToString("n");
@@ -181,6 +224,18 @@ internal sealed class LocalFileSource(string connectionId, string root, bool wri
             ? new FileEntry(id, item.Name, id, FileEntryKind.Folder, Modified: item.LastWriteTimeUtc)
             : new FileEntry(id, item.Name, id, FileEntryKind.File, ((FileInfo)item).Length, item.LastWriteTimeUtc,
                 _Version(item.LastWriteTimeUtc, ((FileInfo)item).Length));
+    }
+
+    private FileEntry? _TryEntry(string parentId, FileSystemInfo item)
+    {
+        try
+        {
+            return _Entry(parentId, item);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     private static string _Id(string parentId, string name) => parentId == "/" ? name : $"{parentId}/{name}";

@@ -1,7 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- The UI part of Local files (AC-1786): the settings view and the host file-browser registration. It builds into the
-       backend project's bin/ and shares only the channel contract with it, linked as source like Diagram's (AC-1401). -->
+  <!-- Builds into the backend's bin/ and links only the channel contract, so the backend stays free of Avalonia. -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>

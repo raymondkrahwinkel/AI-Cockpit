@@ -1,8 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Local files (AC-1786): folders the operator adds, as a file source for the host's file browser. This is the
-       backend half, which runs where the plugin runs (the desktop or a server) and names no Avalonia; the settings
-       view lives in UI/, its own project, which builds into this project's bin/ like Diagram's (AC-1401). -->
+  <!-- The backend half runs where the plugin runs and names no Avalonia; the settings view lives in UI/. -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
@@ -18,7 +16,7 @@
       <Private>false</Private>
       <ExcludeAssets>runtime;native</ExcludeAssets>
     </ProjectReference>
-    <!-- Compile-only: CockpitBuild names the host's state root, which the host's own loaded copy answers at runtime. -->
+    <!-- Compile-only: the host's loaded copy answers CockpitBuild.StateRoot at runtime. -->
     <ProjectReference Include="..\..\src\Cockpit.Core\Cockpit.Core.csproj">
       <Private>false</Private>
       <ExcludeAssets>runtime;native</ExcludeAssets>
