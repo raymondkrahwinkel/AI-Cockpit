@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2237: live recovery retries briefly when the saved note lags behind, keeping unconfirmed text protected.
+
 - AC-2232: a maximized main window stays maximized after locking and unlocking Windows.
 
 - AC-2233: the disk indicator in the status bar now uses the same hover background as CPU/RAM.
