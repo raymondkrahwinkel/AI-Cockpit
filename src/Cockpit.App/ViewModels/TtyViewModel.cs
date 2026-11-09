@@ -27,6 +27,8 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     private readonly ILogger<TtyViewModel>? _logger;
     private SessionProfile? _configuredProfile;
 
+    internal SessionProfile? ActiveProfile => _configuredProfile;
+
     public override string? ProviderId => (_configuredProfile?.ProviderConfig as PluginProviderConfig)?.ProviderId;
     private string? _configuredPermissionMode;
     private string? _configuredModel;

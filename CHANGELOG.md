@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2247: coding tools and command working directories follow profile guardrails, including session scratch and allowed paths; strict mode also checks runs from sessions without a worktree.
+
 - AC-2246: profiles can select Strict, Warn or Off guardrails and additional write paths. New profiles start on Strict; existing profiles start on Warn. Sessions receive their effective policy; enforcement follows in the remaining guardrail tickets.
 
 - AC-2242: the QR code in Pair phone is black on white in every theme, with a quiet zone of 4 modules, at least 240 px and sharp, so a phone camera can focus on it.

@@ -1,3 +1,4 @@
+using Cockpit.Infrastructure.Configuration;
 using System.ComponentModel;
 using System.Text.Json;
 using ModelContextProtocol.Server;
@@ -147,7 +148,7 @@ internal sealed class SessionStatusTools(
             return _Error("`command` and `workingDirectory` are both required.");
         }
 
-        if (!TryResolveRunWorkingDirectory(sessions, caller, workingDirectory, out workingDirectory, out var confinementRefusal))
+        if (!TryResolveRunWorkingDirectory(sessions, caller, workingDirectory, out workingDirectory, out var confinementRefusal, out var guardrailWarning, orgPolicy?.Current))
         {
             return _Error(confinementRefusal);
         }
@@ -179,29 +180,31 @@ internal sealed class SessionStatusTools(
         _ = _RunAndDeliverAsync(caller, runId, label, workingDirectory, command, effectiveArguments, timeout, slot);
 
         return slot.Admitted.IsCompletedSuccessfully
-            ? JsonSerializer.Serialize(new { ok = true, runId, unreachable }, SerializerOptions)
-            : JsonSerializer.Serialize(new { ok = true, runId, queued = true, reason = slot.WaitReason, unreachable }, SerializerOptions);
+            ? JsonSerializer.Serialize(new { ok = true, runId, unreachable, guardrail = guardrailWarning }, SerializerOptions)
+            : JsonSerializer.Serialize(new { ok = true, runId, queued = true, reason = slot.WaitReason, unreachable, guardrail = guardrailWarning }, SerializerOptions);
     }
 
-    // A Cockpit worktree is always a confined session (AC-1911). start_run deliberately remains able to execute any
-    // command a build agent needs, but its process must start inside that worktree. This is a filesystem/work-directory
-    // boundary, not an OS process sandbox; the stronger process boundary belongs to AC-1908.
+    // AC-2247: only Off preserves the legacy exemption for sessions without a worktree.
     internal static bool TryResolveRunWorkingDirectory(
         ISessionRegistry? sessions,
         string caller,
         string requested,
         out string workingDirectory,
-        out string error)
+        out string error,
+        out string warning,
+        ProvisionPolicy? policy = null)
     {
+        warning = string.Empty;
         var session = sessions?.Find(caller);
-        if (session?.WorktreeBranch is null)
+        var mode = OrgPolicyCeilings.GuardrailMode(policy, session?.ActiveProfile?.GuardrailMode ?? SessionProfileEntry.ExistingProfileGuardrailMode);
+        if (session?.WorktreeBranch is null && mode == Core.Profiles.GuardrailMode.Off)
         {
             workingDirectory = requested;
             error = string.Empty;
             return true;
         }
 
-        return CodingTools.TryResolve(session.WorkingDirectory, requested, out workingDirectory, out error);
+        return CodingTools.TryResolveFor(session, requested, policy, out workingDirectory, out error, out warning);
     }
 
     [McpServerTool(Name = "run_status", ReadOnly = true)]

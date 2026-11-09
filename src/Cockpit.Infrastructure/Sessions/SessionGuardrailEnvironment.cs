@@ -1,3 +1,4 @@
+using Cockpit.Infrastructure.Configuration;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Provisioning;
 using Cockpit.Core.Sessions;
@@ -39,7 +40,7 @@ internal static class SessionGuardrailEnvironment
 
         return new Dictionary<string, string>
         {
-            ["COCKPIT_GUARD_MODE"] = OrgPolicyCeilings.GuardrailMode(policy, profile?.GuardrailMode ?? Core.Profiles.GuardrailMode.Strict).ToString(),
+            ["COCKPIT_GUARD_MODE"] = OrgPolicyCeilings.GuardrailMode(policy, profile?.GuardrailMode ?? SessionProfileEntry.ExistingProfileGuardrailMode).ToString(),
             ["COCKPIT_GUARD_ROOTS"] = string.Join(Path.PathSeparator, roots.Select(GuardrailPaths.Expand).Distinct(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal)),
         };
     }
