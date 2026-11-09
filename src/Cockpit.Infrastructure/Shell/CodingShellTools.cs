@@ -3,19 +3,21 @@ using ModelContextProtocol.Server;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Shell;
 using Cockpit.Infrastructure.Sessions;
+using Cockpit.Infrastructure.Mcp;
+using Cockpit.Core.Provisioning;
 
 namespace Cockpit.Infrastructure.Shell;
 
 // The `cockpit-coding-shell` MCP tool (AC-1489): opencode's synchronous shell for a model on an HTTP provider, so it
 // runs a build or a test and reads the outcome in one call instead of polling start_run. Named `shell`, not `bash`:
 // on Windows it is PowerShell, and under the name bash a model writes bash syntax that fails there.
-internal sealed class CodingShellTools(ISessionRegistry sessions, IShellCommandRunner runner, Func<string, bool>? executableExists = null)
+internal sealed class CodingShellTools(ISessionRegistry sessions, IShellCommandRunner runner, Func<string, bool>? executableExists = null, IOrgPolicy? orgPolicy = null)
 {
     private const int DefaultTimeoutMs = 120_000;
     private const int MaxTimeoutMs = 600_000;
 
     [McpServerTool(Name = "shell", ReadOnly = false, Destructive = true)]
-    [Description("Runs one command line and waits for it to finish. On Windows the shell is PowerShell (pwsh when installed, otherwise powershell.exe), elsewhere bash: write the command in that syntax. Runs in your working directory or `workdir` inside it. Returns the exit code and the end of the output (at most 50 KiB or 2000 lines). A run past `timeout` is stopped with everything it started.")]
+    [Description("Runs one command line and waits for it to finish. On Windows the shell is PowerShell (pwsh when installed, otherwise powershell.exe), elsewhere bash: write the command in that syntax. Runs in your working directory or a session-allowed `workdir`. Returns the exit code and the end of the output (at most 50 KiB or 2000 lines). A run past `timeout` is stopped with everything it started.")]
     public async Task<string> Shell(
         [Description("The command line to run.")] string command,
         [Description("How long to wait, in milliseconds. Default 120000, at most 600000.")] int? timeout = null,
@@ -28,7 +30,7 @@ internal sealed class CodingShellTools(ISessionRegistry sessions, IShellCommandR
             return inputError;
         }
 
-        if (!CodingTools.TryResolve(CodingTools.RootFor(sessions), workdir ?? ".", out var directory, out var error))
+        if (!CodingTools.TryResolveFor(sessions.Find(McpRequestContext.CurrentPaneId ?? string.Empty), workdir ?? ".", orgPolicy?.Current, out var directory, out var error, out var warning))
         {
             return error;
         }
@@ -53,7 +55,7 @@ internal sealed class CodingShellTools(ISessionRegistry sessions, IShellCommandR
 
         var output = string.IsNullOrEmpty(result.StandardError) ? result.StandardOutput : $"{result.StandardOutput}\n[stderr]\n{result.StandardError}";
         var status = result.TimedOut ? $"Timed out after {result.Duration.TotalSeconds:0.#}s and was stopped." : $"Exit code {result.ExitCode}.";
-        return $"{status}\n{_Tail(output)}";
+        return CodingTools.WithWarning(warning, $"{status}\n{_Tail(output)}");
     }
 
     private static bool _ExecutableExists(string executable)

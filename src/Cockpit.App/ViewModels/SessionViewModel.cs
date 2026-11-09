@@ -78,6 +78,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // AC-713: the profile this session started under — what an auth error or the poll timer below check against.
     private SessionProfile? _profile;
 
+    internal SessionProfile? ActiveProfile => _profile;
+
     public override string? ProviderId => (_profile?.ProviderConfig as PluginProviderConfig)?.ProviderId;
 
     // AC-1088: reads a clamped tool result back in full from the provider's own transcript. Null in tests and
