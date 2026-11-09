@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2235: closing a session no longer breaks `/tmp` in Git Bash for your other sessions; the scratch folder that Git Bash uses as `/tmp` is left in place instead of removed.
+
 - AC-2232: a maximized main window stays maximized after locking and unlocking Windows.
 
 - AC-2233: the disk indicator in the status bar now uses the same hover background as CPU/RAM.
