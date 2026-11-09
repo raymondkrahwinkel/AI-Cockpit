@@ -45,7 +45,6 @@ internal sealed class CefBrowserView : BrowserView
     private byte[] _front = [];
     private PixelSize _backSize;
     private int _blitQueued;
-    internal event Action<WriteableBitmap>? FramePresented;
     private Size _viewSize = new(800, 600);
     private double _scale = 1;
 
@@ -587,7 +586,6 @@ internal sealed class CefBrowserView : BrowserView
             Marshal.Copy(_front, 0, frame.Address, Math.Min(size.Width * size.Height * 4, frame.RowBytes * size.Height));
         }
 
-        FramePresented?.Invoke(_bitmap);
         InvalidateVisual();
     }
 

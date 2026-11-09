@@ -40,7 +40,6 @@ internal sealed class HostBrowserView : BrowserView
 
     internal override Guid HostGeneration => _host.Generation;
     internal string? Failure { get; private set; }
-    internal event Action<BrowserTabFrame, WriteableBitmap>? FramePresented;
     public override bool IsMuted => _muted;
     public override void SetMuted(bool muted) => _muted = muted;
     public override void Navigate(string url) => _Queue("tab.navigate", url);
@@ -145,7 +144,6 @@ internal sealed class HostBrowserView : BrowserView
             {
                 buffer.CopyRectangle(target.Address, target.RowBytes, frame.X, frame.Y, frame.Width, frame.Height, write: false);
             }
-            FramePresented?.Invoke(frame, bitmap);
             InvalidateVisual();
         }
     }

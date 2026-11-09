@@ -58,9 +58,10 @@ internal static class BrowserEngineHost
             }
             if (initialized)
             {
-                if (tabs is not null)
+                // CEF must shut down on its startup thread, after every browser has closed.
+                if (tabs is not null && tabs.DisposeAsync().AsTask().Wait(BrowserIpcLimits.Deadline) == false)
                 {
-                    tabs.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                    throw new TimeoutException("Browser tabs did not close before CEF shutdown.");
                 }
                 CefRuntime.Shutdown();
             }
