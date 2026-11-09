@@ -19,6 +19,9 @@ internal static class DepotChannel
     // the host-owned token live. Answers a DepotBrandingAnswer; logo bytes are null for the standard icon fallback.
     public const string Branding = "branding";
 
+    // Reads the connection's heartbeat status without making a network request.
+    public const string Registration = "registration";
+
     // AC-1511. Payload: DepotInstallTokenRequest. Adds the connection, or updates the one with its id or URL, through
     // the same write SaveConnections does, then signs it in by redeeming the installation token at Depot — no
     // browser, which a server does not have. A token Depot refuses changes nothing. Answers a DepotInstallTokenAnswer.

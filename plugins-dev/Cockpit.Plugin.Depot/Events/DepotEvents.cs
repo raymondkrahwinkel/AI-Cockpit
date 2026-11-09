@@ -1,4 +1,5 @@
 using Cockpit.Plugin.Depot.Model;
+using Cockpit.Plugin.Depot.Contracts;
 using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Plugin.Depot.Events;
@@ -11,6 +12,42 @@ internal sealed class DepotEvents(
 {
     private readonly Dictionary<string, DepotEventSubscriber> _subscribers = new(StringComparer.Ordinal);
     private readonly Lock _subscribersLock = new();
+
+    public DepotRegistrationStatus? Registration(string connectionId)
+    {
+        lock (_subscribersLock)
+        {
+            return _subscribers.TryGetValue(connectionId, out var subscriber) ? subscriber.Registration : null;
+        }
+    }
+
+    public async Task RefreshAsync(string? serverName = null)
+    {
+        var current = connections();
+        List<DepotEventSubscriber> removed;
+        List<DepotEventSubscriber> reset;
+        lock (_subscribersLock)
+        {
+            removed = _subscribers.Values.Where(subscriber => !current.Contains(subscriber.Connection)).ToList();
+            reset = _subscribers.Values.Where(subscriber => current.Contains(subscriber.Connection) && subscriber.Connection.McpServerName == serverName).ToList();
+            foreach (var subscriber in removed)
+            {
+                _subscribers.Remove(subscriber.Connection.Id);
+            }
+            foreach (var connection in current)
+            {
+                _For(connection);
+            }
+        }
+        foreach (var subscriber in reset)
+        {
+            await subscriber.ResetAsync().ConfigureAwait(false);
+        }
+        foreach (var subscriber in removed)
+        {
+            await subscriber.DisposeAsync().ConfigureAwait(false);
+        }
+    }
 
     public Task<IDisposable> SubscribeAsync(string connectionId, string topic, Action<DepotEvent> onEvent, Action resync, CancellationToken cancellationToken)
     {
