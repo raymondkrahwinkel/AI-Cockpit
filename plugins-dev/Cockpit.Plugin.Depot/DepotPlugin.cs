@@ -40,6 +40,9 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
     private Files.DepotFileSourceProvider? _fileSources;
     private Store.DepotPluginStoreSources? _storeSources;
 
+    // AC-2217: the Depot gateway rows beside each connection's own; created with the first host the plugin gets.
+    private DepotGateway? _gateway;
+
     // A 100 MiB file on a slow link must not hit the default 100 second timeout.
     private readonly HttpClient _publishHttp = new() { Timeout = TimeSpan.FromMinutes(30) };
 
@@ -69,6 +72,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
         _settings = settings;
         _host = host;
         _initializedHost = host;
+        var gateway = _GatewayFor(host);
 
         foreach (var connection in settings.Connections)
         {
@@ -85,6 +89,12 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             {
                 DepotProjectListingSource.Forget(host, connection);
                 _RecheckLiveNotes(connection.Id);
+            }
+
+            // AC-2217: after a (re)sign-in the gateway is read again; a sign-in on a gateway row is one on its connection too.
+            foreach (var connection in settings.Connections.Where(candidate => candidate.McpServerName == serverName || DepotGateway.IsGatewayServerName(serverName)))
+            {
+                _ = gateway.RefreshAsync(connection, CancellationToken.None);
             }
 
             // The Projects page keeps what the last read said, "sign in" included, until something tells it to read again.
@@ -213,7 +223,15 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             connection => host.CreateAuthorizedHandler(connection.McpServerName),
             (connection, userId, onEvent, onReconnected, onClosed) => new Events.SignalRDepotEventHub(
                 connection, userId, () => host.CreateAuthorizedHandler(connection.McpServerName), onEvent, onReconnected, onClosed),
-            _logger);
+            _logger,
+            // AC-2217: a Depot that came back, possibly upgraded, is read for the gateway again.
+            connection => _ = gateway.RefreshAsync(connection, CancellationToken.None));
+
+        // AC-2217: once at the start, in the background — a Depot that is offline or older never holds the plugin up.
+        foreach (var connection in settings.Connections)
+        {
+            _ = gateway.RefreshAsync(connection, CancellationToken.None);
+        }
 
         // AC-499: declared unconditionally, even with zero connections — fixes the doorless-dead-end bug where
         // zero connections meant no "Depot" option anywhere and no way to reach this plugin's settings.
@@ -265,6 +283,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
         var settings = new DepotSettings(host.Storage);
         _settings ??= settings;
         _host ??= host;
+        _GatewayFor(host);
 
         var firstStart = new FirstStart.DepotFirstStart(
             host, settings, connection => _pending = connection, () => _initializedHost, () => _events);
@@ -391,10 +410,19 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             existing is null ? [.. before, connection] : [.. before.Select(candidate => candidate.Id == existing.Id ? connection : candidate)],
             cancellationToken, _events, _ConnectionsChanged).ConfigureAwait(false);
 
+        // AC-2217: the grant names its scopes only on a Depot that offers the gateway; otherwise it is asked exactly as before.
+        var grantParameters = new Dictionary<string, string> { ["install_token"] = request.Token, ["client_id"] = DepotClientId };
+        var gateway = _GatewayFor(host);
+        await gateway.RefreshScopeAsync(connection, cancellationToken).ConfigureAwait(false);
+        if (gateway.ScopeSupported(connection))
+        {
+            grantParameters["scope"] = _OAuthScopes(connection);
+        }
+
         var outcome = await host.SignInMcpServerWithGrantAsync(
             connection.McpServerName,
             InstallTokenGrant,
-            new Dictionary<string, string> { ["install_token"] = request.Token, ["client_id"] = DepotClientId },
+            grantParameters,
             cancellationToken).ConfigureAwait(false);
         if (outcome == PluginMcpSignInOutcome.Authorized)
         {
@@ -575,8 +603,22 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
     // Every connection this plugin has configured (AC-504), unscoped by project. Session delivery never reaches
     // this overload — the catalog always calls the scoped overload below — but the host falls back to it for
     // OAuth sign-in from this plugin's own settings view, which has no project to scope a call by.
-    public IReadOnlyList<McpServerContribution> GetMcpServers() =>
-        _settings is null ? [] : [.. _settings.Connections.Append(_pending).OfType<DepotConnectionRegistration>().Select(_ContributionFor)];
+    public IReadOnlyList<McpServerContribution> GetMcpServers()
+    {
+        if (_settings is null)
+        {
+            return [];
+        }
+
+        var connections = _settings.Connections.Append(_pending).OfType<DepotConnectionRegistration>().ToList();
+        foreach (var connection in connections)
+        {
+            // AC-2217: this overload is what a sign-in reads, so the scopes it asks for are checked just before.
+            _gateway?.EnsureScopeFresh(connection);
+        }
+
+        return [.. connections.SelectMany(_ContributionsFor)];
+    }
 
     // The connection(s) whose memory-source scheme is among `projectMemorySchemes` (AC-504). `projectId`
     // is unused: the schemes already say which of this plugin's connections the project points at.
@@ -590,14 +632,33 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
         var schemes = new HashSet<string>(projectMemorySchemes, StringComparer.OrdinalIgnoreCase);
         return DepotMemorySource.BuildRegistrationPairs(_settings.Connections, _host)
             .Where(pair => schemes.Contains(pair.Registration.Scheme))
-            .Select(pair => _ContributionFor(pair.Connection))
+            .SelectMany(pair => _ContributionsFor(pair.Connection))
             .ToList();
     }
+
+    private DepotGateway _GatewayFor(ICockpitHost host) =>
+        _gateway ??= new DepotGateway(host, host.Services?.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.Plugin.Depot"));
+
+    // AC-2217: the connection's own row, then its one gateway row (same sign-in), when that Depot offers the gateway.
+    private IEnumerable<McpServerContribution> _ContributionsFor(DepotConnectionRegistration connection) =>
+        _gateway is null
+            ? [_ContributionFor(connection)]
+            : [_ContributionFor(connection), .. _gateway.ContributionsFor(
+                connection, DepotUrlNormalizer.Origin(connection.Url) ?? connection.Url, _OAuthScopes(connection), _HostOnlyScopes)];
+
+    // depot.gateway only where that Depot's own metadata lists it: an older Depot refuses an unknown scope and would
+    // take the ordinary sign-in down with it (AC-2217). It is not host-only: sessions reach the gateway with it.
+    private string _OAuthScopes(DepotConnectionRegistration connection) =>
+        _gateway?.ScopeSupported(connection) == true ? $"{_BaseScopes} {DepotGateway.Scope}" : _BaseScopes;
+
+    private static readonly string _BaseScopes = $"depot {Inbox.DepotInbox.Scope} depot.host offline_access";
+
+    private static readonly string _HostOnlyScopes = $"{Inbox.DepotInbox.Scope} depot.host";
 
     // AC-499: connection.Url is already the normalized base by the time it gets here — normalized on save and
     // migrated on load. This only appends /mcp; it must not call DepotUrlNormalizer.Normalize again, since
     // that is no longer safe to repeat (a base whose path genuinely ends in /mcp would lose that segment).
-    private static McpServerContribution _ContributionFor(DepotConnectionRegistration connection)
+    private McpServerContribution _ContributionFor(DepotConnectionRegistration connection)
     {
         return new(Name: connection.McpServerName, Url: $"{connection.Url}/mcp")
         {
@@ -611,8 +672,8 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             // AC-1586/AC-1647: Depot's built-in client may request the host-only inbox and Cockpit API scopes;
             // neither rides on a token handed to a session.
             OAuthClientId = DepotClientId,
-            OAuthScopes = $"depot {Inbox.DepotInbox.Scope} depot.host offline_access",
-            OAuthHostOnlyScopes = $"{Inbox.DepotInbox.Scope} depot.host",
+            OAuthScopes = _OAuthScopes(connection),
+            OAuthHostOnlyScopes = _HostOnlyScopes,
         };
     }
 
@@ -627,6 +688,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
         }
 
         _publishHttp.Dispose();
+        _gateway?.Dispose();
         _ = _notes?.DisposeAsync().AsTask().ContinueWith(
             closing => _logger?.LogWarning(closing.Exception?.GetBaseException(), "Closing Depot notes failed."),
             CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
