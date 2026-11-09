@@ -1,5 +1,20 @@
 # AI-Cockpit
 
+Profiles have `GuardrailMode` (`Strict`, `Warn`, `Off`) and `GuardrailAllowedPaths` in
+`cockpit.json`, editable under Manage profiles and Options. New profiles default to
+`Strict`; existing entries without the mode default to `Warn`. Allowed paths default
+to an empty list and must be absolute or start with `~/` (one per line in the editor).
+They cannot contain the platform's path-list separator. Mode travels in the settings
+carrier; paths stay local. Invalid or machine-specific paths imported from elsewhere
+are skipped at launch with a log warning. Apply and Cancel stage both fields with the whole profile.
+Organisation profiles may supply `guardrailMode`; policy.permissions.minimumGuardrailMode
+can only make the effective mode stricter, without rewriting the local choice.
+Every agent launch receives `COCKPIT_GUARD_MODE` and `COCKPIT_GUARD_ROOTS` (joined with
+`Path.PathSeparator`): its working directory/worktree, session scratch, allowed paths
+and `<CLAUDE_CONFIG_DIR>/plans` (default `~/.claude/plans`). Profile variables cannot
+override these values. AC-2246 supplies this policy; enforcement follows in the other
+AC-1908 tickets. Existing coding-tool confinement remains active.
+
 Assistant Options controls spoken answers independently of text chat. `assistant.speechMode`
 (`Full`, `Summary`, `Short`; default `Short`), `assistant.speechMethod` (`Assistant`, `Profile`,
 `Rules`; default `Assistant`) and `assistant.speechProfileLabel` (optional existing profile label)

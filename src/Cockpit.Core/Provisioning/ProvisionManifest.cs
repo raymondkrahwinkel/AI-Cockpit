@@ -94,6 +94,8 @@ public sealed record ProvisionProfile
 
     public int? MemoryCapMegabytes { get; init; }
 
+    public string? GuardrailMode { get; init; }
+
     public JsonElement? Assistant { get; init; }
 }
 
@@ -177,7 +179,8 @@ public sealed record ProvisionPermissionPolicy(
     string? DelegationCeiling = null,
     string? TerminalAccess = null,
     string? ShellAccess = null,
-    bool? NeverSend = null);
+    bool? NeverSend = null,
+    string? MinimumGuardrailMode = null);
 
 public sealed record ProvisionBackupPolicy(
     bool? Required = null,

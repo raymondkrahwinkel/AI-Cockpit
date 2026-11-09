@@ -10,6 +10,7 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.ModelIntelligence;
 using Cockpit.Core.Provisioning;
+using Cockpit.Core.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.ViewModels;
@@ -104,6 +105,14 @@ public partial class EditableProfileViewModel : ViewModelBase
     // silently dropped the cap it appeared to show.
     [ObservableProperty]
     private int? _memoryCapMegabytes;
+
+    public IReadOnlyList<GuardrailMode> GuardrailModes { get; } = Enum.GetValues<GuardrailMode>();
+
+    [ObservableProperty]
+    private GuardrailMode _guardrailMode = GuardrailMode.Strict;
+
+    [ObservableProperty]
+    private string _guardrailAllowedPathsText = string.Empty;
 
     // AC-2026: the most sessions that run under this profile at once; 0 or blank is unlimited.
     [ObservableProperty]
@@ -522,6 +531,7 @@ public partial class EditableProfileViewModel : ViewModelBase
     // AC-1995: what IsValid checks apart from the provider's own settings, for a fixed provider whose view this desktop lacks.
     public bool IsValidBesidesProviderSettings =>
         !string.IsNullOrWhiteSpace(Label)
+        && _GuardrailAllowedPaths().All(GuardrailPaths.IsValid)
         && _AreEnvironmentVariablesValid()
         && (!IsLmStudioProvider || LmStudioLoadOptionsError is null);
 
@@ -682,6 +692,8 @@ public partial class EditableProfileViewModel : ViewModelBase
             brainHint ?? "None names no brain, so the provider's own instruction files decide. A project's own brain goes first.");
         BrainPicker.ValueChanged += reference => Assistant = reference ?? string.Empty;
         _memoryCapMegabytes = profile.MemoryCapMegabytes;
+        _guardrailMode = profile.GuardrailMode;
+        _guardrailAllowedPathsText = string.Join(Environment.NewLine, profile.GuardrailAllowedPaths);
         _maxParallelSessions = profile.MaxParallelSessions;
         // Absent/no-restriction is TTY, the same long-standing hard default SessionKindDefaults.ResolveDefaultKind
         // falls back to for the New-session dialog itself.
@@ -818,6 +830,8 @@ public partial class EditableProfileViewModel : ViewModelBase
             Assistant = string.IsNullOrWhiteSpace(Assistant) ? null : Assistant.Trim(),
             ImageInputMode = ImageInputMode,
             MemoryCapMegabytes = MemoryCapMegabytes is > 0 ? MemoryCapMegabytes : null,
+            GuardrailMode = GuardrailMode,
+            GuardrailAllowedPaths = _GuardrailAllowedPaths(),
             MaxParallelSessions = Math.Max(0, MaxParallelSessions ?? 0),
             // A host without terminals persists SDK. Locally, a provider without a TTY route keeps the existing null.
             DefaultKind = !_hostRunsTty
@@ -827,6 +841,8 @@ public partial class EditableProfileViewModel : ViewModelBase
                     : null,
         };
     }
+
+    private string[] _GuardrailAllowedPaths() => GuardrailAllowedPathsText.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
     // The per-profile option defaults the operator set, keyed by option key; only the ones actually chosen (a blank
     // value leaves the option on the plugin's own default). Null when the provider declares no options.

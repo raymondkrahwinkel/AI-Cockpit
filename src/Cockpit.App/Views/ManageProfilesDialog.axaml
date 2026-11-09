@@ -253,6 +253,15 @@
                          off. Per profile because one number is either too loose to protect anything or too tight
                          for the profile that runs real builds. -->
                     <StackPanel Spacing="4">
+                        <TextBlock Text="Guardrail mode" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        <ComboBox ItemsSource="{Binding GuardrailModes}" SelectedItem="{Binding GuardrailMode}"/>
+                    </StackPanel>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Allowed write paths" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        <TextBox Text="{Binding GuardrailAllowedPathsText}" AcceptsReturn="True" TextWrapping="Wrap" Height="70"
+                                 PlaceholderText="One absolute path or ~/path per line"/>
+                    </StackPanel>
+                    <StackPanel Spacing="4">
                         <TextBlock Text="Memory cap (MB)" FontSize="11"
                                    Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                         <!-- Floor is SessionMemoryCap.MinimumMegabytes: below it the cap kills the agent CLI, not a runaway build. -->

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2246: profiles can select Strict, Warn or Off guardrails and additional write paths. New profiles start on Strict; existing profiles start on Warn. Sessions receive their effective policy; enforcement follows in the remaining guardrail tickets.
+
 - AC-2242: the QR code in Pair phone is black on white in every theme, with a quiet zone of 4 modules, at least 240 px and sharp, so a phone camera can focus on it.
 
 - AC-2241: the Depot panel without a server has an "Add Depot server" button that opens the Depot settings, and its project list is off with a "No Depot server" label instead of showing a dot.

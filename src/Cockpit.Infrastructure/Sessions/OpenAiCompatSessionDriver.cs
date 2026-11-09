@@ -11,6 +11,7 @@ using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Provisioning;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Plugins.OpenAiCompat;
 using Cockpit.Plugins.Abstractions.Sessions;
@@ -28,6 +29,7 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
     private readonly SessionMcpMounts? _mcpMounts;
     private readonly ILocalModelContextManager _localModelContext;
     private readonly SessionMcpGatewayHost? _gateway;
+    private readonly IOrgPolicy? _orgPolicy;
     private string? _scratch;
     private string? _scratchPane;
 
@@ -66,13 +68,14 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
         IMcpToolProvider mcpToolProvider,
         ILogger<OpenAiCompatSessionDriver> logger,
         ILocalModelContextManager localModelContext,
-        SessionMcpMounts? mcpMounts = null, SessionMcpGatewayHost? gateway = null)
+        SessionMcpMounts? mcpMounts = null, SessionMcpGatewayHost? gateway = null, IOrgPolicy? orgPolicy = null)
     {
         _chatClientFactory = chatClientFactory;
         _mcpToolProvider = mcpToolProvider;
         _logger = logger;
         _mcpMounts = mcpMounts;
         _gateway = gateway;
+        _orgPolicy = orgPolicy;
         _localModelContext = localModelContext;
         _gate = new SessionToolApprovalGate(
             (toolUseId, toolName, inputJson) =>
@@ -151,6 +154,12 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
                 _scratch = SessionScratch.Create(paneId, message => _logger.LogWarning("{Message}", message));
                 var environment = new Dictionary<string, string?>(ProfileEnvironmentVariable.ToOverlay(profile?.EnvironmentVariables ?? []), StringComparer.OrdinalIgnoreCase);
                 foreach (var key in SessionScratch.EnvironmentKeys) { environment[key] = _scratch; }
+                foreach (var (key, guardValue) in SessionGuardrailEnvironment.Build(profile, workingDirectory, _scratch,
+                    environment.GetValueOrDefault("CLAUDE_CONFIG_DIR"),
+                    _orgPolicy?.Current, message => _logger.LogWarning("{Message}", message)))
+                {
+                    environment[key] = guardValue;
+                }
                 await _gateway.BindLaunchAsync(paneId, projectId, workingDirectory, confineRoot, profile?.Label,
                     selection is ExactMcpServerSelection { AssistantManaged: true }, cancellationToken, environment,
                     launchOptions?.GetValueOrDefault(WellKnownPluginSessionOptions.Brain)).ConfigureAwait(false);
