@@ -106,6 +106,9 @@ internal sealed class DiskStorageStatus : Button
         var toolTipText = disks.Count == 0
             ? "Disk space and Docker storage — awaiting readings"
             : string.Join("\n", disks.Select(disk => $"{disk.Name}: {_Bytes(disk.FreeBytes)} free, {_Bytes(Math.Max(0, disk.TotalBytes - disk.FreeBytes))} used, {_Bytes(disk.TotalBytes)} total"));
+        var scratch = _resources?.ScratchUsage;
+        toolTipText += "\nSession scratch: " + _Bytes(scratch?.Values.Any(value => value.Bytes is null) == true
+            ? null : scratch?.Values.Sum(value => value.Bytes ?? 0) ?? 0);
         if (!string.Equals(_toolTipText, toolTipText, StringComparison.Ordinal))
         {
             _toolTipText = toolTipText;
@@ -255,8 +258,14 @@ internal sealed class DiskStorageStatus : Button
 
     private static TextBlock _Detail(string text) => new() { Text = text, FontSize = 11, TextWrapping = TextWrapping.Wrap };
 
-    private static string _Bytes(long bytes) => bytes >= 1024L * 1024 * 1024
-        ? $"{bytes / (1024d * 1024 * 1024):0.#} GiB" : $"{bytes / (1024d * 1024):0.#} MiB";
+    internal static string _Bytes(long? bytes) => bytes switch
+    {
+        null => "Unavailable",
+        < 1024 => $"{bytes} B",
+        < 1024 * 1024 => $"{bytes / 1024d:0.#} KiB",
+        < 1024L * 1024 * 1024 => $"{bytes / (1024d * 1024):0.#} MiB",
+        _ => $"{bytes / (1024d * 1024 * 1024):0.#} GiB",
+    };
 
     private static string? _Eta(DiskSpaceSnapshot disk)
     {

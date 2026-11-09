@@ -97,13 +97,12 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemory
             [WellKnownSessionEnvironment.CockpitMcpKey] = mintedToken,
         };
 
-        baseEnvironment = new Dictionary<string, string>(baseEnvironment, StringComparer.OrdinalIgnoreCase)
+        var scratchBaseEnvironment = new Dictionary<string, string>(baseEnvironment, StringComparer.OrdinalIgnoreCase);
+        foreach (var key in SessionScratch.EnvironmentKeys)
         {
-            ["COCKPIT_SCRATCH"] = scratch,
-            ["TEMP"] = scratch,
-            ["TMP"] = scratch,
-            ["TMPDIR"] = scratch,
-        };
+            scratchBaseEnvironment[key] = scratch;
+        }
+        baseEnvironment = scratchBaseEnvironment;
 
         var context = new TtyLaunchContext(
             profile,
@@ -148,13 +147,12 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemory
         }
 
         var environment = TtyEnvironment.Compose(baseEnvironment, spec.EnvironmentOverlay);
-        environment = new Dictionary<string, string>(environment, StringComparer.OrdinalIgnoreCase)
+        var scratchEnvironment = new Dictionary<string, string>(environment, StringComparer.OrdinalIgnoreCase);
+        foreach (var key in SessionScratch.EnvironmentKeys)
         {
-            ["COCKPIT_SCRATCH"] = scratch,
-            ["TEMP"] = scratch,
-            ["TMP"] = scratch,
-            ["TMPDIR"] = scratch,
-        };
+            scratchEnvironment[key] = scratch;
+        }
+        environment = scratchEnvironment;
 
         var process = ptyHostFactory.Start(spec.ExecutablePath, spec.Arguments, spec.WorkingDirectory, environment, columns, rows);
 

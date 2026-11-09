@@ -17,5 +17,6 @@ public interface ITrackedCommandRunner
         IReadOnlyList<string> arguments,
         TimeSpan timeout,
         string runId,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        string? paneId = null);
 }
