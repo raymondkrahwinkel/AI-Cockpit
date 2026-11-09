@@ -58,6 +58,33 @@ AC-1782 can add listing, metadata, watches and streaming later. A future local/S
 the same conditional-write guarantee before advertising `CanWrite`; stat followed by rename alone
 does not implement compare-and-swap. No live Depot is used by the contract tests.
 
+## Browsing and the host file browser (AC-2236)
+
+Requires host 0.168.0, Abstractions 3.79.0 and Abstractions.UI 3.27.0. Four `IFileSource` methods default
+to `Unsupported`, so an older source compiles and loads unchanged:
+
+| Method | Channel action | Notes |
+|---|---|---|
+| `ListAsync(folder, pageToken, ct)` | `files-list` | One page of `FileEntry` (Id, Name, Path, Kind, Size, Modified, Version); a non-null `NextPageToken` asks for the next. `FileRef.Root(connectionId)` is the top; the source maps "/" to its own root. |
+| `CreateFolderAsync(parent, name, ct)` | `files-mkdir` | Only with `FileSourceCapabilities.CanCreateFolder`. |
+| `CreateFileAsync(parent, name, content, ct)` | `files-create` | Only with `CanCreateFile`; at most 1 MiB. The source names the item and returns its `FileEntry`; an existing name throws `Conflict`. |
+| `ReadRangeAsync(file, offset, count, ct)` | `files-read-range` | At most 1 MiB per block, with the version and the whole file's `Size` from the same snapshot. |
+
+The backend refuses `files-mkdir`, `files-create` and writes on a read-only connection, without the
+capability, or with a name containing a slash, before the source is called. Listing and reading stay open
+on a read-only connection. An entry without Id, Name or Path is rejected. `files-connections` sets
+`FileConnection.CanCreateFolder` and `CanCreateFile` from the source's capabilities and the read-only setting,
+so the browser shows only what the backend allows. The host never builds a path: new files and uploads go
+through `CreateFileAsync`.
+
+During UI initialization, after `AddFileWorkspaceType`, call
+`host.AddFileBrowser(new FileBrowserRegistration("plugin.files", "Files", icon, "plugin.markdown"))`. The host
+adds a dock panel with a connection picker (this computer's connections and each managed server's, over the
+same channel route), a lazily loaded tree, and a detail pane with Download (in 1 MiB blocks; a version change
+mid-download stops and removes the partial copy) and Edit. A click on a Markdown file opens the preview tab,
+Edit a kept tab; New file creates an empty file and opens it. Upload is limited to 1 MiB. A read-only
+connection shows no New, Upload or Edit. Delete, rename and change push are not part of this version.
+
 ## Host file workspaces (AC-1754)
 
 Requires host 0.137.0, Abstractions 3.45.0 and Abstractions.UI 3.17.0.

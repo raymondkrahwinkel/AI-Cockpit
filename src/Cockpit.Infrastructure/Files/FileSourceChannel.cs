@@ -17,9 +17,16 @@ internal static class FileSourceChannel
         try
         {
             registration.Handlers.Add(channel.Handle(Wire.Connections, (_, _) =>
-                _RunAsync(() => Task.FromResult(provider.Connections.Select(connection => connection with
+                _RunAsync(() => Task.FromResult(provider.Connections.Select(connection =>
                 {
-                    ReadOnly = connection.ReadOnly || !provider.Open(connection.Id).Capabilities.CanWrite,
+                    var capabilities = provider.Open(connection.Id).Capabilities;
+                    var readOnly = connection.ReadOnly || !capabilities.CanWrite;
+                    return connection with
+                    {
+                        ReadOnly = readOnly,
+                        CanCreateFolder = !readOnly && capabilities.CanCreateFolder,
+                        CanCreateFile = !readOnly && capabilities.CanCreateFile,
+                    };
                 }).ToArray()))));
             registration.Handlers.Add(channel.Handle(Wire.Read, (payload, ct) => _RunAsync(async () =>
             {
@@ -80,6 +87,7 @@ internal static class FileSourceChannel
                 }
                 return Convert.ToBase64String(bytes);
             })));
+            _RegisterBrowse(channel, provider, registration);
             _RegisterLive(channel, provider, registration);
             registration.Changed = (_, _) => channel.Publish(Wire.Changed,
                 JsonSerializer.SerializeToElement(provider.Connections, Wire.Json));
@@ -92,6 +100,73 @@ internal static class FileSourceChannel
             throw;
         }
     }
+
+    private static void _RegisterBrowse(IPluginBackendChannel channel, IFileSourceProvider provider, Registration registration)
+    {
+        registration.Handlers.Add(channel.Handle(Wire.List, (payload, ct) => _RunAsync(async () =>
+        {
+            var request = payload.Deserialize<FileSourceListRequest>(Wire.Json) ?? throw new JsonException();
+            var listing = await _Source(provider, request.Folder, false).ListAsync(request.Folder, request.PageToken, ct).ConfigureAwait(false);
+            if (listing?.Entries is null || !listing.Entries.All(_Valid))
+            {
+                throw new FileSourceException(FileSourceErrorKind.Unavailable, "The source returned an invalid folder.");
+            }
+            return listing;
+        })));
+        registration.Handlers.Add(channel.Handle(Wire.CreateFolder, (payload, ct) => _RunAsync(async () =>
+        {
+            var request = payload.Deserialize<FileSourceCreateFolderRequest>(Wire.Json) ?? throw new JsonException();
+            var source = _Creating(provider, request.Parent, request.Name, folder: true);
+            return _Created(await source.CreateFolderAsync(request.Parent, request.Name, ct).ConfigureAwait(false));
+        })));
+        registration.Handlers.Add(channel.Handle(Wire.CreateFile, (payload, ct) => _RunAsync(async () =>
+        {
+            var request = payload.Deserialize<FileSourceCreateFileRequest>(Wire.Json) ?? throw new JsonException();
+            var source = _Creating(provider, request.Parent, request.Name, folder: false);
+            var bytes = Wire.DecodeContent(request.ContentBase64 ?? throw new JsonException());
+            if (bytes.LongLength > source.Capabilities.MaxWriteBytes)
+            {
+                throw new FileSourceException(FileSourceErrorKind.TooLarge, "This file exceeds the source's size limit.");
+            }
+            using var content = new MemoryStream(bytes, writable: false);
+            return _Created(await source.CreateFileAsync(request.Parent, request.Name, content, ct).ConfigureAwait(false));
+        })));
+        registration.Handlers.Add(channel.Handle(Wire.ReadRange, (payload, ct) => _RunAsync(async () =>
+        {
+            var request = payload.Deserialize<FileSourceReadRangeRequest>(Wire.Json) ?? throw new JsonException();
+            if (request.Offset < 0 || request.Count is <= 0 or > Wire.MaxContentBytes)
+            {
+                throw new FileSourceException(FileSourceErrorKind.Unsupported, "A block is 1 byte to 1 MiB from a non-negative offset.");
+            }
+            var result = await _Source(provider, request.File, false).ReadRangeAsync(request.File, request.Offset, request.Count, ct).ConfigureAwait(false);
+            await using var content = result?.Content;
+            if (result is not { Content: not null, Size: not null } || string.IsNullOrWhiteSpace(result.Version))
+            {
+                throw new FileSourceException(FileSourceErrorKind.Unavailable, "The source did not return a version and size for this block.");
+            }
+            // A source that hands back more than asked would otherwise slip past the block limit.
+            var bytes = await Wire.ReadContentAsync(result.Content, request.Count, ct).ConfigureAwait(false);
+            return new FileSourceReadAnswer(Convert.ToBase64String(bytes), result.Version, result.Size, result.Modified, result.ContentType);
+        })));
+    }
+
+    // The same refusal order as a write: name, connection, read-only, capability, all before the source runs.
+    private static IFileSource _Creating(IFileSourceProvider provider, FileRef parent, string? name, bool folder)
+    {
+        if (string.IsNullOrWhiteSpace(name) || name is "." or ".." || name.IndexOfAny(['/', '\\']) >= 0)
+        {
+            throw new FileSourceException(FileSourceErrorKind.Unsupported, "A name cannot contain a slash.");
+        }
+        var source = _Source(provider, parent, true);
+        return (folder ? source.Capabilities.CanCreateFolder : source.Capabilities.CanCreateFile) ? source
+            : throw new FileSourceException(FileSourceErrorKind.Forbidden, folder ? "This source does not allow new folders." : "This source does not allow new files.");
+    }
+
+    private static bool _Valid(FileEntry? entry) => entry is not null && !string.IsNullOrWhiteSpace(entry.Id) && !string.IsNullOrWhiteSpace(entry.Path)
+        && !string.IsNullOrWhiteSpace(entry.Name);
+
+    private static FileEntry _Created(FileEntry? entry) =>
+        entry is { } created && _Valid(created) ? created : throw new FileSourceException(FileSourceErrorKind.Unavailable, "The source did not confirm the new item.");
 
     private static void _RegisterLive(IPluginBackendChannel channel, IFileSourceProvider provider, Registration registration)
     {

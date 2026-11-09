@@ -318,6 +318,8 @@ internal static partial class Screenshotter
         ["sidebar-plugins"] = (width, height) => _PluginSidebarScene(width, height, folded: false),
         ["sidebar-plugins-folded"] = (width, height) => _PluginSidebarScene(width, height, folded: true),
         // AC-1750 (mockup AC-1749 v003): a kept tab with an unsaved marker beside the preview tab, italic and labelled.
+        ["file-browser"] = (width, height) => _FileBrowserScene(width, height, readOnly: false),
+        ["file-browser-readonly"] = (width, height) => _FileBrowserScene(width, height, readOnly: true),
         ["workspace-preview-tab"] = (_, _) => _WorkspacePreviewTabScene(),
         ["workspace-tab-overflow"] = (_, _) => _WorkspacePreviewTabScene(overflow: true),
         ["workspace-tab-overflow-middle"] = (_, _) => _WorkspacePreviewTabScene(overflow: true),
@@ -1593,6 +1595,8 @@ internal static partial class Screenshotter
         ["companion-customize-reordered"] = _StageCompanionDesk,
         ["companion-popout"] = _OpenPassivePopOut,
         ["markdown-file-images"] = _ExerciseNoteImages,
+        ["file-browser"] = _OpenFileBrowserFolder,
+        ["file-browser-readonly"] = _OpenFileBrowserFolder,
         ["session-file-drop"] = _LightFileDropOverlay,
         ["assistant-chat-file-drop"] = _LightFileDropOverlay,
         ["workspace-menu-preview"] = window => _OpenWorkspaceTabMenu(window, true),
