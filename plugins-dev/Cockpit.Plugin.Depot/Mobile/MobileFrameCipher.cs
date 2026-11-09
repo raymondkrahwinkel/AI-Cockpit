@@ -10,12 +10,13 @@ public sealed class MobileFrameCipher : IDisposable
 {
     public const byte Version = 1;
 
-    // One message, not a file transfer; bounds what a peer can make the other side allocate and decrypt.
-    public const int MaxPlaintextBytes = 1024 * 1024;
-
     private const int HeaderBytes = 1 + sizeof(ulong);
     private const int NonceBytes = 12;
     private const int TagBytes = 16;
+
+    // The relay carries at most 65,536 bytes per frame (DEP-629), header and tag included.
+    public const int MaxFrameBytes = 64 * 1024;
+    public const int MaxPlaintextBytes = MaxFrameBytes - HeaderBytes - TagBytes;
 
     private readonly AesGcm _send;
     private readonly AesGcm _receive;

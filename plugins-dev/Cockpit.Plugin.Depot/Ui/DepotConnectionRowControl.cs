@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
@@ -63,6 +64,9 @@ internal sealed class DepotConnectionRowControl : UserControl
     private readonly TextBlock _registration = new() { FontSize = 11, Opacity = 0.8, TextWrapping = TextWrapping.Wrap };
     private readonly Avalonia.Threading.DispatcherTimer _registrationTimer = new() { Interval = TimeSpan.FromSeconds(5) };
     private bool _readingRegistration;
+    private readonly Button _pairPhone = new() { Content = "Pair phone…", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0), IsVisible = false };
+    private readonly StackPanel _phones = new() { Spacing = 4, IsVisible = false };
+    private bool _readingPhones;
 
     public event Action? RemoveRequested;
     public event Action<DepotConnectionRowControl>? SynchroniseSettingsSelected;
@@ -133,14 +137,17 @@ internal sealed class DepotConnectionRowControl : UserControl
         // idiom SettingsHelpRow's "*,Auto" input+hint row uses, mirrored because the fixed column is on the left
         // here. Margin on the TextBlock replaces the StackPanel's Spacing, same idiom SettingsHelpRow uses for its
         // own "?" hint.
-        var signInRow = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*") };
+        var signInRow = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,Auto,*") };
         _authStatus.Margin = new Thickness(8, 0, 0, 0);
         Grid.SetColumn(_signIn, 0);
         Grid.SetColumn(_signOut, 1);
-        Grid.SetColumn(_authStatus, 2);
+        Grid.SetColumn(_pairPhone, 2);
+        Grid.SetColumn(_authStatus, 3);
         signInRow.Children.Add(_signIn);
         signInRow.Children.Add(_signOut);
+        signInRow.Children.Add(_pairPhone);
         signInRow.Children.Add(_authStatus);
+        _pairPhone.Click += async (_, _) => await PairPhoneAsync().ConfigureAwait(true);
 
         var panel = new StackPanel { Spacing = 6 };
         var brand = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), ColumnSpacing = 8 };
@@ -157,12 +164,17 @@ internal sealed class DepotConnectionRowControl : UserControl
         panel.Children.Add(_Hint("Settings use the AC-540 whitelist; keys and tokens never go along. Selecting this server turns sync off for the others. Active after restart."));
         panel.Children.Add(signInRow);
         panel.Children.Add(_registration);
+        panel.Children.Add(_phones);
         panel.Children.Add(tokenRow);
         panel.Children.Add(remove);
 
         Content = new Border { Padding = new Thickness(0, 8, 0, 12), Child = panel };
 
-        _registrationTimer.Tick += async (_, _) => await _RefreshRegistrationAsync();
+        _registrationTimer.Tick += async (_, _) =>
+        {
+            await _RefreshRegistrationAsync();
+            await _RefreshPhonesAsync(refresh: false);
+        };
         AttachedToVisualTree += async (_, _) =>
         {
             _registrationTimer.Start();
@@ -200,6 +212,109 @@ internal sealed class DepotConnectionRowControl : UserControl
         {
             _readingRegistration = false;
         }
+    }
+
+    // AC-2224: shown only while signed in, as are the paired phones beneath the registration line.
+    private void _SetSignedIn(bool signedIn)
+    {
+        _signOut.IsVisible = signedIn;
+        _pairPhone.IsVisible = signedIn;
+        _phones.IsVisible = signedIn;
+        if (signedIn)
+        {
+            _ = _RefreshPhonesAsync(refresh: true);
+        }
+    }
+
+    public async Task PairPhoneAsync()
+    {
+        await _host.ShowDialogAsync("Pair phone", () => new DepotPairPhoneDialog(_host.Channel, _id, (_name.Text ?? string.Empty).Trim()), 460, 540).ConfigureAwait(true);
+        await _RefreshPhonesAsync(refresh: true).ConfigureAwait(true);
+    }
+
+    private async Task _RefreshPhonesAsync(bool refresh)
+    {
+        if (_readingPhones || !_phones.IsVisible || !_IsUnderStoredIdentity())
+        {
+            return;
+        }
+
+        _readingPhones = true;
+        try
+        {
+            var answer = await _host.Channel.InvokeAsync(DepotMobileChannel.Phones,
+                JsonSerializer.SerializeToElement(new DepotMobileRequest(_id, Refresh: refresh), DepotChannel.Json)).ConfigureAwait(true);
+            if (answer.Deserialize<DepotPairedPhones>(DepotChannel.Json) is { } phones)
+            {
+                _ShowPhones(phones);
+            }
+        }
+        catch (Exception exception)
+        {
+            Trace.TraceWarning($"Depot: reading the paired phones of '{_id}' failed: {exception}");
+        }
+        finally
+        {
+            _readingPhones = false;
+        }
+    }
+
+    private void _ShowPhones(DepotPairedPhones paired)
+    {
+        _phones.Children.Clear();
+        _phones.Children.Add(new TextBlock { Text = "Paired phones", FontSize = 12, FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, 4, 0, 0) });
+        if (paired.Phones.Count == 0)
+        {
+            _phones.Children.Add(_Hint("No phone is paired with this Cockpit yet."));
+        }
+
+        foreach (var phone in paired.Phones)
+        {
+            _phones.Children.Add(_PhoneRow(phone));
+        }
+
+        if (paired.Phones.Count > 0 && paired.UnpairLink is { } link)
+        {
+            var unpair = new Button { Content = "Unpair in Depot ↗", Classes = { "Ghost", "Compact" }, HorizontalAlignment = HorizontalAlignment.Left };
+            ToolTip.SetTip(unpair, "Forget only stops this Cockpit trusting the phone. Unpairing in Depot also withdraws the phone's access.");
+            unpair.Click += async (_, _) =>
+            {
+                if (TopLevel.GetTopLevel(this) is { } top)
+                {
+                    await top.Launcher.LaunchUriAsync(new Uri(link)).ConfigureAwait(true);
+                }
+            };
+            _phones.Children.Add(unpair);
+        }
+    }
+
+    private Control _PhoneRow(DepotPairedPhone phone)
+    {
+        var forget = new Button { Content = "Forget", Classes = { "Compact" }, VerticalAlignment = VerticalAlignment.Center };
+        ToolTip.SetTip(forget, "Deletes this phone's key here. It can no longer reach this Cockpit until it pairs again.");
+        forget.Click += async (_, _) =>
+        {
+            try
+            {
+                await _host.Channel.InvokeAsync(DepotMobileChannel.Forget,
+                    JsonSerializer.SerializeToElement(new DepotMobileRequest(_id, phone.DeviceId), DepotChannel.Json)).ConfigureAwait(true);
+            }
+            catch (Exception exception)
+            {
+                Trace.TraceWarning($"Depot: forgetting a phone of '{_id}' failed: {exception}");
+            }
+
+            await _RefreshPhonesAsync(refresh: false).ConfigureAwait(true);
+        };
+        var name = new TextBlock { Text = phone.Name, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        var paired = new TextBlock { Text = $"Paired {phone.PairedAt.ToLocalTime().ToString("d MMM yyyy", CultureInfo.InvariantCulture)}", FontSize = 11, Opacity = 0.7, VerticalAlignment = VerticalAlignment.Center };
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto"), ColumnSpacing = 12 };
+        Grid.SetColumn(paired, 1);
+        Grid.SetColumn(forget, 2);
+        row.Children.Add(name);
+        row.Children.Add(paired);
+        row.Children.Add(forget);
+        return row;
     }
 
     public string Id => _id;
@@ -242,7 +357,7 @@ internal sealed class DepotConnectionRowControl : UserControl
                 PluginMcpAuthState.Authorized => "Signed in.",
                 _ => ReadyToSignInMessage,
             };
-            _signOut.IsVisible = state == PluginMcpAuthState.Authorized;
+            _SetSignedIn(state == PluginMcpAuthState.Authorized);
             if (state == PluginMcpAuthState.Authorized)
             {
                 await LoadBrandingAsync(cancellationToken).ConfigureAwait(true);
@@ -307,7 +422,7 @@ internal sealed class DepotConnectionRowControl : UserControl
             var outcome = await _host.SignInMcpServerAsync(stored.McpServerName).ConfigureAwait(true);
             if (outcome == PluginMcpSignInOutcome.Authorized)
             {
-                _signOut.IsVisible = true;
+                _SetSignedIn(true);
                 await LoadBrandingAsync().ConfigureAwait(true);
             }
             // Unreachable names the address the plugin actually tried — the outcome enum itself carries no detail
@@ -382,7 +497,7 @@ internal sealed class DepotConnectionRowControl : UserControl
             {
                 _storedName = registration.McpServerName;
                 _storedUrl = registration.Url;
-                _signOut.IsVisible = true;
+                _SetSignedIn(true);
                 await LoadBrandingAsync().ConfigureAwait(true);
             }
             _authStatus.Text = result?.Message ?? "Sign-in didn't complete — see the log, or try again.";
@@ -412,7 +527,7 @@ internal sealed class DepotConnectionRowControl : UserControl
         try
         {
             await _host.SignOutMcpServerAsync(storedName).ConfigureAwait(true);
-            _signOut.IsVisible = false;
+            _SetSignedIn(false);
             _authStatus.Text = ReadyToSignInMessage;
         }
         catch (Exception exception)

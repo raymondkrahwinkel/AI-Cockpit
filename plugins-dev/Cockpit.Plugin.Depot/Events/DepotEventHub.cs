@@ -5,7 +5,16 @@ using Microsoft.AspNetCore.SignalR.Client;
 
 namespace Cockpit.Plugin.Depot.Events;
 
-internal sealed record DepotEvent(string Topic, string Kind, string? Address, long Version);
+// AC-2224: a "devices" event (DEP-628) names the phone; DEP-629 adds its name, platform and pairing time.
+internal sealed record DepotEvent(
+    string Topic,
+    string Kind,
+    string? Address,
+    long Version,
+    string? DeviceId = null,
+    string? CockpitAuthorizationId = null,
+    string? Name = null,
+    DateTimeOffset? PairedAt = null);
 
 internal interface IDepotEventHub : IAsyncDisposable
 {

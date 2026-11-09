@@ -159,7 +159,7 @@ Every frame after the handshake, in either direction:
 |---|---|---|
 | 0 | 1 | version, `0x01` |
 | 1 | 8 | `counter`, unsigned 64-bit big-endian |
-| 9 | n | ciphertext, with 0 ≤ n ≤ 1 048 576 (`MobileFrameCipher.MaxPlaintextBytes`) |
+| 9 | n | ciphertext, with 0 ≤ n ≤ 65 511 (`MobileFrameCipher.MaxPlaintextBytes`), so a whole frame is at most 65 536 bytes, the relay's limit (DEP-629) |
 | 9 + n | 16 | GCM tag |
 
 ```

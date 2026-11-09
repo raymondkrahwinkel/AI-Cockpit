@@ -8,6 +8,10 @@ namespace Cockpit.Plugin.Depot.Events;
 
 internal sealed class DepotEventSubscriber : IAsyncDisposable
 {
+    // Depot has no "devices" subscription: it sends device events per listener of the user's valid grant, whatever that listener subscribed to (DEP-628), so "projects" is the subscription that carries them.
+    public const string DevicesTopic = "devices";
+    private const string ProjectsTopic = "projects";
+
     private readonly DepotConnectionRegistration _connection;
     private Lazy<HttpClient> _http;
     private readonly Func<HttpMessageHandler> _handler;
@@ -77,7 +81,7 @@ internal sealed class DepotEventSubscriber : IAsyncDisposable
                 var hub = await _EnsureHubAsync(cancellationToken).ConfigureAwait(false);
                 if (hub is not null && subscribe && wasConnected)
                 {
-                    await hub.SubscribeAsync(topic, cancellationToken).ConfigureAwait(false);
+                    await hub.SubscribeAsync(_HubTopic(topic), cancellationToken).ConfigureAwait(false);
                 }
             }
             finally
@@ -226,7 +230,7 @@ internal sealed class DepotEventSubscriber : IAsyncDisposable
         try
         {
             await hub.StartAsync(cancellationToken).ConfigureAwait(false);
-            foreach (var topic in _Topics())
+            foreach (var topic in _HubTopics())
             {
                 await hub.SubscribeAsync(topic, cancellationToken).ConfigureAwait(false);
             }
@@ -283,7 +287,8 @@ internal sealed class DepotEventSubscriber : IAsyncDisposable
     {
         if (_version != 0 && cockpitEvent.Version != _version + 1)
         {
-            _Resync(cockpitEvent.Topic);
+            // One counter covers every topic, so a gap may have been an event of any of them.
+            _ResyncAll();
         }
 
         _version = cockpitEvent.Version;
@@ -296,7 +301,7 @@ internal sealed class DepotEventSubscriber : IAsyncDisposable
         var hub = _hub;
         if (hub is not null)
         {
-            foreach (var topic in _Topics())
+            foreach (var topic in _HubTopics())
             {
                 await hub.SubscribeAsync(topic, _life.Token).ConfigureAwait(false);
             }
@@ -417,6 +422,10 @@ internal sealed class DepotEventSubscriber : IAsyncDisposable
             return [.. _subscriptions.Keys];
         }
     }
+
+    private List<string> _HubTopics() => [.. _Topics().Select(_HubTopic).Distinct()];
+
+    private static string _HubTopic(string topic) => topic == DevicesTopic ? ProjectsTopic : topic;
 
     private void _Remove(string topic, _Consumer consumer)
     {
