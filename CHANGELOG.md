@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-1786: new plugin Local files: add folders under Options › Plugins › Local files (or a Cockpit project folder as a shortcut) and browse, view and edit them in the Files browser. A folder is read only until you allow writing; nothing outside the added folders can be reached, a link that points outside shows Forbidden, and Cockpit's own state folder is always refused. On a server, an admin adds folders on the server's disk.
+
 - AC-2236: plugins with a file source get a file browser in the dock rail without building their own: pick a connection (also on a managed server), open folders, click a Markdown file to preview it or Edit it, add a file or folder, upload up to 1 MiB and download any size. A read-only connection shows no New, Upload or Edit (plugin SDK 3.79.0, UI SDK 3.27.0, host 0.168.0).
 
 - AC-2232: a maximized main window stays maximized after locking and unlocking Windows.

@@ -21,6 +21,7 @@ plugins-dev/Cockpit.Plugin.KimiProvider.Tests	33
 plugins-dev/Cockpit.Plugin.Kind.Tests	14
 plugins-dev/Cockpit.Plugin.Kubernetes.Tests	71
 plugins-dev/Cockpit.Plugin.LocalCi.Tests	21
+plugins-dev/Cockpit.Plugin.LocalFiles.Tests	10
 plugins-dev/Cockpit.Plugin.OpenRouterProvider.Tests	13
 plugins-dev/Cockpit.Plugin.OpencodeProvider.Tests	18
 plugins-dev/Cockpit.Plugin.Productivity.Tests	8
