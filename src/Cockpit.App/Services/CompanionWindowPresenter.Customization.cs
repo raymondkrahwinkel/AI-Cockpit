@@ -55,6 +55,11 @@ internal sealed partial class CompanionWindowPresenter
         _ = _SaveLayoutAsync();
     }
 
+    // Where a strip item comes from, as Customize shows it: the plugin's name, or Cockpit for the host's own.
+    private string _SourceOf(string id) => _customization.PluginId(id) is not { } plugin
+        ? "Cockpit"
+        : _cockpit().Plugins.Plugins.FirstOrDefault(row => row.FolderId == plugin)?.DisplayName ?? plugin;
+
     private void _OnCustomizationChanged()
     {
         _ApplyTools();

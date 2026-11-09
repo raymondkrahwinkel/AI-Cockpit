@@ -16,8 +16,25 @@ internal sealed class CompanionStatusCounters : StackPanel
     {
         _feed = feed;
         Orientation = Orientation.Horizontal;
-        Spacing = 8;
         _Refresh();
+        _Fit();
+    }
+
+    // AC-2190: the mockup's status item, 8px in from either side across a horizontal strip and 5px down a vertical one.
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == OrientationProperty)
+        {
+            _Fit();
+        }
+    }
+
+    private void _Fit()
+    {
+        var horizontal = Orientation == Orientation.Horizontal;
+        Spacing = horizontal ? 8 : 2;
+        Margin = horizontal ? new Thickness(8, 0) : new Thickness(0, 5);
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
@@ -57,7 +74,9 @@ internal sealed class CompanionStatusCounters : StackPanel
         }
         var pair = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
         pair.Children.Add(_Dot($"CockpitStatus{tone}Brush"));
-        pair.Children.Add(new TextBlock { Text = count.ToString(System.Globalization.CultureInfo.InvariantCulture), FontSize = 12 });
+        var number = new TextBlock { Text = count.ToString(System.Globalization.CultureInfo.InvariantCulture), FontSize = 12, FontWeight = Avalonia.Media.FontWeight.SemiBold };
+        number.Bind(TextBlock.ForegroundProperty, number.GetResourceObservable("CockpitTextPrimaryBrush"));
+        pair.Children.Add(number);
         ToolTip.SetTip(pair, $"{name}: {count}");
         Children.Add(pair);
     }

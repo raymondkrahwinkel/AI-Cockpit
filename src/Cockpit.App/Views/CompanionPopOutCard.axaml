@@ -1,7 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="Cockpit.App.Views.CompanionPopOutCard">
-    <Border Margin="16" ClipToBounds="True" CornerRadius="16" BorderThickness="1"
+    <Border Margin="16" ClipToBounds="True" CornerRadius="{StaticResource CockpitPanelRadius}" BorderThickness="1"
             Background="{DynamicResource CockpitPanelBgBrush}" BorderBrush="{DynamicResource CockpitHairlineBrush}"
             BoxShadow="{DynamicResource CockpitFloatingCardShadow}">
         <ScrollViewer x:Name="Scroller" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"/>

@@ -43,6 +43,8 @@ internal static class CockpitWindowChrome
     private static readonly Lazy<Bitmap> AppMark = new(() =>
         new Bitmap(AssetLoader.Open(new Uri("avares://Cockpit.App/Assets/BrandMark.png"))));
 
+    internal static Bitmap BrandMark => AppMark.Value;
+
     // AC-1013: `title`/`subtitle` are ignored by `CockpitTitleBar.Window` (its own name/mark, AC-430); `onSettings`
     // adds a settings gear to a plugin dialog. AC-1487: `remoteServer` gives the app window the `--remote` look of
     // mockup v2 tab 5: a blue rim, a blue bar, and the server with its "no state on this machine" chip.

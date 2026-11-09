@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -6,39 +7,61 @@ using Cockpit.Plugin.Depot.Contracts;
 using Cockpit.Plugins.Abstractions.CompanionTools;
 using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.Plugins.Abstractions.UI.Files;
+using Material.Icons;
+using Material.Icons.Avalonia;
 
 namespace Cockpit.Plugin.Depot.UI;
 
-// The pop-out of the "Live note" item: pick a live note, then the host's live editor over it, or a way to open it where editing works.
+// The pop-out of the "Live note" item, after the companion-strook mockup (AC-2190): the live notes as tabs, the host's
+// live editor over the picked one in a fixed-height well, and a foot with where it lives and whether new notes open
+// by themselves — or a way to open the note where editing works.
 internal sealed class DepotLiveNoteView : UserControl
 {
+    // The mockup's pop-out is 400 wide; the host adds its body padding round this.
+    private const double ViewWidth = 370;
+    private const double NoteHeight = 190;
+
     private readonly ICockpitUiHost _host;
     private readonly DepotNotesModel _notes;
     private readonly Func<IReadOnlyList<DepotConnectionRegistration>> _connections;
     private readonly ICompanionToolContext _context;
-    private readonly ComboBox _picker = new() { HorizontalAlignment = HorizontalAlignment.Stretch };
-    private readonly CheckBox _auto = new() { Content = "Open automatically" };
+    private readonly WrapPanel _tabs = new();
+    private readonly CheckBox _auto = new() { Content = "Open new notes automatically", Classes = { "Switch" }, FontSize = 11 };
+    private readonly TextBlock _where = new() { FontSize = 11, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
     private readonly ContentControl _body = new();
     private List<(string ConnectionId, DepotLiveNote Note)> _items = [];
+    private int _selected = -1;
     private ILiveMarkdownEditor? _editor;
     private string? _shown;
-    private bool _filling;
 
     public DepotLiveNoteView(ICockpitUiHost host, DepotNotesModel notes, Func<IReadOnlyList<DepotConnectionRegistration>> connections, ICompanionToolContext context)
     {
         (_host, _notes, _connections, _context) = (host, notes, connections, context);
+        Width = ViewWidth;
         _auto.IsChecked = context.Storage.Get<bool?>(DepotLiveNoteTool.AutoOpenKey) != false;
         _auto.IsCheckedChanged += (_, _) => context.Storage.Set(DepotLiveNoteTool.AutoOpenKey, _auto.IsChecked == true);
-        _picker.SelectionChanged += (_, _) =>
+        _where.Bind(TextBlock.ForegroundProperty, _where.GetResourceObservable("CockpitTextSecondaryBrush"));
+        _auto.Bind(ForegroundProperty, _auto.GetResourceObservable("CockpitTextSecondaryBrush"));
+
+        // The mockup's .seg: pill tabs in an inset track.
+        var track = new Border { CornerRadius = new CornerRadius(20), Padding = new Thickness(2), BorderThickness = new Thickness(1), HorizontalAlignment = HorizontalAlignment.Left, Child = _tabs };
+        track.Bind(Border.BackgroundProperty, track.GetResourceObservable("CockpitInsetBgBrush"));
+        track.Bind(Border.BorderBrushProperty, track.GetResourceObservable("CockpitHairlineBrush"));
+
+        var saved = new MaterialIcon { Kind = MaterialIconKind.CloudCheckOutline, Width = 14, Height = 14, VerticalAlignment = VerticalAlignment.Center };
+        saved.Bind(MaterialIcon.ForegroundProperty, saved.GetResourceObservable("CockpitStatusDoneBrush"));
+        DockPanel.SetDock(saved, Dock.Left);
+        DockPanel.SetDock(_auto, Dock.Right);
+        _where.Margin = new Thickness(6, 0, 8, 0);
+        var foot = new Border
         {
-            if (!_filling && _picker.SelectedIndex >= 0)
-            {
-                var (connectionId, note) = _items[_picker.SelectedIndex];
-                context.Storage.Set(DepotLiveNoteTool.NoteKey, DepotLiveNoteTool.KeyOf(connectionId, note));
-                _Show();
-            }
+            BorderThickness = new Thickness(0, 1, 0, 0),
+            Padding = new Thickness(0, 8, 0, 0),
+            Child = new DockPanel { Children = { saved, _auto, _where } },
         };
-        Content = new StackPanel { Spacing = 8, Children = { _picker, _auto, _body } };
+        foot.Bind(Border.BorderBrushProperty, foot.GetResourceObservable("CockpitHairlineSoftBrush"));
+
+        Content = new StackPanel { Spacing = 8, Children = { track, _body, foot } };
         AttachedToVisualTree += (_, _) =>
         {
             _notes.Changed += _OnChanged;
@@ -57,15 +80,36 @@ internal sealed class DepotLiveNoteView : UserControl
     {
         _items = [.. _notes.Snapshot().SelectMany(page => page.Notes.Select(note => (page.ConnectionId, note)))];
         var followed = DepotLiveNoteTool.Followed(_notes, _context.Storage.Get<string>(DepotLiveNoteTool.NoteKey));
-        _filling = true;
-        _picker.ItemsSource = _items.Select(item => item.Note.Title.Length > 0 ? $"{item.Note.Title} · {item.Note.Project}" : item.Note.Path).ToList();
-        _picker.SelectedIndex = followed is { } pick ? _items.FindIndex(item => item == pick) : -1;
-        _filling = false;
+        _selected = followed is { } pick ? _items.FindIndex(item => item == pick) : -1;
+        _PaintTabs();
         var key = followed is { } now ? DepotLiveNoteTool.KeyOf(now.ConnectionId, now.Note) : null;
         if (_body.Content is null || key != _shown)
         {
             _Show();
         }
+    }
+
+    private void _PaintTabs()
+    {
+        _tabs.Children.Clear();
+        for (var index = 0; index < _items.Count; index++)
+        {
+            var (connectionId, note) = _items[index];
+            var tab = new Button { Content = note.Title.Length > 0 ? note.Title : note.Path, Classes = { "Segment" } };
+            tab.Classes.Set("on", index == _selected);
+            ToolTip.SetTip(tab, $"{note.Title} · {note.Project}");
+            var picked = index;
+            tab.Click += (_, _) =>
+            {
+                _context.Storage.Set(DepotLiveNoteTool.NoteKey, DepotLiveNoteTool.KeyOf(connectionId, note));
+                _selected = picked;
+                _PaintTabs();
+                _Show();
+            };
+            _tabs.Children.Add(tab);
+        }
+
+        ((Control)_tabs.Parent!).IsVisible = _items.Count > 0;
     }
 
     private void _Leave()
@@ -79,19 +123,33 @@ internal sealed class DepotLiveNoteView : UserControl
     private void _Show()
     {
         _Leave();
-        if (_picker.SelectedIndex < 0)
+        if (_selected < 0)
         {
-            _body.Content = _Text("No live notes right now.");
+            _where.Text = "Live notes · Depot";
+            _body.Content = _Text("No live notes right now. When one starts, it opens here so you can see who is typing.");
             return;
         }
 
-        var (connectionId, note) = _items[_picker.SelectedIndex];
+        var (connectionId, note) = _items[_selected];
         _shown = DepotLiveNoteTool.KeyOf(connectionId, note);
+        _where.Text = $"Live in Depot · {note.Project}";
         var file = DepotFileRefs.Create(connectionId, note.Address, note.Path);
         if (_host.CreateLiveMarkdownEditor(new LiveMarkdownEditorOptions(DepotMarkdownFiles.WorkspaceTypeId, file)) is { } editor)
         {
             _editor = editor;
-            _body.Content = editor.View;
+            // The mockup's .note: a fixed-height well on the window colour; the note scrolls inside it.
+            var well = new Border
+            {
+                Height = NoteHeight,
+                ClipToBounds = true,
+                CornerRadius = new CornerRadius(9),
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(2),
+                Child = new ScrollViewer { Content = editor.View, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled },
+            };
+            well.Bind(Border.BackgroundProperty, well.GetResourceObservable("CockpitWindowBgBrush"));
+            well.Bind(Border.BorderBrushProperty, well.GetResourceObservable("CockpitHairlineSoftBrush"));
+            _body.Content = well;
             return;
         }
 

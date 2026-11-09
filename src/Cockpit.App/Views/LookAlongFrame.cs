@@ -68,31 +68,47 @@ internal sealed class LookAlongTabWindow : Window
 
     public void ShowLastLook(string text) => _lastLook.Text = text;
 
-    // The card on its own, for this window and for the scene that renders it on a stand-in screen.
+    // The card on its own, for this window and for the scene that renders it on a stand-in screen. AC-2190: the
+    // companion-strook mockup's tab — one 30px line on the cyan of the frame, dark ink, Stop as the inverted button.
     internal static Border CreateCard(TextBlock lastLook, Action stop)
     {
-        var icon = new MaterialIcon { Kind = MaterialIconKind.Eye, Width = 16, Height = 16, VerticalAlignment = VerticalAlignment.Center };
-        icon.Bind(MaterialIcon.ForegroundProperty, icon.GetResourceObservable("CockpitStatusBusyBrush"));
-        var title = new TextBlock { Text = "The assistant may look at this screen", FontSize = 13, FontWeight = FontWeight.Medium };
-        title.Bind(TextBlock.ForegroundProperty, title.GetResourceObservable("CockpitTextPrimaryBrush"));
-        lastLook.Bind(TextBlock.ForegroundProperty, lastLook.GetResourceObservable("CockpitTextSecondaryBrush"));
-        var button = new Button { Content = "Stop", Classes = { "Compact" }, VerticalAlignment = VerticalAlignment.Center };
+        var icon = new MaterialIcon { Kind = MaterialIconKind.EyeOutline, Width = 15, Height = 15, VerticalAlignment = VerticalAlignment.Center };
+        icon.Bind(MaterialIcon.ForegroundProperty, icon.GetResourceObservable("CockpitTextOnStatusBrush"));
+        var title = new TextBlock { Text = "The assistant may look at this screen", FontSize = 12, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center };
+        title.Bind(TextBlock.ForegroundProperty, title.GetResourceObservable("CockpitTextOnStatusBrush"));
+        lastLook.FontSize = 11;
+        lastLook.FontWeight = FontWeight.Medium;
+        lastLook.Opacity = 0.85;
+        lastLook.VerticalAlignment = VerticalAlignment.Center;
+        lastLook.Bind(TextBlock.ForegroundProperty, lastLook.GetResourceObservable("CockpitTextOnStatusBrush"));
+        var label = new TextBlock { Text = "Stop", FontSize = 11.5, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center };
+        label.Bind(TextBlock.ForegroundProperty, label.GetResourceObservable("CockpitStatusBusyBrush"));
+        var button = new Button
+        {
+            Content = label,
+            Height = 22,
+            Padding = new Thickness(8, 0),
+            CornerRadius = new CornerRadius(5),
+            BorderThickness = new Thickness(0),
+            VerticalAlignment = VerticalAlignment.Center,
+            VerticalContentAlignment = VerticalAlignment.Center,
+        };
+        button.Bind(Button.BackgroundProperty, button.GetResourceObservable("CockpitTextOnStatusBrush"));
         button.Click += (_, _) => stop();
         var card = new Border
         {
             Margin = new Thickness(CompanionPopOutCard.ShadowMargin),
-            Padding = new Thickness(12, 8),
-            BorderThickness = new Thickness(2),
-            CornerRadius = new CornerRadius(12),
+            Height = 30,
+            Padding = new Thickness(10, 0, 4, 0),
+            CornerRadius = new CornerRadius(7),
             Child = new StackPanel
             {
                 Orientation = Orientation.Horizontal,
-                Spacing = 10,
-                Children = { icon, new StackPanel { Spacing = 2, Children = { title, lastLook } }, button },
+                Spacing = 8,
+                Children = { icon, title, lastLook, button },
             },
         };
-        card.Bind(Border.BackgroundProperty, card.GetResourceObservable("CockpitFloatingCardBrush"));
-        card.Bind(Border.BorderBrushProperty, card.GetResourceObservable("CockpitStatusBusyBrush"));
+        card.Bind(Border.BackgroundProperty, card.GetResourceObservable("CockpitStatusBusyBrush"));
         card.Bind(Border.BoxShadowProperty, card.GetResourceObservable("CockpitFloatingCardShadow"));
 
         return card;

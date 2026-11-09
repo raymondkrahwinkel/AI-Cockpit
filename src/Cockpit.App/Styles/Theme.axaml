@@ -72,7 +72,8 @@
                     <Color x:Key="CockpitScrimColor">#b30f1116</Color>
                     <Color x:Key="CockpitCurtainColor">#CC0f1116</Color>
                     <Color x:Key="CockpitFloatingCardColor">#F01a1d24</Color>
-                    <BoxShadows x:Key="CockpitFloatingCardShadow">0 8 24 0 #80000000</BoxShadows>
+                    <BoxShadows x:Key="CockpitFloatingCardShadow">0 10 28 0 #66000000, 0 2 6 0 #40000000</BoxShadows>
+                    <BoxShadows x:Key="CockpitCompanionLookAlongShadow">0 0 0 3 #1F22D3EE, 0 10 28 0 #66000000, 0 2 6 0 #40000000</BoxShadows>
                     <BoxShadows x:Key="CockpitAccentGlowShadow">0 0 0 4 #2E2563EB</BoxShadows>
 
                     <Color x:Key="CockpitUserBubbleColor">#28313B</Color>
@@ -155,7 +156,8 @@
                          surface, and this variant's ink is dark — so each is the alpha echo of its light surface. -->
                     <Color x:Key="CockpitCurtainColor">#CCf1f3f7</Color>
                     <Color x:Key="CockpitFloatingCardColor">#F0ffffff</Color>
-                    <BoxShadows x:Key="CockpitFloatingCardShadow">0 8 24 0 #40101828</BoxShadows>
+                    <BoxShadows x:Key="CockpitFloatingCardShadow">0 10 28 0 #2E1A233A, 0 2 6 0 #1F1A233A</BoxShadows>
+                    <BoxShadows x:Key="CockpitCompanionLookAlongShadow">0 0 0 3 #1F0E7490, 0 10 28 0 #2E1A233A, 0 2 6 0 #1F1A233A</BoxShadows>
                     <BoxShadows x:Key="CockpitAccentGlowShadow">0 0 0 4 #2E2563EB</BoxShadows>
 
                     <Color x:Key="CockpitUserBubbleColor">#d7e3f7</Color>
@@ -695,6 +697,16 @@
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="CornerRadius" Value="{StaticResource CockpitControlRadius}"/>
         <Setter Property="Padding" Value="0,4"/>
+    </Style>
+    <!-- AC-2190: a Companion pop-out drawn as a flyout (the screenshot recipients) gets the pop-out's own panel radius
+         and no inner padding, so its head and foot sit where every other Companion pop-out has them. -->
+    <Style Selector="FlyoutPresenter.companionPanel">
+        <Setter Property="CornerRadius" Value="{StaticResource CockpitPanelRadius}"/>
+        <Setter Property="Padding" Value="0"/>
+    </Style>
+    <!-- The Companion's pick row (CompanionPanelChrome.PickRow): the picked one keeps the selection wash. -->
+    <Style Selector="Button.companionPickRow.selected /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource CockpitAccentSelectionBrush}"/>
     </Style>
     <!-- A flat flyout row: the Simple rail's row shape, lit with SecondaryBg under the pointer like the picker's selected item. -->
     <Style Selector="Button.Subtle.Row">
@@ -1973,6 +1985,19 @@
          announce itself in a colour it does not have anything to report with. -->
     <Style Selector="Button.assistantIndicatorChip.unavailable">
         <Setter Property="Opacity" Value="0.75"/>
+    </Style>
+    <!-- AC-2190: the Companion strip's chip — the strip's 34px item height, a width floor rather than a fixed width
+         (a long state widens the strip instead of losing words), the ring hugging the left edge. -->
+    <Style Selector="Button.assistantIndicatorChip.strip">
+        <Setter Property="MinHeight" Value="34"/>
+        <Setter Property="Height" Value="34"/>
+        <Setter Property="MinWidth" Value="176"/>
+        <Setter Property="Padding" Value="3,0,8,0"/>
+        <Setter Property="HorizontalAlignment" Value="Left"/>
+    </Style>
+    <Style Selector="TextBlock.assistantIndicatorStripDetail">
+        <Setter Property="FontSize" Value="10.5"/>
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
     </Style>
 
     <!-- Rail form (criterion 6/19 — the sidebar collapsed to its icon strip): the same badge, no chip chrome

@@ -19,7 +19,10 @@ namespace Cockpit.App.Views;
 public partial class CompanionWindow : Window
 {
     private const string BoundsKey = "companion";
-    private const double PopOutWidth = 360;
+    private const double PopOutWidth = 300;
+    private const double OwnHeadPopOutWidth = 340;
+    private const double CustomizeWidth = 360;
+    private const string ScreenshotToolId = "cockpit.screenshot";
 
     private readonly IWindowBoundsStore? _windowBoundsStore;
     private readonly DispatcherTimer _positionSaveTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
@@ -110,7 +113,8 @@ public partial class CompanionWindow : Window
         var layout = horizontal ? Avalonia.Layout.Orientation.Horizontal : Avalonia.Layout.Orientation.Vertical;
         Strip.Orientation = layout;
         ToolsHost.Orientation = layout;
-        LookAlong.Orientation = layout;
+        LookAlongContent.Orientation = layout;
+        Card.Classes.Set("vertical", !horizontal);
         GripIcon.Kind = horizontal ? MaterialIconKind.DragVertical : MaterialIconKind.DragHorizontal;
         OrientationLabel.Text = horizontal ? "Vertical strip" : "Horizontal strip";
         _popOuts.Orientation = orientation;
@@ -136,6 +140,7 @@ public partial class CompanionWindow : Window
         EmptyState.IsVisible = items.Count == 0;
         ToolsHost.IsVisible = items.Count > 0;
         ToolsHost.Children.Clear();
+        Strip.Children.Remove(LookAlong);
         _controls.Clear();
         foreach (var item in items)
         {
@@ -145,6 +150,7 @@ public partial class CompanionWindow : Window
                 control = item.CreateView();
                 if (control is AssistantIndicator indicator)
                 {
+                    indicator.IsStrip = true;
                     indicator.Collapsed = Orientation == CompanionOrientation.Vertical;
                 }
             }
@@ -157,6 +163,23 @@ public partial class CompanionWindow : Window
 
             _controls[item.Id] = (item, control);
             ToolsHost.Children.Add(control);
+
+            // AC-2190: the mockup's hairline between the assistant and the tools, and the look-along pill right after
+            // the screenshot item (or, without one, after that hairline).
+            if (item.Id == CompanionCustomizationModel.AssistantId)
+            {
+                ToolsHost.Children.Add(new Border { Classes = { "companionStripSeparator" } });
+            }
+            else if (item.Id == ScreenshotToolId)
+            {
+                ToolsHost.Children.Add(LookAlong);
+            }
+        }
+
+        if (LookAlong.Parent is null)
+        {
+            var afterSeparator = ToolsHost.Children.Count > 0 && ToolsHost.Children[0] is AssistantIndicator ? 2 : 0;
+            ToolsHost.Children.Insert(Math.Min(afterSeparator, ToolsHost.Children.Count), LookAlong);
         }
 
         Dispatcher.UIThread.Post(KeepOnScreen, DispatcherPriority.Loaded);
@@ -176,9 +199,10 @@ public partial class CompanionWindow : Window
     {
         var active = remaining is not null;
         LookAlong.IsVisible = active;
-        LookAlongTimer.Text = remaining;
-        Card.BorderThickness = new Thickness(active ? 2 : 1);
+        LookAlongTimer.Text = remaining is null ? null : $"Looking · {remaining}";
+        ToolTip.SetTip(LookAlong, remaining is null ? null : $"The assistant may look at your screen for {remaining} more");
         Card.Bind(Border.BorderBrushProperty, Card.GetResourceObservable(active ? "CockpitStatusBusyBrush" : "CockpitHairlineBrush"));
+        Card.Bind(Border.BoxShadowProperty, Card.GetResourceObservable(active ? "CockpitCompanionLookAlongShadow" : "CockpitFloatingCardShadow"));
     }
 
     // Where the strip and its open pop-outs are on the desktop, for something that must not cover them.
@@ -195,13 +219,17 @@ public partial class CompanionWindow : Window
 
     public void ClosePopOuts() => _popOuts.CloseAll();
 
-    internal void ConfigureCustomization(CompanionCustomizationModel model, Func<string, Task> enable)
+    internal void ConfigureCustomization(CompanionCustomizationModel model, Func<string, Task> enable, Func<string, string>? source = null)
     {
         CustomizeItem.Click += (_, _) =>
         {
             MoreButton.Flyout?.Hide();
             _popOuts.Toggle("companion.customize", MoreButton,
-                new CompanionCustomizePanel(model, enable, () => _popOuts.Close("companion.customize")), 400);
+                new CompanionCustomizePanel(model, enable, () => _popOuts.Close("companion.customize"), () =>
+                {
+                    _popOuts.Close("companion.customize");
+                    MoreButton.Flyout?.ShowAt(MoreButton);
+                }, source), CustomizeWidth);
         };
     }
 
@@ -255,10 +283,19 @@ public partial class CompanionWindow : Window
             return;
         }
 
-        var title = new TextBlock { Text = item.Title, FontSize = 13, FontWeight = FontWeight.Medium };
-        title.Bind(TextBlock.ForegroundProperty, title.GetResourceObservable("CockpitTextPrimaryBrush"));
-        var content = new StackPanel { Margin = new Thickness(16), Spacing = 10, Children = { title, item.CreateView() } };
-        _popOuts.Toggle(item.Id, button, content, PopOutWidth, showActivated);
+        // AC-2190: a plugin's view under the head every Companion pop-out has — its title and a close.
+        var view = item.CreateView();
+        Control content = view;
+        var width = OwnHeadPopOutWidth;
+        if (!item.OwnHead)
+        {
+            // A plugin view that sets its own width gets a pop-out that fits it; any other gets the mockup's 300.
+            width = double.IsNaN(view.Width) ? PopOutWidth : view.Width + CompanionPanelChrome.BodyMargin.Left + CompanionPanelChrome.BodyMargin.Right + 2;
+            view.Margin = CompanionPanelChrome.BodyMargin;
+            content = new StackPanel { Children = { CompanionPanelChrome.Header(item.Title, () => _popOuts.Close(item.Id)), view } };
+        }
+
+        _popOuts.Toggle(item.Id, button, content, width, showActivated);
     }
 
     private void _Change(CompanionOrientation orientation, bool alwaysOnTop)

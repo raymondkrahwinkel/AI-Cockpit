@@ -118,6 +118,30 @@ internal sealed class CompanionCustomizationModel
         Changed?.Invoke();
     }
 
+    // AC-2190: a drag lands the item where the target is — after it when coming from above, before it from below.
+    public void MoveTo(string id, string target)
+    {
+        var visible = OnStrip.ToList();
+        if (id == AssistantId || target == AssistantId || id == target || !visible.Contains(id) || !visible.Contains(target))
+        {
+            return;
+        }
+        var to = _order.IndexOf(target);
+        _order.Remove(id);
+        _order.Insert(to, id);
+        Changed?.Invoke();
+    }
+
+    // AC-2190: the default strip again; the plugins' items go back under Available, as new ones do.
+    public void Reset()
+    {
+        var tools = Tools;
+        var plugins = new Dictionary<string, string>(_plugins);
+        Restore(null);
+        Merge(tools, id => plugins.GetValueOrDefault(id));
+        Changed?.Invoke();
+    }
+
     public void Forget(string id)
     {
         if (!Unavailable.Contains(id))

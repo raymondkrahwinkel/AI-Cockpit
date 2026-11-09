@@ -1,11 +1,10 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Layout;
+using Cockpit.App.Controls;
 using Avalonia.Threading;
-using Avalonia.VisualTree;
 using Cockpit.App.Files;
 using Cockpit.App.Views;
-using Cockpit.Core.Layout;
-using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Files;
 using Material.Icons;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -14,54 +13,48 @@ namespace Cockpit.App;
 
 internal static partial class Screenshotter
 {
-    // A strip with a note tool and its pop-out holding the live editor over an in-memory live source, two other people in the file.
+    // The live-note pop-out under its strip item, as the mockup's "live" scene. The Depot plugin's own view cannot be
+    // built from the host, so this lays out the same pieces it does (DepotLiveNoteView): the notes as tabs, the host's
+    // live editor in a 190px well, and the foot — under the head every plugin pop-out gets.
     private static Window _CompanionLiveNoteScene(int width, int height)
     {
-        var window = new CompanionWindow(null);
-        window.SetTools(
-        [
-            _CompanionSceneItems()[0],
-            new("scene.live-note", "Live note", "Live note", string.Empty, MaterialIconKind.NoteTextOutline,
-                new SideMenuButtonBadge { Primary = 2 }, () => new TextBlock(), Inline: false),
-        ]);
-        var canvas = new Canvas { Width = width, Height = height, Tag = window };
-        canvas.Bind(Panel.BackgroundProperty, canvas.GetResourceObservable("CockpitWindowBgBrush"));
-        canvas.Children.Add(window.TakeCard());
-
-        return new Window { Width = width, Height = height, Content = canvas };
-    }
-
-    private static void _StageCompanionLiveNote(Window scene)
-    {
-        var canvas = (Canvas)scene.Content!;
-        var card = (Control)canvas.Children[0];
-        var workArea = new PixelRect(0, 0, (int)canvas.Width, (int)canvas.Height);
-        var size = _Settled(scene, card);
-        var at = new PixelPoint(workArea.Width - size.Width - 24, 24);
-        Canvas.SetLeft(card, at.X);
-        Canvas.SetTop(card, at.Y);
-        card.Measure(new Size(size.Width, size.Height));
-        card.Arrange(new Rect(at.X, at.Y, size.Width, size.Height));
-
         var channel = new FileSceneChannel(PresenceNote, writable: true, live: true, presence: true);
         var editor = new LiveMarkdownEditorView(new FileSourceChannelClient(channel), new FileRef("scene", "idea", "Meetings/2026-10-28 Weekly sync.md"), NullLogger.Instance);
-        var body = new StackPanel { Margin = new Thickness(16), Spacing = 10, Children = { new TextBlock { Text = "Live note", FontSize = 13, FontWeight = Avalonia.Media.FontWeight.Medium }, editor } };
-        var popOut = new CompanionPopOutCard { Body = body };
         for (var pass = 0; pass < 20; pass++)
         {
             Dispatcher.UIThread.RunJobs();
             Thread.Sleep(5);
         }
 
-        var button = card.GetVisualDescendants().OfType<CompanionStripButton>().Single();
-        var corner = button.TranslatePoint(default, card) ?? default;
-        var item = new PixelRect(at.X + (int)corner.X, at.Y + (int)corner.Y, (int)button.Bounds.Width, (int)button.Bounds.Height);
-        var desired = new PixelSize(360, 780);
-        if (CompanionPopOutPlacer.Place(new PixelRect(24, 24, workArea.Width - 48, workArea.Height - 48), new PixelRect(at, size), CompanionOrientation.Horizontal, item, desired, []) is not { } placement)
+        var tabs = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1 };
+        tabs.Children.Add(new Button { Content = "Weekly sync", Classes = { "Segment", "on" } });
+        tabs.Children.Add(new Button { Content = "Standup notes", Classes = { "Segment" } });
+        var track = new Border { CornerRadius = new CornerRadius(20), Padding = new Thickness(2), BorderThickness = new Thickness(1), HorizontalAlignment = HorizontalAlignment.Left, Child = tabs };
+        track.Bind(Border.BackgroundProperty, track.GetResourceObservable("CockpitInsetBgBrush"));
+        track.Bind(Border.BorderBrushProperty, track.GetResourceObservable("CockpitHairlineBrush"));
+        var well = new Border
         {
-            throw new InvalidOperationException("The live-note pop-out has no room on the stand-in screen.");
-        }
+            Height = 190, ClipToBounds = true, CornerRadius = new CornerRadius(9), BorderThickness = new Thickness(1), Padding = new Thickness(2),
+            Child = new ScrollViewer { Content = editor, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled },
+        };
+        well.Bind(Border.BackgroundProperty, well.GetResourceObservable("CockpitWindowBgBrush"));
+        well.Bind(Border.BorderBrushProperty, well.GetResourceObservable("CockpitHairlineSoftBrush"));
+        var saved = CockpitIcons.Icon(MaterialIconKind.CloudCheckOutline, 14);
+        saved.Bind(Material.Icons.Avalonia.MaterialIcon.ForegroundProperty, saved.GetResourceObservable("CockpitStatusDoneBrush"));
+        var auto = new CheckBox { Content = "Open new notes automatically", Classes = { "Switch" }, FontSize = 11, IsChecked = true };
+        var where = CompanionPanelChrome.Text("Live in Depot · cockpit", "CockpitTextSecondaryBrush", 11);
+        where.Margin = new Thickness(6, 0, 8, 0);
+        where.VerticalAlignment = VerticalAlignment.Center;
+        DockPanel.SetDock(saved, Dock.Left);
+        DockPanel.SetDock(auto, Dock.Right);
+        var foot = new Border { BorderThickness = new Thickness(0, 1, 0, 0), Padding = new Thickness(0, 8, 0, 0), Child = new DockPanel { Children = { saved, auto, where } } };
+        foot.Bind(Border.BorderBrushProperty, foot.GetResourceObservable("CockpitHairlineSoftBrush"));
+        var view = new StackPanel { Width = 370, Spacing = 8, Margin = CompanionPanelChrome.BodyMargin, Children = { track, well, foot } };
+        var body = new StackPanel { Children = { CompanionPanelChrome.Header("Live note", () => { }), view } };
 
-        _Put(canvas, _Inflate(placement.Bounds, CompanionPopOutCard.ShadowMargin), popOut);
+        var strip = new CompanionWindow(null);
+        strip.SetTools(_CompanionSceneItems(livePeople: 2));
+
+        return _CompanionDeskScene(width, height, new CompanionDesk(strip, card => _StripItem(card, "depot.live-note"), body, 400));
     }
 }

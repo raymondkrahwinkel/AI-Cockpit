@@ -13,4 +13,6 @@ internal sealed record CompanionStripItem(
     MaterialIconKind? IconKind,
     SideMenuButtonBadge? Badge,
     Func<Control> CreateView,
-    bool Inline, Func<Control>? CreateStripContent = null);
+    bool Inline, Func<Control>? CreateStripContent = null,
+    // AC-2190: the view draws its own pop-out head (status, notifications); others get the shared one with the title.
+    bool OwnHead = false);
