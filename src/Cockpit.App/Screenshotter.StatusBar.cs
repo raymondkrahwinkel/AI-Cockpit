@@ -15,6 +15,18 @@ namespace Cockpit.App;
 // AC-2028: the status bar at rest and busy, the test-runs dialog and the disk panel.
 internal static partial class Screenshotter
 {
+    private static void _HoverStatusMeters(Window window)
+    {
+        _UseDisks(window, critical: false, open: false);
+        var buttons = window.GetVisualDescendants().OfType<Button>();
+        var disk = buttons.OfType<DiskStorageStatus>().Single();
+        var cockpit = (CockpitViewModel)(window.DataContext ?? throw new InvalidOperationException("Status bar scene has no view model."));
+        var cpu = buttons.Single(button => button.Command == cockpit.ToggleResourcePanelCommand);
+        ((IPseudoClasses)disk.Classes).Set(":pointerover", true);
+        ((IPseudoClasses)cpu.Classes).Set(":pointerover", true);
+        Dispatcher.UIThread.RunJobs();
+    }
+
     private static MainWindow _StatusBarScene(bool busy)
     {
         var cockpit = new CockpitViewModel();
