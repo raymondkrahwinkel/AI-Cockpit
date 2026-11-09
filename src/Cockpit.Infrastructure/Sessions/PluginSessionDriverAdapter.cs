@@ -155,7 +155,8 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
             {
                 var confineRoot = launchOptions?.GetValueOrDefault(WellKnownPluginSessionOptions.ConfineFileToolsToWorkingDirectory) == "true" ? workingDirectory : null;
                 await gateway.BindLaunchAsync(paneId, projectId, workingDirectory, confineRoot, Profile?.Label,
-                    selection is ExactMcpServerSelection { AssistantManaged: true }, cancellationToken, stdioEnvironment).ConfigureAwait(false);
+                    selection is ExactMcpServerSelection { AssistantManaged: true }, cancellationToken, stdioEnvironment,
+                    launchOptions?.GetValueOrDefault(WellKnownPluginSessionOptions.Brain)).ConfigureAwait(false);
             }
             catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
             {

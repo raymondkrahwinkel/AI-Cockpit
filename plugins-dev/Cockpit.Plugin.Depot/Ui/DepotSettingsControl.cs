@@ -71,6 +71,12 @@ internal sealed class DepotSettingsControl : UserControl, IAsyncPluginSettingsVi
             },
         };
 
+        // Only where there is a connection to ask; the list reads the discovery when it is shown.
+        if (settings.Connections.Count > 0)
+        {
+            ((StackPanel)Content).Children.AddRange([_Label("Personal MCPs"), new DepotPersonalMcpsView(host.Channel)]);
+        }
+
         _ = _RefreshAuthStatesAsync();
     }
 

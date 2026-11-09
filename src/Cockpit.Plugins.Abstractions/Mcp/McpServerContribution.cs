@@ -68,6 +68,10 @@ public sealed record McpServerContribution(
     /// plugin can leave this null. ⚠️ Must be stable and the plugin's own — a GUID minted once per connection, not
     /// derived from the name, and never reused across two connections. Setting it requires
     /// <c>minHostVersion</c> 0.16.0.
+    /// <para>
+    /// Two contributions of one connection that set the same id share one sign-in: one stored token, one refresh, no
+    /// second browser round. The token is still only presented to the origin it was issued for.
+    /// </para>
     /// </remarks>
     public string? Id { get; init; }
 }

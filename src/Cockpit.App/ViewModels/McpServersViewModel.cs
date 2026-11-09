@@ -33,6 +33,11 @@ public partial class McpServersViewModel : ViewModelBase
 
     public ObservableCollection<EditableMcpServerViewModel> Servers { get; } = [];
 
+    // AC-2219: the plugins' lines about their own servers, which are not rows in this list; read when the page loads.
+    public IReadOnlyList<McpAdvisoryItem> Advisories { get; private set; } = [];
+
+    public bool HasAdvisories => Advisories.Count > 0;
+
     [ObservableProperty]
     private EditableMcpServerViewModel? _selectedServer;
 
@@ -61,6 +66,10 @@ public partial class McpServersViewModel : ViewModelBase
 
     public async Task LoadAsync()
     {
+        Advisories = [.. McpServerAdvisories.Shared.All.Select(pair => new McpAdvisoryItem(pair.Key, pair.Value))];
+        OnPropertyChanged(nameof(Advisories));
+        OnPropertyChanged(nameof(HasAdvisories));
+
         if (_store is null)
         {
             return;

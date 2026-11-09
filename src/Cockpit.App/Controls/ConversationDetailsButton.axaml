@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Cockpit.App.ViewModels"
+             xmlns:controls="using:Cockpit.App.Controls"
              xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
              x:Class="Cockpit.App.Controls.ConversationDetailsButton">
 
@@ -39,6 +40,14 @@
                             <TextBlock x:Name="ScratchSizeText"/>
                         </StackPanel>
                     </Grid>
+                    <!-- AC-2219: a plugin's advice about the tools this conversation was started with; read once as the popup opens. -->
+                    <ItemsControl x:Name="DetailsAdvisories" ItemsSource="{Binding Advisories}" Margin="12,0,12,10" IsVisible="{Binding HasAdvisories}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:McpAdvisoryItem">
+                                <controls:McpAdvisoryLine DataContext="{Binding}"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                     <Border BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,1,0,0"/>
                     <StackPanel Margin="4,6">
                         <StackPanel.Styles>

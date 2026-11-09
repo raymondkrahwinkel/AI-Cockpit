@@ -61,9 +61,13 @@ public partial class McpServerSelectionItemViewModel : ViewModelBase
                 : "Couldn't reach this server to count its tools — it may be offline, need a sign-in, or its plugin isn't loaded."
         : $"{estimate.ToolCount} tool{(estimate.ToolCount == 1 ? string.Empty : "s")}, ~{McpToolTokenMath.Format(estimate.EstimatedTokens)} tokens (estimate)";
 
+    // AC-2219: what the plugin that contributed this server has to say about it, read once when the row is built.
+    public McpAdvisoryItem? Advisory { get; }
+
     public McpServerSelectionItemViewModel(string name, bool isProjectLinked = false)
     {
         Name = name;
+        Advisory = McpAdvisoryItem.For(name);
         IsProjectLinked = isProjectLinked;
     }
 }

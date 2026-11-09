@@ -152,7 +152,8 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
                 var environment = new Dictionary<string, string?>(ProfileEnvironmentVariable.ToOverlay(profile?.EnvironmentVariables ?? []), StringComparer.OrdinalIgnoreCase);
                 foreach (var key in SessionScratch.EnvironmentKeys) { environment[key] = _scratch; }
                 await _gateway.BindLaunchAsync(paneId, projectId, workingDirectory, confineRoot, profile?.Label,
-                    selection is ExactMcpServerSelection { AssistantManaged: true }, cancellationToken, environment).ConfigureAwait(false);
+                    selection is ExactMcpServerSelection { AssistantManaged: true }, cancellationToken, environment,
+                    launchOptions?.GetValueOrDefault(WellKnownPluginSessionOptions.Brain)).ConfigureAwait(false);
             }
             _toolSession = await _mcpToolProvider.ConnectAsync(selection, paneId, confineRoot, projectId, workingDirectory, cancellationToken, profile?.Label).ConfigureAwait(false);
 
