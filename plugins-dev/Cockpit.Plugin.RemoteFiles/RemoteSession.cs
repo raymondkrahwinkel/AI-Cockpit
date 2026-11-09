@@ -9,7 +9,7 @@ namespace Cockpit.Plugin.RemoteFiles;
 
 internal sealed record RemoteItem(string Name, bool Folder, long Size, DateTimeOffset Modified, string? ETag = null)
 {
-    public string Version => ETag ?? $"{Modified.UtcTicks}:{Size}";
+    public string Version => string.IsNullOrWhiteSpace(ETag) ? $"{Modified.UtcTicks}:{Size}" : ETag;
 }
 
 // One open, signed-in connection; paths are absolute on the server.

@@ -99,7 +99,7 @@ internal sealed class RemoteFileSource(bool writable, Func<CancellationToken, Ta
     private static async Task<FileWriteResult> _CommitAsync(IRemoteSession session, string path, byte[] bytes, string? overwriteVersion,
         CancellationToken cancellationToken)
     {
-        if (session is WebDavSession dav)
+        if (session is WebDavSession dav && (overwriteVersion is null || WebDavSession.HasStrongETag(overwriteVersion)))
         {
             return await dav.PutAsync(path, bytes, overwriteVersion, cancellationToken).ConfigureAwait(false);
         }

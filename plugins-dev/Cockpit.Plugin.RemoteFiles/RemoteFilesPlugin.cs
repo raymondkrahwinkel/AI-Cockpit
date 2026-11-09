@@ -140,11 +140,11 @@ public sealed class RemoteFilesPlugin : ICockpitPlugin, IFileSourceProvider
         _ when string.IsNullOrWhiteSpace(connection.Name) => "Give the connection a name.",
         _ when $"{connection.Name}{connection.Host}{connection.User}{connection.DavUrl}".Any(char.IsControl) => "Names cannot contain control characters.",
         _ when !Kinds.Contains(connection.Kind) => "Choose SFTP, FTPS, FTP or WebDAV.",
+        _ when connection.Kind == RemoteFilesChannel.WebDav && !connection.UseBearer && string.IsNullOrWhiteSpace(connection.User) => "Enter the user name.",
         _ when connection.Kind == RemoteFilesChannel.WebDav => WebDavSession.Root(connection.DavUrl) is null ? "Enter an HTTP or HTTPS WebDAV folder URL without credentials or a query." : null,
         _ when string.IsNullOrWhiteSpace(connection.Host) || Uri.CheckHostName(connection.Host) == UriHostNameType.Unknown => "Enter the server's host name or address.",
         _ when connection.Port is < 1 or > 65535 => "The port is a number from 1 to 65535.",
         _ when string.IsNullOrWhiteSpace(connection.User) => "Enter the user name.",
-        _ when $"{connection.Name}{connection.Host}{connection.User}".Any(char.IsControl) => "Names cannot contain control characters.",
         _ => null,
     };
 

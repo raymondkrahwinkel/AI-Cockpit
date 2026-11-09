@@ -18,6 +18,8 @@ internal static class RemoteFilesScenes
 
     public static IReadOnlyDictionary<string, Func<Control>> All { get; } = new Dictionary<string, Func<Control>>(StringComparer.Ordinal)
     {
+        ["remote-files-settings-webdav"] = () => _View(Environment.MachineName, [new RemoteConnection("dav", "Nextcloud", RemoteFilesChannel.WebDav, "", 443, "user", DavUrl: "https://cloud.example.com/remote.php/dav/files/user/")], "dav"),
+        ["remote-files-settings-webdav-http"] = () => _View(Environment.MachineName, [new RemoteConnection("dav", "Local DAV", RemoteFilesChannel.WebDav, "", 443, "user", DavUrl: "http://localhost:18788/dav/", UseBearer: true)], "dav"),
         ["remote-files-settings-empty"] = () => _View(Environment.MachineName, [], null),
         ["remote-files-settings"] = () => _View(Environment.MachineName, [Nas, Web, Printer], "nas"),
         ["remote-files-settings-new"] = () => _View(Environment.MachineName, [new RemoteConnection("new", "Backup box", RemoteFilesChannel.Sftp, "backup.home.lan", 22, "raymond")], "new"),

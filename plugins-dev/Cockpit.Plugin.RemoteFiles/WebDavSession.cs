@@ -34,8 +34,10 @@ internal sealed class WebDavSession : IRemoteSession
 
     public string Home => "/";
 
+    internal static bool HasStrongETag(string version) => EntityTagHeaderValue.TryParse(version, out var etag) && !etag.IsWeak;
+
     internal static Uri? Root(string url) =>
-        !url.Any(char.IsControl) && Uri.TryCreate(url, UriKind.Absolute, out var uri)
+        !Uri.UnescapeDataString(url).Any(char.IsControl) && Uri.TryCreate(url, UriKind.Absolute, out var uri)
         && uri.Scheme is "https" or "http" && uri.UserInfo.Length == 0 && uri.Query.Length == 0 && uri.Fragment.Length == 0
             ? new Uri(uri.AbsoluteUri.TrimEnd('/') + "/") : null;
 
@@ -58,7 +60,7 @@ internal sealed class WebDavSession : IRemoteSession
 
     private async Task<List<(string Path, RemoteItem Item)>> _PropFindAsync(string path, string depth, CancellationToken cancellationToken)
     {
-        using var request = new HttpRequestMessage(new HttpMethod("PROPFIND"), _Uri(path));
+        using var request = new HttpRequestMessage(new HttpMethod("PROPFIND"), _Uri(depth == "1" ? path.TrimEnd('/') + "/" : path));
         request.Headers.Add("Depth", depth);
         request.Content = new StringContent("<d:propfind xmlns:d=\"DAV:\"><d:prop><d:resourcetype/><d:getcontentlength/><d:getlastmodified/><d:getetag/></d:prop></d:propfind>", Encoding.UTF8, "application/xml");
         using var response = await _SendAsync(request, cancellationToken).ConfigureAwait(false);
@@ -69,7 +71,7 @@ internal sealed class WebDavSession : IRemoteSession
         foreach (var entry in document.Descendants(Dav + "response"))
         {
             var href = (string?)entry.Element(Dav + "href");
-            if (!Uri.TryCreate(_root, href, out var uri) || !_root.IsBaseOf(uri))
+            if (!Uri.TryCreate(request.RequestUri, href, out var uri) || !_root.IsBaseOf(uri))
             {
                 continue;
             }
@@ -187,9 +189,28 @@ internal sealed class WebDavSession : IRemoteSession
     private Uri _Uri(string path) => new(_root, string.Join('/', path.TrimStart('/').Split('/').Select(Uri.EscapeDataString)));
     private static string _Parent(string path) => path[..path.LastIndexOf('/')];
 
-    public Task UploadNewAsync(string path, byte[] content, CancellationToken cancellationToken) => PutAsync(path, content, null, cancellationToken);
-    public Task<bool> MoveAsync(string from, string to, CancellationToken cancellationToken) => throw new NotSupportedException();
-    public Task DeleteAsync(string path, CancellationToken cancellationToken) => throw new NotSupportedException();
+    public async Task UploadNewAsync(string path, byte[] content, CancellationToken cancellationToken)
+    {
+        if ((await PutAsync(path, content, null, cancellationToken).ConfigureAwait(false)).Status == FileWriteStatus.Conflict)
+        {
+            throw new FileSourceException(FileSourceErrorKind.Conflict, "An item with this name already exists.");
+        }
+    }
+
+    public async Task<bool> MoveAsync(string from, string to, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(new HttpMethod("MOVE"), _Uri(from));
+        request.Headers.Add("Destination", _Uri(to).AbsoluteUri);
+        request.Headers.Add("Overwrite", "F");
+        using var response = await _SendAsync(request, cancellationToken, allowConflict: true).ConfigureAwait(false);
+        return response.StatusCode != HttpStatusCode.PreconditionFailed;
+    }
+
+    public async Task DeleteAsync(string path, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Delete, _Uri(path));
+        using var response = await _SendAsync(request, cancellationToken).ConfigureAwait(false);
+    }
     public ValueTask DisposeAsync()
     {
         _client.Dispose();
