@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2238: a paired phone can page back through the whole assistant conversation, 50 rows at a time, also right after Cockpit restarted; plugins can read earlier assistant rows through `ReadRowsAsync` (plugin SDK 3.82.0, host 0.171.0).
+
 - AC-2239: a phone pairing is saved only after both devices confirm their encryption keys; a changed QR key or missing confirmation leaves no new pairing or assistant access.
 
 - AC-2227: a paired phone talks to your assistant in the same conversation as the chat window, end to end encrypted over Depot: messages from the phone go in as yours, the answer streams back, the phone can page back 50 rows at a time through what was said since Cockpit started, and a permission prompt or a question of the assistant shows on the phone as waiting for you on the desktop. With the chat closed, the phone gets a notification without any text. A forgotten phone gets nothing and can send nothing.

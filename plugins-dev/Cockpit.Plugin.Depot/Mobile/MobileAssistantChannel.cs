@@ -11,10 +11,6 @@ internal sealed class MobileAssistantChannel : IDisposable
 {
     public const int HistoryLimit = 50;
 
-    // ponytail: the host offers no read of past rows, so the history is what this channel saw since it opened, in
-    // memory only and capped here. A host-side transcript read would lift both limits.
-    private const int _KeptRows = 2000;
-
     // A frame's JSON around its rows: the envelope, the reply id and the flags.
     private const int _EnvelopeBytes = 512;
 
@@ -27,7 +23,6 @@ internal sealed class MobileAssistantChannel : IDisposable
     private readonly string? _cockpitVersion;
     private readonly ILogger? _logger;
     private readonly Lock _gate = new();
-    private readonly List<AssistantChannelRow> _rows = [];
     private readonly Dictionary<Guid, AssistantChannelRow> _dirty = [];
     private readonly Dictionary<Guid, string> _prompts = [];
     private (string Id, string Text)? _question;
@@ -112,7 +107,7 @@ internal sealed class MobileAssistantChannel : IDisposable
                 _ = _SendToAssistantAsync(id, _String(body, "text"));
                 break;
             case "assistant.history":
-                _History(id, _Int(body, "limit") ?? HistoryLimit, _String(body, "before"));
+                _ = _HistoryAsync(id, _Int(body, "limit") ?? HistoryLimit, _String(body, "before"));
                 break;
             case "assistant.chat":
                 _Chat(body.ValueKind == JsonValueKind.Object && body.TryGetProperty("open", out var open) && open.ValueKind == JsonValueKind.True);
@@ -151,7 +146,6 @@ internal sealed class MobileAssistantChannel : IDisposable
             }
 
             _disposed = true;
-            _rows.Clear();
             _dirty.Clear();
             _prompts.Clear();
             _question = null;
@@ -214,32 +208,27 @@ internal sealed class MobileAssistantChannel : IDisposable
         });
     }
 
-    // The tail of the conversation, at most HistoryLimit rows, older than `before` when given; never the whole of it.
-    private void _History(string? id, int limit, string? before)
+    // The tail of the conversation, at most HistoryLimit rows, older than `before` when given; the host reads it (AC-2238).
+    private async Task _HistoryAsync(string? id, int limit, string? before)
     {
-        List<AssistantChannelRow> page;
-        bool more;
-        lock (_gate)
+        AssistantChannelHistoryPage page = AssistantChannelHistoryPage.Empty;
+        if (_gateway is not null)
         {
-            var end = _rows.Count;
-            if (before is not null)
+            try
             {
-                end = Guid.TryParse(before, out var beforeId) ? _rows.FindIndex(row => row.Id == beforeId) : -1;
-                if (end < 0)
-                {
-                    end = 0;
-                }
+                page = await _gateway.ReadRowsAsync(Math.Clamp(limit, 1, HistoryLimit), before, CancellationToken.None).ConfigureAwait(false);
             }
-
-            var count = Math.Min(Math.Clamp(limit, 1, HistoryLimit), end);
-            page = _rows.GetRange(end - count, count);
-            more = end - count > 0;
+            catch (Exception exception) when (exception is not OutOfMemoryException)
+            {
+                _logger?.LogWarning("Reading the conversation's history for a phone failed: {Reason}", exception.GetType().Name);
+            }
         }
 
-        _SendRows("assistant.history", page, writer =>
+        // The host answers newest first; the phone reads a page oldest first, like the live rows.
+        _SendRows("assistant.history", [.. page.Rows.Reverse()], writer =>
         {
             _ReplyTo(writer, id);
-            writer.WriteBoolean("more", more);
+            writer.WriteBoolean("more", page.Before is not null);
         });
     }
 
@@ -308,7 +297,7 @@ internal sealed class MobileAssistantChannel : IDisposable
             _SendQuestion(question);
         }
 
-        _Keep(row);
+        _Queue(row);
     }
 
     private (string Id, string Text)? _OpenQuestion()
@@ -327,27 +316,13 @@ internal sealed class MobileAssistantChannel : IDisposable
             writer.WriteString("question", question.Text);
         });
 
-    private void _Keep(AssistantChannelRow row)
+    private void _Queue(AssistantChannelRow row)
     {
         lock (_gate)
         {
             if (_disposed)
             {
                 return;
-            }
-
-            var index = row.IsUpdate ? _rows.FindLastIndex(kept => kept.Id == row.Id) : -1;
-            if (index >= 0)
-            {
-                _rows[index] = row;
-            }
-            else
-            {
-                _rows.Add(row);
-                if (_rows.Count > _KeptRows)
-                {
-                    _rows.RemoveRange(0, _rows.Count - _KeptRows);
-                }
             }
 
             if (row.Kind == AssistantChannelRowKind.AssistantText && !_chatOpen)

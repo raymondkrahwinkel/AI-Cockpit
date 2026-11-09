@@ -317,9 +317,11 @@ A `row` is `{ "id", "kind", "text", "timestamp", "toolName"?, "resultText"?, "tr
 `assistantText`, `userText`, `toolUse`, `toolResult`, `thinking`, `question`, `turnCompleted`, `error`, `divider`. A row
 too big for one frame keeps the start of its text and says `truncated: true`. Attachments do not go over the line in v1.
 
-**History is what the channel saw.** The plugin gets no read of past rows from the host, so the history holds the rows
-since the channel opened (when Cockpit started, or the phone paired), in memory only and at most 2,000 of them. Nothing of
-the conversation is written to disk or to a log by this plugin.
+**History comes from the host.** The Cockpit reads the page from the assistant's own transcript (`ReadRowsAsync`, host 0.171.0),
+which a resumed conversation repaints from its log, so it works after a restart of Cockpit as well and nothing is kept by this
+plugin. `before` is a row `id` the phone already holds; one it does not hold, or a Cockpit with no assistant, gives an empty page
+with `more: false`. A page is at most 50 rows, sent oldest first, each frame within the 64 KiB limit.
+Nothing of the conversation is written to disk or to a log by this plugin.
 
 **Back-pressure.** At most 32 frames wait to go to one phone. Past that a frame is not queued but dropped, so a phone
 that keeps asking cannot hold up the relay for the others; a page that loses a frame never sends its `last`.
