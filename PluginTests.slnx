@@ -57,6 +57,8 @@
     <Project Path="plugins-dev/Cockpit.Plugin.Productivity.Tests/Cockpit.Plugin.Productivity.Tests.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.Proxmox/Cockpit.Plugin.Proxmox.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.Proxmox.Tests/Cockpit.Plugin.Proxmox.Tests.csproj" />
+    <Project Path="plugins-dev/Cockpit.Plugin.RemoteFiles/Cockpit.Plugin.RemoteFiles.csproj" />
+    <Project Path="plugins-dev/Cockpit.Plugin.RemoteFiles.Tests/Cockpit.Plugin.RemoteFiles.Tests.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.Schedules/Cockpit.Plugin.Schedules.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.Schedules.Tests/Cockpit.Plugin.Schedules.Tests.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.SessionReview/Cockpit.Plugin.SessionReview.csproj" />

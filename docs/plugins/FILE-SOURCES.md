@@ -103,6 +103,24 @@ The rename gives the file a new inode: on Unix the old mode is copied over, on W
 The refused state folders are the state root plus Cockpit's whole application data folder (`Cockpit` and `Cockpit-Dev`),
 including the session worktrees kept there, so a worktree cannot be added as a folder.
 
+## Remote files (AC-1787)
+
+`plugins-dev/Cockpit.Plugin.RemoteFiles` offers SFTP (SSH.NET), FTPS and FTP (FluentFTP) connections on the same contract.
+`FileRef.Id` and `Path` are the '/'-separated path below the login folder; `..`, `\` and `.cockpit-tmp-` names are refused, and
+the server's own permissions are the boundary. The version is modification time plus size; a save uploads
+`name.cockpit-tmp-<guid>` beside the file, checks the version again and renames it over the file (SFTP `posix-rename`,
+FTP move with overwrite), and removes the temp file in every case. Each call opens and closes its own connection.
+
+Trust is decided inside the handshake, before the login is sent. SFTP: `HostKeyReceived` lets the connection go on only
+when the presented `SHA256:` fingerprint equals the pinned one; an unknown key and a changed key both end the handshake,
+the changed one as `Forbidden` with the trusted and the presented fingerprint. FTPS: a certificate the system trusts passes;
+any other only when its SHA-256 equals the pinned one, never "accept any". The pin is set only from the settings view, after
+the operator compared the fingerprint that Test connection read where the backend runs. Plain FTP has nothing to pin.
+
+Password, private key (its content, not a path) and passphrase are written with `SetSecret` and travel only towards the
+backend; every answer says whether one is set. Exceptions of both libraries are translated to fixed sentences, and the
+libraries are not connected to Cockpit's logger. On a server, the backend and so every connection run on the server.
+
 ## Host file workspaces (AC-1754)
 
 Requires host 0.137.0, Abstractions 3.45.0 and Abstractions.UI 3.17.0.
