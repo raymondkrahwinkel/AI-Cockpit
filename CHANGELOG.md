@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2242: the QR code in Pair phone is black on white in every theme, with a quiet zone of 4 modules, at least 240 px and sharp, so a phone camera can focus on it.
+
 - AC-2192: the mobile app and its phone pairing (Settings › Depot › Pair phone…) are experimental and carry an "Experimental" label, and may change or break between releases.
 
 - AC-2238: a paired phone can page back through the whole assistant conversation, 50 rows at a time, also right after Cockpit restarted; plugins can read earlier assistant rows through `ReadRowsAsync` (plugin SDK 3.82.0, host 0.171.0).

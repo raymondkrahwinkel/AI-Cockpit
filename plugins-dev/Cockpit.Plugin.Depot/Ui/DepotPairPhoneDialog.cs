@@ -20,7 +20,7 @@ internal sealed class DepotPairPhoneDialog : UserControl
     private readonly string _connectionId;
     private readonly Border _qrFrame;
     private readonly TextBlock _hint = new() { TextWrapping = TextWrapping.Wrap };
-    private readonly Image _qr = new() { Width = 232, Height = 232, Stretch = Stretch.Uniform };
+    private readonly Image _qr = new() { Stretch = Stretch.Uniform };
     private readonly TextBlock _countdown = new() { HorizontalAlignment = HorizontalAlignment.Center };
     private readonly TextBlock _status = new() { TextWrapping = TextWrapping.Wrap, HorizontalAlignment = HorizontalAlignment.Center, TextAlignment = TextAlignment.Center };
     private readonly Button _link = new() { Content = "Open Account › Mobile app in Depot ↗", Classes = { "Ghost" }, HorizontalAlignment = HorizontalAlignment.Center, IsVisible = false };
@@ -36,6 +36,7 @@ internal sealed class DepotPairPhoneDialog : UserControl
     {
         _channel = channel;
         _connectionId = connectionId;
+        RenderOptions.SetBitmapInterpolationMode(_qr, BitmapInterpolationMode.None);
         _qrFrame = new Border
         {
             Background = Brushes.White,
@@ -88,8 +89,13 @@ internal sealed class DepotPairPhoneDialog : UserControl
         if (status.Qr is { } text)
         {
             using var data = QRCodeGenerator.GenerateQrCode(text, QRCodeGenerator.ECCLevel.M);
-            using var stream = new MemoryStream(new PngByteQRCode(data).GetGraphic(8));
-            _qr.Source = new Bitmap(stream);
+            // Whole pixels per module (at least 240 px with the 4-module quiet zone), black on white, never smoothed.
+            var pixels = (int)Math.Ceiling(240d / (data.ModuleMatrix.Count + 8));
+            using var stream = new MemoryStream(new PngByteQRCode(data).GetGraphic(pixels, [0, 0, 0], [255, 255, 255], drawQuietZones: true));
+            var bitmap = new Bitmap(stream);
+            _qr.Source = bitmap;
+            _qr.Width = bitmap.PixelSize.Width;
+            _qr.Height = bitmap.PixelSize.Height;
         }
 
         _expiresAt = status.ExpiresAt ?? _expiresAt;
