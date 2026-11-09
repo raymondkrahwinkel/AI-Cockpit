@@ -8,7 +8,7 @@ namespace Cockpit.Plugin.Depot.Events;
 
 internal sealed class DepotEventSubscriber : IAsyncDisposable
 {
-    // Depot has no "devices" subscription: its device events reach whoever subscribed to "projects" (DEP-628).
+    // Depot has no "devices" subscription: it sends device events per listener of the user's valid grant, whatever that listener subscribed to (DEP-628), so "projects" is the subscription that carries them.
     public const string DevicesTopic = "devices";
     private const string ProjectsTopic = "projects";
 

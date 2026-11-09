@@ -116,7 +116,11 @@ internal sealed class MobilePairing(
         }
     }
 
-    public void Cancel(string connectionId) => _Discard(connectionId);
+    public void Cancel(string connectionId)
+    {
+        _Discard(connectionId);
+        _ = PruneAsync();
+    }
 
     // The phones this Cockpit holds a key for. Depot's list, when it has one, supplies the names and drops a phone Depot
     // unpaired while this Cockpit was not listening.
@@ -142,6 +146,11 @@ internal sealed class MobilePairing(
             }
         }
 
+        if (refresh)
+        {
+            _ = PruneAsync();
+        }
+
         return new([.. _Phones(connectionId).Select(phone => new DepotPairedPhone(phone.DeviceId, phone.Name, phone.PairedAt))], _AccountLink(connection));
     }
 
@@ -150,6 +159,45 @@ internal sealed class MobilePairing(
         lock (_gate)
         {
             _Forget(connectionId, deviceId);
+        }
+
+        _ = PruneAsync();
+    }
+
+    // Stops the relay of a connection that has nothing left to listen for: no open code and no paired phone, or no
+    // connection at all any more, so no reconnect loop outlives what it was for.
+    public async Task PruneAsync()
+    {
+        var live = connections().Select(connection => connection.Id).ToHashSet(StringComparer.Ordinal);
+        List<string> idle;
+        lock (_gate)
+        {
+            idle = [.. _relays.Keys.Where(id => !live.Contains(id) || (!_pending.ContainsKey(id) && _Phones(id).Count == 0))];
+            foreach (var id in idle)
+            {
+                _DropStreams(id);
+                if (!live.Contains(id) && _deviceEvents.Remove(id, out var subscription))
+                {
+                    subscription.Dispose();
+                }
+            }
+        }
+
+        foreach (var id in idle)
+        {
+            if (!live.Contains(id))
+            {
+                _Discard(id);
+            }
+
+            try
+            {
+                await _DropRelayAsync(id).ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                logger?.LogDebug(exception, "Stopping an idle mobile relay failed.");
+            }
         }
     }
 
@@ -312,6 +360,7 @@ internal sealed class MobilePairing(
             if (cockpitEvent.Kind == "deviceUnpaired")
             {
                 _Forget(connectionId, deviceId);
+                _ = PruneAsync();
             }
             else if (cockpitEvent.Kind == "devicePaired" && _pending.TryGetValue(connectionId, out var pending) && !pending.Paired)
             {

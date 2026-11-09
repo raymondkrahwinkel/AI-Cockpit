@@ -470,6 +470,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
     {
         _fileSources?.NotifyChanged();
         _ = _storeSources?.RefreshAsync();
+        _ = _mobile?.PruneAsync();
     }
 
     // The write both channel actions share: storage first, then the registries diffed against what was there.
