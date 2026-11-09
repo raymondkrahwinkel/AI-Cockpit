@@ -85,6 +85,16 @@ mid-download stops and removes the partial copy) and Edit. A click on a Markdown
 Edit a kept tab; New file creates an empty file and opens it. Upload is limited to 1 MiB. A read-only
 connection shows no New, Upload or Edit. Delete, rename and change push are not part of this version.
 
+## Local files (AC-1786)
+
+`plugins-dev/Cockpit.Plugin.LocalFiles` is the first source on the browsing contract: one connection per folder the
+operator adds, read only until writing is switched on. `FileRef.Id` and `Path` are the same '/'-separated path relative to
+the folder. The source resolves every reference against the disk, following each link, and refuses with `Forbidden` what
+lands outside the folder or inside Cockpit's state folder, and any `..`, absolute, UNC or device path, `:` (alternate data
+streams), reserved device name or `.cockpit-tmp-` name. The version is the file's modification time plus its size; a save
+writes `name.cockpit-tmp-<guid>` in the same folder, checks the version again and renames it over the file. One lock per
+process serialises those saves; another program writing between that last check and the rename is not detected.
+
 ## Host file workspaces (AC-1754)
 
 Requires host 0.137.0, Abstractions 3.45.0 and Abstractions.UI 3.17.0.

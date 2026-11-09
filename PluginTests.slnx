@@ -47,6 +47,8 @@
     <Project Path="plugins-dev/Cockpit.Plugin.Kubernetes.Tests/Cockpit.Plugin.Kubernetes.Tests.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.LocalCi/Cockpit.Plugin.LocalCi.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.LocalCi.Tests/Cockpit.Plugin.LocalCi.Tests.csproj" />
+    <Project Path="plugins-dev/Cockpit.Plugin.LocalFiles/Cockpit.Plugin.LocalFiles.csproj" />
+    <Project Path="plugins-dev/Cockpit.Plugin.LocalFiles.Tests/Cockpit.Plugin.LocalFiles.Tests.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.OpenRouterProvider/Cockpit.Plugin.OpenRouterProvider.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.OpenRouterProvider.Tests/Cockpit.Plugin.OpenRouterProvider.Tests.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.OpencodeProvider/Cockpit.Plugin.OpencodeProvider.csproj" />
