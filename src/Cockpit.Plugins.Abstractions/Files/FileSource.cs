@@ -33,10 +33,15 @@ public sealed record FileReadResult(Stream Content, string Version, long? Size =
 }
 public enum FileWriteStatus { Written, Conflict }
 public sealed record FileWriteResult(FileWriteStatus Status, string? Version);
-public enum FileSourceErrorKind { SignIn, NotFound, Forbidden, TooLarge, Unavailable, Unsupported, Conflict }
+/// <summary>HostKey: the server's identity is not trusted yet or differs from the trusted one; nothing was sent. SDK 3.80.0.</summary>
+public enum FileSourceErrorKind { SignIn, NotFound, Forbidden, TooLarge, Unavailable, Unsupported, Conflict, HostKey }
 public sealed class FileSourceException(FileSourceErrorKind kind, string message) : Exception(message)
 {
     public FileSourceErrorKind Kind { get; } = kind;
+    /// <summary>With HostKey: the fingerprint the operator trusted, null when none is trusted yet. SDK 3.80.0.</summary>
+    public string? Trusted { get; init; }
+    /// <summary>With HostKey: the fingerprint the server presented, when it differs from <see cref="Trusted"/>. SDK 3.80.0.</summary>
+    public string? Presented { get; init; }
 }
 
 public interface IFileSource

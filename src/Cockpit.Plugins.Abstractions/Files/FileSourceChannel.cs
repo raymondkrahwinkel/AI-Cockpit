@@ -96,5 +96,11 @@ public sealed record FileSourceLivePatch(string SessionId, long Rev, TextOp[] Op
     public ExternalTextEdit? ExternalEdit { get; init; }
 }
 public sealed record FileSourceLiveState(string SessionId, LiveFileStatus Status);
-public sealed record FileSourceError(FileSourceErrorKind Kind, string Message);
+public sealed record FileSourceError(FileSourceErrorKind Kind, string Message)
+{
+    /// <summary>See <see cref="FileSourceException.Trusted"/>. SDK 3.80.0.</summary>
+    public string? Trusted { get; init; }
+    /// <summary>See <see cref="FileSourceException.Presented"/>. SDK 3.80.0.</summary>
+    public string? Presented { get; init; }
+}
 public sealed record FileSourceAnswer<T>(T? Data, FileSourceError? Error) where T : class;

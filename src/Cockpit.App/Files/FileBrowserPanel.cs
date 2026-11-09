@@ -47,17 +47,24 @@ internal sealed class FileBrowserPanel : UserControl
     private readonly MaterialIcon _stateIcon = new() { Width = 28, Height = 28, HorizontalAlignment = HorizontalAlignment.Center };
     private readonly TextBlock _stateTitle = new() { FontSize = 14, FontWeight = FontWeight.SemiBold, TextAlignment = TextAlignment.Center };
     private readonly TextBlock _message = new() { TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center };
+    private readonly StackPanel _fingerprints = new() { Spacing = 2, IsVisible = false };
+    private readonly Button _stateAction = _Button("Open connection settings");
+    private readonly Func<Task>? _openSettings;
     private readonly Dictionary<string, TreeViewItem> _folders = new(StringComparer.Ordinal);
     private Session? _session;
     private Func<string, Task>? _named;
     private bool _listing;
     private int _generation;
 
-    public FileBrowserPanel(Func<IReadOnlyList<FileBrowserRoute>> routes, Func<string, FileWorkspaceOpenOptions, Task> open, Action<string> toast)
+    public FileBrowserPanel(Func<IReadOnlyList<FileBrowserRoute>> routes, Func<string, FileWorkspaceOpenOptions, Task> open, Action<string> toast,
+        Func<Task>? openSettings = null)
     {
         _routes = routes;
         _open = open;
         _toast = toast;
+        _openSettings = openSettings;
+        _stateAction.HorizontalAlignment = HorizontalAlignment.Center;
+        _stateAction.Click += (_, _) => _Run(() => _openSettings?.Invoke() ?? Task.CompletedTask);
         var refresh = _Button("Refresh");
         refresh.Click += (_, _) => _Run(LoadAsync);
         _connectionBox.SelectionChanged += (_, _) =>
@@ -164,6 +171,8 @@ internal sealed class FileBrowserPanel : UserControl
         _state.Children.Add(_stateIcon);
         _state.Children.Add(_stateTitle);
         _state.Children.Add(_message);
+        _state.Children.Add(_fingerprints);
+        _state.Children.Add(_stateAction);
         var treeLayer = new Grid();
         treeLayer.Children.Add(_tree);
         treeLayer.Children.Add(_state);
@@ -212,6 +221,10 @@ internal sealed class FileBrowserPanel : UserControl
             }
             _tree.ItemsSource = rows;
             _SetState(rows.Count == 0 ? "This folder is empty" : null, rows.Count == 0 ? "Add a file or a folder to start." : null, MaterialIconKind.FolderOpenOutline);
+        }
+        catch (FileSourceException error) when (generation == _generation && error.Kind == FileSourceErrorKind.HostKey)
+        {
+            _SetHostKey(error, session.Choice.Route.Server is null);
         }
         catch (FileSourceException error) when (generation == _generation)
         {
@@ -555,8 +568,39 @@ internal sealed class FileBrowserPanel : UserControl
     {
         _state.IsVisible = title is not null || message is not null;
         _stateIcon.Kind = icon;
+        _stateIcon.ClearValue(MaterialIcon.ForegroundProperty);
         _stateTitle.Text = title;
         _message.Text = message;
+        _fingerprints.IsVisible = false;
+        _stateAction.IsVisible = false;
+    }
+
+    // Both fingerprints sit in the block so they can be compared without opening the settings; trusting stays in the settings.
+    private void _SetHostKey(FileSourceException error, bool local)
+    {
+        var changed = error.Presented is not null;
+        _SetState(changed ? "Server key changed" : "Server key not verified", error.Message,
+            changed ? MaterialIconKind.ShieldAlertOutline : MaterialIconKind.KeyOutline);
+        if (changed)
+        {
+            _stateIcon.Foreground = _Brush("CockpitStatusErrorBrush");
+        }
+        _fingerprints.Children.Clear();
+        foreach (var (label, fingerprint) in new[] { ("You trusted", error.Trusted), ("Presented", error.Presented) })
+        {
+            if (fingerprint is not null)
+            {
+                var name = _Faint(label);
+                name.TextAlignment = TextAlignment.Center;
+                _fingerprints.Children.Add(name);
+                var mono = new SelectableTextBlock { Text = fingerprint, FontSize = 11, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center, Margin = new Thickness(0, 0, 0, 4) };
+                mono.Bind(TextBlock.FontFamilyProperty, mono.GetResourceObservable("CockpitMonoFont"));
+                _fingerprints.Children.Add(mono);
+            }
+        }
+        _fingerprints.IsVisible = _fingerprints.Children.Count > 0;
+        _stateAction.IsVisible = local && _openSettings is not null;
+        _newFile.IsVisible = _newFolder.IsVisible = _upload.IsVisible = false;
     }
 
     private static Button _Button(string content)

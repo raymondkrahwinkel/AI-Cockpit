@@ -92,7 +92,7 @@ internal sealed partial class CockpitUiHost
             () => [.. _fileWorkspaceChannels.Where(pair => pair.Key == typeId || pair.Key.StartsWith(remote, StringComparison.Ordinal))
                 .OrderBy(pair => pair.Key.Length)
                 .Select(pair => new FileBrowserRoute(pair.Key == typeId ? null : Uri.UnescapeDataString(pair.Key[remote.Length..]), pair.Key, pair.Value))],
-            _OpenFileWorkspaceAsync, message => ShowToast(message))));
+            _OpenFileWorkspaceAsync, message => ShowToast(message), ShowSettingsAsync)));
     }
 
     public ILiveMarkdownEditor? CreateLiveMarkdownEditor(LiveMarkdownEditorOptions options) => _CreateLiveEditor(options.WorkspaceTypeId, options.File);

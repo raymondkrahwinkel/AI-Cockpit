@@ -302,7 +302,7 @@ internal static class FileSourceChannel
         catch (FileSourceException error)
         {
             return JsonSerializer.SerializeToElement(new FileSourceAnswer<T>(null,
-                new FileSourceError(error.Kind, error.Message)), Wire.Json);
+                new FileSourceError(error.Kind, error.Message) { Trusted = error.Trusted, Presented = error.Presented }), Wire.Json);
         }
         catch (Exception error) when (error is JsonException or FormatException or ArgumentException)
         {
