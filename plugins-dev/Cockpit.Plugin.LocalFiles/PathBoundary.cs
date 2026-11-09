@@ -116,5 +116,5 @@ internal static class PathBoundary
             : name;
 
     public static FileSourceException Outside() =>
-        new(FileSourceErrorKind.Forbidden, "Forbidden: this path leads outside the folder you added.");
+        new(FileSourceErrorKind.Forbidden, "Forbidden: this path leads outside the folder you added, or into Cockpit's own state folder.");
 }

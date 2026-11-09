@@ -44,7 +44,7 @@ internal sealed class LocalFilesSettingsControl : UserControl, IAsyncPluginSetti
             });
         }
         var add = new Button { Content = "+ Add folder…", Margin = new Thickness(0, 4, 0, 0) };
-        add.Click += async (_, _) => await AddFolderAsync().ConfigureAwait(true);
+        add.Click += async (_, _) => await _GuardAsync(AddFolderAsync).ConfigureAwait(true);
         _banner = _Banner();
         Content = new StackPanel
         {
@@ -152,11 +152,11 @@ internal sealed class LocalFilesSettingsControl : UserControl, IAsyncPluginSetti
         {
             if (list.SelectedItem is string child)
             {
-                await _BrowseAsync(child).ConfigureAwait(true);
+                await _GuardAsync(() => _BrowseAsync(child)).ConfigureAwait(true);
             }
         };
         var up = new Button { Content = "Up", Classes = { "Compact" }, IsEnabled = folders?.Path is not null };
-        up.Click += async (_, _) => await _BrowseAsync(Path.GetDirectoryName(folders?.Path ?? "")).ConfigureAwait(true);
+        up.Click += async (_, _) => await _GuardAsync(() => _BrowseAsync(Path.GetDirectoryName(folders?.Path ?? ""))).ConfigureAwait(true);
         var cancel = new Button { Content = "Cancel", Classes = { "Ghost" } };
         cancel.Click += (_, _) => _picker.IsVisible = false;
         var select = new Button { Content = "Select folder", Classes = { "Accent" } };
@@ -165,7 +165,7 @@ internal sealed class LocalFilesSettingsControl : UserControl, IAsyncPluginSetti
             if ((list.SelectedItem as string ?? folders?.Path) is { } chosen)
             {
                 _picker.IsVisible = false;
-                await AddAsync(chosen, project: false).ConfigureAwait(true);
+                await _GuardAsync(() => AddAsync(chosen, project: false)).ConfigureAwait(true);
             }
         };
         _picker.Children.Clear();
@@ -193,7 +193,7 @@ internal sealed class LocalFilesSettingsControl : UserControl, IAsyncPluginSetti
         {
             var added = _roots.Any(root => root.Project && string.Equals(root.Path, project.SourceDirectory, StringComparison.OrdinalIgnoreCase));
             var button = new Button { Content = added ? "Added" : "Add", Classes = { "Compact" }, IsEnabled = !added };
-            button.Click += async (_, _) => await AddAsync(project.SourceDirectory!, project: true).ConfigureAwait(true);
+            button.Click += async (_, _) => await _GuardAsync(() => AddAsync(project.SourceDirectory!, project: true)).ConfigureAwait(true);
             var row = new DockPanel { Margin = new Thickness(0, 6, 0, 0) };
             DockPanel.SetDock(button, Dock.Right);
             row.Children.Add(button);
@@ -257,6 +257,19 @@ internal sealed class LocalFilesSettingsControl : UserControl, IAsyncPluginSetti
                 Children = { icon, new StackPanel { Children = { new TextBlock { Text = title, FontWeight = FontWeight.SemiBold }, _Hint(reason) } } },
             },
         };
+    }
+
+    // A click handler cannot let a failed call escape: it would end the app instead of saying what went wrong.
+    private async Task _GuardAsync(Func<Task> action)
+    {
+        try
+        {
+            await action().ConfigureAwait(true);
+        }
+        catch (Exception error) when (error is not OperationCanceledException)
+        {
+            _Refuse("Folder not added", "The plugin could not be asked. Check the connection and try again.");
+        }
     }
 
     private async Task<T?> _InvokeAsync<T>(string action, object request) =>
