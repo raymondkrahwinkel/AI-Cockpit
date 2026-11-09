@@ -16,8 +16,8 @@ internal sealed class MobileRelay : IAsyncDisposable
         string userId,
         Func<HttpMessageHandler> handler,
         Action<string, string> opened,
-        Action<string, byte[]> frame,
-        Action<string> closed)
+        Action<string, string, byte[]> frame,
+        Action<string, string> closed)
     {
         _connection = new HubConnectionBuilder()
             .WithUrl(
@@ -31,7 +31,7 @@ internal sealed class MobileRelay : IAsyncDisposable
             .Build();
         _connection.On("opened", opened);
         _connection.On("frame", frame);
-        _connection.On<string, string>("closed", (deviceId, _) => closed(deviceId));
+        _connection.On<string, string, string>("closed", (streamId, deviceId, _) => closed(streamId, deviceId));
         _connection.Closed += _ =>
         {
             Closed?.Invoke(this);
@@ -43,8 +43,8 @@ internal sealed class MobileRelay : IAsyncDisposable
 
     public Task StartAsync(CancellationToken cancellationToken) => _connection.StartAsync(cancellationToken);
 
-    public Task SendAsync(string deviceId, byte[] frame, CancellationToken cancellationToken) =>
-        _connection.InvokeAsync("Send", deviceId, frame, cancellationToken);
+    public Task SendAsync(string streamId, byte[] frame, CancellationToken cancellationToken) =>
+        _connection.InvokeAsync("Send", streamId, frame, cancellationToken);
 
     public ValueTask DisposeAsync() => _connection.DisposeAsync();
 

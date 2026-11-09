@@ -293,8 +293,8 @@ internal sealed class MobilePairing(
 
             var relay = new MobileRelay(connection, userId, () => hostHandler(connection),
                 (streamId, deviceId) => _OnOpened(connection.Id, streamId, deviceId),
-                (deviceId, frame) => _OnFrame(connection.Id, deviceId, frame),
-                deviceId => _OnClosed(connection.Id, deviceId));
+                (streamId, deviceId, frame) => _OnFrame(connection.Id, streamId, deviceId, frame),
+                (streamId, deviceId) => _OnClosed(connection.Id, streamId, deviceId));
             lock (_gate)
             {
                 if (!_relays.TryAdd(connection.Id, relay))
@@ -380,20 +380,22 @@ internal sealed class MobilePairing(
         }
     }
 
-    private void _OnClosed(string connectionId, string deviceId)
+    // A close names its stream, so a late close of a replaced stream leaves the current one alone.
+    private void _OnClosed(string connectionId, string streamId, string deviceId)
     {
         lock (_gate)
         {
-            _DropStream(connectionId, deviceId);
+            _DropStream(connectionId, deviceId, streamId);
         }
     }
 
-    private void _OnFrame(string connectionId, string deviceId, byte[] frame)
+    // Only the device's current stream is read; a frame of any other stream id is refused.
+    private void _OnFrame(string connectionId, string streamId, string deviceId, byte[] frame)
     {
         byte[]? reply = null;
         lock (_gate)
         {
-            if (!_streams.TryGetValue((connectionId, deviceId), out var stream))
+            if (!_streams.TryGetValue((connectionId, deviceId), out var stream) || stream.StreamId != streamId)
             {
                 return;
             }
@@ -418,7 +420,7 @@ internal sealed class MobilePairing(
             }
         }
 
-        _ = _SendAsync(connectionId, deviceId, reply);
+        _ = _SendAsync(connectionId, deviceId, streamId, reply);
     }
 
     // Under _gate. The reply for the phone once the handshake holds, or null for every refusal alike.
@@ -456,7 +458,7 @@ internal sealed class MobilePairing(
         }
     }
 
-    private async Task _SendAsync(string connectionId, string deviceId, byte[] frame)
+    private async Task _SendAsync(string connectionId, string deviceId, string streamId, byte[] frame)
     {
         MobileRelay? relay;
         lock (_gate)
@@ -468,14 +470,14 @@ internal sealed class MobilePairing(
         {
             if (relay is not null)
             {
-                await relay.SendAsync(deviceId, frame, CancellationToken.None).ConfigureAwait(false);
+                await relay.SendAsync(streamId, frame, CancellationToken.None).ConfigureAwait(false);
             }
         }
         catch (Exception exception)
         {
             lock (_gate)
             {
-                _DropStream(connectionId, deviceId);
+                _DropStream(connectionId, deviceId, streamId);
             }
 
             logger?.LogDebug("Sending to a phone over the relay failed: {Reason}", exception.GetType().Name);
@@ -500,10 +502,12 @@ internal sealed class MobilePairing(
         _Save(connectionId, [.. phones.Where(phone => phone.DeviceId != deviceId)]);
     }
 
-    private void _DropStream(string connectionId, string deviceId)
+    // Under _gate. With a stream id, only when that is still the device's current stream.
+    private void _DropStream(string connectionId, string deviceId, string? streamId = null)
     {
-        if (_streams.Remove((connectionId, deviceId), out var stream))
+        if (_streams.TryGetValue((connectionId, deviceId), out var stream) && (streamId is null || stream.StreamId == streamId))
         {
+            _streams.Remove((connectionId, deviceId));
             stream.Cipher?.Dispose();
         }
     }
