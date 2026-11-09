@@ -377,6 +377,26 @@ public sealed class LiveFileWorkspaceTests
             Assert.False(body.IsDirty);
             Assert.True(await source.ConfirmClose());
             Assert.Equal(WorkspaceMarker.Live, marker());
+
+            // AC-2237, category C: the saver catches up without another status event.
+            source.Status = new LiveFileStatus(LiveFileState.Offline);
+            source.PublishStatus();
+            await HeadlessAvalonia.SettleAsync();
+            source.SerializedText = null;
+            source.FileText = "saver behind";
+            var beforeRecovery = source.FileReads;
+            source.Status = new LiveFileStatus(LiveFileState.Live);
+            source.PublishStatus();
+            await HeadlessAvalonia.SettleAsync();
+            Assert.True(source.FileReads > beforeRecovery);
+            Assert.True(body.IsDirty);
+            Assert.False(await source.ConfirmClose());
+            source.FileText = source.Text.ToString();
+            await Task.Delay(1800);
+            await HeadlessAvalonia.SettleAsync();
+            Assert.False(body.IsDirty);
+            Assert.True(await source.ConfirmClose());
+            Assert.Equal(WorkspaceMarker.Live, marker());
         }
         finally
         {
