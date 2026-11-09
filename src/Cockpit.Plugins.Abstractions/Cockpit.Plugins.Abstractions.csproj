@@ -667,18 +667,19 @@
     <!-- AC-2100: optional IFileImageSource and bounded file-image channel; requires host 0.161.0. -->
     <!-- 3.73.0: ProjectMemorySourceRegistration.BrainMcpServerName; a plugin that sets it requires host 0.161.0, contract stays 3. -->
     <!-- 3.75.0: ICockpitHost.AddMentionSource/RemoveMentionSource and IPluginMentionSource; a plugin that calls them requires host 0.161.0, contract stays 3. -->
+    <!-- 3.77.0: ICockpitHost.RefreshMcpServerAsync; a plugin that calls it requires host 0.168.0, contract stays 3. -->
+    <!-- 3.79.0 (AC-2219): ICockpitHost.SetMcpServerAdvisory and PluginMcpAdvisory; a plugin that calls it requires host 0.168.0, contract stays 3. -->
+    <!-- 3.80.0 (AC-2220): ProjectMemorySourceRegistration.BrainMcpServerQuery, McpServerQueryParameter and WellKnownPluginSessionOptions.Brain; a plugin that sets it requires host 0.168.0, contract stays 3. -->
     <!-- 3.73.0 (AC-1974): runtime plugin-store providers; additive, requires host 0.162.0, contract stays 3. -->
     <!-- 3.74.0 (AC-1977): PluginStoreSourceDescriptor.IsWithdrawn; additive, requires host 0.164.0, contract stays 3. -->
 
     <!-- 3.73.1: optional brain roles and brain MCP server selection (AC-2169, AC-2210); contract stays 3. -->
-    <!-- 3.76.0: ICompanionToolContext.Badge and RequestPopOut; a plugin that uses them requires host 0.165.0, contract stays 3. -->
+    <!-- 3.76.0: ICompanionToolContext.Badge and RequestPopOut; a plugin that uses them requires host 0.168.0, contract stays 3. -->
     <!-- 3.78.0: a live Markdown editor over a live file source for plugin UI (Abstractions.UI 3.26.0); a plugin that uses it requires host 0.167.0, contract stays 3. -->
-    <!-- 3.79.0 (AC-2236): IFileSource.ListAsync/CreateFolderAsync/ReadRangeAsync (default Unsupported), FileEntry, FileListing,
-         FileSourceCapabilities.CanCreateFolder and the files-list/files-mkdir/files-read-range actions; a plugin that implements
-         them requires host 0.168.0, contract stays 3. -->
-    <!-- 3.80.0 (AC-1787): FileSourceErrorKind.HostKey with Trusted/Presented on FileSourceException and FileSourceError; a plugin
-         that throws it requires host 0.169.0 to show the host-key state, contract stays 3. -->
-    <Version>3.80.0</Version>
+    <!-- 3.81.0 (AC-2236, AC-1787): IFileSource.ListAsync/CreateFolderAsync/ReadRangeAsync (default Unsupported), FileEntry, FileListing,
+         FileSourceCapabilities.CanCreateFolder and the files-list/files-mkdir/files-read-range actions, plus FileSourceErrorKind.HostKey
+         with Trusted/Presented on FileSourceException and FileSourceError; a plugin that uses them requires host 0.169.0, contract stays 3. -->
+    <Version>3.81.0</Version>
     <AssemblyVersion>1.17.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

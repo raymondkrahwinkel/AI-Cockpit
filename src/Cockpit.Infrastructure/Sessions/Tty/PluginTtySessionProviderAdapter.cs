@@ -125,7 +125,7 @@ internal sealed class PluginTtySessionProviderAdapter(
             var effectiveSelection = McpServerRegistryFilter.WithAutoMountedServers(enabledServerNames, registry, autoMounted);
             var eligible = McpServerRegistryFilter.ApplySessionSelection(registry, effectiveSelection).Where(McpConfigFile.IsAgentEligible).ToList();
             var confineRoot = context.Options.GetValueOrDefault(WellKnownPluginSessionOptions.ConfineFileToolsToWorkingDirectory) == "true" ? workingDirectory : null;
-            Task.Run(() => gateway.BindLaunchAsync(paneId, projectId, workingDirectory, confineRoot, agentName, enabledServerNames is ExactMcpServerSelection { AssistantManaged: true }, budget, context.BaseEnvironment.ToDictionary(pair => pair.Key, pair => (string?)pair.Value)), budget).GetAwaiter().GetResult();
+            Task.Run(() => gateway.BindLaunchAsync(paneId, projectId, workingDirectory, confineRoot, agentName, enabledServerNames is ExactMcpServerSelection { AssistantManaged: true }, budget, context.BaseEnvironment.ToDictionary(pair => pair.Key, pair => (string?)pair.Value), context.Options.GetValueOrDefault(WellKnownPluginSessionOptions.Brain)), budget).GetAwaiter().GetResult();
             var names = eligible.Select(server => server.Name).ToList();
             mcpMounts.Grant(paneId, names);
             gateway.PrepareLaunchAsync(paneId, budget, waitForNames: false).GetAwaiter().GetResult();

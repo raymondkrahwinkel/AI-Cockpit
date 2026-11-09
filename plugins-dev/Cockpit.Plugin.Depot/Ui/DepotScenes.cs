@@ -59,6 +59,8 @@ internal static class DepotScenes
             true),
             "Designs/AC-1350/remote-connect-v2/desk-dark.png",
             null)),
+        ["personal-mcps"] = () => DepotPersonalScene.View(waitingId: null),
+        ["personal-mcps-waiting"] = () => DepotPersonalScene.View(waitingId: "goog"),
         ["depot-browser-empty"] = () => _Scene(new DepotBrowserSceneModel(_Project, new DepotBrowserTree([], true), null, null)),
         ["depot-settings-sync"] = _SettingsSyncScene,
         ["depot-new-meeting-note"] = () => DepotMeetingNoteScene.Dialog(created: false),
@@ -218,6 +220,39 @@ internal sealed class DepotInboxScene : IPluginUiChannel
             new("m3", "Mention", true, true, new DateTimeOffset(2026, 10, 26, 9, 0, 0, TimeSpan.Zero), null, "Sanne mentioned you", "https://depot.example.com/mailbox?id=m3"),
         ],
         new DateTimeOffset(2026, 10, 28, 14, 5, 0, TimeSpan.Zero), "raymond");
+
+    private sealed class Nothing : IDisposable
+    {
+        public void Dispose()
+        {
+        }
+    }
+}
+
+// The personal MCPs on fixture data (expired, not authorized, authorized, unreachable), with nothing asked of Depot.
+internal sealed class DepotPersonalScene(string? waitingId) : IPluginUiChannel
+{
+    public static Control View(string? waitingId) => new Border
+    {
+        Width = 520,
+        Padding = new Thickness(16),
+        HorizontalAlignment = HorizontalAlignment.Left,
+        Child = new DepotPersonalMcpsView(new DepotPersonalScene(waitingId)),
+    };
+
+    public Task<JsonElement> InvokeAsync(string action, JsonElement payload, CancellationToken cancellationToken = default) =>
+        Task.FromResult(JsonSerializer.SerializeToElement(new DepotPersonalList(
+        [
+            new("work", "Work", new DepotPersonalMcp[]
+            {
+                new("m365", "Microsoft 365", DepotPersonalStatus.Expired, "https://depot.example.com/account/mcp/m365/authorize"),
+                new("goog", "Google Workspace", DepotPersonalStatus.NotAuthorized, "https://depot.example.com/account/mcp/goog/authorize"),
+                new("cal", "Calendar", DepotPersonalStatus.Active, "https://depot.example.com/account/mcp/cal/authorize"),
+                new("wiki", "Wiki", DepotPersonalStatus.Unreachable, "https://depot.example.com/account/mcp/wiki/authorize"),
+            }),
+        ], waitingId), DepotChannel.Json));
+
+    public IDisposable Subscribe(string name, Action<PluginChannelEvent> handler) => new Nothing();
 
     private sealed class Nothing : IDisposable
     {

@@ -96,19 +96,35 @@ internal sealed partial class MarkdownFileWorkspace
         var confirmed = false;
         try
         {
-            var live = _live!;
-            var snapshot = await live.ReadAsync().ConfigureAwait(true);
-            var persisted = await _ReadSnapshotAsync().ConfigureAwait(true);
-            // Room acceptance and Saved attribution do not acknowledge the current persisted text.
-            if (_CanConfirmLiveRecovery && ReferenceEquals(live, _live) && snapshot.Rev == live.Revision
-                && snapshot.Text == Editor.Text && snapshot.Text == live.SourceText
-                && persisted.Text == _WithoutBom(snapshot.SerializedText ?? snapshot.Text))
+            var live = _live;
+            for (var attempt = 0; attempt < 4 && live is not null && _CanConfirmLiveRecovery && ReferenceEquals(live, _live); attempt++)
             {
-                _liveLightPending = false;
-                _needsFileRefresh = false;
-                _fallbackOrigin = null;
-                _error = null;
-                confirmed = true;
+                if (attempt > 0)
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(250 * attempt), _lifetime.Token).ConfigureAwait(true);
+                    if (!_CanConfirmLiveRecovery || !ReferenceEquals(live, _live))
+                    {
+                        break;
+                    }
+                }
+                var snapshot = await live.ReadAsync().ConfigureAwait(true);
+                var persisted = await _ReadSnapshotAsync().ConfigureAwait(true);
+                // Room acceptance and Saved attribution do not acknowledge the current persisted text.
+                if (_CanConfirmLiveRecovery && ReferenceEquals(live, _live) && snapshot.Rev == live.Revision
+                    && snapshot.Text == Editor.Text && snapshot.Text == live.SourceText
+                    && persisted.Text == _WithoutBom(snapshot.SerializedText ?? snapshot.Text))
+                {
+                    _liveLightPending = false;
+                    _needsFileRefresh = false;
+                    _fallbackOrigin = null;
+                    _error = null;
+                    confirmed = true;
+                    break;
+                }
+                _logger.LogInformation("Live recovery for workspace {WorkspaceId} remains unconfirmed: rev {SnapshotRev}/{LiveRev}, editor mismatch {EditorMismatch}, room mismatch {RoomMismatch}, REST mismatch {RestMismatch}; lengths {SnapshotLength}/{EditorLength}/{RoomLength}/{RestLength}/{SerializedLength}.",
+                    _context.WorkspaceId, snapshot.Rev, live.Revision, snapshot.Text != Editor.Text, snapshot.Text != live.SourceText,
+                    persisted.Text != _WithoutBom(snapshot.SerializedText ?? snapshot.Text), snapshot.Text.Length, Editor.Text.Length,
+                    live.SourceText.Length, persisted.Text.Length, (snapshot.SerializedText ?? snapshot.Text).Length);
             }
         }
         catch (OperationCanceledException) when (_closed) { }

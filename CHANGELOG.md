@@ -4,11 +4,22 @@
 
 - AC-1788: Remote files supports WebDAV with Basic or bearer authentication, certificate pinning and conditional saves. HTTPS is recommended; HTTP carries a red warning.
 
-- AC-1787: new plugin Remote files: add SFTP, FTPS or FTP servers under Options › Plugins › Remote files and browse, view and edit them in the Files browser. Test connection shows the server's host key or self-signed certificate and nothing of your login is sent until you trust it; a changed key is refused with the old and new fingerprint. Passwords, private keys and passphrases are stored as secrets and the page only shows whether one is set. FTP without encryption can be chosen but is never the default and carries a red warning. Each connection is read only until you allow writing. On a server, the connection runs from the server. The Files browser shows a refused server key as its own state with both fingerprints and a way to the connection settings (plugin SDK 3.80.0, host 0.169.0).
+- AC-1787: new plugin Remote files: add SFTP, FTPS or FTP servers under Options › Plugins › Remote files and browse, view and edit them in the Files browser. Test connection shows the server's host key or self-signed certificate and nothing of your login is sent until you trust it; a changed key is refused with the old and new fingerprint. Passwords, private keys and passphrases are stored as secrets and the page only shows whether one is set. FTP without encryption can be chosen but is never the default and carries a red warning. Each connection is read only until you allow writing. On a server, the connection runs from the server. The Files browser shows a refused server key as its own state with both fingerprints and a way to the connection settings (plugin SDK 3.81.0, host 0.169.0).
 
 - AC-1786: new plugin Local files: add folders under Options › Plugins › Local files (or a Cockpit project folder as a shortcut) and browse, view and edit them in the Files browser. A folder is read only until you allow writing; nothing outside the added folders can be reached, a link that points outside shows Forbidden, and Cockpit's own state folder is always refused. On a server, an admin adds folders on the server's disk.
 
-- AC-2236: plugins with a file source get a file browser in the dock rail without building their own: pick a connection (also on a managed server), open folders, click a Markdown file to preview it or Edit it, add a file or folder, upload up to 1 MiB and download any size. A read-only connection shows no New, Upload or Edit (plugin SDK 3.79.0, UI SDK 3.27.0, host 0.168.0).
+- AC-2236: plugins with a file source get a file browser in the dock rail without building their own: pick a connection (also on a managed server), open folders, click a Markdown file to preview it or Edit it, add a file or folder, upload up to 1 MiB and download any size. A read-only connection shows no New, Upload or Edit (plugin SDK 3.81.0, UI SDK 3.27.0, host 0.169.0).
+
+- AC-2220: a session whose brain is a Depot brain gets the Depot gateway filtered by that brain (`brain=<organization>/<slug>`) on every route: SDK, TTY, start_agent, delegation, the assistant and local models. The parameter sits on the upstream address behind the session gateway, so the agent never sees it; a project without a Depot brain, or with a brain on another Depot, keeps the unfiltered gateway.
+
+- AC-2219: when the Depot gateway offers too many tools (Depot totals them over all your organizations: 40 tools or 22 KB for a warning, 80 or 44 KB for critical), the New session, project and profile MCP lists, Options › MCP Servers and a conversation's details say so beside the gateway, with a link to Depot's Performance page. Never a banner; nothing shows when Depot gives no figure or the load is fine.
+
+- AC-2218: the Depot plugin shows the personal MCPs that still need your sign-in under Personal MCPs in the Depot settings, as a bell with an Authorize button, and as a step after the first-start sign-in with Later. Authorize opens Depot in the browser; when it is done the list updates, and running sessions get the new tools without a restart.
+
+- AC-2217: the Depot plugin offers the Depot gateway as one extra MCP server per connection ("Depot gateway: <connection>") on the same sign-in, only on a Depot that lists the depot.gateway scope; an older or unreachable Depot keeps working exactly as before, without a gateway row or a message.
+
+- AC-2216: plugins can let two MCP servers share one sign-in, refresh a server's tools in running sessions without a restart, and a server that refuses a sign-in for missing permissions now shows the usual sign-in notice.
+- AC-2237: live recovery retries briefly when the saved note lags behind, keeping unconfirmed text protected.
 
 - AC-2232: a maximized main window stays maximized after locking and unlocking Windows.
 
