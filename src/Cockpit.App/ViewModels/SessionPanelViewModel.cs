@@ -1663,9 +1663,11 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     protected (long Turn, int Generation) CaptureReadAloudTurn()
         => (_readAloudTurn, _voicePlaybackQueue?.Generation ?? 0);
 
-    protected Task EnqueueReadAloudAsync(IReadOnlyList<string> sentences, (long Turn, int Generation) expected)
+    // AC-2230: the one place every read-aloud passes, so the speaker toggle holds whichever path started the turn.
+    // Only a click on "Read full reply aloud" (explicitRequest) speaks while the toggle is off.
+    protected Task EnqueueReadAloudAsync(IReadOnlyList<string> sentences, (long Turn, int Generation) expected, bool explicitRequest = false)
     {
-        if (_voicePlaybackQueue is null || _readAloudCancelled || CaptureReadAloudTurn() != expected)
+        if (_voicePlaybackQueue is null || _readAloudCancelled || CaptureReadAloudTurn() != expected || (!ReadResponsesAloud && !explicitRequest))
         {
             return Task.CompletedTask;
         }
