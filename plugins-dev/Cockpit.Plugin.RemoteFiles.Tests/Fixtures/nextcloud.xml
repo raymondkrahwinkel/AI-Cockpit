@@ -1,0 +1,34 @@
+<?xml version="1.0"?>
+<d:multistatus xmlns:d="DAV:" xmlns:s="http://sabredav.org/ns" xmlns:oc="http://owncloud.org/ns" xmlns:nc="http://nextcloud.org/ns">
+  <d:response>
+    <d:href>/dav/</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:resourcetype>
+          <d:collection />
+        </d:resourcetype>
+        <d:getlastmodified>Mon, 09 Nov 2026 13:20:32 GMT</d:getlastmodified>
+        <d:getetag>"original"</d:getetag>
+      </d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status>
+    </d:propstat>
+    <d:propstat>
+      <d:prop>
+        <d:getcontentlength />
+      </d:prop>
+      <d:status>HTTP/1.1 404 Not Found</d:status>
+    </d:propstat>
+  </d:response>
+  <d:response>
+    <d:href>/dav/hello%20world.md</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:resourcetype />
+        <d:getcontentlength>5</d:getcontentlength>
+        <d:getlastmodified>Mon, 09 Nov 2026 13:20:32 GMT</d:getlastmodified>
+        <d:getetag>"original"</d:getetag>
+      </d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status>
+    </d:propstat>
+  </d:response>
+</d:multistatus>

@@ -33,17 +33,24 @@ internal sealed class RemoteTrust(RemotePin? pin)
     // A certificate the system trusts needs no pin; any other only passes when it is the pinned one.
     public void OnCertificate(BaseFtpClient sender, FtpSslValidationEventArgs e)
     {
-        e.Accept = false;
-        if (e.PolicyErrors == SslPolicyErrors.None)
+        e.Accept = CheckCertificate(e.Certificate, e.PolicyErrors);
+    }
+
+    public bool CheckCertificate(X509Certificate? certificate, SslPolicyErrors errors)
+    {
+        if (certificate is null)
         {
-            e.Accept = true;
-            return;
+            return false;
         }
-        using var certificate = new X509Certificate2(e.Certificate);
-        Presented = new RemotePresented("certificate", string.Join(':', Convert.ToHexString(certificate.GetCertHash(HashAlgorithmName.SHA256)).Chunk(2).Select(pair => new string(pair))),
-            certificate.Subject, certificate.Issuer, certificate.NotAfter);
+        if (errors == SslPolicyErrors.None && pin is null)
+        {
+            return true;
+        }
+        using var copy = new X509Certificate2(certificate);
+        Presented = new RemotePresented("certificate", string.Join(':', Convert.ToHexString(copy.GetCertHash(HashAlgorithmName.SHA256)).Chunk(2).Select(pair => new string(pair))),
+            copy.Subject, copy.Issuer, copy.NotAfter);
         Verdict = _Decide(Presented.Fingerprint);
-        e.Accept = Verdict == PinVerdict.Trusted;
+        return Verdict == PinVerdict.Trusted;
     }
 
     private PinVerdict _Decide(string presented) =>

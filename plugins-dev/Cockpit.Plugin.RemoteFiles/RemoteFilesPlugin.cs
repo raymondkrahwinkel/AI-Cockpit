@@ -10,7 +10,7 @@ namespace Cockpit.Plugin.RemoteFiles;
 public sealed class RemoteFilesPlugin : ICockpitPlugin, IFileSourceProvider
 {
     private const string ConnectionsKey = "connections";
-    private static readonly string[] Kinds = [RemoteFilesChannel.Sftp, RemoteFilesChannel.Ftps, RemoteFilesChannel.Ftp];
+    private static readonly string[] Kinds = [RemoteFilesChannel.Sftp, RemoteFilesChannel.Ftps, RemoteFilesChannel.Ftp, RemoteFilesChannel.WebDav];
 
     private readonly List<IDisposable> _handlers = [];
     private IPluginStorage? _storage;
@@ -19,7 +19,7 @@ public sealed class RemoteFilesPlugin : ICockpitPlugin, IFileSourceProvider
         Id: "remote-files",
         DisplayName: "Remote files",
         Author: "Cockpit",
-        Description: "Browse, view and edit files on SFTP and FTP servers in Cockpit's file browser.");
+        Description: "Browse, view and edit files on SFTP, FTP and WebDAV servers in Cockpit's file browser.");
 
     public event EventHandler? ConnectionsChanged;
 
@@ -130,18 +130,21 @@ public sealed class RemoteFilesPlugin : ICockpitPlugin, IFileSourceProvider
 
     internal static bool SameServer(RemoteConnection? saved, RemoteConnection requested) =>
         saved is not null && saved.Kind == requested.Kind && string.Equals(saved.Host, requested.Host, StringComparison.OrdinalIgnoreCase)
-        && saved.Port == requested.Port && string.Equals(saved.User, requested.User, StringComparison.Ordinal);
+        && saved.Port == requested.Port && string.Equals(saved.User, requested.User, StringComparison.Ordinal)
+        && saved.UseBearer == requested.UseBearer && (saved.Kind != RemoteFilesChannel.WebDav || WebDavSession.Root(saved.DavUrl) == WebDavSession.Root(requested.DavUrl));
 
     private static string? _Invalid(RemoteConnection? connection) => connection switch
     {
         null => "The connection is incomplete.",
         { Id: null or "" } => "Every connection needs its own id.",
         _ when string.IsNullOrWhiteSpace(connection.Name) => "Give the connection a name.",
-        _ when !Kinds.Contains(connection.Kind) => "Choose SFTP, FTPS or FTP.",
+        _ when $"{connection.Name}{connection.Host}{connection.User}{connection.DavUrl}".Any(char.IsControl) => "Names cannot contain control characters.",
+        _ when !Kinds.Contains(connection.Kind) => "Choose SFTP, FTPS, FTP or WebDAV.",
+        _ when connection.Kind == RemoteFilesChannel.WebDav && !connection.UseBearer && string.IsNullOrWhiteSpace(connection.User) => "Enter the user name.",
+        _ when connection.Kind == RemoteFilesChannel.WebDav => WebDavSession.Root(connection.DavUrl) is null ? "Enter an HTTP or HTTPS WebDAV folder URL without credentials or a query." : null,
         _ when string.IsNullOrWhiteSpace(connection.Host) || Uri.CheckHostName(connection.Host) == UriHostNameType.Unknown => "Enter the server's host name or address.",
         _ when connection.Port is < 1 or > 65535 => "The port is a number from 1 to 65535.",
         _ when string.IsNullOrWhiteSpace(connection.User) => "Enter the user name.",
-        _ when $"{connection.Name}{connection.Host}{connection.User}".Any(char.IsControl) => "Names cannot contain control characters.",
         _ => null,
     };
 

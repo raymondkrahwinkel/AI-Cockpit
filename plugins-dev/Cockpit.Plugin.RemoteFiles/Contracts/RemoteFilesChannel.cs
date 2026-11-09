@@ -12,17 +12,18 @@ public static class RemoteFilesChannel
     public const string Sftp = "sftp";
     public const string Ftps = "ftps";
     public const string Ftp = "ftp";
+    public const string WebDav = "webdav";
 
     public static JsonSerializerOptions Json { get; } = new(JsonSerializerDefaults.Web);
 
-    public static int DefaultPort(string kind) => kind == Sftp ? 22 : 21;
+    public static int DefaultPort(string kind) => kind == WebDav ? 443 : kind == Sftp ? 22 : 21;
 }
 
 // Fingerprint is "SHA256:<base64>" for a host key, colon-hex SHA-256 for a certificate.
 public sealed record RemotePin(string Algorithm, string Fingerprint, DateTimeOffset Trusted);
 
 public sealed record RemoteConnection(string Id, string Name, string Kind, string Host, int Port, string User,
-    bool UseKey = false, bool ReadOnly = true, RemotePin? Pin = null);
+    bool UseKey = false, bool ReadOnly = true, RemotePin? Pin = null, string DavUrl = "", bool UseBearer = false);
 
 public sealed record RemoteSecretsSet(bool Password, bool Key, bool Passphrase);
 

@@ -13,7 +13,7 @@ internal static class RemoteDialogs
     public static Control Trust(RemoteConnection connection, RemotePresented presented, Action trust)
     {
         var certificate = presented.Algorithm == "certificate";
-        var where = $"{connection.Host}:{connection.Port}";
+        var where = _Server(connection);
         var body = new StackPanel { Spacing = 10 };
         body.Children.Add(RemoteFilesSettingsControl.Hint(certificate
             ? $"{where} presents a certificate that this computer does not trust. Check the fingerprint with the server's administrator before you trust it."
@@ -23,7 +23,7 @@ internal static class RemoteDialogs
                 ("Valid until", presented.NotAfter?.ToString("yyyy-MM-dd") ?? ""), ("SHA-256", presented.Fingerprint))
             : _Facts(("Algorithm", presented.Algorithm), ("Fingerprint", presented.Fingerprint)));
         body.Children.Add(_Note(MaterialIconKind.LockOutline,
-            $"Nothing has been sent to {connection.Host} yet: no user name, password or key. Cockpit signs in only after you trust this {(certificate ? "certificate" : "key")}."));
+            $"Nothing has been sent to {where} yet: no user name, password or key. Cockpit signs in only after you trust this {(certificate ? "certificate" : "key")}."));
         return _Dialog(body, ("Cancel", "Ghost", null), ("Trust and connect", "Accent", trust));
     }
 
@@ -31,7 +31,7 @@ internal static class RemoteDialogs
     {
         var body = new StackPanel { Spacing = 10 };
         body.Children.Add(RemoteFilesSettingsControl.Refusal("Connection refused",
-            $"{connection.Host}:{connection.Port} presented a different {(presented.Algorithm == "certificate" ? "certificate" : "host key")} than the one you trusted. That happens when the server was reinstalled, or when something sits between you and the server. Cockpit closed the connection before signing in and sent nothing."));
+            $"{_Server(connection)} presented a different {(presented.Algorithm == "certificate" ? "certificate" : "host key")} than the one you trusted. That happens when the server was reinstalled, or when something sits between you and the server. Cockpit closed the connection before signing in and sent nothing."));
         body.Children.Add(_Facts(("You trusted", $"{connection.Pin?.Fingerprint}\n{connection.Pin?.Algorithm} · trusted on {connection.Pin?.Trusted.LocalDateTime:yyyy-MM-dd}"),
             ("Presented now", $"{presented.Fingerprint}\n{presented.Algorithm}")));
         body.Children.Add(RemoteFilesSettingsControl.Hint("If you expect this change, confirm the new key with whoever runs the server. Then forget the old key in this connection's settings and test the connection again."));
@@ -44,6 +44,9 @@ internal static class RemoteDialogs
             $"Cockpit stops trusting {connection.Pin?.Fingerprint} for {connection.Name}. The next Test connection shows the key the server presents, and you decide again. Nothing connects until then.");
         return _Dialog(body, ("Cancel", "Ghost", null), ("Forget key", "Accent", forget));
     }
+
+    private static string _Server(RemoteConnection connection) => connection.Kind == RemoteFilesChannel.WebDav
+        && Uri.TryCreate(connection.DavUrl, UriKind.Absolute, out var uri) ? uri.Authority : $"{connection.Host}:{connection.Port}";
 
     private static Control _Facts(params (string Label, string Value)[] facts)
     {

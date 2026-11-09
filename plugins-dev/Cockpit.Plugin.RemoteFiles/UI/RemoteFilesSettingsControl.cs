@@ -17,7 +17,7 @@ namespace Cockpit.Plugin.RemoteFiles.UI;
 internal sealed class RemoteFilesSettingsControl : UserControl, IAsyncPluginSettingsView
 {
     private static readonly (string Kind, string Label)[] Kinds =
-        [(RemoteFilesChannel.Sftp, "SFTP"), (RemoteFilesChannel.Ftps, "FTPS"), (RemoteFilesChannel.Ftp, "FTP — unencrypted")];
+        [(RemoteFilesChannel.WebDav, "WebDAV"), (RemoteFilesChannel.Sftp, "SFTP"), (RemoteFilesChannel.Ftps, "FTPS"), (RemoteFilesChannel.Ftp, "FTP — unencrypted")];
 
     private readonly IPluginUiChannel _channel;
     private readonly Func<string, Func<Control>, Task> _showDialog;
@@ -149,7 +149,7 @@ internal sealed class RemoteFilesSettingsControl : UserControl, IAsyncPluginSett
         var title = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
         title.Children.Add(_Icon(open ? MaterialIconKind.ChevronDown : MaterialIconKind.ChevronRight));
         title.Children.Add(new TextBlock { Text = connection.Name is { Length: > 0 } name ? name : "New connection", FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center });
-        title.Children.Add(Mono($"{connection.Kind}://{(connection.User is { Length: > 0 } user ? user : "user")}@{(connection.Host is { Length: > 0 } host ? host : "host")}:{connection.Port}"));
+        title.Children.Add(Mono(connection.Kind == RemoteFilesChannel.WebDav ? connection.DavUrl : $"{connection.Kind}://{(connection.User is { Length: > 0 } user ? user : "user")}@{(connection.Host is { Length: > 0 } host ? host : "host")}:{connection.Port}"));
         title.Children.Add(_Chip(connection));
         if (connection.ReadOnly)
         {
@@ -178,7 +178,8 @@ internal sealed class RemoteFilesSettingsControl : UserControl, IAsyncPluginSett
     {
         { Kind: RemoteFilesChannel.Ftp } => _Pill("Unencrypted", "CockpitStatusErrorBrush"),
         { Pin: not null } => _Pill(_staged.Contains(connection.Id) ? "Will trust on Apply" : connection.Kind == RemoteFilesChannel.Sftp ? "Host key trusted" : "Certificate trusted", "CockpitStatusDoneBrush"),
-        { Kind: RemoteFilesChannel.Ftps } => _Pill("System certificate check"),
+        { Kind: RemoteFilesChannel.WebDav } when connection.DavUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) => _Pill("Unencrypted", "CockpitStatusErrorBrush"),
+        { Kind: RemoteFilesChannel.Ftps or RemoteFilesChannel.WebDav } => _Pill("System certificate check"),
         _ => _Pill("Not verified", "CockpitStatusWaitingBrush"),
     };
 
@@ -186,6 +187,7 @@ internal sealed class RemoteFilesSettingsControl : UserControl, IAsyncPluginSett
     {
         var id = connection.Id;
         var sftp = connection.Kind == RemoteFilesChannel.Sftp;
+        var dav = connection.Kind == RemoteFilesChannel.WebDav;
         var editor = new StackPanel { Spacing = 8, Margin = new Thickness(8, 0, 8, 8) };
 
         var name = new TextBox { Text = connection.Name, PlaceholderText = "Name in the Files browser" };
@@ -211,7 +213,24 @@ internal sealed class RemoteFilesSettingsControl : UserControl, IAsyncPluginSett
         port.ValueChanged += (_, _) => _Update(id, c => c with { Port = (int)(port.Value ?? c.Port) });
         var user = new TextBox { Text = connection.User };
         user.TextChanged += (_, _) => _Update(id, c => c with { User = user.Text?.Trim() ?? "" });
-        editor.Children.Add(_Fields(("Host", host), ("Port", port)));
+        if (dav)
+        {
+            var url = new TextBox { Text = connection.DavUrl, PlaceholderText = "https://files.example.com/remote.php/dav/files/user/" };
+            url.TextChanged += (_, _) => _Update(id, c => c with { DavUrl = url.Text?.Trim() ?? "" });
+            url.LostFocus += (_, _) => _Render();
+            editor.Children.Add(_Fields(("WebDAV folder URL", url)));
+            var bearer = new ToggleSwitch { IsChecked = connection.UseBearer, OnContent = "Bearer token", OffContent = "Basic authentication" };
+            bearer.IsCheckedChanged += (_, _) => _Update(id, c => c with { UseBearer = bearer.IsChecked == true }, render: true);
+            editor.Children.Add(_Fields(("Authentication", bearer)));
+            if (connection.DavUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+            {
+                editor.Children.Add(Refusal("Unencrypted connection", "HTTP sends the password or token and every file in plain text. Anyone on the network path can read or change them. Use HTTPS if the server supports it."));
+            }
+        }
+        else
+        {
+            editor.Children.Add(_Fields(("Host", host), ("Port", port)));
+        }
         editor.Children.Add(_Fields(("User name", user)));
 
         var set = _set.GetValueOrDefault(id) ?? new RemoteSecretsSet(false, false, false);
@@ -238,7 +257,7 @@ internal sealed class RemoteFilesSettingsControl : UserControl, IAsyncPluginSett
         }
         else
         {
-            editor.Children.Add(_Secret(id, "Password", set.Password, "Password", (s, v) => s with { Password = v }));
+            editor.Children.Add(_Secret(id, dav && connection.UseBearer ? "Bearer token" : "Password", set.Password, "Password or token", (s, v) => s with { Password = v }));
         }
 
         var readOnly = new ToggleSwitch { IsChecked = connection.ReadOnly, OnContent = "Read only", OffContent = "Read and write" };
@@ -270,7 +289,7 @@ internal sealed class RemoteFilesSettingsControl : UserControl, IAsyncPluginSett
 
     private Control _TrustBlock(RemoteConnection connection)
     {
-        if (connection.Kind == RemoteFilesChannel.Ftp)
+        if (connection.Kind == RemoteFilesChannel.Ftp || (connection.Kind == RemoteFilesChannel.WebDav && connection.DavUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase)))
         {
             return Hint("No encryption, so there is no host key or certificate to check.");
         }

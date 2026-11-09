@@ -26,7 +26,7 @@ plugins-dev/Cockpit.Plugin.OpenRouterProvider.Tests	13
 plugins-dev/Cockpit.Plugin.OpencodeProvider.Tests	18
 plugins-dev/Cockpit.Plugin.Productivity.Tests	8
 plugins-dev/Cockpit.Plugin.Proxmox.Tests	7
-plugins-dev/Cockpit.Plugin.RemoteFiles.Tests	7
+plugins-dev/Cockpit.Plugin.RemoteFiles.Tests	9
 plugins-dev/Cockpit.Plugin.Schedules.Tests	32
 plugins-dev/Cockpit.Plugin.SessionReview.Tests	7
 plugins-dev/Cockpit.Plugin.Slack.Tests	57
