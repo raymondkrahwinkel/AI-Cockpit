@@ -11,6 +11,7 @@
 - AC-2217: the Depot plugin offers the Depot gateway as one extra MCP server per connection ("Depot gateway: <connection>") on the same sign-in, only on a Depot that lists the depot.gateway scope; an older or unreachable Depot keeps working exactly as before, without a gateway row or a message.
 
 - AC-2216: plugins can let two MCP servers share one sign-in, refresh a server's tools in running sessions without a restart, and a server that refuses a sign-in for missing permissions now shows the usual sign-in notice.
+- AC-2237: live recovery retries briefly when the saved note lags behind, keeping unconfirmed text protected.
 
 - AC-2232: a maximized main window stays maximized after locking and unlocking Windows.
 
