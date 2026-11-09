@@ -60,6 +60,9 @@ internal sealed class DepotConnectionRowControl : UserControl
     private readonly TextBox _token;
     private readonly Button _signInWithToken;
     private bool _isBusy;
+    private readonly TextBlock _registration = new() { FontSize = 11, Opacity = 0.8, TextWrapping = TextWrapping.Wrap };
+    private readonly Avalonia.Threading.DispatcherTimer _registrationTimer = new() { Interval = TimeSpan.FromSeconds(5) };
+    private bool _readingRegistration;
 
     public event Action? RemoveRequested;
     public event Action<DepotConnectionRowControl>? SynchroniseSettingsSelected;
@@ -93,7 +96,7 @@ internal sealed class DepotConnectionRowControl : UserControl
         // child, would also visibly grow/shrink the button itself whenever this label's status text wraps to a
         // second line. Centering both keeps the button a fixed, single-line size and puts the label's text — one
         // line or wrapped — in line with the button's own centered content instead of jumping with it.
-        _authStatus = new TextBlock { FontSize = 11, Opacity = 0.8, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
+        _authStatus = new TextBlock { Name = "AuthStatus", FontSize = 11, Opacity = 0.8, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
 
         _name.TextChanged += (_, _) => _OnFieldsChanged();
         _url.TextChanged += (_, _) => _OnFieldsChanged();
@@ -153,16 +156,49 @@ internal sealed class DepotConnectionRowControl : UserControl
         panel.Children.Add(_synchroniseSettings);
         panel.Children.Add(_Hint("Settings use the AC-540 whitelist; keys and tokens never go along. Selecting this server turns sync off for the others. Active after restart."));
         panel.Children.Add(signInRow);
+        panel.Children.Add(_registration);
         panel.Children.Add(tokenRow);
         panel.Children.Add(remove);
 
         Content = new Border { Padding = new Thickness(0, 8, 0, 12), Child = panel };
 
+        _registrationTimer.Tick += async (_, _) => await _RefreshRegistrationAsync();
+        AttachedToVisualTree += async (_, _) =>
+        {
+            _registrationTimer.Start();
+            await _RefreshRegistrationAsync().ConfigureAwait(true);
+        };
+        DetachedFromVisualTree += (_, _) => _registrationTimer.Stop();
         _OnFieldsChanged();
         if (existing is not null)
         {
             // Construction cannot await optional branding; the task logs failures and keeps the default branding.
             _ = LoadBrandingAsync();
+        }
+    }
+
+    private async Task _RefreshRegistrationAsync()
+    {
+        if (_readingRegistration || !_IsUnderStoredIdentity())
+        {
+            return;
+        }
+        _readingRegistration = true;
+        try
+        {
+            var answer = await _host.Channel.InvokeAsync(DepotChannel.Registration,
+                JsonSerializer.SerializeToElement(new DepotRegistrationRequest(_id), DepotChannel.Json)).ConfigureAwait(true);
+            var status = answer.Deserialize<DepotRegistrationStatus>(DepotChannel.Json);
+            _registration.Text = status is null ? string.Empty
+                : $"{(string.IsNullOrWhiteSpace(status.Name) ? "Registered" : $"Registered as {status.Name}")} \u00b7 {(status.Online ? "online" : "offline")}";
+        }
+        catch (Exception exception)
+        {
+            Trace.TraceWarning($"Depot: reading registration for '{_id}' failed: {exception}");
+        }
+        finally
+        {
+            _readingRegistration = false;
         }
     }
 

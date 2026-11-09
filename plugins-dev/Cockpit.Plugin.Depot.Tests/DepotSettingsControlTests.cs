@@ -167,7 +167,7 @@ public class DepotSettingsControlTests
     }
 
     private static string? _AuthStatusText(DepotConnectionRowControl row) =>
-        row.GetVisualDescendants().OfType<TextBlock>().Single(block => block.Opacity == 0.8).Text;
+        row.GetVisualDescendants().OfType<TextBlock>().Single(block => block.Name == "AuthStatus").Text;
 
     private static void _SetRowFields(DepotSettingsControl view, int index, string name, string url)
     {

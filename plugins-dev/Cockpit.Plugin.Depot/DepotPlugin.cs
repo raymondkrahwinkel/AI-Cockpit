@@ -79,6 +79,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
         // AC-1665: signing in as someone else must not leave the previous account's project list to be shown.
         EventHandler<string> accountChanged = (_, serverName) =>
         {
+            _RefreshEvents(serverName);
             _fileSources?.NotifyChanged();
             _ = _storeSources?.RefreshAsync();
             foreach (var connection in settings.Connections.Where(candidate => candidate.McpServerName == serverName))
@@ -214,6 +215,14 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             (connection, userId, onEvent, onReconnected, onClosed) => new Events.SignalRDepotEventHub(
                 connection, userId, () => host.CreateAuthorizedHandler(connection.McpServerName), onEvent, onReconnected, onClosed),
             _logger);
+
+        _RefreshEvents();
+        _handlers.Add(host.Channel.Handle(DepotChannel.Registration, (payload, _) =>
+        {
+            var request = payload.Deserialize<DepotRegistrationRequest>(DepotChannel.Json)
+                ?? throw new ArgumentException("The connection is missing.", nameof(payload));
+            return Task.FromResult(JsonSerializer.SerializeToElement(_events.Registration(request.ConnectionId), DepotChannel.Json));
+        }));
 
         // AC-499: declared unconditionally, even with zero connections — fixes the doorless-dead-end bug where
         // zero connections meant no "Depot" option anywhere and no way to reach this plugin's settings.
@@ -413,6 +422,16 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
     private static JsonElement _InstallTokenAnswer(bool success, string message) =>
         JsonSerializer.SerializeToElement(new DepotInstallTokenAnswer(success, message), DepotChannel.Json);
 
+    private void _RefreshEvents(string? serverName = null)
+    {
+        if (_events is { } events)
+        {
+            _ = events.RefreshAsync(serverName).ContinueWith(
+                refresh => _logger?.LogWarning(refresh.Exception?.GetBaseException(), "Refreshing Depot registration failed."),
+                CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
+        }
+    }
+
     private void _ConnectionsChanged()
     {
         _fileSources?.NotifyChanged();
@@ -442,6 +461,10 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
         _SyncMemorySources(host, before, after);
         _SyncSharedProjectSources(host, before, after, events);
         _SyncBackupTargets(host, settings, before, after);
+        if (events is not null)
+        {
+            await events.RefreshAsync().ConfigureAwait(false);
+        }
 
         foreach (var orphanedName in orphanedNames)
         {
