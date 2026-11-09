@@ -19,6 +19,16 @@ internal static class DepotScenes
     private static readonly DateTimeOffset _Modified = new(2026, 10, 24, 16, 12, 0, TimeSpan.Zero);
     private static readonly byte[] _ImageBytes = Convert.FromBase64String("R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==");
 
+    // A QR text of the real length (PROTOCOL.md § 2), with made-up keys.
+    private static readonly string _PairingQr = System.Buffers.Text.Base64Url.EncodeToString(JsonSerializer.SerializeToUtf8Bytes(new
+    {
+        v = 1,
+        depot = "https://depot.krahwinkel-it.nl",
+        pairingId = "pr_3f9a1c07d2e84b6a",
+        cockpitPub = System.Buffers.Text.Base64Url.EncodeToString([0x04, .. Enumerable.Range(0, 64).Select(index => (byte)(index * 37))]),
+        pairingSecret = System.Buffers.Text.Base64Url.EncodeToString([.. Enumerable.Range(0, 32).Select(index => (byte)(index * 53))]),
+    }));
+
     public static IReadOnlyDictionary<string, Func<Control>> All { get; } = new Dictionary<string, Func<Control>>
     {
         ["artifact-tab-image"] = () => new ArtifactWorkspace(new DepotBrowserNode("Designs/mockup.gif", DepotBrowserKind.Artifact, 43, _Modified, "image/gif"), _ImageBytes),
@@ -69,6 +79,12 @@ internal static class DepotScenes
         ["depot-live-notes-popup"] = () => DepotPanelScene.LiveNotesPopup(many: false),
         ["depot-live-notes-popup-many"] = () => DepotPanelScene.LiveNotesPopup(many: true),
         ["depot-panel-inbox"] = () => DepotPanelScene.Build(2),
+        ["depot-pair-phone"] = () => DepotPanelScene.PairPhone(new(DepotPairingState.Open, Qr: _PairingQr, ExpiresAt: DateTimeOffset.UtcNow.AddSeconds(252))),
+        ["depot-pair-phone-waiting"] = () => DepotPanelScene.PairPhone(new(DepotPairingState.Waiting, Qr: _PairingQr, ExpiresAt: DateTimeOffset.UtcNow.AddSeconds(201))),
+        ["depot-pair-phone-paired"] = () => DepotPanelScene.PairPhone(new(DepotPairingState.Paired, DeviceName: "Pixel 9 Pro")),
+        ["depot-pair-phone-unavailable"] = () => DepotPanelScene.PairPhone(new(DepotPairingState.Unavailable,
+            "The mobile app is not available on this Depot account, or it is turned off.", Link: "https://depot.krahwinkel-it.nl/account/mobile")),
+        ["depot-paired-phones"] = DepotPanelScene.PairedPhones,
         ["depot-panel-files-project"] = () => DepotPanelScene.Build(0, projectIndex: 1),
         ["depot-panel-files-connection"] = () => DepotPanelScene.Build(0, connectionIndex: 1),
         ["depot-panel-inbox-connection"] = () => DepotPanelScene.Build(2, connectionIndex: 1),

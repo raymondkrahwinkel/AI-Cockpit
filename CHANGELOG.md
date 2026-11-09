@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2224: pair your phone from Settings › Depot: "Pair phone…" on a signed-in connection shows a QR code that is valid for five minutes, and the phone is paired only once its end-to-end handshake checks out. "Paired phones" lists your phones with a Forget button, and links to Depot to unpair one there.
+
 - AC-2222: groundwork for the mobile app: the Depot plugin can now encrypt the conversation between your phone and this Cockpit end to end, so Depot only relays bytes it cannot read. Nothing to see yet; pairing follows in a later release.
 
 - AC-2230: with the speaker switched off, the assistant no longer reads a reply aloud, and a mute clicked while the assistant is still starting is no longer overwritten by the stored value; "Read full reply aloud" still speaks on request.

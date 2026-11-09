@@ -5,6 +5,7 @@ using Avalonia.LogicalTree;
 using Cockpit.Plugin.Depot.Contracts;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Channels;
+using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.UI;
 
 namespace Cockpit.Plugin.Depot.UI;
@@ -19,6 +20,7 @@ internal class DepotPanelScene : DispatchProxy
     private static readonly DateTimeOffset _Modified = new(2026, 10, 24, 16, 12, 0, TimeSpan.Zero);
     private readonly SceneStorage _storage = new();
     private IPluginUiChannel? _channel;
+    private bool _signedIn;
 
     // `projectIndex` / `connectionIndex` pick that entry in the shared header once it has loaded, as a click would.
     public static Control Build(int tab, int projectIndex = -1, int connectionIndex = -1)
@@ -68,12 +70,39 @@ internal class DepotPanelScene : DispatchProxy
         return new Border { Width = 368, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left, Child = new DepotLiveNotesPopup(host, model, () => [], () => { }) };
     }
 
+    // AC-2224: the "Pair phone" dialog in one state, as Depot and the phone would have left it.
+    public static Control PairPhone(DepotPairingStatus pairing) =>
+        new DepotPairPhoneDialog(new SceneChannel { Pairing = pairing }, "work", "Work");
+
+    // AC-2224: a signed-in connection row with the phones paired to it.
+    public static Control PairedPhones()
+    {
+        var host = Create<ICockpitUiHost, DepotPanelScene>();
+        if ((object)host is not DepotPanelScene proxy)
+        {
+            throw new InvalidOperationException("The scene host proxy was not created.");
+        }
+
+        proxy._channel = new SceneChannel();
+        proxy._signedIn = true;
+        var row = new DepotConnectionRowControl(host, new("work", "Work", "https://depot.krahwinkel-it.nl"), new DepotSettings(host.Storage),
+            () => Task.FromResult((true, (string?)null)));
+        // As the settings view does: the standing is read once the row is on screen and its fields have settled.
+        row.AttachedToVisualTree += (_, _) => Avalonia.Threading.Dispatcher.UIThread.Post(() => _ = row.RefreshAuthStateAsync(), Avalonia.Threading.DispatcherPriority.Background);
+        return new ScrollViewer { Content = new Border { Padding = new Avalonia.Thickness(24, 12), Child = row } };
+    }
+
     protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
     {
         var type = targetMethod?.ReturnType;
         if (type is null || type == typeof(void))
         {
             return null;
+        }
+
+        if (type == typeof(Task<PluginMcpAuthState>))
+        {
+            return Task.FromResult(_signedIn ? PluginMcpAuthState.Authorized : default);
         }
 
         if (type == typeof(IPluginUiChannel))
@@ -119,6 +148,8 @@ internal class DepotPanelScene : DispatchProxy
     {
         public bool ManyNotes { get; init; }
 
+        public DepotPairingStatus? Pairing { get; init; }
+
         public Task<JsonElement> InvokeAsync(string action, JsonElement payload, CancellationToken cancellationToken = default) =>
             Task.FromResult(JsonSerializer.SerializeToElement<object?>(_Answer(action, payload), DepotChannel.Json));
 
@@ -162,6 +193,13 @@ internal class DepotPanelScene : DispatchProxy
                 new("m1", "FileShared", false, true, new DateTimeOffset(2026, 10, 28, 14, 2, 0, TimeSpan.Zero), null,
                     _Text(payload, "connectionId") == "home" ? "NAS reported a failed disk" : "Joris shared a file", "https://depot.krahwinkel-it.nl/mailbox?id=m1"),
             ], new DateTimeOffset(2026, 10, 28, 14, 5, 0, TimeSpan.Zero), "raymond"),
+            DepotMobileChannel.PairStart or DepotMobileChannel.PairStatus => Pairing,
+            DepotMobileChannel.Phones => new DepotPairedPhones(
+            [
+                new("d1", "Pixel 9 Pro", new DateTimeOffset(2026, 11, 9, 10, 4, 0, TimeSpan.Zero)),
+                new("d2", "Galaxy Tab S10", new DateTimeOffset(2026, 10, 30, 18, 40, 0, TimeSpan.Zero)),
+            ], "https://depot.krahwinkel-it.nl/account/mobile"),
+            DepotChannel.Registration => new DepotRegistrationStatus("Raymond's desktop", true),
             _ => null,
         };
 

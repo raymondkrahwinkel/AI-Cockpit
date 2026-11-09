@@ -47,6 +47,8 @@
     <PackageReference Include="SkiaSharp" Version="3.119.4">
       <ExcludeAssets>runtime;native</ExcludeAssets>
     </PackageReference>
+    <!-- AC-2224: the pairing QR code as a PNG (MIT, pure managed, no System.Drawing). Not in the host, so it ships in the plugin folder. -->
+    <PackageReference Include="QRCoder" Version="1.8.1" />
   </ItemGroup>
 
   <ItemGroup>
