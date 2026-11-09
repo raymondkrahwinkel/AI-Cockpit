@@ -148,7 +148,7 @@ internal sealed class FileSourceChannelClient(IPluginUiChannel channel)
         var answer = json.Deserialize<FileSourceAnswer<T>>(FileSourceChannel.Json);
         if (answer?.Error is { } error)
         {
-            throw new FileSourceException(error.Kind, error.Message);
+            throw new FileSourceException(error.Kind, error.Message) { Trusted = error.Trusted, Presented = error.Presented };
         }
         return answer?.Data ?? throw new FileSourceException(FileSourceErrorKind.Unavailable, "The file source returned an invalid answer.");
     }

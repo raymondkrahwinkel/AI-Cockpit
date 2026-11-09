@@ -320,6 +320,8 @@ internal static partial class Screenshotter
         // AC-1750 (mockup AC-1749 v003): a kept tab with an unsaved marker beside the preview tab, italic and labelled.
         ["file-browser"] = (width, height) => _FileBrowserScene(width, height, readOnly: false),
         ["file-browser-readonly"] = (width, height) => _FileBrowserScene(width, height, readOnly: true),
+        ["file-browser-hostkey"] = (width, height) => _FileBrowserScene(width, height, readOnly: false, hostKey: HostKeyScene.Changed),
+        ["file-browser-hostkey-unverified"] = (width, height) => _FileBrowserScene(width, height, readOnly: false, hostKey: HostKeyScene.NotVerified),
         ["workspace-preview-tab"] = (_, _) => _WorkspacePreviewTabScene(),
         ["workspace-tab-overflow"] = (_, _) => _WorkspacePreviewTabScene(overflow: true),
         ["workspace-tab-overflow-middle"] = (_, _) => _WorkspacePreviewTabScene(overflow: true),

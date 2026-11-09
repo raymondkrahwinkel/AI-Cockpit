@@ -55,9 +55,8 @@ public sealed class RemoteFilesPlugin : ICockpitPlugin, IFileSourceProvider
         {
             return new RemoteTestAnswer(RemoteTestStatus.Failed, null, invalid);
         }
-        var stored = _Secrets(request.Connection.Id);
-        var typed = request.Secrets;
-        var secrets = new RemoteSecrets(typed?.Password ?? stored.Password, typed?.Key ?? stored.Key, typed?.Passphrase ?? stored.Passphrase);
+        var saved = _Connections().FirstOrDefault(connection => connection.Id == request.Connection.Id);
+        var secrets = SecretsFor(saved, request.Connection, _Secrets(request.Connection.Id), request.Secrets);
         var trust = new RemoteTrust(request.Connection.Pin);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(30));
@@ -95,10 +94,15 @@ public sealed class RemoteFilesPlugin : ICockpitPlugin, IFileSourceProvider
             }
         }
         var storage = _storage ?? throw new InvalidOperationException("The plugin is not initialized.");
-        foreach (var gone in _Connections().Where(old => connections.All(kept => kept.Id != old.Id)))
+        var previous = _Connections();
+        foreach (var gone in previous.Where(old => connections.All(kept => kept.Id != old.Id)))
         {
             _WriteSecrets(storage, gone.Id, new RemoteSecrets("", "", ""));
         }
+        // A connection moved to another server keeps neither its old secrets nor its old pin.
+        connections = [.. connections.Select(connection => previous.FirstOrDefault(old => old.Id == connection.Id) is { } old && !SameServer(old, connection)
+            ? _Moved(storage, old, connection)
+            : connection)];
         foreach (var (id, secrets) in request.Secrets ?? new Dictionary<string, RemoteSecrets>())
         {
             if (connections.Any(connection => connection.Id == id) && secrets is not null)
@@ -111,6 +115,23 @@ public sealed class RemoteFilesPlugin : ICockpitPlugin, IFileSourceProvider
         return _Answer(null);
     }
 
+    private static RemoteConnection _Moved(IPluginStorage storage, RemoteConnection old, RemoteConnection moved)
+    {
+        _WriteSecrets(storage, moved.Id, new RemoteSecrets("", "", ""));
+        return moved.Pin == old.Pin ? moved with { Pin = null } : moved;
+    }
+
+    // A stored secret only goes to the server it was entered for, so a request that names another one gets only what it typed.
+    internal static RemoteSecrets SecretsFor(RemoteConnection? saved, RemoteConnection requested, RemoteSecrets stored, RemoteSecrets? typed)
+    {
+        var usable = SameServer(saved, requested) ? stored : new RemoteSecrets();
+        return new RemoteSecrets(typed?.Password ?? usable.Password, typed?.Key ?? usable.Key, typed?.Passphrase ?? usable.Passphrase);
+    }
+
+    internal static bool SameServer(RemoteConnection? saved, RemoteConnection requested) =>
+        saved is not null && saved.Kind == requested.Kind && string.Equals(saved.Host, requested.Host, StringComparison.OrdinalIgnoreCase)
+        && saved.Port == requested.Port && string.Equals(saved.User, requested.User, StringComparison.Ordinal);
+
     private static string? _Invalid(RemoteConnection? connection) => connection switch
     {
         null => "The connection is incomplete.",
@@ -120,6 +141,7 @@ public sealed class RemoteFilesPlugin : ICockpitPlugin, IFileSourceProvider
         _ when string.IsNullOrWhiteSpace(connection.Host) || Uri.CheckHostName(connection.Host) == UriHostNameType.Unknown => "Enter the server's host name or address.",
         _ when connection.Port is < 1 or > 65535 => "The port is a number from 1 to 65535.",
         _ when string.IsNullOrWhiteSpace(connection.User) => "Enter the user name.",
+        _ when $"{connection.Name}{connection.Host}{connection.User}".Any(char.IsControl) => "Names cannot contain control characters.",
         _ => null,
     };
 

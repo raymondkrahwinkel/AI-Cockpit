@@ -7,7 +7,7 @@
   "uiAssembly": "Cockpit.Plugin.RemoteFiles.UI.dll",
   "uiEntryType": "Cockpit.Plugin.RemoteFiles.UI.RemoteFilesUi",
   "abstractionsVersion": 3,
-  "minHostVersion": "0.168.0",
+  "minHostVersion": "0.169.0",
   "description": "Browse, view and edit files on SFTP, FTPS and FTP servers in Cockpit's file browser. A server's host key or certificate is shown to you and trusted before anything of your login is sent, and a changed key is refused. Passwords and keys are stored as secrets. Each connection is read only until you allow writing. On a Cockpit server, the connection runs from the server.",
   "author": "Cockpit"
 }

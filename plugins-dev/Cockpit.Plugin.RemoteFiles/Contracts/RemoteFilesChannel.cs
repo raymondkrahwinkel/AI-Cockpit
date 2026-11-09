@@ -29,8 +29,14 @@ public sealed record RemoteSecretsSet(bool Password, bool Key, bool Passphrase);
 public sealed record RemoteConnectionsAnswer(IReadOnlyList<RemoteConnection> Connections,
     IReadOnlyDictionary<string, RemoteSecretsSet> Secrets, string Machine, string? Error = null);
 
-// Null keeps what is stored; an empty string clears it.
-public sealed record RemoteSecrets(string? Password = null, string? Key = null, string? Passphrase = null);
+// Null keeps what is stored; an empty string clears it. ToString says only which are set, never the values.
+public sealed record RemoteSecrets(string? Password = null, string? Key = null, string? Passphrase = null)
+{
+    public override string ToString() =>
+        $"RemoteSecrets {{ Password = {_Set(Password)}, Key = {_Set(Key)}, Passphrase = {_Set(Passphrase)} }}";
+
+    private static string _Set(string? value) => value is null ? "unset" : "set";
+}
 
 public sealed record RemoteSaveRequest(IReadOnlyList<RemoteConnection> Connections, IReadOnlyDictionary<string, RemoteSecrets>? Secrets);
 

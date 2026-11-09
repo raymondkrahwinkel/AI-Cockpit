@@ -12,10 +12,12 @@ namespace Cockpit.App;
 // AC-2236: the host's file browser over an in-memory source, with a folder open and a Markdown file selected.
 internal static partial class Screenshotter
 {
-    private static Window _FileBrowserScene(int width, int height, bool readOnly)
+    private enum HostKeyScene { None, Changed, NotVerified }
+
+    private static Window _FileBrowserScene(int width, int height, bool readOnly, HostKeyScene hostKey = HostKeyScene.None)
     {
-        var panel = new FileBrowserPanel(() => [new FileBrowserRoute(null, "scene.files", new FileBrowserSceneChannel(readOnly))],
-            (_, _) => Task.CompletedTask, _ => { });
+        var panel = new FileBrowserPanel(() => [new FileBrowserRoute(null, "scene.files", new FileBrowserSceneChannel(readOnly, hostKey))],
+            (_, _) => Task.CompletedTask, _ => { }, () => Task.CompletedTask);
         panel.Ready.GetAwaiter().GetResult();
         return new Window { Width = width, Height = height, Content = panel };
     }
@@ -31,13 +33,21 @@ internal static partial class Screenshotter
         Dispatcher.UIThread.RunJobs();
     }
 
-    private sealed class FileBrowserSceneChannel(bool readOnly) : IPluginUiChannel
+    private sealed class FileBrowserSceneChannel(bool readOnly, HostKeyScene hostKey) : IPluginUiChannel
     {
         private static readonly DateTimeOffset Day = new(2026, 11, 9, 10, 24, 0, TimeSpan.Zero);
 
         public Task<JsonElement> InvokeAsync(string action, JsonElement payload, CancellationToken cancellationToken = default) => Task.FromResult(action switch
         {
             FileSourceChannel.Connections => _Answer<IReadOnlyList<FileConnection>>([new("work", "Work notes", "memory", readOnly) { CanCreateFolder = !readOnly, CanCreateFile = !readOnly }]),
+            FileSourceChannel.List when hostKey == HostKeyScene.Changed => _Refused(new FileSourceError(FileSourceErrorKind.HostKey,
+                "nas.local presented a different key than the one you trusted. Cockpit did not connect and sent nothing.")
+            {
+                Trusted = "SHA256:p2QAMXNIC1TJYWeIOttrVc98/R1BUFWu3/LiyKgUfQM",
+                Presented = "SHA256:9bW1x2bQk0Q3uVnB2m7nDqJ5yFf0aRk3tLz8sPq4cE0",
+            }),
+            FileSourceChannel.List when hostKey == HostKeyScene.NotVerified => _Refused(new FileSourceError(FileSourceErrorKind.HostKey,
+                "Test this connection in its settings and trust its key first. Nothing is sent until you do.")),
             FileSourceChannel.List => _Answer(new FileListing(payload.Deserialize<FileSourceListRequest>(FileSourceChannel.Json)?.Folder.Path switch
             {
                 "/" =>
@@ -57,6 +67,9 @@ internal static partial class Screenshotter
             })),
             _ => throw new InvalidOperationException("This scene only lists its in-memory source."),
         });
+
+        private static JsonElement _Refused(FileSourceError error) =>
+            JsonSerializer.SerializeToElement(new FileSourceAnswer<FileListing>(null, error), FileSourceChannel.Json);
 
         private static JsonElement _Answer<T>(T data) where T : class =>
             JsonSerializer.SerializeToElement(new FileSourceAnswer<T>(data, null), FileSourceChannel.Json);

@@ -8,6 +8,8 @@ namespace Cockpit.Plugin.RemoteFiles;
 internal sealed class RemoteFileSource(bool writable, Func<CancellationToken, Task<IRemoteSession>> connect) : IFileSource
 {
     private const string TempMarker = ".cockpit-tmp-";
+    private const string BackupMarker = ".cockpit-bak-";
+    private const string NotSaved = "The file could not be saved. The server still has the previous version.";
 
     public FileSourceCapabilities Capabilities { get; } =
         new(writable, Wire.MaxContentBytes) { CanCreateFolder = writable, CanCreateFile = writable };
@@ -92,28 +94,64 @@ internal sealed class RemoteFileSource(bool writable, Func<CancellationToken, Ta
     }
 
     // Writes beside the target and renames only after the version is checked again; null overwriteVersion means create.
+    // The old file is parked under a backup name until the new one is in place, so a failed rename never loses both.
+    // ponytail: between the two renames the file is briefly absent; posix-rename would close that gap on OpenSSH servers.
     private static async Task<FileWriteResult> _CommitAsync(IRemoteSession session, string path, byte[] bytes, string? overwriteVersion,
         CancellationToken cancellationToken)
     {
         var temp = path + TempMarker + Guid.NewGuid().ToString("n");
+        var keepTemp = false;
         try
         {
             await session.UploadNewAsync(temp, bytes, cancellationToken).ConfigureAwait(false);
-            if (overwriteVersion is not null && await _VersionAsync(session, path, cancellationToken).ConfigureAwait(false) is var now && now != overwriteVersion)
+            if (overwriteVersion is null)
+            {
+                return await session.MoveAsync(temp, path, cancellationToken).ConfigureAwait(false)
+                    ? new FileWriteResult(FileWriteStatus.Written, (await _FileAsync(session, path, cancellationToken).ConfigureAwait(false)).Version)
+                    : new FileWriteResult(FileWriteStatus.Conflict, await _VersionAsync(session, path, cancellationToken).ConfigureAwait(false));
+            }
+            if (await _VersionAsync(session, path, cancellationToken).ConfigureAwait(false) is var now && now != overwriteVersion)
             {
                 return new FileWriteResult(FileWriteStatus.Conflict, now);
             }
-            if (!await session.MoveAsync(temp, path, overwrite: overwriteVersion is not null, cancellationToken).ConfigureAwait(false))
+            var backup = path + BackupMarker + Guid.NewGuid().ToString("n");
+            if (!await session.MoveAsync(path, backup, cancellationToken).ConfigureAwait(false))
             {
-                return new FileWriteResult(FileWriteStatus.Conflict, await _VersionAsync(session, path, cancellationToken).ConfigureAwait(false));
+                throw new FileSourceException(FileSourceErrorKind.Unavailable, NotSaved);
             }
-            return new FileWriteResult(FileWriteStatus.Written, (await _FileAsync(session, path, cancellationToken).ConfigureAwait(false)).Version);
+            // Past this point the old file is parked, so nothing may cancel before it is replaced or put back.
+            if (!await _TryMoveAsync(session, temp, path).ConfigureAwait(false))
+            {
+                keepTemp = !await _TryMoveAsync(session, backup, path).ConfigureAwait(false);
+                throw new FileSourceException(FileSourceErrorKind.Unavailable, keepTemp
+                    ? $"The save was interrupted. The previous version is on the server as {_Name(backup)} and the new one as {_Name(temp)}."
+                    : NotSaved);
+            }
+            await _DeleteQuietlyAsync(session, backup).ConfigureAwait(false);
+            return new FileWriteResult(FileWriteStatus.Written, (await _FileAsync(session, path, CancellationToken.None).ConfigureAwait(false)).Version);
         }
         finally
         {
-            await _DeleteQuietlyAsync(session, temp).ConfigureAwait(false);
+            if (!keepTemp)
+            {
+                await _DeleteQuietlyAsync(session, temp).ConfigureAwait(false);
+            }
         }
     }
+
+    private static async Task<bool> _TryMoveAsync(IRemoteSession session, string from, string to)
+    {
+        try
+        {
+            return await session.MoveAsync(from, to, CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    private static string _Name(string path) => path[(path.LastIndexOf('/') + 1)..];
 
     // A temp file that cannot be removed must not turn a finished save into a failure.
     private static async Task _DeleteQuietlyAsync(IRemoteSession session, string temp)
@@ -143,7 +181,7 @@ internal sealed class RemoteFileSource(bool writable, Func<CancellationToken, Ta
 
     private async Task<T> _RunAsync<T>(Func<IRemoteSession, Task<T>> action, CancellationToken cancellationToken)
     {
-        await using var session = await connect(cancellationToken).ConfigureAwait(false);
+        var session = await connect(cancellationToken).ConfigureAwait(false);
         try
         {
             return await action(session).ConfigureAwait(false);
@@ -151,6 +189,10 @@ internal sealed class RemoteFileSource(bool writable, Func<CancellationToken, Ta
         catch (Exception error) when (error is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             throw RemoteTrust.Translate(error);
+        }
+        finally
+        {
+            await RemoteSession.CloseQuietlyAsync(session).ConfigureAwait(false);
         }
     }
 
@@ -181,8 +223,10 @@ internal sealed class RemoteFileSource(bool writable, Func<CancellationToken, Ta
         return string.Join('/', [session.Home.TrimEnd('/'), .. segments]) is { Length: > 0 } path ? path : "/";
     }
 
+    // Control characters are refused too: a CR or LF in a name would end an FTP command early.
     private static bool _IsName(string name) =>
-        name.Length > 0 && name is not ("." or "..") && name.IndexOfAny(['/', '\\', '\0']) < 0 && !name.Contains(TempMarker, StringComparison.Ordinal);
+        name.Length > 0 && name is not ("." or "..") && name.IndexOf('/') < 0 && name.IndexOf('\\') < 0 && !name.Any(char.IsControl)
+        && !name.Contains(TempMarker, StringComparison.Ordinal);
 
     private static FileSourceException _Exists() => new(FileSourceErrorKind.Conflict, "An item with this name already exists.");
 }

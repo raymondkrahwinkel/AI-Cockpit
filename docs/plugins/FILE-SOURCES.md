@@ -103,6 +103,15 @@ The rename gives the file a new inode: on Unix the old mode is copied over, on W
 The refused state folders are the state root plus Cockpit's whole application data folder (`Cockpit` and `Cockpit-Dev`),
 including the session worktrees kept there, so a worktree cannot be added as a folder.
 
+## Server identity (AC-1787)
+
+Requires host 0.169.0 and Abstractions 3.80.0. A source whose server is not trusted yet, or presents another identity than
+the trusted one, throws `FileSourceException(FileSourceErrorKind.HostKey, message)` before it sends anything of the login.
+`Trusted` is the fingerprint the operator trusted (null when none is), `Presented` the one the server showed when it
+differs. Both travel on `FileSourceError`. The browser replaces the tree with a "Server key changed" or "Server key not
+verified" block with both fingerprints and Open connection settings; trusting a key stays in the plugin's settings. An older
+host shows the kind as Files unavailable with the message.
+
 ## Remote files (AC-1787)
 
 `plugins-dev/Cockpit.Plugin.RemoteFiles` offers SFTP (SSH.NET), FTPS and FTP (FluentFTP) connections on the same contract.
@@ -112,8 +121,8 @@ the server's own permissions are the boundary. The version is modification time 
 FTP move with overwrite), and removes the temp file in every case. Each call opens and closes its own connection.
 
 Trust is decided inside the handshake, before the login is sent. SFTP: `HostKeyReceived` lets the connection go on only
-when the presented `SHA256:` fingerprint equals the pinned one; an unknown key and a changed key both end the handshake,
-the changed one as `Forbidden` with the trusted and the presented fingerprint. FTPS: a certificate the system trusts passes;
+when the presented `SHA256:` fingerprint equals the pinned one; an unknown key and a changed key both end the handshake
+with `FileSourceErrorKind.HostKey`, the changed one with `Trusted` and `Presented` set. FTPS: a certificate the system trusts passes;
 any other only when its SHA-256 equals the pinned one, never "accept any". The pin is set only from the settings view, after
 the operator compared the fingerprint that Test connection read where the backend runs. Plain FTP has nothing to pin.
 

@@ -452,7 +452,8 @@
     <!-- 0.165.0: companion tools can set a badge and ask for their pop-out (SDK 3.76.0). -->
     <!-- 0.167.0: ICockpitUiHost.CreateLiveMarkdownEditor (UI SDK 3.26.0, SDK 3.78.0). -->
     <!-- 0.168.0: the host file browser over IFileSource (AC-2236, UI SDK 3.27.0, SDK 3.79.0). -->
-    <VersionPrefix>0.168.0</VersionPrefix>
+    <!-- 0.169.0: the file browser's host-key state with the trusted and presented fingerprint (AC-1787, SDK 3.80.0). -->
+    <VersionPrefix>0.169.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>

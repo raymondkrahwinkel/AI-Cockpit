@@ -54,10 +54,14 @@ internal sealed class RemoteTrust(RemotePin? pin)
     public bool Refused => Verdict is PinVerdict.Unknown or PinVerdict.Changed;
 
     public FileSourceException Refusal() => Verdict == PinVerdict.Changed
-        ? new FileSourceException(FileSourceErrorKind.Forbidden,
-            $"The server presented a different key than the one you trusted, so Cockpit refused to connect and sent nothing. Trusted: {pin!.Fingerprint}. Presented now: {Presented!.Fingerprint}. Forget the old key in this connection's settings and test it again.")
-        : new FileSourceException(FileSourceErrorKind.Forbidden,
-            "This server's key is not trusted yet, so Cockpit sent nothing. Test the connection in Options › Plugins › Remote files and trust its key.");
+        ? new FileSourceException(FileSourceErrorKind.HostKey,
+            "The server presented a different key than the one you trusted. Cockpit did not connect and sent nothing. Forget the old key in this connection's settings and test it again.")
+        {
+            Trusted = pin!.Fingerprint,
+            Presented = Presented!.Fingerprint,
+        }
+        : new FileSourceException(FileSourceErrorKind.HostKey,
+            "Test this connection in Options › Plugins › Remote files and trust its key first. Nothing is sent until you do.");
 
     // Library messages can carry the host, the user name or a path, so only these fixed sentences ever leave.
     public static FileSourceException Translate(Exception error) => error switch

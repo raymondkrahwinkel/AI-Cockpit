@@ -7,21 +7,37 @@ using Renci.SshNet.Security;
 
 namespace Cockpit.Plugin.RemoteFiles.Tests;
 
-// Category A, security: a login sent to an unpinned or changed key, or a secret in an error text, leaks without a sound.
+// Category A, security: a login sent to an unpinned or changed key, a stored secret sent to another server, or a secret in an
+// error text, leaks without a sound.
 public sealed class RemoteTrustTests
 {
     private const string Sentinel = "s3ntinel-9f2c";
 
     [Theory]
-    [InlineData(null, "ssh-auth")]
-    [InlineData("same", "ftp-auth")]
-    [InlineData("other", "sftp-denied")]
-    [InlineData(null, "ssh-connection")]
-    [InlineData("same", "ftp-550")]
-    [InlineData("other", "socket")]
-    [InlineData("same", "unknown")]
-    public void Only_the_pinned_key_lets_the_login_go_and_no_error_carries_a_secret(string? pinned, string failure)
+    [InlineData(null, "ssh-auth", "same")]
+    [InlineData("same", "ftp-auth", "host")]
+    [InlineData("other", "sftp-denied", "port")]
+    [InlineData(null, "ssh-connection", "user")]
+    [InlineData("same", "ftp-550", "kind")]
+    [InlineData("other", "socket", "same")]
+    [InlineData("same", "unknown", "host")]
+    public void Only_the_pinned_key_lets_the_login_go_and_no_secret_leaves_for_another_server_or_in_an_error(string? pinned, string failure, string server)
     {
+        var saved = new RemoteConnection("c1", "NAS", RemoteFilesChannel.Sftp, "nas.lan", 22, "raymond");
+        var requested = server switch
+        {
+            "host" => saved with { Host = "attacker.example" },
+            "port" => saved with { Port = 2222 },
+            "user" => saved with { User = "other" },
+            "kind" => saved with { Kind = RemoteFilesChannel.Ftp },
+            _ => saved,
+        };
+        var sent = RemoteFilesPlugin.SecretsFor(saved, requested, new RemoteSecrets(Sentinel, Sentinel, Sentinel), new RemoteSecrets(Password: "typed"));
+        Assert.Equal("typed", sent.Password);
+        Assert.Equal(server == "same" ? Sentinel : null, sent.Key);
+        Assert.Equal(server == "same" ? Sentinel : null, sent.Passphrase);
+        Assert.DoesNotContain(Sentinel, sent.ToString());
+
         var presented = _HostKey(1);
         var pin = pinned switch
         {
@@ -35,11 +51,12 @@ public sealed class RemoteTrustTests
 
         Assert.Equal(pinned == "same", presented.CanTrust);
         Assert.Equal(pinned != "same", trust.Refused);
-        if (pinned == "other")
+        if (trust.Refused)
         {
-            var refusal = trust.Refusal().Message;
-            Assert.Contains(pin!.Fingerprint, refusal);
-            Assert.Contains(trust.Presented!.Fingerprint, refusal);
+            var refusal = trust.Refusal();
+            Assert.Equal(FileSourceErrorKind.HostKey, refusal.Kind);
+            Assert.Equal(pin?.Fingerprint, refusal.Trusted);
+            Assert.Equal(pinned == "other" ? trust.Presented!.Fingerprint : null, refusal.Presented);
         }
 
         var message = $"{Sentinel}@{Sentinel}.example: password {Sentinel} for /home/{Sentinel}";

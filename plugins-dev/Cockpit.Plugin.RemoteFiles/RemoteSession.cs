@@ -20,8 +20,8 @@ internal interface IRemoteSession : IAsyncDisposable
     Task<RemoteItem?> StatAsync(string path, CancellationToken cancellationToken);
     Task<byte[]> ReadAsync(string path, long offset, int count, CancellationToken cancellationToken);
     Task UploadNewAsync(string path, byte[] content, CancellationToken cancellationToken);
-    // False when overwrite is off and the target already exists.
-    Task<bool> MoveAsync(string from, string to, bool overwrite, CancellationToken cancellationToken);
+    // Never overwrites: false when the target already exists.
+    Task<bool> MoveAsync(string from, string to, CancellationToken cancellationToken);
     Task DeleteAsync(string path, CancellationToken cancellationToken);
     Task CreateFolderAsync(string path, CancellationToken cancellationToken);
 }
@@ -29,6 +29,18 @@ internal interface IRemoteSession : IAsyncDisposable
 internal static class RemoteSession
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(15);
+
+    // A close that fails after the work is done must not turn a finished call into a failure.
+    public static async Task CloseQuietlyAsync(IRemoteSession session)
+    {
+        try
+        {
+            await session.DisposeAsync().ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+        }
+    }
 
     // The trust check runs inside the handshake, so a refused key or certificate ends it before the login is sent.
     public static async Task<IRemoteSession> ConnectAsync(RemoteConnection connection, RemoteSecrets secrets, RemoteTrust trust,
@@ -154,36 +166,22 @@ internal static class RemoteSession
             await stream.WriteAsync(content, cancellationToken).ConfigureAwait(false);
         }
 
-        public async Task<bool> MoveAsync(string from, string to, bool overwrite, CancellationToken cancellationToken)
+        // A plain SFTP rename refuses an existing target, which makes it the "must not exist" check.
+        public async Task<bool> MoveAsync(string from, string to, CancellationToken cancellationToken)
         {
-            if (!overwrite)
-            {
-                // A plain SFTP rename refuses an existing target, which makes it the "must not exist" check.
-                try
-                {
-                    await client.RenameFileAsync(from, to, cancellationToken).ConfigureAwait(false);
-                    return true;
-                }
-                catch (SshException)
-                {
-                    if (await _TryStat(to, cancellationToken).ConfigureAwait(false) is not null)
-                    {
-                        return false;
-                    }
-                    throw;
-                }
-            }
             try
             {
-                client.RenameFile(from, to, isPosix: true);
-            }
-            catch (NotSupportedException)
-            {
-                // ponytail: without posix-rename the old file is gone for a moment; servers without the extension are rare.
-                await client.DeleteFileAsync(to, cancellationToken).ConfigureAwait(false);
                 await client.RenameFileAsync(from, to, cancellationToken).ConfigureAwait(false);
+                return true;
             }
-            return true;
+            catch (SshException)
+            {
+                if (await _TryStat(to, cancellationToken).ConfigureAwait(false) is not null)
+                {
+                    return false;
+                }
+                throw;
+            }
         }
 
         public Task DeleteAsync(string path, CancellationToken cancellationToken) => client.DeleteFileAsync(path, cancellationToken);
@@ -229,8 +227,8 @@ internal static class RemoteSession
             }
         }
 
-        public Task<bool> MoveAsync(string from, string to, bool overwrite, CancellationToken cancellationToken) =>
-            client.MoveFile(from, to, overwrite ? FtpRemoteExists.Overwrite : FtpRemoteExists.Skip, cancellationToken);
+        public Task<bool> MoveAsync(string from, string to, CancellationToken cancellationToken) =>
+            client.MoveFile(from, to, FtpRemoteExists.Skip, cancellationToken);
 
         public Task DeleteAsync(string path, CancellationToken cancellationToken) => client.DeleteFile(path, cancellationToken);
 
