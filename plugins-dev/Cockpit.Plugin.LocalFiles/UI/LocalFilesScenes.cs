@@ -30,8 +30,17 @@ internal static class LocalFilesScenes
     private static Control _Picker()
     {
         var picker = new ServerFolderPicker(new SceneChannel("huis-cockpit", []), _ => { });
-        picker.Ready.GetAwaiter().GetResult();
+        _Settle(picker.Ready);
         return picker;
+    }
+
+    // The scene channel answers synchronously, so pumping the dispatcher finishes the load without blocking on a real call.
+    private static void _Settle(Task task)
+    {
+        while (!task.IsCompleted)
+        {
+            Dispatcher.UIThread.RunJobs();
+        }
     }
 
     private static Control _View(SceneChannel channel, string? refused)
@@ -40,7 +49,7 @@ internal static class LocalFilesScenes
             ? new[] { new PluginProjectInfo("cockpit", "cockpit") { SourceDirectory = @"C:\Source\cockpit" }, new PluginProjectInfo("depot", "depot") { SourceDirectory = @"C:\Source\depot" } }
             : [new PluginProjectInfo("homeautomation", "homeautomation") { SourceDirectory = "/srv/projects/homeautomation" }];
         var view = new LocalFilesSettingsControl(channel, () => Task.FromResult<IReadOnlyList<PluginProjectInfo>>(projects), (_, _) => Task.CompletedTask);
-        view.Ready.GetAwaiter().GetResult();
+        _Settle(view.Ready);
         if (refused is not null)
         {
             channel.Refuse = refused;
