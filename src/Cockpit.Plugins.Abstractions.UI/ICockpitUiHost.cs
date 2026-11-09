@@ -215,6 +215,14 @@ public interface ICockpitUiHost
     {
     }
 
+    /// <summary>
+    /// Adds the host's file browser to the dock rail over this plugin's file source, on this computer and on each server
+    /// this desktop manages; register the workspace type first. UI SDK 3.27.0, host 0.168.0; an older host does nothing.
+    /// </summary>
+    void AddFileBrowser(Files.FileBrowserRegistration registration)
+    {
+    }
+
     /// <summary>Opens or focuses a file without replacing its document, undo history or unsaved changes.</summary>
     Task OpenFileWorkspaceAsync(string workspaceTypeId, Files.FileWorkspaceOpenOptions options) => Task.CompletedTask;
 

@@ -80,6 +80,7 @@ internal static class FileSourceChannel
                 }
                 return Convert.ToBase64String(bytes);
             })));
+            _RegisterBrowse(channel, provider, registration);
             _RegisterLive(channel, provider, registration);
             registration.Changed = (_, _) => channel.Publish(Wire.Changed,
                 JsonSerializer.SerializeToElement(provider.Connections, Wire.Json));
@@ -91,6 +92,45 @@ internal static class FileSourceChannel
             registration.Dispose();
             throw;
         }
+    }
+
+    private static void _RegisterBrowse(IPluginBackendChannel channel, IFileSourceProvider provider, Registration registration)
+    {
+        registration.Handlers.Add(channel.Handle(Wire.List, (payload, ct) => _RunAsync(async () =>
+        {
+            var request = payload.Deserialize<FileSourceListRequest>(Wire.Json) ?? throw new JsonException();
+            var listing = await _Source(provider, request.Folder, false).ListAsync(request.Folder, request.PageToken, ct).ConfigureAwait(false);
+            return listing.Entries is null ? throw new FileSourceException(FileSourceErrorKind.Unavailable, "The source returned an invalid folder.") : listing;
+        })));
+        registration.Handlers.Add(channel.Handle(Wire.CreateFolder, (payload, ct) => _RunAsync(() =>
+        {
+            var request = payload.Deserialize<FileSourceCreateFolderRequest>(Wire.Json) ?? throw new JsonException();
+            if (string.IsNullOrWhiteSpace(request.Name) || request.Name is "." or ".." || request.Name.IndexOfAny(['/', '\\']) >= 0)
+            {
+                throw new FileSourceException(FileSourceErrorKind.Unsupported, "A folder name cannot contain a slash.");
+            }
+            var source = _Source(provider, request.Parent, true);
+            return source.Capabilities.CanCreateFolder
+                ? source.CreateFolderAsync(request.Parent, request.Name, ct)
+                : throw new FileSourceException(FileSourceErrorKind.Forbidden, "This source does not allow new folders.");
+        })));
+        registration.Handlers.Add(channel.Handle(Wire.ReadRange, (payload, ct) => _RunAsync(async () =>
+        {
+            var request = payload.Deserialize<FileSourceReadRangeRequest>(Wire.Json) ?? throw new JsonException();
+            if (request.Offset < 0 || request.Count is <= 0 or > Wire.MaxContentBytes)
+            {
+                throw new FileSourceException(FileSourceErrorKind.Unsupported, "A block is 1 byte to 1 MiB from a non-negative offset.");
+            }
+            var result = await _Source(provider, request.File, false).ReadRangeAsync(request.File, request.Offset, request.Count, ct).ConfigureAwait(false);
+            await using var content = result.Content;
+            if (string.IsNullOrWhiteSpace(result.Version) || result.Size is null)
+            {
+                throw new FileSourceException(FileSourceErrorKind.Unavailable, "The source did not return a version and size for this block.");
+            }
+            // A source that hands back more than asked would otherwise slip past the block limit.
+            var bytes = await Wire.ReadContentAsync(content, request.Count, ct).ConfigureAwait(false);
+            return new FileSourceReadAnswer(Convert.ToBase64String(bytes), result.Version, result.Size, result.Modified, result.ContentType);
+        })));
     }
 
     private static void _RegisterLive(IPluginBackendChannel channel, IFileSourceProvider provider, Registration registration)

@@ -8,6 +8,9 @@ public static class FileSourceChannel
     public const string Connections = "files-connections";
     public const string Read = "files-read";
     public const string Write = "files-write";
+    public const string List = "files-list";
+    public const string CreateFolder = "files-mkdir";
+    public const string ReadRange = "files-read-range";
     public const string Changed = "files-changed";
     public const string Saved = "files-saved";
     public const string LiveOpen = "files-live-open";
@@ -62,6 +65,9 @@ public static class FileSourceChannel
 }
 
 public sealed record FileSourceReadRequest(FileRef File);
+public sealed record FileSourceListRequest(FileRef Folder, string? PageToken);
+public sealed record FileSourceCreateFolderRequest(FileRef Parent, string Name);
+public sealed record FileSourceReadRangeRequest(FileRef File, long Offset, int Count);
 public sealed record FileSourceWriteRequest(FileRef File, string ContentBase64, string? IfVersion, bool MustNotExist);
 public sealed record FileSourceReadAnswer(string ContentBase64, string Version, long? Size,
     DateTimeOffset? Modified, string? ContentType)

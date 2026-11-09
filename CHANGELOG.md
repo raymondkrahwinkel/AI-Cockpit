@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2236: plugins with a file source get a file browser in the dock rail without building their own: pick a connection (also on a managed server), open folders, click a Markdown file to preview it or Edit it, add a file or folder, upload up to 1 MiB and download any size. A read-only connection shows no New, Upload or Edit (plugin SDK 3.79.0, UI SDK 3.27.0, host 0.168.0).
+
 - AC-2232: a maximized main window stays maximized after locking and unlocking Windows.
 
 - AC-2233: the disk indicator in the status bar now uses the same hover background as CPU/RAM.

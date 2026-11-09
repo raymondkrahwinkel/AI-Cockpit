@@ -44,7 +44,9 @@ public class PluginChannelHubTests
         Assert.NotNull(typeof(FileReadResult).GetConstructor([typeof(Stream), typeof(string), typeof(long?), typeof(DateTimeOffset?), typeof(string)]));
         Assert.NotNull(typeof(FileSourceReadAnswer).GetConstructor([typeof(string), typeof(string), typeof(long?), typeof(DateTimeOffset?), typeof(string)]));
         var source = Substitute.For<IFileSource>();
-        source.Capabilities.Returns(new FileSourceCapabilities(true, FileSourceChannel.MaxContentBytes));
+        source.Capabilities.Returns(new FileSourceCapabilities(true, FileSourceChannel.MaxContentBytes) { CanCreateFolder = true });
+        source.ListAsync(Arg.Any<FileRef>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new FileListing([new FileEntry("opaque", "note.md", "note.md", FileEntryKind.File, 7)])));
         source.ReadAsync(Arg.Any<FileRef>(), Arg.Any<CancellationToken>()).Returns(_ =>
             Task.FromResult(new FileReadResult(new MemoryStream(Encoding.UTF8.GetBytes("# hello")), "v1") { CanWrite = true }));
         source.WriteAsync(Arg.Any<FileRef>(), Arg.Any<Stream>(), "v1", false, Arg.Any<CancellationToken>())
@@ -90,6 +92,15 @@ public class PluginChannelHubTests
             JsonSerializer.SerializeToElement(new FileSourceWriteRequest(file, "", "v1", false), FileSourceChannel.Json), default);
         Assert.Equal(FileSourceErrorKind.Forbidden, (forbidden.Deserialize<FileSourceAnswer<FileWriteResult>>(FileSourceChannel.Json)?.Error
             ?? throw new InvalidOperationException("The permission error was missing.")).Kind);
+        var readonlyListing = await hub.InvokeAsync("files", FileSourceChannel.List,
+            JsonSerializer.SerializeToElement(new FileSourceListRequest(FileRef.Root("c1"), null), FileSourceChannel.Json), default);
+        Assert.Equal("note.md", Assert.Single((readonlyListing.Deserialize<FileSourceAnswer<FileListing>>(FileSourceChannel.Json)?.Data
+            ?? throw new InvalidOperationException("The read-only listing was missing.")).Entries).Name);
+        var forcedFolder = await hub.InvokeAsync("files", FileSourceChannel.CreateFolder,
+            JsonSerializer.SerializeToElement(new FileSourceCreateFolderRequest(FileRef.Root("c1"), "drafts"), FileSourceChannel.Json), default);
+        Assert.Equal(FileSourceErrorKind.Forbidden, (forcedFolder.Deserialize<FileSourceAnswer<FileEntry>>(FileSourceChannel.Json)?.Error
+            ?? throw new InvalidOperationException("The read-only folder refusal was missing.")).Kind);
+        await source.DidNotReceive().CreateFolderAsync(Arg.Any<FileRef>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
         source.ReadAsync(Arg.Any<FileRef>(), Arg.Any<CancellationToken>()).Returns(_ => Task.FromResult(
             new FileReadResult(new MemoryStream(), "v1") { CanWrite = true }));
         var readonlySnapshot = await hub.InvokeAsync("files", FileSourceChannel.Read,
