@@ -47,6 +47,8 @@
   <ItemGroup>
     <!-- AC-1899: AI-Depot's golden notes fixtures, the contract the live-note bridge is tested against. -->
     <None Include="Fixtures/NotesRoundtrip/*" CopyToOutputDirectory="PreserveNewest" />
+    <!-- AC-2222: the mobile protocol's test vectors, the same file the app's Kotlin side is held to. -->
+    <None Include="../Cockpit.Plugin.Depot/Mobile/protocol-vectors.json" Link="Mobile/protocol-vectors.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

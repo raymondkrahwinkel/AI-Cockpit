@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Cockpit.Plugin.Depot.Contracts;
@@ -35,6 +35,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
     private Inbox.DepotInbox? _inbox;
     private Notes.DepotNotes? _notes;
     private Events.DepotEvents? _events;
+    private Mobile.MobilePairing? _mobile;
     private Notes.Live.DepotNoteLive? _noteLive;
     private ILogger? _logger;
     private Files.DepotFileSourceProvider? _fileSources;
@@ -97,6 +98,10 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
         // AC-1665: signing in as someone else must not leave the previous account's project list to be shown.
         EventHandler<string> accountChanged = (_, serverName) =>
         {
+            _RefreshEvents(serverName);
+            _ = _mobile?.ResetAsync(serverName).ContinueWith(
+                reset => _logger?.LogWarning(reset.Exception?.GetBaseException(), "Resetting the mobile relay failed."),
+                CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
             _fileSources?.NotifyChanged();
             _ = _storeSources?.RefreshAsync();
             foreach (var connection in settings.Connections.Where(candidate => candidate.McpServerName == serverName))
@@ -249,6 +254,37 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
 
         personal.Start();
 
+        _RefreshEvents();
+        _handlers.Add(host.Channel.Handle(DepotChannel.Registration, (payload, _) =>
+        {
+            var request = payload.Deserialize<DepotRegistrationRequest>(DepotChannel.Json)
+                ?? throw new ArgumentException("The connection is missing.", nameof(payload));
+            return Task.FromResult(JsonSerializer.SerializeToElement(_events.Registration(request.ConnectionId), DepotChannel.Json));
+        }));
+
+        // AC-2224: pairing a phone and the phones paired, with the host-only depot.host token the relay and the pairing ask for.
+        var mobile = _mobile = new Mobile.MobilePairing(
+            () => settings.Connections,
+            connection => host.CreateAuthorizedHandler(connection.McpServerName, "depot.host"),
+            host.Storage,
+            _events,
+            host.OpenAssistantChannel,
+            _logger);
+        _HandleMobile(host, DepotMobileChannel.PairStart, (request, cancellationToken) => mobile.StartAsync(request.ConnectionId, cancellationToken));
+        _HandleMobile(host, DepotMobileChannel.PairStatus, (request, _) => Task.FromResult(mobile.Status(request.ConnectionId)));
+        _HandleMobile(host, DepotMobileChannel.PairCancel, (request, _) =>
+        {
+            mobile.Cancel(request.ConnectionId);
+            return Task.FromResult(true);
+        });
+        _HandleMobile(host, DepotMobileChannel.Phones, (request, cancellationToken) => mobile.PhonesAsync(request.ConnectionId, request.Refresh, cancellationToken));
+        _HandleMobile(host, DepotMobileChannel.Forget, (request, _) =>
+        {
+            mobile.Forget(request.ConnectionId, request.DeviceId ?? throw new ArgumentException("The phone is missing.", nameof(request)));
+            return Task.FromResult(true);
+        });
+        mobile.Start();
+
         // AC-499: declared unconditionally, even with zero connections — fixes the doorless-dead-end bug where
         // zero connections meant no "Depot" option anywhere and no way to reach this plugin's settings.
         host.AddProjectMemorySourceFamily(new ProjectMemorySourceFamily(DepotMemorySource.Scheme, "Depot")
@@ -371,6 +407,14 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             return JsonSerializer.SerializeToElement(await handler(request, cancellationToken).ConfigureAwait(false), DepotChannel.Json);
         }));
 
+    private void _HandleMobile<T>(ICockpitHost host, string action, Func<DepotMobileRequest, CancellationToken, Task<T>> handler) =>
+        _handlers.Add(host.Channel.Handle(action, async (payload, cancellationToken) =>
+        {
+            var request = payload.Deserialize<DepotMobileRequest>(DepotChannel.Json)
+                ?? throw new ArgumentException("The request is empty.", nameof(payload));
+            return JsonSerializer.SerializeToElement(await handler(request, cancellationToken).ConfigureAwait(false), DepotChannel.Json);
+        }));
+
     private void _HandleMeetingNote<T>(
         ICockpitHost host, string action, Func<DepotMeetingNoteRequest, CancellationToken, Task<DepotBrowserAnswer<T>>> handler) =>
         _handlers.Add(host.Channel.Handle(action, async (payload, cancellationToken) =>
@@ -482,10 +526,21 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
     private static JsonElement _InstallTokenAnswer(bool success, string message) =>
         JsonSerializer.SerializeToElement(new DepotInstallTokenAnswer(success, message), DepotChannel.Json);
 
+    private void _RefreshEvents(string? serverName = null)
+    {
+        if (_events is { } events)
+        {
+            _ = events.RefreshAsync(serverName).ContinueWith(
+                refresh => _logger?.LogWarning(refresh.Exception?.GetBaseException(), "Refreshing Depot registration failed."),
+                CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
+        }
+    }
+
     private void _ConnectionsChanged()
     {
         _fileSources?.NotifyChanged();
         _ = _storeSources?.RefreshAsync();
+        _ = _mobile?.PruneAsync();
     }
 
     // The write both channel actions share: storage first, then the registries diffed against what was there.
@@ -511,6 +566,10 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
         _SyncMemorySources(host, before, after);
         _SyncSharedProjectSources(host, before, after, events);
         _SyncBackupTargets(host, settings, before, after);
+        if (events is not null)
+        {
+            await events.RefreshAsync().ConfigureAwait(false);
+        }
 
         foreach (var orphanedName in orphanedNames)
         {
@@ -747,6 +806,11 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             TaskScheduler.Default);
         _ = _noteLive?.DisposeAsync().AsTask().ContinueWith(
             closing => _logger?.LogWarning(closing.Exception?.GetBaseException(), "Closing the live notes failed."),
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted,
+            TaskScheduler.Default);
+        _ = _mobile?.DisposeAsync().AsTask().ContinueWith(
+            closing => _logger?.LogWarning(closing.Exception?.GetBaseException(), "Closing the mobile relay failed."),
             CancellationToken.None,
             TaskContinuationOptions.OnlyOnFaulted,
             TaskScheduler.Default);

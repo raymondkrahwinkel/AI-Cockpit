@@ -7,7 +7,7 @@ plugins-dev/Cockpit.Plugin.Autopilot.Tests	42
 plugins-dev/Cockpit.Plugin.Browser.Tests	10
 plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests	70
 plugins-dev/Cockpit.Plugin.CliAgentProvider.Tests	56
-plugins-dev/Cockpit.Plugin.Depot.Tests	145
+plugins-dev/Cockpit.Plugin.Depot.Tests	146
 plugins-dev/Cockpit.Plugin.Diagram.Tests	40
 plugins-dev/Cockpit.Plugin.Discord.Tests	39
 plugins-dev/Cockpit.Plugin.Docker.Tests	18

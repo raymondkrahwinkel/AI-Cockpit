@@ -438,33 +438,91 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
             asked = _questions.GetValueOrDefault(id.ToString("n"));
         }
 
-        RowChanged?.Invoke(this, new AssistantChannelRow
-        {
-            Id = id,
-            Kind = _Kind(row.Kind),
-            Text = _ChannelText(row),
-            Attachments = row.ReplyAttachments?.Select(file => new AssistantChannelAttachment(file.Name, file.Content, file.IsImage)).ToArray() ?? [],
-            Timestamp = row.Timestamp,
-            ToolName = row.ToolName,
-            ResultText = row.ResultText,
-            IsUpdate = upsert.Version > 1,
-            Questions = asked is null ? [] : [asked],
-            CorrelationId = asked is null ? null : id.ToString("n"),
-        });
+        RowChanged?.Invoke(this, _ToChannelRow(row, id, _ChannelText(row), upsert.Version > 1, asked));
     }
+
+    private static AssistantChannelRow _ToChannelRow(TranscriptSnapshotEntry row, Guid id, string text, bool isUpdate, AssistantChannelQuestion? asked) => new()
+    {
+        Id = id,
+        Kind = _Kind(row.Kind),
+        Text = text,
+        Attachments = row.ReplyAttachments?.Select(file => new AssistantChannelAttachment(file.Name, file.Content, file.IsImage)).ToArray() ?? [],
+        Timestamp = row.Timestamp,
+        ToolName = row.ToolName,
+        ResultText = row.ResultText,
+        IsUpdate = isUpdate,
+        Questions = asked is null ? [] : [asked],
+        CorrelationId = asked is null ? null : id.ToString("n"),
+    };
 
     private static int _Content(TranscriptSnapshotEntry row) => HashCode.Combine(row.Text, row.ResultText, row.ReplyAttachments);
 
-    private string _ChannelText(TranscriptSnapshotEntry row)
+    private string _ChannelText(TranscriptSnapshotEntry row) =>
+        row.StartsInsideTable && _observed is not null ? _TableText(row, _observed.Rows.TakeWhile(previous => previous.Id != row.Id)) : row.Text;
+
+    // A table cut across rows gets the opening row's header back, so a row read alone still makes sense.
+    private static string _TableText(TranscriptSnapshotEntry row, IEnumerable<TranscriptSnapshotEntry> preceding)
     {
-        if (!row.StartsInsideTable || _observed is null)
+        var opening = preceding.LastOrDefault(previous => previous.Kind == "AssistantText" && !previous.StartsInsideTable && previous.EndsInsideTable);
+        return opening is null ? row.Text : string.Join('\n', opening.Text.Split('\n').Take(2)) + "\n" + row.Text;
+    }
+
+    // AC-2238: a plugin's plain bound on a page, so a careless limit cannot turn one call into the whole conversation.
+    private const int _MaxPage = 200;
+
+    // The session's own rows are the transcript, repainted from its log on a resume, so this reads after a restart too
+    // and touches no file. One snapshot per call; the cost is that snapshot, not a scan of the log per page.
+    public Task<AssistantChannelHistoryPage> ReadRowsAsync(int limit, string? before, CancellationToken cancellationToken = default)
+    {
+        if (_disposed || limit < 1 || _observed is not { } session)
         {
-            return row.Text;
+            return Task.FromResult(AssistantChannelHistoryPage.Empty);
         }
 
-        var opening = _observed.Rows.TakeWhile(previous => previous.Id != row.Id)
-            .LastOrDefault(previous => previous.Kind == "AssistantText" && !previous.StartsInsideTable && previous.EndsInsideTable);
-        return opening is null ? row.Text : string.Join('\n', opening.Text.Split('\n').Take(2)) + "\n" + row.Text;
+        var rows = session.Rows;
+        var end = rows.Count;
+        lock (_relayedRows)
+        {
+            if (before is not null)
+            {
+                end = Guid.TryParse(before, out var cursor) ? _IndexOf(rows, cursor) : -1;
+                if (end < 0)
+                {
+                    return Task.FromResult(AssistantChannelHistoryPage.Empty);
+                }
+            }
+
+            var start = Math.Max(0, end - Math.Min(limit, _MaxPage));
+            var page = new List<AssistantChannelRow>(end - start);
+            for (var index = end - 1; index >= start; index--)
+            {
+                var row = rows[index];
+                if (!_relayedRows.TryGetValue(row.Id, out var relayed))
+                {
+                    relayed = (Guid.NewGuid(), _Content(row));
+                    _relayedRows[row.Id] = relayed;
+                }
+
+                var text = row.StartsInsideTable ? _TableText(row, rows.Take(index)) : row.Text;
+                page.Add(_ToChannelRow(row, relayed.Id, text, false, null));
+            }
+
+            return Task.FromResult(new AssistantChannelHistoryPage(page, start > 0 ? page[^1].Id.ToString("n") : null));
+        }
+    }
+
+    // Newest first: a page back usually starts near the end. Under the _relayedRows lock.
+    private int _IndexOf(IReadOnlyList<TranscriptSnapshotEntry> rows, Guid id)
+    {
+        for (var index = rows.Count - 1; index >= 0; index--)
+        {
+            if (_relayedRows.TryGetValue(rows[index].Id, out var relayed) && relayed.Id == id)
+            {
+                return index;
+            }
+        }
+
+        return -1;
     }
 
     // The row kinds as a snapshot spells them — `TranscriptEntryKind`'s names.
