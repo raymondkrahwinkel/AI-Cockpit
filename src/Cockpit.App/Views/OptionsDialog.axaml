@@ -1565,6 +1565,16 @@
                                  assistant's settings, not on a page named after a feature that was removed. -->
                             <StackPanel Spacing="6" IsEnabled="{Binding IsAudioAvailable}">
                             <TextBlock Classes="optionsSectionHeader" Text="4. SPEECH"/>
+                            <CheckBox Content="Lower other apps while the assistant speaks"
+                                      IsChecked="{Binding VoiceDuckOtherAudio}" IsEnabled="{Binding CanDuckOtherAudio}"/>
+                            <TextBlock Classes="optionsHint" Text="{Binding AudioDuckingExplanation}" TextWrapping="Wrap"/>
+                            <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding VoiceDuckOtherAudio}"
+                                        IsEnabled="{Binding CanDuckOtherAudio}">
+                                <TextBlock Text="Other apps (% of Cockpit volume)" VerticalAlignment="Center"/>
+                                <NumericUpDown Value="{Binding VoiceDuckingPercent}" Minimum="0" Maximum="100"
+                                               Increment="5" FormatString="0" Width="120" HorizontalContentAlignment="Center"
+                                               AutomationProperties.Name="Other apps as a percentage of Cockpit volume"/>
+                            </StackPanel>
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <TextBlock Text="Speech" FontWeight="SemiBold"/>
                                 <materialIcons:MaterialIcon Classes="hint"

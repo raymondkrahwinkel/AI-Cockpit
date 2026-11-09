@@ -2862,6 +2862,18 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // NumericUpDown can bind it).
     public double VoiceStopReadAloudThresholdValue => (double)VoiceStopReadAloudLevelThreshold;
 
+    [ObservableProperty]
+    private bool _voiceDuckOtherAudio;
+
+    [ObservableProperty]
+    private decimal _voiceDuckingPercent = 40;
+
+    public bool CanDuckOtherAudio => IsAudioAvailable && (OperatingSystem.IsWindows() || OperatingSystem.IsLinux());
+
+    public string AudioDuckingExplanation => !IsAudioAvailable ? AudioUnavailableMessage
+        : OperatingSystem.IsMacOS() ? "Audio ducking is not available on macOS. Per-app audio routing is planned separately."
+        : "Other apps stay at this percentage of Cockpit's system mixer volume. Quieter apps stay quiet; your volume changes are kept.";
+
     // Two-way bound to the "Test microphone" toggle; flipping it starts/stops a live level meter for setting the
     // barge-in threshold by eye (AC-9).
     [ObservableProperty]
@@ -6297,6 +6309,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         VoiceOpenMicSilenceTimeoutMs = settings.OpenMicSilenceTimeoutMs;
         VoiceStopReadAloudWhenSpeaking = settings.StopReadAloudWhenSpeaking;
         VoiceStopReadAloudLevelThreshold = (decimal)settings.StopReadAloudLevelThreshold;
+        VoiceDuckOtherAudio = CanDuckOtherAudio && settings.DuckOtherAudioWhileSpeaking;
+        VoiceDuckingPercent = (decimal)(Math.Clamp(double.IsFinite(settings.DuckingLevel) ? settings.DuckingLevel : 0.4, 0, 1) * 100);
         SelectedTtsVoice = TtsVoices.FirstOrDefault(voice => voice.Sid == settings.TtsVoiceSid) ?? TtsVoiceCatalog.Default;
         VoiceTtsSpeed = (decimal)settings.TtsSpeed;
         SelectedReadAloudLanguage = ReadAloudLanguages.FirstOrDefault(language => language.Code == settings.ReadAloudLanguage) ?? ReadAloudLanguages[0];
@@ -6371,6 +6385,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             OpenMicSilenceTimeoutMs = VoiceOpenMicSilenceTimeoutMs > 0 ? VoiceOpenMicSilenceTimeoutMs : 800,
             StopReadAloudWhenSpeaking = VoiceStopReadAloudWhenSpeaking,
             StopReadAloudLevelThreshold = (double)VoiceStopReadAloudLevelThreshold,
+            DuckOtherAudioWhileSpeaking = CanDuckOtherAudio && VoiceDuckOtherAudio,
+            DuckingLevel = (double)VoiceDuckingPercent / 100,
             TtsVoiceSid = SelectedTtsVoice.Sid,
             TtsSpeed = (double)VoiceTtsSpeed,
             ReadAloudLanguage = SelectedReadAloudLanguage.Code,
@@ -8218,6 +8234,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         VoiceOpenMicSilenceTimeoutMs = voice.OpenMicSilenceTimeoutMs;
         VoiceStopReadAloudWhenSpeaking = voice.StopReadAloudWhenSpeaking;
         VoiceStopReadAloudLevelThreshold = (decimal)voice.StopReadAloudLevelThreshold;
+        VoiceDuckOtherAudio = CanDuckOtherAudio && voice.DuckOtherAudioWhileSpeaking;
+        VoiceDuckingPercent = (decimal)(Math.Clamp(double.IsFinite(voice.DuckingLevel) ? voice.DuckingLevel : 0.4, 0, 1) * 100);
         VoiceTtsSpeed = (decimal)voice.TtsSpeed;
         SelectedTtsVoice = TtsVoices.FirstOrDefault(item => item.Sid == voice.TtsVoiceSid) ?? TtsVoiceCatalog.Default;
         SelectedReadAloudLanguage = ReadAloudLanguages.FirstOrDefault(language => language.Code == voice.ReadAloudLanguage) ?? ReadAloudLanguages[0];

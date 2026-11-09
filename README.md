@@ -213,6 +213,14 @@ calling agent cannot delegate to what it cannot see.
 - **TTS (read-aloud):** replies can be read aloud via sherpa-onnx running **SupertonicTTS** — one multilingual voice
   speaks both Dutch and English, with automatic per-language pronunciation within a single reply, and a choice of
   reading verbatim, rewritten into natural speech, or summarized to the essence.
+- **Audio ducking (Windows and Linux):** Options → Assistant → Speech can lower other apps while the assistant
+  speaks. `Voice.DuckOtherAudioWhileSpeaking` defaults to `false` (no OS audio calls while off);
+  `Voice.DuckingLevel` defaults to `0.4`, a fraction of Cockpit's OS session volume, clamped to 0–1.
+  Cockpit at 80% with a 50% setting caps other apps on the same output at 40%; quieter apps stay quiet.
+  Volumes return about 500 ms after speech ends, unless changed by the operator. `audio-ducking.json`
+  journals original volumes before changing them and recovers them on the next enabled start after a crash.
+  Missing streams stay journalled for a later recovery. These settings stay local and are excluded from
+  `SettingsCarrierWhitelist`. macOS and machines without audio show a disabled option with an explanation.
 - All voice features are **opt-in and fully local** — no audio leaves the machine.
 
 ## Plugins & plugin store

@@ -49,6 +49,10 @@ internal sealed class VoiceSettingsEntry
 
     public double StopReadAloudLevelThreshold { get; set; } = 0.15;
 
+    public bool DuckOtherAudioWhileSpeaking { get; set; }
+
+    public double DuckingLevel { get; set; } = 0.4;
+
     public static VoiceSettingsEntry FromDomain(VoiceSettings settings) => new()
     {
         IsEnabled = settings.IsEnabled,
@@ -69,6 +73,8 @@ internal sealed class VoiceSettingsEntry
         OpenMicSilenceTimeoutMs = settings.OpenMicSilenceTimeoutMs,
         StopReadAloudWhenSpeaking = settings.StopReadAloudWhenSpeaking,
         StopReadAloudLevelThreshold = settings.StopReadAloudLevelThreshold,
+        DuckOtherAudioWhileSpeaking = settings.DuckOtherAudioWhileSpeaking,
+        DuckingLevel = settings.DuckingLevel,
     };
 
     public VoiceSettings ToDomain() => new()
@@ -93,5 +99,7 @@ internal sealed class VoiceSettingsEntry
         OpenMicSilenceTimeoutMs = OpenMicSilenceTimeoutMs,
         StopReadAloudWhenSpeaking = StopReadAloudWhenSpeaking,
         StopReadAloudLevelThreshold = StopReadAloudLevelThreshold,
+        DuckOtherAudioWhileSpeaking = DuckOtherAudioWhileSpeaking,
+        DuckingLevel = DuckingLevel,
     };
 }
