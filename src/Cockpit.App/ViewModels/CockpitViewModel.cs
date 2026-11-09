@@ -10119,6 +10119,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             }
 
             owned.Add(session);
+            OnPropertyChanged(nameof(AllSessions));
         }
 
         var session = _MakeSdkPane(
@@ -10161,6 +10162,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         _embeddedSessions.Remove(workspaceId);
+        OnPropertyChanged(nameof(AllSessions));
         foreach (var session in owned)
         {
             _ = _TeardownEmbeddedSessionAsync(session);
@@ -10191,6 +10193,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                     _embeddedSessions.Remove(workspaceId);
                 }
 
+                OnPropertyChanged(nameof(AllSessions));
                 return _TeardownEmbeddedSessionAsync(session, endReason);
             }
         }

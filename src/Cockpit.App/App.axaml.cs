@@ -454,7 +454,10 @@ public partial class App : Application
         // This route is reachable only after onboarding, so it needs no separate gate (AC-509). Bring a hidden or
         // minimized cockpit forward first so the modal has a visible owner and does not look like a freeze.
         _mainWindow.Show();
-        _mainWindow.WindowState = WindowState.Normal;
+        if (_mainWindow.WindowState == WindowState.Minimized)
+        {
+            _mainWindow.WindowState = WindowState.Normal;
+        }
 
         var protection = Program.Services.GetRequiredService<ISecretProtectionService>();
         var viewModel = new UnlockViewModel(protection);
@@ -611,6 +614,9 @@ public partial class App : Application
         // AC-237: resolved here, ahead of plugin phase 2 below, so its subscription to the tool registry's
         // Changed event is already listening by the time a plugin registers a companion tool.
         Program.Services.GetRequiredService<CompanionWindowPresenter>();
+
+        // AC-2209: resolved for its subscription, so a look-along the assistant starts shows its frame, timer and Stop.
+        Program.Services.GetRequiredService<ScreenLookAlongPresenter>();
 
         // AC-1343: restoring saved workspaces and their panes is started further down, after usage thresholds
         // load — see RestoreCockpitAsync's own comment for why.
@@ -949,7 +955,10 @@ public partial class App : Application
 
         // AC-239: the second first-party companion tool through the same host — proof the seam AC-238 built
         // carries more than one resident.
-        var screenshotCompanionTool = Program.Services.GetRequiredService<ScreenshotCoordinator>().CreateCompanionTool();
+        var screenshots = Program.Services.GetRequiredService<ScreenshotCoordinator>();
+        screenshots.AssistantScreenshotCaptured += async (_, _) =>
+            await Program.Services.GetRequiredService<AssistantIndicatorCoordinator>().OpenCompanionComposerAsync();
+        var screenshotCompanionTool = screenshots.CreateCompanionTool();
         if (!firstPartyCompanionTools.AddCompanionTool(screenshotCompanionTool))
         {
             diagnostics.Record(
@@ -957,6 +966,13 @@ public partial class App : Application
                 "Screenshot",
                 "companion-tool",
                 $"Companion tool '{screenshotCompanionTool.Id}' is already contributed by another plugin; this registration is ignored.");
+        }
+
+        var attentionFeed = Program.Services.GetRequiredService<CompanionAttentionFeed>();
+        if (firstPartyCompanionTools.AddCompanionTool(attentionFeed.CreateCompanionTool()))
+        {
+            firstPartyCompanionTools.AddCompanionTool(attentionFeed.CreateStatusTool());
+            attentionFeed.Start();
         }
 
         // AC-1389: one backend host per plugin, shared by its backend part and the UI part's CockpitUiHost that forwards

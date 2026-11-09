@@ -694,7 +694,9 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
             _WatchForUnresolvableResume(session);
         }
 
-        await _ApplySpeechAsync(session, settings, cancellationToken).ConfigureAwait(true);
+        // AC-2230: read again, not the copy from the top of this start — the toggle clicked while the start was running
+        // found no Session to tell (Session is assigned below) and only reached the store.
+        await _ApplySpeechAsync(session, await _settings.LoadAsync(cancellationToken).ConfigureAwait(true), cancellationToken).ConfigureAwait(true);
 
         // A new instance has a new context, and a provider that reports no fill until its first turn would otherwise
         // never take the below-the-line reset — leaving the ask spent before this conversation had used anything.

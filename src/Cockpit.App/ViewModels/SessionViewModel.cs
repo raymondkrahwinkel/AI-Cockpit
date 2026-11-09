@@ -473,7 +473,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         ResetReadAloudCancellation();
         SpeechRulesReason = null;
         OnPropertyChanged(nameof(SpeechRulesReason));
-        await EnqueueReadAloudAsync(entry.ReplyTextWithImageSuffix);
+        await EnqueueReadAloudAsync(TtsProseExtractor.Extract(entry.ReplyTextWithImageSuffix), CaptureReadAloudTurn(), explicitRequest: true);
         CompleteReadAloudStream();
     }
 

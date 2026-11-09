@@ -99,6 +99,7 @@ public sealed class DepotUi : ICockpitPluginUi, IFirstStartPluginUi
             liveBadge.Count = notes.Total;
             host.SetStatusText(notes.Total == 0 ? null : $"● {notes.Total} live {(notes.Total == 1 ? "note" : "notes")} · Depot", SideMenuButtonBadgeTone.Success, livePopup);
         });
+        host.AddCompanionTool(new DepotLiveNoteTool(host, notes, () => settings.Connections).Registration);
         host.AddDockPanel(new DockPanelRegistration("depot-browser", "Depot", MaterialIconKind.FolderNetworkOutline,
             () => new DepotBrowserPanel(host, settings.Connections, inbox, notes: notes)) { Badge = liveBadge });
         _ = notes.LoadAsync(settings.Connections);
