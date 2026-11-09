@@ -21,7 +21,7 @@ public static class MobileHandshake
 
     // `pending` is the QR code still on screen, or null when none is; `isPaired` answers for a phone key paired earlier.
     // A pairing handshake uses `pending` up (compare-and-set, the secret wiped), so of two that race, one wins; an expired
-    // code is refused and wiped. On success the caller sends result.Reply to the phone, and with NewlyPaired stores PhonePub.
+    // code is refused and wiped. The caller sends Reply then encrypted ready, and stores PhonePub only after phone ready.
     public static bool TryAccept(
         ReadOnlySpan<byte> frame,
         ECDiffieHellman cockpitKey,

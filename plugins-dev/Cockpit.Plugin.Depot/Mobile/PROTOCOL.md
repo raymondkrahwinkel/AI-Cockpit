@@ -90,7 +90,7 @@ Because `phonePub` has a fixed length, the split between `pairingId` and `phoneP
 - **Flag `0x01`** is accepted only while a QR code is open, meaning not used and not expired (§ 2). The Cockpit
   recomputes `mac` with its own `pairingId` and `pairingSecret`, never with values from the frame, and compares in
   constant time (`CryptographicOperations.FixedTimeEquals`). After that it checks both points and derives the keys
-  (§ 4). Only once all of that holds does it use the code up. The caller then stores `phonePub` as paired.
+  (§ 4). Only once all of that holds does it use the code up. `phonePub` remains provisional until key confirmation (§ 4).
 - **Flag `0x00`** is accepted only if `phonePub` was paired earlier.
 - `phonePub` and `ephPub` must be points on P-256 (§ 1). The point at infinity cannot be encoded in this form, and an
   all-zero X and Y is not on the curve, so both are refused.
@@ -149,7 +149,24 @@ The phone computes `ECDH(eph_phone_private, cockpitPub)`, `ECDH(phone_private, c
 - `bind` ties the keys to exactly this protocol version, this kind of handshake, this pairing and this handshake's
   ephemeral keys.
 
-The first encrypted frame in either direction is the key confirmation: if the keys differ, the tag fails.
+**Key confirmation (AC-2239), on every stream, including a known phone.** Immediately after the clear reply, the
+Cockpit sends exactly one encrypted `ready` in the § 6 envelope, at counter 0:
+
+```json
+{"type":"ready","id":"ready","body":{}}
+```
+
+The phone opens this frame before it saves `cockpitPub` or shows Paired/Secure. A failing tag or no `ready` within
+15 seconds means Refused, with no new stored pairing. After opening it, the phone answers with its own encrypted
+`ready` envelope at counter 0 (`id` is any nonempty string, `body` is an object, normally `{}`). Application frames
+then continue at counter 1 in both directions. The vectors' `ready` object supplies counter-0 frames in both directions;
+the separate `frames` array tests the cipher in isolation and starts its own counters at 0.
+
+The Cockpit keeps a new `phonePub` only in memory until that valid phone `ready` arrives. Only then does it store the
+key and pairing and open the assistant channel. Before confirmation, a frame that fails authentication or is not a
+`ready` envelope ends the stream. At 15 seconds after sending the clear reply, an unconfirmed stream and its provisional
+pairing are discarded, with no new stored phone key or channel. A late `ready` cannot revive it; the operator needs a
+new QR code. A failed known-phone stream retains its earlier pairing but grants no access on that stream.
 
 ## 5. Frames
 
@@ -251,9 +268,11 @@ frame or a stream that stops, never a frame that the other side accepts as genui
 3. **A stream has no authenticated end.** The relay can cut a stream after any frame. The receiver then has a correct
    prefix of what was sent, never a changed or reordered one, but it cannot tell a cut from a sender that stopped. A
    message type that needs to know it is complete has to say so itself (AC-2227).
-4. **"Phone online" means after the first frame that opens.** An accepted handshake proves only that the frame carried
-   a paired key, or the right MAC. Only a frame that `TryOpen` accepts proves that the other side holds the private
-   keys. The caller marks a phone as connected, and acts on anything it sends, only after that first frame.
+4. **"Phone online" and a new pairing require explicit `ready` confirmation (§ 4).** An accepted handshake proves
+   only that the frame carried a paired key, or the right MAC. Each side must open the other's encrypted `ready`
+   within 15 seconds. A QR with a substituted `cockpitPub` can pass the MAC check, but produces different keys:
+   the phone refuses the Cockpit's `ready`, and the Cockpit never stores the provisional phone key. No application
+   message reaches the assistant before the phone's valid `ready`; timeout discards the provisional pairing.
 
 The two limits of the first draft, forward secrecy on one side only and a recorded handshake that could be played
 again, are gone since the Cockpit's ephemeral key (§ 3, § 4). Zyra decided this on 09-11, from Raymond's requirement
@@ -262,13 +281,13 @@ in DEP-618: Depot must not be able to interact with anybody's Cockpit in any way
 ## 10. Message types, v1 (AC-2227)
 
 Every message is an envelope as in § 6. A reply carries the `id` of the message it answers as `replyTo` in its body.
-The Cockpit's own ids are `c1`, `c2`, … per stream.
+The confirmation has id `ready`; the Cockpit's application ids are `c1`, `c2`, ….
 
 **Who may send.** A frame reaches the assistant only from a phone this Cockpit holds a key for, over that phone's current
 stream, after its keys opened the frame. Each paired phone is its own channel onto the assistant (the same conversation
 as the chat window, next to Slack and Discord), opened for that phone's device id alone. Forget closes the channel, drops
 the stream and wipes the key: from then on that phone gets nothing and nothing it sends gets in. The Cockpit sends to a
-phone only after the phone's first frame opened (§ 9.4).
+phone only after the phone's `ready` opened (§ 9.4), apart from its own initial `ready`.
 
 **Phone → Cockpit.**
 
