@@ -17,6 +17,7 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
     private readonly object _gate = new();
     private readonly Dictionary<string, Running> _running = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Running> _retained = new(StringComparer.Ordinal);
+    private readonly HashSet<Running> _stopping = [];
     internal const string RetainedPrefix = "retained:";
     internal Func<Guid, IReadOnlySet<string>>? RetainTargets { get; set; }
     internal AddressPolicy NetworkPolicy { get; set; } = new(() => []);
@@ -143,15 +144,23 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
         WriteOwner(process, profile);
 
         var running = new Running(process, profile, network);
+        bool registered;
         lock (_gate)
         {
-            if (_disposed || _epochs.GetValueOrDefault(paneId) != epoch)
+            registered = !_disposed && _epochs.GetValueOrDefault(paneId) == epoch;
+            if (registered)
             {
-                running.Stop();
-                return null;
+                _running[paneId] = running;
             }
-
-            _running[paneId] = running;
+            else
+            {
+                _stopping.Add(running);
+            }
+        }
+        if (!registered)
+        {
+            StopRunning(running);
+            return null;
         }
 
         int? port;
@@ -257,15 +266,26 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
         lock (_gate)
         {
             if (!_running.TryGetValue(paneId, out running) || running.Stopped) return false;
-            if ((RetainTargets?.Invoke(running.Generation).Count ?? 0) == 0)
+        }
+        var keep = RetainTargets?.Invoke(running.Generation);
+        lock (_gate)
+        {
+            if (!_running.TryGetValue(paneId, out var current) || current != running || running.Stopped)
+            {
+                return false;
+            }
+            if ((keep?.Count ?? 0) == 0)
             {
                 running.Stopped = true;
-                running.Lifetime.Cancel();
-                running.Proxy?.MarkStopped();
-                running.KillBrowser();
-                Changed?.Invoke();
-                return true;
             }
+        }
+        if ((keep?.Count ?? 0) == 0)
+        {
+            running.Lifetime.Cancel();
+            running.Proxy?.MarkStopped();
+            running.KillBrowser();
+            Changed?.Invoke();
+            return true;
         }
         Stop(paneId);
         return true;
@@ -284,33 +304,53 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
         Running? running;
         lock (_gate)
         {
-            _running.Remove(paneId, out running);
+            _running.TryGetValue(paneId, out running);
             _epochs[paneId] = _epochs.GetValueOrDefault(paneId) + 1;
         }
-
-        if (running is not null)
+        if (running is null)
         {
-            running.Stopped = true;
-            running.Lifetime.Cancel();
-            running.Proxy?.Dispose();
-            var keep = RetainTargets?.Invoke(running.Generation) ?? new HashSet<string>();
-            if (keep.Count > 0 && running.Upstream is not null && !running.Exited)
-            {
-                var key = RetainedPrefix + running.Generation.ToString("N");
-                lock (_gate) { _retained[key] = running; }
-                _ = Task.Run(async () =>
-                {
-                    try { await CloseSelfTargetsAsync(running, keep).ConfigureAwait(false); }
-                    catch (Exception ex)
-                    {
-                        Report(LogLevel.Warning, $"Closing self tabs failed ({ex.GetType().Name}); closing the retained browser.");
-                        CloseRetained(key);
-                    }
-                });
-            }
-            else running.Stop();
-            Changed?.Invoke();
+            return;
         }
+        var keep = RetainTargets?.Invoke(running.Generation) ?? new HashSet<string>();
+        var retained = false;
+        var key = RetainedPrefix + running.Generation.ToString("N");
+        lock (_gate)
+        {
+            if (!_running.TryGetValue(paneId, out var current) || current != running)
+            {
+                return;
+            }
+            _running.Remove(paneId);
+            running.Stopped = true;
+            if (!_disposed && keep.Count > 0 && running.Upstream is not null && !running.Exited)
+            {
+                _retained[key] = running;
+                retained = true;
+            }
+            else
+            {
+                _stopping.Add(running);
+            }
+        }
+        running.Lifetime.Cancel();
+        running.Proxy?.Dispose();
+        if (retained)
+        {
+            _ = Task.Run(async () =>
+            {
+                try { await CloseSelfTargetsAsync(running, keep).ConfigureAwait(false); }
+                catch (Exception ex)
+                {
+                    Report(LogLevel.Warning, $"Closing self tabs failed ({ex.GetType().Name}); closing the retained browser.");
+                    CloseRetained(key);
+                }
+            });
+        }
+        else
+        {
+            StopRunning(running);
+        }
+        Changed?.Invoke();
     }
 
     private static async Task CloseSelfTargetsAsync(Running running, IReadOnlySet<string> keep)
@@ -345,10 +385,14 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
             var retained = _retained.FirstOrDefault(pair => pair.Value == running).Key;
             if (active is not null) removed = _running.Remove(active);
             if (retained is not null) removed |= _retained.Remove(retained);
+            if (removed)
+            {
+                _stopping.Add(running);
+            }
         }
         if (removed)
         {
-            running.Stop();
+            StopRunning(running);
             Changed?.Invoke();
         }
     }
@@ -356,8 +400,18 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
     private void CloseRetained(string key)
     {
         Running? running;
-        lock (_gate) { _retained.Remove(key, out running); }
-        running?.Stop();
+        lock (_gate)
+        {
+            _retained.Remove(key, out running);
+            if (running is not null)
+            {
+                _stopping.Add(running);
+            }
+        }
+        if (running is not null)
+        {
+            StopRunning(running);
+        }
         Changed?.Invoke();
     }
 
@@ -386,14 +440,23 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
         lock (_gate)
         {
             _disposed = true;
-            all = [.. _running.Values, .. _retained.Values];
+            all = [.. _running.Values.Concat(_retained.Values).Concat(_stopping).Distinct()];
+            _stopping.UnionWith(all);
             _running.Clear();
             _retained.Clear();
         }
-
         foreach (var running in all)
         {
-            running.Stop();
+            StopRunning(running);
+        }
+    }
+
+    private void StopRunning(Running running)
+    {
+        running.Stop();
+        lock (_gate)
+        {
+            _stopping.Remove(running);
         }
     }
 
@@ -650,7 +713,8 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
 
         public bool Stopped { get; set; }
 
-        private int _ended;
+        private readonly object _shutdownGate = new();
+        private Task? _shutdown;
 
         public void Stop()
         {
@@ -661,11 +725,20 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
 
         public void KillBrowser()
         {
-            if (Interlocked.Exchange(ref _ended, 1) != 0)
+            Task shutdown;
+            lock (_shutdownGate)
             {
-                return;
+                shutdown = _shutdown ??= Task.Run(ShutdownCore);
             }
+            // AC-2211: all callers await the same cleanup, outside the host lock, capped by the launch timeout.
+            if (!shutdown.Wait(StartTimeout))
+            {
+                throw new TimeoutException("The browser shutdown did not finish within its lifecycle timeout.");
+            }
+        }
 
+        private void ShutdownCore()
+        {
             Boundary?.Dispose();
             var exited = false;
             try

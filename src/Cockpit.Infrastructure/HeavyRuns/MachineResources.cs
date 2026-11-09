@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Runtime.InteropServices;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.HeavyRuns;
+using Cockpit.Core.Sessions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -23,6 +24,7 @@ public sealed class MachineResources : IMachineResources, ISingletonService, IDi
     private readonly Dictionary<string, DiskSpaceForecast> _diskForecasts = new(StringComparer.Ordinal);
     private IReadOnlyList<DiskSpaceSnapshot> _disks = [];
     private DateTimeOffset? _lastDiskSample;
+    private IReadOnlyDictionary<string, (string Path, long? Bytes)> _scratchUsage = new Dictionary<string, (string, long?)>();
     private ITimer? _timer;
     private CpuTimes? _lastCpu;
     private bool _isCpuUnmeasured;
@@ -41,6 +43,8 @@ public sealed class MachineResources : IMachineResources, ISingletonService, IDi
     public MachineLoad Current { get; private set; } = MachineLoad.Unknown;
 
     public IReadOnlyList<DiskSpaceSnapshot> Disks => Volatile.Read(ref _disks);
+
+    public IReadOnlyDictionary<string, (string Path, long? Bytes)> ScratchUsage => Volatile.Read(ref _scratchUsage);
 
     public event Action? Sampled;
 
@@ -105,6 +109,7 @@ public sealed class MachineResources : IMachineResources, ISingletonService, IDi
         }
 
         _lastDiskSample = timestamp;
+        _SampleScratch();
         var settings = _settingsStore is null ? new HeavyRunSettings()
             : await _settingsStore.LoadAsync().ConfigureAwait(false);
         List<DiskSpaceSnapshot> snapshots = [];
@@ -137,6 +142,70 @@ public sealed class MachineResources : IMachineResources, ISingletonService, IDi
         }
 
         Volatile.Write(ref _disks, snapshots.AsReadOnly());
+    }
+
+    private void _SampleScratch()
+    {
+        var usage = new Dictionary<string, (string Path, long? Bytes)>();
+        var paths = new Dictionary<string, string>();
+        foreach (string basis in new[] { SessionScratch.BasePath, SessionScratch.FallbackBase }.Distinct())
+        {
+            try
+            {
+                if (!Directory.Exists(basis) || (File.GetAttributes(basis) & FileAttributes.ReparsePoint) != 0)
+                {
+                    continue;
+                }
+                var options = new EnumerationOptions { AttributesToSkip = FileAttributes.ReparsePoint };
+                foreach (string directory in Directory.EnumerateDirectories(basis, "*", options))
+                {
+                    try
+                    {
+                        if (SessionScratch.OwnerOf(directory) is { } owner)
+                        {
+                            paths.TryAdd(owner, directory);
+                        }
+                    }
+                    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                    {
+                        _logger.LogDebug(exception, "Reading scratch owner at {Path} failed; the next sample will try again.", directory);
+                    }
+                }
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                _logger.LogDebug(exception, "Reading scratch base {Base} failed; the next sample will try again.", basis);
+            }
+        }
+        foreach ((string pane, string path) in paths)
+        {
+            try
+            {
+                long bytes = 0;
+                if (Directory.Exists(path))
+                {
+                    if (SessionScratch.OwnerOf(path) != pane)
+                    {
+                        continue;
+                    }
+                    var options = new EnumerationOptions { RecurseSubdirectories = true, AttributesToSkip = FileAttributes.ReparsePoint, IgnoreInaccessible = false };
+                    foreach (FileInfo file in new DirectoryInfo(path).EnumerateFiles("*", options))
+                    {
+                        if (file.Name != SessionScratch.MarkerName)
+                        {
+                            bytes += file.Length;
+                        }
+                    }
+                }
+                usage[pane] = (path, bytes);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                _logger.LogDebug(exception, "Reading scratch for pane {Pane} failed; the next sample will try again.", pane);
+                usage[pane] = (path, null);
+            }
+        }
+        Volatile.Write(ref _scratchUsage, usage);
     }
 
     private void _Sample()

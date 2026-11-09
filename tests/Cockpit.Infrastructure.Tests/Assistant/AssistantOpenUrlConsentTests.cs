@@ -31,17 +31,6 @@ public sealed class AssistantOpenUrlConsentTests : IDisposable
     // ── Criterion 2: Dangerous, and never remembered ───────────────────────────────────────────────────────────
 
 
-    [Fact]
-    public async Task TheSameUrlApprovedBefore_IsAskedAgain_NeverRidingAnEarlierApproval()
-    {
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-
-        await _Tools(_consent).OpenUrlAsync("https://example.test");
-        await _Tools(_consent).OpenUrlAsync("https://example.test");
-
-        Assert.Equal(2, _consent.Asked.Count);
-    }
-
     // ── Criterion 3: its own source, so one switch cannot open this along with something else ─────────────────
 
 

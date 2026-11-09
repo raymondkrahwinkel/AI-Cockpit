@@ -25,6 +25,33 @@ internal static class SessionScratchCleanup
         }
     }
 
+    // AC-2235: Git Bash fixes /tmp (usertemp = TMP of the first MSYS process) for every bash of the user until
+    // the last MSYS process exits. If that first process was this session's, deleting anything in it breaks /tmp
+    // and the temp files of all other sessions; leave it alone. Probing only costs one bash start per closing session.
+    private static bool _IsMsysTmp(string path)
+    {
+        var bash = Path.Combine(Environment.GetEnvironmentVariable("ProgramFiles") ?? "", "Git", "bin", "bash.exe");
+        if (!OperatingSystem.IsWindows() || !File.Exists(bash))
+        {
+            return false;
+        }
+        try
+        {
+            using var probe = Process.Start(new ProcessStartInfo(bash, ["-c", "cygpath -w /tmp"])
+            {
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            });
+            var tmp = probe?.StandardOutput.ReadToEnd().Trim();
+            return probe is not null && probe.WaitForExit(5000) && tmp is { Length: > 0 } && SessionScratch.IsInside(tmp, path);
+        }
+        catch (Exception exception) when (exception is IOException or System.ComponentModel.Win32Exception)
+        {
+            return false;
+        }
+    }
+
     public static async Task DeleteAsync(string path, string paneId, IWorktreeManager? worktrees, ILogger? logger, Process? process = null)
     {
         try
@@ -36,7 +63,8 @@ internal static class SessionScratchCleanup
             }
             var registered = worktrees is null ? [] : await worktrees.ListAsync().ConfigureAwait(false);
             SessionScratch.Delete(path, paneId, registered.Select(record => record.Path),
-                message => logger?.LogInformation("Scratch cleanup on dispose: {Message}", message));
+                message => logger?.LogInformation("Scratch cleanup on dispose: {Message}", message),
+                isSharedTmp: _IsMsysTmp(path));
         }
         catch (Exception exception)
         {

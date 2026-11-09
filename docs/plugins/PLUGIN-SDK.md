@@ -763,6 +763,8 @@ public interface ICompanionToolContext
     ICockpitSessionObserver SelectedSession { get; } // the active session's working directory and output stream
     IPluginStorage Storage { get; }                  // per-tool persistence, scoped to your tool's own id
     event EventHandler RefreshRequested;              // the host asking this tool to refresh
+    SideMenuButtonBadge Badge { get; }                // a counter on your strip button; empty by default
+    void RequestPopOut();                             // open your own pop-out, without taking focus
 }
 ```
 

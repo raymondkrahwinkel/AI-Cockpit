@@ -25,6 +25,7 @@ internal sealed class DepotFirstStartView : UserControl
     private readonly StackPanel _organizations = new() { Spacing = 8, IsVisible = false };
     private readonly StackPanel _consent = new() { Spacing = 4, IsVisible = false };
     private readonly TextBlock _outcome = new() { Name = "DepotFirstStartOutcome", FontSize = 12, TextWrapping = TextWrapping.Wrap };
+    private readonly StackPanel _personal = new() { Spacing = 6, IsVisible = false };
     private DepotFirstStartAnswer? _answer;
     private TaskCompletionSource<bool>? _agreed;
     private readonly List<Control> _setAside = [];
@@ -61,9 +62,39 @@ internal sealed class DepotFirstStartView : UserControl
             Children =
             {
                 _connection,
+                _personal,
                 _choices,
             },
         };
+    }
+
+    // After the sign-in, the personal MCPs that still need authorizing; nothing open means no step, and Later holds nothing up.
+    private async Task _ShowPersonalSafelyAsync()
+    {
+        try
+        {
+            await _ShowPersonalAsync().ConfigureAwait(true);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            System.Diagnostics.Trace.TraceWarning($"Depot: showing the personal MCPs on the first start failed: {exception.Message}");
+        }
+    }
+
+    private async Task _ShowPersonalAsync()
+    {
+        var list = new DepotPersonalMcpsView(_host.Channel, loadOnAttach: false);
+        await list.LoadAsync(refresh: true).ConfigureAwait(true);
+        _personal.Children.Clear();
+        _personal.IsVisible = list.HasOpen;
+        if (!list.HasOpen)
+        {
+            return;
+        }
+
+        var later = new Button { Name = "DepotFirstStartPersonalLater", Content = "Later", Classes = { "Ghost" }, HorizontalAlignment = HorizontalAlignment.Left };
+        later.Click += (_, _) => _personal.IsVisible = false;
+        _personal.Children.AddRange([_Hint("Your personal MCPs"), list, later]);
     }
 
     // Public, like the settings row's SignInAsync, so a journey can drive it and await it.
@@ -128,6 +159,7 @@ internal sealed class DepotFirstStartView : UserControl
         _outcome.Text = string.Join("\n", answer.Notes ?? []);
 
         _choices.IsVisible = true;
+        _ = _ShowPersonalSafelyAsync();
     }
 
     private async Task _RestoreAsync()

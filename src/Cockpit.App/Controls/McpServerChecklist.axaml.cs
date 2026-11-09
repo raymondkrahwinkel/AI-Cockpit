@@ -49,6 +49,12 @@ public partial class McpServerChecklist : UserControl
     public static readonly DirectProperty<McpServerChecklist, string?> UnavailableTextProperty =
         AvaloniaProperty.RegisterDirect<McpServerChecklist, string?>(nameof(UnavailableText), control => control.UnavailableText);
 
+    // AC-2219: the plugins' lines about the ticked servers; outside the collapsible panel, like UnavailableText.
+    public static readonly DirectProperty<McpServerChecklist, IReadOnlyList<McpAdvisoryItem>> AdvisoriesProperty =
+        AvaloniaProperty.RegisterDirect<McpServerChecklist, IReadOnlyList<McpAdvisoryItem>>(nameof(Advisories), control => control.Advisories);
+
+    private IReadOnlyList<McpAdvisoryItem> _advisories = [];
+
     private string _summaryText = string.Empty;
 
     private string? _unavailableText;
@@ -115,6 +121,12 @@ public partial class McpServerChecklist : UserControl
     {
         get => _unavailableText;
         private set => SetAndRaise(UnavailableTextProperty, ref _unavailableText, value);
+    }
+
+    public IReadOnlyList<McpAdvisoryItem> Advisories
+    {
+        get => _advisories;
+        private set => SetAndRaise(AdvisoriesProperty, ref _advisories, value);
     }
 
     public McpServerChecklist()
@@ -235,6 +247,7 @@ public partial class McpServerChecklist : UserControl
     {
         var servers = Servers?.OfType<McpServerSelectionItemViewModel>().ToList() ?? [];
         var off = servers.Where(server => !server.IsEnabledForSession).Select(server => server.Name).ToList();
+        Advisories = [.. servers.Where(server => server.IsEnabledForSession).Select(server => server.Advisory).OfType<McpAdvisoryItem>()];
         SummaryText = servers switch
         {
             { Count: 0 } => Header,

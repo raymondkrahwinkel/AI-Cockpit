@@ -3,6 +3,7 @@ using System.Text;
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Shell;
+using Cockpit.Core.Sessions;
 
 namespace Cockpit.Infrastructure.Shell;
 
@@ -22,7 +23,8 @@ internal sealed class TrackedCommandRunner(ILogger<TrackedCommandRunner> logger)
         IReadOnlyList<string> arguments,
         TimeSpan timeout,
         string runId,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? paneId = null)
     {
         command = CommandRunnerProcess.NormalizeExecutablePath(command);
         using var group = RunCgroup.Create(runId, logger);
@@ -44,6 +46,18 @@ internal sealed class TrackedCommandRunner(ILogger<TrackedCommandRunner> logger)
             foreach (var argument in arguments)
             {
                 startInfo.ArgumentList.Add(argument);
+            }
+        }
+
+        if (!string.IsNullOrEmpty(paneId))
+        {
+            var scratch = SessionScratch.PathFor(paneId);
+            if (Directory.Exists(scratch))
+            {
+                foreach (var key in SessionScratch.EnvironmentKeys)
+                {
+                    startInfo.Environment[key] = scratch;
+                }
             }
         }
 

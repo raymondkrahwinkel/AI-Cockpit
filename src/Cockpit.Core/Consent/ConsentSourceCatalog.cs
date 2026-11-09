@@ -73,6 +73,10 @@ public static class ConsentSourceCatalog
     // leave notes or hand off a session unasked has not thereby agreed to it reaching out to any URL it names.
     public const string AssistantOpenUrl = "Assistant open URL";
 
+    // The assistant starting to look along on a whole display (AC-2209). Never in `HostSources`: the card carries
+    // a display and a duration only the operator can pick, so there is nothing a bypass could answer for them.
+    public const string AssistantLookAtScreen = "Assistant look at screen";
+
     // A session running one command as administrator (AC-1335). Never in `HostSources` and never bypassed, not
     // even by "allow all": skipping this card leaves the operator a UAC prompt that names PowerShell, not the command.
     public const string ElevatedCommand = "Elevated command";

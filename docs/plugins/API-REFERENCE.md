@@ -787,6 +787,8 @@ public interface ICompanionToolContext
     ICockpitSessionObserver SelectedSession { get; } // same read/observe surface as host.Sessions
     IPluginStorage Storage { get; }                  // scoped to this tool's own id
     event EventHandler RefreshRequested;             // the host asking this tool to refresh
+    SideMenuButtonBadge Badge { get; }               // the badge on this tool's strip button, empty by default
+    void RequestPopOut();                            // ask the host to open this tool's pop-out
 }
 ```
 - `SelectedSession` — the same selection-following surface as
@@ -797,6 +799,20 @@ public interface ICompanionToolContext
   and never collides with a sibling tool's.
 - `RefreshRequested` — raised when the host asks this tool to refresh. A tool polling on its own timer can
   ignore it; one showing a snapshot should re-read.
+- `Badge` — the same [`SideMenuButtonBadge`](#sidemenu-badge) the left menu uses, one per tool. Set
+  `Text` and `Tone` when the count changes; empty means no badge. The host follows `Changed` from any thread.
+  SDK 3.76.0, requires host 0.165.0.
+- `RequestPopOut()` — asks the host to open this tool's pop-out without taking focus. With no room, or with
+  the tool hidden from the strip, it does nothing and the host tells the user once. SDK 3.76.0, requires host
+  0.165.0.
+
+`CompanionToolRegistration.Attached` (`Action<ICompanionToolContext>?`) is called once after the host accepts the registration, so `Badge` and `RequestPopOut()` work before the tool's view has ever been created. UI SDK 3.26.0, requires host 0.167.0.
+
+### `ILiveMarkdownEditor? CreateLiveMarkdownEditor(LiveMarkdownEditorOptions options)` {#ilivemarkdowneditor-createlivemarkdowneditorlivemarkdowneditoroptions-options}
+The cockpit's own live Markdown editor over one file of a live file source (`ILiveFileSource`), without a workspace tab: the people in the file, who is typing, their carets with names, and your own typing. `options` names the type you registered with `AddFileWorkspaceType` and the `FileRef`. Place `View`, read `Peers`, and `Dispose` it to leave the file. Returns null on a host without it, or when the type is not registered; fall back to a read-only view then. UI SDK 3.26.0, SDK 3.78.0, requires host 0.167.0.
+
+### `void AddFileBrowser(FileBrowserRegistration registration)` {#void-addfilebrowserfilebrowserregistration-registration}
+The host's file browser in the dock rail over this plugin's `IFileSource`, so the plugin builds no browser UI of its own. `FileBrowserRegistration(Id, Title, IconKind, WorkspaceTypeId)`: `Id` is the dock panel's stable id, `WorkspaceTypeId` the type registered with `AddFileWorkspaceType`, which opens the files. The picker lists this computer's connections and those of each managed server where the plugin runs. See [File sources](FILE-SOURCES.md#browsing-and-the-host-file-browser-ac-2236). An older host does nothing. UI SDK 3.27.0, SDK 3.81.0, requires host 0.170.0.
 
 ### `void AddWorkspaceType(WorkspaceTypeRegistration registration)` {#void-addworkspacetypeworkspacetyperegistration-registration}
 Registers a **full-surface workspace type** — the workspace equivalent of `AddWidget`, one level up. Where a

@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
@@ -47,6 +48,7 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     // The chat's view model — the standing holder across a host swap (AC-953), so docking and undocking
     // keep the same conversation, input text and attachments.
     private AssistantChatViewModel? _chatViewModel;
+    private CompanionWindow? _companionStrip;
 
     // Test seam: whether a floating window is standing right now. Null the moment one closes — the headless
     // harness has no application lifetime to enumerate windows from, so it needs this instead.
@@ -80,10 +82,69 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     public AssistantIndicatorViewModel Indicator { get; } = new();
 
     public CompanionToolRegistration CreateCompanionTool() =>
-        new("cockpit.assistant", "Assistant", _ => new AssistantIndicator { DataContext = Indicator, ShowWhenDisabled = true })
+        new("cockpit.assistant", "Assistant", context => new AssistantIndicator
         {
-            IconKind = MaterialIconKind.Creation,
+            DataContext = Indicator,
+            ShowWhenDisabled = true,
+            OpenCommand = new AsyncRelayCommand(() => _OpenCompanionChatAsync(questions: Indicator.ShowsQuestions)),
+        })
+        {
+            IconKind = MaterialIconKind.Microphone,
         };
+
+    internal Task OpenCompanionComposerAsync() => _OpenCompanionChatAsync(questions: false, toggle: false);
+
+    private async Task _OpenCompanionChatAsync(bool questions, bool toggle = true)
+    {
+        if (Avalonia.Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime desktop
+            || desktop.Windows.OfType<CompanionWindow>().FirstOrDefault(window => window.IsVisible) is not { } strip)
+        {
+            return;
+        }
+
+        try
+        {
+            var chat = _EnsureChatViewModel();
+            if (questions)
+            {
+                chat.OpenQuestionsCommand.Execute(null);
+            }
+            else if (chat.IsQuestionsPage || chat.IsOverviewPage)
+            {
+                chat.SelectedThreadItem = chat.ThreadItems.First(item => item.Kind == AssistantThreadItemKind.All);
+            }
+
+            if (strip.IsToolPopOutOpen("cockpit.assistant"))
+            {
+                if (toggle)
+                {
+                    _CloseCompanionChat();
+                }
+                else
+                {
+                    strip.ActivateToolPopOut("cockpit.assistant");
+                }
+
+                return;
+            }
+
+            _companionStrip = strip;
+            chat.IsDocked = true;
+            _chatWindow?.Close();
+            await _ShowInAsync(docked: false).ConfigureAwait(true);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Opening the companion assistant failed.");
+        }
+    }
+
+    private void _CloseCompanionChat()
+    {
+        var strip = _companionStrip;
+        _companionStrip = null;
+        strip?.CloseToolPopOut("cockpit.assistant");
+    }
 
     // Subscribes to everything that can change what the chip says, and to what the operator does to it.
     public void Start()
@@ -402,6 +463,7 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     {
         try
         {
+            _CloseCompanionChat();
             // AC-953: which host the chat opens in is the stand the operator last left it in, and it survives a
             // restart because it is read back off `LayoutSettings`.
             await _ShowInAsync(_cockpit.AssistantDocked).ConfigureAwait(true);
@@ -458,6 +520,7 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     // the window's view detaches (handing over scroll position) before the returned view reads it.
     private Control _CreateDockedChatView()
     {
+        _CloseCompanionChat();
         // AC-1256/AC-1259: that freeze started seconds after a host swap and the log held no record of one. Here
         // rather than at the header button, because the two routes above reach this without passing it — and
         // before the work, so a swap that hangs still leaves the line saying it began.
@@ -476,6 +539,7 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     // the only host that stand has, which is what `IsSimpleViewHost` tells the header.
     private Control _CreateSimpleViewChatView()
     {
+        _CloseCompanionChat();
         _logger.LogInformation("Assistant chat moving to the simple view's conversation column.");
 
         var chat = _EnsureChatViewModel();
@@ -488,6 +552,17 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
 
     private void _ShowChatWindow()
     {
+        if (_companionStrip is { } strip)
+        {
+            strip.OpenToolPopOut("cockpit.assistant", () => new CompanionAssistantChatView(_EnsureChatViewModel(),
+                () =>
+                {
+                    _CloseCompanionChat();
+                    _ShowChatWindow();
+                }, _CloseCompanionChat), 360);
+            return;
+        }
+
         if (_chatWindow is null)
         {
             // The undock half of the line above. Inside this branch on purpose: bringing a window that already

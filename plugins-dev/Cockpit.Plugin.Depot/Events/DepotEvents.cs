@@ -8,7 +8,8 @@ internal sealed class DepotEvents(
     Func<IReadOnlyList<DepotConnectionRegistration>> connections,
     Func<DepotConnectionRegistration, HttpMessageHandler> handlerFor,
     DepotEventHubFactory hubFactory,
-    ILogger? logger = null) : IAsyncDisposable
+    ILogger? logger = null,
+    Action<DepotConnectionRegistration>? connected = null) : IAsyncDisposable
 {
     private readonly Dictionary<string, DepotEventSubscriber> _subscribers = new(StringComparer.Ordinal);
     private readonly Lock _subscribersLock = new();
@@ -87,7 +88,7 @@ internal sealed class DepotEvents(
                 stale = existing;
             }
 
-            subscriber = new DepotEventSubscriber(connection, () => handlerFor(connection), hubFactory, logger);
+            subscriber = new DepotEventSubscriber(connection, () => handlerFor(connection), hubFactory, logger, connected);
             _subscribers[connection.Id] = subscriber;
         }
 

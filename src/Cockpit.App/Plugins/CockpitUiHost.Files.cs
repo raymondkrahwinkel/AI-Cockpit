@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using System.Text.Json;
 using Cockpit.Plugins.Abstractions.Channels;
+using Cockpit.Plugins.Abstractions.Docking;
 using Cockpit.App.Files;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
@@ -80,6 +81,30 @@ internal sealed partial class CockpitUiHost
             });
         }
     }
+
+    // AC-2236: the routes are read on every load, so a server that connects later shows up after Refresh.
+    public void AddFileBrowser(FileBrowserRegistration registration)
+    {
+        ArgumentNullException.ThrowIfNull(registration);
+        var typeId = registration.WorkspaceTypeId;
+        var remote = $"{typeId}@server:";
+        AddDockPanel(new DockPanelRegistration(registration.Id, registration.Title, registration.IconKind, () => new FileBrowserPanel(
+            () => [.. _fileWorkspaceChannels.Where(pair => pair.Key == typeId || pair.Key.StartsWith(remote, StringComparison.Ordinal))
+                .OrderBy(pair => pair.Key.Length)
+                .Select(pair => new FileBrowserRoute(pair.Key == typeId ? null : Uri.UnescapeDataString(pair.Key[remote.Length..]), pair.Key, pair.Value))],
+            _OpenFileWorkspaceAsync, message => ShowToast(message), ShowSettingsAsync)));
+    }
+
+    public ILiveMarkdownEditor? CreateLiveMarkdownEditor(LiveMarkdownEditorOptions options) => _CreateLiveEditor(options.WorkspaceTypeId, options.File);
+
+    internal ILiveMarkdownEditor? CreateRemoteLiveMarkdownEditor(LiveMarkdownEditorOptions options, string server) =>
+        _CreateLiveEditor(_RemoteFileType(options.WorkspaceTypeId, server), options.File);
+
+    private LiveMarkdownEditorView? _CreateLiveEditor(string typeId, Cockpit.Plugins.Abstractions.Files.FileRef file) =>
+        _fileWorkspaceChannels.ContainsKey(typeId)
+            ? new LiveMarkdownEditorView(new FileSourceChannelClient(new FileWorkspaceChannel(() => _fileWorkspaceChannels[typeId])), file,
+                _Service<ILogger<LiveMarkdownEditorView>>() ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<LiveMarkdownEditorView>.Instance)
+            : null;
 
     public Task OpenFileWorkspaceAsync(string workspaceTypeId, FileWorkspaceOpenOptions options) =>
         _OpenFileWorkspaceAsync(workspaceTypeId, options);
