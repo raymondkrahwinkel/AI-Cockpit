@@ -272,7 +272,8 @@ internal sealed class SessionStatusTools(
             TrackedRunResult result;
             try
             {
-                result = await runner.RunAsync(workingDirectory, command, arguments, timeout, runId, stopping.Token).ConfigureAwait(false);
+                result = await runner.RunAsync(workingDirectory, command, arguments, timeout, runId, stopping.Token,
+                    paneId: sessions?.Find(caller) is null ? null : caller).ConfigureAwait(false);
             }
             catch (Exception exception)
             {

@@ -12,6 +12,8 @@ public sealed partial class ConversationDetails(SessionPanelViewModel session, s
         new(session, project, consentBypass: false, canRename: true,
             session.SupportsClearContext && cockpit is not null ? () => cockpit.ClearSessionContextCommand.ExecuteAsync(session) : null);
 
+    public string PaneId => session.PaneId;
+
     public string? Project => project;
 
     public string Folder => session.WorkingDirectory ?? "Not known yet";

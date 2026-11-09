@@ -144,7 +144,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         {
             stdioEnvironment[key] = value;
         }
-        foreach (var key in new[] { "COCKPIT_SCRATCH", "TEMP", "TMP", "TMPDIR" })
+        foreach (var key in SessionScratch.EnvironmentKeys)
         {
             stdioEnvironment[key] = _scratch;
         }
@@ -207,13 +207,12 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         _permissionModeConfines = _PermissionModeConfines(options);
 
         var environment = _SpawnEnvironment(profile, contributed);
-        environment = new Dictionary<string, string>(environment, StringComparer.OrdinalIgnoreCase)
+        var scratchEnvironment = new Dictionary<string, string>(environment, StringComparer.OrdinalIgnoreCase);
+        foreach (var key in SessionScratch.EnvironmentKeys)
         {
-            ["COCKPIT_SCRATCH"] = _scratch,
-            ["TEMP"] = _scratch,
-            ["TMP"] = _scratch,
-            ["TMPDIR"] = _scratch,
-        };
+            scratchEnvironment[key] = _scratch;
+        }
+        environment = scratchEnvironment;
         var scratchOptions = options is null ? new Dictionary<string, string>() : new Dictionary<string, string>(options);
         scratchOptions[WellKnownPluginSessionOptions.AppendSystemPrompt] = string.Join("\n\n",
             options?.GetValueOrDefault(WellKnownPluginSessionOptions.AppendSystemPrompt), SessionScratch.Instruction(_scratch)).TrimStart('\n');
