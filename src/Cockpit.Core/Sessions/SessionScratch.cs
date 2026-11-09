@@ -10,6 +10,7 @@ namespace Cockpit.Core.Sessions;
 public static class SessionScratch
 {
     public const string BaseVariable = "COCKPIT_SCRATCH_ROOT";
+    public static IReadOnlyList<string> EnvironmentKeys { get; } = ["COCKPIT_SCRATCH", "TEMP", "TMP", "TMPDIR"];
     public const string MarkerName = ".cockpit-owner";
     public static string BasePath => Path.GetFullPath(Environment.GetEnvironmentVariable(BaseVariable)
         ?? (OperatingSystem.IsWindows() ? @"C:\ck" : Path.Combine(Path.GetTempPath(), "ck")));
