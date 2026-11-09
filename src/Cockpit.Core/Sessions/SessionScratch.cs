@@ -141,10 +141,16 @@ public static class SessionScratch
         }
     }
 
-    public static void Delete(string path, string paneId, IEnumerable<string> registeredWorktrees, Action<string>? log = null)
+    public static void Delete(string path, string paneId, IEnumerable<string> registeredWorktrees, Action<string>? log = null, bool isSharedTmp = false)
     {
         if (OwnerOf(path) != paneId || registeredWorktrees.Any(worktree => IsInside(worktree, path)))
         {
+            return;
+        }
+        if (isSharedTmp)
+        {
+            // ponytail: stays until a later cleanup no longer sees it as Git Bash /tmp; no sweeper, so one leftover directory per case is the ceiling.
+            log?.Invoke($"Keeping scratch directory '{path}' of pane '{paneId}': Git Bash uses it as /tmp for all sessions.");
             return;
         }
         log?.Invoke($"Removing scratch directory '{path}' of pane '{paneId}'.");
