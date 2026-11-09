@@ -61,8 +61,8 @@ internal static class LocalFilesScenes
             Task.FromResult(JsonSerializer.SerializeToElement<object>(action switch
             {
                 LocalFilesChannel.Roots => new LocalRootsAnswer(roots,
-                    hidden is { } inside ? new Dictionary<string, string> { [inside.Id] = inside.Path } : [], machine),
-                LocalFilesChannel.Check => new LocalRootCheck(null, null,
+                    hidden is { } inside ? new Dictionary<string, IReadOnlyList<string>> { [inside.Id] = [inside.Path] } : [], machine),
+                LocalFilesChannel.Check => new LocalRootCheck(null, [],
                     $"{Refuse} is Cockpit's own state folder, or lies inside it. It holds credentials, so it cannot be added."),
                 LocalFilesChannel.Folders => new LocalFolders("/var/lib", ["/var/lib/apt", "/var/lib/cockpit", "/var/lib/docker", "/var/lib/postgresql"], null),
                 _ => throw new InvalidOperationException("This scene only answers the settings view's reads."),

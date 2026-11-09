@@ -31,12 +31,37 @@ internal static class PathBoundary
             throw Outside();
         }
         var real = RealPath(full);
-        if (!IsWithin(root, real) || denied.Any(folder => IsWithin(folder, real)))
+        if (!Allowed(root, real, denied) || !Allowed(root, Canonical(real), denied))
         {
             throw Outside();
         }
         return real;
     }
+
+    public static bool Allowed(string root, string path, IReadOnlyCollection<string> denied) =>
+        IsWithin(root, path) && !denied.Any(folder => IsWithin(folder, path));
+
+    // On Windows the path the OS gives the item (or its folder, for a new name), so no alias passes a text check.
+    public static string Canonical(string real)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return real;
+        }
+        if (WindowsFiles.FinalPath(real) is { } final)
+        {
+            return final;
+        }
+        return Path.GetDirectoryName(real) is { } parent && WindowsFiles.FinalPath(parent) is { } folder
+            ? Path.Join(folder, Path.GetFileName(real))
+            : real;
+    }
+
+    // A root is only a plain local path, so no device, UNC, stream or /proc form can name what the deny list misses.
+    public static bool IsPlainRoot(string path) => OperatingSystem.IsWindows()
+        ? path.Length >= 3 && char.IsAsciiLetter(path[0]) && path[1] == ':' && path[2] == '\\' && path.IndexOf(':', 2) < 0
+            && path.IndexOf('/') < 0 && new DriveInfo(path[..1]).DriveType == DriveType.Fixed
+        : Path.IsPathFullyQualified(path) && path != "/" && !IsWithin("/proc", path);
 
     // Only names that mean the same file on every OS pass, so no platform quirk can widen the root.
     public static string[] Segments(string? relative)

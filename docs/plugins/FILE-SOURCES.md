@@ -93,8 +93,12 @@ the folder. The source resolves every reference against the disk, following each
 lands outside the folder or inside Cockpit's state folder, and any `..`, absolute, UNC or device path, `:` (alternate data
 streams), reserved device name or `.cockpit-tmp-` name. The version is the file's modification time plus its size; a save
 writes `name.cockpit-tmp-<guid>` in the same folder, checks the version again and renames it over the file. One lock per
-process serialises those saves; another program writing between that last check and the rename is not detected, a hard
-link or bind mount is not seen as a link, and a folder swapped for a link between the check and the open is not caught.
+process serialises those saves; another program writing between that last check and the rename is not detected.
+A root is only a plain local path (`X:\...` on a fixed disk on Windows; an absolute path other than `/` and outside
+`/proc` elsewhere), and the state folders are compared by the path the OS gives them as well as by text. On Windows
+every opened file and every temp file is checked again by its handle's final path, and a file with more than one hard
+link is not read. On Linux a folder swapped for a link between the check and the open, a hard link and a bind mount
+are not caught.
 The rename gives the file a new inode: on Unix the old mode is copied over, on Windows the folder's ACL applies.
 The refused state folders are the state root plus Cockpit's whole application data folder (`Cockpit` and `Cockpit-Dev`),
 including the session worktrees kept there, so a worktree cannot be added as a folder.

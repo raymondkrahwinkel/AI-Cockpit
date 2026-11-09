@@ -15,17 +15,27 @@ public sealed class LocalFilesPlugin : ICockpitPlugin, IFileSourceProvider
     private readonly List<IDisposable> _handlers = [];
     private IPluginStorage? _storage;
 
+    private static readonly StringComparer Paths = StringComparer.FromComparison(PathBoundary.Comparison);
+
     // Cockpit's state folders hold credentials, unencrypted on a server; no root may show them, not even a parent.
-    private readonly IReadOnlyCollection<string> _denied = new[]
-        {
+    private readonly IReadOnlyCollection<string> _denied;
+
+    public LocalFilesPlugin()
+        : this([
             CockpitBuild.StateRoot,
             Path.Combine(CockpitBuild.RoamingApplicationData, CockpitBuild.ProductionStateFolder),
             Path.Combine(CockpitBuild.RoamingApplicationData, CockpitBuild.DevelopmentStateFolder),
-        }
-        .Where(path => !string.IsNullOrWhiteSpace(path) && Path.IsPathFullyQualified(path))
-        .Select(path => Directory.Exists(path) ? PathBoundary.RealPath(Path.GetFullPath(path)) : Path.GetFullPath(path))
-        .Distinct()
-        .ToArray();
+        ])
+    {
+    }
+
+    // Each folder by its text and by the path the OS gives it, so an alias of either form is still refused.
+    internal LocalFilesPlugin(IEnumerable<string> stateFolders) =>
+        _denied = [.. stateFolders
+            .Where(path => !string.IsNullOrWhiteSpace(path) && Path.IsPathFullyQualified(path))
+            .Select(Path.GetFullPath)
+            .SelectMany(path => Directory.Exists(path) ? new[] { PathBoundary.RealPath(path), PathBoundary.Canonical(PathBoundary.RealPath(path)) } : [path])
+            .Distinct(Paths)];
 
     public PluginMetadata Metadata { get; } = new(
         Id: "local-files",
@@ -57,31 +67,40 @@ public sealed class LocalFilesPlugin : ICockpitPlugin, IFileSourceProvider
             ? new LocalFileSource(found.Id, found.Path, found.Writable, _denied)
             : throw new FileSourceException(FileSourceErrorKind.NotFound, "This folder is no longer in the settings.");
 
-    // A root is stored as its physical path, so a link that is moved later cannot carry it somewhere else.
+    // A root is stored as its physical, canonical path, so a link moved later cannot carry it somewhere else.
     internal LocalRootCheck Check(string? path)
     {
+        var plain = OperatingSystem.IsWindows()
+            ? @"Choose a folder on a local disk, written as a plain path such as D:\Projects."
+            : "Choose a folder by its plain path, such as /srv/projects; / and /proc cannot be added.";
         try
         {
-            if (string.IsNullOrWhiteSpace(path) || !Path.IsPathFullyQualified(path) || !Directory.Exists(path))
+            if (string.IsNullOrWhiteSpace(path) || !PathBoundary.IsPlainRoot(path))
             {
-                return new LocalRootCheck(null, null, "This folder does not exist.");
+                return new LocalRootCheck(null, [], plain);
             }
-            var real = PathBoundary.RealPath(Path.GetFullPath(path));
-            if (!Directory.Exists(real))
+            if (!Directory.Exists(path))
             {
-                return new LocalRootCheck(null, null, "This folder does not exist.");
+                return new LocalRootCheck(null, [], "This folder does not exist.");
+            }
+            var real = PathBoundary.Canonical(PathBoundary.RealPath(Path.GetFullPath(path)));
+            if (!Directory.Exists(real) || !PathBoundary.IsPlainRoot(real))
+            {
+                return new LocalRootCheck(null, [], plain);
             }
             if (_denied.Any(folder => PathBoundary.IsWithin(folder, real)))
             {
-                return new LocalRootCheck(null, null, $"{real} is Cockpit's own state folder, or lies inside it. It holds credentials, so it cannot be added.");
+                return new LocalRootCheck(null, [], $"{real} is Cockpit's own state folder, or lies inside it. It holds credentials, so it cannot be added.");
             }
-            return new LocalRootCheck(real, _denied.FirstOrDefault(folder => PathBoundary.IsWithin(real, folder)), null);
+            return new LocalRootCheck(real, _Hidden(real), null);
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or FileSourceException)
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or FileSourceException)
         {
-            return new LocalRootCheck(null, null, "This folder cannot be read.");
+            return new LocalRootCheck(null, [], "This folder cannot be read.");
         }
     }
+
+    private IReadOnlyList<string> _Hidden(string root) => [.. _denied.Where(folder => PathBoundary.IsWithin(root, folder)).Distinct(Paths)];
 
     private LocalRootsAnswer _Save(IReadOnlyList<LocalRoot> roots)
     {
@@ -131,10 +150,10 @@ public sealed class LocalFilesPlugin : ICockpitPlugin, IFileSourceProvider
     private LocalRootsAnswer _Answer(string? error)
     {
         var roots = _Roots();
-        var hidden = new Dictionary<string, string>();
+        var hidden = new Dictionary<string, IReadOnlyList<string>>();
         foreach (var root in roots)
         {
-            if (_denied.FirstOrDefault(folder => PathBoundary.IsWithin(root.Path, folder)) is { } inside)
+            if (_Hidden(root.Path) is [_, ..] inside)
             {
                 hidden[root.Id] = inside;
             }

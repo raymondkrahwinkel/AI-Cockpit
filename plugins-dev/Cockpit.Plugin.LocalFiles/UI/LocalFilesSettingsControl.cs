@@ -21,7 +21,7 @@ internal sealed class LocalFilesSettingsControl : UserControl, IAsyncPluginSetti
     private readonly IPluginUiChannel _channel;
     private readonly Func<Task<IReadOnlyList<PluginProjectInfo>>> _projects;
     private readonly List<LocalRoot> _roots = [];
-    private readonly Dictionary<string, string> _hidden = [];
+    private readonly Dictionary<string, IReadOnlyList<string>> _hidden = [];
     private readonly StackPanel _rows = new() { Spacing = 6 };
     private readonly StackPanel _projectRows = new();
     private readonly Border _banner;
@@ -139,7 +139,7 @@ internal sealed class LocalFilesSettingsControl : UserControl, IAsyncPluginSetti
         if (!_roots.Any(root => root.Path == real))
         {
             _roots.Add(new LocalRoot(Guid.NewGuid().ToString("n"), real, Writable: false, project));
-            if (check.Hidden is { } hidden)
+            if (check.Hidden is [_, ..] hidden)
             {
                 _hidden[real] = hidden;
             }
@@ -193,7 +193,7 @@ internal sealed class LocalFilesSettingsControl : UserControl, IAsyncPluginSetti
         var text = new StackPanel { Children = { title, _Mono(root.Path) } };
         if (_hidden.TryGetValue(root.Path, out var hidden))
         {
-            text.Children.Add(_Hint($"Cockpit's own state folder inside it ({hidden}) stays hidden and refused."));
+            text.Children.Add(_Hint($"Cockpit's own state folder inside it ({string.Join(", ", hidden)}) stays hidden and refused."));
         }
         var icon = _Icon(MaterialIconKind.Folder);
         icon.Bind(MaterialIcon.ForegroundProperty, icon.GetResourceObservable("CockpitStatusWaitingBrush"));

@@ -15,13 +15,13 @@ public static class LocalFilesChannel
 
 public sealed record LocalRoot(string Id, string Path, bool Writable, bool Project = false);
 
-// Machine tells the view whether the native picker sees this disk; Hidden names the state folder inside a root.
-public sealed record LocalRootsAnswer(IReadOnlyList<LocalRoot> Roots, IReadOnlyDictionary<string, string> Hidden, string Machine,
+// Machine tells the view whether the native picker sees this disk; Hidden names the state folders inside a root.
+public sealed record LocalRootsAnswer(IReadOnlyList<LocalRoot> Roots, IReadOnlyDictionary<string, IReadOnlyList<string>> Hidden, string Machine,
     string? Error = null);
 
 public sealed record LocalPathRequest(string? Path);
 
-public sealed record LocalRootCheck(string? Path, string? Hidden, string? Error);
+public sealed record LocalRootCheck(string? Path, IReadOnlyList<string> Hidden, string? Error);
 
 public sealed record LocalSaveRequest(IReadOnlyList<LocalRoot> Roots);
 

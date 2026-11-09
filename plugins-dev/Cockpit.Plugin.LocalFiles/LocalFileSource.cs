@@ -46,6 +46,7 @@ internal sealed class LocalFileSource(string connectionId, string root, bool wri
     private Task<FileReadResult> _ReadAsync(FileRef file, long offset, int count) => _Run(() =>
     {
         using var stream = new FileStream(_Resolve(file), FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        _Opened(stream, reading: true);
         var before = _Version(stream);
         var buffer = new byte[(int)Math.Clamp(stream.Length - offset, 0, count)];
         var read = 0;
@@ -71,7 +72,7 @@ internal sealed class LocalFileSource(string connectionId, string root, bool wri
         var bytes = await Wire.ReadContentAsync(content, Wire.MaxContentBytes, cancellationToken).ConfigureAwait(false);
         if (mustNotExist)
         {
-            return _Create(path, bytes, cancellationToken) is { } created
+            return _Create(path, bytes, _Opened, cancellationToken) is { } created
                 ? new FileWriteResult(FileWriteStatus.Written, created)
                 : new FileWriteResult(FileWriteStatus.Conflict, _VersionOf(path));
         }
@@ -85,7 +86,7 @@ internal sealed class LocalFileSource(string connectionId, string root, bool wri
                 {
                     return new FileWriteResult(FileWriteStatus.Conflict, current);
                 }
-                var version = _WriteTemp(temp, bytes, cancellationToken);
+                var version = _WriteTemp(temp, bytes, _Opened, cancellationToken);
                 // A new inode would drop the file's permissions on Unix; on Windows the folder's ACL applies.
                 if (!OperatingSystem.IsWindows())
                 {
@@ -132,17 +133,17 @@ internal sealed class LocalFileSource(string connectionId, string root, bool wri
     {
         var path = _Writable(_Child(parent, name));
         var bytes = await Wire.ReadContentAsync(content, Wire.MaxContentBytes, cancellationToken).ConfigureAwait(false);
-        _ = _Create(path, bytes, cancellationToken) ?? throw _Exists();
+        _ = _Create(path, bytes, _Opened, cancellationToken) ?? throw _Exists();
         return _Entry(parent.Id, new FileInfo(path));
     }
 
     // Null when the name is taken: the move without overwrite is the atomic "must not exist" check.
-    private static string? _Create(string path, byte[] bytes, CancellationToken cancellationToken)
+    private static string? _Create(string path, byte[] bytes, Action<FileStream, bool> opened, CancellationToken cancellationToken)
     {
         var temp = _Temp(path);
         try
         {
-            var version = _WriteTemp(temp, bytes, cancellationToken);
+            var version = _WriteTemp(temp, bytes, opened, cancellationToken);
             try
             {
                 File.Move(temp, path, overwrite: false);
@@ -164,11 +165,13 @@ internal sealed class LocalFileSource(string connectionId, string root, bool wri
     }
 
     // The version is read after closing, since NTFS may stamp the write time only when the handle closes.
-    private static string _WriteTemp(string temp, byte[] bytes, CancellationToken cancellationToken)
+    private static string _WriteTemp(string temp, byte[] bytes, Action<FileStream, bool> opened, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         using (var stream = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
         {
+            // The rename stays in this folder, so checking the temp file also covers the file it replaces.
+            opened(stream, false);
             stream.Write(bytes);
             stream.Flush(flushToDisk: true);
         }
@@ -209,12 +212,32 @@ internal sealed class LocalFileSource(string connectionId, string root, bool wri
             throw new FileSourceException(FileSourceErrorKind.Unavailable,
                 $"{root} does not exist any more, or its drive is not connected. The folder stays in the settings until you remove it.");
         }
-        // A root that became a link, or lies in a denied folder, is not the folder the operator added.
-        if (!PathBoundary.RealPath(root).Equals(root, PathBoundary.Comparison) || denied.Any(folder => PathBoundary.IsWithin(folder, root)))
+        // A root that became a link or another form, or lies in a denied folder, is not the folder the operator added.
+        if (!PathBoundary.IsPlainRoot(root) || !PathBoundary.Canonical(PathBoundary.RealPath(root)).Equals(root, PathBoundary.Comparison)
+            || denied.Any(folder => PathBoundary.IsWithin(folder, root)))
         {
             throw PathBoundary.Outside();
         }
         return PathBoundary.Resolve(root, file.Id, denied);
+    }
+
+    // ponytail: Windows only; on Linux a folder swapped for a link between resolve and open, and hard links, stay documented.
+    private void _Opened(FileStream stream, bool reading)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+        // What was opened, not what was checked, must lie inside the root: a folder can turn into a junction in between.
+        if (!PathBoundary.Allowed(root, WindowsFiles.FinalPath(stream.SafeFileHandle), denied))
+        {
+            throw PathBoundary.Outside();
+        }
+        // A second name for the same bytes can live anywhere on the volume, so reading through it is refused.
+        if (reading && WindowsFiles.Links(stream.SafeFileHandle) > 1)
+        {
+            throw new FileSourceException(FileSourceErrorKind.Forbidden, "Forbidden: this file is a hard link, so its bytes may also live outside the folder you added.");
+        }
     }
 
     private FileEntry _Entry(string parentId, FileSystemInfo item)
