@@ -8,6 +8,7 @@ using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Sessions;
 
 namespace Cockpit.Infrastructure.Mcp;
@@ -26,7 +27,8 @@ internal sealed partial class McpToolProvider(
     SessionMcpMounts? mounts = null,
     SessionMcpGatewayHost? gateway = null,
     Cockpit.Core.Abstractions.Sessions.ISessionProcessAnchor? processAnchor = null,
-    SessionStdioProcesses? stdioProcesses = null)
+    SessionStdioProcesses? stdioProcesses = null,
+    IProjectMemorySourceRegistry? memorySources = null)
     : IMcpToolProvider, IMcpToolInvoker, ISingletonService
 {
     internal TimeSpan RemovedCallDrainTimeout { get; init; } = TimeSpan.FromMinutes(2);
@@ -35,6 +37,9 @@ internal sealed partial class McpToolProvider(
     private readonly SessionMcpMounts? _mounts = mounts;
     private readonly SessionMcpKeyring _keyring = keyring;
     private readonly ILogger<McpToolProvider> _logger = logger;
+    private event Action<string>? _refreshRequested;
+
+    public void RefreshServer(string name) => _refreshRequested?.Invoke(name);
 
     public async Task<IMcpToolSession> ConnectAsync(IReadOnlySet<string>? enabledServerNames = null, string? paneId = null, string? confineFileToolsToDirectory = null, string? projectId = null, string? workingDirectory = null, CancellationToken cancellationToken = default, string? agentName = null)
     {
@@ -46,7 +51,7 @@ internal sealed partial class McpToolProvider(
             }
             var candidatePane = string.IsNullOrEmpty(paneId) ? Guid.NewGuid().ToString("N") : paneId;
             await gateway.BindLaunchAsync(candidatePane, projectId, workingDirectory, confineFileToolsToDirectory, agentName,
-                enabledServerNames is ExactMcpServerSelection { AssistantManaged: true }, cancellationToken).ConfigureAwait(false);
+                enabledServerNames is ExactMcpServerSelection { AssistantManaged: true }, cancellationToken, brain: _mounts?.Set(candidatePane)?.Context?.Brain).ConfigureAwait(false);
             paneId = candidatePane;
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
@@ -71,8 +76,8 @@ internal sealed partial class McpToolProvider(
         var sessionRegistry = McpServerRegistryFilter.ApplySessionSelection(registry, effectiveSelection);
         // Local models host the built-in defaults (#26) overlaid by the registry (a registry entry, including
         // a disabled one, overrides the same-named built-in). #44's per-session selection is already applied above.
-        var enabledServers = _EffectiveServers(sessionRegistry).Where(server => server.Enabled
-            && (enabledServerNames is null || effectiveSelection?.Contains(server.Name) == true || server.AlwaysMounted)).ToList();
+        var enabledServers = _WithBrainQuery(_EffectiveServers(sessionRegistry).Where(server => server.Enabled
+            && (enabledServerNames is null || effectiveSelection?.Contains(server.Name) == true || server.AlwaysMounted)), paneId);
 
         // AC-1962: confine Cockpit's file tools without changing the operator's MCP selection.
         if (!string.IsNullOrWhiteSpace(confineFileToolsToDirectory))
@@ -110,6 +115,18 @@ internal sealed partial class McpToolProvider(
         }
     }
 
+    // AC-2220: the query parameter the session's brain hangs on one server, on the upstream address the agent never sees.
+    private List<McpServerConfig> _WithBrainQuery(IEnumerable<McpServerConfig> servers, string? paneId)
+    {
+        var query = paneId is null ? null : SessionStartDefaults.ResolveBrainMcpServerQuery(_mounts?.Set(paneId)?.Context?.Brain, memorySources?.Sources.ToMemorySources());
+        var applied = servers.Select(server => query?.ApplyTo(server) ?? server).ToList();
+        if (query is not null)
+        {
+            _logger.LogInformation("MCP server {Server} for session {Pane} carries the brain parameter {Name}={Value}.", query.ServerName, paneId, query.Name, query.Value);
+        }
+        return applied;
+    }
+
     internal IMcpToolSession CreateGatewaySession(string paneId, string token, SessionMcpContext? context) =>
         new LiveMcpToolSession(this, paneId, token, context?.Project?.Id, context?.AgentName, ownsToken: false);
 
@@ -118,7 +135,7 @@ internal sealed partial class McpToolProvider(
         var set = _mounts?.Set(paneId);
         if (set is null) { return []; }
         var registry = await _catalog.GetServersForSessionAsync(set.Context?.Project?.Id, set.PreserveSelection ? new ExactMcpServerSelection(set.ServerNames) : set.ServerNames, ct);
-        var selected = registry.Where(server => server.Enabled && set.ServerNames.Contains(server.Name)).ToList();
+        var selected = _WithBrainQuery(registry.Where(server => server.Enabled && set.ServerNames.Contains(server.Name)), paneId);
         return set.Context?.ConfineRoot is { } root ? _ConfinedServers(selected, root) : selected;
     }
 
@@ -223,18 +240,25 @@ internal sealed partial class McpToolProvider(
         cancellationToken = deadline.Token;
         McpClient? client = null;
         var connected = false;
+        string? accessToken = null;
+        var scopeChallenge = server.Auth == McpServerAuth.OAuth ? new InsufficientScopeObserver() : null;
 
         try
         {
             // AC-1517: settled through the coordinator, which renews silently and names a needed sign-in in the
             // cockpit. Connecting interactively here opened a browser tab from a background plugin call.
-            if (server.Auth == McpServerAuth.OAuth
-                && (await _oauthCoordinator.AcquireAsync(server, interactive: false, cancellationToken).ConfigureAwait(false)).State != McpAuthState.Authorized)
+            if (server.Auth == McpServerAuth.OAuth)
             {
-                return (null, NeedsSignIn);
+                var access = await _oauthCoordinator.AcquireAsync(server, interactive: false, cancellationToken).ConfigureAwait(false);
+                if (access.State != McpAuthState.Authorized)
+                {
+                    return (null, NeedsSignIn);
+                }
+
+                accessToken = access.AccessToken;
             }
 
-            var transport = _BuildTransport(server, sessionToken, agentName, gateway, paneId);
+            var transport = _BuildTransport(server, sessionToken, agentName, gateway, paneId, scopeChallenge);
             if (gateway)
             {
                 transport = new CancellationForwardingTransport(transport, _logger);
@@ -270,6 +294,11 @@ internal sealed partial class McpToolProvider(
             // prompt, any failure at this transport reads as "no usable sign-in yet" rather than a specific status
             // code — the SDK's own OAuth negotiation can fail several ways before it ever gets as far as one.
             _logger.LogWarning(ex, "MCP server {Name} needs an OAuth sign-in that has not happened yet; skipping its tools", server.Name);
+            if (scopeChallenge?.Seen == true && accessToken is not null)
+            {
+                await _oauthCoordinator.ReportInsufficientScopeAsync(server, accessToken, CancellationToken.None).ConfigureAwait(false);
+            }
+
             return (null, NeedsSignIn);
         }
         catch (Exception ex)
@@ -345,7 +374,7 @@ internal sealed partial class McpToolProvider(
 
     private const string NeedsSignIn = "Needs a sign-in.";
 
-    private IClientTransport _BuildTransport(McpServerConfig server, string? sessionToken, string? agentName = null, bool gateway = false, string? paneId = null) => server.Transport switch
+    private IClientTransport _BuildTransport(McpServerConfig server, string? sessionToken, string? agentName = null, bool gateway = false, string? paneId = null, DelegatingHandler? observer = null) => server.Transport switch
     {
         McpTransport.Stdio when gateway => new SessionStdioClientTransport(server, paneId is null ? null : _mounts?.Set(paneId)?.Context, processAnchor, paneId, stdioProcesses, _logger),
         McpTransport.Stdio => new StdioClientTransport(new StdioClientTransportOptions
@@ -368,7 +397,7 @@ internal sealed partial class McpToolProvider(
             // Never interactive (AC-1517): the browser opens only from a Sign in the operator pressed, so a token
             // the coordinator approved but the server then refuses ends as a failed connect, not as a stray tab.
             OAuth = server.Auth == McpServerAuth.OAuth ? oauthAuthorizer.CreateOptions(server, interactive: false) : null,
-        }, timeout: gateway ? Timeout.InfiniteTimeSpan : null),
+        }, timeout: gateway ? Timeout.InfiniteTimeSpan : null, observer),
         _ => throw new NotSupportedException($"Unsupported MCP transport {server.Transport}."),
     };
 
@@ -389,4 +418,20 @@ internal sealed partial class McpToolProvider(
         return headers;
     }
 
+    // Notes a 403 whose Bearer challenge says error="insufficient_scope", which the SDK otherwise turns into a refused sign-in.
+    private sealed class InsufficientScopeObserver : DelegatingHandler
+    {
+        public bool Seen { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var response = await base.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            Seen |= response.StatusCode == System.Net.HttpStatusCode.Forbidden
+                && response.Headers.WwwAuthenticate.Any(challenge =>
+                    string.Equals(challenge.Scheme, "Bearer", StringComparison.OrdinalIgnoreCase)
+                    && challenge.Parameter is { } parameter
+                    && System.Text.RegularExpressions.Regex.IsMatch(parameter, @"(^|[\s,])error\s*=\s*""?insufficient_scope""?\s*(,|$)", System.Text.RegularExpressions.RegexOptions.IgnoreCase));
+            return response;
+        }
+    }
 }

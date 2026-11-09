@@ -67,6 +67,12 @@ public static class WellKnownPluginSessionOptions
     public const string BrainInstruction = "cockpit.brain-instruction";
 
     /// <summary>
+    /// The option key by which the host carries the brain reference a start resolved (AC-2220) to where it binds the
+    /// session's MCP servers. Host-owned: a driver ignores it. Absent means no brain.
+    /// </summary>
+    public const string Brain = "cockpit.brain";
+
+    /// <summary>
     /// The option key by which the host asks a driver to confine this session's file tools to its working directory
     /// (AC-174) — set to <c>"true"</c> when the host isolates an embedded session in a worktree
     /// (<see cref="Workspaces.EmbeddedSessionRequest.IsolateInWorktree"/>).

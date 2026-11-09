@@ -24,6 +24,12 @@ public sealed partial class ConversationDetails(SessionPanelViewModel session, s
 
     public string Model => session.DetailsModel is { Length: > 0 } model ? model : "Not known";
 
+    // AC-2219: the plugins' lines about the MCP servers this conversation has.
+    public IReadOnlyList<McpAdvisoryItem> Advisories =>
+        [.. (session.McpServerSelection ?? new HashSet<string>()).Order(StringComparer.OrdinalIgnoreCase).Select(McpAdvisoryItem.For).OfType<McpAdvisoryItem>()];
+
+    public bool HasAdvisories => Advisories.Count > 0;
+
     public bool CanRename => canRename;
 
     public bool CanStartOver => startOver is not null;

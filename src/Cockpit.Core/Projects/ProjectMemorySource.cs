@@ -14,4 +14,7 @@ public sealed record ProjectMemorySource(string Scheme, string Title, string Ins
     public Func<string, string, CancellationToken, Task<RoleLoadResult>>? LoadRoleAsync { get; init; }
     // The MCP server serving the brain `<scheme>:<value>` names; null when this source does not own the value.
     public Func<string, string?>? BrainMcpServerName { get; init; }
+
+    // AC-2220: the query parameter this source hangs on one of its own MCP servers for a session with that brain.
+    public Func<string, Cockpit.Core.Mcp.McpServerQueryParameter?>? BrainMcpServerQuery { get; init; }
 }
