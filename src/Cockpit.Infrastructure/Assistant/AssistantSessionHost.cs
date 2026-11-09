@@ -1111,7 +1111,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         // AC-1994: the brain goes ahead of the standing instruction, which it adds to and never replaces.
         SessionStartComposer.PutSystemPrompt(options, AssistantStandingInstruction.Compose(
             profile.SystemPrompt, replacesStandingInstruction, memory, currentState, machineMemory, sdkAsksPermission, consentCardAsks, orgRules),
-            brainInstruction);
+            brainInstruction, SessionStartDefaults.ResolveAssistant(null, profile));
 
         return options;
     }

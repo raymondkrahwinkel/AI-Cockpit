@@ -12,6 +12,9 @@ internal sealed class DepotEventSubscriber : IAsyncDisposable
     private readonly HttpClient _http;
     private readonly DepotEventHubFactory _hubFactory;
     private readonly ILogger? _logger;
+
+    // AC-2217: told each time the hub is up again, first start and reconnect alike.
+    private readonly Action<DepotConnectionRegistration>? _connected;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly CancellationTokenSource _life = new();
     private readonly Lock _subscriptionsLock = new();
@@ -24,8 +27,10 @@ internal sealed class DepotEventSubscriber : IAsyncDisposable
         DepotConnectionRegistration connection,
         Func<HttpMessageHandler> handler,
         DepotEventHubFactory hubFactory,
-        ILogger? logger = null)
+        ILogger? logger = null,
+        Action<DepotConnectionRegistration>? connected = null)
     {
+        _connected = connected;
         _connection = connection;
         _http = new HttpClient(handler()) { Timeout = TimeSpan.FromSeconds(30) };
         _hubFactory = hubFactory;
@@ -113,6 +118,7 @@ internal sealed class DepotEventSubscriber : IAsyncDisposable
 
             _hub = hub;
             _attempt = 0;
+            _connected?.Invoke(_connection);
             return hub;
         }
         catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
@@ -178,6 +184,7 @@ internal sealed class DepotEventSubscriber : IAsyncDisposable
         }
 
         _ResyncAll();
+        _connected?.Invoke(_connection);
     }
 
     private Task _OnClosedAsync(Exception? exception)

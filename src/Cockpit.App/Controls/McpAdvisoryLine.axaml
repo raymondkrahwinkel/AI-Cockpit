@@ -1,0 +1,19 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Cockpit.App.ViewModels"
+             x:Class="Cockpit.App.Controls.McpAdvisoryLine"
+             x:DataType="vm:McpAdvisoryItem">
+
+    <!-- AC-2219: a plugin's one-line advice about an MCP server. Amber for a warning, red for critical, with a quiet
+         link to read more; never a banner (DESIGN.md: status colour describes a fact, not decoration). -->
+    <DockPanel>
+        <Button DockPanel.Dock="Right" Content="Details" Classes="Subtle" Padding="6,1" FontSize="11" VerticalAlignment="Top"
+                Command="{Binding OpenLinkCommand}" IsVisible="{Binding HasLink}"/>
+        <Panel VerticalAlignment="Center">
+            <TextBlock Text="{Binding Line}" FontSize="11" TextWrapping="Wrap"
+                       Foreground="{DynamicResource CockpitStatusWaitingBrush}" IsVisible="{Binding !IsCritical}"/>
+            <TextBlock Text="{Binding Line}" FontSize="11" TextWrapping="Wrap"
+                       Foreground="{DynamicResource CockpitStatusErrorBrush}" IsVisible="{Binding IsCritical}"/>
+        </Panel>
+    </DockPanel>
+</UserControl>

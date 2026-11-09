@@ -86,6 +86,23 @@ public class DepotPluginTests
         // a subpath deployment's authority lives at the origin, not under the subpath.
         Assert.Equal("https://host.example.com/depot/mcp", server.Url);
         Assert.Equal("https://host.example.com", server.OAuthAuthority);
+
+        // AC-2217 (contract, GET /cockpit/gateway): no gateway row and no extra scope for a Depot that does not list
+        // depot.gateway (the single server above, with the ordinary scopes); the address is the answer's own top-level
+        // one, and an old answer with only per-organization addresses, an empty one, a foreign origin or junk gives none.
+        var connection = new DepotConnectionRegistration("c1", "Acme", "https://host.example.com/depot");
+        foreach (var (answer, expected) in new (string, string?)[]
+        {
+            ("""{"gatewayUrl":"https://host.example.com/mcp/gateway","organizations":[{"slug":"a","gatewayAllowed":true,"gatewayUrl":"https://host.example.com/mcp/gateway?org=a"}]}""", "https://host.example.com/mcp/gateway"),
+            ("""{"organizations":[{"slug":"a","gatewayAllowed":false,"gatewayUrl":null}],"gatewayUrl":null}""", null),
+            ("""{"organizations":[{"slug":"a","gatewayAllowed":true,"gatewayUrl":"https://host.example.com/mcp/gateway?org=a"}]}""", null),
+            ("""{"organizations":[]}""", null),
+            ("""{"gatewayUrl":"https://elsewhere.example.net/mcp/gateway"}""", null),
+            ("not json", null),
+        })
+        {
+            Assert.Equal(expected, DepotGateway.ParseAddress(System.Text.Encoding.UTF8.GetBytes(answer), connection));
+        }
     }
 
     // AC-1511, layer 2: a connection signed in with an installation token. The grant goes to the host with Depot's own
