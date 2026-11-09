@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-1819: conversation details show the copyable scratch folder and its size; the disk indicator hover shows the total scratch size for this instance.
+
 - AC-2235: closing a session no longer breaks `/tmp` in Git Bash for your other sessions; the scratch folder that Git Bash uses as `/tmp` is left in place instead of removed.
 
 - AC-2232: a maximized main window stays maximized after locking and unlocking Windows.
