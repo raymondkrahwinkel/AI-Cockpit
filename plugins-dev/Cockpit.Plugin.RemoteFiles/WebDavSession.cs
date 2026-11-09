@@ -133,7 +133,7 @@ internal sealed class WebDavSession : IRemoteSession
         }
         else
         {
-            // AC-1788: a timestamp/size fallback cannot provide an atomic If-Match; refuse rather than risk lost edits.
+            // A timestamp/size fallback cannot provide an atomic If-Match; refuse rather than risk lost edits.
             throw new FileSourceException(FileSourceErrorKind.Unsupported, "This server did not provide a strong ETag. Saving cannot safely protect concurrent edits.");
         }
         using var response = await _SendAsync(request, cancellationToken, allowConflict: true).ConfigureAwait(false);
