@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2232: a maximized main window stays maximized after locking and unlocking Windows.
+
 - AC-2233: the disk indicator in the status bar now uses the same hover background as CPU/RAM.
 
 - AC-2190: the companion strip and its pop-outs now look like the approved mockup: a 44px strip with one assistant chip ("F10 to talk"), quiet icon buttons, a split screenshot button, hairlines between the groups, and pop-outs 6px from the strip with a shared head and close button. Customize strip reorders by dragging and has Reset, the notification cards show their age and answer pills, and a background agent is no longer also counted as running.
