@@ -44,10 +44,15 @@ internal sealed class BrowserHostTab : IAsyncDisposable
         _size = size;
         var info = CefWindowInfo.Create();
         info.SetAsWindowless(nint.Zero, true);
-        _creationPending = CefBrowserHost.CreateBrowser(info, new Client(this), new CefBrowserSettings { WindowlessFrameRate = 60 }, _state.Address, null, profile);
-        if (_creationPending == false)
+        _creationPending = true;
+        try
         {
-            throw new InvalidOperationException("CEF refused the browser tab.");
+            CefBrowserHost.CreateBrowser(info, new Client(this), new CefBrowserSettings { WindowlessFrameRate = 60 }, _state.Address, null, profile);
+        }
+        catch
+        {
+            _creationPending = false;
+            throw;
         }
     }
 
