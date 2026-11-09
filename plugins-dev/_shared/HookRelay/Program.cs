@@ -5,6 +5,12 @@ using System.Text.RegularExpressions;
 
 try
 {
+    if (args is ["--guard"])
+    {
+        using var stdout = new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false));
+        Cockpit.Plugins.Shared.ClaudePathGuard.RunHook(new StreamReader(Console.OpenStandardInput(), Encoding.UTF8), stdout, Console.Error);
+        return;
+    }
     string? target = args.Length == 2 && args[0] == "--environment" ? Environment.GetEnvironmentVariable("COCKPIT_SUBAGENT_FILE") : args.FirstOrDefault();
     if (args.Length != 2 || target is null || !Path.IsPathFullyQualified(target))
     {

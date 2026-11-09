@@ -30,12 +30,13 @@ internal sealed class ClaudeTtyProvider(Func<string, string?>? managedResolver =
 
         var environmentOverlay = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         var (statusFile, statusLineSettings) = ClaudeStatusLine.Install(configJsonDirectory, environmentOverlay);
-        if (statusFile is not null)
-        {
-            var settings = JsonNode.Parse(statusLineSettings ?? "{}") as JsonObject ?? new JsonObject();
-            settings["hooks"] = JsonSerializer.SerializeToNode(TtyChildHooks.Settings(statusFile, "claude", environmentOverlay));
-            statusLineSettings = settings.ToJsonString();
-        }
+        var settings = JsonNode.Parse(statusLineSettings ?? "{}") as JsonObject ?? new JsonObject();
+        var hooks = statusFile is null ? new JsonObject() : JsonSerializer.SerializeToNode(TtyChildHooks.Settings(statusFile, "claude", environmentOverlay))!.AsObject();
+        // AC-2248: called directly, without the PowerShell wrapper, because it runs on every tool call; double quotes suit Git Bash and cmd.
+        var guard = $"\"{TtyChildHooks.Relay.Replace('\\', '/')}\" --guard";
+        hooks["PreToolUse"] = JsonSerializer.SerializeToNode(new[] { new { hooks = new[] { new { type = "command", command = guard, timeout = 5 } } } });
+        settings["hooks"] = hooks;
+        statusLineSettings = settings.ToJsonString();
 
         // AC-408/AC-1091: the session id is the transcript from the CLI's own statusline snapshot,
         // unambiguous per launch; falling back to the new *.jsonl since launch until that snapshot

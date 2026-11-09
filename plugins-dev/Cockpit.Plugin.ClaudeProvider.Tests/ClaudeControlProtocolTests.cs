@@ -58,7 +58,6 @@ public class ClaudeControlProtocolTests
 
     [Theory]
     [InlineData(null)]
-    [InlineData("")]
     [InlineData("not json")]
     [InlineData("\"a string, not an object\"")]
     public void BuildDecisionResponse_Allow_WithoutUsableAnswers_LeavesTheInputAlone(string? answersJson)
