@@ -1,7 +1,12 @@
+using System.Buffers.Text;
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Cockpit.Plugin.Depot.Contracts;
+using Cockpit.Plugin.Depot.Events;
 using Cockpit.Plugin.Depot.Mobile;
+using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugins.Abstractions.Channels;
 using NSubstitute;
 
@@ -18,12 +23,19 @@ public class MobileProtocolVectorTests
         "zeroPointPhonePub", "wrongLength", "wrongVersion", "unknownFlag", "pairingWithoutPending", "expiredPending",
         "secondPairingSamePending", "tamperedTag", "replay", "counterGap", "shortFrame", "mirroredFrame", "replayedHandshake",
         "assistantPairedPhone", "assistantForgottenPhone", "assistantWrongKey", "assistantOpenQuestion",
+        "replacedCockpitPub", "readyTimeout", "assistantBeforeReady",
     ];
 
     [Theory]
     [MemberData(nameof(Cases))]
     public async Task CockpitSide_MatchesTheVectors(string @case)
     {
+        if (@case is "replacedCockpitPub" or "readyTimeout")
+        {
+            await _KeyConfirmation(@case);
+            return;
+        }
+
         if (@case.StartsWith("assistant", StringComparison.Ordinal))
         {
             await _AssistantDoor(@case);
@@ -109,6 +121,14 @@ public class MobileProtocolVectorTests
                 Assert.False(Accept("knownPhone", out _, code: null));
                 Assert.True(Accept("knownPhone", out var known, code: null, paired: true));
                 known!.Cipher.Dispose();
+                var ready = vectors.GetProperty("ready");
+                using (var confirmation = new MobileFrameCipher(Hex(vectors.GetProperty("sessionKeys").GetProperty("cockpitToPhone")), Hex(vectors.GetProperty("sessionKeys").GetProperty("phoneToCockpit"))))
+                {
+                    Assert.Equal(Hex(ready.GetProperty("cockpitToPhone")), confirmation.Seal(Encoding.UTF8.GetBytes(ready.GetProperty("plaintext").GetString() ?? throw new InvalidDataException())));
+                    Assert.True(confirmation.TryOpen(Hex(ready.GetProperty("phoneToCockpit")), out var opened));
+                    Assert.Equal(ready.GetProperty("plaintext").GetString(), Encoding.UTF8.GetString(opened));
+                }
+                await _KeyConfirmation("pairing");
                 break;
             case "secondPairingSamePending":
                 // The code paired one phone and is spent: the same handshake again gets nothing.
@@ -192,17 +212,16 @@ public class MobileProtocolVectorTests
                 return null;
             }
 
-            using var cockpit = MobileKeyStore.ImportPublicKey(cockpitPub);
-            using var cockpitEphemeral = MobileKeyStore.ImportPublicKey(toPhone[0][1..]);
-            byte[] ikm =
-            [
-                .. ephemeral.DeriveRawSecretAgreement(cockpit.PublicKey),
-                .. phoneKey.DeriveRawSecretAgreement(cockpit.PublicKey),
-                .. ephemeral.DeriveRawSecretAgreement(cockpitEphemeral.PublicKey),
-            ];
-            byte[] info = [.. handshake[..2], .. cockpitPub, .. toPhone[0][1..], .. handshake[2..]];
-            byte[] Key(string label) => HKDF.DeriveKey(HashAlgorithmName.SHA256, ikm, 32, Encoding.UTF8.GetBytes(streamId), [.. Encoding.ASCII.GetBytes(label), .. info]);
-            return new MobileFrameCipher(Key("cockpit-mobile v1 phone-to-cockpit"), Key("cockpit-mobile v1 cockpit-to-phone"));
+            var phone = _PhoneCipher(phoneKey, ephemeral, cockpitPub, toPhone[0], MobileHandshake.FlagKnownPhone, streamId);
+            Assert.Equal(2, toPhone.Count);
+            Assert.True(phone.TryOpen(toPhone[1], out var ready));
+            using var readyMessage = JsonDocument.Parse(ready);
+            Assert.Equal("ready", readyMessage.RootElement.GetProperty("type").GetString());
+            if (@case != "assistantBeforeReady")
+            {
+                pairing.Frame(connection, streamId, device, phone.Seal("{\"type\":\"ready\",\"id\":\"p0\",\"body\":{}}"u8));
+            }
+            return phone;
         }
 
         void Say(MobileFrameCipher? phone, string streamId, string text) =>
@@ -235,11 +254,97 @@ public class MobileProtocolVectorTests
             Say(first, "stream-1", "1");
         }
 
-        var expected = @case == "assistantWrongKey" ? 0 : 1;
+        var expected = @case is "assistantWrongKey" or "assistantBeforeReady" ? 0 : 1;
         await gateway.Received(expected).SendAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<byte[]>>(), Arg.Any<CancellationToken>());
         if (expected == 1)
         {
             await gateway.Received(1).SendAsync(device, "hallo", Arg.Any<IReadOnlyList<byte[]>>(), Arg.Any<CancellationToken>());
         }
+    }
+
+    private static async Task _KeyConfirmation(string @case)
+    {
+        const string connection = "connection";
+        const string device = "device";
+        const string streamId = "stream";
+        var storage = new FakePluginStorage();
+        var keys = new MobileKeyStore(storage);
+        var registration = new DepotConnectionRegistration(connection, "Depot", "https://depot.example.org");
+        await using var events = new DepotEvents(() => [], _ => throw new InvalidOperationException(), (_, _, _, _, _) => throw new InvalidOperationException());
+        var time = Substitute.For<TimeProvider>();
+        long timestamp = 0;
+        time.TimestampFrequency.Returns(TimeSpan.TicksPerSecond);
+        time.GetTimestamp().Returns(_ => timestamp);
+        TimerCallback? expire = null;
+        time.CreateTimer(Arg.Do<TimerCallback>(callback => expire = callback), Arg.Is<object?>(state => state == null), TimeSpan.FromSeconds(15), Timeout.InfiniteTimeSpan)
+            .Returns(Substitute.For<ITimer>());
+        var toPhone = new List<byte[]>();
+        var openedChannels = new List<AssistantChannelContribution>();
+        await using var pairing = new MobilePairing(() => [registration],
+            _ => new DepotBrowserModelTests.StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("{\"pairingId\":\"pairing\",\"depotUrl\":\"https://depot.example.org\",\"expiresIn\":300}"),
+            }), storage, events, channel =>
+            {
+                openedChannels.Add(channel);
+                return Substitute.For<IAssistantChannelGateway>();
+            }, send: (_, _, frame) =>
+            {
+                if (frame() is { } sent)
+                {
+                    toPhone.Add(sent);
+                }
+                return Task.CompletedTask;
+            }, time: time);
+        var status = await pairing.StartAsync(connection, CancellationToken.None);
+        Assert.Equal(DepotPairingState.Open, status.State);
+        using var qr = JsonDocument.Parse(Base64Url.DecodeFromChars(status.Qr ?? throw new InvalidDataException()));
+        byte[] QrBytes(string name) => Base64Url.DecodeFromChars(qr.RootElement.GetProperty(name).GetString() ?? throw new InvalidDataException());
+        using var phoneKey = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
+        using var ephemeral = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
+        using var impostor = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
+        var phonePub = MobileKeyStore.PublicKey(phoneKey);
+        var cockpitPub = @case == "replacedCockpitPub" ? MobileKeyStore.PublicKey(impostor) : QrBytes("cockpitPub");
+        var mac = MobileHandshake.PairingMac(QrBytes("pairingSecret"), "pairing", phonePub);
+        byte[] handshake = [MobileHandshake.Version, MobileHandshake.FlagPairing, .. phonePub, .. MobileKeyStore.PublicKey(ephemeral), .. mac];
+        pairing.Opened(connection, streamId, device);
+        pairing.Frame(connection, streamId, device, handshake);
+        Assert.Equal(2, toPhone.Count);
+        Assert.False(keys.IsPaired(connection, phonePub));
+        Assert.Empty((await pairing.PhonesAsync(connection, false, CancellationToken.None)).Phones);
+        Assert.Empty(openedChannels);
+        Assert.Equal(DepotPairingState.Waiting, pairing.Status(connection).State);
+        using var phone = _PhoneCipher(phoneKey, ephemeral, cockpitPub, toPhone[0], MobileHandshake.FlagPairing, streamId);
+        Assert.Equal(@case != "replacedCockpitPub", phone.TryOpen(toPhone[1], out _));
+        if (@case == "readyTimeout")
+        {
+            timestamp = TimeSpan.FromSeconds(15).Ticks;
+            Assert.NotNull(expire);
+            expire(null);
+            Assert.Equal(DepotPairingState.None, pairing.Status(connection).State);
+        }
+        else
+        {
+            timestamp = TimeSpan.FromMilliseconds(14999).Ticks;
+        }
+
+        pairing.Frame(connection, streamId, device, phone.Seal("{\"type\":\"ready\",\"id\":\"p0\",\"body\":{}}"u8));
+        Assert.Equal(@case == "pairing", keys.IsPaired(connection, phonePub));
+        Assert.Equal(@case == "pairing" ? 1 : 0, (await pairing.PhonesAsync(connection, false, CancellationToken.None)).Phones.Count);
+        Assert.Equal(@case == "pairing" ? 1 : 0, openedChannels.Count);
+        toPhone.Clear();
+        pairing.Opened(connection, "reconnect", device);
+        pairing.Frame(connection, "reconnect", device, [MobileHandshake.Version, MobileHandshake.FlagKnownPhone, .. phonePub, .. MobileKeyStore.PublicKey(ephemeral)]);
+        Assert.Equal(@case == "pairing" ? 2 : 0, toPhone.Count);
+    }
+
+    private static MobileFrameCipher _PhoneCipher(ECDiffieHellman phone, ECDiffieHellman ephemeral, byte[] cockpitPub, byte[] reply, byte flag, string streamId)
+    {
+        using var cockpit = MobileKeyStore.ImportPublicKey(cockpitPub);
+        using var cockpitEphemeral = MobileKeyStore.ImportPublicKey(reply[1..]);
+        byte[] ikm = [.. ephemeral.DeriveRawSecretAgreement(cockpit.PublicKey), .. phone.DeriveRawSecretAgreement(cockpit.PublicKey), .. ephemeral.DeriveRawSecretAgreement(cockpitEphemeral.PublicKey)];
+        byte[] info = [MobileHandshake.Version, flag, .. cockpitPub, .. reply[1..], .. MobileKeyStore.PublicKey(phone), .. MobileKeyStore.PublicKey(ephemeral)];
+        byte[] Key(string label) => HKDF.DeriveKey(HashAlgorithmName.SHA256, ikm, 32, Encoding.UTF8.GetBytes(streamId), [.. Encoding.ASCII.GetBytes(label), .. info]);
+        return new MobileFrameCipher(Key("cockpit-mobile v1 phone-to-cockpit"), Key("cockpit-mobile v1 cockpit-to-phone"));
     }
 }

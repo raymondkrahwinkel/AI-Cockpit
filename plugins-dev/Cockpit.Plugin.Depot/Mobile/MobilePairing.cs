@@ -2,6 +2,7 @@ using System.Buffers.Text;
 using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
+using System.Text.Json;
 using Cockpit.Plugin.Depot.Contracts;
 using Cockpit.Plugin.Depot.Events;
 using Cockpit.Plugin.Depot.Model;
@@ -20,8 +21,11 @@ internal sealed class MobilePairing(
     DepotEvents events,
     Func<AssistantChannelContribution, IAssistantChannelGateway?> openChannel,
     ILogger? logger = null,
-    Func<string, string, Func<byte[]?>, Task>? send = null) : IAsyncDisposable
+    Func<string, string, Func<byte[]?>, Task>? send = null,
+    TimeProvider? time = null) : IAsyncDisposable
 {
+    private static readonly TimeSpan _ConfirmationTimeout = TimeSpan.FromSeconds(15);
+    private readonly TimeProvider _time = time ?? TimeProvider.System;
     private readonly MobileKeyStore _keys = new(storage);
     private readonly Lock _gate = new();
     private readonly Dictionary<string, _Pending> _pending = new(StringComparer.Ordinal);
@@ -117,6 +121,12 @@ internal sealed class MobilePairing(
             if (pending.DeviceName is { } paired && pending.Paired)
             {
                 return new(DepotPairingState.Paired, DeviceName: paired);
+            }
+
+            if (pending.DeviceId is { } device && _streams.TryGetValue((connectionId, device), out var stream)
+                && ReferenceEquals(stream.Pairing, pending))
+            {
+                return new(DepotPairingState.Waiting);
             }
 
             if (!pending.Payload.IsOpen())
@@ -381,7 +391,7 @@ internal sealed class MobilePairing(
                 _Forget(connectionId, deviceId);
                 _ = PruneAsync();
             }
-            else if (cockpitEvent.Kind == "devicePaired" && _pending.TryGetValue(connectionId, out var pending) && !pending.Paired)
+            else if (cockpitEvent.Kind == "devicePaired" && _pending.TryGetValue(connectionId, out var pending) && pending.Payload.IsOpen())
             {
                 pending.DeviceId = deviceId;
                 pending.DeviceName = string.IsNullOrWhiteSpace(cockpitEvent.Name) ? null : cockpitEvent.Name;
@@ -431,7 +441,41 @@ internal sealed class MobilePairing(
                     return;
                 }
 
-                stream.Confirmed = true;
+                if (!stream.Confirmed)
+                {
+                    try
+                    {
+                        if (!stream.ReadySent || stream.ConfirmationStartedAt is not { } started
+                            || _time.GetElapsedTime(started) >= _ConfirmationTimeout || !_IsReady(plaintext))
+                        {
+                            _DropStream(connectionId, deviceId);
+                            return;
+                        }
+
+                        if (stream.Pairing is { } pending && stream.PhonePub is { } phonePub)
+                        {
+                            _RemoveKey(connectionId, deviceId);
+                            _keys.AddPhone(connectionId, phonePub);
+                            var name = pending.DeviceName ?? _ShortName(deviceId);
+                            _Save(connectionId, [.. _Phones(connectionId), new MobilePairedPhone(deviceId, name, Base64Url.EncodeToString(phonePub), _time.GetUtcNow())]);
+                            pending.DeviceName = name;
+                            pending.Paired = true;
+                        }
+
+                        stream.Confirmed = true;
+                        stream.Pairing = null;
+                        stream.PhonePub = null;
+                        stream.ConfirmationTimer?.Dispose();
+                        stream.ConfirmationTimer = null;
+                        _Channel(connectionId, deviceId);
+                        return;
+                    }
+                    finally
+                    {
+                        CryptographicOperations.ZeroMemory(plaintext);
+                    }
+                }
+
                 channel = _Channel(connectionId, deviceId);
             }
             else
@@ -447,7 +491,7 @@ internal sealed class MobilePairing(
 
         if (reply is not null)
         {
-            _ = _SendAsync(connectionId, deviceId, streamId, () => reply);
+            _ = _SendHandshakeAsync(connectionId, deviceId, streamId, reply);
             return;
         }
 
@@ -459,6 +503,68 @@ internal sealed class MobilePairing(
         {
             CryptographicOperations.ZeroMemory(plaintext);
         }
+    }
+
+    private static bool _IsReady(byte[] plaintext)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(plaintext);
+            var root = document.RootElement;
+            return root.ValueKind == JsonValueKind.Object
+                && root.TryGetProperty("type", out var type) && type.ValueKind == JsonValueKind.String && type.GetString() == "ready"
+                && root.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.String && !string.IsNullOrEmpty(id.GetString())
+                && root.TryGetProperty("body", out var body) && body.ValueKind == JsonValueKind.Object;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private async Task _SendHandshakeAsync(string connectionId, string deviceId, string streamId, byte[] reply)
+    {
+        await _SendAsync(connectionId, deviceId, streamId, () =>
+        {
+            lock (_gate)
+            {
+                return _streams.TryGetValue((connectionId, deviceId), out var current) && current.StreamId == streamId ? reply : null;
+            }
+        }).ConfigureAwait(false);
+
+        lock (_gate)
+        {
+            if (!_streams.TryGetValue((connectionId, deviceId), out var current) || current.StreamId != streamId)
+            {
+                return;
+            }
+
+            current.ConfirmationStartedAt = _time.GetTimestamp();
+            current.ConfirmationTimer = _time.CreateTimer(_ =>
+            {
+                lock (_gate)
+                {
+                    if (!current.Confirmed && ReferenceEquals(_streams.GetValueOrDefault((connectionId, deviceId)), current))
+                    {
+                        _DropStream(connectionId, deviceId, streamId);
+                    }
+                }
+            }, null, _ConfirmationTimeout, Timeout.InfiniteTimeSpan);
+        }
+
+        await _SendAsync(connectionId, deviceId, streamId, () =>
+        {
+            lock (_gate)
+            {
+                if (!_streams.TryGetValue((connectionId, deviceId), out var current) || current.StreamId != streamId || current.Cipher is not { } cipher)
+                {
+                    return null;
+                }
+
+                current.ReadySent = true;
+                return cipher.Seal("{\"type\":\"ready\",\"id\":\"ready\",\"body\":{}}"u8);
+            }
+        }).ConfigureAwait(false);
     }
 
     // Under _gate. The reply for the phone once the handshake holds, or null for every refusal alike.
@@ -480,15 +586,16 @@ internal sealed class MobilePairing(
                 return null;
             }
 
-            if (result!.NewlyPaired)
+            if (result is null)
             {
-                _RemoveKey(connectionId, deviceId);
-                _keys.AddPhone(connectionId, result.PhonePub);
-                var name = pending!.DeviceName ?? _ShortName(deviceId);
-                _Save(connectionId, [.. _Phones(connectionId), new MobilePairedPhone(deviceId, name, Base64Url.EncodeToString(result.PhonePub), DateTimeOffset.UtcNow)]);
+                return null;
+            }
+
+            if (result.NewlyPaired && pending is not null)
+            {
+                stream.Pairing = pending;
+                stream.PhonePub = result.PhonePub;
                 pending.DeviceId = deviceId;
-                pending.DeviceName = name;
-                pending.Paired = true;
             }
 
             stream.Cipher = result.Cipher;
@@ -647,7 +754,13 @@ internal sealed class MobilePairing(
         if (_streams.TryGetValue((connectionId, deviceId), out var stream) && (streamId is null || stream.StreamId == streamId))
         {
             _streams.Remove((connectionId, deviceId));
+            stream.ConfirmationTimer?.Dispose();
             stream.Cipher?.Dispose();
+            if (stream.Pairing is { } pending && ReferenceEquals(_pending.GetValueOrDefault(connectionId), pending))
+            {
+                _pending.Remove(connectionId);
+                pending.Payload.Discard();
+            }
             _channels.GetValueOrDefault((connectionId, deviceId))?.StreamEnded();
         }
     }
@@ -676,6 +789,11 @@ internal sealed class MobilePairing(
             if (_pending.Remove(connectionId, out var pending))
             {
                 pending.Payload.Discard();
+                if (pending.DeviceId is { } device && _streams.TryGetValue((connectionId, device), out var stream)
+                    && ReferenceEquals(stream.Pairing, pending))
+                {
+                    _DropStream(connectionId, device);
+                }
             }
         }
     }
@@ -740,6 +858,16 @@ internal sealed class MobilePairing(
         public MobileFrameCipher? Cipher { get; set; }
 
         public bool Confirmed { get; set; }
+
+        public bool ReadySent { get; set; }
+
+        public long? ConfirmationStartedAt { get; set; }
+
+        public ITimer? ConfirmationTimer { get; set; }
+
+        public _Pending? Pairing { get; set; }
+
+        public byte[]? PhonePub { get; set; }
 
         public int WaitingSends { get; set; }
     }
