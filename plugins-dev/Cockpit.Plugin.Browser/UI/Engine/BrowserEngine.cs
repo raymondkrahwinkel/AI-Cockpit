@@ -39,6 +39,7 @@ internal sealed class BrowserEngine
     private Task? _start;
     private bool _cefLoaded;
     private CefRequestContext? _userProfile;
+    private BrowserHostClient? _host;
 
     public BrowserEngine(
         Func<IProgress<CefRuntimeProgress>, CancellationToken, Task<CefRuntimeResult>> fetchRuntime,
@@ -60,6 +61,17 @@ internal sealed class BrowserEngine
             DownloadText = downloadText,
             _start = Task.CompletedTask,
         };
+
+    internal static BrowserEngine ForHost(BrowserHostClient host) => new((_, _) => throw new InvalidOperationException("The host is already running."), string.Empty, string.Empty)
+    {
+        _host = host,
+        _start = Task.CompletedTask,
+        State = BrowserEngineState.Ready,
+    };
+
+    internal BrowserView CreateView(string address) => _host is { } host
+        ? new HostBrowserView(host, address)
+        : new CefBrowserView(this, address, UserProfile);
 
     public static BrowserEngine Shared { get; } = new(
         (progress, token) =>
@@ -243,6 +255,13 @@ internal sealed class BrowserEngine
 
         // A fetch still running when Cockpit closes must not start CEF afterwards (review AC-1711, finding 4).
         _stopping.Cancel();
+        if (_host is { } host)
+        {
+            _host = null;
+            host.Connection.Close();
+            _Set(BrowserEngineState.Unavailable, "The browser engine has shut down.");
+            return;
+        }
         if (State != BrowserEngineState.Ready)
         {
             return;

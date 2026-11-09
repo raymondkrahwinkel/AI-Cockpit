@@ -15,7 +15,7 @@ namespace Cockpit.Plugin.Browser.UI.Engine;
 // One CEF browser in offscreen rendering (AC-1709 route c). Moving it between tab, rail and window is moving an
 // ordinary control: the browser, its page and its sound stay. CEF callbacks arrive on CEF's own UI thread and are
 // posted to Avalonia's before anything here or in the model changes.
-internal sealed class CefBrowserView : Control
+internal sealed class CefBrowserView : BrowserView
 {
     // What the page reports through the console: a playing, audible element, or a format this CEF cannot play.
     internal const string MarkerPrefix = "__cockpit:";
@@ -33,6 +33,7 @@ internal sealed class CefBrowserView : Control
     // AC-1728: the origin an agent controls this tab on, or null. While set, every form submission and non-GET
     // navigation in any frame waits in OnBeforeResourceLoad for the operator; the page's scripts have no say in it.
     private volatile string? _controlOrigin;
+    private bool _isMuted;
     private readonly object _holdGate = new();
     private CefCallback? _held;
 
@@ -44,6 +45,7 @@ internal sealed class CefBrowserView : Control
     private byte[] _front = [];
     private PixelSize _backSize;
     private int _blitQueued;
+    internal event Action<WriteableBitmap>? FramePresented;
     private Size _viewSize = new(800, 600);
     private double _scale = 1;
 
@@ -78,38 +80,18 @@ internal sealed class CefBrowserView : Control
 
     internal static CefBrowserView ForScene(BrowserEngine engine) => new(engine);
 
-    internal bool IsScenePlaceholder { get; }
+    internal override bool IsScenePlaceholder { get; }
 
-    public event Action<string>? AddressChanged;
-
-    public event Action<string>? TitleChanged;
-
-    public event Action<string>? FaviconChanged;
-
-    public event Action<bool, bool, bool>? LoadingChanged;
-
-    public event Action<bool>? AudibleChanged;
-
-    public event Action? CodecUnsupported;
-
-    public event Action<string>? PopupRequested;
-
-    // AC-1728: the operator's own click or key in this view, so an agent controlling the tab pauses for him.
-    public event Action? OperatorInput;
-
-    // AC-1728: a navigation held while the tab is controlled, as its method and target address, on the UI thread.
-    public event Action<string, string>? SubmitHeld;
-
-    public string? ControlOrigin
+    public override string? ControlOrigin
     {
         get => _controlOrigin;
         set => _controlOrigin = value;
     }
 
     // Lets exactly the held request go on, body and all; nothing is copied or sent again (measured, AC-1728).
-    public void ReleaseHeldSubmit() => _TakeHeld()?.Continue();
+    public override void ReleaseHeldSubmit() => _TakeHeld()?.Continue();
 
-    public void DropHeldSubmit() => _TakeHeld()?.Cancel();
+    public override void DropHeldSubmit() => _TakeHeld()?.Cancel();
 
     private CefCallback? _TakeHeld()
     {
@@ -121,9 +103,9 @@ internal sealed class CefBrowserView : Control
         }
     }
 
-    public bool IsMuted { get; private set; }
+    public override bool IsMuted => _isMuted;
 
-    public void Navigate(string url)
+    public override void Navigate(string url)
     {
         if (_browser is { } browser)
         {
@@ -134,11 +116,11 @@ internal sealed class CefBrowserView : Control
         _pendingUrl = url;
     }
 
-    public void GoBack() => _browser?.GoBack();
+    public override void GoBack() => _browser?.GoBack();
 
-    public void GoForward() => _browser?.GoForward();
+    public override void GoForward() => _browser?.GoForward();
 
-    public void Reload() => _browser?.Reload();
+    public override void Reload() => _browser?.Reload();
 
     // AC-1761: Chromium's own zoom steps, kept per site in the profile, the way Chrome keeps them.
     public void Zoom(CefZoomCommand command) => _OnHost(host => host.Zoom(command));
@@ -146,7 +128,7 @@ internal sealed class CefBrowserView : Control
     // AC-1728: an agent's input, sent the way the operator's own mouse and keys are, through CEF's offscreen host. The
     // gate runs on CEF's UI thread right before the input, with the main and focused frames' addresses, and the task
     // says whether the input went in. Coordinates are the page's CSS pixels at 100% zoom.
-    public Task<bool> AgentClick(int x, int y, Func<string?, string?, bool> gate, string frames)
+    public override Task<bool> AgentClick(int x, int y, Func<string?, string?, bool> gate, string frames)
     {
         var mouse = new CefMouseEvent(x, y, CefEventFlags.None);
         return _Agent((main, focused) => gate(main, focused) && _FrameSignature() == frames, host =>
@@ -158,7 +140,7 @@ internal sealed class CefBrowserView : Control
         });
     }
 
-    public Task<bool> AgentType(string text, Func<string?, string?, bool> gate)
+    public override Task<bool> AgentType(string text, Func<string?, string?, bool> gate)
     {
         var keys = text.Select(character => new CefKeyEvent { EventType = CefKeyEventType.Char, Character = character, UnmodifiedCharacter = character, WindowsKeyCode = character }).ToList();
         return _Agent(gate, host =>
@@ -172,7 +154,7 @@ internal sealed class CefBrowserView : Control
     }
 
     // A Windows key code from KeyCodes.FromName; Enter also sends its character, which is what submits a form.
-    public Task<bool> AgentKey(int code, Func<string?, string?, bool> gate) => _Agent(gate, host =>
+    public override Task<bool> AgentKey(int code, Func<string?, string?, bool> gate) => _Agent(gate, host =>
     {
         host.SetFocus(true);
         host.SendKeyEvent(new CefKeyEvent { EventType = CefKeyEventType.RawKeyDown, WindowsKeyCode = code });
@@ -184,16 +166,16 @@ internal sealed class CefBrowserView : Control
         host.SendKeyEvent(new CefKeyEvent { EventType = CefKeyEventType.KeyUp, WindowsKeyCode = code });
     });
 
-    public Task<bool> AgentScroll(int dx, int dy, Func<string?, string?, bool> gate)
+    public override Task<bool> AgentScroll(int dx, int dy, Func<string?, string?, bool> gate)
     {
         var mouse = new CefMouseEvent((int)(_viewSize.Width / 2), (int)(_viewSize.Height / 2), CefEventFlags.None);
         return _Agent(gate, host => host.SendMouseWheelEvent(mouse, dx, dy));
     }
 
-    public Task<bool> AgentNavigate(string url, Func<string?, string?, bool> gate) => _Agent(gate, host => host.GetBrowser().GetMainFrame().LoadUrl(url));
+    public override Task<bool> AgentNavigate(string url, Func<string?, string?, bool> gate) => _Agent(gate, host => host.GetBrowser().GetMainFrame().LoadUrl(url));
 
     // The browser's frames as one string, read on CEF's UI thread; null when there is no browser.
-    public Task<string?> FrameSignatureAsync()
+    public override Task<string?> FrameSignatureAsync()
     {
         var done = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
         if (_browser is null)
@@ -237,16 +219,16 @@ internal sealed class CefBrowserView : Control
         return done.Task;
     }
 
-    public void SetMuted(bool muted)
+    public override void SetMuted(bool muted)
     {
-        IsMuted = muted;
+        _isMuted = muted;
         _browser?.GetHost().SetAudioMuted(muted);
     }
 
     // Closing before CEF created the browser is answered in OnAfterCreated, so no browser is left without an owner.
     // AC-1714: one DevTools method on this browser alone, in-process through CEF and without a debugging port. The
     // JSON result, or null when the browser is gone or the method failed; the caller bounds the wait.
-    public Task<string?> DevToolsAsync(string method, IReadOnlyDictionary<string, object> parameters)
+    public override Task<string?> DevToolsAsync(string method, IReadOnlyDictionary<string, object> parameters)
     {
         if (_browser is null)
         {
@@ -286,7 +268,7 @@ internal sealed class CefBrowserView : Control
         }
     }
 
-    public Task CloseAsync()
+    public override Task CloseAsync()
     {
         _engine.Unregister(this);
         _closeRequested = true;
@@ -363,7 +345,7 @@ internal sealed class CefBrowserView : Control
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e);
-        OperatorInput?.Invoke();
+        OnOperatorInput();
         Focus();
         var mouse = _Mouse(e);
         var button = _Button(e.GetCurrentPoint(this).Properties.PointerUpdateKind);
@@ -441,7 +423,7 @@ internal sealed class CefBrowserView : Control
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
-        OperatorInput?.Invoke();
+        OnOperatorInput();
         if (_BrowserKey(e))
         {
             e.Handled = true;
@@ -605,6 +587,7 @@ internal sealed class CefBrowserView : Control
             Marshal.Copy(_front, 0, frame.Address, Math.Min(size.Width * size.Height * 4, frame.RowBytes * size.Height));
         }
 
+        FramePresented?.Invoke(_bitmap);
         InvalidateVisual();
     }
 
@@ -615,11 +598,11 @@ internal sealed class CefBrowserView : Control
         {
             if (marker == "codec")
             {
-                CodecUnsupported?.Invoke();
+                OnCodecUnsupported();
             }
             else if (marker.StartsWith("audible:", StringComparison.Ordinal))
             {
-                AudibleChanged?.Invoke(marker.EndsWith('1'));
+                OnAudibleChanged(marker.EndsWith('1'));
             }
         });
     }
@@ -705,7 +688,7 @@ internal sealed class CefBrowserView : Control
                     }
 
                     previous?.Cancel();
-                    _OnUi(() => owner.SubmitHeld?.Invoke(method, url));
+                    _OnUi(() => owner.OnSubmitHeld(method, url));
                     return CefReturnValue.ContinueAsync;
                 default:
                     return CefReturnValue.Continue;
@@ -756,7 +739,7 @@ internal sealed class CefBrowserView : Control
             CefWindowOpenDisposition targetDisposition, bool userGesture, CefPopupFeatures popupFeatures, CefWindowInfo windowInfo,
             ref CefClient client, CefBrowserSettings settings, ref CefDictionaryValue extraInfo, ref bool noJavascriptAccess)
         {
-            _OnUi(() => owner.PopupRequested?.Invoke(targetUrl));
+            _OnUi(() => owner.OnPopupRequested(targetUrl));
             return true;
         }
 
@@ -779,17 +762,17 @@ internal sealed class CefBrowserView : Control
         {
             if (frame.IsMain)
             {
-                _OnUi(() => owner.AddressChanged?.Invoke(url));
+                _OnUi(() => owner.OnAddressChanged(url));
             }
         }
 
-        protected override void OnTitleChange(CefBrowser browser, string title) => _OnUi(() => owner.TitleChanged?.Invoke(title));
+        protected override void OnTitleChange(CefBrowser browser, string title) => _OnUi(() => owner.OnTitleChanged(title));
 
         protected override void OnFaviconUrlChange(CefBrowser browser, string[] iconUrls)
         {
             if (iconUrls.Length > 0)
             {
-                _OnUi(() => owner.FaviconChanged?.Invoke(iconUrls[0]));
+                _OnUi(() => owner.OnFaviconChanged(iconUrls[0]));
             }
         }
 
@@ -829,7 +812,7 @@ internal sealed class CefBrowserView : Control
                 browser.GetHost().GetRequestContext().GetCookieManager(null)?.FlushStore(null);
             }
 
-            _OnUi(() => owner.LoadingChanged?.Invoke(isLoading, canGoBack, canGoForward));
+            _OnUi(() => owner.OnLoadingChanged(isLoading, canGoBack, canGoForward));
         }
 
         // Before the page's own scripts, so a media error or a DRM request that comes early is still seen.
@@ -838,7 +821,7 @@ internal sealed class CefBrowserView : Control
             if (frame.IsMain)
             {
                 frame.ExecuteJavaScript(PageHooks, frame.Url, 0);
-                _OnUi(() => owner.AudibleChanged?.Invoke(false));
+                _OnUi(() => owner.OnAudibleChanged(false));
             }
         }
     }

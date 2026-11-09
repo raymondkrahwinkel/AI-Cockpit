@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2147: connect the development Browser host to tabs and Avalonia frames, retaining tab identity through moves and rejecting stale or crossed buffers.
+
 - AC-2146: clean up the upcoming Linux Browser host and its children when their owner or engine host crashes.
 
 - AC-2145: bind the upcoming Browser engine host and its children to the Windows owner lifetime, including owner and host crashes.

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.Versioning;
 using System.Text.Json;
+using System.Collections.Concurrent;
 using Cockpit.Plugin.Browser.Ipc;
 using Microsoft.Win32.SafeHandles;
 
@@ -15,6 +16,7 @@ internal sealed class BrowserHostClient : IAsyncDisposable
     private readonly Task _exited;
     private readonly Task _closeOnExit;
     private int _disposed;
+    private readonly ConcurrentDictionary<Guid, Func<BrowserIpcMessage, CancellationToken, Task<JsonElement>>> _tabs = new();
 
     private BrowserHostClient(Process process, BrowserIpcPipes pipes, Guid generation, SafeFileHandle? job, LinuxBrowserHostProcess? linux)
     {
@@ -25,13 +27,30 @@ internal sealed class BrowserHostClient : IAsyncDisposable
         _exited = OperatingSystem.IsLinux() ? _ReapLinuxAsync(process.Id) : process.WaitForExitAsync();
         Generation = generation;
         Connection = new BrowserIpcConnection(pipes.Input, pipes.Output, generation,
-            (_, _) => throw new InvalidDataException("Unknown engine client operation."), (generation, "enginehost"));
+            (message, token) => _tabs.TryGetValue(message.TabId, out var handle)
+                ? handle(message, token) : throw new InvalidDataException("Unknown engine client operation."), (generation, "enginehost"));
         _closeOnExit = _CloseOnExitAsync();
     }
 
     internal Guid Generation { get; }
     internal int ProcessId => OperatingSystem.IsLinux() && _linux is not null ? _linux.HostProcessId : _process.Id;
     internal BrowserIpcConnection Connection { get; }
+    internal string BufferDirectory { get; private set; } = string.Empty;
+
+    internal void RegisterTab(Guid id, Func<BrowserIpcMessage, CancellationToken, Task<JsonElement>> handle)
+    {
+        Connection.RegisterTab(id, "operator");
+        if (_tabs.TryAdd(id, handle) == false)
+        {
+            throw new InvalidOperationException("The browser tab is already registered.");
+        }
+    }
+
+    internal async Task UnregisterTabAsync(Guid id)
+    {
+        await Connection.UnregisterTabAsync(id, "operator").ConfigureAwait(false);
+        _tabs.TryRemove(id, out _);
+    }
 
     internal static async Task<BrowserHostClient> StartAsync(string executable, string runtimeDirectory, string cacheDirectory,
         string bufferDirectory, bool hardwareAcceleration, CancellationToken cancellationToken = default)
@@ -78,6 +97,7 @@ internal sealed class BrowserHostClient : IAsyncDisposable
                 throw new PlatformNotSupportedException("The browser host is supported on Windows and Linux.");
             }
             client = new BrowserHostClient(process, pipes, generation, job, linux);
+            client.BufferDirectory = bufferDirectory;
             pipes.ChildStarted();
             var ready = await client.Connection.CallAsync(generation, "enginehost", "engine.ready", JsonSerializer.SerializeToElement(true),
                 BrowserIpcLimits.Deadline, cancellationToken).ConfigureAwait(false);
@@ -185,6 +205,7 @@ internal sealed class BrowserHostClient : IAsyncDisposable
         {
             errors.Add(exception);
         }
+        _tabs.Clear();
         if (errors.Count != 0)
         {
             throw new AggregateException("Browser host cleanup failed.", errors);

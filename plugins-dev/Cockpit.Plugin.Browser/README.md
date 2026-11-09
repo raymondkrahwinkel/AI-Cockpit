@@ -27,7 +27,7 @@ best-effort Cancel has its own 250 ms bound, including waiting for the writer.
 Ordinary handler failures reject only their call without sending exception details. Protocol errors and
 failed writes still close the connection.
 
-At most two reusable BGRA buffers belong to a connection, each at most 128 MiB and 8192 pixels per axis.
+At most two reusable BGRA buffers belong to each tab, with at most 128 per connection; each is limited to 128 MiB and 8192 pixels per axis.
 Their backing directories have a protected current-user ACL on Windows and mode 0700 on Unix (files 0600).
 Choose the same trusted private parent directory at both endpoints; peer messages supply only descriptors,
 never paths. Opening derives the path from generation/id and validates exact size; disconnect closes mappings
@@ -77,11 +77,37 @@ then the supervisor reaps its adopted descendants. The leader stays waitable unt
 PID reuse. A separate pipe reports the host PID within five seconds; startup failure closes the lifetime writer.
 Supervisor exceptions produce one stderr line, captured separately and written to the client's trace log.
 The enginehost and CEF children cannot inherit the supervisor pipes. No `/proc` snapshot, systemd or cgroup is
-needed for containment. The existing in-process UI remains active
-until AC-2147 connects the views. Use this launcher only from the explicit local development harness meanwhile.
+needed for containment. The existing in-process UI remains active until the live-plugin integration in AC-2157.
+Use this launcher only from the explicit local development harness meanwhile.
 If the supervisor alone is killed, the client closes IPC and a responsive host can stop normally. A host that
 ignores EOF can survive supervisor SIGKILL or an OOM kill of only the supervisor; covering supervisor loss would
 require a kernel lifetime boundary and is outside this mechanism.
+
+## Development host tabs (AC-2147)
+
+After `StartHostAsync`, `BrowserEngine.ForHost(client)` supplies the existing `BrowserModel`, `BrowserShell`
+and `BrowserHome` with `HostBrowserView`. This is an internal development/harness entry point, not a setting.
+The caller owns the client and awaits disposal after closing its tabs. `Shutdown` closes the pipe without
+blocking the Avalonia dispatcher. The shipped plugin still uses its original engine and `requiresRestart`.
+
+The model holds an opaque tab id and host generation through `BrowserView`; moving the shell between workspace
+and rail keeps that view and id. The host creates CEF browsers and the operator request context; the host route
+never loads native CEF in the UI process. `tab.create`/`tab.close` use the engine control pair, and navigation,
+visibility, viewport changes and operator input use the registered tab's `operator` pair.
+
+`tab.frame` carries the tab-bound buffer descriptor, resize revision, frame id, scale and dirty rectangle.
+CEF copies changed rows directly into a reusable shared buffer; Avalonia copies them directly into its bitmap.
+The first frame after resize fills a new buffer. Each tab has one unacknowledged frame; its buffer stays
+immutable until presentation returns the pipe ack. Paints arriving in between coalesce their dirty region;
+ack requests another paint when needed, including when the page stopped animating. Resize retains an in-flight
+buffer until ack, and the UI discards stale revisions. Close acknowledges pending frames without presenting them.
+Invalid tab/generation/buffer correlation ends the connection visibly rather than displaying another page.
+
+Input is ordered through a bounded queue (64 commands per view); overflow fails the tab visibly. Host state
+coalesces in one slot, with at most one outbound call per tab across state and frames. Engine disconnect and
+renderer termination replace the stale page image with a failure; a renderer can recover on navigation/reload.
+DevTools, agent authorization, clipboard, IME, popup surfaces and audio are the later epic steps. The explicit
+host route refuses agent operations until those host-side checks exist; the live TabShare/consent route is unchanged.
 
 ## The browser
 

@@ -3,6 +3,7 @@
   <!-- The UI half of the browser plugin: everything that needs a window, and the CEF runtime fetch (AC-1727).
        Builds into the backend project's bin/ and never references it (see GitStatus.UI, AC-1390). -->
   <PropertyGroup>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>

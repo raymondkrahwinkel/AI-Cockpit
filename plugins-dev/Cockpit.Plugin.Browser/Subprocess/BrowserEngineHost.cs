@@ -18,6 +18,7 @@ internal static class BrowserEngineHost
         var pipes = BrowserIpcPipes.OpenChild(Argument("--cockpit-input="), Argument("--cockpit-output="));
         bool initialized = false;
         BrowserIpcConnection? connection = null;
+        BrowserHostTabs? tabs = null;
         try
         {
             try
@@ -32,14 +33,15 @@ internal static class BrowserEngineHost
             {
                 // Report a finite startup failure over IPC without leaking local paths or exception details.
             }
-            connection = new BrowserIpcConnection(pipes.Input, pipes.Output, generation, (message, _) =>
+            connection = new BrowserIpcConnection(pipes.Input, pipes.Output, generation, (message, token) =>
             {
-                if (message.Operation != "engine.ready")
+                if (message.Operation == "engine.ready" && message.TabId == generation)
                 {
-                    throw new InvalidDataException("Unknown engine operation.");
+                    return Task.FromResult(JsonSerializer.SerializeToElement(new { Initialized = initialized, ProcessId = Environment.ProcessId }));
                 }
-                return Task.FromResult(JsonSerializer.SerializeToElement(new { Initialized = initialized, ProcessId = Environment.ProcessId }));
+                return tabs?.HandleAsync(message, token) ?? throw new InvalidDataException("Unknown engine operation.");
             }, (generation, "enginehost"));
+            tabs = new BrowserHostTabs(connection, storage, cache);
             connection.Completion.GetAwaiter().GetResult();
             return initialized ? 0 : 1;
         }
@@ -56,6 +58,10 @@ internal static class BrowserEngineHost
             }
             if (initialized)
             {
+                if (tabs is not null)
+                {
+                    tabs.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                }
                 CefRuntime.Shutdown();
             }
         }
