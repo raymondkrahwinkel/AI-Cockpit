@@ -2,6 +2,8 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Cockpit.Plugin.Depot.Mobile;
+using Cockpit.Plugins.Abstractions.Channels;
+using NSubstitute;
 
 namespace Cockpit.Plugin.Depot.Tests.Mobile;
 
@@ -15,12 +17,19 @@ public class MobileProtocolVectorTests
         "pairing", "wrongPairingSecret", "replacedPhonePub", "offCurveEphPub", "offCurvePhonePub", "zeroPointEphPub",
         "zeroPointPhonePub", "wrongLength", "wrongVersion", "unknownFlag", "pairingWithoutPending", "expiredPending",
         "secondPairingSamePending", "tamperedTag", "replay", "counterGap", "shortFrame", "mirroredFrame", "replayedHandshake",
+        "assistantPairedPhone", "assistantForgottenPhone", "assistantWrongKey",
     ];
 
     [Theory]
     [MemberData(nameof(Cases))]
-    public void CockpitSide_MatchesTheVectors(string @case)
+    public async Task CockpitSide_MatchesTheVectors(string @case)
     {
+        if (@case.StartsWith("assistant", StringComparison.Ordinal))
+        {
+            await _AssistantDoor(@case);
+            return;
+        }
+
         var vectors = JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Mobile", "protocol-vectors.json"))).RootElement;
         string Text(string name) => vectors.GetProperty(name).GetString()!;
         byte[] Hex(JsonElement element) => Convert.FromHexString(element.GetString()!);
@@ -132,6 +141,89 @@ public class MobileProtocolVectorTests
                 // The Cockpit's own frame sent back to it: the other direction's key, so it does not open.
                 Assert.False(cipher.TryOpen(cipher.Seal("echo"u8), out _));
                 break;
+        }
+    }
+
+    // AC-2227: a phone that speaks the protocol, through MobilePairing to the assistant's door. Only a phone that is
+    // paired now gets a message to the assistant; a forgotten one or an unpaired key gets nothing in, on any stream.
+    private static async Task _AssistantDoor(string @case)
+    {
+        const string connection = "connection";
+        const string device = "device";
+        var storage = new FakePluginStorage();
+        var keys = new MobileKeyStore(storage);
+        Assert.True(keys.TryGetCockpitKey(connection, out var cockpitKey));
+        var cockpitPub = MobileKeyStore.PublicKey(cockpitKey!);
+        cockpitKey!.Dispose();
+        using var pairedKey = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
+        keys.AddPhone(connection, MobileKeyStore.PublicKey(pairedKey));
+        storage.Set($"mobilePairedPhones-{connection}", new List<MobilePairedPhone>
+        {
+            new(device, "Phone", System.Buffers.Text.Base64Url.EncodeToString(MobileKeyStore.PublicKey(pairedKey)), DateTimeOffset.UtcNow),
+        });
+        using var strangerKey = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
+        var phoneKey = @case == "assistantWrongKey" ? strangerKey : pairedKey;
+
+        var gateway = Substitute.For<IAssistantChannelGateway>();
+        gateway.SendAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<byte[]>>(), Arg.Any<CancellationToken>())
+            .Returns(AssistantChannelSendResult.Sent());
+        var toPhone = new List<byte[]>();
+        await using var pairing = new MobilePairing(() => [], _ => null!, storage, null!, _ => gateway,
+            send: (_, _, frame) =>
+            {
+                if (frame() is { } sealedFrame)
+                {
+                    toPhone.Add(sealedFrame);
+                }
+
+                return Task.CompletedTask;
+            });
+
+        MobileFrameCipher? Connect(string streamId)
+        {
+            toPhone.Clear();
+            using var ephemeral = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
+            byte[] handshake = [MobileHandshake.Version, MobileHandshake.FlagKnownPhone, .. MobileKeyStore.PublicKey(phoneKey), .. MobileKeyStore.PublicKey(ephemeral)];
+            pairing.Opened(connection, streamId, device);
+            pairing.Frame(connection, streamId, device, handshake);
+            if (toPhone.Count == 0)
+            {
+                return null;
+            }
+
+            using var cockpit = MobileKeyStore.ImportPublicKey(cockpitPub);
+            using var cockpitEphemeral = MobileKeyStore.ImportPublicKey(toPhone[0][1..]);
+            byte[] ikm =
+            [
+                .. ephemeral.DeriveRawSecretAgreement(cockpit.PublicKey),
+                .. phoneKey.DeriveRawSecretAgreement(cockpit.PublicKey),
+                .. ephemeral.DeriveRawSecretAgreement(cockpitEphemeral.PublicKey),
+            ];
+            byte[] info = [.. handshake[..2], .. cockpitPub, .. toPhone[0][1..], .. handshake[2..]];
+            byte[] Key(string label) => HKDF.DeriveKey(HashAlgorithmName.SHA256, ikm, 32, Encoding.UTF8.GetBytes(streamId), [.. Encoding.ASCII.GetBytes(label), .. info]);
+            return new MobileFrameCipher(Key("cockpit-mobile v1 phone-to-cockpit"), Key("cockpit-mobile v1 cockpit-to-phone"));
+        }
+
+        void Say(MobileFrameCipher? phone, string streamId, string text) =>
+            pairing.Frame(connection, streamId, device, phone?.Seal(JsonSerializer.SerializeToUtf8Bytes(new { type = "assistant.send", id = "p1", body = new { text } }))
+                ?? [MobileFrameCipher.Version, .. new byte[24]]);
+
+        using var first = Connect("stream-1");
+        Say(first, "stream-1", "hallo");
+        if (@case == "assistantForgottenPhone")
+        {
+            pairing.Forget(connection, device);
+            Say(first, "stream-1", "still here");
+            using var again = Connect("stream-2");
+            Assert.Null(again);
+            Say(again, "stream-2", "let me in");
+        }
+
+        var expected = @case == "assistantWrongKey" ? 0 : 1;
+        await gateway.Received(expected).SendAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<byte[]>>(), Arg.Any<CancellationToken>());
+        if (expected == 1)
+        {
+            await gateway.Received(1).SendAsync(device, "hallo", Arg.Any<IReadOnlyList<byte[]>>(), Arg.Any<CancellationToken>());
         }
     }
 }

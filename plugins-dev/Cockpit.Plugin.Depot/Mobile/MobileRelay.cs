@@ -10,6 +10,7 @@ namespace Cockpit.Plugin.Depot.Mobile;
 internal sealed class MobileRelay : IAsyncDisposable
 {
     private readonly HubConnection _connection;
+    private readonly SemaphoreSlim _sending = new(1, 1);
 
     public MobileRelay(
         DepotConnectionRegistration connection,
@@ -43,10 +44,29 @@ internal sealed class MobileRelay : IAsyncDisposable
 
     public Task StartAsync(CancellationToken cancellationToken) => _connection.StartAsync(cancellationToken);
 
-    public Task SendAsync(string streamId, byte[] frame, CancellationToken cancellationToken) =>
-        _connection.InvokeAsync("Send", streamId, frame, cancellationToken);
+    // AC-2227: Depot takes one send per connection at a time, and a stream's frames must leave in counter order, so a
+    // frame is sealed only once the previous send is done.
+    public async Task SendAsync(string streamId, Func<byte[]?> frame, CancellationToken cancellationToken)
+    {
+        await _sending.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (frame() is { } sealedFrame)
+            {
+                await _connection.InvokeAsync("Send", streamId, sealedFrame, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            _sending.Release();
+        }
+    }
 
-    public ValueTask DisposeAsync() => _connection.DisposeAsync();
+    public async ValueTask DisposeAsync()
+    {
+        await _connection.DisposeAsync().ConfigureAwait(false);
+        _sending.Dispose();
+    }
 
     // A phone may come back at any time, so the relay keeps retrying at the events hub's slowest step.
     private sealed class _Forever : IRetryPolicy
