@@ -5,38 +5,148 @@
         WindowDecorations="None"
         Background="Transparent"
         TransparencyLevelHint="Transparent"
-        Topmost="True"
         ShowInTaskbar="False"
         CanResize="False"
         SizeToContent="WidthAndHeight"
-        WindowStartupLocation="CenterScreen"
-        MinWidth="220">
-    <!-- AC-237: chrome copied from VoiceOverlayWindow (no decorations, always on top, rounded translucent card),
-         but this window is interactive and draggable — see CompanionWindow.axaml.cs for why it skips the
-         overlay's X11 click-through input shape. -->
-    <Border Background="{DynamicResource CockpitFloatingCardBrush}" BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1" CornerRadius="16">
-        <StackPanel>
-            <!-- The drag handle and the window's own way out (its own Close), so hiding it never depends solely
-                 on remembering the tray icon. -->
-            <Grid x:Name="HeaderBar" Background="Transparent" ColumnDefinitions="*,Auto" Margin="12,10,8,0">
-                <TextBlock Grid.Column="0" Text="Companion" FontSize="12" FontWeight="Medium"
-                           VerticalAlignment="Center" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                <Button x:Name="CloseButton" Grid.Column="1" Classes="Subtle Compact" VerticalAlignment="Center"
-                        ToolTip.Tip="Hide companion">
-                    <materialIcons:MaterialIcon Kind="Close" Width="12" Height="12"/>
-                </Button>
-            </Grid>
-            <Grid Margin="12,8,12,12">
-                <TextBlock x:Name="EmptyState" Text="No tools available" FontSize="12"
-                           Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="0,8"/>
-                <ItemsControl x:Name="ToolsHost">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <StackPanel Spacing="12"/>
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                </ItemsControl>
-            </Grid>
+        WindowStartupLocation="CenterScreen">
+    <!-- Chrome copied from VoiceOverlayWindow (no decorations, rounded translucent card), but interactive and
+         draggable — see CompanionWindow.axaml.cs for why it skips the overlay's X11 click-through input shape. -->
+    <Border x:Name="Card" Margin="16" BoxShadow="{DynamicResource CockpitFloatingCardShadow}" Background="{DynamicResource CockpitFloatingCardBrush}" BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1" CornerRadius="{StaticResource CockpitPanelRadius}">
+        <!-- AC-2190: the strip's look from the companion-strook mockup. Kept on the card rather than the window so a
+             scene that lays the card on a stand-in screen (Screenshotter) draws it the same. Every item is 34px across
+             the strip; "vertical" on the card turns the cross-strip pieces (grip, separators, the … button) round. -->
+        <Border.Styles>
+            <Style Selector="Button.companionStripItem">
+                <Setter Property="MinWidth" Value="34"/>
+                <Setter Property="MinHeight" Value="34"/>
+                <Setter Property="Padding" Value="0"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="CornerRadius" Value="{StaticResource CockpitControlRadius}"/>
+                <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                <Setter Property="VerticalContentAlignment" Value="Center"/>
+                <Setter Property="Foreground" Value="{DynamicResource CockpitTextSecondaryBrush}"/>
+            </Style>
+            <Style Selector="Button.companionStripItem /template/ ContentPresenter">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="BorderBrush" Value="Transparent"/>
+            </Style>
+            <Style Selector="Button.companionStripItem:pointerover /template/ ContentPresenter, Button.companionStripItem.open /template/ ContentPresenter">
+                <Setter Property="Background" Value="{DynamicResource CockpitGhostHoverBrush}"/>
+            </Style>
+            <Style Selector="Button.companionStripItem.open /template/ ContentPresenter">
+                <Setter Property="BorderBrush" Value="{DynamicResource CockpitHairlineBrush}"/>
+                <Setter Property="BorderThickness" Value="1"/>
+            </Style>
+            <Style Selector="Button.companionStripItem:pointerover, Button.companionStripItem.open">
+                <Setter Property="Foreground" Value="{DynamicResource CockpitTextPrimaryBrush}"/>
+            </Style>
+            <Style Selector="Button.companionStripItem:disabled">
+                <Setter Property="Opacity" Value="0.4"/>
+            </Style>
+            <Style Selector="Border.companionStripSeparator">
+                <Setter Property="Background" Value="{DynamicResource CockpitHairlineBrush}"/>
+                <Setter Property="Width" Value="1"/>
+                <Setter Property="Height" Value="22"/>
+                <Setter Property="Margin" Value="3,0"/>
+            </Style>
+            <Style Selector="Border.vertical Border.companionStripSeparator">
+                <Setter Property="Width" Value="22"/>
+                <Setter Property="Height" Value="1"/>
+                <Setter Property="Margin" Value="0,3"/>
+            </Style>
+            <Style Selector="Border#Grip">
+                <Setter Property="Width" Value="14"/>
+                <Setter Property="Height" Value="34"/>
+            </Style>
+            <Style Selector="Border.vertical Border#Grip">
+                <Setter Property="Width" Value="34"/>
+                <Setter Property="Height" Value="14"/>
+            </Style>
+            <Style Selector="Button#MoreButton">
+                <Setter Property="Width" Value="28"/>
+                <Setter Property="MinWidth" Value="28"/>
+                <Setter Property="Height" Value="34"/>
+            </Style>
+            <Style Selector="Border.vertical Button#MoreButton">
+                <Setter Property="Width" Value="34"/>
+                <Setter Property="Height" Value="28"/>
+                <Setter Property="MinHeight" Value="28"/>
+            </Style>
+            <!-- Look along on the strip: the mockup's lookon pill. Cyan wash, cyan hairline, the time beside the eye and
+                 a close at the end; the vertical strip keeps the eye and the close only. -->
+            <Style Selector="Border#LookAlong">
+                <Setter Property="Background" Value="{DynamicResource CockpitStatusBusyChipTintBrush}"/>
+                <Setter Property="BorderBrush" Value="{DynamicResource CockpitStatusBusyBrush}"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="CornerRadius" Value="{StaticResource CockpitControlRadius}"/>
+                <Setter Property="Height" Value="34"/>
+                <Setter Property="Padding" Value="8,0,3,0"/>
+            </Style>
+            <Style Selector="Border.vertical Border#LookAlong">
+                <Setter Property="Height" Value="NaN"/>
+                <Setter Property="Width" Value="34"/>
+                <Setter Property="Padding" Value="0,6,0,3"/>
+            </Style>
+            <Style Selector="Border.vertical TextBlock#LookAlongTimer">
+                <Setter Property="IsVisible" Value="False"/>
+            </Style>
+        </Border.Styles>
+        <StackPanel x:Name="Strip" Margin="4" Spacing="2">
+            <Border x:Name="Grip" Background="Transparent" Cursor="SizeAll" ToolTip.Tip="Drag to move">
+                <materialIcons:MaterialIcon x:Name="GripIcon" Width="16" Height="16" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+            </Border>
+            <!-- AC-2209: while the assistant may look at the screen; the card's border turns cyan with it. SetTools moves
+                 it to just after the screenshot item, where the mockup has it. -->
+            <Border x:Name="LookAlong" IsVisible="False" VerticalAlignment="Center" HorizontalAlignment="Center">
+                <StackPanel x:Name="LookAlongContent" Spacing="6" VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <materialIcons:MaterialIcon Kind="EyeOutline" Width="16" Height="16" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                Foreground="{DynamicResource CockpitStatusBusyBrush}"/>
+                    <TextBlock x:Name="LookAlongTimer" FontSize="11.5" FontWeight="SemiBold" VerticalAlignment="Center" HorizontalAlignment="Center"
+                               Foreground="{DynamicResource CockpitStatusBusyBrush}"/>
+                    <Button x:Name="LookAlongStop" Classes="Subtle" Padding="2" HorizontalAlignment="Center" VerticalAlignment="Center"
+                            ToolTip.Tip="Stop looking along" AutomationProperties.Name="Stop looking along">
+                        <materialIcons:MaterialIcon Kind="Close" Width="14" Height="14" Foreground="{DynamicResource CockpitStatusBusyBrush}"/>
+                    </Button>
+                </StackPanel>
+            </Border>
+            <TextBlock x:Name="EmptyState" Text="No tools available" FontSize="12" VerticalAlignment="Center" Margin="6,0"
+                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+            <StackPanel x:Name="ToolsHost" Spacing="2"/>
+            <Border x:Name="MoreSeparator" Classes="companionStripSeparator"/>
+            <Button x:Name="MoreButton" Classes="companionStripItem" ToolTip.Tip="Companion options" AutomationProperties.Name="Companion options">
+                <materialIcons:MaterialIcon Kind="DotsHorizontal" Width="18" Height="18"/>
+                <Button.Flyout>
+                    <Flyout FlyoutPresenterClasses="Card">
+                        <StackPanel MinWidth="220">
+                            <Button x:Name="OrientationItem" Classes="Subtle Row">
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <materialIcons:MaterialIcon Kind="RotateRight" Width="16" Height="16"/>
+                                    <TextBlock x:Name="OrientationLabel" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                            <Button x:Name="TopmostItem" Classes="Subtle Row">
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <materialIcons:MaterialIcon x:Name="TopmostIcon" Width="16" Height="16"/>
+                                    <TextBlock Text="Always on top" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                            <Button x:Name="CustomizeItem" Classes="Subtle Row">
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <materialIcons:MaterialIcon Kind="TuneVariant" Width="16" Height="16"/>
+                                    <TextBlock Text="Customize strip…" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                            <Separator/>
+                            <Button x:Name="HideItem" Classes="Subtle Row">
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <materialIcons:MaterialIcon Kind="EyeOffOutline" Width="16" Height="16"/>
+                                    <TextBlock Text="Hide" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                    </Flyout>
+                </Button.Flyout>
+            </Button>
         </StackPanel>
     </Border>
 </Window>

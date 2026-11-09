@@ -449,7 +449,9 @@
     <!-- 0.162.0 (AC-1974): runtime plugin-store sources, SDK 3.73.0. -->
     <!-- 0.163.0 (AC-1978): verified plugin-store packages and persistent publisher consent. -->
     <!-- 0.164.0 (AC-1977): a plugin store source can be withdrawn, SDK 3.74.0. -->
-    <VersionPrefix>0.164.0</VersionPrefix>
+    <!-- 0.165.0: companion tools can set a badge and ask for their pop-out (SDK 3.76.0). -->
+    <!-- 0.167.0: ICockpitUiHost.CreateLiveMarkdownEditor (UI SDK 3.26.0, SDK 3.78.0). -->
+    <VersionPrefix>0.167.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>

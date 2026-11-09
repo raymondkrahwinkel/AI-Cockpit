@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- AC-2190: the companion strip and its pop-outs now look like the approved mockup: a 44px strip with one assistant chip ("F10 to talk"), quiet icon buttons, a split screenshot button, hairlines between the groups, and pop-outs 6px from the strip with a shared head and close button. Customize strip reorders by dragging and has Reset, the notification cards show their age and answer pills, and a background agent is no longer also counted as running.
+- AC-2209: the assistant can look at one whole display with `look_at_screen`, only after you start it on its card (display and 5, 10 or 30 minutes); while it runs the strip shows a cyan border, the time left and Stop, the display gets a cyan frame and a tab with the last look and Stop, and none of them are in what the assistant sees. Every look is one screenshot on its own call; there is no interval.
+- AC-2207: Customize strip adds, removes and reorders companion tools while Cockpit stays in the tray; new tools wait under Available, and unavailable plugins keep their place with Enable and Forget.
+- AC-2203: open the assistant conversation or its pending questions from the companion strip, and choose the assistant or selected agent as the screenshot recipient; the strip and its pop-outs stay out of captures.
+- AC-2208: a plugin can embed the cockpit's live Markdown editor, with the people in the file and their carets, in its own view (plugin SDK 3.78.0, host 0.167.0).
+- AC-2204: the companion strip shows running, waiting and background counts; its status panel lists agents and services and lets you select an agent while Cockpit stays in the tray.
+- AC-2201: the companion strip gets a soft shadow, and a pop-out shell with one placement rule is in place for the strip's upcoming items.
+- AC-2206: companion tool plugins can put a badge on their button and ask for their own pop-out (plugin SDK 3.76.0, host 0.165.0).
+- AC-2205: the companion strip gets a bell with a panel for what waits on you: open questions and permissions can be answered right there (SDK sessions; a terminal session shows Open in Cockpit), and a finished agent waits there until you dismiss or open it.
+- AC-2202: the companion strip lies horizontally or vertically, drags freely, can stay above other windows (on by default), and shows each tool as an icon button with its badge that opens the tool in a pop-out; the setting is remembered.
 - AC-2230: with the speaker switched off, the assistant no longer reads a reply aloud, and a mute clicked while the assistant is still starting is no longer overwritten by the stored value; "Read full reply aloud" still speaks on request.
 
 - AC-2211: agent browser actions wait for navigation or download feedback, and profile cleanup waits for browser shutdown even when a tab closes concurrently.

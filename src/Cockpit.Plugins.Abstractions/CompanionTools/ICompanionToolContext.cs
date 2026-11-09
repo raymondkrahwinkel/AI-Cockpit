@@ -26,4 +26,17 @@ public interface ICompanionToolContext
     /// that shows a snapshot should re-read and update.
     /// </summary>
     event EventHandler RefreshRequested;
+
+    /// <summary>
+    /// This tool's badge on its strip button, empty by default. Set <see cref="SideMenuButtonBadge.Text"/> and
+    /// <see cref="SideMenuButtonBadge.Tone"/> whenever the count changes; the host follows
+    /// <see cref="SideMenuButtonBadge.Changed"/>, from any thread.
+    /// </summary>
+    SideMenuButtonBadge Badge { get; }
+
+    /// <summary>
+    /// Asks the host to open this tool's pop-out without taking focus. Does nothing when there is no room or the
+    /// tool is not on the strip; the host tells the user once.
+    /// </summary>
+    void RequestPopOut();
 }

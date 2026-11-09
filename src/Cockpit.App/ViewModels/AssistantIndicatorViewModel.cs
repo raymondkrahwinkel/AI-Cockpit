@@ -16,6 +16,7 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Label))]
     [NotifyPropertyChangedFor(nameof(Detail))]
+    [NotifyPropertyChangedFor(nameof(StripDetail))]
     [NotifyPropertyChangedFor(nameof(KeyHint))]
     [NotifyPropertyChangedFor(nameof(ColorClass))]
     [NotifyPropertyChangedFor(nameof(IsReady))]
@@ -57,6 +58,7 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
     // setting that is not the problem (criterion 6/the ticket's own point 4).
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Detail))]
+    [NotifyPropertyChangedFor(nameof(StripDetail))]
     private string? _unavailableReason;
 
     // Null when nothing is being prepared; the progress is null too whenever the step carries no total to measure
@@ -64,10 +66,12 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Label))]
     [NotifyPropertyChangedFor(nameof(Detail))]
+    [NotifyPropertyChangedFor(nameof(StripDetail))]
     private string? _preparationStatus;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Detail))]
+    [NotifyPropertyChangedFor(nameof(StripDetail))]
     [NotifyPropertyChangedFor(nameof(ShowsPreparationProgress))]
     [NotifyPropertyChangedFor(nameof(PreparationProgressValue))]
     private double? _preparationProgress;
@@ -78,6 +82,7 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsListeningModeOff))]
     [NotifyPropertyChangedFor(nameof(IsListeningModeAlwaysOn))]
     [NotifyPropertyChangedFor(nameof(Detail))]
+    [NotifyPropertyChangedFor(nameof(StripDetail))]
     [NotifyPropertyChangedFor(nameof(Label))]
     private AssistantListeningMode _listeningMode = AssistantListeningMode.Off;
 
@@ -88,6 +93,7 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(AudioControlTooltip))]
     [NotifyPropertyChangedFor(nameof(Detail))]
+    [NotifyPropertyChangedFor(nameof(StripDetail))]
     private string _wakeWord = "computer";
 
     // Fed in rather than owned here: the setting is persisted by the host, and this view model only needs to know it to
@@ -118,6 +124,7 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Label))]
     [NotifyPropertyChangedFor(nameof(Detail))]
+    [NotifyPropertyChangedFor(nameof(StripDetail))]
     [NotifyPropertyChangedFor(nameof(ShowsQuestions))]
     [NotifyPropertyChangedFor(nameof(ShowsAwaitingOperator))]
     [NotifyPropertyChangedFor(nameof(IsMicIcon))]
@@ -183,6 +190,15 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
         AssistantActivity.Dictating => "not the assistant",
         AssistantActivity.Unavailable => UnavailableReason,
         _ => null,
+    };
+
+    // The second line of the Companion strip's chip (AC-2190), which has no room for a key badge or a switch: the key
+    // moves into the words, as the companion-strook mockup has it.
+    public string? StripDetail => ShowsQuestions ? Detail : Activity switch
+    {
+        AssistantActivity.Ready => "F10 to talk",
+        AssistantActivity.Speaking => "Esc to stop",
+        _ => Detail,
     };
 
     // The key hint shown at the right of the chip (mockup's `.key` badge) — only for the states that actually have a

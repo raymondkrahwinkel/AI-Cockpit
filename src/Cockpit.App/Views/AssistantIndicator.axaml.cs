@@ -1,5 +1,9 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Interactivity;
+using System.ComponentModel;
+using System.Windows.Input;
+using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Views;
 
@@ -17,8 +21,90 @@ public partial class AssistantIndicator : UserControl
         set => SetValue(ShowWhenDisabledProperty, value);
     }
 
+    // Null follows the view model's IsCollapsed (the sidebar); a value pins this instance to the rail or the chip.
+    public static readonly StyledProperty<bool?> CollapsedProperty =
+        AvaloniaProperty.Register<AssistantIndicator, bool?>(nameof(Collapsed));
+
+    public bool? Collapsed
+    {
+        get => GetValue(CollapsedProperty);
+        set => SetValue(CollapsedProperty, value);
+    }
+
+    // AC-2190: the Companion strip's own 34px chip instead of the sidebar's two-line one; the rail form is shared.
+    public static readonly StyledProperty<bool> IsStripProperty =
+        AvaloniaProperty.Register<AssistantIndicator, bool>(nameof(IsStrip));
+
+    public bool IsStrip
+    {
+        get => GetValue(IsStripProperty);
+        set => SetValue(IsStripProperty, value);
+    }
+
+    private AssistantIndicatorViewModel? _viewModel;
+
+    internal ICommand? OpenCommand { get; init; }
+
+    private void _OnOpenClick(object? sender, RoutedEventArgs e)
+    {
+        if (OpenCommand is { } open)
+        {
+            if (open.CanExecute(null))
+            {
+                open.Execute(null);
+            }
+        }
+        else
+        {
+            _viewModel?.ClickCommand.Execute(null);
+        }
+    }
+
     public AssistantIndicator()
     {
         InitializeComponent();
+        _SyncForm();
+    }
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == CollapsedProperty || change.Property == IsStripProperty)
+        {
+            _SyncForm();
+        }
+    }
+
+    protected override void OnDataContextChanged(EventArgs e)
+    {
+        base.OnDataContextChanged(e);
+        if (_viewModel is not null)
+        {
+            _viewModel.PropertyChanged -= _OnViewModelChanged;
+        }
+
+        _viewModel = DataContext as AssistantIndicatorViewModel;
+        if (_viewModel is not null)
+        {
+            _viewModel.PropertyChanged += _OnViewModelChanged;
+        }
+
+        _SyncForm();
+    }
+
+    private void _OnViewModelChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(AssistantIndicatorViewModel.IsCollapsed))
+        {
+            _SyncForm();
+        }
+    }
+
+    private void _SyncForm()
+    {
+        var collapsed = Collapsed ?? _viewModel?.IsCollapsed ?? false;
+        RailForm.IsVisible = collapsed;
+        StripForm.IsVisible = !collapsed && IsStrip;
+        ChipForm.IsVisible = !collapsed && !IsStrip;
     }
 }

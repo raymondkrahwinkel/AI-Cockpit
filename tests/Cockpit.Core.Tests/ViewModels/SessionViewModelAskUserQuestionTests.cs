@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
@@ -77,6 +78,19 @@ public class SessionViewModelAskUserQuestionTests
         Assert.False(entry.IsPendingPermission);
         Assert.Equal("Answered", entry.PermissionDecision);
 
+        // An Allow given from the strip goes to the session of its row only: both wait on "t2", so by id on the
+        // wrong session would grant rights nobody gave.
+        var (other, otherDriver) = await _StartedAsync();
+        var otherRow = _RaisePermission(other, "t2");
+        var ownRow = _RaisePermission(vm, "t2");
+        await new CompanionAttentionItem("own/t1", CompanionAttentionKind.Permission, vm, ownRow, "Bash").RespondAsync(allow: true);
+
+        await driver.Received(1).RespondToPermissionAsync("t2", true, null, Arg.Any<CancellationToken>());
+        await otherDriver.DidNotReceive().RespondToPermissionAsync(
+            Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+        Assert.True(otherRow.IsPendingPermission);
+
+        await other.DisposeAsync();
         await vm.DisposeAsync();
     }
 
@@ -142,6 +156,13 @@ public class SessionViewModelAskUserQuestionTests
         Assert.True(entry.CanSubmitAnswers == false); // still no answer picked — remains open, not stuck
 
         await vm.DisposeAsync();
+    }
+
+    private static TranscriptEntryViewModel _RaisePermission(SessionViewModel vm, string id)
+    {
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = id, ToolName = "Bash", InputJson = "{}" });
+        vm.Apply(new PermissionRequested { SessionId = "S1", ToolUseId = id, ToolName = "Bash", InputJson = "{}" });
+        return vm.Transcript.Single(row => row.ToolUseId == id);
     }
 
     private static TranscriptEntryViewModel _RaiseQuestion(SessionViewModel vm, string inputJson)
