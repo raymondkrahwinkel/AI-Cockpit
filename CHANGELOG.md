@@ -4,6 +4,8 @@
 
 - AC-2248: on Strict, a Claude session (TTY and SDK, bypass included) is refused, without an extra prompt, when it writes outside its worktree, its scratch folder and the profile's allowed paths with Write, Edit, MultiEdit or NotebookEdit, or with a recognisable shell write (`>`, `tee`, `cp`, `Set-Content` and the like). Interpreters such as `python -c` still get past the shell check. On Warn the write goes ahead and the agent is told it crossed the boundary.
 
+- AC-2249: strict Codex profiles use workspace-write on TTY and app-server, with session write paths and network access; an explicit read-only choice stays read-only. Linked worktrees keep their profile's sandbox because Codex protects the worktree gitdir and otherwise blocks commits.
+
 - AC-2247: coding tools and command working directories follow profile guardrails, including session scratch and allowed paths; strict mode also checks runs from sessions without a worktree.
 
 - AC-2246: profiles can select Strict, Warn or Off guardrails and additional write paths. New profiles start on Strict; existing profiles start on Warn. Sessions receive their effective policy; enforcement follows in the remaining guardrail tickets.

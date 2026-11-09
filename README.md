@@ -15,6 +15,24 @@ and `<CLAUDE_CONFIG_DIR>/plans` (default `~/.claude/plans`). Profile variables c
 override these values. AC-2246 supplies this policy; enforcement follows in the other
 AC-1908 tickets. Existing coding-tool confinement remains active.
 
+Strict Codex profiles use `workspace-write` on TTY and app-server, including session
+scratch, allowed paths and the repository's git common directory as writable roots,
+with network access enabled. An explicit `read-only` choice remains read-only.
+Warn and Off keep the profile's existing sandbox. Approval policy and the Windows
+sandbox implementation are unchanged.
+
+**Known limitation (AC-2249):** Codex 0.167.0 protects the gitdir referenced by a
+worktree's `.git` file, even when it is covered by writable roots. See
+[`protocol/src/permissions.rs`, `default_read_only_subpaths_for_writable_root`](https://github.com/openai/codex/blob/rust-v0.167.0/codex-rs/protocol/src/permissions.rs).
+On Windows with `unelevated`, all three local probes failed with `index.lock:
+Permission denied`: without the git common directory, with it, and with both the
+common directory and the exact worktree gitdir. Therefore Strict skips its sandbox
+override in linked worktrees (`gitdir != common dir`) and keeps the profile's
+sandbox, logging the reason once at launch so commits remain possible. Path guards
+and detection from the other AC-1908 tickets remain the protection there; the Codex
+OS sandbox is not tightened in that case. Ordinary checkouts and non-git folders
+still receive the strict sandbox.
+
 Assistant Options controls spoken answers independently of text chat. `assistant.speechMode`
 (`Full`, `Summary`, `Short`; default `Short`), `assistant.speechMethod` (`Assistant`, `Profile`,
 `Rules`; default `Assistant`) and `assistant.speechProfileLabel` (optional existing profile label)
