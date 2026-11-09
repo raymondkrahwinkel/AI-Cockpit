@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2222: groundwork for the mobile app: the Depot plugin can now encrypt the conversation between your phone and this Cockpit end to end, so Depot only relays bytes it cannot read. Nothing to see yet; pairing follows in a later release.
+
 - AC-2230: with the speaker switched off, the assistant no longer reads a reply aloud, and a mute clicked while the assistant is still starting is no longer overwritten by the stored value; "Read full reply aloud" still speaks on request.
 
 - AC-2215: project cards and waiting conversations on Home wrap a long title onto further lines instead of cutting it off.
