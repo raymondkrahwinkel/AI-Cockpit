@@ -165,6 +165,15 @@
                     </StackPanel>
 
                     <StackPanel Spacing="4">
+                        <TextBlock Text="Guardrail mode" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        <ComboBox ItemsSource="{Binding GuardrailModes}" SelectedItem="{Binding GuardrailMode}"/>
+                    </StackPanel>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Allowed write paths" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        <TextBox Text="{Binding GuardrailAllowedPathsText}" AcceptsReturn="True" TextWrapping="Wrap" Height="70"
+                                 PlaceholderText="One absolute path or ~/path per line"/>
+                    </StackPanel>
+                    <StackPanel Spacing="4">
                         <TextBlock Text="Memory cap (MB)" FontSize="11"
                                    Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                         <NumericUpDown Value="{Binding MemoryCapMegabytes}" Minimum="512" Maximum="1048576"

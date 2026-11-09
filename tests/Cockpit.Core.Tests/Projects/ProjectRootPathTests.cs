@@ -1,4 +1,6 @@
 using Cockpit.Core.Projects;
+using Cockpit.Core.Sessions;
+using System.Diagnostics;
 
 namespace Cockpit.Core.Tests.Projects;
 
@@ -43,8 +45,11 @@ public class ProjectRootPathTests
         var root = Directory.CreateDirectory(Path.Combine(sandbox, "root")).FullName;
         var inside = Directory.CreateDirectory(Path.Combine(root, "inside")).FullName;
         var outside = Directory.CreateDirectory(Path.Combine(sandbox, "outside")).FullName;
+        Directory.CreateDirectory(Path.Combine(inside, "nested"));
+        Directory.CreateDirectory(Path.Combine(outside, "nested"));
         var link = Path.Combine(root, "link");
         var rootAlias = Path.Combine(sandbox, "root-alias");
+        var indirect = Path.Combine(root, "indirect");
 
         try
         {
@@ -52,6 +57,8 @@ public class ProjectRootPathTests
                 "This machine cannot create a junction or directory symlink.");
             Skip.IfNot(TryCreateDirectoryLink(rootAlias, root),
                 "This machine cannot create a junction or directory symlink for the project root.");
+            Skip.IfNot(TryCreateDirectoryLink(indirect, Path.Combine(link, "nested")),
+                "This machine cannot create an indirect junction or directory symlink.");
 
             var accepted = ProjectRootPath.TryResolve(root, Path.Combine("link", "file.txt"), out _, out var refusal);
             var aliasAccepted = ProjectRootPath.TryResolve(rootAlias, Path.Combine("inside", "file.txt"), out var resolved, out var aliasRefusal);
@@ -72,10 +79,19 @@ public class ProjectRootPathTests
             Assert.Equal(targetInside, Cockpit.Infrastructure.Assistant.ReplyAttachmentPath.TryResolve(
                 Path.Combine(link, "file.txt"), [root], out _, out var linkRefusal));
             Assert.Equal(targetInside, linkRefusal is null);
+
+            Assert.True(PathBoundary.Evaluate(Path.Combine(inside, "file.txt"), [root]).IsInside);
+            Assert.False(PathBoundary.Evaluate(Path.Combine(outside, "file.txt"), [root]).IsInside);
+            Assert.False(PathBoundary.Evaluate(Path.Combine(root, "..", "outside", "file.txt"), [root]).IsInside);
+            Assert.False(PathBoundary.Evaluate(root + "-other/file.txt", [root]).IsInside);
+            Assert.Equal(targetInside, PathBoundary.Evaluate(Path.Combine(link, "file.txt"), [root]).IsInside);
+            Assert.Equal(targetInside, PathBoundary.Evaluate(Path.Combine(indirect, "file.txt"), [root]).IsInside);
+            Assert.Equal(OperatingSystem.IsWindows(), PathBoundary.Evaluate(Path.Combine(inside, "file.txt").ToUpperInvariant(), [root]).IsInside);
+            Assert.True(PathBoundary.Evaluate(Path.Combine(outside, "scratch.txt"), [root, outside]).IsInside);
         }
         finally
         {
-            RemoveLinkAndSandbox(link, rootAlias, sandbox);
+            RemoveLinkAndSandbox(link, rootAlias, indirect, sandbox);
         }
     }
 
@@ -83,6 +99,18 @@ public class ProjectRootPathTests
     {
         try
         {
+            if (OperatingSystem.IsWindows())
+            {
+                var start = new ProcessStartInfo("cmd.exe") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+                start.ArgumentList.Add("/c");
+                start.ArgumentList.Add("mklink");
+                start.ArgumentList.Add("/J");
+                start.ArgumentList.Add(link);
+                start.ArgumentList.Add(target);
+                using var process = Process.Start(start);
+                process?.WaitForExit();
+                return process?.ExitCode == 0;
+            }
             Directory.CreateSymbolicLink(link, target);
             return true;
         }
@@ -92,8 +120,16 @@ public class ProjectRootPathTests
         }
     }
 
-    private static void RemoveLinkAndSandbox(string link, string rootAlias, string sandbox)
+    private static void RemoveLinkAndSandbox(string link, string rootAlias, string indirect, string sandbox)
     {
+        try
+        {
+            Directory.Delete(indirect);
+        }
+        catch (DirectoryNotFoundException)
+        {
+        }
+
         try
         {
             Directory.Delete(link);

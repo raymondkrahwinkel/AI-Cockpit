@@ -154,6 +154,12 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemory
         }
         environment = scratchEnvironment;
 
+        foreach (var (key, value) in SessionGuardrailEnvironment.Build(profile, spec.WorkingDirectory, scratch,
+            environment.GetValueOrDefault("CLAUDE_CONFIG_DIR"), orgPolicy?.Current, message => logger.LogWarning("{Message}", message)))
+        {
+            scratchEnvironment[key] = value;
+        }
+
         var process = ptyHostFactory.Start(spec.ExecutablePath, spec.Arguments, spec.WorkingDirectory, environment, columns, rows);
 
         // AC-661: the OS ceiling around this session's tree, applied before the CLI has spawned anything of its own,

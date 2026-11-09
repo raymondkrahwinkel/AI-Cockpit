@@ -12,6 +12,7 @@ internal static class SettingsCarrierWhitelist
     [
         "Profiles[].Label", "Profiles[].Purpose", "Profiles[].SystemPrompt", "Profiles[].Assistant",
         "Profiles[].ImageInputMode",
+        "Profiles[].GuardrailMode",
         "AssistantProfile.AssistantRole",
         "Profiles[].DefaultKind", "Profiles[].MemoryCapMegabytes", "Profiles[].EnabledMcpServers",
         "Profiles[].Defaults.PermissionMode", "Profiles[].Defaults.Model", "Profiles[].Defaults.Effort",
@@ -56,6 +57,7 @@ internal static class SettingsCarrierWhitelist
         "CategoryOrder",
         "Projects[].SourceDirectory", "Projects[].SourceDirectories", "Projects[].Resources", "Projects[].MemoryRef",
         "Profiles[].Delegation.AllowedWorkingDirs", "Profiles[].Provider.PluginConfigJson", "Plugins.*.Data", "WorkingPaths",
+        "Profiles[].GuardrailAllowedPaths",
     ];
 
     private static readonly HashSet<string> _Leaves = new(Carried, StringComparer.Ordinal);

@@ -351,7 +351,7 @@ public static class ProvisionManifestApplier
         var entry = file.Profiles.FirstOrDefault(candidate => candidate.Label == profile.Label);
         if (entry is null)
         {
-            entry = new SessionProfileEntry();
+            entry = new SessionProfileEntry { GuardrailMode = Core.Profiles.GuardrailMode.Strict.ToString() };
             file.Profiles.Add(entry);
         }
 
@@ -684,6 +684,7 @@ public static class ProvisionManifestApplier
         entry.SystemPrompt = profile.SystemPrompt;
         entry.DefaultKind = profile.DefaultKind;
         entry.MemoryCapMegabytes = profile.MemoryCapMegabytes;
+        entry.GuardrailMode = profile.GuardrailMode ?? entry.GuardrailMode;
         entry.EnabledMcpServers = profile.EnabledMcpServers;
         entry.Assistant = profile.Assistant is { } assistant ? (assistant.ValueKind == JsonValueKind.String ? assistant.GetString() : assistant.GetRawText()) : null;
 

@@ -5,6 +5,7 @@ using Microsoft.Extensions.FileSystemGlobbing;
 using ModelContextProtocol.Server;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Shell;
+using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Mcp;
 
 namespace Cockpit.Infrastructure.Sessions;
@@ -106,7 +107,7 @@ internal sealed class CodingTools(ISessionRegistry sessions, IShellCommandRunner
         var matcher = new Matcher(_PathComparison).AddInclude(pattern);
         var files = (await _ListFilesAsync(root).ConfigureAwait(false))
             .Select(file => Path.GetFullPath(Path.Combine(root, file)))
-            .Where(file => _IsUnder(file, directory) && File.Exists(file))
+            .Where(file => PathBoundary.Evaluate(file, [directory]).IsInside && File.Exists(file))
             .Select(file => Path.GetRelativePath(directory, file).Replace('\\', '/'))
             .Where(file => matcher.Match(file).HasMatches)
             .ToList();
@@ -143,7 +144,7 @@ internal sealed class CodingTools(ISessionRegistry sessions, IShellCommandRunner
         {
             var full = Path.GetFullPath(Path.Combine(root, file));
             var relative = file.Replace('\\', '/');
-            if (!_IsUnder(full, directory) || matcher?.Match(relative).HasMatches == false || _LinksOutside(full, root) || !_IsSearchable(full))
+            if (!PathBoundary.Evaluate(full, [directory]).IsInside || matcher?.Match(relative).HasMatches == false || !PathBoundary.Evaluate(full, [root]).IsInside || !_IsSearchable(full))
             {
                 continue;
             }
@@ -262,7 +263,7 @@ internal sealed class CodingTools(ISessionRegistry sessions, IShellCommandRunner
         }
 
         var full = Path.GetFullPath(Path.Combine(root, relative));
-        if (!_IsUnder(full, root) || _LinksOutside(full, root))
+        if (!PathBoundary.Evaluate(full, [root]).IsInside)
         {
             error = $"Error: {relative} is outside your working directory ({root}).";
             return false;
@@ -278,37 +279,6 @@ internal sealed class CodingTools(ISessionRegistry sessions, IShellCommandRunner
     private string? _Root() => RootFor(sessions);
 
     private bool _TryResolve(string relative, out string path, out string error) => TryResolve(_Root(), relative, out path, out error);
-
-    private static bool _IsUnder(string path, string root)
-    {
-        var trimmed = Path.TrimEndingDirectorySeparator(root);
-        return path.Equals(trimmed, _PathComparison)
-            || path.StartsWith(trimmed + Path.DirectorySeparatorChar, _PathComparison);
-    }
-
-    // Walks from the path up to (not including) the root; a dangling link counts too, since writing through one
-    // would create its target wherever it points.
-    private static bool _LinksOutside(string path, string root)
-    {
-        var rootLength = Path.TrimEndingDirectorySeparator(root).Length;
-        for (var current = path; current is not null && current.Length > rootLength; current = Path.GetDirectoryName(current))
-        {
-            FileSystemInfo info = Directory.Exists(current) ? new DirectoryInfo(current) : new FileInfo(current);
-            if (info.LinkTarget is not { } link)
-            {
-                continue;
-            }
-
-            var target = info.ResolveLinkTarget(returnFinalTarget: true)?.FullName
-                ?? Path.GetFullPath(link, Path.GetDirectoryName(current) ?? root);
-            if (!_IsUnder(target, root))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
 
     private static int _Count(string text, string value)
     {
