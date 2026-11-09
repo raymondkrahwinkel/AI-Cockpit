@@ -249,6 +249,12 @@ public interface ICockpitUiHost
     IMarkdownEditor? CreateMarkdownEditor(string markdown) => null;
 
     /// <summary>
+    /// A live Markdown editor over a file of a live file source registered with <see cref="AddFileWorkspaceType"/>; null on a host
+    /// without one, or when the type is not registered. UI SDK 3.26.0, host 0.167.0.
+    /// </summary>
+    Files.ILiveMarkdownEditor? CreateLiveMarkdownEditor(Files.LiveMarkdownEditorOptions options) => null;
+
+    /// <summary>
     /// Registers first-refusal handling for transcript links recognized by this plugin.
     /// </summary>
     void AddLinkHandler(LinkHandlerRegistration registration)

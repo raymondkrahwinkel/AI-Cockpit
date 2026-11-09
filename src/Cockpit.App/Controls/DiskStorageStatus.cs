@@ -17,6 +17,8 @@ namespace Cockpit.App.Controls;
 
 internal sealed class DiskStorageStatus : Button
 {
+    protected override Type StyleKeyOverride => typeof(Button);
+
     private readonly TextBlock _text = new() { FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
     private readonly MaterialIcon _icon = new() { Kind = MaterialIconKind.Harddisk, Width = 13, Height = 13, VerticalAlignment = VerticalAlignment.Center };
     private readonly MaterialIcon _chevron = new() { Kind = MaterialIconKind.ChevronUp, Width = 10, Height = 10, Margin = new Thickness(0, 2, 0, 0), VerticalAlignment = VerticalAlignment.Center };

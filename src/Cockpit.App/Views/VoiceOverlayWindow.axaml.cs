@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
 using Cockpit.Core.Configuration;
@@ -48,8 +47,7 @@ public partial class VoiceOverlayWindow : Window
         _TryEnableClickThrough();
     }
 
-    // Best-effort X11 input-shape click-through (Linux/XWayland, ported from the spike): an empty
-    // input region so pointer events fall through. Applied once; the shape persists for the window's lifetime.
+    // X11 only, as before (Linux/XWayland, from the KDE/KWin spike); applied once, the shape persists for the window's lifetime.
     private void _TryEnableClickThrough()
     {
         if (_clickThroughApplied || !OperatingSystem.IsLinux())
@@ -57,46 +55,7 @@ public partial class VoiceOverlayWindow : Window
             return;
         }
 
-        try
-        {
-            var handle = TryGetPlatformHandle();
-            if (handle is null)
-            {
-                return;
-            }
-
-            var xid = (ulong)(long)handle.Handle;
-            var display = _XOpenDisplay(IntPtr.Zero);
-            if (display == IntPtr.Zero)
-            {
-                return;
-            }
-
-            const int shapeInput = 2;
-            const int shapeSet = 0;
-            const int unsorted = 0;
-            _XShapeCombineRectangles(display, xid, shapeInput, 0, 0, IntPtr.Zero, 0, shapeSet, unsorted);
-            _XFlush(display);
-            _XCloseDisplay(display);
-            _clickThroughApplied = true;
-        }
-        catch (Exception)
-        {
-            // Click-through is best-effort: a failure here just leaves the pill clickable, never fatal.
-        }
+        OverlayWindows.MakeClickThrough(this);
+        _clickThroughApplied = true;
     }
-
-    [DllImport("libX11.so.6")]
-    private static extern IntPtr _XOpenDisplay(IntPtr display);
-
-    [DllImport("libX11.so.6")]
-    private static extern int _XCloseDisplay(IntPtr display);
-
-    [DllImport("libX11.so.6")]
-    private static extern int _XFlush(IntPtr display);
-
-    [DllImport("libXext.so.6")]
-    private static extern void _XShapeCombineRectangles(
-        IntPtr display, ulong window, int kind, int xOff, int yOff,
-        IntPtr rectangles, int nRects, int op, int ordering);
 }
