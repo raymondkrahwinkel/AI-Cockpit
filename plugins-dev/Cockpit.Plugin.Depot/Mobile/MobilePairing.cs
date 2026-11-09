@@ -523,12 +523,12 @@ internal sealed class MobilePairing(
         return channel;
     }
 
-    // Only over a stream whose phone proved its keys with a frame that opened (PROTOCOL.md § 9.4). The frame is sealed
-    // when its turn to leave comes, and not at all once that stream is gone.
     // A phone gets at most this many frames waiting at once; past that a send is refused rather than queued, so one
     // phone that keeps asking cannot hold the relay or the memory of the others.
     private const int _MaxWaitingSends = 32;
 
+    // Only over a stream whose phone proved its keys with a frame that opened (PROTOCOL.md § 9.4). The frame is sealed
+    // when its turn to leave comes, and not at all once that stream is gone.
     private bool _SendToPhone(string connectionId, string deviceId, byte[] plaintext)
     {
         string streamId;
