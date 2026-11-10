@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using Cockpit.Plugin.Browser.Ipc;
 using Xilium.CefGlue;
@@ -6,7 +7,7 @@ namespace Cockpit.Plugin.Browser.Host;
 
 internal sealed class BrowserHostTabs(BrowserIpcConnection connection, string storage, string cache) : IAsyncDisposable
 {
-    private readonly Dictionary<Guid, BrowserHostTab> _tabs = [];
+    private readonly ConcurrentDictionary<Guid, BrowserHostTab> _tabs = new();
     private CefRequestContext? _profile;
 
     internal async Task<JsonElement> HandleAsync(BrowserIpcMessage message, CancellationToken token)
@@ -21,7 +22,7 @@ internal sealed class BrowserHostTabs(BrowserIpcConnection connection, string st
             }
             connection.RegisterTab(create.TabId, "operator");
             var tab = new BrowserHostTab(connection, storage, create.TabId, create.Url);
-            _tabs.Add(create.TabId, tab);
+            _tabs.TryAdd(create.TabId, tab);
             try
             {
                 await BrowserHostTab.OnCefAsync(() =>
@@ -36,7 +37,7 @@ internal sealed class BrowserHostTabs(BrowserIpcConnection connection, string st
             }
             catch
             {
-                _tabs.Remove(create.TabId);
+                _tabs.TryRemove(create.TabId, out _);
                 try
                 {
                     await tab.DisposeAsync();
@@ -51,7 +52,7 @@ internal sealed class BrowserHostTabs(BrowserIpcConnection connection, string st
         else if (message.Operation == "tab.close" && message.TabId == message.Generation)
         {
             var id = message.Payload.GetGuid();
-            if (_tabs.Remove(id, out var tab))
+            if (_tabs.TryRemove(id, out var tab))
             {
                 try
                 {
