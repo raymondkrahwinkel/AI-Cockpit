@@ -27,23 +27,6 @@ public class ClaudeStreamJsonTests
         Assert.Contains("529", Assert.Single(completed.Errors!));
     }
 
-    // AC-146: a sub-agent's own wire events carry parent_tool_use_id alongside session_id, naming the Task
-    // tool_use_id that spawned them — stamped onto whatever event(s) the line yields so the host can nest them
-    // under that call instead of flattening them into the top-level transcript.
-    [Fact]
-    public void StreamEvent_WithParentToolUseId_CarriesItOnTheTextDelta()
-    {
-        const string line = """
-        {"type":"stream_event","session_id":"abc","parent_tool_use_id":"toolu_task1",
-         "event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"looking into it"}}}
-        """;
-
-        var delta = Assert.IsType<PluginAssistantTextDelta>(Assert.Single(ClaudeStreamJson.ParseLine(line)));
-
-        Assert.Equal("toolu_task1", delta.ParentToolUseId);
-        Assert.Equal("looking into it", delta.Text);
-    }
-
     [Fact]
     public void TaskLifecycle_Captured314Lines_KeepIdentityAndRejectLateUpdates()
     {

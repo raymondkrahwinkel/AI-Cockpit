@@ -83,6 +83,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver, IPluginMcpT
     private long _lastAllowancePollTicks;
 
     private IClaudeSdkSubprocess? _subprocess;
+    private string? _paneId;
     private Task? _stdoutPump;
     private Task? _stderrDrain;
     private string? _sessionId;
@@ -236,6 +237,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver, IPluginMcpT
         if (_ResolveOption(options, WellKnownPluginSessionOptions.PaneId, defaultValue: null) is { Length: > 0 } paneId)
         {
             environment["COCKPIT_PANE_ID"] = paneId;
+            _paneId = paneId;
             if (paneId is "." or ".." || paneId.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || paneId.Contains('/') || paneId.Contains('\\'))
             {
                 throw new ArgumentException("A pane id must be a single directory name.", nameof(options));
@@ -542,7 +544,8 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver, IPluginMcpT
                 if (ClaudeControlProtocol.TryParseHookRequest(root, out var hookRequestId, out var hookToolName, out var hookInputJson, out var hookCwd))
                 {
                     var decision = ClaudePathGuard.ModeFrom(_profileEnvironment?.GetValueOrDefault(ClaudePathGuard.ModeVariable)) is { } guardMode
-                        ? ClaudePathGuard.Evaluate(hookToolName, hookInputJson, hookCwd, guardMode, ClaudePathGuard.RootsFrom(_profileEnvironment?.GetValueOrDefault(ClaudePathGuard.RootsVariable)))
+                        ? ClaudePathGuard.Evaluate(hookToolName, hookInputJson, hookCwd, guardMode, ClaudePathGuard.RootsFrom(_profileEnvironment?.GetValueOrDefault(ClaudePathGuard.RootsVariable)),
+                            CommandGuard.SessionScope(_subprocess?.ProcessId, _paneId, hookCwd ?? Environment.CurrentDirectory, _profileEnvironment?.GetValueOrDefault(CommandGuard.JobVariable)))
                         : GuardDecision.Allow;
                     if (decision.Message is not null)
                     {

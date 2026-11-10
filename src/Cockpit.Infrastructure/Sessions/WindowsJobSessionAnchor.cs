@@ -13,8 +13,9 @@ internal sealed class WindowsJobSessionAnchor(WindowsJobSessionRegistry registry
 {
     private const uint ProcessSetQuota = 0x0100;
     private const uint ProcessTerminate = 0x0001;
+    private const int AlreadyExists = 183;
 
-    public IDisposable? Anchor(int processId, string? paneId = null)
+    public IDisposable? Anchor(int processId, string? paneId = null, string? jobName = null)
     {
         if (_StartedAt(processId) is not { } sessionStartedAt || _StartedAt(Environment.ProcessId) is not { } ownerStartedAt)
         {
@@ -23,13 +24,19 @@ internal sealed class WindowsJobSessionAnchor(WindowsJobSessionRegistry registry
         }
 
         var record = new WindowsJobSessionRecord(
-            $"cockpit-session-{Guid.NewGuid():N}",
+            jobName ?? $"cockpit-session-{Guid.NewGuid():N}",
             Environment.ProcessId,
             ownerStartedAt,
             processId,
             sessionStartedAt,
             paneId);
         var job = NativeMethods.CreateJobObjectW(IntPtr.Zero, record.JobName);
+        if (job != IntPtr.Zero && jobName is not null && Marshal.GetLastWin32Error() == AlreadyExists)
+        {
+            // A live job by this name belongs to another tree; this one gets an anonymous-style name and the kill guard falls back to the tree walk.
+            NativeMethods.CloseHandle(job);
+            return Anchor(processId, paneId);
+        }
         if (job == IntPtr.Zero)
         {
             logger.LogWarning("Session {ProcessId}: CreateJobObject failed ({Error}).", processId, Marshal.GetLastWin32Error());

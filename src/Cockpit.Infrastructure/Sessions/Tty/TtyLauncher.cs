@@ -173,7 +173,7 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemory
         if (paneId is not null) { stdioProcesses?.Bind(paneId, process.ProcessId); }
 
         // AC-1519: launch-time, so the TTY route gets the same anchor as the SDK route and dies with the Cockpit.
-        var anchor = processAnchor?.Anchor(process.ProcessId, paneId);
+        var anchor = processAnchor?.Anchor(process.ProcessId, paneId, SessionScratch.JobNameOf(scratch));
 
         // The files this launch wrote live exactly as long as the session needing them (an MCP config holds bearer
         // headers, no business surviving the session that ends). AC-143: a minted pane token needs the same

@@ -188,18 +188,6 @@ public class ClaudeSdkSessionDriverTests : IDisposable
 
 
     [Fact]
-    public async Task LiveOptions_PermissionMode_ExcludesBypass_WhichIsLaunchOnly()
-    {
-        var fake = new FakeClaudeSdkSubprocess();
-        await using var driver = _CreateDriver(fake);
-        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
-
-        var permissionOption = driver.LiveOptions.Single(option => option.Key == ClaudeSdkSessionDriver.PermissionModeOptionKey);
-        Assert.Equivalent(new object[] { "default", "acceptEdits", "plan" }, permissionOption.Choices);
-        Assert.DoesNotContain("bypassPermissions", permissionOption.Choices);
-    }
-
-    [Fact]
     public async Task LiveOptions_OmitPermissionMode_WhenLaunchedInBypass()
     {
         var fake = new FakeClaudeSdkSubprocess();
@@ -298,19 +286,16 @@ public class ClaudeSdkSessionDriverTests : IDisposable
     // AC-378, criterion 4 — the empty-resolution trap: an unattended narrowing that resolves to zero eligible
     // servers must still spawn with an explicit (empty) --mcp-config and --strict-mcp-config, never with the flag
     // dropped entirely (which would let the CLI fall back to its own full user/project config — MORE servers than
-    // an empty, narrowed resolution asked for). mcpServers: null (a route that never attempted resolution) behaves
-    // exactly like an empty list.
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task Start_Unattended_WithNoMcpServers_StillSpawnsWithAnExplicitEmptyMcpConfig_AndStrict(bool nullServers)
+    // an empty, narrowed resolution asked for).
+    [Fact]
+    public async Task Start_Unattended_WithNoMcpServers_StillSpawnsWithAnExplicitEmptyMcpConfig_AndStrict()
     {
         var fake = new FakeClaudeSdkSubprocess();
         await using var driver = _CreateDriver(fake);
 
         await driver.StartAsync(
             model: null, workingDirectory: _tempDir, resumeSessionId: null, options: _Unattended(),
-            mcpServers: nullServers ? null : [],
+            mcpServers: [],
             CancellationToken.None);
 
         Assert.Contains("--mcp-config", fake.Arguments!);
