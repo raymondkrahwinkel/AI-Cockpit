@@ -15,6 +15,15 @@ and `<CLAUDE_CONFIG_DIR>/plans` (default `~/.claude/plans`). Profile variables c
 override these values. AC-2246 supplies this policy; enforcement follows in the other
 AC-1908 tickets. Existing coding-tool confinement remains active.
 
+Strict Claude profiles enable Claude Code's OS sandbox on Linux and macOS on TTY
+and SDK, with the session write roots as literal `sandbox.filesystem.allowWrite`
+paths. `autoAllowBashIfSandboxed` is enabled and `allowUnsandboxedCommands` is
+disabled; bypass remains available. `permissions.allow: ["WebFetch(domain:*)"]`
+allows all sandbox network hosts (Claude Code 2.1.186+); the runtime rejects a bare
+`*` in `sandbox.network.allowedDomains`. `failIfUnavailable` is false: a launch
+warning explains that commands run without OS isolation when it is unavailable.
+The server image includes bubblewrap and socat. Windows, Warn and Off are unchanged.
+
 Strict Codex profiles use `workspace-write` on TTY and app-server, including session
 scratch, allowed paths and the repository's git common directory as writable roots,
 with network access enabled. An explicit `read-only` choice remains read-only.

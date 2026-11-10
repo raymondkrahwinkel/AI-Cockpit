@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2252: strict Claude profiles enable the OS sandbox on Linux and macOS for both TTY and SDK sessions, with session write paths, open network hosts and no unsandboxed retry. Missing sandbox support still permits startup with a warning. The server image includes bubblewrap and socat.
+
 - AC-2251: path and process guard decisions appear as ordinary notifications with the session name, limited to one per session and target every five minutes.
 
 - AC-2250: on Strict, a session may only stop processes in its own process tree (its Windows job, so a process it started with `Start-Process` still counts) and containers it started with `--label cockpit.pane=$COCKPIT_PANE_ID`. `dotnet build-server shutdown` and stopping by name (`taskkill /IM`, `Stop-Process -Name`, `pkill`, `killall`, a piped `Stop-Process`) are refused without an extra prompt, with a reason that says what is allowed; this covers Claude on TTY and SDK, the local-model `shell` tool and `start_run`. On Warn the command runs and the agent gets a warning.

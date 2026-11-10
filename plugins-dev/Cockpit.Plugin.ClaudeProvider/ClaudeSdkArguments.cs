@@ -1,3 +1,5 @@
+using System.Text.Json.Nodes;
+
 namespace Cockpit.Plugin.ClaudeProvider;
 
 // Builds the `claude` CLI argument list for the SDK/session-driver route (Fase 4, weg A) — a port of the host's
@@ -41,7 +43,8 @@ internal static class ClaudeSdkArguments
         bool continueMostRecent,
         string? appendSystemPromptPath = null,
         string? mcpConfigPath = null,
-        bool strictMcpConfig = false)
+        bool strictMcpConfig = false,
+        IReadOnlyDictionary<string, string>? environment = null)
     {
         var effectiveMode = string.IsNullOrWhiteSpace(permissionMode) ? "default" : permissionMode;
 
@@ -53,6 +56,14 @@ internal static class ClaudeSdkArguments
             "--input-format", "stream-json",
             "--permission-mode", effectiveMode,
         };
+
+        var settings = new JsonObject();
+        ClaudeSandbox.Apply(settings, environment);
+        if (settings.Count > 0)
+        {
+            arguments.Add("--settings");
+            arguments.Add(settings.ToJsonString());
+        }
 
         // Route approvals over the control protocol (can_use_tool) — but not in bypass, which allows everything with no
         // prompt and where wiring a permission tool would re-introduce the very prompts bypass asked to skip.

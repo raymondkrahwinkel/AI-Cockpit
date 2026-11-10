@@ -228,7 +228,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver, IPluginMcpT
         }
 
         _systemPromptPath = ClaudePrivateTempFile.WriteSystemPrompt(appendSystemPrompt);
-        var arguments = ClaudeSdkArguments.BuildArguments(permissionMode, effectiveModel, resumeSessionId, continueMostRecent: false, appendSystemPromptPath: _systemPromptPath, mcpConfigPath: _mcpConfigPath, strictMcpConfig: unattended);
+        var arguments = ClaudeSdkArguments.BuildArguments(permissionMode, effectiveModel, resumeSessionId, continueMostRecent: false, appendSystemPromptPath: _systemPromptPath, mcpConfigPath: _mcpConfigPath, strictMcpConfig: unattended, environment: _profileEnvironment);
         var environment = _BuildEnvironment(userHome);
 
         // AC-13: hand the agent its own session id as COCKPIT_PANE_ID, so it can name its own session to the
