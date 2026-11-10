@@ -1,29 +1,6 @@
 name: Publish plugin to store
 
-# A "smart publish button" for a store plugin (#AC). Publishing a plugin has always been a manual chore:
-# build Release, zip it, hash it, copy the zip into the separate store repo, hand-edit its index.json, commit.
-# This does all of that from one click in the Actions tab — pick a plugin, run — and opens a PR against the
-# store repo rather than pushing, so the zip + index diff still gets a human glance before users can install it.
-#
-# The one thing it refuses to do is publish a plugin the current host cannot run: a plugin whose
-# minHostVersion is newer than any published app (release or nightly) would install and then be refused with
-# "Needs a newer cockpit", so the gate below blocks it and tells you to ship the app/nightly first. That
-# check is the actual point — it moves "will this even work yet?" out of the operator's head and into the
-# pipeline. minHostVersion is only as honest as the discipline of bumping it when a plugin starts needing a
-# new host API; the gate assumes you do.
-#
-# It is also callable (workflow_call), which is how publish-updated-plugins.yml ships whatever main carries
-# that the store does not have yet. That trigger exists because "deliberately manual" turned out to mean
-# "silently skipped": on 2026-07-30 twelve of twenty-four plugins held merged code no published zip contained,
-# and the store index reported every one of them up to date. A human judging "is the host out yet" is still the
-# right idea — it just cannot be the only thing standing between a fix and the people it was written for. The
-# judgement is now the gate below plus the verification before the merge, both of which run every time.
-#
-# A caller may ask for the store PR to be merged for it (auto_merge). That is only defensible because the
-# checks that a reviewer would do are done here first: the zip is re-hashed from disk, its contents are looked
-# at, and the index entry is checked against both. The store repo has no workflows and no branch protection,
-# so `gh pr merge --auto` would wait for nothing — there is no CI over there to be the second pair of eyes,
-# which is exactly why it has to be in this job.
+# Manual publishing and parallel preparation share the same host and package gates.
 
 on:
   workflow_call:
@@ -33,6 +10,10 @@ on:
         required: true
         # A called workflow cannot take a choice; the dispatch form below keeps the picker for humans.
         type: string
+      prepare_only:
+        description: Upload verified packages without writing to the store
+        type: boolean
+        default: false
       notes:
         description: Release notes for this version
         required: false
@@ -63,20 +44,31 @@ on:
           - cli-agent-provider
           - clock
           - depot
+          - diagram
+          - discord
           - docker
+          - example-companion-tool
           - example-workspace
           - gemini-provider
+          - git-status
           - github-actions
           - github-issues
           - github-pull-requests
-          - git-status
+          - grok-provider
           - kimi-provider
           - kind
           - kubernetes
           - local-ci
-          - prompt-library
+          - local-files
+          - opencode-provider
+          - openrouter-provider
           - productivity
+          - prompt-library
+          - proxmox
+          - remote-files
+          - schedules
           - session-review
+          - slack
           - system-monitor
           - transcript-search
           - usage-trend
@@ -97,8 +89,7 @@ on:
         type: boolean
         default: false
 
-# The store lives in its own repo. STORE_PUBLISH_TOKEN is a fine-grained PAT (or GitHub App token) with
-# contents:write + pull-requests:write on that repo — the default GITHUB_TOKEN only reaches this repo.
+# The store needs its own write token because GITHUB_TOKEN only reaches this repository.
 env:
   STORE_REPO: raymondkrahwinkel/AI-Cockpit-Plugins
 
@@ -106,9 +97,7 @@ permissions:
   contents: read
 
 jobs:
-  # AC-1740: a plugin whose store.json names `runtimeIdentifiers` ships one zip per RID, with a self-contained publish
-  # of its `subprocess` in each. Only the Windows RIDs need a Windows runner (the SDK embeds an app.manifest only
-  # there), so that job runs for such a plugin alone; every other plugin skips it and publishes exactly as before.
+  # AC-1740: Windows apphosts need a Windows build to embed their manifest.
   runtime-identifiers:
     runs-on: ubuntu-latest
     outputs:
@@ -120,6 +109,8 @@ jobs:
     steps:
       - name: Check out this repo
         uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
 
       - name: Read the plugin's runtime identifiers from its store.json
         id: rids
@@ -166,13 +157,14 @@ jobs:
     steps:
       - name: Check out this repo
         uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
 
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
 
       # Self-contained: a user's machine has no .NET, and Cockpit's own self-contained folder is no DOTNET_ROOT.
-      # arm64 is cross-published from this x64 runner, still on Windows, so it carries the manifest too.
       - name: Publish the subprocess per Windows RID
         env:
           DIR: ${{ needs.runtime-identifiers.outputs.dir }}
@@ -198,12 +190,16 @@ jobs:
     # Runs when package-windows was skipped (every plugin without Windows RIDs) or passed; never after it failed.
     if: ${{ !cancelled() && needs.runtime-identifiers.result == 'success' && needs.package-windows.result != 'failure' }}
     runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ inputs.prepare_only && format('prepare-plugin-{0}-{1}', github.run_id, inputs.plugin) || 'plugin-store-publish' }}
+      cancel-in-progress: false
 
     steps:
       # Full history + tags: the host-version gate reads the v* release tags and the nightly commit.
       - name: Check out this repo
         uses: actions/checkout@v7
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - uses: actions/setup-dotnet@v6
@@ -217,9 +213,7 @@ jobs:
           token: ${{ secrets.STORE_PUBLISH_TOKEN }}
           path: store
 
-      # Find the plugin folder by its manifest id (not its .csproj name — the two differ), and read the
-      # fields the publish needs straight from plugin.json, the source of truth the app enforces. The id
-      # arrives via an env var, never interpolated into the script, so nothing it contains can be executed.
+      # Manifest ids can differ from project names.
       - name: Resolve the plugin from its id
         id: resolve
         env:
@@ -245,9 +239,7 @@ jobs:
 
           echo "Resolved '$PLUGIN' -> $dir"
 
-      # The gate. What is the newest host anyone can actually download? The highest v* release, and the base
-      # version baked into the current nightly (read from Directory.Build.props at the nightly's commit). If
-      # neither reaches the plugin's minHostVersion, the plugin would install and be refused — so stop here.
+      # A package must have a downloadable host that can run it.
       - name: Gate on host availability (minHostVersion)
         id: gate
         env:
@@ -268,8 +260,7 @@ jobs:
           nightly_base=""
           nsha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/nightly" -q .object.sha 2>/dev/null || echo "")"
           if [ -n "$nsha" ]; then
-            # \K drops the tag opener from the match; the [0-9] anchor skips the "<VersionPrefix>" that also
-            # appears in a comment in that file, matching only the real element's value.
+            # The digit anchor excludes the VersionPrefix mentioned in a comment.
             nightly_base="$(git show "$nsha:Directory.Build.props" 2>/dev/null | grep -oP '<VersionPrefix>\K[0-9][^<]*' | head -1 || true)"
           fi
 
@@ -289,16 +280,7 @@ jobs:
 
           echo "Gate passed: newest published host $available satisfies minHostVersion $MIN."
 
-          # Second half of the same question. The check above compares numbers; this one asks whether the build
-          # carrying that number actually contains the code being published. A nightly's base version is read from
-          # Directory.Build.props on main, so the moment VersionPrefix reads 0.17.0 every nightly from then on
-          # satisfies minHostVersion 0.17.0 — including one built before the host change a plugin leans on landed.
-          # On 2026-08-01 that let claude-provider 0.14.1 through while the newest nightly predated its host half:
-          # the plugin would have installed, found no host that states session attendance, and silently kept the old
-          # behaviour. A green gate over a dead fix is worse than a refusal, because nobody goes looking.
-          #
-          # A stable release does not have this problem — it is the version it claims — so the containment check
-          # applies only when a nightly is what satisfies the gate.
+          # A nightly's base version can satisfy the number before it contains the required host change.
           if [ -n "$stable" ] && [ "$(printf '%s\n%s\n' "$stable" "$MIN" | sort -V | head -1)" = "$MIN" ]; then
             echo "A stable release ($stable) satisfies minHostVersion — no nightly containment check needed."
             exit 0
@@ -309,9 +291,7 @@ jobs:
             exit 1
           fi
 
-          # The plugin's own newest commit, not the workflow's HEAD: main moves on between a nightly and a publish
-          # (an unrelated pull request landing must not block shipping this plugin), while the host change a plugin
-          # needs rides in the same commit that bumped its minHostVersion — the discipline this gate already assumes.
+          # Unrelated commits after the nightly must not block this plugin.
           plugin_sha="$(git log -1 --format=%H -- "$DIR")"
           if [ -z "$plugin_sha" ]; then
             echo "::error::Could not determine the newest commit touching $DIR; cannot verify the published host contains it."
@@ -319,8 +299,7 @@ jobs:
           fi
 
           if ! git merge-base --is-ancestor "$plugin_sha" "$nsha"; then
-            # AC-1959: after a Nightly, main may already hold a merge that nightly predates; the next Nightly ships it.
-            # Only that automatic route waits; a hand-fired run still fails, since there red is the answer asked for.
+            # AC-1959: automatic publishing waits for the next nightly; manual publishing reports the failed gate.
             if [ "$EVENT" = "workflow_run" ]; then
               echo "::notice::Nightly $nsha does not contain $plugin_sha (newest commit to $DIR) yet. $PLUGIN waits for the next Nightly, which publishes it."
               echo "wait=true" >> "$GITHUB_OUTPUT"
@@ -332,8 +311,7 @@ jobs:
 
           echo "Containment check passed: nightly $nsha contains $plugin_sha (newest commit to $DIR)."
 
-      # A version already in the index is immutable — users may have installed it and pinned its sha256. If it
-      # is there, there is nothing to do, and the build/PR steps below are skipped.
+      # Published versions are immutable because users may have pinned their sha256.
       - name: Is this version already published?
         id: check
         env:
@@ -382,11 +360,7 @@ jobs:
             dotnet publish "$DIR/$(dirname "$SUBPROCESS")" --configuration Release -r "$rid" --self-contained -warnaserror -o "subprocess/$rid"
           done
 
-      # Zip everything the build produced except the .pdb, with plugin.json at the zip root (the layout the
-      # installer expects). Shared assemblies are already kept out of the output by ExcludeAssets, so "zip
-      # everything" ships the plugin and any real third-party dependency without shipping a host DLL.
-      # With runtime identifiers (AC-1740) there is one zip per RID, its subprocess folder swapped for that RID's
-      # publish; `rel`/`sha` are then the win-x64 zip, which the index's path/sha256 repeat.
+      # The installer expects plugin.json at the root; per-RID packages replace only the subprocess.
       - name: Package the zip and hash it
         id: package
         if: steps.check.outputs.skip != 'true'
@@ -454,9 +428,11 @@ jobs:
             echo "packages=${packages# }"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Update the store index.json
+      - name: Update and verify the store entry and packages
         if: steps.check.outputs.skip != 'true'
         env:
+          STORE: store
+          PLUGIN: ${{ inputs.plugin }}
           MANIFEST: ${{ steps.resolve.outputs.manifest }}
           DIR: ${{ steps.resolve.outputs.dir }}
           VERSION: ${{ steps.resolve.outputs.version }}
@@ -465,110 +441,50 @@ jobs:
           REL: ${{ steps.package.outputs.rel }}
           PACKAGES: ${{ steps.package.outputs.packages }}
           NOTES: ${{ inputs.notes }}
+          SUBPROCESS: ${{ needs.runtime-identifiers.outputs.subprocess }}
         shell: bash
         run: |
-          args=(
-            --index store/index.json
-            --id "$(jq -r '.id' "$MANIFEST")"
-            --name "$(jq -r '.name' "$MANIFEST")"
-            --description "$(jq -r '.description // empty' "$MANIFEST")"
-            --author "$(jq -r '.author // empty' "$MANIFEST")"
-            --version "$VERSION"
-            --min-host-version "$MIN_HOST"
-            --sha256 "$SHA"
-            --path "$REL"
-            --published "$(date -u +%Y-%m-%d)"
-          )
+          bash scripts/update-and-verify-plugin.sh
+          git -C store --no-pager diff -- index.json
 
-          abs="$(jq -r '.abstractionsVersion // empty' "$MANIFEST")"
-          if [ -n "$abs" ]; then args+=(--abstractions-version "$abs"); fi
-          if [ -n "$NOTES" ]; then args+=(--notes "$NOTES"); fi
-          for package in $PACKAGES; do args+=(--package "$package"); done
-          while IFS= read -r keyword; do args+=(--keyword "$keyword"); done < <(jq -r '.keywords // [] | .[]' "$MANIFEST")
-          if [ -f "$DIR/store.json" ]; then
-            args+=(--store-json "$DIR/store.json")
-            echo "Using editorial fields from $DIR/store.json"
-          fi
-
-          python3 scripts/store-index-upsert.py "${args[@]}"
-
-          echo "::group::index.json diff"
-          git -C store --no-pager diff -- index.json || true
-          echo "::endgroup::"
-
-      # What a reviewer of the store PR would actually check, done here so it happens on every publish rather
-      # than when someone is paying attention. Each of these has a way of going wrong quietly: an index entry
-      # whose sha256 belongs to an earlier build installs and then fails its own integrity check; a zip whose
-      # plugin.json is one folder down installs as an empty plugin; a version that is not the newest in the
-      # index is one the store will never offer, which is the whole failure this pipeline exists to prevent.
-      - name: Verify the zip and the index entry agree
-        if: steps.check.outputs.skip != 'true'
+      - name: Stage the verified packages for the store writer
+        if: steps.check.outputs.skip != 'true' && inputs.prepare_only == true
         env:
           PLUGIN: ${{ inputs.plugin }}
-          VERSION: ${{ steps.resolve.outputs.version }}
           MANIFEST: ${{ steps.resolve.outputs.manifest }}
           REL: ${{ steps.package.outputs.rel }}
           SHA: ${{ steps.package.outputs.sha }}
+          PACKAGES: ${{ steps.package.outputs.packages }}
+          NOTES: ${{ inputs.notes }}
+          SUBPROCESS: ${{ needs.runtime-identifiers.outputs.subprocess }}
         shell: bash
         run: |
           set -euo pipefail
-          zip_path="store/$REL"
-
-          actual="$(sha256sum "$zip_path" | cut -d' ' -f1)"
-          if [ "$actual" != "$SHA" ]; then
-            echo "::error::The zip on disk hashes to $actual but the run recorded $SHA."
-            exit 1
-          fi
-
-          claimed="$(jq -r --arg id "$PLUGIN" --arg v "$VERSION" \
-            '.plugins[]? | select(.id==$id) | .versions[]? | select(.version==$v) | .sha256' store/index.json)"
-          if [ "$claimed" != "$actual" ]; then
-            echo "::error::index.json claims sha256 $claimed for $PLUGIN $VERSION; the zip hashes to $actual."
-            exit 1
-          fi
-
-          listing="$(unzip -Z1 "$zip_path")"
-          if ! grep -qx 'plugin.json' <<<"$listing"; then
-            echo "::error::The zip has no plugin.json at its root — the installer would find no manifest."
-            exit 1
-          fi
-          # AC-1390: a plugin split in two names a uiAssembly beside its entryAssembly, and a UI-only plugin names
-          # just that one; every assembly the manifest names has to be in the zip.
-          for key in entryAssembly uiAssembly; do
-            assembly="$(jq -r --arg key "$key" '.[$key] // empty' "$MANIFEST")"
-            if [ -n "$assembly" ] && ! grep -qxF "$assembly" <<<"$listing"; then
-              echo "::error::The zip has no $assembly at its root, the assembly plugin.json names as its $key."
-              exit 1
-            fi
+          mkdir -p "$RUNNER_TEMP/prepared-plugin/$PLUGIN"
+          cp "store/$REL" "$RUNNER_TEMP/prepared-plugin/$REL"
+          for package in $PACKAGES; do
+            package_path="${package#*=}"
+            package_path="${package_path%:*}"
+            cp "store/$package_path" "$RUNNER_TEMP/prepared-plugin/$package_path"
           done
+          jq -n --arg plugin "$PLUGIN" --arg manifest "$MANIFEST" --arg rel "$REL" \
+            --arg sha "$SHA" --arg packages "$PACKAGES" --arg notes "$NOTES" \
+            --arg subprocess "$SUBPROCESS" \
+            '$ARGS.named' > "$RUNNER_TEMP/prepared-plugin/publish.json"
 
-          # A published version the store will never offer is the failure this whole pipeline is about, so it
-          # is checked rather than assumed: the version going out has to be the highest this plugin has.
-          highest="$(jq -r --arg id "$PLUGIN" '.plugins[]? | select(.id==$id) | .versions[]?.version' store/index.json | sort -V | tail -1)"
-          if [ "$highest" != "$VERSION" ]; then
-            echo "::error::$VERSION is not the newest version of $PLUGIN in the index ($highest is). The store offers only the newest, so this would reach nobody."
-            exit 1
-          fi
+      - name: Upload the verified packages
+        if: steps.check.outputs.skip != 'true' && inputs.prepare_only == true
+        uses: actions/upload-artifact@v7
+        with:
+          name: prepared-plugin-${{ inputs.plugin }}
+          path: ${{ runner.temp }}/prepared-plugin/
+          if-no-files-found: error
+          retention-days: 1
 
-          echo "Verified: $PLUGIN $VERSION · sha256 $actual · manifest and its named assemblies present · newest in the index."
-
-      # AC-1740: every per-RID zip against the index, statically: hashes, a self-contained subprocess, the Windows
-      # manifest and the exec bit. The same script runs locally before a change to this route is pushed.
-      - name: Verify the per-RID packages
-        if: steps.check.outputs.skip != 'true' && needs.runtime-identifiers.outputs.all != ''
-        env:
-          PLUGIN: ${{ inputs.plugin }}
-          VERSION: ${{ steps.resolve.outputs.version }}
-          SUBPROCESS: ${{ needs.runtime-identifiers.outputs.subprocess }}
-        shell: bash
-        run: bash scripts/verify-plugin-packages.sh store "$PLUGIN" "$VERSION" "$SUBPROCESS"
-
-      # Open a PR against the store repo rather than pushing to its main: publishing to a store users install
-      # from is outward-facing, and the zip + index diff is exactly what a reviewer wants to see. Dry runs stop
-      # before this. The PR body is built into a file so no interpolation lands in a shell string.
+      # The zip and index diff remain reviewable before the optional merge.
       - name: Open a PR against the store repo
         id: pr
-        if: steps.check.outputs.skip != 'true' && inputs.dry_run != true
+        if: steps.check.outputs.skip != 'true' && inputs.prepare_only != true && inputs.dry_run != true
         env:
           GH_TOKEN: ${{ secrets.STORE_PUBLISH_TOKEN }}
           PLUGIN: ${{ inputs.plugin }}
@@ -609,13 +525,9 @@ jobs:
 
           echo "branch=$branch" >> "$GITHUB_OUTPUT"
 
-      # Merging is what actually publishes: until this happens the plugin exists only on a branch nobody
-      # installs from. Plain merge rather than `--auto`, deliberately — auto-merge waits for required checks,
-      # and the store repo has none, so asking for it would either merge instantly under a name that suggests
-      # otherwise or hang forever on a queue with nothing in it. The verification step above is the gate; this
-      # step only exists to stop that verification from ending in a branch someone still has to remember.
+      # The store has no required checks, so verification above is the gate before a direct merge.
       - name: Merge the store PR
-        if: steps.check.outputs.skip != 'true' && inputs.dry_run != true && inputs.auto_merge == true
+        if: steps.check.outputs.skip != 'true' && inputs.prepare_only != true && inputs.dry_run != true && inputs.auto_merge == true
         env:
           GH_TOKEN: ${{ secrets.STORE_PUBLISH_TOKEN }}
           BRANCH: ${{ steps.pr.outputs.branch }}
@@ -633,7 +545,7 @@ jobs:
           echo "::notice::Published $PLUGIN $VERSION — store PR #$number merged."
 
       - name: Dry-run summary
-        if: steps.check.outputs.skip != 'true' && inputs.dry_run == true
+        if: steps.check.outputs.skip != 'true' && inputs.prepare_only != true && inputs.dry_run == true
         env:
           PLUGIN: ${{ inputs.plugin }}
           VERSION: ${{ steps.resolve.outputs.version }}
