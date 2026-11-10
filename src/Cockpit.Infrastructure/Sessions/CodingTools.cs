@@ -9,6 +9,8 @@ using Cockpit.Core.Sessions;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Provisioning;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Infrastructure.Configuration;
+using Cockpit.Plugins.Shared;
 
 namespace Cockpit.Infrastructure.Sessions;
 
@@ -329,6 +331,12 @@ internal sealed class CodingTools(ISessionRegistry sessions, IShellCommandRunner
         error = $"Error: {relative} is outside the session boundary (worktree, session scratch and allowed paths).";
         return false;
     }
+
+    // AC-2250: these tools run as children of the cockpit, so only the calling session's own job counts as owned.
+    internal static GuardDecision KillDecision(ISessionHandle? session, string paneId, string command, string directory, ProvisionPolicy? policy) =>
+        CommandGuard.EvaluateKill(command, CommandGuard.SessionScope(null, paneId, directory,
+                string.IsNullOrEmpty(paneId) ? null : SessionScratch.JobNameOf(SessionScratch.PathFor(paneId))),
+            OrgPolicyCeilings.GuardrailMode(policy, session?.ActiveProfile?.GuardrailMode ?? SessionProfileEntry.ExistingProfileGuardrailMode));
 
     internal static string WithWarning(string warning, string result) =>
         warning.Length == 0 ? result : $"{warning}\n{result}";

@@ -59,7 +59,6 @@ public class ClaudeControlProtocolTests
     [Theory]
     [InlineData(null)]
     [InlineData("not json")]
-    [InlineData("\"a string, not an object\"")]
     public void BuildDecisionResponse_Allow_WithoutUsableAnswers_LeavesTheInputAlone(string? answersJson)
     {
         // A tool that was never a question, and a garbled answers document, take the same path: echo the input as

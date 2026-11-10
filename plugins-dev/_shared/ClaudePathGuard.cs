@@ -1,4 +1,3 @@
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
@@ -6,11 +5,6 @@ using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 
 namespace Cockpit.Plugins.Shared;
-
-internal sealed record GuardDecision(bool Deny, string? Message)
-{
-    public static readonly GuardDecision Allow = new(false, null);
-}
 
 // Known gap: interpreters (python -c, node -e) and other indirect writes pass the shell heuristic; the shell boundary is AC-2252/AC-2253 (B4).
 internal static class ClaudePathGuard
@@ -33,7 +27,7 @@ internal static class ClaudePathGuard
     public static IReadOnlyList<string> RootsFrom(string? value) =>
         (value ?? string.Empty).Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-    public static GuardDecision Evaluate(string toolName, string toolInputJson, string? cwd, GuardrailMode mode, IReadOnlyList<string> roots)
+    public static GuardDecision Evaluate(string toolName, string toolInputJson, string? cwd, GuardrailMode mode, IReadOnlyList<string> roots, KillScope? killScope = null)
     {
         if (mode == GuardrailMode.Off)
         {
@@ -58,14 +52,12 @@ internal static class ClaudePathGuard
             "Bash" or "PowerShell" when Text("command") is { } command => _ShellOutside(command, directory, roots),
             _ => null,
         };
-        if (outside is null)
-        {
-            return GuardDecision.Allow;
-        }
-
-        return mode == GuardrailMode.Strict
+        var decision = outside is null ? GuardDecision.Allow : mode == GuardrailMode.Strict
             ? new(true, $"'{outside}' is outside the session boundary; use $COCKPIT_SCRATCH or the worktree.")
             : new(false, $"Cockpit guard (warn): '{outside}' is outside the session boundary; use $COCKPIT_SCRATCH or the worktree.");
+        return killScope is not null && toolName is "Bash" or "PowerShell" && Text("command") is { } shellCommand
+            ? decision.With(CommandGuard.EvaluateKill(shellCommand, killScope, mode))
+            : decision;
     }
 
     // The hook's stdout for one decision, or null when there is nothing to say.
@@ -95,8 +87,11 @@ internal static class ClaudePathGuard
             return;
         }
         string? Text(string key) => data?[key] is JsonValue value && value.TryGetValue<string>(out var text) ? text : null;
+        var root = int.TryParse(Environment.GetEnvironmentVariable(CommandGuard.HostPidVariable), out var host) ? CommandGuard.RootBelow(host, Environment.ProcessId) : null;
         var decision = Evaluate(Text("tool_name") ?? string.Empty, data?["tool_input"]?.ToJsonString() ?? "{}", Text("cwd"), mode,
-            RootsFrom(Environment.GetEnvironmentVariable(RootsVariable)));
+            RootsFrom(Environment.GetEnvironmentVariable(RootsVariable)),
+            CommandGuard.SessionScope(root, Environment.GetEnvironmentVariable(CommandGuard.PaneVariable), Text("cwd") ?? Environment.CurrentDirectory,
+                Environment.GetEnvironmentVariable(CommandGuard.JobVariable)));
         if (HookOutput(decision) is { } output)
         {
             stdout.Write(output);
@@ -155,7 +150,7 @@ internal static class ClaudePathGuard
 
     private static string? _ShellOutside(string command, string cwd, IReadOnlyList<string> roots)
     {
-        foreach (var words in _Segments(command))
+        foreach (var words in CommandGuard.Segments(command))
         {
             var targets = new List<string>();
             var arguments = new List<string>();
@@ -231,70 +226,5 @@ internal static class ClaudePathGuard
         }
         var position = cmdlet is "copy-item" or "move-item" ? 1 : 0;
         return named.Count > 0 || positional.Count <= position ? named : [positional[position]];
-    }
-
-    // Splits on ; && || | and newlines, keeping quoted text whole; backslashes stay literal for Windows paths.
-    private static IEnumerable<List<string>> _Segments(string command)
-    {
-        var words = new List<string>();
-        var word = new StringBuilder();
-        var quoted = false;
-        char quote = '\0';
-        void EndWord()
-        {
-            if (word.Length > 0 || quoted)
-            {
-                words.Add(word.ToString());
-            }
-            word.Clear();
-            quoted = false;
-        }
-        for (var index = 0; index < command.Length; index++)
-        {
-            var character = command[index];
-            if (quote != '\0')
-            {
-                if (character == quote)
-                {
-                    quote = '\0';
-                }
-                else
-                {
-                    word.Append(character);
-                }
-            }
-            else if (character is '\'' or '"')
-            {
-                quote = character;
-                quoted = true;
-            }
-            else if (character is ';' or '|' or '\n' or '\r' or '(' or ')' || character == '&' && (index == 0 || command[index - 1] != '>'))
-            {
-                EndWord();
-                if (words.Count > 0)
-                {
-                    yield return words;
-                    words = [];
-                }
-            }
-            else if (char.IsWhiteSpace(character))
-            {
-                EndWord();
-            }
-            else if (character == '>' && (index == 0 || command[index - 1] != '>') && !word.ToString().All(char.IsAsciiDigit))
-            {
-                EndWord();
-                word.Append(character);
-            }
-            else
-            {
-                word.Append(character);
-            }
-        }
-        EndWord();
-        if (words.Count > 0)
-        {
-            yield return words;
-        }
     }
 }

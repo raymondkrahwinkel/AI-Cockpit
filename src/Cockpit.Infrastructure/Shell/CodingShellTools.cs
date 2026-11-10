@@ -30,10 +30,18 @@ internal sealed class CodingShellTools(ISessionRegistry sessions, IShellCommandR
             return inputError;
         }
 
-        if (!CodingTools.TryResolveFor(sessions.Find(McpRequestContext.CurrentPaneId ?? string.Empty), workdir ?? ".", orgPolicy?.Current, out var directory, out var error, out var warning))
+        var session = sessions.Find(McpRequestContext.CurrentPaneId ?? string.Empty);
+        if (!CodingTools.TryResolveFor(session, workdir ?? ".", orgPolicy?.Current, out var directory, out var error, out var warning))
         {
             return error;
         }
+
+        var kill = CodingTools.KillDecision(session, McpRequestContext.CurrentPaneId ?? string.Empty, command, directory, orgPolicy?.Current);
+        if (kill.Deny)
+        {
+            return $"Error: {kill.Message}";
+        }
+        warning = kill.Message is { } killWarning ? CodingTools.WithWarning(warning, killWarning) : warning;
 
         if (!Directory.Exists(directory))
         {

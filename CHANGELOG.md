@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2250: on Strict, a session may only stop processes in its own process tree (its Windows job, so a process it started with `Start-Process` still counts) and containers it started with `--label cockpit.pane=$COCKPIT_PANE_ID`. `dotnet build-server shutdown` and stopping by name (`taskkill /IM`, `Stop-Process -Name`, `pkill`, `killall`, a piped `Stop-Process`) are refused without an extra prompt, with a reason that says what is allowed; this covers Claude on TTY and SDK, the local-model `shell` tool and `start_run`. On Warn the command runs and the agent gets a warning.
+
 - AC-2248: on Strict, a Claude session (TTY and SDK, bypass included) is refused, without an extra prompt, when it writes outside its worktree, its scratch folder and the profile's allowed paths with Write, Edit, MultiEdit or NotebookEdit, or with a recognisable shell write (`>`, `tee`, `cp`, `Set-Content` and the like). Interpreters such as `python -c` still get past the shell check. On Warn the write goes ahead and the agent is told it crossed the boundary.
 
 - AC-2249: strict Codex profiles use workspace-write on TTY and app-server, with session write paths and network access; an explicit read-only choice stays read-only. Linked worktrees keep their profile's sandbox because Codex protects the worktree gitdir and otherwise blocks commits.

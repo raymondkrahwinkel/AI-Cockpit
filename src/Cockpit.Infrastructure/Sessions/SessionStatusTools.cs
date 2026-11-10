@@ -153,6 +153,14 @@ internal sealed class SessionStatusTools(
             return _Error(confinementRefusal);
         }
 
+        var kill = CodingTools.KillDecision(sessions?.Find(caller), caller,
+            string.Join(' ', new[] { command }.Concat(arguments ?? []).Select(word => $"\"{word.Replace('"', '\'')}\"")), workingDirectory, orgPolicy?.Current);
+        if (kill.Deny)
+        {
+            return _Error(kill.Message!);
+        }
+        guardrailWarning = kill.Message is { } killWarning ? CodingTools.WithWarning(guardrailWarning, killWarning) : guardrailWarning;
+
         if (_ParseKind(kind) is not { } runKind)
         {
             return _Error("`kind` must be one of light, build, unit or journeys.");
