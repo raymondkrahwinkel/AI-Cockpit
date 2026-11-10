@@ -292,17 +292,40 @@ public sealed class BackendApiDoorTests
 
 
     // AC-1473 criterion 1: model, MCP set and the plain variables change on the server, and its secret variable and
-    // API key, which the client never sees, are still there afterwards.
+    // API key, which the client never sees, are still there afterwards. AC-2281: the same for a project: the admin list
+    // shows none of its password, plugin token, Depot link, secret row or credentialed URL, and a change keeps them all.
     [Fact]
-    public async Task AProfileChangedOverTheApi_KeepsTheSecretVariableAndTheApiKeyTheClientNeverSaw()
+    public async Task AProfileOrProjectChangedOverTheApi_KeepsTheSecretsTheClientNeverSaw()
     {
         await using var door = new _Door();
         await door.StartAsync();
+        var held = new Project("project-a", "Project A")
+        {
+            GitUrl = $"https://laptop:{_Door.ProfileSecret}@example.invalid/o/r.git",
+            ProjectPassword = _Door.ProfileSecret,
+            PluginFields = new Dictionary<string, string> { ["youtrack.token"] = _Door.ProfileSecret },
+            Resources = [new ProjectResource($"depot:acme/{_Door.ProfileSecret}", ProjectResourceRole.Memory)],
+            AdditionalInfo = [new ProjectInfoField("Token", _Door.ProfileSecret)],
+        };
+        door.ProjectStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(ProjectSettings.Empty with { Projects = [held] });
+        door.ProjectEditor.FindProjectAsync("project-a").Returns(held);
+        door.ProjectEditor.UpdateStoredProjectAsync(Arg.Any<Project>()).Returns(call => call.Arg<Project>());
 
         var answer = await door.SendAsync(HttpMethod.Patch, "/api/v1/profiles/Keyed", Bootstrap,
             """{"model":"qwen-large","mcpServers":{"names":["youtrack"]},"environment":[{"key":"REGION","value":"us"}]}""");
         var keyed = (await door.Profiles.LoadAsync()).Single(profile => profile.Label == _Door.KeyedProfile);
+        var list = await door.GetAsync(door.NodeBase, "/api/v1/projects", Bootstrap);
+        var change = await door.SendAsync(HttpMethod.Patch, "/api/v1/projects/project-a", Bootstrap,
+            """{"category":"Work","behaviorPrompt":"Be brief.","isolateInWorktree":true,"projectPassword":"","resources":[]}""");
+        var stored = door.ProjectEditor.ReceivedCalls()
+            .Where(call => call.GetMethodInfo().Name == nameof(IProjectEditor.UpdateStoredProjectAsync))
+            .Select(call => call.GetArguments()[0]).OfType<Project>().Single();
 
+        Assert.Equal((HttpStatusCode.OK, HttpStatusCode.OK), (list.Status, change.Status));
+        Assert.Contains("project-a", list.Body, StringComparison.Ordinal);
+        Assert.DoesNotContain(_Door.ProfileSecret, list.Body, StringComparison.Ordinal);
+        Assert.Equal(("Work", "Be brief.", true), (stored.Category, stored.BehaviorPrompt, stored.IsolateInWorktreeByDefault));
+        Assert.Equal((held.GitUrl, held.ProjectPassword, held.PluginFields, held.Resources, held.AdditionalInfo), (stored.GitUrl, stored.ProjectPassword, stored.PluginFields, stored.Resources, stored.AdditionalInfo));
         Assert.Equal(HttpStatusCode.OK, answer.Status);
         Assert.Equal("qwen-large", ProfileModel.Of(keyed));
         Assert.Equal(["youtrack"], keyed.EnabledMcpServerNames ?? []);
@@ -912,6 +935,8 @@ public sealed class BackendApiDoorTests
 
         public IProjectEditor ProjectEditor { get; } = Substitute.For<IProjectEditor>();
 
+        public IProjectStore ProjectStore { get; } = Substitute.For<IProjectStore>();
+
         public IRepositoryCloneManager Clones { get; } = Substitute.For<IRepositoryCloneManager>();
 
         public SessionRegistry Sessions { get; } = new();
@@ -1020,7 +1045,7 @@ public sealed class BackendApiDoorTests
             var sharedSources = new SharedProjectSourceRegistry();
             sharedSources.Register(source);
             services.AddSingleton<ISharedProjectSourceRegistry>(sharedSources);
-            var projectStore = Substitute.For<IProjectStore>();
+            var projectStore = ProjectStore;
             projectStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(ProjectSettings.Empty);
             services.AddSingleton(projectStore);
             await Profiles.SaveAsync(

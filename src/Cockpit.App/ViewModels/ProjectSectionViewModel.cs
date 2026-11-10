@@ -74,7 +74,10 @@ public sealed class ProjectSectionViewModel : ViewModelBase
 
     // AC-1600: "◆ Synvolution" or "● This machine"; the host follows it on every server section (Raymond, 26-10), so two
     // servers with an organisation of the same name read as two sections.
-    public string Title => IsThisMachine ? "● This machine" : $"◆ {Name}";
+    public string Title => IsThisMachine ? $"● {Name}" : $"◆ {Name}";
+
+    // AC-2281: where a project outside Depot lives: this machine, or the server in the remote window.
+    public string Here { get; init; } = "this machine";
 
     public bool HasHost => Host.Length > 0;
 
@@ -88,7 +91,7 @@ public sealed class ProjectSectionViewModel : ViewModelBase
             var toAdd = Items.Count - here;
             var parts = new List<string>
             {
-                IsThisMachine ? "Not in Depot · only on this machine" : OrganizationSlug.Length > 0 ? "Organisation" : "Depot",
+                IsThisMachine ? $"Not in Depot · only on {Here}" : OrganizationSlug.Length > 0 ? "Organisation" : "Depot",
             };
             if (OrganizationRole is { Length: > 0 } role)
             {

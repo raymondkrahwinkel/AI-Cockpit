@@ -2,7 +2,6 @@ using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Projects;
 using Cockpit.Core.Updates;
-using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.Services;
@@ -11,7 +10,7 @@ namespace Cockpit.App.Services;
 /// Shows the cockpit's dialogs from the view-model layer without the view models touching
 /// window types (keeps <see cref="CockpitViewModel"/> unit-testable behind this seam).
 /// </summary>
-public interface ISessionDialogService
+public interface ISessionDialogService : IProjectDialogs
 {
     /// <summary>
     /// Shows the New-session dialog — SDK vs TTY chosen inside it (#32) — returning the confirmed choices, or null
@@ -33,28 +32,6 @@ public interface ISessionDialogService
     /// same reason as <see cref="ShowWorktreesDialogAsync"/>. Null just offers no restart.
     /// </summary>
     Task ShowAssistantProfileDialogAsync(IAssistantSessionHost? assistant, AssistantProfileSetup? setup = null);
-
-    /// <summary>
-    /// Shows the project editor (AC-160) for <paramref name="project"/>, or a new one when null; returns what was
-    /// saved, or null if cancelled (persisting is the caller's). The source under <paramref name="sharedSourceKey"/> (AC-247),
-    /// when set, reads a fresh <see cref="SharedProjectBinding"/> first so Save writes a claimed field back correctly.
-    /// </summary>
-    Task<Project?> ShowProjectDialogAsync(Project? project, string? sharedSourceKey = null);
-
-    /// <summary>
-    /// Shows the "Finish setting up…" bind step (AC-246) for <paramref name="sharedProjectId"/>, not yet bound on this
-    /// machine. Reads the full definition through the source under <paramref name="sourceKey"/> first; returns null both
-    /// on cancel and on a failed read (shown as an error either way). Persisting the result is the caller's.
-    /// </summary>
-    Task<SharedProjectBindResult?> ShowSharedProjectBindingDialogAsync(string sharedProjectId, string sourceName, string sourceKey);
-
-    /// <summary>
-    /// Shows AC-620's confirmation screen for publishing <paramref name="project"/> — a local project not yet bound
-    /// — to one of the sources under <paramref name="publishSourceKeys"/> (registered sources with
-    /// <see cref="ISharedProjectSource.CanPublish"/>). Returns <paramref name="project"/> with its new binding row on
-    /// success, or null when cancelled.
-    /// </summary>
-    Task<Project?> ShowShareProjectDialogAsync(Project project, IReadOnlyList<string> publishSourceKeys);
 
     /// <summary>
     /// Shows the Verify-runners dialog (AC-86), over the main window, for registering the per-project command the visual verify loop may run.
@@ -89,12 +66,6 @@ public interface ISessionDialogService
     /// Opens a file picker filtered to <c>.zip</c> archives for installing a plugin (#14); returns the chosen path or null if cancelled.
     /// </summary>
     Task<string?> PickPluginZipAsync();
-
-    /// <summary>
-    /// Opens a folder picker under <paramref name="title"/>; returns the chosen path or null if cancelled. Used by
-    /// a local plugin store's folder (AC-7) and by a starting point, whose only question is where the files are (AC-488).
-    /// </summary>
-    Task<string?> PickFolderAsync(string title);
 
     /// <summary>
     /// Picks a dashboard file to import; returns the chosen path or null if cancelled.
@@ -152,11 +123,6 @@ public interface ISessionDialogService
     Task ShowAgentsPaletteDialogAsync(AgentsOverviewViewModel agents);
 
     Task<bool> ShowPublisherKeyChangedDialogAsync(Cockpit.Core.Plugins.PluginKeyConsentRequest request) => Task.FromResult(false);
-
-    /// <summary>
-    /// Asks the operator to confirm a destructive action (remove a store/profile/plugin/…). Returns true only when they confirm; Cancel/✕/Esc return false. Shown over the topmost window.
-    /// </summary>
-    Task<bool> ShowConfirmationDialogAsync(string title, string message, string confirmLabel = "Remove");
 
     /// <summary>
     /// Shows the Set-status dialog (AC-32) seeded with <paramref name="currentStatusline"/>. Returns the new value

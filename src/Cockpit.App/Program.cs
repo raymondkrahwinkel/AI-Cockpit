@@ -403,7 +403,8 @@ sealed class Program
             await surfaces.ShowAsync(typeof(PluginStoreDialog), store, window);
         }, (title, message, confirmLabel) =>
             new ConfirmationDialog { DataContext = new ConfirmationDialogViewModel(title, message, confirmLabel) }
-                .ShowDialog<bool>(window.OwnedWindows.LastOrDefault() ?? window));
+                .ShowDialog<bool>(window.OwnedWindows.LastOrDefault() ?? window),
+            project => surfaces.ShowAsync(typeof(ProjectDialog), new ProjectDialog { DataContext = project, Title = project.DialogTitle }, window));
         if (cockpit is null)
         {
             return new ConfirmationDialog { DataContext = new ConfirmationDialogViewModel("Cannot open the remote window", startup.Refusal ?? "", "Close") };
