@@ -189,7 +189,7 @@ public class MobileProtocolVectorTests
         gateway.SendAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<byte[]>>(), Arg.Any<CancellationToken>())
             .Returns(AssistantChannelSendResult.Sent());
         var toPhone = new List<byte[]>();
-        await using var pairing = new MobilePairing(() => [], _ => null!, storage, null!, _ => gateway,
+        await using var pairing = new MobilePairing(() => [], _ => null!, _ => null!, storage, null!, _ => gateway,
             send: (_, _, frame) =>
             {
                 if (frame() is { } sealedFrame)
@@ -284,7 +284,7 @@ public class MobileProtocolVectorTests
             _ => new DepotBrowserModelTests.StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent("{\"pairingId\":\"pairing\",\"depotUrl\":\"https://depot.example.org\",\"expiresIn\":300}"),
-            }), storage, events, channel =>
+            }), _ => new DepotBrowserModelTests.StubHandler(_ => new HttpResponseMessage(HttpStatusCode.Forbidden)), storage, events, channel =>
             {
                 openedChannels.Add(channel);
                 return Substitute.For<IAssistantChannelGateway>();

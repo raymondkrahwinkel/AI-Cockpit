@@ -3,6 +3,8 @@ using System.ComponentModel;
 using Avalonia.Threading;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
+using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
 
@@ -14,14 +16,19 @@ namespace Cockpit.App.Plugins;
 internal sealed class PluginSessionObserver : ICockpitSessionObserver, IPluginActiveSession
 {
     private readonly CockpitViewModel _cockpit;
+    private readonly ISessionRegistry? _registry;
+    private readonly ISessionLauncher? _launcher;
 
     // Sessions we have hooked, so we can detach cleanly (no leaked handlers) and avoid double-hooking on a
     // spurious reset. The value is that session's own RateLimits handler, kept to unsubscribe the exact delegate added.
     private readonly Dictionary<SessionPanelViewModel, NotifyCollectionChangedEventHandler> _hooked = [];
 
-    public PluginSessionObserver(CockpitViewModel cockpit)
+    // AC-2256: the registry and launcher serve the transcript and permission reads; without them both read as nothing.
+    public PluginSessionObserver(CockpitViewModel cockpit, ISessionRegistry? registry = null, ISessionLauncher? launcher = null)
     {
         _cockpit = cockpit;
+        _registry = registry;
+        _launcher = launcher;
         _cockpit.PropertyChanged += _OnCockpitPropertyChanged;
         _cockpit.Sessions.CollectionChanged += _OnSessionsChanged;
 
@@ -41,18 +48,7 @@ internal sealed class PluginSessionObserver : ICockpitSessionObserver, IPluginAc
     // outside that collection (see `CockpitViewModel.CreateAssistantSession`) so nothing else that iterates
     // Sessions picks it up by accident, but it is still a session an "open sessions" list must be able to name.
     public IReadOnlyList<OpenCockpitSession> OpenSessions =>
-        [.. _cockpit.Sessions.Select(session => new OpenCockpitSession(
-            session.PaneId,
-            session.Title,
-            session.ActiveProfileLabel,
-            session.SessionStatus.ToString())),
-            .. _cockpit.AssistantPane is { } assistant
-                ? [new OpenCockpitSession(
-                    assistant.PaneId,
-                    assistant.Title,
-                    assistant.ActiveProfileLabel,
-                    assistant.SessionStatus.ToString())]
-                : Array.Empty<OpenCockpitSession>()];
+        [.. _cockpit.Sessions.Append<SessionPanelViewModel?>(_cockpit.AssistantPane).OfType<SessionPanelViewModel>().Select(_Describe)];
 
     public SessionUsageSnapshot? ActiveSessionUsage => _Snapshot(_cockpit.SelectedSession);
 
@@ -88,6 +84,26 @@ internal sealed class PluginSessionObserver : ICockpitSessionObserver, IPluginAc
 
         return UiThreadCall.Run(Read);
     }
+
+    public Task<PluginTranscriptSlice?> ReadTranscriptAsync(string paneId, int count) =>
+        _registry is null ? Task.FromResult<PluginTranscriptSlice?>(null) : PluginSessionReads.ReadTranscriptAsync(_registry, _launcher, paneId, count);
+
+    public Task<IReadOnlyList<PluginPendingPermission>> ReadPendingPermissionsAsync(string paneId) =>
+        _registry is null ? Task.FromResult<IReadOnlyList<PluginPendingPermission>>([]) : PluginSessionReads.ReadPendingPermissionsAsync(_registry, _launcher, paneId);
+
+    // AC-2256: the same answers SessionPanelHandle gives for these fields, read off the pane the list already walks.
+    private static OpenCockpitSession _Describe(SessionPanelViewModel session) =>
+        new(session.PaneId, session.Title, session.ActiveProfileLabel, session.SessionStatus.ToString())
+        {
+            Statusline = string.IsNullOrEmpty(session.Statusline) ? null : session.Statusline,
+            IsTerminal = session is TtyViewModel { IsTerminal: true },
+            HasReadableTranscript = session switch
+            {
+                SessionViewModel => true,
+                TtyViewModel tty => tty.HasReadableTranscript,
+                _ => false,
+            },
+        };
 
     // The selected session's ctx/5h/wk as a plugin reads it (AC-54), built from the same fields the header
     // pill renders, carrying the profile label so per-profile history has something to group on. Null when

@@ -1839,7 +1839,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // Injects text into this session's input surface and submits it — what a self-driving embedded run (AC-152) uses
     // to hand its agent a work brief without a human turn, unlike `InjectText` which only places the text
     // for the operator to send. A blank text does nothing.
-    public void InjectAndSubmit(string text)
+    public virtual void InjectAndSubmit(string text)
     {
         if (string.IsNullOrEmpty(text))
         {
