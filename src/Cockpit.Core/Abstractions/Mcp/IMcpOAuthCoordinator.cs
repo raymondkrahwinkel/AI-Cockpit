@@ -55,4 +55,9 @@ public interface IMcpOAuthCoordinator
     /// exactly as if it had no usable token, until a sign-in grants a different scope.
     /// </summary>
     Task ReportInsufficientScopeAsync(McpServerConfig server, string accessToken, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    /// <summary>
+    /// Remembers a transport's request for interactive authorization until its stored credential changes.
+    /// </summary>
+    Task ReportSignInRequiredAsync(McpServerConfig server, string accessToken, CancellationToken cancellationToken = default) => Task.CompletedTask;
 }

@@ -8,6 +8,7 @@ namespace Cockpit.Infrastructure.Mcp;
 internal sealed class McpSignInStageRecorder
 {
     private int _reached;
+    public bool SignInRequired { get; set; }
 
     // The furthest point any authorization attempt on these options got.
     public McpSignInStage Reached => (McpSignInStage)Volatile.Read(ref _reached);

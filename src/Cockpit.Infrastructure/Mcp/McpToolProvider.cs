@@ -242,6 +242,7 @@ internal sealed partial class McpToolProvider(
         var connected = false;
         string? accessToken = null;
         var scopeChallenge = server.Auth == McpServerAuth.OAuth ? new InsufficientScopeObserver() : null;
+        var signIn = new McpSignInStageRecorder();
 
         try
         {
@@ -258,7 +259,7 @@ internal sealed partial class McpToolProvider(
                 accessToken = access.AccessToken;
             }
 
-            var transport = _BuildTransport(server, sessionToken, agentName, gateway, paneId, scopeChallenge);
+            var transport = _BuildTransport(server, sessionToken, agentName, gateway, paneId, scopeChallenge, signIn);
             if (gateway)
             {
                 transport = new CancellationForwardingTransport(transport, _logger);
@@ -293,10 +294,17 @@ internal sealed partial class McpToolProvider(
             // Same idiom as McpOAuthCoordinator's non-interactive handshake: with nobody here to answer a browser
             // prompt, any failure at this transport reads as "no usable sign-in yet" rather than a specific status
             // code — the SDK's own OAuth negotiation can fail several ways before it ever gets as far as one.
-            _logger.LogWarning(ex, "MCP server {Name} needs an OAuth sign-in that has not happened yet; skipping its tools", server.Name);
-            if (scopeChallenge?.Seen == true && accessToken is not null)
+            if (signIn.SignInRequired && accessToken is not null)
+            {
+                await _oauthCoordinator.ReportSignInRequiredAsync(server, accessToken, CancellationToken.None).ConfigureAwait(false);
+            }
+            else if (scopeChallenge?.Seen == true && accessToken is not null)
             {
                 await _oauthCoordinator.ReportInsufficientScopeAsync(server, accessToken, CancellationToken.None).ConfigureAwait(false);
+            }
+            else if (!cancellationToken.IsCancellationRequested)
+            {
+                _logger.LogWarning(ex, "MCP server {Name} could not be connected; skipping its tools", server.Name);
             }
 
             return (null, NeedsSignIn);
@@ -374,7 +382,7 @@ internal sealed partial class McpToolProvider(
 
     private const string NeedsSignIn = "Needs a sign-in.";
 
-    private IClientTransport _BuildTransport(McpServerConfig server, string? sessionToken, string? agentName = null, bool gateway = false, string? paneId = null, DelegatingHandler? observer = null) => server.Transport switch
+    private IClientTransport _BuildTransport(McpServerConfig server, string? sessionToken, string? agentName = null, bool gateway = false, string? paneId = null, DelegatingHandler? observer = null, McpSignInStageRecorder? signIn = null) => server.Transport switch
     {
         McpTransport.Stdio when gateway => new SessionStdioClientTransport(server, paneId is null ? null : _mounts?.Set(paneId)?.Context, processAnchor, paneId, stdioProcesses, _logger),
         McpTransport.Stdio => new StdioClientTransport(new StdioClientTransportOptions
@@ -396,7 +404,7 @@ internal sealed partial class McpToolProvider(
             AdditionalHeaders = _Headers(server, sessionToken, agentName),
             // Never interactive (AC-1517): the browser opens only from a Sign in the operator pressed, so a token
             // the coordinator approved but the server then refuses ends as a failed connect, not as a stray tab.
-            OAuth = server.Auth == McpServerAuth.OAuth ? oauthAuthorizer.CreateOptions(server, interactive: false) : null,
+            OAuth = server.Auth == McpServerAuth.OAuth ? oauthAuthorizer.CreateOptions(server, interactive: false, stageRecorder: signIn) : null,
         }, timeout: gateway ? Timeout.InfiniteTimeSpan : null, observer),
         _ => throw new NotSupportedException($"Unsupported MCP transport {server.Transport}."),
     };
