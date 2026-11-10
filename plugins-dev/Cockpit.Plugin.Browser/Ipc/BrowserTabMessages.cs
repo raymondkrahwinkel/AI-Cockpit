@@ -16,3 +16,6 @@ internal sealed record BrowserTabFileDialog(int Mode, string Title, string Defau
 internal sealed record BrowserTabDevTools(string Method, IReadOnlyDictionary<string, object> Parameters);
 internal sealed record BrowserTabFrame(BrowserIpcFrameDescriptor Buffer, long Revision, long FrameId,
     int X, int Y, int Width, int Height, double Scale);
+internal sealed record BrowserTabPopup(long Revision, long SizeRevision, double Scale, bool Visible,
+    int X, int Y, int Width, int Height, BrowserIpcFrameDescriptor? Buffer = null);
+internal sealed record BrowserTabNewTab(string Address, long ControlRevision);
