@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2154: compose non-Latin text in development Browser host tabs, position IME candidates at the caret across display scales, and cancel composition when the tab loses focus or closes.
+
 - AC-2153: keep Browser host copy, cut, paste and typed text in the focused tab, refuse late keys after focus moves or the host stops, and retain accumulated touchpad scrolling.
 
 - AC-2152: choose operator downloads and upload files in the Browser host through the normal file dialog; cancel pending choices and transfers on control changes or shutdown, and refuse downloads and file choosers while an agent controls the tab.

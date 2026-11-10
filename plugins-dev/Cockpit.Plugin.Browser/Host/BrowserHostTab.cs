@@ -115,10 +115,14 @@ internal sealed partial class BrowserHostTab : IAsyncDisposable
             case "tab.visible":
                 if (message.Payload.GetBoolean() == false)
                 {
+                    _CancelIme(host);
                     _focused = false;
                     host.SetFocus(false);
                 }
                 host.WasHidden(message.Payload.GetBoolean() == false);
+                break;
+            case "tab.ime":
+                _Ime(host, message.Payload.Deserialize<BrowserTabIme>() ?? throw new InvalidDataException("Missing browser composition."));
                 break;
             case "tab.input":
                 var input = message.Payload.Deserialize<BrowserTabInput>() ?? throw new InvalidDataException("Missing browser input.");
@@ -340,6 +344,10 @@ internal sealed partial class BrowserHostTab : IAsyncDisposable
             case "wheel": host.SendMouseWheelEvent(mouse, input.DeltaX, input.DeltaY); break;
             case "focus":
                 _focused = input.Up == false;
+                if (_focused == false)
+                {
+                    _CancelIme(host);
+                }
                 host.SetFocus(_focused);
                 break;
             case "key" when input.Character is >= 0 and <= char.MaxValue:
@@ -516,6 +524,7 @@ internal sealed partial class BrowserHostTab : IAsyncDisposable
             }
             if (_browser is { } browser)
             {
+                _CancelIme(browser.GetHost());
                 browser.GetHost().CloseBrowser(true);
             }
             else if (_creationPending == false)
@@ -734,7 +743,8 @@ internal sealed partial class BrowserHostTab : IAsyncDisposable
         }
         protected override void OnAcceleratedPaint(CefBrowser browser, CefPaintElementType type, CefRectangle[] dirtyRects, CefAcceleratedPaintInfo info) { }
         protected override void OnScrollOffsetChanged(CefBrowser browser, double x, double y) { }
-        protected override void OnImeCompositionRangeChanged(CefBrowser browser, CefRange selectedRange, CefRectangle[] characterBounds) { }
+        protected override void OnImeCompositionRangeChanged(CefBrowser browser, CefRange selectedRange, CefRectangle[] characterBounds) =>
+            owner._ImeRange(selectedRange, characterBounds);
         protected override void OnPopupSize(CefBrowser browser, CefRectangle rect) { }
     }
 }

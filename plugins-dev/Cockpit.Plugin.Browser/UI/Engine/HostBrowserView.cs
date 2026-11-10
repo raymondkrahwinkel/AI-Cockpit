@@ -11,7 +11,7 @@ using Cockpit.Plugin.Browser.Ipc;
 
 namespace Cockpit.Plugin.Browser.UI.Engine;
 
-internal sealed class HostBrowserView : BrowserView
+internal sealed partial class HostBrowserView : BrowserView
 {
     private readonly BrowserHostClient _host;
     private readonly Channel<Command> _commands = Channel.CreateBounded<Command>(64);
@@ -43,6 +43,8 @@ internal sealed class HostBrowserView : BrowserView
         _host = host;
         Focusable = true;
         ClipToBounds = true;
+        _ime = new ImeClient(this);
+        TextInputMethodClientRequested += (_, e) => e.Client = _ime;
         host.RegisterTab(TabId, _HandleAsync);
         _direct = _created.Task;
         _sender = _SendAsync(address);
@@ -151,7 +153,7 @@ internal sealed class HostBrowserView : BrowserView
             return;
         }
         var command = new Command(operation, JsonSerializer.SerializeToElement(payload),
-            payload is BrowserTabInput { Kind: "key" } ? _focusRevision : null);
+            payload is BrowserTabInput { Kind: "key" } or BrowserTabIme ? _focusRevision : null);
         lock (_commandGate)
         {
             if (payload is BrowserTabInput { Kind: "move" or "wheel" } pointer)
@@ -258,6 +260,10 @@ internal sealed class HostBrowserView : BrowserView
                     OnTitleChanged(state.Title);
                     OnLoadingChanged(state.Loading, state.Back, state.Forward);
                     Failure = state.Failure;
+                    if (state.Ime is { } ime)
+                    {
+                        _ime.Present(ime);
+                    }
                     _heldOpen = state.Held is not null;
                     if (state.Held is { } held && held.Id != _heldId)
                     {
@@ -328,6 +334,7 @@ internal sealed class HostBrowserView : BrowserView
 
     private void _Fail(string reason)
     {
+        _ime.Cancel();
         _faulted = true;
         Failure = reason;
         _commands.Writer.TryComplete();
@@ -338,6 +345,7 @@ internal sealed class HostBrowserView : BrowserView
 
     public override Task CloseAsync()
     {
+        _ime.Cancel();
         _closing = true;
         _buffer?.Dispose();
         _buffer = null;
@@ -387,6 +395,7 @@ internal sealed class HostBrowserView : BrowserView
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
+        _ime.Cancel();
         base.OnDetachedFromVisualTree(e);
         _Queue("tab.visible", false);
     }
@@ -481,6 +490,7 @@ internal sealed class HostBrowserView : BrowserView
     }
     protected override void OnLostFocus(FocusChangedEventArgs e)
     {
+        _ime.Cancel();
         base.OnLostFocus(e);
         Interlocked.Increment(ref _focusRevision);
         _Queue("tab.input", new BrowserTabInput("focus", Up: true));
@@ -493,6 +503,11 @@ internal sealed class HostBrowserView : BrowserView
             return;
         }
         OnOperatorInput();
+        if (_ime.IsComposing)
+        {
+            e.Handled = true;
+            return;
+        }
         _Key(e);
         if (e.Key == Key.Enter)
         {
@@ -507,7 +522,10 @@ internal sealed class HostBrowserView : BrowserView
         {
             return;
         }
-        _Key(e, up: true);
+        if (_ime.IsComposing == false)
+        {
+            _Key(e, up: true);
+        }
         e.Handled = true;
     }
     protected override void OnTextInput(TextInputEventArgs e)
@@ -518,6 +536,11 @@ internal sealed class HostBrowserView : BrowserView
             return;
         }
         OnOperatorInput();
+        if (_ime.Commit(e.Text ?? string.Empty))
+        {
+            e.Handled = true;
+            return;
+        }
         foreach (char character in e.Text ?? string.Empty)
         {
             _Queue("tab.input", new BrowserTabInput("key", Key: character, Character: character));
