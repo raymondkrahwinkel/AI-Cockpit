@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2296/AC-2297: paired phones show session mail as collapsible cards with sender names and answer assistant question cards through the device-bound operator channel. Closed cards retain their answer or resolution (host 0.178.0, plugin SDK 3.89.0, Depot 0.64.0).
+
 - Fixed paired phones staying offline after signing in to Depot again: the mobile relay reconnects without restarting Cockpit and keeps the saved phone keys (Depot plugin 0.62.2).
 - AC-2275: paired phones can send tasks from the session overview and start or stop agent sessions on a chosen desk through the authenticated operator channel. Retried starts reuse the host result (host 0.177.0, plugin SDK 3.88.0, Depot 0.63.0).
 - AC-2275: externally submitted tasks are refused while a session needs attention or has an open permission or question, so task text cannot approve a TTY permission dialog.

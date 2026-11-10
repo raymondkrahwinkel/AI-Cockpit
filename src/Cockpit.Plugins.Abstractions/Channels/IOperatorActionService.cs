@@ -6,6 +6,7 @@ public sealed record OperatorAction(string Id, string Revision, string Kind, str
     public string? Title { get; init; }
     public string? Risk { get; init; }
     public string? SourcePlugin { get; init; }
+    public IReadOnlyList<AssistantChannelQuestion> Questions { get; init; } = [];
 }
 
 /// <summary>A pending decision and its one-use capability, scoped to one authenticated channel.</summary>
@@ -14,6 +15,7 @@ public sealed record OperatorPendingAction(string Id, string Revision, string Ki
     public string? Title { get; init; }
     public string? Risk { get; init; }
     public string? SourcePlugin { get; init; }
+    public IReadOnlyList<AssistantChannelQuestion> Questions { get; init; } = [];
 }
 
 /// <summary>The host confirmed the decision, or refused an obsolete or unauthorised response.</summary>
@@ -33,6 +35,11 @@ public interface IOperatorActionChannel : IDisposable
     IReadOnlyList<OperatorPendingAction> Snapshot { get; }
     event EventHandler? Changed;
     Task<OperatorActionResult> RespondAsync(string id, string revision, string capability, string decision);
+    /// <summary>
+    /// Answers a question using this device's current one-use capability.
+    /// </summary>
+    Task<OperatorActionResult> AnswerQuestionsAsync(string id, string revision, string capability, IReadOnlyList<IReadOnlyList<string>> answers) =>
+        Task.FromResult(new OperatorActionResult(false, "This host cannot answer questions."));
 }
 
 /// <summary>Generic host seam between pending decision owners and authenticated operator transports.</summary>

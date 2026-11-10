@@ -46,6 +46,17 @@ public sealed partial class OperatorActionService : IOperatorActionService, ISin
         return registration;
     }
 
+    internal IDisposable RegisterQuestion(OperatorAction action, Func<IReadOnlyList<IReadOnlyList<string>>, Task<bool>> answer, Func<bool> isCurrent)
+    {
+        var registration = new _Registration(this, action, _ => Task.FromResult(false), isCurrent) { Answer = answer };
+        lock (_gate)
+        {
+            _actions.Add(action.Id, registration);
+        }
+        _Changed();
+        return registration;
+    }
+
     internal IOperatorActionChannel OpenChannel(string? deviceId = null)
     {
         // The returned object is the authenticated device binding; no response can select another channel by id.
@@ -115,12 +126,14 @@ public sealed partial class OperatorActionService : IOperatorActionService, ISin
                 return new OperatorPendingAction(action.Id, action.Revision, action.Kind, action.Target, action.Summary, item.InFlight ? [] : action.Decisions, capability)
                 {
                     Title = action.Title, Risk = action.Risk, SourcePlugin = action.SourcePlugin,
+                    Questions = action.Questions,
                 };
             })];
         }
     }
 
-    private async Task<OperatorActionResult> _RespondAsync(_Channel channel, string id, string revision, string capability, string decision)
+    private async Task<OperatorActionResult> _RespondAsync(_Channel channel, string id, string revision, string capability, string decision,
+        IReadOnlyList<IReadOnlyList<string>>? answers = null)
     {
         _Registration? registration;
         lock (_gate)
@@ -128,7 +141,9 @@ public sealed partial class OperatorActionService : IOperatorActionService, ISin
             if (McpRequestContext.CurrentCaller is not null || !_channels.Contains(channel)
                 || !channel.Capabilities.TryGetValue(id, out var expected) || !string.Equals(expected, capability, StringComparison.Ordinal)
                 || !_actions.TryGetValue(id, out registration) || registration.InFlight || registration.Action.Revision != revision
-                || !registration.Action.Decisions.Contains(decision, StringComparer.Ordinal))
+                || (answers is null ? !registration.Action.Decisions.Contains(decision, StringComparer.Ordinal)
+                    : registration.Answer is null || answers.Count != registration.Action.Questions.Count
+                        || registration.Action.Questions.Where((question, index) => !Assistant.OperatorMessageRegistry.Takes(question, answers[index])).Any()))
             {
                 return new OperatorActionResult(false, "This action is no longer available for this device.");
             }
@@ -156,7 +171,9 @@ public sealed partial class OperatorActionService : IOperatorActionService, ISin
         var accepted = false;
         try
         {
-            accepted = await registration.Respond(decision).ConfigureAwait(false);
+            accepted = answers is not null && registration.Answer is { } answer
+                ? await answer(answers).ConfigureAwait(false)
+                : await registration.Respond(decision).ConfigureAwait(false);
             _logger.LogInformation("An operator decision from a phone was {Result}.", accepted ? "accepted" : "obsolete");
             return new OperatorActionResult(accepted, accepted ? null : "This action was already handled.");
         }
@@ -232,6 +249,7 @@ public sealed partial class OperatorActionService : IOperatorActionService, ISin
         public OperatorAction Action { get; } = action;
         public Func<string, Task<bool>> Respond { get; } = respond;
         public Func<bool> IsCurrent { get; } = isCurrent;
+        public Func<IReadOnlyList<IReadOnlyList<string>>, Task<bool>>? Answer { get; init; }
         public bool InFlight { get; set; }
         public void Dispose() => owner._Remove(this);
     }
@@ -250,6 +268,8 @@ public sealed partial class OperatorActionService : IOperatorActionService, ISin
         public event EventHandler? Changed;
         public Task<OperatorActionResult> RespondAsync(string id, string revision, string capability, string decision) =>
             owner._RespondAsync(this, id, revision, capability, decision);
+        public Task<OperatorActionResult> AnswerQuestionsAsync(string id, string revision, string capability, IReadOnlyList<IReadOnlyList<string>> answers) =>
+            owner._RespondAsync(this, id, revision, capability, string.Empty, answers);
         public void Publish() => Changed?.Invoke(this, EventArgs.Empty);
         public void Dispose() => owner._Close(this);
     }

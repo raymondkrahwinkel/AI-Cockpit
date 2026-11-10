@@ -315,8 +315,8 @@ phone only after the phone's `ready` opened (§ 9.4), apart from its own initial
 | `cockpit.status` | `{ "replyTo", "name": string, "version": string?, "assistant": bool, "images": bool }` | After `cockpit.status`: the machine name, the Cockpit version, whether this Cockpit has an assistant, and whether the assistant sees images right now (§ 12). |
 | `attachment.refused` | `{ "attachmentId", "error": string }` | An image was dropped (§ 12). |
 
-A `row` is `{ "id", "kind", "text", "timestamp", "toolName"?, "resultText"?, "truncated": bool }`. `kind` is one of
-`assistantText`, `userText`, `toolUse`, `toolResult`, `thinking`, `question`, `turnCompleted`, `error`, `divider`. A row
+A `row` is `{ "id", "kind", "text", "timestamp", "toolName"?, "resultText"?, "senderTitle"?, "questionId"?, "questionJson"?, "pendingQuestion": bool, "truncated": bool }`. `kind` is one of
+`assistantText`, `userText`, `toolUse`, `toolResult`, `thinking`, `question`, `turnCompleted`, `error`, `divider`, `inbox`, `status`. Inbox and Status retain their real type and visible sender name in history and live rows; clients ignore unknown kinds. `questionJson` carries saved answers or a resolution, and `questionId` matches the current operator action. A row
 too big for one frame keeps the start of its text and says `truncated: true`. Images go from the phone to the Cockpit
 only (§ 12); nothing of an image comes back.
 
@@ -526,8 +526,8 @@ other plugins may publish requests but cannot open an operator channel. The fact
 Chat text and `assistant.send`/`session.send` do not carry this authority; no MCP tool mints or submits it.
 
 Ordinary questions have `kind: question`, `questionId`, and `questions` containing every question's text, header,
-options (label and description), `multiSelect` and `allowOther`. Their capability is empty.
-They use `assistant.answer` with `{questionId, answers: [[string]]}` (one selection group per question),
+options (label and description), `multiSelect` and `allowOther`. They carry the same device-bound, one-use capability as other operator actions.
+They use `assistant.answer` with `{questionId, revision, capability, answers: [[string]]}` (one selection group per question),
 answered by `assistant.answered` with `{replyTo, ok, error}`. These are content answers, never operator approvals.
 The existing desktop question/consent messages remain available to older phone versions.
 

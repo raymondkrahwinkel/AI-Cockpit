@@ -7,6 +7,8 @@ using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Infrastructure.HeavyRuns;
+using System.Text.Json.Nodes;
+using Cockpit.Plugins.Abstractions.Channels;
 
 namespace Cockpit.Infrastructure.Sessions;
 
@@ -648,6 +650,37 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
         }
 
         _RaisePendingStateChange();
+    }
+
+    public Task<bool> AnswerQuestionAsync(string rowId, string? inputJson, IReadOnlyList<IReadOnlyList<string>> answers)
+    {
+        lock (_gate)
+        {
+            var row = _rows.FirstOrDefault(row => row.Id == rowId && row.Kind == "Question" && row.IsPendingBrokerAnswer);
+            if (row is null || row.InputJson != inputJson || JsonNode.Parse(row.InputJson ?? "{}") is not JsonObject input)
+            {
+                return Task.FromResult(false);
+            }
+            var questions = StructuredQuestionJson.Parse(row.InputJson);
+            if (questions.Count != answers.Count || questions.Where((question, index) => !Assistant.OperatorMessageRegistry.Takes(question, answers[index])).Any())
+            {
+                return Task.FromResult(false);
+            }
+            var saved = new JsonObject();
+            for (var index = 0; index < questions.Count; index++)
+            {
+                saved[questions[index].Question] = new JsonObject
+                {
+                    ["options"] = new JsonArray([.. answers[index].Select(answer => (JsonNode)JsonValue.Create(answer))]),
+                };
+            }
+            input["answers"] = saved;
+            _host.RecordRow(row with { IsPendingBrokerAnswer = false, InputJson = input.ToJsonString() });
+            _Submit(new QueuedPrompt(string.Join("\n", questions.Select((question, index) =>
+                StructuredQuestionJson.AnswerText(question.Question, string.Join(", ", answers[index])))), []));
+        }
+        _RaisePendingStateChange();
+        return Task.FromResult(true);
     }
 
     public bool AcceptsImages => CanPasteImages;

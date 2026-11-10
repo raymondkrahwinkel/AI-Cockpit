@@ -249,6 +249,32 @@ public partial class SessionViewModel
             row.Id, row.Text, row.ThreadProjectIds, [.. row.ThreadTags.Select(tag => tag.Name)], row.Timestamp)),
     ];
 
+    internal bool AnswerBrokerQuestion(string rowId, string? inputJson, IReadOnlyList<IReadOnlyList<string>> answers)
+    {
+        if (Transcript.FirstOrDefault(row => row.Id == rowId && row.Kind == TranscriptEntryKind.Question) is not
+            { IsPendingBrokerAnswer: true, QuestionPrompts: { Count: > 0 } prompts } card
+            || card.InputJson != inputJson || answers.Count != prompts.Count)
+        {
+            return false;
+        }
+
+        for (var index = 0; index < prompts.Count; index++)
+        {
+            var prompt = prompts[index];
+            foreach (var option in prompt.Options)
+            {
+                option.IsSelected = answers[index].Contains(option.Label, StringComparer.Ordinal);
+            }
+            var other = answers[index].Where(answer => !prompt.Options.Any(option => option.Label == answer)).ToList();
+            prompt.OtherText = string.Join(", ", other);
+            prompt.IsOtherSelected = other.Count > 0;
+            prompt.IsAnswered = true;
+        }
+        card.IsPendingBrokerAnswer = false;
+        InjectAndSubmit(string.Join("\n", prompts.Select(_BuildBrokerAnswerText)));
+        return true;
+    }
+
     // resolve_structured_question (AC-1937): the card closes with how and why, and keeps its place in the conversation.
     public AssistantThreadResult ResolveBrokerQuestion(string questionId, string status, string? note)
     {
