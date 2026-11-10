@@ -173,6 +173,13 @@ public sealed record AssistantChannelHistoryPage(IReadOnlyList<AssistantChannelR
 public interface IAssistantChannelGateway : IDisposable
 {
     /// <summary>
+    /// Whether the assistant sees images right now (AC-2265), so a channel can offer an attach button only where it
+    /// works. False while the assistant is not running, and on a host that predates this member; images sent anyway
+    /// come back as <see cref="AssistantChannelSendResult.ImagesRefused"/>.
+    /// </summary>
+    bool AcceptsImages => false;
+
+    /// <summary>
     /// Atomically claims an idle assistant for a host-enforced read-only turn; a refusal queues nothing.
     /// Cancellation before Started withdraws the claim. Completion carries the answer after TurnCompleted.
     /// </summary>

@@ -75,5 +75,13 @@
     "counter": 0,
     "cockpitToPhone": "010000000000000000c31688e6ec373d0214539f345850253b9465565e441f4e40d3a699a321f8d5696a72d38ad8ef539140e487c357224c75822c7dcb748d38",
     "phoneToCockpit": "01000000000000000023a024814662109a0feaafaae93e0c122fda90ff63555a95bb183a61e9c1c56716f8b115622db5656fd3b787646f70acb19f69c2f93282"
+  },
+  "attachment": {
+    "image": "ffd8ffe000104a46494600010100000100010000ffd9",
+    "chunks": [
+      "{\"type\":\"attachment.chunk\",\"id\":\"p2\",\"body\":{\"attachmentId\":\"a1\",\"seq\":0,\"total\":2,\"mime\":\"image/jpeg\",\"data\":\"/9j/4AAQSkZJRgAB\"}}",
+      "{\"type\":\"attachment.chunk\",\"id\":\"p3\",\"body\":{\"attachmentId\":\"a1\",\"seq\":1,\"total\":2,\"mime\":\"image/jpeg\",\"data\":\"AQAAAQABAAD/2Q==\"}}"
+    ],
+    "send": "{\"type\":\"assistant.send\",\"id\":\"p4\",\"body\":{\"text\":\"kijk\",\"attachmentIds\":[\"a1\"]}}"
   }
 }

@@ -24,6 +24,7 @@ internal sealed class MobileAssistantChannel : IDisposable
     private readonly string? _cockpitVersion;
     private readonly ILogger? _logger;
     private readonly MobileSessionChannel? _sessions;
+    private readonly MobileAttachments _attachments;
     private readonly Lock _gate = new();
     private readonly Dictionary<Guid, AssistantChannelRow> _dirty = [];
     private readonly Dictionary<Guid, string> _prompts = [];
@@ -41,7 +42,8 @@ internal sealed class MobileAssistantChannel : IDisposable
         string cockpitName,
         string? cockpitVersion,
         ILogger? logger = null,
-        ICockpitHost? host = null)
+        ICockpitHost? host = null,
+        TimeProvider? time = null)
     {
         _deviceId = deviceId;
         _gateway = gateway;
@@ -50,6 +52,11 @@ internal sealed class MobileAssistantChannel : IDisposable
         _cockpitVersion = cockpitVersion;
         _logger = logger;
         _sessions = host is null ? null : new MobileSessionChannel(host, _Send, logger);
+        _attachments = new MobileAttachments((attachmentId, error) => _Send("attachment.refused", writer =>
+        {
+            writer.WriteString("attachmentId", attachmentId);
+            writer.WriteString("error", error);
+        }), time);
         if (gateway is not null)
         {
             gateway.RowChanged += _OnRowChanged;
@@ -107,8 +114,11 @@ internal sealed class MobileAssistantChannel : IDisposable
 
         switch (type)
         {
+            case "attachment.chunk":
+                _attachments.Add(_String(body, "attachmentId"), _Int(body, "seq"), _Int(body, "total"), _String(body, "mime"), _String(body, "data"));
+                break;
             case "assistant.send":
-                _ = _SendToAssistantAsync(id, _String(body, "text"));
+                _ = _SendToAssistantAsync(id, _String(body, "text"), _attachments.Take(_Strings(body, "attachmentIds")));
                 break;
             case "assistant.history":
                 _ = _HistoryAsync(id, _Int(body, "limit") ?? HistoryLimit, _String(body, "before"));
@@ -123,6 +133,7 @@ internal sealed class MobileAssistantChannel : IDisposable
                     writer.WriteString("name", _cockpitName);
                     writer.WriteString("version", _cockpitVersion);
                     writer.WriteBoolean("assistant", _gateway is not null);
+                    writer.WriteBoolean("images", _gateway?.AcceptsImages == true);
                 });
                 break;
             case "sessions.list" when _sessions is not null:
@@ -132,7 +143,7 @@ internal sealed class MobileAssistantChannel : IDisposable
                 _ = _sessions.TranscriptAsync(id, _String(body, "paneId"), _Int(body, "count"), _Int(body, "since"));
                 break;
             case "session.send" when _sessions is not null:
-                _ = _sessions.SendAsync(id, _String(body, "paneId"), _String(body, "text"));
+                _ = _sessions.SendAsync(id, _String(body, "paneId"), _String(body, "text"), _attachments.Take(_Strings(body, "attachmentIds")));
                 break;
             default:
                 _logger?.LogDebug("A phone sent a message type this Cockpit does not know; ignored.");
@@ -147,6 +158,8 @@ internal sealed class MobileAssistantChannel : IDisposable
         {
             _chatOpen = false;
         }
+
+        _attachments.Clear();
     }
 
     public void Dispose()
@@ -164,6 +177,7 @@ internal sealed class MobileAssistantChannel : IDisposable
             _question = null;
         }
 
+        _attachments.Dispose();
         if (_gateway is not null)
         {
             _gateway.RowChanged -= _OnRowChanged;
@@ -174,14 +188,22 @@ internal sealed class MobileAssistantChannel : IDisposable
         }
     }
 
-    private async Task _SendToAssistantAsync(string? id, string? text)
+    private async Task _SendToAssistantAsync(string? id, string? text, (IReadOnlyList<byte[]> Images, string? Refusal) attached)
     {
+        var (images, imagesRefused) = attached;
+        if (images.Count > 0 && _gateway is { AcceptsImages: false })
+        {
+            // The host would turn them into an error row of its own; the phone hears it here, with the text still going.
+            imagesRefused = Join(imagesRefused, "the assistant cannot see images");
+            images = [];
+        }
+
         AssistantChannelSendResult result;
         if (_gateway is null)
         {
             result = AssistantChannelSendResult.Refused("The assistant is not running on this Cockpit.");
         }
-        else if (string.IsNullOrWhiteSpace(text))
+        else if (string.IsNullOrWhiteSpace(text) && images.Count == 0)
         {
             result = AssistantChannelSendResult.Refused("The message is empty.");
         }
@@ -195,7 +217,7 @@ internal sealed class MobileAssistantChannel : IDisposable
         {
             try
             {
-                result = await _gateway.SendAsync(_deviceId, text, [], CancellationToken.None).ConfigureAwait(false);
+                result = await _gateway.SendAsync(_deviceId, text ?? string.Empty, images, CancellationToken.None).ConfigureAwait(false);
             }
             catch (Exception exception) when (exception is not OutOfMemoryException)
             {
@@ -217,6 +239,11 @@ internal sealed class MobileAssistantChannel : IDisposable
             if (result.Error is { } error)
             {
                 writer.WriteString("error", error);
+            }
+
+            if (Join(imagesRefused, result.ImagesRefused) is { } refused)
+            {
+                writer.WriteString("imagesRefused", refused);
             }
         });
     }
@@ -541,6 +568,15 @@ internal sealed class MobileAssistantChannel : IDisposable
 
     private static string? _String(JsonElement body, string name) =>
         body.ValueKind == JsonValueKind.Object && body.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+
+    // The reasons images did not go along, from here and from the host, as one line for the sender.
+    internal static string? Join(string? first, string? second) =>
+        first is null ? second : second is null ? first : $"{first}; {second}";
+
+    private static List<string> _Strings(JsonElement body, string name) =>
+        body.ValueKind == JsonValueKind.Object && body.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Array
+            ? [.. value.EnumerateArray().Where(item => item.ValueKind == JsonValueKind.String).Select(item => item.GetString()!)]
+            : [];
 
     private static int? _Int(JsonElement body, string name) =>
         body.ValueKind == JsonValueKind.Object && body.TryGetProperty(name, out var value)

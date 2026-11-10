@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2265: a paired phone can send images with a message to the assistant or to a session, in chunks inside the encrypted channel (JPEG, PNG or WebP, at most 4 per message and 8 MB each). A target that cannot see images still gets the text, and the phone is told why the images stayed behind. Plugins get `SendToSessionAsync(paneId, text, images)` with `SessionSendResult`, plus `AcceptsImages` on `OpenCockpitSession` and `IAssistantChannelGateway` (plugin SDK 3.86.0, host 0.175.0, Depot plugin 0.61.0).
+
 - AC-2260: the Proxmox settings list shows which server is selected, a new server opens empty instead of taking another server's fields, every field has a label and a problem is flagged on its own row. A token without read permission now gets a clear message with the role it needs instead of empty lists, and Proxmox's own reason is passed on when a snapshot is refused (plugin 0.4.1).
 
 - AC-2252: strict Claude profiles enable the OS sandbox on Linux and macOS for both TTY and SDK sessions, with session write paths, open network hosts and no unsandboxed retry. Missing sandbox support still permits startup with a warning. The server image includes bubblewrap and socat.
