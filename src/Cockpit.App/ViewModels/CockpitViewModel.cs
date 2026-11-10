@@ -6796,7 +6796,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [RelayCommand]
     private void OpenProjectFolder(Project? project)
     {
-        if (project?.SourceDirectory is not { Length: > 0 } directory || !Directory.Exists(directory))
+        // AC-2285: a server project's folder is never looked up on this machine.
+        if (IsRemoteWindow || project?.SourceDirectory is not { Length: > 0 } directory || !Directory.Exists(directory))
         {
             return;
         }

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2285: a server serves its projects' files and worktrees by project and relative path only: browse, read, save, create, rename and delete, plus listing, creating and removing a project's worktrees. A save made on an outdated version is refused and overwrites nothing. A path that leaves the project, or a link that points outside it, is refused. Sessions on a server show their worktree branch, and their file paths are no longer opened or previewed on this machine.
+
 - AC-2278: Options in a remote Cockpit window reads and saves the server's run limits, session behavior, clone/worktree roots, notifications, shell and diagnostics. Presentation stays on the client; webhook secrets remain on the server.
 
 - AC-2277: Open on a connected server starts its own Cockpit window, with ordinary navigation and session start on that server. The window starts no local backend; Options remain read-only until their server adapters are connected.

@@ -76,6 +76,17 @@ public sealed class MarkdownView : ContentControl
         set => SetValue(BasePathProperty, value);
     }
 
+    public static readonly StyledProperty<bool> OpensLocalFilesProperty =
+        AvaloniaProperty.Register<MarkdownView, bool>(nameof(OpensLocalFiles), defaultValue: true);
+
+    // AC-2285: false for a session on a server, whose paths name the server's disk: none is probed, made
+    // clickable or previewed here, where a same-named local file would be the one opened.
+    public bool OpensLocalFiles
+    {
+        get => GetValue(OpensLocalFilesProperty);
+        set => SetValue(OpensLocalFilesProperty, value);
+    }
+
     public static readonly StyledProperty<bool> StartsInsideCodeBlockProperty =
         AvaloniaProperty.Register<MarkdownView, bool>(nameof(StartsInsideCodeBlock));
 
@@ -198,6 +209,7 @@ public sealed class MarkdownView : ContentControl
         base.OnPropertyChanged(change);
         if (change.Property != MarkdownProperty
             && change.Property != BasePathProperty
+            && change.Property != OpensLocalFilesProperty
             && change.Property != PreserveLineBreaksProperty
             && change.Property != StartsInsideCodeBlockProperty
             && change.Property != EndsInsideCodeBlockProperty
@@ -925,7 +937,9 @@ public sealed class MarkdownView : ContentControl
         {
             if (block.Links.Count > 0)
             {
-                _OnLinkClick(block, block.Links, e, RegisteredLinkHandlers, LinkHandler);
+                _OnLinkClick(block, block.Links, e, RegisteredLinkHandlers, OpensLocalFiles
+                    ? LinkHandler
+                    : (Func<string, bool>)(url => LinkHandler?.Invoke(url) == true || !ExternalLink.TryParseWebAddress(url, out Uri? _)));
             }
         };
 
@@ -988,7 +1002,7 @@ public sealed class MarkdownView : ContentControl
                     // A code span that could be a file path (AC-642): the cheap vorm filter decides who gets
                     // asked, the memoised resolver — never on this thread — decides who is real. Still unknown
                     // or not a file: the run stays plain code, exactly as before.
-                    if (FilePathCandidate.TryParse(inline.Text, out var candidatePath, out var candidateLine))
+                    if (OpensLocalFiles && FilePathCandidate.TryParse(inline.Text, out var candidatePath, out var candidateLine))
                     {
                         var runOffset = offset;
                         var runLength = inline.Text.Length;
