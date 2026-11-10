@@ -164,13 +164,24 @@ internal sealed class OperatorActionSources : IDisposable
                 _permissions.Remove(key);
             }
 
+            var available = true;
+            async Task<bool> Respond(string decision)
+            {
+                try
+                {
+                    return _IsLive(handle) && await handle.RespondToPermissionRevisionAsync(permission, decision == "approve", OperatorDecisionOrigin.PhoneOperator).ConfigureAwait(false);
+                }
+                finally
+                {
+                    Volatile.Write(ref available, false);
+                }
+            }
+
             _permissions[key] = (permission, _actions.Register(
                 new OperatorAction(Guid.NewGuid().ToString("N"), Guid.NewGuid().ToString("N"), "permission", handle.PaneId,
                     permission.ToolName + "\n" + permission.InputJson, ["approve", "deny"]),
-                decision => _IsLive(handle)
-                    ? handle.RespondToPermissionRevisionAsync(permission, decision == "approve", OperatorDecisionOrigin.PhoneOperator)
-                    : Task.FromResult(false),
-                () => _IsLive(handle)));
+                Respond,
+                () => Volatile.Read(ref available) && _IsLive(handle)));
         }
     }
 

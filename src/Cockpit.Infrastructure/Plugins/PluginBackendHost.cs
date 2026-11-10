@@ -50,7 +50,7 @@ namespace Cockpit.Infrastructure.Plugins;
 // AC-1392: the `ICockpitHost` a plugin's backend part receives, scoped by `pluginId`, with no window behind it.
 // Sessions are reached through ISessionRegistry/ISessionLauncher, which marshal for themselves. The window members
 // are no-ops that say so once per plugin; the desktop's DesktopPluginHost overrides them until F2.14 (AC-1369).
-public class PluginBackendHost(
+internal class PluginBackendHost(
     string pluginId,
     string pluginName,
     IServiceProvider services,
@@ -134,7 +134,7 @@ public class PluginBackendHost(
 
     public IOperatorActionTransport? OperatorTransport => pluginId == "depot"
         ? services.GetService<OperatorActionService>() is { } service ? new _OperatorTransport(service) : null
-        : throw new UnauthorizedAccessException("This plugin is not an authorised operator transport.");
+        : null;
 
     private sealed class _OperatorTransport(OperatorActionService service) : IOperatorActionTransport
     {

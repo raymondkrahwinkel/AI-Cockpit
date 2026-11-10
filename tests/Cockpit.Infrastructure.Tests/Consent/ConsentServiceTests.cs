@@ -76,7 +76,7 @@ public sealed class ConsentServiceTests
         using var services = new ServiceCollection().AddSingleton(actions).BuildServiceProvider();
         PluginBackendHost Host(string pluginId) => new(pluginId, pluginId, services, Substitute.For<IPluginStorage>(),
             Substitute.For<ICockpitSessionObserver>(), Substitute.For<ICockpitActions>(), new PluginDiagnostics());
-        Assert.Throws<UnauthorizedAccessException>(() => Host("untrusted").OperatorTransport);
+        Assert.Null(Host("untrusted").OperatorTransport);
         Assert.Same(actions, Host("untrusted").OperatorActions);
         var transport = Assert.IsAssignableFrom<IOperatorActionTransport>(Host("depot").OperatorTransport);
         using var phone = transport.OpenChannel();
