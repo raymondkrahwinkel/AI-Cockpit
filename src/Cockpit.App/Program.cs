@@ -398,7 +398,7 @@ sealed class Program
 
             manager.StatusMessage = "Server plugin management is not available in this window yet.";
             var viewModel = new PluginStoreDialogViewModel(manager, filter);
-            var store = new PluginStoreDialog { DataContext = viewModel, Title = $"Plugin store ? {startup.Server}" };
+            var store = new PluginStoreDialog { DataContext = viewModel, Title = $"Plugin store · {startup.Server}" };
             await viewModel.LoadAsync();
             await surfaces.ShowAsync(typeof(PluginStoreDialog), store, window);
         });
