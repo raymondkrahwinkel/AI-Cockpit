@@ -58,7 +58,14 @@ internal sealed class McpOAuthAuthorizer(
                 : interactive
                     ? (context, cancellationToken) =>
                         _HandleAuthorizationAsync(server.Name, context.AuthorizationUri, context.RedirectUri, stageRecorder, cancellationToken)
-                    : _RefuseAuthorizationAsync,
+                    : (context, cancellationToken) =>
+                    {
+                        if (stageRecorder is not null)
+                        {
+                            stageRecorder.SignInRequired = true;
+                        }
+                        return Task.FromResult<AuthorizationResult?>(null);
+                    },
 
             // Without this the SDK caches the token with the transport and the cockpit never sees it: the sign-in
             // would work and then be thrown away with the connection. Storing it is what lets one login serve the
@@ -102,12 +109,6 @@ internal sealed class McpOAuthAuthorizer(
     // The non-interactive authorization step: there is nobody to log in, so it declines. Returning no code makes
     // the SDK report the authorization as failed, which the coordinator reads as "this needs the operator" — the
     // point being that starting a session must never make a browser window appear on its own.
-    private Task<AuthorizationResult?> _RefuseAuthorizationAsync(AuthorizationCallbackContext context, CancellationToken cancellationToken)
-    {
-        logger.LogInformation("An MCP server needs an interactive sign-in, which was not requested here; leaving it unauthorized.");
-        return Task.FromResult<AuthorizationResult?>(null);
-    }
-
     // Opens the system browser and waits on a loopback listener for the redirect, returning the code (or null on
     // failure/cancel). AC-457: each stage is recorded only where it is reached, never in advance.
     private async Task<AuthorizationResult?> _HandleAuthorizationAsync(

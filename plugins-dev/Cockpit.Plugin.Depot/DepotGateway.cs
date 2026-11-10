@@ -177,8 +177,7 @@ internal sealed class DepotGateway(ICockpitHost host, ILogger? logger = null) : 
     }
 
     // The connection's one gateway row, at the address the answer gives — never built here. Named after the connection.
-    internal IEnumerable<McpServerContribution> ContributionsFor(
-        DepotConnectionRegistration connection, string oauthAuthority, string oauthScopes, string hostOnlyScopes)
+    internal IEnumerable<McpServerContribution> ContributionsFor(DepotConnectionRegistration connection, string oauthAuthority)
     {
         if (!_states.TryGetValue(connection.Id, out var state) || !state.ScopeSupported || state.Url is null)
         {
@@ -189,12 +188,12 @@ internal sealed class DepotGateway(ICockpitHost host, ILogger? logger = null) : 
         [
             new McpServerContribution(Name: ServerNameFor(connection), Url: state.Url)
             {
-                Id = connection.Id,
+                // AC-2304: the SDK refreshes per transport; a gateway must never replace the connection's grant.
+                Id = connection.Id + ":gateway",
                 IncludeAgentName = true,
                 OAuthAuthority = oauthAuthority,
                 OAuthClientId = "depot",
-                OAuthScopes = oauthScopes,
-                OAuthHostOnlyScopes = hostOnlyScopes,
+                OAuthScopes = Scope + " offline_access",
             },
         ];
     }

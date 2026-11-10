@@ -110,8 +110,8 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
                 _RecheckLiveNotes(connection.Id);
             }
 
-            // AC-2217: after a (re)sign-in the gateway is read again; a sign-in on a gateway row is one on its connection too.
-            foreach (var connection in settings.Connections.Where(candidate => candidate.McpServerName == serverName || DepotGateway.IsGatewayServerName(serverName)))
+            // AC-2304: a gateway sign-in refreshes discovery for its own connection only.
+            foreach (var connection in settings.Connections.Where(candidate => candidate.McpServerName == serverName || DepotGateway.ServerNameFor(candidate) == serverName))
             {
                 _ = personal.ReadAsync(connection, CancellationToken.None);
             }
@@ -746,12 +746,12 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
     private DepotGateway _GatewayFor(ICockpitHost host) =>
         _gateway ??= new DepotGateway(host, host.Services?.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.Plugin.Depot"));
 
-    // AC-2217: the connection's own row, then its one gateway row (same sign-in), when that Depot offers the gateway.
+    // The connection's own row, then its separately authorized gateway when that Depot offers one.
     private IEnumerable<McpServerContribution> _ContributionsFor(DepotConnectionRegistration connection) =>
         _gateway is null
             ? [_ContributionFor(connection)]
             : [_ContributionFor(connection), .. _gateway.ContributionsFor(
-                connection, DepotUrlNormalizer.Origin(connection.Url) ?? connection.Url, _OAuthScopes(connection), _HostOnlyScopes)];
+                connection, DepotUrlNormalizer.Origin(connection.Url) ?? connection.Url)];
 
     // depot.gateway only where that Depot's own metadata lists it: an older Depot refuses an unknown scope and would
     // take the ordinary sign-in down with it (AC-2217). It is not host-only: sessions reach the gateway with it.

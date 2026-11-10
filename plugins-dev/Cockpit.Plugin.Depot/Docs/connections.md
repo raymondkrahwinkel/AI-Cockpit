@@ -9,6 +9,9 @@ A connection is a name and a Depot instance's base URL. Once it's signed in, eve
 instance's memory under **"Depot: &lt;name&gt;"** — Depot's own OAuth 2.1 + PKCE sign-in is what authorizes it;
 this plugin never asks for or holds a token itself.
 
+When an instance offers **Depot gateway: &lt;name&gt;**, that row has its own sign-in and refresh grant,
+limited to the gateway. Signing in or out there leaves the regular Depot connection and mobile relay signed in.
+
 ## Instance URL {#instance-url}
 
 Paste the instance's base URL, e.g. `https://depot.example.com`. Both a bare base URL and one with a trailing
