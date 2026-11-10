@@ -55,6 +55,7 @@ internal sealed partial class HostBrowserView : BrowserView
     internal override Guid HostGeneration => _host.Generation;
     internal override CancellationToken HostStopped => _host.Connection.Closed;
     internal string? Failure { get; private set; }
+    internal event Action<Task>? Closing;
     public override bool IsMuted => _muted;
     public override void SetMuted(bool muted)
     {
@@ -143,7 +144,11 @@ internal sealed partial class HostBrowserView : BrowserView
         }
         try
         {
-            return await _host.Connection.CallAsync(TabId, "operator", operation, JsonSerializer.SerializeToElement(payload), timeout).ConfigureAwait(false);
+            // Direct reads can arrive before the initial tab.create handshake has registered the tab in the host.
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(_host.Connection.Closed);
+            deadline.CancelAfter(timeout);
+            await _created.Task.WaitAsync(deadline.Token).ConfigureAwait(false);
+            return await _host.Connection.CallAsync(TabId, "operator", operation, JsonSerializer.SerializeToElement(payload), timeout, deadline.Token).ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or JsonException or OperationCanceledException or ObjectDisposedException or InvalidOperationException or TimeoutException)
         {
@@ -369,6 +374,10 @@ internal sealed partial class HostBrowserView : BrowserView
 
     public override Task CloseAsync()
     {
+        if (_close is not null)
+        {
+            return _close;
+        }
         _ClearPopup();
         _ime.Cancel();
         _closing = true;
@@ -376,7 +385,9 @@ internal sealed partial class HostBrowserView : BrowserView
         _buffer?.Dispose();
         _buffer = null;
         _commands.Writer.TryComplete();
-        return _close ??= _CloseAsync();
+        _close = _CloseAsync();
+        Closing?.Invoke(_close);
+        return _close;
     }
 
     private async Task _CloseAsync()

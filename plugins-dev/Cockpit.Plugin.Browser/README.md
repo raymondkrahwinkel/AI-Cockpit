@@ -77,8 +77,7 @@ then the supervisor reaps its adopted descendants. The leader stays waitable unt
 PID reuse. A separate pipe reports the host PID within five seconds; startup failure closes the lifetime writer.
 Supervisor exceptions produce one stderr line, captured separately and written to the client's trace log.
 The enginehost and CEF children cannot inherit the supervisor pipes. No `/proc` snapshot, systemd or cgroup is
-needed for containment. The existing in-process UI remains active until the live-plugin integration in AC-2157.
-Use this launcher only from the explicit local development harness meanwhile.
+needed for containment. The Browser UI owns a new engine/client per plugin instance (AC-2157).
 If the supervisor alone is killed, the client closes IPC and a responsive host can stop normally. A host that
 ignores EOF can survive supervisor SIGKILL or an OOM kill of only the supervisor; covering supervisor loss would
 require a kernel lifetime boundary and is outside this mechanism.
@@ -87,8 +86,11 @@ require a kernel lifetime boundary and is outside this mechanism.
 
 After `StartHostAsync`, `BrowserEngine.ForHost(client)` supplies the existing `BrowserModel`, `BrowserShell`
 and `BrowserHome` with `HostBrowserView`. This is an internal development/harness entry point, not a setting.
-The caller owns the client and awaits disposal after closing its tabs. `Shutdown` closes the pipe without
-blocking the Avalonia dispatcher. The shipped plugin still uses its original engine and `requiresRestart`.
+The engine owns the client. `Shutdown` cancels startup and closes the pipe, then closes tabs and disposes the
+client within the existing deadlines without blocking Avalonia. `ShutdownCompletion` lets the local harness
+await cleanup. Profiles and caches survive; live DOM, forms, JavaScript and audio are not restored.
+The plugin retains `requiresRestart: true`; live lifecycle measurements use an explicit local harness.
+Application shutdown requests do not tear down the engine: runtime disposal follows approved shutdown only.
 
 The model holds an opaque tab id and host generation through `BrowserView`; moving the shell between workspace
 and rail keeps that view and id. The host creates CEF browsers and the operator request context; the host route

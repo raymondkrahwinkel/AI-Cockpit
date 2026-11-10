@@ -1,5 +1,3 @@
-using System.Runtime.InteropServices;
-using Avalonia.Threading;
 using Cockpit.Core.Configuration;
 using Cockpit.Plugin.Browser.UI.Runtime;
 using Cockpit.Plugin.Browser.Host;
@@ -16,8 +14,7 @@ internal enum BrowserEngineState
     Unavailable,
 }
 
-// The one CEF of this process (AC-1711). Started on the first opening, not with Cockpit; shut down on the UI thread
-// after every browser has closed. Any failure becomes Unavailable with a reason: the panel shows it, Cockpit stays up.
+// One runtime-owned host, started on first opening. Native CEF stays in the child; a later enable gets a fresh engine.
 internal sealed class BrowserEngine
 {
     public const string SubprocessFileName = "Cockpit.Plugin.Browser.Subprocess";
@@ -27,18 +24,14 @@ internal sealed class BrowserEngine
 
     private static readonly TimeSpan CloseBudget = TimeSpan.FromSeconds(5);
 
-    private static string _libCefPath = string.Empty;
-    private static int _resolverSet;
-
     private readonly Func<IProgress<CefRuntimeProgress>, CancellationToken, Task<CefRuntimeResult>> _fetchRuntime;
     private readonly string _subprocessPath;
     private readonly string _rootCachePath;
-    private readonly List<CefBrowserView> _views = [];
+    private readonly List<BrowserView> _views = [];
     private readonly List<Task> _closing = [];
     private readonly CancellationTokenSource _stopping = new();
     private Task? _start;
-    private bool _cefLoaded;
-    private CefRequestContext? _userProfile;
+    private Task _hostStopped = Task.CompletedTask;
     private BrowserHostClient? _host;
 
     public BrowserEngine(
@@ -69,11 +62,23 @@ internal sealed class BrowserEngine
         State = BrowserEngineState.Ready,
     };
 
-    internal BrowserView CreateView(string address) => _host is { } host
-        ? new HostBrowserView(host, address)
-        : new CefBrowserView(this, address, UserProfile);
+    internal BrowserView CreateView(string address)
+    {
+        if (_stopping.IsCancellationRequested || _host is not { } host)
+        {
+            throw new InvalidOperationException("The browser host is not running.");
+        }
+        var view = new HostBrowserView(host, address);
+        _views.Add(view);
+        view.Closing += closed =>
+        {
+            _views.Remove(view);
+            Closing(closed);
+        };
+        return view;
+    }
 
-    public static BrowserEngine Shared { get; } = new(
+    internal static BrowserEngine Create() => new(
         (progress, token) =>
         {
             var catalog = CefRuntimeCatalog.Load();
@@ -103,11 +108,6 @@ internal sealed class BrowserEngine
 
     public event EventHandler? Changed;
 
-    // The user's own profile: persistent, under the root cache, apart from any agent profile (AC-1712).
-    public CefRequestContext UserProfile => _userProfile ??= CefRequestContext.CreateContext(
-        new CefRequestContextSettings { CachePath = MigrateProfileCachePath(_rootCachePath), PersistSessionCookies = true },
-        null);
-
     // AC-1869: move the profile from its "raymond" folder to "user" once, keeping its logins and cookies.
     internal static string MigrateProfileCachePath(string rootCachePath)
     {
@@ -127,9 +127,8 @@ internal sealed class BrowserEngine
     // Idempotent; completes when the engine is Ready or Unavailable, and never throws.
     public Task EnsureStartedAsync() => _start ??= _StartAsync();
 
-    // AC-1760: a failed fetch can be tried again in this process; once CEF has been loaded it cannot, CEF initializes
-    // once per process, and then only a restart helps.
-    public bool CanRetry => State == BrowserEngineState.Unavailable && _cefLoaded == false && _stopping.IsCancellationRequested == false
+    // A failed start can retry with a fresh child; the UI process never loads CEF.
+    public bool CanRetry => State == BrowserEngineState.Unavailable && _stopping.IsCancellationRequested == false
         && OperatingSystem.IsMacOS() == false;
 
     public Task RetryAsync()
@@ -172,7 +171,16 @@ internal sealed class BrowserEngine
             }
 
             _Set(BrowserEngineState.Starting, null);
-            _Initialize(runtime.Directory);
+            MigrateProfileCachePath(_rootCachePath);
+            _host = await BrowserHostClient.StartAsync(_subprocessPath, runtime.Directory, _rootCachePath,
+                Path.Combine(_rootCachePath, "ipc"), IsHardwareAccelerationEnabled, _stopping.Token);
+            if (_stopping.IsCancellationRequested)
+            {
+                await _host.DisposeAsync();
+                _host = null;
+                return;
+            }
+            _hostStopped = _HostStoppedAsync(_host);
             _Set(BrowserEngineState.Ready, null);
         }
         catch (OperationCanceledException)
@@ -185,36 +193,20 @@ internal sealed class BrowserEngine
         }
     }
 
-    private void _Initialize(string runtimeDir)
+    private async Task _HostStoppedAsync(BrowserHostClient host)
     {
-        using var terminationHandler = OperatingSystem.IsWindows() ? null : new PosixTerminationHandler();
-        var subprocess = _subprocessPath;
-        if (File.Exists(subprocess) == false)
+        var stopped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var registration = host.Connection.Closed.Register(() => stopped.TrySetResult());
+        await stopped.Task;
+        if (_stopping.IsCancellationRequested == false && ReferenceEquals(_host, host))
         {
-            throw new FileNotFoundException($"The browser subprocess is missing from the plugin ({Path.GetFileName(subprocess)}).");
+            _host = null;
+            await _StopHostAsync(host);
+            if (_stopping.IsCancellationRequested == false)
+            {
+                _Set(BrowserEngineState.Unavailable, "The browser engine stopped. Retry to start a new host.");
+            }
         }
-
-        _libCefPath = Path.Combine(runtimeDir, OperatingSystem.IsWindows() ? "libcef.dll" : "libcef.so");
-        if (Interlocked.Exchange(ref _resolverSet, 1) == 0)
-        {
-            // Once per assembly: a second resolver throws. libcef sits in the runtime cache, outside the plugin folder.
-            NativeLibrary.SetDllImportResolver(typeof(CefRuntime).Assembly, (name, _, _) =>
-                name == "libcef" ? NativeLibrary.Load(_libCefPath) : nint.Zero);
-        }
-
-        _CreateOwnerOnly(_rootCachePath);
-
-        _cefLoaded = true;
-        // CefGlue refuses a path off Windows (AC-1860); the DllImport resolver above already points at libcef.so.
-        if (OperatingSystem.IsLinux())
-        {
-            CefRuntime.Load();
-        }
-        else
-        {
-            CefRuntime.Load(runtimeDir);
-        }
-        CefRuntime.Initialize(new CefMainArgs([]), CreateSettings(runtimeDir, subprocess, _rootCachePath), BrowserHostRuntime.CreateApp(runtimeDir, Switches), nint.Zero);
     }
 
     // No RemoteDebuggingPort, ever: it opens every tab of every profile in the process to anyone on the machine
@@ -244,53 +236,67 @@ internal sealed class BrowserEngine
 
     public void Unregister(CefBrowserView view) => _views.Remove(view);
 
-    // On the UI thread, after every browser has closed; CEF's own threads answer the close, so waiting here is safe.
+    // Teardown never waits on the dispatcher: tab callbacks and a cancelled startup still need it to finish.
     public void Shutdown()
     {
-        if (Dispatcher.UIThread.CheckAccess() == false)
+        if (_stopping.IsCancellationRequested)
         {
-            Dispatcher.UIThread.InvokeAsync(Shutdown).Wait(CloseBudget + TimeSpan.FromSeconds(1));
             return;
         }
-
-        // A fetch still running when Cockpit closes must not start CEF afterwards (review AC-1711, finding 4).
         _stopping.Cancel();
-        if (_host is { } host)
-        {
-            _host = null;
-            host.Connection.Close();
-            _Set(BrowserEngineState.Unavailable, "The browser engine has shut down.");
-            return;
-        }
-        if (State != BrowserEngineState.Ready)
-        {
-            return;
-        }
-
-        // A copy: CloseAsync unregisters each view from _views while this walks it. Tabs closed earlier may still be
-        // closing, so those count too.
+        _host?.Connection.Close();
         foreach (var view in _views.ToArray())
         {
-            _closing.Add(view.CloseAsync());
+            _ = view.CloseAsync();
         }
-
         _views.Clear();
-        _userProfile = null;
-
-        // CefShutdown with a browser still open is what CEF forbids (Codex review AC-1711): then skip it and let the
-        // process exit take CEF and its subprocesses down.
-        if (Task.WaitAll([.. _closing], CloseBudget) == false)
-        {
-            _LogLine($"Skipped CefShutdown: {_closing.Count(task => task.IsCompleted == false)} browser(s) still open after {CloseBudget.TotalSeconds:0} s.");
-            _Set(BrowserEngineState.Unavailable, "The browser engine was left to the process exit.");
-            return;
-        }
-
-        CefRuntime.Shutdown();
         _Set(BrowserEngineState.Unavailable, "The browser engine has shut down.");
+        ShutdownCompletion = _StopHostAsync();
     }
 
-    // A close that started elsewhere (a tab closed by hand); Shutdown waits for it before CefShutdown.
+    internal Task ShutdownCompletion { get; private set; } = Task.CompletedTask;
+
+    private async Task _StopHostAsync()
+    {
+        try
+        {
+            if (_start is not null)
+            {
+                await _start;
+            }
+            await _hostStopped;
+            try
+            {
+                await Task.WhenAll(_closing).WaitAsync(CloseBudget);
+            }
+            finally
+            {
+                if (_host is { } host)
+                {
+                    _host = null;
+                    await _StopHostAsync(host).ConfigureAwait(false);
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            _LogLine($"Browser host cleanup failed: {exception.Message}");
+        }
+    }
+
+    private async Task _StopHostAsync(BrowserHostClient host)
+    {
+        try
+        {
+            await host.DisposeAsync().ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            _LogLine($"Browser host cleanup failed: {exception.Message}");
+        }
+    }
+
+    // A tab closed by hand may still have callbacks finishing when teardown starts.
     public void Closing(Task closed)
     {
         _closing.RemoveAll(task => task.IsCompleted);
@@ -317,17 +323,6 @@ internal sealed class BrowserEngine
         State = state;
         Reason = reason;
         Changed?.Invoke(this, EventArgs.Empty);
-    }
-
-    private static void _CreateOwnerOnly(string path)
-    {
-        if (OperatingSystem.IsWindows())
-        {
-            Directory.CreateDirectory(path);
-            return;
-        }
-
-        Directory.CreateDirectory(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
     }
 
     private static string _SubprocessExecutable() => OperatingSystem.IsWindows() ? SubprocessFileName + ".exe" : SubprocessFileName;
