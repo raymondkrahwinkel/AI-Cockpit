@@ -144,7 +144,11 @@ internal sealed partial class HostBrowserView : BrowserView
         }
         try
         {
-            return await _host.Connection.CallAsync(TabId, "operator", operation, JsonSerializer.SerializeToElement(payload), timeout).ConfigureAwait(false);
+            // Direct reads can arrive before the initial tab.create handshake has registered the tab in the host.
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(_host.Connection.Closed);
+            deadline.CancelAfter(timeout);
+            await _created.Task.WaitAsync(deadline.Token).ConfigureAwait(false);
+            return await _host.Connection.CallAsync(TabId, "operator", operation, JsonSerializer.SerializeToElement(payload), timeout, deadline.Token).ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or JsonException or OperationCanceledException or ObjectDisposedException or InvalidOperationException or TimeoutException)
         {
