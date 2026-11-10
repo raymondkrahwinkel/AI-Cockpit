@@ -36,6 +36,7 @@ internal sealed class ClaudeTtyProvider(Func<string, string?>? managedResolver =
         var guard = $"\"{TtyChildHooks.Relay.Replace('\\', '/')}\" --guard";
         hooks["PreToolUse"] = JsonSerializer.SerializeToNode(new[] { new { hooks = new[] { new { type = "command", command = guard, timeout = 5 } } } });
         settings["hooks"] = hooks;
+        ClaudeSandbox.Apply(settings, context.BaseEnvironment);
         statusLineSettings = settings.ToJsonString();
 
         // AC-408/AC-1091: the session id is the transcript from the CLI's own statusline snapshot,

@@ -19,7 +19,7 @@ USER root
 COPY --from=node /usr/local/ /usr/local/
 # No docker CLI and no UI libraries: the server needs neither (teardown without docker only logs a notice).
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl git gh openssh-client ripgrep sudo \
+    && apt-get install -y --no-install-recommends bubblewrap ca-certificates curl git gh openssh-client ripgrep socat sudo \
     && rm -rf /var/lib/apt/lists/* \
     && npm install --global "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" "@openai/codex@${CODEX_VERSION}" \
     && npm cache clean --force
