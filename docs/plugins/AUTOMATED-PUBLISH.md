@@ -97,9 +97,10 @@ resolves for plugins this host ships with; it is meaningless (and harmlessly ign
 Any field `store.json` sets overrides the manifest/preserved value; `name`, `description` and `author` may be
 overridden there too, but default to the manifest.
 
-## Why manual, and what comes next {#why-manual-and-what-comes-next}
+## Why automatic publishing waits for the nightly {#why-manual-and-what-comes-next}
 
-A plugin and the host change it depends on often land together, and a human is the right judge of "is the
-host out yet". The gate + steps above would make an **auto-on-merge** trigger (publish when a plugin's
-`plugin.json` version changes on `main`) safe later — only the trigger changes; the safety logic stays. This
-manual button is deliberately the first half of that.
+A plugin and the host change it depends on often land together. Waiting for a successful Nightly lets
+the host ship first. If only a nightly satisfies `minHostVersion`, the containment gate also requires
+that nightly to contain the latest commit touching the plugin. Automatic publishing defers a plugin
+that is ahead of the nightly; a manual run reports the failed gate. The manual button remains available
+for publishing one plugin, with an optional dry run or automatic store-PR merge.
