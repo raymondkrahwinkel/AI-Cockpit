@@ -6230,7 +6230,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // case-insensitively) — falling back to "OS default" when it is blank or no longer resolves on this machine.
     private void _BuildTerminalShellChoices(string configured)
     {
-        var shells = _terminalSettingsStore is Cockpit.Infrastructure.BackendApi.RemoteOptionsStores remote ? remote.Shells : ShellCatalog.Detect();
+        var shells = _terminalSettingsStore is Cockpit.Core.Abstractions.Remote.IRemoteOptionsStores remote ? remote.Shells : ShellCatalog.Detect();
 
         TerminalShellChoices.Clear();
         var osDefaultLabel = shells.Count > 0 ? $"OS default ({shells[0].DisplayName})" : "OS default";
@@ -6586,7 +6586,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // its path differs), otherwise the OS default — the first shell `ShellCatalog` detects.
     private ShellDescriptor? _ResolveDefaultShell()
     {
-        var shells = _terminalSettingsStore is Cockpit.Infrastructure.BackendApi.RemoteOptionsStores remote ? remote.Shells : ShellCatalog.Detect();
+        var shells = _terminalSettingsStore is Cockpit.Core.Abstractions.Remote.IRemoteOptionsStores remote ? remote.Shells : ShellCatalog.Detect();
 
         // The effective configured value: the typed path/command when on "Custom…", else the picked shell's id.
         var configured = (IsTerminalShellCustom ? TerminalCustomShell : SelectedTerminalShell?.Value)?.Trim();
@@ -7814,7 +7814,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _optionsSavingCategory = "sessions";
         await SaveWorktreeSettingsCommand.ExecuteAsync(null);
         await SaveCloneSettingsCommand.ExecuteAsync(null);
-        if (_notificationSettingsStore is Cockpit.Infrastructure.BackendApi.RemoteOptionsStores remote)
+        if (_notificationSettingsStore is Cockpit.Core.Abstractions.Remote.IRemoteOptionsStores remote)
         {
             _optionsSavingCategory = "appearance";
             await remote.SaveClientPresentationAsync();
@@ -8097,8 +8097,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 OptionsApplyBlockedCategoryTag = _optionsSavingCategory;
                 OptionsSectionErrors = new Dictionary<string, string>(StringComparer.Ordinal)
                 {
-                    [_optionsSavingCategory] = error is Cockpit.Infrastructure.BackendApi.BackendApiException serverError
-                        ? serverError.Description
+                    [_optionsSavingCategory] = error is Cockpit.Core.Abstractions.Remote.IRemoteCallFailure
+                        ? error.Message
                         : "Could not save these settings. Check the connection and available storage, then retry.",
                 };
                 return;
@@ -8197,7 +8197,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [RelayCommand]
     private async Task CancelOptionsAsync()
     {
-        var remote = _notificationSettingsStore as Cockpit.Infrastructure.BackendApi.RemoteOptionsStores;
+        var remote = _notificationSettingsStore as Cockpit.Core.Abstractions.Remote.IRemoteOptionsStores;
         if (remote is not null)
         {
             remote.ReadConfirmedValues = true;

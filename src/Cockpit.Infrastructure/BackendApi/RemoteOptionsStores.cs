@@ -16,8 +16,7 @@ using Cockpit.Core.Worktrees;
 namespace Cockpit.Infrastructure.BackendApi;
 
 // Resolve the connection on use: the ordinary remote window is composed before its registry has connected.
-public sealed class RemoteOptionsStores(Func<IRemoteServer?> server) : IHeavyRunSettingsStore, ISessionBehaviorSettingsStore,
-    ICloneSettingsStore, IWorktreeSettingsStore, INotificationSettingsStore, IDebugSettingsStore, ITerminalSettingsStore
+public sealed class RemoteOptionsStores(Func<IRemoteServer?> server) : IRemoteOptionsStores
 {
     private BackendApiClient Client => server() is RemoteServer remote
         ? remote.OptionsClient

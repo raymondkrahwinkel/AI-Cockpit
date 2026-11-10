@@ -14,7 +14,6 @@ using Cockpit.Core.Plugins;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Toasts;
 using Cockpit.Core.Workspaces;
-using Cockpit.Infrastructure.BackendApi;
 using Microsoft.Extensions.Logging;
 
 namespace Cockpit.App.ViewModels;
@@ -87,7 +86,7 @@ public partial class CockpitViewModel
         Func<CockpitViewModel, string?, Task>? presentOptions = null,
         Func<PluginManagerViewModel, PluginStoreFilter?, Task>? presentPluginStore = null)
     {
-        var options = new RemoteOptionsStores(() => servers.Servers.FirstOrDefault(target => target.Name == server));
+        var options = Composition.DesktopComposition.RemoteOptionsFor(() => servers.Servers.FirstOrDefault(target => target.Name == server));
         var cockpit = new CockpitViewModel(
             sessionFactory: null, ttySessionFactory: null, dialogService: null,
             captureService: null, playbackService: null, attentionNotifier: null,
