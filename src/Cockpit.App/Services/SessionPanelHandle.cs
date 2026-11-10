@@ -255,7 +255,7 @@ internal sealed partial class SessionPanelHandle : IHostedSession
     public Task<bool> SubmitWithImagesAsync(string text, IReadOnlyList<byte[]> pngImages) => UiThreadCall.RunAsync(() =>
         _IsLive() && _pane is SessionViewModel sdk && _CanReceiveTask(sdk) ? sdk.SubmitWithImagesAsync(text, pngImages) : Task.FromResult(false));
 
-    private static bool _CanReceiveTask(SessionPanelViewModel pane) => pane.SessionStatus != SessionStatus.NeedsAttention
+    private static bool _CanReceiveTask(SessionPanelViewModel pane) => !pane.IsReadingChild && pane.SessionStatus != SessionStatus.NeedsAttention
         && pane.PendingConsent is null && (pane is not SessionViewModel sdk || !sdk.HasPendingPermission)
         && (pane is not TtyViewModel || pane.SessionStatus is not (SessionStatus.Busy or SessionStatus.WorkingBackground));
 
