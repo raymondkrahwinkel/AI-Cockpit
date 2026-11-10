@@ -85,6 +85,8 @@ internal static class OptionsStaging
         "VoicePushToTalkKeyName",
         "VoiceStopReadAloudLevelThreshold",
         "VoiceStopReadAloudWhenSpeaking",
+        "VoiceDuckOtherAudio",
+        "VoiceDuckingPercent",
         "VoiceTtsSpeed",
         "WakeAgentsByDefault",
         "WebhookUrl",

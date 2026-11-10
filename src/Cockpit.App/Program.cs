@@ -453,6 +453,10 @@ sealed class Program
         {
             if (Services?.GetService<CockpitViewModel>() is { } cockpit)
             {
+                if (Services.GetService<Cockpit.App.Services.AudioDuckingCoordinator>() is { } ducking)
+                {
+                    await ducking.DisposeAsync();
+                }
                 await AwaitTeardownAsync(cockpit.DisposeAsync().AsTask(), TeardownBudget, () => cockpit.PendingTeardownCount);
             }
         }

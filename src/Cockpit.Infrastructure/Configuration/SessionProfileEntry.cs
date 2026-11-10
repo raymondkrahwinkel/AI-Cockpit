@@ -82,7 +82,7 @@ internal sealed class SessionProfileEntry
         DefaultKind = profile.DefaultKind?.ToString(),
         MemoryCapMegabytes = profile.MemoryCapMegabytes,
         GuardrailMode = profile.GuardrailMode.ToString(),
-        GuardrailAllowedPaths = [.. profile.GuardrailAllowedPaths],
+        GuardrailAllowedPaths = profile.GuardrailAllowedPaths.Count > 0 ? [.. profile.GuardrailAllowedPaths] : null,
         MaxParallelSessions = profile.MaxParallelSessions > 0 ? profile.MaxParallelSessions : null,
     };
 
