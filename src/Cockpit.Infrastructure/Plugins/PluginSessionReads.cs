@@ -24,8 +24,11 @@ public static class PluginSessionReads
         }
 
         var slice = await handle.ReadTranscriptAsync(count).ConfigureAwait(false);
+        var first = slice.TotalEntries - slice.Entries.Count;
         return new PluginTranscriptSlice(
-            [.. slice.Entries.Select(entry => _Kind(entry.Kind) is { } kind ? new PluginTranscriptEntry(kind, entry.Text, entry.ToolResult) : null).OfType<PluginTranscriptEntry>()],
+            [.. slice.Entries.Select((entry, position) => _Kind(entry.Kind) is { } kind
+                ? new PluginTranscriptEntry(kind, entry.Text, entry.ToolResult) { Index = first + position }
+                : null).OfType<PluginTranscriptEntry>()],
             slice.TotalEntries);
     }
 

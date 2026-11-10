@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2257: a paired phone can list this Cockpit's sessions with their statusline and state, read one session's transcript and its open permission questions, and send that session a message, all inside the encrypted channel; plugins get `PluginTranscriptEntry.Index` (plugin SDK 3.84.0, host 0.173.0).
+
 - AC-2256: plugins can read each open session's statusline, whether it is a terminal and whether its transcript is readable, plus the tail of that transcript and its open permission questions through `Sessions.ReadTranscriptAsync` and `Sessions.ReadPendingPermissionsAsync` (plugin SDK 3.83.0, host 0.172.0).
 
 - AC-2255: a phone paired from Settings › Depot now reaches this Cockpit: the Cockpit connects to the Depot relay right after pairing, instead of the phone reporting it offline and not paired.

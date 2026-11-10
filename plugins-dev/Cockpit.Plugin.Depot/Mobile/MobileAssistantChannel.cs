@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Channels;
 using Microsoft.Extensions.Logging;
 
@@ -22,6 +23,7 @@ internal sealed class MobileAssistantChannel : IDisposable
     private readonly string _cockpitName;
     private readonly string? _cockpitVersion;
     private readonly ILogger? _logger;
+    private readonly MobileSessionChannel? _sessions;
     private readonly Lock _gate = new();
     private readonly Dictionary<Guid, AssistantChannelRow> _dirty = [];
     private readonly Dictionary<Guid, string> _prompts = [];
@@ -38,7 +40,8 @@ internal sealed class MobileAssistantChannel : IDisposable
         Func<byte[], bool> send,
         string cockpitName,
         string? cockpitVersion,
-        ILogger? logger = null)
+        ILogger? logger = null,
+        ICockpitHost? host = null)
     {
         _deviceId = deviceId;
         _gateway = gateway;
@@ -46,6 +49,7 @@ internal sealed class MobileAssistantChannel : IDisposable
         _cockpitName = cockpitName;
         _cockpitVersion = cockpitVersion;
         _logger = logger;
+        _sessions = host is null ? null : new MobileSessionChannel(host, _Send, logger);
         if (gateway is not null)
         {
             gateway.RowChanged += _OnRowChanged;
@@ -120,6 +124,15 @@ internal sealed class MobileAssistantChannel : IDisposable
                     writer.WriteString("version", _cockpitVersion);
                     writer.WriteBoolean("assistant", _gateway is not null);
                 });
+                break;
+            case "sessions.list" when _sessions is not null:
+                _sessions.List(id);
+                break;
+            case "session.transcript" when _sessions is not null:
+                _ = _sessions.TranscriptAsync(id, _String(body, "paneId"), _Int(body, "count"), _Int(body, "since"));
+                break;
+            case "session.send" when _sessions is not null:
+                _ = _sessions.SendAsync(id, _String(body, "paneId"), _String(body, "text"));
                 break;
             default:
                 _logger?.LogDebug("A phone sent a message type this Cockpit does not know; ignored.");
@@ -489,16 +502,16 @@ internal sealed class MobileAssistantChannel : IDisposable
                 return encoded;
             }
 
-            text = _Half(text);
-            result = result is null ? null : _Half(result);
+            text = Half(text);
+            result = result is null ? null : Half(result);
         }
     }
 
-    private static string _Half(string text)
-    {
-        var length = text.Length / 2;
-        return length > 0 && char.IsHighSurrogate(text[length - 1]) ? text[..(length - 1)] : text[..length];
-    }
+    internal static string Half(string text) => Cut(text, text.Length / 2);
+
+    // The first `length` chars, one fewer when that would split a surrogate pair.
+    internal static string Cut(string text, int length) =>
+        length > 0 && char.IsHighSurrogate(text[length - 1]) ? text[..(length - 1)] : text[..length];
 
     private void _Send(string type, Action<Utf8JsonWriter> body)
     {

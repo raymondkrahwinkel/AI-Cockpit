@@ -325,3 +325,64 @@ Nothing of the conversation is written to disk or to a log by this plugin.
 
 **Back-pressure.** At most 32 frames wait to go to one phone. Past that a frame is not queued but dropped, so a phone
 that keeps asking cannot hold up the relay for the others; a page that loses a frame never sends its `last`.
+
+## 11. Sessions (AC-2257)
+
+The phone also talks to the other sessions of the Cockpit it is paired with: their list, one session's transcript on
+request, and a message to that session. The messages go in the same encrypted stream as § 10, and the same rule applies
+to who may send: only a paired phone, over its current stream, after its keys opened the frame. After Forget or
+`deviceUnpaired`, nothing of that phone is handled any more. The Cockpit only answers. It sends nothing about sessions on
+its own and keeps nothing per session. The phone asks again when it wants to see more (polling).
+
+The assistant pane (`cockpit-assistant`) is not in the list. Every message about it is answered as for a pane that does
+not exist: the assistant has its own channel, one conversation (§ 10, AC-1092).
+
+| Direction | `type` | `body` |
+|---|---|---|
+| phone → Cockpit | `sessions.list` | `{}` |
+| Cockpit → phone | `sessions.list` | `{ "replyTo", "sessions": [{ "paneId", "name", "statusline", "state", "terminal", "readable" }] }` |
+| phone → Cockpit | `session.transcript` | `{ "paneId", "count" }` with `count` ≤ 200, or `{ "paneId", "since" }` |
+| Cockpit → phone | `session.transcript` | `{ "replyTo", "paneId", "total", "readable", "rows": [row], "pending": [{ "toolName", "summary" }] }` |
+| phone → Cockpit | `session.send` | `{ "paneId", "text" }` |
+| Cockpit → phone | `session.sent` | `{ "replyTo", "ok", "queued", "error" }` |
+
+**`sessions.list`.**
+
+- `statusline` is what the session last said it is working on, or `null`.
+- `state` is one of:
+  - `waiting`: the session waits on the operator, for example on a permission;
+  - `working`: a turn is running, or background work it started;
+  - `idle`: idle or done;
+  - `failed`.
+- `terminal` is `true` for a plain shell pane.
+- `readable` says whether the transcript can be read at all.
+
+**`session.transcript`.**
+
+- `count` asks for the newest rows: 1…200, 50 when it is missing.
+- `since` asks for the rows from index `since` onwards, including that row itself. The phone passes the id of its last
+  row, so a row that was still streaming comes back as its latest snapshot. At most the newest 200 rows come back; if the
+  first row's id is higher than `since`, rows are missing in between.
+- A row has the shape of § 10. Its `id` is the row's index in the whole transcript, a number. Indices skip the host's
+  own markers (turn end, divider), so they are not always consecutive. The index only rises.
+- `total` is the length of the whole transcript.
+- A `kind` is one of `userText`, `assistantText`, `toolUse`, `toolResult`, `thinking` and `error`. These rows carry no
+  `timestamp` and no `toolName`.
+- A row too big for a frame is cut, with `truncated: true`, as in § 10. When the rows do not all fit in one frame, the
+  oldest are left out, and `more: true` says that rows were left out before the first row.
+- `readable: false` with no rows: the session has no readable transcript (a plain terminal, a provider without a reader),
+  or the pane does not exist.
+- `pending` lists the permissions the session is waiting on. `summary` is the tool's name plus the start of its input
+  (the command, the path), cut to 120 characters. They are read-only: the answer is given on the desktop.
+
+**`session.send`.**
+
+- The text goes to the session as a submitted message, by the host's own route (`SendToSessionAsync`). An SDK session
+  starts a turn. A TTY session gets the text plus Enter in its terminal.
+- `queued: true` means the session was `working` when the message was sent. The host's send queue holds the message
+  until the turn ends (AC-294).
+- `ok: false` comes with an `error` when the message is empty, or the pane is unknown or the assistant. It also comes
+  for a plain terminal (`terminal: true`): messages go to agent sessions, not to a shell. And it comes when the session
+  did not take the message.
+
+No session content leaves the encrypted frame, and nothing of it reaches a log: only the message type and size.

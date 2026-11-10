@@ -683,7 +683,9 @@
     <!-- 3.83.0 (AC-2256): OpenCockpitSession.Statusline/IsTerminal/HasReadableTranscript (init-properties) and
          ICockpitSessionObserver.ReadTranscriptAsync/ReadPendingPermissionsAsync (default null/empty) with PluginPendingPermission;
          a plugin that uses them requires host 0.172.0, contract stays 3. -->
-    <Version>3.83.0</Version>
+    <!-- 3.84.0 (AC-2257): PluginTranscriptEntry.Index (init-property, 0 by default), set by ReadTranscriptAsync;
+         a plugin that reads it requires host 0.173.0, contract stays 3. -->
+    <Version>3.84.0</Version>
     <AssemblyVersion>1.17.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

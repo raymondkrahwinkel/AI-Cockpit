@@ -23,7 +23,8 @@ internal sealed class MobilePairing(
     Func<AssistantChannelContribution, IAssistantChannelGateway?> openChannel,
     ILogger? logger = null,
     Func<string, string, Func<byte[]?>, Task>? send = null,
-    TimeProvider? time = null) : IAsyncDisposable
+    TimeProvider? time = null,
+    ICockpitHost? host = null) : IAsyncDisposable
 {
     private static readonly TimeSpan _ConfirmationTimeout = TimeSpan.FromSeconds(15);
     private readonly TimeProvider _time = time ?? TimeProvider.System;
@@ -626,7 +627,7 @@ internal sealed class MobilePairing(
             Verbosity = AssistantChannelVerbosity.Everything,
         });
         channel = new MobileAssistantChannel(deviceId, gateway, plaintext => _SendToPhone(connectionId, deviceId, plaintext),
-            Environment.MachineName, System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3), logger);
+            Environment.MachineName, System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3), logger, host);
         _channels[(connectionId, deviceId)] = channel;
         return channel;
     }
