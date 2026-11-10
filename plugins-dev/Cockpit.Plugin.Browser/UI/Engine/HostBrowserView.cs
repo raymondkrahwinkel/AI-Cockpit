@@ -50,6 +50,27 @@ internal sealed class HostBrowserView : BrowserView
     public override void GoForward() => _Queue("tab.forward", true);
     public override void Reload() => _Queue("tab.reload", true);
 
+    // AC-2148: the host runs calls one at a time, so a page that never answers may hold its queue only this long.
+    private static readonly TimeSpan DevToolsDeadline = TimeSpan.FromSeconds(10);
+
+    public override async Task<string?> DevToolsAsync(string method, IReadOnlyDictionary<string, object> parameters)
+    {
+        if (_closing || _faulted)
+        {
+            return null;
+        }
+        try
+        {
+            var result = await _host.Connection.CallAsync(TabId, "operator", "tab.devtools",
+                JsonSerializer.SerializeToElement(new BrowserTabDevTools(method, parameters)), DevToolsDeadline).ConfigureAwait(false);
+            return result.GetString();
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or JsonException or OperationCanceledException or ObjectDisposedException or InvalidOperationException or TimeoutException)
+        {
+            return null;
+        }
+    }
+
     private void _Queue<T>(string operation, T payload)
     {
         if (_closing || _faulted)

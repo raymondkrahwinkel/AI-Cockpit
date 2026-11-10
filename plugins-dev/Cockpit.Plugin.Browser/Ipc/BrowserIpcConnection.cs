@@ -10,6 +10,8 @@ internal sealed class BrowserIpcConnection : IAsyncDisposable
     private readonly Stream _output;
     private readonly Guid _generation;
     private readonly Func<BrowserIpcMessage, CancellationToken, Task<JsonElement>> _handle;
+    // Requests the owner marks independent run beside the ordered queue, still bounded by the incoming-call limit.
+    private readonly Func<BrowserIpcMessage, bool>? _concurrent;
     private readonly CancellationTokenSource _closed = new();
     private readonly SemaphoreSlim _writer = new(1, 1);
     private readonly SemaphoreSlim _calls = new(BrowserIpcLimits.PendingCalls, BrowserIpcLimits.PendingCalls);
@@ -70,8 +72,10 @@ internal sealed class BrowserIpcConnection : IAsyncDisposable
     }
 
     internal BrowserIpcConnection(Stream input, Stream output, Guid generation,
-        Func<BrowserIpcMessage, CancellationToken, Task<JsonElement>> handle, (Guid Tab, string Session)? initialTab = null)
+        Func<BrowserIpcMessage, CancellationToken, Task<JsonElement>> handle, (Guid Tab, string Session)? initialTab = null,
+        Func<BrowserIpcMessage, bool>? concurrent = null)
     {
+        _concurrent = concurrent;
         if (generation == Guid.Empty)
         {
             throw new ArgumentException("An IPC connection needs a fresh host generation.", nameof(generation));
@@ -343,63 +347,19 @@ internal sealed class BrowserIpcConnection : IAsyncDisposable
 
     private async Task _WorkAsync()
     {
+        var concurrent = new List<Task>();
         try
         {
             await foreach (var message in _requests.Reader.ReadAllAsync(_closed.Token).ConfigureAwait(false))
             {
-                CancellationTokenSource cancel;
-                lock (_gate)
+                if (_concurrent?.Invoke(message) == true)
                 {
-                    cancel = _incoming[message.RequestId].Cancel;
+                    concurrent.RemoveAll(task => task.IsCompleted);
+                    concurrent.Add(_CloseOnFaultAsync(_AnswerAsync(message)));
                 }
-                Task<JsonElement>? handling = null;
-                try
+                else
                 {
-                    cancel.Token.ThrowIfCancellationRequested();
-                    // Apply the grace bound even when a handler blocks before returning its task.
-                    handling = Task.Run(() => _handle(message, cancel.Token), cancel.Token);
-                    var result = await handling.WaitAsync(cancel.Token).ConfigureAwait(false);
-                    cancel.Token.ThrowIfCancellationRequested();
-                    await _SendAsync(message with { Kind = BrowserIpcKind.Response, Payload = result }, cancel.Token).ConfigureAwait(false);
-                }
-                catch (OperationCanceledException) when (cancel.IsCancellationRequested)
-                {
-                    if (handling is not null)
-                    {
-                        try
-                        {
-                            await handling.WaitAsync(BrowserIpcLimits.CancelGrace).ConfigureAwait(false);
-                        }
-                        catch (TimeoutException)
-                        {
-                            _Close();
-                            return;
-                        }
-                        catch (Exception) when (handling.IsCompleted)
-                        {
-                            // Observe the cancelled handler before allowing the next call to run.
-                        }
-                    }
-                    if (_closed.IsCancellationRequested == false)
-                    {
-                        await _RejectAsync(message).ConfigureAwait(false);
-                    }
-                }
-                catch (InvalidDataException)
-                {
-                    await _RejectAsync(message).ConfigureAwait(false);
-                }
-                catch (Exception) when (handling?.IsFaulted == true)
-                {
-                    await _RejectAsync(message).ConfigureAwait(false);
-                }
-                finally
-                {
-                    lock (_gate)
-                    {
-                        _incoming.Remove(message.RequestId);
-                    }
-                    cancel.Dispose();
+                    await _AnswerAsync(message).ConfigureAwait(false);
                 }
             }
         }
@@ -410,6 +370,7 @@ internal sealed class BrowserIpcConnection : IAsyncDisposable
         }
         finally
         {
+            await Task.WhenAll(concurrent).ConfigureAwait(false);
             lock (_gate)
             {
                 foreach (var call in _incoming.Values)
@@ -418,6 +379,76 @@ internal sealed class BrowserIpcConnection : IAsyncDisposable
                 }
                 _incoming.Clear();
             }
+        }
+    }
+
+    private async Task _AnswerAsync(BrowserIpcMessage message)
+    {
+        CancellationTokenSource cancel;
+        lock (_gate)
+        {
+            cancel = _incoming[message.RequestId].Cancel;
+        }
+        Task<JsonElement>? handling = null;
+        try
+        {
+            cancel.Token.ThrowIfCancellationRequested();
+            // Apply the grace bound even when a handler blocks before returning its task.
+            handling = Task.Run(() => _handle(message, cancel.Token), cancel.Token);
+            var result = await handling.WaitAsync(cancel.Token).ConfigureAwait(false);
+            cancel.Token.ThrowIfCancellationRequested();
+            await _SendAsync(message with { Kind = BrowserIpcKind.Response, Payload = result }, cancel.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancel.IsCancellationRequested)
+        {
+            if (handling is not null)
+            {
+                try
+                {
+                    await handling.WaitAsync(BrowserIpcLimits.CancelGrace).ConfigureAwait(false);
+                }
+                catch (TimeoutException)
+                {
+                    _Close();
+                    return;
+                }
+                catch (Exception) when (handling.IsCompleted)
+                {
+                    // Observe the cancelled handler before allowing the next call to run.
+                }
+            }
+            if (_closed.IsCancellationRequested == false)
+            {
+                await _RejectAsync(message).ConfigureAwait(false);
+            }
+        }
+        catch (InvalidDataException)
+        {
+            await _RejectAsync(message).ConfigureAwait(false);
+        }
+        catch (Exception) when (handling?.IsFaulted == true)
+        {
+            await _RejectAsync(message).ConfigureAwait(false);
+        }
+        finally
+        {
+            lock (_gate)
+            {
+                _incoming.Remove(message.RequestId);
+            }
+            cancel.Dispose();
+        }
+    }
+
+    private async Task _CloseOnFaultAsync(Task answer)
+    {
+        try
+        {
+            await answer.ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            _Close();
         }
     }
 

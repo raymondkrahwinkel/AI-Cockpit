@@ -107,8 +107,20 @@ Input is ordered through a bounded queue (64 commands per view); pending move an
 their latest value, with discrete commands preserving their order. Overflow of discrete commands fails the tab visibly. Host state
 coalesces in one slot, with at most one outbound call per tab across state and frames. Engine disconnect and
 renderer termination replace the stale page image with a failure; a renderer can recover on navigation/reload.
-DevTools, agent authorization, clipboard, IME, popup surfaces and audio are the later epic steps. The explicit
+Agent authorization, clipboard, IME, popup surfaces and audio are the later epic steps. The explicit
 host route refuses agent operations until those host-side checks exist; the live TabShare/consent route is unchanged.
+
+### DevTools per tab (AC-2148)
+
+`tab.devtools` runs one DevTools method through `ExecuteDevToolsMethod` on the addressed tab's own browser. There
+is no debugging port and no global listener. The IPC envelope binds each call to its tab, `operator` session,
+host generation and a monotonic request id: a replayed id, an old generation or an unregistered session ends the
+connection. The host accepts only the methods TabShare and its control path use, with bool, int and string
+parameters, so a grant never becomes general DevTools access. These calls run beside the ordered queue, bounded
+by the incoming-call limit, because a page that never answers must not stall input or close for every tab. The
+view waits at most 10 s. Close cancels a pending call through the tab's unregistration, and a renderer crash
+fails it at once; a new tab has its own ids and observer. A result is one IPC message, so a screenshot above
+1 MiB (a 1080p photo-dense page, for example) is refused rather than split.
 
 ## The browser
 

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2148: let readers of a development Browser host tab query only that tab through DevTools, answering closed or crashed tabs at once and refusing replayed or foreign calls.
+
 - AC-2147: connect the development Browser host to tabs and Avalonia frames, retaining tab identity through moves and rejecting stale or crossed buffers.
 - AC-2147: retain painted updates while a Browser frame is being received, then deliver them after acknowledgement without waiting for another paint.
 

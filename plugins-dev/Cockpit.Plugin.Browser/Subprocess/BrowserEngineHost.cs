@@ -33,6 +33,7 @@ internal static class BrowserEngineHost
             {
                 // Report a finite startup failure over IPC without leaking local paths or exception details.
             }
+            // AC-2148: a DevTools call waiting on its page must not hold up input or close of any tab.
             connection = new BrowserIpcConnection(pipes.Input, pipes.Output, generation, (message, token) =>
             {
                 if (message.Operation == "engine.ready" && message.TabId == generation)
@@ -40,7 +41,7 @@ internal static class BrowserEngineHost
                     return Task.FromResult(JsonSerializer.SerializeToElement(new { Initialized = initialized, ProcessId = Environment.ProcessId }));
                 }
                 return tabs?.HandleAsync(message, token) ?? throw new InvalidDataException("Unknown engine operation.");
-            }, (generation, "enginehost"));
+            }, (generation, "enginehost"), message => message.Operation == "tab.devtools");
             tabs = new BrowserHostTabs(connection, storage, cache);
             connection.Completion.GetAwaiter().GetResult();
             return initialized ? 0 : 1;

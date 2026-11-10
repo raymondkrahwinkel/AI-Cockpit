@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Runtime.InteropServices;
 using System.Threading.Channels;
@@ -29,6 +30,13 @@ internal sealed class BrowserHostTab : IAsyncDisposable
     private long _frameId;
     private long _bufferRevision;
     private Task _frameSender = Task.CompletedTask;
+    private readonly ConcurrentDictionary<int, TaskCompletionSource<string?>> _devTools = new();
+    private int _devToolsId;
+    private CefRegistration? _devToolsObserver;
+
+    // AC-2148: exactly the methods TabShare and its control path use, so a tab grant never becomes general DevTools access.
+    private static readonly HashSet<string> DevToolsMethods = ["Page.captureScreenshot", "Accessibility.getFullAXTree",
+        "Runtime.evaluate", "DOM.enable", "DOM.getNodeForLocation", "Page.getFrameTree", "DOM.describeNode"];
 
     internal BrowserHostTab(BrowserIpcConnection connection, string storage, Guid id, string url)
     {
@@ -102,6 +110,61 @@ internal sealed class BrowserHostTab : IAsyncDisposable
             default: throw new InvalidDataException("Unknown browser tab operation.");
         }
     }, token);
+
+    // AC-2148: one DevTools method on this tab's own browser, without a debugging port. The IPC envelope already bound
+    // the call to this tab, session and generation; an unanswered method ends with the call's deadline or the browser.
+    internal async Task<JsonElement> DevToolsAsync(BrowserIpcMessage message, CancellationToken token)
+    {
+        var call = message.Payload.Deserialize<BrowserTabDevTools>() ?? throw new InvalidDataException("Missing DevTools call.");
+        if (DevToolsMethods.Contains(call.Method) == false)
+        {
+            throw new InvalidDataException("DevTools method refused.");
+        }
+        int id = Interlocked.Increment(ref _devToolsId);
+        var pending = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _devTools[id] = pending;
+        try
+        {
+            using var cancel = token.Register(() => pending.TrySetCanceled(token));
+            await OnCefAsync(() =>
+            {
+                if (_browser is not { } browser || _closing)
+                {
+                    throw new InvalidDataException("The browser tab is closed.");
+                }
+                var arguments = CefDictionaryValue.Create();
+                foreach (var (key, value) in call.Parameters)
+                {
+                    _ = value is JsonElement element ? element.ValueKind switch
+                    {
+                        JsonValueKind.True or JsonValueKind.False => arguments.SetBool(key, element.GetBoolean()),
+                        JsonValueKind.Number when element.TryGetInt32(out int number) => arguments.SetInt(key, number),
+                        JsonValueKind.String => arguments.SetString(key, element.GetString()),
+                        _ => throw new InvalidDataException("Invalid DevTools parameter."),
+                    } : throw new InvalidDataException("Invalid DevTools parameter.");
+                }
+                var host = browser.GetHost();
+                _devToolsObserver ??= host.AddDevToolsMessageObserver(new DevToolsObserver(this));
+                if (host.ExecuteDevToolsMethod(id, call.Method, arguments) == 0)
+                {
+                    pending.TrySetResult(null);
+                }
+            }, token);
+            return JsonSerializer.SerializeToElement(await pending.Task ?? throw new InvalidDataException("The DevTools method failed."));
+        }
+        finally
+        {
+            _devTools.TryRemove(id, out _);
+        }
+    }
+
+    private void _FailDevTools()
+    {
+        foreach (var pending in _devTools.Values)
+        {
+            pending.TrySetResult(null);
+        }
+    }
 
     private static void _ValidateSize(BrowserTabSize size)
     {
@@ -343,6 +406,9 @@ internal sealed class BrowserHostTab : IAsyncDisposable
         protected override void OnBeforeClose(CefBrowser browser)
         {
             owner._browser = null;
+            owner._devToolsObserver?.Dispose();
+            owner._devToolsObserver = null;
+            owner._FailDevTools();
             owner._closed.TrySetResult();
         }
         protected override bool OnBeforePopup(CefBrowser browser, CefFrame frame, int popupId, string targetUrl, string targetFrameName,
@@ -378,8 +444,27 @@ internal sealed class BrowserHostTab : IAsyncDisposable
     {
         protected override CefResourceRequestHandler? GetResourceRequestHandler(CefBrowser browser, CefFrame frame, CefRequest request,
             bool isNavigation, bool isDownload, string requestInitiator, ref bool disableDefaultHandling) => null;
-        protected override void OnRenderProcessTerminated(CefBrowser browser, CefTerminationStatus status, int errorCode, string errorString) =>
+        protected override void OnRenderProcessTerminated(CefBrowser browser, CefTerminationStatus status, int errorCode, string errorString)
+        {
+            owner._FailDevTools();
             owner._State(owner._state with { Failure = "The page renderer stopped. Reload the tab to try again." });
+        }
+    }
+
+    // Only method results are wanted; raw messages and events pass through untouched.
+    private sealed class DevToolsObserver(BrowserHostTab owner) : CefDevToolsMessageObserver
+    {
+        protected override bool OnDevToolsMessage(CefBrowser browser, nint message, int messageSize) => false;
+        protected override void OnDevToolsMethodResult(CefBrowser browser, int messageId, bool success, nint result, int resultSize)
+        {
+            if (owner._devTools.TryGetValue(messageId, out var pending))
+            {
+                pending.TrySetResult(success ? Marshal.PtrToStringUTF8(result, resultSize) : null);
+            }
+        }
+        protected override void OnDevToolsEvent(CefBrowser browser, string method, nint parameters, int parametersSize) { }
+        protected override void OnDevToolsAgentAttached(CefBrowser browser) { }
+        protected override void OnDevToolsAgentDetached(CefBrowser browser) { }
     }
 
     private sealed class RenderHandler(BrowserHostTab owner) : CefRenderHandler
