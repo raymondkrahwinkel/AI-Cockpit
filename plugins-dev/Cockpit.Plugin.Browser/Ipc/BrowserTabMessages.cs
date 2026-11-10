@@ -9,6 +9,7 @@ internal sealed record BrowserTabControl(string? Origin, Guid? Grant, long Revis
 internal sealed record BrowserTabAgent(string Kind, Guid Grant, bool NeedsFocus, int X = 0, int Y = 0, int Key = 0, string? Text = null, string? Frames = null);
 internal sealed record BrowserTabHeld(long Id, string Method, string Url);
 internal sealed record BrowserTabRelease(long Id, bool Send);
+internal sealed record BrowserTabFileDialog(int Mode, string Title, string DefaultPath, string[] Filters);
 internal sealed record BrowserTabDevTools(string Method, IReadOnlyDictionary<string, object> Parameters);
 internal sealed record BrowserTabFrame(BrowserIpcFrameDescriptor Buffer, long Revision, long FrameId,
     int X, int Y, int Width, int Height, double Scale);

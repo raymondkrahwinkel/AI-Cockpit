@@ -28,7 +28,8 @@ internal sealed class BrowserHostClient : IAsyncDisposable
         Generation = generation;
         Connection = new BrowserIpcConnection(pipes.Input, pipes.Output, generation,
             (message, token) => _tabs.TryGetValue(message.TabId, out var handle)
-                ? handle(message, token) : throw new InvalidDataException("Unknown engine client operation."), (generation, "enginehost"));
+                ? handle(message, token) : throw new InvalidDataException("Unknown engine client operation."), (generation, "enginehost"),
+            message => message.Operation == "tab.files");
         _closeOnExit = _CloseOnExitAsync();
     }
 

@@ -218,6 +218,17 @@ internal sealed class HostBrowserView : BrowserView
 
     private async Task<JsonElement> _HandleAsync(BrowserIpcMessage message, CancellationToken token)
     {
+        if (message.Operation == "tab.files")
+        {
+            var request = message.Payload.Deserialize<BrowserTabFileDialog>() ?? throw new InvalidDataException("Missing file dialog.");
+            Task<string[]> selection = Task.FromResult(Array.Empty<string>());
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                selection = _closing || _faulted || _control.Origin is not null ? Task.FromResult(Array.Empty<string>()) : BrowserFilePicker.ChooseAsync(this, request, token);
+            }, DispatcherPriority.Normal, token);
+            string[] paths = await selection.WaitAsync(token);
+            return JsonSerializer.SerializeToElement(_closing || _faulted || _control.Origin is not null ? [] : paths);
+        }
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
             token.ThrowIfCancellationRequested();
