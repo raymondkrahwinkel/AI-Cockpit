@@ -185,7 +185,8 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
         {
             lock (_gate)
             {
-                return _host.Runtime is { IsRunning: true } && _host.TurnsHeldBecause is null;
+                return _host.Runtime is { IsRunning: true } && _host.TurnsHeldBecause is null
+                    && _host.LiveState.Status != SessionStatus.NeedsAttention && !_rows.Exists(row => row.IsPendingPermission);
             }
         }
     }
@@ -234,7 +235,8 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
             Task sending;
             lock (_gate)
             {
-                if (_host.Runtime is not { IsRunning: true } || _host.TurnsHeldBecause is not null)
+                if (_host.Runtime is not { IsRunning: true } || _host.TurnsHeldBecause is not null
+                    || _host.LiveState.Status == SessionStatus.NeedsAttention || _rows.Exists(row => row.IsPendingPermission))
                 {
                     return false;
                 }
@@ -252,8 +254,9 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
         }
     }
 
-    // Nothing is ever held here: false says the prompt was not taken, and nothing will deliver it later.
-    public async Task<bool?> SubmitPromptWhenReadyAsync(string prompt) => await SendPromptAsync(prompt).ConfigureAwait(false);
+    // This handle holds no startup brief: null reports a refusal, never a held or delivered task.
+    public async Task<bool?> SubmitPromptWhenReadyAsync(string prompt) =>
+        await SendPromptAsync(prompt).ConfigureAwait(false) ? true : null;
 
     public Task SetWorktreeBranchAsync(string? branch)
     {
@@ -659,6 +662,10 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
 
         lock (_gate)
         {
+            if (_host.LiveState.Status == SessionStatus.NeedsAttention || _rows.Exists(row => row.IsPendingPermission))
+            {
+                return Task.FromResult(false);
+            }
             _Submit(new QueuedPrompt(text, [.. pngImages.Select(png => ImageAttachment.FromBytes(png, "image/png"))]));
         }
 

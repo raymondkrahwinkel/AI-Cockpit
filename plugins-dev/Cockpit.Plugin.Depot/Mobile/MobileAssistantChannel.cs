@@ -140,6 +140,7 @@ internal sealed partial class MobileAssistantChannel : IDisposable
                 _Chat(body.ValueKind == JsonValueKind.Object && body.TryGetProperty("open", out var open) && open.ValueKind == JsonValueKind.True);
                 break;
             case "cockpit.status":
+                _StartOperatorChannel();
                 _Send("cockpit.status", writer =>
                 {
                     _ReplyTo(writer, id);
@@ -148,12 +149,18 @@ internal sealed partial class MobileAssistantChannel : IDisposable
                     writer.WriteBoolean("assistant", _gateway is not null);
                     writer.WriteBoolean("images", _gateway?.AcceptsImages == true);
                     writer.WriteBoolean("operatorActions", _operatorTransport is not null);
+                    writer.WriteBoolean("sessionLifecycle", _operatorChannel?.CanManageSessions == true);
                 });
                 _StartOperatorChannel();
                 _SendPending();
                 break;
             case "sessions.list" when _sessions is not null:
                 _sessions.List(id);
+                break;
+            case "sessions.catalog":
+            case "session.start":
+            case "session.stop":
+                _ = _SessionLifecycleAsync(type, id, body);
                 break;
             case "session.transcript" when _sessions is not null:
                 _ = _sessions.TranscriptAsync(id, _String(body, "paneId"), _Int(body, "count"), _Int(body, "since"));

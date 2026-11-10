@@ -43,6 +43,29 @@ public class PluginBackendHostTests
 
         await launcher.Received(1).RunExclusiveAsync(Arg.Any<Func<ISessionHandle?>>());
         await pane.DidNotReceive().InjectAndSubmitAsync(Arg.Any<string>());
+
+        // Category A: a task is never an answer to a CLI question or SDK permission, on either send overload.
+        registry.Register(pane);
+        var liveHost = _Host(registry, _InlineLauncher());
+        pane.InjectAndSubmitAsync(Arg.Any<string>()).Returns(true);
+        pane.AcceptsImages.Returns(true);
+        pane.SubmitWithImagesAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<byte[]>>()).Returns(true);
+        pane.ReadPendingPermissionsAsync().Returns(Task.FromResult<IReadOnlyList<SessionPendingPermission>>([]));
+        pane.SessionStatus.Returns(SessionStatus.NeedsAttention);
+        await liveHost.SendToSessionAsync(PaneId, "2");
+        Assert.False((await liveHost.SendToSessionAsync(PaneId, "2", [])).Delivered);
+        pane.SessionStatus.Returns(SessionStatus.Idle);
+        pane.HasPendingConsent.Returns(true);
+        Assert.False((await liveHost.SendToSessionAsync(PaneId, "2", [])).Delivered);
+        pane.HasPendingConsent.Returns(false);
+        pane.ReadPendingPermissionsAsync().Returns(Task.FromResult<IReadOnlyList<SessionPendingPermission>>(
+            [new SessionPendingPermission("permission", "tool", "{}", DateTimeOffset.UnixEpoch)]));
+        Assert.False((await liveHost.SendToSessionAsync(PaneId, "2", [])).Delivered);
+        await pane.DidNotReceive().InjectAndSubmitAsync(Arg.Any<string>());
+        await pane.DidNotReceive().SubmitWithImagesAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<byte[]>>());
+        pane.ReadPendingPermissionsAsync().Returns(Task.FromResult<IReadOnlyList<SessionPendingPermission>>([]));
+        Assert.True((await liveHost.SendToSessionAsync(PaneId, "a task", [])).Delivered);
+        await pane.Received(1).InjectAndSubmitAsync("a task");
     }
 
     // D6: the backend observer knows the open panes and which one closed, and has no selection to report — but it

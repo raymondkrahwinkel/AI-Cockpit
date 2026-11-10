@@ -432,7 +432,7 @@ internal static class SessionsEndpoints
 
             return await assistant.SubmitPromptWhenReadyAsync(body.Text).ConfigureAwait(false) is { } delivered
                 ? Results.Json(new { paneId = assistant.PaneId, delivered })
-                : BackendApiRoutes.Error(StatusCodes.Status409Conflict, "not_delivered", "The assistant is still starting and already has a turn waiting; this one was not accepted.");
+                : BackendApiRoutes.Error(StatusCodes.Status409Conflict, "not_delivered", "The assistant cannot accept this task: it may be waiting for a permission or question, not ready, or already holding a task.");
         }).RequireOperate().Audited("assistant_prompt", services).ForAssistantHolderOnly();
     }
 
