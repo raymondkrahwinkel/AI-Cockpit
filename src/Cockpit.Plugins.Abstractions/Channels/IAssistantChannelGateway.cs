@@ -51,6 +51,16 @@ public enum AssistantChannelRowKind
     /// A rule across the transcript, e.g. "context cleared".
     /// </summary>
     Divider,
+
+    /// <summary>
+    /// Mail delivered by another session or agent.
+    /// </summary>
+    Inbox,
+
+    /// <summary>
+    /// A session status report.
+    /// </summary>
+    Status,
 }
 
 /// <summary>
@@ -88,6 +98,21 @@ public sealed record AssistantChannelRow
     /// What the tool came back with, once it has; null while the call is still running.
     /// </summary>
     public string? ResultText { get; init; }
+
+    /// <summary>
+    /// The visible sender name of an Inbox or Status row, without a pane identifier.
+    /// </summary>
+    public string? SenderTitle { get; init; }
+
+    /// <summary>
+    /// The original question payload, including saved answers or its resolution.
+    /// </summary>
+    public string? QuestionJson { get; init; }
+
+    /// <summary>
+    /// Whether the broker card still accepts an operator answer.
+    /// </summary>
+    public bool IsPendingQuestion { get; init; }
 
     /// <summary>
     /// False the first time a row is seen and true every time it is raised again because it changed — post on the

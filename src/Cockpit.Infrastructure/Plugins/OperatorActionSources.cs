@@ -1,4 +1,5 @@
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Consent;
@@ -19,6 +20,7 @@ internal sealed class OperatorActionSources : IDisposable
     private readonly Dictionary<Guid, IDisposable> _prompts = [];
     private readonly Dictionary<ISessionHandle, Action<TranscriptRowUpsert>> _followed = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<(ISessionHandle Handle, string ToolId), (SessionPendingPermission Permission, IDisposable Registration)> _permissions = [];
+    private readonly Dictionary<(ISessionHandle Handle, string RowId), (string? Input, IDisposable Registration)> _questions = [];
     private bool _disposed;
 
     public OperatorActionSources(OperatorActionService actions, IConsentBroker consent, ISessionRegistry? sessions, ILogger logger)
@@ -90,6 +92,11 @@ internal sealed class OperatorActionSources : IDisposable
                 {
                     gone.RowUpserted -= _followed[gone];
                     _followed.Remove(gone);
+                    foreach (var key in _questions.Keys.Where(key => ReferenceEquals(key.Handle, gone)).ToList())
+                    {
+                        _questions[key].Registration.Dispose();
+                        _questions.Remove(key);
+                    }
                     foreach (var key in _permissions.Keys.Where(key => ReferenceEquals(key.Handle, gone)).ToList())
                     {
                         _permissions[key].Registration.Dispose();
@@ -108,6 +115,13 @@ internal sealed class OperatorActionSources : IDisposable
 
             foreach (var handle in added)
             {
+                if (handle is IAssistantSession assistant)
+                {
+                    foreach (var row in assistant.Rows)
+                    {
+                        _Row(handle, row);
+                    }
+                }
                 foreach (var permission in await handle.ReadPendingPermissionsAsync().ConfigureAwait(false))
                 {
                     _OfferPermission(handle, permission);
@@ -122,6 +136,10 @@ internal sealed class OperatorActionSources : IDisposable
 
     private void _Row(ISessionHandle handle, TranscriptSnapshotEntry row)
     {
+        if (row.Kind == "Question" && row.ParentRowId is null && handle is IAssistantSession assistant)
+        {
+            _Question(handle, assistant, row);
+        }
         if (row.ToolUseId is not { } toolId || row.ParentRowId is not null)
         {
             return;
@@ -140,6 +158,37 @@ internal sealed class OperatorActionSources : IDisposable
                     registration.Registration.Dispose();
                 }
             }
+        }
+    }
+
+    private void _Question(ISessionHandle handle, IAssistantSession assistant, TranscriptSnapshotEntry row)
+    {
+        var key = (handle, row.Id);
+        lock (_gate)
+        {
+            if (_disposed || !_followed.ContainsKey(handle))
+            {
+                return;
+            }
+            if (_questions.TryGetValue(key, out var previous))
+            {
+                if (row.IsPendingBrokerAnswer && previous.Input == row.InputJson)
+                {
+                    return;
+                }
+                _questions.Remove(key);
+                previous.Registration.Dispose();
+            }
+            var questions = StructuredQuestionJson.Parse(row.InputJson);
+            if (!row.IsPendingBrokerAnswer || questions.Count == 0 || !Guid.TryParse(row.Id, out var id))
+            {
+                return;
+            }
+            var registration = _actions.RegisterQuestion(
+                new OperatorAction(id.ToString("n"), Guid.NewGuid().ToString("n"), "question", "cockpit-assistant", row.Text, []) { Questions = questions },
+                answers => assistant.AnswerQuestionAsync(row.Id, row.InputJson, answers),
+                () => _IsLive(handle));
+            _questions[key] = (row.InputJson, registration);
         }
     }
 
@@ -206,13 +255,14 @@ internal sealed class OperatorActionSources : IDisposable
             }
 
             _followed.Clear();
-            foreach (var registration in _prompts.Values.Concat(_permissions.Values.Select(offer => offer.Registration)))
+            foreach (var registration in _prompts.Values.Concat(_permissions.Values.Select(offer => offer.Registration)).Concat(_questions.Values.Select(offer => offer.Registration)))
             {
                 registration.Dispose();
             }
 
             _prompts.Clear();
             _permissions.Clear();
+            _questions.Clear();
         }
     }
 }

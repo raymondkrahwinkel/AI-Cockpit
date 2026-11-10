@@ -99,25 +99,32 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
             return AssistantChannelSendResult.Refused("This channel cannot take this answer.");
         }
 
+        return await _AnswerQuestionAsync(correlationId, answers).ConfigureAwait(false);
+    }
+
+    private async Task<AssistantChannelSendResult> _AnswerQuestionAsync(string correlationId, IReadOnlyList<IReadOnlyList<string>> answers)
+    {
         IReadOnlyList<AssistantChannelQuestion>? questions;
+        string? rowId;
         lock (_relayedRows)
         {
             questions = _questions.GetValueOrDefault(correlationId);
+            rowId = _relayedRows.FirstOrDefault(pair => pair.Value.Id.ToString("n") == correlationId).Key;
         }
 
-        if (questions is null || answers.Count != questions.Count
-            || questions.Where((question, index) => !OperatorMessageRegistry.Takes(question, answers[index])).Any())
+        if (questions is null || !StructuredQuestionJson.TakesAnswers(questions, answers))
         {
             return AssistantChannelSendResult.Refused("That is not an answer this question takes.");
         }
 
-        if (_Take(correlationId) is null)
+        if (rowId is null || _observed is not { } session || session.Rows.FirstOrDefault(row => row.Id == rowId) is not { } card
+            || !await session.AnswerQuestionAsync(rowId, card.InputJson, answers).ConfigureAwait(false))
         {
             return AssistantChannelSendResult.Refused("No question waits under this id.");
         }
 
-        var text = string.Join("\n", questions.Select((question, index) => StructuredQuestionJson.AnswerText(question.Question, string.Join(", ", answers[index]))));
-        return await _DeliverAsync(text, [], cancellationToken).ConfigureAwait(false) ?? AssistantChannelSendResult.Sent();
+        _Take(correlationId);
+        return AssistantChannelSendResult.Sent();
     }
 
     public async Task<AssistantChannelTurn> TryStartReadOnlyTurnAsync(string senderUserId, string text, CancellationToken cancellationToken = default)
@@ -374,7 +381,7 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
 
             foreach (var row in baseline)
             {
-                _relayedRows.TryAdd(row.Id, (Guid.NewGuid(), _Content(row)));
+                _relayedRows.TryAdd(row.Id, (_RowId(row), _Content(row)));
                 if (row.Kind == "Question" && row.IsPendingBrokerAnswer && StructuredQuestionJson.Parse(row.InputJson) is { Count: > 0 } pending)
                 {
                     var correlation = _relayedRows[row.Id].Id.ToString("n");
@@ -446,7 +453,7 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
             }
             else
             {
-                id = Guid.NewGuid();
+                id = _RowId(row);
             }
 
             _relayedRows[row.Id] = (id, _Content(row));
@@ -481,9 +488,12 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
         Timestamp = row.Timestamp,
         ToolName = row.ToolName,
         ResultText = row.ResultText,
+        SenderTitle = row.SenderTitle != row.SenderPaneId && row.SenderTitle != row.SubjectPaneId ? row.SenderTitle : null,
+        QuestionJson = row.Kind == "Question" ? row.InputJson : null,
+        IsPendingQuestion = row.IsPendingBrokerAnswer,
         IsUpdate = isUpdate,
         Questions = asked ?? [],
-        CorrelationId = asked is null ? null : id.ToString("n"),
+        CorrelationId = row.Kind == "Question" ? id.ToString("n") : null,
     };
 
     private static int _Content(TranscriptSnapshotEntry row) =>
@@ -531,7 +541,7 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
                 var row = rows[index];
                 if (!_relayedRows.TryGetValue(row.Id, out var relayed))
                 {
-                    relayed = (Guid.NewGuid(), _Content(row));
+                    relayed = (_RowId(row), _Content(row));
                     _relayedRows[row.Id] = relayed;
                 }
 
@@ -542,6 +552,9 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
             return Task.FromResult(new AssistantChannelHistoryPage(page, start > 0 ? page[^1].Id.ToString("n") : null));
         }
     }
+
+    private static Guid _RowId(TranscriptSnapshotEntry row) =>
+        row.Kind == "Question" && Guid.TryParse(row.Id, out var id) ? id : Guid.NewGuid();
 
     // Newest first: a page back usually starts near the end. Under the _relayedRows lock.
     private int _IndexOf(IReadOnlyList<TranscriptSnapshotEntry> rows, Guid id)
@@ -568,6 +581,8 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
         "TurnCompleted" => AssistantChannelRowKind.TurnCompleted,
         "Error" => AssistantChannelRowKind.Error,
         "Divider" => AssistantChannelRowKind.Divider,
+        "Inbox" => AssistantChannelRowKind.Inbox,
+        "Status" => AssistantChannelRowKind.Status,
         _ => AssistantChannelRowKind.AssistantText,
     };
 

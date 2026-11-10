@@ -96,23 +96,9 @@ internal sealed partial class MobileAssistantChannel
             risk = action.Risk,
             sourcePlugin = action.SourcePlugin,
             decisions = action.Decisions,
-        })).ToList();
-        var questions = _gateway?.PendingQuestions ?? [];
-        foreach (var waiting in questions)
-        {
-            items.Add(JsonSerializer.SerializeToUtf8Bytes(new
-            {
-                id = waiting.CorrelationId,
-                revision = waiting.CorrelationId,
-                capability = string.Empty,
-                kind = "question",
-                target = "cockpit-assistant",
-                summary = waiting.Text,
-                questionId = waiting.CorrelationId,
-                decisions = Array.Empty<string>(),
-                questions = waiting.Questions,
-            }, _PendingJson));
-        }
+            questionId = action.Kind == "question" ? action.Id : null,
+            questions = action.Questions,
+        }, _PendingJson)).ToList();
 
         var snapshotId = Guid.NewGuid().ToString("N");
         List<byte[]> batch = [];
@@ -215,7 +201,9 @@ internal sealed partial class MobileAssistantChannel
     {
         var questionId = _String(body, "questionId");
         var result = AssistantChannelSendResult.Refused("This question is already handled. Reload the list.");
-        if (_gateway is not null && questionId is not null && (_OpenQuestion()?.Id == questionId || _gateway.PendingQuestions.Any(item => item.CorrelationId == questionId)))
+        var channel = _operatorChannel;
+        if (channel is not null && questionId is not null && _String(body, "revision") is { } revision
+            && _String(body, "capability") is { } capability)
         {
             try
             {
@@ -224,7 +212,8 @@ internal sealed partial class MobileAssistantChannel
                         ? group.EnumerateArray().Where(value => value.ValueKind == JsonValueKind.String).Select(value => value.GetString() ?? string.Empty).ToList()
                         : [])).ToList()
                     : [(IReadOnlyList<string>)_Strings(body, "chosen")];
-                result = await _gateway.AnswerQuestionsAsync(_deviceId, questionId, answers).ConfigureAwait(false);
+                var answered = await channel.AnswerQuestionsAsync(questionId, revision, capability, answers).ConfigureAwait(false);
+                result = answered.Ok ? AssistantChannelSendResult.Sent() : AssistantChannelSendResult.Refused(answered.Error ?? "The question was not answered.");
                 if (result.Ok)
                 {
                     lock (_gate)

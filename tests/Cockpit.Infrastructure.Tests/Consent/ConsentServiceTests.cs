@@ -149,6 +149,29 @@ public sealed class ConsentServiceTests
         Assert.Equal(3, attempts);
         Assert.Empty(stranger.Snapshot);
 
+        // Category A: question answers require the current device capability and cannot answer a closed card.
+        var questionOpen = true;
+        var receivedAnswers = new List<IReadOnlyList<IReadOnlyList<string>>>();
+        using var questionRegistration = actions.RegisterQuestion(
+            new OperatorAction("question", "q1", "question", "cockpit-assistant", "Choose", [])
+            {
+                Questions = [new AssistantChannelQuestion { Question = "Choose", AllowOther = false, Options = [new("One", null), new("Two", null)] }],
+            }, answers =>
+            {
+                receivedAnswers.Add(answers);
+                questionOpen = false;
+                return Task.FromResult(true);
+            }, () => questionOpen);
+        using var operatorPhone = transport.OpenChannel();
+        var questionAction = Assert.Single(operatorPhone.Snapshot);
+        Assert.False((await stranger.AnswerQuestionsAsync(questionAction.Id, questionAction.Revision, questionAction.Capability, [["One"]])).Ok);
+        Assert.False((await operatorPhone.AnswerQuestionsAsync(questionAction.Id, "old", questionAction.Capability, [["One"]])).Ok);
+        Assert.False((await operatorPhone.AnswerQuestionsAsync(questionAction.Id, questionAction.Revision, questionAction.Capability, [["Other"]])).Ok);
+        Assert.Empty(receivedAnswers);
+        Assert.True((await operatorPhone.AnswerQuestionsAsync(questionAction.Id, questionAction.Revision, questionAction.Capability, [["Two"]])).Ok);
+        Assert.Equal("Two", Assert.Single(Assert.Single(Assert.Single(receivedAnswers))));
+        Assert.False((await operatorPhone.AnswerQuestionsAsync(questionAction.Id, questionAction.Revision, questionAction.Capability, [["One"]])).Ok);
+
         // Category A: lifecycle authority stays on the authenticated channel, including retries after reconnect.
         var launcher = Substitute.For<ISessionLauncher>();
         var registry = Substitute.For<ISessionRegistry>();

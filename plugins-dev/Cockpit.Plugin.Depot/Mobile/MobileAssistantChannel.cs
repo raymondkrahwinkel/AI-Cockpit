@@ -242,11 +242,10 @@ internal sealed partial class MobileAssistantChannel : IDisposable
         {
             result = AssistantChannelSendResult.Refused("The message is empty.");
         }
-        else if (_OpenQuestion() is not null)
+        else if (_OpenQuestion() is not null || _gateway.PendingQuestions.Count > 0)
         {
-            // While the assistant's question waits, the host reads a text reply as its answer (AC-1553); in v1 that is
-            // decided on the desktop only, like a permission prompt.
-            result = AssistantChannelSendResult.Refused("Answer the question on the desktop first.");
+            // A chat message or dictated text must never implicitly answer an operator card.
+            result = AssistantChannelSendResult.Refused("Answer the question card first.");
         }
         else
         {
@@ -557,9 +556,10 @@ internal sealed partial class MobileAssistantChannel : IDisposable
     {
         var text = row.Text;
         var result = row.ResultText;
+        var questionJson = row.QuestionJson;
         while (true)
         {
-            var truncated = text.Length != row.Text.Length || result?.Length != row.ResultText?.Length;
+            var truncated = text.Length != row.Text.Length || result?.Length != row.ResultText?.Length || questionJson != row.QuestionJson;
             var encoded = JsonSerializer.SerializeToUtf8Bytes(new
             {
                 id = row.Id.ToString("n"),
@@ -567,12 +567,25 @@ internal sealed partial class MobileAssistantChannel : IDisposable
                 text,
                 timestamp = row.Timestamp,
                 toolName = row.ToolName,
+                senderTitle = row.SenderTitle,
+                questionId = row.CorrelationId,
+                questionJson,
+                pendingQuestion = row.IsPendingQuestion,
                 resultText = result,
                 truncated,
             });
-            if (encoded.Length <= budget || (text.Length == 0 && string.IsNullOrEmpty(result)))
+            if (encoded.Length <= budget)
             {
                 return encoded;
+            }
+
+            if (text.Length == 0 && string.IsNullOrEmpty(result))
+            {
+                if (questionJson is null)
+                {
+                    return encoded;
+                }
+                questionJson = null;
             }
 
             text = Half(text);
