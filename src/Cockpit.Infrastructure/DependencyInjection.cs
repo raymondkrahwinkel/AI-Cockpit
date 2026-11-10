@@ -92,6 +92,7 @@ public static class DependencyInjection
         // AlwaysMounted because it is a delivery route, not a capability to opt into: when it was tickable, a
         // profile with any saved MCP selection could silently miss it, so a message could be sent but unreadable.
         services.AddSingleton(new CockpitMcpEndpoint("cockpit-agents", typeof(Agents.AgentsMcpTools), AlwaysMounted: true));
+        services.AddSingleton(new CockpitMcpEndpoint("cockpit-operator-phone", typeof(Plugins.OperatorPhoneMcpTools), AlwaysMounted: true));
 
         // cockpit-assistant (AC-544): the voice assistant's read path across every workspace — the reach no
         // ordinary session has, so it's Internal rather than AlwaysMounted: it reaches only a launch that names

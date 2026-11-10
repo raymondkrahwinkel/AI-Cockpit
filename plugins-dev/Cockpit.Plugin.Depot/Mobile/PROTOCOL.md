@@ -200,6 +200,19 @@ ciphertext ‖ tag = AES-256-GCM(key = k_pc or k_cp, nonce, plaintext, aad)
 
 ## 6. Messages inside a frame
 
+### Deliberate phone pings (AC-2298)
+
+`notify` may carry `kind: "targeted"`, `senderId` (verified pane id), `sender` (session name, at most 80 characters),
+`title` (1–80), `text` (1–240), `urgency` (`normal` or `important`) and `target` (`cockpit-assistant` or a live pane id).
+These fields travel inside the authenticated encrypted frame only; no transcript is attached. The core tool
+`cockpit-operator-phone.notify_operator_phone` derives the sender and limits each sender to three pings per minute.
+Its result counts streams accepting a queued frame, without claiming receipt or display on the phone. An offline
+phone has no backlog of pings. Existing `assistantMessage` notifications retain their payload and behavior.
+
+The app filters targeted pings with its independent Targeted notifications category and source mute. Important
+pings bypass app quiet hours and bundling, while category mutes and Android settings still apply. Normal pings
+bundle for one minute per Cockpit/sender/target; tapping opens the target through the existing navigation.
+
 The plaintext of a frame is one message as UTF-8 JSON:
 
 ```json

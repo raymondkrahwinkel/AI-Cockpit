@@ -1,5 +1,11 @@
 # AI-Cockpit
 
+`cockpit-operator-phone.notify_operator_phone` lets the assistant and live agent sessions ping connected phones
+with a title (80 characters), short text (240), urgency (`normal` or `important`) and target (`assistant` or a
+live pane id). The host supplies the sender name and limits each sender to three pings per minute. Never put
+secrets or transcript in these fields. Depot delivers through the encrypted relay; the result counts streams
+accepting a queued ping, not device delivery. There is no offline backlog or extra consent click.
+
 Profiles have `GuardrailMode` (`Strict`, `Warn`, `Off`) and `GuardrailAllowedPaths` in
 `cockpit.json`, editable under Manage profiles and Options. New profiles default to
 `Strict`; existing entries without the mode default to `Warn`. Allowed paths default

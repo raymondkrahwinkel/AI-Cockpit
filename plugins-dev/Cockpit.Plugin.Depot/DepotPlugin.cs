@@ -273,6 +273,10 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             host.OpenAssistantChannel,
             _logger,
             host: host);
+        if (host.OperatorPhoneNotifications is { } phoneNotifications)
+        {
+            _handlers.Add(phoneNotifications.Register(mobile.NotifyOperatorPhone));
+        }
         _HandleMobile(host, DepotMobileChannel.PairStart, (request, cancellationToken) => mobile.StartAsync(request.ConnectionId, cancellationToken));
         _HandleMobile(host, DepotMobileChannel.PairStatus, (request, _) => Task.FromResult(mobile.Status(request.ConnectionId)));
         _HandleMobile(host, DepotMobileChannel.PairCancel, (request, _) =>
