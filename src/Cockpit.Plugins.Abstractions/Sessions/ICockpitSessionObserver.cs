@@ -79,12 +79,10 @@ public interface ICockpitSessionObserver
     string? GetWorkingDirectory(string paneId) => null;
 
     /// <summary>
-    /// The last <paramref name="count"/> transcript rows of the session in <paramref name="paneId"/>, oldest first, with
-    /// the total the transcript holds (AC-2256). Covers a structured session and a terminal-hosted one whose provider
-    /// can read its transcript back. Rows that only mark the host's own bookkeeping (a turn ending, a divider) are
-    /// left out, so <see cref="PluginTranscriptSlice.Entries"/> can hold fewer than asked. Null for an unknown pane or
-    /// one without a readable transcript (<see cref="OpenCockpitSession.HasReadableTranscript"/>), and on a host that
-    /// predates this member.
+    /// The last <paramref name="count"/> transcript rows of <paramref name="paneId"/>, oldest first, with the total
+    /// (AC-2256); SDK and readable TTY sessions alike. The host's own markers (turn end, divider) are left out, so
+    /// <see cref="PluginTranscriptSlice.Entries"/> can hold fewer than asked. Null for an unknown pane, one without a
+    /// readable transcript (<see cref="OpenCockpitSession.HasReadableTranscript"/>), or an older host.
     /// </summary>
     Task<PluginTranscriptSlice?> ReadTranscriptAsync(string paneId, int count) => Task.FromResult<PluginTranscriptSlice?>(null);
 
