@@ -12,12 +12,15 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Cockpit.App.Plugins;
+using Cockpit.App.Services;
 using Cockpit.App.ViewTests;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Plugins.Abstractions.Files;
 using Cockpit.Plugins.Abstractions.UI.Files;
 using Cockpit.Core.Abstractions.Remote;
@@ -123,6 +126,12 @@ public sealed class RemoteAdminJourney
             // AC-1571: the echo fixture on this desktop too, whose own settings view Admin opens for the server's copy.
             var desktopState = Path.Combine(root, "desktop-state");
             await _InstallLocallyAsync(desktopState, Path.Combine(root, "desktop-bundled"), StorePlugin, "EchoProviderDirectory");
+            var remoteUiState = Path.Combine(root, "remote-ui-state");
+            await _InstallLocallyAsync(remoteUiState, Path.Combine(root, "remote-ui-echo"), StorePlugin, "EchoProviderDirectory");
+            await _InstallLocallyAsync(remoteUiState, Path.Combine(root, "remote-ui-workflows"), "workflows", "WorkflowsDirectory");
+            await _InstallLocallyAsync(remoteUiState, Path.Combine(root, "remote-ui-schedules"), "schedules", "SchedulesDirectory");
+            var mismatchState = Path.Combine(root, "mismatch-state");
+            await _InstallLocallyAsync(mismatchState, Path.Combine(root, "mismatch-bundled"), "workflows", "WorkflowsDirectory", "99.0.0");
             await using var cockpit = JourneyHost.Desktop(stateRoot: desktopState);
             await cockpit.Services.GetRequiredService<IMcpServerStore>().SaveAsync(
             [
@@ -307,6 +316,8 @@ public sealed class RemoteAdminJourney
                 await admin.LoadCommand.ExecuteAsync(null);
             });
             Assert.Equal((0, "load", false, "Echo from the store"), (restartExit, loaded?["decision"]?.GetValue<string>(), loaded?["takesEffectAfterServerRestarts"]?.GetValue<bool>(), created["label"]?.GetValue<string>()));
+
+            await _ExerciseRemotePluginUiAsync(cockpit, setup, remoteUiState, mismatchState, Path.Combine(root, "empty-ui-state"));
 
             // AC-1534/AC-1585: Admin → Profiles is Options › Profiles' editor on the server. Every field it has, key and secret
             // variable included, is saved there and reopens as saved, each secret only as set; a masked save keeps them, and
@@ -1452,12 +1463,19 @@ public sealed class RemoteAdminJourney
     }
 
     // Into the desktop's own state root before its host is built, as a plugin the operator already has installed.
-    private static async Task _InstallLocallyAsync(string stateRoot, string bundled, string id, string directory)
+    private static async Task _InstallLocallyAsync(string stateRoot, string bundled, string id, string directory, string? version = null)
     {
         var plugin = Directory.CreateDirectory(Path.Combine(bundled, id)).FullName;
         foreach (var file in Directory.EnumerateFiles(ServerJourney._Metadata(directory)))
         {
             File.Copy(file, Path.Combine(plugin, Path.GetFileName(file)));
+        }
+        if (version is not null)
+        {
+            var manifestPath = Path.Combine(plugin, "plugin.json");
+            var manifest = JsonNode.Parse(await File.ReadAllTextAsync(manifestPath)) ?? throw new InvalidDataException("The fixture has no plugin manifest.");
+            manifest["version"] = version;
+            await File.WriteAllTextAsync(manifestPath, manifest.ToJsonString());
         }
 
         Directory.CreateDirectory(stateRoot);
@@ -1471,6 +1489,141 @@ public sealed class RemoteAdminJourney
         {
             Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, previous);
         }
+    }
+
+    // AC-2283: the UI-source root never starts a backend; ordinary plugin controls mutate only the server.
+    private static async Task _ExerciseRemotePluginUiAsync(JourneyHost desktop, BackendApiClient server, string localRoot, string mismatchRoot, string emptyRoot)
+    {
+        await RefuseHostRequestAsync(new { text = new string('é', 32769) });
+        await RefuseHostRequestAsync(new { data = Enumerable.Range(0, 33).ToDictionary(index => index.ToString(), _ => "value") });
+        await RefuseHostRequestAsync(new { data = new Dictionary<string, string> { [new string('k', 129)] = "value" } });
+        await RefuseHostRequestAsync(new { data = new Dictionary<string, string> { ["key"] = new string('é', 4097) } });
+        await RefuseHostRequestAsync(new { paneId = new string('p', 129) });
+        await RefuseHostRequestAsync(new { paneId = "pane\n" });
+        await RefuseHostRequestAsync(new { targetPluginId = new string('p', 129) });
+        await RefuseHostRequestAsync(new { targetPluginId = "plugin\t" });
+        await RefuseHostRequestAsync(new { action = new string('a', 129) });
+        await RefuseHostRequestAsync(new { action = "action\r" });
+
+        async Task RefuseHostRequestAsync(object request)
+        {
+            var refused = await Assert.ThrowsAsync<BackendApiException>(() => server.SendAsync<System.Text.Json.JsonElement>(
+                HttpMethod.Post, $"api/v1/plugins/{StorePlugin}/ui/project-memory", request));
+            Assert.Equal(HttpStatusCode.BadRequest, refused.Status);
+            Assert.Equal("invalid_request", refused.ErrorCode);
+        }
+
+        var before = await File.ReadAllBytesAsync(Path.Combine(localRoot, "cockpit.json"));
+        var localProfiles = await desktop.Services.GetRequiredService<ISessionProfileStore>().LoadAsync();
+        var servers = desktop.Services.GetRequiredService<IRemoteServers>();
+        var loggers = desktop.Services.GetRequiredService<ILoggerFactory>();
+        await HeadlessAvalonia.RunAsync(async () =>
+        {
+            var window = new MainWindow(windowBoundsStore: null, Server);
+            using var ui = new RemoteWindowUi(window, new SurfaceWindows(), loggers);
+            var remote = CockpitViewModel.ForRemoteWindow(Server, servers, null, null, _ => Task.CompletedTask, ui: ui);
+            window.DataContext = remote;
+            window.Show();
+            try
+            {
+                await ui.InitializeAsync(remote, servers, Server, localRoot);
+                Assert.True(remote.PluginSettings.ContainsKey(StorePlugin), "The fixture's UI did not activate.");
+                var schedules = await OpenPluginAsync("Schedules");
+                try
+                {
+                    await Until.LayoutHolds(schedules, () => schedules.GetLogicalDescendants().OfType<Button>().Any(button => Equals(button.Content, "MCP & permissions")));
+                    _Click(schedules, "MCP & permissions");
+                    await Until.LayoutHolds(schedules, () => schedules.GetLogicalDescendants().OfType<TextBlock>().Any(text => text.Text == "Echo from the store"));
+                    Assert.DoesNotContain(localProfiles, profile => profile.Label == "Echo from the store");
+                }
+                finally
+                {
+                    schedules.Close();
+                }
+
+                var workflows = await OpenPluginAsync("Workflows");
+                try
+                {
+                    await Until.LayoutHolds(workflows, () => workflows.GetLogicalDescendants().OfType<TextBlock>().Any(text => text.Text == "Journey scheduled"));
+                    _Click(workflows, "Duplicate");
+                    await Until.LayoutHolds(workflows, () => workflows.GetLogicalDescendants().OfType<TextBlock>().Any(text => text.Text == "Journey scheduled (copy)"));
+                    var saved = "";
+                    await Until.ReloadHolds(async () => saved = await server.SendAsync<string>(HttpMethod.Post, "api/v1/plugins/workflows/channel/load", new { }),
+                        () => saved.Contains("Journey scheduled (copy)", StringComparison.Ordinal));
+                    using var confirm = Window.WindowOpenedEvent.AddClassHandler<ConfirmationDialog>((confirmation, _) =>
+                    {
+                        if (confirmation.DataContext is ConfirmationDialogViewModel { Title: "Delete flow" } question
+                            && question.Message.Contains("Journey scheduled (copy)", StringComparison.Ordinal))
+                        {
+                            Dispatcher.UIThread.Post(() => confirmation.Close(true));
+                        }
+                    });
+                    var copiedRow = workflows.GetLogicalDescendants().OfType<TextBlock>().Single(text => text.Text == "Journey scheduled (copy)")
+                        .GetLogicalAncestors().OfType<Border>().First();
+                    _Click(copiedRow, "Delete");
+                    await Until.LayoutHolds(workflows, () => !workflows.GetLogicalDescendants().OfType<TextBlock>().Any(text => text.Text == "Journey scheduled (copy)"));
+                    await Until.ReloadHolds(async () => saved = await server.SendAsync<string>(HttpMethod.Post, "api/v1/plugins/workflows/channel/load", new { }),
+                        () => !saved.Contains("Journey scheduled (copy)", StringComparison.Ordinal));
+                }
+                finally
+                {
+                    workflows.Close();
+                }
+
+                async Task<Window> OpenPluginAsync(string title)
+                {
+                    var opened = new TaskCompletionSource<Window>(TaskCreationOptions.RunContinuationsAsynchronously);
+                    using var watch = Window.WindowOpenedEvent.AddClassHandler<Window>((openedWindow, _) =>
+                    {
+                        if (openedWindow.Title == title)
+                        {
+                            opened.TrySetResult(openedWindow);
+                        }
+                    });
+                    remote.PluginSideButtons.Single(button => button.Title == title).OnInvoke();
+                    return await opened.Task.WaitAsync(Until.Ceiling);
+                }
+            }
+            finally
+            {
+                window.Close();
+            }
+
+            var refusedWindow = new MainWindow(windowBoundsStore: null, Server);
+            using var refusedUi = new RemoteWindowUi(refusedWindow, new SurfaceWindows(), loggers);
+            var refused = CockpitViewModel.ForRemoteWindow(Server, servers, null, null, _ => Task.CompletedTask, ui: refusedUi);
+            refusedWindow.DataContext = refused;
+            refusedWindow.Show();
+            try
+            {
+                await refusedUi.InitializeAsync(refused, servers, Server, mismatchRoot);
+                var unavailable = refused.PluginSideButtons.Single(button => button.PluginId == "workflows");
+                Assert.Contains("UI unavailable", unavailable.Title, StringComparison.Ordinal);
+                unavailable.OnInvoke();
+                Assert.Contains(refused.ToastHost.Toasts, toast => toast.Message.Contains("version", StringComparison.Ordinal));
+            }
+            finally
+            {
+                refusedWindow.Close();
+            }
+
+            var emptyWindow = new MainWindow(windowBoundsStore: null, Server);
+            using var emptyUi = new RemoteWindowUi(emptyWindow, new SurfaceWindows(), loggers);
+            var empty = CockpitViewModel.ForRemoteWindow(Server, servers, null, null, _ => Task.CompletedTask, ui: emptyUi);
+            emptyWindow.DataContext = empty;
+            emptyWindow.Show();
+            try
+            {
+                await emptyUi.InitializeAsync(empty, servers, Server, emptyRoot);
+                Assert.True(emptyWindow.IsVisible);
+                Assert.Contains(empty.PluginSideButtons, button => button.PluginId == "workflows" && button.Title.Contains("UI unavailable", StringComparison.Ordinal));
+            }
+            finally
+            {
+                emptyWindow.Close();
+            }
+        });
+        Assert.Equal(before, await File.ReadAllBytesAsync(Path.Combine(localRoot, "cockpit.json")));
     }
 
     // The server writes its state while the journey reads it; a shared read waits for no one.

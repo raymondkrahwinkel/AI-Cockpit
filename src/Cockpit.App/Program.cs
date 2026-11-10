@@ -370,6 +370,8 @@ sealed class Program
     {
         var window = new MainWindow(windowBoundsStore: null, startup.Server);
         var surfaces = new SurfaceWindows();
+        var ui = new Plugins.RemoteWindowUi(window, surfaces, startup.Loggers);
+        window.Closed += (_, _) => ui.Dispose();
         var cockpit = startup.Open(admin =>
         {
             OptionsDialog.ForServer(admin).Show(window);
@@ -404,13 +406,15 @@ sealed class Program
         }, (title, message, confirmLabel) =>
             new ConfirmationDialog { DataContext = new ConfirmationDialogViewModel(title, message, confirmLabel) }
                 .ShowDialog<bool>(window.OwnedWindows.LastOrDefault() ?? window),
-            project => surfaces.ShowAsync(typeof(ProjectDialog), new ProjectDialog { DataContext = project, Title = project.DialogTitle }, window));
+            project => surfaces.ShowAsync(typeof(ProjectDialog), new ProjectDialog { DataContext = project, Title = project.DialogTitle }, window), ui: ui);
         if (cockpit is null)
         {
+            ui.Dispose();
             return new ConfirmationDialog { DataContext = new ConfirmationDialogViewModel("Cannot open the remote window", startup.Refusal ?? "", "Close") };
         }
 
         window.DataContext = cockpit;
+        window.Opened += async (_, _) => await startup.InitializeUiAsync(ui, cockpit);
         return window;
     }
 

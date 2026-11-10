@@ -25,7 +25,7 @@ internal sealed class PluginSessionHeaderHost : StackPanel
 
         AttachedToVisualTree += (_, _) =>
         {
-            _cockpit = Program.Services?.GetService<CockpitViewModel>();
+            _cockpit = TopLevel.GetTopLevel(this)?.DataContext as CockpitViewModel ?? Program.Services?.GetService<CockpitViewModel>();
             if (_cockpit is not null)
             {
                 _cockpit.PluginSessionHeaderItems.CollectionChanged += _OnContributionsChanged;
@@ -52,7 +52,7 @@ internal sealed class PluginSessionHeaderHost : StackPanel
     {
         _Clear();
 
-        var cockpit = Program.Services?.GetService<CockpitViewModel>();
+        var cockpit = _cockpit;
         if (cockpit is null || DataContext is not SessionPanelViewModel session)
         {
             return;

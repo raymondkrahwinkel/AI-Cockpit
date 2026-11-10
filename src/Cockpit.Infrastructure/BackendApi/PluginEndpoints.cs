@@ -25,6 +25,8 @@ internal static class PluginEndpoints
         IPluginAdministration plugins() => services.GetRequiredService<IPluginAdministration>();
         IPluginStoreConfigStore stores() => services.GetRequiredService<IPluginStoreConfigStore>();
 
+        PluginUiEndpoints.Map(api, services);
+
         api.MapGet("/plugins", async (CancellationToken cancellationToken) =>
         {
             var installed = await plugins().GetInstalledAsync(cancellationToken).ConfigureAwait(false);

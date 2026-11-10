@@ -1,4 +1,6 @@
 using Avalonia.Controls;
+using System.Text.Json;
+using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.CompanionTools;
 using Cockpit.Plugins.Abstractions.Consent;
@@ -28,8 +30,12 @@ internal sealed class ServerPluginUiHost(
     Func<Task<IReadOnlyList<PluginProfileInfo>>> profiles,
     Func<Task<IReadOnlyList<PluginProjectInfo>>> projects,
     ServerManagedClis managedClis,
-    string sourceKey = "server") : ICockpitUiHost
+    string sourceKey = "server",
+    IPluginChannelRelay? relay = null,
+    string? folderId = null,
+    IReadOnlyDictionary<string, IReadOnlyList<string>>? intents = null) : ICockpitUiHost
 {
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private readonly List<Func<Task>> _saved = [];
     private readonly Dictionary<string, Func<string?, IPluginProviderConfigView>> _providerViews = new(StringComparer.Ordinal);
 
@@ -209,17 +215,33 @@ internal sealed class ServerPluginUiHost(
     // Already the server's: a screen opened here manages only this server.
     public Task<IReadOnlyList<PluginServerTarget>> GetServerTargetsAsync() => Task.FromResult<IReadOnlyList<PluginServerTarget>>([]);
 
-    public Task SendToSessionAsync(string paneId, string text) => Task.CompletedTask;
+    public async Task SendToSessionAsync(string paneId, string text) =>
+        await _InvokeHostAsync("send-to-session", new { paneId, text });
 
-    public Task InsertIntoSessionAsync(string paneId, string text) => Task.CompletedTask;
+    public async Task InsertIntoSessionAsync(string paneId, string text) =>
+        await _InvokeHostAsync("insert-into-session", new { paneId, text });
 
-    public Task<IReadOnlyList<ProjectMemoryRow>> GetProjectMemoryRowsAsync(string? paneId = null, CancellationToken cancellationToken = default) =>
-        Task.FromResult<IReadOnlyList<ProjectMemoryRow>>([]);
+    public async Task<IReadOnlyList<ProjectMemoryRow>> GetProjectMemoryRowsAsync(string? paneId = null, CancellationToken cancellationToken = default)
+    {
+        var answer = await _InvokeHostAsync("project-memory", new { paneId }, cancellationToken);
+        return answer.GetProperty("rows").Deserialize<IReadOnlyList<ProjectMemoryRow>>(Json)
+            ?? throw new JsonException("The server returned no project memory rows.");
+    }
 
-    public Task<IReadOnlyDictionary<string, string>?> SendIntent(string targetPluginId, string action, IReadOnlyDictionary<string, string> data) =>
-        Task.FromResult<IReadOnlyDictionary<string, string>?>(null);
+    public async Task<IReadOnlyDictionary<string, string>?> SendIntent(string targetPluginId, string action, IReadOnlyDictionary<string, string> data)
+    {
+        var answer = await _InvokeHostAsync("intent", new { targetPluginId, action, data });
+        return answer.Deserialize<IReadOnlyDictionary<string, string>>(Json)
+            ?? throw new JsonException("The server returned no intent result.");
+    }
 
-    public bool CanSendIntent(string targetPluginId, string action) => false;
+    public bool CanSendIntent(string targetPluginId, string action) =>
+        intents?.TryGetValue(targetPluginId, out var actions) == true && actions.Contains(action, StringComparer.Ordinal);
+
+    private Task<JsonElement> _InvokeHostAsync(string action, object payload, CancellationToken cancellationToken = default) =>
+        relay is not null && folderId is not null
+            ? relay.InvokeHostAsync(folderId, action, JsonSerializer.SerializeToElement(payload, Json), cancellationToken)
+            : throw new NotSupportedException("This server does not offer plugin UI host actions.");
 
     // AC-1585: the server's managed copies, as the plugin's host there has them.
     public string? ResolveManagedCliPath(string cliName) => managedClis.Resolve(cliName);

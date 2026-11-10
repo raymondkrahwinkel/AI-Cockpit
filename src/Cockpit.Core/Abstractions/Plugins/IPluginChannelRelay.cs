@@ -11,6 +11,18 @@ public interface IPluginChannelRelay
     Task<JsonElement> InvokeChannelAsync(string folderId, string action, JsonElement payload, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Invokes a bounded UI action on the plugin's own server host; never a local backend action.
+    /// </summary>
+    Task<JsonElement> InvokeHostAsync(string folderId, string action, JsonElement payload, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("This server does not offer plugin UI host actions.");
+
+    /// <summary>
+    /// Reads the server's registered intent targets before a UI part checks which actions it may offer.
+    /// </summary>
+    Task<IReadOnlyDictionary<string, IReadOnlyList<string>>> GetUiIntentsAsync(string folderId, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyDictionary<string, IReadOnlyList<string>>>(new Dictionary<string, IReadOnlyList<string>>());
+
+    /// <summary>
     /// Hands the plugin's events of that name on the server to the handler, with their stream seq, while the stream is up (AC-1547).
     /// </summary>
     IDisposable SubscribeChannel(string folderId, string name, Action<long, JsonElement> handler);

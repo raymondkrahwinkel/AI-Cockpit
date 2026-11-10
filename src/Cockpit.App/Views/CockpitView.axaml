@@ -2593,7 +2593,24 @@
                 Background="{DynamicResource CockpitSecondaryBgBrush}"
                 BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,1,0,0"
                 Padding="10,4">
-            <Panel>
+            <Grid ColumnDefinitions="*,Auto">
+                <Button Grid.Column="1"
+                        Classes="statusMeter"
+                        Padding="8,2"
+                        Margin="0,0,8,0"
+                        Command="{Binding ShowWorktreesCommand}"
+                        ToolTip.Tip="Git worktrees on this cockpit — view their state or clean up finished worktrees">
+                    <Button.IsVisible>
+                        <MultiBinding Converter="{x:Static BoolConverters.Or}">
+                            <Binding Path="IsRemoteWindow"/>
+                            <Binding Path="Worktrees.HasWorktrees"/>
+                        </MultiBinding>
+                    </Button.IsVisible>
+                    <TextBlock Text="{Binding Worktrees.Count, StringFormat='⑂ Managed worktrees: {0}'}"
+                               FontSize="11"
+                               Foreground="{Binding Worktrees.CountBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"
+                               VerticalAlignment="Center"/>
+                </Button>
                 <!-- AC-1487 (mockup v2 tab 5): a remote window measures nothing here; it says where it is connected. -->
                 <StackPanel Orientation="Horizontal" Spacing="24" HorizontalAlignment="Right" Margin="0,2"
                             IsVisible="{Binding IsRemoteWindow}">
@@ -2681,21 +2698,6 @@
                     <!-- AC-2028: the disk meter, compact like CPU/RAM; the panel it opens lists every drive. -->
                     <controls:DiskStorageStatus DockPanel.Dock="Right"/>
 
-                    <!-- Managed worktrees (AC-85): the git worktrees the cockpit created for isolated sessions. Shown only
-                         while there are any — click to see each one's state, reattach a gone one, or clean up finished. -->
-                    <Button DockPanel.Dock="Right"
-                            Classes="statusMeter"
-                            Padding="8,2"
-                            Margin="0,0,8,0"
-                            Command="{Binding ShowWorktreesCommand}"
-                            IsVisible="{Binding Worktrees.HasWorktrees}"
-                            ToolTip.Tip="Git worktrees the cockpit created for isolated sessions — click to view them, reattach a gone one, or clean up">
-                        <TextBlock Text="{Binding Worktrees.Count, StringFormat='⑂ Managed worktrees: {0}'}"
-                                   FontSize="11"
-                                   Foreground="{Binding Worktrees.CountBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"
-                                   VerticalAlignment="Center"/>
-                    </Button>
-
                     <!-- The delegated tasks (#67) run as sessions without a tab, so the status bar is where they are
                          visible at all: work is happening on your behalf that nothing else on screen would tell you
                          about. Shown only while a task runs or waits (AC-2028): a meter at nought is clutter, and the
@@ -2770,7 +2772,7 @@
                                Foreground="{DynamicResource CockpitTextFaintBrush}"
                                VerticalAlignment="Center"/>
                 </DockPanel>
-            </Panel>
+            </Grid>
         </Border>
 
         <!-- AC-962: where the assistant's floating chat docks if it is let go here. Declared last so it lies over

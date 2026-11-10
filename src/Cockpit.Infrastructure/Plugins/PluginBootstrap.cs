@@ -20,7 +20,7 @@ public sealed class PluginBootstrap : ISingletonService
     }
 
     // Test seam: point discovery and the restart-deferred sweeps at an arbitrary plugins root.
-    internal PluginBootstrap(string pluginsRoot, string configFilePath)
+    public PluginBootstrap(string pluginsRoot, string configFilePath)
     {
         _pluginsRoot = pluginsRoot;
         _installer = new PluginInstaller(pluginsRoot);
