@@ -63,6 +63,10 @@ internal sealed class BrowserHostTabs(BrowserIpcConnection connection, string st
                 }
             }
         }
+        else if (message.Operation == "tab.devtools" && _tabs.TryGetValue(message.TabId, out var target))
+        {
+            return await target.DevToolsAsync(message, token);
+        }
         else if (_tabs.TryGetValue(message.TabId, out var tab))
         {
             await tab.HandleAsync(message, token);

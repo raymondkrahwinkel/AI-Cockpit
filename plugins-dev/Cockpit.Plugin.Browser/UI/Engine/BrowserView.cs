@@ -36,7 +36,7 @@ internal abstract class BrowserView : Control
     public abstract void SetMuted(bool muted);
     public abstract Task CloseAsync();
 
-    // AC-2148/2149: the explicit host harness cannot grant agent access before host-side authorization exists.
+    // AC-2149: the explicit host harness cannot grant agent control before host-side authorization exists.
     public virtual string? ControlOrigin { get; set; }
     public virtual void ReleaseHeldSubmit() { }
     public virtual void DropHeldSubmit() { }
