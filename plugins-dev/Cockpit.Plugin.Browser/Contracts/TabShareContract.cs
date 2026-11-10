@@ -12,6 +12,9 @@ internal static class TabShareContract
     // Action, UI to backend: the TabShareAnswer to a request, matched by its id.
     public const string Answer = "share.answer";
 
+    // Action, UI to backend: requests cancelled by the UI lifetime ending.
+    public const string Cancel = "share.cancel";
+
     // Action, UI to backend: the open sessions, for the share card's "With".
     public const string Sessions = "share.sessions";
 

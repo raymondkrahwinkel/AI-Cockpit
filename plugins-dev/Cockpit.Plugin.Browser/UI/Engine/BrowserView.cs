@@ -6,6 +6,7 @@ internal abstract class BrowserView : Control
 {
     internal Guid TabId { get; } = Guid.NewGuid();
     internal virtual Guid HostGeneration => Guid.Empty;
+    internal virtual CancellationToken HostStopped => CancellationToken.None;
     internal virtual bool IsScenePlaceholder => false;
 
     public event Action<string>? AddressChanged;

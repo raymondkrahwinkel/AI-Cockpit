@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2150: cancel pending shared-tab reads and consent when the Browser host stops, crashes or the session closes; a new host requires a fresh grant.
+
 - AC-2149: let an agent act in a development Browser host tab only on the control the operator granted, decided in the engine host right before each action and on each held form submission, and never carried over to a new host.
 
 - AC-2148: let readers of a development Browser host tab query only that tab through DevTools, answering closed or crashed tabs at once and refusing replayed or foreign calls.

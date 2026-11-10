@@ -49,6 +49,7 @@ internal sealed class HostBrowserView : BrowserView
     }
 
     internal override Guid HostGeneration => _host.Generation;
+    internal override CancellationToken HostStopped => _host.Connection.Closed;
     internal string? Failure { get; private set; }
     public override bool IsMuted => _muted;
     public override void SetMuted(bool muted) => _muted = muted;

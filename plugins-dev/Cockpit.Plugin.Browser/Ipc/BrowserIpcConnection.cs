@@ -31,6 +31,7 @@ internal sealed class BrowserIpcConnection : IAsyncDisposable
     private long _lastReceived;
 
     internal Task Completion => Task.WhenAll(_reader, _worker);
+    internal CancellationToken Closed { get; }
     internal IReadOnlyList<Exception> CleanupErrors => _cleanupErrors;
 
     internal BrowserIpcFrameBuffer OpenFrameBuffer(string trustedParent, BrowserIpcFrameDescriptor descriptor, Guid tab = default)
@@ -75,6 +76,7 @@ internal sealed class BrowserIpcConnection : IAsyncDisposable
         Func<BrowserIpcMessage, CancellationToken, Task<JsonElement>> handle, (Guid Tab, string Session)? initialTab = null,
         Func<BrowserIpcMessage, bool>? concurrent = null)
     {
+        Closed = _closed.Token;
         _concurrent = concurrent;
         if (generation == Guid.Empty)
         {

@@ -70,6 +70,8 @@ internal sealed class TabGrantRegistry
 
     public void SessionEnded(string paneId) => _Remove(key => key.PaneId == paneId);
 
+    public void Clear() => _Change(_grants.Clear);
+
     // Another origin pauses the grant until you keep sharing; back on the shared origin it stands again.
     public void Navigated(string tabId, string origin) => _Change(() =>
     {
