@@ -185,7 +185,7 @@ public interface ISessionHandle
 
     /// <summary>
     /// Submits <paramref name="prompt"/> now (true) or holds it until the session is ready (false), in the same step
-    /// as checking that no earlier prompt is still held; null, accepting nothing, when one is (AC-1375).
+    /// as checking that no earlier prompt is still held; null accepts nothing when one is held or input is refused.
     /// </summary>
     Task<bool?> SubmitPromptWhenReadyAsync(string prompt);
 
