@@ -1217,7 +1217,7 @@ internal class PluginBackendHost(
     public Task SendToSessionAsync(string paneId, string text) =>
         string.IsNullOrEmpty(text)
             ? Task.CompletedTask
-            : _ActOnSessionAsync(paneId, session => session.InjectAndSubmitAsync(text));
+            : _SendToSessionAsync(paneId, session => session.InjectAndSubmitAsync(text));
 
     // AC-2265: the assistant channel's trust boundary and refusal shape. The images are decoded before the pane is looked
     // up, off the UI thread; a session that cannot see them still gets the text, and the sender hears why they did not go.
@@ -1225,7 +1225,7 @@ internal class PluginBackendHost(
     {
         var (accepted, refusal) = InboundImage.NormalizeAll(images);
         var blind = false;
-        var delivered = await _ActOnSessionAsync(paneId, session =>
+        var delivered = await _SendToSessionAsync(paneId, session =>
         {
             if (accepted.Count > 0 && session.AcceptsImages)
             {
@@ -1243,6 +1243,18 @@ internal class PluginBackendHost(
 
         return new SessionSendResult(delivered, refusal);
     }
+
+    private Task<bool> _SendToSessionAsync(string paneId, Func<ISessionHandle, Task<bool>> send) =>
+        _ActOnSessionAsync(paneId, async session =>
+        {
+            // A task must never become an answer to an SDK question or a TTY's own permission dialog.
+            if (session.SessionStatus == SessionStatus.NeedsAttention || session.HasPendingConsent
+                || (await session.ReadPendingPermissionsAsync().ConfigureAwait(false)).Count > 0)
+            {
+                return false;
+            }
+            return await send(session).ConfigureAwait(false);
+        });
 
     public Task<bool> InsertIntoSessionAsync(string paneId, string text) =>
         string.IsNullOrEmpty(text)

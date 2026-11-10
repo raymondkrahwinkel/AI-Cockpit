@@ -35,7 +35,8 @@ public sealed partial class OperatorActionService
             .Where(desk => desk.Type == WorkspaceType.Sessions)
             .Select(desk => new OperatorSessionChoice(desk.Id, desk.Name)).ToArray()).ConfigureAwait(false);
         return new OperatorSessionCatalog(channel.SessionCapability, _sessionEpoch, desks,
-            profiles.Select(profile => new OperatorSessionChoice(profile.Label, profile.Label)).ToArray());
+            profiles.GroupBy(profile => profile.Label, StringComparer.OrdinalIgnoreCase).Where(group => group.Count() == 1)
+                .Select(group => new OperatorSessionChoice(group.Key, group.Key)).ToArray());
     }
 
     private Task<OperatorSessionResult> _StartSessionAsync(_Channel channel, string requestId, string capability, string epoch, string deskId, string profileId)
@@ -60,9 +61,9 @@ public sealed partial class OperatorActionService
             else
             {
                 // Never evict a completed start: a delayed retry must not create another process.
-                if (_starts.Count >= 4096)
+                if (_starts.Keys.Count(item => item.Device == channel.DeviceId) >= 4096)
                 {
-                    return Task.FromResult(new OperatorSessionResult(false, "The host's session-start request store is full."));
+                    return Task.FromResult(new OperatorSessionResult(false, "This device's session-start request store is full."));
                 }
                 start = new _Start(deskId, profileId, new Lazy<Task<OperatorSessionResult>>(() => _LaunchAsync(channel, capability, deskId, profileId)));
                 _starts.Add(key, start);
@@ -82,7 +83,8 @@ public sealed partial class OperatorActionService
             }
 
             var profiles = await _profiles.LoadAsync().ConfigureAwait(false);
-            var profile = profiles.FirstOrDefault(item => item.Label == profileId);
+            var matches = profiles.Where(item => string.Equals(item.Label, profileId, StringComparison.OrdinalIgnoreCase)).ToArray();
+            var profile = matches.Length == 1 ? matches[0] : null;
             var validDesk = await _launcher.RunExclusiveAsync(() => _launcher.Workspaces.Workspaces
                 .Any(desk => desk.Id == deskId && desk.Type == WorkspaceType.Sessions)).ConfigureAwait(false);
             if (profile is null || !validDesk || !_CanManage(channel, capability))

@@ -229,12 +229,23 @@ internal sealed partial class SessionPanelHandle : IHostedSession
 
     public Task<bool> SetNameAsync(string name) => _WhileLiveAsync(pane => pane.SetNameDirectly(name));
 
-    public Task<bool> InjectAndSubmitAsync(string text) => _WhileLiveAsync(pane => pane.InjectAndSubmit(text));
+    public Task<bool> InjectAndSubmitAsync(string text) => UiThreadCall.RunAsync(() =>
+    {
+        if (!_IsLive() || _pane is not { } pane || !_CanReceiveTask(pane))
+        {
+            return false;
+        }
+        pane.InjectAndSubmit(text);
+        return true;
+    });
 
     public bool AcceptsImages => _pane is SessionViewModel { CanPasteImages: true };
 
     public Task<bool> SubmitWithImagesAsync(string text, IReadOnlyList<byte[]> pngImages) => UiThreadCall.RunAsync(() =>
-        _IsLive() && _pane is SessionViewModel sdk ? sdk.SubmitWithImagesAsync(text, pngImages) : Task.FromResult(false));
+        _IsLive() && _pane is SessionViewModel sdk && _CanReceiveTask(sdk) ? sdk.SubmitWithImagesAsync(text, pngImages) : Task.FromResult(false));
+
+    private static bool _CanReceiveTask(SessionPanelViewModel pane) => pane.SessionStatus != SessionStatus.NeedsAttention
+        && pane.PendingConsent is null && (pane is not SessionViewModel sdk || !sdk.HasPendingPermission);
 
     public Task<bool> InsertTextAsync(string text) => _WhileLiveAsync(pane => pane.InjectText(text));
 

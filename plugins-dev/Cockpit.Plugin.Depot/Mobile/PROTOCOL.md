@@ -479,17 +479,22 @@ No lifecycle method is exposed as an agent tool; model callers are refused by th
 
 The opaque lifecycle capability belongs to this live operator channel; discard it on stream closure and fetch a
 fresh catalog after reconnect. Host validation uses the current Sessions desks and profiles (profile ids are their
-labels), never phone-supplied executable paths, configuration or commands. Startup goes through the normal launcher
+labels; ambiguous labels are excluded and refused case-insensitively), never phone-supplied executable paths,
+configuration or commands. Startup goes through the normal launcher
 and composer, choosing the profile's SDK/TTY route and applying its launch validation. A failure is acknowledged as
 a failure, including a start requiring a desktop worktree decision. Stop closes exactly one grid agent pane; terminal,
 assistant and embedded panes are refused. An already closed pane returns a clear error with no side effects.
 
 `requestId` is a unique nonempty start id, at most 128 characters, kept across reconnect/ack loss. The host retains
 the task and result for each paired device/id for its process lifetime; a different desk/profile under that id is
-refused. Replays use the fresh stream capability. The bounded store refuses further new starts when full (4096),
+refused. Replays use the fresh stream capability and expected host epoch. The store refuses further new starts
+when that device's 4096 entries are full,
 rather than evicting ids and risking duplicate processes. A host restart closes the relay stream and starts a new
 deduplication lifetime, identified by the catalog's `epoch`; do not replay an unresolved start across a changed epoch. Refresh the list after a successful
 ack and open its returned pane. Older hosts hide lifecycle controls with an explanation; `session.send` still works.
+
+The shared host send path refuses tasks while a session needs attention or has a pending consent, permission or
+question, for SDK and TTY alike. Text cannot answer a permission dialog; use the bound operator action or desktop.
 The phone requests `operator.pending` after each authenticated reconnect, independently of whether chat is open.
 Snapshots also publish when an action opens or closes. Every snapshot has `snapshotId`, `last` and `items`;
 the phone replaces its list only after the final batch of that snapshot arrives. An empty final batch clears it.

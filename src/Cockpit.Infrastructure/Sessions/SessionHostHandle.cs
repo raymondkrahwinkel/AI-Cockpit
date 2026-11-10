@@ -234,7 +234,8 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
             Task sending;
             lock (_gate)
             {
-                if (_host.Runtime is not { IsRunning: true } || _host.TurnsHeldBecause is not null)
+                if (_host.Runtime is not { IsRunning: true } || _host.TurnsHeldBecause is not null
+                    || _host.LiveState.Status == SessionStatus.NeedsAttention || _rows.Exists(row => row.IsPendingPermission))
                 {
                     return false;
                 }
