@@ -197,6 +197,8 @@ internal sealed partial class HostBrowserView : BrowserView
             {
                 await _host.Connection.CallAsync(_host.Generation, "enginehost", "tab.create",
                     JsonSerializer.SerializeToElement(new BrowserTabCreate(TabId, address)), BrowserIpcLimits.Deadline).ConfigureAwait(false);
+                await _host.Connection.CallAsync(TabId, "operator", "tab.mute",
+                    JsonSerializer.SerializeToElement(_muted), BrowserIpcLimits.Deadline).ConfigureAwait(false);
             }
             finally
             {
