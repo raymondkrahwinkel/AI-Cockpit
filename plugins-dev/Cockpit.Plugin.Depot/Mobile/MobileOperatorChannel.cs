@@ -6,7 +6,7 @@ namespace Cockpit.Plugin.Depot.Mobile;
 
 internal sealed partial class MobileAssistantChannel
 {
-    private readonly IOperatorActionService? _operatorActions;
+    private readonly IOperatorActionTransport? _operatorTransport;
     private IOperatorActionChannel? _operatorChannel;
 
     private void _StartOperatorChannel()
@@ -14,7 +14,7 @@ internal sealed partial class MobileAssistantChannel
         long generation;
         lock (_gate)
         {
-            if (_disposed || _operatorChannel is not null || _operatorActions is null)
+            if (_disposed || _operatorChannel is not null || _operatorTransport is null)
             {
                 return;
             }
@@ -22,7 +22,7 @@ internal sealed partial class MobileAssistantChannel
             generation = _streamGeneration;
         }
 
-        var channel = _operatorActions.OpenChannel(_deviceId);
+        var channel = _operatorTransport.OpenChannel();
         var installed = false;
         lock (_gate)
         {
@@ -92,6 +92,9 @@ internal sealed partial class MobileAssistantChannel
             kind = action.Kind,
             target = action.Target,
             summary = action.Summary,
+            title = action.Title,
+            risk = action.Risk,
+            sourcePlugin = action.SourcePlugin,
             decisions = action.Decisions,
         })).ToList();
         var questions = _gateway?.PendingQuestions ?? [];
@@ -148,6 +151,9 @@ internal sealed partial class MobileAssistantChannel
             target = item.GetProperty("target").GetString(),
             kind = "desktop",
             summary = "This request is too large for the phone. Review it on the desktop.",
+            title = item.TryGetProperty("title", out var title) ? Cut(title.GetString() ?? string.Empty, Math.Min(title.GetString()?.Length ?? 0, 300)) : null,
+            risk = item.TryGetProperty("risk", out var risk) ? risk.GetString() : null,
+            sourcePlugin = item.TryGetProperty("sourcePlugin", out var source) ? source.GetString() : null,
             capability = string.Empty,
             decisions = Array.Empty<string>(),
         });

@@ -1,10 +1,20 @@
 namespace Cockpit.Plugins.Abstractions.Channels;
 
 /// <summary>An actual pending operator decision, supplied by the owner of its callback.</summary>
-public sealed record OperatorAction(string Id, string Revision, string Kind, string Target, string Summary, IReadOnlyList<string> Decisions);
+public sealed record OperatorAction(string Id, string Revision, string Kind, string Target, string Summary, IReadOnlyList<string> Decisions)
+{
+    public string? Title { get; init; }
+    public string? Risk { get; init; }
+    public string? SourcePlugin { get; init; }
+}
 
 /// <summary>A pending decision and its one-use capability, scoped to one authenticated channel.</summary>
-public sealed record OperatorPendingAction(string Id, string Revision, string Kind, string Target, string Summary, IReadOnlyList<string> Decisions, string Capability);
+public sealed record OperatorPendingAction(string Id, string Revision, string Kind, string Target, string Summary, IReadOnlyList<string> Decisions, string Capability)
+{
+    public string? Title { get; init; }
+    public string? Risk { get; init; }
+    public string? SourcePlugin { get; init; }
+}
 
 /// <summary>The host confirmed the decision, or refused an obsolete or unauthorised response.</summary>
 public sealed record OperatorActionResult(bool Ok, string? Error);
@@ -21,5 +31,10 @@ public interface IOperatorActionChannel : IDisposable
 public interface IOperatorActionService
 {
     IDisposable Register(OperatorAction action, Func<string, Task<bool>> respond, Func<bool> isCurrent);
-    IOperatorActionChannel OpenChannel(string deviceId);
+}
+
+/// <summary>Host-authorised transport adapter for authenticated operator streams; never available to action publishers.</summary>
+public interface IOperatorActionTransport
+{
+    IOperatorActionChannel OpenChannel();
 }

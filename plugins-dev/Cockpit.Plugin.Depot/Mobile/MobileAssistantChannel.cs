@@ -54,7 +54,7 @@ internal sealed partial class MobileAssistantChannel : IDisposable
         _cockpitVersion = cockpitVersion;
         _logger = logger;
         _sessions = host is null ? null : new MobileSessionChannel(host, _Send, logger);
-        _operatorActions = host?.OperatorActions;
+        _operatorTransport = host?.OperatorTransport;
         _attachments = new MobileAttachments((attachmentId, error) => _Send("attachment.refused", writer =>
         {
             writer.WriteString("attachmentId", attachmentId);
@@ -147,7 +147,7 @@ internal sealed partial class MobileAssistantChannel : IDisposable
                     writer.WriteString("version", _cockpitVersion);
                     writer.WriteBoolean("assistant", _gateway is not null);
                     writer.WriteBoolean("images", _gateway?.AcceptsImages == true);
-                    writer.WriteBoolean("operatorActions", _operatorActions is not null);
+                    writer.WriteBoolean("operatorActions", _operatorTransport is not null);
                 });
                 _StartOperatorChannel();
                 _SendPending();

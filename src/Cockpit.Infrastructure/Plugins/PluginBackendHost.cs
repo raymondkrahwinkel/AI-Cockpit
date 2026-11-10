@@ -132,6 +132,15 @@ public class PluginBackendHost(
 
     public IOperatorActionService? OperatorActions => services.GetService<OperatorActionService>();
 
+    public IOperatorActionTransport? OperatorTransport => pluginId == "depot"
+        ? services.GetService<OperatorActionService>() is { } service ? new _OperatorTransport(service) : null
+        : throw new UnauthorizedAccessException("This plugin is not an authorised operator transport.");
+
+    private sealed class _OperatorTransport(OperatorActionService service) : IOperatorActionTransport
+    {
+        public IOperatorActionChannel OpenChannel() => service.OpenChannel();
+    }
+
     // AC-128: the transport-verified pane behind the current in-process MCP call, read from the ambient request
     // context the auth middleware set. A plugin's own MCP tool keys on this so it acts on the calling session, not a
     // session id the agent named. Null off the verified path (no MCP call in flight).

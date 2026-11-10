@@ -42,9 +42,8 @@ public sealed class OperatorActionService : IOperatorActionService, ISingletonSe
         return registration;
     }
 
-    public IOperatorActionChannel OpenChannel(string deviceId)
+    internal IOperatorActionChannel OpenChannel()
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(deviceId);
         // The returned object is the authenticated device binding; no response can select another channel by id.
         var channel = new _Channel(this);
         lock (_sourceGate)
@@ -102,13 +101,17 @@ public sealed class OperatorActionService : IOperatorActionService, ISingletonSe
             return [.. current.Where(item => _actions.GetValueOrDefault(item.Action.Id) == item).Select(item =>
             {
                 var action = item.Action;
-                if (!channel.Capabilities.TryGetValue(action.Id, out var capability))
+                var capability = string.Empty;
+                if (!item.InFlight && !channel.Capabilities.TryGetValue(action.Id, out capability))
                 {
                     capability = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
                     channel.Capabilities.Add(action.Id, capability);
                 }
 
-                return new OperatorPendingAction(action.Id, action.Revision, action.Kind, action.Target, action.Summary, action.Decisions, capability);
+                return new OperatorPendingAction(action.Id, action.Revision, action.Kind, action.Target, action.Summary, item.InFlight ? [] : action.Decisions, capability)
+                {
+                    Title = action.Title, Risk = action.Risk, SourcePlugin = action.SourcePlugin,
+                };
             })];
         }
     }
@@ -120,7 +123,7 @@ public sealed class OperatorActionService : IOperatorActionService, ISingletonSe
         {
             if (McpRequestContext.CurrentCaller is not null || !_channels.Contains(channel)
                 || !channel.Capabilities.TryGetValue(id, out var expected) || !string.Equals(expected, capability, StringComparison.Ordinal)
-                || !_actions.TryGetValue(id, out registration) || registration.Action.Revision != revision
+                || !_actions.TryGetValue(id, out registration) || registration.InFlight || registration.Action.Revision != revision
                 || !registration.Action.Decisions.Contains(decision, StringComparer.Ordinal))
             {
                 return new OperatorActionResult(false, "This action is no longer available for this device.");
@@ -134,11 +137,11 @@ public sealed class OperatorActionService : IOperatorActionService, ISingletonSe
 
         lock (_gate)
         {
-            if (!_channels.Contains(channel) || _actions.GetValueOrDefault(id) != registration)
+            if (!_channels.Contains(channel) || _actions.GetValueOrDefault(id) != registration || registration.InFlight)
             {
                 return new OperatorActionResult(false, "This action was already handled.");
             }
-            _actions.Remove(id);
+            registration.InFlight = true;
             foreach (var other in _channels)
             {
                 other.Capabilities.Remove(id);
@@ -146,9 +149,10 @@ public sealed class OperatorActionService : IOperatorActionService, ISingletonSe
         }
 
         _Changed();
+        var accepted = false;
         try
         {
-            var accepted = await registration.Respond(decision).ConfigureAwait(false);
+            accepted = await registration.Respond(decision).ConfigureAwait(false);
             _logger.LogInformation("An operator decision from a phone was {Result}.", accepted ? "accepted" : "obsolete");
             return new OperatorActionResult(accepted, accepted ? null : "This action was already handled.");
         }
@@ -156,6 +160,26 @@ public sealed class OperatorActionService : IOperatorActionService, ISingletonSe
         {
             _logger.LogWarning("A phone operator decision failed: {Reason}.", exception.GetType().Name);
             return new OperatorActionResult(false, "The action could not be completed. Reload the pending list.");
+        }
+        finally
+        {
+            var retryable = !accepted && registration.IsCurrent();
+            lock (_gate)
+            {
+                if (_actions.GetValueOrDefault(id) == registration)
+                {
+                    if (retryable)
+                    {
+                        registration.InFlight = false;
+                    }
+                    else
+                    {
+                        _actions.Remove(id);
+                    }
+                }
+            }
+
+            _Changed();
         }
     }
 
@@ -204,6 +228,7 @@ public sealed class OperatorActionService : IOperatorActionService, ISingletonSe
         public OperatorAction Action { get; } = action;
         public Func<string, Task<bool>> Respond { get; } = respond;
         public Func<bool> IsCurrent { get; } = isCurrent;
+        public bool InFlight { get; set; }
         public void Dispose() => owner._Remove(this);
     }
 

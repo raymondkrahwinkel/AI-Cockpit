@@ -1,4 +1,5 @@
 using Cockpit.Core.Abstractions.Assistant;
+using Cockpit.Core;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Assistant;
@@ -266,12 +267,12 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
 
     // ponytail: top-level rows only; a sub-agent's permission row needs its parent re-recorded, add that with a caller.
     public Task<bool> RespondToPermissionByIdAsync(string toolUseId, bool allow, bool forSession = false) =>
-        _RespondToPermissionAsync(toolUseId, allow, forSession, null);
+        _RespondToPermissionAsync(toolUseId, allow, forSession, null, OperatorDecisionOrigin.Desktop);
 
-    public Task<bool> RespondToPermissionRevisionAsync(SessionPendingPermission expected, bool allow) =>
-        _RespondToPermissionAsync(expected.ToolUseId, allow, false, expected);
+    public Task<bool> RespondToPermissionRevisionAsync(SessionPendingPermission expected, bool allow, OperatorDecisionOrigin origin = OperatorDecisionOrigin.Desktop) =>
+        _RespondToPermissionAsync(expected.ToolUseId, allow, false, expected, origin);
 
-    private async Task<bool> _RespondToPermissionAsync(string toolUseId, bool allow, bool forSession, SessionPendingPermission? expected)
+    private async Task<bool> _RespondToPermissionAsync(string toolUseId, bool allow, bool forSession, SessionPendingPermission? expected, OperatorDecisionOrigin origin)
     {
         List<Task> answering = [];
         lock (_gate)
@@ -290,7 +291,8 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
             _host.RecordRow(row with
             {
                 IsPendingPermission = false,
-                PermissionDecision = !allow ? "Denied" : forSession ? "Allowed for this session" : "Allowed",
+                PermissionDecision = (!allow ? "Denied" : forSession ? "Allowed for this session" : "Allowed")
+                    + (origin == OperatorDecisionOrigin.PhoneOperator ? " (phone operator)" : ""),
             });
             answering.Add(allow && forSession
                 ? runtime.AllowPermissionAlwaysAsync(toolUseId, row.ToolName ?? "", row.InputJson ?? "{}", PermissionRuleScope.Exact)

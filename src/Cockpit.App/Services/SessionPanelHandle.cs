@@ -1,4 +1,5 @@
 using Cockpit.App.ViewModels;
+using Cockpit.Core;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Sessions;
@@ -204,8 +205,8 @@ internal sealed partial class SessionPanelHandle : IHostedSession
         ? UiThreadCall.RunAsync(() => sdk.RespondToPermissionByIdAsync(toolUseId, allow, forSession))
         : Task.FromResult(false);
 
-    public Task<bool> RespondToPermissionRevisionAsync(SessionPendingPermission expected, bool allow) => _pane is SessionViewModel sdk
-        ? UiThreadCall.RunAsync(() => sdk.RespondToPermissionByIdAsync(expected.ToolUseId, allow, expected: expected))
+    public Task<bool> RespondToPermissionRevisionAsync(SessionPendingPermission expected, bool allow, OperatorDecisionOrigin origin = OperatorDecisionOrigin.Desktop) => _pane is SessionViewModel sdk
+        ? UiThreadCall.RunAsync(() => sdk.RespondToPermissionByIdAsync(expected.ToolUseId, allow, expected: expected, origin: origin))
         : Task.FromResult(false);
 
     // Always dispatched, as `SessionVerifyGateway` does (AC-577): every caller arrives off the UI thread.

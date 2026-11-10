@@ -24,6 +24,9 @@ public interface ICockpitHost
     /// <summary>Revocable operator decisions, independent of any transport; requires host 0.176.0.</summary>
     IOperatorActionService? OperatorActions => null;
 
+    /// <summary>Authenticated operator transport, available only to the host-authorised adapter; requires host 0.176.0.</summary>
+    IOperatorActionTransport? OperatorTransport => null;
+
     IServiceProvider Services { get; }
 
     ICockpitActions Actions { get; }

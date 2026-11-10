@@ -1,4 +1,5 @@
 using Cockpit.Plugins.Abstractions.Consent;
+using Cockpit.Core;
 
 namespace Cockpit.Infrastructure.Consent;
 
@@ -13,7 +14,7 @@ public interface IConsentBroker
     IReadOnlyList<ConsentPrompt> PendingPrompts => [];
 
     /// <summary>Atomically takes a current prompt; false when the desktop or cancellation already took it.</summary>
-    bool TryRespond(Guid promptId, ConsentOutcome outcome)
+    bool TryRespond(Guid promptId, ConsentOutcome outcome, OperatorDecisionOrigin origin = OperatorDecisionOrigin.Desktop)
     {
         return false;
     }

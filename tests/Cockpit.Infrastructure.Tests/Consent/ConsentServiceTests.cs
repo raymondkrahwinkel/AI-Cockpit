@@ -1,10 +1,15 @@
 using Cockpit.Core.Abstractions.Consent;
+using Cockpit.Core;
 using Cockpit.Core.Consent;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Plugins;
 using Microsoft.Extensions.Logging.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
+using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Channels;
+using Cockpit.Plugins.Abstractions.Sessions;
+using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 
 namespace Cockpit.Infrastructure.Tests.Consent;
@@ -45,6 +50,8 @@ public sealed class ConsentServiceTests
     [Fact]
     public async Task RequestConsentAsync_DangerousRequest_IsNeverRememberedAcrossCalls()
     {
+        var auditEntries = new List<ConsentAuditEntry>();
+        _audit.RecordAsync(Arg.Do<ConsentAuditEntry>(auditEntries.Add), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
         var broker = CreateBroker();
         var prompts = new List<ConsentPrompt>();
         broker.PromptOpened += (_, prompt) =>
@@ -66,10 +73,19 @@ public sealed class ConsentServiceTests
         // Category A: only a current, device-bound, one-use capability reaches the same atomic consent callback.
         var mobileBroker = CreateBroker();
         var actions = new OperatorActionService(NullLogger<OperatorActionService>.Instance, mobileBroker);
-        using var phone = actions.OpenChannel("paired-phone");
-        using var stranger = actions.OpenChannel("other-phone");
+        using var services = new ServiceCollection().AddSingleton(actions).BuildServiceProvider();
+        PluginBackendHost Host(string pluginId) => new(pluginId, pluginId, services, Substitute.For<IPluginStorage>(),
+            Substitute.For<ICockpitSessionObserver>(), Substitute.For<ICockpitActions>(), new PluginDiagnostics());
+        Assert.Throws<UnauthorizedAccessException>(() => Host("untrusted").OperatorTransport);
+        Assert.Same(actions, Host("untrusted").OperatorActions);
+        var transport = Assert.IsAssignableFrom<IOperatorActionTransport>(Host("depot").OperatorTransport);
+        using var phone = transport.OpenChannel();
+        using var stranger = transport.OpenChannel();
         var pending = mobileBroker.RequestConsentAsync(request);
         var offered = Assert.Single(phone.Snapshot);
+        Assert.Equal(request.Title, offered.Title);
+        Assert.Equal(request.Risk.ToString(), offered.Risk);
+        Assert.Equal(request.Source.PluginId, offered.SourcePlugin);
         Assert.False((await stranger.RespondAsync(offered.Id, offered.Revision, offered.Capability, "approve")).Ok);
         Assert.False((await phone.RespondAsync(offered.Id, "obsolete", offered.Capability, "approve")).Ok);
         Assert.False((await phone.RespondAsync(offered.Id, offered.Revision, offered.Capability, "akkoord")).Ok);
@@ -86,6 +102,7 @@ public sealed class ConsentServiceTests
 
         Assert.True((await phone.RespondAsync(offered.Id, offered.Revision, offered.Capability, "approve")).Ok);
         Assert.True((await pending).IsApproved);
+        Assert.Equal(OperatorDecisionOrigin.PhoneOperator, auditEntries[^1].Origin);
         Assert.False((await phone.RespondAsync(offered.Id, offered.Revision, offered.Capability, "approve")).Ok);
 
         var next = mobileBroker.RequestConsentAsync(request);
@@ -93,6 +110,7 @@ public sealed class ConsentServiceTests
         mobileBroker.Respond(Guid.Parse(desktopFirst.Id), ConsentOutcome.Denied, false);
         Assert.False((await phone.RespondAsync(desktopFirst.Id, desktopFirst.Revision, desktopFirst.Capability, "approve")).Ok);
         Assert.False((await next).IsApproved);
+        Assert.Equal(OperatorDecisionOrigin.Desktop, auditEntries[^1].Origin);
 
         var disconnected = mobileBroker.RequestConsentAsync(request);
         var withdrawn = Assert.Single(phone.Snapshot);
@@ -100,6 +118,32 @@ public sealed class ConsentServiceTests
         Assert.False((await phone.RespondAsync(withdrawn.Id, withdrawn.Revision, withdrawn.Capability, "approve")).Ok);
         mobileBroker.Respond(Guid.Parse(withdrawn.Id), ConsentOutcome.Denied, false);
         Assert.False((await disconnected).IsApproved);
+
+        var attempts = 0;
+        var waiting = true;
+        using var retryable = actions.Register(new OperatorAction("retryable", "r1", "consent", "", "test callback", ["approve"]),
+            _ =>
+            {
+                attempts++;
+                if (attempts == 1)
+                {
+                    throw new InvalidOperationException("callback failed before deciding");
+                }
+
+                waiting = attempts < 3;
+                return Task.FromResult(!waiting);
+            }, () => waiting);
+        var beforeFailure = Assert.Single(stranger.Snapshot);
+        Assert.False((await stranger.RespondAsync(beforeFailure.Id, beforeFailure.Revision, beforeFailure.Capability, "approve")).Ok);
+        var afterThrow = Assert.Single(stranger.Snapshot);
+        Assert.NotEqual(beforeFailure.Capability, afterThrow.Capability);
+        Assert.False((await stranger.RespondAsync(beforeFailure.Id, beforeFailure.Revision, beforeFailure.Capability, "approve")).Ok);
+        Assert.False((await stranger.RespondAsync(afterThrow.Id, afterThrow.Revision, afterThrow.Capability, "approve")).Ok);
+        var afterRefusal = Assert.Single(stranger.Snapshot);
+        Assert.NotEqual(afterThrow.Capability, afterRefusal.Capability);
+        Assert.True((await stranger.RespondAsync(afterRefusal.Id, afterRefusal.Revision, afterRefusal.Capability, "approve")).Ok);
+        Assert.Equal(3, attempts);
+        Assert.Empty(stranger.Snapshot);
     }
 
     /// <summary>The low-risk counterpart: once remembered, the second identical request is not asked again.</summary>

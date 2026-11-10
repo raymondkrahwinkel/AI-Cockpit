@@ -1,4 +1,5 @@
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Plugins.Abstractions.Channels;
@@ -51,9 +52,12 @@ internal sealed class OperatorActionSources : IDisposable
 
             var needsChoices = prompt.Request.Choices is { Count: > 0 };
             _prompts[prompt.Id] = _actions.Register(
-                new OperatorAction(prompt.Id.ToString("N"), Guid.NewGuid().ToString("N"), "consent", prompt.Request.Source.PaneId ?? "cockpit-assistant",
-                    prompt.Request.Action + (needsChoices ? "\nComplete the choices on the desktop to approve this request." : ""), needsChoices ? ["deny"] : ["approve", "deny"]),
-                decision => Task.FromResult(_consent.TryRespond(prompt.Id, decision == "approve" ? ConsentOutcome.Approved : ConsentOutcome.Denied)),
+                new OperatorAction(prompt.Id.ToString("N"), Guid.NewGuid().ToString("N"), "consent", prompt.Request.Source.PaneId ?? "",
+                    prompt.Request.Action, needsChoices ? ["deny"] : ["approve", "deny"])
+                {
+                    Title = prompt.Request.Title, Risk = prompt.Request.Risk.ToString(), SourcePlugin = prompt.Request.Source.PluginId,
+                },
+                decision => Task.FromResult(_consent.TryRespond(prompt.Id, decision == "approve" ? ConsentOutcome.Approved : ConsentOutcome.Denied, OperatorDecisionOrigin.PhoneOperator)),
                 () => _consent.PendingPrompts.Any(current => current.Id == prompt.Id));
         }
     }
@@ -164,7 +168,7 @@ internal sealed class OperatorActionSources : IDisposable
                 new OperatorAction(Guid.NewGuid().ToString("N"), Guid.NewGuid().ToString("N"), "permission", handle.PaneId,
                     permission.ToolName + "\n" + permission.InputJson, ["approve", "deny"]),
                 decision => _IsLive(handle)
-                    ? handle.RespondToPermissionRevisionAsync(permission, decision == "approve")
+                    ? handle.RespondToPermissionRevisionAsync(permission, decision == "approve", OperatorDecisionOrigin.PhoneOperator)
                     : Task.FromResult(false),
                 () => _IsLive(handle)));
         }

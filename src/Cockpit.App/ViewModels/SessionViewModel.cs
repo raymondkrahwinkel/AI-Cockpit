@@ -14,6 +14,7 @@ using Cockpit.Core.Abstractions.Events;
 using Cockpit.Core.Abstractions.Mentions;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Assistant;
@@ -2770,7 +2771,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         await AllowAlwaysAsync(entry, PermissionRuleScope.Wildcard);
     }
 
-    private async Task RespondToPermissionAsync(TranscriptEntryViewModel entry, bool allow, string? answersJson = null)
+    private async Task RespondToPermissionAsync(TranscriptEntryViewModel entry, bool allow, string? answersJson = null,
+        OperatorDecisionOrigin origin = OperatorDecisionOrigin.Desktop)
     {
         if (RemoteServer is not null)
         {
@@ -2783,14 +2785,22 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             return;
         }
 
-        _MarkDecided(entry, answersJson is not null ? "Answered" : allow ? "Allowed" : "Denied");
+        _MarkDecided(entry, (answersJson is not null ? "Answered" : allow ? "Allowed" : "Denied")
+            + (origin == OperatorDecisionOrigin.PhoneOperator ? " (phone operator)" : ""));
         await _control.RespondToPermissionAsync(entry.ToolUseId, allow, answersJson);
     }
 
     // AC-1324: the controller's click, arriving by tool-use id rather than by row. False when no such row is
     // open here — answered already, or never asked — and then nothing is done.
-    internal async Task<bool> RespondToPermissionByIdAsync(string toolUseId, bool allow, bool forSession = false, SessionPendingPermission? expected = null)
+    internal async Task<bool> RespondToPermissionByIdAsync(string toolUseId, bool allow, bool forSession = false,
+        SessionPendingPermission? expected = null, OperatorDecisionOrigin origin = OperatorDecisionOrigin.Desktop)
     {
+        // A remote API has no revision-and-origin contract; it cannot accept a phone's local capability.
+        if (expected is not null && (RemoteServer is not null || !_control.IsAttached))
+        {
+            return false;
+        }
+
         if (PendingToolPermissionRows().FirstOrDefault(row => string.Equals(row.ToolUseId, toolUseId, StringComparison.Ordinal)) is not { } entry)
         {
             return false;
@@ -2802,7 +2812,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
 
         // AC-1476: a session-wide allow is the pane's own exact "Always".
-        await (forSession && allow && entry.ToolName is not null ? AllowAlwaysAsync(entry, PermissionRuleScope.Exact) : RespondToPermissionAsync(entry, allow));
+        await (forSession && allow && entry.ToolName is not null ? AllowAlwaysAsync(entry, PermissionRuleScope.Exact) : RespondToPermissionAsync(entry, allow, origin: origin));
         return true;
     }
 

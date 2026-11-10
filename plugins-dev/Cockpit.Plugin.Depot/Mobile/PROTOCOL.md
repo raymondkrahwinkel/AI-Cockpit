@@ -470,6 +470,8 @@ the phone replaces its list only after the final batch of that snapshot arrives.
 A lost connection discards partial snapshots and capabilities. Responses are never persisted or retried on reconnect.
 
 Each item carries `id`, `revision`, `kind`, `target`, `summary`, `decisions` and `capability`.
+Consent also carries its exact `title`, `risk` and `sourcePlugin`; a missing pane is not attributed to the assistant.
+Dangerous consent is explicitly marked in the app.
 `target` is the session pane id, `cockpit-assistant`, or an Autopilot issue id. The source Cockpit is the authenticated
 stream, never the currently selected Cockpit in the UI. `decisions` are the exact allowed decision strings.
 The capability is unpredictable, held only in memory, and scoped to the authenticated device's current channel,
@@ -477,13 +479,16 @@ request and revision. It never appears in a transcript, model input, MCP result 
 
 The phone sends `operator.respond` with `{id, revision, capability, decision}`. The host checks the capability,
 current registration and allowed decision and consumes authority atomically across every device before invoking
-the existing callback. It replies `operator.result` with `{replyTo, ok, error}`. A stale, wrong-device, replayed or
+the existing callback. It replies `operator.result` with `{replyTo, ok, error}`. A failed callback reoffers a still-current request with new capabilities; old capabilities stay consumed.
+A stale, wrong-device, replayed or
 closed-channel decision is refused without reaching the callback. Desktop answers, expiration and unpair revoke
 pending authority. One explicit button press is sufficient; there is no second consent prompt.
 
-Autopilot owns its registrations. `merge-go` keeps the existing sub-PR-to-collection gate;
+Autopilot owns its registrations. Sub-PR merge-go is unavailable on the phone.
 `epic-go` only opens the existing PR-to-main gate and does not grant permission to merge that PR.
-The host records phone operator provenance without accepting a caller-supplied person name.
+The host records `phone operator` provenance in consent audit and session permission decisions without accepting
+a caller-supplied person name. Only the host-allowlisted Depot plugin receives the transport channel factory;
+other plugins may publish requests but cannot open an operator channel. The factory accepts no claimed device id.
 Chat text and `assistant.send`/`session.send` do not carry this authority; no MCP tool mints or submits it.
 
 Ordinary questions have `kind: question`, `questionId`, and `questions` containing every question's text, header,
