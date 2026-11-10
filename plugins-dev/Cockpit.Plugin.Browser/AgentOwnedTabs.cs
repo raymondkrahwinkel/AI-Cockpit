@@ -21,6 +21,17 @@ internal sealed partial class AgentOwnedTabs
         this.addressPolicy = addressPolicy ?? new AddressPolicy(() => []);
         browsers.NetworkPolicy = this.addressPolicy;
         browsers.RetainTargets = generation => _tabs.Values.Where(e => e.Generation == generation && e.Purpose == "operator" && !_closed.ContainsKey((generation, e.Target))).Select(e => e.Target).ToHashSet(StringComparer.Ordinal);
+        browsers.GenerationEnded = Forget;
+    }
+
+    // AC-2151: nothing of an ended run stays addressable; its ids are refused as unknown, not just as ended.
+    private void Forget(Guid generation)
+    {
+        foreach (var entry in _tabs.Values.Where(e => e.Generation == generation)) _tabs.TryRemove(entry.TabId, out _);
+        foreach (var key in _closed.Keys.Where(k => k.Generation == generation)) _closed.TryRemove(key, out _);
+        _origins.TryRemove(generation, out _);
+        // The browser's run owns and has already disposed the boundary (OwnBoundary).
+        _boundaries.TryRemove(generation, out _);
     }
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(10) };
     private readonly ConcurrentDictionary<string, Entry> _tabs = new(StringComparer.Ordinal);
