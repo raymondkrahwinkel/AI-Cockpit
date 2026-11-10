@@ -204,7 +204,7 @@ internal sealed partial class SessionPanelHandle : IHostedSession
             }
             if (!_CanReceiveTask(pane))
             {
-                throw new InvalidOperationException("This pane is working or waiting for a permission or question. Answer it on the desktop before sending a task.");
+                return (bool?)null;
             }
             return pane.HasPromptWaitingToBeDelivered ? (bool?)null : pane.SubmitPromptWhenReady(prompt);
         });
@@ -240,11 +240,15 @@ internal sealed partial class SessionPanelHandle : IHostedSession
 
     public Task<bool> SetNameAsync(string name) => _WhileLiveAsync(pane => pane.SetNameDirectly(name));
 
-    public Task<bool> InjectAndSubmitAsync(string text) => UiThreadCall.RunAsync(() =>
+    public Task<bool> InjectAndSubmitAsync(string text) => UiThreadCall.RunAsync(async () =>
     {
         if (!_IsLive() || _pane is not { } pane || !_CanReceiveTask(pane))
         {
             return false;
+        }
+        if (pane is TtyViewModel tty)
+        {
+            return await tty.SendPromptAsync(text);
         }
         pane.InjectAndSubmit(text);
         return true;
@@ -256,8 +260,7 @@ internal sealed partial class SessionPanelHandle : IHostedSession
         _IsLive() && _pane is SessionViewModel sdk && _CanReceiveTask(sdk) ? sdk.SubmitWithImagesAsync(text, pngImages) : Task.FromResult(false));
 
     private static bool _CanReceiveTask(SessionPanelViewModel pane) => !pane.IsReadingChild && pane.SessionStatus != SessionStatus.NeedsAttention
-        && pane.PendingConsent is null && (pane is not SessionViewModel sdk || !sdk.HasPendingPermission)
-        && (pane is not TtyViewModel || pane.SessionStatus is not (SessionStatus.Busy or SessionStatus.WorkingBackground));
+        && pane.PendingConsent is null && (pane is not SessionViewModel sdk || !sdk.HasPendingPermission);
 
     public Task<bool> InsertTextAsync(string text) => _WhileLiveAsync(pane => pane.InjectText(text));
 

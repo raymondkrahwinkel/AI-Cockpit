@@ -1180,6 +1180,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             }
 
             OnPropertyChanged(nameof(HasPendingPermission));
+            DeliverHeldPrompt();
         }
 
         if (sender is TranscriptEntryViewModel threaded)

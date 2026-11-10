@@ -2036,6 +2036,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         OnPropertyChanged(nameof(RequiresCloseConfirmation));
         OnPropertyChanged(nameof(RequestsAttention));
         OnPropertyChanged(nameof(RailSortKey));
+        DeliverHeldPrompt();
     }
 
     partial void OnPendingConsentChanged(ConsentPromptViewModel? value)
@@ -2044,6 +2045,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         OnPropertyChanged(nameof(RailSortKey));
         OnPropertyChanged(nameof(HasInlineConsent));
         OnConsentCardChanged();
+        DeliverHeldPrompt();
     }
 
     // AC-1715: for a pane whose transcript names the call a card belongs to.

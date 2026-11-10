@@ -237,10 +237,6 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
 
     private void _EmitTranscript(string text, Action<string>? sink)
     {
-        if (!_CanSubmitTask)
-        {
-            return;
-        }
         var typed = _AsTypedText(text);
         _lastTypedLength = typed.Length;
         if (typed.Length > 0)
@@ -881,6 +877,15 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
 
     public override Task<bool> SendPromptAsync(string prompt)
     {
+        if (!IsReadingChild && PendingConsent is null && SessionStatus is SessionStatus.Busy or SessionStatus.WorkingBackground)
+        {
+            if (HasPromptWaitingToBeDelivered || string.IsNullOrWhiteSpace(prompt))
+            {
+                return Task.FromResult(false);
+            }
+            SubmitPromptWhenReady(prompt);
+            return Task.FromResult(true);
+        }
         if (!CanTakeAPrompt || PromptSink is not { } sink)
         {
             return Task.FromResult(false);

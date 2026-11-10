@@ -495,7 +495,8 @@ ack and open its returned pane. Older hosts hide lifecycle controls with an expl
 
 The shared host send path refuses tasks while a session needs attention or has a pending consent, permission or
 question, for SDK and TTY alike. Text cannot answer a permission dialog; use the bound operator action or desktop.
-TTY tasks are also refused while the agent is working; the delayed Enter rechecks the same guard. Gateway,
+TTY tasks arriving while the agent works are held (at most one) until idle with the guard free; the delayed Enter
+rechecks the same guard. Gateway,
 REST, plugin and wake submissions share the session's own prompt guard, including SDK permission state.
 The phone requests `operator.pending` after each authenticated reconnect, independently of whether chat is open.
 Snapshots also publish when an action opens or closes. Every snapshot has `snapshotId`, `last` and `items`;

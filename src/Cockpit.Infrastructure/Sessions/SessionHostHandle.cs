@@ -254,22 +254,9 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
         }
     }
 
-    // Nothing is ever held here: false says the prompt was not taken, and nothing will deliver it later.
-    public async Task<bool?> SubmitPromptWhenReadyAsync(string prompt)
-    {
-        lock (_gate)
-        {
-            if (_host.LiveState.Status == SessionStatus.NeedsAttention || _rows.Exists(row => row.IsPendingPermission))
-            {
-                throw new InvalidOperationException("This pane is waiting for a permission or question. Answer it on the desktop before sending a task.");
-            }
-        }
-        if (!await SendPromptAsync(prompt).ConfigureAwait(false))
-        {
-            throw new InvalidOperationException("This pane cannot accept a task. It may be waiting for a permission or question, held, or stopped.");
-        }
-        return true;
-    }
+    // This handle holds no startup brief: null reports a refusal, never a held or delivered task.
+    public async Task<bool?> SubmitPromptWhenReadyAsync(string prompt) =>
+        await SendPromptAsync(prompt).ConfigureAwait(false) ? true : null;
 
     public Task SetWorktreeBranchAsync(string? branch)
     {

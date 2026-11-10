@@ -59,28 +59,44 @@ public class AssistantSendGatewayTests
         session.PromptSink = _ => { };
         Assert.Empty(written);
 
+        session.SessionStatus = SessionStatus.Busy;
         session.MarkHostedTuiReady();
+        Assert.Empty(written);
+        session.SessionStatus = SessionStatus.Idle;
         Assert.Equal(new[] { "run the tests", "\r" }, written);
 
-        // Category A: every gateway caller must refuse task text while the CLI is asking or working.
+        await using var headless = new SessionHost(() => "headless", null, TimeProvider.System);
+        var headlessHandle = new SessionHostHandle("headless", "Starting", false, "desk", null, null, headless);
+        Assert.Null(await headlessHandle.SubmitPromptWhenReadyAsync("opening brief"));
+
+        // Category A: task text cannot answer a CLI question; a busy pane holds it until safe to send.
         session.SessionStatus = SessionStatus.NeedsAttention;
         var refused = await gateway.SendPromptAsync(session.PaneId, "2");
         Assert.False(refused.Ok);
         Assert.Contains("permission or question", refused.Error ?? string.Empty, StringComparison.Ordinal);
         Assert.False(await session.SendPromptAsync("2"));
         session.SessionStatus = SessionStatus.Busy;
-        Assert.False((await gateway.SendPromptAsync(session.PaneId, "2")).Ok);
-        Assert.False(await session.SendPromptAsync("2"));
+        var queued = await gateway.SendPromptAsync(session.PaneId, "a queued task");
+        Assert.True(queued.Ok);
+        Assert.False(queued.Delivered);
         Assert.Equal(new[] { "run the tests", "\r" }, written);
 
         Action? delayedEnter = null;
         session.SetAutoSubmitScheduler((_, submit) => delayedEnter = submit);
         session.SessionStatus = SessionStatus.Idle;
+        Assert.Equal(new[] { "run the tests", "\r", "a queued task" }, written);
+        Assert.NotNull(delayedEnter);
+        delayedEnter();
         session.InjectAndSubmit("a task");
         Assert.NotNull(delayedEnter);
         session.SessionStatus = SessionStatus.NeedsAttention;
         delayedEnter();
-        Assert.Equal(new[] { "run the tests", "\r", "a task" }, written);
+        Assert.Equal(new[] { "run the tests", "\r", "a queued task", "\r", "a task" }, written);
+        var operatorWritten = new List<string>();
+        session.OperatorVoiceTranscriptReady += operatorWritten.Add;
+        session.SessionStatus = SessionStatus.Busy;
+        session.InjectVoiceTranscript("operator voice");
+        Assert.Equal("operator voice", Assert.Single(operatorWritten));
     });
 
     [Fact]
