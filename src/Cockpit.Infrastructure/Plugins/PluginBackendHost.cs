@@ -132,6 +132,8 @@ internal class PluginBackendHost(
 
     public IOperatorActionService? OperatorActions => services.GetService<OperatorActionService>();
 
+    public IOperatorPhoneNotifications? OperatorPhoneNotifications => services.GetService<OperatorPhoneNotifications>();
+
     public IOperatorActionTransport? OperatorTransport => pluginId == "depot"
         ? services.GetService<OperatorActionService>() is { } service ? new _OperatorTransport(service) : null
         : null;

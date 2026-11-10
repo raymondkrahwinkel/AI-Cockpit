@@ -36,6 +36,39 @@ internal sealed class MobilePairing(
     private readonly Dictionary<(string Connection, string Device), _Stream> _streams = [];
     private readonly Dictionary<(string Connection, string Device), MobileAssistantChannel> _channels = [];
 
+    public int NotifyOperatorPhone(Cockpit.Plugins.Abstractions.Notifications.OperatorPhoneNotification notification)
+    {
+        (string Connection, string Device)[] phones;
+        lock (_gate)
+        {
+            phones = _channels.Keys.ToArray();
+        }
+        int accepted = 0;
+        foreach (var phone in phones)
+        {
+            byte[] plaintext = JsonSerializer.SerializeToUtf8Bytes(new
+            {
+                type = "notify",
+                id = Guid.NewGuid().ToString("n"),
+                body = new
+                {
+                    kind = "targeted",
+                    senderId = notification.SenderId,
+                    sender = notification.Sender,
+                    title = notification.Title,
+                    text = notification.Text,
+                    urgency = notification.Urgency,
+                    target = notification.Target,
+                },
+            });
+            if (_SendToPhone(phone.Connection, phone.Device, plaintext))
+            {
+                accepted++;
+            }
+        }
+        return accepted;
+    }
+
     // Connects the relay of every connection that has a paired phone, so those phones can reach this Cockpit.
     public void Start()
     {

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2298: assistants and agent sessions can deliberately ping a connected phone with their verified session name and a target to open. Pings are limited to three per sender per minute and use the encrypted mobile relay (host 0.179.0, SDK 3.90.0, Depot 0.65.0).
+
 - AC-2296/AC-2297: paired phones show session mail as collapsible cards with sender names and answer assistant question cards through the device-bound operator channel. Closed cards retain their answer or resolution (host 0.178.0, plugin SDK 3.89.0, Depot 0.64.0).
 
 - Fixed paired phones staying offline after signing in to Depot again: the mobile relay reconnects without restarting Cockpit and keeps the saved phone keys (Depot plugin 0.62.2).
