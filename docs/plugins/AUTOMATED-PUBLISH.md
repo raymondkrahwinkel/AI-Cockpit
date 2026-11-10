@@ -46,6 +46,21 @@ The **Publish plugin to store** workflow (`.github/workflows/publish-plugin.yml`
 
 Tick **dry_run** to do everything except open the PR — useful to see the diff and the hash first.
 
+## Publishing updates after a nightly
+
+**Publish updated plugins** compares every manifest version with the store index after a successful
+Nightly. Missing versions are prepared in parallel through the same workflow as the manual button;
+`prepare_only` uploads the verified zips and their metadata instead of opening a store PR.
+
+One store job downloads the successful artifacts, re-hashes and checks each package against its
+proposed entry using the current store index, then publishes the accepted packages in one PR and merges
+it. It shares a concurrency group with manual publishing so both routes cannot rewrite the index at
+once. Versions published while the matrix was running are skipped without changing their files.
+
+A failed host or package gate does not cancel other plugins. The store job still publishes their
+successful artifacts; rejected packages remain missing for the next nightly. With no accepted packages,
+it opens no PR. Source checkouts use the triggering commit throughout the run.
+
 ## One-time setup: the `STORE_PUBLISH_TOKEN` secret {#one-time-setup-the-store_publish_token-secret}
 
 The workflow runs in this repo but has to write to the *store* repo, which the default `GITHUB_TOKEN`
