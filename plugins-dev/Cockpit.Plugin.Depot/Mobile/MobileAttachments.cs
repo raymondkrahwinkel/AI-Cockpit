@@ -2,10 +2,8 @@ using Cockpit.Plugins.Abstractions.Channels;
 
 namespace Cockpit.Plugin.Depot.Mobile;
 
-// AC-2265: one paired phone's images, arriving in chunks and waiting here until a send names them (PROTOCOL.md § 12).
-// The phone is trusted to be the paired one, not to be well-behaved: every limit is checked on the bytes as they come
-// in, so a phone that lies about sizes or never finishes cannot make this hold more than the budget for longer than
-// the expiry. A refusal drops the whole attachment and is the last word on its id.
+// AC-2265: a paired phone's images, in chunks, until a send names them (PROTOCOL.md § 12). Limits are checked on the
+// bytes as they come in, never on what the phone declares; a refusal drops the attachment and is the last word on its id.
 internal sealed class MobileAttachments : IDisposable
 {
     public const int MaxChunkBytes = 48_000;

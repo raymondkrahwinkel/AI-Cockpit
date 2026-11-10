@@ -278,12 +278,11 @@ public class MobileProtocolVectorTests
         }
     }
 
-    // AC-2265: images in chunks (PROTOCOL.md § 12). The vectors' chunks and a 3 MB photo reach the assistant byte for byte;
-    // a session that cannot see images still gets the text and the reason; every broken attachment is refused once and
-    // dropped, so a phone that keeps opening attachments meets a limit instead of growing the Cockpit's memory.
     // As a phone writes JSON: base64's + and / as they are, not as \u002B, which would not fit a full chunk in a frame.
     private static readonly JsonSerializerOptions _Unescaped = new() { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
+    // AC-2265 (PROTOCOL.md § 12): the vectors' chunks and a 3 MB photo reach the assistant byte for byte, a session without
+    // image input still gets the text and the reason, and every broken attachment is refused once and dropped.
     private static async Task _Images(MobileFrameCipher phone, Action<string> send, List<byte[]> toPhone, IAssistantChannelGateway gateway, ICockpitHost host, string device)
     {
         // Frames 0 and 1 are the handshake reply and the ready the phone already opened.
