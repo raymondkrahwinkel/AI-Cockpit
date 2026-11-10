@@ -11,6 +11,7 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions;
@@ -29,13 +30,20 @@ public class PluginSessionBindingTests
     [Fact]
     public void SendAsync_ReachesTheSessionThatWasAlreadyRunning() => Dispatcher.UIThread.Invoke(() =>
     {
-        var (host, cockpit, session) = _HostWithOneSession();
+        // AC-2256: the text goes out as a turn of its own and the operator's draft stays where it was.
+        var control = Substitute.For<ISessionControl>();
+        control.IsRunning.Returns(true);
+        var controls = Substitute.For<ISessionControlFactory>();
+        controls.Create(Arg.Any<Func<string>>()).Returns(control);
+        var running = new SessionViewModel(controls) { InputText = "half a thought" };
+        var (host, cockpit, session) = _HostWithOneSession(running);
         using var binding = host.BindToSession(session.PaneId);
 
         binding.SendAsync("Pin this shape to the conversation.").GetAwaiter().GetResult();
 
         Assert.True(binding.IsLive);
-        Assert.Equal("Pin this shape to the conversation.", session.InputText);
+        control.Received(1).SubmitAsync(Arg.Is<QueuedPrompt>(prompt => prompt.Text == "Pin this shape to the conversation."), Arg.Any<bool>());
+        Assert.Equal("half a thought", session.InputText);
         Assert.Same(session, Assert.Single(cockpit.Sessions));
     });
 
@@ -77,12 +85,12 @@ public class PluginSessionBindingTests
         Assert.Equal((false, false, string.Empty, originalTitle), (sent, named, inputText, title));
     }
 
-    private static (ICockpitHost Host, CockpitViewModel Cockpit, SessionViewModel Session) _HostWithOneSession()
+    private static (ICockpitHost Host, CockpitViewModel Cockpit, SessionViewModel Session) _HostWithOneSession(SessionViewModel? existing = null)
     {
         // AC-1392: the host reaches the pane through the registry the cockpit feeds and the desktop's launcher.
         var registry = new SessionRegistry();
         var cockpit = _NewCockpit(registry);
-        var session = new SessionViewModel();
+        var session = existing ?? new SessionViewModel();
         cockpit.Sessions.Add(session);
 
         var services = new ServiceCollection()
