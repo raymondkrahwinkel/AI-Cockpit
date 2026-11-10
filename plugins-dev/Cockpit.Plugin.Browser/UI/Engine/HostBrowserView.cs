@@ -56,7 +56,11 @@ internal sealed partial class HostBrowserView : BrowserView
     internal override CancellationToken HostStopped => _host.Connection.Closed;
     internal string? Failure { get; private set; }
     public override bool IsMuted => _muted;
-    public override void SetMuted(bool muted) => _muted = muted;
+    public override void SetMuted(bool muted)
+    {
+        _muted = muted;
+        _Queue("tab.mute", muted);
+    }
     public override void Navigate(string url) => _Queue("tab.navigate", url);
     public override void GoBack() => _Queue("tab.back", true);
     public override void GoForward() => _Queue("tab.forward", true);
@@ -270,6 +274,7 @@ internal sealed partial class HostBrowserView : BrowserView
                     OnAddressChanged(state.Address);
                     OnTitleChanged(state.Title);
                     OnLoadingChanged(state.Loading, state.Back, state.Forward);
+                    OnAudibleChanged(state.Audible);
                     Failure = state.Failure;
                     if (Failure is not null)
                     {
@@ -356,6 +361,7 @@ internal sealed partial class HostBrowserView : BrowserView
         _commands.Writer.TryComplete();
         OnTitleChanged("Browser stopped");
         OnLoadingChanged(false, false, false);
+        OnAudibleChanged(false);
         InvalidateVisual();
     }
 
@@ -364,6 +370,7 @@ internal sealed partial class HostBrowserView : BrowserView
         _ClearPopup();
         _ime.Cancel();
         _closing = true;
+        OnAudibleChanged(false);
         _buffer?.Dispose();
         _buffer = null;
         _commands.Writer.TryComplete();
