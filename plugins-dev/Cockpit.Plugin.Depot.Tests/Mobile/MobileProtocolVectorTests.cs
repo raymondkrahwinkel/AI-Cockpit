@@ -197,6 +197,7 @@ public class MobileProtocolVectorTests
         operatorChannel.Snapshot.Returns([]);
         var operatorTransport = Substitute.For<IOperatorActionTransport>();
         operatorTransport.OpenChannel().Returns(operatorChannel);
+        operatorTransport.OpenChannel(device).Returns(operatorChannel);
         host.OperatorTransport.Returns(operatorTransport);
         host.SendToSessionAsync("pane", Arg.Any<string>(), Arg.Any<IReadOnlyList<byte[]>>())
             .Returns(new SessionSendResult(true, "this session cannot see images"));
@@ -267,6 +268,10 @@ public class MobileProtocolVectorTests
                 Questions = [new AssistantChannelQuestion { Question = "Which one?", Options = [] }],
             };
             gateway.PendingQuestions.Returns([question]);
+            operatorChannel.Snapshot.Returns([new OperatorPendingAction("question", "revision", "question", "cockpit-assistant", question.Text, [], "test-capability")
+            {
+                Questions = question.Questions,
+            }]);
             pairing.Frame(connection, "stream-1", device, first?.Seal("{\"type\":\"operator.pending\",\"id\":\"pending\",\"body\":{}}"u8) ?? []);
 
             Assert.NotNull(first);
@@ -287,6 +292,7 @@ public class MobileProtocolVectorTests
             }
             Assert.Equal("question", Assert.Single(LatestPending().EnumerateArray()).GetProperty("id").GetString());
             gateway.PendingQuestions.Returns([]);
+            operatorChannel.Snapshot.Returns([]);
             gateway.RowChanged += Raise.Event<EventHandler<AssistantChannelRow>>(gateway,
                 question with { IsUpdate = true, Questions = [] });
             Assert.Empty(LatestPending().EnumerateArray());
