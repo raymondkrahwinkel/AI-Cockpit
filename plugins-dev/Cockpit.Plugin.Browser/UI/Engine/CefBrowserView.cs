@@ -18,17 +18,7 @@ namespace Cockpit.Plugin.Browser.UI.Engine;
 internal sealed class CefBrowserView : BrowserView
 {
     // What the page reports through the console: a playing, audible element, or a format this CEF cannot play.
-    internal const string MarkerPrefix = "__cockpit:";
-
-    private const string PageHooks = """
-        (()=>{if(window.__cockpitHooks)return;window.__cockpitHooks=1;
-        const say=m=>console.log('__cockpit:'+m);
-        const audible=()=>{let a=false;document.querySelectorAll('video,audio').forEach(e=>{if(!e.paused&&!e.muted&&e.volume>0)a=true;});say('audible:'+(a?1:0));};
-        ['play','pause','ended','volumechange','emptied'].forEach(t=>window.addEventListener(t,audible,true));
-        window.addEventListener('error',e=>{const t=e.target;const m=t&&t.tagName==='SOURCE'?t.parentElement:t;if(m&&(m.tagName==='VIDEO'||m.tagName==='AUDIO')&&m.error&&m.error.code===4)say('codec');},true);
-        const r=navigator.requestMediaKeySystemAccess;if(r){navigator.requestMediaKeySystemAccess=function(){return r.apply(this,arguments).catch(x=>{say('codec');throw x;});};}
-        })();
-        """;
+    internal const string MarkerPrefix = BrowserPageHooks.MarkerPrefix;
 
     // AC-1728: the origin an agent controls this tab on, or null. While set, every form submission and non-GET
     // navigation in any frame waits in OnBeforeResourceLoad for the operator; the page's scripts have no say in it.
@@ -778,7 +768,7 @@ internal sealed class CefBrowserView : BrowserView
         {
             if (frame.IsMain)
             {
-                frame.ExecuteJavaScript(PageHooks, frame.Url, 0);
+                frame.ExecuteJavaScript(BrowserPageHooks.Script, frame.Url, 0);
                 _OnUi(() => owner.OnAudibleChanged(false));
             }
         }

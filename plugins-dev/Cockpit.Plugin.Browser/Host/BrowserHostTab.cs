@@ -26,6 +26,7 @@ internal sealed partial class BrowserHostTab : IAsyncDisposable
     private byte[] _pendingPixels = [];
     private long _pendingFrameId;
     private bool _closing;
+    private bool _muted;
     private bool _focused;
     private bool _creationPending;
     private long _frameId;
@@ -100,6 +101,10 @@ internal sealed partial class BrowserHostTab : IAsyncDisposable
             case "tab.back": browser.GoBack(); break;
             case "tab.forward": browser.GoForward(); break;
             case "tab.reload": browser.Reload(); break;
+            case "tab.mute":
+                _muted = message.Payload.GetBoolean();
+                host.SetAudioMuted(_muted);
+                break;
             case "tab.size":
                 var size = message.Payload.Deserialize<BrowserTabSize>() ?? throw new InvalidDataException("Missing browser size.");
                 _ValidateSize(size);
@@ -528,6 +533,7 @@ internal sealed partial class BrowserHostTab : IAsyncDisposable
             }
             if (_browser is { } browser)
             {
+                browser.GetHost().SetAudioMuted(true);
                 _CancelIme(browser.GetHost());
                 browser.GetHost().CloseBrowser(true);
             }
@@ -618,10 +624,31 @@ internal sealed partial class BrowserHostTab : IAsyncDisposable
             }
         }
         protected override void OnTitleChange(CefBrowser browser, string title) => owner._State(owner._state with { Title = title });
+
+        protected override bool OnConsoleMessage(CefBrowser browser, CefLogSeverity level, string message, string source, int line)
+        {
+            if (message is BrowserPageHooks.MarkerPrefix + "audible:0" or BrowserPageHooks.MarkerPrefix + "audible:1")
+            {
+                owner._State(owner._state with { Audible = owner._closing == false && message.EndsWith('1') });
+                return true;
+            }
+            return false;
+        }
     }
 
     private sealed class LoadHandler(BrowserHostTab owner) : CefLoadHandler
     {
+        protected override void OnLoadStart(CefBrowser browser, CefFrame frame, CefTransitionType transitionType)
+        {
+            if (frame.IsMain)
+            {
+                // CEF resets native mute on a new document, including the first restored navigation (AC-2156).
+                browser.GetHost().SetAudioMuted(owner._muted);
+                frame.ExecuteJavaScript(BrowserPageHooks.Script, frame.Url, 0);
+                owner._State(owner._state with { Audible = false });
+            }
+        }
+
         protected override void OnLoadingStateChange(CefBrowser browser, bool isLoading, bool canGoBack, bool canGoForward)
         {
             if (isLoading == false)
@@ -647,7 +674,7 @@ internal sealed partial class BrowserHostTab : IAsyncDisposable
             {
                 owner._DropHeld();
             }
-            owner._State(owner._state with { Failure = "The page renderer stopped. Reload the tab to try again." });
+            owner._State(owner._state with { Audible = false, Failure = "The page renderer stopped. Reload the tab to try again." });
         }
     }
 
