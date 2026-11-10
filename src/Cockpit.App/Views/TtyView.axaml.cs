@@ -364,8 +364,10 @@ public partial class TtyView : UserControl
 
     private void _WriteToPty(string text, bool operatorInput)
     {
+        bool CanWrite() => _viewModel is { IsReadingChild: false } vm
+            && (operatorInput || vm.SessionStatus != SessionStatus.NeedsAttention && vm.PendingConsent is null);
         var pty = _pty;
-        if (pty is null || _viewModel?.IsReadingChild == true)
+        if (pty is null || !CanWrite())
         {
             return;
         }
@@ -375,7 +377,7 @@ public partial class TtyView : UserControl
 
         Dispatcher.UIThread.Post(() =>
         {
-            if (_viewModel?.IsReadingChild == true)
+            if (!CanWrite() || !ReferenceEquals(_pty, pty))
             {
                 return;
             }
@@ -409,7 +411,7 @@ public partial class TtyView : UserControl
             {
                 DispatcherTimer.RunOnce(() =>
                 {
-                    if (_viewModel?.IsReadingChild != true && ReferenceEquals(_pty, pty))
+                    if (CanWrite() && ReferenceEquals(_pty, pty))
                     {
                         _WriteToPty(pty, [(byte)'\r']);
                         Terminal.InputEvents.ClearPendingLine();
