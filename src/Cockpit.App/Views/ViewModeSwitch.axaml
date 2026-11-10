@@ -5,8 +5,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="180"
              x:Class="Cockpit.App.Views.ViewModeSwitch"
-             x:DataType="vm:CockpitViewModel"
-             IsVisible="{Binding !IsRemoteWindow}">
+             x:DataType="vm:CockpitViewModel">
 
     <!-- Selection comes from SimpleView; the buttons only issue commands. -->
     <!-- One framed track holding both segments (AC-789), same as the Projects layout switch: the border and

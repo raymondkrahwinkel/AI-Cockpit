@@ -124,6 +124,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // The panes a start from this window asked to select, by the id it minted; selected when they land.
     private readonly HashSet<string> _selectOnLanding = new(StringComparer.Ordinal);
     private readonly ISessionDialogService? _dialogService;
+    private Func<CockpitViewModel, string?, Task>? _presentOptions;
+    private Func<PluginManagerViewModel, PluginStoreFilter?, Task>? _presentPluginStore;
+
+    // AC-2278 supplies the server settings transaction; absent adapters must never report a successful save.
+    public bool CanEditOptions => !IsRemoteWindow || _settingsWriteBatch is not null;
     // AC-512: "Run setup again" (Help menu) reopens it; null (design-time/tests, or nothing registered) is a no-op.
     private readonly IFirstRunWizard? _firstRunWizard;
     private readonly HelpService? _help;
@@ -3448,12 +3453,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // sessions across different providers and statuses so the render shows the overview + grid without a real DI-backed
     // session behind each one (AC-953).
     public CockpitViewModel(IDockPanelRegistry? dockPanelRegistry = null, ISessionRegistration? sessionRegistry = null, IWorkspaceTypeRegistry? workspaceTypeRegistry = null)
-        : this(dockPanelRegistry, sessionRegistry, withSamples: true, workspaceTypeRegistry)
-    {
-    }
-
-    // AC-1487: `withSamples: false` is the `--remote` window's, which shows the server's sessions and none of its own.
-    private CockpitViewModel(IDockPanelRegistry? dockPanelRegistry, ISessionRegistration? sessionRegistry, bool withSamples, IWorkspaceTypeRegistry? workspaceTypeRegistry = null)
     {
         // A test that reads the panes through the registry passes one; the sample sessions below then reach it too.
         _sessionRegistry = sessionRegistry;
@@ -3473,18 +3472,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _MirrorSessionsIntoGrid();
         _WireWaitingSessions();
 
-        if (withSamples)
-        {
-            var waiting = new SessionViewModel { Title = "Session 1", ActiveProfileLabel = "work (Claude)", SessionStatus = SessionStatus.NeedsAttention };
-            var busy = new SessionViewModel { Title = "Session 2", ActiveProfileLabel = "local (Ollama)", SessionStatus = SessionStatus.Busy };
-            var tty = new TtyViewModel { Title = "Session 3", ActiveProfileLabel = "personal (Claude TTY)", SessionStatus = SessionStatus.Busy };
+        var waiting = new SessionViewModel { Title = "Session 1", ActiveProfileLabel = "work (Claude)", SessionStatus = SessionStatus.NeedsAttention };
+        var busy = new SessionViewModel { Title = "Session 2", ActiveProfileLabel = "local (Ollama)", SessionStatus = SessionStatus.Busy };
+        var tty = new TtyViewModel { Title = "Session 3", ActiveProfileLabel = "personal (Claude TTY)", SessionStatus = SessionStatus.Busy };
 
-            _AttachSession(waiting);
-            _AttachSession(busy);
-            _AttachSession(tty);
-            _sessionCounter = Sessions.Count;
-            SelectedSession = waiting;
-        }
+        _AttachSession(waiting);
+        _AttachSession(busy);
+        _AttachSession(tty);
+        _sessionCounter = Sessions.Count;
+        SelectedSession = waiting;
 
         Plugins = new PluginManagerViewModel();
         DelegatedTasks = new DelegatedTasksViewModel();
@@ -3549,18 +3545,18 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     public DiagnosticsViewModel Diagnostics { get; }
 
     public CockpitViewModel(
-        Func<SessionViewModel> sessionFactory,
-        Func<TtyViewModel> ttySessionFactory,
-        ISessionDialogService dialogService,
-        IAudioCaptureService captureService,
-        IAudioPlaybackService playbackService,
-        IAttentionNotifier attentionNotifier,
-        INotificationSettingsStore notificationSettingsStore,
-        ITranscriptDisplaySettingsStore transcriptDisplaySettingsStore,
-        ISessionBehaviorSettingsStore sessionBehaviorSettingsStore,
-        ILayoutSettingsStore layoutSettingsStore,
-        IVoiceSettingsStore voiceSettingsStore,
-        ITerminalSettingsStore terminalSettingsStore,
+        Func<SessionViewModel>? sessionFactory,
+        Func<TtyViewModel>? ttySessionFactory,
+        ISessionDialogService? dialogService,
+        IAudioCaptureService? captureService,
+        IAudioPlaybackService? playbackService,
+        IAttentionNotifier? attentionNotifier,
+        INotificationSettingsStore? notificationSettingsStore,
+        ITranscriptDisplaySettingsStore? transcriptDisplaySettingsStore,
+        ISessionBehaviorSettingsStore? sessionBehaviorSettingsStore,
+        ILayoutSettingsStore? layoutSettingsStore,
+        IVoiceSettingsStore? voiceSettingsStore,
+        ITerminalSettingsStore? terminalSettingsStore,
         IPluginRegistrationStore? pluginRegistrationStore = null,
         IPluginAdministration? pluginAdministration = null,
         IPluginStoreConfigStore? pluginStoreConfigStore = null,
@@ -3875,7 +3871,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // the design-time manager is used, so the tab is inert.
         Plugins = pluginAdministration is not null && pluginRegistrationStore is not null
                 && pluginStoreConfigStore is not null && pluginStoreClient is not null && pluginDialogHost is not null
-                && pluginDiagnostics is not null
+                && pluginDiagnostics is not null && dialogService is not null
             ? new PluginManagerViewModel(pluginAdministration, pluginRegistrationStore, dialogService, pluginStoreConfigStore, pluginStoreClient, PluginSettings, this, appRestartService, workflowTemplateLibrary, pluginStoreSources)
             : new PluginManagerViewModel();
         // a plugin's fire-and-forget AddMcpServer completing on a background continuation) — without this, the banner
@@ -6493,6 +6489,17 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [RelayCommand]
     private async Task NewSessionAsync()
     {
+        if (IsRemoteWindow)
+        {
+            if (ServerGroups.FirstOrDefault() is { } server)
+            {
+                await Workspaces.OpenWorkspaceAsync(WorkspaceType.Sessions.Id);
+                await OpenServerStartAsync(server);
+            }
+
+            return;
+        }
+
         if (_sessionFactory is null || _ttySessionFactory is null || _dialogService is null)
         {
             return;
@@ -6508,7 +6515,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     }
 
     // Runtime-only, exactly like an AI session (AC-25).
-    [RelayCommand]
+    private bool CanStartTerminal => _ttySessionFactory is not null;
+
+    [RelayCommand(CanExecute = nameof(CanStartTerminal))]
     private void NewTerminal()
     {
         if (_ttySessionFactory is null)
@@ -6530,7 +6539,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // "New terminal (administrator)" (AC-967): the same shell as `NewTerminal`, but started elevated through
     // `ShellExecuteEx`+`runas`, which means its own OS console window instead of a pane — an elevated process
     // cannot be adopted into our ConPTY. Windows-only; nothing here runs on another platform.
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanStartTerminal))]
     private void NewElevatedTerminal()
     {
         if (!IsWindowsPlatform)
@@ -7370,7 +7379,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     private async Task _ShowOptionsAsync(string? category = null)
     {
-        if (_dialogService is null)
+        var present = _presentOptions ?? (_dialogService is { } dialogs ? dialogs.ShowOptionsDialogAsync : null);
+        if (present is null)
         {
             return;
         }
@@ -7379,7 +7389,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // may be editing.
         if (_optionsStaged)
         {
-            await _dialogService.ShowOptionsDialogAsync(this, category);
+            await present(this, category);
             return;
         }
 
@@ -7396,7 +7406,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // data is in. Profiles are re-read so that what Cancel reverts to is the store, not stale startup state.
         OptionsLoadingPages = new HashSet<string>(_OptionsPagesLoadedAfterOpen, StringComparer.Ordinal);
         BeginOptionsEdit();
-        var shown = _dialogService.ShowOptionsDialogAsync(this, category);
+        var shown = present(this, category);
         await Task.WhenAll(
             _LoadOptionsPageAsync("voice", _RefreshAudioDevicesAsync),
             _LoadOptionsPageAsync("profiles", () => Profiles?.LoadAsync() ?? Task.CompletedTask),
@@ -7481,13 +7491,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // the full Options→Plugins tab. Skips the audio-device refresh `OptionsAsync` does since it is irrelevant here.
     public async Task OpenPluginStoreUpdatesAsync()
     {
-        if (_dialogService is null)
+        var present = _presentPluginStore ?? (_dialogService is { } dialogs ? dialogs.ShowPluginStoreDialogAsync : null);
+        if (present is null)
         {
             return;
         }
 
         await Plugins.LoadAsync();
-        await _dialogService.ShowPluginStoreDialogAsync(Plugins, PluginStoreFilter.UpdatesAvailable);
+        await present(Plugins, PluginStoreFilter.UpdatesAvailable);
     }
 
     // Opens the plugin store from the sidebar (AC-76) — on the Updates filter when updates are waiting (the sidebar
@@ -7495,13 +7506,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [RelayCommand]
     private async Task OpenPluginStoreAsync()
     {
-        if (_dialogService is null)
+        var present = _presentPluginStore ?? (_dialogService is { } dialogs ? dialogs.ShowPluginStoreDialogAsync : null);
+        if (present is null)
         {
             return;
         }
 
         await Plugins.LoadAsync();
-        await _dialogService.ShowPluginStoreDialogAsync(Plugins, Plugins.HasUpdateBadge ? PluginStoreFilter.UpdatesAvailable : null);
+        await present(Plugins, Plugins.HasUpdateBadge ? PluginStoreFilter.UpdatesAvailable : null);
     }
 
     // Opens the About dialog (#46) from the sidebar: app name, version, description and links.
@@ -7918,6 +7930,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     private async Task _ApplyOptionsAsync(bool endEdit)
     {
+        if (!CanEditOptions)
+        {
+            return;
+        }
+
         var measurement = new OptionsMeasurement("apply");
         OptionsApplyBlocked = false;
         OptionsSectionErrors = new Dictionary<string, string>(StringComparer.Ordinal);
