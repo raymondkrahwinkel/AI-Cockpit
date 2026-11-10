@@ -496,3 +496,23 @@ options (label and description), `multiSelect` and `allowOther`. Their capabilit
 They use `assistant.answer` with `{questionId, answers: [[string]]}` (one selection group per question),
 answered by `assistant.answered` with `{replyTo, ok, error}`. These are content answers, never operator approvals.
 The existing desktop question/consent messages remain available to older phone versions.
+
+
+## 14. Android request notifications (AC-2270)
+
+The complete `operator.pending` snapshot in Section 13 is also the notification source while chat is closed.
+An absent request withdraws its notification; disconnect/unpair clears all notification authority.
+No additional notification event, request store or session poller is required. Idle is not a request.
+
+A notification is scoped to Depot, Cockpit and request and deduplicated by revision. Its explicit private
+PendingIntent contains an opaque process-local reference, never a capability or an approval in text.
+Android requires authentication for response actions; the receiver also refuses a locked device.
+Only free-text RemoteInput intents are mutable; all other intents are immutable.
+The public lock-screen version contains no source, question, options or answer.
+
+Every response resolves the exact still-current in-memory item and uses Section 13's `operator.respond` or
+`assistant.answer`, including its existing request/revision/device binding and one-use host callback.
+Sending disables actions; acknowledgement or closure removes them. Nothing is persisted or retried.
+Multiple questions, multiselect and options beyond Android's action limit remain available through
+Open request, which opens the matching source's complete request card.
+Notifications require the existing Keep connection stream; no delivery is promised without it.
