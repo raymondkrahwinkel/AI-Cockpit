@@ -307,12 +307,21 @@ public class AgentOwnedTabTests
         Assert.True((await tabs.ActAsync("a", new("", "", "wait", aId, Selector: "body"))).Ok);
         browsers.SetOperatorDrives("a", false);
         var pending = tabs.ActAsync("a", new("", "", "wait", aId, Selector: "#never"), timeoutMs: 5000);
+        var previous = new Uri(browsers.SessionFor("a")!.Endpoint);
         browsers.Stop("a");
         Assert.False((await pending).Ok);
         Assert.True((await tabs.OpenAsync("a", fixture.Url, "self")).Ok);
         Assert.False((await tabs.ReadAsync("a", aId, "text")).Ok);
-        Assert.Contains("session_ended:", (await tabs.ActAsync("a", new("", "", "close", aId))).Error);
+        Assert.Contains("not_owner:", (await tabs.ActAsync("a", new("", "", "close", aId))).Error);
         Assert.Single(await tabs.ListAsync("a"));
+        // AC-2151: a live proxy answers only its own run's endpoint, so a replayed or reused port reaches nothing.
+        var current = new Uri(browsers.SessionFor("a")!.Endpoint);
+        using (var cdp = new HttpClient())
+        {
+            Assert.True((await cdp.GetAsync(current + "/json/version")).IsSuccessStatusCode);
+            Assert.Equal(HttpStatusCode.NotFound, (await cdp.GetAsync($"http://{current.Authority}{previous.AbsolutePath}/json/version")).StatusCode);
+            Assert.Equal(HttpStatusCode.NotFound, (await cdp.GetAsync($"http://{current.Authority}/json/version")).StatusCode);
+        }
         // AC-1884: a failed open returns no tabId and leaves no about:blank target behind.
         using (var free = new TcpListener(IPAddress.Loopback, 0))
         {

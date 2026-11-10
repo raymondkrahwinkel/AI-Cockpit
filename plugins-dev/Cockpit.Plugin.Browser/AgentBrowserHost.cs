@@ -20,6 +20,8 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
     private readonly HashSet<Running> _stopping = [];
     internal const string RetainedPrefix = "retained:";
     internal Func<Guid, IReadOnlySet<string>>? RetainTargets { get; set; }
+    // AC-2151: a generation's browser is gone for good (stop, crash, dispose), so what was granted in it goes too.
+    internal Action<Guid>? GenerationEnded { get; set; }
     internal AddressPolicy NetworkPolicy { get; set; } = new(() => []);
     private bool _disposed;
     private readonly SemaphoreSlim _startGate = new(1, 1);
@@ -445,6 +447,11 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
             _running.Clear();
             _retained.Clear();
         }
+        // A live disable moves on after 10 s: every pending call and connection ends before any browser shuts down.
+        foreach (var running in all)
+        {
+            running.Cut();
+        }
         foreach (var running in all)
         {
             StopRunning(running);
@@ -453,10 +460,14 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
 
     private void StopRunning(Running running)
     {
-        running.Stop();
-        lock (_gate)
+        try { running.Stop(); }
+        finally
         {
-            _stopping.Remove(running);
+            lock (_gate)
+            {
+                _stopping.Remove(running);
+            }
+            GenerationEnded?.Invoke(running.Generation);
         }
     }
 
@@ -718,9 +729,15 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
 
         public void Stop()
         {
+            Cut();
+            KillBrowser();
+        }
+
+        public void Cut()
+        {
             Lifetime.Cancel();
             Proxy?.Dispose();
-            KillBrowser();
+            network.Dispose();
         }
 
         public void KillBrowser()
@@ -740,6 +757,7 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
         private void ShutdownCore()
         {
             Boundary?.Dispose();
+            network.Dispose();
             var exited = false;
             try
             {
@@ -752,7 +770,6 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
 
             finally
             {
-                network.Dispose();
                 Process.Dispose();
             }
             if (exited)

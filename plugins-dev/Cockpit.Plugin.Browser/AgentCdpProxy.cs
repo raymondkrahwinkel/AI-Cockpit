@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using System.Net.WebSockets;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
@@ -26,6 +27,9 @@ internal sealed class AgentCdpProxy : IDisposable
     private volatile bool _operatorDrives;
     private volatile bool _stopped;
 
+    // AC-2151: a per-generation path, so an endpoint of an earlier run cannot reach a browser that reuses its port.
+    private readonly string _prefix = "/" + Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(16));
+
     private AgentCdpProxy(string upstream, int upstreamPort, int port)
     {
         _upstream = upstream;
@@ -36,7 +40,7 @@ internal sealed class AgentCdpProxy : IDisposable
 
     public int Port { get; }
 
-    public string Endpoint => $"http://127.0.0.1:{Port}";
+    public string Endpoint => $"http://127.0.0.1:{Port}{_prefix}";
 
     public bool OperatorDrives => _operatorDrives;
 
@@ -130,17 +134,22 @@ internal sealed class AgentCdpProxy : IDisposable
     {
         try
         {
-            if (_stopped)
+            var raw = context.Request.RawUrl ?? "";
+            if (!raw.StartsWith(_prefix + "/", StringComparison.Ordinal))
+            {
+                await WriteAsync(context.Response, 404, "Unknown agent browser endpoint").ConfigureAwait(false);
+            }
+            else if (_stopped)
             {
                 await WriteAsync(context.Response, 503, StoppedMessage).ConfigureAwait(false);
             }
             else if (context.Request.IsWebSocketRequest)
             {
-                await ProxySocketAsync(context).ConfigureAwait(false);
+                await ProxySocketAsync(context, raw[_prefix.Length..]).ConfigureAwait(false);
             }
             else
             {
-                await ProxyHttpAsync(context).ConfigureAwait(false);
+                await ProxyHttpAsync(context, raw[_prefix.Length..]).ConfigureAwait(false);
             }
         }
         catch (Exception exception) when (exception is HttpRequestException or HttpListenerException or WebSocketException or IOException or OperationCanceledException or ObjectDisposedException)
@@ -155,9 +164,9 @@ internal sealed class AgentCdpProxy : IDisposable
         }
     }
 
-    private async Task ProxyHttpAsync(HttpListenerContext context)
+    private async Task ProxyHttpAsync(HttpListenerContext context, string path)
     {
-        using var request = new HttpRequestMessage(new HttpMethod(context.Request.HttpMethod), _upstream + context.Request.RawUrl);
+        using var request = new HttpRequestMessage(new HttpMethod(context.Request.HttpMethod), _upstream + path);
         if (context.Request.HasEntityBody)
         {
             request.Content = new StreamContent(context.Request.InputStream);
@@ -167,8 +176,8 @@ internal sealed class AgentCdpProxy : IDisposable
         var body = await response.Content.ReadAsStringAsync(_lifetime.Token).ConfigureAwait(false);
 
         // Chromium names itself in the socket URLs it hands out; the client must be sent back through here.
-        body = body.Replace($"127.0.0.1:{_upstreamPort}", $"127.0.0.1:{Port}", StringComparison.Ordinal)
-            .Replace($"localhost:{_upstreamPort}", $"127.0.0.1:{Port}", StringComparison.Ordinal);
+        body = body.Replace($"127.0.0.1:{_upstreamPort}", $"127.0.0.1:{Port}{_prefix}", StringComparison.Ordinal)
+            .Replace($"localhost:{_upstreamPort}", $"127.0.0.1:{Port}{_prefix}", StringComparison.Ordinal);
         await WriteAsync(context.Response, (int)response.StatusCode, body, response.Content.Headers.ContentType?.ToString()).ConfigureAwait(false);
     }
 
@@ -182,10 +191,10 @@ internal sealed class AgentCdpProxy : IDisposable
         response.Close();
     }
 
-    private async Task ProxySocketAsync(HttpListenerContext context)
+    private async Task ProxySocketAsync(HttpListenerContext context, string path)
     {
         using var upstream = new ClientWebSocket();
-        await upstream.ConnectAsync(new Uri($"ws://127.0.0.1:{_upstreamPort}{context.Request.RawUrl}"), _lifetime.Token).ConfigureAwait(false);
+        await upstream.ConnectAsync(new Uri($"ws://127.0.0.1:{_upstreamPort}{path}"), _lifetime.Token).ConfigureAwait(false);
         var accepted = await context.AcceptWebSocketAsync(null).ConfigureAwait(false);
         var client = accepted.WebSocket;
         _sockets[client] = 0;

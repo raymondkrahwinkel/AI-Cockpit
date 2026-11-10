@@ -13,6 +13,7 @@ public sealed class BrowserPlugin : ICockpitPlugin
     private AgentBrowserHost? _browsers;
     private AgentBrowserTabs? _tabs;
     private TabShareBridge? _share;
+    private Action? _unsubscribe;
 
     public PluginMetadata Metadata { get; } = new(
         Id: "browser",
@@ -44,7 +45,11 @@ public sealed class BrowserPlugin : ICockpitPlugin
         _browsers = browsers;
 
         host.AddSessionResourceProvider(new AgentBrowserSessionResources(browsers, () => settings.AgentsUseCockpitBrowser));
-        host.Sessions.SessionClosed += (_, paneId) => browsers.Stop(paneId);
+        // AC-2151: a disabled instance must not keep its browsers' state reachable through the host.
+        var sessions = host.Sessions;
+        EventHandler<string> sessionClosed = (_, paneId) => browsers.Stop(paneId);
+        sessions.SessionClosed += sessionClosed;
+        _unsubscribe = () => sessions.SessionClosed -= sessionClosed;
         browsers.Changed += () => host.Channel.Publish("agents.changed", JsonSerializer.SerializeToElement(new { }));
 
         // AC-1713: the agent profile in the browser's Agents tab, over the plugin's own channel.
@@ -67,6 +72,7 @@ public sealed class BrowserPlugin : ICockpitPlugin
 
     public void Dispose()
     {
+        _unsubscribe?.Invoke();
         _tabs?.Dispose();
         _share?.Dispose();
         _browsers?.Dispose();

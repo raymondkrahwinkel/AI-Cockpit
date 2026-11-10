@@ -211,6 +211,11 @@ connection, and a new host generation starts with none, so control there needs t
   a structured reason and closes that target. Self-tabs close with their session; only a tab explicitly opened for the
   operator is retained after the session ends, and closing the last retained tab stops its browser and removes its
   profile.
+- **Run identity (AC-2151):** the endpoint a session gets carries a random path of its browser's run, and the proxy
+  answers nothing else, so an endpoint of an earlier run or another session cannot reach a browser that reuses its
+  port. Stop, crash and dispose first cancel every pending call and close the proxies, the network proxy included,
+  then end the browser; the run's tab ids and boundary are forgotten. Disabling the plugin also withdraws its
+  `SessionClosed` handler, and a new enable starts with no tabs.
 - **Known edges:** a session's `Runtime.evaluate` can still click while you drive (only `Input.*` is held), and the
   rail count is refreshed on changes and while the panel is open, not by a background poll.
 
