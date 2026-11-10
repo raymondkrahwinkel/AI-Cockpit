@@ -3,6 +3,7 @@ using Cockpit.Core.Abstractions.Debugging;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.Remote;
 using Cockpit.Core.Abstractions.SessionBehavior;
+using Cockpit.Core.Abstractions.Shell;
 using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Clones;
@@ -10,6 +11,8 @@ using Cockpit.Core.Debugging;
 using Cockpit.Core.HeavyRuns;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.SessionBehavior;
+using Cockpit.Core.Shell;
+using Cockpit.Core.Swarm;
 using Cockpit.Core.Terminal;
 using Cockpit.Core.Worktrees;
 
@@ -45,6 +48,14 @@ public sealed class RemoteOptionsStores(Func<IRemoteServer?> server) : IRemoteOp
     public Cockpit.Core.Abstractions.QuickNotes.IQuickNoteSettingsStore QuickNotes { get; } = new QuickNotes.QuickNoteSettingsStore();
 
     public IReadOnlyList<ShellDescriptor> Shells { get; private set; } = [];
+
+    private RemoteSwarmOptions? _swarm;
+
+    private RemoteSwarmOptions _Swarm => _swarm ??= new(() => Client);
+
+    public ISwarmOptions Swarm => _Swarm;
+
+    public ISwarmLeadership SwarmLeadership => _Swarm;
 
     string ICloneSettingsStore.DefaultRoot => _cloneDefault;
     string IWorktreeSettingsStore.DefaultRoot => _worktreeDefault;
@@ -154,6 +165,18 @@ public sealed class RemoteOptionsStores(Func<IRemoteServer?> server) : IRemoteOp
         await _WriteAsync("shell", new ShellOptions(settings.Shell), cancellationToken).ConfigureAwait(false);
         _clientTerminal = settings;
     }
+
+    async Task<TerminalAccessSettings> ITerminalAccessSettingsStore.LoadAsync(CancellationToken cancellationToken) =>
+        new() { Enabled = (await _ReadAsync<AccessOptions>("terminal-access", cancellationToken).ConfigureAwait(false)).Enabled };
+
+    Task ITerminalAccessSettingsStore.SaveAsync(TerminalAccessSettings settings, CancellationToken cancellationToken) =>
+        _WriteAsync("terminal-access", new AccessOptions(settings.Enabled), cancellationToken);
+
+    async Task<ShellAccessSettings> IShellAccessSettingsStore.LoadAsync(CancellationToken cancellationToken) =>
+        new() { Enabled = (await _ReadAsync<AccessOptions>("shell-access", cancellationToken).ConfigureAwait(false)).Enabled };
+
+    Task IShellAccessSettingsStore.SaveAsync(ShellAccessSettings settings, CancellationToken cancellationToken) =>
+        _WriteAsync("shell-access", new AccessOptions(settings.Enabled), cancellationToken);
 
     // Only after every server write succeeded. Backend values, including the webhook, never enter client state.
     public async Task SaveClientPresentationAsync(CancellationToken cancellationToken = default)

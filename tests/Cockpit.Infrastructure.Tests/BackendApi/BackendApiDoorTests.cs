@@ -91,7 +91,7 @@ public sealed class BackendApiDoorTests
         await using var door = new _Door();
         var verifier = await door.StartAsync();
         var operate = await verifier.IssueAsync("options-reader", ConnectKeyCapability.Operate, 30, Operator);
-        foreach (var group in new[] { "runs", "sessions", "clones", "worktrees", "notifications", "diagnostics", "shell" })
+        foreach (var group in new[] { "runs", "sessions", "clones", "worktrees", "notifications", "diagnostics", "shell", "terminal-access", "shell-access", "swarm" })
         {
             var read = await door.SendAsync(HttpMethod.Get, $"/api/v1/options/{group}", operate.Secret);
             var write = await door.SendAsync(HttpMethod.Put, $"/api/v1/options/{group}", operate.Secret, "{}");
@@ -113,6 +113,20 @@ public sealed class BackendApiDoorTests
         var incomplete = await door.SendAsync(HttpMethod.Put, "/api/v1/options/notifications", Bootstrap, "{}");
         Assert.Equal(HttpStatusCode.BadRequest, incomplete.Status);
         Assert.Equal(held.WebhookUrl, (await notifications.LoadAsync()).WebhookUrl);
+
+        // AC-2279: Operate changes no server trust, and an admin can narrow the internal network but never widen it.
+        foreach (var action in new[] { "reset", "leadership", "retry", $"members/{new string('A', 64)}/remove" })
+        {
+            Assert.Equal(new _Answer(HttpStatusCode.Forbidden, ForbiddenBody), await door.SendAsync(HttpMethod.Post, $"/api/v1/options/swarm/{action}", operate.Secret));
+        }
+
+        door.Swarm.LoadSettingsAsync(Arg.Any<CancellationToken>()).Returns(new Cockpit.Core.Swarm.SwarmSettings { ExtraInternalCidrs = ["100.64.0.0/10"] });
+        var widened = await door.SendAsync(HttpMethod.Put, "/api/v1/options/swarm", Bootstrap, """{"extraInternalCidrs":["100.64.0.0/10","0.0.0.0/1"],"joinAtBack":false}""");
+        Assert.Equal(HttpStatusCode.BadRequest, widened.Status);
+        await door.Swarm.DidNotReceiveWithAnyArgs().SaveSettingsAsync(default!, default);
+        var narrowed = await door.SendAsync(HttpMethod.Put, "/api/v1/options/swarm", Bootstrap, """{"extraInternalCidrs":[],"joinAtBack":true}""");
+        Assert.Equal(HttpStatusCode.OK, narrowed.Status);
+        await door.Swarm.Received(1).SaveSettingsAsync(Arg.Is<Cockpit.Core.Swarm.SwarmSettings>(saved => saved.ExtraInternalCidrs.Count == 0), Arg.Any<CancellationToken>());
     }
 
     private async Task _AssertWhoami_RefusesEveryCallerButAConnectKeyOverHttpsAsync(string caller, HttpStatusCode expected, string expectedBody)
@@ -789,6 +803,8 @@ public sealed class BackendApiDoorTests
     // endpoint host with cockpit-node on loopback and on an HTTPS port of its own.
     internal sealed class _Door : IAsyncDisposable
     {
+        public Cockpit.Core.Swarm.ISwarmOptions Swarm { get; } = Substitute.For<Cockpit.Core.Swarm.ISwarmOptions>();
+
         private readonly NodeSelfSignedCertificate _certificate;
         private readonly HttpClient _http;
         private readonly NodeAccessAuditLog _audit;
@@ -935,6 +951,8 @@ public sealed class BackendApiDoorTests
 
             var services = new ServiceCollection();
             services.AddSingleton<INotificationSettingsStore>(new Cockpit.Infrastructure.Notifications.NotificationSettingsStore(ConfigPath));
+            services.AddSingleton(Swarm);
+            services.AddSingleton(Substitute.For<Cockpit.Core.Swarm.ISwarmLeadership>());
             services.AddSingleton<IAssistantReadGateway>(ReadGateway);
             services.AddSingleton<IAssistantAgentGateway>(AgentGateway);
             services.AddSingleton<ISessionRegistry>(Sessions);

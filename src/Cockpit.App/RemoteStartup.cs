@@ -73,7 +73,8 @@ internal sealed class RemoteStartup : IDisposable
     public CockpitViewModel? Open(
         Func<ServerAdminViewModel, Task> showServerAdmin,
         Func<CockpitViewModel, string?, Task>? presentOptions = null,
-        Func<PluginManagerViewModel, PluginStoreFilter?, Task>? presentPluginStore = null)
+        Func<PluginManagerViewModel, PluginStoreFilter?, Task>? presentPluginStore = null,
+        Func<string, string, string, Task<bool>>? confirm = null)
     {
         if (Registry?.Connect(Server, _loggers) is not { } connection)
         {
@@ -83,7 +84,7 @@ internal sealed class RemoteStartup : IDisposable
 
         _connection = connection;
         return CockpitViewModel.ForRemoteWindow(
-            Server, connection.Servers, connection.Nodes, new RemoteServerSignIns(connection.Servers), showServerAdmin, presentOptions, presentPluginStore);
+            Server, connection.Servers, connection.Nodes, new RemoteServerSignIns(connection.Servers), showServerAdmin, presentOptions, presentPluginStore, confirm);
     }
 
     public void Dispose()
