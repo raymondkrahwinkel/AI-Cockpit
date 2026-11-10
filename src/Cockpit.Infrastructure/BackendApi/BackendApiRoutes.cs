@@ -42,6 +42,7 @@ internal static class BackendApiRoutes
         AssistantSettingsEndpoints.Map(api, services);
         StorageSettingsEndpoints.Map(api, services);
         OptionsSettingsEndpoints.Map(api, services);
+        SwarmOptionsEndpoints.Map(api, services);
 
         api.MapGet("/whoami", async (CancellationToken cancellationToken) =>
         {

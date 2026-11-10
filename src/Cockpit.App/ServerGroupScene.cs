@@ -48,6 +48,17 @@ internal static class ServerGroupScene
         return new MainWindow(windowBoundsStore: null, "huis-cockpit") { DataContext = cockpit, Width = width, Height = height };
     }
 
+    // AC-2279: the remote window's ordinary Options on one page: the server's parts shown, this device's own hidden.
+    public static OptionsDialog RemoteOptions(string category)
+    {
+        var cockpit = CockpitViewModel.ForRemoteWindow("huis-cockpit", new SceneServers(_Server(admin: true)), null, new SceneSignIns(), _ => Task.CompletedTask);
+        // The stand-in server answers synchronously, so its keys are on the page before the render.
+        _ = cockpit.LoadRemoteServerKeysAsync();
+        var dialog = new OptionsDialog { DataContext = cockpit, Width = 1100, Height = 1100 };
+        dialog.SelectCategory(category);
+        return dialog;
+    }
+
     // AC-1762 (mockups Company v8 #22 and Productivity v3 #09): the panels sidebar with two projects, this laptop with two
     // workspaces and one server — the server open or folded shut.
     public static MainWindow Sidebar(int width, int height, bool collapsed)

@@ -3,9 +3,13 @@ using Cockpit.Core.Abstractions.Clones;
 using Cockpit.Core.Abstractions.Debugging;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.SessionBehavior;
+using Cockpit.Core.Abstractions.Shell;
 using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.HeavyRuns;
+using Cockpit.Core.Mcp;
+using Cockpit.Core.Provisioning;
+using Cockpit.Infrastructure.Mcp;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -26,6 +30,7 @@ internal static class OptionsSettingsEndpoints
         INotificationSettingsStore notifications() => services.GetRequiredService<INotificationSettingsStore>();
         IDebugSettingsStore debug() => services.GetRequiredService<IDebugSettingsStore>();
         ITerminalSettingsStore terminal() => services.GetRequiredService<ITerminalSettingsStore>();
+        ProvisionPolicy? policy() => services.GetService<IOrgPolicy>()?.Current;
 
         _Map<RunOptions>("runs", async ct =>
         {
@@ -85,6 +90,20 @@ internal static class OptionsSettingsEndpoints
                 string.Equals(value.Shell, shell.Id, StringComparison.Ordinal)
                 || string.Equals(value.Shell, shell.ExecutablePath, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal)));
 
+        // AC-2279: the agent-access switches of the server, flipped live there; an organisation's ceiling still holds.
+        _Map<AccessOptions>("terminal-access", async ct => new((await services.GetRequiredService<ITerminalAccessSettingsStore>().LoadAsync(ct).ConfigureAwait(false)).Enabled),
+            async (value, ct) =>
+            {
+                await services.GetRequiredService<ITerminalAccessSettingsStore>().SaveAsync(new() { Enabled = value.Enabled }, ct).ConfigureAwait(false);
+                services.GetRequiredService<ITerminalAccessSwitch>().Enabled = value.Enabled;
+            }, value => !value.Enabled || !OrgPolicyCeilings.TerminalForbidden(policy()));
+        _Map<AccessOptions>("shell-access", async ct => new((await services.GetRequiredService<IShellAccessSettingsStore>().LoadAsync(ct).ConfigureAwait(false)).Enabled),
+            async (value, ct) =>
+            {
+                await services.GetRequiredService<IShellAccessSettingsStore>().SaveAsync(new() { Enabled = value.Enabled }, ct).ConfigureAwait(false);
+                services.GetRequiredService<IShellAccessSwitch>().Enabled = value.Enabled;
+            }, value => !value.Enabled || !OrgPolicyCeilings.ShellForbidden(policy()));
+
         // Fixed typed routes, never a config-file or service-name dispatcher.
         void _Map<T>(string group, Func<CancellationToken, Task<T>> read, Func<T, CancellationToken, Task> save, Func<T, bool> valid) where T : class
         {
@@ -106,6 +125,11 @@ internal static class OptionsSettingsEndpoints
                 await EditGate.WaitAsync(ct).ConfigureAwait(false);
                 try
                 {
+                    if (await RefuseIfNoLongerAdminAsync(request.HttpContext, services).ConfigureAwait(false) is { } revoked)
+                    {
+                        return revoked;
+                    }
+
                     await save(body, ct).ConfigureAwait(false);
                     return Results.Json(await read(ct).ConfigureAwait(false), ConnectKeyEndpoints.Json);
                 }
@@ -117,6 +141,19 @@ internal static class OptionsSettingsEndpoints
         }
     }
 
+    // AC-2285's lesson for settings: the key as it stands under the gate, so a revoke or downgrade while waiting stops it.
+    internal static async Task<IResult?> RefuseIfNoLongerAdminAsync(HttpContext context, IServiceProvider services)
+    {
+        var keys = services.GetService<ConnectKeyVerifier>() is { } verifier
+            ? await verifier.ListAsync(context.RequestAborted).ConfigureAwait(false)
+            : [];
+        var now = DateTimeOffset.UtcNow;
+        return McpRequestContext.CurrentNodeCaller is { KeyPrefix: { } prefix }
+            && keys.Any(entry => entry.Key.Prefix == prefix && entry.Key.IsUsableAt(now) && entry.Key.Capability == ConnectKeyCapability.Admin)
+            ? null
+            : BackendApiRoutes.Error(StatusCodes.Status403Forbidden, "revoked", "The key was revoked or is no longer an admin key.");
+    }
+
     private static bool _ValidRoot(string? root) => string.IsNullOrWhiteSpace(root) || (!root.Contains('\0') && Path.IsPathFullyQualified(root));
 }
 
@@ -125,4 +162,5 @@ internal sealed record SessionOptions([property: JsonRequired] bool AutoCloseOnE
 internal sealed record RootOptions([property: JsonRequired] string? Root, string? DefaultRoot = null);
 internal sealed record NotificationOptions([property: JsonRequired] bool DiscordEnabled, [property: JsonRequired] string? WebhookUrl, [property: JsonRequired] TimeSpan IdleThreshold, [property: JsonRequired] TimeSpan SessionIdleThreshold, [property: JsonRequired] bool NotifyOnSessionFinished, [property: JsonRequired] bool NotifyOnSessionIdle, [property: JsonRequired] bool NotifyWhenAllSessionsIdle, [property: JsonRequired] bool NotifyOnCiFailure, [property: JsonRequired] int MonitorMessagesPerHour);
 internal sealed record DiagnosticOptions([property: JsonRequired] bool LogDiagnosticSnapshots);
+internal sealed record AccessOptions([property: JsonRequired] bool Enabled);
 internal sealed record ShellOptions([property: JsonRequired] string Shell, IReadOnlyList<Cockpit.Core.Terminal.ShellDescriptor>? Shells = null);

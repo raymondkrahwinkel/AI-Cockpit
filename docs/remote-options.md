@@ -6,6 +6,14 @@ All server groups are saved before client presentation. A server failure keeps t
 
 Client presentation uses only the remote window's own state root, never the local Cockpit registry. A server shell must be empty (OS default) or the ID/absolute executable path of a shell detected on the server; arbitrary programs are refused. Host backup/image operations remain outside this feature. The later epic subtickets own Security/Swarm, profiles/assistant, MCP and plugin administration.
 
+## Security and Swarm (AC-2279)
+
+Only Admin keys can read or write `/api/v1/options/{terminal-access,shell-access}` and `/api/v1/options/swarm`, or post `/api/v1/options/swarm/{reset,leadership,retry,members/{id}/remove}`. Every write and action is audited, waits on the shared edit gate, and checks the calling key again under that gate, so a revoke or downgrade while it waits stops the change. The server's organisation policy still refuses enabling terminal or shell access, and the server flips the live switch itself.
+
+An extra internal CIDR the server does not already hold must lie fully inside 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10 (carrier-grade NAT, e.g. a VPN) or fc00::/7; anything else is refused, so no remote window makes a public address internal. The server's node listener ("Accept connections") has no route: a headless server keeps it on, and turning it off would lock the window out. Pairing (find, add by address, incoming confirmation) is a conscious gap: it stays on the server's own screen. The window never joins the swarm and receives no identity or private key; member public keys only identify the rows. A server without Swarm answers `404 no_swarm`.
+
+Encryption, screen lock and Windows Hello protect the client device and are hidden in a remote window; its local security settings are not touched. The Servers page of a remote window shows the server's own connect keys over the existing `/api/v1/keys` contract. Revoking the key in use aborts its in-flight requests, including the `/events` stream, at once (`McpAuthMiddleware`).
+
 ## EditedProperties ownership
 
 | Property | Owner |
@@ -85,8 +93,8 @@ Client presentation uses only the remote window's own state root, never the loca
 | `WakeAgentsByDefault` | Server backend (AC-2278) |
 | `WebhookUrl` | Server backend (AC-2278) |
 | `WorktreeRoot` | Server backend (AC-2278) |
-| `Security.LockWithOperatingSystem` | Server backend (AC-2279) |
-| `Security.NodeEndpointEnabled` | Server backend (AC-2279) |
+| `Security.LockWithOperatingSystem` | Client presentation/device |
+| `Security.NodeEndpointEnabled` | Client presentation/device (the server keeps its listener on) |
 | `Security.ShellAccessEnabled` | Server backend (AC-2279) |
 | `Security.TerminalAccessEnabled` | Server backend (AC-2279) |
 | `Swarm.ExtraInternalCidrsText` | Server backend (AC-2279) |

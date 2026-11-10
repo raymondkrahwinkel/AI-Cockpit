@@ -84,7 +84,8 @@ public partial class CockpitViewModel
         IServerSignIns? signIns,
         Func<ServerAdminViewModel, Task> showServerAdmin,
         Func<CockpitViewModel, string?, Task>? presentOptions = null,
-        Func<PluginManagerViewModel, PluginStoreFilter?, Task>? presentPluginStore = null)
+        Func<PluginManagerViewModel, PluginStoreFilter?, Task>? presentPluginStore = null,
+        Func<string, string, string, Task<bool>>? confirm = null)
     {
         var options = Composition.DesktopComposition.RemoteOptionsFor(() => servers.Servers.FirstOrDefault(target => target.Name == server));
         var cockpit = new CockpitViewModel(
@@ -103,6 +104,9 @@ public partial class CockpitViewModel
             _showServerAdmin = showServerAdmin,
             _presentOptions = presentOptions,
             _presentPluginStore = presentPluginStore,
+            // AC-2279: the server's own switches and swarm; encryption, screen lock and pairing stay with this device.
+            Security = new SecurityOptionsViewModel(new UnprotectedSecrets(), terminalAccessSettings: options, shellAccessSettings: options),
+            Swarm = new SwarmOptionsViewModel(options.Swarm, options.SwarmLeadership, confirm),
         };
         cockpit._WireServerGroups(servers, SessionViewModel.OverRemoteAsync, serverChoices, signIns);
         return cockpit;
@@ -462,6 +466,47 @@ public partial class CockpitViewModel
             ? _OpenServerAdminAsync(group, "server-plugins")
             : Task.CompletedTask;
 
+    // AC-2279: the remote window's server keys on its ordinary Servers page, over the server dialog's own contract.
+    public ServerAdminViewModel? RemoteServerKeys
+    {
+        get => _remoteServerKeys;
+        private set => SetProperty(ref _remoteServerKeys, value);
+    }
+
+    private ServerAdminViewModel? _remoteServerKeys;
+
+    internal async Task LoadRemoteServerKeysAsync()
+    {
+        if (ServerGroups.FirstOrDefault() is not { State.Key: { } key, Server: { } server } group)
+        {
+            RemoteServerKeys = null;
+            return;
+        }
+
+        var (profiles, projects) = await _ServerChoicesAsync(group);
+        RemoteServerKeys = new ServerAdminViewModel(group.Name, key.Label, server.Administration, profiles, projects, logger: _logger, serverVersion: key.Version);
+        await RemoteServerKeys.LoadAsync();
+    }
+
+    private async Task<(IReadOnlyList<string> Profiles, IReadOnlyList<NodeProjectChoice> Projects)> _ServerChoicesAsync(ServerGroupViewModel group)
+    {
+        if (_serverChoices is null)
+        {
+            return ([], []);
+        }
+
+        try
+        {
+            var snapshot = await _serverChoices.ReadAsync(group.Name);
+            return ([.. snapshot.Profiles.Select(profile => profile.Label)], [.. snapshot.Projects.Select(project => new NodeProjectChoice(project.Id, project.Name))]);
+        }
+        catch (Exception exception)
+        {
+            _logger?.LogInformation(exception, "Could not read the profiles and projects of {Server}.", group.Name);
+            return ([], []);
+        }
+    }
+
     private async Task _OpenServerAdminAsync(ServerGroupViewModel group, string? category)
     {
         var show = _showServerAdmin ?? (_dialogService is { } dialogs ? dialogs.ShowServerAdminDialogAsync : null);
@@ -470,22 +515,7 @@ public partial class CockpitViewModel
             return;
         }
 
-        IReadOnlyList<string> profiles = [];
-        IReadOnlyList<NodeProjectChoice> projects = [];
-        if (_serverChoices is not null)
-        {
-            try
-            {
-                var snapshot = await _serverChoices.ReadAsync(group.Name);
-                profiles = [.. snapshot.Profiles.Select(profile => profile.Label)];
-                projects = [.. snapshot.Projects.Select(project => new NodeProjectChoice(project.Id, project.Name))];
-            }
-            catch (Exception exception)
-            {
-                _logger?.LogInformation(exception, "Could not read the profiles and projects of {Server}.", group.Name);
-            }
-        }
-
+        var (profiles, projects) = await _ServerChoicesAsync(group);
         var plugins = group.Server.Plugins;
         // AC-1995: a services instance of its own, so the assistant's dialog and the Profiles page each read the server afresh.
         var assistant = new ServerAssistantViewModel(group.Name, group.Server.AssistantAdministration, group.Server.Profiles,

@@ -401,7 +401,9 @@ sealed class Program
             var store = new PluginStoreDialog { DataContext = viewModel, Title = $"Plugin store · {startup.Server}" };
             await viewModel.LoadAsync();
             await surfaces.ShowAsync(typeof(PluginStoreDialog), store, window);
-        });
+        }, (title, message, confirmLabel) =>
+            new ConfirmationDialog { DataContext = new ConfirmationDialogViewModel(title, message, confirmLabel) }
+                .ShowDialog<bool>(window.OwnedWindows.LastOrDefault() ?? window));
         if (cockpit is null)
         {
             return new ConfirmationDialog { DataContext = new ConfirmationDialogViewModel("Cannot open the remote window", startup.Refusal ?? "", "Close") };

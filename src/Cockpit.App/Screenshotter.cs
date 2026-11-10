@@ -489,6 +489,9 @@ internal static partial class Screenshotter
         ["server-group-operate"] = ServerGroupScene.Operate,
         ["server-start-refused"] = ServerGroupScene.StartRefused,
         ["remote-window"] = ServerGroupScene.Remote,
+        ["remote-options-security"] = (_, _) => ServerGroupScene.RemoteOptions("security"),
+        ["remote-options-swarm"] = (_, _) => ServerGroupScene.RemoteOptions("swarm"),
+        ["remote-options-servers"] = (_, _) => ServerGroupScene.RemoteOptions("servers"),
         ["server-pane-permission"] = ServerGroupScene.Permission,
         // AC-1446: Options opened on the server, its Connect keys (a rotated key just issued, a scope open, a lockout)
         // and its Audit log.

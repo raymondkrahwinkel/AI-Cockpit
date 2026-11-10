@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2279: Options › Security, Swarm and Servers in a remote Cockpit window manage the server itself. That covers agent terminal and shell access, the swarm's machines, leader and rank-return choice, removing a machine, leaving the swarm, and the server's own connect keys. Admin keys only, every change audited. A new extra internal network range must lie inside private address space. Pairing, encryption and screen lock stay on each device's own screen.
+
 - AC-2285: a server serves its projects' files and worktrees by project and relative path only: browse, read, save, create, rename and delete, plus listing, creating and removing a project's worktrees. A save made on an outdated version is refused and overwrites nothing. A path that leaves the project, or a link that points outside it, is refused. Sessions on a server show their worktree branch, and their file paths are no longer opened or previewed on this machine.
 
 - AC-2278: Options in a remote Cockpit window reads and saves the server's run limits, session behavior, clone/worktree roots, notifications, shell and diagnostics. Presentation stays on the client; webhook secrets remain on the server.
