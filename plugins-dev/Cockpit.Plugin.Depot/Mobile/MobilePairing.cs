@@ -17,6 +17,7 @@ namespace Cockpit.Plugin.Depot.Mobile;
 internal sealed class MobilePairing(
     Func<IReadOnlyList<DepotConnectionRegistration>> connections,
     Func<DepotConnectionRegistration, HttpMessageHandler> hostHandler,
+    Func<DepotConnectionRegistration, HttpMessageHandler> userHandler,
     IPluginStorage storage,
     DepotEvents events,
     Func<AssistantChannelContribution, IAssistantChannelGateway?> openChannel,
@@ -818,11 +819,17 @@ internal sealed class MobilePairing(
 
     private async Task<string?> _UserIdAsync(DepotConnectionRegistration connection, CancellationToken cancellationToken)
     {
-        using var http = new HttpClient(hostHandler(connection)) { Timeout = TimeSpan.FromSeconds(30) };
+        // Depot keeps /cockpit/me behind the plain depot scope; a depot.host token gets a 403 there and no relay would start.
+        using var http = new HttpClient(userHandler(connection)) { Timeout = TimeSpan.FromSeconds(30) };
         using var response = await http.GetAsync($"{connection.Url.TrimEnd('/')}/cockpit/me", cancellationToken).ConfigureAwait(false);
-        return response.IsSuccessStatusCode
-            ? (await response.Content.ReadFromJsonAsync<_Me>(DepotChannel.Json, cancellationToken).ConfigureAwait(false))?.UserId
-            : null;
+        if (!response.IsSuccessStatusCode)
+        {
+            logger?.LogWarning("Reading the account of {Connection} failed (HTTP {Status}), so its mobile relay does not start.",
+                connection.Name, (int)response.StatusCode);
+            return null;
+        }
+
+        return (await response.Content.ReadFromJsonAsync<_Me>(DepotChannel.Json, cancellationToken).ConfigureAwait(false))?.UserId;
     }
 
     private DepotConnectionRegistration _Connection(string connectionId) =>
