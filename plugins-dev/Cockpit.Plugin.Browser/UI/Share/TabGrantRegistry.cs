@@ -1,8 +1,13 @@
+using Cockpit.Plugin.Browser.Host;
+
 namespace Cockpit.Plugin.Browser.UI.Share;
 
 // One agent session's permission on one tab (AC-1714). Paused while the tab is on another origin than it was shared on.
 internal sealed class TabGrant(string paneId, string sessionName, string tabId, string origin, string mode)
 {
+    // AC-2149: this grant's identity for the engine host; each share mints a new one, so it binds session and tab too.
+    public Guid Id { get; } = Guid.NewGuid();
+
     public string PaneId { get; } = paneId;
 
     public string SessionName { get; } = sessionName;
@@ -152,11 +157,7 @@ internal sealed class TabGrantRegistry
         }
     }
 
-    // A tab's origin as the grant compares it: scheme, host and port, so a path change on the same site never pauses.
-    public static string OriginOf(string address) =>
-        Uri.TryCreate(address, UriKind.Absolute, out var uri) && uri.IsAbsoluteUri && uri.Host.Length > 0
-            ? uri.GetLeftPart(UriPartial.Authority)
-            : address;
+    public static string OriginOf(string address) => ControlPolicy.OriginOf(address);
 
     private void _Each(string tabId, Action<TabGrant> change)
     {

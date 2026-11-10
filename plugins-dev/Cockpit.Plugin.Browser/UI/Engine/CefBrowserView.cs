@@ -7,7 +7,7 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Threading;
-using Cockpit.Plugin.Browser.UI.Share;
+using Cockpit.Plugin.Browser.Host;
 using Xilium.CefGlue;
 
 namespace Cockpit.Plugin.Browser.UI.Engine;
@@ -81,11 +81,8 @@ internal sealed class CefBrowserView : BrowserView
 
     internal override bool IsScenePlaceholder { get; }
 
-    public override string? ControlOrigin
-    {
-        get => _controlOrigin;
-        set => _controlOrigin = value;
-    }
+    // In process the gate reads the registry itself on CEF's thread, so the acting grant needs no copy here.
+    public override void SetControl(string? origin, Guid? actingGrant) => _controlOrigin = origin;
 
     // Lets exactly the held request go on, body and all; nothing is copied or sent again (measured, AC-1728).
     public override void ReleaseHeldSubmit() => _TakeHeld()?.Continue();
@@ -124,54 +121,19 @@ internal sealed class CefBrowserView : BrowserView
     // AC-1761: Chromium's own zoom steps, kept per site in the profile, the way Chrome keeps them.
     public void Zoom(CefZoomCommand command) => _OnHost(host => host.Zoom(command));
 
-    // AC-1728: an agent's input, sent the way the operator's own mouse and keys are, through CEF's offscreen host. The
-    // gate runs on CEF's UI thread right before the input, with the main and focused frames' addresses, and the task
-    // says whether the input went in. Coordinates are the page's CSS pixels at 100% zoom.
-    public override Task<bool> AgentClick(int x, int y, Func<string?, string?, bool> gate, string frames)
-    {
-        var mouse = new CefMouseEvent(x, y, CefEventFlags.None);
-        return _Agent((main, focused) => gate(main, focused) && _FrameSignature() == frames, host =>
-        {
-            host.SetFocus(true);
-            host.SendMouseMoveEvent(mouse, false);
-            host.SendMouseClickEvent(mouse, CefMouseButtonType.Left, false, 1);
-            host.SendMouseClickEvent(mouse, CefMouseButtonType.Left, true, 1);
-        });
-    }
+    // AC-1728: the gate runs on CEF's UI thread right before the input, with the main and focused frames' addresses,
+    // and the task says whether the input went in.
+    public override Task<bool> AgentClick(int x, int y, AgentGate gate, string frames) =>
+        _Agent(gate, browser => ControlPolicy.FrameSignature(browser) == frames, host => AgentInput.Click(host, x, y));
 
-    public override Task<bool> AgentType(string text, Func<string?, string?, bool> gate)
-    {
-        var keys = text.Select(character => new CefKeyEvent { EventType = CefKeyEventType.Char, Character = character, UnmodifiedCharacter = character, WindowsKeyCode = character }).ToList();
-        return _Agent(gate, host =>
-        {
-            host.SetFocus(true);
-            foreach (var key in keys)
-            {
-                host.SendKeyEvent(key);
-            }
-        });
-    }
+    public override Task<bool> AgentType(string text, AgentGate gate) => _Agent(gate, _ => true, host => AgentInput.Type(host, text));
 
-    // A Windows key code from KeyCodes.FromName; Enter also sends its character, which is what submits a form.
-    public override Task<bool> AgentKey(int code, Func<string?, string?, bool> gate) => _Agent(gate, host =>
-    {
-        host.SetFocus(true);
-        host.SendKeyEvent(new CefKeyEvent { EventType = CefKeyEventType.RawKeyDown, WindowsKeyCode = code });
-        if (code == 0x0D)
-        {
-            host.SendKeyEvent(new CefKeyEvent { EventType = CefKeyEventType.Char, Character = '\r', UnmodifiedCharacter = '\r', WindowsKeyCode = code });
-        }
+    public override Task<bool> AgentKey(int code, AgentGate gate) => _Agent(gate, _ => true, host => AgentInput.Key(host, code));
 
-        host.SendKeyEvent(new CefKeyEvent { EventType = CefKeyEventType.KeyUp, WindowsKeyCode = code });
-    });
+    public override Task<bool> AgentScroll(int dx, int dy, AgentGate gate) =>
+        _Agent(gate, _ => true, host => AgentInput.Scroll(host, (int)(_viewSize.Width / 2), (int)(_viewSize.Height / 2), dx, dy));
 
-    public override Task<bool> AgentScroll(int dx, int dy, Func<string?, string?, bool> gate)
-    {
-        var mouse = new CefMouseEvent((int)(_viewSize.Width / 2), (int)(_viewSize.Height / 2), CefEventFlags.None);
-        return _Agent(gate, host => host.SendMouseWheelEvent(mouse, dx, dy));
-    }
-
-    public override Task<bool> AgentNavigate(string url, Func<string?, string?, bool> gate) => _Agent(gate, host => host.GetBrowser().GetMainFrame().LoadUrl(url));
+    public override Task<bool> AgentNavigate(string url, AgentGate gate) => _Agent(gate, _ => true, host => host.GetBrowser().GetMainFrame().LoadUrl(url));
 
     // The browser's frames as one string, read on CEF's UI thread; null when there is no browser.
     public override Task<string?> FrameSignatureAsync()
@@ -183,14 +145,11 @@ internal sealed class CefBrowserView : BrowserView
             return done.Task;
         }
 
-        CefRuntime.PostTask(CefThreadId.UI, new ActionTask(() => done.TrySetResult(_FrameSignature())));
+        CefRuntime.PostTask(CefThreadId.UI, new ActionTask(() => done.TrySetResult(_browser is { } browser ? ControlPolicy.FrameSignature(browser) : null)));
         return done.Task;
     }
 
-    private string? _FrameSignature() =>
-        _browser is { } browser ? string.Join(",", browser.GetFrameIdentifiers().Order(StringComparer.Ordinal)) : null;
-
-    private Task<bool> _Agent(Func<string?, string?, bool> gate, Action<CefBrowserHost> input)
+    private Task<bool> _Agent(AgentGate gate, Func<CefBrowser, bool> page, Action<CefBrowserHost> input)
     {
         if (_browser is not { } browser)
         {
@@ -202,7 +161,8 @@ internal sealed class CefBrowserView : BrowserView
         {
             try
             {
-                var allowed = gate(browser.GetMainFrame()?.Url, browser.GetFocusedFrame()?.Url);
+                var allowed = ControlPolicy.MayAct(gate.Stands(), gate.Origin, browser.GetMainFrame()?.Url, browser.GetFocusedFrame()?.Url, gate.NeedsFocus)
+                    && page(browser);
                 if (allowed)
                 {
                     input(browser.GetHost());

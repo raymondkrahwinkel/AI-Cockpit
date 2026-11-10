@@ -64,13 +64,17 @@ internal sealed class BrowserHostTabs(BrowserIpcConnection connection, string st
                 }
             }
         }
-        else if (message.Operation == "tab.devtools" && _tabs.TryGetValue(message.TabId, out var target))
-        {
-            return await target.DevToolsAsync(message, token);
-        }
         else if (_tabs.TryGetValue(message.TabId, out var tab))
         {
-            await tab.HandleAsync(message, token);
+            switch (message.Operation)
+            {
+                case "tab.devtools": return await tab.DevToolsAsync(message, token);
+                case "tab.control": return tab.Control(message);
+                case "tab.agent": return await tab.AgentAsync(message, token);
+                case "tab.frames": return await tab.FramesAsync(token);
+                case "tab.release": return await tab.ReleaseAsync(message, token);
+                default: await tab.HandleAsync(message, token); break;
+            }
         }
         else
         {

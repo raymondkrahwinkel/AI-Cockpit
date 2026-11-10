@@ -107,8 +107,7 @@ Input is ordered through a bounded queue (64 commands per view); pending move an
 their latest value, with discrete commands preserving their order. Overflow of discrete commands fails the tab visibly. Host state
 coalesces in one slot, with at most one outbound call per tab across state and frames. Engine disconnect and
 renderer termination replace the stale page image with a failure; a renderer can recover on navigation/reload.
-Agent authorization, clipboard, IME, popup surfaces and audio are the later epic steps. The explicit
-host route refuses agent operations until those host-side checks exist; the live TabShare/consent route is unchanged.
+Clipboard, IME, popup surfaces and audio are the later epic steps; agent control is below (AC-2149).
 
 ### DevTools per tab (AC-2148)
 
@@ -121,6 +120,24 @@ by the incoming-call limit, because a page that never answers must not stall inp
 view waits at most 10 s. Close cancels a pending call through the tab's unregistration, and a renderer crash
 fails it at once; a new tab has its own ids and observer. A result is one IPC message, so a screenshot above
 1 MiB (a 1080p photo-dense page, for example) is refused rather than split.
+
+### Agent control in the host (AC-2149)
+
+The consent card and the grant registry stay in Cockpit; the decision moves to the host. On every registry
+change the view sends `tab.control` (controller origin, the grant id that may act now or none, a revision that
+only goes up) beside the input queue, and the host applies it at once under a lock. An agent action is
+`tab.agent` with the grant id it was authorized by; the host decides it on CEF's UI thread right before the
+input, with the same `ControlPolicy` the in-process route uses (`Host/` is compiled into both): exactly the
+acting grant, the main frame on its origin, for keys the focused frame too, for a click the frame signature of
+the hit test, for navigation the target origin. A watch grant, a paused or taken-over grant, an older grant id
+or none is refused. The operator's own click, wheel or key in the host ends the acting grant there as well.
+
+While a tab has a controller, the host holds every form submission and non-GET navigation as the real
+`CefCallback` (`ContinueAsync`) and reports it in `tab.state`; another origin is cancelled, and no file picker
+opens. `tab.release` continues exactly that held request only while it is still the one held and the controller
+is on its target's origin. Any control change, tab close and renderer crash cancel it. Grants live only in the
+host process: a stop, crash or disconnect destroys them with their callbacks, a failed control call closes the
+connection, and a new host generation starts with none, so control there needs the operator's consent again.
 
 ## The browser
 

@@ -34,6 +34,16 @@ internal sealed class BrowserHostTab : IAsyncDisposable
     private int _devToolsId;
     private CefRegistration? _devToolsObserver;
 
+    // AC-2149: the control this host enforces, set only by tab.control: the controller's origin (submissions wait while
+    // set), the grant that may act now, and the revision that set them. A new host process starts with none of it.
+    private readonly object _control = new();
+    private volatile string? _controlOrigin;
+    private Guid? _actingGrant;
+    private long _controlRevision;
+    private CefCallback? _held;
+    private BrowserTabHeld? _heldSubmit;
+    private long _heldId;
+
     // AC-2148: exactly the methods TabShare and its control path use, so a tab grant never becomes general DevTools access.
     private static readonly HashSet<string> DevToolsMethods = ["Page.captureScreenshot", "Accessibility.getFullAXTree",
         "Runtime.evaluate", "DOM.enable", "DOM.getNodeForLocation", "Page.getFrameTree", "DOM.describeNode"];
@@ -105,7 +115,12 @@ internal sealed class BrowserHostTab : IAsyncDisposable
                 host.WasHidden(message.Payload.GetBoolean() == false);
                 break;
             case "tab.input":
-                _Input(host, message.Payload.Deserialize<BrowserTabInput>() ?? throw new InvalidDataException("Missing browser input."));
+                var input = message.Payload.Deserialize<BrowserTabInput>() ?? throw new InvalidDataException("Missing browser input.");
+                if (input.Up == false && input.Kind is ("click" or "wheel" or "key"))
+                {
+                    _TakeOver();
+                }
+                _Input(host, input);
                 break;
             default: throw new InvalidDataException("Unknown browser tab operation.");
         }
@@ -165,6 +180,129 @@ internal sealed class BrowserHostTab : IAsyncDisposable
             pending.TrySetResult(null);
         }
     }
+
+    // AC-2149: what the parent's consent decided, applied at once rather than through CEF's queue, so it also reaches
+    // an agent action already posted there. Any change drops the held submission; revisions only ever go up.
+    internal JsonElement Control(BrowserIpcMessage message)
+    {
+        var control = message.Payload.Deserialize<BrowserTabControl>() ?? throw new InvalidDataException("Missing browser control.");
+        if ((control.Origin is { } address && ControlPolicy.SameOrigin(address, ControlPolicy.OriginOf(address)) == false) ||
+            (control.Grant is not null && control.Origin is null))
+        {
+            throw new InvalidDataException("Invalid browser control.");
+        }
+        lock (_control)
+        {
+            if (control.Revision <= _controlRevision)
+            {
+                throw new InvalidDataException("Stale browser control.");
+            }
+            _controlRevision = control.Revision;
+            _controlOrigin = control.Origin is null ? null : ControlPolicy.OriginOf(control.Origin);
+            _actingGrant = control.Grant;
+            _DropHeld();
+        }
+        return JsonSerializer.SerializeToElement(true);
+    }
+
+    // AC-2149: one agent action, decided on CEF's UI thread right before it goes in: exactly the acting grant, the main
+    // frame on its origin, for keys the focused frame too, for a click the frames of the hit test, for navigation the
+    // target. The lock keeps a control change from landing between that decision and the input.
+    internal async Task<JsonElement> AgentAsync(BrowserIpcMessage message, CancellationToken token)
+    {
+        var agent = message.Payload.Deserialize<BrowserTabAgent>() ?? throw new InvalidDataException("Missing agent action.");
+        Action<CefBrowserHost> input = agent switch
+        {
+            { Kind: "click", Frames: not null } => host => AgentInput.Click(host, agent.X, agent.Y),
+            { Kind: "type", Text: { Length: > 0 and <= ControlPolicy.MaxTyped } text } => host => AgentInput.Type(host, text),
+            { Kind: "key", Key: > 0 and <= 0xFE } => host => AgentInput.Key(host, agent.Key),
+            { Kind: "scroll" } => host => AgentInput.Scroll(host, _size.Width / 2, _size.Height / 2, agent.X, agent.Y),
+            { Kind: "navigate", Text: { } url } => host => host.GetBrowser().GetMainFrame().LoadUrl(url),
+            _ => throw new InvalidDataException("Invalid agent action."),
+        };
+        bool done = false;
+        await OnCefAsync(() =>
+        {
+            if (_browser is not { } browser || _closing)
+            {
+                return;
+            }
+            lock (_control)
+            {
+                var origin = _controlOrigin;
+                done = ControlPolicy.MayAct(_actingGrant == agent.Grant, origin, browser.GetMainFrame()?.Url, browser.GetFocusedFrame()?.Url, agent.NeedsFocus)
+                    && (agent.Kind != "click" || ControlPolicy.FrameSignature(browser) == agent.Frames)
+                    && (agent.Kind != "navigate" || (origin is not null && ControlPolicy.SameOrigin(agent.Text, origin)));
+                if (done)
+                {
+                    input(browser.GetHost());
+                }
+            }
+        }, token);
+        return JsonSerializer.SerializeToElement(done);
+    }
+
+    internal async Task<JsonElement> FramesAsync(CancellationToken token)
+    {
+        string? frames = null;
+        await OnCefAsync(() => frames = _browser is { } browser && _closing == false ? ControlPolicy.FrameSignature(browser) : null, token);
+        return JsonSerializer.SerializeToElement(frames);
+    }
+
+    // AC-2149: Send continues exactly the held request, body and all, only while it is still the one held and the tab
+    // still has a controller on its target's origin; anything else cancels it.
+    internal async Task<JsonElement> ReleaseAsync(BrowserIpcMessage message, CancellationToken token)
+    {
+        var release = message.Payload.Deserialize<BrowserTabRelease>() ?? throw new InvalidDataException("Missing held submission.");
+        await OnCefAsync(() =>
+        {
+            lock (_control)
+            {
+                if (release.Id != _heldId || _held is not { } held || _heldSubmit is not { } submit)
+                {
+                    return;
+                }
+                if (release.Send && _controlOrigin is { } origin && ControlPolicy.SameOrigin(submit.Url, origin))
+                {
+                    _held = null;
+                    _heldSubmit = null;
+                    _PostState(heldSubmit: null);
+                    held.Continue();
+                    return;
+                }
+                _DropHeld();
+            }
+        }, token);
+        return JsonSerializer.SerializeToElement(true);
+    }
+
+    // The operator's own click, wheel or key: the agent stops acting here until the parent gives control back.
+    private void _TakeOver()
+    {
+        lock (_control)
+        {
+            if (_actingGrant is not null)
+            {
+                _actingGrant = null;
+                _DropHeld();
+            }
+        }
+    }
+
+    // Callers hold _control. Cancelling a CefCallback is safe on any thread.
+    private void _DropHeld()
+    {
+        if (_held is { } held)
+        {
+            _held = null;
+            _heldSubmit = null;
+            _PostState(heldSubmit: null);
+            held.Cancel();
+        }
+    }
+
+    // Callers hold _control, so the state posts reach CEF's queue in the order the hold changed.
+    private void _PostState(BrowserTabHeld? heldSubmit) => CefRuntime.PostTask(CefThreadId.UI, new ActionTask(() => _State(_state with { Held = heldSubmit })));
 
     private static void _ValidateSize(BrowserTabSize size)
     {
@@ -382,6 +520,8 @@ internal sealed class BrowserHostTab : IAsyncDisposable
         private readonly DisplayHandler _display = new(owner);
         private readonly LoadHandler _load = new(owner);
         private readonly RequestHandler _request = new(owner);
+        private readonly DialogHandler _dialog = new(owner);
+        protected override CefDialogHandler GetDialogHandler() => _dialog;
         protected override CefLifeSpanHandler GetLifeSpanHandler() => _life;
         protected override CefRenderHandler GetRenderHandler() => _render;
         protected override CefDisplayHandler GetDisplayHandler() => _display;
@@ -409,6 +549,12 @@ internal sealed class BrowserHostTab : IAsyncDisposable
             owner._devToolsObserver?.Dispose();
             owner._devToolsObserver = null;
             owner._FailDevTools();
+            lock (owner._control)
+            {
+                owner._controlOrigin = null;
+                owner._actingGrant = null;
+                owner._DropHeld();
+            }
             owner._closed.TrySetResult();
         }
         protected override bool OnBeforePopup(CefBrowser browser, CefFrame frame, int popupId, string targetUrl, string targetFrameName,
@@ -440,14 +586,64 @@ internal sealed class BrowserHostTab : IAsyncDisposable
         }
     }
 
+    // AC-2149: a controlled tab's navigations go through the submit hold, here in the host; others keep CEF's defaults.
     private sealed class RequestHandler(BrowserHostTab owner) : CefRequestHandler
     {
+        private readonly SubmitHold _hold = new(owner);
         protected override CefResourceRequestHandler? GetResourceRequestHandler(CefBrowser browser, CefFrame frame, CefRequest request,
-            bool isNavigation, bool isDownload, string requestInitiator, ref bool disableDefaultHandling) => null;
+            bool isNavigation, bool isDownload, string requestInitiator, ref bool disableDefaultHandling) =>
+            isNavigation && owner._controlOrigin is not null ? _hold : null;
         protected override void OnRenderProcessTerminated(CefBrowser browser, CefTerminationStatus status, int errorCode, string errorString)
         {
             owner._FailDevTools();
+            lock (owner._control)
+            {
+                owner._DropHeld();
+            }
             owner._State(owner._state with { Failure = "The page renderer stopped. Reload the tab to try again." });
+        }
+    }
+
+    // The real request waits (ContinueAsync) for the operator in every frame; another origin is cancelled outright.
+    // Decided under the control lock, so a revocation between the verdict and the hold cannot leave it waiting.
+    private sealed class SubmitHold(BrowserHostTab owner) : CefResourceRequestHandler
+    {
+        protected override CefCookieAccessFilter? GetCookieAccessFilter(CefBrowser browser, CefFrame frame, CefRequest request) => null;
+        protected override CefReturnValue OnBeforeResourceLoad(CefBrowser browser, CefFrame frame, CefRequest request, CefCallback callback)
+        {
+            var source = request.TransitionType & CefTransitionType.SourceMask;
+            var (method, url) = (request.Method, request.Url);
+            lock (owner._control)
+            {
+                switch (ControlPolicy.Navigation(owner._controlOrigin, method, source == CefTransitionType.FormSubmit, url, frame.IsMain, source == CefTransitionType.Explicit))
+                {
+                    case ControlPolicy.Verdict.Drop:
+                        return CefReturnValue.Cancel;
+                    case ControlPolicy.Verdict.Hold:
+                        owner._DropHeld();
+                        owner._held = callback;
+                        owner._heldSubmit = new BrowserTabHeld(++owner._heldId, method, url);
+                        owner._PostState(owner._heldSubmit);
+                        return CefReturnValue.ContinueAsync;
+                    default:
+                        return CefReturnValue.Continue;
+                }
+            }
+        }
+    }
+
+    // No file picker opens while an agent controls the tab, so a click cannot hand it a file.
+    private sealed class DialogHandler(BrowserHostTab owner) : CefDialogHandler
+    {
+        protected override bool OnFileDialog(CefBrowser browser, CefFileDialogMode mode, string title, string defaultFilePath,
+            string[] acceptFilters, string[] acceptExtensions, string[] acceptDescriptions, CefFileDialogCallback callback)
+        {
+            if (owner._controlOrigin is null)
+            {
+                return false;
+            }
+            callback.Cancel();
+            return true;
         }
     }
 

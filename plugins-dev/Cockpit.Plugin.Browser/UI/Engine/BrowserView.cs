@@ -36,15 +36,20 @@ internal abstract class BrowserView : Control
     public abstract void SetMuted(bool muted);
     public abstract Task CloseAsync();
 
-    // AC-2149: the explicit host harness cannot grant agent control before host-side authorization exists.
-    public virtual string? ControlOrigin { get; set; }
+    // AC-1728/AC-2149: the tab's controller origin (submissions wait while set) and the grant that may act now, or
+    // null while watching, paused or taken over. A view without an engine of its own refuses every agent action.
+    public virtual void SetControl(string? origin, Guid? actingGrant) { }
     public virtual void ReleaseHeldSubmit() { }
     public virtual void DropHeldSubmit() { }
-    public virtual Task<bool> AgentClick(int x, int y, Func<string?, string?, bool> gate, string frames) => Task.FromResult(false);
-    public virtual Task<bool> AgentType(string text, Func<string?, string?, bool> gate) => Task.FromResult(false);
-    public virtual Task<bool> AgentKey(int code, Func<string?, string?, bool> gate) => Task.FromResult(false);
-    public virtual Task<bool> AgentScroll(int dx, int dy, Func<string?, string?, bool> gate) => Task.FromResult(false);
-    public virtual Task<bool> AgentNavigate(string url, Func<string?, string?, bool> gate) => Task.FromResult(false);
+    public virtual Task<bool> AgentClick(int x, int y, AgentGate gate, string frames) => Task.FromResult(false);
+    public virtual Task<bool> AgentType(string text, AgentGate gate) => Task.FromResult(false);
+    public virtual Task<bool> AgentKey(int code, AgentGate gate) => Task.FromResult(false);
+    public virtual Task<bool> AgentScroll(int dx, int dy, AgentGate gate) => Task.FromResult(false);
+    public virtual Task<bool> AgentNavigate(string url, AgentGate gate) => Task.FromResult(false);
     public virtual Task<string?> FrameSignatureAsync() => Task.FromResult<string?>(null);
     public virtual Task<string?> DevToolsAsync(string method, IReadOnlyDictionary<string, object> parameters) => Task.FromResult<string?>(null);
 }
+
+// The grant an agent action was authorized by: its identity, its origin, whether keys need a focused frame on that
+// origin, and whether the parent's registry still holds exactly that grant. Decided again where the input goes in.
+internal sealed record AgentGate(Guid Grant, string Origin, bool NeedsFocus, Func<bool> Stands);
