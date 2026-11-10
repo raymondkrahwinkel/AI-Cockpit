@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2149: let an agent act in a development Browser host tab only on the control the operator granted, decided in the engine host right before each action and on each held form submission, and never carried over to a new host.
+
 - AC-2148: let readers of a development Browser host tab query only that tab through DevTools, answering closed or crashed tabs at once and refusing replayed or foreign calls.
 
 - AC-2147: connect the development Browser host to tabs and Avalonia frames, retaining tab identity through moves and rejecting stale or crossed buffers.

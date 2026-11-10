@@ -1,3 +1,4 @@
+using Cockpit.Plugin.Browser.Host;
 using Cockpit.Plugin.Browser.UI.Share;
 
 namespace Cockpit.Plugin.Browser.Tests;
@@ -47,14 +48,14 @@ public class TabControlTests
         grants.Share("pane-a", "A", "tab-1", "https://github.com", TabShareService.Control);
         var grant = grants.Authorize("pane-a", "tab-1", control: true) ?? throw new InvalidOperationException("no grant");
         const string page = "https://github.com/pr/1";
-        Assert.True(ControlPolicy.MayAct(grants, "pane-a", "tab-1", grant, page, page, needsFocus: true));
+        Assert.True(ControlPolicy.MayAct(ReferenceEquals(grants.Authorize("pane-a", "tab-1", control: true), grant), grant.Origin, page, page, needsFocus: true));
         grants.Stop("tab-1");
         grants.Share("pane-a", "A", "tab-1", "https://github.com", TabShareService.Control);
-        Assert.False(ControlPolicy.MayAct(grants, "pane-a", "tab-1", grant, page, page, needsFocus: true));
+        Assert.False(ControlPolicy.MayAct(ReferenceEquals(grants.Authorize("pane-a", "tab-1", control: true), grant), grant.Origin, page, page, needsFocus: true));
 
         // Review 2: keys never go to a focused frame of another site, and a click never lands in a frame.
         grant = grants.Authorize("pane-a", "tab-1", control: true) ?? throw new InvalidOperationException("no grant");
-        Assert.False(ControlPolicy.MayAct(grants, "pane-a", "tab-1", grant, page, "https://evil.example/frame", needsFocus: true));
+        Assert.False(ControlPolicy.MayAct(ReferenceEquals(grants.Authorize("pane-a", "tab-1", control: true), grant), grant.Origin, page, "https://evil.example/frame", needsFocus: true));
         const string tree = """{"frameTree":{"frame":{"id":"MAIN"}}}""";
         Assert.True(ControlPolicy.ClickTarget("""{"backendNodeId":7,"frameId":"MAIN"}""", tree, """{"node":{"nodeName":"BUTTON"}}"""));
         Assert.False(ControlPolicy.ClickTarget("""{"backendNodeId":7,"frameId":"MAIN"}""", tree, """{"node":{"nodeName":"IFRAME"}}"""));

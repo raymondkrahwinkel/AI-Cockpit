@@ -30,6 +30,12 @@ internal sealed class HostBrowserView : BrowserView
     private bool _faulted;
     private Task? _close;
     private Vector _wheelRest;
+    private (string? Origin, Guid? Grant) _control;
+    private long _controlRevision;
+    private long _heldId;
+    private bool _heldOpen;
+    private readonly TaskCompletionSource _created = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private Task _direct;
 
     internal HostBrowserView(BrowserHostClient host, string address)
     {
@@ -37,6 +43,7 @@ internal sealed class HostBrowserView : BrowserView
         Focusable = true;
         ClipToBounds = true;
         host.RegisterTab(TabId, _HandleAsync);
+        _direct = _created.Task;
         _sender = _SendAsync(address);
         _disconnected = _DisconnectedAsync();
     }
@@ -53,7 +60,73 @@ internal sealed class HostBrowserView : BrowserView
     // AC-2148: the host runs calls one at a time, so a page that never answers may hold its queue only this long.
     private static readonly TimeSpan DevToolsDeadline = TimeSpan.FromSeconds(10);
 
-    public override async Task<string?> DevToolsAsync(string method, IReadOnlyDictionary<string, object> parameters)
+    public override async Task<string?> DevToolsAsync(string method, IReadOnlyDictionary<string, object> parameters) =>
+        (await _CallAsync("tab.devtools", new BrowserTabDevTools(method, parameters), DevToolsDeadline))?.GetString();
+
+    // AC-2149: the host decides each action against the control it was last sent, on CEF's thread; this side only
+    // skips sending one its own registry already revoked. Nothing here can make the host act without that grant.
+    public override Task<bool> AgentClick(int x, int y, AgentGate gate, string frames) =>
+        _AgentAsync(gate, new BrowserTabAgent("click", gate.Grant, gate.NeedsFocus, X: x, Y: y, Frames: frames));
+    public override Task<bool> AgentType(string text, AgentGate gate) => _AgentAsync(gate, new BrowserTabAgent("type", gate.Grant, gate.NeedsFocus, Text: text));
+    public override Task<bool> AgentKey(int code, AgentGate gate) => _AgentAsync(gate, new BrowserTabAgent("key", gate.Grant, gate.NeedsFocus, Key: code));
+    public override Task<bool> AgentScroll(int dx, int dy, AgentGate gate) => _AgentAsync(gate, new BrowserTabAgent("scroll", gate.Grant, gate.NeedsFocus, X: dx, Y: dy));
+    public override Task<bool> AgentNavigate(string url, AgentGate gate) => _AgentAsync(gate, new BrowserTabAgent("navigate", gate.Grant, gate.NeedsFocus, Text: url));
+    public override async Task<string?> FrameSignatureAsync() => (await _CallAsync("tab.frames", true, BrowserIpcLimits.Deadline))?.GetString();
+
+    private async Task<bool> _AgentAsync(AgentGate gate, BrowserTabAgent action) =>
+        gate.Stands() && await _CallAsync("tab.agent", action, BrowserIpcLimits.Deadline) is { ValueKind: JsonValueKind.True };
+
+    // Sent beside the input queue so a revocation overtakes queued input, in the order the operator's choices were made.
+    public override void SetControl(string? origin, Guid? actingGrant)
+    {
+        if (_control == (origin, actingGrant))
+        {
+            return;
+        }
+        _control = (origin, actingGrant);
+        _Direct("tab.control", new BrowserTabControl(origin, actingGrant, ++_controlRevision));
+    }
+
+    public override void ReleaseHeldSubmit() => _Release(send: true);
+    public override void DropHeldSubmit() => _Release(send: false);
+
+    private void _Release(bool send)
+    {
+        if (_heldOpen)
+        {
+            _heldOpen = false;
+            _Direct("tab.release", new BrowserTabRelease(_heldId, send));
+        }
+    }
+
+    private void _Direct<T>(string operation, T payload)
+    {
+        if (_closing == false && _faulted == false)
+        {
+            _direct = _DirectAsync(_direct, operation, JsonSerializer.SerializeToElement(payload));
+        }
+    }
+
+    // A control change that may not have landed must not leave a grant standing: closing the connection ends the host,
+    // and with it every grant and held request.
+    private async Task _DirectAsync(Task previous, string operation, JsonElement payload)
+    {
+        await previous;
+        if (_closing || _faulted)
+        {
+            return;
+        }
+        try
+        {
+            await _host.Connection.CallAsync(TabId, "operator", operation, payload, BrowserIpcLimits.Deadline).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or JsonException or OperationCanceledException or ObjectDisposedException or InvalidOperationException or TimeoutException)
+        {
+            _host.Connection.Close();
+        }
+    }
+
+    private async Task<JsonElement?> _CallAsync<T>(string operation, T payload, TimeSpan timeout)
     {
         if (_closing || _faulted)
         {
@@ -61,9 +134,7 @@ internal sealed class HostBrowserView : BrowserView
         }
         try
         {
-            var result = await _host.Connection.CallAsync(TabId, "operator", "tab.devtools",
-                JsonSerializer.SerializeToElement(new BrowserTabDevTools(method, parameters)), DevToolsDeadline).ConfigureAwait(false);
-            return result.GetString();
+            return await _host.Connection.CallAsync(TabId, "operator", operation, JsonSerializer.SerializeToElement(payload), timeout).ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or JsonException or OperationCanceledException or ObjectDisposedException or InvalidOperationException or TimeoutException)
         {
@@ -107,8 +178,15 @@ internal sealed class HostBrowserView : BrowserView
     {
         try
         {
-            await _host.Connection.CallAsync(_host.Generation, "enginehost", "tab.create",
-                JsonSerializer.SerializeToElement(new BrowserTabCreate(TabId, address)), BrowserIpcLimits.Deadline).ConfigureAwait(false);
+            try
+            {
+                await _host.Connection.CallAsync(_host.Generation, "enginehost", "tab.create",
+                    JsonSerializer.SerializeToElement(new BrowserTabCreate(TabId, address)), BrowserIpcLimits.Deadline).ConfigureAwait(false);
+            }
+            finally
+            {
+                _created.TrySetResult();
+            }
             await foreach (var command in _commands.Reader.ReadAllAsync().ConfigureAwait(false))
             {
                 if (_closing)
@@ -157,6 +235,12 @@ internal sealed class HostBrowserView : BrowserView
                     OnTitleChanged(state.Title);
                     OnLoadingChanged(state.Loading, state.Back, state.Forward);
                     Failure = state.Failure;
+                    _heldOpen = state.Held is not null;
+                    if (state.Held is { } held && held.Id != _heldId)
+                    {
+                        _heldId = held.Id;
+                        OnSubmitHeld(held.Method, held.Url);
+                    }
                     InvalidateVisual();
                     break;
                 default: throw new InvalidDataException("Unknown browser callback.");
@@ -245,6 +329,7 @@ internal sealed class HostBrowserView : BrowserView
             try
             {
                 await _sender;
+                await _direct;
             }
             catch (Exception exception) when (exception is IOException or InvalidDataException or JsonException or OperationCanceledException or ObjectDisposedException or InvalidOperationException or TimeoutException)
             {
