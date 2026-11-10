@@ -172,6 +172,14 @@ public sealed record AssistantChannelHistoryPage(IReadOnlyList<AssistantChannelR
 /// </summary>
 public interface IAssistantChannelGateway : IDisposable
 {
+    /// <summary>Questions still waiting when a transport reconnects.</summary>
+    IReadOnlyList<AssistantChannelRow> PendingQuestions => [];
+
+    /// <summary>Answers every question in a card with its own structured selection; requires host 0.176.0.</summary>
+    Task<AssistantChannelSendResult> AnswerQuestionsAsync(string senderUserId, string correlationId,
+        IReadOnlyList<IReadOnlyList<string>> answers, CancellationToken cancellationToken = default) =>
+        Task.FromResult(AssistantChannelSendResult.Refused("This host cannot take structured question answers."));
+
     /// <summary>
     /// Whether the assistant sees images right now (AC-2265), so a channel can offer an attach button only where it
     /// works. False while the assistant is not running, and on a host that predates this member; images sent anyway

@@ -4,8 +4,7 @@ using Svg.Skia;
 namespace Cockpit.Shared;
 
 // SVG bytes to a decodable PNG: a project logo (AC-162), a plugin store logo (AC-553) and the file preview (AC-730).
-// One source file linked into Infrastructure and App, like ChatTurnLoop (AC-1431), so the preview needs no
-// Infrastructure reference (AC-1441) and there is still one implementation.
+// Compiled by Infrastructure; the trusted desktop host uses that same implementation (AC-2273).
 internal static class SvgRasterizer
 {
     // Whether these bytes are an SVG: by extension, or by what the document actually starts with — a URL that serves one need not end in `.svg`.

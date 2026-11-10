@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Cockpit.Core;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Consent;
 using Cockpit.Core.Consent;
@@ -103,13 +104,25 @@ internal sealed class ConsentService(IConsentAuditLog auditLog, IConsentBypassPo
         return await pending.Completion.Task.ConfigureAwait(false);
     }
 
+    public IReadOnlyList<ConsentPrompt> PendingPrompts =>
+        [.. _pending.Select(pair => new ConsentPrompt(pair.Key, pair.Value.Request, pair.Value.CanRemember))];
+
+    public bool TryRespond(Guid promptId, ConsentOutcome outcome, OperatorDecisionOrigin origin = OperatorDecisionOrigin.Desktop) =>
+        _Respond(promptId, outcome, false, null, origin);
+
     public void Respond(Guid promptId, ConsentOutcome outcome, bool remember) => Respond(promptId, outcome, remember, chosen: null);
 
     public void Respond(Guid promptId, ConsentOutcome outcome, bool remember, IReadOnlyDictionary<string, IReadOnlyList<string>>? chosen)
     {
+        _Respond(promptId, outcome, remember, chosen);
+    }
+
+    private bool _Respond(Guid promptId, ConsentOutcome outcome, bool remember, IReadOnlyDictionary<string, IReadOnlyList<string>>? chosen,
+        OperatorDecisionOrigin origin = OperatorDecisionOrigin.Desktop)
+    {
         if (!_pending.TryRemove(promptId, out var pending))
         {
-            return;
+            return false;
         }
 
         // An approval of a request with choices stands only with a valid pick for every choice; anything else is a denial.
@@ -125,7 +138,8 @@ internal sealed class ConsentService(IConsentAuditLog auditLog, IConsentBypassPo
             _remembered[_Key(pending.Request)] = 0;
         }
 
-        _Finish(pending, promptId, outcome, remembered, chosen);
+        _Finish(pending, promptId, outcome, remembered, chosen, origin);
+        return true;
     }
 
     // The pick as the request offered it, or null when any choice is unanswered, over-answered or answered with a
@@ -167,20 +181,21 @@ internal sealed class ConsentService(IConsentAuditLog auditLog, IConsentBypassPo
     }
 
     private void _Finish(
-        _Pending pending, Guid promptId, ConsentOutcome outcome, bool remembered, IReadOnlyDictionary<string, IReadOnlyList<string>>? chosen)
+        _Pending pending, Guid promptId, ConsentOutcome outcome, bool remembered, IReadOnlyDictionary<string, IReadOnlyList<string>>? chosen,
+        OperatorDecisionOrigin origin = OperatorDecisionOrigin.Desktop)
     {
         pending.CtRegistration.Dispose();
         PromptClosed?.Invoke(this, promptId);   // take the banner down at once
-        _ = _ResolveAsync(pending, outcome, remembered, chosen);
+        _ = _ResolveAsync(pending, outcome, remembered, chosen, origin);
     }
 
     // The caller's decision resolves only after the audit line is flushed — the same order the remembered and
     // fail-closed paths already take — so a crash can't leave the operator having acted on a decision the
     // append-only trail never recorded.
     private async Task _ResolveAsync(
-        _Pending pending, ConsentOutcome outcome, bool remembered, IReadOnlyDictionary<string, IReadOnlyList<string>>? chosen)
+        _Pending pending, ConsentOutcome outcome, bool remembered, IReadOnlyDictionary<string, IReadOnlyList<string>>? chosen, OperatorDecisionOrigin origin)
     {
-        await _RecordAsync(pending.Request, outcome, remembered, chosen: chosen).ConfigureAwait(false);
+        await _RecordAsync(pending.Request, outcome, remembered, chosen: chosen, origin: origin).ConfigureAwait(false);
         pending.Completion.TrySetResult(new ConsentDecision(outcome, remembered) { Chosen = chosen });
     }
 
@@ -192,7 +207,7 @@ internal sealed class ConsentService(IConsentAuditLog auditLog, IConsentBypassPo
 
     private Task _RecordAsync(
         ConsentRequest request, ConsentOutcome outcome, bool remembered, bool bypassed = false,
-        IReadOnlyDictionary<string, IReadOnlyList<string>>? chosen = null)
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? chosen = null, OperatorDecisionOrigin origin = OperatorDecisionOrigin.Desktop)
     {
         var entry = new ConsentAuditEntry(
             DateTimeOffset.UtcNow,
@@ -205,7 +220,7 @@ internal sealed class ConsentService(IConsentAuditLog auditLog, IConsentBypassPo
             request.Action,
             remembered,
             chosen is null ? null : string.Join("; ", chosen.Select(pair => $"{pair.Key}={string.Join(",", pair.Value)}")),
-            request.PreApprovedBy);
+            request.PreApprovedBy) { Origin = origin };
 
         return auditLog.RecordAsync(entry);
     }

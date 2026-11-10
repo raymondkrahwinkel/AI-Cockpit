@@ -278,7 +278,7 @@ The two limits of the first draft, forward secrecy on one side only and a record
 again, are gone since the Cockpit's ephemeral key (§ 3, § 4). Zyra decided this on 09-11, from Raymond's requirement
 in DEP-618: Depot must not be able to interact with anybody's Cockpit in any way.
 
-## 10. Message types, v1 (AC-2227)
+## 10. Message types (AC-2227, AC-2273)
 
 Every message is an envelope as in § 6. A reply carries the `id` of the message it answers as `replyTo` in its body.
 The confirmation has id `ready`; the Cockpit's application ids are `c1`, `c2`, ….
@@ -334,8 +334,7 @@ that keeps asking cannot hold up the relay for the others; a page that loses a f
 The phone also talks to the other sessions of the Cockpit it is paired with: their list, one session's transcript on
 request, and a message to that session. The messages go in the same encrypted stream as § 10, and the same rule applies
 to who may send: only a paired phone, over its current stream, after its keys opened the frame. After Forget or
-`deviceUnpaired`, nothing of that phone is handled any more. The Cockpit only answers. It sends nothing about sessions on
-its own and keeps nothing per session. The phone asks again when it wants to see more (polling).
+`deviceUnpaired`, nothing of that phone is handled any more. Session transcripts still use request/poll. Pending operator decisions also publish through section 13, independently of an open chat.
 
 The assistant pane (`cockpit-assistant`) is not in the list. Every message about it is answered as for a pane that does
 not exist: the assistant has its own channel, one conversation (§ 10, AC-1092).
@@ -460,3 +459,40 @@ message. Nothing of an image is written to disk or to a log; a log line names on
 phone offers no button there. An older phone never sends them, and text works as before.
 
 The vectors' `attachment` object is a two-chunk JPEG and the `assistant.send` that names it, as the phone sends them.
+
+
+## 13. Pending decisions and structured answers (AC-2273)
+
+A new host advertises `operatorActions: true` in `cockpit.status`. Older hosts remain read-only.
+The phone requests `operator.pending` after each authenticated reconnect, independently of whether chat is open.
+Snapshots also publish when an action opens or closes. Every snapshot has `snapshotId`, `last` and `items`;
+the phone replaces its list only after the final batch of that snapshot arrives. An empty final batch clears it.
+A lost connection discards partial snapshots and capabilities. Responses are never persisted or retried on reconnect.
+
+Each item carries `id`, `revision`, `kind`, `target`, `summary`, `decisions` and `capability`.
+Consent also carries its exact `title`, `risk` and `sourcePlugin`; a missing pane is not attributed to the assistant.
+Dangerous consent is explicitly marked in the app.
+`target` is the session pane id, `cockpit-assistant`, or an Autopilot issue id. The source Cockpit is the authenticated
+stream, never the currently selected Cockpit in the UI. `decisions` are the exact allowed decision strings.
+The capability is unpredictable, held only in memory, and scoped to the authenticated device's current channel,
+request and revision. It never appears in a transcript, model input, MCP result or log.
+
+The phone sends `operator.respond` with `{id, revision, capability, decision}`. The host checks the capability,
+current registration and allowed decision and consumes authority atomically across every device before invoking
+the existing callback. It replies `operator.result` with `{replyTo, ok, error}`. A failed callback reoffers a still-current request with new capabilities; old capabilities stay consumed.
+A stale, wrong-device, replayed or
+closed-channel decision is refused without reaching the callback. Desktop answers, expiration and unpair revoke
+pending authority. One explicit button press is sufficient; there is no second consent prompt.
+
+Autopilot owns its registrations. Sub-PR merge-go is unavailable on the phone.
+`epic-go` only opens the existing PR-to-main gate and does not grant permission to merge that PR.
+The host records `phone operator` provenance in consent audit and session permission decisions without accepting
+a caller-supplied person name. Only the host-allowlisted Depot plugin receives the transport channel factory;
+other plugins may publish requests but cannot open an operator channel. The factory accepts no claimed device id.
+Chat text and `assistant.send`/`session.send` do not carry this authority; no MCP tool mints or submits it.
+
+Ordinary questions have `kind: question`, `questionId`, and `questions` containing every question's text, header,
+options (label and description), `multiSelect` and `allowOther`. Their capability is empty.
+They use `assistant.answer` with `{questionId, answers: [[string]]}` (one selection group per question),
+answered by `assistant.answered` with `{replyTo, ok, error}`. These are content answers, never operator approvals.
+The existing desktop question/consent messages remain available to older phone versions.

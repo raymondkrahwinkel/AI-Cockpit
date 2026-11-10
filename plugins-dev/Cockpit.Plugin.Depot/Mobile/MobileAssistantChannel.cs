@@ -8,7 +8,7 @@ namespace Cockpit.Plugin.Depot.Mobile;
 // AC-2227: one paired phone as a door onto the assistant's own conversation, next to Slack and Discord. The gateway is
 // opened for this phone's device id alone, so the host refuses anything else. What goes over the line is decided here
 // (PROTOCOL.md § 10); nothing of a message reaches a log, only its type and size.
-internal sealed class MobileAssistantChannel : IDisposable
+internal sealed partial class MobileAssistantChannel : IDisposable
 {
     public const int HistoryLimit = 50;
 
@@ -34,6 +34,8 @@ internal sealed class MobileAssistantChannel : IDisposable
     private bool _unseenAnswer;
     private bool _flushScheduled;
     private bool _disposed;
+    private string? _streamId;
+    private long _streamGeneration;
 
     public MobileAssistantChannel(
         string deviceId,
@@ -52,6 +54,7 @@ internal sealed class MobileAssistantChannel : IDisposable
         _cockpitVersion = cockpitVersion;
         _logger = logger;
         _sessions = host is null ? null : new MobileSessionChannel(host, _Send, logger);
+        _operatorTransport = host?.OperatorTransport;
         _attachments = new MobileAttachments((attachmentId, error) => _Send("attachment.refused", writer =>
         {
             writer.WriteString("attachmentId", attachmentId);
@@ -68,11 +71,11 @@ internal sealed class MobileAssistantChannel : IDisposable
 
     // A frame from this phone that MobileFrameCipher opened. Anything that is not a message this version knows is
     // ignored, and the stream stays open (PROTOCOL.md § 6).
-    public void Receive(byte[] plaintext)
+    public void Receive(byte[] plaintext, string? streamId = null)
     {
         lock (_gate)
         {
-            if (_disposed)
+            if (_disposed || (streamId is not null && streamId != _streamId))
             {
                 return;
             }
@@ -114,6 +117,16 @@ internal sealed class MobileAssistantChannel : IDisposable
 
         switch (type)
         {
+            case "operator.pending":
+                _StartOperatorChannel();
+                _SendPending();
+                break;
+            case "operator.respond":
+                _ = _RespondAsync(id, body);
+                break;
+            case "assistant.answer":
+                _ = _AnswerAsync(id, body);
+                break;
             case "attachment.chunk":
                 _attachments.Add(_String(body, "attachmentId"), _Int(body, "seq"), _Int(body, "total"), _String(body, "mime"), _String(body, "data"));
                 break;
@@ -134,7 +147,10 @@ internal sealed class MobileAssistantChannel : IDisposable
                     writer.WriteString("version", _cockpitVersion);
                     writer.WriteBoolean("assistant", _gateway is not null);
                     writer.WriteBoolean("images", _gateway?.AcceptsImages == true);
+                    writer.WriteBoolean("operatorActions", _operatorTransport is not null);
                 });
+                _StartOperatorChannel();
+                _SendPending();
                 break;
             case "sessions.list" when _sessions is not null:
                 _sessions.List(id);
@@ -152,14 +168,25 @@ internal sealed class MobileAssistantChannel : IDisposable
     }
 
     // The phone's stream is gone: its chat counts as closed until a new stream says otherwise.
+    public void StreamStarted(string streamId)
+    {
+        lock (_gate)
+        {
+            _streamId = streamId;
+        }
+    }
+
     public void StreamEnded()
     {
         lock (_gate)
         {
             _chatOpen = false;
+            _streamId = null;
+            _streamGeneration++;
         }
 
         _attachments.Clear();
+        _StopOperatorChannel();
     }
 
     public void Dispose()
@@ -178,6 +205,7 @@ internal sealed class MobileAssistantChannel : IDisposable
         }
 
         _attachments.Dispose();
+        _StopOperatorChannel();
         if (_gateway is not null)
         {
             _gateway.RowChanged -= _OnRowChanged;
@@ -318,6 +346,13 @@ internal sealed class MobileAssistantChannel : IDisposable
                 _question = null;
             }
 
+            if (row is { Kind: AssistantChannelRowKind.Question, IsUpdate: true, Questions.Count: 0 }
+                && _question?.Id == row.Id.ToString("n"))
+            {
+                answered = _question?.Id;
+                _question = null;
+            }
+
             if (row is { Questions.Count: > 0, CorrelationId: { } correlationId } && _question?.Id != correlationId)
             {
                 answered = _question?.Id ?? answered;
@@ -338,6 +373,10 @@ internal sealed class MobileAssistantChannel : IDisposable
         }
 
         _Queue(row);
+        if (answered is not null || asked is not null)
+        {
+            _SendPending();
+        }
     }
 
     private (string Id, string Text)? _OpenQuestion()

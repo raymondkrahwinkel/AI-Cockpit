@@ -96,6 +96,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Cockpit.App" />
     <InternalsVisibleTo Include="Cockpit.Core.Tests" />
     <InternalsVisibleTo Include="Cockpit.Infrastructure.Tests" />
     <InternalsVisibleTo Include="Cockpit.Backend.Tests" />

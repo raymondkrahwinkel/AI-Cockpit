@@ -50,7 +50,7 @@ namespace Cockpit.Infrastructure.Plugins;
 // AC-1392: the `ICockpitHost` a plugin's backend part receives, scoped by `pluginId`, with no window behind it.
 // Sessions are reached through ISessionRegistry/ISessionLauncher, which marshal for themselves. The window members
 // are no-ops that say so once per plugin; the desktop's DesktopPluginHost overrides them until F2.14 (AC-1369).
-public class PluginBackendHost(
+internal class PluginBackendHost(
     string pluginId,
     string pluginName,
     IServiceProvider services,
@@ -129,6 +129,17 @@ public class PluginBackendHost(
     }
 
     public ICockpitSessionObserver Sessions => sessions;
+
+    public IOperatorActionService? OperatorActions => services.GetService<OperatorActionService>();
+
+    public IOperatorActionTransport? OperatorTransport => pluginId == "depot"
+        ? services.GetService<OperatorActionService>() is { } service ? new _OperatorTransport(service) : null
+        : null;
+
+    private sealed class _OperatorTransport(OperatorActionService service) : IOperatorActionTransport
+    {
+        public IOperatorActionChannel OpenChannel() => service.OpenChannel();
+    }
 
     // AC-128: the transport-verified pane behind the current in-process MCP call, read from the ambient request
     // context the auth middleware set. A plugin's own MCP tool keys on this so it acts on the calling session, not a

@@ -46,4 +46,7 @@ public sealed record ConsentAuditEntry(
     string ActionText,
     bool Remembered,
     string? Chosen = null,
-    string? PreApprovedBy = null);
+    string? PreApprovedBy = null)
+{
+    public OperatorDecisionOrigin Origin { get; init; }
+}
