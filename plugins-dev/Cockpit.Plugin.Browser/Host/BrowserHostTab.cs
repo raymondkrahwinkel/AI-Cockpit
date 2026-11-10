@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Runtime.InteropServices;
 using System.Threading.Channels;
 using Cockpit.Plugin.Browser.Ipc;
 using Xilium.CefGlue;
@@ -21,6 +22,8 @@ internal sealed class BrowserHostTab : IAsyncDisposable
     private BrowserIpcFrameBuffer? _buffer;
     private CefRectangle _dirty;
     private bool _inflight;
+    private byte[] _pendingPixels = [];
+    private long _pendingFrameId;
     private bool _closing;
     private bool _creationPending;
     private long _frameId;
@@ -85,6 +88,8 @@ internal sealed class BrowserHostTab : IAsyncDisposable
                 }
                 _size = size;
                 _dirty = default;
+                _pendingPixels = [];
+                _pendingFrameId = 0;
                 host.NotifyScreenInfoChanged();
                 host.WasResized();
                 break;
@@ -143,10 +148,31 @@ internal sealed class BrowserHostTab : IAsyncDisposable
         {
             _dirty = _Union(_dirty, rectangle);
         }
+        if (_bufferRevision != _size.Revision)
+        {
+            _dirty = new CefRectangle(0, 0, width, height);
+        }
         if (_inflight)
         {
+            // AC-2147: CEF releases these pixels after OnPaint, before the receiver may have acknowledged.
+            int length = checked(width * height * 4);
+            if (_pendingPixels.Length != length)
+            {
+                _pendingPixels = new byte[length];
+            }
+            for (int row = _dirty.Y; row < _dirty.Y + _dirty.Height; row++)
+            {
+                int offset = (row * width + _dirty.X) * 4;
+                Marshal.Copy(pixels + offset, _pendingPixels, offset, _dirty.Width * 4);
+            }
+            _pendingFrameId = frameId;
             return;
         }
+        _Publish(pixels, width, height, frameId);
+    }
+
+    private void _Publish(nint pixels, int width, int height, long frameId)
+    {
         if (_bufferRevision != _size.Revision)
         {
             _buffer?.Dispose();
@@ -174,9 +200,17 @@ internal sealed class BrowserHostTab : IAsyncDisposable
             await OnCefAsync(() =>
             {
                 _inflight = false;
-                if (_closing == false && (_dirty.Width > 0 || _bufferRevision != _size.Revision))
+                if (_closing == false && _pendingFrameId != 0)
                 {
-                    _browser?.GetHost().Invalidate(CefPaintElementType.View);
+                    long pendingFrameId = _pendingFrameId;
+                    _pendingFrameId = 0;
+                    unsafe
+                    {
+                        fixed (byte* pixels = _pendingPixels)
+                        {
+                            _Publish((nint)pixels, (int)Math.Ceiling(_size.Width * _size.Scale), (int)Math.Ceiling(_size.Height * _size.Scale), pendingFrameId);
+                        }
+                    }
                 }
             }, CancellationToken.None);
         }
@@ -269,6 +303,7 @@ internal sealed class BrowserHostTab : IAsyncDisposable
         await _closed.Task.WaitAsync(BrowserIpcLimits.Deadline);
         await Task.WhenAll(_frameSender, _stateSender);
         _buffer?.Dispose();
+        _pendingPixels = [];
         _send.Dispose();
     }
 
