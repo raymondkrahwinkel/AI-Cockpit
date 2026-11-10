@@ -112,8 +112,7 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
             rowId = _relayedRows.FirstOrDefault(pair => pair.Value.Id.ToString("n") == correlationId).Key;
         }
 
-        if (questions is null || answers.Count != questions.Count
-            || questions.Where((question, index) => !OperatorMessageRegistry.Takes(question, answers[index])).Any())
+        if (questions is null || !StructuredQuestionJson.TakesAnswers(questions, answers))
         {
             return AssistantChannelSendResult.Refused("That is not an answer this question takes.");
         }

@@ -142,8 +142,7 @@ public sealed partial class OperatorActionService : IOperatorActionService, ISin
                 || !channel.Capabilities.TryGetValue(id, out var expected) || !string.Equals(expected, capability, StringComparison.Ordinal)
                 || !_actions.TryGetValue(id, out registration) || registration.InFlight || registration.Action.Revision != revision
                 || (answers is null ? !registration.Action.Decisions.Contains(decision, StringComparer.Ordinal)
-                    : registration.Answer is null || answers.Count != registration.Action.Questions.Count
-                        || registration.Action.Questions.Where((question, index) => !Assistant.OperatorMessageRegistry.Takes(question, answers[index])).Any()))
+                    : registration.Answer is null || !StructuredQuestionJson.TakesAnswers(registration.Action.Questions, answers)))
             {
                 return new OperatorActionResult(false, "This action is no longer available for this device.");
             }

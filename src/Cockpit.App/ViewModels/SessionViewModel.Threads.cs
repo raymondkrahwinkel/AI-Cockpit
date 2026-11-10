@@ -5,6 +5,7 @@ using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Sessions;
+using Cockpit.Plugins.Abstractions.Channels;
 using Microsoft.Extensions.Logging;
 
 namespace Cockpit.App.ViewModels;
@@ -253,7 +254,7 @@ public partial class SessionViewModel
     {
         if (Transcript.FirstOrDefault(row => row.Id == rowId && row.Kind == TranscriptEntryKind.Question) is not
             { IsPendingBrokerAnswer: true, QuestionPrompts: { Count: > 0 } prompts } card
-            || card.InputJson != inputJson || answers.Count != prompts.Count)
+            || card.InputJson != inputJson || !StructuredQuestionJson.TakesAnswers(StructuredQuestionJson.Parse(card.InputJson), answers))
         {
             return false;
         }

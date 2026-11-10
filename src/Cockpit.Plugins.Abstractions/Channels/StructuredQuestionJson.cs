@@ -45,6 +45,28 @@ public static class StructuredQuestionJson
     /// <returns>A message that identifies both the question and its answer.</returns>
     public static string AnswerText(string question, string answer) => $"\"{question}\" → {answer}";
 
+    /// <summary>
+    /// Checks the question count, selection policy and allowed choices before a card accepts an answer.
+    /// </summary>
+    public static bool TakesAnswers(IReadOnlyList<AssistantChannelQuestion> questions, IReadOnlyList<IReadOnlyList<string>> answers)
+    {
+        if (questions.Count == 0 || questions.Count != answers.Count)
+        {
+            return false;
+        }
+        for (var index = 0; index < questions.Count; index++)
+        {
+            var question = questions[index];
+            var picks = answers[index].Select(pick => pick.Trim()).Where(pick => pick.Length > 0).Distinct().ToList();
+            if (picks.Count == 0 || (!question.MultiSelect && picks.Count != 1)
+                || (!question.AllowOther && picks.Any(pick => question.Options.All(option => option.Label != pick))))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private static AssistantChannelQuestion? _Question(JsonElement element)
     {
         if (element.ValueKind != JsonValueKind.Object || _String(element, "question") is not { Length: > 0 } question)

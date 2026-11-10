@@ -662,7 +662,7 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
                 return Task.FromResult(false);
             }
             var questions = StructuredQuestionJson.Parse(row.InputJson);
-            if (questions.Count != answers.Count || questions.Where((question, index) => !Assistant.OperatorMessageRegistry.Takes(question, answers[index])).Any())
+            if (!StructuredQuestionJson.TakesAnswers(questions, answers))
             {
                 return Task.FromResult(false);
             }
