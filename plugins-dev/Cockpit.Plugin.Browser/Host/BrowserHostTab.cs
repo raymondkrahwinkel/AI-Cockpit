@@ -56,6 +56,8 @@ internal sealed partial class BrowserHostTab : IAsyncDisposable
         _id = id;
         _state = new BrowserTabState(url, "New tab", true, false, false);
         _stateSender = _SendStatesAsync();
+        _popupSender = _SendPopupsAsync();
+        _newTabSender = _SendNewTabsAsync();
     }
 
     internal Task Created => _created.Task;
@@ -105,6 +107,7 @@ internal sealed partial class BrowserHostTab : IAsyncDisposable
                 {
                     throw new InvalidDataException("Stale browser size.");
                 }
+                _DismissPopup(host);
                 _size = size;
                 _dirty = default;
                 _pendingPixels = [];
@@ -115,6 +118,7 @@ internal sealed partial class BrowserHostTab : IAsyncDisposable
             case "tab.visible":
                 if (message.Payload.GetBoolean() == false)
                 {
+                    _DismissPopup(host);
                     _CancelIme(host);
                     _focused = false;
                     host.SetFocus(false);
@@ -534,8 +538,10 @@ internal sealed partial class BrowserHostTab : IAsyncDisposable
         }, CancellationToken.None);
         await Task.WhenAll(files);
         _states.Writer.TryComplete();
+        _popups.Writer.TryComplete();
+        _newTabs.Writer.TryComplete();
         await _closed.Task.WaitAsync(BrowserIpcLimits.Deadline);
-        await Task.WhenAll(_frameSender, _stateSender);
+        await Task.WhenAll(_frameSender, _stateSender, _popupSender, _newTabSender);
         _buffer?.Dispose();
         _pendingPixels = [];
         _send.Dispose();
@@ -595,7 +601,11 @@ internal sealed partial class BrowserHostTab : IAsyncDisposable
         }
         protected override bool OnBeforePopup(CefBrowser browser, CefFrame frame, int popupId, string targetUrl, string targetFrameName,
             CefWindowOpenDisposition targetDisposition, bool userGesture, CefPopupFeatures popupFeatures, CefWindowInfo windowInfo,
-            ref CefClient client, CefBrowserSettings settings, ref CefDictionaryValue extraInfo, ref bool noJavascriptAccess) => true;
+            ref CefClient client, CefBrowserSettings settings, ref CefDictionaryValue extraInfo, ref bool noJavascriptAccess)
+        {
+            owner._NewTab(targetUrl, userGesture);
+            return true;
+        }
     }
 
     private sealed class DisplayHandler(BrowserHostTab owner) : CefDisplayHandler
@@ -631,6 +641,7 @@ internal sealed partial class BrowserHostTab : IAsyncDisposable
             isNavigation && owner._controlOrigin is not null ? _hold : null;
         protected override void OnRenderProcessTerminated(CefBrowser browser, CefTerminationStatus status, int errorCode, string errorString)
         {
+            owner._PopupShow(false);
             owner._FailDevTools();
             lock (owner._control)
             {
@@ -729,11 +740,18 @@ internal sealed partial class BrowserHostTab : IAsyncDisposable
         }
         protected override void OnPaint(CefBrowser browser, CefPaintElementType type, CefRectangle[] dirtyRects, nint buffer, int width, int height)
         {
-            if (type == CefPaintElementType.View)
+            if (type is CefPaintElementType.View or CefPaintElementType.Popup)
             {
                 try
                 {
-                    owner._Paint(buffer, width, height, dirtyRects);
+                    if (type == CefPaintElementType.View)
+                    {
+                        owner._Paint(buffer, width, height, dirtyRects);
+                    }
+                    else
+                    {
+                        owner._PopupPaint(buffer, width, height);
+                    }
                 }
                 catch (Exception exception) when (exception is IOException or InvalidDataException or OperationCanceledException or ObjectDisposedException or InvalidOperationException or AggregateException)
                 {
@@ -745,6 +763,7 @@ internal sealed partial class BrowserHostTab : IAsyncDisposable
         protected override void OnScrollOffsetChanged(CefBrowser browser, double x, double y) { }
         protected override void OnImeCompositionRangeChanged(CefBrowser browser, CefRange selectedRange, CefRectangle[] characterBounds) =>
             owner._ImeRange(selectedRange, characterBounds);
-        protected override void OnPopupSize(CefBrowser browser, CefRectangle rect) { }
+        protected override void OnPopupShow(CefBrowser browser, bool show) => owner._PopupShow(show);
+        protected override void OnPopupSize(CefBrowser browser, CefRectangle rect) => owner._PopupSize(rect);
     }
 }

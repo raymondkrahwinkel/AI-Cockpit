@@ -37,6 +37,7 @@ internal sealed partial class HostBrowserView : BrowserView
     private bool _heldOpen;
     private readonly TaskCompletionSource _created = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private Task _direct;
+    private TopLevel? _topLevel;
 
     internal HostBrowserView(BrowserHostClient host, string address)
     {
@@ -251,6 +252,16 @@ internal sealed partial class HostBrowserView : BrowserView
             }
             switch (message.Operation)
             {
+                case "tab.newTab":
+                    var popup = message.Payload.Deserialize<BrowserTabNewTab>() ?? throw new InvalidDataException("Missing popup address.");
+                    if (_faulted == false && _control.Origin is null && popup.ControlRevision == _controlRevision)
+                    {
+                        OnPopupRequested(popup.Address);
+                    }
+                    break;
+                case "tab.popup":
+                    _PresentPopup(message.Payload.Deserialize<BrowserTabPopup>() ?? throw new InvalidDataException("Missing browser popup."));
+                    break;
                 case "tab.frame":
                     _Present(message.Payload.Deserialize<BrowserTabFrame>() ?? throw new InvalidDataException("Missing browser frame."));
                     break;
@@ -260,6 +271,10 @@ internal sealed partial class HostBrowserView : BrowserView
                     OnTitleChanged(state.Title);
                     OnLoadingChanged(state.Loading, state.Back, state.Forward);
                     Failure = state.Failure;
+                    if (Failure is not null)
+                    {
+                        _ClearPopup();
+                    }
                     if (state.Ime is { } ime)
                     {
                         _ime.Present(ime);
@@ -334,6 +349,7 @@ internal sealed partial class HostBrowserView : BrowserView
 
     private void _Fail(string reason)
     {
+        _ClearPopup();
         _ime.Cancel();
         _faulted = true;
         Failure = reason;
@@ -345,6 +361,7 @@ internal sealed partial class HostBrowserView : BrowserView
 
     public override Task CloseAsync()
     {
+        _ClearPopup();
         _ime.Cancel();
         _closing = true;
         _buffer?.Dispose();
@@ -389,13 +406,24 @@ internal sealed partial class HostBrowserView : BrowserView
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
+        _topLevel = TopLevel.GetTopLevel(this);
+        if (_topLevel is not null)
+        {
+            _topLevel.ScalingChanged += _ScalingChanged;
+        }
         _Resize(Bounds.Size);
         _Queue("tab.visible", true);
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
+        _ClearPopup();
         _ime.Cancel();
+        if (_topLevel is not null)
+        {
+            _topLevel.ScalingChanged -= _ScalingChanged;
+            _topLevel = null;
+        }
         base.OnDetachedFromVisualTree(e);
         _Queue("tab.visible", false);
     }
@@ -414,11 +442,14 @@ internal sealed partial class HostBrowserView : BrowserView
         if (_size.Width != width || _size.Height != height || _size.Scale != scale)
         {
             _size = new BrowserTabSize(width, height, scale, checked(_size.Revision + 1));
+            _ClearPopup();
             _buffer?.Dispose();
             _buffer = null;
             _Queue("tab.size", _size);
         }
     }
+
+    private void _ScalingChanged(object? sender, EventArgs e) => _Resize(Bounds.Size);
 
     public override void Render(DrawingContext context)
     {
@@ -431,6 +462,10 @@ internal sealed partial class HostBrowserView : BrowserView
         else if (_bitmap is { } bitmap)
         {
             context.DrawImage(bitmap, new Rect(bitmap.PixelSize.ToSize(1)), new Rect(bitmap.Size));
+            if (_popupBitmap is { } popup)
+            {
+                context.DrawImage(popup, new Rect(popup.PixelSize.ToSize(1)), _popupRect);
+            }
         }
     }
 
