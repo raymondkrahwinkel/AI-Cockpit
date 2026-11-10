@@ -164,7 +164,7 @@
                  for a toggle button, only a title and caption buttons). -->
             <Border x:Name="HeaderBar" DockPanel.Dock="Top" Background="{DynamicResource CockpitChromeBgBrush}"
                     BorderBrush="{DynamicResource CockpitHairlineSoftBrush}" BorderThickness="0,0,0,1"
-                    Padding="12,9">
+                    Padding="12,9" IsVisible="{Binding !IsCompanion, ElementName=Root}">
                 <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto,Auto">
                     <Border Grid.Column="0" Classes="avatarBadge" Width="28" Height="28" CornerRadius="9" Margin="0,0,8,0">
                         <materialIcons:MaterialIcon Kind="Creation" Width="14" Height="14"
@@ -388,7 +388,11 @@
                                Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                 </StackPanel>
             </Border>
-            <WrapPanel DockPanel.Dock="Top" Margin="10,6,10,0" ItemSpacing="8" LineSpacing="6">
+            <TextBlock DockPanel.Dock="Top" Margin="10,6,10,0" Text="{Binding Session.SpeechRulesReason}"
+                       TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"
+                       IsVisible="{Binding Session.SpeechRulesReason, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+            <WrapPanel x:Name="UsageAndStatusBar" DockPanel.Dock="Top" Margin="10,6,10,0" ItemSpacing="8" LineSpacing="6"
+                       IsVisible="{Binding !IsCompanion, ElementName=Root}">
                 <Panel>
                     <Panel.IsVisible>
                         <MultiBinding Converter="{x:Static BoolConverters.Or}">
@@ -584,8 +588,14 @@
 
             <!-- Assistant threads, below 340 px of chat: no rail at all, the thread is picked from a list and
                  Questions for you is a button with its count (voorstel § 7.2). -->
-            <Border x:Name="ThreadPickerBar" DockPanel.Dock="Top" Padding="10,6" IsVisible="{Binding ShowsPicker}"
+            <Border x:Name="ThreadPickerBar" DockPanel.Dock="Top" Padding="10,6"
                     BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,0,0,1">
+                <Border.IsVisible>
+                    <MultiBinding Converter="{x:Static BoolConverters.And}">
+                        <Binding Path="ShowsPicker"/>
+                        <Binding Path="!IsCompanion" ElementName="Root"/>
+                    </MultiBinding>
+                </Border.IsVisible>
                 <StackPanel Orientation="Horizontal" Spacing="6">
                     <ComboBox x:Name="ThreadPicker" ItemsSource="{Binding ThreadChoices}" SelectedItem="{Binding SelectedThreadChoice}"
                               MinWidth="120" AutomationProperties.Name="Thread">
@@ -632,7 +642,13 @@
                  existing sub-navigation rail. With room for labels it is that 184 px rail; with less, icons only and
                  the labels over the chat on demand. Docked left before the composer, so the rail runs the full
                  height beside it. -->
-            <Panel DockPanel.Dock="Left" IsVisible="{Binding !ShowsPicker}">
+            <Panel x:Name="ThreadNavigation" DockPanel.Dock="Left">
+                <Panel.IsVisible>
+                    <MultiBinding Converter="{x:Static BoolConverters.And}">
+                        <Binding Path="!ShowsPicker"/>
+                        <Binding Path="!IsCompanion" ElementName="Root"/>
+                    </MultiBinding>
+                </Panel.IsVisible>
                 <Border x:Name="ThreadRail" Classes="subnavRail" IsVisible="{Binding ShowsLabelRail}">
                     <DockPanel>
                         <Button x:Name="ThreadRailToggle" DockPanel.Dock="Bottom" Classes="Ghost Compact" HorizontalAlignment="Left"
@@ -903,6 +919,7 @@
                         <TextBox x:Name="InputBox" Text="{Binding InputText}" Classes.unavailable="{Binding IsUnavailable}"
                                  Classes.controlled="{Binding IsControlled}"
                                  AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="100" VerticalContentAlignment="Top"/>
+                        <controls:MentionTokenOverlay Input="{Binding #InputBox}" Picker="{Binding MentionPicker}"/>
                         <!-- Screenshot (AC-220, reaching this window in AC-630): the desktop's own region picker with
                              its marking tools, landing as an attachment on the composer rather than a message of its
                              own. ShowOnDisabled because the disabled state is the interesting one — the tooltip is
@@ -930,48 +947,7 @@
                                 Content="Send"/>
                     </Grid>
 
-                    <!-- AC-740: the @-mention picker — same shape as SessionView.axaml's. IsLightDismissEnabled off
-                         because open/close is driven entirely by MentionPickerViewModel's own state, and the
-                         ListBox is never focused, so InputBox keeps the caret throughout. -->
-                    <Popup IsOpen="{Binding MentionPicker.IsOpen}" PlacementTarget="{Binding #ComposerBorder}"
-                           Placement="Top" IsLightDismissEnabled="False" VerticalOffset="-4">
-                        <Border Background="{DynamicResource CockpitPanelBgBrush}"
-                                BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
-                                CornerRadius="{StaticResource CockpitControlRadius}"
-                                Width="{Binding #ComposerBorder.Bounds.Width}" MaxHeight="220" Padding="0,4">
-                            <Grid>
-                                <TextBlock Text="Indexing…" FontSize="12" Margin="10,6"
-                                           Foreground="{DynamicResource CockpitTextFaintBrush}"
-                                           IsVisible="{Binding MentionPicker.IsLoading}"/>
-                                <ListBox Focusable="False" ItemsSource="{Binding MentionPicker.Matches}"
-                                         SelectedItem="{Binding MentionPicker.Selected}"
-                                         Background="Transparent" BorderThickness="0"
-                                         IsVisible="{Binding !MentionPicker.IsLoading}">
-                                    <ListBox.Styles>
-                                        <Style Selector="ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
-                                            <Setter Property="Background" Value="{DynamicResource CockpitSecondaryBgBrush}"/>
-                                        </Style>
-                                        <Style Selector="ListBoxItem:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-                                            <Setter Property="Background" Value="{DynamicResource CockpitSecondaryBgBrush}"/>
-                                        </Style>
-                                        <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-                                            <Setter Property="Background" Value="{DynamicResource CockpitSecondaryBgBrush}"/>
-                                        </Style>
-                                    </ListBox.Styles>
-                                    <ListBox.ItemTemplate>
-                                        <DataTemplate x:DataType="vm:MentionMatch">
-                                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="4,3">
-                                                <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"/>
-                                                <TextBlock Text="{Binding ParentDirectory}"
-                                                           Foreground="{DynamicResource CockpitTextFaintBrush}"
-                                                           IsVisible="{Binding ParentDirectory, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                                            </StackPanel>
-                                        </DataTemplate>
-                                    </ListBox.ItemTemplate>
-                                </ListBox>
-                            </Grid>
-                        </Border>
-                    </Popup>
+                    <controls:MentionPopup DataContext="{Binding MentionPicker}" Input="{Binding #InputBox}" Frame="{Binding #ComposerBorder}"/>
                 </StackPanel>
             </Border>
 
@@ -981,9 +957,12 @@
             <Border x:Name="ThreadHeader" DockPanel.Dock="Top" Padding="14,8"
                     BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,0,0,1">
                 <Border.IsVisible>
-                    <MultiBinding Converter="{x:Static BoolConverters.Or}">
-                        <Binding Path="HasMessages"/>
-                        <Binding Path="IsQuestionsPage"/>
+                    <MultiBinding Converter="{x:Static BoolConverters.And}">
+                        <Binding Path="!IsCompanion" ElementName="Root"/>
+                        <MultiBinding Converter="{x:Static BoolConverters.Or}">
+                            <Binding Path="HasMessages"/>
+                            <Binding Path="IsQuestionsPage"/>
+                        </MultiBinding>
                     </MultiBinding>
                 </Border.IsVisible>
                 <DockPanel>
@@ -1245,7 +1224,13 @@
                  the conversation, its scroll position and the composer stay where they are. Picking a thread, a
                  click on the chat or Esc closes it. -->
             <Border x:Name="ThreadRailOverlay" Classes="subnavRail" HorizontalAlignment="Left" ZIndex="10"
-                    BorderThickness="0,0,1,0" IsVisible="{Binding IsRailOverlayOpen}">
+                    BorderThickness="0,0,1,0">
+                <Border.IsVisible>
+                    <MultiBinding Converter="{x:Static BoolConverters.And}">
+                        <Binding Path="IsRailOverlayOpen"/>
+                        <Binding Path="!IsCompanion" ElementName="Root"/>
+                    </MultiBinding>
+                </Border.IsVisible>
                 <DockPanel>
                     <ContentControl DockPanel.Dock="Bottom" Content="{Binding}" ContentTemplate="{StaticResource ClosedThreadsSection}"/>
                     <ListBox x:Name="ThreadOverlayList" DragDrop.AllowDrop="True" Classes="subnav" ItemsSource="{Binding ThreadItems}"

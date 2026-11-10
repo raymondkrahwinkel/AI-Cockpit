@@ -239,7 +239,11 @@ public interface ICockpitPluginUi
   and `ActiveSessionChanged` live on the UI host, next to `SetClipboardTextAsync` and `ConfirmAsync`. A backend
   part has no active session: the UI part passes the pane id along when it asks the backend to act. A backend
   part that needs where a pane works reads `Sessions.GetWorkingDirectory(paneId)` (AC-1397, host 0.42.0), null
-  for an unknown pane. The selected session's project is `ActiveProjectId` (AC-1737, host 0.112.0); a backend part
+  for an unknown pane. Each `Sessions.OpenSessions` entry also carries `Statusline`, `IsTerminal` and
+  `HasReadableTranscript`; `Sessions.ReadTranscriptAsync(paneId, count)` returns the transcript tail (null for an
+  unknown pane or one without a readable transcript) and `Sessions.ReadPendingPermissionsAsync(paneId)` the open
+  Allow/Deny questions, read-only (AC-2256, host 0.172.0, SDK 3.83.0). Each entry it returns carries `Index`, its
+  position in the whole transcript, counting the host's own markers it leaves out (AC-2257, host 0.173.0, SDK 3.84.0). The selected session's project is `ActiveProjectId` (AC-1737, host 0.112.0); a backend part
   asks `GetSessionProjectIdAsync(paneId)`, and both find the name in `GetProjectsAsync()`. To put text in a pane's input without sending it — what `InjectIntoActiveSessionAsync` did
   for the selected pane — a UI part calls `InsertIntoSessionAsync(paneId, text)`; `SendToSessionAsync` submits it.
   To show an existing pane without touching its input, use `await uiHost.FocusSessionAsync(paneId)`
@@ -787,6 +791,8 @@ public interface ICompanionToolContext
     ICockpitSessionObserver SelectedSession { get; } // same read/observe surface as host.Sessions
     IPluginStorage Storage { get; }                  // scoped to this tool's own id
     event EventHandler RefreshRequested;             // the host asking this tool to refresh
+    SideMenuButtonBadge Badge { get; }               // the badge on this tool's strip button, empty by default
+    void RequestPopOut();                            // ask the host to open this tool's pop-out
 }
 ```
 - `SelectedSession` — the same selection-following surface as
@@ -797,6 +803,20 @@ public interface ICompanionToolContext
   and never collides with a sibling tool's.
 - `RefreshRequested` — raised when the host asks this tool to refresh. A tool polling on its own timer can
   ignore it; one showing a snapshot should re-read.
+- `Badge` — the same [`SideMenuButtonBadge`](#sidemenu-badge) the left menu uses, one per tool. Set
+  `Text` and `Tone` when the count changes; empty means no badge. The host follows `Changed` from any thread.
+  SDK 3.76.0, requires host 0.165.0.
+- `RequestPopOut()` — asks the host to open this tool's pop-out without taking focus. With no room, or with
+  the tool hidden from the strip, it does nothing and the host tells the user once. SDK 3.76.0, requires host
+  0.165.0.
+
+`CompanionToolRegistration.Attached` (`Action<ICompanionToolContext>?`) is called once after the host accepts the registration, so `Badge` and `RequestPopOut()` work before the tool's view has ever been created. UI SDK 3.26.0, requires host 0.167.0.
+
+### `ILiveMarkdownEditor? CreateLiveMarkdownEditor(LiveMarkdownEditorOptions options)` {#ilivemarkdowneditor-createlivemarkdowneditorlivemarkdowneditoroptions-options}
+The cockpit's own live Markdown editor over one file of a live file source (`ILiveFileSource`), without a workspace tab: the people in the file, who is typing, their carets with names, and your own typing. `options` names the type you registered with `AddFileWorkspaceType` and the `FileRef`. Place `View`, read `Peers`, and `Dispose` it to leave the file. Returns null on a host without it, or when the type is not registered; fall back to a read-only view then. UI SDK 3.26.0, SDK 3.78.0, requires host 0.167.0.
+
+### `void AddFileBrowser(FileBrowserRegistration registration)` {#void-addfilebrowserfilebrowserregistration-registration}
+The host's file browser in the dock rail over this plugin's `IFileSource`, so the plugin builds no browser UI of its own. `FileBrowserRegistration(Id, Title, IconKind, WorkspaceTypeId)`: `Id` is the dock panel's stable id, `WorkspaceTypeId` the type registered with `AddFileWorkspaceType`, which opens the files. The picker lists this computer's connections and those of each managed server where the plugin runs. See [File sources](FILE-SOURCES.md#browsing-and-the-host-file-browser-ac-2236). An older host does nothing. UI SDK 3.27.0, SDK 3.81.0, requires host 0.170.0.
 
 ### `void AddWorkspaceType(WorkspaceTypeRegistration registration)` {#void-addworkspacetypeworkspacetyperegistration-registration}
 Registers a **full-surface workspace type** — the workspace equivalent of `AddWidget`, one level up. Where a
@@ -1385,6 +1405,15 @@ append that survives that. Answer with `ProjectMemoryAppendResult.Success`, `.Au
 offers your `SignInAsync` and retries) or `.Failed(reason)`; never throw. Leave it null and the host treats your
 source as read-only: it is not offered anywhere a note could be captured. Setting it raises your manifest's
 `minHostVersion` to `0.31.0`.
+
+**Optional brain roles (SDK 3.73.0, host 0.162.0).** Alongside `ListBrainsAsync` and `BrainInstruction`, a source
+can set `ListRolesAsync(brainValue, ct)` and `LoadRoleAsync(brainValue, role, ct)`. Their results use
+`RoleSourceOutcome.Success`, `NoRoles` or `Unavailable`; a list carries `SessionRole(Name, Description)` rows,
+and a load carries the instructions and skill descriptions, at most 12,000 characters. Leave either delegate
+null when unsupported. `none` is reserved, case-insensitively, and never offered as a role. The host loads
+the role before admitting a worktree, with a five-second deadline, then includes its additive block with the
+brain instruction on both SDK and TTY routes. A fresh start refuses a role it cannot load; restoration keeps
+the choice and resumes with a warning. The host can call the source without mounting its MCP in the session.
 
 ### `IReadOnlyList<ProjectMemorySourceRegistration> ProjectMemorySources { get; }` {#ireadonlylistprojectmemorysourceregistration-projectmemorysources--get}
 

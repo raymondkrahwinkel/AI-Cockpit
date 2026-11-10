@@ -33,22 +33,17 @@ public class SessionMentionPickerViewTests
         return new Pane(window, session);
     }
 
-    private static SessionViewModel _Session(string? workingDirectory = "/repo", IMentionFileSource? fileSource = null)
+    private static SessionViewModel _Session(string? workingDirectory = "/repo", IReadOnlyList<IMentionSource>? fileSource = null)
     {
-        var session = TestSessions.Pane(Substitute.For<ISessionManager>(), mentionFileSource: fileSource);
+        var session = TestSessions.Pane(Substitute.For<ISessionManager>(), mentionSources: fileSource);
         session.QueuedMessages.Clear();
         session.PendingAttachments.Clear();
         session.WorkingDirectory = workingDirectory;
         return session;
     }
 
-    private static IMentionFileSource _FilesNamed(params string[] paths)
-    {
-        var source = Substitute.For<IMentionFileSource>();
-        source.GetPathsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<IReadOnlyList<string>>(paths));
-        return source;
-    }
+    private static IReadOnlyList<IMentionSource> _FilesNamed(params string[] paths) =>
+        [new FixedMentionSource(0, new MentionGroup("Files", paths.Select(FixedMentionSource.File).ToList()))];
 
     private static TextBox _Composer(Pane pane) =>
         pane.Window.GetVisualDescendants().OfType<TextBox>().First(box => box.Name == "InputBox");

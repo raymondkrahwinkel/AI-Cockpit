@@ -606,8 +606,28 @@
                                 ToolTip.Tip="Lets the cockpit prune Docker's build cache and old images by itself: daily, and every 15 minutes while a disk is running low. Turn it off to keep Docker as it is; the cockpit still watches the disk and warns when space runs short, and you can still clean up or compact by hand from the storage status in the status bar. A change applies without a restart."/>
                         </StackPanel>
 
+                        <TextBlock Classes="optionsSectionHeader" Text="3. TEST AND BUILD RUNS"/>
+                        <TextBlock Text="Limits for this machine. Runs also wait when measured resources are too busy." Classes="optionsHint"/>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="Maximum parallel runs" Width="230" VerticalAlignment="Center"/>
+                            <NumericUpDown Value="{Binding MaxParallelRuns}" Minimum="0" Maximum="2147483647"
+                                           Increment="1" FormatString="0" Width="104"/>
+                            <TextBlock Text="0 = automatic" Classes="optionsHint" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="CPU ceiling (%)" Width="230" VerticalAlignment="Center"/>
+                            <NumericUpDown Value="{Binding RunCpuCeilingPercent}" Minimum="1" Maximum="100"
+                                           Increment="5" FormatString="0" Width="104"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="Memory ceiling (%)" Width="230" VerticalAlignment="Center"/>
+                            <NumericUpDown Value="{Binding RunMemoryCeilingPercent}" Minimum="1" Maximum="100"
+                                           Increment="5" FormatString="0" Width="104"/>
+                        </StackPanel>
+                        <TextBlock Text="The first heavy run always starts. Light and operator runs keep their existing priority. Overload failures may lower the resource ceilings." Classes="optionsHint"/>
+
                         <StackPanel x:Name="WhereWorkLandsHelp" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <TextBlock Classes="optionsSectionHeader" Text="3. WHERE WORK LANDS"/>
+                            <TextBlock Classes="optionsSectionHeader" Text="4. WHERE WORK LANDS"/>
                         </StackPanel>
                         <!-- Worktree isolation location (AC-85): where new isolated-session worktrees are created. -->
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
@@ -1347,7 +1367,30 @@
                                 </MultiBinding>
                             </StackPanel.IsVisible>
 
-                            <TextBlock Classes="optionsSectionHeader" Text="4. WHILE YOU'RE TALKING"/>
+                            <TextBlock Classes="optionsSectionHeader" Text="4. ALWAYS LISTENING"/>
+                            <CheckBox Content="Use a wake word when always listening"
+                                      IsChecked="{Binding AssistantOptions.WakeWordEnabled}"/>
+                            <TextBlock Classes="optionsHint" Text="Turn listening on or off from the assistant indicator. Without this filter, everything you say goes to the assistant."/>
+                            <StackPanel Spacing="6" IsEnabled="{Binding AssistantOptions.WakeWordEnabled}">
+                                <TextBlock Text="Wake-word variants"/>
+                                <TextBox Text="{Binding AssistantOptions.WakeWord}" PlaceholderText="computer"
+                                         MaxLength="64" HorizontalAlignment="Left" Width="220"
+                                         AutomationProperties.Name="Wake-word variants"/>
+                                <TextBlock Text="{Binding AssistantOptions.WakeWordValidationMessage}"
+                                           IsVisible="{Binding AssistantOptions.WakeWordValidationMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                           TextWrapping="Wrap" Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
+                                <TextBlock Classes="optionsHint" Text="Separate variants with commas, for example: Zyra, Zira. Whole words match anywhere; case, accents and punctuation are ignored."/>
+                                <TextBlock Classes="optionsHint" Text="Only what follows the first match is sent. Everything before it is discarded locally."/>
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock Text="Listen after the wake word (seconds)" VerticalAlignment="Center"/>
+                                    <NumericUpDown Value="{Binding AssistantOptions.WakeWordListeningSeconds}"
+                                                   Minimum="1" Maximum="30" Increment="1" FormatString="0" Width="100"
+                                                   AutomationProperties.Name="Listen after the wake word in seconds"/>
+                                </StackPanel>
+                                <TextBlock Classes="optionsHint" Text="End an utterance with the wake word to let your next utterance through during this period."/>
+                            </StackPanel>
+
+                            <TextBlock Classes="optionsSectionHeader" Text="5. WHILE YOU'RE TALKING"/>
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <CheckBox Content="Stop the assistant when I start talking"
                                           IsChecked="{Binding VoiceStopReadAloudWhenSpeaking}"/>
@@ -1466,6 +1509,29 @@
                             <TextBlock Text="{Binding AudioUnavailableMessage}" Classes="optionsHint"
                                        IsVisible="{Binding AudioUnavailableMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
 
+                            <StackPanel Spacing="6" IsEnabled="{Binding IsAudioAvailable}">
+                                <TextBlock Text="Spoken answer" FontWeight="SemiBold"/>
+                                <ComboBox x:Name="AssistantSpeechMode" ItemsSource="{Binding AssistantOptions.SpeechModes}"
+                                          SelectedItem="{Binding AssistantOptions.SelectedSpeechMode}"
+                                          IsEnabled="{Binding AssistantOptions.CanChooseSpeechMode}"
+                                          DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Left" MinWidth="180"/>
+                                <StackPanel Spacing="6">
+                                    <TextBlock Text="Shortening method" FontWeight="SemiBold"/>
+                                    <ComboBox x:Name="AssistantSpeechMethod" ItemsSource="{Binding AssistantOptions.SpeechMethods}"
+                                              SelectedItem="{Binding AssistantOptions.SelectedSpeechMethod}"
+                                              DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Left" MinWidth="180"/>
+                                    <ComboBox ItemsSource="{Binding AssistantOptions.SpeechProfileLabels}"
+                                              SelectedItem="{Binding AssistantOptions.SelectedSpeechProfileLabel}"
+                                              IsVisible="{Binding AssistantOptions.UsesSpeechProfile}"
+                                              PlaceholderText="Choose a profile" HorizontalAlignment="Left" MinWidth="220"/>
+                                    <TextBlock Classes="optionsHint" IsVisible="{Binding AssistantOptions.UsesSpeechAi}"
+                                               Text="Short and Summary wait until the answer is finished, then may take up to 3 extra seconds. The answer and context go to the selected AI profile (Assistant uses the assistant's profile). If private speech generation is unavailable, including for a missing profile, built-in rules shorten the answer instead."/>
+                                </StackPanel>
+                                <TextBlock Classes="optionsHint" IsVisible="{Binding !AssistantOptions.CanChooseSpeechMode}"
+                                           Text="Without AI reads the answer in full as it arrives, so Short and Summary are off. Pick Assistant or an own AI profile to use them again."/>
+                                <TextBlock Classes="optionsHint" Text="Full reads the answer as it arrives. Without AI reads the full answer, as there is nothing to shorten with. Only the full answer appears in chat; the shorter speech text is never shown."/>
+                            </StackPanel>
+
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <TextBlock Text="Keep chat window on top" FontWeight="SemiBold"/>
                                 <materialIcons:MaterialIcon Classes="hint"
@@ -1499,6 +1565,16 @@
                                  assistant's settings, not on a page named after a feature that was removed. -->
                             <StackPanel Spacing="6" IsEnabled="{Binding IsAudioAvailable}">
                             <TextBlock Classes="optionsSectionHeader" Text="4. SPEECH"/>
+                            <CheckBox Content="Lower other apps while the assistant speaks"
+                                      IsChecked="{Binding VoiceDuckOtherAudio}" IsEnabled="{Binding CanDuckOtherAudio}"/>
+                            <TextBlock Classes="optionsHint" Text="{Binding AudioDuckingExplanation}" TextWrapping="Wrap"/>
+                            <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding VoiceDuckOtherAudio}"
+                                        IsEnabled="{Binding CanDuckOtherAudio}">
+                                <TextBlock Text="Other apps (% of Cockpit volume)" VerticalAlignment="Center"/>
+                                <NumericUpDown Value="{Binding VoiceDuckingPercent}" Minimum="0" Maximum="100"
+                                               Increment="5" FormatString="0" Width="120" HorizontalContentAlignment="Center"
+                                               AutomationProperties.Name="Other apps as a percentage of Cockpit volume"/>
+                            </StackPanel>
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <TextBlock Text="Speech" FontWeight="SemiBold"/>
                                 <materialIcons:MaterialIcon Classes="hint"
@@ -1769,6 +1845,14 @@
                             <TextBlock Text="MCP Servers" FontSize="20" FontWeight="Bold"/>
                         </StackPanel>
                         <TextBlock Text="Shared MCP servers: which ones exist, who may use them, and how they sign in." Classes="optionsHint"/>
+                        <!-- AC-2219: advice a plugin has about its own server (Depot: too many tools); not a banner. -->
+                        <ItemsControl ItemsSource="{Binding McpServers.Advisories}" IsVisible="{Binding McpServers.HasAdvisories}" Margin="0,2,0,0">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:McpAdvisoryItem">
+                                    <controls:McpAdvisoryLine DataContext="{Binding}"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
                         <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}" Margin="0,4"/>
 
                         <Grid ColumnDefinitions="180,1,*" Margin="0,4,0,0" IsVisible="{Binding McpServers, Converter={x:Static ObjectConverters.IsNotNull}}">

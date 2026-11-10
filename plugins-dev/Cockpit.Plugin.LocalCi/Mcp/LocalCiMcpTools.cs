@@ -46,7 +46,7 @@ internal sealed class LocalCiMcpTools(
             + "for a subtask with worktree_create. Must be a path from worktree_list that this session owns; "
             + "anything else is refused. Leave it out to test this session's own checkout.")]
         string? checkout = null,
-        [Description("Why the run is wanted: `pre-merge` (the gate right before a push or merge) goes ahead of `explore` in the queue. Defaults to `pre-merge`.")]
+        [Description("Why the run is wanted: `pre-merge` labels the gate right before a push or merge; `explore` labels other work. Queued runs start in arrival order. Defaults to `pre-merge`.")]
         string? purpose = null,
         CancellationToken cancellationToken = default)
     {

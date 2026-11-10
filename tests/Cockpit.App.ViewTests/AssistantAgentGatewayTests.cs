@@ -1,5 +1,6 @@
 using System.Reflection;
 using Avalonia.Threading;
+using Cockpit.Core.Abstractions;
 using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.App.ViewModels;
@@ -8,6 +9,7 @@ using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Layout;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.SessionBehavior;
 using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Abstractions.TranscriptDisplay;
@@ -18,12 +20,15 @@ using Cockpit.Core.Layout;
 using Cockpit.Core.Worktrees;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Projects;
 using Cockpit.Core.SessionBehavior;
 using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.Voice;
 using Cockpit.Core.Workspaces;
 using Cockpit.Infrastructure.Assistant;
+using Cockpit.Infrastructure.Plugins;
+using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using NSubstitute;
@@ -35,6 +40,82 @@ namespace Cockpit.App.ViewTests;
 public class AssistantAgentGatewayTests
 {
     private const string ProfileLabel = "work";
+
+    public sealed class RoleChoices : TheoryData<string, string?, bool, bool, string?, string?, string>
+    {
+        public RoleChoices()
+        {
+            Add("absent", null, true, true, null, null, "");
+            Add("empty", null, true, true, null, null, "");
+            Add("empty", "Programmer", true, false, null, null, "no roles");
+            Add("available", null, true, false, null, null, "Programmer: Writes code");
+            Add("available", null, false, true, null, null, "");
+            Add("available", "none", true, true, "none", null, "");
+            Add("available", "Programmer", true, true, "Programmer", null, "");
+            Add("available", "missing", true, false, null, null, "Programmer: Writes code");
+            Add("unavailable", null, true, true, null, "unavailable", "");
+            Add("unavailable", "none", true, true, "none", "unavailable", "");
+            Add("unavailable", "Programmer", true, false, null, null, "unavailable");
+            Add("throws", null, true, true, null, "unavailable", "");
+        }
+    }
+
+    [Theory]
+    [ClassData(typeof(RoleChoices))]
+    public async Task Spawn_RequiresAConsciousRoleChoiceOnlyAtTheRequestingDoor(
+        string source, string? role, bool required, bool expectedOk, string? expectedRole, string? expectedList, string errorHint)
+    {
+        var desk = _Desk("Sessions", WorkspaceType.Sessions);
+        var launcher = Substitute.For<ISessionLauncher>();
+        launcher.Workspaces.Returns(_Settings(desk));
+        launcher.RunExclusiveAsync(Arg.Any<Func<Workspace?>>()).Returns(call => call.Arg<Func<Workspace?>>()());
+        var project = new Project("target", "Target") { Assistant = "roles:org/target@server" };
+        launcher.FindProjectByIdAsync(project.Id).Returns(project);
+        launcher.StartSessionAsync(Arg.Any<SessionLaunchRequest>()).Returns(new LaunchedSession("pane", "Started", true));
+        var profiles = Substitute.For<ISessionProfileStore>();
+        profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns(new[]
+        {
+            new SessionProfile(ProfileLabel, new ClaudeConfig("unused")) { Assistant = "roles:org/assistant@server" },
+        });
+        var registry = new ProjectMemorySourceRegistry();
+        registry.Register(new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceRegistration("roles", "Roles", "Read memory")
+        {
+            BrainInstruction = _ => "Load the chosen brain",
+            ListRolesAsync = _RoleSource(source),
+        });
+        var trail = new RecordingSpawnTrail();
+        var gateway = new AssistantAgentGateway(
+            new SessionRegistry(), launcher, TestProjects.Catalog(), Substitute.For<IProjectComposer>(),
+            Substitute.For<ISessionWatcher>(), Substitute.For<IAssistantConversation>(), Substitute.For<IExternalLinkOpener>(),
+            profiles, trail, Substitute.For<IWorkspaceAgentGateway>(), Substitute.For<IAgentMessageInbox>(),
+            Substitute.For<IAgentNotifyAuditLog>(), Substitute.For<IPluginProviderRegistry>(), Substitute.For<IProviderModelIntelligence>(),
+            roles: new SessionRoleResolver(registry));
+
+        var result = await gateway.SpawnAsync(new AgentSpawnRequest(
+            SpawnTarget.RequestedByThePairedController(desk.Id), ProfileLabel, project.Id, Role: role, RoleChoiceRequired: required));
+
+        Assert.Equal(expectedOk, result.Ok);
+        Assert.Equal(expectedRole, result.Role);
+        Assert.Equal(expectedList, result.RoleList);
+        Assert.Contains(errorHint, result.Error ?? string.Empty);
+        Assert.Equal(role, Assert.Single(trail.Entries).Role);
+        await launcher.Received(expectedOk ? 1 : 0).StartSessionAsync(Arg.Is<SessionLaunchRequest>(request =>
+            request.ProjectId == project.Id && request.Role == (expectedRole == "none" ? null : expectedRole)));
+    }
+
+    private static Func<string, CancellationToken, Task<Cockpit.Plugins.Abstractions.Projects.RoleListResult>>? _RoleSource(string source) => source switch
+    {
+        "absent" => null,
+        "empty" => (_, _) => Task.FromResult(new Cockpit.Plugins.Abstractions.Projects.RoleListResult(Cockpit.Plugins.Abstractions.Projects.RoleSourceOutcome.NoRoles, [])),
+        "unavailable" => (_, _) => Task.FromResult(new Cockpit.Plugins.Abstractions.Projects.RoleListResult(Cockpit.Plugins.Abstractions.Projects.RoleSourceOutcome.Unavailable, [])),
+        "throws" => (_, _) => throw new InvalidOperationException("source offline"),
+        _ => (brain, _) =>
+        {
+            Assert.Equal("org/target@server", brain);
+            return Task.FromResult(new Cockpit.Plugins.Abstractions.Projects.RoleListResult(Cockpit.Plugins.Abstractions.Projects.RoleSourceOutcome.Success,
+                [new("Programmer", "Writes code"), new("none", "Reserved")]));
+        },
+    };
 
     [Fact]
     public async Task SpawnOntoAWorkspaceIdThatNamesNothing_IsRefusedWithAReason_AndTheRefusalReachesTheTrail()

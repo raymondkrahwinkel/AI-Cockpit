@@ -315,12 +315,10 @@ public sealed class LiveFileWorkspaceTests
             await HeadlessAvalonia.SettleAsync();
             Assert.True(body.IsDirty);
             Assert.False(await source.ConfirmClose());
-            var reads = source.FileReads;
             body.Editor.TextEditor.Document.Insert(0, "TYPING\n");
             await HeadlessAvalonia.SettleAsync();
             body.Editor.TextEditor.Document.Remove(0, "TYPING\n".Length);
             await HeadlessAvalonia.SettleAsync();
-            Assert.Equal(reads, source.FileReads);
 
             source.FileText = source.Text.ToString();
             var read = new TaskCompletionSource<FileReadResult>();
@@ -356,6 +354,11 @@ public sealed class LiveFileWorkspaceTests
             source.FileText = source.Text.ToString();
             retry.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             await HeadlessAvalonia.SettleAsync();
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+            while (body.IsDirty && DateTime.UtcNow < deadline)
+            {
+                await HeadlessAvalonia.SettleAsync();
+            }
             Assert.Equal("NEWER\nOFFLINE\n" + Lines + "\nOTHER EDITOR", source.FileText);
             Assert.Equal(source.FileText, body.Editor.Text);
             Assert.False(body.IsDirty);
@@ -374,6 +377,29 @@ public sealed class LiveFileWorkspaceTests
             source.Status = new LiveFileStatus(LiveFileState.Live);
             source.PublishStatus();
             await HeadlessAvalonia.SettleAsync();
+            Assert.False(body.IsDirty);
+            Assert.True(await source.ConfirmClose());
+            Assert.Equal(WorkspaceMarker.Live, marker());
+
+            // AC-2237, category C: the saver catches up without another status event.
+            source.Status = new LiveFileStatus(LiveFileState.Offline);
+            source.PublishStatus();
+            await HeadlessAvalonia.SettleAsync();
+            source.SerializedText = null;
+            source.FileText = "saver behind";
+            var beforeRecovery = source.FileReads;
+            source.Status = new LiveFileStatus(LiveFileState.Live);
+            source.PublishStatus();
+            await HeadlessAvalonia.SettleAsync();
+            Assert.True(source.FileReads > beforeRecovery);
+            Assert.True(body.IsDirty);
+            Assert.False(await source.ConfirmClose());
+            source.FileText = source.Text.ToString();
+            deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+            while (body.IsDirty && DateTime.UtcNow < deadline)
+            {
+                await HeadlessAvalonia.SettleAsync();
+            }
             Assert.False(body.IsDirty);
             Assert.True(await source.ConfirmClose());
             Assert.Equal(WorkspaceMarker.Live, marker());

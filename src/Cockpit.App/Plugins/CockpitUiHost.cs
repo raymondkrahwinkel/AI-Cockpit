@@ -227,9 +227,17 @@ internal sealed partial class CockpitUiHost(
     public void AddCompanionTool(CompanionToolRegistration registration)
     {
         var registry = services.GetRequiredService<ICompanionToolRegistry>();
-        if (registry.Register(registration, host.Storage, host.Sessions))
+        if (registry.Register(registration, host.Storage, host.Sessions, pluginId))
         {
             _runtime.Add(() => registry.Unregister(registration.Id));
+            try
+            {
+                registration.Attached?.Invoke(registry.CreateContext(registration.Id)!);
+            }
+            catch (Exception error)
+            {
+                _Logger()?.LogWarning(error, "Companion tool '{CompanionToolId}' failed while attaching", registration.Id);
+            }
         }
         else
         {

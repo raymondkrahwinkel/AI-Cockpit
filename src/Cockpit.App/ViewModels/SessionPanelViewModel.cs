@@ -99,6 +99,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // header's activity text when no `Statusline` is set. On the shared base so the one SessionHeaderBar
     // reads it for every session kind.
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowMcpStatusButton))]
     private string _status = "Not started.";
 
     // The MCP servers this session has: seeded with the merged session/profile selection at launch (#44/AC-130),
@@ -107,6 +108,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ConnectedStatusLine))]
     [NotifyPropertyChangedFor(nameof(McpServersTooltip))]
+    [NotifyPropertyChangedFor(nameof(HasMcpServers), nameof(ShowMcpStatusButton))]
     private IReadOnlySet<string>? _mcpServerSelection;
 
     // Servers in the selection above that never got tools this session — unreachable, crashed at start, or
@@ -115,17 +117,39 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ConnectedStatusLine))]
     [NotifyPropertyChangedFor(nameof(McpServersTooltip))]
+    [NotifyPropertyChangedFor(nameof(ShowMcpStatusButton))]
     private IReadOnlyList<McpServerConnectionIssue> _mcpServerConnectionIssues = [];
+
+    partial void OnMcpServerSelectionChanged(IReadOnlySet<string>? oldValue, IReadOnlySet<string>? newValue)
+    {
+        if (Status == _ConnectedStatusLineFor(oldValue, McpServerConnectionIssues))
+        {
+            Status = ConnectedStatusLine;
+        }
+    }
+
+    partial void OnMcpServerConnectionIssuesChanged(IReadOnlyList<McpServerConnectionIssue>? oldValue, IReadOnlyList<McpServerConnectionIssue> newValue)
+    {
+        if (Status == _ConnectedStatusLineFor(McpServerSelection, oldValue))
+        {
+            Status = ConnectedStatusLine;
+        }
+    }
+
+    public bool HasMcpServers => McpServerSelection is { Count: > 0 };
+    public bool ShowMcpStatusButton => HasMcpServers && Status == ConnectedStatusLine;
 
     // An unknown selection is left unsaid rather than reported as zero — the count is the one figure here that
     // describes the session's own setup, and a wrong one is worse than none (AC-537, AC-997).
-    public string ConnectedStatusLine => McpServerSelection is { Count: > 0 } servers
-        ? $"Connected ({servers.Count} MCP server{(servers.Count == 1 ? string.Empty : "s")}{McpConnectionIssuesSuffix})."
-        : "Connected.";
+    public string ConnectedStatusLine => _ConnectedStatusLineFor(McpServerSelection, McpServerConnectionIssues);
 
-    private string McpConnectionIssuesSuffix => McpServerConnectionIssues is { Count: > 0 } issues
-        ? $", {issues.Count} could not connect"
-        : string.Empty;
+    private static string _ConnectedStatusLineFor(IReadOnlySet<string>? servers, IReadOnlyList<McpServerConnectionIssue>? issues)
+    {
+        var suffix = issues is { Count: > 0 } ? $", {issues.Count} could not connect" : string.Empty;
+        return servers is { Count: > 0 }
+            ? $"Connected ({servers.Count} MCP server{(servers.Count == 1 ? string.Empty : "s")}{suffix})."
+            : "Connected.";
+    }
 
     // It hangs on the column rather than on the text inside it, so an agent's `set_status` line cannot carry the list
     // off with the words it replaces — the list would otherwise be unreachable exactly while a session is working
@@ -1501,6 +1525,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     private IVoiceSettingsStore? _voiceSettingsStore;
     private IVoicePlaybackQueue? _voicePlaybackQueue;
     private bool _readAloudCancelled;
+    private long _readAloudTurn;
     private EventHandler<VoicePlaybackStoppedEventArgs>? _playbackStoppedHandler;
     private IOpenMicState? _openMicState;
 
@@ -1572,6 +1597,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         // not just suppress future turns.
         if (!value)
         {
+            OnReadAloudInvalidated();
             _voicePlaybackQueue?.StopAll();
         }
         else if (IsAudioAvailable && _voicePlaybackQueue is not null)
@@ -1598,6 +1624,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         {
             _playbackStoppedHandler = (_, stopped) =>
             {
+                OnReadAloudInvalidated();
                 if (string.Equals(stopped.OwnerId, PaneId, StringComparison.Ordinal))
                 {
                     _readAloudCancelled = true;
@@ -1631,8 +1658,16 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         => EnqueueReadAloudAsync(TtsProseExtractor.Extract(text));
 
     protected Task EnqueueReadAloudAsync(IReadOnlyList<string> sentences)
+        => EnqueueReadAloudAsync(sentences, CaptureReadAloudTurn());
+
+    protected (long Turn, int Generation) CaptureReadAloudTurn()
+        => (_readAloudTurn, _voicePlaybackQueue?.Generation ?? 0);
+
+    // AC-2230: the one place every read-aloud passes, so the speaker toggle holds whichever path started the turn.
+    // Only a click on "Read full reply aloud" (explicitRequest) speaks while the toggle is off.
+    protected Task EnqueueReadAloudAsync(IReadOnlyList<string> sentences, (long Turn, int Generation) expected, bool explicitRequest = false)
     {
-        if (_voicePlaybackQueue is null || _readAloudCancelled)
+        if (_voicePlaybackQueue is null || _readAloudCancelled || CaptureReadAloudTurn() != expected || (!ReadResponsesAloud && !explicitRequest))
         {
             return Task.CompletedTask;
         }
@@ -1653,14 +1688,21 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         // heard, and that gap otherwise reads as nothing happening.
         _voicePlaybackQueue.NotifyPreparing(source, PaneId);
 
-        if (_voicePlaybackQueue.Generation != generation)
+        if (_voicePlaybackQueue.Generation != generation || CaptureReadAloudTurn() != expected || _readAloudCancelled)
         {
             // Read-aloud was cancelled while this batch was being prepared — drop it instead of speaking over the
             // interrupt the operator just made.
             return Task.CompletedTask;
         }
 
-        _voicePlaybackQueue.Enqueue(sentences, TtsVoiceSid, ReadAloudLanguage, source, PaneId);
+        if (source == VoicePlaybackSource.Assistant)
+        {
+            _voicePlaybackQueue.Enqueue(SpokenReplyLanguages.Segment(sentences, ReadAloudLanguage), TtsVoiceSid, source, PaneId);
+        }
+        else
+        {
+            _voicePlaybackQueue.Enqueue(sentences, TtsVoiceSid, ReadAloudLanguage, source, PaneId);
+        }
         return Task.CompletedTask;
     }
 
@@ -1673,7 +1715,22 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         }
     }
 
-    protected void ResetReadAloudCancellation() => _readAloudCancelled = false;
+    protected void ResetReadAloudCancellation()
+    {
+        OnReadAloudInvalidated();
+        _readAloudTurn++;
+        _readAloudCancelled = false;
+    }
+
+    protected void CancelReadAloud()
+    {
+        OnReadAloudInvalidated();
+        _readAloudCancelled = true;
+        _readAloudTurn++;
+        _voicePlaybackQueue?.StopAll();
+    }
+
+    protected virtual void OnReadAloudInvalidated() { }
 
     // Starts a push-to-talk hold (KeyDown on the configured hotkey). Returns false — a no-op the
     // caller should not mark `Handled` for — when voice is off, unwired, or a hold is already in
@@ -1782,7 +1839,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // Injects text into this session's input surface and submits it — what a self-driving embedded run (AC-152) uses
     // to hand its agent a work brief without a human turn, unlike `InjectText` which only places the text
     // for the operator to send. A blank text does nothing.
-    public void InjectAndSubmit(string text)
+    public virtual void InjectAndSubmit(string text)
     {
         if (string.IsNullOrEmpty(text))
         {
@@ -2015,6 +2072,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         }
 
         _disposed = true;
+        OnReadAloudInvalidated();
 
         if (_voicePlaybackQueue is not null && _playbackStoppedHandler is not null)
         {

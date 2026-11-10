@@ -1,7 +1,9 @@
 using System.IO.Compression;
 using System.Runtime.InteropServices;
+using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Plugins;
 using Cockpit.Infrastructure.Plugins;
+using NSubstitute;
 
 namespace Cockpit.Core.Tests.Plugins;
 
@@ -31,7 +33,7 @@ public class PluginProvisioningServiceTests : IDisposable
         _pluginsRoot = Path.Combine(_tempDir, "plugins");
         Directory.CreateDirectory(_storeDir);
         _installer = new PluginInstaller(_pluginsRoot);
-        _service = new PluginProvisioningService(_storeClient, _installer);
+        _service = new PluginProvisioningService(_storeClient, _installer, new PluginSignatureVerifier(), new PluginTrustStore(Path.Combine(_tempDir, "cockpit.json")));
     }
 
     public void Dispose()
@@ -47,11 +49,26 @@ public class PluginProvisioningServiceTests : IDisposable
 
     // AC-1740: which zip a version installs on this host. Rows: a package for this RID wins over `path` (which points
     // at nothing); packages without this RID are refused with the reason and nothing fetched; no packages installs `path`.
-    [Theory]
-    [InlineData("hit", PluginProvisionOutcome.Installed)]
-    [InlineData("miss", PluginProvisionOutcome.Incompatible)]
-    [InlineData("none", PluginProvisionOutcome.Installed)]
-    public async Task InstallAsync_PicksThePackageForThisRid_FromARealIndex(string packages, PluginProvisionOutcome expected)
+    [Fact]
+    public async Task InstallAsync_PicksThePackageForThisRid_FromARealIndex()
+    {
+        using (var scenario = new PluginProvisioningServiceTests())
+        {
+            await scenario._AssertPackageSelectionAsync("hit", PluginProvisionOutcome.Installed);
+        }
+        using (var scenario = new PluginProvisioningServiceTests())
+        {
+            await scenario._AssertPackageSelectionAsync("none", PluginProvisionOutcome.Installed);
+        }
+    }
+
+    [Fact]
+    public async Task InstallAsync_RefusesAMissingPlatformPackage()
+    {
+        await _AssertPackageSelectionAsync("miss", PluginProvisionOutcome.Incompatible);
+    }
+
+    private async Task _AssertPackageSelectionAsync(string packages, PluginProvisionOutcome expected)
     {
         var sha = PluginHash.Compute(_WritePluginZip("acme", "1.0.0", "MZ-acme-v1"));
         var rid = packages == "hit" ? RuntimeInformation.RuntimeIdentifier : "none-such-rid";
@@ -74,8 +91,7 @@ public class PluginProvisioningServiceTests : IDisposable
     // --- Checksum (criterion 3, unchanged behaviour, pinned through the service): mismatch is a hard rejection,
     // a missing hash is a warning that does not block the install. ------------------------------------------------
 
-    [Fact]
-    public async Task InstallAsync_ChecksumMismatch_IsAHardRejection_AndNothingLandsOnDisk()
+    private async Task _AssertChecksumMismatchIsRejectedAsync()
     {
         _WritePluginZip("acme", "1.0.0", "MZ-acme-v1");
         var store = PluginStoreConfig.Local(_storeDir);
@@ -88,6 +104,32 @@ public class PluginProvisioningServiceTests : IDisposable
         Assert.NotNull(result.Error);
         Assert.Contains("checksum", result.Error, StringComparison.OrdinalIgnoreCase);
         Assert.False(Directory.Exists(Path.Combine(_pluginsRoot, "acme")));
+    }
+
+    [Fact]
+    public async Task SignedSourceWithoutSignature_IsRefusedBeforeDownloadingOrInstalling()
+    {
+        var bytes = _WritePluginZip("acme", "1.0.0", "MZ-acme-v1");
+        var zip = Path.Combine(_storeDir, "acme-1.0.0.zip");
+        var client = Substitute.For<IPluginStoreClient>();
+        client.DownloadZipAsync(Arg.Any<PluginStoreConfig>(), Arg.Any<PluginStoreVersion>(), Arg.Any<string>(),
+            Arg.Any<CancellationToken>(), Arg.Any<IProgress<PluginDownloadProgress>?>())
+            .Returns(new PluginStoreDownloadResult(true, null, zip));
+        var store = PluginStoreConfig.Remote("https://depot.example/cockpit/stores/acme/index.json") with
+        {
+            Signed = new PluginStoreSignedSource("depot:depot.example/acme", "acme", () => new HttpClientHandler()),
+        };
+        var service = new PluginProvisioningService(client, _installer, new PluginSignatureVerifier(), new PluginTrustStore(Path.Combine(_tempDir, "cockpit.json")));
+        var version = new PluginStoreVersion("1.0.0", "ignored.zip", HostMajor, null, PluginHash.Compute(bytes), null);
+
+        var result = await service.InstallAsync(new PluginProvisionRequest("acme", "Acme", store, version), HostMajor, HostVersion);
+
+        Assert.Equal(PluginProvisionOutcome.Failed, result.Outcome);
+        Assert.False(Directory.Exists(_pluginsRoot));
+        await client.DidNotReceiveWithAnyArgs().DownloadZipAsync(Arg.Any<PluginStoreConfig>(), Arg.Any<PluginStoreVersion>(), Arg.Any<string>(), Arg.Any<CancellationToken>(), Arg.Any<IProgress<PluginDownloadProgress>?>());
+        Assert.True(File.Exists(zip));
+        File.Delete(zip);
+        await _AssertChecksumMismatchIsRejectedAsync();
     }
 
     private byte[] _WritePluginZip(string id, string version, string dllContent)

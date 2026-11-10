@@ -18,6 +18,7 @@ using Cockpit.Infrastructure.Backup;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.HeavyRuns;
 using Cockpit.Infrastructure.ManagedCli;
+using Cockpit.Infrastructure.Mentions;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
@@ -31,6 +32,7 @@ using Cockpit.Plugins.Abstractions.Health;
 using Cockpit.Plugins.Abstractions.HeavyRuns;
 using Cockpit.Plugins.Abstractions.ManagedCli;
 using Cockpit.Plugins.Abstractions.Mcp;
+using Cockpit.Plugins.Abstractions.Mentions;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Profiles;
 using Cockpit.Plugins.Abstractions.Projects;
@@ -114,6 +116,13 @@ public class PluginBackendHost(
     public IDisposable AddFileSource(Cockpit.Plugins.Abstractions.Files.IFileSourceProvider provider)
     {
         var registration = Files.FileSourceChannel.Register(Channel, provider, _Logger());
+        Runtime.Add(registration);
+        return registration;
+    }
+
+    public IDisposable AddPluginStoreSource(Cockpit.Plugins.Abstractions.Plugins.IPluginStoreSourceProvider provider)
+    {
+        var registration = services.GetRequiredService<PluginStoreSources>().Add(provider);
         Runtime.Add(registration);
         return registration;
     }
@@ -340,6 +349,21 @@ public class PluginBackendHost(
 
     public IReadOnlyList<ISharedProjectSource> SharedProjectSources =>
         services.GetRequiredService<ISharedProjectSourceRegistry>().Sources;
+
+    public void AddMentionSource(IPluginMentionSource source)
+    {
+        var sources = services.GetRequiredService<PluginMentionSources>();
+        if (sources.Register(source))
+        {
+            Runtime.Add(() => sources.Remove(source.Key));
+        }
+        else
+        {
+            _Logger()?.LogDebug("Mention source '{MentionSourceKey}' is already contributed; this registration is ignored", source.Key);
+        }
+    }
+
+    public void RemoveMentionSource(string key) => services.GetRequiredService<PluginMentionSources>().Remove(key);
 
     public void AddHealthSection(IPluginHealthSection section)
     {
@@ -838,6 +862,33 @@ public class PluginBackendHost(
         {
             diagnostics.Record(pluginId, pluginName, "mcp-sign-out", exception.Message);
         }
+    }
+
+    // Own servers only, like sign-out: another plugin's sessions are never this plugin's to reconnect.
+    public Task RefreshMcpServerAsync(string name, CancellationToken cancellationToken = default)
+    {
+        if (_OwnMcpServerContributions().Any(server => string.Equals(server.Name, name, StringComparison.Ordinal)))
+        {
+            services.GetService<IMcpToolProvider>()?.RefreshServer(name);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public void SetMcpServerAdvisory(string name, PluginMcpAdvisory? advisory)
+    {
+        if (!_OwnMcpServerContributions().Any(server => string.Equals(server.Name, name, StringComparison.Ordinal)))
+        {
+            return;
+        }
+
+        var level = advisory?.Level switch
+        {
+            PluginMcpAdvisoryLevel.Warning => McpAdvisoryLevel.Warning,
+            PluginMcpAdvisoryLevel.Critical => McpAdvisoryLevel.Critical,
+            _ => McpAdvisoryLevel.Ok,
+        };
+        McpServerAdvisories.Shared.Set(name, advisory is null || level == McpAdvisoryLevel.Ok ? null : new McpServerAdvisory(level, advisory.Text, advisory.Link));
     }
 
     // AC-1511: the same server lookup as SignInMcpServerAsync, then a grant redeemed without a browser. The plugin

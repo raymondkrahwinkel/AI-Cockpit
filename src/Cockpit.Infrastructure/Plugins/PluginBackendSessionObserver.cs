@@ -15,6 +15,7 @@ public sealed class PluginBackendSessionObserver : ICockpitSessionObserver
 {
     private readonly ISessionRegistry _registry;
     private readonly SessionMcpMounts? _mounts;
+    private readonly ISessionLauncher? _launcher;
     private readonly Lock _gate = new();
     private Dictionary<string, ISessionHandle> _live = [];
     private readonly Dictionary<ISessionHandle, (Action<string> OnText, Action<SessionToolCall> OnToolCall)> _followed = new(ReferenceEqualityComparer.Instance);
@@ -24,6 +25,7 @@ public sealed class PluginBackendSessionObserver : ICockpitSessionObserver
     {
         _registry = registry;
         _mounts = services?.GetService<SessionMcpMounts>();
+        _launcher = services?.GetService<ISessionLauncher>();
         if (services?.GetService<SessionMcpKeyring>() is { } keyring)
             keyring.RunEnded += paneId => SessionClosed?.Invoke(this, paneId);
         _registry.Changed += _OnRegistryChanged;
@@ -35,18 +37,7 @@ public sealed class PluginBackendSessionObserver : ICockpitSessionObserver
     }
 
     public IReadOnlyList<OpenCockpitSession> OpenSessions =>
-        [.. _registry.All.Select(session => new OpenCockpitSession(
-            session.PaneId,
-            session.Title,
-            session.ActiveProfileLabel,
-            session.SessionStatus.ToString())),
-            .. _registry.Assistant is { } assistant
-                ? [new OpenCockpitSession(
-                    assistant.PaneId,
-                    assistant.Title,
-                    assistant.ActiveProfileLabel,
-                    assistant.SessionStatus.ToString())]
-                : Array.Empty<OpenCockpitSession>()];
+        [.. _registry.All.Append(_registry.Assistant).OfType<ISessionHandle>().Select(PluginSessionReads.Describe)];
 
     public event EventHandler<SessionOutputText>? OutputProduced;
 
@@ -61,6 +52,12 @@ public sealed class PluginBackendSessionObserver : ICockpitSessionObserver
 
     // AC-1397: the same panes OpenSessions lists, the assistant included, read from the registry's own snapshot.
     public string? GetWorkingDirectory(string paneId) => _Find(paneId)?.WorkingDirectory;
+
+    public Task<PluginTranscriptSlice?> ReadTranscriptAsync(string paneId, int count) =>
+        PluginSessionReads.ReadTranscriptAsync(_registry, _launcher, paneId, count);
+
+    public Task<IReadOnlyList<PluginPendingPermission>> ReadPendingPermissionsAsync(string paneId) =>
+        PluginSessionReads.ReadPendingPermissionsAsync(_registry, _launcher, paneId);
 
     private ISessionHandle? _Find(string paneId) =>
         _registry.Find(paneId) ?? (_registry.Assistant is { } assistant && string.Equals(assistant.PaneId, paneId, StringComparison.Ordinal) ? assistant : null);

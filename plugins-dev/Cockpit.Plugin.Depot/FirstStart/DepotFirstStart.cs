@@ -113,7 +113,8 @@ internal sealed class DepotFirstStart(
         try
         {
             using var http = new HttpClient(host.CreateAuthorizedHandler(connection.McpServerName), disposeHandler: true);
-            var query = organization is null ? string.Empty : $"?org={Uri.EscapeDataString(organization)}";
+            // storeAuth=depot says this Cockpit reads a depot store; Depot leaves such a store out of the manifest otherwise.
+            var query = (organization is null ? "?" : $"?org={Uri.EscapeDataString(organization)}&") + "storeAuth=depot";
             using var response = await http.GetAsync($"{connection.Url.TrimEnd('/')}/cockpit/manifest{query}", cancellationToken).ConfigureAwait(false);
             if (response.StatusCode == HttpStatusCode.NotFound)
             {

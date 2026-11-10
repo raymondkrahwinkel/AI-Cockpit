@@ -1,3 +1,4 @@
+using Cockpit.Infrastructure.Plugins;
 using System.Globalization;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -58,6 +59,9 @@ public sealed class ProvisionManifestApplierTests : IDisposable
 
         Assert.Null(applied.Failure);
         Assert.Equal(["stores.acme-intern"], applied.Report.Where(line => line.Reason == ProvisionManifestApplier.TokenNeeded).Select(line => line.Path));
+        // AC-1975: a depot store is neither written down nor fetched, and its plugin waits for the sign-in instead of failing the set.
+        Assert.Equal(["plugins.delta", "stores.acme-depot"], applied.Report.Where(line => line.Reason == ProvisionManifestApplier.SignInNeeded && line.Path is "plugins.delta" or "stores.acme-depot").Select(line => line.Path).Order());
+        Assert.DoesNotContain("depot.acme.nl", File.ReadAllText(ConfigPath));
         var written = File.ReadAllText(ConfigPath);
         var file = JsonNode.Parse(written) ?? throw new InvalidOperationException("The applier left cockpit.json empty.");
         // AC-1507: the font size of 11 was chosen here before, so the manifest's default gives way to it.
@@ -95,10 +99,20 @@ public sealed class ProvisionManifestApplierTests : IDisposable
 
     // AC-1507, manifest-v1 §4.2: the rows where a local value could be lost. Each applies `first`, lets the operator
     // set 11 through the Options route, then applies `second` (null: the key left the manifest).
-    [Theory]
-    [InlineData("default", "default", 16, "11", ProvisionManifestApplier.KeptLocal)]
-    [InlineData("locked", null, 0, "11", ProvisionManifestApplier.RestoredUnmanaged)]
-    public async Task A_local_choice_outlives_a_new_default_and_comes_back_when_a_lock_is_lifted(string first, string? second, int secondValue, string expected, string outcome)
+    [Fact]
+    public async Task A_local_choice_outlives_a_new_default_and_comes_back_when_a_lock_is_lifted()
+    {
+        using (var scenario = new ProvisionManifestApplierTests())
+        {
+            await scenario._AssertA_local_choice_outlives_a_new_default_and_comes_back_when_a_lock_is_liftedAsync("default", "default", 16, "11", ProvisionManifestApplier.KeptLocal);
+        }
+        using (var scenario = new ProvisionManifestApplierTests())
+        {
+            await scenario._AssertA_local_choice_outlives_a_new_default_and_comes_back_when_a_lock_is_liftedAsync("locked", null, 0, "11", ProvisionManifestApplier.RestoredUnmanaged);
+        }
+    }
+
+    private async Task _AssertA_local_choice_outlives_a_new_default_and_comes_back_when_a_lock_is_liftedAsync(string first, string? second, int secondValue, string expected, string outcome)
     {
         var store = new TerminalSettingsStore(ConfigPath);
         if (first == ProvisionManifestReader.LockedMode)
@@ -222,7 +236,7 @@ public sealed class ProvisionManifestApplierTests : IDisposable
                 return new PluginStoreDownloadResult(true, null, zip);
             });
         var installer = Substitute.For<IPluginInstaller>();
-        installer.InstallFromZipAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<Version?>(), Arg.Any<CancellationToken>())
+        installer.InstallFromZipAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<Version?>(), Arg.Any<CancellationToken>(), Arg.Any<string?>(), Arg.Any<string?>())
             .Returns(call =>
             {
                 var id = Path.GetFileNameWithoutExtension(call.ArgAt<string>(0));
@@ -236,7 +250,7 @@ public sealed class ProvisionManifestApplierTests : IDisposable
             _stateRoot,
             PluginsRoot,
             storeClient,
-            new PluginProvisioningService(storeClient, installer),
+            new PluginProvisioningService(storeClient, installer, new PluginSignatureVerifier(), Substitute.For<IPluginTrustStore>()),
             NullLogger.Instance,
             CancellationToken.None);
     }
@@ -248,9 +262,9 @@ public sealed class ProvisionManifestApplierTests : IDisposable
     private const string Manifest = """
         {
           "format": "cockpit.provision", "formatVersion": 1,
-          "plugins": { "required": [ { "id": "alpha", "minVersion": "1.0.0", "store": "acme" }, { "id": "beta", "store": "acme" } ] },
+          "plugins": { "required": [ { "id": "alpha", "minVersion": "1.0.0", "store": "acme" }, { "id": "beta", "store": "acme" }, { "id": "delta", "store": "acme-depot" } ] },
           "stores": { "allowed": [ { "id": "acme", "url": "https://store.example/", "auth": "token-required" } ],
-                      "added": [ { "id": "acme-intern", "url": "https://plugins.acme.nl/", "auth": "token-required" } ] },
+                      "added": [ { "id": "acme-intern", "url": "https://plugins.acme.nl/", "auth": "token-required" }, { "id": "acme-depot", "url": "https://depot.acme.nl/cockpit/stores/acme/index.json", "auth": "depot" } ] },
           "settings": {
             "notifications.localEnabled":     { "value": false, "mode": "default", "by": "org" },
             "terminal.fontSize":              { "value": 15,    "mode": "default", "by": "profile" },

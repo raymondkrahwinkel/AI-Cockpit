@@ -454,7 +454,10 @@ public partial class App : Application
         // This route is reachable only after onboarding, so it needs no separate gate (AC-509). Bring a hidden or
         // minimized cockpit forward first so the modal has a visible owner and does not look like a freeze.
         _mainWindow.Show();
-        _mainWindow.WindowState = WindowState.Normal;
+        if (_mainWindow.WindowState == WindowState.Minimized)
+        {
+            _mainWindow.WindowState = WindowState.Normal;
+        }
 
         var protection = Program.Services.GetRequiredService<ISecretProtectionService>();
         var viewModel = new UnlockViewModel(protection);
@@ -584,7 +587,14 @@ public partial class App : Application
 
         // Avalonia cannot re-show a closed window; clearing it here makes every show route use its existing null
         // guard instead of crashing from a tray handler.
-        _mainWindow.Closed += (_, _) => _mainWindow = null;
+        _mainWindow.Closed += (_, _) =>
+        {
+            _mainWindow = null;
+            if (!IsQuitting)
+            {
+                RequestQuit();
+            }
+        };
 
         // The onboarding gate owns every creation route (AC-509). Show explicitly because Avalonia will not
         // auto-show a MainWindow that replaces the startup unlock window. AC-1827: behind a splash it is shown at the end.
@@ -604,6 +614,9 @@ public partial class App : Application
         // AC-237: resolved here, ahead of plugin phase 2 below, so its subscription to the tool registry's
         // Changed event is already listening by the time a plugin registers a companion tool.
         Program.Services.GetRequiredService<CompanionWindowPresenter>();
+
+        // AC-2209: resolved for its subscription, so a look-along the assistant starts shows its frame, timer and Stop.
+        Program.Services.GetRequiredService<ScreenLookAlongPresenter>();
 
         // AC-1343: restoring saved workspaces and their panes is started further down, after usage thresholds
         // load — see RestoreCockpitAsync's own comment for why.
@@ -642,6 +655,8 @@ public partial class App : Application
         cockpitViewModel.OpenMic = openMicCoordinator;
         // AC-1343: fire-and-forget — the coordinator's own try/catch logs a start failure (OpenMicCoordinator.cs:96).
         _ = openMicCoordinator.StartAsync();
+
+        await Program.Services.GetRequiredService<AudioDuckingCoordinator>().StartAsync();
 
         // AC-718: started here, not as an IHostedService — Dispatcher.UIThread is only safe to touch once
         // Avalonia's own Setup() has bound it to this thread, which by this point in the lifecycle it has.
@@ -920,7 +935,8 @@ public partial class App : Application
                 Program.Services.GetRequiredService<IDelegationService>()));
 
         // One shared read/observe surface across all plugins, mirroring the single shared actions surface.
-        var sessionObserver = new PluginSessionObserver(cockpit);
+        var sessionObserver = new PluginSessionObserver(
+            cockpit, Program.Services.GetService<ISessionRegistry>(), Program.Services.GetService<ISessionLauncher>());
 
         // The same singleton the startup banner (CockpitViewModel) and the Plugin manager read (#184) — a
         // contribution failure recorded here reaches both without a second source of truth to keep in sync.
@@ -942,7 +958,10 @@ public partial class App : Application
 
         // AC-239: the second first-party companion tool through the same host — proof the seam AC-238 built
         // carries more than one resident.
-        var screenshotCompanionTool = Program.Services.GetRequiredService<ScreenshotCoordinator>().CreateCompanionTool();
+        var screenshots = Program.Services.GetRequiredService<ScreenshotCoordinator>();
+        screenshots.AssistantScreenshotCaptured += async (_, _) =>
+            await Program.Services.GetRequiredService<AssistantIndicatorCoordinator>().OpenCompanionComposerAsync();
+        var screenshotCompanionTool = screenshots.CreateCompanionTool();
         if (!firstPartyCompanionTools.AddCompanionTool(screenshotCompanionTool))
         {
             diagnostics.Record(
@@ -950,6 +969,13 @@ public partial class App : Application
                 "Screenshot",
                 "companion-tool",
                 $"Companion tool '{screenshotCompanionTool.Id}' is already contributed by another plugin; this registration is ignored.");
+        }
+
+        var attentionFeed = Program.Services.GetRequiredService<CompanionAttentionFeed>();
+        if (firstPartyCompanionTools.AddCompanionTool(attentionFeed.CreateCompanionTool()))
+        {
+            firstPartyCompanionTools.AddCompanionTool(attentionFeed.CreateStatusTool());
+            attentionFeed.Start();
         }
 
         // AC-1389: one backend host per plugin, shared by its backend part and the UI part's CockpitUiHost that forwards

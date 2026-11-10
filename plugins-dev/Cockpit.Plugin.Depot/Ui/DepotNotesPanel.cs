@@ -69,6 +69,8 @@ internal sealed class DepotNotesPanel : UserControl
                 _Text($"{project?.Project.Split('/').FirstOrDefault()} · {(_connection is { } selected ? new Uri(selected.Url).Host : string.Empty)}", 11, "CockpitTextFaintBrush"),
             },
         });
+        _projectBox.IsEnabled = connections.Count > 0;
+        _projectBox.PlaceholderText = connections.Count > 0 ? null : "No Depot server";
         _projectBox.SelectionChanged += async (_, _) =>
         {
             if (!_filling)
@@ -238,6 +240,14 @@ internal sealed class DepotNotesPanel : UserControl
                 : page?.State == DepotInboxState.Unreachable ? page.Reason ?? "Depot is unreachable. Retrying…" : "Sign in to Depot to load notes.", 12.5, "CockpitTextSecondaryBrush");
             text.Margin = new(12, 16);
             _body.Children.Add(text);
+            if (_connection is null)
+            {
+                var add = DepotAddServerButton.Create(_host);
+                add.HorizontalAlignment = HorizontalAlignment.Left;
+                add.Margin = new(12, 0);
+                _body.Children.Add(add);
+            }
+
             if (_connection is { } signedOut && page?.State is DepotInboxState.SignIn or DepotInboxState.Expired)
             {
                 var signIn = new Button { Content = "Sign in to Depot", Classes = { "Compact" }, Margin = new(12, 0) };

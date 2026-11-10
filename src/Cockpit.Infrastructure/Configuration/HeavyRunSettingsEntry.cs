@@ -8,12 +8,12 @@ internal sealed class HeavyRunSettingsEntry
 {
     private static readonly HeavyRunSettings Defaults = new();
 
+    public int MaxParallelRuns { get; set; } = Defaults.MaxParallelRuns;
     public double CpuCeilingPercent { get; set; } = Defaults.CpuCeilingPercent;
     public double MemoryCeilingPercent { get; set; } = Defaults.MemoryCeilingPercent;
     public double CeilingStepPercent { get; set; } = Defaults.CeilingStepPercent;
     public double CeilingFloorPercent { get; set; } = Defaults.CeilingFloorPercent;
     public double OverloadedAbovePercent { get; set; } = Defaults.OverloadedAbovePercent;
-    public int AgingMinutes { get; set; } = Defaults.AgingMinutes;
     public double DiskElevatedTimeToFullHours { get; set; } = Defaults.DiskElevatedTimeToFullHours;
     public double DiskCriticalTimeToFullHours { get; set; } = Defaults.DiskCriticalTimeToFullHours;
     public double DiskMinimumFreePercent { get; set; } = Defaults.DiskMinimumFreePercent;
@@ -21,12 +21,12 @@ internal sealed class HeavyRunSettingsEntry
 
     public static HeavyRunSettingsEntry FromDomain(HeavyRunSettings settings) => new()
     {
+        MaxParallelRuns = settings.MaxParallelRuns,
         CpuCeilingPercent = settings.CpuCeilingPercent,
         MemoryCeilingPercent = settings.MemoryCeilingPercent,
         CeilingStepPercent = settings.CeilingStepPercent,
         CeilingFloorPercent = settings.CeilingFloorPercent,
         OverloadedAbovePercent = settings.OverloadedAbovePercent,
-        AgingMinutes = settings.AgingMinutes,
         DiskElevatedTimeToFullHours = settings.DiskElevatedTimeToFullHours,
         DiskCriticalTimeToFullHours = settings.DiskCriticalTimeToFullHours,
         DiskMinimumFreePercent = settings.DiskMinimumFreePercent,
@@ -35,12 +35,12 @@ internal sealed class HeavyRunSettingsEntry
 
     public HeavyRunSettings ToDomain() => new()
     {
+        MaxParallelRuns = Math.Max(0, MaxParallelRuns),
         CpuCeilingPercent = CpuCeilingPercent,
         MemoryCeilingPercent = MemoryCeilingPercent,
         CeilingStepPercent = CeilingStepPercent,
         CeilingFloorPercent = CeilingFloorPercent,
         OverloadedAbovePercent = OverloadedAbovePercent,
-        AgingMinutes = AgingMinutes,
         DiskElevatedTimeToFullHours = DiskElevatedTimeToFullHours,
         DiskCriticalTimeToFullHours = DiskCriticalTimeToFullHours,
         DiskMinimumFreePercent = DiskMinimumFreePercent,

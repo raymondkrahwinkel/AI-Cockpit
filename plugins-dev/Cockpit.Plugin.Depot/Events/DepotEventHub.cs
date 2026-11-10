@@ -5,13 +5,26 @@ using Microsoft.AspNetCore.SignalR.Client;
 
 namespace Cockpit.Plugin.Depot.Events;
 
-internal sealed record DepotEvent(string Topic, string Kind, string? Address, long Version);
+// AC-2224: a "devices" event (DEP-628) names the phone; DEP-629 adds its name, platform and pairing time.
+internal sealed record DepotEvent(
+    string Topic,
+    string Kind,
+    string? Address,
+    long Version,
+    string? DeviceId = null,
+    string? CockpitAuthorizationId = null,
+    string? Name = null,
+    DateTimeOffset? PairedAt = null);
 
 internal interface IDepotEventHub : IAsyncDisposable
 {
+    bool IsConnected { get; }
+
     Task StartAsync(CancellationToken cancellationToken);
 
     Task SubscribeAsync(string topic, CancellationToken cancellationToken);
+
+    Task HeartbeatAsync(CancellationToken cancellationToken);
 }
 
 internal delegate IDepotEventHub DepotEventHubFactory(
@@ -29,6 +42,9 @@ internal static class DepotEventReconnect
 internal sealed class SignalRDepotEventHub : IDepotEventHub
 {
     private readonly HubConnection _connection;
+    private static readonly Lazy<string?> PluginVersion = new(_PluginVersion);
+
+    public bool IsConnected => _connection.State == HubConnectionState.Connected;
 
     public SignalRDepotEventHub(
         DepotConnectionRegistration connection,
@@ -59,6 +75,28 @@ internal sealed class SignalRDepotEventHub : IDepotEventHub
 
     public Task SubscribeAsync(string topic, CancellationToken cancellationToken) =>
         _connection.InvokeAsync("Subscribe", topic, cancellationToken);
+
+    public Task HeartbeatAsync(CancellationToken cancellationToken) =>
+        _connection.InvokeAsync("Heartbeat", new
+        {
+            machineName = Environment.MachineName,
+            cockpitVersion = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3),
+            pluginVersion = PluginVersion.Value,
+        }, cancellationToken);
+
+    private static string? _PluginVersion()
+    {
+        try
+        {
+            using var manifest = JsonDocument.Parse(File.ReadAllText(Path.Combine(Path.GetDirectoryName(typeof(SignalRDepotEventHub).Assembly.Location) ?? string.Empty, "plugin.json")));
+            return manifest.RootElement.GetProperty("version").GetString();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException or KeyNotFoundException or InvalidOperationException)
+        {
+            System.Diagnostics.Trace.TraceWarning("Depot: reading the plugin version failed: {0}", exception.Message);
+            return null;
+        }
+    }
 
     public ValueTask DisposeAsync() => _connection.DisposeAsync();
 }

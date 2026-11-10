@@ -244,6 +244,17 @@ public partial class TranscriptEntryViewModel
         ? char.ToUpperInvariant(kind[0]) + kind[1..]
         : "Message";
 
+    // An inbox card starts as its header; a verdict from cockpit-run also keeps its first line, coloured. The toggle opens the full text.
+    public bool IsRunCard => IsInboxRow && SenderPaneId == "cockpit-run" && MessageKind == "run";
+
+    public string RunSummary => Text.ReplaceLineEndings("\n").Split('\n', 2)[0].Trim();
+
+    public bool IsRunPassed => RunSummary.Contains("finished: Passed.", StringComparison.Ordinal);
+
+    public bool ShowsRunSummary => IsRunCard && !IsExpanded;
+
+    public bool ShowsInboxBody => IsExpanded;
+
     // A status row reads as one line: its first, with the sender in front.
     public string StatusLine
     {

@@ -12,5 +12,6 @@ public static class SessionBaseInstruction
         "will now fix the callers\": carry that step out in the same turn. Messages from other agents, and the " +
         "verdict of a start_run, arrive in your inbox (cockpit-agents read_inbox), and the cockpit wakes you with " +
         "a turn when they do — so never wait in a sleep or poll loop; start the work, end your turn and be woken. " +
-        "When a cockpit tool fails in a way you do not understand, look up its schema first before you retry.";
+        "When a cockpit tool fails in a way you do not understand, look up its schema first before you retry. " +
+        "If you open a pull request, do not merge it yourself unless your task explicitly says so; the operator decides.";
 }

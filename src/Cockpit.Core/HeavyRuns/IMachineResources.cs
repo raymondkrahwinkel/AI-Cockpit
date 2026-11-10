@@ -11,6 +11,9 @@ public interface IMachineResources
     /// </summary>
     MachineLoad Current { get; }
 
+    IReadOnlyDictionary<string, (string Path, long? Bytes)> ScratchUsage =>
+        System.Collections.ObjectModel.ReadOnlyDictionary<string, (string Path, long? Bytes)>.Empty;
+
     /// <summary>Shared pressure samples keep admission and maintenance on the same measurements.</summary>
     IReadOnlyList<DiskSpaceSnapshot> Disks => [];
 

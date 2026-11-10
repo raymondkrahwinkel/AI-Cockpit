@@ -19,6 +19,8 @@ internal sealed class LivePresenceFeed : IDisposable
     private readonly CancellationTokenSource _life = new();
     private string? _id;
 
+    public event Action<IReadOnlyList<LivePeer>>? Shown;
+
     public LivePresenceFeed(FileSourceChannelClient client, MarkdownEditor editor, LivePresenceBar bar, ILogger logger)
     {
         _client = client;
@@ -61,6 +63,7 @@ internal sealed class LivePresenceFeed : IDisposable
     {
         _bar.SetPeers(peers);
         _editor.SetPeers(peers);
+        Shown?.Invoke(peers);
     }
 
     private void _OnPresence(JsonElement payload)

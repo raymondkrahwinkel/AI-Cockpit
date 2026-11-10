@@ -57,7 +57,8 @@ public partial class MainWindow : Window
             Title = CockpitWindowChrome.RemoteTitle(remoteServer);
         }
 
-        CockpitWindowChrome.Apply(this, titleBar: CockpitTitleBar.Window, includeMinimize: true, includeMaximize: true, closeOnEscape: false, remoteServer: remoteServer);
+        CockpitWindowChrome.Apply(this, titleBar: CockpitTitleBar.Window, includeMinimize: true, includeMaximize: true, closeOnEscape: false, remoteServer: remoteServer,
+            centeredCaptionAction: new ViewModeSwitch { Width = 160 });
 
         Activated += (_, _) => _SetWindowActive(true);
         Deactivated += (_, _) => _SetWindowActive(false);

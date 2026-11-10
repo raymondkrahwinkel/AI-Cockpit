@@ -12,7 +12,7 @@ namespace Cockpit.Infrastructure.HeavyRuns;
 // AC-1535: the machine-wide queue for heavy runs; `start_run` and local-ci's gate both take their place here. Who gets
 // in is `HeavyRunAdmission`'s call; this keeps the places, gives them back (run over, owner gone, stopped by hand),
 // learns what each kind cost, and is the "Heavy runs" status item. In memory: a restart empties it.
-public sealed class HeavyRunQueue : ISessionRunActivities, ISupervisedActivitySource, ITestRunSource, ISingletonService, IDisposable
+public sealed class HeavyRunQueue : ISessionRunActivities, ISupervisedActivitySource, ITestRunSource, IHeavyRunSettingsRefresh, ISingletonService, IDisposable
 {
     // As long as the load average needs to show a just-admitted run: until then its expected cost is counted on top,
     // and a run shorter than this never moved the average enough to learn its cost from.
@@ -28,6 +28,8 @@ public sealed class HeavyRunQueue : ISessionRunActivities, ISupervisedActivitySo
     private readonly ILiveSessionRegistry? _live;
     private readonly ILogger<HeavyRunQueue> _logger;
     private HeavyRunSettings _settings = new();
+    private bool _settingsLoaded;
+    private long _arrivalSequence;
     private Slot? _maintenance;
 
     public HeavyRunQueue(
@@ -65,6 +67,7 @@ public sealed class HeavyRunQueue : ISessionRunActivities, ISupervisedActivitySo
             }
             else
             {
+                slot.ArrivalSequence = ++_arrivalSequence;
                 _waiting.Add(slot);
             }
         }
@@ -80,7 +83,7 @@ public sealed class HeavyRunQueue : ISessionRunActivities, ISupervisedActivitySo
             _logger.LogError(exception, "The heavy-run queue failed to look at its runs after a request.");
         }
 
-        _ = _RefreshSettingsAsync();
+        _ = RefreshSettingsAsync();
         return slot;
     }
 
@@ -303,6 +306,11 @@ public sealed class HeavyRunQueue : ISessionRunActivities, ISupervisedActivitySo
         List<Slot> admitted = [];
         lock (_gate)
         {
+            if (!_settingsLoaded)
+            {
+                return;
+            }
+
             var now = DateTimeOffset.UtcNow;
             while (_waiting.Count > 0)
             {
@@ -328,13 +336,12 @@ public sealed class HeavyRunQueue : ISessionRunActivities, ISupervisedActivitySo
 
                 var candidates = _waiting.Select(slot => new HeavyRunCandidate(
                     slot.Request.Kind.ToString().ToLowerInvariant(),
-                    slot.Request.Purpose == HeavyRunPurpose.PreMerge,
-                    slot.EnqueuedAt,
+                    slot.ArrivalSequence,
                     _costs.Get(slot.CostKey),
                     slot.FreeDiskBytes)).ToList();
                 var diskReason = _CriticalDiskReason(_Ordered()[0].Request.WorkingDirectory);
                 var decision = diskReason is null
-                    ? HeavyRunAdmission.Next(candidates, _Projected(now), _settings, _running.Count > 0, now)
+                    ? HeavyRunAdmission.Next(candidates, _Projected(now), _settings, _running.Count)
                     : new HeavyRunDecision(null, diskReason);
                 if (decision.Admit is not { } index)
                 {
@@ -402,9 +409,7 @@ public sealed class HeavyRunQueue : ISessionRunActivities, ISupervisedActivitySo
     private List<Slot> _Ordered()
     {
         var order = HeavyRunAdmission.Order(
-            [.. _waiting.Select(slot => new HeavyRunCandidate(string.Empty, slot.Request.Purpose == HeavyRunPurpose.PreMerge, slot.EnqueuedAt, null, null))],
-            _settings,
-            DateTimeOffset.UtcNow);
+            [.. _waiting.Select(slot => new HeavyRunCandidate(string.Empty, slot.ArrivalSequence, null, null))]);
         return [.. order.Select(index => _waiting[index])];
     }
 
@@ -485,17 +490,25 @@ public sealed class HeavyRunQueue : ISessionRunActivities, ISupervisedActivitySo
         }
     }
 
-    private async Task _RefreshSettingsAsync()
+    public async Task RefreshSettingsAsync()
     {
         await _settingsAccess.WaitAsync().ConfigureAwait(false);
         try
         {
-            _settings = await _settingsStore.LoadAsync().ConfigureAwait(false);
+            var settings = await _settingsStore.LoadAsync().ConfigureAwait(false);
+            lock (_gate)
+            {
+                _settings = settings;
+                _settingsLoaded = true;
+            }
         }
         catch (Exception exception)
         {
             _logger.LogWarning(exception, "Reading the heavy-run settings failed; the queue keeps its current ceilings.");
-            return;
+            lock (_gate)
+            {
+                _settingsLoaded = true;
+            }
         }
         finally
         {
@@ -537,6 +550,8 @@ public sealed class HeavyRunQueue : ISessionRunActivities, ISupervisedActivitySo
         public HeavyRunRequest Request { get; } = request;
 
         public DateTimeOffset EnqueuedAt { get; } = enqueuedAt;
+
+        public long ArrivalSequence { get; set; }
 
         public string CostKey { get; } = costKey;
 

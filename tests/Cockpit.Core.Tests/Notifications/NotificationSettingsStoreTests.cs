@@ -1,6 +1,7 @@
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.Plugins;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Infrastructure.Notifications;
 using Cockpit.Infrastructure.Plugins;
 using NSubstitute;
@@ -64,6 +65,32 @@ public class NotificationSettingsStoreTests : IDisposable
         Assert.False(NotificationSoundDecision.ShouldPlay(true, true, false, false, true, null, now, interval));
         Assert.False(NotificationSoundDecision.ShouldPlay(true, true, false, false, false, now - TimeSpan.FromSeconds(2), now, interval));
         Assert.True(NotificationSoundDecision.ShouldPlay(true, true, false, false, false, now - interval, now, interval));
+
+        var elapsed = new Queue<Action>();
+        using var pending = new PendingNotificationSounds((play, _) =>
+        {
+            elapsed.Enqueue(play);
+            return Substitute.For<IDisposable>();
+        });
+        var status = SessionStatus.Done;
+        var played = 0;
+        Task Play(Func<bool> _)
+        {
+            played++;
+            return Task.CompletedTask;
+        }
+
+        pending.Schedule("pane", SessionStatus.Done, () => status == SessionStatus.Done, Play);
+        status = SessionStatus.Busy;
+        elapsed.Dequeue()();
+        Assert.Equal(0, played);
+
+        status = SessionStatus.Done;
+        pending.Schedule("pane", SessionStatus.Done, () => status == SessionStatus.Done, Play);
+        var settled = elapsed.Dequeue();
+        settled();
+        settled();
+        Assert.Equal(1, played);
 
         await using var registrations = new PluginRegistrationStore(_configFilePath);
         await registrations.SaveAsync("depot", new PluginRegistration(Enabled: true, PinnedSha256: "the-consented-hash"));

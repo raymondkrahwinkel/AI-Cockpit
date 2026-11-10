@@ -47,6 +47,8 @@
     <Project Path="plugins-dev/Cockpit.Plugin.Kubernetes.Tests/Cockpit.Plugin.Kubernetes.Tests.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.LocalCi/Cockpit.Plugin.LocalCi.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.LocalCi.Tests/Cockpit.Plugin.LocalCi.Tests.csproj" />
+    <Project Path="plugins-dev/Cockpit.Plugin.LocalFiles/Cockpit.Plugin.LocalFiles.csproj" />
+    <Project Path="plugins-dev/Cockpit.Plugin.LocalFiles.Tests/Cockpit.Plugin.LocalFiles.Tests.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.OpenRouterProvider/Cockpit.Plugin.OpenRouterProvider.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.OpenRouterProvider.Tests/Cockpit.Plugin.OpenRouterProvider.Tests.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.OpencodeProvider/Cockpit.Plugin.OpencodeProvider.csproj" />
@@ -55,6 +57,8 @@
     <Project Path="plugins-dev/Cockpit.Plugin.Productivity.Tests/Cockpit.Plugin.Productivity.Tests.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.Proxmox/Cockpit.Plugin.Proxmox.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.Proxmox.Tests/Cockpit.Plugin.Proxmox.Tests.csproj" />
+    <Project Path="plugins-dev/Cockpit.Plugin.RemoteFiles/Cockpit.Plugin.RemoteFiles.csproj" />
+    <Project Path="plugins-dev/Cockpit.Plugin.RemoteFiles.Tests/Cockpit.Plugin.RemoteFiles.Tests.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.Schedules/Cockpit.Plugin.Schedules.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.Schedules.Tests/Cockpit.Plugin.Schedules.Tests.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.SessionReview/Cockpit.Plugin.SessionReview.csproj" />

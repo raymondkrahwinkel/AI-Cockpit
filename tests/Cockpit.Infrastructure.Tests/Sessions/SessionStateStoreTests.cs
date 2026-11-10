@@ -88,10 +88,20 @@ public sealed class SessionStateStoreTests : IDisposable
     // Two lines a crash or a hand edit leaves: one cut off mid-append at the end of the file, and valid JSON with no pane
     // on it between two good ones. The serializer hands the latter back as a record with a null pane, and keying a
     // dictionary on that null would throw the whole read away — the loss that skipping a bad line exists to prevent.
-    [Theory]
-    [InlineData("{\"PaneId\":\"pane-bad\",\"ProfileId\":\"pers", false)]
-    [InlineData("{\"ProfileId\":\"personal\"}\n", true)]
-    public async Task LoadAsync_ABadLine_IsSkippedAndTheRecordsAroundItAreKept(string badLine, bool aRecordFollows)
+    [Fact]
+    public async Task LoadAsync_ABadLine_IsSkippedAndTheRecordsAroundItAreKept()
+    {
+        using (var scenario = new SessionStateStoreTests())
+        {
+            await scenario._AssertLoadAsync_ABadLine_IsSkippedAndTheRecordsAroundItAreKeptAsync("{\"PaneId\":\"pane-bad\",\"ProfileId\":\"pers", false);
+        }
+        using (var scenario = new SessionStateStoreTests())
+        {
+            await scenario._AssertLoadAsync_ABadLine_IsSkippedAndTheRecordsAroundItAreKeptAsync("{\"ProfileId\":\"personal\"}\n", true);
+        }
+    }
+
+    private async Task _AssertLoadAsync_ABadLine_IsSkippedAndTheRecordsAroundItAreKeptAsync(string badLine, bool aRecordFollows)
     {
         var store = CreateStore();
         await store.RecordAsync(CreateRecord(paneId: "pane-1", conversationId: "conv-1"));
@@ -110,10 +120,20 @@ public sealed class SessionStateStoreTests : IDisposable
     // With a roster, a pane not on it is dropped; without one — what the cockpit has at startup — nothing is, since
     // reading that silence as "then none of them exist" would empty the file. Either way duplicates fold, and the line
     // count shows compaction rewrote the file rather than merely filtering on read.
-    [Theory]
-    [InlineData(true, 1)]
-    [InlineData(false, 2)]
-    public async Task CompactAsync_FoldsDuplicates_AndDropsOnlyPanesOffAGivenRoster(bool withRoster, int remaining)
+    [Fact]
+    public async Task CompactAsync_FoldsDuplicates_AndDropsOnlyPanesOffAGivenRoster()
+    {
+        using (var scenario = new SessionStateStoreTests())
+        {
+            await scenario._AssertCompactAsync_FoldsDuplicates_AndDropsOnlyPanesOffAGivenRosterAsync(true, 1);
+        }
+        using (var scenario = new SessionStateStoreTests())
+        {
+            await scenario._AssertCompactAsync_FoldsDuplicates_AndDropsOnlyPanesOffAGivenRosterAsync(false, 2);
+        }
+    }
+
+    private async Task _AssertCompactAsync_FoldsDuplicates_AndDropsOnlyPanesOffAGivenRosterAsync(bool withRoster, int remaining)
     {
         var store = CreateStore();
         await store.RecordAsync(CreateRecord(paneId: "pane-keep", conversationId: "conv-1"));

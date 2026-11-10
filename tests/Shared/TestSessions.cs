@@ -33,7 +33,7 @@ internal static class TestSessions
         VoiceOverlayCoordinator? voiceOverlay = null,
         IProfileLoginChecker? loginChecker = null,
         ISessionLoginFlows? loginFlows = null,
-        IMentionFileSource? mentionFileSource = null,
+        IEnumerable<IMentionSource>? mentionSources = null,
         ISharedUsageCache? sharedUsageCache = null,
         ISessionTranscriptReader? transcriptReader = null,
         ILogger<SessionViewModel>? logger = null,
@@ -44,11 +44,28 @@ internal static class TestSessions
                 sessionManager, turnInboxDelivery, loginChecker, sharedUsageCache, transcriptStore, sessionStateRecorder,
                 time: timeProvider),
             voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, openMicState, usageHistory, turnInboxDelivery,
-            providerNames, usageSignals, voiceOverlay, loginChecker, loginFlows, mentionFileSource, transcriptReader, logger,
+            providerNames, usageSignals, voiceOverlay, loginChecker, loginFlows, mentionSources, transcriptReader, logger,
             eventLog);
 
     // AC-1440: a pane as the assistant's host is handed it on the desktop, through its handle.
     [return: NotNullIfNotNull(nameof(pane))]
     public static IAssistantSession? Assistant(SessionViewModel? pane) =>
         pane is null ? null : new SessionPanelHandle(pane, isEmbedded: false, () => null);
+}
+
+// A mention source answering a fixed set of groups, whatever the context.
+internal sealed class FixedMentionSource(int order, params MentionGroup[] groups) : IMentionSource
+{
+    public string Key => "fixed" + order;
+
+    public int Order => order;
+
+    public Task<IReadOnlyList<MentionGroup>> GetAsync(MentionContext context, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<MentionGroup>>(groups);
+
+    public static MentionItem File(string path) =>
+        new(path, path[(path.LastIndexOf('/') + 1)..], path, new MentionTile("F"), MentionKind.File, path, path);
+
+    public static MentionItem Project(string name, DateTimeOffset? lastActivity = null) =>
+        new("project:" + name, name, "", new MentionTile(name[..1]), MentionKind.Project, name, "/p/" + name, lastActivity);
 }

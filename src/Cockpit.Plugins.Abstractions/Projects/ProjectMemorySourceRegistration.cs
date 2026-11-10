@@ -121,6 +121,29 @@ public sealed record ProjectMemorySourceRegistration(string Scheme, string Title
     public Func<string, string?>? BrainInstruction { get; init; }
 
     /// <summary>
+    /// Lists the optional roles in a brain value, with an explicit unavailable or no-roles outcome.
+    /// </summary>
+    public Func<string, CancellationToken, Task<RoleListResult>>? ListRolesAsync { get; init; }
+
+    /// <summary>
+    /// Loads a named role from a brain value, with at most 12,000 characters of instructions including its skill list.
+    /// </summary>
+    public Func<string, string, CancellationToken, Task<RoleLoadResult>>? LoadRoleAsync { get; init; }
+
+    /// <summary>
+    /// The name of the MCP server that serves the brain a stored value names, so the host keeps it mounted when a start names its own server list. Null when this source does not own that value.
+    /// </summary>
+    public Func<string, string?>? BrainMcpServerName { get; init; }
+
+    /// <summary>
+    /// The query parameter a session whose brain is the stored value gets on the address of one of this source's own
+    /// MCP servers (AC-2220), added by the host behind the session gateway on every launch route. Null when this
+    /// source does not own that value or adds nothing for it.
+    /// </summary>
+    /// <remarks>Called while a session start is composed and when its servers are refreshed, so it must not block or do I/O.</remarks>
+    public Func<string, Mcp.McpServerQueryParameter?>? BrainMcpServerQuery { get; init; }
+
+    /// <summary>
     /// What this registration's delegates are bound to (AC-1992) — the server address of the connection they close
     /// over, say — so a registration rebuilt after that target moved compares unequal and is replaced.
     /// </summary>

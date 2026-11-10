@@ -334,6 +334,25 @@ public interface ICockpitHost
     Task SignOutMcpServerAsync(string name, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
     /// <summary>
+    /// Has every live session that mounted the MCP server this plugin contributed under <paramref name="name"/> ask
+    /// it for <c>tools/list</c> again and tell its agent the list changed, without a restart.
+    /// </summary>
+    /// <remarks>
+    /// For a server that never sends <c>tools/list_changed</c> itself, such as a stateless one whose tools changed
+    /// after an authorization elsewhere. Only this plugin's own servers; the default is a no-op.
+    /// </remarks>
+    Task RefreshMcpServerAsync(string name, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    /// <summary>
+    /// Sets (or, with <see langword="null"/> or <see cref="Mcp.PluginMcpAdvisoryLevel.Ok"/>, clears) the advisory the
+    /// host shows with the MCP server this plugin contributed under <paramref name="name"/> (AC-2219).
+    /// </summary>
+    /// <remarks>Own servers only. Launch-time information, so it works on both session routes. Default no-op.</remarks>
+    void SetMcpServerAdvisory(string name, Mcp.PluginMcpAdvisory? advisory)
+    {
+    }
+
+    /// <summary>
     /// Calls <paramref name="toolName"/> on the MCP server this plugin contributed under <paramref name="name"/>
     /// via <see cref="AddMcpServer"/> — on the app's own behalf, not a session's (AC-502), before any session
     /// exists.
@@ -1050,6 +1069,27 @@ public interface ICockpitHost
     IReadOnlyList<Projects.ISharedProjectSource> SharedProjectSources => [];
 
     /// <summary>
+    /// Registers a source of suggestions for the chat's @-list, shown under "Suggested by plugins".
+    /// </summary>
+    /// <remarks>
+    /// A <see cref="Mentions.IPluginMentionSource.Key"/> another plugin already registered is kept as it was and
+    /// this registration ignored. Default no-op so existing implementations keep compiling untouched.
+    /// </remarks>
+    void AddMentionSource(Mentions.IPluginMentionSource source)
+    {
+    }
+
+    /// <summary>
+    /// Withdraws the mention source registered under <paramref name="key"/>; a no-op when nothing is registered under it.
+    /// </summary>
+    /// <remarks>
+    /// Default no-op so existing implementations keep compiling untouched.
+    /// </remarks>
+    void RemoveMentionSource(string key)
+    {
+    }
+
+    /// <summary>
     /// Registers a health section (AC-1466) the host reads on every health request, so /healthz sees this plugin's state.
     /// Default no-op so existing implementations keep compiling untouched.
     /// </summary>
@@ -1109,5 +1149,9 @@ public interface ICockpitHost
     /// </summary>
     IDisposable AddFileSource(Files.IFileSourceProvider provider) =>
         throw new NotSupportedException("This host does not support file sources.");
+
+    /// <summary>Registers runtime plugin stores. Dispose the registration when unloading. Requires host 0.162.0.</summary>
+    IDisposable AddPluginStoreSource(Plugins.IPluginStoreSourceProvider provider) =>
+        throw new NotSupportedException("This host does not support plugin store sources.");
 
 }

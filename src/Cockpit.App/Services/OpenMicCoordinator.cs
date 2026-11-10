@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Diagnostics;
 using System.Threading.Channels;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -10,12 +11,11 @@ using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Voice;
+using Cockpit.Core.Assistant;
 
 namespace Cockpit.App.Services;
 
-// AC-1013: keeps the microphone open for the assistant behind the indicator's listening mode, pausing
-// while read-aloud plays. AC-543: used to dictate into whichever session was selected; now always targets
-// the assistant (F9 stays the only session route), with no wake word yet, so the indicator warns on switch-on.
+// The assistant owns open-mic speech; session dictation stays behind push-to-talk.
 public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonService, IOpenMicState
 {
     private readonly IOpenMicListener _listener;
@@ -28,6 +28,11 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
     private readonly IAudioAvailability? _audioAvailability;
 
     private bool _wired;
+    private AssistantSettings _assistantSettings = new();
+    private long _wakeWordUntil;
+
+    public AssistantListeningMode ListeningMode => !IsListening ? AssistantListeningMode.Off
+        : _assistantSettings.WakeWordEnabled ? AssistantListeningMode.AlwaysOnWithWakeWord : AssistantListeningMode.AlwaysOn;
 
     // AC-628: `IsListening` is set two awaits after the guard reads it, so enabling and disabling are serialized here.
     private readonly SemaphoreSlim _enableGate = new(1, 1);
@@ -38,8 +43,8 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
     // Finished utterances wait here to be injected one at a time, in the order they were spoken. Without this,
     // each injection was fire-and-forget, so a shorter utterance's faster send could overtake a longer one
     // spoken before it and land out of order.
-    private readonly Channel<string> _injections =
-        Channel.CreateUnbounded<string>(new UnboundedChannelOptions { SingleReader = true });
+    private readonly Channel<(string Text, long ReceivedAt)> _injections =
+        Channel.CreateUnbounded<(string, long)>(new UnboundedChannelOptions { SingleReader = true });
 
     // Whether read-aloud is playing right now — the only time a loud microphone means anything to this coordinator.
     private bool _isPlaying;
@@ -94,6 +99,8 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
     [ObservableProperty]
     private bool _isListening;
 
+    partial void OnIsListeningChanged(bool value) => OnPropertyChanged(nameof(ListeningMode));
+
     // Reads settings at startup and resumes listening if left on; never throws since the one caller discards
     // the task (mirrors `VoicePushToTalkCoordinator.StartAsync`), but it still logs which check failed.
     // Gated on both voice and assistant switches (AC-543): leaving the mic open for a disabled assistant would record the room and send it nowhere.
@@ -128,8 +135,12 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
         var voice = await _voiceSettingsStore.LoadAsync(cancellationToken);
         var assistant = await _assistantSettingsStore.LoadAsync(cancellationToken);
 
+        _assistantSettings = assistant;
+        _wakeWordUntil = 0;
+        OnPropertyChanged(nameof(ListeningMode));
+
         IsAvailable = (_audioAvailability?.IsAvailable ?? true) && voice.IsEnabled && assistant.IsEnabled;
-        if (!IsAvailable && IsListening)
+        if (IsListening && (!IsAvailable || assistant.WakeWordEnabled && !AssistantWakeWord.IsConfigured(assistant.WakeWord)))
         {
             await _DisableAsync();
         }
@@ -165,6 +176,12 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
             }
 
             var settings = await _voiceSettingsStore.LoadAsync(cancellationToken);
+            _assistantSettings = await _assistantSettingsStore.LoadAsync(cancellationToken);
+            _wakeWordUntil = 0;
+            if (_assistantSettings.WakeWordEnabled && !AssistantWakeWord.IsConfigured(_assistantSettings.WakeWord))
+            {
+                return;
+            }
             _stopReadAloudWhenSpeaking = settings.StopReadAloudWhenSpeaking;
             _stopReadAloudThreshold = settings.StopReadAloudLevelThreshold;
 
@@ -212,6 +229,7 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
 
             await _listener.StopAsync();
             IsListening = false;
+            _wakeWordUntil = 0;
 
             // Turned off mid-sentence, the pill would otherwise sit on whatever the last utterance left it.
             _overlay.SetOpenMic(null);
@@ -247,6 +265,7 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
     // AC-627: the hold wins over open-mic and takes the microphone for its duration.
     public IDisposable SuspendForHold()
     {
+        _wakeWordUntil = 0;
         if (!IsListening)
         {
             // Nothing to step aside from. Still a handle, so the caller's dispose is unconditional.
@@ -368,12 +387,12 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
             return;
         }
 
-        _injections.Writer.TryWrite(rawText);
+        _injections.Writer.TryWrite((rawText, Stopwatch.GetTimestamp()));
     }
 
     private async Task _ConsumeInjectionsAsync()
     {
-        await foreach (var rawText in _injections.Reader.ReadAllAsync().ConfigureAwait(false))
+        await foreach (var utterance in _injections.Reader.ReadAllAsync().ConfigureAwait(false))
         {
             // Inject on the UI thread and wait for it to finish before taking the next, so a shorter utterance's
             // faster send can never overtake a longer one spoken before it.
@@ -382,7 +401,7 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
             {
                 try
                 {
-                    await InjectUtteranceAsync(rawText);
+                    await InjectUtteranceAsync(utterance.Text, utterance.ReceivedAt);
                 }
                 catch (Exception ex)
                 {
@@ -401,25 +420,49 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
     // Test seam: the UI-thread logic that hands one finished utterance to the assistant. The pill is released
     // here, not on `SpeechEnded` — sending runs between the two, so releasing early would lie about the wait.
     // Released in a finally: an utterance that fails to send still ends, rather than leaving the pill spinning forever.
-    internal async Task InjectUtteranceAsync(string rawText)
+    internal async Task InjectUtteranceAsync(string rawText, long receivedAt)
     {
         try
         {
             // Nothing to do when filtered down to nothing (STT noise filter dropped a throat-clear/"um") or
             // while a hold has the mic: the consumer may have taken this out of the queue before the key
             // went down, and this is the last point it can still be dropped (AC-627).
-            if (string.IsNullOrWhiteSpace(rawText) || _suspendedForHold)
+            if (string.IsNullOrWhiteSpace(rawText) || _suspendedForHold || !IsListening)
             {
                 return;
             }
 
-            // Straight to the assistant, raw (AC-543 criterion 20): destination changed from whichever
-            // session was selected to always the assistant, and the cleanup pass is gone — what Whisper
-            // heard is what the assistant gets (decision 10), since tidying is the system prompt's job now.
+            if (_assistantSettings.WakeWordEnabled)
+            {
+                string? command = AssistantWakeWord.Match(rawText, _assistantSettings.WakeWord);
+                if (command is not null)
+                {
+                    _wakeWordUntil = command.Length == 0
+                        ? receivedAt + (long)_assistantSettings.WakeWordListeningSeconds * Stopwatch.Frequency
+                        : 0;
+                    rawText = command;
+                }
+                else
+                {
+                    bool isWithinPeriod = receivedAt <= _wakeWordUntil;
+                    _wakeWordUntil = 0;
+                    if (!isWithinPeriod)
+                    {
+                        return;
+                    }
+                }
+
+                if (rawText.Length == 0)
+                {
+                    return;
+                }
+            }
+
             await _assistant.SendAsync(rawText);
         }
         finally
         {
+            _assistant.ReportTranscribing(false);
             _overlay.SetOpenMic(null);
         }
     }

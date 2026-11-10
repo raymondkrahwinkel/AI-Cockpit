@@ -11,7 +11,11 @@ internal sealed class AgentTabBoundary(Func<string, bool> register, Action<strin
     private readonly ConcurrentDictionary<string, TaskCompletionSource> _ready = new();
     private readonly ConcurrentDictionary<string, Blocked> _blocked = new();
     private readonly ConcurrentDictionary<string, string> _openers = new();
-    private readonly ConcurrentDictionary<string, ConcurrentQueue<string>> _popupUrls = new();
+    private readonly ConcurrentDictionary<string, ConcurrentQueue<Popup>> _popupUrls = new();
+    private sealed record Popup(string Url, ActionFeedback? Feedback);
+    private readonly SemaphoreSlim _actionGate = new(1, 1);
+    private readonly object _feedbackGate = new();
+    private ActionFeedback? _feedback;
     private readonly ConcurrentDictionary<string, AgentNavigation> _agentNavigations = new();
     private readonly ConcurrentDictionary<(string Target, string Url), string> _pendingLocalNavigations = new();
     private readonly ConcurrentDictionary<(string Target, string Frame), byte> _localFrames = new();
@@ -45,6 +49,100 @@ internal sealed class AgentTabBoundary(Func<string, bool> register, Action<strin
         _ready.GetOrAdd(target, _ => new(TaskCreationOptions.RunContinuationsAsynchronously)).Task.WaitAsync(token);
 
     public Blocked? TakeBlocked(string target) => _blocked.TryRemove(target, out var blocked) ? blocked : null;
+
+    public async Task<ActionFeedback> ObserveActionAsync(string target, CancellationToken token)
+    {
+        await _actionGate.WaitAsync(token).ConfigureAwait(false);
+        lock (_feedbackGate)
+        {
+            return _feedback = new ActionFeedback(this, target);
+        }
+    }
+
+    // Input replies and their Page events must arrive on the same CDP connection (AC-2211).
+    public Task<JsonElement> CallAsync(string target, string method, object? parameters, CancellationToken token, Action beforeSend)
+    {
+        var session = _targets.FirstOrDefault(pair => pair.Value == target).Key
+            ?? throw new IOException("The tab has closed.");
+        return Browser.CallAsync(method, parameters, token, beforeSend, session);
+    }
+
+    internal sealed class ActionFeedback(AgentTabBoundary owner, string target) : IDisposable
+    {
+        internal HashSet<string> Targets { get; } = [target];
+        internal HashSet<string> Frames { get; } = [];
+        internal bool Pending { get; set; }
+        internal TaskCompletionSource<Blocked?> Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public void ExpectSignal()
+        {
+            lock (owner._feedbackGate)
+            {
+                // Native activation events can trail the input reply, including same-document navigation (AC-2211).
+                foreach (var target in Targets)
+                {
+                    Frames.Add(owner._mainFrames.GetValueOrDefault(target, target));
+                }
+                Pending = true;
+            }
+        }
+
+        public Task<Blocked?> WaitAsync(CancellationToken token)
+        {
+            lock (owner._feedbackGate)
+            {
+                if (!Pending)
+                {
+                    Completion.TrySetResult(null);
+                }
+            }
+            return Completion.Task.WaitAsync(token);
+        }
+
+        public void Dispose()
+        {
+            lock (owner._feedbackGate)
+            {
+                owner._feedback = null;
+            }
+            owner._actionGate.Release();
+        }
+    }
+
+    private void StartNavigation(string target, string frame)
+    {
+        lock (_feedbackGate)
+        {
+            if (_feedback is { } feedback && feedback.Targets.Contains(target))
+            {
+                feedback.Pending = true;
+                feedback.Frames.Add(frame);
+            }
+        }
+    }
+
+    private void CompleteNavigation(string target, string frame)
+    {
+        lock (_feedbackGate)
+        {
+            if (_feedback is { } feedback && feedback.Targets.Contains(target) && feedback.Frames.Contains(frame))
+            {
+                feedback.Completion.TrySetResult(null);
+            }
+        }
+    }
+
+    private void SetBlocked(string target, Blocked blocked)
+    {
+        _blocked[target] = blocked;
+        lock (_feedbackGate)
+        {
+            if (_feedback is { } feedback && feedback.Targets.Contains(target))
+            {
+                feedback.Completion.TrySetResult(blocked);
+            }
+        }
+    }
 
     public async Task PermitAgentNavigationAsync(string target, Uri url, CancellationToken token, bool beginsAfterBlank = false)
     {
@@ -99,11 +197,21 @@ internal sealed class AgentTabBoundary(Func<string, bool> register, Action<strin
                 {
                     var openerId = opener.GetString() ?? throw new IOException("The popup has no opener.");
                     _openers[target] = openerId;
-                    if (_popupUrls.TryGetValue(openerId, out var urls) && urls.TryDequeue(out var popupUrl))
+                    if (_popupUrls.TryGetValue(openerId, out var urls) && urls.TryDequeue(out var popup))
                     {
+                        lock (_feedbackGate)
+                        {
+                            if (_feedback is { } feedback && ReferenceEquals(feedback, popup.Feedback))
+                            {
+                                feedback.Targets.Add(target);
+                                feedback.Frames.Add(attachedTarget);
+                            }
+                        }
+                        var popupUrl = popup.Url;
                         if (!IsWeb(popupUrl))
                         {
                             _blocked[openerId] = new("invalid_argument", "Only http(s) pages are allowed.");
+                            SetBlocked(target, _blocked[openerId]);
                             var close = CloseAsync(attachedTarget);
                             // Chromium needs the paused renderer released to finish the already requested close.
                             await SendAsync("Runtime.runIfWaitingForDebugger", null, session).ConfigureAwait(false);
@@ -134,10 +242,19 @@ internal sealed class AgentTabBoundary(Func<string, bool> register, Action<strin
                     return;
                 }
                 var chooser = SendAsync("Page.setInterceptFileChooserDialog", new { enabled = true }, session);
+                var pageEvents = SendAsync("Page.enable", null, session);
                 await SendAsync("Runtime.runIfWaitingForDebugger", null, session).ConfigureAwait(false);
                 await chooser.ConfigureAwait(false);
-                await SendAsync("Page.enable", null, session).ConfigureAwait(false);
+                await pageEvents.ConfigureAwait(false);
                 _ready.GetOrAdd(target, _ => new(TaskCreationOptions.RunContinuationsAsynchronously)).TrySetResult();
+            }
+            else if (name is "Page.frameRequestedNavigation" or "Page.frameStartedNavigating" && target is not null)
+            {
+                StartNavigation(target, RequiredString(data, "frameId"));
+            }
+            else if (name == "Page.navigatedWithinDocument" && target is not null)
+            {
+                CompleteNavigation(target, RequiredString(data, "frameId"));
             }
             else if (name == "Page.frameNavigated" && target is not null)
             {
@@ -159,6 +276,10 @@ internal sealed class AgentTabBoundary(Func<string, bool> register, Action<strin
                 else
                 {
                     _localFrames.TryRemove((target, frameId), out _);
+                }
+                if (url != "about:blank")
+                {
+                    CompleteNavigation(target, frameId);
                 }
             }
             else if (name == "Fetch.requestPaused" && session is not null)
@@ -182,27 +303,36 @@ internal sealed class AgentTabBoundary(Func<string, bool> register, Action<strin
                         }
                     }
                 }
-                if (blocked is not null && target is not null)
-                {
-                    _blocked[target] = blocked;
-                }
                 var allowed = blocked is null;
                 await SendAsync(allowed ? "Fetch.continueRequest" : "Fetch.failRequest",
                     allowed ? new { requestId = data.GetProperty("requestId").GetString() } : (object)new { requestId = data.GetProperty("requestId").GetString(), errorReason = "BlockedByClient" }, session).ConfigureAwait(false);
+                if (blocked is not null && target is not null)
+                {
+                    SetBlocked(target, blocked);
+                }
             }
             else if (name == "Page.fileChooserOpened" && target is not null)
             {
-                _blocked[target] = new("confirmation_required", "File transfer requires an operator action.");
+                SetBlocked(target, new("confirmation_required", "File transfer requires an operator action."));
             }
             else if (name == "Page.windowOpen" && target is not null)
             {
-                _popupUrls.GetOrAdd(target, _ => new()).Enqueue(RequiredString(data, "url"));
+                lock (_feedbackGate)
+                {
+                    var feedback = _feedback is { } current && current.Targets.Contains(target) ? current : null;
+                    if (feedback is not null)
+                    {
+                        feedback.Pending = true;
+                    }
+                    _popupUrls.GetOrAdd(target, _ => new()).Enqueue(new(RequiredString(data, "url"), feedback));
+                }
             }
             else if (name == "Browser.downloadWillBegin")
             {
                 var source = RequiredString(data, "frameId");
-                _blocked[source] = new("confirmation_required", "File transfer requires an operator action.");
-                if (_openers.TryGetValue(source, out var opener))
+                var owner = _frameOwners.GetValueOrDefault(source, source);
+                SetBlocked(owner, new("confirmation_required", "File transfer requires an operator action."));
+                if (_openers.TryGetValue(owner, out var opener))
                 {
                     _blocked[opener] = new("confirmation_required", "File transfer requires an operator action.");
                 }

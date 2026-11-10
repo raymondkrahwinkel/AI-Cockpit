@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Assistant;
+using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Assistant;
@@ -33,6 +34,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
     private readonly INodeControllerPresence _presence;
     private readonly IAssistantSettingsStore _settings;
     private readonly IAssistantProfileStore _profiles;
+    private readonly ISessionProfileStore? _speechProfiles;
     private readonly ISessionStateStore _sessionState;
     private readonly SessionStateRecorder _sessionStateRecorder;
     private readonly IMcpServerCatalog _mcpServers;
@@ -42,9 +44,50 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
     private readonly ISwarmLeadership? _leadership;
     private readonly SwarmTakeoverCoordinator? _takeover;
     private readonly IProjectMemorySourceRegistry? _memorySources;
+    private readonly Func<SessionStartComposer>? _startComposer;
     internal Task StandbyPublication { get; private set; } = Task.CompletedTask;
     internal Task LeadershipTransition { get; private set; } = Task.CompletedTask;
     private double _contextCompactionPercent = AssistantSettings.DefaultCompactionPercent;
+
+    private async Task<string?> _BrainAndRoleAsync(AssistantProfileSlot slot, CancellationToken cancellationToken)
+    {
+        var brain = SessionStartDefaults.ResolveBrainInstruction(null, slot.Profile, _memorySources?.Sources.ToMemorySources());
+        if (string.IsNullOrWhiteSpace(slot.AssistantRole) || string.Equals(slot.AssistantRole.Trim(), "none", StringComparison.OrdinalIgnoreCase) || slot.Profile is not { } profile)
+        {
+            return brain;
+        }
+        try
+        {
+            if (_startComposer is not null)
+            {
+                var request = await _startComposer().ComposeRoleAsync(new SessionLaunchRequest("", profile, null, null, null, null, null, null, null, false)
+                {
+                    Role = slot.AssistantRole,
+                    IsRestoring = true,
+                }, cancellationToken).ConfigureAwait(true);
+                if (request.RoleInstruction is not null)
+                {
+                    return request.RoleInstruction;
+                }
+            }
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogWarning(exception, "The assistant role could not be loaded.");
+        }
+        return string.Join("\n\n", new[] { brain, $"The role '{slot.AssistantRole}' could not be loaded; tell the operator." }.Where(text => !string.IsNullOrWhiteSpace(text)));
+    }
+
+    private async Task _ApplySpeechAsync(IAssistantSession session, AssistantSettings settings, CancellationToken cancellationToken)
+    {
+        Cockpit.Core.Profiles.SessionProfile? profile = null;
+        if (settings.SpeechMethod == Cockpit.Core.Voice.SpokenReplyMethod.Profile && _speechProfiles is not null)
+        {
+            var profiles = await _speechProfiles.LoadAsync(cancellationToken).ConfigureAwait(true);
+            profile = profiles.FirstOrDefault(candidate => candidate.Label == settings.SpeechProfileLabel);
+        }
+        session.ApplySpeech(settings, profile);
+    }
 
     // Serializes starts: a hotkey hold and a chip click landing together must not each build an instance.
     private readonly SemaphoreSlim _startGate = new(1, 1);
@@ -74,12 +117,23 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         ISwarmAssistantRelay? swarmRelay = null,
         ISwarmLeadership? leadership = null,
         SwarmTakeoverCoordinator? takeover = null,
-        IProjectMemorySourceRegistry? memorySources = null)
+        IProjectMemorySourceRegistry? memorySources = null,
+        ISessionProfileStore? speechProfiles = null,
+        Func<SessionStartComposer>? startComposer = null)
     {
         _sessions = sessions;
         _presence = presence;
         _settings = settings;
         _profiles = profiles;
+        _speechProfiles = speechProfiles;
+        if (speechProfiles is not null)
+        {
+            speechProfiles.Saved += _ => _sessions.OnOwnerThreadAsync(async () =>
+            {
+                await ApplySettingsAsync().ConfigureAwait(true);
+                return true;
+            });
+        }
         _sessionState = sessionState;
         _sessionStateRecorder = sessionStateRecorder;
         _mcpServers = mcpServers;
@@ -89,6 +143,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         _leadership = leadership;
         _takeover = takeover;
         _memorySources = memorySources;
+        _startComposer = startComposer;
         if (leadership is not null) leadership.Changed += (_, _) =>
             LeadershipTransition = _sessions.OnOwnerThreadAsync(_FollowLeadershipAsync);
 
@@ -451,7 +506,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         if (Session is { } live)
         {
             live.ReadingLevel = settings.ReadingLevel;
-            live.ApplySpeech(settings.SpeakReplies);
+            await _ApplySpeechAsync(live, settings, cancellationToken).ConfigureAwait(true);
         }
 
         var current = Session;
@@ -606,7 +661,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
                 consentCardAsks: !settings.ConsentBypassAll,
                 orgRules: await _memory.ReadOrgRulesAsync(cancellationToken).ConfigureAwait(true),
                 // AC-1994: the slot's brain, resolved the way every other start resolves one; the assistant has no project.
-                brainInstruction: SessionStartDefaults.ResolveBrainInstruction(null, profile, _memorySources?.Sources.ToMemorySources())),
+                brainInstruction: await _BrainAndRoleAsync(slot, cancellationToken).ConfigureAwait(true)),
             settings.ReadingLevel)).ConfigureAwait(true);
 
         // Dropped, never assigned to `Session`: that change rebuilt the Simple stand's chat view, whose attach started the assistant again — a loop per layout pass when the start cannot succeed.
@@ -639,7 +694,9 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
             _WatchForUnresolvableResume(session);
         }
 
-        session.ApplySpeech(settings.SpeakReplies);
+        // AC-2230: read again, not the copy from the top of this start — the toggle clicked while the start was running
+        // found no Session to tell (Session is assigned below) and only reached the store.
+        await _ApplySpeechAsync(session, await _settings.LoadAsync(cancellationToken).ConfigureAwait(true), cancellationToken).ConfigureAwait(true);
 
         // A new instance has a new context, and a provider that reports no fill until its first turn would otherwise
         // never take the below-the-line reset — leaving the ask spent before this conversation had used anything.
@@ -1054,7 +1111,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         // AC-1994: the brain goes ahead of the standing instruction, which it adds to and never replaces.
         SessionStartComposer.PutSystemPrompt(options, AssistantStandingInstruction.Compose(
             profile.SystemPrompt, replacesStandingInstruction, memory, currentState, machineMemory, sdkAsksPermission, consentCardAsks, orgRules),
-            brainInstruction);
+            brainInstruction, SessionStartDefaults.ResolveAssistant(null, profile));
 
         return options;
     }

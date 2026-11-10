@@ -21,10 +21,12 @@ public sealed class MarkdownEditorTests
             "---\r\ntitle: Edge cases\r\ntags: [md]\r\n---\r\n# Title\r\n\r\nA footnote[^1] and **bold**.\r\n\r\n<details>\r\n<summary>HTML</summary>\r\n</details>\r\n\r\n"
                 + "| A | B |\r\n|---|:-:|\r\n| 1 | 2 \\| 3 |\r\n\r\n```cs\r\nvar x = 1;\r\n```\r\n\r\n[^1]: The note.\r\n[ref]: https://example.com\r\n",
             "- [ ] mixed\nendings\r\nno newline at the end, trailing space \t ",
+            "# Nested note\r\n\r\n![a picture](assets/my%20image.png)\r\n\r\n![other](../shared/picture.png)\n",
         ];
         foreach (var file in files)
         {
             var editor = new MarkdownEditor { Text = file };
+            editor.ImageLoader = (_, _) => Task.FromResult(Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j1ioAAAAASUVORK5CYII="));
             var window = new Window { Content = editor, Width = 800, Height = 900 };
             window.Show();
             try

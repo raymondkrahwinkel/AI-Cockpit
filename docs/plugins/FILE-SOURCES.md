@@ -1,5 +1,16 @@
 # File sources (AC-1783)
 
+Optional document images (AC-2100) require host 0.161.0, Abstractions 3.72.0 and UI 3.25.0.
+A source can also implement `IFileImageSource.ReadImageAsync(document, target, ct)`. The host forwards
+`FileImageRequest` on `FileImageChannel.Read` and returns `FileSourceAnswer<string>` containing base64
+bytes, bounded to 2 MiB. The source owns path resolution, authorization, bounded/coalesced fetching and
+cache isolation; it must not return credential-bearing URLs. Raise `ConnectionsChanged` on account or
+connection changes to invalidate visible data. Markdown workspaces bind the loader to their `FileRef`.
+Other editor owners may set `IMarkdownEditor.ImageLoader` and call `InvalidateImages` on refresh or
+identity changes. Without a loader the editor keeps image syntax as text. The editor accepts only
+standalone PNG/JPEG/GIF/WebP images, checks a 16 MP header limit before decoding, downsamples, and bounds
+its decoded cache to 32 MiB. Its rendering never changes the source document.
+
 Requires host 0.136.0 and `Cockpit.Plugins.Abstractions` 3.45.0, namespace
 `Cockpit.Plugins.Abstractions.Files`. Abstractions.UI remains 3.16.0; this feature adds no public UI API.
 
@@ -46,6 +57,78 @@ where that backend runs: a future local-file source on a server addresses that s
 AC-1782 can add listing, metadata, watches and streaming later. A future local/SFTP source must supply
 the same conditional-write guarantee before advertising `CanWrite`; stat followed by rename alone
 does not implement compare-and-swap. No live Depot is used by the contract tests.
+
+## Browsing and the host file browser (AC-2236)
+
+Requires host 0.170.0, Abstractions 3.81.0 and Abstractions.UI 3.27.0. Four `IFileSource` methods default
+to `Unsupported`, so an older source compiles and loads unchanged:
+
+| Method | Channel action | Notes |
+|---|---|---|
+| `ListAsync(folder, pageToken, ct)` | `files-list` | One page of `FileEntry` (Id, Name, Path, Kind, Size, Modified, Version); a non-null `NextPageToken` asks for the next. `FileRef.Root(connectionId)` is the top; the source maps "/" to its own root. |
+| `CreateFolderAsync(parent, name, ct)` | `files-mkdir` | Only with `FileSourceCapabilities.CanCreateFolder`. |
+| `CreateFileAsync(parent, name, content, ct)` | `files-create` | Only with `CanCreateFile`; at most 1 MiB. The source names the item and returns its `FileEntry`; an existing name throws `Conflict`. |
+| `ReadRangeAsync(file, offset, count, ct)` | `files-read-range` | At most 1 MiB per block, with the version and the whole file's `Size` from the same snapshot. |
+
+The backend refuses `files-mkdir`, `files-create` and writes on a read-only connection, without the
+capability, or with a name containing a slash, before the source is called. Listing and reading stay open
+on a read-only connection. An entry without Id, Name or Path is rejected. `files-connections` sets
+`FileConnection.CanCreateFolder` and `CanCreateFile` from the source's capabilities and the read-only setting,
+so the browser shows only what the backend allows. The host never builds a path: new files and uploads go
+through `CreateFileAsync`.
+
+During UI initialization, after `AddFileWorkspaceType`, call
+`host.AddFileBrowser(new FileBrowserRegistration("plugin.files", "Files", icon, "plugin.markdown"))`. The host
+adds a dock panel with a connection picker (this computer's connections and each managed server's, over the
+same channel route), a lazily loaded tree, and a detail pane with Download (in 1 MiB blocks; a version change
+mid-download stops and removes the partial copy) and Edit. A click on a Markdown file opens the preview tab,
+Edit a kept tab; New file creates an empty file and opens it. Upload is limited to 1 MiB. A read-only
+connection shows no New, Upload or Edit. Delete, rename and change push are not part of this version.
+
+## Local files (AC-1786)
+
+`plugins-dev/Cockpit.Plugin.LocalFiles` is the first source on the browsing contract: one connection per folder the
+operator adds, read only until writing is switched on. `FileRef.Id` and `Path` are the same '/'-separated path relative to
+the folder. The source resolves every reference against the disk, following each link, and refuses with `Forbidden` what
+lands outside the folder or inside Cockpit's state folder, and any `..`, absolute, UNC or device path, `:` (alternate data
+streams), reserved device name or `.cockpit-tmp-` name. The version is the file's modification time plus its size; a save
+writes `name.cockpit-tmp-<guid>` in the same folder, checks the version again and renames it over the file. One lock per
+process serialises those saves; another program writing between that last check and the rename is not detected.
+A root is only a plain local path (`X:\...` on a fixed disk on Windows; an absolute path other than `/` and outside
+`/proc` elsewhere), and the state folders are compared by the path the OS gives them as well as by text. On Windows
+every opened file and every temp file is checked again by its handle's final path, and a file with more than one hard
+link is not read. On Linux a folder swapped for a link between the check and the open, a hard link and a bind mount
+are not caught.
+The rename gives the file a new inode: on Unix the old mode is copied over, on Windows the folder's ACL applies.
+The refused state folders are the state root plus Cockpit's whole application data folder (`Cockpit` and `Cockpit-Dev`),
+including the session worktrees kept there, so a worktree cannot be added as a folder.
+
+## Server identity (AC-1787)
+
+Requires host 0.170.0 and Abstractions 3.81.0. A source whose server is not trusted yet, or presents another identity than
+the trusted one, throws `FileSourceException(FileSourceErrorKind.HostKey, message)` before it sends anything of the login.
+`Trusted` is the fingerprint the operator trusted (null when none is), `Presented` the one the server showed when it
+differs. Both travel on `FileSourceError`. The browser replaces the tree with a "Server key changed" or "Server key not
+verified" block with both fingerprints and Open connection settings; trusting a key stays in the plugin's settings. An older
+host shows the kind as Files unavailable with the message.
+
+## Remote files (AC-1787)
+
+`plugins-dev/Cockpit.Plugin.RemoteFiles` offers SFTP (SSH.NET), FTPS and FTP (FluentFTP) connections on the same contract.
+`FileRef.Id` and `Path` are the '/'-separated path below the login folder; `..`, `\` and `.cockpit-tmp-` names are refused, and
+the server's own permissions are the boundary. The version is modification time plus size; a save uploads
+`name.cockpit-tmp-<guid>` beside the file, checks the version again and renames it over the file (SFTP `posix-rename`,
+FTP move with overwrite), and removes the temp file in every case. Each call opens and closes its own connection.
+
+Trust is decided inside the handshake, before the login is sent. SFTP: `HostKeyReceived` lets the connection go on only
+when the presented `SHA256:` fingerprint equals the pinned one; an unknown key and a changed key both end the handshake
+with `FileSourceErrorKind.HostKey`, the changed one with `Trusted` and `Presented` set. FTPS: a certificate the system trusts passes;
+any other only when its SHA-256 equals the pinned one, never "accept any". The pin is set only from the settings view, after
+the operator compared the fingerprint that Test connection read where the backend runs. Plain FTP has nothing to pin.
+
+Password, private key (its content, not a path) and passphrase are written with `SetSecret` and travel only towards the
+backend; every answer says whether one is set. Exceptions of both libraries are translated to fixed sentences, and the
+libraries are not connected to Cockpit's logger. On a server, the backend and so every connection run on the server.
 
 ## Host file workspaces (AC-1754)
 

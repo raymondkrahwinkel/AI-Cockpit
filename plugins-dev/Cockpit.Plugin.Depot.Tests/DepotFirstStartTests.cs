@@ -82,7 +82,7 @@ public sealed class DepotFirstStartTests
         }
         // The sign-in lists the backups (C1) before it reads the manifest (C2); only the manifest reads are at stake here.
         var manifestReads = depot.Requests.Where(uri => uri.AbsolutePath == "/cockpit/manifest").ToList();
-        Assert.Empty(manifestReads[0].Query);
+        Assert.Equal("?storeAuth=depot", manifestReads[0].Query);
         if (!multipleOrganizations)
         {
             Assert.Equal("{}", answer.Manifest);
@@ -112,7 +112,7 @@ public sealed class DepotFirstStartTests
             .Deserialize<DepotFirstStartManifestAnswer>(DepotChannel.Json);
 
         Assert.Equal("{}", selected?.Manifest);
-        Assert.Equal("?org=globex", depot.Requests.Last(uri => uri.AbsolutePath == "/cockpit/manifest").Query);
+        Assert.Equal("?org=globex&storeAuth=depot", depot.Requests.Last(uri => uri.AbsolutePath == "/cockpit/manifest").Query);
     }
 
     private sealed class _NotFound : HttpMessageHandler
@@ -134,7 +134,7 @@ public sealed class DepotFirstStartTests
                 return Task.FromResult(_Response(HttpStatusCode.OK, "[]", "application/json"));
             }
 
-            if (multipleOrganizations && string.IsNullOrEmpty(requestUri.Query))
+            if (multipleOrganizations && !requestUri.Query.Contains("org=", StringComparison.Ordinal))
             {
                 return Task.FromResult(_Response(HttpStatusCode.MultipleChoices, """{"format":"cockpit.provision.choice","formatVersion":1,"organizations":[{"slug":"acme","name":"Acme BV"},{"slug":"globex","name":"Globex"}]}""", "application/vnd.cockpit.provision-choice+json"));
             }

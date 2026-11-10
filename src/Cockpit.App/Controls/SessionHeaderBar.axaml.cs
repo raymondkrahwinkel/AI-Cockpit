@@ -34,5 +34,13 @@ public partial class SessionHeaderBar : UserControl
         Program.Services?.GetService<CockpitViewModel>()?.ShowTestRunsCommand.Execute(null);
     }
 
+    private void OnOpenSessionMcp(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is SessionPanelViewModel session)
+        {
+            Program.Services?.GetService<CockpitViewModel>()?.OpenSessionMcpCommand.Execute(session);
+        }
+    }
+
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
 }

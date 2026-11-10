@@ -52,6 +52,12 @@
         <Style Selector="materialIcons|MaterialIcon.statusIcon.done">
             <Setter Property="Foreground" Value="{DynamicResource CockpitStatusDoneBrush}"/>
         </Style>
+        <Style Selector="TextBlock.runSummary">
+            <Setter Property="Foreground" Value="{DynamicResource CockpitStatusErrorBrush}"/>
+        </Style>
+        <Style Selector="TextBlock.runSummary.passed">
+            <Setter Property="Foreground" Value="{DynamicResource CockpitStatusDoneBrush}"/>
+        </Style>
     </UserControl.Styles>
 
     <!-- AC-722: one transcript row, shared by SessionView and AssistantChatWindow so a feature added to the
@@ -127,6 +133,11 @@
                         <TextBlock Text="{Binding SenderLabel, StringFormat='from {0}'}" FontSize="11.5" VerticalAlignment="Center"
                                    TextTrimming="CharacterEllipsis"
                                    Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        <Button Command="{Binding ToggleExpandedCommand}" Classes="Subtle Compact"
+                                Foreground="{DynamicResource CockpitTextFaintBrush}"
+                                AutomationProperties.Name="Show or hide the full message">
+                            <materialIcons:MaterialIcon Kind="{Binding ToggleIconKind}" Width="12" Height="12"/>
+                        </Button>
                         <StackPanel Classes="rowActions" Orientation="Horizontal">
                             <!-- Assistant threads (§ 9.6): drag onto a thread, or click, Enter or M for Move to project. -->
                             <Button Classes="Subtle Compact threadGrip" IsVisible="{Binding Session.ShowsThreadTools, FallbackValue=False}"
@@ -139,7 +150,9 @@
                             </Button>
                         </StackPanel>
                     </StackPanel>
-                    <views:MarkdownView Markdown="{Binding Text}" HorizontalAlignment="Stretch"
+                    <TextBlock Text="{Binding RunSummary}" FontSize="12" TextTrimming="CharacterEllipsis"
+                               Classes="runSummary" Classes.passed="{Binding IsRunPassed}" IsVisible="{Binding ShowsRunSummary}"/>
+                    <views:MarkdownView IsVisible="{Binding ShowsInboxBody}" Markdown="{Binding Text}" HorizontalAlignment="Stretch"
                                         BasePath="{Binding Session.WorkingDirectory}"/>
                 </StackPanel>
             </Border>
@@ -488,6 +501,16 @@
                                 Foreground="{DynamicResource CockpitTextFaintBrush}"
                                 ToolTip.Tip="Reply to this message">
                             <materialIcons:MaterialIcon Kind="CommentArrowLeftOutline" Width="13" Height="13"/>
+                        </Button>
+                        <Button x:Name="ReadFullReplyButton" Classes="Subtle Compact"
+                                Foreground="{DynamicResource CockpitTextFaintBrush}"
+                                IsVisible="{Binding Session.IsTheVoiceAssistant}"
+                                IsEnabled="{Binding Session.IsAudioAvailable}"
+                                ToolTip.ShowOnDisabled="True"
+                                ToolTip.Tip="Read full reply aloud"
+                                AutomationProperties.Name="Read full reply aloud"
+                                Command="{Binding Session.ReadFullReplyCommand}" CommandParameter="{Binding}">
+                            <materialIcons:MaterialIcon Kind="VolumeHigh" Width="13" Height="13"/>
                         </Button>
                         <Button Classes="Subtle Compact" Click="_OnCopyMessageClick"
                                 Foreground="{DynamicResource CockpitTextFaintBrush}"
