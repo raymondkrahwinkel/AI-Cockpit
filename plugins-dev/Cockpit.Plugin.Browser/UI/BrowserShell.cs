@@ -14,7 +14,7 @@ namespace Cockpit.Plugin.Browser.UI;
 
 // The browser as you see it (AC-1711, mockup screens 1-3): profile switch and tabs, address bar, the codec bar
 // and the page. One instance per process; BrowserHome hangs it in the tab or the rail. With no engine it shows why.
-internal sealed class BrowserShell : UserControl
+internal sealed class BrowserShell : UserControl, IDisposable
 {
     private static readonly Color AgentPurple = Color.Parse("#A67CD8");
 
@@ -45,6 +45,7 @@ internal sealed class BrowserShell : UserControl
     private readonly BrowserTabSession? _tabSession;
     private BrowserTab? _watched;
     private bool _compact;
+    private bool _disposed;
 
     public BrowserShell(BrowserModel model, AgentTabsModel agents, Action<string> openExternally, TabGrantRegistry? grants = null, Action<BrowserTab>? shareRequested = null, BrowserTabSession? tabSession = null)
     {
@@ -55,7 +56,7 @@ internal sealed class BrowserShell : UserControl
         _grants = grants ?? new TabGrantRegistry();
         _shareRequested = shareRequested;
         _tabSession = tabSession;
-        _grants.Changed += () => Dispatcher.UIThread.Post(_Refresh);
+        _grants.Changed += _GrantsChanged;
         _lastReadTicker.Tick += (_, _) => _RefreshShareBar();
 
         _back = _IconButton(MaterialIconKind.ArrowLeft, "Back", () => _model.Active?.View.GoBack());
@@ -175,7 +176,7 @@ internal sealed class BrowserShell : UserControl
         _model.Changed += _Refresh;
         _agents.Changed += _Refresh;
         _visibility.Tick += (_, _) => _UpdateViewing();
-        _model.Engine.Changed += (_, _) => Avalonia.Threading.Dispatcher.UIThread.Post(_OnEngineChanged);
+        _model.Engine.Changed += _EngineChanged;
         ShowBackToTab(false);
         _Refresh();
     }
@@ -218,6 +219,10 @@ internal sealed class BrowserShell : UserControl
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
+        if (_disposed)
+        {
+            return;
+        }
         _visibility.Start();
         _ = _model.Engine.EnsureStartedAsync();
     }
@@ -232,6 +237,10 @@ internal sealed class BrowserShell : UserControl
 
     private void _OnEngineChanged()
     {
+        if (_disposed)
+        {
+            return;
+        }
         if (_model.Engine.State == BrowserEngineState.Ready && _model.Tabs.Count == 0)
         {
             _tabSession?.Restore(_model);
@@ -244,6 +253,31 @@ internal sealed class BrowserShell : UserControl
         }
 
         _Refresh();
+    }
+
+    private void _GrantsChanged() => Dispatcher.UIThread.Post(() =>
+    {
+        if (_disposed == false)
+        {
+            _Refresh();
+        }
+    });
+
+    private void _EngineChanged(object? sender, EventArgs args) => Dispatcher.UIThread.Post(_OnEngineChanged);
+
+    public void Dispose()
+    {
+        _disposed = true;
+        _visibility.Stop();
+        _lastReadTicker.Stop();
+        _grants.Changed -= _GrantsChanged;
+        _model.Engine.Changed -= _EngineChanged;
+        _model.Changed -= _Refresh;
+        _agents.Changed -= _Refresh;
+        if (_watched is not null)
+        {
+            _watched.Changed -= _Refresh;
+        }
     }
 
     private void _Refresh()

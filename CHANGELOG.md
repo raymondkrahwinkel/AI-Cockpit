@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2157: give each Browser enable its own engine host and stop it during plugin teardown, keeping profiles and caches and leaving a cancelled application shutdown usable.
+
 - AC-2156: mute and unmute each development Browser host tab independently, show its media playback status, and clear the sound indicator when the tab or engine stops.
 
 - AC-2155: show select menus and open new-tab links in development Browser host tabs, keep popup clicks aligned across display scales, and clear menus when the tab or engine closes.
