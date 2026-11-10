@@ -32,6 +32,7 @@ internal sealed class HostBrowserView : BrowserView
     private Vector _wheelRest;
     private (string? Origin, Guid? Grant) _control;
     private long _controlRevision;
+    private long _focusRevision;
     private long _heldId;
     private bool _heldOpen;
     private readonly TaskCompletionSource _created = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -149,7 +150,8 @@ internal sealed class HostBrowserView : BrowserView
         {
             return;
         }
-        var command = new Command(operation, JsonSerializer.SerializeToElement(payload));
+        var command = new Command(operation, JsonSerializer.SerializeToElement(payload),
+            payload is BrowserTabInput { Kind: "key" } ? _focusRevision : null);
         lock (_commandGate)
         {
             if (payload is BrowserTabInput { Kind: "move" or "wheel" } pointer)
@@ -157,6 +159,11 @@ internal sealed class HostBrowserView : BrowserView
                 ref Command? pending = ref (pointer.Kind == "move" ? ref _move : ref _wheel);
                 if (pending is { } queued)
                 {
+                    if (pointer.Kind == "wheel")
+                    {
+                        var previous = queued.Payload.Deserialize<BrowserTabInput>() ?? throw new InvalidDataException("Missing queued browser input.");
+                        command.Payload = JsonSerializer.SerializeToElement(pointer with { DeltaX = previous.DeltaX + pointer.DeltaX, DeltaY = previous.DeltaY + pointer.DeltaY });
+                    }
                     queued.Payload = command.Payload;
                     return;
                 }
@@ -206,6 +213,10 @@ internal sealed class HostBrowserView : BrowserView
                         _wheel = null;
                     }
                     payload = command.Payload;
+                }
+                if (command.FocusRevision is { } revision && revision != Volatile.Read(ref _focusRevision))
+                {
+                    continue;
                 }
                 await _host.Connection.CallAsync(TabId, "operator", command.Operation, payload, BrowserIpcLimits.Deadline).ConfigureAwait(false);
             }
@@ -465,18 +476,24 @@ internal sealed class HostBrowserView : BrowserView
     protected override void OnGotFocus(FocusChangedEventArgs e)
     {
         base.OnGotFocus(e);
+        Interlocked.Increment(ref _focusRevision);
         _Queue("tab.input", new BrowserTabInput("focus"));
     }
     protected override void OnLostFocus(FocusChangedEventArgs e)
     {
         base.OnLostFocus(e);
+        Interlocked.Increment(ref _focusRevision);
         _Queue("tab.input", new BrowserTabInput("focus", Up: true));
     }
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
+        if (IsFocused == false)
+        {
+            return;
+        }
         OnOperatorInput();
-        _Queue("tab.input", new BrowserTabInput("key", Flags: _Modifiers(e.KeyModifiers), Key: KeyCodes.ToWindows(e.Key)));
+        _Key(e);
         if (e.Key == Key.Enter)
         {
             _Queue("tab.input", new BrowserTabInput("key", Flags: _Modifiers(e.KeyModifiers), Key: 13, Character: 13));
@@ -486,24 +503,42 @@ internal sealed class HostBrowserView : BrowserView
     protected override void OnKeyUp(KeyEventArgs e)
     {
         base.OnKeyUp(e);
-        _Queue("tab.input", new BrowserTabInput("key", Flags: _Modifiers(e.KeyModifiers), Key: KeyCodes.ToWindows(e.Key), Up: true));
+        if (IsFocused == false)
+        {
+            return;
+        }
+        _Key(e, up: true);
         e.Handled = true;
     }
     protected override void OnTextInput(TextInputEventArgs e)
     {
         base.OnTextInput(e);
+        if (IsFocused == false)
+        {
+            return;
+        }
+        OnOperatorInput();
         foreach (char character in e.Text ?? string.Empty)
         {
             _Queue("tab.input", new BrowserTabInput("key", Key: character, Character: character));
         }
         e.Handled = true;
     }
+    private void _Key(KeyEventArgs e, bool up = false)
+    {
+        int code = KeyCodes.ToWindows(e.Key);
+        if (code != 0)
+        {
+            _Queue("tab.input", new BrowserTabInput("key", Flags: _Modifiers(e.KeyModifiers), Key: code, Up: up));
+        }
+    }
     private static int _Modifiers(KeyModifiers modifiers) => (modifiers.HasFlag(KeyModifiers.Shift) ? 2 : 0)
         | (modifiers.HasFlag(KeyModifiers.Control) ? 4 : 0) | (modifiers.HasFlag(KeyModifiers.Alt) ? 8 : 0);
 
-    private sealed class Command(string operation, JsonElement payload)
+    private sealed class Command(string operation, JsonElement payload, long? focusRevision)
     {
         internal string Operation { get; } = operation;
+        internal long? FocusRevision { get; } = focusRevision;
         internal JsonElement Payload { get; set; } = payload;
     }
 }

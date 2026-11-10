@@ -26,6 +26,7 @@ internal sealed partial class BrowserHostTab : IAsyncDisposable
     private byte[] _pendingPixels = [];
     private long _pendingFrameId;
     private bool _closing;
+    private bool _focused;
     private bool _creationPending;
     private long _frameId;
     private long _bufferRevision;
@@ -112,10 +113,20 @@ internal sealed partial class BrowserHostTab : IAsyncDisposable
                 host.WasResized();
                 break;
             case "tab.visible":
+                if (message.Payload.GetBoolean() == false)
+                {
+                    _focused = false;
+                    host.SetFocus(false);
+                }
                 host.WasHidden(message.Payload.GetBoolean() == false);
                 break;
             case "tab.input":
                 var input = message.Payload.Deserialize<BrowserTabInput>() ?? throw new InvalidDataException("Missing browser input.");
+                // AC-2153: CEF still accepts editing shortcuts after SetFocus(false), including OS clipboard access.
+                if (input.Kind == "key" && _focused == false)
+                {
+                    break;
+                }
                 if (input.Up == false && input.Kind is ("click" or "wheel" or "key"))
                 {
                     _TakeOver();
@@ -315,24 +326,29 @@ internal sealed partial class BrowserHostTab : IAsyncDisposable
             checked((int)Math.Ceiling(size.Height * size.Scale))).ByteLength;
     }
 
-    private static void _Input(CefBrowserHost host, BrowserTabInput input)
+    private void _Input(CefBrowserHost host, BrowserTabInput input)
     {
         var mouse = new CefMouseEvent(input.X, input.Y, (CefEventFlags)input.Flags);
         switch (input.Kind)
         {
             case "move": host.SendMouseMoveEvent(mouse, input.Up); break;
             case "click" when Enum.IsDefined((CefMouseButtonType)input.Button) && input.Count is > 0 and <= 3:
+                _focused = true;
                 host.SetFocus(true);
                 host.SendMouseClickEvent(mouse, (CefMouseButtonType)input.Button, input.Up, input.Count);
                 break;
             case "wheel": host.SendMouseWheelEvent(mouse, input.DeltaX, input.DeltaY); break;
-            case "focus": host.SetFocus(input.Up == false); break;
+            case "focus":
+                _focused = input.Up == false;
+                host.SetFocus(_focused);
+                break;
             case "key" when input.Character is >= 0 and <= char.MaxValue:
                 host.SendKeyEvent(new CefKeyEvent
                 {
                     EventType = input.Character != 0 ? CefKeyEventType.Char : input.Up ? CefKeyEventType.KeyUp : CefKeyEventType.RawKeyDown,
                     WindowsKeyCode = input.Key, Character = (char)input.Character, UnmodifiedCharacter = (char)input.Character,
                     Modifiers = (CefEventFlags)input.Flags,
+                    IsSystemKey = (input.Flags & (int)CefEventFlags.AltDown) != 0,
                 });
                 break;
             default: throw new InvalidDataException("Invalid browser input.");

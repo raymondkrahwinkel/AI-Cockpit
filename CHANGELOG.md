@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2153: keep Browser host copy, cut, paste and typed text in the focused tab, refuse late keys after focus moves or the host stops, and retain accumulated touchpad scrolling.
+
 - AC-2152: choose operator downloads and upload files in the Browser host through the normal file dialog; cancel pending choices and transfers on control changes or shutdown, and refuse downloads and file choosers while an agent controls the tab.
 
 - AC-2151: tie an agent browser's endpoint to its own run, so a session left with an endpoint from before a restart or disable cannot reach another browser; stopping, a crash or disabling the plugin now cancels pending agent calls and network connections first and forgets that run's tabs.
