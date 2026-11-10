@@ -404,7 +404,7 @@ public partial class CockpitViewModel
         RefreshPaneVisibility();
     }
 
-    internal Action<string> OpenRemoteWindow { get; set; } = RemoteWindowProcess.Open;
+    internal Action<string> OpenRemoteWindow { get; set; } = Composition.RemoteWindowProcess.Open;
 
     [RelayCommand]
     private void OpenServerWindow(ServerGroupViewModel group)

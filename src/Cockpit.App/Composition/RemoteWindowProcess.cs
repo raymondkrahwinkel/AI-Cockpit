@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using Cockpit.Infrastructure.BackendApi;
 
-namespace Cockpit.App.Services;
+namespace Cockpit.App.Composition;
 
 internal static class RemoteWindowProcess
 {
