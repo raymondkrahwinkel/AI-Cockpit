@@ -15,7 +15,7 @@ namespace Cockpit.Infrastructure.Sessions.Tty;
 // Default `ITtyLauncher`: builds the host environment, asks the provider how its CLI starts, and spawns it in a
 // pseudo console (`IPtyHostFactory`, platform-agnostic). Provider-specific pieces (executable, flags, config
 // directory, status relay) live in `ITtySessionProvider`; what's left here is what every TUI needs identically.
-internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemoryLimiter memoryLimiter, SessionMcpKeyring keyring, ILogger<TtyLauncher> logger, ISessionProcessAnchor? processAnchor = null, IOrgPolicy? orgPolicy = null, IWorktreeManager? worktreeManager = null, SessionStdioProcesses? stdioProcesses = null) : ITtyLauncher, ISingletonService
+internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemoryLimiter memoryLimiter, SessionMcpKeyring keyring, ILogger<TtyLauncher> logger, ISessionProcessAnchor? processAnchor = null, IOrgPolicy? orgPolicy = null, IWorktreeManager? worktreeManager = null, SessionStdioProcesses? stdioProcesses = null, GuardNotifications? guardNotifications = null) : ITtyLauncher, ISingletonService
 {
     public IConPtyProcess Launch(
         ITtySessionProvider provider,
@@ -180,7 +180,8 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemory
         // wrapping so its revoke runs on dispose, even when the provider itself wrote no session-scoped files.
         return new TtyProcessOwningSessionFiles(
             process, spec.SessionScopedFiles, spec.StatusFile, keyring, paneId, mintedToken, memoryCap, anchor,
-            processToWait => SessionScratchCleanup.DeleteAsync(scratch, scratchPane, worktreeManager, logger, processToWait).GetAwaiter().GetResult());
+            processToWait => SessionScratchCleanup.DeleteAsync(scratch, scratchPane, worktreeManager, logger, processToWait).GetAwaiter().GetResult(),
+            spec.StatusFile is null ? null : guardNotifications?.Watch(scratchPane, spec.StatusFile));
     }
 
     // AC-1593: launch-time, so the TTY route meets the same mode ceiling as the SDK start (AC-294). Launch already runs

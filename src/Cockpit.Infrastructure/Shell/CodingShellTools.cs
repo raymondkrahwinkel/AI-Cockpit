@@ -11,7 +11,7 @@ namespace Cockpit.Infrastructure.Shell;
 // The `cockpit-coding-shell` MCP tool (AC-1489): opencode's synchronous shell for a model on an HTTP provider, so it
 // runs a build or a test and reads the outcome in one call instead of polling start_run. Named `shell`, not `bash`:
 // on Windows it is PowerShell, and under the name bash a model writes bash syntax that fails there.
-internal sealed class CodingShellTools(ISessionRegistry sessions, IShellCommandRunner runner, Func<string, bool>? executableExists = null, IOrgPolicy? orgPolicy = null)
+internal sealed class CodingShellTools(ISessionRegistry sessions, IShellCommandRunner runner, Func<string, bool>? executableExists = null, IOrgPolicy? orgPolicy = null, GuardNotifications? guardNotifications = null)
 {
     private const int DefaultTimeoutMs = 120_000;
     private const int MaxTimeoutMs = 600_000;
@@ -31,12 +31,12 @@ internal sealed class CodingShellTools(ISessionRegistry sessions, IShellCommandR
         }
 
         var session = sessions.Find(McpRequestContext.CurrentPaneId ?? string.Empty);
-        if (!CodingTools.TryResolveFor(session, workdir ?? ".", orgPolicy?.Current, out var directory, out var error, out var warning))
+        if (!CodingTools.TryResolveFor(session, workdir ?? ".", orgPolicy?.Current, out var directory, out var error, out var warning, violation => guardNotifications?.Report(McpRequestContext.CurrentPaneId ?? string.Empty, violation), "shell"))
         {
             return error;
         }
 
-        var kill = CodingTools.KillDecision(session, McpRequestContext.CurrentPaneId ?? string.Empty, command, directory, orgPolicy?.Current);
+        var kill = CodingTools.KillDecision(session, McpRequestContext.CurrentPaneId ?? string.Empty, command, directory, orgPolicy?.Current, violation => guardNotifications?.Report(McpRequestContext.CurrentPaneId ?? string.Empty, violation));
         if (kill.Deny)
         {
             return $"Error: {kill.Message}";

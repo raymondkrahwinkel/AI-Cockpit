@@ -15,7 +15,8 @@ internal sealed class TtyProcessOwningSessionFiles(
     string? token = null,
     IDisposable? memoryCap = null,
     IDisposable? processAnchor = null,
-    Action<System.Diagnostics.Process?>? cleanupScratch = null)
+    Action<System.Diagnostics.Process?>? cleanupScratch = null,
+    IDisposable? guardJournal = null)
     : IConPtyProcess, ITtyStatusFile
 {
     public Stream InputStream => inner.InputStream;
@@ -32,6 +33,7 @@ internal sealed class TtyProcessOwningSessionFiles(
     {
         var process = cleanupScratch is null ? null : SessionScratchCleanup.CaptureProcess(inner.ProcessId);
         inner.Dispose();
+        guardJournal?.Dispose();
 
         foreach (var path in sessionScopedFiles)
         {

@@ -15,7 +15,7 @@ using Cockpit.Plugins.Shared;
 namespace Cockpit.Infrastructure.Sessions;
 
 // AC-2247: bounded coding tools share the calling session's guardrail policy.
-internal sealed class CodingTools(ISessionRegistry sessions, IShellCommandRunner runner, IOrgPolicy? orgPolicy = null)
+internal sealed class CodingTools(ISessionRegistry sessions, IShellCommandRunner runner, IOrgPolicy? orgPolicy = null, GuardNotifications? guardNotifications = null)
 {
     internal const string EndpointName = "cockpit-coding";
     internal const string ShellEndpointName = "cockpit-coding-shell";
@@ -203,7 +203,7 @@ internal sealed class CodingTools(ISessionRegistry sessions, IShellCommandRunner
         [Description("The text to put in its place.")] string newString,
         [Description("Replace every occurrence instead of exactly one. Default false.")] bool replaceAll = false)
     {
-        if (!_TryResolve(filePath, out var path, out var error, out var warning))
+        if (!_TryResolve(filePath, out var path, out var error, out var warning, "write"))
         {
             return error;
         }
@@ -258,7 +258,7 @@ internal sealed class CodingTools(ISessionRegistry sessions, IShellCommandRunner
         [Description("The file, relative to your working directory or absolute in a session-allowed path.")] string filePath,
         [Description("The complete content of the file.")] string content)
     {
-        if (!_TryResolve(filePath, out var path, out var error, out var warning))
+        if (!_TryResolve(filePath, out var path, out var error, out var warning, "write"))
         {
             return error;
         }
@@ -297,10 +297,11 @@ internal sealed class CodingTools(ISessionRegistry sessions, IShellCommandRunner
 
     private static StringComparison _PathComparison => OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
-    private bool _TryResolve(string relative, out string path, out string error, out string warning) =>
-        TryResolveFor(sessions.Find(McpRequestContext.CurrentPaneId ?? string.Empty), relative, orgPolicy?.Current, out path, out error, out warning);
+    private bool _TryResolve(string relative, out string path, out string error, out string warning, string tool = "access") =>
+        TryResolveFor(sessions.Find(McpRequestContext.CurrentPaneId ?? string.Empty), relative, orgPolicy?.Current, out path, out error, out warning,
+            violation => guardNotifications?.Report(McpRequestContext.CurrentPaneId ?? string.Empty, violation), tool);
 
-    internal static bool TryResolveFor(ISessionHandle? session, string relative, ProvisionPolicy? policy, out string path, out string error, out string warning)
+    internal static bool TryResolveFor(ISessionHandle? session, string relative, ProvisionPolicy? policy, out string path, out string error, out string warning, Action<GuardViolation>? report = null, string tool = "access")
     {
         warning = string.Empty;
         var root = session?.WorkingDirectory;
@@ -322,6 +323,7 @@ internal sealed class CodingTools(ISessionRegistry sessions, IShellCommandRunner
         {
             return true;
         }
+        report?.Invoke(new(environment["COCKPIT_GUARD_MODE"], tool, path, environment["COCKPIT_GUARD_MODE"] == GuardrailMode.Strict.ToString(), "path"));
         if (environment["COCKPIT_GUARD_MODE"] == GuardrailMode.Warn.ToString())
         {
             warning = $"guardrail: {path} is outside the session boundary";
@@ -333,10 +335,17 @@ internal sealed class CodingTools(ISessionRegistry sessions, IShellCommandRunner
     }
 
     // AC-2250: these tools run as children of the cockpit, so only the calling session's own job counts as owned.
-    internal static GuardDecision KillDecision(ISessionHandle? session, string paneId, string command, string directory, ProvisionPolicy? policy) =>
-        CommandGuard.EvaluateKill(command, CommandGuard.SessionScope(null, paneId, directory,
+    internal static GuardDecision KillDecision(ISessionHandle? session, string paneId, string command, string directory, ProvisionPolicy? policy, Action<GuardViolation>? report = null)
+    {
+        var decision = CommandGuard.EvaluateKill(command, CommandGuard.SessionScope(null, paneId, directory,
                 string.IsNullOrEmpty(paneId) ? null : SessionScratch.JobNameOf(SessionScratch.PathFor(paneId))),
             OrgPolicyCeilings.GuardrailMode(policy, session?.ActiveProfile?.GuardrailMode ?? SessionProfileEntry.ExistingProfileGuardrailMode));
+        foreach (var violation in decision.Violations)
+        {
+            report?.Invoke(violation);
+        }
+        return decision;
+    }
 
     internal static string WithWarning(string warning, string result) =>
         warning.Length == 0 ? result : $"{warning}\n{result}";

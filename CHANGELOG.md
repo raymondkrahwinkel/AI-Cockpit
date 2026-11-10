@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2251: path and process guard decisions appear as ordinary notifications with the session name, limited to one per session and target every five minutes.
+
 - AC-2250: on Strict, a session may only stop processes in its own process tree (its Windows job, so a process it started with `Start-Process` still counts) and containers it started with `--label cockpit.pane=$COCKPIT_PANE_ID`. `dotnet build-server shutdown` and stopping by name (`taskkill /IM`, `Stop-Process -Name`, `pkill`, `killall`, a piped `Stop-Process`) are refused without an extra prompt, with a reason that says what is allowed; this covers Claude on TTY and SDK, the local-model `shell` tool and `start_run`. On Warn the command runs and the agent gets a warning.
 
 - AC-2248: on Strict, a Claude session (TTY and SDK, bypass included) is refused, without an extra prompt, when it writes outside its worktree, its scratch folder and the profile's allowed paths with Write, Edit, MultiEdit or NotebookEdit, or with a recognisable shell write (`>`, `tee`, `cp`, `Set-Content` and the like). Interpreters such as `python -c` still get past the shell check. On Warn the write goes ahead and the agent is told it crossed the boundary.

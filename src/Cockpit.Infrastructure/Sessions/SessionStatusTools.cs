@@ -34,7 +34,8 @@ internal sealed class SessionStatusTools(
     // AC-1717: null only in a test graph that keeps no session timeline.
     SessionTimelineRecorder? timeline = null,
     // AC-1911: null only in test graphs that have no live session registry.
-    ISessionRegistry? sessions = null)
+    ISessionRegistry? sessions = null,
+    GuardNotifications? guardNotifications = null)
 {
     private string? _ShellRefusal() => OrgPolicyCeilings.ShellForbidden(orgPolicy?.Current)
         ? _Error($"{orgPolicy?.Current?.By} does not allow agents to run commands on this machine.")
@@ -148,13 +149,13 @@ internal sealed class SessionStatusTools(
             return _Error("`command` and `workingDirectory` are both required.");
         }
 
-        if (!TryResolveRunWorkingDirectory(sessions, caller, workingDirectory, out workingDirectory, out var confinementRefusal, out var guardrailWarning, orgPolicy?.Current))
+        if (!TryResolveRunWorkingDirectory(sessions, caller, workingDirectory, out workingDirectory, out var confinementRefusal, out var guardrailWarning, orgPolicy?.Current, violation => guardNotifications?.Report(caller, violation)))
         {
             return _Error(confinementRefusal);
         }
 
         var kill = CodingTools.KillDecision(sessions?.Find(caller), caller,
-            string.Join(' ', new[] { command }.Concat(arguments ?? []).Select(word => $"\"{word.Replace('"', '\'')}\"")), workingDirectory, orgPolicy?.Current);
+            string.Join(' ', new[] { command }.Concat(arguments ?? []).Select(word => $"\"{word.Replace('"', '\'')}\"")), workingDirectory, orgPolicy?.Current, violation => guardNotifications?.Report(caller, violation));
         if (kill.Deny)
         {
             return _Error(kill.Message!);
@@ -200,7 +201,8 @@ internal sealed class SessionStatusTools(
         out string workingDirectory,
         out string error,
         out string warning,
-        ProvisionPolicy? policy = null)
+        ProvisionPolicy? policy = null,
+        Action<Cockpit.Plugins.Shared.GuardViolation>? report = null)
     {
         warning = string.Empty;
         var session = sessions?.Find(caller);
@@ -212,7 +214,7 @@ internal sealed class SessionStatusTools(
             return true;
         }
 
-        return CodingTools.TryResolveFor(session, requested, policy, out workingDirectory, out error, out warning);
+        return CodingTools.TryResolveFor(session, requested, policy, out workingDirectory, out error, out warning, report, "start_run");
     }
 
     [McpServerTool(Name = "run_status", ReadOnly = true)]
