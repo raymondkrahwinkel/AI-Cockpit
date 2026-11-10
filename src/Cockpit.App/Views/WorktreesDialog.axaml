@@ -33,7 +33,7 @@
         <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,12" IsVisible="{Binding IsRemote}">
             <ComboBox ItemsSource="{Binding RemoteProjects}" SelectedItem="{Binding SelectedRemoteProject}" MinWidth="160"
                       AutomationProperties.Name="Project"/>
-            <TextBox Text="{Binding NewWorktreeLabel}" Watermark="Worktree label (optional)" MaxLength="64" MinWidth="200"/>
+            <TextBox Text="{Binding NewWorktreeLabel}" PlaceholderText="Worktree label (optional)" MaxLength="64" MinWidth="200"/>
             <Button Content="Create worktree" Command="{Binding CreateWorktreeCommand}" ToolTip.ShowOnDisabled="True"
                     ToolTip.Tip="Select a project on the server to create a worktree."/>
         </StackPanel>
