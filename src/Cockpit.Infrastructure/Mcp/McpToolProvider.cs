@@ -118,13 +118,19 @@ internal sealed partial class McpToolProvider(
     // AC-2220: the query parameter the session's brain hangs on one server, on the upstream address the agent never sees.
     private List<McpServerConfig> _WithBrainQuery(IEnumerable<McpServerConfig> servers, string? paneId)
     {
-        var query = paneId is null ? null : SessionStartDefaults.ResolveBrainMcpServerQuery(_mounts?.Set(paneId)?.Context?.Brain, memorySources?.Sources.ToMemorySources());
-        var applied = servers.Select(server => query?.ApplyTo(server) ?? server).ToList();
-        if (query is not null)
+        var query = _BrainQuery(paneId);
+        return servers.Select(server => query?.ApplyTo(server) ?? server).ToList();
+    }
+
+    private McpServerQueryParameter? _BrainQuery(string? paneId) => paneId is null ? null
+        : SessionStartDefaults.ResolveBrainMcpServerQuery(_mounts?.Set(paneId)?.Context?.Brain, memorySources?.Sources.ToMemorySources());
+
+    private void _LogBrainQuery(McpServerConfig server, string? paneId)
+    {
+        if (_BrainQuery(paneId) is { } query && string.Equals(server.Name, query.ServerName, StringComparison.OrdinalIgnoreCase))
         {
             _logger.LogInformation("MCP server {Server} for session {Pane} carries the brain parameter {Name}={Value}.", query.ServerName, paneId, query.Name, query.Value);
         }
-        return applied;
     }
 
     internal IMcpToolSession CreateGatewaySession(string paneId, string token, SessionMcpContext? context) =>

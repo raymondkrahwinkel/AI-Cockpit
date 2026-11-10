@@ -5,6 +5,8 @@ using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Microsoft.Extensions.AI;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Infrastructure.Plugins;
+using Cockpit.Plugins.Abstractions.Projects;
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
@@ -55,6 +57,7 @@ public partial class McpClientConnectorTests
     private static async Task _AssertGatewayContractAsync(InProcessMcpHttpServer upstream, McpClient direct)
     {
         _AssertToolNameRules();
+        await _AssertBrainConnectionCacheAsync(upstream);
         var config = new McpServerConfig { Name = "depot", Transport = McpTransport.Http, Url = upstream.Url };
         var registry = new List<McpServerConfig> { config };
         var catalog = Substitute.For<IMcpServerCatalog>();
@@ -146,5 +149,35 @@ public partial class McpClientConnectorTests
         {
             Directory.Delete(directory, recursive: true);
         }
+    }
+
+    // Category C: a connection report must not replace the cached upstream by dropping its brain query (AC-2310).
+    private static async Task _AssertBrainConnectionCacheAsync(InProcessMcpHttpServer upstream)
+    {
+        var config = new McpServerConfig { Name = "depot", Transport = McpTransport.Http, Url = upstream.Url };
+        var catalog = Substitute.For<IMcpServerCatalog>();
+        catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(_ => new[] { config });
+        var memory = new ProjectMemorySourceRegistry();
+        memory.Register(new ProjectMemorySourceRegistration("depot", "Depot", "Load brain")
+        {
+            BrainMcpServerQuery = _ => new("depot", "brain", "krahwinkel-it/zyra"),
+        });
+        var mounts = new SessionMcpMounts();
+        mounts.Bind("brain-cache", new SessionMcpContext(null, "", null, "agent") { Brain = "depot:krahwinkel-it/zyra" });
+        mounts.Grant("brain-cache", ["depot"]);
+        var keyring = new SessionMcpKeyring();
+        var provider = new McpToolProvider(catalog, Substitute.For<IMcpOAuthAuthorizer>(), Substitute.For<IMcpOAuthCoordinator>(),
+            new McpAuthKey(), keyring, NullLogger<McpToolProvider>.Instance, mounts: mounts, memorySources: memory);
+        await using var session = provider.CreateGatewaySession("brain-cache", keyring.TokenFor("brain-cache"), mounts.Set("brain-cache")?.Context);
+        var servers = await provider.GatewayServersAsync("brain-cache", CancellationToken.None);
+        await session.UpdateServersAsync(servers);
+        Assert.Single(session.Tools);
+        catalog.ClearReceivedCalls();
+        await session.UpdateServersAsync(servers);
+        Assert.Empty(catalog.ReceivedCalls());
+        config = config with { Url = upstream.Url + "?revision=2" };
+        await session.UpdateServersAsync(await provider.GatewayServersAsync("brain-cache", CancellationToken.None));
+        Assert.Single(session.Tools);
+        Assert.Equal(2, catalog.ReceivedCalls().Count());
     }
 }
