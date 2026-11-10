@@ -20,17 +20,18 @@ public class FidelityCheckTests
         FontSizePx: 13);
 
     [Fact]
-    public void Render_NamesEveryTransitionMermaiderDropsAroundACompositeState()
+    public void Render_ReportsNoMissingConnectionWhenMermaiderDrawsCompositeStateTransitions()
     {
         var fidelity = MermaidRenderPipeline.Render(CompositeState, Theme).Fidelity;
 
-        Assert.False(fidelity.IsComplete);
-        var finding = Assert.Single(fidelity.Findings);
-        Assert.StartsWith("4 of 11 connections in the source were not drawn:", finding, StringComparison.Ordinal);
-        Assert.Contains("Idle --> Watching : arm", finding, StringComparison.Ordinal);
-        Assert.Contains("Watching --> Driving : trigger", finding, StringComparison.Ordinal);
-        Assert.Contains("Driving --> Idle : done", finding, StringComparison.Ordinal);
-        Assert.Contains("Watching --> Idle : disarm", finding, StringComparison.Ordinal);
+        Assert.True(fidelity.IsComplete);
+        Assert.Empty(fidelity.Findings);
+
+        var dropped = FidelityCheck.Check("stateDiagram-v2\n    A --> B : missing", "<svg />");
+
+        Assert.False(dropped.IsComplete);
+        var finding = Assert.Single(dropped.Findings);
+        Assert.Contains("A --> B : missing", finding, StringComparison.Ordinal);
     }
 
     private const string CompositeState = """
@@ -54,4 +55,5 @@ public class FidelityCheckTests
                 waiting for arm
             end note
         """;
+
 }
