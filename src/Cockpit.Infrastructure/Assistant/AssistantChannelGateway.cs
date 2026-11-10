@@ -29,7 +29,7 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
 
     // AC-1553: the questions relayed, by correlation id, until answered; the newest is the one a bare text reply such
     // as "2" answers, until the operator's next message (here or in the app) moves the conversation on.
-    private readonly Dictionary<string, AssistantChannelQuestion> _questions = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, IReadOnlyList<AssistantChannelQuestion>> _questions = new(StringComparer.Ordinal);
     private string? _waiting;
 
     // AC-1544: where this channel's sending half is offered to other plugins, and their answers matched.
@@ -74,6 +74,51 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
     public event EventHandler<AssistantChannelConsentPrompt>? ConsentPromptOpened;
 
     public event EventHandler<Guid>? ConsentPromptClosed;
+
+    public IReadOnlyList<AssistantChannelRow> PendingQuestions
+    {
+        get
+        {
+            lock (_relayedRows)
+            {
+                return [.. _questions.Select(pair => new AssistantChannelRow
+                {
+                    Id = Guid.Parse(pair.Key), Kind = AssistantChannelRowKind.Question,
+                    Text = pair.Value[0].Question, Timestamp = DateTimeOffset.UtcNow,
+                    CorrelationId = pair.Key, Questions = pair.Value,
+                })];
+            }
+        }
+    }
+
+    public async Task<AssistantChannelSendResult> AnswerQuestionsAsync(string senderUserId, string correlationId,
+        IReadOnlyList<IReadOnlyList<string>> answers, CancellationToken cancellationToken = default)
+    {
+        if (_disposed || !_IsAllowed(senderUserId))
+        {
+            return AssistantChannelSendResult.Refused("This channel cannot take this answer.");
+        }
+
+        IReadOnlyList<AssistantChannelQuestion>? questions;
+        lock (_relayedRows)
+        {
+            questions = _questions.GetValueOrDefault(correlationId);
+        }
+
+        if (questions is null || answers.Count != questions.Count
+            || questions.Where((question, index) => !OperatorMessageRegistry.Takes(question, answers[index])).Any())
+        {
+            return AssistantChannelSendResult.Refused("That is not an answer this question takes.");
+        }
+
+        if (_Take(correlationId) is null)
+        {
+            return AssistantChannelSendResult.Refused("No question waits under this id.");
+        }
+
+        var text = string.Join("\n", questions.Select((question, index) => StructuredQuestionJson.AnswerText(question.Question, string.Join(", ", answers[index]))));
+        return await _DeliverAsync(text, [], cancellationToken).ConfigureAwait(false) ?? AssistantChannelSendResult.Sent();
+    }
 
     public async Task<AssistantChannelTurn> TryStartReadOnlyTurnAsync(string senderUserId, string text, CancellationToken cancellationToken = default)
     {
@@ -124,7 +169,7 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
         lock (_relayedRows)
         {
             waiting = _waiting;
-            question = waiting is null ? null : _questions.GetValueOrDefault(waiting);
+            question = waiting is null ? null : _questions.GetValueOrDefault(waiting)?.FirstOrDefault();
         }
 
         if (waiting is not null && question?.ReadReply(text) is { } chosen && _Take(waiting) is not null)
@@ -170,7 +215,7 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
         AssistantChannelQuestion? question;
         lock (_relayedRows)
         {
-            question = _questions.GetValueOrDefault(correlationId);
+            question = _questions.GetValueOrDefault(correlationId)?.FirstOrDefault();
         }
 
         // AC-1544: not one of the assistant's, so perhaps a question another plugin sent through this channel.
@@ -212,7 +257,7 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
     }
 
     // A question is answered once: the first answer takes it, so a second click or a late reply cannot answer again.
-    private AssistantChannelQuestion? _Take(string correlationId)
+    private IReadOnlyList<AssistantChannelQuestion>? _Take(string correlationId)
     {
         lock (_relayedRows)
         {
@@ -330,6 +375,12 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
             foreach (var row in baseline)
             {
                 _relayedRows.TryAdd(row.Id, (Guid.NewGuid(), _Content(row)));
+                if (row.Kind == "Question" && row.IsPendingBrokerAnswer && StructuredQuestionJson.Parse(row.InputJson) is { Count: > 0 } pending)
+                {
+                    var correlation = _relayedRows[row.Id].Id.ToString("n");
+                    _questions[correlation] = pending;
+                    _waiting = correlation;
+                }
             }
 
             _wasBusy = busyNow;
@@ -374,7 +425,7 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
         // A Question row is only the assistant's own card (AddQuestion); a native AskUserQuestion is a permission row.
         var questions = row.Kind == "Question" ? StructuredQuestionJson.Parse(row.InputJson) : [];
         Guid id;
-        AssistantChannelQuestion? asked;
+        IReadOnlyList<AssistantChannelQuestion>? asked;
         lock (_relayedRows)
         {
             // The operator's own next message answers or moves past every question asked before it, here or in the app.
@@ -400,11 +451,19 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
 
             _relayedRows[row.Id] = (id, _Content(row));
 
-            // Only the first question, on the row's first sight: the assistant's own card answers its first (AC-955).
-            if (questions.Count > 0 && relayed.Id == Guid.Empty && upsert.Version <= 1)
+            // A card keeps all its questions so structured channels can answer each one independently.
+            if (questions.Count > 0 && (row.IsPendingBrokerAnswer || (relayed.Id == Guid.Empty && upsert.Version <= 1)))
             {
-                _questions[id.ToString("n")] = questions[0];
+                _questions[id.ToString("n")] = questions;
                 _waiting = id.ToString("n");
+            }
+            else if (row.Kind == "Question" && !row.IsPendingBrokerAnswer && upsert.Version > 1)
+            {
+                _questions.Remove(id.ToString("n"));
+                if (_waiting == id.ToString("n"))
+                {
+                    _waiting = null;
+                }
             }
 
             asked = _questions.GetValueOrDefault(id.ToString("n"));
@@ -413,7 +472,7 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
         RowChanged?.Invoke(this, _ToChannelRow(row, id, _ChannelText(row), upsert.Version > 1, asked));
     }
 
-    private static AssistantChannelRow _ToChannelRow(TranscriptSnapshotEntry row, Guid id, string text, bool isUpdate, AssistantChannelQuestion? asked) => new()
+    private static AssistantChannelRow _ToChannelRow(TranscriptSnapshotEntry row, Guid id, string text, bool isUpdate, IReadOnlyList<AssistantChannelQuestion>? asked) => new()
     {
         Id = id,
         Kind = _Kind(row.Kind),
@@ -423,11 +482,12 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
         ToolName = row.ToolName,
         ResultText = row.ResultText,
         IsUpdate = isUpdate,
-        Questions = asked is null ? [] : [asked],
+        Questions = asked ?? [],
         CorrelationId = asked is null ? null : id.ToString("n"),
     };
 
-    private static int _Content(TranscriptSnapshotEntry row) => HashCode.Combine(row.Text, row.ResultText, row.ReplyAttachments);
+    private static int _Content(TranscriptSnapshotEntry row) =>
+        HashCode.Combine(row.Text, row.ResultText, row.ReplyAttachments, row.InputJson, row.IsPendingBrokerAnswer);
 
     private string _ChannelText(TranscriptSnapshotEntry row) =>
         row.StartsInsideTable && _observed is not null ? _TableText(row, _observed.Rows.TakeWhile(previous => previous.Id != row.Id)) : row.Text;

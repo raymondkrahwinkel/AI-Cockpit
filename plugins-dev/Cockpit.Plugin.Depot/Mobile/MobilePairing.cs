@@ -469,7 +469,7 @@ internal sealed class MobilePairing(
                         stream.PhonePub = null;
                         stream.ConfirmationTimer?.Dispose();
                         stream.ConfirmationTimer = null;
-                        _Channel(connectionId, deviceId);
+                        _Channel(connectionId, deviceId)?.StreamStarted(streamId);
                         return;
                     }
                     finally
@@ -499,7 +499,7 @@ internal sealed class MobilePairing(
 
         try
         {
-            channel?.Receive(plaintext);
+            channel?.Receive(plaintext, streamId);
         }
         finally
         {

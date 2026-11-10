@@ -130,6 +130,8 @@ public class PluginBackendHost(
 
     public ICockpitSessionObserver Sessions => sessions;
 
+    public IOperatorActionService? OperatorActions => services.GetService<OperatorActionService>();
+
     // AC-128: the transport-verified pane behind the current in-process MCP call, read from the ambient request
     // context the auth middleware set. A plugin's own MCP tool keys on this so it acts on the calling session, not a
     // session id the agent named. Null off the verified path (no MCP call in flight).

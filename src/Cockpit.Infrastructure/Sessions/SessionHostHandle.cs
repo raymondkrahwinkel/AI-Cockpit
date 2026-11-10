@@ -265,13 +265,24 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
     }
 
     // ponytail: top-level rows only; a sub-agent's permission row needs its parent re-recorded, add that with a caller.
-    public async Task<bool> RespondToPermissionByIdAsync(string toolUseId, bool allow, bool forSession = false)
+    public Task<bool> RespondToPermissionByIdAsync(string toolUseId, bool allow, bool forSession = false) =>
+        _RespondToPermissionAsync(toolUseId, allow, forSession, null);
+
+    public Task<bool> RespondToPermissionRevisionAsync(SessionPendingPermission expected, bool allow) =>
+        _RespondToPermissionAsync(expected.ToolUseId, allow, false, expected);
+
+    private async Task<bool> _RespondToPermissionAsync(string toolUseId, bool allow, bool forSession, SessionPendingPermission? expected)
     {
         List<Task> answering = [];
         lock (_gate)
         {
             if (_host.Runtime is not { } runtime
                 || _rows.Find(row => row.IsPendingPermission && string.Equals(row.ToolUseId, toolUseId, StringComparison.Ordinal)) is not { } row)
+            {
+                return false;
+            }
+
+            if (expected is not null && ((row.ToolName ?? "") != expected.ToolName || (row.InputJson ?? "{}") != expected.InputJson || row.Timestamp != expected.SinceUtc))
             {
                 return false;
             }

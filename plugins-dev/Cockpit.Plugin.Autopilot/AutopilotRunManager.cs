@@ -1,9 +1,11 @@
+using Cockpit.Plugins.Abstractions.Channels;
+
 namespace Cockpit.Plugin.Autopilot;
 
 // Runs approved plans from the queue, up to `AutopilotSettings.MaxConcurrentRuns` at once (AC-174). A tool call is
 // routed to whichever running run owns the caller's pane — every coordinator self-gates, so trying each is safe.
 // `Runner` is set by the workspace body while it is open, so this is testable without live sessions via a fake one.
-internal sealed class AutopilotRunManager(AutopilotRunQueue queue, AutopilotSettings settings)
+internal sealed class AutopilotRunManager(AutopilotRunQueue queue, AutopilotSettings settings, IOperatorActionService? operatorActions = null)
 {
     private readonly Lock _lock = new();
     private readonly List<AutopilotRunCoordinator> _active = [];
@@ -172,6 +174,27 @@ internal sealed class AutopilotRunManager(AutopilotRunQueue queue, AutopilotSett
             _epicGo = pending;
             _epicGoIssue = epicId;
         }
+
+        using var operatorAction = operatorActions?.Register(
+            new OperatorAction(Guid.NewGuid().ToString("N"), Guid.NewGuid().ToString("N"), "epic-go", epicId,
+                $"Open the pull request from {epicId}'s collection branch to main. This does not authorize merging it.", ["approve", "deny"]),
+            decision =>
+            {
+                lock (_lock)
+                {
+                    return Task.FromResult(ReferenceEquals(_epicGo, pending)
+                        && !cancellationToken.IsCancellationRequested
+                        && (decision is "approve" or "deny")
+                        && ReportMergeGo(epicId, decision == "approve", decision == "deny" ? "Refused on the paired phone." : null, "phone operator"));
+                }
+            },
+            () =>
+            {
+                lock (_lock)
+                {
+                    return ReferenceEquals(_epicGo, pending) && !pending.Task.IsCompleted && !cancellationToken.IsCancellationRequested;
+                }
+            });
 
         Changed?.Invoke();
         try

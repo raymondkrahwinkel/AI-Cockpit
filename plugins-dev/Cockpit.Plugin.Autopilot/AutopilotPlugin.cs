@@ -43,7 +43,7 @@ public sealed class AutopilotPlugin : ICockpitPlugin
 
         // The queue of approved runs (persistent) and the manager that runs them up to the concurrency cap.
         var queue = new AutopilotRunQueue(host.Storage);
-        var manager = new AutopilotRunManager(queue, settings);
+        var manager = new AutopilotRunManager(queue, settings, host.OperatorActions);
 
         // The history of settled runs (persistent): a run that finishes leaves the live surface, so
         // it is recorded here to be shown in the history section rather than vanishing.

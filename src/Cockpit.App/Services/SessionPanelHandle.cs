@@ -204,6 +204,10 @@ internal sealed partial class SessionPanelHandle : IHostedSession
         ? UiThreadCall.RunAsync(() => sdk.RespondToPermissionByIdAsync(toolUseId, allow, forSession))
         : Task.FromResult(false);
 
+    public Task<bool> RespondToPermissionRevisionAsync(SessionPendingPermission expected, bool allow) => _pane is SessionViewModel sdk
+        ? UiThreadCall.RunAsync(() => sdk.RespondToPermissionByIdAsync(expected.ToolUseId, allow, expected: expected))
+        : Task.FromResult(false);
+
     // Always dispatched, as `SessionVerifyGateway` does (AC-577): every caller arrives off the UI thread.
     public Task<bool> FeedVerifyResultAsync(string caption, byte[] screenshotPng) => _pane is { } pane
         ? UiThreadCall.DispatchAsync(() => pane.FeedVerifyResultAsync(caption, screenshotPng))

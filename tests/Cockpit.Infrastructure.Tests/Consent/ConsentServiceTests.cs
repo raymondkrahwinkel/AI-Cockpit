@@ -2,6 +2,8 @@ using Cockpit.Core.Abstractions.Consent;
 using Cockpit.Core.Consent;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Infrastructure.Plugins;
+using Microsoft.Extensions.Logging.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
 using NSubstitute;
 
@@ -60,6 +62,44 @@ public sealed class ConsentServiceTests
         Assert.Equal(2, System.Linq.Enumerable.Count(prompts));
         Assert.All(prompts, prompt => Assert.True(!prompt.CanRemember, "the remember option is never offered for the dangerous class"));
         Assert.False(first.Remembered);
+
+        // Category A: only a current, device-bound, one-use capability reaches the same atomic consent callback.
+        var mobileBroker = CreateBroker();
+        var actions = new OperatorActionService(NullLogger<OperatorActionService>.Instance, mobileBroker);
+        using var phone = actions.OpenChannel("paired-phone");
+        using var stranger = actions.OpenChannel("other-phone");
+        var pending = mobileBroker.RequestConsentAsync(request);
+        var offered = Assert.Single(phone.Snapshot);
+        Assert.False((await stranger.RespondAsync(offered.Id, offered.Revision, offered.Capability, "approve")).Ok);
+        Assert.False((await phone.RespondAsync(offered.Id, "obsolete", offered.Capability, "approve")).Ok);
+        Assert.False((await phone.RespondAsync(offered.Id, offered.Revision, offered.Capability, "akkoord")).Ok);
+        Assert.False(pending.IsCompleted);
+        try
+        {
+            McpRequestContext.Set("cockpit-assistant");
+            Assert.False((await phone.RespondAsync(offered.Id, offered.Revision, offered.Capability, "approve")).Ok);
+        }
+        finally
+        {
+            McpRequestContext.Set(null);
+        }
+
+        Assert.True((await phone.RespondAsync(offered.Id, offered.Revision, offered.Capability, "approve")).Ok);
+        Assert.True((await pending).IsApproved);
+        Assert.False((await phone.RespondAsync(offered.Id, offered.Revision, offered.Capability, "approve")).Ok);
+
+        var next = mobileBroker.RequestConsentAsync(request);
+        var desktopFirst = Assert.Single(phone.Snapshot);
+        mobileBroker.Respond(Guid.Parse(desktopFirst.Id), ConsentOutcome.Denied, false);
+        Assert.False((await phone.RespondAsync(desktopFirst.Id, desktopFirst.Revision, desktopFirst.Capability, "approve")).Ok);
+        Assert.False((await next).IsApproved);
+
+        var disconnected = mobileBroker.RequestConsentAsync(request);
+        var withdrawn = Assert.Single(phone.Snapshot);
+        phone.Dispose();
+        Assert.False((await phone.RespondAsync(withdrawn.Id, withdrawn.Revision, withdrawn.Capability, "approve")).Ok);
+        mobileBroker.Respond(Guid.Parse(withdrawn.Id), ConsentOutcome.Denied, false);
+        Assert.False((await disconnected).IsApproved);
     }
 
     /// <summary>The low-risk counterpart: once remembered, the second identical request is not asked again.</summary>

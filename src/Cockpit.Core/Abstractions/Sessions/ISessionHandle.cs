@@ -201,6 +201,9 @@ public interface ISessionHandle
     /// </summary>
     Task<bool> RespondToPermissionByIdAsync(string toolUseId, bool allow, bool forSession = false);
 
+    /// <summary>Answers only this exact pending permission revision, atomically with the desktop answer.</summary>
+    Task<bool> RespondToPermissionRevisionAsync(SessionPendingPermission expected, bool allow) => Task.FromResult(false);
+
     /// <summary>
     /// Hands a verify render back to the session as its next input; false when the session cannot take it.
     /// </summary>

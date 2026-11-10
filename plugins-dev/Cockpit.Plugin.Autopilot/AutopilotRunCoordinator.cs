@@ -1,4 +1,5 @@
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Tracking;
 using Cockpit.Plugins.Abstractions.Workspaces;
@@ -317,6 +318,28 @@ internal sealed class AutopilotRunCoordinator(
         {
             _mergeGo = pending;
         }
+
+        var issue = plan.Plan?.Source?.IssueId is { Length: > 0 } issueId ? issueId : plan.Plan?.Label ?? string.Empty;
+        using var operatorAction = host.OperatorActions?.Register(
+            new OperatorAction(Guid.NewGuid().ToString("N"), Guid.NewGuid().ToString("N"), "merge-go", issue,
+                $"Merge {issue} into {collection} after its existing merge gate.", ["approve", "deny"]),
+            decision =>
+            {
+                lock (_lock)
+                {
+                    return Task.FromResult(ReferenceEquals(_mergeGo, pending)
+                        && !cancellationToken.IsCancellationRequested
+                        && (decision is "approve" or "deny")
+                        && ReportMergeGo(issue, decision == "approve", decision == "deny" ? "Refused on the paired phone." : null, "phone operator"));
+                }
+            },
+            () =>
+            {
+                lock (_lock)
+                {
+                    return ReferenceEquals(_mergeGo, pending) && !pending.Task.IsCompleted && !cancellationToken.IsCancellationRequested;
+                }
+            });
 
         _Note(lastStepId, AutopilotMergeGateBrief.Waiting(collection, assistantNotified));
         try

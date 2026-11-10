@@ -103,13 +103,23 @@ internal sealed class ConsentService(IConsentAuditLog auditLog, IConsentBypassPo
         return await pending.Completion.Task.ConfigureAwait(false);
     }
 
+    public IReadOnlyList<ConsentPrompt> PendingPrompts =>
+        [.. _pending.Select(pair => new ConsentPrompt(pair.Key, pair.Value.Request, pair.Value.CanRemember))];
+
+    public bool TryRespond(Guid promptId, ConsentOutcome outcome) => _Respond(promptId, outcome, false, null);
+
     public void Respond(Guid promptId, ConsentOutcome outcome, bool remember) => Respond(promptId, outcome, remember, chosen: null);
 
     public void Respond(Guid promptId, ConsentOutcome outcome, bool remember, IReadOnlyDictionary<string, IReadOnlyList<string>>? chosen)
     {
+        _Respond(promptId, outcome, remember, chosen);
+    }
+
+    private bool _Respond(Guid promptId, ConsentOutcome outcome, bool remember, IReadOnlyDictionary<string, IReadOnlyList<string>>? chosen)
+    {
         if (!_pending.TryRemove(promptId, out var pending))
         {
-            return;
+            return false;
         }
 
         // An approval of a request with choices stands only with a valid pick for every choice; anything else is a denial.
@@ -126,6 +136,7 @@ internal sealed class ConsentService(IConsentAuditLog auditLog, IConsentBypassPo
         }
 
         _Finish(pending, promptId, outcome, remembered, chosen);
+        return true;
     }
 
     // The pick as the request offered it, or null when any choice is unanswered, over-answered or answered with a

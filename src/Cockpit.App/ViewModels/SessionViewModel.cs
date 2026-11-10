@@ -2789,9 +2789,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     // AC-1324: the controller's click, arriving by tool-use id rather than by row. False when no such row is
     // open here — answered already, or never asked — and then nothing is done.
-    internal async Task<bool> RespondToPermissionByIdAsync(string toolUseId, bool allow, bool forSession = false)
+    internal async Task<bool> RespondToPermissionByIdAsync(string toolUseId, bool allow, bool forSession = false, SessionPendingPermission? expected = null)
     {
         if (PendingToolPermissionRows().FirstOrDefault(row => string.Equals(row.ToolUseId, toolUseId, StringComparison.Ordinal)) is not { } entry)
+        {
+            return false;
+        }
+
+        if (expected is not null && ((entry.ToolName ?? "") != expected.ToolName || (entry.InputJson ?? "{}") != expected.InputJson || entry.Timestamp != expected.SinceUtc))
         {
             return false;
         }

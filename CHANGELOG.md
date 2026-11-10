@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2273: paired phones can view waiting questions, SDK permissions and Autopilot gates and send a device-bound, one-use decision. Epic approval opens the existing pull request gate; it grants no permission to merge.
+
 - Fixed MCP tool calls with content annotations or resource icons failing during serialization; retained MCP SDK 2.3.0 pending an upstream fix.
 
 - AC-2265: a paired phone can send images with a message to the assistant or to a session, in chunks inside the encrypted channel (JPEG, PNG or WebP, at most 4 per message and 8 MB each). A target that cannot see images still gets the text, and the phone is told why the images stayed behind. Plugins get `SendToSessionAsync(paneId, text, images)` with `SessionSendResult`, plus `AcceptsImages` on `OpenCockpitSession` and `IAssistantChannelGateway` (plugin SDK 3.86.0, host 0.175.0, Depot plugin 0.61.0).
