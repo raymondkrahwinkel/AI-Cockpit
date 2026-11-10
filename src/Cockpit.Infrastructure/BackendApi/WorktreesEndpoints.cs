@@ -16,6 +16,10 @@ internal static class WorktreesEndpoints
 {
     private const int MaxLabelLength = 64;
 
+    // A worktree made here belongs to no session; the prefix tells it apart from one a session or agent made.
+    private const string ApiOwnerPrefix = "api-";
+    private const int MaxApiWorktreesPerProject = 10;
+
     public static void Map(RouteGroupBuilder api, IServiceProvider services)
     {
         api.MapGet("/projects/{id}/worktrees", (Func<HttpContext, Task<IResult>>)(context => _ListAsync(context, services))).RequireOperate();
@@ -59,7 +63,7 @@ internal static class WorktreesEndpoints
 
     private static async Task<IResult> _CreateAsync(HttpContext context, IServiceProvider services)
     {
-        if (await FilesEndpoint.FindProjectAsync(context, services).ConfigureAwait(false) is not { SourceDirectory: { } source } ||
+        if (await FilesEndpoint.FindProjectAsync(context, services).ConfigureAwait(false) is not { SourceDirectory: { } source } project ||
             services.GetService<IWorktreeManager>() is not { } manager)
         {
             return Results.NotFound();
@@ -80,6 +84,17 @@ internal static class WorktreesEndpoints
             return BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "invalid_request", $"label is at most {MaxLabelLength} characters.");
         }
 
+        if ((await manager.ListAsync(context.RequestAborted).ConfigureAwait(false))
+            .Count(record => _IsApiMade(record) && _BelongsTo(record, project)) >= MaxApiWorktreesPerProject)
+        {
+            return BackendApiRoutes.Error(StatusCodes.Status409Conflict, "limit", $"This project already has {MaxApiWorktreesPerProject} worktrees made over the API; remove one first.");
+        }
+
+        if (await FilesEndpoint.RefuseIfNoLongerAllowedAsync(context, services).ConfigureAwait(false) is { } revoked)
+        {
+            return revoked;
+        }
+
         try
         {
             if (await manager.DetectRepositoryAsync(source, context.RequestAborted).ConfigureAwait(false) is null)
@@ -89,7 +104,7 @@ internal static class WorktreesEndpoints
 
             // Never moves the server's own checkout of the project: an API caller is not the operator at that machine.
             var record = await manager.CreateForSessionAsync(
-                Guid.NewGuid().ToString("N"), label, source, WorktreeSourceHandling.LeaveSourceAlone,
+                ApiOwnerPrefix + Guid.NewGuid().ToString("N"), label, source, WorktreeSourceHandling.LeaveSourceAlone,
                 cancellationToken: context.RequestAborted).ConfigureAwait(false);
             return Results.Json(new { branch = record.Branch }, statusCode: StatusCodes.Status201Created);
         }
@@ -99,7 +114,7 @@ internal static class WorktreesEndpoints
         }
     }
 
-    // `force=true` discards uncommitted changes; a worktree whose session is still running is never removed.
+    // `force=true` discards uncommitted changes, only in a worktree made here; one a running session uses is never removed.
     private static async Task<IResult> _RemoveAsync(HttpContext context, IServiceProvider services)
     {
         if (await FilesEndpoint.FindProjectAsync(context, services).ConfigureAwait(false) is not { } project ||
@@ -115,9 +130,21 @@ internal static class WorktreesEndpoints
             return BackendApiRoutes.Error(StatusCodes.Status409Conflict, "in_use", "A running session works in this worktree.");
         }
 
+        // Uncommitted work in a worktree a session or agent made is never discarded from here.
+        var force = context.Request.Query["force"] == "true";
+        if (force && !_IsApiMade(record))
+        {
+            return BackendApiRoutes.Error(StatusCodes.Status403Forbidden, "force_refused", "Only a worktree made over the API can be removed with force.");
+        }
+
+        if (await FilesEndpoint.RefuseIfNoLongerAllowedAsync(context, services).ConfigureAwait(false) is { } revoked)
+        {
+            return revoked;
+        }
+
         try
         {
-            await manager.RemoveAsync(record, force: context.Request.Query["force"] == "true", context.RequestAborted).ConfigureAwait(false);
+            await manager.RemoveAsync(record, force, context.RequestAborted).ConfigureAwait(false);
             return Results.Json(new { removed = true });
         }
         catch (Exception error) when (error is not OperationCanceledException)
@@ -125,6 +152,8 @@ internal static class WorktreesEndpoints
             return BackendApiRoutes.Error(StatusCodes.Status409Conflict, "remove_failed", "The worktree could not be removed; with uncommitted changes, remove it with force.");
         }
     }
+
+    private static bool _IsApiMade(WorktreeRecord record) => record.SessionId.StartsWith(ApiOwnerPrefix, StringComparison.Ordinal);
 
     private static bool _BelongsTo(WorktreeRecord record, Project project)
     {
