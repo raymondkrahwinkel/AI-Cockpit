@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2308: plugin updates share one Linux build batch and at most one Windows batch after a nightly, then publish together in one store PR. A failed plugin gate leaves the other updates publishable; the manual publisher now lists all 36 plugins.
+
 - AC-2304: the Depot gateway has its own sign-in so it cannot overwrite the Depot connection's authorization. A refused sign-in is remembered until its credential changes, without repeated warnings or sign-in toasts (Depot 0.65.1).
 
 - AC-2298: assistants and agent sessions can deliberately ping a connected phone with their verified session name and a target to open. Pings are limited to three per sender per minute and use the encrypted mobile relay (host 0.179.0, SDK 3.90.0, Depot 0.65.0).

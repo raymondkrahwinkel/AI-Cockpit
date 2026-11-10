@@ -603,6 +603,8 @@ dotnet test
   `ICockpitActions`, `IPluginStorage`, `IPluginSettingsView`, the `Sessions` and `Mcp` namespaces), with signatures,
   parameters and short examples.
 - **[Example store index](docs/plugins/example-store-index.json)** — a template for your own store's `index.json`.
+- **Publishing store updates:** [Maintainer workflow](docs/plugins/AUTOMATED-PUBLISH.md#publishing-updates-after-a-nightly)
+  prepares missing versions in one Linux batch and at most one Windows batch, then publishes one store PR.
 - **Official plugin store:**
   [github.com/raymondkrahwinkel/AI-Cockpit-Plugins](https://github.com/raymondkrahwinkel/AI-Cockpit-Plugins) — the
   [`plugins-dev/`](plugins-dev) example plugins, published. UI plugins (GitHub Issues, GitHub Pull Requests,
