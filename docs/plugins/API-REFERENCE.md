@@ -242,7 +242,8 @@ public interface ICockpitPluginUi
   for an unknown pane. Each `Sessions.OpenSessions` entry also carries `Statusline`, `IsTerminal` and
   `HasReadableTranscript`; `Sessions.ReadTranscriptAsync(paneId, count)` returns the transcript tail (null for an
   unknown pane or one without a readable transcript) and `Sessions.ReadPendingPermissionsAsync(paneId)` the open
-  Allow/Deny questions, read-only (AC-2256, host 0.172.0, SDK 3.83.0). The selected session's project is `ActiveProjectId` (AC-1737, host 0.112.0); a backend part
+  Allow/Deny questions, read-only (AC-2256, host 0.172.0, SDK 3.83.0). Each entry it returns carries `Index`, its
+  position in the whole transcript, counting the host's own markers it leaves out (AC-2257, host 0.173.0, SDK 3.84.0). The selected session's project is `ActiveProjectId` (AC-1737, host 0.112.0); a backend part
   asks `GetSessionProjectIdAsync(paneId)`, and both find the name in `GetProjectsAsync()`. To put text in a pane's input without sending it — what `InjectIntoActiveSessionAsync` did
   for the selected pane — a UI part calls `InsertIntoSessionAsync(paneId, text)`; `SendToSessionAsync` submits it.
   To show an existing pane without touching its input, use `await uiHost.FocusSessionAsync(paneId)`

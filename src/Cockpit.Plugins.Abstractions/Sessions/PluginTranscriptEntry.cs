@@ -57,7 +57,14 @@ public enum PluginTranscriptEntryKind
 public sealed record PluginTranscriptEntry(
     PluginTranscriptEntryKind Kind,
     string Text,
-    string? ToolResult = null);
+    string? ToolResult = null)
+{
+    /// <summary>
+    /// This row's position in the whole transcript, counting the host's own markers that are left out (AC-2257); set by
+    /// <see cref="ICockpitSessionObserver.ReadTranscriptAsync"/>, 0 on rows a provider's reader returns.
+    /// </summary>
+    public int Index { get; init; }
+}
 
 /// <summary>
 /// The tail of a transcript and how long the whole thing is (AC-609). One type rather than two calls because the

@@ -271,7 +271,8 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             host.Storage,
             _events,
             host.OpenAssistantChannel,
-            _logger);
+            _logger,
+            host: host);
         _HandleMobile(host, DepotMobileChannel.PairStart, (request, cancellationToken) => mobile.StartAsync(request.ConnectionId, cancellationToken));
         _HandleMobile(host, DepotMobileChannel.PairStatus, (request, _) => Task.FromResult(mobile.Status(request.ConnectionId)));
         _HandleMobile(host, DepotMobileChannel.PairCancel, (request, _) =>
