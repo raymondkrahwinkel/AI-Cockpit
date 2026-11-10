@@ -1,5 +1,6 @@
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Plugins.Abstractions;
+using System.Text;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -19,6 +20,13 @@ internal static class PluginUiEndpoints
 
         api.MapPost("/plugins/{folderId}/ui/{action}", async (string folderId, string action, UiHostRequest body, CancellationToken cancellationToken) =>
         {
+            if (!_ValidIdentifier(action) || !_ValidIdentifier(body.PaneId) || !_ValidIdentifier(body.TargetPluginId)
+                || !_ValidIdentifier(body.Action) || (body.Text is { } text && Encoding.UTF8.GetByteCount(text) > 64 * 1024)
+                || (body.Data is { } data && (data.Count > 32 || data.Any(pair => pair.Key.Length > 128
+                    || pair.Value is null || Encoding.UTF8.GetByteCount(pair.Value) > 8 * 1024))))
+            {
+                return BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "invalid_request", "The plugin UI request exceeds its limits or contains an invalid identifier.");
+            }
             if (services.GetService<PluginManager>()?.HostOf(folderId) is not { } host)
             {
                 return _NotRunning();
@@ -35,6 +43,8 @@ internal static class PluginUiEndpoints
             }
         }).RequireAdmin().Audited("plugin_ui_action", services);
     }
+
+    private static bool _ValidIdentifier(string? value) => value is null || (value.Length <= 128 && !value.Any(char.IsControl));
 
     private static async Task<IResult> _InvokeAsync(ICockpitHost host, string action, UiHostRequest body, CancellationToken cancellationToken)
     {
