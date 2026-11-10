@@ -133,6 +133,9 @@ public sealed class AgentsMcpToolsTests : IDisposable
         Assert.Equal(3, Enumerable.Range(0, 12).AsParallel().Count(_ => limited.Send(ping, now).Error is null));
         Assert.Null(limited.Send(ping with { SenderId = "pane-b" }, now).Error);
         Assert.Null(limited.Send(ping, now.AddMinutes(1)).Error);
+        using var replacement = limited.Register(_ => 2);
+        limitRegistration.Dispose();
+        Assert.Equal(2, limited.Send(ping with { SenderId = "replacement" }, now).Accepted);
     }
 
     /// <summary>G1 — a notify the transport cannot attribute to a pane has no sender to stamp, so it is refused.</summary>
