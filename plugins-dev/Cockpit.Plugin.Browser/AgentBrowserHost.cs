@@ -729,10 +729,12 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
 
         public void Stop()
         {
-            Cut();
+            Lifetime.Cancel();
+            Proxy?.Dispose();
             KillBrowser();
         }
 
+        // Dispose only: ends every run's calls and connections before the first shutdown; ShutdownCore repeats it idempotently.
         public void Cut()
         {
             Lifetime.Cancel();
