@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using Cockpit.Core.Worktrees;
+using Cockpit.Infrastructure.BackendApi;
 
 namespace Cockpit.App.ViewModels;
 
@@ -10,16 +11,33 @@ public sealed partial class ManagedWorktreeRowViewModel : ObservableObject
 {
     // The owner's display name, sanitized — null when none was supplied or nothing survived sanitizing.
     private readonly string? _ownerName;
+    private readonly WorktreeStatus? _status;
 
     public ManagedWorktreeRowViewModel(WorktreeStatus status, bool isOwnerLive, string? ownerName = null, bool hasOpenRestoreOffer = false)
     {
-        Status = status;
+        _status = status;
         IsOwnerLive = isOwnerLive;
         HasOpenRestoreOffer = hasOpenRestoreOffer;
         _ownerName = _SanitizeOwnerName(ownerName);
     }
 
-    public WorktreeStatus Status { get; }
+    internal ManagedWorktreeRowViewModel(RemoteManagedWorktree worktree)
+    {
+        Remote = worktree;
+        IsOwnerLive = worktree.IsOwnerLive;
+    }
+
+    internal RemoteManagedWorktree? Remote { get; }
+
+    public bool IsRemote => Remote is not null;
+
+    public bool CanOpenFolder => !IsRemote;
+
+    public string OpenFolderHint => IsRemote ? "Server files are available in Files; this folder is not on this computer." : "Open folder — open the worktree folder in your file manager";
+
+    public string ReattachHint => IsRemote ? "This server does not offer worktree reattachment in this window yet." : "Reattach — start a new session in this worktree. Only for a worktree whose session is gone.";
+
+    public WorktreeStatus Status => _status ?? throw new InvalidOperationException("A server worktree has no local registry record.");
 
     public WorktreeRecord Record => Status.Record;
 
@@ -38,19 +56,27 @@ public sealed partial class ManagedWorktreeRowViewModel : ObservableObject
     // Reattach are already available the moment the offer is gone, so there is nothing left for Release to do.
     public bool CanRelease => IsOwnerLive && HasOpenRestoreOffer;
 
-    public string RepositoryName => System.IO.Path.GetFileName(Record.RepositoryRoot.TrimEnd(System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar));
+    public string RepositoryName => Remote?.ProjectName ?? System.IO.Path.GetFileName(Record.RepositoryRoot.TrimEnd(System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar));
 
-    public string Branch => Record.Branch;
+    public string Branch => Remote?.Branch ?? Record.Branch;
 
-    public string WorktreePath => Record.Path;
+    public string WorktreePath => IsRemote ? "On the server" : Record.Path;
 
-    public bool IsClean => Status.IsClean;
+    public bool Exists => Remote?.Exists ?? Status.Exists;
 
-    public string? RetentionReason => Record.RetentionReason;
+    public bool HasUncommittedChanges => Remote?.HasUncommittedChanges ?? Status.HasUncommittedChanges;
+
+    public int StrandableCommits => Remote?.StrandableCommits ?? Status.StrandableCommits;
+
+    public bool NothingToKeep => Remote is { } remote ? !remote.Exists : Status.NothingToKeep;
+
+    public bool IsClean => !NothingToKeep && !HasUncommittedChanges && StrandableCommits == 0;
+
+    public string? RetentionReason => IsRemote ? null : Record.RetentionReason;
 
     // Reattach is offered only when the owning session is gone (Raymond 2026-07-19: GONE only) — never onto a live
     // tree.
-    public bool CanReattach => !IsOwnerLive;
+    public bool CanReattach => !IsRemote && !IsOwnerLive;
 
     // Remove is blocked while a session is still on the tree (Raymond 2026-07-19): removing it would pull the working
     // directory out from under a running session.
@@ -59,17 +85,17 @@ public sealed partial class ManagedWorktreeRowViewModel : ObservableObject
     // A plain-language state for the pill, in the order that matters for data safety: gone folder, then an emptied one,
     // then unsaved work, then commits that exist nowhere else, then retained, then clean.
     public string StatusLabel =>
-        !Status.Exists ? "Folder missing"
-        : Status.WorkingCopyMissing ? "No working copy"
-        : Status.HasUncommittedChanges ? "Uncommitted changes"
-        : Status.StrandableCommits > 0 ? $"{Status.StrandableCommits} commit(s) only here"
-        : Record.IsRetained ? "Retained"
+        !Exists ? "Folder missing"
+        : !IsRemote && Status.WorkingCopyMissing ? "No working copy"
+        : HasUncommittedChanges ? "Uncommitted changes"
+        : StrandableCommits > 0 ? $"{StrandableCommits} commit(s) only here"
+        : !IsRemote && Record.IsRetained ? "Retained"
         : "Clean";
 
     public string StatusBrushKey =>
-        Status.NothingToKeep ? "CockpitTextFaintBrush"
-        : Status.HasUncommittedChanges ? "CockpitStatusWaitingBrush"
-        : Status.StrandableCommits > 0 ? "CockpitStatusBusyBrush"
+        NothingToKeep ? "CockpitTextFaintBrush"
+        : HasUncommittedChanges ? "CockpitStatusWaitingBrush"
+        : StrandableCommits > 0 ? "CockpitStatusBusyBrush"
         : "CockpitStatusDoneBrush";
 
     // "live session" would overclaim for a restored, not-yet-started pane (AC-410): its worktree is protected the

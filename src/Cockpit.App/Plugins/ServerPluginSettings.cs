@@ -46,7 +46,8 @@ internal sealed class ServerPluginSettings
         Func<Task<IReadOnlyList<PluginProjectInfo>>> projects,
         IReadOnlyDictionary<string, string?> managedClis,
         string serverName,
-        bool writeThrough = false)
+        bool writeThrough = false,
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? intents = null)
     {
         _writeThrough = writeThrough;
         _relay = relay;
@@ -68,7 +69,8 @@ internal sealed class ServerPluginSettings
             (name, cancellationToken) => relay.SignOutMcpServerAsync(folderId, name, cancellationToken),
             profiles,
             projects,
-            new ServerManagedClis(relay, folderId, managedClis, message => local.ShowToast(message, PluginToastSeverity.Warning)), serverName);
+            new ServerManagedClis(relay, folderId, managedClis, message => local.ShowToast(message, PluginToastSeverity.Warning)), serverName,
+            relay, folderId, intents);
         _local = local;
     }
 
@@ -103,7 +105,8 @@ internal sealed class ServerPluginSettings
         Func<Task<IReadOnlyList<PluginProjectInfo>>> projects,
         string serverName)
     {
-        var settings = new ServerPluginSettings(relay, folderId, await relay.GetStorageAsync(folderId), local, profiles, projects, await ServerManagedClis.ReadAsync(relay, folderId), serverName, writeThrough: true);
+        var settings = new ServerPluginSettings(relay, folderId, await relay.GetStorageAsync(folderId), local, profiles, projects, await ServerManagedClis.ReadAsync(relay, folderId), serverName,
+            writeThrough: true, intents: await relay.GetUiIntentsAsync(folderId));
         return settings._host;
     }
 

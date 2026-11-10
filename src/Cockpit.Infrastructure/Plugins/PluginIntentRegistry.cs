@@ -31,6 +31,11 @@ public interface IPluginIntentRegistry
     bool HasHandler(string targetPluginId, string action);
 
     /// <summary>
+    /// A snapshot of registered actions grouped by the plugin that owns them.
+    /// </summary>
+    IReadOnlyDictionary<string, IReadOnlyList<string>> Targets { get; }
+
+    /// <summary>
     /// Invokes the handler for <c>(<see cref="PluginIntent.TargetPluginId"/>, <see cref="PluginIntent.Action"/>)</c>
     /// and returns its result, or <see langword="null"/> when unregistered — absence is normal (the target plugin may
     /// not be installed), so a null return rather than the thrown error <see cref="IWorkflowStepRegistry.Raise"/> uses.
@@ -79,6 +84,18 @@ internal sealed class PluginIntentRegistry : IPluginIntentRegistry, ISingletonSe
         lock (_handlers)
         {
             return _handlers.ContainsKey((targetPluginId, action));
+        }
+    }
+
+    public IReadOnlyDictionary<string, IReadOnlyList<string>> Targets
+    {
+        get
+        {
+            lock (_handlers)
+            {
+                return _handlers.Keys.GroupBy(key => key.PluginId, StringComparer.Ordinal)
+                    .ToDictionary(group => group.Key, group => (IReadOnlyList<string>)group.Select(key => key.Action).ToArray(), StringComparer.Ordinal);
+            }
         }
     }
 

@@ -126,6 +126,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly ISessionDialogService? _dialogService;
     private Func<CockpitViewModel, string?, Task>? _presentOptions;
     private Func<PluginManagerViewModel, PluginStoreFilter?, Task>? _presentPluginStore;
+    private Func<WorktreesViewModel, Task>? _presentWorktrees;
 
     // AC-2278 supplies the server settings transaction; absent adapters must never report a successful save.
     public bool CanEditOptions => !IsRemoteWindow || _remoteOptionsLoaded;
@@ -688,8 +689,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     public Task<string?> PickDashboardExportPathAsync(string suggestedName) =>
         _dialogService is null ? Task.FromResult<string?>(null) : _dialogService.PickDashboardExportPathAsync(suggestedName);
 
+    private Func<string, string, string, Task<bool>>? _presentConfirmation;
+
     public Task<bool> ConfirmAsync(string title, string message, string confirmLabel) =>
-        _dialogService is null
+        _presentConfirmation is { } present ? present(title, message, confirmLabel) : _dialogService is null
             ? Task.FromResult(false)
             : _dialogService.ShowConfirmationDialogAsync(title, message, confirmLabel);
 
@@ -7689,12 +7692,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [RelayCommand]
     private async Task ShowWorktreesAsync()
     {
-        if (_dialogService is null)
+        var present = _presentWorktrees ?? (_dialogService is { } dialogs ? dialogs.ShowWorktreesDialogAsync : null);
+        if (present is null)
         {
             return;
         }
 
-        await _dialogService.ShowWorktreesDialogAsync(Worktrees);
+        await present(Worktrees);
 
         // The dialog may have removed or reattached worktrees; bring the status-bar counter back in step.
         await Worktrees.RefreshCountAsync();

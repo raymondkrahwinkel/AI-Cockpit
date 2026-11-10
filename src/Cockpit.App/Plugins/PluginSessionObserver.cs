@@ -1,9 +1,11 @@
+using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using Avalonia.Threading;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Abstractions.Remote;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
@@ -16,23 +18,28 @@ namespace Cockpit.App.Plugins;
 internal sealed class PluginSessionObserver : ICockpitSessionObserver, IPluginActiveSession
 {
     private readonly CockpitViewModel _cockpit;
+    private ObservableCollection<SessionPanelViewModel> Sessions => _cockpit.IsRemoteWindow ? _cockpit.GridPanes : _cockpit.Sessions;
     private readonly ISessionRegistry? _registry;
     private readonly ISessionLauncher? _launcher;
+    private readonly IRemoteServer? _server;
+    private ISessionRegistry? Registry => _server?.Sessions ?? _registry;
+    private ISessionLauncher? Launcher => _server?.Launcher ?? _launcher;
 
     // Sessions we have hooked, so we can detach cleanly (no leaked handlers) and avoid double-hooking on a
     // spurious reset. The value is that session's own RateLimits handler, kept to unsubscribe the exact delegate added.
     private readonly Dictionary<SessionPanelViewModel, NotifyCollectionChangedEventHandler> _hooked = [];
 
     // AC-2256: the registry and launcher serve the transcript and permission reads; without them both read as nothing.
-    public PluginSessionObserver(CockpitViewModel cockpit, ISessionRegistry? registry = null, ISessionLauncher? launcher = null)
+    public PluginSessionObserver(CockpitViewModel cockpit, ISessionRegistry? registry = null, ISessionLauncher? launcher = null, IRemoteServer? server = null)
     {
         _cockpit = cockpit;
         _registry = registry;
         _launcher = launcher;
+        _server = server;
         _cockpit.PropertyChanged += _OnCockpitPropertyChanged;
-        _cockpit.Sessions.CollectionChanged += _OnSessionsChanged;
+        Sessions.CollectionChanged += _OnSessionsChanged;
 
-        foreach (var session in _cockpit.Sessions)
+        foreach (var session in Sessions)
         {
             _Hook(session);
         }
@@ -44,11 +51,11 @@ internal sealed class PluginSessionObserver : ICockpitSessionObserver, IPluginAc
 
     public string? ActiveProjectId => _cockpit.SelectedSession?.ProjectId;
 
-    // The assistant is appended rather than hooked into `_cockpit.Sessions` itself (AC-833): it deliberately sits
+    // The assistant is appended rather than hooked into `Sessions` itself (AC-833): it deliberately sits
     // outside that collection (see `CockpitViewModel.CreateAssistantSession`) so nothing else that iterates
     // Sessions picks it up by accident, but it is still a session an "open sessions" list must be able to name.
     public IReadOnlyList<OpenCockpitSession> OpenSessions =>
-        [.. _cockpit.Sessions.Append<SessionPanelViewModel?>(_cockpit.AssistantPane).OfType<SessionPanelViewModel>().Select(_Describe)];
+        [.. Sessions.Append<SessionPanelViewModel?>(_cockpit.AssistantPane).OfType<SessionPanelViewModel>().Select(_Describe)];
 
     public SessionUsageSnapshot? ActiveSessionUsage => _Snapshot(_cockpit.SelectedSession);
 
@@ -68,7 +75,7 @@ internal sealed class PluginSessionObserver : ICockpitSessionObserver, IPluginAc
         // request thread — enumerating the sessions ObservableCollection there while the UI thread adds/removes a
         // session would throw. Marshal the read onto the UI thread (inline when already on it).
         IReadOnlyList<SessionImageAttachment> Read() =>
-            _cockpit.Sessions.FirstOrDefault(session => string.Equals(session.PaneId, paneId, StringComparison.Ordinal))
+            Sessions.FirstOrDefault(session => string.Equals(session.PaneId, paneId, StringComparison.Ordinal))
                 ?.CurrentTurnImages ?? [];
 
         return UiThreadCall.Run(Read);
@@ -78,7 +85,7 @@ internal sealed class PluginSessionObserver : ICockpitSessionObserver, IPluginAc
     public string? GetWorkingDirectory(string paneId)
     {
         string? Read() =>
-            _cockpit.Sessions.Append<SessionPanelViewModel?>(_cockpit.AssistantPane)
+            Sessions.Append<SessionPanelViewModel?>(_cockpit.AssistantPane)
                 .FirstOrDefault(session => session is not null && string.Equals(session.PaneId, paneId, StringComparison.Ordinal))
                 ?.WorkingDirectory;
 
@@ -86,10 +93,10 @@ internal sealed class PluginSessionObserver : ICockpitSessionObserver, IPluginAc
     }
 
     public Task<PluginTranscriptSlice?> ReadTranscriptAsync(string paneId, int count) =>
-        _registry is null ? Task.FromResult<PluginTranscriptSlice?>(null) : PluginSessionReads.ReadTranscriptAsync(_registry, _launcher, paneId, count);
+        Registry is not { } registry ? Task.FromResult<PluginTranscriptSlice?>(null) : PluginSessionReads.ReadTranscriptAsync(registry, Launcher, paneId, count);
 
     public Task<IReadOnlyList<PluginPendingPermission>> ReadPendingPermissionsAsync(string paneId) =>
-        _registry is null ? Task.FromResult<IReadOnlyList<PluginPendingPermission>>([]) : PluginSessionReads.ReadPendingPermissionsAsync(_registry, _launcher, paneId);
+        Registry is not { } registry ? Task.FromResult<IReadOnlyList<PluginPendingPermission>>([]) : PluginSessionReads.ReadPendingPermissionsAsync(registry, Launcher, paneId);
 
     // AC-2256: the same answers SessionPanelHandle gives for these fields, read off the pane the list already walks.
     private static OpenCockpitSession _Describe(SessionPanelViewModel session) =>
@@ -140,13 +147,13 @@ internal sealed class PluginSessionObserver : ICockpitSessionObserver, IPluginAc
         {
             foreach (var session in _hooked.Keys.ToList())
             {
-                if (!_cockpit.Sessions.Contains(session))
+                if (!Sessions.Contains(session))
                 {
                     _Unhook(session);
                 }
             }
 
-            foreach (var session in _cockpit.Sessions)
+            foreach (var session in Sessions)
             {
                 _Hook(session);
             }

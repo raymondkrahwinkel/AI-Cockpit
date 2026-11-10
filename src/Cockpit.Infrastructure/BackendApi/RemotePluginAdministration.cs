@@ -72,6 +72,12 @@ internal sealed class RemotePluginAdministration(BackendApiClient client, ILogge
     public Task<JsonElement> InvokeChannelAsync(string folderId, string action, JsonElement payload, CancellationToken cancellationToken = default) =>
         client.SendAsync<JsonElement>(HttpMethod.Post, $"api/v1/plugins/{Uri.EscapeDataString(folderId)}/channel/{Uri.EscapeDataString(action)}", payload, ConnectKeyEndpoints.Json, cancellationToken);
 
+    public Task<JsonElement> InvokeHostAsync(string folderId, string action, JsonElement payload, CancellationToken cancellationToken = default) =>
+        client.SendAsync<JsonElement>(HttpMethod.Post, $"api/v1/plugins/{Uri.EscapeDataString(folderId)}/ui/{Uri.EscapeDataString(action)}", payload, ConnectKeyEndpoints.Json, cancellationToken);
+
+    public Task<IReadOnlyDictionary<string, IReadOnlyList<string>>> GetUiIntentsAsync(string folderId, CancellationToken cancellationToken = default) =>
+        client.GetAsync<IReadOnlyDictionary<string, IReadOnlyList<string>>>($"api/v1/plugins/{Uri.EscapeDataString(folderId)}/ui/intents", cancellationToken);
+
     public IDisposable SubscribeChannel(string folderId, string name, Action<long, JsonElement> handler)
     {
         var key = (folderId, name);

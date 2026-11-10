@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2283: remote Cockpit windows load trusted plugin UI without starting local plugin engines or an MCP listener. Ordinary plugin menus, dialogs and workspaces use the server's storage and actions; missing or mismatched UI shows why it is unavailable. Files and Worktrees use the server's project paths, including guarded saves and confirmed removal.
+
 - AC-2281: Projects in a remote Cockpit window are the server's projects, in the ordinary Projects page and project editor. New project clones its git URL on the server with the server's own git credentials; editing changes name, category, description, profile, behavior and the worktree switch; Remove takes the project off the server. Start on a project opens the server's start card with that project and its profile picked. A project's links, plugin fields, MCP choice, extra rows and password stay on the server and never reach the window. Changes need an admin key.
 
 - AC-2279: Options › Security, Swarm and Servers in a remote Cockpit window manage the server itself. That covers agent terminal and shell access, the swarm's machines, leader and rank-return choice, removing a machine, leaving the swarm, and the server's own connect keys. Admin keys only, every change audited. A new extra internal network range must lie inside private address space. Pairing, encryption and screen lock stay on each device's own screen.

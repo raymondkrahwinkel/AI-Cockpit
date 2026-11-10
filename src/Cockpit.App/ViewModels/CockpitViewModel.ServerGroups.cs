@@ -86,7 +86,8 @@ public partial class CockpitViewModel
         Func<CockpitViewModel, string?, Task>? presentOptions = null,
         Func<PluginManagerViewModel, PluginStoreFilter?, Task>? presentPluginStore = null,
         Func<string, string, string, Task<bool>>? confirm = null,
-        Func<ProjectDialogViewModel, Task>? presentProjectDialog = null)
+        Func<ProjectDialogViewModel, Task>? presentProjectDialog = null,
+        Composition.RemoteWindowUi? ui = null)
     {
         IRemoteServer? Current() => servers.Servers.FirstOrDefault(target => target.Name == server);
         var options = Composition.DesktopComposition.RemoteOptionsFor(Current);
@@ -107,7 +108,9 @@ public partial class CockpitViewModel
             usagePillSettingsStore: options.UsagePill, screenshotSettingsStore: options.Screenshots,
             quickNoteSettingsStore: options.QuickNotes,
             heavyRunSettingsStore: options, deferOptionsLoad: true,
-            projects: new ProjectsViewModel(serverProjects, serverProjects, projectDialogs) { ServerName = server })
+            projects: new ProjectsViewModel(serverProjects, serverProjects, projectDialogs) { ServerName = server },
+            workspaceTypeRegistry: ui?.WorkspaceTypes, widgetRegistry: ui?.Widgets, dockPanelRegistry: ui?.DockPanels,
+            worktrees: new WorktreesViewModel(null, (title, message, label) => ui?.ConfirmAsync(title, message, label) ?? Task.FromResult(false)))
         {
             RemoteWindowServer = server,
             _showServerAdmin = showServerAdmin,
@@ -116,6 +119,8 @@ public partial class CockpitViewModel
             // AC-2279: the server's own switches and swarm; encryption, screen lock and pairing stay with this device.
             Security = new SecurityOptionsViewModel(new UnprotectedSecrets(), terminalAccessSettings: options, shellAccessSettings: options),
             Swarm = new SwarmOptionsViewModel(options.Swarm, options.SwarmLeadership, confirm),
+            _presentWorktrees = ui is null ? null : ui.ShowWorktreesAsync,
+            _presentConfirmation = confirm ?? (ui is null ? null : ui.ConfirmAsync),
         };
         cockpit._WireServerGroups(servers, SessionViewModel.OverRemoteAsync, serverChoices, signIns);
 
