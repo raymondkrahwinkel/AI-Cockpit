@@ -79,7 +79,9 @@ public class McpToolProviderConfinementTests
         var effectiveSelection = McpServerRegistryFilter.WithInternalProfileServers(visibleSelection, profileSelection, _FullEffectiveSet());
         var worktreeRoot = Path.GetFullPath(Path.Combine("test-data", "worktree"));
         var confinedSession = Substitute.For<ISessionHandle>();
+        confinedSession.PaneId.Returns("pane-1");
         confinedSession.WorkingDirectory.Returns(worktreeRoot);
+        confinedSession.ActiveProfile.Returns(new Cockpit.Core.Profiles.SessionProfile("strict", new Cockpit.Core.Profiles.PluginProviderConfig("local", "{}")) { GuardrailMode = Cockpit.Core.Profiles.GuardrailMode.Strict });
         confinedSession.WorktreeBranch.Returns("cockpit/test");
         var sessions = Substitute.For<ISessionRegistry>();
         sessions.Find("pane-1").Returns(confinedSession);
@@ -106,7 +108,7 @@ public class McpToolProviderConfinementTests
         Assert.True(elevated.Internal);
         Assert.False(elevated.AlwaysMounted);
         Assert.Contains("cockpit-elevated", effectiveSelection!);
-        Assert.Contains("outside your working directory", startRunReply);
+        Assert.Contains("outside the session boundary", startRunReply);
         _ = runner.DidNotReceive().RunAsync(
             Arg.Any<string>(),
             Arg.Any<string>(),

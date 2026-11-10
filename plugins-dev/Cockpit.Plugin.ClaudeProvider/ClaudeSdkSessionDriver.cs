@@ -83,6 +83,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver, IPluginMcpT
     private long _lastAllowancePollTicks;
 
     private IClaudeSdkSubprocess? _subprocess;
+    private string? _paneId;
     private Task? _stdoutPump;
     private Task? _stderrDrain;
     private string? _sessionId;
@@ -227,7 +228,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver, IPluginMcpT
         }
 
         _systemPromptPath = ClaudePrivateTempFile.WriteSystemPrompt(appendSystemPrompt);
-        var arguments = ClaudeSdkArguments.BuildArguments(permissionMode, effectiveModel, resumeSessionId, continueMostRecent: false, appendSystemPromptPath: _systemPromptPath, mcpConfigPath: _mcpConfigPath, strictMcpConfig: unattended);
+        var arguments = ClaudeSdkArguments.BuildArguments(permissionMode, effectiveModel, resumeSessionId, continueMostRecent: false, appendSystemPromptPath: _systemPromptPath, mcpConfigPath: _mcpConfigPath, strictMcpConfig: unattended, environment: _profileEnvironment);
         var environment = _BuildEnvironment(userHome);
 
         // AC-13: hand the agent its own session id as COCKPIT_PANE_ID, so it can name its own session to the
@@ -236,6 +237,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver, IPluginMcpT
         if (_ResolveOption(options, WellKnownPluginSessionOptions.PaneId, defaultValue: null) is { Length: > 0 } paneId)
         {
             environment["COCKPIT_PANE_ID"] = paneId;
+            _paneId = paneId;
             if (paneId is "." or ".." || paneId.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || paneId.Contains('/') || paneId.Contains('\\'))
             {
                 throw new ArgumentException("A pane id must be a single directory name.", nameof(options));
@@ -539,10 +541,25 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver, IPluginMcpT
             // routed here, never to the transcript parser.
             if (ClaudeControlProtocol.IsControlLine(type))
             {
-                if (ClaudeControlProtocol.TryParseHookRequest(root, out var hookRequestId, out var hookToolName))
+                if (ClaudeControlProtocol.TryParseHookRequest(root, out var hookRequestId, out var hookToolName, out var hookInputJson, out var hookCwd))
                 {
-                    bool deny = _readOnlyToolFilter is { } toolFilter && !toolFilter(hookToolName);
-                    await _WriteLineAsync(ClaudeControlProtocol.BuildHookResponse(hookRequestId, deny), cancellationToken).ConfigureAwait(false);
+                    var decision = ClaudePathGuard.ModeFrom(_profileEnvironment?.GetValueOrDefault(ClaudePathGuard.ModeVariable)) is { } guardMode
+                        ? ClaudePathGuard.Evaluate(hookToolName, hookInputJson, hookCwd, guardMode, ClaudePathGuard.RootsFrom(_profileEnvironment?.GetValueOrDefault(ClaudePathGuard.RootsVariable)),
+                            CommandGuard.SessionScope(_subprocess?.ProcessId, _paneId, hookCwd ?? Environment.CurrentDirectory, _profileEnvironment?.GetValueOrDefault(CommandGuard.JobVariable)))
+                        : GuardDecision.Allow;
+                    if (decision.Message is not null)
+                    {
+                        Console.Error.WriteLine($"cockpit-guard session {_sessionId}: {decision.Message}");
+                    }
+                    foreach (var violation in decision.Violations)
+                    {
+                        _events.Publish(new PluginGuardViolation(violation.Mode, violation.Tool, violation.Target, violation.Denied, violation.Kind) { SessionId = _sessionId });
+                    }
+                    if (_readOnlyToolFilter is { } toolFilter && !toolFilter(hookToolName))
+                    {
+                        decision = new GuardDecision(true, "This turn is read-only; this tool is denied.");
+                    }
+                    await _WriteLineAsync(ClaudeControlProtocol.BuildHookResponse(hookRequestId, decision), cancellationToken).ConfigureAwait(false);
                 }
                 else if (ClaudeControlProtocol.TryParsePermissionRequest(root, out var requestId, out var toolUseId, out var toolName, out var inputJson))
                 {

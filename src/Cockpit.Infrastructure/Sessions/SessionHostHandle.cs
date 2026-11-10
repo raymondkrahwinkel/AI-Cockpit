@@ -137,6 +137,8 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
 
     public string? ActiveProfileLabel { get; }
 
+    public Core.Profiles.SessionProfile? ActiveProfile => _host.Runtime?.Profile;
+
     public string? ProjectId { get; }
 
     public string? ProviderId { get; private set; }

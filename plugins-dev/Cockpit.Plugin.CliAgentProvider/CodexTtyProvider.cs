@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Cockpit.Plugins.Shared;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Plugin.CliAgentProvider;
 
@@ -24,7 +25,7 @@ namespace Cockpit.Plugin.CliAgentProvider;
 // `--sandbox`) has no field on `CliAgentConfig` to carry a per-profile default, so only
 // sandbox — the one Codex knob the config already models — is wired through here; see the plugin's design
 // doc for approval-policy as a follow-up rather than something invented in this pass.
-internal sealed class CodexTtyProvider(Func<string, string?>? managedResolver = null) : IPluginTtyProvider
+internal sealed class CodexTtyProvider(Func<string, string?>? managedResolver = null, ILogger? logger = null) : IPluginTtyProvider
 {
     // The option key the New-session dialog stores Codex's chosen sandbox policy under — Codex's own word
     // for the knob (`--sandbox &lt;read-only|workspace-write|danger-full-access&gt;`), not Claude's
@@ -64,6 +65,15 @@ internal sealed class CodexTtyProvider(Func<string, string?>? managedResolver = 
         var environment = new Dictionary<string, string?>(BuildEnvironmentOverlay(config, mcpLaunch.EnvironmentVariables));
         JsonElement hooks = JsonSerializer.SerializeToElement(TtyChildHooks.Settings(statusFile, "codex", environment));
         var hookArguments = new List<string>(mcpLaunch.ConfigArgs);
+        IReadOnlyDictionary<string, string> options = context.Options;
+        if (CodexSandbox.StrictWritableRoots(context.BaseEnvironment, context.WorkingDirectory, logger) is { } writableRoots)
+        {
+            options = new Dictionary<string, string>(options)
+            {
+                [SandboxOptionKey] = CodexSandbox.Clamp(CliAgentConfig.ResolveOption(options, SandboxOptionKey, config.SandboxMode), true, logger) ?? "workspace-write",
+            };
+            hookArguments.AddRange(CodexSandbox.ConfigArguments(writableRoots));
+        }
         foreach (var hook in hooks.EnumerateObject())
         {
             hookArguments.Add("-c");
@@ -74,7 +84,7 @@ internal sealed class CodexTtyProvider(Func<string, string?>? managedResolver = 
 
         return new PluginTtyLaunchSpec(
             executablePath,
-            BuildArguments(config, context.Options, context.Resume, hookArguments),
+            BuildArguments(config, options, context.Resume, hookArguments),
             environment,
             context.WorkingDirectory,
             SessionScopedFiles: files)

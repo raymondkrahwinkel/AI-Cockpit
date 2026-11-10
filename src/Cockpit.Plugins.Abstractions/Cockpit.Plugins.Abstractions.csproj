@@ -685,7 +685,8 @@
          a plugin that uses them requires host 0.172.0, contract stays 3. -->
     <!-- 3.84.0 (AC-2257): PluginTranscriptEntry.Index (init-property, 0 by default), set by ReadTranscriptAsync;
          a plugin that reads it requires host 0.173.0, contract stays 3. -->
-    <Version>3.84.0</Version>
+    <!-- 3.85.0 (AC-2251): PluginGuardViolation; providers emitting it require host 0.174.0, contract stays 3. -->
+    <Version>3.85.0</Version>
     <AssemblyVersion>1.17.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

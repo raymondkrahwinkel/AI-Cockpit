@@ -54,10 +54,12 @@ internal static class ClaudeControlProtocol
             } : (object?)null,
         });
 
-    public static bool TryParseHookRequest(JsonElement root, out string requestId, out string toolName)
+    public static bool TryParseHookRequest(JsonElement root, out string requestId, out string toolName, out string toolInputJson, out string? cwd)
     {
         requestId = string.Empty;
         toolName = string.Empty;
+        toolInputJson = "{}";
+        cwd = null;
         if (!_TryGetString(root, "type", out var type) || type != ControlRequestType
             || !root.TryGetProperty("request", out var request) || request.ValueKind != JsonValueKind.Object
             || !_TryGetString(request, "subtype", out var subtype) || subtype != "hook_callback"
@@ -73,12 +75,14 @@ internal static class ClaudeControlProtocol
             && _TryGetString(input, "tool_name", out var name))
         {
             toolName = name;
+            toolInputJson = input.TryGetProperty("tool_input", out var toolInput) ? toolInput.GetRawText() : "{}";
+            cwd = _TryGetString(input, "cwd", out var directory) ? directory : null;
         }
 
         return true;
     }
 
-    public static string BuildHookResponse(string requestId, bool deny) =>
+    public static string BuildHookResponse(string requestId, GuardDecision decision) =>
         JsonSerializer.Serialize(new
         {
             type = ControlResponseType,
@@ -86,15 +90,7 @@ internal static class ClaudeControlProtocol
             {
                 subtype = "success",
                 request_id = requestId,
-                response = deny ? new
-                {
-                    hookSpecificOutput = new
-                    {
-                        hookEventName = "PreToolUse",
-                        permissionDecision = "deny",
-                        permissionDecisionReason = "This turn is read-only; this tool is denied.",
-                    },
-                } : (object)new { },
+                response = JsonNode.Parse(ClaudePathGuard.HookOutput(decision) ?? "{}"),
             },
         });
 

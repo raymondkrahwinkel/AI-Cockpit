@@ -72,6 +72,8 @@ public interface ISessionHandle
     /// </summary>
     string? ActiveProfileLabel { get; }
 
+    Cockpit.Core.Profiles.SessionProfile? ActiveProfile => null;
+
     /// <summary>
     /// The project the session was started for, or null when it has none.
     /// </summary>

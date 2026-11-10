@@ -1,5 +1,47 @@
 # AI-Cockpit
 
+Profiles have `GuardrailMode` (`Strict`, `Warn`, `Off`) and `GuardrailAllowedPaths` in
+`cockpit.json`, editable under Manage profiles and Options. New profiles default to
+`Strict`; existing entries without the mode default to `Warn`. Allowed paths default
+to an empty list and must be absolute or start with `~/` (one per line in the editor).
+They cannot contain the platform's path-list separator. Mode travels in the settings
+carrier; paths stay local. Invalid or machine-specific paths imported from elsewhere
+are skipped at launch with a log warning. Apply and Cancel stage both fields with the whole profile.
+Organisation profiles may supply `guardrailMode`; policy.permissions.minimumGuardrailMode
+can only make the effective mode stricter, without rewriting the local choice.
+Every agent launch receives `COCKPIT_GUARD_MODE` and `COCKPIT_GUARD_ROOTS` (joined with
+`Path.PathSeparator`): its working directory/worktree, session scratch, allowed paths
+and `<CLAUDE_CONFIG_DIR>/plans` (default `~/.claude/plans`). Profile variables cannot
+override these values. AC-2246 supplies this policy; enforcement follows in the other
+AC-1908 tickets. Existing coding-tool confinement remains active.
+
+Strict Claude profiles enable Claude Code's OS sandbox on Linux and macOS on TTY
+and SDK, with the session write roots as literal `sandbox.filesystem.allowWrite`
+paths. `autoAllowBashIfSandboxed` is enabled and `allowUnsandboxedCommands` is
+disabled; bypass remains available. `permissions.allow: ["WebFetch(domain:*)"]`
+allows all sandbox network hosts (Claude Code 2.1.186+); the runtime rejects a bare
+`*` in `sandbox.network.allowedDomains`. `failIfUnavailable` is false: a launch
+warning explains that commands run without OS isolation when it is unavailable.
+The server image includes bubblewrap and socat. Windows, Warn and Off are unchanged.
+
+Strict Codex profiles use `workspace-write` on TTY and app-server, including session
+scratch, allowed paths and the repository's git common directory as writable roots,
+with network access enabled. An explicit `read-only` choice remains read-only.
+Warn and Off keep the profile's existing sandbox. Approval policy and the Windows
+sandbox implementation are unchanged.
+
+**Known limitation (AC-2249):** Codex 0.167.0 protects the gitdir referenced by a
+worktree's `.git` file, even when it is covered by writable roots. See
+[`protocol/src/permissions.rs`, `default_read_only_subpaths_for_writable_root`](https://github.com/openai/codex/blob/rust-v0.167.0/codex-rs/protocol/src/permissions.rs).
+On Windows with `unelevated`, all three local probes failed with `index.lock:
+Permission denied`: without the git common directory, with it, and with both the
+common directory and the exact worktree gitdir. Therefore Strict skips its sandbox
+override in linked worktrees (`gitdir != common dir`) and keeps the profile's
+sandbox, logging the reason once at launch so commits remain possible. Path guards
+and detection from the other AC-1908 tickets remain the protection there; the Codex
+OS sandbox is not tightened in that case. Ordinary checkouts and non-git folders
+still receive the strict sandbox.
+
 Assistant Options controls spoken answers independently of text chat. `assistant.speechMode`
 (`Full`, `Summary`, `Short`; default `Short`), `assistant.speechMethod` (`Assistant`, `Profile`,
 `Rules`; default `Assistant`) and `assistant.speechProfileLabel` (optional existing profile label)

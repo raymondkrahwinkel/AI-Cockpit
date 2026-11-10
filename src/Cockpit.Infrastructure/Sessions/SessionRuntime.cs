@@ -349,7 +349,9 @@ internal sealed class SessionRuntime : ISessionRuntime
         // spawned anything itself. A provider that is an HTTP call has no process and nothing to cap.
         if (_driver.ProcessId is { } processId)
         {
-            _processAnchor = _processAnchorFactory?.Anchor(processId, launchOptions?.GetValueOrDefault(WellKnownPluginSessionOptions.PaneId));
+            var anchorPane = launchOptions?.GetValueOrDefault(WellKnownPluginSessionOptions.PaneId);
+            _processAnchor = _processAnchorFactory?.Anchor(processId, anchorPane,
+                string.IsNullOrWhiteSpace(anchorPane) ? null : SessionScratch.JobNameOf(SessionScratch.PathFor(anchorPane)));
             if (_memoryLimiter is not null)
             {
                 _memoryCap = _memoryLimiter.Apply(processId, SessionMemoryCap.ResolveBytes(profile, launchOptions));

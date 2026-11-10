@@ -123,6 +123,13 @@ internal sealed partial class SessionPanelHandle : IHostedSession
 
     public string? ActiveProfileLabel => _pane?.ActiveProfileLabel;
 
+    public Cockpit.Core.Profiles.SessionProfile? ActiveProfile => _pane switch
+    {
+        SessionViewModel sdk => sdk.ActiveProfile,
+        TtyViewModel tty => tty.ActiveProfile,
+        _ => null,
+    };
+
     public string? ProjectId => _pane?.ProjectId;
 
     public string? ProviderId => _pane?.ProviderId;

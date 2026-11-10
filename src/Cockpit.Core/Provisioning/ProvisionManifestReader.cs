@@ -32,6 +32,8 @@ public static partial class ProvisionManifestReader
 
     private static readonly string[] PermissionModes = ["plan", "default", "acceptEdits", "bypassPermissions"];
 
+    private static readonly string[] GuardrailModes = ["Strict", "Warn", "Off"];
+
     private static readonly string[] Switches = ["allowed", "forbidden"];
 
     private static readonly string[] IssuerKinds = ["depot", "static"];
@@ -315,6 +317,7 @@ public static partial class ProvisionManifestReader
             }
 
             var permissions = policy.Permissions;
+            Check(_IsKnownOrAbsent(permissions?.MinimumGuardrailMode, GuardrailModes), "policy.permissions.minimumGuardrailMode is not a known guardrail mode");
             Check(_IsKnownOrAbsent(permissions?.MaxPermissionMode, PermissionModes), "policy.permissions.maxPermissionMode is not a known permission mode");
             Check(_IsKnownOrAbsent(permissions?.DelegationCeiling, PermissionModes), "policy.permissions.delegationCeiling is not a known permission mode");
             Check(_IsKnownOrAbsent(permissions?.AutoApproveTools, Switches), "policy.permissions.autoApproveTools is not \"allowed\" or \"forbidden\"");
@@ -349,6 +352,7 @@ public static partial class ProvisionManifestReader
     private static ProvisionProfile _Profile(ProvisionProfile profile, int index, Action<bool, string> check, List<ProvisionNote> skipped)
     {
         check(Modes.Contains(profile.Mode) && Origins.Contains(profile.By), $"profile {profile.Id} has an unknown mode or origin");
+        check(_IsKnownOrAbsent(profile.GuardrailMode, GuardrailModes), $"profile {profile.Id} has an unknown guardrail mode");
         check(_IsKnownOrAbsent(profile.Defaults?.PermissionMode, PermissionModes), $"profile {profile.Id} has an unknown permission mode");
         check(_IsKnownOrAbsent(profile.Delegation?.PermissionCeiling, PermissionModes), $"profile {profile.Id} has an unknown delegation ceiling");
 

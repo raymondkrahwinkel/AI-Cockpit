@@ -78,6 +78,8 @@
     <!-- AC-1431: the OpenAI-compatible turn loop (history, continuation net, transport retry) is one source file
          shared with the provider plugins' driver, so the host's Ollama/LM Studio sessions run the same loop. -->
     <Compile Include="..\..\plugins-dev\_shared\ChatTurnLoop.cs" Link="Sessions\ChatTurnLoop.cs" />
+    <Compile Include="..\..\plugins-dev\_shared\CommandGuard.cs" Link="Sessions\CommandGuard.cs" />
+    <Compile Include="..\..\plugins-dev\_shared\GuardJournal.cs" Link="Sessions\GuardJournal.cs" />
     <!-- AC-1441: one source file each, shared with App: the SVG rasterizer and a turn's image attachment names. -->
     <Compile Include="..\_shared\SvgRasterizer.cs" Link="Svg\SvgRasterizer.cs" />
     <Compile Include="..\_shared\SessionImageAttachments.cs" Link="Plugins\SessionImageAttachments.cs" />

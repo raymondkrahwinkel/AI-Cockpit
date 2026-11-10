@@ -7,6 +7,12 @@ namespace Cockpit.Infrastructure.Configuration;
 // mapping below absorbs the difference until Claude becomes a plugin and the shape actually changes.
 internal sealed class SessionProfileEntry
 {
+    public const GuardrailMode ExistingProfileGuardrailMode = Core.Profiles.GuardrailMode.Warn;
+
+    public string? GuardrailMode { get; set; }
+
+    public List<string>? GuardrailAllowedPaths { get; set; }
+
     public string Label { get; set; } = string.Empty;
     public string? ImageInputMode { get; set; }
 
@@ -75,6 +81,8 @@ internal sealed class SessionProfileEntry
         Assistant = string.IsNullOrWhiteSpace(profile.Assistant) ? null : profile.Assistant,
         DefaultKind = profile.DefaultKind?.ToString(),
         MemoryCapMegabytes = profile.MemoryCapMegabytes,
+        GuardrailMode = profile.GuardrailMode.ToString(),
+        GuardrailAllowedPaths = profile.GuardrailAllowedPaths.Count > 0 ? [.. profile.GuardrailAllowedPaths] : null,
         MaxParallelSessions = profile.MaxParallelSessions > 0 ? profile.MaxParallelSessions : null,
     };
 
@@ -108,6 +116,9 @@ internal sealed class SessionProfileEntry
                 ? parsedDefaultKind
                 : null,
             MemoryCapMegabytes = MemoryCapMegabytes,
+            GuardrailMode = Enum.TryParse<GuardrailMode>(GuardrailMode, true, out var guardMode) && Enum.IsDefined(guardMode)
+                ? guardMode : ExistingProfileGuardrailMode,
+            GuardrailAllowedPaths = GuardrailAllowedPaths ?? [],
             MaxParallelSessions = Math.Max(0, MaxParallelSessions ?? 0),
         };
     }

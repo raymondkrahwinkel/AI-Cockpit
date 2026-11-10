@@ -68,6 +68,8 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
     // sandbox (there is always one in effect), like the model — so the panel opens on the active sandbox rather than
     // blank, and each turn re-asserts it as a SandboxPolicy object.
     private string? _sandbox;
+    private bool _strictGuardrails;
+    private IReadOnlyList<string>? _writableRoots;
     private IReadOnlyDictionary<string, string>? _profileEnvironment;
 
     // The controls this session can switch mid-conversation (#45 D4), built once at start from the model listing
@@ -197,6 +199,10 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
             ?? _config.SandboxMode;
         var effectiveModel = CliAgentConfig.ResolveOption(options, ModelOptionKey, _model);
         _model = effectiveModel;
+        _workingDirectory = _ResolveProcessWorkingDirectory(workingDirectory);
+        _writableRoots = CodexSandbox.StrictWritableRoots(_profileEnvironment, _workingDirectory, _logger);
+        _strictGuardrails = _writableRoots is not null;
+        sandbox = CodexSandbox.Clamp(sandbox, _strictGuardrails, _logger);
         _sandbox = sandbox;
 
         // AC-1101: the profile's own effort/approval choice must already be in force for the first turn a spawned
@@ -226,8 +232,12 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
             environmentVariables[key] = value;
         }
 
-        _workingDirectory = _ResolveProcessWorkingDirectory(workingDirectory);
-        _connection.Start(_executablePath, _workingDirectory, environmentVariables, mcpLaunch.ConfigArgs);
+        var configArguments = new List<string>(mcpLaunch.ConfigArgs);
+        if (_writableRoots is not null)
+        {
+            configArguments.AddRange(CodexSandbox.ConfigArguments(_writableRoots));
+        }
+        _connection.Start(_executablePath, _workingDirectory, environmentVariables, configArguments);
         _notificationPump = Task.Run(() => _PumpNotificationsAsync(_lifetime.Token), CancellationToken.None);
         _serverRequestPump = Task.Run(() => _PumpServerRequestsAsync(_lifetime.Token), CancellationToken.None);
 
@@ -248,7 +258,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         string threadId;
         if (!string.IsNullOrWhiteSpace(resumeSessionId))
         {
-            var resumed = await _connection.SendRequestAsync("thread/resume", new { threadId = resumeSessionId, cwd }, cancellationToken).ConfigureAwait(false);
+            var resumed = await _connection.SendRequestAsync("thread/resume", new { threadId = resumeSessionId, cwd, sandbox = _strictGuardrails ? sandbox : null }, cancellationToken).ConfigureAwait(false);
             _model = _TryGetString(resumed, "model", out var resumedModel) ? _NullIfBlank(resumedModel) ?? _model : _model;
             threadId = _ExtractThreadId(resumed) ?? resumeSessionId;
         }
@@ -309,7 +319,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
             // model/effort/approvalPolicy/sandboxPolicy are per-turn overrides (#45 D4): TurnStartParams takes them all
             // as optional, so a null simply leaves the thread's own default in place. sandboxPolicy is the tagged-union
             // object keyed by its camelCase type (unlike thread/start's SandboxMode string), built from the kebab choice.
-            var sandboxPolicy = CodexSandbox.ToPolicyType(sandbox) is { } policyType ? new { type = policyType } : null;
+            object? sandboxPolicy = CodexSandbox.Policy(sandbox, _writableRoots);
             await _connection.SendRequestAsync("turn/start", new { threadId, input, model = _NullIfBlank(model), effort = _NullIfBlank(effort), approvalPolicy = _NullIfBlank(approval), sandboxPolicy }, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
@@ -360,7 +370,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
                 break;
 
             case SandboxOptionKey:
-                _sandbox = _NullIfBlank(value);
+                _sandbox = CodexSandbox.Clamp(_NullIfBlank(value), _strictGuardrails, _logger);
                 break;
         }
 
