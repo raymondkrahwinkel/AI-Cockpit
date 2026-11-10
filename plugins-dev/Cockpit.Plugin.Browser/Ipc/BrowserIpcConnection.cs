@@ -18,7 +18,7 @@ internal sealed class BrowserIpcConnection : IAsyncDisposable
     private readonly Dictionary<(Guid Tab, string Session), long> _retired = [];
     private readonly Dictionary<long, (BrowserIpcMessage Message, TaskCompletionSource<JsonElement> Answer)> _pending = [];
     private readonly Dictionary<long, (BrowserIpcMessage Message, CancellationTokenSource Cancel)> _incoming = [];
-    private readonly List<BrowserIpcFrameBuffer> _buffers = [];
+    private readonly Dictionary<BrowserIpcFrameBuffer, Guid> _buffers = [];
     private readonly List<Exception> _cleanupErrors = [];
     private readonly Channel<BrowserIpcMessage> _requests = Channel.CreateBounded<BrowserIpcMessage>(BrowserIpcLimits.QueuedRequests);
     private readonly Task _reader;
@@ -31,32 +31,32 @@ internal sealed class BrowserIpcConnection : IAsyncDisposable
     internal Task Completion => Task.WhenAll(_reader, _worker);
     internal IReadOnlyList<Exception> CleanupErrors => _cleanupErrors;
 
-    internal BrowserIpcFrameBuffer OpenFrameBuffer(string trustedParent, BrowserIpcFrameDescriptor descriptor)
+    internal BrowserIpcFrameBuffer OpenFrameBuffer(string trustedParent, BrowserIpcFrameDescriptor descriptor, Guid tab = default)
     {
         lock (_gate)
         {
             _closed.Token.ThrowIfCancellationRequested();
-            if (_buffers.Count >= 2)
+            if (_buffers.Values.Count(owner => owner == tab) >= 2 || _buffers.Count >= BrowserIpcLimits.Tabs * 2)
             {
                 throw new InvalidOperationException("IPC frame buffer limit reached.");
             }
             var buffer = BrowserIpcFrameBuffer.Open(trustedParent, _generation, descriptor, _ReleaseBuffer);
-            _buffers.Add(buffer);
+            _buffers.Add(buffer, tab);
             return buffer;
         }
     }
 
-    internal BrowserIpcFrameBuffer CreateFrameBuffer(string trustedParent, int width, int height)
+    internal BrowserIpcFrameBuffer CreateFrameBuffer(string trustedParent, int width, int height, Guid tab = default)
     {
         lock (_gate)
         {
             _closed.Token.ThrowIfCancellationRequested();
-            if (_buffers.Count >= 2)
+            if (_buffers.Values.Count(owner => owner == tab) >= 2 || _buffers.Count >= BrowserIpcLimits.Tabs * 2)
             {
                 throw new InvalidOperationException("IPC frame buffer limit reached.");
             }
-            var buffer = BrowserIpcFrameBuffer.Create(trustedParent, _generation, width, height, _ReleaseBuffer);
-            _buffers.Add(buffer);
+            var buffer = BrowserIpcFrameBuffer.Create(trustedParent, _generation, width, height, _ReleaseBuffer, tab);
+            _buffers.Add(buffer, tab);
             return buffer;
         }
     }
@@ -130,6 +130,13 @@ internal sealed class BrowserIpcConnection : IAsyncDisposable
             foreach (var call in _pending.Values.Where(call => call.Message.TabId == tab && call.Message.SessionId == session))
             {
                 call.Answer.TrySetCanceled();
+            }
+            if (_tabs.Any(pair => pair.Tab == tab) == false)
+            {
+                foreach (var buffer in _buffers.Where(pair => pair.Value == tab).Select(pair => pair.Key).ToArray())
+                {
+                    BrowserIpcCleanup.Try(buffer.Dispose, _cleanupErrors);
+                }
             }
         }
         try
@@ -507,7 +514,7 @@ internal sealed class BrowserIpcConnection : IAsyncDisposable
             _requests.Writer.TryComplete();
             BrowserIpcCleanup.Try(_input.Dispose, _cleanupErrors);
             BrowserIpcCleanup.Try(_output.Dispose, _cleanupErrors);
-            foreach (var buffer in _buffers.ToArray())
+            foreach (var buffer in _buffers.Keys.ToArray())
             {
                 BrowserIpcCleanup.Try(buffer.Dispose, _cleanupErrors);
             }

@@ -4,10 +4,10 @@ using Cockpit.Plugin.Browser.UI.Engine;
 
 namespace Cockpit.Plugin.Browser.UI;
 
-// One tab of the user's profile. Every field follows its CefBrowserView, on the UI thread.
+// One tab of the user's profile. Every field follows its BrowserView, on the UI thread.
 internal sealed class BrowserTab
 {
-    public BrowserTab(CefBrowserView view, string address)
+    public BrowserTab(BrowserView view, string address)
     {
         View = view;
         Address = address;
@@ -23,10 +23,11 @@ internal sealed class BrowserTab
         };
     }
 
-    public CefBrowserView View { get; }
+    public BrowserView View { get; }
 
     // AC-1714: what a grant and an agent name this tab by. Short and opaque; it says nothing about the page.
-    public string Id { get; } = Guid.NewGuid().ToString("N")[..8];
+    public string Id => View.TabId.ToString("N")[..8];
+    internal Guid HostGeneration => View.HostGeneration;
 
     public string Title { get; private set; } = "New tab";
 
@@ -248,7 +249,7 @@ internal sealed class BrowserModel(BrowserEngine engine, Func<string, BrowserTab
         }
     }
 
-    private BrowserTab _CreateTab(string address) => _Wire(createTab?.Invoke(address) ?? new BrowserTab(new CefBrowserView(Engine, address, Engine.UserProfile), address));
+    private BrowserTab _CreateTab(string address) => _Wire(createTab?.Invoke(address) ?? new BrowserTab(Engine.CreateView(address), address));
 
     private BrowserTab _Wire(BrowserTab tab)
     {

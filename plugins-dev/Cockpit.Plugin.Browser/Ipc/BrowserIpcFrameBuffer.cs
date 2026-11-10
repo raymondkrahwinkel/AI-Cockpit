@@ -8,7 +8,7 @@ using Microsoft.Win32.SafeHandles;
 
 namespace Cockpit.Plugin.Browser.Ipc;
 
-internal sealed record BrowserIpcFrameDescriptor(Guid Generation, Guid BufferId, int Width, int Height)
+internal sealed record BrowserIpcFrameDescriptor(Guid Generation, Guid BufferId, int Width, int Height, Guid TabId = default)
 {
     internal long ByteLength
     {
@@ -108,9 +108,9 @@ internal sealed class BrowserIpcFrameBuffer : IDisposable
     }
 
     internal static BrowserIpcFrameBuffer Create(string trustedParent, Guid generation, int width, int height,
-        Action<BrowserIpcFrameBuffer>? released = null)
+        Action<BrowserIpcFrameBuffer>? released = null, Guid tab = default)
     {
-        var descriptor = new BrowserIpcFrameDescriptor(generation, Guid.NewGuid(), width, height);
+        var descriptor = new BrowserIpcFrameDescriptor(generation, Guid.NewGuid(), width, height, tab);
         _ = descriptor.ByteLength;
         trustedParent = BrowserIpcStorage.ValidateDirectory(trustedParent);
         CleanupAbandoned(trustedParent);
@@ -146,6 +146,38 @@ internal sealed class BrowserIpcFrameBuffer : IDisposable
         trustedParent = BrowserIpcStorage.ValidateDirectory(trustedParent);
         string directory = Path.Combine(trustedParent, $"browser-{generation:N}-{descriptor.BufferId:N}");
         return new BrowserIpcFrameBuffer(directory, descriptor, false, released);
+    }
+
+    internal unsafe void CopyRectangle(nint pixels, int stride, int x, int y, int width, int height, bool write)
+    {
+        if (x < 0 || y < 0 || width <= 0 || height <= 0 || width > Descriptor.Width - x || height > Descriptor.Height - y ||
+            stride < checked(Descriptor.Width * 4))
+        {
+            throw new InvalidDataException("Invalid IPC dirty rectangle.");
+        }
+        byte* pointer = null;
+        View.SafeMemoryMappedViewHandle.AcquirePointer(ref pointer);
+        try
+        {
+            pointer += View.PointerOffset;
+            for (int row = y; row < y + height; row++)
+            {
+                var shared = new Span<byte>(pointer + (row * Descriptor.Width + x) * 4, width * 4);
+                var local = new Span<byte>((byte*)pixels + row * stride + x * 4, width * 4);
+                if (write)
+                {
+                    local.CopyTo(shared);
+                }
+                else
+                {
+                    shared.CopyTo(local);
+                }
+            }
+        }
+        finally
+        {
+            View.SafeMemoryMappedViewHandle.ReleasePointer();
+        }
     }
 
     internal static void CleanupAbandoned(string trustedParent)
