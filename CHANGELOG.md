@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- AC-2308: plugin updates are built and verified in parallel after a nightly, then published together in one store PR. A failed plugin gate leaves the other updates publishable; the manual publisher now lists all 36 plugins.
+- AC-2308: plugin updates share one Linux build batch and at most one Windows batch after a nightly, then publish together in one store PR. A failed plugin gate leaves the other updates publishable; the manual publisher now lists all 36 plugins.
 
 - AC-2304: the Depot gateway has its own sign-in so it cannot overwrite the Depot connection's authorization. A refused sign-in is remembered until its credential changes, without repeated warnings or sign-in toasts (Depot 0.65.1).
 

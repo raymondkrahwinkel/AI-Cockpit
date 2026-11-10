@@ -1,6 +1,6 @@
 name: Publish plugin to store
 
-# Manual publishing and parallel preparation share the same host and package gates.
+# Manual publishing and batch preparation share the same host and package gates.
 
 on:
   workflow_call:
@@ -10,10 +10,6 @@ on:
         required: true
         # A called workflow cannot take a choice; the dispatch form below keeps the picker for humans.
         type: string
-      prepare_only:
-        description: Upload verified packages without writing to the store
-        type: boolean
-        default: false
       notes:
         description: Release notes for this version
         required: false
@@ -97,400 +93,98 @@ permissions:
   contents: read
 
 jobs:
-  # AC-1740: Windows apphosts need a Windows build to embed their manifest.
   runtime-identifiers:
     runs-on: ubuntu-latest
     outputs:
-      dir: ${{ steps.rids.outputs.dir }}
-      all: ${{ steps.rids.outputs.all }}
-      windows: ${{ steps.rids.outputs.windows }}
-      others: ${{ steps.rids.outputs.others }}
-      subprocess: ${{ steps.rids.outputs.subprocess }}
+      windows: ${{ steps.info.outputs.windows }}
     steps:
-      - name: Check out this repo
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
-
-      - name: Read the plugin's runtime identifiers from its store.json
-        id: rids
+      - id: info
         env:
           PLUGIN: ${{ inputs.plugin }}
         shell: bash
-        run: |
-          set -euo pipefail
-          dir=""
-          for f in plugins-dev/Cockpit.Plugin.*/plugin.json; do
-            if [ "$(jq -r '.id' "$f")" = "$PLUGIN" ]; then dir="$(dirname "$f")"; break; fi
-          done
-          if [ -z "$dir" ]; then
-            echo "::error::No plugin with id '$PLUGIN' found under plugins-dev/."
-            exit 1
-          fi
-
-          all=""
-          subprocess=""
-          if [ -f "$dir/store.json" ]; then
-            all="$(jq -r '.runtimeIdentifiers // [] | join(" ")' "$dir/store.json")"
-            subprocess="$(jq -r '.subprocess // empty' "$dir/store.json")"
-          fi
-          if [ -n "$all" ] && [ -z "$subprocess" ]; then
-            echo "::error::$dir/store.json names runtimeIdentifiers but no subprocess to publish per RID."
-            exit 1
-          fi
-
-          windows="$(printf '%s\n' $all | grep '^win-' | paste -sd' ' || true)"
-          others="$(printf '%s\n' $all | grep -v '^win-' | paste -sd' ' || true)"
-          {
-            echo "dir=$dir"
-            echo "all=$all"
-            echo "windows=$windows"
-            echo "others=$others"
-            echo "subprocess=$subprocess"
-          } >> "$GITHUB_OUTPUT"
-          echo "Runtime identifiers for '$PLUGIN': ${all:-none, one zip as always}"
+        run: bash scripts/plugin-publish.sh info "$PLUGIN"
 
   package-windows:
     needs: runtime-identifiers
     if: needs.runtime-identifiers.outputs.windows != ''
     runs-on: windows-latest
+    outputs:
+      count: ${{ steps.prepare.outputs.count }}
     steps:
-      - name: Check out this repo
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
-
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
-
-      # Self-contained: a user's machine has no .NET, and Cockpit's own self-contained folder is no DOTNET_ROOT.
-      - name: Publish the subprocess per Windows RID
+      - id: prepare
         env:
-          DIR: ${{ needs.runtime-identifiers.outputs.dir }}
-          RIDS: ${{ needs.runtime-identifiers.outputs.windows }}
-          SUBPROCESS: ${{ needs.runtime-identifiers.outputs.subprocess }}
+          PLUGINS: ${{ format('[{0}]', toJSON(inputs.plugin)) }}
         shell: bash
-        run: |
-          set -euo pipefail
-          for rid in $RIDS; do
-            dotnet publish "$DIR/$(dirname "$SUBPROCESS")" --configuration Release -r "$rid" --self-contained -warnaserror -o "subprocess/$rid"
-          done
-
+        run: bash scripts/plugin-publish.sh batch windows
       - uses: actions/upload-artifact@v7
+        if: steps.prepare.outputs.count != '0'
         with:
-          # Per plugin: publish-updated-plugins calls this once per plugin within one run, and names are per run.
           name: subprocess-windows-${{ inputs.plugin }}
           path: subprocess/
           if-no-files-found: error
           overwrite: true
+      - if: steps.prepare.outputs.failed != '0'
+        run: exit 1
 
   publish:
     needs: [runtime-identifiers, package-windows]
-    # Runs when package-windows was skipped (every plugin without Windows RIDs) or passed; never after it failed.
     if: ${{ !cancelled() && needs.runtime-identifiers.result == 'success' && needs.package-windows.result != 'failure' }}
     runs-on: ubuntu-latest
     concurrency:
-      group: ${{ inputs.prepare_only && format('prepare-plugin-{0}-{1}', github.run_id, inputs.plugin) || 'plugin-store-publish' }}
+      group: plugin-store-publish
       cancel-in-progress: false
-
     steps:
-      # Full history + tags: the host-version gate reads the v* release tags and the nightly commit.
-      - name: Check out this repo
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
-
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
-
-      - name: Check out the store repo
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
           repository: ${{ env.STORE_REPO }}
           token: ${{ secrets.STORE_PUBLISH_TOKEN }}
           path: store
-
-      # Manifest ids can differ from project names.
-      - name: Resolve the plugin from its id
-        id: resolve
-        env:
-          PLUGIN: ${{ inputs.plugin }}
-        shell: bash
-        run: |
-          dir=""
-          for f in plugins-dev/Cockpit.Plugin.*/plugin.json; do
-            if [ "$(jq -r '.id' "$f")" = "$PLUGIN" ]; then dir="$(dirname "$f")"; break; fi
-          done
-          if [ -z "$dir" ]; then
-            echo "::error::No plugin with id '$PLUGIN' found under plugins-dev/."
-            exit 1
-          fi
-
-          manifest="$dir/plugin.json"
-          {
-            echo "dir=$dir"
-            echo "manifest=$manifest"
-            echo "version=$(jq -r '.version' "$manifest")"
-            echo "min_host=$(jq -r '.minHostVersion // ""' "$manifest")"
-          } >> "$GITHUB_OUTPUT"
-
-          echo "Resolved '$PLUGIN' -> $dir"
-
-      # A package must have a downloadable host that can run it.
-      - name: Gate on host availability (minHostVersion)
-        id: gate
-        env:
-          GH_TOKEN: ${{ github.token }}
-          EVENT: ${{ github.event_name }}
-          MIN: ${{ steps.resolve.outputs.min_host }}
-          PLUGIN: ${{ inputs.plugin }}
-          DIR: ${{ steps.resolve.outputs.dir }}
-        shell: bash
-        run: |
-          if [ -z "$MIN" ]; then
-            echo "Plugin declares no minHostVersion — nothing to gate on."
-            exit 0
-          fi
-
-          stable="$(git tag -l 'v*' | sed 's/^v//' | grep -E '^[0-9]+(\.[0-9]+)*$' | sort -V | tail -1 || true)"
-
-          nightly_base=""
-          nsha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/nightly" -q .object.sha 2>/dev/null || echo "")"
-          if [ -n "$nsha" ]; then
-            # The digit anchor excludes the VersionPrefix mentioned in a comment.
-            nightly_base="$(git show "$nsha:Directory.Build.props" 2>/dev/null | grep -oP '<VersionPrefix>\K[0-9][^<]*' | head -1 || true)"
-          fi
-
-          available="$(printf '%s\n%s\n' "$stable" "$nightly_base" | grep -vE '^$' | sort -V | tail -1 || true)"
-          echo "Highest stable release: ${stable:-none} · nightly base: ${nightly_base:-none} · newest available host: ${available:-none}"
-
-          if [ -z "$available" ]; then
-            echo "::error::Could not determine any published host version (no v* release, no nightly). Cannot verify the plugin will run."
-            exit 1
-          fi
-
-          lowest="$(printf '%s\n%s\n' "$available" "$MIN" | sort -V | head -1)"
-          if [ "$lowest" != "$MIN" ]; then
-            echo "::error::$PLUGIN needs host >= $MIN but the newest published host is $available. Publish the app release or nightly that carries the host change first, then re-run this."
-            exit 1
-          fi
-
-          echo "Gate passed: newest published host $available satisfies minHostVersion $MIN."
-
-          # A nightly's base version can satisfy the number before it contains the required host change.
-          if [ -n "$stable" ] && [ "$(printf '%s\n%s\n' "$stable" "$MIN" | sort -V | head -1)" = "$MIN" ]; then
-            echo "A stable release ($stable) satisfies minHostVersion — no nightly containment check needed."
-            exit 0
-          fi
-
-          if [ -z "$nsha" ]; then
-            echo "::error::Only a nightly can satisfy minHostVersion $MIN, but there is no nightly tag to check."
-            exit 1
-          fi
-
-          # Unrelated commits after the nightly must not block this plugin.
-          plugin_sha="$(git log -1 --format=%H -- "$DIR")"
-          if [ -z "$plugin_sha" ]; then
-            echo "::error::Could not determine the newest commit touching $DIR; cannot verify the published host contains it."
-            exit 1
-          fi
-
-          if ! git merge-base --is-ancestor "$plugin_sha" "$nsha"; then
-            # AC-1959: automatic publishing waits for the next nightly; manual publishing reports the failed gate.
-            if [ "$EVENT" = "workflow_run" ]; then
-              echo "::notice::Nightly $nsha does not contain $plugin_sha (newest commit to $DIR) yet. $PLUGIN waits for the next Nightly, which publishes it."
-              echo "wait=true" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            echo "::error::The newest published host is nightly $nsha, which does not contain $plugin_sha — the newest commit to $DIR. Its base version satisfies minHostVersion $MIN, but that build predates the code being published, so a plugin leaning on a host change would install and quietly do nothing. Run the Nightly on this commit first, then re-run this."
-            exit 1
-          fi
-
-          echo "Containment check passed: nightly $nsha contains $plugin_sha (newest commit to $DIR)."
-
-      # Published versions are immutable because users may have pinned their sha256.
-      - name: Is this version already published?
-        id: check
-        env:
-          PLUGIN: ${{ inputs.plugin }}
-          VERSION: ${{ steps.resolve.outputs.version }}
-          WAIT: ${{ steps.gate.outputs.wait }}
-        shell: bash
-        run: |
-          skip=false
-          if [ "$WAIT" = "true" ]; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if [ -f store/index.json ]; then
-            present="$(jq -r --arg id "$PLUGIN" --arg v "$VERSION" \
-              '.plugins[]? | select(.id==$id) | .versions[]?.version | select(.==$v)' store/index.json | head -1)"
-            if [ "$present" = "$VERSION" ]; then
-              echo "::notice::$PLUGIN $VERSION is already in the store index — nothing to publish."
-              skip=true
-            fi
-          fi
-          echo "skip=$skip" >> "$GITHUB_OUTPUT"
-
-      - name: Build the plugin (Release)
-        if: steps.check.outputs.skip != 'true'
-        shell: bash
-        run: dotnet build "${{ steps.resolve.outputs.dir }}" --configuration Release -warnaserror
-
-      - name: Download the Windows subprocess publishes
-        if: steps.check.outputs.skip != 'true' && needs.runtime-identifiers.outputs.windows != ''
-        uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@v8
+        if: needs.package-windows.outputs.count != '' && needs.package-windows.outputs.count != '0'
         with:
           name: subprocess-windows-${{ inputs.plugin }}
           path: subprocess
-
-      - name: Publish the subprocess per other RID
-        if: steps.check.outputs.skip != 'true' && needs.runtime-identifiers.outputs.others != ''
+      - id: prepare
         env:
-          DIR: ${{ steps.resolve.outputs.dir }}
-          RIDS: ${{ needs.runtime-identifiers.outputs.others }}
-          SUBPROCESS: ${{ needs.runtime-identifiers.outputs.subprocess }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          for rid in $RIDS; do
-            dotnet publish "$DIR/$(dirname "$SUBPROCESS")" --configuration Release -r "$rid" --self-contained -warnaserror -o "subprocess/$rid"
-          done
-
-      # The installer expects plugin.json at the root; per-RID packages replace only the subprocess.
-      - name: Package the zip and hash it
-        id: package
-        if: steps.check.outputs.skip != 'true'
-        env:
-          PLUGIN: ${{ inputs.plugin }}
-          VERSION: ${{ steps.resolve.outputs.version }}
-          DIR: ${{ steps.resolve.outputs.dir }}
-          RIDS: ${{ needs.runtime-identifiers.outputs.all }}
-          SUBPROCESS: ${{ needs.runtime-identifiers.outputs.subprocess }}
-        shell: bash
-        run: |
-          out="$DIR/bin/Release/net10.0"
-
-          if [ -z "$RIDS" ]; then
-            rel="$PLUGIN/$PLUGIN-$VERSION.zip"
-            dest="$GITHUB_WORKSPACE/store/$rel"
-            mkdir -p "$(dirname "$dest")"
-            rm -f "$dest"
-
-            ( cd "$out" && zip -r -X "$dest" . -x '*.pdb' >/dev/null )
-
-            sha="$(sha256sum "$dest" | cut -d' ' -f1)"
-            echo "Packaged $rel ($(du -h "$dest" | cut -f1)), sha256 $sha"
-            {
-              echo "rel=$rel"
-              echo "sha=$sha"
-            } >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          set -euo pipefail
-          sub_dir="$(dirname "$SUBPROCESS")"
-          packages=""
-          rel=""
-          for rid in $RIDS; do
-            rid_rel="$PLUGIN/$PLUGIN-$VERSION-$rid.zip"
-            dest="$GITHUB_WORKSPACE/store/$rid_rel"
-            stage="$RUNNER_TEMP/package-$rid"
-            mkdir -p "$(dirname "$dest")"
-            rm -rf "$dest" "$stage"
-
-            cp -a "$out" "$stage"
-            rm -rf "${stage:?}/$sub_dir"
-            cp -a "subprocess/$rid" "$stage/$sub_dir"
-            case "$rid" in win-*) ;; *) chmod +x "$stage/$SUBPROCESS" ;; esac
-
-            ( cd "$stage" && zip -r -X "$dest" . -x '*.pdb' >/dev/null )
-
-            rid_sha="$(sha256sum "$dest" | cut -d' ' -f1)"
-            echo "Packaged $rid_rel ($(du -h "$dest" | cut -f1)), sha256 $rid_sha"
-            packages="$packages $rid=$rid_rel:$rid_sha"
-            if [ "$rid" = "win-x64" ]; then
-              rel="$rid_rel"
-              sha="$rid_sha"
-            fi
-          done
-
-          if [ -z "$rel" ]; then
-            echo "::error::runtimeIdentifiers has no win-x64, the package the index's path/sha256 repeat."
-            exit 1
-          fi
-          {
-            echo "rel=$rel"
-            echo "sha=$sha"
-            echo "packages=${packages# }"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Update and verify the store entry and packages
-        if: steps.check.outputs.skip != 'true'
-        env:
-          STORE: store
-          PLUGIN: ${{ inputs.plugin }}
-          MANIFEST: ${{ steps.resolve.outputs.manifest }}
-          DIR: ${{ steps.resolve.outputs.dir }}
-          VERSION: ${{ steps.resolve.outputs.version }}
-          MIN_HOST: ${{ steps.resolve.outputs.min_host }}
-          SHA: ${{ steps.package.outputs.sha }}
-          REL: ${{ steps.package.outputs.rel }}
-          PACKAGES: ${{ steps.package.outputs.packages }}
+          PLUGINS: ${{ format('[{0}]', toJSON(inputs.plugin)) }}
           NOTES: ${{ inputs.notes }}
-          SUBPROCESS: ${{ needs.runtime-identifiers.outputs.subprocess }}
+          EVENT: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: bash scripts/plugin-publish.sh batch linux
+      - id: collect
+        if: steps.prepare.outputs.count != '0'
         shell: bash
         run: |
-          bash scripts/update-and-verify-plugin.sh
+          bash scripts/collect-plugin-packages.sh
           git -C store --no-pager diff -- index.json
-
-      - name: Stage the verified packages for the store writer
-        if: steps.check.outputs.skip != 'true' && inputs.prepare_only == true
-        env:
-          PLUGIN: ${{ inputs.plugin }}
-          MANIFEST: ${{ steps.resolve.outputs.manifest }}
-          REL: ${{ steps.package.outputs.rel }}
-          SHA: ${{ steps.package.outputs.sha }}
-          PACKAGES: ${{ steps.package.outputs.packages }}
-          NOTES: ${{ inputs.notes }}
-          SUBPROCESS: ${{ needs.runtime-identifiers.outputs.subprocess }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/prepared-plugin/$PLUGIN"
-          cp "store/$REL" "$RUNNER_TEMP/prepared-plugin/$REL"
-          for package in $PACKAGES; do
-            package_path="${package#*=}"
-            package_path="${package_path%:*}"
-            cp "store/$package_path" "$RUNNER_TEMP/prepared-plugin/$package_path"
-          done
-          jq -n --arg plugin "$PLUGIN" --arg manifest "$MANIFEST" --arg rel "$REL" \
-            --arg sha "$SHA" --arg packages "$PACKAGES" --arg notes "$NOTES" \
-            --arg subprocess "$SUBPROCESS" \
-            '$ARGS.named' > "$RUNNER_TEMP/prepared-plugin/publish.json"
-
-      - name: Upload the verified packages
-        if: steps.check.outputs.skip != 'true' && inputs.prepare_only == true
-        uses: actions/upload-artifact@v7
-        with:
-          name: prepared-plugin-${{ inputs.plugin }}
-          path: ${{ runner.temp }}/prepared-plugin/
-          if-no-files-found: error
-          retention-days: 1
 
       # The zip and index diff remain reviewable before the optional merge.
       - name: Open a PR against the store repo
         id: pr
-        if: steps.check.outputs.skip != 'true' && inputs.prepare_only != true && inputs.dry_run != true
+        if: steps.collect.outputs.count == '1' && inputs.dry_run != true
         env:
           GH_TOKEN: ${{ secrets.STORE_PUBLISH_TOKEN }}
           PLUGIN: ${{ inputs.plugin }}
-          VERSION: ${{ steps.resolve.outputs.version }}
-          MIN_HOST: ${{ steps.resolve.outputs.min_host }}
-          SHA: ${{ steps.package.outputs.sha }}
+          VERSION: ${{ steps.prepare.outputs.version }}
+          MIN_HOST: ${{ steps.prepare.outputs.min_host }}
+          SHA: ${{ steps.prepare.outputs.sha }}
         shell: bash
         run: |
           branch="publish/$PLUGIN-$VERSION"
@@ -527,12 +221,12 @@ jobs:
 
       # The store has no required checks, so verification above is the gate before a direct merge.
       - name: Merge the store PR
-        if: steps.check.outputs.skip != 'true' && inputs.prepare_only != true && inputs.dry_run != true && inputs.auto_merge == true
+        if: steps.collect.outputs.count == '1' && inputs.dry_run != true && inputs.auto_merge == true
         env:
           GH_TOKEN: ${{ secrets.STORE_PUBLISH_TOKEN }}
           BRANCH: ${{ steps.pr.outputs.branch }}
           PLUGIN: ${{ inputs.plugin }}
-          VERSION: ${{ steps.resolve.outputs.version }}
+          VERSION: ${{ steps.prepare.outputs.version }}
         shell: bash
         run: |
           set -euo pipefail
@@ -545,10 +239,13 @@ jobs:
           echo "::notice::Published $PLUGIN $VERSION — store PR #$number merged."
 
       - name: Dry-run summary
-        if: steps.check.outputs.skip != 'true' && inputs.prepare_only != true && inputs.dry_run == true
+        if: steps.collect.outputs.count == '1' && inputs.dry_run == true
         env:
           PLUGIN: ${{ inputs.plugin }}
-          VERSION: ${{ steps.resolve.outputs.version }}
-          SHA: ${{ steps.package.outputs.sha }}
+          VERSION: ${{ steps.prepare.outputs.version }}
+          SHA: ${{ steps.prepare.outputs.sha }}
         shell: bash
         run: echo "Dry run — built $PLUGIN $VERSION (sha $SHA) and updated the index locally, but opened no PR."
+      - name: Report preparation or verification failures
+        if: steps.prepare.outputs.failed != '0' || (steps.collect.outputs.failed != '' && steps.collect.outputs.failed != '0')
+        run: exit 1

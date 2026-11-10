@@ -29,7 +29,6 @@ env:
 
 permissions:
   contents: read
-  actions: read
 
 jobs:
   discover:
@@ -40,6 +39,7 @@ jobs:
 
     outputs:
       plugins: ${{ steps.missing.outputs.plugins }}
+      windows: ${{ steps.missing.outputs.windows }}
 
     steps:
       - name: Check out this repo
@@ -47,22 +47,21 @@ jobs:
         with:
           ref: ${{ github.sha }}
 
-      - name: Check out the store repo
-        uses: actions/checkout@v7
-        with:
-          repository: ${{ env.STORE_REPO }}
-          token: ${{ secrets.STORE_PUBLISH_TOKEN }}
-          path: store
+      - name: Read the store index without cloning its zip history
+        env:
+          GH_TOKEN: ${{ secrets.STORE_PUBLISH_TOKEN }}
+        shell: bash
+        run: |
+          mkdir -p store
+          gh api "repos/$STORE_REPO/contents/index.json" -H 'Accept: application/vnd.github.raw+json' > store/index.json
 
       - name: Which plugin versions are missing from the store?
         id: missing
         shell: bash
         run: |
           set -euo pipefail
-          # Newline-separated text, not an array: an empty array has to be special-cased at every expansion,
-          # and getting that wrong here does not fail — it emits [""], which the matrix runs as a plugin named
-          # empty string.
           missing=''
+          windows=''
           for manifest in plugins-dev/Cockpit.Plugin.*/plugin.json; do
             id="$(jq -r '.id' "$manifest")"
             version="$(jq -r '.version' "$manifest")"
@@ -73,38 +72,110 @@ jobs:
             else
               echo "MISSING:    $id $version"
               missing="${missing}${id}"$'\n'
+              metadata="$(dirname "$manifest")/store.json"
+              if [ -f "$metadata" ] && jq -e '.runtimeIdentifiers // [] | any(startswith("win-"))' "$metadata" >/dev/null; then
+                windows="${windows}${id}"$'\n'
+              fi
             fi
           done
 
-          # Compact, so the matrix gets ["a","b"] — and a literal [] when there is nothing to do, which is what
-          # the job below tests to skip itself.
           if [ -z "$missing" ]; then
             json='[]'
           else
             json="$(printf '%s' "$missing" | jq -R . | jq -sc .)"
           fi
+          windows_json="$(printf '%s' "$windows" | jq -R . | jq -sc 'map(select(length > 0))')"
+          printf 'windows=%s\n' "$windows_json" >> "$GITHUB_OUTPUT"
           echo "Publishing: $json"
           printf 'plugins=%s\n' "$json" >> "$GITHUB_OUTPUT"
 
-  prepare:
+      - uses: actions/upload-artifact@v7
+        with:
+          name: publish-store-index
+          path: store/index.json
+          retention-days: 1
+
+  package-windows:
     needs: discover
-    if: needs.discover.outputs.plugins != '[]' && needs.discover.outputs.plugins != ''
+    if: needs.discover.outputs.windows != '[]'
+    runs-on: windows-latest
+    outputs:
+      count: ${{ steps.prepare.outputs.count }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+      - id: prepare
+        env:
+          PLUGINS: ${{ needs.discover.outputs.windows }}
+        shell: bash
+        run: bash scripts/plugin-publish.sh batch windows
+      - uses: actions/upload-artifact@v7
+        if: steps.prepare.outputs.count != '0'
+        with:
+          name: subprocess-windows-batch
+          path: subprocess/
+          if-no-files-found: error
+          retention-days: 1
+      - uses: actions/upload-artifact@v7
+        with:
+          name: publish-results-windows
+          path: results/
+          retention-days: 1
+      - if: steps.prepare.outputs.failed != '0'
+        run: exit 1
 
-    strategy:
-      # A failed host or package gate must not cancel the other plugins.
-      fail-fast: false
-      matrix:
-        plugin: ${{ fromJson(needs.discover.outputs.plugins) }}
-
-    uses: ./.github/workflows/publish-plugin.yml
-    with:
-      plugin: ${{ matrix.plugin }}
-      prepare_only: true
-    secrets: inherit
+  prepare:
+    needs: [discover, package-windows]
+    if: ${{ !cancelled() && needs.discover.result == 'success' && needs.discover.outputs.plugins != '[]' }}
+    runs-on: ubuntu-latest
+    outputs:
+      count: ${{ steps.prepare.outputs.count }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/download-artifact@v8
+        with:
+          name: publish-store-index
+          path: store
+      - uses: actions/download-artifact@v8
+        if: needs.package-windows.outputs.count != '' && needs.package-windows.outputs.count != '0'
+        with:
+          name: subprocess-windows-batch
+          path: subprocess
+      - id: prepare
+        env:
+          PLUGINS: ${{ needs.discover.outputs.plugins }}
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+        shell: bash
+        run: bash scripts/plugin-publish.sh batch linux
+      - uses: actions/upload-artifact@v7
+        if: steps.prepare.outputs.count != '0'
+        with:
+          name: prepared-plugins
+          path: prepared/
+          if-no-files-found: error
+          retention-days: 1
+      - uses: actions/upload-artifact@v7
+        with:
+          name: publish-results-linux
+          path: results/
+          retention-days: 1
+      - if: steps.prepare.outputs.failed != '0'
+        run: exit 1
 
   publish:
-    needs: [discover, prepare]
-    if: ${{ !cancelled() && needs.discover.result == 'success' && needs.prepare.result != 'skipped' }}
+    needs: prepare
+    if: ${{ !cancelled() && needs.prepare.outputs.count != '' && needs.prepare.outputs.count != '0' }}
     runs-on: ubuntu-latest
     concurrency:
       group: plugin-store-publish
@@ -113,73 +184,18 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
-
       - uses: actions/checkout@v7
         with:
           repository: ${{ env.STORE_REPO }}
           token: ${{ secrets.STORE_PUBLISH_TOKEN }}
           path: store
-
-      - name: Are there verified packages from this run?
-        id: artifacts
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          count="$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" \
-            --jq '[.artifacts[] | select(.name | startswith("prepared-plugin-"))] | length' | awk '{n+=$1} END {print n+0}')"
-          echo "count=$count" >> "$GITHUB_OUTPUT"
-
       - uses: actions/download-artifact@v8
-        if: steps.artifacts.outputs.count != '0'
         with:
-          pattern: prepared-plugin-*
+          name: prepared-plugins
           path: prepared
-
-      - name: Reverify and collect the successful plugins
-        id: collect
-        if: steps.artifacts.outputs.count != '0'
+      - id: collect
         shell: bash
-        run: |
-          set -euo pipefail
-          count=0
-          failed=0
-          for candidate in prepared/prepared-plugin-*; do
-            metadata="$candidate/publish.json"
-            PLUGIN="$(jq -r '.plugin' "$metadata")"
-            MANIFEST="$(jq -r '.manifest' "$metadata")"
-            DIR="$(dirname "$MANIFEST")"
-            VERSION="$(jq -r '.version' "$MANIFEST")"
-            MIN_HOST="$(jq -r '.minHostVersion // ""' "$MANIFEST")"
-            REL="$(jq -r '.rel' "$metadata")"
-            SHA="$(jq -r '.sha' "$metadata")"
-            PACKAGES="$(jq -r '.packages' "$metadata")"
-            NOTES="$(jq -r '.notes' "$metadata")"
-            SUBPROCESS="$(jq -r '.subprocess' "$metadata")"
-            export PLUGIN MANIFEST DIR VERSION MIN_HOST REL SHA PACKAGES NOTES SUBPROCESS
-
-            if jq -e --arg id "$PLUGIN" --arg v "$VERSION" \
-              '.plugins[]? | select(.id==$id) | .versions[]? | select(.version==$v)' store/index.json >/dev/null; then
-              echo "::notice::$PLUGIN $VERSION is already published; keeping its immutable packages."
-              continue
-            fi
-
-            # An invalid candidate must not leave its index entry in the batch.
-            cp store/index.json "$candidate/index.json"
-            if STORE="$candidate" bash scripts/update-and-verify-plugin.sh; then
-              cp "$candidate/index.json" store/index.json
-              mkdir -p "store/$PLUGIN"
-              cp "$candidate/$PLUGIN/"*.zip "store/$PLUGIN/"
-              printf '%s %s\n' "$PLUGIN" "$VERSION" >> "$RUNNER_TEMP/published-plugins.txt"
-              count=$((count + 1))
-            else
-              echo "::error::Rejecting $PLUGIN $VERSION; continuing with the other plugins."
-              failed=$((failed + 1))
-            fi
-          done
-          echo "count=$count" >> "$GITHUB_OUTPUT"
-          echo "failed=$failed" >> "$GITHUB_OUTPUT"
+        run: bash scripts/collect-plugin-packages.sh
 
       - name: Publish the batch in one store PR
         if: steps.collect.outputs.count != '' && steps.collect.outputs.count != '0'

@@ -49,13 +49,19 @@ Tick **dry_run** to do everything except open the PR — useful to see the diff 
 ## Publishing updates after a nightly
 
 **Publish updated plugins** compares every manifest version with the store index after a successful
-Nightly. Missing versions are prepared in parallel through the same workflow as the manual button;
-`prepare_only` uploads the verified zips and their metadata instead of opening a store PR.
+Nightly. One Linux build job prepares all missing versions in a loop, sharing its checkout, SDK setup
+and one restore. At most one Windows job restores and publishes all required Windows subprocesses
+first. Builds and subprocess publishes use `--no-restore`. Discovery reads only the store index;
+the store writer is the only automatic job that clones the store's zip history.
+
+The batch and the manual button share `scripts/plugin-publish.sh`, the index upsert and all package
+checks. Per-plugin success, failure, deferral or already-published results are recorded in the job
+summary and a result artifact; only successful plugins produce package candidates.
 
 One store job downloads the successful artifacts, re-hashes and checks each package against its
 proposed entry using the current store index, then publishes the accepted packages in one PR and merges
 it. It shares a concurrency group with manual publishing so both routes cannot rewrite the index at
-once. Versions published while the matrix was running are skipped without changing their files.
+once. Versions published while the batch was running are skipped without changing their files.
 
 A failed host or package gate does not cancel other plugins. The store job still publishes their
 successful artifacts; rejected packages remain missing for the next nightly. With no accepted packages,
