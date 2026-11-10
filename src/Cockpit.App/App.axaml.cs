@@ -935,7 +935,8 @@ public partial class App : Application
                 Program.Services.GetRequiredService<IDelegationService>()));
 
         // One shared read/observe surface across all plugins, mirroring the single shared actions surface.
-        var sessionObserver = new PluginSessionObserver(cockpit);
+        var sessionObserver = new PluginSessionObserver(
+            cockpit, Program.Services.GetService<ISessionRegistry>(), Program.Services.GetService<ISessionLauncher>());
 
         // The same singleton the startup banner (CockpitViewModel) and the Plugin manager read (#184) — a
         // contribution failure recorded here reaches both without a second source of truth to keep in sync.
