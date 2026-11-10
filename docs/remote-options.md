@@ -4,7 +4,7 @@ The ordinary Options dialog edits typed stores. Only Admin connect keys can read
 
 All server groups are saved before client presentation. A server failure keeps the dialog staged, shows the reason on the affected Options page, and writes no client presentation. Successful groups can already be committed, as in the ordinary Options section-save behavior. Cancel restores confirmed backend values even without a connection, and reloads client presentation. API writes share an edit gate, including cleanup, so preserving a hidden field cannot undo another concurrent API write. No settings keys are added; README key documentation and SettingsCarrierWhitelist are unchanged.
 
-Client presentation uses only the remote window?s own state root, never the local Cockpit registry. Host backup/image operations remain outside this feature. The later epic subtickets own Security/Swarm, profiles/assistant, MCP and plugin administration.
+Client presentation uses only the remote window's own state root, never the local Cockpit registry. A server shell must be empty (OS default) or the ID/absolute executable path of a shell detected on the server; arbitrary programs are refused. Host backup/image operations remain outside this feature. The later epic subtickets own Security/Swarm, profiles/assistant, MCP and plugin administration.
 
 ## EditedProperties ownership
 

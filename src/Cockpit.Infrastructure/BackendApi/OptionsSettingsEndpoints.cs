@@ -80,7 +80,10 @@ internal static class OptionsSettingsEndpoints
         _Map<DiagnosticOptions>("diagnostics", async ct => new((await debug().LoadAsync(ct).ConfigureAwait(false)).LogDiagnosticSnapshots),
             async (value, ct) => await debug().SaveAsync((await debug().LoadAsync(ct).ConfigureAwait(false)) with { LogDiagnosticSnapshots = value.LogDiagnosticSnapshots }, ct).ConfigureAwait(false), _ => true);
         _Map<ShellOptions>("shell", async ct => new((await terminal().LoadAsync(ct).ConfigureAwait(false)).Shell, Cockpit.Core.Terminal.ShellCatalog.Detect()),
-            async (value, ct) => await terminal().SaveAsync((await terminal().LoadAsync(ct).ConfigureAwait(false)) with { Shell = value.Shell }, ct).ConfigureAwait(false), value => value.Shell is not null && !value.Shell.Contains('\0'));
+            async (value, ct) => await terminal().SaveAsync((await terminal().LoadAsync(ct).ConfigureAwait(false)) with { Shell = value.Shell }, ct).ConfigureAwait(false),
+            value => value.Shell == string.Empty || Cockpit.Core.Terminal.ShellCatalog.Detect().Any(shell =>
+                string.Equals(value.Shell, shell.Id, StringComparison.Ordinal)
+                || string.Equals(value.Shell, shell.ExecutablePath, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal)));
 
         // Fixed typed routes, never a config-file or service-name dispatcher.
         void _Map<T>(string group, Func<CancellationToken, Task<T>> read, Func<T, CancellationToken, Task> save, Func<T, bool> valid) where T : class
