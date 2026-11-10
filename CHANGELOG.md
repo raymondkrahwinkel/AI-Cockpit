@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2260: the Proxmox settings list shows which server is selected, a new server opens empty instead of taking another server's fields, every field has a label and a problem is flagged on its own row. A token without read permission now gets a clear message with the role it needs instead of empty lists, and Proxmox's own reason is passed on when a snapshot is refused (plugin 0.4.1).
+
 - AC-2252: strict Claude profiles enable the OS sandbox on Linux and macOS for both TTY and SDK sessions, with session write paths, open network hosts and no unsandboxed retry. Missing sandbox support still permits startup with a warning. The server image includes bubblewrap and socat.
 
 - AC-2251: path and process guard decisions appear as ordinary notifications with the session name, limited to one per session and target every five minutes.
