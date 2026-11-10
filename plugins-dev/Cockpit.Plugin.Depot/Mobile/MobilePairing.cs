@@ -248,6 +248,11 @@ internal sealed class MobilePairing(
             {
                 await relay.DisposeAsync().ConfigureAwait(false);
             }
+
+            if (_Phones(connection.Id).Count > 0)
+            {
+                await _EnsureAsync(connection, CancellationToken.None).ConfigureAwait(false);
+            }
         }
     }
 
@@ -296,6 +301,7 @@ internal sealed class MobilePairing(
             }
         }
 
+        MobileRelay? relay = null;
         try
         {
             if (subscribe)
@@ -322,7 +328,7 @@ internal sealed class MobilePairing(
                 return;
             }
 
-            var relay = new MobileRelay(connection, userId, () => hostHandler(connection),
+            relay = new MobileRelay(connection, userId, () => hostHandler(connection),
                 (streamId, deviceId) => Opened(connection.Id, streamId, deviceId),
                 (streamId, deviceId, frame) => Frame(connection.Id, streamId, deviceId, frame),
                 (streamId, deviceId) => Closed(connection.Id, streamId, deviceId));
@@ -348,7 +354,11 @@ internal sealed class MobilePairing(
                 }
             }
 
-            await _DropRelayAsync(connection.Id).ConfigureAwait(false);
+            if (relay is not null)
+            {
+                _OnRelayClosed(connection.Id, relay);
+                await relay.DisposeAsync().ConfigureAwait(false);
+            }
             logger?.LogWarning(exception, "Connecting the mobile relay for {Connection} failed.", connection.Name);
         }
     }

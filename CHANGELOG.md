@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed paired phones staying offline after signing in to Depot again: the mobile relay reconnects without restarting Cockpit and keeps the saved phone keys (Depot plugin 0.62.2).
+
 - AC-2273: paired phones can view waiting questions, SDK permissions and the Autopilot epic gate and send a device-bound, one-use decision. Epic approval opens the existing pull request gate; it grants no permission to merge.
 
 - Fixed MCP tool calls with content annotations or resource icons failing during serialization; retained MCP SDK 2.3.0 pending an upstream fix.
