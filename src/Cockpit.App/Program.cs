@@ -370,7 +370,7 @@ sealed class Program
     {
         var window = new MainWindow(windowBoundsStore: null, startup.Server);
         var surfaces = new SurfaceWindows();
-        var ui = new Composition.RemoteWindowUi(window, surfaces, startup.Loggers);
+        var ui = new Plugins.RemoteWindowUi(window, surfaces, startup.Loggers);
         window.Closed += (_, _) => ui.Dispose();
         var cockpit = startup.Open(admin =>
         {

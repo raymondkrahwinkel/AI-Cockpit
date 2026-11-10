@@ -1,13 +1,15 @@
 using System.Text.Json;
 using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Remote;
+using Cockpit.Core.Abstractions.Worktrees;
+using Cockpit.Core.Worktrees;
 using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.Files;
 
 namespace Cockpit.Infrastructure.BackendApi;
 
 // AC-2283: project and worktree choices share the server's existing authenticated client; no local paths cross.
-public sealed class RemoteProjectFiles : IFileSourceProvider
+public sealed class RemoteProjectFiles : IFileSourceProvider, IRemoteWorktrees
 {
     private readonly BackendApiClient _client;
     private readonly IServerProjects _projects;

@@ -1,7 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Input.Platform;
 using Cockpit.App.Docking;
-using Cockpit.App.Plugins;
+using Cockpit.App.Composition;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
@@ -15,12 +15,13 @@ using Cockpit.Plugins.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
-namespace Cockpit.App.Composition;
+namespace Cockpit.App.Plugins;
 
 // AC-2283: the ordinary window's UI registries, without a backend container or any hosted services.
 internal sealed class RemoteWindowUi : IDisposable
 {
     private readonly ServiceProvider _services;
+    private readonly IServiceProvider _windowServices;
     private readonly Window _owner;
     private readonly SurfaceWindows _surfaces;
     private readonly ILoggerFactory _loggers;
@@ -38,7 +39,6 @@ internal sealed class RemoteWindowUi : IDisposable
         var services = new ServiceCollection();
         services.AddSingleton(loggers);
         services.AddLogging();
-        services.AddSingleton(_ => _cockpit ?? throw new InvalidOperationException("The remote window is not open."));
         services.AddSingleton<IWorkspaceTypeRegistry, WorkspaceTypeRegistry>();
         services.AddSingleton<IWidgetRegistry, WidgetRegistry>();
         services.AddSingleton<IDockPanelRegistry, DockPanelRegistry>();
@@ -46,6 +46,7 @@ internal sealed class RemoteWindowUi : IDisposable
         services.AddSingleton<IConversationPickerRegistry, ConversationPickerRegistry>();
         services.AddSingleton<IPluginProviderConfigViews, PluginProviderConfigViews>();
         _services = services.BuildServiceProvider();
+        _windowServices = new WindowServices(_services, () => _cockpit);
     }
 
     internal IWorkspaceTypeRegistry WorkspaceTypes => _services.GetRequiredService<IWorkspaceTypeRegistry>();
@@ -76,7 +77,7 @@ internal sealed class RemoteWindowUi : IDisposable
             var fileRuntime = new PluginRuntime("server-project-files", _loggers.CreateLogger<RemoteWindowUi>());
             var fileHost = new CockpitUiHost("server-project-files", "Files",
                 new RemoteUiBackend(cockpit, sessions, new PluginStorage(new Dictionary<string, string>(), _ => { })),
-                _services, cockpit, _dialogs, actions, sessions, [], fileRuntime,
+                _windowServices, cockpit, _dialogs, actions, sessions, [], fileRuntime,
                 new RemotePluginUiChannel((IPluginChannelRelay)server.Plugins, "server-project-files"));
             fileRuntime.Add(RemoteFileUi.Attach(fileHost, server));
             _lifetimes.Add(fileRuntime);
@@ -105,7 +106,7 @@ internal sealed class RemoteWindowUi : IDisposable
                         throw new InvalidOperationException("The server does not offer plugin UI channels.");
                     }
                     var backend = new RemoteUiBackend(cockpit, sessions, runtime: runtime);
-                    var host = new CockpitUiHost(source.FolderId, source.Manifest.Name, backend, _services, cockpit,
+                    var host = new CockpitUiHost(source.FolderId, source.Manifest.Name, backend, _windowServices, cockpit,
                         _dialogs, new WindowActions(_owner), sessions, source.Manifest.SecretKeys ?? [], runtime,
                         backend);
                     backend.Target = await ServerPluginSettings.OpenScreenHostAsync(host, relay, row.Discovered.FolderId,
@@ -150,6 +151,11 @@ internal sealed class RemoteWindowUi : IDisposable
             lifetime.Dispose();
         }
         _services.Dispose();
+    }
+
+    private sealed class WindowServices(IServiceProvider services, Func<CockpitViewModel?> cockpit) : IServiceProvider
+    {
+        public object? GetService(Type serviceType) => serviceType == typeof(CockpitViewModel) ? cockpit() : services.GetService(serviceType);
     }
 
     private sealed class WindowActions(Window owner) : IPluginWindowActions

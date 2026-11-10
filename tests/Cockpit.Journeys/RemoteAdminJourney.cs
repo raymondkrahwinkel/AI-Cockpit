@@ -13,7 +13,6 @@ using Avalonia.VisualTree;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Cockpit.App.Composition;
 using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.App.ViewTests;

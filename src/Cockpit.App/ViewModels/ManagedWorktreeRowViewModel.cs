@@ -1,6 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using Cockpit.Core.Worktrees;
-using Cockpit.Infrastructure.BackendApi;
 
 namespace Cockpit.App.ViewModels;
 

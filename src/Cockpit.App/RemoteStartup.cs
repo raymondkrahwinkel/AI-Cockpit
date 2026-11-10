@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Cockpit.App.Composition;
+using Cockpit.App.Plugins;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Configuration;

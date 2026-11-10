@@ -5,7 +5,6 @@ using Cockpit.App.Services;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Worktrees;
-using Cockpit.Infrastructure.BackendApi;
 
 namespace Cockpit.App.ViewModels;
 
@@ -14,7 +13,7 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
 {
     private readonly IWorktreeManager? _manager;
     private readonly ISessionDialogService? _dialogs;
-    private RemoteProjectFiles? _remote;
+    private IRemoteWorktrees? _remote;
     private Func<string, string, string, Task<bool>>? _confirm;
     private bool _isRemote;
     private int _remoteRefreshGeneration;
@@ -34,7 +33,7 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
         _dialogs = dialogs;
     }
 
-    internal WorktreesViewModel(RemoteProjectFiles? remote, Func<string, string, string, Task<bool>> confirm)
+    internal WorktreesViewModel(IRemoteWorktrees? remote, Func<string, string, string, Task<bool>> confirm)
     {
         _remote = remote;
         _confirm = confirm;
@@ -45,7 +44,7 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
         }
     }
 
-    internal Task UseRemoteAsync(RemoteProjectFiles remote, Func<string, string, string, Task<bool>> confirm) => UiThreadCall.Uncapped(async () =>
+    internal Task UseRemoteAsync(IRemoteWorktrees remote, Func<string, string, string, Task<bool>> confirm) => UiThreadCall.Uncapped(async () =>
     {
         _remote = remote;
         _confirm = confirm;
@@ -362,7 +361,7 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
         }
     }
 
-    private async Task<string?> _RemoveAsync(ManagedWorktreeRowViewModel row, bool force, RemoteProjectFiles? remote)
+    private async Task<string?> _RemoveAsync(ManagedWorktreeRowViewModel row, bool force, IRemoteWorktrees? remote)
     {
         if (row.Remote is { } worktree)
         {

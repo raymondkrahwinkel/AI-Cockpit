@@ -87,7 +87,7 @@ public partial class CockpitViewModel
         Func<PluginManagerViewModel, PluginStoreFilter?, Task>? presentPluginStore = null,
         Func<string, string, string, Task<bool>>? confirm = null,
         Func<ProjectDialogViewModel, Task>? presentProjectDialog = null,
-        Composition.RemoteWindowUi? ui = null)
+        RemoteWindowUi? ui = null)
     {
         IRemoteServer? Current() => servers.Servers.FirstOrDefault(target => target.Name == server);
         var options = Composition.DesktopComposition.RemoteOptionsFor(Current);
