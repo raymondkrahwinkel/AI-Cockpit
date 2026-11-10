@@ -50,7 +50,8 @@ internal static class SessionsEndpoints
                 var registration = providerId is null ? null : providers?.Resolve(providerId);
                 RemoteUsageStatus? usageStatus = null;
                 IReadOnlyList<RemoteQueueItem> queue = [];
-                if (sessions().Find(session.PaneId) is { } handle)
+                var handle = sessions().Find(session.PaneId);
+                if (handle is not null)
                 {
                     await handle.UseControlAsync(control =>
                     {
@@ -74,6 +75,7 @@ internal static class SessionsEndpoints
                     status = session.Status,
                     needsYou = session.NeedsYou,
                     hasOutstandingWork = session.HasOutstandingWork,
+                    worktreeBranch = handle?.WorktreeBranch,
                     queue,
                     pendingPermissions = pending[session.PaneId].Select(permission => new
                     {

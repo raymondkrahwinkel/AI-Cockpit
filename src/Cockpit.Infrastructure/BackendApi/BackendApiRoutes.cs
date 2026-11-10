@@ -30,6 +30,7 @@ internal static class BackendApiRoutes
         api.AddEndpointFilter(_DoorAsync);
         EventsEndpoint.Map(api, services);
         FilesEndpoint.Map(api, services);
+        WorktreesEndpoints.Map(api, services);
         SessionsEndpoints.Map(api, services);
         SignInEndpoints.Map(api, services);
         GitCredentialEndpoints.Map(api, services);

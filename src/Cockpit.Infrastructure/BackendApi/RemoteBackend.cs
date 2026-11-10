@@ -377,7 +377,8 @@ internal sealed record RemoteSessionRow(
     string? ProviderId = null,
     IReadOnlyList<RemoteProviderUsageSignal>? UsageSignals = null,
     RemoteUsageStatus? UsageStatus = null,
-    bool CanSignIn = false);
+    bool CanSignIn = false,
+    string? WorktreeBranch = null);
 
 internal sealed record RemotePendingPermission(string ToolUseId, string Tool, string Input, DateTimeOffset SinceUtc);
 
