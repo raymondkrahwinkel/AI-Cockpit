@@ -40,7 +40,11 @@
                  one that refused, so a blocked Apply is never silent. -->
             <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
                 <Button Grid.Column="0" Content="Restore Options Defaults…" Click="OnRestoreDefaults"
-                        ToolTip.Tip="Restores Options settings in every category. Profiles, MCP servers, and plugin settings are unchanged."/>
+                        ToolTip.Tip="Restores Options settings in every category. Profiles, MCP servers, and plugin settings are unchanged."
+                        IsEnabled="{Binding CanEditOptions, FallbackValue=True}"/>
+                <TextBlock Grid.Column="1" Text="Server settings are not available in this window yet."
+                           IsVisible="{Binding !CanEditOptions, FallbackValue=False}" VerticalAlignment="Center"
+                           Margin="12,0" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                 <TextBlock Grid.Column="1" Text="Unsaved changes" HorizontalAlignment="Right"
                            VerticalAlignment="Center" Margin="0,0,12,0"
                            IsVisible="{Binding HasPendingOptionChanges}"
@@ -49,8 +53,22 @@
                 <Button Grid.Column="2" Content="Cancel" Click="OnCancel" IsCancel="True" Margin="0,0,8,0"/>
                 <!-- AC-1287: the same write as its neighbour, minus the close, for settings you want to try before
                      moving on to the next category. -->
-                <Button Grid.Column="3" Content="Apply" Click="OnApply" Margin="0,0,8,0" IsEnabled="{Binding !IsOptionsLoading, FallbackValue=True}"/>
-                <Button Grid.Column="4" Content="Apply and Close" Classes="Accent" Click="OnApplyAndClose" IsEnabled="{Binding !IsOptionsLoading, FallbackValue=True}"/>
+                <Button Grid.Column="3" Content="Apply" Click="OnApply" Margin="0,0,8,0">
+                    <Button.IsEnabled>
+                        <MultiBinding Converter="{x:Static BoolConverters.And}">
+                            <Binding Path="!IsOptionsLoading" FallbackValue="True"/>
+                            <Binding Path="CanEditOptions" FallbackValue="True"/>
+                        </MultiBinding>
+                    </Button.IsEnabled>
+                </Button>
+                <Button Grid.Column="4" Content="Apply and Close" Classes="Accent" Click="OnApplyAndClose">
+                    <Button.IsEnabled>
+                        <MultiBinding Converter="{x:Static BoolConverters.And}">
+                            <Binding Path="!IsOptionsLoading" FallbackValue="True"/>
+                            <Binding Path="CanEditOptions" FallbackValue="True"/>
+                        </MultiBinding>
+                    </Button.IsEnabled>
+                </Button>
             </Grid>
         </Border>
 
@@ -288,7 +306,7 @@
                     </Border>
                 </StackPanel>
             </Border>
-            <Panel x:Name="CategoryContent">
+            <Panel x:Name="CategoryContent" IsEnabled="{Binding CanEditOptions, FallbackValue=True}">
 
                 <ScrollViewer Tag="swarm"
                               IsVisible="{Binding #CategoryNav.SelectedItem, Converter={x:Static conv:CategoryTagEqualsConverter.Instance}, ConverterParameter=swarm}">

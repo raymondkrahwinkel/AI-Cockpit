@@ -38,7 +38,7 @@ public partial class CockpitViewModel
 
     public bool HasServerGroups => ServerGroups.Count > 0;
 
-    // AC-1487: the server a `--remote` window shows; null in the cockpit itself. The window then hides what is local.
+    // The target is fixed for the lifetime of a remote window.
     public string? RemoteWindowServer { get; private init; }
 
     public bool IsRemoteWindow => RemoteWindowServer is not null;
@@ -76,18 +76,27 @@ public partial class CockpitViewModel
         _ = _ReloadServersAsync();
     }
 
-    // AC-1487: the `--remote` window's view model: no local session, store or backend, and Admin shown by the window.
+    // AC-2277: use the runtime presentation graph with explicit server services and no desktop backend services.
     internal static CockpitViewModel ForRemoteWindow(
         string server,
         IRemoteServers servers,
         INodeSessionsClient? serverChoices,
         IServerSignIns? signIns,
-        Func<ServerAdminViewModel, Task> showServerAdmin)
+        Func<ServerAdminViewModel, Task> showServerAdmin,
+        Func<CockpitViewModel, string?, Task>? presentOptions = null,
+        Func<PluginManagerViewModel, PluginStoreFilter?, Task>? presentPluginStore = null)
     {
-        var cockpit = new CockpitViewModel(dockPanelRegistry: null, sessionRegistry: null, withSamples: false)
+        var cockpit = new CockpitViewModel(
+            sessionFactory: null, ttySessionFactory: null, dialogService: null,
+            captureService: null, playbackService: null, attentionNotifier: null,
+            notificationSettingsStore: null, transcriptDisplaySettingsStore: null,
+            sessionBehaviorSettingsStore: null, layoutSettingsStore: null,
+            voiceSettingsStore: null, terminalSettingsStore: null)
         {
             RemoteWindowServer = server,
             _showServerAdmin = showServerAdmin,
+            _presentOptions = presentOptions,
+            _presentPluginStore = presentPluginStore,
         };
         cockpit._WireServerGroups(servers, SessionViewModel.OverRemoteAsync, serverChoices, signIns);
         return cockpit;
@@ -393,6 +402,22 @@ public partial class CockpitViewModel
         OnPropertyChanged(nameof(ShowSessionsSkeleton));
         OnPropertyChanged(nameof(HasSessionsHere));
         RefreshPaneVisibility();
+    }
+
+    internal Action<string> OpenRemoteWindow { get; set; } = Composition.RemoteWindowProcess.Open;
+
+    [RelayCommand]
+    private void OpenServerWindow(ServerGroupViewModel group)
+    {
+        try
+        {
+            OpenRemoteWindow(group.Name);
+        }
+        catch (Exception exception)
+        {
+            _logger?.LogWarning(exception, "Could not open the window for {Server}.", group.Name);
+            ToastHost.Add($"Could not open {group.Name}: {exception.Message}", ToastSeverity.Error, null, null);
+        }
     }
 
     [RelayCommand]

@@ -369,10 +369,38 @@ sealed class Program
     private static Avalonia.Controls.Window _RemoteWindow(RemoteStartup startup)
     {
         var window = new MainWindow(windowBoundsStore: null, startup.Server);
+        var surfaces = new SurfaceWindows();
         var cockpit = startup.Open(admin =>
         {
             OptionsDialog.ForServer(admin).Show(window);
             return Task.CompletedTask;
+        }, (viewModel, category) =>
+        {
+            if (surfaces.TryActivateAsync(typeof(OptionsDialog)) is { } pending)
+            {
+                return pending;
+            }
+
+            var options = new OptionsDialog { DataContext = viewModel };
+            if (category is not null)
+            {
+                options.Opened += (_, _) => options.SelectCategory(category);
+            }
+
+            return surfaces.ShowAsync(typeof(OptionsDialog), options, window);
+        }, async (manager, filter) =>
+        {
+            if (surfaces.TryActivateAsync(typeof(PluginStoreDialog)) is { } pending)
+            {
+                await pending;
+                return;
+            }
+
+            manager.StatusMessage = "Server plugin management is not available in this window yet.";
+            var viewModel = new PluginStoreDialogViewModel(manager, filter);
+            var store = new PluginStoreDialog { DataContext = viewModel, Title = $"Plugin store · {startup.Server}" };
+            await viewModel.LoadAsync();
+            await surfaces.ShowAsync(typeof(PluginStoreDialog), store, window);
         });
         if (cockpit is null)
         {

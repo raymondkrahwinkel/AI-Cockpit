@@ -70,7 +70,10 @@ internal sealed class RemoteStartup : IDisposable
     }
 
     // The window's view model over its one server, on the UI thread; null, with `Refusal` set, when there is no key for it.
-    public CockpitViewModel? Open(Func<ServerAdminViewModel, Task> showServerAdmin)
+    public CockpitViewModel? Open(
+        Func<ServerAdminViewModel, Task> showServerAdmin,
+        Func<CockpitViewModel, string?, Task>? presentOptions = null,
+        Func<PluginManagerViewModel, PluginStoreFilter?, Task>? presentPluginStore = null)
     {
         if (Registry?.Connect(Server, _loggers) is not { } connection)
         {
@@ -80,7 +83,7 @@ internal sealed class RemoteStartup : IDisposable
 
         _connection = connection;
         return CockpitViewModel.ForRemoteWindow(
-            Server, connection.Servers, connection.Nodes, new RemoteServerSignIns(connection.Servers), showServerAdmin);
+            Server, connection.Servers, connection.Nodes, new RemoteServerSignIns(connection.Servers), showServerAdmin, presentOptions, presentPluginStore);
     }
 
     public void Dispose()
