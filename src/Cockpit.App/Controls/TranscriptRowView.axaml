@@ -153,7 +153,7 @@
                     <TextBlock Text="{Binding RunSummary}" FontSize="12" TextTrimming="CharacterEllipsis"
                                Classes="runSummary" Classes.passed="{Binding IsRunPassed}" IsVisible="{Binding ShowsRunSummary}"/>
                     <views:MarkdownView IsVisible="{Binding ShowsInboxBody}" Markdown="{Binding Text}" HorizontalAlignment="Stretch"
-                                        BasePath="{Binding Session.WorkingDirectory}"/>
+                                        BasePath="{Binding Session.WorkingDirectory}" OpensLocalFiles="{Binding !Session.IsRemote, FallbackValue=True}"/>
                 </StackPanel>
             </Border>
                 </DataTemplate>
@@ -255,7 +255,7 @@
                              that turns this on (assistant markdown and file previews keep the default). -->
                         <views:MarkdownView Markdown="{Binding Text}" HorizontalAlignment="Stretch"
                                              PreserveLineBreaks="True" IsVisible="{Binding !ShowsPromptParts}"
-                                             BasePath="{Binding Session.WorkingDirectory}"/>
+                                             BasePath="{Binding Session.WorkingDirectory}" OpensLocalFiles="{Binding !Session.IsRemote, FallbackValue=True}"/>
                         <!-- Assistant threads (§ 9.2): in a project's thread a prompt about two projects reads its own
                              part normally and the other's faint, that project's name in front of it. -->
                         <ItemsControl ItemsSource="{Binding PromptSegments}" IsVisible="{Binding ShowsPromptParts}">
@@ -465,7 +465,7 @@
                          own, it just forces a re-render when a sibling fragment's arrival widens the shared
                          column widths route A2 measures through ISpannedTableSource. -->
                     <views:MarkdownView Markdown="{Binding Text}" HorizontalAlignment="Stretch"
-                                         BasePath="{Binding Session.WorkingDirectory}"
+                                         BasePath="{Binding Session.WorkingDirectory}" OpensLocalFiles="{Binding !Session.IsRemote, FallbackValue=True}"
                                          StartsInsideCodeBlock="{Binding StartsInsideCodeBlock}"
                                          EndsInsideCodeBlock="{Binding EndsInsideCodeBlock}"
                                          StartsInsideTable="{Binding StartsInsideTable}"

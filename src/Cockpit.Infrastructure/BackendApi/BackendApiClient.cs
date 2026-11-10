@@ -67,6 +67,18 @@ public sealed class BackendApiClient : IDisposable
         }
     }
 
+    // AC-2285: a route that answers raw bytes, with the ETag it sent beside them.
+    public async Task<(byte[] Bytes, string? ETag)> GetBytesAsync(string path, CancellationToken cancellationToken)
+    {
+        using var response = await _http.GetAsync(path, cancellationToken).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw await _ErrorAsync(response, cancellationToken).ConfigureAwait(false);
+        }
+
+        return (await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false), response.Headers.ETag?.Tag.Trim('"'));
+    }
+
     public Task<T> GetAsync<T>(string path, CancellationToken cancellationToken) =>
         _SendAsync<T>(HttpMethod.Get, path, null, cancellationToken);
 

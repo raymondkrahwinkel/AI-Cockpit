@@ -433,8 +433,9 @@ public sealed class BackendApiDoorTests
         Assert.Equal(new _Answer(HttpStatusCode.Unauthorized, InvalidTokenBody), after);
     }
 
+    // AC-2285: the write routes keep to the key's project and root, and a stale revision writes nothing.
     [Fact]
-    public async Task ProjectFile_IsReadOnlyInsideTheKeyScope()
+    public async Task ProjectFile_StaysInsideTheKeyScope()
     {
         {
             var scenario = new BackendApiDoorTests();
@@ -459,6 +460,40 @@ public sealed class BackendApiDoorTests
         {
             var scenario = new BackendApiDoorTests();
             await scenario._AssertProjectFile_IsReadOnlyInsideTheKeyScopeAsync("binary.bin", "project-a", HttpStatusCode.OK, "application/octet-stream", "");
+        }
+        {
+            await using var door = new _Door();
+            var verifier = await door.StartAsync();
+            var inside = await verifier.IssueAsync("writer", ConnectKeyCapability.Operate, 30, Operator,
+                scope: new ConnectKeyScope { AllowAllProjects = false, AllowedProjectIds = ["project-a"] });
+            var outside = await verifier.IssueAsync("other", ConnectKeyCapability.Operate, 30, Operator,
+                scope: new ConnectKeyScope { AllowAllProjects = false, AllowedProjectIds = ["project-b"] });
+            var file = Path.Combine(door.ProjectDirectory, "file.txt");
+            var read = Convert.ToHexStringLower(SHA256.HashData("hello"u8));
+            string Body(string text, string? revision) => JsonSerializer.Serialize(revision is null
+                ? new { content = Convert.ToBase64String(Encoding.UTF8.GetBytes(text)), mustNotExist = true }
+                : (object)new { content = Convert.ToBase64String(Encoding.UTF8.GetBytes(text)), revision });
+
+            var outOfScope = await door.SendAsync(HttpMethod.Put, "/api/v1/projects/project-a/file?path=file.txt", outside.Secret, Body("theirs", read));
+            var removedOutOfScope = await door.SendAsync(HttpMethod.Delete, $"/api/v1/projects/project-a/file?path=file.txt&revision={read}", outside.Secret);
+            var traversal = await door.SendAsync(HttpMethod.Put, "/api/v1/projects/project-a/file?path=..%2Fescape.txt", inside.Secret, Body("out", null));
+            var movedOut = await door.SendAsync(HttpMethod.Post, "/api/v1/projects/project-a/file/move", inside.Secret,
+                JsonSerializer.Serialize(new { from = "file.txt", to = "../escape.txt", revision = read }));
+            var stale = await door.SendAsync(HttpMethod.Put, "/api/v1/projects/project-a/file?path=file.txt", inside.Secret, Body("stale", new string('0', 64)));
+            var unchanged = await File.ReadAllTextAsync(file);
+            var saved = await door.SendAsync(HttpMethod.Put, "/api/v1/projects/project-a/file?path=file.txt", inside.Secret, Body("mine", read));
+            var lostRace = await door.SendAsync(HttpMethod.Put, "/api/v1/projects/project-a/file?path=file.txt", inside.Secret, Body("second client", read));
+
+            Assert.Equal(HttpStatusCode.NotFound, outOfScope.Status);
+            Assert.Equal(HttpStatusCode.NotFound, removedOutOfScope.Status);
+            Assert.Equal(HttpStatusCode.BadRequest, traversal.Status);
+            Assert.Equal(HttpStatusCode.BadRequest, movedOut.Status);
+            Assert.False(File.Exists(Path.Combine(door.Directory, "escape.txt")));
+            Assert.Equal(HttpStatusCode.Conflict, stale.Status);
+            Assert.Equal("hello", unchanged);
+            Assert.Equal(HttpStatusCode.OK, saved.Status);
+            Assert.Equal(HttpStatusCode.Conflict, lostRace.Status);
+            Assert.Equal("mine", await File.ReadAllTextAsync(file));
         }
     }
 

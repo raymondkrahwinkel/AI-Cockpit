@@ -1643,6 +1643,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     internal async Task FollowRemoteAsync(ISessionHandle handle, string server)
     {
         RemoteServer = server;
+        // AC-2285: a step's folder or made file is on the server; opening that path here would open a local one.
+        OpenPath = _ => false;
         _remoteControl = handle.Control;
         _remoteHandle = handle;
         OnPropertyChanged(nameof(AllowLabel));
