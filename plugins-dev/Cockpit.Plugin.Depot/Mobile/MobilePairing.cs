@@ -181,8 +181,7 @@ internal sealed class MobilePairing(
         _ = PruneAsync();
     }
 
-    // The phones this Cockpit holds a key for. Depot's list, when it has one, supplies the names and drops a phone Depot
-    // unpaired while this Cockpit was not listening.
+    // Depot's device list is grant-scoped and has no registration identity; absence cannot revoke a saved key.
     public async Task<DepotPairedPhones> PhonesAsync(string connectionId, bool refresh, CancellationToken cancellationToken)
     {
         var connection = _Connection(connectionId);
@@ -195,8 +194,7 @@ internal sealed class MobilePairing(
                 {
                     if (!known.TryGetValue(phone.DeviceId, out var device))
                     {
-                        logger?.LogInformation("Removing a saved phone absent from Depot's device list for connection {ConnectionId}.", connectionId);
-                        _Forget(connectionId, phone.DeviceId);
+                        logger?.LogWarning("Depot's device list omitted a saved phone for connection {ConnectionId}; keeping its key. Pair again if the sign-in changed.", connectionId);
                     }
                     else if (!string.IsNullOrWhiteSpace(device.Name) && device.Name != phone.Name)
                     {
@@ -598,6 +596,7 @@ internal sealed class MobilePairing(
             }
 
             current.ConfirmationStartedAt = _time.GetTimestamp();
+            logger?.LogInformation("Mobile handshake reply sent for connection {ConnectionId}.", connectionId);
             current.ConfirmationTimer = _time.CreateTimer(_ =>
             {
                 lock (_gate)
@@ -621,6 +620,7 @@ internal sealed class MobilePairing(
                 }
 
                 current.ReadySent = true;
+                logger?.LogInformation("Sending mobile ready for connection {ConnectionId}.", connectionId);
                 return cipher.Seal("{\"type\":\"ready\",\"id\":\"ready\",\"body\":{}}"u8);
             }
         }).ConfigureAwait(false);
@@ -629,6 +629,7 @@ internal sealed class MobilePairing(
     // Under _gate. The reply for the phone once the handshake holds, or null for every refusal alike.
     private byte[]? _Handshake(string connectionId, string deviceId, _Stream stream, byte[] frame)
     {
+        logger?.LogInformation("Mobile handshake received for connection {ConnectionId}.", connectionId);
         if (!_keys.TryGetCockpitKey(connectionId, out var key))
         {
             logger?.LogWarning("Mobile handshake cannot read the Cockpit key for connection {ConnectionId}.", connectionId);
