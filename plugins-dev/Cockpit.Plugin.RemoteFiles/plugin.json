@@ -1,7 +1,7 @@
 {
   "id": "remote-files",
   "name": "Remote files",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "entryAssembly": "Cockpit.Plugin.RemoteFiles.dll",
   "entryType": "Cockpit.Plugin.RemoteFiles.RemoteFilesPlugin",
   "uiAssembly": "Cockpit.Plugin.RemoteFiles.UI.dll",

@@ -1,7 +1,7 @@
 {
   "id": "transcript-search",
   "name": "Claude Transcript Search",
-  "version": "1.3.10",
+  "version": "1.3.11",
   "uiAssembly": "Cockpit.Plugin.TranscriptSearch.dll",
   "uiEntryType": "Cockpit.Plugin.TranscriptSearch.TranscriptSearchUi",
   "abstractionsVersion": 3,

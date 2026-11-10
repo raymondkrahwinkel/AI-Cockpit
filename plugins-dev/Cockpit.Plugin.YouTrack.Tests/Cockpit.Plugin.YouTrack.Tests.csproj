@@ -22,11 +22,11 @@
          YouTrackDialogControl for real, so the Avalonia stack, the DataGrid and MaterialIconKind all need a
          runtime copy present, which the host would otherwise supply. Avalonia.Headless is the platform those
          controls ask for a cursor and a font from — see HeadlessAvalonia. -->
-    <PackageReference Include="Avalonia" Version="12.1.2" />
+    <PackageReference Include="Avalonia" Version="12.1.6" />
     <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.1.2" />
-    <PackageReference Include="Avalonia.Headless" Version="12.1.2" />
-    <PackageReference Include="Avalonia.Skia" Version="12.1.2" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.2" />
+    <PackageReference Include="Avalonia.Headless" Version="12.1.6" />
+    <PackageReference Include="Avalonia.Skia" Version="12.1.6" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.6" />
     <!-- Parses the host's Theme.axaml off disk (AC-338), the same way Cockpit.Plugin.Workflows.Tests does: the
          plugin cannot reference Cockpit.App, so this is the only way DialogTestApp can load the real cockpit
          theme rather than bare Fluent. -->

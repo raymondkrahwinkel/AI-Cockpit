@@ -1,7 +1,7 @@
 {
   "id": "github-actions",
   "name": "GitHub Actions",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "entryAssembly": "Cockpit.Plugin.GitHubActions.dll",
   "entryType": "Cockpit.Plugin.GitHubActions.GitHubActionsPlugin",
   "uiAssembly": "Cockpit.Plugin.GitHubActions.UI.dll",
