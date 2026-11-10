@@ -144,6 +144,14 @@ public partial class OptionsDialog : Window
                 cockpit.Security.AskHelloPassword = _AskHelloPasswordAsync;
                 cockpit.Security.RefreshHelloCommand.Execute(null);
                 _BuildPluginCategories(cockpit);
+                foreach (var page in this.GetLogicalDescendants().OfType<ScrollViewer>())
+                {
+                    if (page.Tag is string tag && tag is "sessions" or "appearance" or "terminal" or "notifications" or "shortcuts" or "voice" or "debug"
+                        && page.Content is StackPanel body && !_sectionErrorLabels.ContainsKey(tag))
+                    {
+                        body.Children.Insert(1, _SectionErrorLabel(tag));
+                    }
+                }
                 cockpit.PluginOptionsRows.CollectionChanged += _OnPluginOptionsRowsChanged;
                 _ApplySearch(cockpit.OptionsSearchText);
                 RequestAnimationFrame(_ => RequestAnimationFrame(_ => cockpit.OptionsOpenPresented()));
@@ -310,6 +318,7 @@ public partial class OptionsDialog : Window
     // built page has a label to write the reason into (AC-1084).
     private bool _ReportApplyRefusal(CockpitViewModel cockpit)
     {
+        _ShowSectionErrors(cockpit);
         if (!cockpit.OptionsApplyBlocked)
         {
             return false;
@@ -319,8 +328,6 @@ public partial class OptionsDialog : Window
         {
             SelectCategory(tag);
         }
-
-        _ShowPluginSectionErrors(cockpit);
 
         return true;
     }
@@ -476,21 +483,37 @@ public partial class OptionsDialog : Window
         return item;
     }
 
-    // AC-1084: the label each plugin page carries for the reason its own last Apply refused, by nav tag. The host
-    // draws it rather than leaving it to the view, because only five of the seventeen settings views refuse at all
-    // and just two of those (Discord, Slack) draw an error themselves — the rest would go silent.
-    private readonly Dictionary<string, TextBlock> _pluginErrorLabels = new(StringComparer.Ordinal);
+    // The host owns the refusal label so a failed save remains visible on its own Options page.
+    private readonly Dictionary<string, TextBlock> _sectionErrorLabels = new(StringComparer.Ordinal);
 
-    // Writes each built plugin page's refusal onto that page, and clears the pages that no longer have one, so a
-    // reason the operator has since fixed does not linger next to a section that now saves.
-    private void _ShowPluginSectionErrors(CockpitViewModel cockpit)
+    // Clear a corrected section's error on the same Apply that succeeds.
+    private void _ShowSectionErrors(CockpitViewModel cockpit)
     {
-        foreach (var (tag, label) in _pluginErrorLabels)
+        foreach (var (tag, label) in _sectionErrorLabels)
         {
             var reason = cockpit.OptionsSectionErrors.GetValueOrDefault(tag);
             label.Text = reason;
             label.IsVisible = reason is { Length: > 0 };
         }
+    }
+
+    private TextBlock _SectionErrorLabel(string tag)
+    {
+        var errorLabel = new TextBlock
+        {
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = _Brush("CockpitStatusWaitingBrush"),
+            FontWeight = FontWeight.SemiBold,
+            IsVisible = false,
+        };
+        _sectionErrorLabels[tag] = errorLabel;
+        if ((DataContext as CockpitViewModel)?.OptionsSectionErrors.GetValueOrDefault(tag) is { Length: > 0 } reason)
+        {
+            errorLabel.Text = reason;
+            errorLabel.IsVisible = true;
+        }
+
+        return errorLabel;
     }
 
     private ScrollViewer _BuildPluginContent(string tag, PluginOptionsRowViewModel row)
@@ -518,20 +541,7 @@ public partial class OptionsDialog : Window
 
         // Under the heading, above the plugin's own view: the reason this section refused the last Apply. Seeded
         // from the view model so a page built by the jump below already carries it (AC-1084).
-        var errorLabel = new TextBlock
-        {
-            TextWrapping = TextWrapping.Wrap,
-            Foreground = _Brush("CockpitStatusWaitingBrush"),
-            FontWeight = FontWeight.SemiBold,
-            IsVisible = false,
-        };
-        _pluginErrorLabels[tag] = errorLabel;
-        if ((DataContext as CockpitViewModel)?.OptionsSectionErrors.GetValueOrDefault(tag) is { Length: > 0 } reason)
-        {
-            errorLabel.Text = reason;
-            errorLabel.IsVisible = true;
-        }
-
+        var errorLabel = _SectionErrorLabel(tag);
         body.Children.Add(errorLabel);
 
         // No footer of its own and no window of its own (criteria 3/5): the view sits flat in the content column,
