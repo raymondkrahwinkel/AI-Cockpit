@@ -17,6 +17,7 @@ internal sealed class GatewayMcpBinding : IAsyncDisposable
     private Task _pendingConnections = Task.CompletedTask;
     private readonly McpBackgroundTasks _connections;
     private int _disposeStarted;
+    private SessionMcpSet? _appliedSet;
 
     public GatewayMcpBinding(McpToolProvider provider, SessionMcpMounts mounts, string paneId, string token, ILogger logger)
     {
@@ -64,10 +65,17 @@ internal sealed class GatewayMcpBinding : IAsyncDisposable
                 while (_changes.Reader.TryRead(out _)) { }
                 try
                 {
+                    var set = _mounts.Set(_paneId);
+                    // Connection reports raise Changed too; only a new desired set invalidates this cache (AC-2310).
+                    if (ReferenceEquals(set, _appliedSet))
+                    {
+                        continue;
+                    }
                     using var deadline = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
                     deadline.CancelAfter(TimeSpan.FromSeconds(15));
                     var registry = await _provider.GatewayServersAsync(_paneId, deadline.Token);
                     _pendingConnections = Session.UpdateServersAsync(registry);
+                    _appliedSet = set;
                     _ready.TrySetResult();
                     var pending = _pendingConnections;
                     _connections.Run(() => pending);
