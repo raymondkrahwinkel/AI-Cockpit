@@ -114,7 +114,7 @@ public sealed class BackendApiDoorTests
         Assert.Equal(HttpStatusCode.BadRequest, incomplete.Status);
         Assert.Equal(held.WebhookUrl, (await notifications.LoadAsync()).WebhookUrl);
 
-        // AC-2279: Operate changes no server trust, and an admin can narrow the internal network but never widen it.
+        // AC-2279: Operate changes no server trust, and an admin widens the internal network only within private space.
         foreach (var action in new[] { "reset", "leadership", "retry", $"members/{new string('A', 64)}/remove" })
         {
             Assert.Equal(new _Answer(HttpStatusCode.Forbidden, ForbiddenBody), await door.SendAsync(HttpMethod.Post, $"/api/v1/options/swarm/{action}", operate.Secret));
@@ -124,9 +124,9 @@ public sealed class BackendApiDoorTests
         var widened = await door.SendAsync(HttpMethod.Put, "/api/v1/options/swarm", Bootstrap, """{"extraInternalCidrs":["100.64.0.0/10","0.0.0.0/1"],"joinAtBack":false}""");
         Assert.Equal(HttpStatusCode.BadRequest, widened.Status);
         await door.Swarm.DidNotReceiveWithAnyArgs().SaveSettingsAsync(default!, default);
-        var narrowed = await door.SendAsync(HttpMethod.Put, "/api/v1/options/swarm", Bootstrap, """{"extraInternalCidrs":[],"joinAtBack":true}""");
-        Assert.Equal(HttpStatusCode.OK, narrowed.Status);
-        await door.Swarm.Received(1).SaveSettingsAsync(Arg.Is<Cockpit.Core.Swarm.SwarmSettings>(saved => saved.ExtraInternalCidrs.Count == 0), Arg.Any<CancellationToken>());
+        var privateRange = await door.SendAsync(HttpMethod.Put, "/api/v1/options/swarm", Bootstrap, """{"extraInternalCidrs":["10.20.0.0/16"],"joinAtBack":true}""");
+        Assert.Equal(HttpStatusCode.OK, privateRange.Status);
+        await door.Swarm.Received(1).SaveSettingsAsync(Arg.Is<Cockpit.Core.Swarm.SwarmSettings>(saved => saved.ExtraInternalCidrs.SequenceEqual(new[] { "10.20.0.0/16" })), Arg.Any<CancellationToken>());
     }
 
     private async Task _AssertWhoami_RefusesEveryCallerButAConnectKeyOverHttpsAsync(string caller, HttpStatusCode expected, string expectedBody)

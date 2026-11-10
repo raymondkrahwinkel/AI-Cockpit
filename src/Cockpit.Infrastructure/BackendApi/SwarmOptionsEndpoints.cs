@@ -9,8 +9,8 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Cockpit.Infrastructure.BackendApi;
 
-// AC-2279: the server's own Swarm page over fixed admin routes. Pairing stays on the server's own screen, and the
-// extra internal ranges can only shrink here: no route widens what the server counts as its internal network.
+// AC-2279: the server's own Swarm page over fixed admin routes. Pairing stays on the server's own screen, and a new
+// extra internal range must lie inside private address space: no route makes a public address internal.
 internal static class SwarmOptionsEndpoints
 {
     public static void Map(RouteGroupBuilder api, IServiceProvider services)
@@ -49,10 +49,11 @@ internal static class SwarmOptionsEndpoints
             {
                 var stored = await swarm().LoadSettingsAsync(ct).ConfigureAwait(false);
                 var kept = stored.ExtraInternalCidrs.Select(_Normalized).ToHashSet(StringComparer.Ordinal);
-                if (body.ExtraInternalCidrs.Any(cidr => _Normalized(cidr) is not { } normalized || !kept.Contains(normalized)))
+                if (body.ExtraInternalCidrs.Any(cidr => !IPNetwork.TryParse(cidr.Trim(), out var network)
+                    || (!kept.Contains(network.ToString()) && !PrivateRanges.Any(range => network.PrefixLength >= range.PrefixLength && range.Contains(network.BaseAddress)))))
                 {
                     return BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "invalid_request",
-                        "A remote window can only remove extra internal ranges. Add a range on the server itself.");
+                        "A new internal range must lie inside 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10 or fc00::/7.");
                 }
 
                 await swarm().SaveSettingsAsync(stored with
@@ -105,6 +106,10 @@ internal static class SwarmOptionsEndpoints
         await action.ConfigureAwait(false);
         return Results.Json(new { ok = true });
     }
+
+    // Where a range added over the API may lie: private, carrier-grade NAT (a VPN such as Tailscale) and unique local.
+    private static readonly IPNetwork[] PrivateRanges =
+        [IPNetwork.Parse("10.0.0.0/8"), IPNetwork.Parse("172.16.0.0/12"), IPNetwork.Parse("192.168.0.0/16"), IPNetwork.Parse("100.64.0.0/10"), IPNetwork.Parse("fc00::/7")];
 
     private static string? _Normalized(string cidr) => IPNetwork.TryParse(cidr.Trim(), out var network) ? network.ToString() : null;
 }
