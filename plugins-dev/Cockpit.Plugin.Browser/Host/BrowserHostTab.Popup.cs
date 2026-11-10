@@ -26,12 +26,13 @@ internal sealed partial class BrowserHostTab
         _PopupShow(false);
     }
 
-    private void _NewTab(string address)
+    private void _NewTab(string address, bool userGesture)
     {
         lock (_control)
         {
             // A shared tab's grant and origin boundary must never escape into a fresh, uncontrolled tab.
-            if (_closing || _controlOrigin is not null || Uri.TryCreate(address, UriKind.Absolute, out _) == false)
+            if (_closing || _controlOrigin is not null || userGesture == false || Uri.TryCreate(address, UriKind.Absolute, out var uri) == false ||
+                (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps && address != "about:blank"))
             {
                 return;
             }

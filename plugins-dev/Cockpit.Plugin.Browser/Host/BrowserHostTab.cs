@@ -603,7 +603,7 @@ internal sealed partial class BrowserHostTab : IAsyncDisposable
             CefWindowOpenDisposition targetDisposition, bool userGesture, CefPopupFeatures popupFeatures, CefWindowInfo windowInfo,
             ref CefClient client, CefBrowserSettings settings, ref CefDictionaryValue extraInfo, ref bool noJavascriptAccess)
         {
-            owner._NewTab(targetUrl);
+            owner._NewTab(targetUrl, userGesture);
             return true;
         }
     }
