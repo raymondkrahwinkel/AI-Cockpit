@@ -240,6 +240,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ## [Unreleased]
 
+- AC-2309: retain saved phone keys when Depot's grant-scoped device list omits them after signing in again; log pairing phases and outcomes without credentials or phone names (Depot plugin 0.65.2).
+
 ### Added
 
 - Plugin-provided stores now verify publisher signatures before installation, remember publisher consent across removal and restore, and warn when the current feed revokes an installed plugin's key.

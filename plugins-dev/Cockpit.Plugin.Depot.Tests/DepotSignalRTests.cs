@@ -23,9 +23,9 @@ namespace Cockpit.Plugin.Depot.Tests;
 
 public sealed class DepotSignalRTests
 {
-    // B: signing in again must restore the relay without losing the saved phone or replacing its key.
+    // D: a grant-scoped empty device list after sign-in is not a revocation of the saved phone key.
     [Fact]
-    [Trait("Category", "B")]
+    [Trait("Category", "D")]
     public async Task Authorized_relay_recovers_after_sign_in_without_losing_the_phone_key()
     {
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(20));
@@ -40,6 +40,7 @@ public sealed class DepotSignalRTests
         app.MapHub<AuthHub>("/hub");
         app.MapHub<AuthHub>("/hubs/relay");
         app.MapGet("/cockpit/me", () => new { userId = "user" });
+        app.MapGet("/cockpit/mobile/devices", () => Array.Empty<object>());
         await app.StartAsync(deadline.Token);
         var origin = app.Urls.Single();
         var coordinator = Substitute.For<IMcpOAuthCoordinator>();
@@ -103,7 +104,7 @@ public sealed class DepotSignalRTests
         await pairing.ResetAsync(registration.McpServerName);
         await presence.Connected.Task.WaitAsync(TimeSpan.FromSeconds(5), deadline.Token);
         Assert.Equal("connected", await connection.InvokeAsync<string>("Open", deadline.Token));
-        Assert.Single((await pairing.PhonesAsync(registration.Id, false, deadline.Token)).Phones);
+        Assert.Single((await pairing.PhonesAsync(registration.Id, true, deadline.Token)).Phones);
         Assert.True(keys.IsPaired(registration.Id, MobileKeyStore.PublicKey(phoneKey)));
         Assert.True(keys.TryGetCockpitKey(registration.Id, out var restoredKey));
         using (restoredKey) Assert.Equal(publicKey, MobileKeyStore.PublicKey(restoredKey!));
