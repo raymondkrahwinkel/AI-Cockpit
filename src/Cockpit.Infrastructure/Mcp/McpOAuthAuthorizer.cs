@@ -106,9 +106,6 @@ internal sealed class McpOAuthAuthorizer(
         return options;
     }
 
-    // The non-interactive authorization step: there is nobody to log in, so it declines. Returning no code makes
-    // the SDK report the authorization as failed, which the coordinator reads as "this needs the operator" — the
-    // point being that starting a session must never make a browser window appear on its own.
     // Opens the system browser and waits on a loopback listener for the redirect, returning the code (or null on
     // failure/cancel). AC-457: each stage is recorded only where it is reached, never in advance.
     private async Task<AuthorizationResult?> _HandleAuthorizationAsync(
