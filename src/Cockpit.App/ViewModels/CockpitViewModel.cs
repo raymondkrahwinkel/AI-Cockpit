@@ -128,7 +128,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private Func<PluginManagerViewModel, PluginStoreFilter?, Task>? _presentPluginStore;
 
     // AC-2278 supplies the server settings transaction; absent adapters must never report a successful save.
-    public bool CanEditOptions => !IsRemoteWindow || _settingsWriteBatch is not null;
+    public bool CanEditOptions => !IsRemoteWindow || _remoteOptionsLoaded;
+
+    private bool _remoteOptionsLoaded;
     // AC-512: "Run setup again" (Help menu) reopens it; null (design-time/tests, or nothing registered) is a no-op.
     private readonly IFirstRunWizard? _firstRunWizard;
     private readonly HelpService? _help;
@@ -3688,7 +3690,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ISessionMcpRestore? sessionMcpRestore = null,
         Cockpit.Core.HeavyRuns.IHeavyRunSettingsStore? heavyRunSettingsStore = null,
         Cockpit.Core.HeavyRuns.IHeavyRunSettingsRefresh? heavyRunSettingsRefresh = null,
-        IEnumerable<Cockpit.Core.Abstractions.Mentions.IMentionSource>? mentionSources = null)
+        IEnumerable<Cockpit.Core.Abstractions.Mentions.IMentionSource>? mentionSources = null,
+        bool deferOptionsLoad = false)
     {
         MentionSources = mentionSources;
         _heavyRunSettingsStore = heavyRunSettingsStore;
@@ -3850,10 +3853,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _ = Worktrees.RefreshCountAsync();
         _worktreeSettingsStore = worktreeSettingsStore;
         WorktreeRootPlaceholder = worktreeSettingsStore?.DefaultRoot ?? string.Empty;
-        _ = LoadWorktreeSettingsAsync();
+        if (!deferOptionsLoad)
+        {
+            _ = LoadWorktreeSettingsAsync();
+        }
         _cloneSettingsStore = cloneSettingsStore;
         CloneRootPlaceholder = cloneSettingsStore?.DefaultRoot ?? string.Empty;
-        _ = LoadCloneSettingsAsync();
+        if (!deferOptionsLoad)
+        {
+            _ = LoadCloneSettingsAsync();
+        }
         _audioDeviceProvider = audioDeviceProvider;
         _audioCapture = audioCapture;
         IsAudioAvailable = audioAvailability?.IsAvailable ?? true;
@@ -3951,19 +3960,31 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             RefreshPaneVisibility();
         };
 
-        _ = LoadNotificationSettingsAsync();
+        if (!deferOptionsLoad)
+        {
+            _ = LoadNotificationSettingsAsync();
+        }
         _ = LoadTranscriptDisplaySettingsAsync();
         _ = LoadUsagePillSettingsAsync();
-        _ = LoadSessionBehaviorSettingsAsync();
+        if (!deferOptionsLoad)
+        {
+            _ = LoadSessionBehaviorSettingsAsync();
+        }
         _ = LoadScreenshotSettingsAsync();
         _ = LoadQuickNoteSettingsAsync();
         _ = LoadLayoutSettingsAsync(seedCurrentStand: true);
         _ = LoadVoiceSettingsAsync();
-        _ = LoadTerminalSettingsAsync();
+        if (!deferOptionsLoad)
+        {
+            _ = LoadTerminalSettingsAsync();
+        }
         // Construction cannot await policy metadata; the task logs failures and updates the bindings when ready.
         _ = LoadManagedSettingsAsync();
         _ = LoadShortcutSettingsAsync();
-        _ = LoadDebugSettingsAsync();
+        if (!deferOptionsLoad)
+        {
+            _ = LoadDebugSettingsAsync();
+        }
         _ = LoadRenderingSettingsAsync();
         _ = LoadPluginMenuPreferencesAsync(pluginRegistrationStore);
 
@@ -6209,7 +6230,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // case-insensitively) — falling back to "OS default" when it is blank or no longer resolves on this machine.
     private void _BuildTerminalShellChoices(string configured)
     {
-        var shells = ShellCatalog.Detect();
+        var shells = _terminalSettingsStore is Cockpit.Core.Abstractions.Remote.IRemoteOptionsStores remote ? remote.Shells : ShellCatalog.Detect();
 
         TerminalShellChoices.Clear();
         var osDefaultLabel = shells.Count > 0 ? $"OS default ({shells[0].DisplayName})" : "OS default";
@@ -6565,7 +6586,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // its path differs), otherwise the OS default — the first shell `ShellCatalog` detects.
     private ShellDescriptor? _ResolveDefaultShell()
     {
-        var shells = ShellCatalog.Detect();
+        var shells = _terminalSettingsStore is Cockpit.Core.Abstractions.Remote.IRemoteOptionsStores remote ? remote.Shells : ShellCatalog.Detect();
 
         // The effective configured value: the typed path/command when on "Custom…", else the picked shell's id.
         var configured = (IsTerminalShellCustom ? TerminalCustomShell : SelectedTerminalShell?.Value)?.Trim();
@@ -7399,7 +7420,33 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // The plugin list decides which plugin pages the dialog has at all, so it is read before the dialog is built.
         // With the closure hashes cached (AC-2018) that is a directory walk, not a read of every plugin byte.
         await Plugins.LoadAsync();
-        await LoadHeavyRunSettingsAsync();
+        if (IsRemoteWindow)
+        {
+            try
+            {
+                await (_remoteServers?.ReloadAsync() ?? Task.CompletedTask);
+                await LoadNotificationSettingsAsync();
+                await LoadSessionBehaviorSettingsAsync();
+                await LoadTerminalSettingsAsync();
+                await LoadDebugSettingsAsync();
+                await LoadWorktreeSettingsAsync();
+                await LoadCloneSettingsAsync();
+                WorktreeRootPlaceholder = _worktreeSettingsStore?.DefaultRoot ?? string.Empty;
+                CloneRootPlaceholder = _cloneSettingsStore?.DefaultRoot ?? string.Empty;
+                await LoadHeavyRunSettingsAsync();
+                _remoteOptionsLoaded = true;
+            }
+            catch (Exception)
+            {
+                _remoteOptionsLoaded = false;
+                NotificationSettingsStatus = "Could not load server settings. Reopen Options to retry.";
+            }
+            OnPropertyChanged(nameof(CanEditOptions));
+        }
+        else
+        {
+            await LoadHeavyRunSettingsAsync();
+        }
         _MarkOptionsOpen("plugins");
 
         // AC-2018: the rest is read after the dialog is on screen, each page covered by a loading state until its own
@@ -7748,28 +7795,44 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private static string _PrettifyGesture(string gesture) =>
         string.IsNullOrWhiteSpace(gesture) ? string.Empty : gesture.Replace("+", " + ");
 
+    private string _optionsSavingCategory = "sessions";
+
     // Persists every options section in one go — the Options dialog's single footer Save (#13)
     // replaces the six per-section Save buttons the flyout used to have.
     [RelayCommand]
     private async Task SaveAllSettingsAsync()
     {
+        _optionsSavingCategory = "notifications";
         await SaveNotificationSettingsCommand.ExecuteAsync(null);
-        await SaveTranscriptDisplaySettingsCommand.ExecuteAsync(null);
-        await SaveUsagePillSettingsCommand.ExecuteAsync(null);
+        _optionsSavingCategory = "sessions";
         await SaveSessionBehaviorSettingsCommand.ExecuteAsync(null);
         await SaveHeavyRunSettingsAsync();
-        // Before the voice save, which is what raises VoiceSettingsSaved — the hotkey coordinator re-arms on that
-        // and reads both sections, so a screenshot key saved after it would not be armed until the next launch.
+        _optionsSavingCategory = "terminal";
+        await SaveTerminalSettingsCommand.ExecuteAsync(null);
+        _optionsSavingCategory = "debug";
+        await SaveDebugSettingsCommand.ExecuteAsync(null);
+        _optionsSavingCategory = "sessions";
+        await SaveWorktreeSettingsCommand.ExecuteAsync(null);
+        await SaveCloneSettingsCommand.ExecuteAsync(null);
+        if (_notificationSettingsStore is Cockpit.Core.Abstractions.Remote.IRemoteOptionsStores remote)
+        {
+            _optionsSavingCategory = "appearance";
+            await remote.SaveClientPresentationAsync();
+        }
+
+        _optionsSavingCategory = "appearance";
+        await SaveTranscriptDisplaySettingsCommand.ExecuteAsync(null);
+        await SaveUsagePillSettingsCommand.ExecuteAsync(null);
+        // Screenshot settings precede voice: saving voice re-arms the hotkeys using both groups.
         await SaveScreenshotSettingsCommand.ExecuteAsync(null);
         await SaveQuickNoteSettingsCommand.ExecuteAsync(null);
         await SaveLayoutSettingsCommand.ExecuteAsync(null);
+        _optionsSavingCategory = "voice";
         await SaveVoiceSettingsCommand.ExecuteAsync(null);
-        await SaveTerminalSettingsCommand.ExecuteAsync(null);
+        _optionsSavingCategory = "shortcuts";
         await SaveShortcutSettingsCommand.ExecuteAsync(null);
-        await SaveDebugSettingsCommand.ExecuteAsync(null);
+        _optionsSavingCategory = "appearance";
         await SaveRenderingSettingsCommand.ExecuteAsync(null);
-        await SaveWorktreeSettingsCommand.ExecuteAsync(null);
-        await SaveCloneSettingsCommand.ExecuteAsync(null);
     }
 
     // What makes that safe to take back is that none of it reaches `cockpit.json` while the dialog is open:
@@ -8024,6 +8087,23 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 OptionsApplyBlocked = true;
             }
 
+            try
+            {
+                await SaveAllSettingsAsync();
+            }
+            catch (Exception error) when (IsRemoteWindow)
+            {
+                OptionsApplyBlocked = true;
+                OptionsApplyBlockedCategoryTag = _optionsSavingCategory;
+                OptionsSectionErrors = new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    [_optionsSavingCategory] = error is Cockpit.Core.Abstractions.Remote.IRemoteCallFailure
+                        ? error.Message
+                        : "Could not save these settings. Check the connection and available storage, then retry.",
+                };
+                return;
+            }
+
             // Left running when blocked: `_EndOptionsEdit` clears `PluginOptionsRows`, which is exactly the row the
             // operator still needs to fix and retry — ending the edit here would make a second Apply silently skip
             // it instead of validating it again. AC-1287: an Apply that keeps the dialog open leaves it running too.
@@ -8032,7 +8112,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 _EndOptionsEdit();
             }
 
-            await SaveAllSettingsAsync();
             measurement.Mark("core");
         }
 
@@ -8117,6 +8196,27 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // old values back out — a Cancel that saves.
     [RelayCommand]
     private async Task CancelOptionsAsync()
+    {
+        var remote = _notificationSettingsStore as Cockpit.Core.Abstractions.Remote.IRemoteOptionsStores;
+        if (remote is not null)
+        {
+            remote.ReadConfirmedValues = true;
+        }
+
+        try
+        {
+            await _CancelOptionsFromStoresAsync();
+        }
+        finally
+        {
+            if (remote is not null)
+            {
+                remote.ReadConfirmedValues = false;
+            }
+        }
+    }
+
+    private async Task _CancelOptionsFromStoresAsync()
     {
         // AC-2018: nothing the fingerprint covers has moved, so the twenty re-reads of cockpit.json below would only put
         // back what is already there (1.6 s measured). The MCP servers are the one edited list it does not cover.

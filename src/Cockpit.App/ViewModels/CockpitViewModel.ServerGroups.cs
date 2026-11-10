@@ -86,12 +86,18 @@ public partial class CockpitViewModel
         Func<CockpitViewModel, string?, Task>? presentOptions = null,
         Func<PluginManagerViewModel, PluginStoreFilter?, Task>? presentPluginStore = null)
     {
+        var options = Composition.DesktopComposition.RemoteOptionsFor(() => servers.Servers.FirstOrDefault(target => target.Name == server));
         var cockpit = new CockpitViewModel(
             sessionFactory: null, ttySessionFactory: null, dialogService: null,
             captureService: null, playbackService: null, attentionNotifier: null,
-            notificationSettingsStore: null, transcriptDisplaySettingsStore: null,
-            sessionBehaviorSettingsStore: null, layoutSettingsStore: null,
-            voiceSettingsStore: null, terminalSettingsStore: null)
+            notificationSettingsStore: options, transcriptDisplaySettingsStore: options.Transcript,
+            sessionBehaviorSettingsStore: options, layoutSettingsStore: options.Layout,
+            voiceSettingsStore: options.Voice, terminalSettingsStore: options,
+            debugSettingsStore: options, worktreeSettingsStore: options, cloneSettingsStore: options,
+            shortcutSettingsStore: options.Shortcuts, renderingSettingsStore: options.Rendering,
+            usagePillSettingsStore: options.UsagePill, screenshotSettingsStore: options.Screenshots,
+            quickNoteSettingsStore: options.QuickNotes,
+            heavyRunSettingsStore: options, deferOptionsLoad: true)
         {
             RemoteWindowServer = server,
             _showServerAdmin = showServerAdmin,

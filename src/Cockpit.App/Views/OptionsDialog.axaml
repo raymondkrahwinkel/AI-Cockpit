@@ -42,7 +42,7 @@
                 <Button Grid.Column="0" Content="Restore Options Defaults…" Click="OnRestoreDefaults"
                         ToolTip.Tip="Restores Options settings in every category. Profiles, MCP servers, and plugin settings are unchanged."
                         IsEnabled="{Binding CanEditOptions, FallbackValue=True}"/>
-                <TextBlock Grid.Column="1" Text="Server settings are not available in this window yet."
+                <TextBlock Grid.Column="1" Text="Could not load server settings. Reopen Options to retry."
                            IsVisible="{Binding !CanEditOptions, FallbackValue=False}" VerticalAlignment="Center"
                            Margin="12,0" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                 <TextBlock Grid.Column="1" Text="Unsaved changes" HorizontalAlignment="Right"

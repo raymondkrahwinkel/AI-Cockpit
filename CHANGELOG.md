@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2278: Options in a remote Cockpit window reads and saves the server's run limits, session behavior, clone/worktree roots, notifications, shell and diagnostics. Presentation stays on the client; webhook secrets remain on the server.
+
 - AC-2277: Open on a connected server starts its own Cockpit window, with ordinary navigation and session start on that server. The window starts no local backend; Options remain read-only until their server adapters are connected.
 
 - Fixed MCP tool calls with content annotations or resource icons failing during serialization; retained MCP SDK 2.3.0 pending an upstream fix.

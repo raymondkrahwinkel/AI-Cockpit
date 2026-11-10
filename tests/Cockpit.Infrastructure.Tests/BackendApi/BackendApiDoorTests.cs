@@ -87,6 +87,32 @@ public sealed class BackendApiDoorTests
             var scenario = new BackendApiDoorTests();
             await scenario._AssertWhoami_RefusesEveryCallerButAConnectKeyOverHttpsAsync("unknown key over HTTPS", HttpStatusCode.Unauthorized, InvalidTokenBody);
         }
+
+        await using var door = new _Door();
+        var verifier = await door.StartAsync();
+        var operate = await verifier.IssueAsync("options-reader", ConnectKeyCapability.Operate, 30, Operator);
+        foreach (var group in new[] { "runs", "sessions", "clones", "worktrees", "notifications", "diagnostics", "shell" })
+        {
+            var read = await door.SendAsync(HttpMethod.Get, $"/api/v1/options/{group}", operate.Secret);
+            var write = await door.SendAsync(HttpMethod.Put, $"/api/v1/options/{group}", operate.Secret, "{}");
+            Assert.Equal(new _Answer(HttpStatusCode.Forbidden, ForbiddenBody), read);
+            Assert.Equal(new _Answer(HttpStatusCode.Forbidden, ForbiddenBody), write);
+        }
+
+        var notifications = new Cockpit.Infrastructure.Notifications.NotificationSettingsStore(door.ConfigPath);
+        var held = new Cockpit.Core.Notifications.NotificationSettings { WebhookUrl = "https://example.test/private-webhook", LocalEnabled = false };
+        await notifications.SaveAsync(held);
+        var settings = await door.SendAsync(HttpMethod.Get, "/api/v1/options/notifications", Bootstrap);
+        Assert.Equal(HttpStatusCode.OK, settings.Status);
+        Assert.DoesNotContain(held.WebhookUrl, settings.Body, StringComparison.Ordinal);
+        var kept = await door.SendAsync(HttpMethod.Put, "/api/v1/options/notifications", Bootstrap, settings.Body);
+        Assert.Equal(HttpStatusCode.OK, kept.Status);
+        var retained = await notifications.LoadAsync();
+        Assert.Equal(held.WebhookUrl, retained.WebhookUrl);
+        Assert.Equal(held.LocalEnabled, retained.LocalEnabled);
+        var incomplete = await door.SendAsync(HttpMethod.Put, "/api/v1/options/notifications", Bootstrap, "{}");
+        Assert.Equal(HttpStatusCode.BadRequest, incomplete.Status);
+        Assert.Equal(held.WebhookUrl, (await notifications.LoadAsync()).WebhookUrl);
     }
 
     private async Task _AssertWhoami_RefusesEveryCallerButAConnectKeyOverHttpsAsync(string caller, HttpStatusCode expected, string expectedBody)
@@ -873,6 +899,7 @@ public sealed class BackendApiDoorTests
             mounts.Grant(SessionPane, ["cockpit-node"]);
 
             var services = new ServiceCollection();
+            services.AddSingleton<INotificationSettingsStore>(new Cockpit.Infrastructure.Notifications.NotificationSettingsStore(ConfigPath));
             services.AddSingleton<IAssistantReadGateway>(ReadGateway);
             services.AddSingleton<IAssistantAgentGateway>(AgentGateway);
             services.AddSingleton<ISessionRegistry>(Sessions);

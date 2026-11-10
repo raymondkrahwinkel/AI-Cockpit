@@ -40,6 +40,7 @@ internal static class BackendApiRoutes
         ProfileEndpoints.Map(api, services);
         AssistantSettingsEndpoints.Map(api, services);
         StorageSettingsEndpoints.Map(api, services);
+        OptionsSettingsEndpoints.Map(api, services);
 
         api.MapGet("/whoami", async (CancellationToken cancellationToken) =>
         {

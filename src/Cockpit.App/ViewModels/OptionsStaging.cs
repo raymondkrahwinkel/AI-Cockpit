@@ -14,6 +14,7 @@ internal static class OptionsStaging
 
     // Bound two-way to a control the operator edits, and persisted on Apply. Paths, because three of them live
     // on the sub-view models the dialog reaches through (`Security`, `AssistantOptions`).
+    // Remote ownership for every entry: docs/remote-options.md (AC-2278).
     public static readonly string[] EditedProperties =
     [
         "AgentsPaletteEnabled",
