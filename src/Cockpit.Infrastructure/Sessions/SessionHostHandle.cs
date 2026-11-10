@@ -264,7 +264,11 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
                 throw new InvalidOperationException("This pane is waiting for a permission or question. Answer it on the desktop before sending a task.");
             }
         }
-        return await SendPromptAsync(prompt).ConfigureAwait(false);
+        if (!await SendPromptAsync(prompt).ConfigureAwait(false))
+        {
+            throw new InvalidOperationException("This pane cannot accept a task. It may be waiting for a permission or question, held, or stopped.");
+        }
+        return true;
     }
 
     public Task SetWorktreeBranchAsync(string? branch)

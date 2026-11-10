@@ -2447,8 +2447,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // agent on the tool result.
     public override async Task<bool> FeedVerifyResultAsync(string caption, byte[] screenshotPng)
     {
-        if (!_control.IsRunning || !CanPasteImages || SessionStatus == SessionStatus.NeedsAttention
-            || PendingConsent is not null || HasPendingPermission)
+        if (!_control.IsRunning || !CanPasteImages)
         {
             return false;
         }
@@ -2463,7 +2462,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // composer so a draft and its pending attachments stay where they are; queued behind a turn in flight like a typed one.
     public async Task<bool> SubmitWithImagesAsync(string text, IReadOnlyList<byte[]> pngImages)
     {
-        if (!_control.IsRunning || !CanPasteImages)
+        if (!_control.IsRunning || !CanPasteImages || SessionStatus == SessionStatus.NeedsAttention
+            || PendingConsent is not null || HasPendingPermission)
         {
             return false;
         }
