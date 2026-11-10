@@ -262,8 +262,15 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
             {
                 VoiceTranscriptReady?.Invoke("\r");
             }
+            else
+            {
+                ReportTaskNotDelivered();
+            }
         });
     }
+
+    internal void ReportTaskNotDelivered() =>
+        Statusline = "Task not delivered: automatic Enter was cancelled. Review the pasted text on the desktop.";
 
     // A TTY session takes nothing here (AC-86): the text snapshot already reached the agent on the verify tool
     // result, and a pty carries no image. Typing the multi-line snapshot into the pty would let its embedded line

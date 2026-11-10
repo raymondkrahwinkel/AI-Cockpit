@@ -92,6 +92,7 @@ public class AssistantSendGatewayTests
         session.SessionStatus = SessionStatus.NeedsAttention;
         delayedEnter();
         Assert.Equal(new[] { "run the tests", "\r", "a queued task", "\r", "a task" }, written);
+        Assert.Contains("Task not delivered", session.Statusline, StringComparison.Ordinal);
         var operatorWritten = new List<string>();
         session.OperatorVoiceTranscriptReady += operatorWritten.Add;
         session.SessionStatus = SessionStatus.Busy;

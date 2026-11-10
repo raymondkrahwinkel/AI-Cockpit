@@ -155,7 +155,7 @@ public sealed class SessionLauncher(
 
         bool? promptDelivered = string.IsNullOrWhiteSpace(request.Prompt)
             ? null
-            : await hosted.SubmitPromptWhenReadyAsync(request.Prompt).ConfigureAwait(false);
+            : await hosted.SubmitPromptWhenReadyAsync(request.Prompt).ConfigureAwait(false) ?? false;
         return new LaunchedSession(paneId, name, promptDelivered, UnisolatedNotice: admitted.Notice, RoleWarning: request.RoleWarning);
     }
 

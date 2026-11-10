@@ -416,6 +416,10 @@ public partial class TtyView : UserControl
                         _WriteToPty(pty, [(byte)'\r']);
                         Terminal.InputEvents.ClearPendingLine();
                     }
+                    else if (!operatorInput)
+                    {
+                        _viewModel?.ReportTaskNotDelivered();
+                    }
                 }, TtyViewModel.AutoSubmitDelay(typed.Length));
             }
         });
