@@ -373,7 +373,7 @@ internal sealed partial class MobileAssistantChannel : IDisposable
         }
 
         _Queue(row);
-        if (answered is not null || asked is not null)
+        if (row.Kind == AssistantChannelRowKind.Question || answered is not null || asked is not null)
         {
             _SendPending();
         }

@@ -268,8 +268,7 @@ public class MobileProtocolVectorTests
             };
             gateway.PendingQuestions.Returns([question]);
             pairing.Frame(connection, "stream-1", device, first?.Seal("{\"type\":\"operator.pending\",\"id\":\"pending\",\"body\":{}}"u8) ?? []);
-            gateway.RowChanged += Raise.Event<EventHandler<AssistantChannelRow>>(gateway, question);
-            Say(first, "stream-1", "1");
+
             Assert.NotNull(first);
             var read = 2;
             JsonElement LatestPending()
@@ -291,6 +290,9 @@ public class MobileProtocolVectorTests
             gateway.RowChanged += Raise.Event<EventHandler<AssistantChannelRow>>(gateway,
                 question with { IsUpdate = true, Questions = [] });
             Assert.Empty(LatestPending().EnumerateArray());
+            gateway.PendingQuestions.Returns([question]);
+            gateway.RowChanged += Raise.Event<EventHandler<AssistantChannelRow>>(gateway, question);
+            Say(first, "stream-1", "1");
         }
 
         var expected = @case switch
