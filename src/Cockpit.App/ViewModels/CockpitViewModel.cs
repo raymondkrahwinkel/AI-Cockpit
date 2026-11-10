@@ -7436,7 +7436,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 CloneRootPlaceholder = _cloneSettingsStore?.DefaultRoot ?? string.Empty;
                 await LoadHeavyRunSettingsAsync();
                 await Security.RefreshAsync();
-                await _LoadRemoteServerKeysAsync();
+                await LoadRemoteServerKeysAsync();
                 _remoteOptionsLoaded = true;
             }
             catch (Exception)

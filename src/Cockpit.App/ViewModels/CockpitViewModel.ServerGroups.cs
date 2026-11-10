@@ -475,7 +475,7 @@ public partial class CockpitViewModel
 
     private ServerAdminViewModel? _remoteServerKeys;
 
-    private async Task _LoadRemoteServerKeysAsync()
+    internal async Task LoadRemoteServerKeysAsync()
     {
         if (ServerGroups.FirstOrDefault() is not { State.Key: { } key, Server: { } server } group)
         {

@@ -457,7 +457,7 @@
                         <TextBlock Text="When a lower rank comes back" FontWeight="SemiBold" Margin="0,12,0,0"/>
                         <ComboBox ItemsSource="{Binding Swarm.ReturnChoices}" SelectedIndex="{Binding Swarm.ReturnChoice}" HorizontalAlignment="Stretch"/>
                         <TextBlock Text="Take over after a wait: announce a 30-second countdown before switching. Join at the back: the returning machine gets a higher rank and the current leader stays." Classes="optionsHint"/>
-                        <TextBlock Text="Pairing adds the machine immediately. Cancel does not undo a pairing; Apply saves the settings below This machine." Classes="optionsHint"/>
+                        <TextBlock Text="Pairing adds the machine immediately. Cancel does not undo a pairing; Apply saves the settings below This machine." Classes="optionsHint" IsVisible="{Binding !IsRemoteWindow}"/>
                     </StackPanel>
                 </ScrollViewer>
 
@@ -467,10 +467,10 @@
                         <StackPanel x:Name="ServersHelp" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Servers" FontSize="20" FontWeight="Bold"/>
                         </StackPanel>
-                        <TextBlock Text="Connect to headless Cockpit servers and manage them: connect keys, plugins, profiles, projects and audit log. Use an admin key to manage a server." Classes="optionsHint"/>
-                        <TextBlock Classes="optionsHint" TextWrapping="Wrap"
+                        <TextBlock Text="Connect to headless Cockpit servers and manage them: connect keys, plugins, profiles, projects and audit log. Use an admin key to manage a server." Classes="optionsHint" IsVisible="{Binding !IsRemoteWindow}"/>
+                        <TextBlock Classes="optionsHint" TextWrapping="Wrap" IsVisible="{Binding !IsRemoteWindow}"
                                    Text="{x:Static terms:ProviderTerms.GeneralNotice}"/>
-                        <TextBlock Text="Connect your desktops in Swarm." Classes="optionsHint"/>
+                        <TextBlock Text="Connect your desktops in Swarm." Classes="optionsHint" IsVisible="{Binding !IsRemoteWindow}"/>
                         <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}" Margin="0,4"/>
 
                         <!-- AC-2279: a remote window manages the keys of its own server here; it connects nowhere else. -->
