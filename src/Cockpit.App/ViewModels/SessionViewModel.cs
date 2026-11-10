@@ -2454,6 +2454,24 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         return true;
     }
 
+    // AC-2256: text handed in from outside (a plugin's SendToSessionAsync, a brief, a held prompt) goes out on its own:
+    // the operator's half-typed draft is set aside for the send and put back after it. Send reads the input before its
+    // first await and clears it only while it still holds what it sent, so the draft put back stays. Pending images do
+    // ride along: the assistant's channel adds a message's images right before it hands over the text.
+    public override void InjectAndSubmit(string text)
+    {
+        if (string.IsNullOrEmpty(text) || IsReadingChild || !SendCommand.CanExecute(null))
+        {
+            base.InjectAndSubmit(text);
+            return;
+        }
+
+        var draft = InputText;
+        InputText = text;
+        SendCommand.Execute(null);
+        InputText = draft;
+    }
+
     [RelayCommand]
     private async Task SendAsync()
     {

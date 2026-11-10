@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2256: plugins can read each open session's statusline, whether it is a terminal and whether its transcript is readable, plus the tail of that transcript and its open permission questions through `Sessions.ReadTranscriptAsync` and `Sessions.ReadPendingPermissionsAsync` (plugin SDK 3.83.0, host 0.172.0).
+
 - AC-2255: a phone paired from Settings › Depot now reaches this Cockpit: the Cockpit connects to the Depot relay right after pairing, instead of the phone reporting it offline and not paired.
 
 - AC-717: opt in to lowering other apps during assistant speech on Windows and Linux, relative to Cockpit's mixer volume, with automatic restore and crash recovery. macOS shows the option as unavailable.
